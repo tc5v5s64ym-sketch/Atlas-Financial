@@ -1,12 +1,14 @@
 'use strict';
-/* Talk to Atlas — household conversation shell plus one-turn Gemini explainer.
+/* Talk to Atlas — household conversation shell plus session Gemini explainer.
  *
  * This file fetches GET /talk/context and GET /talk/capability with the
- * same-origin session cookie, and POSTs { question } to /talk/ask when
- * the model path is available. It does not call /assistant/current or
- * /assistant/mcp, does not send a Bearer or OAuth token, does not hold
- * the Talk model secret, does not read Forecast, and does not publish
- * a figure of its own. Model answer text is assigned via textContent.
+ * same-origin session cookie, and POSTs { question } only to /talk/ask
+ * when the model path is available. It does not send prior turns; the
+ * server holds ephemeral session context. It does not call
+ * /assistant/current or /assistant/mcp, does not send a Bearer or OAuth
+ * token, does not hold the Talk model secret, does not read Forecast,
+ * and does not publish a figure of its own. Model answer text is
+ * assigned via textContent.
  * Provenance, trust, citations, and one optional action link come from
  * the server presentation. Structured answer cards reprint server.cards
  * strings into #talk-cards. Missing or malformed cards fail closed to the plain answer

@@ -408,7 +408,7 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
   ok(!/fs\.(write|append)File/.test(moduleSrc)
       && !/localStorage|indexedDB/.test(talkSrc + html)
       && !/fs\.(write|append)File/.test(serverSrc.split('talk ask failed')[0].slice(-800) + 'talk ask failed'),
-    'Talk ask path does not persist prompts or answers');
+    'Talk ask path does not persist prompts or answers to a durable store');
   ok(/app\.post\('\/talk\/ask'/.test(serverSrc)
       && /buildCurrentAssistantPacket/.test(serverSrc)
       && /TalkGemini\.ask/.test(serverSrc),

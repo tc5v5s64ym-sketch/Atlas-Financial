@@ -72,6 +72,7 @@ const suites = [
   ['Talk Gemini explainer turn', 'test-talk-ask.js'],
   ['Talk structured answer cards', 'test-talk-cards.js'],
   ['Talk citations / provenance (Queue PR 2)', 'test-talk-citations.js'],
+  ['Talk multi-turn session context (Queue PR 3)', 'test-talk-session.js'],
   ['Talk hypothetical extra adapter (Talk Slice 6B)', 'test-talk-hypothetical.js'],
   ['owner decision posture policy (Talk Slice 5)', 'test-decision-posture.js'],
   ['hypothetical extra-payment scenario (Talk Slice 6)', 'test-hypothetical-extra-payment.js'],

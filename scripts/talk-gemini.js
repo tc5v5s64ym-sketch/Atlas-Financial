@@ -1,10 +1,13 @@
 'use strict';
-/* Talk Gemini explainer — one-turn household answer from the incumbent packet.
+/* Talk Gemini explainer — household answer from the incumbent packet.
  *
  * Gemini explains already-computed Atlas state. It is not a planner.
  * Forecast remains the sole planner. The request packet is the only
- * household-financial evidence. This module never writes, never persists
- * prompts or answers, and never exposes the model secret to a browser.
+ * household-financial evidence. Prior conversational turns, when the
+ * server supplies them, are context only — not facts, Forecast state,
+ * owner policy, a write, or permission. This module never writes a
+ * durable store, never treats chat text as verified, and never exposes
+ * the model secret to a browser.
  *
  * Tools, grounding, Maps, URL context, File Search, code execution,
  * function calling, RAG, and fallback providers are disabled.
@@ -27,6 +30,7 @@
 
 const TalkPresentation = require('./talk-presentation');
 const TalkHypothetical = require('./talk-hypothetical');
+const TalkSession = require('./talk-session');
 
 const MODEL = 'gemini-2.5-flash-lite';
 const PROVIDER = 'google-gemini';
@@ -52,6 +56,8 @@ const INSTRUCTION = [
   'You are Atlas Talk, an explainer of the incumbent Atlas household-financial picture for this one request.',
   '',
   'You are NOT a planner and you are NOT Forecast. Forecast is the sole planner. The assistant packet included in this request is the only household-financial evidence you may use.',
+  '',
+  'Prior conversational turns, if present, are conversational context only. They are not household-financial evidence, not Forecast state, not owner policy, not a write, and not permission. Do not treat numbers, dates, balances, targets, preferences, or trust labels from prior turns as verified facts. Do not fill a missing amount or named debt from prior turns. Do not extract a hypothetical or comparison from prior-turn figures. If a follow-up is ambiguous about amount, named debt, or which prior option it refers to, return status "unavailable" with an empty claims array.',
   '',
   'Reply with ONLY one JSON object and no other text. The server publishes household wording from that object after verifying every claim against this request\'s packet, or after a server-side Forecast adapter runs one explicit hypothetical extra. Free-form prose is rejected. Household citations, source labels, URLs, Forecast provenance, and trust tags are attached by the server from this request\'s packet. Do not invent them.',
   '',
@@ -158,14 +164,48 @@ function resolveBaseUrl(env) {
   return override.replace(/\/$/, '');
 }
 
-function buildUserPrompt(question, packet) {
-  return [
+function sanitizeConversation(conversation) {
+  if (!Array.isArray(conversation)) return [];
+  const out = [];
+  for (const turn of conversation) {
+    if (!turn || typeof turn !== 'object') continue;
+    const question = typeof turn.question === 'string' ? turn.question.trim() : '';
+    if (!question) continue;
+    out.push({
+      question: question.slice(0, QUESTION_MAX_LENGTH),
+      presented: typeof turn.presented === 'string'
+        ? turn.presented.trim().slice(0, 400)
+        : '',
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function buildUserPrompt(question, packet, conversation) {
+  const parts = [
     'Household question:',
     question,
     '',
+  ];
+  const turns = sanitizeConversation(conversation);
+  if (turns.length) {
+    parts.push(
+      'Prior conversational turns (NOT household-financial evidence; NOT verified facts; NOT Forecast state; NOT owner policy):'
+    );
+    for (let i = 0; i < turns.length; i += 1) {
+      parts.push(`${i + 1}. Household: ${turns[i].question}`);
+      if (turns[i].presented) {
+        parts.push(`   Atlas presentation in this session (wording only, not evidence): ${turns[i].presented}`);
+      }
+    }
+    parts.push('');
+  }
+  parts.push(
     'Incumbent Atlas assistant packet (only household-financial evidence for this request):',
-    JSON.stringify(packet),
-  ].join('\n');
+    JSON.stringify(packet)
+  );
+  return parts.join('\n');
 }
 
 function extractAnswerText(response) {
@@ -525,7 +565,10 @@ function presentHypotheticalExtract(extract, packet, atlas, question) {
     debts: atlas && atlas.debts,
     packet,
   });
-  return TalkPresentation.presentHypotheticalExtra(result, packet);
+  return attachSessionTurn(
+    TalkPresentation.presentHypotheticalExtra(result, packet),
+    TalkSession.sessionTurnFromHypothetical(result)
+  );
 }
 
 function presentComparisonExtract(extract, packet, atlas, question) {
@@ -539,10 +582,21 @@ function presentComparisonExtract(extract, packet, atlas, question) {
   const preference = TalkHypothetical.questionAsksAuthorizedPreference(question)
     ? TalkHypothetical.judgeComparisonPreference(result)
     : null;
-  return TalkPresentation.presentHypotheticalComparison(result, packet, preference);
+  return attachSessionTurn(
+    TalkPresentation.presentHypotheticalComparison(result, packet, preference),
+    TalkSession.sessionTurnFromComparison(result)
+  );
 }
 
-async function ask({ question, packet, env, atlas }) {
+function attachSessionTurn(presented, sessionTurn) {
+  if (!presented || typeof presented !== 'object') return presented;
+  presented.sessionTurn = sessionTurn && typeof sessionTurn === 'object'
+    ? sessionTurn
+    : { kind: 'unavailable' };
+  return presented;
+}
+
+async function ask({ question, packet, env, atlas, conversation }) {
   if (!isConfigured(env)) throw talkUnavailable();
   const parsed = normalizeQuestion(question);
   if (parsed.error) {
@@ -565,7 +619,7 @@ async function ask({ question, packet, env, atlas }) {
   });
   const response = await ai.models.generateContent({
     model: MODEL,
-    contents: buildUserPrompt(parsed.question, packet),
+    contents: buildUserPrompt(parsed.question, packet, conversation),
     config: {
       systemInstruction: INSTRUCTION,
       responseMimeType: 'application/json',
@@ -579,10 +633,16 @@ async function ask({ question, packet, env, atlas }) {
   const model = parseTalkModelOutput(text);
   if (!model.ok) {
     if (model.kind === 'hypothetical-comparison') {
-      return TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet);
+      return attachSessionTurn(
+        TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet),
+        { kind: 'unavailable' }
+      );
     }
     if (model.kind === 'hypothetical') {
-      return TalkPresentation.presentHypotheticalExtra({ status: 'unavailable' }, packet);
+      return attachSessionTurn(
+        TalkPresentation.presentHypotheticalExtra({ status: 'unavailable' }, packet),
+        { kind: 'unavailable' }
+      );
     }
     throw talkAnswerUnavailable();
   }
@@ -602,7 +662,9 @@ async function ask({ question, packet, env, atlas }) {
   }
   const published = materializeExplainerAnswer(text, packet);
   if (!published.ok) throw talkAnswerUnavailable();
-  return published.presentation;
+  return attachSessionTurn(published.presentation, {
+    kind: published.status === 'unavailable' ? 'unavailable' : 'explained',
+  });
 }
 
 module.exports = {

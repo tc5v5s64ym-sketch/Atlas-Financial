@@ -12,10 +12,12 @@
 //    POST /assistant/mcp is separate again: an OAuth-protected MCP resource
 //    exposing the same packet as one read-only tool. GET /talk/context is the
 //    household-session consumer of that same packet. POST /talk/ask is the
-//    session-only Gemini explainer turn for Talk; GET /talk/capability says
-//    whether that path is configured. Browser, static assistant, and OAuth
-//    credentials do not unlock one another. The Talk model secret never
-//    reaches the browser.
+//    session-only Gemini explainer for Talk, with an ephemeral in-memory
+//    turn buffer keyed to the authenticated session; GET /talk/capability
+//    says whether that path is configured. Conversation history is
+//    conversational context only and is not household-financial evidence.
+//    Browser, static assistant, and OAuth credentials do not unlock one
+//    another. The Talk model secret never reaches the browser.
 
 const express = require('express');
 const crypto = require('crypto');
@@ -27,6 +29,9 @@ const Assistant = require('./scripts/assistant-packet.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
 const AssistantOAuth = require('./scripts/assistant-oauth.js');
 const TalkGemini = require('./scripts/talk-gemini.js');
+const TalkPresentation = require('./scripts/talk-presentation.js');
+const TalkHypothetical = require('./scripts/talk-hypothetical.js');
+const TalkSession = require('./scripts/talk-session.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -82,6 +87,8 @@ if (TALK_GEMINI_KEY && ASSISTANT_TOKEN && sameSecret(TALK_GEMINI_KEY, ASSISTANT_
   console.error('FATAL: ATLAS_TALK_GEMINI_API_KEY must not reuse ATLAS_ASSISTANT_TOKEN.');
   process.exit(1);
 }
+
+const talkSessions = TalkSession.createSessionContext({ secret: SECRET });
 
 const app = express();
 app.disable('x-powered-by');
@@ -243,6 +250,8 @@ app.post('/login', (req, res) => {
 });
 
 app.post('/logout', (req, res) => {
+  const token = readCookie(req, 'hfd_session');
+  if (token) talkSessions.clear(talkSessions.keyFromToken(token));
   res.set('Set-Cookie', `hfd_session=; HttpOnly;${secureFlag(req)} SameSite=Lax; Path=/; Max-Age=0`);
   res.redirect('/login');
 });
@@ -400,17 +409,17 @@ app.all('/talk/capability', (_req, res) => {
   return res.status(405).json({ error: 'method not allowed' });
 });
 
-// Talk ask — one stateless Gemini explainer turn. Session only.
-// Builds the incumbent assistant packet (same builder as /talk/context),
-// sends question + packet + the fixed instruction contract, verifies
-// extractive claims against that packet, maps verified claims through
-// Atlas presentation templates, and returns that household-facing
-// presentation. An explicit hypothetical extra (amount + named debt),
-// or an explicit comparison of two or more such extras, is extracted,
-// server-validated against the original question, resolved to stable
-// ids, then computed only by Forecast. Does not persist prompts or
-// answers.
-// Does not write.
+// Talk ask — session-only Gemini explainer plus authorized follow-ups.
+// Builds the incumbent assistant packet (same builder as /talk/context).
+// An ephemeral in-memory turn buffer is keyed to this authenticated
+// session. History is conversational context only: it is not household-
+// financial evidence, Forecast state, owner policy, a write, or
+// permission. Follow-up amounts and named debts are filled only when
+// the server can deterministically resolve them under the authorized
+// contract; ambiguity is unavailable. Every financial answer still
+// verifies against this request's packet or is computed by Forecast
+// on current Atlas state. Client history fields are rejected. No
+// durable store. Does not write.
 const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
 app.post('/talk/ask', (req, res, next) => {
   talkAskJson(req, res, (err) => {
@@ -434,24 +443,78 @@ app.post('/talk/ask', (req, res, next) => {
     if (parsed.error) {
       return res.status(400).json({ error: parsed.error });
     }
+    const token = readCookie(req, 'hfd_session');
+    const sessionKey = talkSessions.keyFromToken(token);
+    const priorTurns = talkSessions.turns(sessionKey);
     const served = await servedAtlasData();
     const packet = Assistant.buildPacket({
       data: served,
       env: process.env,
       now: new Date().toISOString(),
     });
-    const presented = await TalkGemini.ask({
+    const atlas = {
+      plan: served && served.plan,
+      debts: served && served.debts,
+    };
+    const follow = TalkSession.resolveFollowup({
       question: parsed.question,
+      priorTurn: TalkSession.lastTurn(priorTurns),
+      debts: atlas.debts,
       packet,
-      env: process.env,
-      atlas: {
-        plan: served && served.plan,
-        debts: served && served.debts,
-      },
     });
+    let presented;
+    if (follow.status === 'ambiguous') {
+      presented = follow.nature === 'comparison'
+        ? TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet)
+        : follow.nature === 'hypothetical'
+          ? TalkPresentation.presentHypotheticalExtra({ status: 'unavailable' }, packet)
+          : TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet);
+      presented.sessionTurn = { kind: 'unavailable' };
+    } else if (follow.status === 'resolved-hypothetical') {
+      const result = TalkHypothetical.evaluateResolved({
+        amount: follow.amount,
+        debtId: follow.debtId,
+        plan: atlas.plan,
+        debts: atlas.debts,
+        packet,
+      });
+      presented = TalkPresentation.presentHypotheticalExtra(result, packet);
+      presented.sessionTurn = TalkSession.sessionTurnFromHypothetical(result);
+    } else if (follow.status === 'resolved-comparison'
+        || follow.status === 'resolved-preference') {
+      const result = TalkHypothetical.evaluateComparisonResolved({
+        scenarios: follow.scenarios,
+        plan: atlas.plan,
+        debts: atlas.debts,
+        packet,
+      });
+      const preference = follow.status === 'resolved-preference'
+        || TalkHypothetical.questionAsksAuthorizedPreference(parsed.question)
+        ? TalkHypothetical.judgeComparisonPreference(result)
+        : null;
+      presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
+      presented.sessionTurn = TalkSession.sessionTurnFromComparison(result);
+    } else {
+      presented = await TalkGemini.ask({
+        question: parsed.question,
+        packet,
+        env: process.env,
+        atlas,
+        conversation: talkSessions.publicConversation(priorTurns),
+      });
+    }
     if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
       return res.status(502).json({ error: 'talk answer unavailable' });
     }
+    talkSessions.append(sessionKey, {
+      question: parsed.question,
+      presented: presented.answer,
+      kind: presented.sessionTurn && presented.sessionTurn.kind,
+      amount: presented.sessionTurn && presented.sessionTurn.amount,
+      debtId: presented.sessionTurn && presented.sessionTurn.debtId,
+      debtLabel: presented.sessionTurn && presented.sessionTurn.debtLabel,
+      scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
+    });
     return res.json({
       answer: presented.answer,
       source: presented.source || null,

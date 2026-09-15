@@ -709,6 +709,26 @@ function evaluate({ amount, debtLabel, question, plan, debts, packet }) {
   });
 }
 
+function evaluateResolved({ amount, debtId, plan, debts, packet }) {
+  const parsedAmount = validateAmount(amount);
+  if (!parsedAmount.ok) return unavailable(parsedAmount.reason);
+  if (typeof debtId !== 'string' || !debtId.trim()) {
+    return unavailable('unresolved-debt');
+  }
+  const catalog = catalogFromDebts(debts, packet);
+  const matches = catalog.filter(row => row.id === debtId);
+  if (matches.length !== 1) return unavailable('unresolved-debt');
+  if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+    return unavailable('missing-plan');
+  }
+  const asOf = plan.opening && plan.opening.asOf;
+  return Forecast.hypotheticalExtraPayment(plan, debts, asOf, {
+    amount: parsedAmount.amount,
+    debtId,
+    nature: 'hypothetical',
+  });
+}
+
 function comparisonUnavailable(reason) {
   return {
     status: 'unavailable',
@@ -742,6 +762,38 @@ function evaluateComparison({ scenarios, question, plan, debts, packet }) {
   });
 }
 
+function evaluateComparisonResolved({ scenarios, plan, debts, packet }) {
+  if (!Array.isArray(scenarios) || scenarios.length < 2) {
+    return comparisonUnavailable('extract-mismatch');
+  }
+  const catalog = catalogFromDebts(debts, packet);
+  const resolved = [];
+  for (const row of scenarios) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return comparisonUnavailable('extract-mismatch');
+    }
+    const parsedAmount = validateAmount(row.amount);
+    if (!parsedAmount.ok) return comparisonUnavailable(parsedAmount.reason);
+    if (typeof row.debtId !== 'string' || !row.debtId.trim()) {
+      return comparisonUnavailable('unresolved-debt');
+    }
+    const matches = catalog.filter(item => item.id === row.debtId);
+    if (matches.length !== 1) return comparisonUnavailable('unresolved-debt');
+    resolved.push({
+      amount: parsedAmount.amount,
+      debtId: row.debtId,
+    });
+  }
+  if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+    return comparisonUnavailable('missing-plan');
+  }
+  const asOf = plan.opening && plan.opening.asOf;
+  return Forecast.hypotheticalExtraPaymentComparison(plan, debts, asOf, {
+    nature: 'hypothetical-comparison',
+    scenarios: resolved,
+  });
+}
+
 module.exports = {
   HYPOTHETICAL_INTENT,
   COMPARISON_INTENT,
@@ -761,5 +813,7 @@ module.exports = {
   questionIsPlannerActComparison,
   judgeComparisonPreference,
   evaluate,
+  evaluateResolved,
   evaluateComparison,
+  evaluateComparisonResolved,
 };

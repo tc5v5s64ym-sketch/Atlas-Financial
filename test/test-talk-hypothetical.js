@@ -181,6 +181,43 @@ console.log('\n=== 3. Forecast is the sole calculator; nextDollar is not substit
   ok(got.input.amount !== plan.defaults.targetBuffer
       && got.input.amount !== 500,
     'amount is not inferred from targetBuffer');
+
+  const resolved = TalkHypothetical.evaluateResolved({
+    amount: 200,
+    debtId: 'high',
+    plan,
+    debts,
+  });
+  ok(resolved.status === 'ready'
+      && resolved.delta.debt.interest === expected.delta.debt.interest
+      && resolved.delta.cash.ending === expected.delta.cash.ending,
+    'evaluateResolved matches an independent Forecast call on the current plan');
+
+  const richer = JSON.parse(JSON.stringify(plan));
+  richer.startingCash = { amount: 8000 };
+  const staleHistoryCash = got.delta.cash.ending;
+  const fresh = TalkHypothetical.evaluateResolved({
+    amount: 200,
+    debtId: 'high',
+    plan: richer,
+    debts,
+  });
+  const freshExpected = F.hypotheticalExtraPayment(richer, debts, START, {
+    amount: 200,
+    debtId: 'high',
+    nature: 'hypothetical',
+  });
+  ok(fresh.status === 'ready'
+      && fresh.delta.cash.ending === freshExpected.delta.cash.ending
+      && fresh.delta.cash.ending !== staleHistoryCash,
+    'evaluateResolved recomputes on current plan and does not reuse a prior delta');
+  ok(TalkHypothetical.evaluateResolved({
+    amount: 200,
+    debtId: 'missing-debt',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'evaluateResolved fails closed when the named debt is gone from current catalog');
 }
 
 console.log('\n=== 4. Fail-closed planner acts and Forecast ineligibility ===');
