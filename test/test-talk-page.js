@@ -63,9 +63,10 @@ console.log('=== 1. Talk page identity, empty state, composer, prompts ===');
   ok(/id="talk-empty"/.test(html) && /id="talk-composer"/.test(html)
       && /id="talk-input"/.test(html) && /id="talk-send"/.test(html)
       && /id="talk-seam"/.test(html) && /id="talk-cards"/.test(html)
+      && /id="talk-summary"/.test(html)
       && /id="talk-thread"/.test(html) && /id="talk-prompts"/.test(html)
       && /id="talk-context"/.test(html),
-    'empty state, thread, context status, reserved cards mount, composer and seam are present');
+    'empty state, thread, context status, reserved cards and summary mounts, composer and seam are present');
   ok(/disabled/.test(html) && /Coming soon/.test(html)
       && /not a second planner/.test(html),
     'Send is disabled in markup and the coming-soon seam is visible');
@@ -112,9 +113,10 @@ console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistan
   ok(/send\.disabled = true/.test(src) && /preventDefault/.test(src)
       && /talkModelAvailable/.test(src),
     'Send starts disabled and submit is gated on capability');
-  ok(/talk-cards/.test(html) && /hidden/.test(html),
-    'structured answer cards mount starts hidden until a trusted payload arrives');
-  ok(/talkValidCards/.test(src) && /fail closed to the plain answer/.test(read('public/talk.js')),
+  ok(/talk-cards/.test(html) && /talk-summary/.test(html) && /hidden/.test(html),
+    'structured answer cards and decision-summary mounts start hidden until a trusted payload arrives');
+  ok(/talkValidCards/.test(src) && /talkValidSummary/.test(src)
+      && /fail closed to the plain answer/.test(read('public/talk.js')),
     'talk.js fail-closes missing or malformed cards to the plain answer bubble');
   try {
     new vm.Script(read('public/talk.js'), { filename: 'talk.js' });

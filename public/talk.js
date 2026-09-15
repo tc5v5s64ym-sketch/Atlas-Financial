@@ -15,9 +15,11 @@
  * assigned via textContent.
  * Provenance, trust, citations, and one optional action link come from
  * the server presentation. Structured answer cards reprint server.cards
- * strings into #talk-cards. Missing or malformed cards fail closed to the plain answer
- * bubble. This file does not invent card content, citations, or money, and only
- * follows existing Atlas routes.
+ * strings into #talk-cards. A trusted presentation.summary reprints
+ * server-assembled decision-summary sections into #talk-summary.
+ * Missing or malformed summary fails closed to cards, then to the plain
+ * answer bubble. This file does not invent card content, citations,
+ * summary wording, or money, and only follows existing Atlas routes.
  *
  * Send stays disabled until capability says the model path is available.
  * When it is not, suggested prompts keep the Slice 1/2 stub.
@@ -279,6 +281,7 @@ function interpretTalkStreamEvent(raw) {
       action: parsed.action || null,
       cards: parsed.cards || null,
       citations: parsed.citations || null,
+      summary: parsed.summary || null,
     },
   };
 }
@@ -345,10 +348,10 @@ async function readTalkAskStream(res, onStatus, signal) {
 
 function talkPresentation(value) {
   if (typeof value === 'string') {
-    return { answer: value, source: null, trust: null, asOf: null, freshness: null, action: null, cards: null, citations: null };
+    return { answer: value, source: null, trust: null, asOf: null, freshness: null, action: null, cards: null, citations: null, summary: null };
   }
   if (!value || typeof value !== 'object' || typeof value.answer !== 'string') {
-    return { answer: '', source: null, trust: null, asOf: null, freshness: null, action: null, cards: null, citations: null };
+    return { answer: '', source: null, trust: null, asOf: null, freshness: null, action: null, cards: null, citations: null, summary: null };
   }
   return {
     answer: value.answer,
@@ -359,6 +362,7 @@ function talkPresentation(value) {
     action: value.action || null,
     cards: value.cards || null,
     citations: value.citations || null,
+    summary: value.summary || null,
   };
 }
 
@@ -418,6 +422,83 @@ function talkCardsMount() {
   const mount = document.createElement('div');
   mount.className = 'talk-cards';
   return mount;
+}
+
+const TALK_SUMMARY_ORDER = ['knows', 'changes', 'unchanged', 'risk', 'unknown'];
+const TALK_SUMMARY_TITLES = {
+  knows: 'What Atlas knows',
+  changes: 'What changes',
+  unchanged: 'What does not change',
+  risk: 'Risk / uncertainty',
+  unknown: 'What Atlas cannot determine yet',
+};
+
+function talkValidSummary(summary) {
+  if (!summary || typeof summary !== 'object' || summary.version !== 1) return null;
+  if (!Array.isArray(summary.sections) || summary.sections.length !== TALK_SUMMARY_ORDER.length) {
+    return null;
+  }
+  const sections = [];
+  for (let i = 0; i < TALK_SUMMARY_ORDER.length; i += 1) {
+    const raw = summary.sections[i];
+    const key = TALK_SUMMARY_ORDER[i];
+    const title = TALK_SUMMARY_TITLES[key];
+    if (!raw || typeof raw !== 'object') return null;
+    if (raw.key !== key || raw.title !== title) return null;
+    if (!Array.isArray(raw.items) || !raw.items.length) return null;
+    const items = [];
+    for (let j = 0; j < raw.items.length; j += 1) {
+      const item = raw.items[j];
+      if (!item || typeof item !== 'object') return null;
+      if (typeof item.body !== 'string' || !item.body) return null;
+      items.push({ body: item.body });
+    }
+    sections.push({ key: key, title: title, items: items });
+  }
+  return sections;
+}
+
+function talkSummaryMount() {
+  const reserved = $('talk-summary');
+  if (reserved) {
+    const insideAnswer = typeof reserved.closest === 'function'
+      && reserved.closest('[data-talk-role="atlas-answer"]');
+    if (!insideAnswer) {
+      reserved.hidden = false;
+      if (typeof reserved.removeAttribute === 'function') reserved.removeAttribute('hidden');
+      while (reserved.firstChild) reserved.removeChild(reserved.firstChild);
+      return reserved;
+    }
+  }
+  const mount = document.createElement('div');
+  mount.className = 'talk-summary';
+  return mount;
+}
+
+function talkSummaryAnswerNode(sections) {
+  const article = document.createElement('article');
+  article.className = 'talk-bubble talk-bubble-atlas talk-bubble-answer talk-bubble-summary';
+  article.setAttribute('data-talk-role', 'atlas-answer');
+  const mount = talkSummaryMount();
+  for (let i = 0; i < sections.length; i += 1) {
+    const section = sections[i];
+    const card = document.createElement('section');
+    card.className = 'talk-summary-section';
+    card.setAttribute('data-talk-summary', section.key);
+    const title = document.createElement('h3');
+    title.className = 'talk-summary-title';
+    title.textContent = section.title;
+    card.appendChild(title);
+    for (let j = 0; j < section.items.length; j += 1) {
+      const body = document.createElement('p');
+      body.className = 'talk-summary-item';
+      body.textContent = section.items[j].body;
+      card.appendChild(body);
+    }
+    mount.appendChild(card);
+  }
+  article.appendChild(mount);
+  return article;
 }
 
 function talkValidCitations(citations) {
@@ -556,7 +637,13 @@ function talkAllowedAction(action) {
 function talkAnswerNode(value) {
   const presentation = talkPresentation(value);
   const citations = talkValidCitations(presentation.citations);
+  const summary = talkValidSummary(presentation.summary);
   const cards = talkValidCards(presentation.cards);
+  if (summary) {
+    const article = talkSummaryAnswerNode(summary);
+    if (citations) article.appendChild(talkCitationsNode(citations));
+    return article;
+  }
   if (cards) {
     const article = talkCardsAnswerNode(cards);
     if (citations) article.appendChild(talkCitationsNode(citations));
@@ -641,6 +728,7 @@ async function askTalk(question, signal) {
     action: body.action || null,
     cards: body.cards || null,
     citations: body.citations || null,
+    summary: body.summary || null,
   };
 }
 

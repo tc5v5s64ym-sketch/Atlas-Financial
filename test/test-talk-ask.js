@@ -623,8 +623,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       const askedBody = await asked.json();
       ok(askedBody.answer === DEFAULT_ANSWER
           && !forbiddenBlob(askedBody)
-          && Object.keys(askedBody).sort().join() === 'action,answer,asOf,cards,citations,freshness,source,trust',
-        'Talk ask returns the presented packet-backed answer plus optional cards and citations, without extra payload');
+          && Object.keys(askedBody).sort().join() === 'action,answer,asOf,cards,citations,freshness,source,summary,trust',
+        'Talk ask returns the presented packet-backed answer plus optional cards, citations, and summary, without extra payload');
       ok(liveMock.captured.length >= 1
           && requestHasInstruction(liveMock.captured[liveMock.captured.length - 1].body)
           && /What commitments are coming up\?/.test(userText(liveMock.captured[liveMock.captured.length - 1].body)),

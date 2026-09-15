@@ -2,6 +2,7 @@
  * Presentation only. Matches budget-polish / nav-glass / household-view
  * tokens: warm plane, white cards, one Atlas-blue accent, soft lift.
  * No ChatGPT chrome. Structured answer cards reprint server strings.
+ * The decision summary reprints server-assembled section strings.
  * Send stays disabled until talk.js learns the Gemini path is available.
  */
 
@@ -273,6 +274,58 @@
   margin-top: 0;
 }
 
+.talk-summary[hidden] {
+  display: none;
+}
+
+.talk-summary:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.talk-bubble-summary {
+  max-width: 36rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.talk-summary-section {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: var(--talk-card-shadow);
+}
+
+.talk-summary-title {
+  margin: 0 0 6px;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--s1);
+}
+
+.talk-summary-item {
+  margin: 0;
+  line-height: 1.4;
+  font-size: .95rem;
+  white-space: pre-wrap;
+}
+
+.talk-summary-item + .talk-summary-item {
+  margin-top: 6px;
+}
+
+.talk-summary-section[data-talk-summary="risk"] .talk-summary-item,
+.talk-summary-section[data-talk-summary="unknown"] .talk-summary-item {
+  color: var(--text-secondary);
+}
+
 .talk-composer {
   position: sticky;
   bottom: 0;
@@ -377,6 +430,15 @@
 
   .talk-cards:not([hidden]) {
     gap: 8px;
+  }
+
+  .talk-summary:not([hidden]) {
+    gap: 7px;
+  }
+
+  .talk-summary-section {
+    padding: 11px 12px;
+    border-radius: 12px;
   }
 }
 

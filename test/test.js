@@ -72,6 +72,7 @@ const suites = [
   ['Talk Gemini explainer turn', 'test-talk-ask.js'],
   ['Talk structured answer cards', 'test-talk-cards.js'],
   ['Talk citations / provenance (Queue PR 2)', 'test-talk-citations.js'],
+  ['Talk household decision summary', 'test-talk-decision-summary.js'],
   ['Talk multi-turn session context (Queue PR 3)', 'test-talk-session.js'],
   ['Talk safe streaming (Queue PR 4)', 'test-talk-stream.js'],
   ['Talk deterministic Why? explanation', 'test-talk-why.js'],
