@@ -79,9 +79,14 @@ amounts for “what does this payday look like?”, and
 `paydayAllocation.runningLeftover` for “what does this payday leave us
 with?” and for an unambiguous leftover “what does that leave us with?”
 already earned from a verified payday leftover or payday look-like
-presentation. Gemini extracts leftover or payday-picture intent or
-referent only and cannot manufacture the amount. Unavailable leftover
-is not $0. Gemini is an explainer,
+presentation. Talk may reprint Forecast-owned
+`currentPeriodAction.bills` for which household bills remain before
+the next payday. Settlement is Forecast-owned (represented / upcoming /
+unverified). Talk does not date-filter that list, invent a paid list,
+or treat unverified as unpaid. Gemini extracts leftover, payday-picture, or remaining-bills
+intent or referent only and cannot manufacture the amount or
+settlement. Unavailable leftover
+is not $0. Unavailable remaining bills are not none. Gemini is an explainer,
 not a planner. The server never publishes free-form model text; it
 verifies extractive claims against this request's packet, then maps
 those verified values through Atlas presentation templates. Progressive
@@ -334,7 +339,7 @@ Modellers, Deep Dive, and Records keep their four-link text nav:
 | Subscriptions | `subscriptions.html` | `subscriptions.js` + `forecast.js` | Recurring subscriptions and memberships as Credit-style fact cards: name, amount, cadence, next date, and monthly equivalent from `Forecast.householdSubscriptions`. Household bills stay off this page. |
 | Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`). The visual reference for the Bills and Subscriptions fact cards. |
 | Planning | `planning.html` | `planning.js` + `forecast.js` | Known future costs: `Forecast.majorPlans` verdicts, ranges, timing and any Forecast payday set-aside, in Forecast order |
-| Talk | `talk.html` | `talk.js` | Household conversation shell. Session context metadata plus session-scoped Gemini explainer when `ATLAS_TALK_GEMINI_API_KEY` is configured. Prior turns stay on the server as ephemeral conversational context only; the browser still POSTs `{ question }` only. Verified follow-ups may reuse structured refs from a prior verified presentation and re-read the current packet or Forecast; chat wording is not a figure source. Payday leftover reprints `Forecast.paydayAllocation.runningLeftover`; a payday look-like reprints those leftover stages plus leftover-consuming allocated amounts. Gemini cannot invent those amounts. Send stays disabled when that path is unavailable. Server publishes only wording assembled from packet-verified extractive claims, plus deterministic citations from allowlisted Atlas surfaces and existing provenance, plus an optional five-section decision summary of those same trusted strings. A why-ask traces an already-published packet or last-presented result through those same templates; Gemini cannot invent causes. Progressive status is allowlisted server phase ids; the final streamed body equals the non-stream JSON. Not a second planner and not a published-figure owner. |
+| Talk | `talk.html` | `talk.js` | Household conversation shell. Session context metadata plus session-scoped Gemini explainer when `ATLAS_TALK_GEMINI_API_KEY` is configured. Prior turns stay on the server as ephemeral conversational context only; the browser still POSTs `{ question }` only. Verified follow-ups may reuse structured refs from a prior verified presentation and re-read the current packet or Forecast; chat wording is not a figure source. Payday leftover reprints `Forecast.paydayAllocation.runningLeftover`; a payday look-like reprints those leftover stages plus leftover-consuming allocated amounts. Remaining payday bills reprint `Forecast.currentPeriodAction.bills`; settlement is Forecast-owned and unverified is not unpaid. Gemini cannot invent those amounts or settlements. Send stays disabled when that path is unavailable. Server publishes only wording assembled from packet-verified extractive claims, plus deterministic citations from allowlisted Atlas surfaces and existing provenance, plus an optional five-section decision summary of those same trusted strings. A why-ask traces an already-published packet or last-presented result through those same templates; Gemini cannot invent causes. Progressive status is allowlisted server phase ids; the final streamed body equals the non-stream JSON. Not a second planner and not a published-figure owner. |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |
