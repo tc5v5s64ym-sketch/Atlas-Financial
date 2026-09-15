@@ -17,9 +17,10 @@
  * the server presentation. Structured answer cards reprint server.cards
  * strings into #talk-cards. A trusted presentation.summary reprints
  * server-assembled decision-summary sections into #talk-summary.
- * Missing or malformed summary fails closed to cards, then to the plain
- * answer bubble. This file does not invent card content, citations,
- * summary wording, or money, and only follows existing Atlas routes.
+ * Missing or malformed summary fails closed to cards. Missing or
+ * malformed cards fail closed to the plain answer bubble. This file
+ * does not invent card content, citations, summary wording, or money,
+ * and only follows existing Atlas routes.
  *
  * Send stays disabled until capability says the model path is available.
  * When it is not, suggested prompts keep the Slice 1/2 stub.
