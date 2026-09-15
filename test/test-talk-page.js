@@ -99,6 +99,10 @@ console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistan
     'talk.js loads context from the session Talk seam');
   ok(/TALK_CAPABILITY_PATH/.test(src) && /TALK_ASK_PATH/.test(src),
     'talk.js uses session capability and ask seams when the model path is available');
+  ok(/accept:\s*'text\/event-stream'/.test(src)
+      && /TALK_STREAM_PHASES/.test(src)
+      && /talkStreamStatusText/.test(src),
+    'talk.js asks for SSE progress and maps only allowlisted phases to local copy');
   ok(!/XMLHttpRequest|WebSocket|EventSource/.test(src),
     'talk.js opens no other network transport');
   ok(!/assistant\/current|assistant\/mcp|openai|anthropic|chatgpt|generativelanguage\.googleapis|ATLAS_ASSISTANT|ATLAS_TALK_GEMINI_API_KEY/i.test(src + html),

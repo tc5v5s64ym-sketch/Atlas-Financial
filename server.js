@@ -16,8 +16,11 @@
 //    turn buffer keyed to the authenticated session; GET /talk/capability
 //    says whether that path is configured. Conversation history is
 //    conversational context only and is not household-financial evidence.
-//    Browser, static assistant, and OAuth credentials do not unlock one
-//    another. The Talk model secret never reaches the browser.
+//    POST /talk/ask may emit allowlisted SSE progress phases when the
+//    browser asks for text/event-stream, then the same verified JSON
+//    body. Gemini tokens are never streamed. Browser, static assistant,
+//    and OAuth credentials do not unlock one another. The Talk model
+//    secret never reaches the browser.
 
 const express = require('express');
 const crypto = require('crypto');
@@ -32,6 +35,7 @@ const TalkGemini = require('./scripts/talk-gemini.js');
 const TalkPresentation = require('./scripts/talk-presentation.js');
 const TalkHypothetical = require('./scripts/talk-hypothetical.js');
 const TalkSession = require('./scripts/talk-session.js');
+const TalkStream = require('./scripts/talk-stream.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -420,13 +424,140 @@ app.all('/talk/capability', (_req, res) => {
 // verifies against this request's packet or is computed by Forecast
 // on current Atlas state. Client history fields are rejected. No
 // durable store. Does not write.
+//
+// Accept: text/event-stream receives allowlisted progress phases, then
+// the same verified public JSON body as a final result event. Gemini
+// tokens, incomplete model JSON, and unverified prose are never written
+// to the stream. Envelope failures stay JSON so the auth and body
+// contract do not change.
 const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
+
+function appendTalkSessionTurn(sessionKey, question, presented) {
+  talkSessions.append(sessionKey, {
+    question,
+    presented: presented.answer,
+    kind: presented.sessionTurn && presented.sessionTurn.kind,
+    amount: presented.sessionTurn && presented.sessionTurn.amount,
+    debtId: presented.sessionTurn && presented.sessionTurn.debtId,
+    debtLabel: presented.sessionTurn && presented.sessionTurn.debtLabel,
+    scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
+  });
+}
+
+async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
+  const phase = (name) => {
+    if (typeof onPhase === 'function') onPhase(name);
+  };
+  phase('understanding');
+  phase('checking-atlas-context');
+  const priorTurns = talkSessions.turns(sessionKey);
+  const served = await servedAtlasData();
+  const packet = Assistant.buildPacket({
+    data: served,
+    env: process.env,
+    now: new Date().toISOString(),
+  });
+  const atlas = {
+    plan: served && served.plan,
+    debts: served && served.debts,
+  };
+  const follow = TalkSession.resolveFollowup({
+    question: parsed.question,
+    priorTurn: TalkSession.lastTurn(priorTurns),
+    debts: atlas.debts,
+    packet,
+  });
+  let presented;
+  if (follow.status === 'ambiguous') {
+    presented = follow.nature === 'comparison'
+      ? TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet)
+      : follow.nature === 'hypothetical'
+        ? TalkPresentation.presentHypotheticalExtra({ status: 'unavailable' }, packet)
+        : TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet);
+    presented.sessionTurn = { kind: 'unavailable' };
+  } else if (follow.status === 'resolved-hypothetical') {
+    phase('running-forecast');
+    const result = TalkHypothetical.evaluateResolved({
+      amount: follow.amount,
+      debtId: follow.debtId,
+      plan: atlas.plan,
+      debts: atlas.debts,
+      packet,
+    });
+    presented = TalkPresentation.presentHypotheticalExtra(result, packet);
+    presented.sessionTurn = TalkSession.sessionTurnFromHypothetical(result);
+  } else if (follow.status === 'resolved-comparison'
+      || follow.status === 'resolved-preference') {
+    phase('running-forecast');
+    const result = TalkHypothetical.evaluateComparisonResolved({
+      scenarios: follow.scenarios,
+      plan: atlas.plan,
+      debts: atlas.debts,
+      packet,
+    });
+    const preference = follow.status === 'resolved-preference'
+      || TalkHypothetical.questionAsksAuthorizedPreference(parsed.question)
+      ? TalkHypothetical.judgeComparisonPreference(result)
+      : null;
+    presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
+    presented.sessionTurn = TalkSession.sessionTurnFromComparison(result);
+  } else {
+    presented = await TalkGemini.ask({
+      question: parsed.question,
+      packet,
+      env: process.env,
+      atlas,
+      conversation: talkSessions.publicConversation(priorTurns),
+    });
+  }
+  if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+    return { error: 'talk answer unavailable' };
+  }
+  phase('preparing-verified-answer');
+  return { presented };
+}
+
+function finishTalkAskJson(res, presented, sessionKey, question) {
+  const body = TalkStream.publicAskBody(presented);
+  if (!body) return res.status(502).json({ error: 'talk answer unavailable' });
+  appendTalkSessionTurn(sessionKey, question, presented);
+  return res.json(body);
+}
+
+function finishTalkAskError(res, stream, err) {
+  if (err && err.code === 'TALK_UNAVAILABLE') {
+    if (stream) {
+      TalkStream.writeError(res, 'talk unavailable');
+      TalkStream.endStream(res);
+      return;
+    }
+    return res.status(503).json({ error: 'talk unavailable' });
+  }
+  if (err && err.code === 'TALK_MALFORMED') {
+    const message = err.message === 'question too long' ? 'question too long' : 'malformed request';
+    if (stream) {
+      TalkStream.writeError(res, message);
+      TalkStream.endStream(res);
+      return;
+    }
+    return res.status(400).json({ error: err.message || 'malformed request' });
+  }
+  console.error('talk ask failed');
+  if (stream) {
+    TalkStream.writeError(res, 'talk answer unavailable');
+    TalkStream.endStream(res);
+    return;
+  }
+  return res.status(502).json({ error: 'talk answer unavailable' });
+}
+
 app.post('/talk/ask', (req, res, next) => {
   talkAskJson(req, res, (err) => {
     if (err) return res.status(400).json({ error: 'malformed request' });
     return next();
   });
 }, async (req, res) => {
+  const stream = TalkStream.wantsStream(req);
   try {
     if (!TalkGemini.isConfigured(process.env)) {
       return res.status(503).json({ error: 'talk unavailable' });
@@ -445,95 +576,36 @@ app.post('/talk/ask', (req, res, next) => {
     }
     const token = readCookie(req, 'hfd_session');
     const sessionKey = talkSessions.keyFromToken(token);
-    const priorTurns = talkSessions.turns(sessionKey);
-    const served = await servedAtlasData();
-    const packet = Assistant.buildPacket({
-      data: served,
-      env: process.env,
-      now: new Date().toISOString(),
-    });
-    const atlas = {
-      plan: served && served.plan,
-      debts: served && served.debts,
-    };
-    const follow = TalkSession.resolveFollowup({
-      question: parsed.question,
-      priorTurn: TalkSession.lastTurn(priorTurns),
-      debts: atlas.debts,
-      packet,
-    });
-    let presented;
-    if (follow.status === 'ambiguous') {
-      presented = follow.nature === 'comparison'
-        ? TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet)
-        : follow.nature === 'hypothetical'
-          ? TalkPresentation.presentHypotheticalExtra({ status: 'unavailable' }, packet)
-          : TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet);
-      presented.sessionTurn = { kind: 'unavailable' };
-    } else if (follow.status === 'resolved-hypothetical') {
-      const result = TalkHypothetical.evaluateResolved({
-        amount: follow.amount,
-        debtId: follow.debtId,
-        plan: atlas.plan,
-        debts: atlas.debts,
-        packet,
-      });
-      presented = TalkPresentation.presentHypotheticalExtra(result, packet);
-      presented.sessionTurn = TalkSession.sessionTurnFromHypothetical(result);
-    } else if (follow.status === 'resolved-comparison'
-        || follow.status === 'resolved-preference') {
-      const result = TalkHypothetical.evaluateComparisonResolved({
-        scenarios: follow.scenarios,
-        plan: atlas.plan,
-        debts: atlas.debts,
-        packet,
-      });
-      const preference = follow.status === 'resolved-preference'
-        || TalkHypothetical.questionAsksAuthorizedPreference(parsed.question)
-        ? TalkHypothetical.judgeComparisonPreference(result)
-        : null;
-      presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
-      presented.sessionTurn = TalkSession.sessionTurnFromComparison(result);
-    } else {
-      presented = await TalkGemini.ask({
-        question: parsed.question,
-        packet,
-        env: process.env,
-        atlas,
-        conversation: talkSessions.publicConversation(priorTurns),
-      });
+    if (stream) {
+      const gate = TalkStream.createAbortGate(req, res);
+      TalkStream.beginStream(res);
+      const onPhase = (name) => {
+        if (!gate.closed) TalkStream.writeStatus(res, name);
+      };
+      const outcome = await presentTalkAskTurn(parsed, sessionKey, onPhase);
+      if (gate.closed) {
+        TalkStream.endStream(res);
+        return;
+      }
+      if (outcome.error || !outcome.presented) {
+        TalkStream.writeError(res, 'talk answer unavailable');
+        TalkStream.endStream(res);
+        return;
+      }
+      const wrote = TalkStream.writeResult(res, outcome.presented);
+      if (wrote && !gate.closed) {
+        appendTalkSessionTurn(sessionKey, parsed.question, outcome.presented);
+      }
+      TalkStream.endStream(res);
+      return;
     }
-    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+    const outcome = await presentTalkAskTurn(parsed, sessionKey, null);
+    if (outcome.error || !outcome.presented) {
       return res.status(502).json({ error: 'talk answer unavailable' });
     }
-    talkSessions.append(sessionKey, {
-      question: parsed.question,
-      presented: presented.answer,
-      kind: presented.sessionTurn && presented.sessionTurn.kind,
-      amount: presented.sessionTurn && presented.sessionTurn.amount,
-      debtId: presented.sessionTurn && presented.sessionTurn.debtId,
-      debtLabel: presented.sessionTurn && presented.sessionTurn.debtLabel,
-      scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
-    });
-    return res.json({
-      answer: presented.answer,
-      source: presented.source || null,
-      trust: presented.trust || null,
-      asOf: presented.asOf || null,
-      freshness: presented.freshness || null,
-      action: presented.action || null,
-      cards: presented.cards || null,
-      citations: presented.citations || null,
-    });
+    return finishTalkAskJson(res, outcome.presented, sessionKey, parsed.question);
   } catch (err) {
-    if (err && err.code === 'TALK_UNAVAILABLE') {
-      return res.status(503).json({ error: 'talk unavailable' });
-    }
-    if (err && err.code === 'TALK_MALFORMED') {
-      return res.status(400).json({ error: err.message || 'malformed request' });
-    }
-    console.error('talk ask failed');
-    return res.status(502).json({ error: 'talk answer unavailable' });
+    return finishTalkAskError(res, stream && res.headersSent, err);
   }
 });
 app.all('/talk/ask', (_req, res) => {
