@@ -132,6 +132,7 @@ const suites = [
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],
   ['evidence-use register routing', 'test-evidence-use-register.js'],
+  ['knowledge-evidence register (external-reference)', 'test-knowledge-evidence-register.js'],
   ['live household reconciliation', 'test-live-household.js'],
   ['duplicate live-fact cleanup (B93)', 'test-dedup-facts.js'],
   ['current-balance conclusions are Forecast-derived', 'test-derive-current-headroom.js'],

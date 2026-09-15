@@ -577,6 +577,7 @@ owner or explicitly replaces it; it never quietly becomes a second one.
 | Standing facts — rates, limits, due dates | [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md) |
 | Sequencing of planned capability work | [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md) |
 | Whether an explicitly identified supplied evidence item has been routed or parked | [`docs/evidence_use/register.json`](docs/evidence_use/register.json) |
+| An explicitly identified **external-reference** claim — general, domain or institution-published knowledge that is not a household fact — with its provenance, freshness, and the `docs/` surface it may inform | [`docs/knowledge_evidence/register.json`](docs/knowledge_evidence/register.json). Explanation only: never a household fact, Forecast input or output, owner policy, provider evidence, or financial permission |
 | Agent context architecture — authority vs skills vs learned lessons | [`docs/AGENT_CONTEXT.md`](docs/AGENT_CONTEXT.md) |
 
 ### Evidence-Use Register
