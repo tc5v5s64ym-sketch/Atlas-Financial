@@ -1,9 +1,9 @@
 'use strict';
-/* Standing bill-settlement identities: Fortis and TD fees are
+/* Standing bill-settlement identities: Fortis, Shaw, and TD fees are
  * identity-plus-evidence each cycle; YouTube Premium is schedule-trust
  * on the due date. Matching confirmed-settled txs create
- * representedActuals and mark PAID. Without matching evidence Fortis
- * and TD stay still-due / unverified. YouTube does not require an
+ * representedActuals and mark PAID. Without matching evidence Fortis,
+ * Shaw, and TD stay still-due / unverified. YouTube does not require an
  * isolated bank tx or Apple scrape. Synthetic observe fixtures and
  * independent arithmetic (L-002 / L-006).
  *
@@ -29,6 +29,10 @@ const FORTIS_DUE = '2026-09-03';
 const FORTIS_EARLY = '2026-09-01';
 const FORTIS_PLANNED = 124;
 const FORTIS_OBSERVED = 123.5;
+const SHAW_ID = 'shaw';
+const SHAW_DUE = '2026-09-14';
+const SHAW_PLANNED = 78.4;
+const SHAW_OBSERVED = 78.4;
 const FEE_ID = 'tdfees';
 const FEE_DUE = '2026-08-30';
 const FEE_LEG = 17.95;
@@ -216,6 +220,13 @@ function fortisTx(extra) {
   }, extra || {});
 }
 
+function shawTx(extra) {
+  return Object.assign({
+    id: 9630, account_id: 1001, date: SHAW_DUE, amount: SHAW_OBSERVED,
+    is_pending: false, payee: 'SHAW CABLE TV BPY', original_name: 'SHAW CABLE TV BPY',
+  }, extra || {});
+}
+
 function feeTxA(extra) {
   return Object.assign({
     id: 9602, account_id: 1001, date: FEE_DUE, amount: FEE_LEG,
@@ -258,6 +269,13 @@ console.log('\n=== 1. standing identities are encoded ===');
   ok(!(identity.rules || []).some(r => r && r.eventId === YOUTUBE_ID
       && ((r.payeePatterns || []).length || r.payeePattern || r.originalNamePattern)),
     'YouTube has no invented Apple, PayPal, or Gmail payee rule');
+  const shaw = (identity.rules || []).find(r => r && r.eventId === SHAW_ID);
+  ok(shaw && shaw.atlasAccountId === 'chequing-a' && shaw.direction === 'debit'
+      && shaw.postingDateRule === EARLY_RULE
+      && (shaw.payeePatterns || []).includes('SHAW CABLE TV BPY')
+      && (shaw.payeePatterns || []).includes('Shaw Cable')
+      && !shaw.settlesWhen,
+    'shaw identity is payee + Chequing A + debit + early-or-covers-due; amount is not identity');
 }
 
 console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube waits for due date ===');
@@ -277,6 +295,11 @@ console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube wai
     'TD fees stay still-due / unverified without matching evidence');
   ok(billUnpaid(beforeAdvice, YOUTUBE_ID, YOUTUBE_DUE),
     'YouTube stays still-due before its due date');
+  const shawEmpty = observeWith(identity, SHAW_DUE, []);
+  ok(!(shawEmpty.representedEventCandidates || []).some(c => c && c.id === SHAW_ID),
+    'no Shaw debit does not represent shaw');
+  ok(billUnpaid(recommendFromReport(shawEmpty, SHAW_DUE), SHAW_ID, SHAW_DUE),
+    'Shaw stays still-due / unverified without matching evidence');
 }
 
 console.log('\n=== 3. Fortis early pay before due creates representedActuals and PAID ===');
@@ -322,6 +345,69 @@ console.log('\n=== 3. Fortis early pay before due creates representedActuals and
   })]);
   ok(!(wrongAccount.representedEventCandidates || []).some(c => c && c.id === FORTIS_ID),
     'the Fortis alias on Chequing B does not settle the BILLS ACCOUNT bill');
+}
+
+console.log('\n=== 3b. Shaw same-day SHAW CABLE TV BPY creates representedActuals and PAID ===');
+{
+  const liveShaw = ((liveData().plan && liveData().plan.bills) || [])
+    .find(b => b && b.id === SHAW_ID);
+  ok(liveShaw && liveShaw.day === 14 && liveShaw.payingAccount === 'chequing-a'
+      && near(liveShaw.amount, SHAW_PLANNED),
+    'live plan.bills shaw is $78.40 on the 14th from chequing-a');
+  const identity = identityDoc();
+  const missing = observeWith(identityWithout(identity, [SHAW_ID]), SHAW_DUE, [shawTx()]);
+  ok(!(missing.representedEventCandidates || []).some(c => c && c.id === SHAW_ID),
+    'without the shaw rule, SHAW CABLE TV BPY stays unmatched');
+  ok(billUnpaid(recommendFromReport(missing, SHAW_DUE), SHAW_ID, SHAW_DUE),
+    'without the shaw rule the Sep 14 bill stays still-due / PENDING');
+  const report = observeWith(identity, SHAW_DUE, [shawTx()]);
+  const hit = (report.representedEventCandidates || [])
+    .find(c => c && c.id === SHAW_ID && c.date === SHAW_DUE);
+  ok(hit && hit.postingDate === SHAW_DUE
+      && hit.postingDateRelation === 'same-day'
+      && hit.amountNotUsed === true
+      && near(hit.observedAmount, SHAW_OBSERVED),
+    'Sep 14 SHAW CABLE TV BPY debit settles the Sep 14 shaw occurrence as same-day');
+  const row = ((report.currentPeriodActuals || {}).representedActuals || [])
+    .find(r => r && r.id === SHAW_ID && r.date === SHAW_DUE);
+  ok(row && row.transactionId && near(row.actual, SHAW_OBSERVED)
+      && row.postedOn === SHAW_DUE,
+    'representedActuals carries the observed Shaw debit against shaw@Sep 14');
+  const advice = recommendFromReport(report, SHAW_DUE);
+  const bill = actionBill(advice, SHAW_ID, SHAW_DUE)
+    || calendarBill(advice, SHAW_ID, SHAW_DUE);
+  ok(billPaid(advice, SHAW_ID, SHAW_DUE)
+      && bill && near(bill.planned != null ? bill.planned : bill.amount, SHAW_PLANNED)
+      && near(bill.actual != null ? bill.actual : 0, SHAW_OBSERVED),
+    'matching Shaw evidence marks PAID at the observed amount; planned $78.40 stays');
+  const alias = observeWith(identity, SHAW_DUE, [shawTx({
+    id: 9631, payee: 'Shaw Cable', original_name: 'Shaw Cable',
+  })]);
+  ok((alias.representedEventCandidates || [])
+      .some(c => c && c.id === SHAW_ID && c.date === SHAW_DUE),
+    'Shaw Cable on Chequing A is the same shaw identity');
+  const wrongPayee = observeWith(identity, SHAW_DUE, [shawTx({
+    id: 9632, payee: 'UNKNOWN DEBIT', original_name: 'UNKNOWN DEBIT',
+  })]);
+  ok(!(wrongPayee.representedEventCandidates || []).some(c => c && c.id === SHAW_ID),
+    'date + amount without the Shaw alias does not settle shaw');
+  const wrongAccount = observeWith(identity, SHAW_DUE, [shawTx({
+    id: 9633, account_id: 1002,
+  })]);
+  ok(!(wrongAccount.representedEventCandidates || []).some(c => c && c.id === SHAW_ID),
+    'the Shaw alias on Chequing B does not settle the BILLS ACCOUNT bill');
+  const remaining = adviceRow => {
+    const bills = (((adviceRow && adviceRow.currentPeriodAction) || {}).bills) || [];
+    return bills
+      .filter(row => row && row.settlement !== 'represented')
+      .reduce((sum, row) => sum + Math.abs(Number(row.remaining != null
+        ? row.remaining : row.planned) || 0), 0);
+  };
+  const beforeRemain = remaining(recommendFromReport(missing, SHAW_DUE));
+  const afterRemain = remaining(advice);
+  ok(near(roundCent(beforeRemain - afterRemain), SHAW_PLANNED),
+    'matching shaw releases independently the planned $78.40',
+    `${beforeRemain} → ${afterRemain} vs ${SHAW_PLANNED}`);
 }
 
 console.log('\n=== 4. TD two-leg MONTHLY ACCOUNT FEE evidence settles $35.90; one leg does not ===');
@@ -436,7 +522,7 @@ console.log('\n=== 6. independent remaining-bill deltas ===');
 console.log('\n=== 7. pages do not special-case these merchants ===');
 {
   const planSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public', 'plan.js'), 'utf8'));
-  ok(!/Fortisbc Energy|MONTHLY ACCOUNT FEE|YouTube Premium/.test(planSrc),
+  ok(!/Fortisbc Energy|MONTHLY ACCOUNT FEE|YouTube Premium|SHAW CABLE TV BPY/.test(planSrc),
     'plan.js only prints; it does not special-case these identities');
 }
 
