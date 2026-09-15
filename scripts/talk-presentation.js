@@ -4,9 +4,10 @@
  * Slice 4 sits after Slice 3 verification. Gemini still returns only
  * extractive path/equals claims. The server still rejects any claim that
  * does not match this request's packet. This module then maps those
- * already-verified claims through deterministic templates. It does not
- * call Forecast, does not compute leftover or remaining, and does not
- * invent a second financial schema.
+ * already-verified claims through deterministic templates. Slice 6B
+ * also maps an already-computed Forecast hypothetical result into
+ * wording; this file still does not call Forecast, does not compute
+ * leftover or remaining, and does not invent a second financial schema.
  *
  * Unknown paths stay conservative: path-is-value wording, no human
  * meaning, no Forecast/Bills/Credit/Planning provenance, no nav action.
@@ -17,6 +18,7 @@
  */
 
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
+const HYPOTHETICAL_UNAVAILABLE_ANSWER = 'That hypothetical extra payment is not available from Forecast';
 
 const ALLOWED_ACTIONS = Object.freeze({
   budget: Object.freeze({ href: '/', label: 'View Budget' }),
@@ -686,6 +688,115 @@ function emptyPresentation(answer, extras) {
   };
 }
 
+function presentHypotheticalExtra(result, packet) {
+  const asOf = (result && result.input && result.input.asOf) || readAsOf(packet);
+  const freshness = readFreshness(packet);
+  if (!result || result.status !== 'ready') {
+    return emptyPresentation(HYPOTHETICAL_UNAVAILABLE_ANSWER, {
+      source: 'Forecast',
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+  const amountText = formatCurrency(result.input && result.input.amount);
+  const label = result.input && typeof result.input.debtLabel === 'string'
+    ? result.input.debtLabel
+    : '';
+  const day = result.input && result.input.asOf;
+  if (!amountText || !label || typeof day !== 'string' || !day) {
+    return emptyPresentation(HYPOTHETICAL_UNAVAILABLE_ANSWER, {
+      source: 'Forecast',
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+  const sentences = [
+    `If you put ${amountText} on ${label} as a hypothetical extra on ${day}:`,
+  ];
+  const absorbed = result.absorbed;
+  if (absorbed && Number.isFinite(Number(absorbed.amount))) {
+    const applied = formatCurrency(absorbed.amount);
+    if (applied) {
+      let line = `Forecast absorbs ${applied} on that date.`;
+      if (Number.isFinite(Number(absorbed.unabsorbed)) && Number(absorbed.unabsorbed) > 0) {
+        const leftover = formatCurrency(absorbed.unabsorbed);
+        if (leftover) line += ` ${leftover} is not absorbed.`;
+      }
+      sentences.push(line);
+    }
+  }
+  const dDebt = result.delta && result.delta.debt;
+  const sDebt = result.scenario && result.scenario.debt;
+  const bDebt = result.baseline && result.baseline.debt;
+  if (dDebt && Number.isFinite(Number(dDebt.ending))
+      && sDebt && Number.isFinite(Number(sDebt.ending))
+      && bDebt && Number.isFinite(Number(bDebt.ending))) {
+    const delta = formatCurrency(dDebt.ending);
+    const ending = formatCurrency(sDebt.ending);
+    const prior = formatCurrency(bDebt.ending);
+    if (delta && ending && prior) {
+      sentences.push(
+        `Named-debt ending balance changes by ${delta} over the Forecast window, to ${ending} from ${prior}.`
+      );
+    }
+  }
+  if (dDebt && Number.isFinite(Number(dDebt.interest))) {
+    const interest = formatCurrency(dDebt.interest);
+    if (interest) {
+      sentences.push(`Interest over the Forecast window changes by ${interest}.`);
+    }
+  }
+  if (dDebt && Number.isFinite(Number(dDebt.paid))) {
+    const paid = formatCurrency(dDebt.paid);
+    if (paid) {
+      sentences.push(`Named-debt paid over the Forecast window changes by ${paid}.`);
+    }
+  }
+  if (dDebt && Number.isFinite(Number(dDebt.availableCredit))) {
+    const credit = formatCurrency(dDebt.availableCredit);
+    if (credit) {
+      sentences.push(
+        `Available credit changes by ${credit}. Available credit is not cash.`
+      );
+    }
+  }
+  const dCash = result.delta && result.delta.cash;
+  if (dCash && Number.isFinite(Number(dCash.ending))) {
+    const cash = formatCurrency(dCash.ending);
+    if (cash) {
+      sentences.push(
+        `Household cash ending changes by ${cash}. This extra amount is not available cash or safe-to-spend.`
+      );
+    }
+  }
+  if (dCash && Number.isFinite(Number(dCash.min))) {
+    const min = formatCurrency(dCash.min);
+    if (min) {
+      sentences.push(`The Forecast-window cash minimum changes by ${min}.`);
+    }
+  }
+  if (dCash && Number.isFinite(Number(dCash.extra))) {
+    const extra = formatCurrency(dCash.extra);
+    if (extra) {
+      sentences.push(`Forecast extra-cash totals change by ${extra}.`);
+    }
+  }
+  if (result.delta && result.delta.payoff && result.delta.payoff.clearedWithinWindow === true) {
+    sentences.push('Forecast says the named debt would clear within the current window.');
+  }
+  sentences.push('This is a hypothetical scenario from Forecast and is not a recommendation.');
+  return {
+    answer: sentences.join(' '),
+    source: 'Forecast',
+    trust: 'calculated',
+    asOf: day,
+    freshness,
+    action: null,
+  };
+}
+
 function presentVerifiedClaims(published, packet) {
   if (!published || published.status === 'unavailable') {
     return emptyPresentation(UNAVAILABLE_ANSWER, {
@@ -728,6 +839,7 @@ function isAllowedActionHref(href) {
 
 module.exports = {
   UNAVAILABLE_ANSWER,
+  HYPOTHETICAL_UNAVAILABLE_ANSWER,
   ALLOWED_ACTIONS,
   ALLOWED_ACTION_HREFS,
   ALLOWED_SOURCES,
@@ -736,5 +848,6 @@ module.exports = {
   isPrimitive,
   ruleFor,
   presentVerifiedClaims,
+  presentHypotheticalExtra,
   isAllowedActionHref,
 };

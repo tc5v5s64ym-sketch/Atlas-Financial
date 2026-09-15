@@ -405,7 +405,10 @@ app.all('/talk/capability', (_req, res) => {
 // sends question + packet + the fixed instruction contract, verifies
 // extractive claims against that packet, maps verified claims through
 // Atlas presentation templates, and returns that household-facing
-// presentation. Does not persist prompts or answers. Does not write.
+// presentation. An explicit hypothetical extra (amount + named debt)
+// is extracted, server-validated, resolved to one stable id, then
+// computed only by Forecast. Does not persist prompts or answers.
+// Does not write.
 const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
 app.post('/talk/ask', (req, res, next) => {
   talkAskJson(req, res, (err) => {
@@ -429,11 +432,20 @@ app.post('/talk/ask', (req, res, next) => {
     if (parsed.error) {
       return res.status(400).json({ error: parsed.error });
     }
-    const packet = await buildCurrentAssistantPacket();
+    const served = await servedAtlasData();
+    const packet = Assistant.buildPacket({
+      data: served,
+      env: process.env,
+      now: new Date().toISOString(),
+    });
     const presented = await TalkGemini.ask({
       question: parsed.question,
       packet,
       env: process.env,
+      atlas: {
+        plan: served && served.plan,
+        debts: served && served.debts,
+      },
     });
     if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
       return res.status(502).json({ error: 'talk answer unavailable' });

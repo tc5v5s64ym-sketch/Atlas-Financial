@@ -10,9 +10,10 @@
  * function calling, RAG, and fallback providers are disabled.
  *
  * The household-facing answer is never Gemini's free-form prose. The
- * model may return only a structured extractive claim list. The server
- * verifies each claim against this request's packet, then maps those
- * verified values through Atlas presentation templates. Invented
+ * model may return only a structured extractive claim list, or the
+ * bounded hypothetical extract { intent, amount, debtLabel }. The
+ * server verifies claims against this request's packet, or validates
+ * that extract and lets Forecast compute consequences. Invented
  * figures, planner acts, and trust promotion cannot ride through as
  * ordinary English around a packet-grounded amount.
  *
@@ -23,6 +24,7 @@
  */
 
 const TalkPresentation = require('./talk-presentation');
+const TalkHypothetical = require('./talk-hypothetical');
 
 const MODEL = 'gemini-2.5-flash-lite';
 const PROVIDER = 'google-gemini';
@@ -43,10 +45,16 @@ const INSTRUCTION = [
   '',
   'You are NOT a planner and you are NOT Forecast. Forecast is the sole planner. The assistant packet included in this request is the only household-financial evidence you may use.',
   '',
-  'Reply with ONLY one JSON object and no other text. The server publishes household wording from that object after verifying every claim against this request\'s packet. Free-form prose is rejected.',
+  'Reply with ONLY one JSON object and no other text. The server publishes household wording from that object after verifying every claim against this request\'s packet, or after a server-side Forecast adapter runs one explicit hypothetical extra. Free-form prose is rejected.',
   '',
   'Schema:',
   '{"status":"explained"|"unavailable","claims":[{"path":"<dotted path into this request\'s packet>","equals":<exact packet primitive>}]}',
+  '',
+  'If and only if the household question is an explicit hypothetical extra debt payment that names BOTH a specific dollar amount AND a specific named debt, reply with exactly:',
+  '{"intent":"hypothetical-extra-payment","amount":<JSON number>,"debtLabel":"<caller-named debt label>"}',
+  'amount is the caller-stated number only (1000 from "$1,000"). debtLabel is the caller-named debt text only. Do not invent a debt id. Do not return balances, interest, cash impact, payoff, affordability, recommendation, ranking, or free-form financial prose as authority.',
+  '',
+  'If the question is missing the amount, missing the named debt, asks for the best debt, maximum interest save, maximum they can afford, spare cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice, borrowing on HELOC to pay another debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
   '',
   'You MAY:',
   '- cite facts that are already present in this request\'s packet as path/equals claims',
@@ -54,6 +62,7 @@ const INSTRUCTION = [
   '- cite obligations or debt already represented in the packet',
   '- cite owner decision-posture labels already present on policy.decisionPosture for factual policy questions',
   '- cite uncertainty, freshness, and estimated versus confirmed labels already on the packet',
+  '- extract only intent, amount, and debtLabel for an explicit hypothetical extra that already names both',
   '- return status "unavailable" when something is not in the packet',
   '',
   'For pay-period, upcoming-commitment / bills, credit-picture, and factual decision-policy questions, cite only primitive path/equals claims already in this packet. Preferred paths:',
@@ -64,7 +73,8 @@ const INSTRUCTION = [
   'Do not cite a whole object or array as equals. Cite at most 8 claims. If the question asks what to do, how to allocate extra cash, how much buffer, safe-to-spend, a payoff or Visa amount, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
   '',
   'You MUST NOT:',
-  '- return free-form prose, markdown commentary, or any key other than status and claims',
+  '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, and debtLabel',
+  '- invent a debt id, or return balances, interest, cash impact, payoff, affordability, recommendation, or ranking as authority',
   '- perform new financial calculations',
   '- invent or compute safe-to-spend, leftover, or weekly-cap figures',
   '- derive an allocation, payment, buffer amount, leftover, or Visa figure from owner policy',
@@ -356,6 +366,26 @@ function extractJsonObjectText(text) {
   return extractFirstJsonObject(trimmed);
 }
 
+function parseTalkModelOutput(text) {
+  const raw = extractJsonObjectText(text);
+  if (!raw || raw[0] !== '{') return { ok: false, reason: 'not structured' };
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: 'not structured' };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'not structured' };
+  }
+  const hyp = TalkHypothetical.parseExtract(parsed);
+  if (hyp.ok) return hyp;
+  if (hyp.reason !== 'not-hypothetical') {
+    return { ok: false, kind: 'hypothetical', reason: hyp.reason };
+  }
+  return parseExtractiveObject(parsed);
+}
+
 function parseExtractiveOutput(text) {
   const raw = extractJsonObjectText(text);
   if (!raw || raw[0] !== '{') return { ok: false, reason: 'not structured' };
@@ -365,6 +395,10 @@ function parseExtractiveOutput(text) {
   } catch {
     return { ok: false, reason: 'not structured' };
   }
+  return parseExtractiveObject(parsed);
+}
+
+function parseExtractiveObject(parsed) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, reason: 'not structured' };
   }
@@ -453,7 +487,19 @@ function materializeExplainerAnswer(text, packet) {
   };
 }
 
-async function ask({ question, packet, env }) {
+function presentHypotheticalExtract(extract, packet, atlas, question) {
+  const result = TalkHypothetical.evaluate({
+    amount: extract.amount,
+    debtLabel: extract.debtLabel,
+    question,
+    plan: atlas && atlas.plan,
+    debts: atlas && atlas.debts,
+    packet,
+  });
+  return TalkPresentation.presentHypotheticalExtra(result, packet);
+}
+
+async function ask({ question, packet, env, atlas }) {
   if (!isConfigured(env)) throw talkUnavailable();
   const parsed = normalizeQuestion(question);
   if (parsed.error) {
@@ -487,6 +533,20 @@ async function ask({ question, packet, env }) {
   });
   const text = extractAnswerText(response);
   if (!text) throw talkAnswerUnavailable();
+  const model = parseTalkModelOutput(text);
+  if (!model.ok) {
+    if (model.kind === 'hypothetical') {
+      return TalkPresentation.presentHypotheticalExtra({ status: 'unavailable' }, packet);
+    }
+    throw talkAnswerUnavailable();
+  }
+  if (model.intent === TalkHypothetical.HYPOTHETICAL_INTENT) {
+    const presented = presentHypotheticalExtract(model, packet, atlas, parsed.question);
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      throw talkAnswerUnavailable();
+    }
+    return presented;
+  }
   const published = materializeExplainerAnswer(text, packet);
   if (!published.ok) throw talkAnswerUnavailable();
   return published.presentation;
@@ -509,6 +569,7 @@ module.exports = {
   resolveBaseUrl,
   buildUserPrompt,
   materializeExplainerAnswer,
+  parseTalkModelOutput,
   presentVerifiedClaims: TalkPresentation.presentVerifiedClaims,
   ask,
 };
