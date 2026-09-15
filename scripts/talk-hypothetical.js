@@ -9,10 +9,15 @@
  * pairings, and then calls Forecast. A single-extra extract still
  * requires exactly one amount and one target. A comparison extract
  * requires two or more complete amount↔target pairs and fails closed
- * on omit, add, or swap. It does not choose an amount or target, does
- * not rank, recommend, or infer affordability, does not read
- * decisionPosture or targetBuffer as policy, does not substitute
- * plan.nextDollar, and does not write.
+ * on omit, add, or swap. When the caller asks preference over an
+ * already-earned explicit two-option A-vs-B, this module applies the
+ * owner preference rule to those Forecast comparison figures only.
+ * Preference judgment is exactly two scenarios; a 3+ option preference
+ * ask is NOT YET / INDETERMINATE and does not emit PREFER. Forecast
+ * comparison of two or more extras is unchanged. It does not choose an
+ * amount or target, does not invent ranking, weights, or affordability,
+ * does not read decisionPosture or targetBuffer as policy, does not
+ * substitute plan.nextDollar, and does not write.
  */
 
 const Forecast = require('../public/forecast.js');
@@ -57,9 +62,8 @@ const GENERIC_DEBT_QUERIES = Object.freeze({
 const DOLLAR_AMOUNT_RE = /\$\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?/g;
 const BARE_AMOUNT_RE = /\b(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?\b/g;
 const COMPARISON_CLAUSE_SPLIT_RE = /\b(?:versus|vs\.?|compared to|against|or|and)\b/i;
-const COMPARISON_PLANNER_ACT_RES = Object.freeze([
+const UNAUTHORIZED_PLANNER_ACT_RES = Object.freeze([
   /\bbest\b/i,
-  /\bbetter\b/i,
   /\bwhere(?:ver)?\b/i,
   /\bsaves? most\b/i,
   /\bafford/i,
@@ -74,13 +78,164 @@ const COMPARISON_PLANNER_ACT_RES = Object.freeze([
   /\bwinner\b/i,
   /\brecommend/i,
   /\brank(?:ing)?\b/i,
+]);
+const PREFERENCE_LANGUAGE_ONLY_RES = Object.freeze([
+  /\bbetter\b/i,
   /\bshould i\b/i,
   /\bwhat should\b/i,
 ]);
+const AUTHORIZED_PREFERENCE_ASK_RES = Object.freeze([
+  /\bprefer(?:ence|able|ably)?\b/i,
+  /\bwhich(?:\s+\w+){0,8}\s+better\b/i,
+]);
+
+function questionAsksAuthorizedPreference(question) {
+  const text = String(question || '');
+  return AUTHORIZED_PREFERENCE_ASK_RES.some(re => re.test(text));
+}
 
 function questionIsPlannerActComparison(question) {
   const text = String(question || '');
-  return COMPARISON_PLANNER_ACT_RES.some(re => re.test(text));
+  if (UNAUTHORIZED_PLANNER_ACT_RES.some(re => re.test(text))) return true;
+  if (questionAsksAuthorizedPreference(text)) return false;
+  return PREFERENCE_LANGUAGE_ONLY_RES.some(re => re.test(text));
+}
+
+function finiteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function forecastCentsEqual(left, right) {
+  return finiteNumber(left)
+    && finiteNumber(right)
+    && Math.abs(left - right) <= Forecast.EPSILON;
+}
+
+function comparisonCashEnding(inner) {
+  const ending = inner && inner.scenario && inner.scenario.cash
+    && inner.scenario.cash.ending;
+  return finiteNumber(ending) ? ending : null;
+}
+
+function comparisonCashEndingDelta(inner) {
+  const ending = inner && inner.delta && inner.delta.cash
+    && inner.delta.cash.ending;
+  return finiteNumber(ending) ? ending : null;
+}
+
+function comparisonInterestReduction(inner) {
+  const baselineInterest = inner && inner.baseline && inner.baseline.debt
+    && inner.baseline.debt.interest;
+  const scenarioInterest = inner && inner.scenario && inner.scenario.debt
+    && inner.scenario.debt.interest;
+  const deltaInterest = inner && inner.delta && inner.delta.debt
+    && inner.delta.debt.interest;
+  const fromWalks = finiteNumber(baselineInterest) && finiteNumber(scenarioInterest)
+    ? baselineInterest - scenarioInterest
+    : null;
+  const fromDelta = finiteNumber(deltaInterest) ? -deltaInterest : null;
+  if (fromWalks == null && fromDelta == null) return null;
+  if (fromWalks != null && fromDelta != null && !forecastCentsEqual(fromWalks, fromDelta)) {
+    return null;
+  }
+  return fromWalks != null ? fromWalks : fromDelta;
+}
+
+function comparisonFullyAbsorbed(inner, inputAmount) {
+  const absorbed = inner && inner.absorbed;
+  if (!absorbed || typeof absorbed !== 'object' || Array.isArray(absorbed)) {
+    return false;
+  }
+  const hasUnabsorbed = finiteNumber(absorbed.unabsorbed);
+  const hasAmount = finiteNumber(absorbed.amount);
+  if (!hasUnabsorbed && !hasAmount) return false;
+  if (hasUnabsorbed && Math.abs(absorbed.unabsorbed) > Forecast.EPSILON) {
+    return false;
+  }
+  if (hasAmount && finiteNumber(inputAmount) && !forecastCentsEqual(absorbed.amount, inputAmount)) {
+    return false;
+  }
+  return hasUnabsorbed || (hasAmount && finiteNumber(inputAmount));
+}
+
+function preferenceIndeterminate(reason) {
+  return {
+    status: 'indeterminate',
+    verdict: 'NOT YET',
+    reason: reason || 'unavailable',
+    preferred: null,
+    actionPermission: 'not-granted',
+    recommendation: null,
+  };
+}
+
+function judgeComparisonPreference(comparison) {
+  if (!comparison || comparison.status !== 'ready'
+      || !Array.isArray(comparison.scenarios)) {
+    return preferenceIndeterminate('unavailable');
+  }
+  if (comparison.scenarios.length !== 2) {
+    return preferenceIndeterminate(
+      comparison.scenarios.length > 2 ? 'not-exactly-two-options' : 'unavailable'
+    );
+  }
+  const readings = [];
+  for (const row of comparison.scenarios) {
+    const inner = row && row.result;
+    const input = row && row.input;
+    if (!inner || inner.status !== 'ready' || !input || typeof input !== 'object') {
+      return preferenceIndeterminate('unavailable');
+    }
+    const cashEnding = comparisonCashEnding(inner);
+    const cashDelta = comparisonCashEndingDelta(inner);
+    const reduction = comparisonInterestReduction(inner);
+    if (cashEnding == null || cashDelta == null || reduction == null) {
+      return preferenceIndeterminate('unavailable');
+    }
+    if (!comparisonFullyAbsorbed(inner, input.amount)) {
+      return preferenceIndeterminate('not-fully-absorbed');
+    }
+    readings.push({
+      cashEnding,
+      cashDelta,
+      reduction,
+      amount: input.amount,
+      debtId: input.debtId,
+      debtLabel: typeof input.debtLabel === 'string' ? input.debtLabel : '',
+    });
+  }
+  const first = readings[0];
+  for (const row of readings) {
+    if (!forecastCentsEqual(row.cashEnding, first.cashEnding)
+        || !forecastCentsEqual(row.cashDelta, first.cashDelta)) {
+      return preferenceIndeterminate('cash-endings-differ');
+    }
+  }
+  let bestIndex = 0;
+  for (let i = 1; i < readings.length; i += 1) {
+    if (readings[i].reduction > readings[bestIndex].reduction + Forecast.EPSILON) {
+      bestIndex = i;
+    }
+  }
+  const best = readings[bestIndex];
+  const strictlyGreatest = readings.every((row, index) => (
+    index === bestIndex || best.reduction > row.reduction + Forecast.EPSILON
+  ));
+  if (!strictlyGreatest || !best.debtLabel || !finiteNumber(best.amount)) {
+    return preferenceIndeterminate('interest-reductions-equal');
+  }
+  return {
+    status: 'prefer',
+    verdict: 'PREFER',
+    reason: 'greater-named-debt-interest-reduction',
+    preferred: {
+      amount: best.amount,
+      debtId: best.debtId,
+      debtLabel: best.debtLabel,
+    },
+    actionPermission: 'not-granted',
+    recommendation: null,
+  };
 }
 
 function normalizeName(value) {
@@ -602,6 +757,9 @@ module.exports = {
   resolveDebtLabel,
   parseExtract,
   parseComparisonExtract,
+  questionAsksAuthorizedPreference,
+  questionIsPlannerActComparison,
+  judgeComparisonPreference,
   evaluate,
   evaluateComparison,
 };

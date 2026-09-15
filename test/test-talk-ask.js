@@ -2919,6 +2919,368 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
     filesUnchanged('Talk A-vs-B comparison');
   }
 
+  console.log('\n=== 12. Talk A-vs-B preference judgment is server-deterministic ===');
+  {
+    const START = '2026-01-15';
+    const plan = {
+      windowDays: 91,
+      startingCash: { amount: 2000 },
+      defaults: { targetBuffer: 500, extraDebtMonthly: 0, scenario: 'expected' },
+      opening: { asOf: START },
+      nextDollar: {
+        policy: 'true-surplus-highest-interest',
+        provenance: 'owner-stated',
+      },
+      decisionPosture: {
+        posture: 'aggressive-not-brittle',
+        numericThreshold: 'none',
+      },
+      income: [],
+      obligations: [],
+      bills: [],
+      commitments: [],
+    };
+    const debts = [
+      {
+        id: 'high', label: 'High-rate card',
+        balance: 800, pending: 0, rate: 26.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic high', secured: false, limit: 1200,
+      },
+      {
+        id: 'low', label: 'Low-rate card',
+        balance: 600, pending: 0, rate: 19.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic low', secured: false, limit: 1000,
+      },
+      {
+        id: 'cashback', label: 'TD Cash Back Visa',
+        balance: 400, pending: 0, rate: 26.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic cashback', secured: false, limit: 500,
+      },
+      {
+        id: 'heloc', label: 'HELOC',
+        balance: 5000, pending: 0, rate: 4.9, rateConvention: 'variable',
+        structure: 'Interest-only revolving — never amortises', secured: true, limit: 6000,
+      },
+      {
+        id: 'mbna', label: 'Amazon.ca Rewards Mastercard (MBNA)',
+        balance: 700, pending: 0, rate: 21.74, rateConvention: 'card',
+        structure: 'Revolving — synthetic mbna', secured: false, limit: 800,
+      },
+    ];
+    const hypPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      metadata: {
+        effectiveAsOf: START,
+        freshness: { confidence: 'canonical-opening' },
+      },
+      policy: {
+        decisionPosture: {
+          posture: 'aggressive-not-brittle',
+          numericThreshold: 'none',
+        },
+      },
+      current: {
+        spendableHouseholdCash: { status: 'ok', value: 2000, trust: 'calculated' },
+        debts: {
+          facilities: debts.map(row => ({ id: row.id, label: row.label })),
+        },
+      },
+    };
+    const atlas = { plan, debts };
+    const expected = Forecast.hypotheticalExtraPaymentComparison(plan, debts, START, {
+      nature: 'hypothetical-comparison',
+      scenarios: [
+        { amount: 200, debtId: 'high' },
+        { amount: 200, debtId: 'low' },
+      ],
+    });
+    const high = Forecast.hypotheticalExtraPayment(plan, debts, START, {
+      amount: 200, debtId: 'high', nature: 'hypothetical',
+    });
+    const low = Forecast.hypotheticalExtraPayment(plan, debts, START, {
+      amount: 200, debtId: 'low', nature: 'hypothetical',
+    });
+    const reductionHigh = high.baseline.debt.interest - high.scenario.debt.interest;
+    const reductionLow = low.baseline.debt.interest - low.scenario.debt.interest;
+    ok(expected.status === 'ready'
+        && high.status === 'ready' && low.status === 'ready'
+        && reductionHigh > reductionLow + Forecast.EPSILON
+        && Math.abs(high.scenario.cash.ending - low.scenario.cash.ending) <= Forecast.EPSILON,
+      'independent Forecast walks prefer High-rate on interest with the same cash ending');
+    ok(/already-named options to prefer/.test(TalkGemini.INSTRUCTION)
+        && /Do not return a winner/.test(TalkGemini.INSTRUCTION),
+      'Gemini instruction extracts comparison only and cannot return a winner');
+    ok(TalkGemini.parseTalkModelOutput(JSON.stringify({
+      intent: 'hypothetical-extra-payment-comparison',
+      scenarios: [
+        { amount: 200, debtLabel: 'High-rate card' },
+        { amount: 200, debtLabel: 'Low-rate card' },
+      ],
+      winner: 'Low-rate card',
+    })).ok === false,
+      'a model winner field on a preference extract fails closed');
+
+    const mock = await startMockGemini([
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'High-rate card' },
+          { amount: 200, debtLabel: 'Low-rate card' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'Low-rate card' },
+          { amount: 200, debtLabel: 'High-rate card' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'High-rate card' },
+          { amount: 100, debtLabel: 'Low-rate card' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'TD Cash Back Visa' },
+          { amount: 1000, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'High-rate card' },
+          { amount: 200, debtLabel: 'Low-rate card' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'HELOC' },
+          { amount: 1000, debtLabel: 'High-rate card' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'High-rate card' },
+          { amount: 200, debtLabel: 'Low-rate card' },
+          { amount: 200, debtLabel: 'Amazon.ca Rewards Mastercard (MBNA)' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'High-rate card' },
+          { amount: 200, debtLabel: 'Low-rate card' },
+          { amount: 200, debtLabel: 'Amazon.ca Rewards Mastercard (MBNA)' },
+        ],
+      }),
+    ]);
+    try {
+      const prefer = await TalkGemini.ask({
+        question: 'Which should I prefer, $200 on the High-rate card versus $200 on the Low-rate card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      const interestA = TalkPresentation.formatCurrency(
+        expected.scenarios[0].result.delta.debt.interest
+      );
+      const interestB = TalkPresentation.formatCurrency(
+        expected.scenarios[1].result.delta.debt.interest
+      );
+      const preferLabel = TalkPresentation.formatCurrency(200);
+      ok(prefer.source === 'Forecast'
+          && prefer.trust === 'calculated'
+          && prefer.action === null
+          && prefer.answer.indexOf(interestA) !== -1
+          && prefer.answer.indexOf(interestB) !== -1
+          && prefer.answer.indexOf(`PREFER ${preferLabel} on High-rate card`) !== -1
+          && /not a payment authority/i.test(prefer.answer)
+          && /not a recommendation to execute/i.test(prefer.answer)
+          && !/does not rank these options/.test(prefer.answer),
+        'mocked preference ask presents Forecast figures plus server PREFER');
+
+      const swapped = await TalkGemini.ask({
+        question: 'Which should I prefer, $200 on the Low-rate card versus $200 on the High-rate card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(swapped.answer.indexOf(`PREFER ${preferLabel} on High-rate card`) !== -1
+          && swapped.answer.indexOf(TalkPresentation.formatCurrency(
+            expected.scenarios[1].result.delta.debt.interest
+          )) !== -1,
+        'question clause-order swap keeps the same substantive PREFER');
+
+      const unequal = await TalkGemini.ask({
+        question: 'Which should I prefer, $200 on the High-rate card versus $100 on the Low-rate card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/NOT YET \/ INDETERMINATE/.test(unequal.answer)
+          && /cash-ending consequences differ/i.test(unequal.answer)
+          && unequal.action === null,
+        'unequal cash endings stay NOT YET');
+
+      const leftover = await TalkGemini.ask({
+        question: 'Which should I prefer, $1,000 on the TD Cash Back Visa versus $1,000 on the HELOC?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/NOT YET \/ INDETERMINATE/.test(leftover.answer)
+          && /not fully absorbed/i.test(leftover.answer),
+        'unabsorbed extras stay NOT YET');
+
+      const compareOnly = await TalkGemini.ask({
+        question: 'What if I put $200 on the High-rate card versus $200 on the Low-rate card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/does not rank these options/.test(compareOnly.answer)
+          && !/PREFER /.test(compareOnly.answer),
+        'a compare-only ask still does not invent preference');
+
+      const planner = await TalkGemini.ask({
+        question: 'Use HELOC funds for the better card, $1,000 on HELOC or $1,000 on the High-rate card.',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(planner.answer === TalkPresentation.HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER
+          || planner.answer === TalkGemini.UNAVAILABLE_ANSWER,
+        'unauthorized HELOC-funds planner act stays unavailable');
+
+      const threePrefer = await TalkGemini.ask({
+        question: 'Which should I prefer, $200 on the High-rate card versus $200 on the Low-rate card versus $200 on the Amazon.ca Rewards Mastercard (MBNA)?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/NOT YET \/ INDETERMINATE/.test(threePrefer.answer)
+          && /exactly two explicit options/i.test(threePrefer.answer)
+          && !/PREFER /.test(threePrefer.answer)
+          && /Option 3/.test(threePrefer.answer)
+          && threePrefer.action === null,
+        'a 3-option preference ask cannot produce a winner');
+
+      const threeCompare = await TalkGemini.ask({
+        question: 'What if I put $200 on the High-rate card versus $200 on the Low-rate card versus $200 on the Amazon.ca Rewards Mastercard (MBNA)?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/does not rank these options/.test(threeCompare.answer)
+          && !/PREFER /.test(threeCompare.answer)
+          && /Option 3/.test(threeCompare.answer),
+        'ordinary 3+ compare-only Talk path is unchanged');
+    } finally {
+      await mock.close();
+    }
+
+    const liveMock = await startMockGemini([
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'TD Cash Back Visa' },
+          { amount: 200, debtLabel: 'HELOC' },
+        ],
+      }),
+    ]);
+    const port = await freePort();
+    const env = isolatedEnv({
+      SITE_PASSWORD: PASS,
+      SESSION_SECRET: SECRET,
+      ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN,
+      ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+      ATLAS_TALK_GEMINI_BASE_URL: liveMock.url,
+      PORT: String(port),
+    });
+    const atlasServer = await startAtlas(env);
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const loginRes = await login(base);
+      const liveData = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+      const liveExpected = Forecast.hypotheticalExtraPaymentComparison(
+        liveData.plan,
+        liveData.debts,
+        liveData.plan.opening.asOf,
+        {
+          nature: 'hypothetical-comparison',
+          scenarios: [
+            { amount: 200, debtId: 'cashback' },
+            { amount: 200, debtId: 'heloc' },
+          ],
+        }
+      );
+      const liveJudged = TalkHypothetical.judgeComparisonPreference(liveExpected);
+      const asked = await fetch(`${base}/talk/ask`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: loginRes.cookie,
+        },
+        body: JSON.stringify({
+          question: 'Which should I prefer, $200 on the TD Cash Back Visa versus $200 on the HELOC?',
+        }),
+      });
+      const body = await asked.json();
+      ok(asked.status === 200
+          && liveExpected.status === 'ready'
+          && body.source === 'Forecast'
+          && body.action == null
+          && /Hypothetical comparison · Forecast/.test(body.answer)
+          && body.answer.indexOf(TalkPresentation.formatCurrency(
+            liveExpected.scenarios[0].result.delta.debt.interest
+          )) !== -1
+          && (
+            (liveJudged.verdict === 'PREFER'
+              && body.answer.indexOf(`PREFER ${TalkPresentation.formatCurrency(200)} on ${liveJudged.preferred.debtLabel}`) !== -1)
+            || (liveJudged.verdict === 'NOT YET'
+              && /NOT YET \/ INDETERMINATE/.test(body.answer))
+          ),
+        'session /talk/ask applies the owner preference rule to live-plan Forecast comparison figures',
+        `status ${asked.status} verdict ${liveJudged.verdict}`);
+    } finally {
+      await atlasServer.stop();
+      await liveMock.close();
+    }
+
+    filesUnchanged('Talk A-vs-B preference judgment');
+  }
+
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
   process.exit(failures === 0 ? 0 : 1);
 })().catch(err => {

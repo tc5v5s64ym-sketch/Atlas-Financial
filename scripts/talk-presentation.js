@@ -809,7 +809,50 @@ function comparisonOptionLabel(index, count) {
   return `Option ${index + 1}`;
 }
 
-function presentHypotheticalComparison(result, packet) {
+function preferenceReasonSentence(reason) {
+  if (reason === 'cash-endings-differ') {
+    return 'Household cash-ending consequences differ, so Atlas has no owner authority to prefer one option.';
+  }
+  if (reason === 'not-fully-absorbed') {
+    return 'An explicit payment is not fully absorbed by its named debt.';
+  }
+  if (reason === 'interest-reductions-equal') {
+    return 'Forecast-calculated named-debt interest reductions are not strictly different.';
+  }
+  if (reason === 'not-exactly-two-options') {
+    return 'The owner preference rule applies only to exactly two explicit options.';
+  }
+  return 'Required Forecast comparison fields are unavailable. Unavailable is not zero.';
+}
+
+function presentPreferenceSentence(preference) {
+  if (!preference || typeof preference !== 'object') return null;
+  if (preference.verdict === 'PREFER' && preference.preferred) {
+    const amountText = formatCurrency(preference.preferred.amount);
+    const label = typeof preference.preferred.debtLabel === 'string'
+      ? preference.preferred.debtLabel
+      : '';
+    if (!amountText || !label) {
+      return [
+        'NOT YET / INDETERMINATE.',
+        preferenceReasonSentence('unavailable'),
+        'This is not a payment authority and not a recommendation to execute.',
+      ].join(' ');
+    }
+    return [
+      `PREFER ${amountText} on ${label}.`,
+      'That option produces a strictly greater Forecast-calculated reduction in named-debt interest over the same household cash-ending and Forecast window.',
+      'This is a conversational preference from the owner rule, not a payment authority and not a recommendation to execute.',
+    ].join(' ');
+  }
+  return [
+    'NOT YET / INDETERMINATE.',
+    preferenceReasonSentence(preference.reason),
+    'This is not a payment authority and not a recommendation to execute.',
+  ].join(' ');
+}
+
+function presentHypotheticalComparison(result, packet, preference) {
   const asOf = (result && result.baseline && result.baseline.asOf) || readAsOf(packet);
   const freshness = readFreshness(packet);
   if (!result || result.status !== 'ready'
@@ -854,9 +897,14 @@ function presentHypotheticalComparison(result, packet) {
   const sentences = [
     `Hypothetical comparison · Forecast as of ${day}. The Forecast window is ${Number(horizon)} days.`,
   ].concat(optionLines);
-  sentences.push(
-    'This is a hypothetical comparison from Forecast and is not a recommendation. Forecast does not rank these options.'
-  );
+  const preferenceSentence = presentPreferenceSentence(preference);
+  if (preferenceSentence) {
+    sentences.push(preferenceSentence);
+  } else {
+    sentences.push(
+      'This is a hypothetical comparison from Forecast and is not a recommendation. Forecast does not rank these options.'
+    );
+  }
   return {
     answer: sentences.join(' '),
     source: 'Forecast',
