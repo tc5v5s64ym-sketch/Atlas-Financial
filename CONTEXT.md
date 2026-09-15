@@ -68,7 +68,7 @@ Gemini so Talk can explain incumbent Atlas state. Gemini is an explainer,
 not a planner. The server never publishes free-form model text; it
 verifies extractive claims against this request's packet, then maps
 those verified values through Atlas presentation templates. Unknown
-paths stay conservative path-is-value wording. The browser never holds `ATLAS_TALK_GEMINI_API_KEY`. `Forecast.hypotheticalExtraPayment` is the read-only Forecast what-if extra-payment boundary. Talk may extract only an explicit caller amount plus named debt and present Forecast-computed consequences; Gemini does not calculate them. Missing amount or target, and planner-act asks, stay unavailable. The session cookie, static assistant
+paths stay conservative path-is-value wording. The browser never holds `ATLAS_TALK_GEMINI_API_KEY`. `Forecast.hypotheticalExtraPayment` is the read-only Forecast what-if extra-payment boundary. `Forecast.hypotheticalExtraPaymentComparison` composes that boundary for two or more caller-supplied extras on one identical household baseline; it does not rank, recommend, infer affordability, or write. Talk may extract only an explicit caller amount plus named debt and present Forecast-computed consequences; Gemini does not calculate them. Missing amount or target, and planner-act asks, stay unavailable. The session cookie, static assistant
 Bearer, and MCP OAuth do not unlock one another. Dated account-balance
 openings live in `snapshots/` (`B20` / `AF-HIST-01`); `data.json` remains
 the dated canonical opening. Today's live plan may overlay current

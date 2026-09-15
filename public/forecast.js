@@ -10667,6 +10667,177 @@
     };
   }
 
+  const HYPOTHETICAL_COMPARISON_INPUT_KEYS = { nature: true, scenarios: true };
+  const HYPOTHETICAL_COMPARISON_SCENARIO_KEYS = { amount: true, debtId: true, id: true };
+
+  function hypotheticalComparisonUnavailable(reason) {
+    return {
+      status: 'unavailable',
+      reason,
+      nature: 'hypothetical-comparison',
+      calculator: 'Forecast',
+      writesCanonicalState: false,
+      productionWrite: false,
+      actionPermission: 'not-granted',
+      recommendation: null,
+      ranking: null,
+      affordability: null,
+    };
+  }
+
+  function hypotheticalHouseholdBaselineKey(baseline) {
+    if (!baseline || !baseline.cash) return '';
+    return JSON.stringify({
+      asOf: baseline.asOf,
+      ending: baseline.cash.ending,
+      extra: baseline.cash.extra,
+      min: baseline.cash.min || null,
+    });
+  }
+
+  // Read-only comparison of two or more caller-supplied hypothetical
+  // extras against one identical household baseline. Composes
+  // hypotheticalExtraPayment per scenario. Does not rank, recommend,
+  // infer affordability, or write.
+  function hypotheticalExtraPaymentComparison(plan, debts, asOf, input) {
+    if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+      return hypotheticalComparisonUnavailable('A plan baseline is required.');
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return hypotheticalComparisonUnavailable(
+        'A structured hypothetical-comparison input is required.');
+    }
+    for (const key of Object.keys(input)) {
+      if (!HYPOTHETICAL_COMPARISON_INPUT_KEYS[key]) {
+        return hypotheticalComparisonUnavailable('Unsupported hypothetical-comparison input.');
+      }
+    }
+    if (input.nature !== 'hypothetical-comparison') {
+      return hypotheticalComparisonUnavailable(
+        'Only an explicit hypothetical comparison is accepted.');
+    }
+    if (!Array.isArray(input.scenarios) || input.scenarios.length < 2) {
+      return hypotheticalComparisonUnavailable(
+        'At least two explicit hypothetical scenarios are required.');
+    }
+
+    const seenIds = Object.create(null);
+    const prepared = [];
+    for (let i = 0; i < input.scenarios.length; i++) {
+      const raw = input.scenarios[i];
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return hypotheticalComparisonUnavailable(
+          'Each comparison scenario must be a structured object.');
+      }
+      for (const key of Object.keys(raw)) {
+        if (!HYPOTHETICAL_COMPARISON_SCENARIO_KEYS[key]) {
+          return hypotheticalComparisonUnavailable(
+            'Unsupported hypothetical-comparison scenario input.');
+        }
+      }
+      if (raw.id !== undefined) {
+        if (typeof raw.id !== 'string' || !raw.id) {
+          return hypotheticalComparisonUnavailable(
+            'A comparison scenario id must be a non-empty string.');
+        }
+        if (seenIds[raw.id]) {
+          return hypotheticalComparisonUnavailable(
+            'Comparison scenario ids must be unique.');
+        }
+        seenIds[raw.id] = true;
+      }
+      prepared.push({
+        id: raw.id,
+        amount: raw.amount,
+        debtId: raw.debtId,
+      });
+    }
+
+    const rows = [];
+    for (const scenario of prepared) {
+      const result = hypotheticalExtraPayment(plan, debts, asOf, {
+        amount: scenario.amount,
+        debtId: scenario.debtId,
+        nature: 'hypothetical',
+      });
+      if (!result || result.status !== 'ready') {
+        return hypotheticalComparisonUnavailable(
+          'One or more comparison scenarios could not be established.');
+      }
+      rows.push({ scenario, result });
+    }
+
+    const shared = rows[0].result.baseline;
+    const sharedKey = hypotheticalHouseholdBaselineKey(shared);
+    if (!sharedKey) {
+      return hypotheticalComparisonUnavailable(
+        'Forecast could not establish a shared household cash baseline.');
+    }
+    for (let i = 1; i < rows.length; i++) {
+      if (hypotheticalHouseholdBaselineKey(rows[i].result.baseline) !== sharedKey) {
+        return hypotheticalComparisonUnavailable(
+          'Comparison scenarios do not share one household cash baseline.');
+      }
+    }
+
+    const sharedCash = { ending: shared.cash.ending };
+    if (shared.cash.min) sharedCash.min = shared.cash.min;
+
+    return {
+      status: 'ready',
+      nature: 'hypothetical-comparison',
+      calculator: 'Forecast',
+      writesCanonicalState: false,
+      productionWrite: false,
+      actionPermission: 'not-granted',
+      recommendation: null,
+      ranking: null,
+      affordability: null,
+      baseline: {
+        asOf: shared.asOf,
+        horizonDays: plan.windowDays || 91,
+        cash: sharedCash,
+        cashBaseline: 'incumbent-simOptions-weekly',
+      },
+      scenarios: rows.map(({ scenario, result }) => {
+        const row = {
+          input: {
+            amount: result.input.amount,
+            debtId: result.input.debtId,
+            debtLabel: result.input.debtLabel,
+            asOf: result.input.asOf,
+            nature: 'hypothetical',
+            amountIsNotSpendableCash: true,
+            availableCreditIsNotCash: true,
+          },
+          result: {
+            status: result.status,
+            absorbed: result.absorbed,
+            baseline: result.baseline,
+            scenario: result.scenario,
+            delta: result.delta,
+            provenance: result.provenance,
+          },
+        };
+        if (scenario.id !== undefined) row.id = scenario.id;
+        return row;
+      }),
+      provenance: {
+        calculator: 'Forecast',
+        composedFrom: 'hypotheticalExtraPayment',
+        primitives: ['hypotheticalExtraPayment'],
+        cashBaseline: 'incumbent-simOptions-weekly',
+        inputNature: 'hypothetical-comparison',
+        amountIsNotSpendableCash: true,
+        availableCreditIsNotCash: true,
+        actionPermission: 'not-granted',
+        ranking: null,
+        recommendation: null,
+        affordability: null,
+      },
+    };
+  }
+
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
@@ -10675,7 +10846,7 @@
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
-    payoffDebts, payoffModel, hypotheticalExtraPayment,
+    payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,
     householdBills, householdSubscriptions, billIsSubscription };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
