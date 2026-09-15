@@ -153,7 +153,10 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
   const deixis = FOLLOWUP_DEIXIS_RE.test(parsed);
   const explainerFact = EXPLAINER_FACT_RE.test(parsed);
 
-  if (completeSingle || recoveredPairs.ok) {
+  if (recoveredPairs.ok) {
+    return { status: 'none' };
+  }
+  if (completeSingle && !compareAsk) {
     return { status: 'none' };
   }
 
@@ -213,7 +216,7 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
     };
   }
 
-  if (compareAsk && incompleteExtraShape(amounts.length, targets.length)) {
+  if (compareAsk) {
     return { status: 'ambiguous', nature: 'comparison' };
   }
 

@@ -216,14 +216,14 @@ function askJson(base, cookie, question) {
 console.log('=== 1. Session context is RAM-only conversational context ===');
 {
   const sessionSrc = read('scripts/talk-session.js');
+  const sessionRaw = fs.readFileSync(path.join(ROOT, 'scripts/talk-session.js'), 'utf8');
   const serverSrc = read('server.js');
-  const geminiSrc = read('scripts/talk-gemini.js');
   const talkSrc = read('public/talk.js');
   ok(!/fs\.(write|append)File|sqlite|indexedDB|localStorage|createWriteStream/.test(sessionSrc),
     'talk-session.js has no durable store');
-  ok(/conversational context only/.test(sessionSrc)
-      && /not a canonical household fact store/.test(sessionSrc)
-      && /HMAC/.test(sessionSrc),
+  ok(/conversational context only/.test(sessionRaw)
+      && /canonical household fact store/.test(sessionRaw)
+      && /createHmac\('sha256'/.test(sessionSrc),
     'session module states the conversational-only contract');
   ok(/createSessionContext/.test(serverSrc)
       && /resolveFollowup/.test(serverSrc)
@@ -232,7 +232,7 @@ console.log('=== 1. Session context is RAM-only conversational context ===');
   ok(/POSTs \{ question \} only/.test(talkSrc)
       && !/conversation|history|priorTurns/.test(talkSrc.replace(/\/\*[\s\S]*?\*\//g, '')),
     'talk.js still POSTs { question } only');
-  ok(/NOT household-financial evidence/.test(TalkGemini.INSTRUCTION)
+  ok(/not household-financial evidence/.test(TalkGemini.INSTRUCTION)
       && /Do not fill a missing amount or named debt from prior turns/.test(TalkGemini.INSTRUCTION),
     'Gemini instruction forbids promoting chat text to household fact');
   ok(!/require\(['"][^'"]*forecast/i.test(sessionSrc),

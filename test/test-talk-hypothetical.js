@@ -195,7 +195,7 @@ console.log('\n=== 3. Forecast is the sole calculator; nextDollar is not substit
 
   const richer = JSON.parse(JSON.stringify(plan));
   richer.startingCash = { amount: 8000 };
-  const staleHistoryCash = got.delta.cash.ending;
+  const staleHistoryCash = got.scenario.cash.ending;
   const fresh = TalkHypothetical.evaluateResolved({
     amount: 200,
     debtId: 'high',
@@ -208,9 +208,9 @@ console.log('\n=== 3. Forecast is the sole calculator; nextDollar is not substit
     nature: 'hypothetical',
   });
   ok(fresh.status === 'ready'
-      && fresh.delta.cash.ending === freshExpected.delta.cash.ending
-      && fresh.delta.cash.ending !== staleHistoryCash,
-    'evaluateResolved recomputes on current plan and does not reuse a prior delta');
+      && fresh.scenario.cash.ending === freshExpected.scenario.cash.ending
+      && fresh.scenario.cash.ending !== staleHistoryCash,
+    'evaluateResolved recomputes on current plan and does not reuse a prior walk');
   ok(TalkHypothetical.evaluateResolved({
     amount: 200,
     debtId: 'missing-debt',
