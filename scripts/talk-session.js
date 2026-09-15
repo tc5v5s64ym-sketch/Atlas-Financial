@@ -31,10 +31,13 @@
  * packet paths and published result keys, never conversation prose.
  * Payday leftover is Forecast.paydayAllocation.runningLeftover from
  * this request's packet. "What does this payday leave us with?" reads
- * that leftover now. "What does that leave us with?" binds only when
- * leftover was already earned. Ambiguous deixis is unavailable. The
- * server re-reads this request's packet or recomputes Forecast on the
- * stored hyp inputs. No durable household fact store.
+ * that leftover now. "What does this payday look like?" reprints the
+ * Forecast leftover stages plus leftover-consuming allocated amounts
+ * from that same object. "What does that leave us with?" binds only
+ * when leftover was already earned, including from that look-like
+ * presentation. Ambiguous deixis is unavailable. The server re-reads
+ * this request's packet or recomputes Forecast on the stored hyp
+ * inputs. No durable household fact store.
  */
 
 const crypto = require('crypto');
@@ -83,6 +86,7 @@ const FOLLOWUP_REFERENT_KEYS = Object.freeze({
   'card': true,
   'last-presented': true,
   'payday-leftover': true,
+  'payday-picture': true,
 });
 const FOLLOWUP_KEY_PATHS = Object.freeze({
   'next-payday': Object.freeze([
@@ -102,9 +106,21 @@ const FOLLOWUP_KEY_PATHS = Object.freeze({
   'payday-leftover': Object.freeze([
     'forecast.paydayAllocation.runningLeftover.afterBigPurchases',
   ]),
+  'payday-picture': Object.freeze([
+    'forecast.paydayAllocation.runningLeftover.currentBalance',
+    'forecast.paydayAllocation.obligations.allocated',
+    'forecast.paydayAllocation.runningLeftover.afterBills',
+    'forecast.paydayAllocation.essentials.allocated',
+    'forecast.paydayAllocation.runningLeftover.afterHouseholdBudget',
+    'forecast.paydayAllocation.extraDebt.allocated',
+    'forecast.paydayAllocation.runningLeftover.afterDebtRepayment',
+    'forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+  ]),
 });
 const LEFTOVER_INTENT = 'payday-leftover';
 const LEFTOVER_PATH = 'forecast.paydayAllocation.runningLeftover.afterBigPurchases';
+const PAYDAY_PICTURE_INTENT = 'payday-picture';
+const PAYDAY_PICTURE_PATHS = FOLLOWUP_KEY_PATHS['payday-picture'];
 const LEFTOVER_EXTRACT_KEYS = Object.freeze({
   intent: true,
   referentKey: true,
@@ -123,11 +139,30 @@ const LEFTOVER_FORBIDDEN_KEYS = Object.freeze({
   afterBigPurchases: true,
   leftoverAmount: true,
 });
+const PAYDAY_PICTURE_EXTRACT_KEYS = Object.freeze({
+  intent: true,
+});
+const PAYDAY_PICTURE_FORBIDDEN_KEYS = Object.freeze({
+  leftover: true,
+  amount: true,
+  equals: true,
+  value: true,
+  runningLeftover: true,
+  allocated: true,
+  currentBalance: true,
+  afterBills: true,
+  afterHouseholdBudget: true,
+  afterDebtRepayment: true,
+  afterBigPurchases: true,
+  leftoverAmount: true,
+  claims: true,
+});
 const FACILITY_REF_RE = /^current\.debts\.facilities\[(\d{1,3})\]\.(?:available|label)$/;
 const NEXT_PAYDAY_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)(?:\s+the)?\s+next\s+payday\??$/i;
 const THAT_CARD_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+(?:that|this|the)\s+card\??$/i;
 const INTEREST_AGAIN_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:how much interest (?:was|is) that(?: again)?|(?:what(?:'s| is)|whats) (?:the )?interest (?:again|on that)|interest again)\??$/i;
 const BARE_THAT_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+that\??$/i;
+const THIS_PAYDAY_LOOK_LIKE_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does this payday look like\??$/i;
 const THIS_PAYDAY_LEFTOVER_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does this payday leave us with\??$/i;
 const THAT_LEAVE_US_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does that leave us with\??$/i;
 
@@ -279,6 +314,7 @@ function uniqueFacilityFollowup(prior, packet) {
 function classifyVerifiedFollowup(question) {
   if (typeof question !== 'string' || !question.trim()) return null;
   const parsed = question.trim().replace(/\s+/g, ' ');
+  if (THIS_PAYDAY_LOOK_LIKE_RE.test(parsed)) return 'payday-picture';
   if (THIS_PAYDAY_LEFTOVER_RE.test(parsed)) return 'payday-leftover';
   if (THAT_LEAVE_US_RE.test(parsed)) return 'payday-leftover-deixis';
   if (NEXT_PAYDAY_FOLLOWUP_RE.test(parsed)) return 'next-payday';
@@ -296,6 +332,14 @@ function leftoverReference(priorRequired, prior) {
     status: 'resolved-reference',
     paths: FOLLOWUP_KEY_PATHS['payday-leftover'].slice(),
     referentKey: 'payday-leftover',
+  };
+}
+
+function paydayPictureReference() {
+  return {
+    status: 'resolved-reference',
+    paths: PAYDAY_PICTURE_PATHS.slice(),
+    referentKey: 'payday-picture',
   };
 }
 
@@ -324,6 +368,23 @@ function parseLeftoverExtract(parsed) {
   return { ok: true, intent: LEFTOVER_INTENT };
 }
 
+function parsePaydayPictureExtract(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'not-payday-picture' };
+  }
+  if (parsed.intent !== PAYDAY_PICTURE_INTENT) {
+    return { ok: false, reason: 'not-payday-picture' };
+  }
+  const keys = Object.keys(parsed);
+  if (keys.some(key => PAYDAY_PICTURE_FORBIDDEN_KEYS[key])) {
+    return { ok: false, reason: 'invented payday picture' };
+  }
+  if (keys.some(key => !PAYDAY_PICTURE_EXTRACT_KEYS[key])) {
+    return { ok: false, reason: 'unexpected fields' };
+  }
+  return { ok: true, intent: PAYDAY_PICTURE_INTENT };
+}
+
 function resolvePaydayLeftover({ question, priorTurn, extract }) {
   const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
   if (extract && extract.ok && extract.intent === LEFTOVER_INTENT) {
@@ -338,10 +399,23 @@ function resolvePaydayLeftover({ question, priorTurn, extract }) {
   return { status: 'none' };
 }
 
+function resolvePaydayPicture({ question, extract }) {
+  if (extract && extract.ok && extract.intent === PAYDAY_PICTURE_INTENT) {
+    return paydayPictureReference();
+  }
+  const kind = classifyVerifiedFollowup(question);
+  if (kind === 'payday-picture') return paydayPictureReference();
+  return { status: 'none' };
+}
+
 function resolveVerifiedReference({ question, priorTurn, packet }) {
   const kind = classifyVerifiedFollowup(question);
   if (!kind) return { status: 'none' };
   const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
+
+  if (kind === 'payday-picture') {
+    return paydayPictureReference();
+  }
 
   if (kind === 'payday-leftover') {
     return leftoverReference(false, prior);
@@ -822,11 +896,15 @@ module.exports = {
   PRESENTED_MAX,
   LEFTOVER_INTENT,
   LEFTOVER_PATH,
+  PAYDAY_PICTURE_INTENT,
+  PAYDAY_PICTURE_PATHS,
   createSessionContext,
   resolveFollowup,
   resolveVerifiedReference,
   resolvePaydayLeftover,
+  resolvePaydayPicture,
   parseLeftoverExtract,
+  parsePaydayPictureExtract,
   bindReferentKeysFromPaths,
   classifyVerifiedFollowup,
   FOLLOWUP_REFERENT_KEYS,
