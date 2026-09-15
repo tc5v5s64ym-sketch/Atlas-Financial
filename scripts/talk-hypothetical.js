@@ -12,8 +12,11 @@
  * on omit, add, or swap. When the caller asks preference over an
  * already-earned explicit two-option A-vs-B, this module applies the
  * owner preference rule to those Forecast comparison figures only.
- * Preference judgment is exactly two scenarios; a 3+ option preference
- * ask is NOT YET / INDETERMINATE and does not emit PREFER. Forecast
+ * After exactly one such earned A-vs-B in the Talk session, a bare
+ * "Which one?" is a referent to those exact two options and invokes
+ * only that same owner rule. Preference judgment is exactly two
+ * scenarios; a 3+ option preference ask is NOT YET / INDETERMINATE
+ * and does not emit PREFER. Forecast
  * comparison of two or more extras is unchanged. It does not choose an
  * amount or target, does not invent ranking, weights, or affordability,
  * does not read decisionPosture or targetBuffer as policy, does not
@@ -34,10 +37,18 @@ const COMPARISON_EXTRACT_KEYS = Object.freeze({
   intent: true,
   scenarios: true,
 });
+const COMPARISON_REFERENT_EXTRACT_KEYS = Object.freeze({
+  intent: true,
+  referentKey: true,
+});
+const COMPARISON_REFERENT_KEYS = Object.freeze({
+  'last-presented': true,
+});
 const COMPARISON_SCENARIO_KEYS = Object.freeze({
   amount: true,
   debtLabel: true,
 });
+const WHICH_ONE_REFERENT_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?which\s+one\??$/i;
 const GENERIC_DEBT_QUERIES = Object.freeze({
   card: true,
   cards: true,
@@ -92,6 +103,11 @@ const AUTHORIZED_PREFERENCE_ASK_RES = Object.freeze([
 function questionAsksAuthorizedPreference(question) {
   const text = String(question || '');
   return AUTHORIZED_PREFERENCE_ASK_RES.some(re => re.test(text));
+}
+
+function questionAsksWhichOneReferent(question) {
+  const text = String(question || '').trim().replace(/\s+/g, ' ');
+  return WHICH_ONE_REFERENT_RE.test(text);
 }
 
 function questionIsPlannerActComparison(question) {
@@ -649,6 +665,20 @@ function parseComparisonExtract(parsed) {
   if (parsed.intent !== COMPARISON_INTENT) {
     return { ok: false, reason: 'not-comparison' };
   }
+  if (keys.includes('referentKey') && !keys.includes('scenarios')) {
+    if (keys.length !== 2 || keys.some(key => !COMPARISON_REFERENT_EXTRACT_KEYS[key])) {
+      return { ok: false, reason: 'unexpected fields' };
+    }
+    if (typeof parsed.referentKey !== 'string'
+        || !COMPARISON_REFERENT_KEYS[parsed.referentKey]) {
+      return { ok: false, reason: 'invalid referentKey' };
+    }
+    return {
+      ok: true,
+      intent: COMPARISON_INTENT,
+      referentKey: parsed.referentKey,
+    };
+  }
   if (keys.length !== 2 || keys.some(key => !COMPARISON_EXTRACT_KEYS[key])) {
     return { ok: false, reason: 'unexpected fields' };
   }
@@ -810,6 +840,7 @@ module.exports = {
   parseExtract,
   parseComparisonExtract,
   questionAsksAuthorizedPreference,
+  questionAsksWhichOneReferent,
   questionIsPlannerActComparison,
   judgeComparisonPreference,
   evaluate,

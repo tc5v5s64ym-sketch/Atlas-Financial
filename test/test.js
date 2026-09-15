@@ -80,6 +80,7 @@ const suites = [
   ['Talk payday leftover from Forecast.runningLeftover', 'test-talk-payday-leftover.js'],
   ['Talk payday operating picture from Forecast.paydayAllocation', 'test-talk-payday-picture.js'],
   ['Talk payday remaining bills from Forecast.obligations.items', 'test-talk-payday-remaining-bills.js'],
+  ['Talk Which one? after earned A-vs-B (B103 Slice 4)', 'test-talk-which-one-preference.js'],
   ['Talk hypothetical extra adapter (Talk Slice 6B)', 'test-talk-hypothetical.js'],
   ['owner decision posture policy (Talk Slice 5)', 'test-decision-posture.js'],
   ['hypothetical extra-payment scenario (Talk Slice 6)', 'test-hypothetical-extra-payment.js'],

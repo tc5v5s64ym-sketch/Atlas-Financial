@@ -476,6 +476,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
   const follow = TalkSession.resolveFollowup({
     question: parsed.question,
     priorTurn: TalkSession.lastTurn(priorTurns),
+    priorTurns,
     debts: atlas.debts,
     packet,
   });
@@ -551,6 +552,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
         atlas,
         conversation: talkSessions.publicConversation(priorTurns),
         priorTurn: TalkSession.lastTurn(priorTurns),
+        priorTurns,
       });
     }
   } else {
@@ -561,6 +563,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       atlas,
       conversation: talkSessions.publicConversation(priorTurns),
       priorTurn: TalkSession.lastTurn(priorTurns),
+      priorTurns,
     });
   }
   if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {

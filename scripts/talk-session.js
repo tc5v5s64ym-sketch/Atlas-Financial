@@ -39,9 +39,13 @@
  * currentPeriodAction.bills. Settlement is Forecast-owned
  * (represented | upcoming | unverified). Talk does not date-filter
  * that list, invent a paid list, or treat unverified as unpaid.
- * Ambiguous deixis is unavailable. The server re-reads this request's
- * packet or recomputes Forecast on the stored hyp inputs. No durable
- * household fact store.
+ * Ambiguous deixis is unavailable. After exactly one earned two-option
+ * A-vs-B comparison in the session, a bare "Which one?" refers to those
+ * exact two options and invokes only the incumbent owner preference
+ * rule. Multiple comparisons, 3+ options, leftover/bills/hypothetical
+ * last turns, stale debts, or an unearned prior fail closed. The server
+ * re-reads this request's packet or recomputes Forecast on the stored
+ * hyp inputs. No durable household fact store.
  */
 
 const crypto = require('crypto');
@@ -867,7 +871,88 @@ function looksLikeIncompleteExtra(question, amountCount, targetCount, debts, pac
   return EXTRA_LANGUAGE_RE.test(question);
 }
 
-function resolveFollowup({ question, priorTurn, debts, packet }) {
+function comparisonIdentity(scenarios) {
+  if (!Array.isArray(scenarios) || scenarios.length < 2) return '';
+  const rows = [];
+  for (const row of scenarios) {
+    if (!row || !finiteAmount(row.amount) || typeof row.debtId !== 'string' || !row.debtId) {
+      return '';
+    }
+    rows.push(`${row.debtId}:${row.amount}`);
+  }
+  return rows.slice().sort().join('|');
+}
+
+function comparisonTurnsFrom(priorTurns, priorTurn) {
+  const list = Array.isArray(priorTurns) && priorTurns.length
+    ? priorTurns
+    : (priorTurn ? [priorTurn] : []);
+  const out = [];
+  for (const turn of list) {
+    if (!turn || typeof turn !== 'object') continue;
+    const scenarios = Array.isArray(turn.scenarios) ? turn.scenarios : null;
+    if ((turn.kind === 'comparison' || turn.priorKind === 'comparison')
+        && scenarios && scenarios.length >= 2) {
+      out.push(turn);
+    }
+  }
+  return out;
+}
+
+function resolveWhichOnePreference({ question, priorTurn, priorTurns, debts, packet }) {
+  if (!TalkHypothetical.questionAsksWhichOneReferent(question)) {
+    return { status: 'none' };
+  }
+  const amounts = TalkHypothetical.recoverCallerAmounts(question);
+  const targets = TalkHypothetical.recoverCallerDebtTargets(question, debts, packet);
+  if (amounts.length || targets.length) {
+    return { status: 'ambiguous', nature: 'comparison' };
+  }
+  const turns = comparisonTurnsFrom(priorTurns, priorTurn);
+  if (!turns.length) {
+    return { status: 'ambiguous', nature: 'comparison' };
+  }
+  const seen = Object.create(null);
+  const identities = [];
+  for (const turn of turns) {
+    if (!Array.isArray(turn.scenarios) || turn.scenarios.length !== 2) {
+      return { status: 'ambiguous', nature: 'comparison' };
+    }
+    const id = comparisonIdentity(turn.scenarios);
+    if (!id) return { status: 'ambiguous', nature: 'comparison' };
+    if (!seen[id]) {
+      seen[id] = turn;
+      identities.push(id);
+    }
+  }
+  if (identities.length !== 1) {
+    return { status: 'ambiguous', nature: 'comparison' };
+  }
+  const last = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
+  if (!last || (last.kind !== 'comparison' && last.priorKind !== 'comparison')) {
+    return { status: 'ambiguous', nature: 'comparison' };
+  }
+  if (comparisonIdentity(last.scenarios) !== identities[0]
+      || !Array.isArray(last.scenarios) || last.scenarios.length !== 2) {
+    return { status: 'ambiguous', nature: 'comparison' };
+  }
+  const earned = seen[identities[0]];
+  const live = [];
+  for (const row of earned.scenarios) {
+    if (!currentDebtStillLive(debts, packet, row.debtId, row.debtLabel)) {
+      return { status: 'ambiguous', nature: 'comparison' };
+    }
+    live.push({
+      amount: row.amount,
+      debtId: row.debtId,
+      debtLabel: row.debtLabel,
+    });
+  }
+  if (live.length !== 2) return { status: 'ambiguous', nature: 'comparison' };
+  return { status: 'resolved-preference', scenarios: live };
+}
+
+function resolveFollowup({ question, priorTurn, debts, packet, priorTurns }) {
   const parsed = typeof question === 'string' ? question.trim() : '';
   if (!parsed) return { status: 'none' };
 
@@ -892,6 +977,16 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
   }
 
   const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
+
+  if (TalkHypothetical.questionAsksWhichOneReferent(parsed)) {
+    return resolveWhichOnePreference({
+      question: parsed,
+      priorTurn: prior,
+      priorTurns,
+      debts,
+      packet,
+    });
+  }
 
   if (wantsPreference
       && prior && prior.kind === 'comparison'
