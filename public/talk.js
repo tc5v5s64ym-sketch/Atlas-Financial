@@ -7,11 +7,11 @@
  * /assistant/mcp, does not send a Bearer or OAuth token, does not hold
  * the Talk model secret, does not read Forecast, and does not publish
  * a figure of its own. Model answer text is assigned via textContent.
- * Provenance, trust, and one optional action link come from the server
- * presentation. Structured answer cards reprint server.cards strings into
- * #talk-cards. Missing or malformed cards fail closed to the plain answer
- * bubble. This file does not invent card content from answer text, does
- * not format money, and only follows existing Atlas routes.
+ * Provenance, trust, citations, and one optional action link come from
+ * the server presentation. Structured answer cards reprint server.cards
+ * strings into #talk-cards. Missing or malformed cards fail closed to the plain answer
+ * bubble. This file does not invent card content, citations, or money, and only
+ * follows existing Atlas routes.
  *
  * Send stays disabled until capability says the model path is available.
  * When it is not, suggested prompts keep the Slice 1/2 stub.
@@ -36,6 +36,18 @@ const TALK_ACTION_HREFS = {
   '/bills.html': 'View Bills',
   '/credit.html': 'View Credit',
   '/planning.html': 'View Planning',
+};
+const TALK_CITATION_SURFACES = {
+  '/': 'Budget',
+  '/bills.html': 'Bills',
+  '/credit.html': 'Credit',
+  '/planning.html': 'Planning',
+};
+const TALK_CITATION_SOURCES = {
+  Forecast: true,
+  Bills: true,
+  Credit: true,
+  Planning: true,
 };
 
 let talkModelAvailable = false;
@@ -178,10 +190,10 @@ function replaceTalkLoading(node) {
 
 function talkPresentation(value) {
   if (typeof value === 'string') {
-    return { answer: value, source: null, trust: null, asOf: null, freshness: null, action: null, cards: null };
+    return { answer: value, source: null, trust: null, asOf: null, freshness: null, action: null, cards: null, citations: null };
   }
   if (!value || typeof value !== 'object' || typeof value.answer !== 'string') {
-    return { answer: '', source: null, trust: null, asOf: null, freshness: null, action: null, cards: null };
+    return { answer: '', source: null, trust: null, asOf: null, freshness: null, action: null, cards: null, citations: null };
   }
   return {
     answer: value.answer,
@@ -191,6 +203,7 @@ function talkPresentation(value) {
     freshness: value.freshness || null,
     action: value.action || null,
     cards: value.cards || null,
+    citations: value.citations || null,
   };
 }
 
@@ -250,6 +263,74 @@ function talkCardsMount() {
   const mount = document.createElement('div');
   mount.className = 'talk-cards';
   return mount;
+}
+
+function talkValidCitations(citations) {
+  if (!Array.isArray(citations) || !citations.length) return null;
+  const items = [];
+  for (let i = 0; i < citations.length; i += 1) {
+    const raw = citations[i];
+    if (!raw || typeof raw !== 'object') return null;
+    if (raw.kind === 'surface') {
+      const expected = TALK_CITATION_SURFACES[raw.href];
+      if (!expected || raw.label !== expected) return null;
+      if (!TALK_CITATION_SOURCES[raw.source]) return null;
+      items.push({
+        kind: 'surface',
+        source: raw.source,
+        href: raw.href,
+        label: expected,
+      });
+    } else if (raw.kind === 'provenance') {
+      if (typeof raw.label !== 'string' || !raw.label) return null;
+      if (raw.source && !TALK_CITATION_SOURCES[raw.source]) return null;
+      if (raw.trust === 'verified' || raw.source === 'verified') return null;
+      if ((raw.trust === 'estimated' || raw.trust === 'unknown' || raw.trust === 'unavailable')
+          && /verified/i.test(raw.label)) {
+        return null;
+      }
+      items.push({
+        kind: 'provenance',
+        source: raw.source || null,
+        asOf: typeof raw.asOf === 'string' ? raw.asOf : null,
+        trust: typeof raw.trust === 'string' ? raw.trust : null,
+        freshness: typeof raw.freshness === 'string' ? raw.freshness : null,
+        label: raw.label,
+      });
+    } else {
+      return null;
+    }
+  }
+  return items.length ? items : null;
+}
+
+function talkCitationsNode(citations) {
+  const wrap = document.createElement('div');
+  wrap.className = 'talk-citations';
+  wrap.setAttribute('data-talk-citations', 'atlas');
+  const title = document.createElement('p');
+  title.className = 'talk-citations-title';
+  title.textContent = 'Sources';
+  wrap.appendChild(title);
+  const list = document.createElement('ul');
+  list.className = 'talk-citations-list';
+  for (let i = 0; i < citations.length; i += 1) {
+    const item = citations[i];
+    const li = document.createElement('li');
+    li.className = 'talk-citation talk-citation-' + item.kind;
+    li.setAttribute('data-talk-citation', item.kind);
+    if (item.kind === 'surface') {
+      const link = document.createElement('a');
+      link.setAttribute('href', item.href);
+      link.textContent = item.label;
+      li.appendChild(link);
+    } else {
+      li.textContent = item.label;
+    }
+    list.appendChild(li);
+  }
+  wrap.appendChild(list);
+  return wrap;
 }
 
 function talkCardsAnswerNode(cards) {
@@ -319,8 +400,13 @@ function talkAllowedAction(action) {
 
 function talkAnswerNode(value) {
   const presentation = talkPresentation(value);
+  const citations = talkValidCitations(presentation.citations);
   const cards = talkValidCards(presentation.cards);
-  if (cards) return talkCardsAnswerNode(cards);
+  if (cards) {
+    const article = talkCardsAnswerNode(cards);
+    if (citations) article.appendChild(talkCitationsNode(citations));
+    return article;
+  }
   const article = document.createElement('article');
   article.className = 'talk-bubble talk-bubble-atlas talk-bubble-answer';
   article.setAttribute('data-talk-role', 'atlas-answer');
@@ -344,6 +430,7 @@ function talkAnswerNode(value) {
     nav.appendChild(link);
     article.appendChild(nav);
   }
+  if (citations) article.appendChild(talkCitationsNode(citations));
   return article;
 }
 
@@ -385,6 +472,7 @@ async function askTalk(question) {
     freshness: body.freshness || null,
     action: body.action || null,
     cards: body.cards || null,
+    citations: body.citations || null,
   };
 }
 

@@ -623,8 +623,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       const askedBody = await asked.json();
       ok(askedBody.answer === DEFAULT_ANSWER
           && !forbiddenBlob(askedBody)
-          && Object.keys(askedBody).sort().join() === 'action,answer,asOf,cards,freshness,source,trust',
-        'Talk ask returns the presented packet-backed answer plus optional cards, without extra payload');
+          && Object.keys(askedBody).sort().join() === 'action,answer,asOf,cards,citations,freshness,source,trust',
+        'Talk ask returns the presented packet-backed answer plus optional cards and citations, without extra payload');
       ok(liveMock.captured.length >= 1
           && requestHasInstruction(liveMock.captured[liveMock.captured.length - 1].body)
           && /What commitments are coming up\?/.test(userText(liveMock.captured[liveMock.captured.length - 1].body)),
@@ -1675,10 +1675,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       }),
       domainPacket
     );
-    ok(extraClaimNote.ok === true
-        && extraClaimNote.answer === 'The current weekly spending cap is $225.00.'
-        && !/watch this cap/.test(extraClaimNote.answer),
-      'an extra note on a verified claim is ignored and not published');
+    ok(extraClaimNote.ok === false,
+      'an extra note on a verified claim is an unexpected key and fails closed');
 
     ok(TalkGemini.materializeExplainerAnswer(
         'What should I do with my extra cash? Put it toward the Visa.',
