@@ -63,6 +63,24 @@ function clipText(value, max) {
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
 }
 
+const REFERENT_PATH_RE = /^(?:[A-Za-z][A-Za-z0-9_]*)(?:\.[A-Za-z][A-Za-z0-9_]*|\[\d{1,3}\]){0,7}$/;
+const FORBIDDEN_REFERENT_PATH_RE = /(?:^|[.\[]|])(?:__proto__|constructor|prototype)(?:$|[.\]])/;
+
+function sanitizeReferentPaths(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = Object.create(null);
+  for (const path of raw) {
+    if (typeof path !== 'string' || path.length === 0 || path.length > 120) continue;
+    if (!REFERENT_PATH_RE.test(path) || FORBIDDEN_REFERENT_PATH_RE.test(path)) continue;
+    if (seen[path]) continue;
+    seen[path] = true;
+    out.push(path);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 function sanitizeScenario(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
   if (!finiteAmount(row.amount)) return null;
@@ -76,7 +94,7 @@ function sanitizeTurn(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const kind = raw.kind;
   if (kind !== 'explained' && kind !== 'hypothetical' && kind !== 'comparison'
-      && kind !== 'unavailable') {
+      && kind !== 'unavailable' && kind !== 'why') {
     return null;
   }
   const question = clipText(raw.question, QUESTION_MAX);
@@ -86,7 +104,12 @@ function sanitizeTurn(raw) {
     question,
     presented: clipText(raw.presented, PRESENTED_MAX),
   };
-  if (kind === 'hypothetical') {
+  const referentPaths = sanitizeReferentPaths(raw.referentPaths);
+  if (referentPaths.length) turn.referentPaths = referentPaths;
+  if (kind === 'why' && (raw.priorKind === 'hypothetical' || raw.priorKind === 'comparison')) {
+    turn.priorKind = raw.priorKind;
+  }
+  if (kind === 'hypothetical' || (kind === 'why' && raw.priorKind === 'hypothetical')) {
     if (!finiteAmount(raw.amount)) return null;
     const debtId = clipText(raw.debtId, LABEL_MAX);
     const debtLabel = clipText(raw.debtLabel, LABEL_MAX);
@@ -95,7 +118,7 @@ function sanitizeTurn(raw) {
     turn.debtId = debtId;
     turn.debtLabel = debtLabel;
   }
-  if (kind === 'comparison') {
+  if (kind === 'comparison' || (kind === 'why' && raw.priorKind === 'comparison')) {
     if (!Array.isArray(raw.scenarios) || raw.scenarios.length < 2
         || raw.scenarios.length > SCENARIO_MAX) {
       return null;

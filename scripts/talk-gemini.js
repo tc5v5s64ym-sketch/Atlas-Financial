@@ -14,8 +14,11 @@
  *
  * The household-facing answer is never Gemini's free-form prose. The
  * model may return only a structured extractive claim list, the
- * bounded hypothetical extract { intent, amount, debtLabel }, or the
- * bounded comparison extract { intent, scenarios: [{ amount, debtLabel }] }.
+ * bounded hypothetical extract { intent, amount, debtLabel }, the
+ * bounded comparison extract { intent, scenarios: [{ amount, debtLabel }] },
+ * or the bounded why extract { intent:"why", referentPath|referentKey }.
+ * Why extracts select an already-verified path or published result to
+ * explain. The server builds the explanation. Causal prose is rejected.
  * The server verifies claims against this request's packet, or
  * validates that extract against the original question and lets
  * Forecast compute consequences. Invented figures, planner acts,
@@ -31,6 +34,7 @@
 const TalkPresentation = require('./talk-presentation');
 const TalkHypothetical = require('./talk-hypothetical');
 const TalkSession = require('./talk-session');
+const TalkWhy = require('./talk-why');
 
 const MODEL = 'gemini-2.5-flash-lite';
 const PROVIDER = 'google-gemini';
@@ -73,6 +77,12 @@ const INSTRUCTION = [
   'Preserve each caller amount with the debt the caller paired it to. Different amounts are allowed only when the caller stated them. Do not omit, add, or swap options. Do not invent a debt id. Do not return balances, interest, cash, ranking, a winner, a recommendation, affordability, policy, permission, or free-form financial prose as authority.',
   'If that same explicit comparison also asks which of those already-named options to prefer, or which is better for interest given the same cash, still reply with only that comparison extract. Do not return a winner, ranking, recommendation, or preference field. The server applies any authorized preference from Forecast comparison figures only.',
   '',
+  'If and only if the household question asks why Atlas published an already-shown figure, bill, debt-risk picture, or last answer, reply with exactly one of:',
+  '{"intent":"why"}',
+  '{"intent":"why","referentPath":"<one allowlisted dotted path already in this request\'s packet>"}',
+  '{"intent":"why","referentKey":"last-presented"|"next-due"|"debt-risk"|"pay-period"|"spendable-cash"|"decision-posture"}',
+  'referentPath or referentKey only selects which already-verified published result to explain. Do not invent a cause, reason, number, policy, recommendation, ranking, or free-form financial prose. Do not return reason, cause, because, explanation, or any other causal field. The server builds the explanation from allowlisted packet fields and provenance templates.',
+  '',
   'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array. An explicit comparison that also asks which of those already-named options to prefer is still the comparison extract, not unavailable and not a winner.',
   '',
   'You MAY:',
@@ -83,6 +93,7 @@ const INSTRUCTION = [
   '- cite uncertainty, freshness, and estimated versus confirmed labels already on the packet',
   '- extract only intent, amount, and debtLabel for an explicit hypothetical extra that already names both',
   '- extract only intent and scenarios of amount plus debtLabel for an explicit comparison that already names both on each option',
+  '- extract only intent and an optional allowlisted referentPath or referentKey for a why-question about an already-published result',
   '- return status "unavailable" when something is not in the packet',
   '',
   'For pay-period, upcoming-commitment / bills, credit-picture, and factual decision-policy questions, cite only primitive path/equals claims already in this packet. Preferred paths:',
@@ -93,7 +104,8 @@ const INSTRUCTION = [
   'Do not cite a whole object or array as equals. Cite at most 8 claims. If the question asks what to do, how to allocate extra cash, how much buffer, safe-to-spend, a payoff or Visa amount, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
   '',
   'You MUST NOT:',
-  '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, debtLabel, and scenarios',
+  '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, debtLabel, scenarios, referentPath, and referentKey',
+  '- invent a cause, reason, because-clause, or other causal financial explanation',
   '- invent citations, source paths, URLs, Forecast provenance, trust labels, or account facts',
   '- return a citations, sources, urls, href, provenance, trust, or asOf field',
   '- invent a debt id, or return balances, interest, cash impact, payoff, affordability, recommendation, or ranking as authority',
@@ -439,6 +451,11 @@ function parseTalkModelOutput(text) {
   if (comparison.reason !== 'not-comparison') {
     return { ok: false, kind: 'hypothetical-comparison', reason: comparison.reason };
   }
+  const why = TalkWhy.parseExtract(parsed);
+  if (why.ok) return why;
+  if (why.reason !== 'not-why') {
+    return { ok: false, kind: 'why', reason: why.reason };
+  }
   const hyp = TalkHypothetical.parseExtract(parsed);
   if (hyp.ok) return hyp;
   if (hyp.reason !== 'not-hypothetical') {
@@ -596,7 +613,20 @@ function attachSessionTurn(presented, sessionTurn) {
   return presented;
 }
 
-async function ask({ question, packet, env, atlas, conversation }) {
+function presentWhyExtract(extract, packet, question, priorTurn) {
+  const result = TalkWhy.resolve({
+    question,
+    packet,
+    priorTurn,
+    extract,
+  });
+  return attachSessionTurn(
+    TalkPresentation.presentWhyExplanation(result, packet),
+    TalkWhy.sessionTurnFromWhy(result)
+  );
+}
+
+async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
   if (!isConfigured(env)) throw talkUnavailable();
   const parsed = normalizeQuestion(question);
   if (parsed.error) {
@@ -632,6 +662,12 @@ async function ask({ question, packet, env, atlas, conversation }) {
   if (!text) throw talkAnswerUnavailable();
   const model = parseTalkModelOutput(text);
   if (!model.ok) {
+    if (model.kind === 'why') {
+      return attachSessionTurn(
+        TalkPresentation.presentWhyExplanation({ status: 'unavailable' }, packet),
+        { kind: 'unavailable' }
+      );
+    }
     if (model.kind === 'hypothetical-comparison') {
       return attachSessionTurn(
         TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet),
@@ -645,6 +681,21 @@ async function ask({ question, packet, env, atlas, conversation }) {
       );
     }
     throw talkAnswerUnavailable();
+  }
+  if (model.intent === TalkWhy.WHY_INTENT) {
+    const presented = presentWhyExtract(model, packet, parsed.question, priorTurn);
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      throw talkAnswerUnavailable();
+    }
+    return presented;
+  }
+  if (TalkWhy.questionAsksWhy(parsed.question)
+      && (model.intent === TalkHypothetical.COMPARISON_INTENT
+        || model.intent === TalkHypothetical.HYPOTHETICAL_INTENT)) {
+    return attachSessionTurn(
+      TalkPresentation.presentWhyExplanation({ status: 'unavailable' }, packet),
+      { kind: 'unavailable' }
+    );
   }
   if (model.intent === TalkHypothetical.COMPARISON_INTENT) {
     const presented = presentComparisonExtract(model, packet, atlas, parsed.question);
@@ -662,9 +713,29 @@ async function ask({ question, packet, env, atlas, conversation }) {
   }
   const published = materializeExplainerAnswer(text, packet);
   if (!published.ok) throw talkAnswerUnavailable();
-  return attachSessionTurn(published.presentation, {
-    kind: published.status === 'unavailable' ? 'unavailable' : 'explained',
-  });
+  if (TalkWhy.questionAsksWhy(parsed.question)) {
+    if (published.status !== 'explained' || !published.claims.length) {
+      return attachSessionTurn(
+        TalkPresentation.presentWhyExplanation({ status: 'unavailable' }, packet),
+        { kind: 'unavailable' }
+      );
+    }
+    const whyResult = {
+      status: 'ready',
+      claims: published.claims,
+      paths: published.claims.map(claim => claim.path),
+    };
+    return attachSessionTurn(
+      TalkPresentation.presentWhyExplanation(whyResult, packet),
+      TalkWhy.sessionTurnFromWhy(whyResult)
+    );
+  }
+  return attachSessionTurn(
+    published.presentation,
+    published.status === 'unavailable'
+      ? { kind: 'unavailable' }
+      : TalkWhy.sessionTurnFromExplained(published.claims)
+  );
 }
 
 module.exports = {

@@ -6,8 +6,11 @@
  * does not match this request's packet. This module then maps those
  * already-verified claims through deterministic templates. Slice 6B
  * also maps an already-computed Forecast hypothetical result into
- * wording; this file still does not call Forecast, does not compute
- * leftover or remaining, and does not invent a second financial schema.
+ * wording. Why-explanations map already-published packet fields and
+ * last-presented Talk result identifiers through provenance templates;
+ * they do not invent causes. This file still does not call Forecast,
+ * does not compute leftover or remaining, and does not invent a second
+ * financial schema.
  * Optional presentation.cards reprint those same trusted strings for
  * the Talk card surface. Cards do not add numbers. Household-facing
  * citations are assembled here from the same source / trust / as-of /
@@ -24,6 +27,10 @@
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
 const HYPOTHETICAL_UNAVAILABLE_ANSWER = 'That hypothetical extra payment is not available from Forecast';
 const HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER = 'That hypothetical comparison is not available from Forecast';
+const WHY_UNAVAILABLE_ANSWER = 'That explanation is not available from this request\'s packet.';
+const WHY_LEAD = 'Atlas is showing that from already-published household fields, not a new calculation.';
+const WHY_NOTE = 'This is an explanation of an already-published Atlas result. It is not a recommendation, a new Forecast calculation, or permission to act.';
+const WHY_HISTORY_NOTE = 'Conversation history is not household-financial evidence. This request\'s packet is.';
 
 const ALLOWED_ACTIONS = Object.freeze({
   budget: Object.freeze({ href: '/', label: 'View Budget' }),
@@ -1250,6 +1257,121 @@ function presentHypotheticalComparison(result, packet, preference) {
   }, { items });
 }
 
+function whyHypotheticalSentence(result) {
+  const amountText = formatCurrency(result && result.priorAmount);
+  const label = result && typeof result.priorDebtLabel === 'string'
+    ? result.priorDebtLabel
+    : '';
+  if (!amountText || !label) return null;
+  return `Atlas published a Forecast hypothetical extra of ${amountText} on ${label}. Forecast computed those already-published consequences.`;
+}
+
+function whyComparisonSentence(result) {
+  if (!result || !Array.isArray(result.priorScenarios) || result.priorScenarios.length < 2) {
+    return null;
+  }
+  const parts = [];
+  for (const row of result.priorScenarios) {
+    const amountText = formatCurrency(row && row.amount);
+    const label = row && typeof row.debtLabel === 'string' ? row.debtLabel : '';
+    if (!amountText || !label) return null;
+    parts.push(`${amountText} on ${label}`);
+  }
+  return `Atlas published a Forecast hypothetical comparison of ${parts.join(' versus ')}. Forecast computed those already-published consequences.`;
+}
+
+function presentWhyExplanation(result, packet) {
+  const asOf = readAsOf(packet);
+  const freshness = readFreshness(packet);
+  if (!result || result.status !== 'ready') {
+    return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+
+  const sentences = [];
+  const items = [];
+  const claimRows = [];
+  const lead = typeof result.lead === 'string' && result.lead ? result.lead : WHY_LEAD;
+  sentences.push(lead);
+  items.push({ kind: 'answer', title: 'Answer', body: lead });
+
+  if (result.priorKind === 'hypothetical') {
+    const body = whyHypotheticalSentence(result);
+    if (!body) {
+      return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
+        source: 'Forecast',
+        trust: 'unavailable',
+        asOf,
+        freshness,
+      });
+    }
+    sentences.push(body);
+    items.push({ kind: 'result', title: 'Already published', body });
+  } else if (result.priorKind === 'comparison') {
+    const body = whyComparisonSentence(result);
+    if (!body) {
+      return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
+        source: 'Forecast',
+        trust: 'unavailable',
+        asOf,
+        freshness,
+      });
+    }
+    sentences.push(body);
+    items.push({ kind: 'result', title: 'Already published', body });
+  }
+
+  const claims = Array.isArray(result.claims) ? result.claims : [];
+  for (const claim of claims) {
+    if (!claim || typeof claim.path !== 'string' || !isPrimitive(claim.value)) continue;
+    const row = presentClaim(claim, packet);
+    claimRows.push(row);
+    sentences.push(row.text);
+    items.push({
+      kind: 'result',
+      title: 'Already published',
+      body: row.mapped ? row.text : genericSentence(claim),
+    });
+  }
+
+  if (!claimRows.length && result.priorKind !== 'hypothetical' && result.priorKind !== 'comparison') {
+    return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+
+  sentences.push(WHY_NOTE);
+  items.push({ kind: 'note', title: 'Note', body: WHY_NOTE });
+  if (result.priorKind) {
+    sentences.push(WHY_HISTORY_NOTE);
+    items.push({ kind: 'note', title: 'Note', body: WHY_HISTORY_NOTE });
+  }
+
+  const mapped = claimRows.filter(row => row.mapped);
+  const unmapped = claimRows.filter(row => !row.mapped);
+  const hypSource = (result.priorKind === 'hypothetical' || result.priorKind === 'comparison')
+    ? 'Forecast'
+    : null;
+  const source = hypSource || (unmapped.length ? null : sharedValue(mapped.map(row => row.source)));
+  const action = unmapped.length ? null : publicAction(sharedValue(mapped.map(row => row.action)));
+  const trust = hypSource
+    ? 'calculated'
+    : (weakestTrust(claimRows.map(row => row.trust)) || null);
+  return finishPresentation({
+    answer: sentences.join(' '),
+    source,
+    trust,
+    asOf,
+    freshness,
+    action,
+  }, { items, claimRows: claimRows.length ? claimRows : undefined });
+}
+
 function presentVerifiedClaims(published, packet) {
   if (!published || published.status === 'unavailable') {
     return emptyPresentation(UNAVAILABLE_ANSWER, {
@@ -1301,6 +1423,10 @@ module.exports = {
   UNAVAILABLE_ANSWER,
   HYPOTHETICAL_UNAVAILABLE_ANSWER,
   HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER,
+  WHY_UNAVAILABLE_ANSWER,
+  WHY_LEAD,
+  WHY_NOTE,
+  WHY_HISTORY_NOTE,
   ALLOWED_ACTIONS,
   ALLOWED_ACTION_HREFS,
   ALLOWED_SOURCES,
@@ -1319,6 +1445,7 @@ module.exports = {
   isPrimitive,
   ruleFor,
   presentVerifiedClaims,
+  presentWhyExplanation,
   presentHypotheticalExtra,
   presentHypotheticalComparison,
   isAllowedActionHref,

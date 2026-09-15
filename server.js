@@ -36,6 +36,7 @@ const TalkPresentation = require('./scripts/talk-presentation.js');
 const TalkHypothetical = require('./scripts/talk-hypothetical.js');
 const TalkSession = require('./scripts/talk-session.js');
 const TalkStream = require('./scripts/talk-stream.js');
+const TalkWhy = require('./scripts/talk-why.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -441,6 +442,8 @@ function appendTalkSessionTurn(sessionKey, question, presented) {
     debtId: presented.sessionTurn && presented.sessionTurn.debtId,
     debtLabel: presented.sessionTurn && presented.sessionTurn.debtLabel,
     scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
+    referentPaths: presented.sessionTurn && presented.sessionTurn.referentPaths,
+    priorKind: presented.sessionTurn && presented.sessionTurn.priorKind,
   });
 }
 
@@ -501,6 +504,27 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       : null;
     presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
     presented.sessionTurn = TalkSession.sessionTurnFromComparison(result);
+  } else if (TalkWhy.questionAsksWhy(parsed.question)) {
+    const why = TalkWhy.resolve({
+      question: parsed.question,
+      packet,
+      priorTurn: TalkSession.lastTurn(priorTurns),
+    });
+    if (why.status === 'ready' || why.reason === 'planner-act'
+        || why.reason === 'no-referent' || why.reason === 'no-risk'
+        || why.reason === 'missing packet') {
+      presented = TalkPresentation.presentWhyExplanation(why, packet);
+      presented.sessionTurn = TalkWhy.sessionTurnFromWhy(why);
+    } else {
+      presented = await TalkGemini.ask({
+        question: parsed.question,
+        packet,
+        env: process.env,
+        atlas,
+        conversation: talkSessions.publicConversation(priorTurns),
+        priorTurn: TalkSession.lastTurn(priorTurns),
+      });
+    }
   } else {
     presented = await TalkGemini.ask({
       question: parsed.question,
@@ -508,6 +532,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       env: process.env,
       atlas,
       conversation: talkSessions.publicConversation(priorTurns),
+      priorTurn: TalkSession.lastTurn(priorTurns),
     });
   }
   if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
