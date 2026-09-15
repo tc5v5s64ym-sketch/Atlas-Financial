@@ -197,6 +197,7 @@ and `data.json`.
 | `00_MASTER_PICTURE.md` | Dated 2026-08-09 written summary — historical evidence, not current state |
 | `01_OPEN_QUESTIONS.md` | The working agenda, ranked by what an answer would change |
 | `evidence_use/register.json` | **Evidence-Use Register — routed or parked, for declared IDs only. Owns no financial value** |
+| `knowledge_evidence/register.json` | **Knowledge-Evidence Register — external-reference claims with provenance and freshness. Informs explanation only; owns no household fact or financial value** |
 | `positions.csv` | Data spine — one row per account, fixed schema |
 | `MORTGAGE_HELOC_DEEP_DIVE.md` | Terms, payment splits, the May 2027 renewal |
 | `CREDIT_CARD_DEEP_DIVE.md` | The TD card penalty rate and its 12-month clock |
