@@ -139,7 +139,7 @@ console.log('=== 1. Contract: server owns citations; Gemini cannot invent them =
     'presentation assembles aggregate and per-claim household citations');
   ok(/CLAIM_VALUE_KEYS/.test(geminiSrc)
       && /claimValueField/.test(geminiSrc)
-      && !/claimKeys\.some\(key => MODEL_CITATION_KEYS\[key\]\)/.test(geminiSrc),
+      && !/MODEL_CITATION_KEYS/.test(geminiSrc),
     'claim parser uses an exact path-plus-value allowlist, not a citation-key blacklist');
   ok(!/require\(['"][^'"]*forecast/i.test(presentationSrc)
       && !/require\(['"][^'"]*forecast/i.test(geminiSrc),
@@ -258,7 +258,7 @@ console.log('\n=== 3. Gemini-invented citation fields fail closed ===');
     }],
   })).ok === false,
     'path plus both value fields fails closed');
-  ['sourcePath', 'sourceURL', 'link', 'reference'].forEach(key => {
+  ['sourcePath', 'sourceURL', 'link', 'reference', 'citations', 'source', 'url'].forEach(key => {
     ok(TalkGemini.parseTalkModelOutput(JSON.stringify({
       status: 'explained',
       claims: [{
@@ -579,6 +579,44 @@ console.log('\n=== 8. Mixed mapped answers keep per-claim source citations ===')
     'Bills provenance stays estimated and is not promoted or dropped');
   ok(!mixedSurfaces.citations.some(item => item.kind === 'provenance' && !item.source),
     'mixed mapped answers do not publish unsourced aggregate provenance');
+  const mixedCards = mixedSurfaces.cards && mixedSurfaces.cards.items || [];
+  ok(mixedCards.some(item => item.kind === 'provenance' && item.body === 'Forecast · as of 2026-09-14 · posted-only · live')
+      && mixedCards.some(item => item.kind === 'provenance' && item.body === 'Bills · as of 2026-09-14 · estimated · live')
+      && mixedCards.some(item => item.kind === 'action' && item.href === '/' && item.label === 'View Budget')
+      && mixedCards.some(item => item.kind === 'action' && item.href === '/bills.html' && item.label === 'View Bills'),
+    'mixed card items retain each claim Atlas source and allowlisted action');
+
+  const mixedCredit = TalkPresentation.presentVerifiedClaims({
+    status: 'explained',
+    claims: [
+      { path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 },
+      { path: 'current.pending.totalKnownPending', value: 40 },
+    ],
+  }, {
+    metadata: {
+      effectiveAsOf: '2026-09-14',
+      freshness: { confidence: 'live' },
+    },
+    forecast: {
+      currentPeriodAction: {
+        essentialRemaining: 1415.95,
+        remainingClaim: 'posted-only',
+      },
+    },
+    current: { pending: { totalKnownPending: 40 } },
+  });
+  ok(mixedCredit.source === null
+      && mixedCredit.action === null
+      && mixedCredit.citations.some(item => (
+        item.kind === 'surface' && item.source === 'Forecast' && item.href === '/'
+      ))
+      && mixedCredit.citations.some(item => (
+        item.kind === 'surface' && item.source === 'Credit' && item.href === '/credit.html'
+      ))
+      && (mixedCredit.cards.items || []).some(item => (
+        item.kind === 'action' && item.href === '/credit.html' && item.label === 'View Credit'
+      )),
+    'mixed Forecast+Credit keep per-claim Budget and Credit surfaces');
 }
 
 console.log('\n=== 9. Citation allowlist stays the existing Atlas surfaces ===');

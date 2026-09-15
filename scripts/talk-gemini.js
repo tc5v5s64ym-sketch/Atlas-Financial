@@ -41,21 +41,6 @@ const PATH_MAX_LENGTH = 120;
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
 const PATH_RE = /^(?:[A-Za-z][A-Za-z0-9_]*)(?:\.[A-Za-z][A-Za-z0-9_]*|\[\d{1,3}\]){0,7}$/;
 const FORBIDDEN_PATH_RE = /(?:^|[.\[]|])(?:__proto__|constructor|prototype)(?:$|[.\]])/;
-const MODEL_CITATION_KEYS = Object.freeze({
-  citations: true,
-  citation: true,
-  sources: true,
-  source: true,
-  urls: true,
-  url: true,
-  href: true,
-  provenance: true,
-  trust: true,
-  asOf: true,
-  freshness: true,
-  file: true,
-  filename: true,
-});
 const CLAIM_VALUE_KEYS = Object.freeze({
   equals: true,
   value: true,
@@ -447,9 +432,6 @@ function parseExtractiveObject(parsed) {
     return { ok: false, reason: 'not structured' };
   }
   const keys = Object.keys(parsed);
-  if (keys.some(key => MODEL_CITATION_KEYS[key])) {
-    return { ok: false, reason: 'unexpected fields' };
-  }
   if (keys.length !== 2 || !keys.includes('status') || !keys.includes('claims')) {
     return { ok: false, reason: 'unexpected fields' };
   }

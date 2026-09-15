@@ -925,13 +925,34 @@ function sanitizePresentationCards(cards) {
   return items.length ? { version: CARD_VERSION, items } : null;
 }
 
-function trailingMetaCards(presentation) {
+function uniqueMappedSurfaces(rows) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  if (rows.some(row => !row || !row.mapped)) return [];
+  const surfaces = [];
+  const seen = Object.create(null);
+  for (const row of rows) {
+    const source = ALLOWED_SOURCES.includes(row.source) ? row.source : null;
+    const action = publicAction(row.action);
+    if (!source || !action) continue;
+    const key = source + '\0' + action.href;
+    if (seen[key]) continue;
+    seen[key] = true;
+    surfaces.push({
+      source,
+      action,
+      trust: row.trust || null,
+    });
+  }
+  return surfaces;
+}
+
+function trailingMetaCard(fields) {
   const items = [];
-  const provenance = provenanceText(presentation);
+  const provenance = provenanceText(fields);
   if (provenance) {
     items.push({ kind: 'provenance', title: 'Source', body: provenance });
   }
-  const action = publicAction(presentation.action);
+  const action = publicAction(fields.action);
   if (action) {
     items.push({
       kind: 'action',
@@ -944,13 +965,31 @@ function trailingMetaCards(presentation) {
   return items;
 }
 
+function trailingMetaCards(presentation, claimRows) {
+  const surfaces = uniqueMappedSurfaces(claimRows);
+  if (surfaces.length > 1) {
+    const items = [];
+    for (const surface of surfaces) {
+      items.push(...trailingMetaCard({
+        source: surface.source,
+        action: surface.action,
+        trust: surface.trust,
+        asOf: presentation.asOf,
+        freshness: presentation.freshness,
+      }));
+    }
+    return items;
+  }
+  return trailingMetaCard(presentation);
+}
+
 function finishPresentation(presentation, extras) {
   const leading = extras && Array.isArray(extras.items) ? extras.items : [];
+  const claimRows = extras && extras.claimRows;
   presentation.cards = sanitizePresentationCards({
     version: CARD_VERSION,
-    items: leading.concat(trailingMetaCards(presentation)),
+    items: leading.concat(trailingMetaCards(presentation, claimRows)),
   });
-  const claimRows = extras && extras.claimRows;
   presentation.citations = Array.isArray(claimRows)
     ? assembleClaimCitations(claimRows, presentation)
     : assembleCitations(presentation);
