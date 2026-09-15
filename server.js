@@ -36,6 +36,7 @@ const TalkPresentation = require('./scripts/talk-presentation.js');
 const TalkHypothetical = require('./scripts/talk-hypothetical.js');
 const TalkSession = require('./scripts/talk-session.js');
 const TalkStream = require('./scripts/talk-stream.js');
+const TalkWhy = require('./scripts/talk-why.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -441,6 +442,11 @@ function appendTalkSessionTurn(sessionKey, question, presented) {
     debtId: presented.sessionTurn && presented.sessionTurn.debtId,
     debtLabel: presented.sessionTurn && presented.sessionTurn.debtLabel,
     scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
+    referentPaths: presented.sessionTurn && presented.sessionTurn.referentPaths,
+    priorKind: presented.sessionTurn && presented.sessionTurn.priorKind,
+    // Already-sanitized published Forecast baseline only. Not evidence.
+    asOf: presented.sessionTurn && presented.sessionTurn.asOf,
+    freshness: presented.sessionTurn && presented.sessionTurn.freshness,
   });
 }
 
@@ -485,7 +491,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       packet,
     });
     presented = TalkPresentation.presentHypotheticalExtra(result, packet);
-    presented.sessionTurn = TalkSession.sessionTurnFromHypothetical(result);
+    presented.sessionTurn = TalkSession.sessionTurnFromHypothetical(result, presented);
   } else if (follow.status === 'resolved-comparison'
       || follow.status === 'resolved-preference') {
     phase('running-forecast');
@@ -500,7 +506,31 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       ? TalkHypothetical.judgeComparisonPreference(result)
       : null;
     presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
-    presented.sessionTurn = TalkSession.sessionTurnFromComparison(result);
+    presented.sessionTurn = TalkSession.sessionTurnFromComparison(result, presented);
+  } else if (TalkWhy.questionAsksWhy(parsed.question)) {
+    const why = TalkWhy.resolve({
+      question: parsed.question,
+      packet,
+      priorTurn: TalkSession.lastTurn(priorTurns),
+    });
+    // Determined local results only: ready, planner-act, missing last
+    // referent, no published risk, missing packet, or stale baseline.
+    // A why-ask whose referent is not yet selected reaches Gemini extract.
+    if (why.status === 'ready' || why.reason === 'planner-act'
+        || why.reason === 'no-referent' || why.reason === 'no-risk'
+        || why.reason === 'missing packet' || why.reason === 'stale-baseline') {
+      presented = TalkPresentation.presentWhyExplanation(why, packet);
+      presented.sessionTurn = TalkWhy.sessionTurnFromWhy(why);
+    } else {
+      presented = await TalkGemini.ask({
+        question: parsed.question,
+        packet,
+        env: process.env,
+        atlas,
+        conversation: talkSessions.publicConversation(priorTurns),
+        priorTurn: TalkSession.lastTurn(priorTurns),
+      });
+    }
   } else {
     presented = await TalkGemini.ask({
       question: parsed.question,
@@ -508,6 +538,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       env: process.env,
       atlas,
       conversation: talkSessions.publicConversation(priorTurns),
+      priorTurn: TalkSession.lastTurn(priorTurns),
     });
   }
   if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {

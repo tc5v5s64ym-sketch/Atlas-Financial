@@ -18,7 +18,11 @@
  * deixis/extra skeleton with no leftover wording. An explainer
  * blacklist is not the gate. Ambiguity returns unavailable. Gemini
  * never fills a missing amount or target from chat text. Current Atlas
- * state and Forecast remain the only financial authorities.
+ * state and Forecast remain the only financial authorities. A
+ * hypothetical or comparison turn may keep the already-published
+ * Forecast as-of / freshness so a later Why? can label that same
+ * calculation. Those fields are provenance of a published result, not
+ * household-financial evidence and not a later packet substitute.
  */
 
 const crypto = require('crypto');
@@ -31,6 +35,21 @@ const QUESTION_MAX = 2000;
 const PRESENTED_MAX = 400;
 const LABEL_MAX = 80;
 const SCENARIO_MAX = 6;
+const ASOF_MAX = 40;
+const FRESHNESS_TAGS = Object.freeze({
+  unavailable: true,
+  unknown: true,
+  'dated-opening': true,
+  planned: true,
+  estimated: true,
+  'posted-only': true,
+  calculated: true,
+  'owner-stated': true,
+  'canonical-opening': true,
+  precise: true,
+  confirmed: true,
+  live: true,
+});
 const FOLLOWUP_DEIXIS_RE = /\b(?:what about|how about|and(?:\s+what)?|instead|also|same(?:\s+amount)?|that)\b/i;
 const EXTRA_LANGUAGE_RE = /\b(?:extra|put(?:ting)?|toward|towards|instead)\b/i;
 const COMPARISON_FOLLOWUP_RE = /\b(?:compare(?:d)?|versus|vs\.?|against)\b/i;
@@ -63,6 +82,44 @@ function clipText(value, max) {
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
 }
 
+const REFERENT_PATH_RE = /^(?:[A-Za-z][A-Za-z0-9_]*)(?:\.[A-Za-z][A-Za-z0-9_]*|\[\d{1,3}\]){0,7}$/;
+const FORBIDDEN_REFERENT_PATH_RE = /(?:^|[.\[]|])(?:__proto__|constructor|prototype)(?:$|[.\]])/;
+
+function sanitizeReferentPaths(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = Object.create(null);
+  for (const path of raw) {
+    if (typeof path !== 'string' || path.length === 0 || path.length > 120) continue;
+    if (!REFERENT_PATH_RE.test(path) || FORBIDDEN_REFERENT_PATH_RE.test(path)) continue;
+    if (seen[path]) continue;
+    seen[path] = true;
+    out.push(path);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function sanitizeAsOf(value) {
+  if (typeof value !== 'string' || !value || value.length > ASOF_MAX) return '';
+  if (/[\\/]/.test(value) || /\.env\b|raw|derived|secret/i.test(value)) return '';
+  return value;
+}
+
+function sanitizeFreshness(value) {
+  if (typeof value !== 'string' || !value) return '';
+  if (value === 'verified' || value === 'current') return '';
+  return FRESHNESS_TAGS[value] ? value : '';
+}
+
+function attachTurnProvenance(turn, raw) {
+  const asOf = sanitizeAsOf(raw && raw.asOf);
+  if (asOf) turn.asOf = asOf;
+  const freshness = sanitizeFreshness(raw && raw.freshness);
+  if (freshness) turn.freshness = freshness;
+  return turn;
+}
+
 function sanitizeScenario(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
   if (!finiteAmount(row.amount)) return null;
@@ -76,7 +133,7 @@ function sanitizeTurn(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const kind = raw.kind;
   if (kind !== 'explained' && kind !== 'hypothetical' && kind !== 'comparison'
-      && kind !== 'unavailable') {
+      && kind !== 'unavailable' && kind !== 'why') {
     return null;
   }
   const question = clipText(raw.question, QUESTION_MAX);
@@ -86,7 +143,12 @@ function sanitizeTurn(raw) {
     question,
     presented: clipText(raw.presented, PRESENTED_MAX),
   };
-  if (kind === 'hypothetical') {
+  const referentPaths = sanitizeReferentPaths(raw.referentPaths);
+  if (referentPaths.length) turn.referentPaths = referentPaths;
+  if (kind === 'why' && (raw.priorKind === 'hypothetical' || raw.priorKind === 'comparison')) {
+    turn.priorKind = raw.priorKind;
+  }
+  if (kind === 'hypothetical' || (kind === 'why' && raw.priorKind === 'hypothetical')) {
     if (!finiteAmount(raw.amount)) return null;
     const debtId = clipText(raw.debtId, LABEL_MAX);
     const debtLabel = clipText(raw.debtLabel, LABEL_MAX);
@@ -95,7 +157,7 @@ function sanitizeTurn(raw) {
     turn.debtId = debtId;
     turn.debtLabel = debtLabel;
   }
-  if (kind === 'comparison') {
+  if (kind === 'comparison' || (kind === 'why' && raw.priorKind === 'comparison')) {
     if (!Array.isArray(raw.scenarios) || raw.scenarios.length < 2
         || raw.scenarios.length > SCENARIO_MAX) {
       return null;
@@ -108,7 +170,7 @@ function sanitizeTurn(raw) {
     }
     turn.scenarios = scenarios;
   }
-  return turn;
+  return attachTurnProvenance(turn, raw);
 }
 
 function publicConversation(turns) {
@@ -315,7 +377,7 @@ function findLabelForDebt(debtId, debts, packet) {
   return debtId;
 }
 
-function sessionTurnFromHypothetical(result) {
+function sessionTurnFromHypothetical(result, provenance) {
   if (!result || result.status !== 'ready' || !result.input) {
     return { kind: 'unavailable' };
   }
@@ -323,10 +385,14 @@ function sessionTurnFromHypothetical(result) {
   const debtId = clipText(result.input.debtId, LABEL_MAX);
   const debtLabel = clipText(result.input.debtLabel, LABEL_MAX);
   if (!finiteAmount(amount) || !debtId || !debtLabel) return { kind: 'unavailable' };
-  return { kind: 'hypothetical', amount, debtId, debtLabel };
+  const fromResult = result.input && result.input.asOf;
+  return attachTurnProvenance({ kind: 'hypothetical', amount, debtId, debtLabel }, {
+    asOf: (provenance && provenance.asOf) || fromResult,
+    freshness: provenance && provenance.freshness,
+  });
 }
 
-function sessionTurnFromComparison(result) {
+function sessionTurnFromComparison(result, provenance) {
   if (!result || result.status !== 'ready' || !Array.isArray(result.scenarios)) {
     return { kind: 'unavailable' };
   }
@@ -337,7 +403,11 @@ function sessionTurnFromComparison(result) {
     scenarios.push(clean);
   }
   if (scenarios.length < 2) return { kind: 'unavailable' };
-  return { kind: 'comparison', scenarios };
+  const fromResult = result.baseline && result.baseline.asOf;
+  return attachTurnProvenance({ kind: 'comparison', scenarios }, {
+    asOf: (provenance && provenance.asOf) || fromResult,
+    freshness: provenance && provenance.freshness,
+  });
 }
 
 function createSessionContext(options) {
