@@ -730,12 +730,9 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
       TalkWhy.sessionTurnFromWhy(whyResult)
     );
   }
-  return attachSessionTurn(
-    published.presentation,
-    published.status === 'unavailable'
-      ? { kind: 'unavailable' }
-      : TalkWhy.sessionTurnFromExplained(published.claims)
-  );
+  return attachSessionTurn(published.presentation, published.status === 'unavailable'
+    ? { kind: 'unavailable' }
+    : TalkWhy.sessionTurnFromExplained(published.claims));
 }
 
 module.exports = {
