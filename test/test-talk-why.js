@@ -243,8 +243,10 @@ console.log('=== 1. Why-trace is explanation, not a second planner ===');
       && /Do not return reason, cause, because/.test(TalkGemini.INSTRUCTION),
     'Gemini instruction allows only a why extract, not causal prose');
   ok(/TalkWhy\.questionAsksWhy/.test(serverSrc)
-      && /presentWhyExplanation/.test(serverSrc),
-    'server short-circuits resolvable why-asks on /talk/ask');
+      && /presentWhyExplanation/.test(serverSrc)
+      && /stale-baseline/.test(serverSrc)
+      && !/unresolved-referent/.test(serverSrc),
+    'server short-circuits determined why results and lets unresolved referents reach extract');
   ok(!/why-trace|presentWhyExplanation|talk-why/.test(forecastSrc),
     'public/forecast.js is untouched');
 }

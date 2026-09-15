@@ -510,6 +510,9 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       packet,
       priorTurn: TalkSession.lastTurn(priorTurns),
     });
+    // Determined local results only: ready, planner-act, missing last
+    // referent, no published risk, missing packet, or stale baseline.
+    // A why-ask whose referent is not yet selected reaches Gemini extract.
     if (why.status === 'ready' || why.reason === 'planner-act'
         || why.reason === 'no-referent' || why.reason === 'no-risk'
         || why.reason === 'missing packet' || why.reason === 'stale-baseline') {
