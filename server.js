@@ -421,10 +421,13 @@ app.all('/talk/capability', (_req, res) => {
 // financial evidence, Forecast state, owner policy, a write, or
 // permission. Follow-up amounts and named debts are filled only when
 // the server can deterministically resolve them under the authorized
-// contract; ambiguity is unavailable. Every financial answer still
-// verifies against this request's packet or is computed by Forecast
-// on current Atlas state. Client history fields are rejected. No
-// durable store. Does not write.
+// contract; ambiguity is unavailable. Campaign-style verified
+// follow-ups resolve only against ephemeral structured refs from a
+// prior verified presentation and re-read this request's packet or
+// recompute Forecast; conversation prose is not a figure source.
+// Every financial answer still verifies against this request's packet
+// or is computed by Forecast on current Atlas state. Client history
+// fields are rejected. No durable store. Does not write.
 //
 // Accept: text/event-stream receives allowlisted progress phases, then
 // the same verified public JSON body as a final result event. Gemini
@@ -443,6 +446,7 @@ function appendTalkSessionTurn(sessionKey, question, presented) {
     debtLabel: presented.sessionTurn && presented.sessionTurn.debtLabel,
     scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
     referentPaths: presented.sessionTurn && presented.sessionTurn.referentPaths,
+    referentKeys: presented.sessionTurn && presented.sessionTurn.referentKeys,
     priorKind: presented.sessionTurn && presented.sessionTurn.priorKind,
     // Already-sanitized published Forecast baseline only. Not evidence.
     asOf: presented.sessionTurn && presented.sessionTurn.asOf,
@@ -507,6 +511,15 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       : null;
     presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
     presented.sessionTurn = TalkSession.sessionTurnFromComparison(result, presented);
+  } else if (follow.status === 'resolved-reference') {
+    const claims = TalkWhy.publishablePaths(follow.paths, packet);
+    presented = TalkPresentation.presentVerifiedClaims(
+      claims.length ? { status: 'explained', claims } : { status: 'unavailable', claims: [] },
+      packet
+    );
+    presented.sessionTurn = claims.length
+      ? TalkWhy.sessionTurnFromExplained(claims)
+      : { kind: 'unavailable' };
   } else if (TalkWhy.questionAsksWhy(parsed.question)) {
     const why = TalkWhy.resolve({
       question: parsed.question,

@@ -23,6 +23,14 @@
  * Forecast as-of / freshness so a later Why? can label that same
  * calculation. Those fields are provenance of a published result, not
  * household-financial evidence and not a later packet substitute.
+ *
+ * Campaign-style verified follow-ups ("what about next payday?",
+ * "what about that card?", "how much interest was that again?") resolve
+ * only against ephemeral structured refs from a prior verified
+ * presentation — allowlisted packet paths and published result keys,
+ * never conversation prose. The server re-reads this request's packet
+ * or recomputes Forecast on the stored hyp inputs. Ambiguous deixis
+ * is unavailable. No durable household fact store.
  */
 
 const crypto = require('crypto');
@@ -64,6 +72,34 @@ const AUTHORIZED_FOLLOWUP_WORDS = new Set([
   'that', 'extra', 'put', 'putting', 'toward', 'towards',
   'the', 'a', 'an', 'on', 'to', 'of', 'for', 'with', 'my', 'our',
 ]);
+const FOLLOWUP_REFERENT_KEYS = Object.freeze({
+  'next-payday': true,
+  'pay-period': true,
+  'interest': true,
+  'card': true,
+  'last-presented': true,
+});
+const FOLLOWUP_KEY_PATHS = Object.freeze({
+  'next-payday': Object.freeze([
+    'forecast.currentPeriodAction.nextPayday',
+  ]),
+  'pay-period': Object.freeze([
+    'forecast.currentPeriodAction.essentialRemaining',
+    'forecast.currentPeriodAction.weeklyCap',
+    'forecast.currentPeriodAction.periodStart',
+    'forecast.currentPeriodAction.periodEnd',
+    'forecast.currentPeriodAction.nextPayday',
+    'forecast.currentPeriodAction.remainingClaim',
+  ]),
+  'interest': Object.freeze([
+    'current.debts.monthlyInterest',
+  ]),
+});
+const FACILITY_REF_RE = /^current\.debts\.facilities\[(\d{1,3})\]\.(?:available|label)$/;
+const NEXT_PAYDAY_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)(?:\s+the)?\s+next\s+payday\??$/i;
+const THAT_CARD_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+(?:that|this|the)\s+card\??$/i;
+const INTEREST_AGAIN_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:how much interest (?:was|is) that(?: again)?|(?:what(?:'s| is)|whats) (?:the )?interest (?:again|on that)|interest again)\??$/i;
+const BARE_THAT_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+that\??$/i;
 
 function hmacKey(secret, token) {
   if (typeof secret !== 'string' || secret.length < 16) return '';
@@ -98,6 +134,190 @@ function sanitizeReferentPaths(raw) {
     if (out.length >= 8) break;
   }
   return out;
+}
+
+function sanitizeReferentKeys(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = Object.create(null);
+  for (const key of raw) {
+    if (typeof key !== 'string' || !FOLLOWUP_REFERENT_KEYS[key] || seen[key]) continue;
+    seen[key] = true;
+    out.push(key);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function bindReferentKeysFromPaths(paths) {
+  const keys = [];
+  const seen = Object.create(null);
+  const facilityIndexes = [];
+  if (!Array.isArray(paths)) return { keys, facilityIndexes };
+  for (const path of paths) {
+    if (typeof path !== 'string') continue;
+    for (const key of Object.keys(FOLLOWUP_KEY_PATHS)) {
+      if (!seen[key] && FOLLOWUP_KEY_PATHS[key].includes(path)) {
+        seen[key] = true;
+        keys.push(key);
+      }
+    }
+    const facility = FACILITY_REF_RE.exec(path);
+    if (facility) {
+      const index = Number(facility[1]);
+      if (!facilityIndexes.includes(index)) facilityIndexes.push(index);
+    }
+  }
+  if (facilityIndexes.length === 1 && !seen.card) {
+    seen.card = true;
+    keys.push('card');
+  }
+  return { keys, facilityIndexes };
+}
+
+function referentKeysOn(prior) {
+  const stored = sanitizeReferentKeys(prior && prior.referentKeys);
+  const derived = bindReferentKeysFromPaths(prior && prior.referentPaths);
+  const out = stored.slice();
+  const seen = Object.create(null);
+  for (const key of stored) seen[key] = true;
+  for (const key of derived.keys) {
+    if (seen[key]) continue;
+    seen[key] = true;
+    out.push(key);
+  }
+  return out;
+}
+
+function priorHasReferentKey(prior, key) {
+  return referentKeysOn(prior).includes(key);
+}
+
+function facilityIndexForDebt(packet, debtId, debtLabel) {
+  const facilities = packet
+    && packet.current
+    && packet.current.debts
+    && packet.current.debts.facilities;
+  if (!Array.isArray(facilities)) return null;
+  const matches = [];
+  for (let i = 0; i < facilities.length; i += 1) {
+    const row = facilities[i];
+    if (!row || typeof row !== 'object') continue;
+    if ((debtId && row.id === debtId) || (debtLabel && row.label === debtLabel)) {
+      matches.push(i);
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function uniqueFacilityFollowup(prior, packet) {
+  const bound = bindReferentKeysFromPaths(prior && prior.referentPaths);
+  if (bound.facilityIndexes.length === 1) {
+    const index = bound.facilityIndexes[0];
+    return {
+      ok: true,
+      paths: [
+        `current.debts.facilities[${index}].label`,
+        `current.debts.facilities[${index}].available`,
+      ],
+    };
+  }
+  if (bound.facilityIndexes.length > 1) {
+    return { ok: false, ambiguous: true };
+  }
+  const debtId = prior && typeof prior.debtId === 'string' ? prior.debtId : '';
+  const debtLabel = prior && typeof prior.debtLabel === 'string' ? prior.debtLabel : '';
+  const hypLike = prior && (
+    prior.kind === 'hypothetical'
+    || prior.priorKind === 'hypothetical'
+  );
+  if (hypLike && (debtId || debtLabel)) {
+    const index = facilityIndexForDebt(packet, debtId, debtLabel);
+    if (index != null) {
+      return {
+        ok: true,
+        paths: [
+          `current.debts.facilities[${index}].label`,
+          `current.debts.facilities[${index}].available`,
+        ],
+      };
+    }
+  }
+  return { ok: false, ambiguous: false };
+}
+
+function classifyVerifiedFollowup(question) {
+  if (typeof question !== 'string' || !question.trim()) return null;
+  const parsed = question.trim().replace(/\s+/g, ' ');
+  if (NEXT_PAYDAY_FOLLOWUP_RE.test(parsed)) return 'next-payday';
+  if (THAT_CARD_FOLLOWUP_RE.test(parsed)) return 'card';
+  if (INTEREST_AGAIN_RE.test(parsed)) return 'interest';
+  if (BARE_THAT_FOLLOWUP_RE.test(parsed)) return 'last-presented';
+  return null;
+}
+
+function resolveVerifiedReference({ question, priorTurn, packet }) {
+  const kind = classifyVerifiedFollowup(question);
+  if (!kind) return { status: 'none' };
+  const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
+
+  if (kind === 'next-payday') {
+    if (priorHasReferentKey(prior, 'next-payday') || priorHasReferentKey(prior, 'pay-period')) {
+      return {
+        status: 'resolved-reference',
+        paths: FOLLOWUP_KEY_PATHS['next-payday'].slice(),
+        referentKey: 'next-payday',
+      };
+    }
+    return { status: 'ambiguous', nature: 'reference' };
+  }
+
+  if (kind === 'card') {
+    const facility = uniqueFacilityFollowup(prior, packet);
+    if (facility.ok) {
+      return {
+        status: 'resolved-reference',
+        paths: facility.paths,
+        referentKey: 'card',
+      };
+    }
+    return { status: 'ambiguous', nature: 'reference' };
+  }
+
+  if (kind === 'interest') {
+    if (prior && (prior.kind === 'comparison' || prior.priorKind === 'comparison')) {
+      return { status: 'ambiguous', nature: 'reference' };
+    }
+    if (prior && finiteAmount(prior.amount)
+        && typeof prior.debtId === 'string' && prior.debtId
+        && typeof prior.debtLabel === 'string' && prior.debtLabel
+        && (prior.kind === 'hypothetical' || prior.priorKind === 'hypothetical')) {
+      return {
+        status: 'resolved-hypothetical',
+        amount: prior.amount,
+        debtId: prior.debtId,
+        debtLabel: prior.debtLabel,
+      };
+    }
+    if (priorHasReferentKey(prior, 'interest')) {
+      return {
+        status: 'resolved-reference',
+        paths: FOLLOWUP_KEY_PATHS.interest.slice(),
+        referentKey: 'interest',
+      };
+    }
+    return { status: 'ambiguous', nature: 'reference' };
+  }
+
+  const paths = sanitizeReferentPaths(prior && prior.referentPaths);
+  if (paths.length) {
+    return {
+      status: 'resolved-reference',
+      paths,
+      referentKey: 'last-presented',
+    };
+  }
+  return { status: 'ambiguous', nature: 'reference' };
 }
 
 function sanitizeAsOf(value) {
@@ -145,6 +365,11 @@ function sanitizeTurn(raw) {
   };
   const referentPaths = sanitizeReferentPaths(raw.referentPaths);
   if (referentPaths.length) turn.referentPaths = referentPaths;
+  const referentKeys = sanitizeReferentKeys(
+    (Array.isArray(raw.referentKeys) ? raw.referentKeys : [])
+      .concat(bindReferentKeysFromPaths(referentPaths).keys)
+  );
+  if (referentKeys.length) turn.referentKeys = referentKeys;
   if (kind === 'why' && (raw.priorKind === 'hypothetical' || raw.priorKind === 'comparison')) {
     turn.priorKind = raw.priorKind;
   }
@@ -353,6 +578,13 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
     return { status: 'ambiguous', nature: 'comparison' };
   }
 
+  const verified = resolveVerifiedReference({
+    question: parsed,
+    priorTurn: prior,
+    packet,
+  });
+  if (verified.status !== 'none') return verified;
+
   return { status: 'none' };
 }
 
@@ -386,7 +618,13 @@ function sessionTurnFromHypothetical(result, provenance) {
   const debtLabel = clipText(result.input.debtLabel, LABEL_MAX);
   if (!finiteAmount(amount) || !debtId || !debtLabel) return { kind: 'unavailable' };
   const fromResult = result.input && result.input.asOf;
-  return attachTurnProvenance({ kind: 'hypothetical', amount, debtId, debtLabel }, {
+  return attachTurnProvenance({
+    kind: 'hypothetical',
+    amount,
+    debtId,
+    debtLabel,
+    referentKeys: ['interest'],
+  }, {
     asOf: (provenance && provenance.asOf) || fromResult,
     freshness: provenance && provenance.freshness,
   });
@@ -494,6 +732,11 @@ module.exports = {
   PRESENTED_MAX,
   createSessionContext,
   resolveFollowup,
+  resolveVerifiedReference,
+  bindReferentKeysFromPaths,
+  classifyVerifiedFollowup,
+  FOLLOWUP_REFERENT_KEYS,
+  FOLLOWUP_KEY_PATHS,
   publicConversation,
   lastTurn,
   sessionTurnFromHypothetical,

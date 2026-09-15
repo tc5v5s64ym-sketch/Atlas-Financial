@@ -75,6 +75,7 @@ const suites = [
   ['Talk multi-turn session context (Queue PR 3)', 'test-talk-session.js'],
   ['Talk safe streaming (Queue PR 4)', 'test-talk-stream.js'],
   ['Talk deterministic Why? explanation', 'test-talk-why.js'],
+  ['Talk verified follow-up references', 'test-talk-followup-refs.js'],
   ['Talk hypothetical extra adapter (Talk Slice 6B)', 'test-talk-hypothetical.js'],
   ['owner decision posture policy (Talk Slice 5)', 'test-decision-posture.js'],
   ['hypothetical extra-payment scenario (Talk Slice 6)', 'test-hypothetical-extra-payment.js'],
