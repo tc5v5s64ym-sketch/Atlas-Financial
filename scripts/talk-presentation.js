@@ -819,6 +819,9 @@ function preferenceReasonSentence(reason) {
   if (reason === 'interest-reductions-equal') {
     return 'Forecast-calculated named-debt interest reductions are not strictly different.';
   }
+  if (reason === 'not-exactly-two-options') {
+    return 'The owner preference rule applies only to exactly two explicit options.';
+  }
   return 'Required Forecast comparison fields are unavailable. Unavailable is not zero.';
 }
 

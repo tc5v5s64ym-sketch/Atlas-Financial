@@ -3064,6 +3064,22 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
           { amount: 1000, debtLabel: 'High-rate card' },
         ],
       }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'High-rate card' },
+          { amount: 200, debtLabel: 'Low-rate card' },
+          { amount: 200, debtLabel: 'Amazon.ca Rewards Mastercard (MBNA)' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'High-rate card' },
+          { amount: 200, debtLabel: 'Low-rate card' },
+          { amount: 200, debtLabel: 'Amazon.ca Rewards Mastercard (MBNA)' },
+        ],
+      }),
     ]);
     try {
       const prefer = await TalkGemini.ask({
@@ -3160,6 +3176,36 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       ok(planner.answer === TalkPresentation.HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER
           || planner.answer === TalkGemini.UNAVAILABLE_ANSWER,
         'unauthorized HELOC-funds planner act stays unavailable');
+
+      const threePrefer = await TalkGemini.ask({
+        question: 'Which should I prefer, $200 on the High-rate card versus $200 on the Low-rate card versus $200 on the Amazon.ca Rewards Mastercard (MBNA)?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/NOT YET \/ INDETERMINATE/.test(threePrefer.answer)
+          && /exactly two explicit options/i.test(threePrefer.answer)
+          && !/PREFER /.test(threePrefer.answer)
+          && /Option 3/.test(threePrefer.answer)
+          && threePrefer.action === null,
+        'a 3-option preference ask cannot produce a winner');
+
+      const threeCompare = await TalkGemini.ask({
+        question: 'What if I put $200 on the High-rate card versus $200 on the Low-rate card versus $200 on the Amazon.ca Rewards Mastercard (MBNA)?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/does not rank these options/.test(threeCompare.answer)
+          && !/PREFER /.test(threeCompare.answer)
+          && /Option 3/.test(threeCompare.answer),
+        'ordinary 3+ compare-only Talk path is unchanged');
     } finally {
       await mock.close();
     }

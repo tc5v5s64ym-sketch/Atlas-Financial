@@ -618,15 +618,24 @@ console.log('\n=== 8. Talk A-vs-B preference judgment uses Forecast figures only
   };
   const src = read('scripts/talk-hypothetical.js');
   const judgeStart = src.indexOf('function forecastCentsEqual');
+  const judgeFnStart = src.indexOf('function judgeComparisonPreference');
   const judgeEnd = src.indexOf('function normalizeName');
   const judgeBody = judgeStart >= 0 && judgeEnd > judgeStart
     ? src.slice(judgeStart, judgeEnd)
+    : '';
+  const judgeFn = judgeFnStart >= 0 && judgeEnd > judgeFnStart
+    ? src.slice(judgeFnStart, judgeEnd)
     : '';
   ok(judgeBody.length > 0
       && /scenario\.cash\.ending/.test(judgeBody)
       && /absorbed\.unabsorbed/.test(judgeBody)
       && /delta\.debt\.interest/.test(judgeBody),
     'preference rule reads Forecast cash ending, absorbed, and interest-reduction fields');
+  ok(/scenarios\.length !== 2/.test(judgeFn)
+      && /not-exactly-two-options/.test(judgeFn)
+      && !/scenarios\.length >= 2/.test(judgeFn)
+      && !/scenarios\.length < 2/.test(judgeFn),
+    'preference judgment is gated to exactly two scenarios');
   ok(!/decisionPosture/.test(judgeBody)
       && !/targetBuffer/.test(judgeBody)
       && !/velocity/i.test(judgeBody)
@@ -861,6 +870,78 @@ console.log('\n=== 8. Talk A-vs-B preference judgment uses Forecast figures only
       && presentedNotYet.answer.indexOf(unequalInterestA) !== -1
       && presentedNotYet.action === null,
     'NOT YET keeps Forecast figures and states the owner-rule reason');
+
+  const threeQuestion = 'Which should I prefer, $200 on the High-rate card versus $200 on the Low-rate card versus $200 on the Amazon.ca Rewards Mastercard (MBNA)?';
+  const threeGot = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 200, debtLabel: 'High-rate card' },
+      { amount: 200, debtLabel: 'Low-rate card' },
+      { amount: 200, debtLabel: 'Amazon.ca Rewards Mastercard (MBNA)' },
+    ],
+    question: threeQuestion,
+    plan,
+    debts,
+    packet,
+  });
+  const mbna = F.hypotheticalExtraPayment(plan, debts, START, {
+    amount: 200, debtId: 'mbna', nature: 'hypothetical',
+  });
+  const reductionMbna = mbna.baseline.debt.interest - mbna.scenario.debt.interest;
+  const threeIndependent = F.hypotheticalExtraPaymentComparison(plan, debts, START, {
+    nature: 'hypothetical-comparison',
+    scenarios: [
+      { amount: 200, debtId: 'high' },
+      { amount: 200, debtId: 'low' },
+      { amount: 200, debtId: 'mbna' },
+    ],
+  });
+  const threeJudged = TalkHypothetical.judgeComparisonPreference(threeGot);
+  const twoFromThree = JSON.parse(JSON.stringify(threeGot));
+  twoFromThree.scenarios = twoFromThree.scenarios.slice(0, 2);
+  ok(threeGot.status === 'ready'
+      && threeGot.scenarios.length === 3
+      && threeIndependent.status === 'ready'
+      && threeIndependent.scenarios.length === 3
+      && mbna.status === 'ready'
+      && mbna.absorbed.unabsorbed === 0
+      && Math.abs(mbna.scenario.cash.ending - high.scenario.cash.ending) <= F.EPSILON
+      && reductionHigh > reductionMbna + F.EPSILON
+      && TalkHypothetical.judgeComparisonPreference(twoFromThree).verdict === 'PREFER'
+      && TalkHypothetical.judgeComparisonPreference(twoFromThree).preferred.debtId === 'high',
+    'three-option Forecast comparison stays ready and its first two options would PREFER');
+  ok(threeJudged.verdict === 'NOT YET'
+      && threeJudged.reason === 'not-exactly-two-options'
+      && threeJudged.preferred === null
+      && threeJudged.actionPermission === 'not-granted'
+      && threeJudged.recommendation === null,
+    'a 3-option preference cannot produce a winner');
+
+  const appended = JSON.parse(JSON.stringify(got));
+  appended.scenarios.push(JSON.parse(JSON.stringify(threeGot.scenarios[2])));
+  ok(TalkHypothetical.judgeComparisonPreference(appended).verdict === 'NOT YET'
+      && TalkHypothetical.judgeComparisonPreference(appended).preferred === null
+      && TalkHypothetical.judgeComparisonPreference(got).verdict === 'PREFER',
+    'appending a third ready scenario to a PREFER pair fails closed');
+
+  const presentedThreeCompare = TalkPresentation.presentHypotheticalComparison(threeGot, packet);
+  const presentedThreePrefer = TalkPresentation.presentHypotheticalComparison(
+    threeGot, packet, threeJudged
+  );
+  const threeInterestC = TalkPresentation.formatCurrency(
+    threeGot.scenarios[2].result.delta.debt.interest
+  );
+  ok(/does not rank these options/.test(presentedThreeCompare.answer)
+      && !/PREFER /.test(presentedThreeCompare.answer)
+      && /Option 1/.test(presentedThreeCompare.answer)
+      && /Option 3/.test(presentedThreeCompare.answer)
+      && presentedThreeCompare.answer.indexOf(threeInterestC) !== -1,
+    'ordinary 3+ compare-only presentation is unchanged');
+  ok(/NOT YET \/ INDETERMINATE/.test(presentedThreePrefer.answer)
+      && /exactly two explicit options/i.test(presentedThreePrefer.answer)
+      && !/PREFER /.test(presentedThreePrefer.answer)
+      && presentedThreePrefer.answer.indexOf(threeInterestC) !== -1
+      && presentedThreePrefer.action === null,
+    'a 3-option preference ask presents NOT YET and keeps Forecast figures');
 }
 
 function forecastEqualCash(comparison) {

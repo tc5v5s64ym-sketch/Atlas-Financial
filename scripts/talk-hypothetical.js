@@ -10,11 +10,14 @@
  * requires exactly one amount and one target. A comparison extract
  * requires two or more complete amount↔target pairs and fails closed
  * on omit, add, or swap. When the caller asks preference over an
- * already-earned explicit A-vs-B, this module applies the owner
- * preference rule to those Forecast comparison figures only. It does
- * not choose an amount or target, does not invent ranking, weights, or
- * affordability, does not read decisionPosture or targetBuffer as
- * policy, does not substitute plan.nextDollar, and does not write.
+ * already-earned explicit two-option A-vs-B, this module applies the
+ * owner preference rule to those Forecast comparison figures only.
+ * Preference judgment is exactly two scenarios; a 3+ option preference
+ * ask is NOT YET / INDETERMINATE and does not emit PREFER. Forecast
+ * comparison of two or more extras is unchanged. It does not choose an
+ * amount or target, does not invent ranking, weights, or affordability,
+ * does not read decisionPosture or targetBuffer as policy, does not
+ * substitute plan.nextDollar, and does not write.
  */
 
 const Forecast = require('../public/forecast.js');
@@ -168,8 +171,13 @@ function preferenceIndeterminate(reason) {
 
 function judgeComparisonPreference(comparison) {
   if (!comparison || comparison.status !== 'ready'
-      || !Array.isArray(comparison.scenarios) || comparison.scenarios.length < 2) {
+      || !Array.isArray(comparison.scenarios)) {
     return preferenceIndeterminate('unavailable');
+  }
+  if (comparison.scenarios.length !== 2) {
+    return preferenceIndeterminate(
+      comparison.scenarios.length > 2 ? 'not-exactly-two-options' : 'unavailable'
+    );
   }
   const readings = [];
   for (const row of comparison.scenarios) {
