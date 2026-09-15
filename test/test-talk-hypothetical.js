@@ -1,9 +1,10 @@
 'use strict';
-/* Talk Slice 6B — Forecast adapter for one explicit hypothetical extra.
+/* Talk Slice 6B / A-vs-B — Forecast adapter for explicit hypothetical extras.
  *
- * Independent of Gemini HTTP: amount rules, debt-label resolve, the
- * exact Forecast.hypotheticalExtraPayment call, and Atlas wording from
- * Forecast fields only. Does not weaken test-hypothetical-extra-payment.js.
+ * Independent of Gemini HTTP: amount rules, debt-label resolve, pairing,
+ * the exact Forecast.hypotheticalExtraPayment and
+ * Forecast.hypotheticalExtraPaymentComparison calls, and Atlas wording
+ * from Forecast fields only. Does not weaken the Forecast comparison suite.
  * `node test/test-talk-hypothetical.js`
  */
 const fs = require('fs');
@@ -339,6 +340,8 @@ console.log('\n=== 6. Talk files keep Forecast math in the adapter only ===');
 {
   ok(/Forecast\.hypotheticalExtraPayment\(/.test(read('scripts/talk-hypothetical.js')),
     'scripts/talk-hypothetical.js is the Forecast call site');
+  ok(/Forecast\.hypotheticalExtraPaymentComparison\(/.test(read('scripts/talk-hypothetical.js')),
+    'scripts/talk-hypothetical.js is the comparison Forecast call site');
   for (const file of [
     'scripts/talk-gemini.js',
     'scripts/talk-presentation.js',
@@ -350,6 +353,257 @@ console.log('\n=== 6. Talk files keep Forecast math in the adapter only ===');
   }
   ok(!/require\(['"][^'"]*forecast/i.test(read('scripts/talk-presentation.js')),
     'presentation still does not import Forecast');
+}
+
+console.log('\n=== 7. Talk A-vs-B comparison adapter is fail-closed and Forecast-only ===');
+{
+  const { plan, debts } = fixture();
+  const question = 'What if I put $1,000 on MBNA versus $500 on the HELOC?';
+  const recovered = TalkHypothetical.recoverCallerScenarioPairs(question, debts);
+  ok(recovered.ok === true
+      && recovered.pairs.length === 2
+      && recovered.pairs[0].amount === 1000
+      && recovered.pairs[0].debtId === 'mbna'
+      && recovered.pairs[1].amount === 500
+      && recovered.pairs[1].debtId === 'heloc',
+    'question pairing keeps $1000 with MBNA and $500 with HELOC');
+
+  ok(TalkHypothetical.parseComparisonExtract({
+    intent: 'hypothetical-extra-payment-comparison',
+    scenarios: [
+      { amount: 1000, debtLabel: 'MBNA' },
+      { amount: 500, debtLabel: 'HELOC' },
+    ],
+  }).ok === true,
+    'bounded comparison extract parses without claims or ids');
+  ok(TalkHypothetical.parseComparisonExtract({
+    intent: 'hypothetical-extra-payment-comparison',
+    scenarios: [
+      { amount: 1000, debtLabel: 'MBNA', debtId: 'mbna' },
+      { amount: 500, debtLabel: 'HELOC' },
+    ],
+  }).ok === false,
+    'Gemini cannot invent a debt id on a comparison scenario');
+  ok(TalkHypothetical.parseComparisonExtract({
+    intent: 'hypothetical-extra-payment-comparison',
+    scenarios: [
+      { amount: 1000, debtLabel: 'MBNA' },
+      { amount: 500, debtLabel: 'HELOC' },
+    ],
+    ranking: 'A',
+  }).ok === false,
+    'comparison extract rejects ranking as authority');
+
+  const expected = F.hypotheticalExtraPaymentComparison(plan, debts, START, {
+    nature: 'hypothetical-comparison',
+    scenarios: [
+      { amount: 1000, debtId: 'mbna' },
+      { amount: 500, debtId: 'heloc' },
+    ],
+  });
+  const got = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 1000, debtLabel: 'MBNA' },
+      { amount: 500, debtLabel: 'HELOC' },
+    ],
+    question,
+    plan,
+    debts,
+  });
+  ok(expected.status === 'ready' && got.status === 'ready',
+    'adapter and Forecast both return ready for an explicit comparison');
+  ok(got.calculator === 'Forecast'
+      && got.nature === 'hypothetical-comparison'
+      && got.recommendation === null
+      && got.ranking === null
+      && got.affordability === null
+      && got.writesCanonicalState === false
+      && got.actionPermission === 'not-granted',
+    'adapter returns the Forecast comparison unchanged with no ranking');
+  ok(got.scenarios.length === 2
+      && got.scenarios[0].input.amount === 1000
+      && got.scenarios[0].input.debtId === 'mbna'
+      && got.scenarios[1].input.amount === 500
+      && got.scenarios[1].input.debtId === 'heloc',
+    'presented option order preserves $1000↔MBNA and $500↔HELOC');
+  ok(got.scenarios[0].result.delta.debt.ending
+        === expected.scenarios[0].result.delta.debt.ending
+      && got.scenarios[1].result.delta.debt.interest
+        === expected.scenarios[1].result.delta.debt.interest
+      && got.baseline.cash.ending === expected.baseline.cash.ending,
+    'presented comparison deltas equal an independent Forecast comparison call');
+  const sliceA = F.hypotheticalExtraPayment(plan, debts, START, {
+    amount: 1000, debtId: 'mbna', nature: 'hypothetical',
+  });
+  const sliceB = F.hypotheticalExtraPayment(plan, debts, START, {
+    amount: 500, debtId: 'heloc', nature: 'hypothetical',
+  });
+  ok(sliceA.status === 'ready' && sliceB.status === 'ready'
+      && got.scenarios[0].result.delta.debt.ending === sliceA.delta.debt.ending
+      && got.scenarios[1].result.delta.cash.ending === sliceB.delta.cash.ending
+      && got.baseline.cash.ending === sliceA.baseline.cash.ending
+      && got.baseline.cash.ending === sliceB.baseline.cash.ending,
+    'each option equals an independent Slice 6 call on a shared baseline');
+
+  const swapped = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 1000, debtLabel: 'HELOC' },
+      { amount: 500, debtLabel: 'MBNA' },
+    ],
+    question,
+    plan,
+    debts,
+  });
+  ok(swapped.status === 'unavailable',
+    'swapped $1000↔HELOC and $500↔MBNA extract fails closed against the question');
+
+  const presented = TalkPresentation.presentHypotheticalComparison(got, {
+    metadata: { effectiveAsOf: START, freshness: { confidence: 'canonical-opening' } },
+  });
+  const interestA = TalkPresentation.formatCurrency(
+    expected.scenarios[0].result.delta.debt.interest
+  );
+  const interestB = TalkPresentation.formatCurrency(
+    expected.scenarios[1].result.delta.debt.interest
+  );
+  const cashA = TalkPresentation.formatCurrency(
+    expected.scenarios[0].result.delta.cash.ending
+  );
+  ok(presented.source === 'Forecast'
+      && presented.trust === 'calculated'
+      && presented.asOf === START
+      && presented.action === null,
+    'ready comparison presentation is Forecast-sourced and not a nav recommendation');
+  ok(/Hypothetical comparison · Forecast as of/.test(presented.answer)
+      && /not a recommendation/i.test(presented.answer)
+      && /does not rank these options/.test(presented.answer)
+      && /Option A/.test(presented.answer)
+      && /Option B/.test(presented.answer)
+      && presented.answer.indexOf(interestA) !== -1
+      && presented.answer.indexOf(interestB) !== -1
+      && presented.answer.indexOf(cashA) !== -1
+      && /91 days/.test(presented.answer),
+    'wording is Hypothetical comparison · Forecast with Option A/B and independent deltas');
+  ok(/not available cash or safe-to-spend/.test(presented.answer),
+    'comparison amount is not presented as available or safe-to-spend');
+  ok(/Available credit is not cash/.test(presented.answer),
+    'available credit is not cash');
+  ok(!/lifetime/i.test(presented.answer),
+    'window interest is not called lifetime');
+  ok(!/Option A is better/i.test(presented.answer)
+      && !/\bbetter\b/i.test(presented.answer)
+      && !/\bwinner\b/i.test(presented.answer)
+      && !/\bshould\b/i.test(presented.answer),
+    'presentation has no ranking or recommendation language');
+  ok(!/\b2026-\d{2}-\d{2}\b/.test(presented.answer.replace(new RegExp(START, 'g'), '')),
+    'no payoff date is invented beyond the Forecast as-of');
+
+  const missing = TalkPresentation.presentHypotheticalComparison({
+    status: 'unavailable',
+    reason: 'extract-mismatch',
+  }, { metadata: { effectiveAsOf: START } });
+  ok(missing.answer === TalkPresentation.HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER
+      && missing.trust === 'unavailable'
+      && !/\$0/.test(missing.answer),
+    'comparison unavailable is not published as zero');
+
+  const adversarial = [
+    ['best two cards', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'High-rate card' },
+        { amount: 1000, debtLabel: 'Low-rate card' },
+      ],
+      question: 'Compare the best two cards.',
+    }],
+    ['where to put $1k', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 1000, debtLabel: 'HELOC' },
+      ],
+      question: 'Where should I put $1,000?',
+    }],
+    ['wherever saves most', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+      question: 'Put extra wherever saves most, $1,000 on MBNA or $500 on the HELOC.',
+    }],
+    ['afford', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+      question: 'What can we afford, $1,000 on MBNA or $500 on the HELOC?',
+    }],
+    ['all extra cash', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+      question: 'Use all extra cash: $1,000 on MBNA or $500 on the HELOC.',
+    }],
+    ['posture picks options', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+      question: 'Use decisionPosture to pick $1,000 on MBNA or $500 on the HELOC.',
+    }],
+    ['compare without amounts', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+      question: 'Compare MBNA and the HELOC.',
+    }],
+    ['ambiguous Visa', {
+      scenarios: [
+        { amount: 200, debtLabel: 'Visa' },
+        { amount: 200, debtLabel: 'HELOC' },
+      ],
+      question: 'What if I put $200 on Visa versus $200 on the HELOC?',
+    }],
+    ['MBNA or HELOC without clear scenario structure', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 1000, debtLabel: 'HELOC' },
+      ],
+      question: 'What if I put $1,000 on MBNA or the HELOC?',
+    }],
+    ['HELOC funds better card', {
+      scenarios: [
+        { amount: 1000, debtLabel: 'HELOC' },
+        { amount: 1000, debtLabel: 'High-rate card' },
+      ],
+      question: 'Use HELOC funds for the better card, $1,000 on HELOC or $1,000 on the High-rate card.',
+    }],
+  ];
+  for (const [label, input] of adversarial) {
+    ok(TalkHypothetical.evaluateComparison({
+      scenarios: input.scenarios,
+      question: input.question,
+      plan,
+      debts,
+    }).status === 'unavailable',
+      `${label} fails closed`);
+  }
+
+  const orCompare = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 1000, debtLabel: 'MBNA' },
+      { amount: 500, debtLabel: 'HELOC' },
+    ],
+    question: 'What if I put $1,000 on MBNA or 500 on the HELOC?',
+    plan,
+    debts,
+  });
+  ok(orCompare.status === 'ready'
+      && orCompare.scenarios[0].input.debtId === 'mbna'
+      && orCompare.scenarios[0].input.amount === 1000
+      && orCompare.scenarios[1].input.debtId === 'heloc'
+      && orCompare.scenarios[1].input.amount === 500,
+    'explicit mixed amounts on named debts are a comparison, not a swap');
 }
 
 ok(hashFile(DATA) === liveHash, 'live data.json bytes unchanged at suite end');

@@ -19,6 +19,7 @@
 
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
 const HYPOTHETICAL_UNAVAILABLE_ANSWER = 'That hypothetical extra payment is not available from Forecast';
+const HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER = 'That hypothetical comparison is not available from Forecast';
 
 const ALLOWED_ACTIONS = Object.freeze({
   budget: Object.freeze({ href: '/', label: 'View Budget' }),
@@ -688,34 +689,9 @@ function emptyPresentation(answer, extras) {
   };
 }
 
-function presentHypotheticalExtra(result, packet) {
-  const asOf = (result && result.input && result.input.asOf) || readAsOf(packet);
-  const freshness = readFreshness(packet);
-  if (!result || result.status !== 'ready') {
-    return emptyPresentation(HYPOTHETICAL_UNAVAILABLE_ANSWER, {
-      source: 'Forecast',
-      trust: 'unavailable',
-      asOf,
-      freshness,
-    });
-  }
-  const amountText = formatCurrency(result.input && result.input.amount);
-  const label = result.input && typeof result.input.debtLabel === 'string'
-    ? result.input.debtLabel
-    : '';
-  const day = result.input && result.input.asOf;
-  if (!amountText || !label || typeof day !== 'string' || !day) {
-    return emptyPresentation(HYPOTHETICAL_UNAVAILABLE_ANSWER, {
-      source: 'Forecast',
-      trust: 'unavailable',
-      asOf,
-      freshness,
-    });
-  }
-  const sentences = [
-    `If you put ${amountText} on ${label} as a hypothetical extra on ${day}:`,
-  ];
-  const absorbed = result.absorbed;
+function hypotheticalConsequenceSentences(result) {
+  const sentences = [];
+  const absorbed = result && result.absorbed;
   if (absorbed && Number.isFinite(Number(absorbed.amount))) {
     const applied = formatCurrency(absorbed.amount);
     if (applied) {
@@ -727,9 +703,9 @@ function presentHypotheticalExtra(result, packet) {
       sentences.push(line);
     }
   }
-  const dDebt = result.delta && result.delta.debt;
-  const sDebt = result.scenario && result.scenario.debt;
-  const bDebt = result.baseline && result.baseline.debt;
+  const dDebt = result && result.delta && result.delta.debt;
+  const sDebt = result && result.scenario && result.scenario.debt;
+  const bDebt = result && result.baseline && result.baseline.debt;
   if (dDebt && Number.isFinite(Number(dDebt.ending))
       && sDebt && Number.isFinite(Number(sDebt.ending))
       && bDebt && Number.isFinite(Number(bDebt.ending))) {
@@ -762,7 +738,7 @@ function presentHypotheticalExtra(result, packet) {
       );
     }
   }
-  const dCash = result.delta && result.delta.cash;
+  const dCash = result && result.delta && result.delta.cash;
   if (dCash && Number.isFinite(Number(dCash.ending))) {
     const cash = formatCurrency(dCash.ending);
     if (cash) {
@@ -783,10 +759,104 @@ function presentHypotheticalExtra(result, packet) {
       sentences.push(`Forecast extra-cash totals change by ${extra}.`);
     }
   }
-  if (result.delta && result.delta.payoff && result.delta.payoff.clearedWithinWindow === true) {
+  if (result && result.delta && result.delta.payoff
+      && result.delta.payoff.clearedWithinWindow === true) {
     sentences.push('Forecast says the named debt would clear within the current window.');
   }
+  return sentences;
+}
+
+function presentHypotheticalExtra(result, packet) {
+  const asOf = (result && result.input && result.input.asOf) || readAsOf(packet);
+  const freshness = readFreshness(packet);
+  if (!result || result.status !== 'ready') {
+    return emptyPresentation(HYPOTHETICAL_UNAVAILABLE_ANSWER, {
+      source: 'Forecast',
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+  const amountText = formatCurrency(result.input && result.input.amount);
+  const label = result.input && typeof result.input.debtLabel === 'string'
+    ? result.input.debtLabel
+    : '';
+  const day = result.input && result.input.asOf;
+  if (!amountText || !label || typeof day !== 'string' || !day) {
+    return emptyPresentation(HYPOTHETICAL_UNAVAILABLE_ANSWER, {
+      source: 'Forecast',
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+  const sentences = [
+    `If you put ${amountText} on ${label} as a hypothetical extra on ${day}:`,
+  ].concat(hypotheticalConsequenceSentences(result));
   sentences.push('This is a hypothetical scenario from Forecast and is not a recommendation.');
+  return {
+    answer: sentences.join(' '),
+    source: 'Forecast',
+    trust: 'calculated',
+    asOf: day,
+    freshness,
+    action: null,
+  };
+}
+
+function comparisonOptionLabel(index, count) {
+  if (count === 2) return `Option ${index === 0 ? 'A' : 'B'}`;
+  return `Option ${index + 1}`;
+}
+
+function presentHypotheticalComparison(result, packet) {
+  const asOf = (result && result.baseline && result.baseline.asOf) || readAsOf(packet);
+  const freshness = readFreshness(packet);
+  if (!result || result.status !== 'ready'
+      || !Array.isArray(result.scenarios) || result.scenarios.length < 2) {
+    return emptyPresentation(HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER, {
+      source: 'Forecast',
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+  const day = result.baseline && result.baseline.asOf;
+  const horizon = result.baseline && result.baseline.horizonDays;
+  if (typeof day !== 'string' || !day || !Number.isFinite(Number(horizon))) {
+    return emptyPresentation(HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER, {
+      source: 'Forecast',
+      trust: 'unavailable',
+      asOf,
+      freshness,
+    });
+  }
+  const optionLines = [];
+  for (let i = 0; i < result.scenarios.length; i += 1) {
+    const row = result.scenarios[i];
+    const input = row && row.input;
+    const inner = row && row.result;
+    const amountText = formatCurrency(input && input.amount);
+    const label = input && typeof input.debtLabel === 'string' ? input.debtLabel : '';
+    if (!amountText || !label || !inner || inner.status !== 'ready') {
+      return emptyPresentation(HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER, {
+        source: 'Forecast',
+        trust: 'unavailable',
+        asOf: day,
+        freshness,
+      });
+    }
+    const body = hypotheticalConsequenceSentences(inner);
+    optionLines.push(
+      `${comparisonOptionLabel(i, result.scenarios.length)} — If you put ${amountText} on ${label} as a hypothetical extra on ${day}: ${body.join(' ')}`
+    );
+  }
+  const sentences = [
+    `Hypothetical comparison · Forecast as of ${day}. The Forecast window is ${Number(horizon)} days.`,
+  ].concat(optionLines);
+  sentences.push(
+    'This is a hypothetical comparison from Forecast and is not a recommendation. Forecast does not rank these options.'
+  );
   return {
     answer: sentences.join(' '),
     source: 'Forecast',
@@ -840,6 +910,7 @@ function isAllowedActionHref(href) {
 module.exports = {
   UNAVAILABLE_ANSWER,
   HYPOTHETICAL_UNAVAILABLE_ANSWER,
+  HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER,
   ALLOWED_ACTIONS,
   ALLOWED_ACTION_HREFS,
   ALLOWED_SOURCES,
@@ -849,5 +920,6 @@ module.exports = {
   ruleFor,
   presentVerifiedClaims,
   presentHypotheticalExtra,
+  presentHypotheticalComparison,
   isAllowedActionHref,
 };

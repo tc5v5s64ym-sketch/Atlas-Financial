@@ -10,12 +10,14 @@
  * function calling, RAG, and fallback providers are disabled.
  *
  * The household-facing answer is never Gemini's free-form prose. The
- * model may return only a structured extractive claim list, or the
- * bounded hypothetical extract { intent, amount, debtLabel }. The
- * server verifies claims against this request's packet, or validates
- * that extract and lets Forecast compute consequences. Invented
- * figures, planner acts, and trust promotion cannot ride through as
- * ordinary English around a packet-grounded amount.
+ * model may return only a structured extractive claim list, the
+ * bounded hypothetical extract { intent, amount, debtLabel }, or the
+ * bounded comparison extract { intent, scenarios: [{ amount, debtLabel }] }.
+ * The server verifies claims against this request's packet, or
+ * validates that extract against the original question and lets
+ * Forecast compute consequences. Invented figures, planner acts,
+ * ranking, and trust promotion cannot ride through as ordinary English
+ * around a packet-grounded amount.
  *
  * The dedicated secret is read only from the env object the server passes
  * in (`process.env.ATLAS_TALK_GEMINI_API_KEY` on the Node process). This
@@ -54,7 +56,11 @@ const INSTRUCTION = [
   '{"intent":"hypothetical-extra-payment","amount":<JSON number>,"debtLabel":"<caller-named debt label>"}',
   'amount is the caller-stated number only (1000 from "$1,000"). debtLabel is the caller-named debt text only. Do not invent a debt id. Do not return balances, interest, cash impact, payoff, affordability, recommendation, ranking, or free-form financial prose as authority.',
   '',
-  'If the question is missing the amount, missing the named debt, asks for the best debt, maximum interest save, maximum they can afford, spare cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice, borrowing on HELOC to pay another debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
+  'If and only if the household question is an explicit comparison of two or more hypothetical extra debt payments, and EACH option names BOTH a specific dollar amount AND a specific named debt, reply with exactly:',
+  '{"intent":"hypothetical-extra-payment-comparison","scenarios":[{"amount":<JSON number>,"debtLabel":"<caller-named debt label>"}, ...]}',
+  'Preserve each caller amount with the debt the caller paired it to. Different amounts are allowed only when the caller stated them. Do not omit, add, or swap options. Do not invent a debt id. Do not return balances, interest, cash, ranking, a winner, a recommendation, affordability, policy, permission, or free-form financial prose as authority.',
+  '',
+  'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
   '',
   'You MAY:',
   '- cite facts that are already present in this request\'s packet as path/equals claims',
@@ -63,6 +69,7 @@ const INSTRUCTION = [
   '- cite owner decision-posture labels already present on policy.decisionPosture for factual policy questions',
   '- cite uncertainty, freshness, and estimated versus confirmed labels already on the packet',
   '- extract only intent, amount, and debtLabel for an explicit hypothetical extra that already names both',
+  '- extract only intent and scenarios of amount plus debtLabel for an explicit comparison that already names both on each option',
   '- return status "unavailable" when something is not in the packet',
   '',
   'For pay-period, upcoming-commitment / bills, credit-picture, and factual decision-policy questions, cite only primitive path/equals claims already in this packet. Preferred paths:',
@@ -73,7 +80,7 @@ const INSTRUCTION = [
   'Do not cite a whole object or array as equals. Cite at most 8 claims. If the question asks what to do, how to allocate extra cash, how much buffer, safe-to-spend, a payoff or Visa amount, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
   '',
   'You MUST NOT:',
-  '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, and debtLabel',
+  '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, debtLabel, and scenarios',
   '- invent a debt id, or return balances, interest, cash impact, payoff, affordability, recommendation, or ranking as authority',
   '- perform new financial calculations',
   '- invent or compute safe-to-spend, leftover, or weekly-cap figures',
@@ -82,8 +89,8 @@ const INSTRUCTION = [
   '- treat owner policy as a Forecast override or a second planner',
   '- perform debt payoff math',
   '- invent affordability',
-  '- create a new forecast or scenario',
-  '- recommend allocations, priorities, or a new household policy',
+  '- create a new forecast or computed scenario; the only permitted scenario list is caller-stated amount and debtLabel pairs on the comparison extract',
+  '- recommend allocations, priorities, a winner, or a new household policy',
   '- manufacture missing numbers',
   '- treat unknown as verified, or stale as current',
   '- fill gaps with general personal-finance knowledge',
@@ -378,6 +385,11 @@ function parseTalkModelOutput(text) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, reason: 'not structured' };
   }
+  const comparison = TalkHypothetical.parseComparisonExtract(parsed);
+  if (comparison.ok) return comparison;
+  if (comparison.reason !== 'not-comparison') {
+    return { ok: false, kind: 'hypothetical-comparison', reason: comparison.reason };
+  }
   const hyp = TalkHypothetical.parseExtract(parsed);
   if (hyp.ok) return hyp;
   if (hyp.reason !== 'not-hypothetical') {
@@ -499,6 +511,17 @@ function presentHypotheticalExtract(extract, packet, atlas, question) {
   return TalkPresentation.presentHypotheticalExtra(result, packet);
 }
 
+function presentComparisonExtract(extract, packet, atlas, question) {
+  const result = TalkHypothetical.evaluateComparison({
+    scenarios: extract.scenarios,
+    question,
+    plan: atlas && atlas.plan,
+    debts: atlas && atlas.debts,
+    packet,
+  });
+  return TalkPresentation.presentHypotheticalComparison(result, packet);
+}
+
 async function ask({ question, packet, env, atlas }) {
   if (!isConfigured(env)) throw talkUnavailable();
   const parsed = normalizeQuestion(question);
@@ -535,10 +558,20 @@ async function ask({ question, packet, env, atlas }) {
   if (!text) throw talkAnswerUnavailable();
   const model = parseTalkModelOutput(text);
   if (!model.ok) {
+    if (model.kind === 'hypothetical-comparison') {
+      return TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet);
+    }
     if (model.kind === 'hypothetical') {
       return TalkPresentation.presentHypotheticalExtra({ status: 'unavailable' }, packet);
     }
     throw talkAnswerUnavailable();
+  }
+  if (model.intent === TalkHypothetical.COMPARISON_INTENT) {
+    const presented = presentComparisonExtract(model, packet, atlas, parsed.question);
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      throw talkAnswerUnavailable();
+    }
+    return presented;
   }
   if (model.intent === TalkHypothetical.HYPOTHETICAL_INTENT) {
     const presented = presentHypotheticalExtract(model, packet, atlas, parsed.question);

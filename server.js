@@ -405,9 +405,11 @@ app.all('/talk/capability', (_req, res) => {
 // sends question + packet + the fixed instruction contract, verifies
 // extractive claims against that packet, maps verified claims through
 // Atlas presentation templates, and returns that household-facing
-// presentation. An explicit hypothetical extra (amount + named debt)
-// is extracted, server-validated, resolved to one stable id, then
-// computed only by Forecast. Does not persist prompts or answers.
+// presentation. An explicit hypothetical extra (amount + named debt),
+// or an explicit comparison of two or more such extras, is extracted,
+// server-validated against the original question, resolved to stable
+// ids, then computed only by Forecast. Does not persist prompts or
+// answers.
 // Does not write.
 const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
 app.post('/talk/ask', (req, res, next) => {
