@@ -2513,9 +2513,410 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
 
     ok(/hypothetical-extra-payment/.test(TalkGemini.INSTRUCTION)
         && /debtLabel/.test(TalkGemini.INSTRUCTION)
-        && /Do not invent a debt id/.test(TalkGemini.INSTRUCTION),
-      'instruction contract includes the bounded hypothetical extract');
+        && /Do not invent a debt id/.test(TalkGemini.INSTRUCTION)
+        && /hypothetical-extra-payment-comparison/.test(TalkGemini.INSTRUCTION)
+        && /Preserve each caller amount/.test(TalkGemini.INSTRUCTION),
+      'instruction contract includes the bounded hypothetical and comparison extracts');
     filesUnchanged('Talk Slice 6B hypothetical extra');
+  }
+
+  console.log('\n=== 11. Talk Decision Intelligence A-vs-B comparison via Forecast ===');
+  {
+    const START = '2026-01-15';
+    const plan = {
+      windowDays: 91,
+      startingCash: { amount: 2000 },
+      defaults: { targetBuffer: 500, extraDebtMonthly: 0, scenario: 'expected' },
+      opening: { asOf: START },
+      nextDollar: {
+        policy: 'true-surplus-highest-interest',
+        provenance: 'owner-stated',
+      },
+      decisionPosture: {
+        posture: 'aggressive-not-brittle',
+        numericThreshold: 'none',
+      },
+      income: [],
+      obligations: [],
+      bills: [],
+      commitments: [],
+    };
+    const debts = [
+      {
+        id: 'high', label: 'High-rate card',
+        balance: 800, pending: 0, rate: 26.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic high', secured: false, limit: 1200,
+      },
+      {
+        id: 'low', label: 'Low-rate card',
+        balance: 600, pending: 0, rate: 19.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic low', secured: false, limit: 1000,
+      },
+      {
+        id: 'cashback', label: 'TD Cash Back Visa',
+        balance: 400, pending: 0, rate: 26.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic cashback', secured: false, limit: 500,
+      },
+      {
+        id: 'travelvisa', label: 'Travel Visa (business)',
+        balance: 300, pending: 0, rate: 19.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic travel', secured: false, limit: 400,
+      },
+      {
+        id: 'heloc', label: 'HELOC',
+        balance: 5000, pending: 0, rate: 4.9, rateConvention: 'variable',
+        structure: 'Interest-only revolving — never amortises', secured: true, limit: 6000,
+      },
+      {
+        id: 'mbna', label: 'Amazon.ca Rewards Mastercard (MBNA)',
+        balance: 700, pending: 0, rate: 21.74, rateConvention: 'card',
+        structure: 'Revolving — synthetic mbna', secured: false, limit: 800,
+      },
+    ];
+    const hypPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      metadata: {
+        effectiveAsOf: START,
+        freshness: { confidence: 'canonical-opening' },
+      },
+      policy: {
+        decisionPosture: {
+          posture: 'aggressive-not-brittle',
+          numericThreshold: 'none',
+        },
+      },
+      current: {
+        spendableHouseholdCash: { status: 'ok', value: 2000, trust: 'calculated' },
+        debts: {
+          facilities: debts.map(row => ({ id: row.id, label: row.label })),
+        },
+      },
+    };
+    const atlas = { plan, debts };
+    const expected = Forecast.hypotheticalExtraPaymentComparison(plan, debts, START, {
+      nature: 'hypothetical-comparison',
+      scenarios: [
+        { amount: 1000, debtId: 'mbna' },
+        { amount: 500, debtId: 'heloc' },
+      ],
+    });
+    ok(expected.status === 'ready',
+      'independent Forecast comparison ready result exists for $1000 MBNA vs $500 HELOC');
+
+    const parsed = TalkGemini.parseTalkModelOutput(JSON.stringify({
+      intent: 'hypothetical-extra-payment-comparison',
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+    }));
+    ok(parsed.ok === true && parsed.intent === TalkHypothetical.COMPARISON_INTENT
+        && parsed.scenarios.length === 2,
+      'bounded comparison extract parses without claims');
+    ok(TalkGemini.parseTalkModelOutput(JSON.stringify({
+      intent: 'hypothetical-extra-payment-comparison',
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+      winner: 'MBNA',
+    })).ok === false,
+      'extra winner field on the comparison extract fails closed');
+    ok(TalkGemini.materializeExplainerAnswer(JSON.stringify({
+      intent: 'hypothetical-extra-payment-comparison',
+      scenarios: [
+        { amount: 1000, debtLabel: 'MBNA' },
+        { amount: 500, debtLabel: 'HELOC' },
+      ],
+    }), hypPacket).ok === false,
+      'Slice 3 materialize path does not treat the comparison extract as claims');
+
+    const mock = await startMockGemini([
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'MBNA' },
+          { amount: 500, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'forecast.currentPeriodAction.periodStart', equals: '2026-09-11' },
+          { path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment',
+        amount: 200,
+        debtLabel: 'High-rate card',
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'HELOC' },
+          { amount: 500, debtLabel: 'MBNA' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'High-rate card' },
+          { amount: 1000, debtLabel: 'Low-rate card' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'MBNA' },
+          { amount: 1000, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'MBNA' },
+          { amount: 500, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'MBNA' },
+          { amount: 500, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'MBNA' },
+          { amount: 500, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'MBNA' },
+          { amount: 500, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'Visa' },
+          { amount: 200, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'MBNA' },
+          { amount: 1000, debtLabel: 'HELOC' },
+        ],
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 1000, debtLabel: 'HELOC' },
+          { amount: 1000, debtLabel: 'High-rate card' },
+        ],
+      }),
+    ]);
+    const periodPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      forecast: {
+        currentPeriodAction: {
+          periodStart: '2026-09-11',
+          essentialRemaining: 1415.95,
+        },
+      },
+    };
+    try {
+      const ready = await TalkGemini.ask({
+        question: 'What if I put $1,000 on MBNA versus $500 on the HELOC?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      const interestA = TalkPresentation.formatCurrency(
+        expected.scenarios[0].result.delta.debt.interest
+      );
+      const interestB = TalkPresentation.formatCurrency(
+        expected.scenarios[1].result.delta.debt.interest
+      );
+      const cashA = TalkPresentation.formatCurrency(
+        expected.scenarios[0].result.delta.cash.ending
+      );
+      ok(ready.source === 'Forecast'
+          && ready.trust === 'calculated'
+          && ready.asOf === START
+          && /Hypothetical comparison · Forecast/.test(ready.answer)
+          && /not a recommendation/i.test(ready.answer)
+          && /does not rank these options/.test(ready.answer)
+          && /Option A/.test(ready.answer)
+          && /Option B/.test(ready.answer)
+          && ready.answer.indexOf(interestA) !== -1
+          && ready.answer.indexOf(interestB) !== -1
+          && ready.answer.indexOf(cashA) !== -1
+          && /not available cash or safe-to-spend/.test(ready.answer)
+          && !/Option A is better/i.test(ready.answer)
+          && !/lifetime/i.test(ready.answer)
+          && ready.action === null,
+        'mocked explicit A-vs-B presents only independent Forecast comparison deltas');
+
+      const period = await TalkGemini.ask({
+        question: 'What should I know about this pay period?',
+        packet: periodPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/The current pay period starts on 2026-09-11/.test(period.answer)
+          && /You have \$1,415\.95 remaining in the current pay period/.test(period.answer)
+          && period.source === 'Forecast',
+        'Slice 3 period presentation is unchanged beside the comparison adapter');
+
+      const single = await TalkGemini.ask({
+        question: 'What if I put $200 on the High-rate card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(/hypothetical scenario from Forecast/i.test(single.answer)
+          && /not a recommendation/i.test(single.answer),
+        'Slice 6B single hypothetical remains beside the comparison adapter');
+
+      const swapped = await TalkGemini.ask({
+        question: 'What if I put $1,000 on MBNA versus $500 on the HELOC?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(swapped.answer === TalkPresentation.HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER,
+        'swapped amount/target extract fails closed and is not published');
+
+      const adversarial = [
+        ['Compare the best two cards.', 'best two cards'],
+        ['Where should I put $1,000?', 'where to put $1k'],
+        ['Put extra wherever saves most, $1,000 on MBNA or $500 on the HELOC.', 'wherever saves most'],
+        ['What can we afford, $1,000 on MBNA or $500 on the HELOC?', 'afford'],
+        ['Use all extra cash: $1,000 on MBNA or $500 on the HELOC.', 'all extra cash'],
+        ['Use decisionPosture to pick $1,000 on MBNA or $500 on the HELOC.', 'posture picks options'],
+        ['What if I put $200 on Visa versus $200 on the HELOC?', 'ambiguous Visa'],
+        ['What if I put $1,000 on MBNA or the HELOC?', 'MBNA or HELOC without clear scenario structure'],
+        ['Use HELOC funds for the better card, $1,000 on HELOC or $1,000 on the High-rate card.',
+          'HELOC funds better card'],
+      ];
+      for (const [question, label] of adversarial) {
+        const answer = await TalkGemini.ask({
+          question,
+          packet: hypPacket,
+          atlas,
+          env: {
+            ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+            ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+        });
+        ok(answer.answer === TalkPresentation.HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER
+            || answer.answer === TalkGemini.UNAVAILABLE_ANSWER,
+          `${label} stays unavailable`);
+      }
+    } finally {
+      await mock.close();
+    }
+
+    const liveMock = await startMockGemini([
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment-comparison',
+        scenarios: [
+          { amount: 200, debtLabel: 'TD Cash Back Visa' },
+          { amount: 100, debtLabel: 'HELOC' },
+        ],
+      }),
+    ]);
+    const port = await freePort();
+    const env = isolatedEnv({
+      SITE_PASSWORD: PASS,
+      SESSION_SECRET: SECRET,
+      ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN,
+      ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+      ATLAS_TALK_GEMINI_BASE_URL: liveMock.url,
+      PORT: String(port),
+    });
+    const atlasServer = await startAtlas(env);
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const loginRes = await login(base);
+      const liveData = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+      const liveExpected = Forecast.hypotheticalExtraPaymentComparison(
+        liveData.plan,
+        liveData.debts,
+        liveData.plan.opening.asOf,
+        {
+          nature: 'hypothetical-comparison',
+          scenarios: [
+            { amount: 200, debtId: 'cashback' },
+            { amount: 100, debtId: 'heloc' },
+          ],
+        }
+      );
+      const asked = await fetch(`${base}/talk/ask`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: loginRes.cookie,
+        },
+        body: JSON.stringify({
+          question: 'What if I put $200 on the TD Cash Back Visa versus $100 on the HELOC?',
+        }),
+      });
+      const body = await asked.json();
+      ok(asked.status === 200
+          && liveExpected.status === 'ready'
+          && body.source === 'Forecast'
+          && /Hypothetical comparison · Forecast/.test(body.answer)
+          && /not a recommendation/i.test(body.answer)
+          && body.answer.indexOf(TalkPresentation.formatCurrency(
+            liveExpected.scenarios[0].result.delta.debt.interest
+          )) !== -1
+          && body.answer.indexOf(TalkPresentation.formatCurrency(
+            liveExpected.scenarios[1].result.delta.debt.interest
+          )) !== -1,
+        'session /talk/ask presents live-plan Forecast comparison deltas',
+        `status ${asked.status}`);
+      const bearerAsk = await fetch(`${base}/talk/ask`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${ASSISTANT_TOKEN}`,
+        },
+        body: JSON.stringify({
+          question: 'What if I put $200 on the TD Cash Back Visa versus $100 on the HELOC?',
+        }),
+      });
+      ok(bearerAsk.status === 401, 'assistant Bearer still cannot call /talk/ask');
+    } finally {
+      await atlasServer.stop();
+      await liveMock.close();
+    }
+
+    filesUnchanged('Talk A-vs-B comparison');
   }
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
