@@ -102,6 +102,7 @@ const SUMMARY_TITLES = Object.freeze({
 const SUMMARY_CLOSED = Object.freeze({
   noForecastChange: 'This answer does not compute a Forecast change.',
   reprintsOnly: 'This reprints already-published Atlas fields. It does not change household balances.',
+  reprintsForecastChange: 'This reprints already-published Forecast change fields.',
   packetOnly: 'Atlas cannot determine facts that are not in this request\'s packet.',
   unavailableNotNumber: 'Unavailable is not a number.',
   unknownNotFigure: 'Unknown is not a published figure.',
@@ -1184,7 +1185,16 @@ function assembleDecisionSummary(presentation, extras) {
       knows.push(presentation.answer);
     }
     if (!changes.length) changes.push(SUMMARY_CLOSED.noForecastChange);
-    if (!unchanged.length) unchanged.push(SUMMARY_CLOSED.reprintsOnly);
+    if (!unchanged.length) {
+      const hasForecastChange = changes.some(function (body) {
+        return body !== SUMMARY_CLOSED.noForecastChange;
+      });
+      unchanged.push(
+        hasForecastChange
+          ? SUMMARY_CLOSED.reprintsForecastChange
+          : SUMMARY_CLOSED.reprintsOnly
+      );
+    }
 
     const citations = Array.isArray(presentation.citations) ? presentation.citations : [];
     for (const cite of citations) {

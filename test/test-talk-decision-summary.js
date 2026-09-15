@@ -310,8 +310,33 @@ console.log('\n=== 4. Preference does not become permission; NOT YET stays unkno
   const unknown = sectionBodies(presented.summary, 'unknown').join('\n');
   const knows = sectionBodies(presented.summary, 'knows').join('\n');
   const changes = sectionBodies(presented.summary, 'changes');
+  const unchanged = sectionBodies(presented.summary, 'unchanged');
+  const high = Forecast.hypotheticalExtraPayment(
+    plan, debts, START, { amount: 200, debtId: 'high', nature: 'hypothetical' }
+  );
+  const heloc = Forecast.hypotheticalExtraPayment(
+    plan, debts, START, { amount: 200, debtId: 'heloc', nature: 'hypothetical' }
+  );
+  const highInterest = TalkPresentation.formatCurrency(high.delta.debt.interest);
+  const highCash = TalkPresentation.formatCurrency(high.delta.cash.ending);
+  const helocInterest = TalkPresentation.formatCurrency(heloc.delta.debt.interest);
+  const helocCash = TalkPresentation.formatCurrency(heloc.delta.cash.ending);
+  const changeBlob = changes.join('\n');
   ok(presented.summary && changes.length === 2,
     'comparison summary keeps both already-published option consequences');
+  ok(high.status === 'ready' && heloc.status === 'ready'
+      && changeBlob.indexOf(highInterest) !== -1
+      && changeBlob.indexOf(highCash) !== -1
+      && changeBlob.indexOf(helocInterest) !== -1
+      && changeBlob.indexOf(helocCash) !== -1
+      && /changes by/.test(changeBlob),
+    'comparison What changes reprints independently formatted Forecast cash and debt deltas');
+  ok(!presented.cards.items.some(item => item.kind === 'note')
+      && judged
+      && unchanged.indexOf(TalkPresentation.SUMMARY_CLOSED.reprintsOnly) === -1
+      && unchanged.indexOf('It does not change household balances.') === -1
+      && unchanged.indexOf(TalkPresentation.SUMMARY_CLOSED.reprintsForecastChange) !== -1,
+    'preference with Forecast deltas cannot fall back to reprint-only no-balance-change');
   if (judged && judged.verdict === 'PREFER') {
     ok(/PREFER/.test(knows)
         && /not a payment authority/.test(knows)
