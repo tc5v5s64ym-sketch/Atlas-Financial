@@ -2,13 +2,13 @@
 /* Talk Slice 6B — Forecast adapter for one explicit hypothetical extra.
  *
  * Gemini may extract only { intent, amount, debtLabel }. This module
- * validates the caller amount, requires that amount and debt target to
- * be recoverable from the original question and to agree with the
- * extract, resolves the label only through an exact/explicit catalog
- * name or alias, then calls Forecast.hypotheticalExtraPayment. It does
- * not choose an amount or target, does not read decisionPosture or
- * targetBuffer as policy, does not substitute plan.nextDollar, and
- * does not write.
+ * validates the caller amount, recovers every amount and exact catalog
+ * debt named in the original question, requires exactly one of each,
+ * and requires the extract to agree with that unique pair. It then
+ * calls Forecast.hypotheticalExtraPayment. Multi-target or mixed-amount
+ * questions fail closed. It does not choose an amount or target, does
+ * not read decisionPosture or targetBuffer as policy, does not
+ * substitute plan.nextDollar, and does not write.
  */
 
 const Forecast = require('../public/forecast.js');
@@ -131,19 +131,48 @@ function catalogFromDebts(debts, packet) {
   return catalog.filter(row => seen.get(row.id) === 1);
 }
 
+function findAmountMatches(text, regex) {
+  const re = new RegExp(regex.source, 'g');
+  const matches = [];
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    matches.push({
+      raw: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+  return matches;
+}
+
 function recoverCallerAmounts(question) {
   const text = String(question || '');
-  const dollar = text.match(DOLLAR_AMOUNT_RE) || [];
-  const tokens = dollar.length ? dollar : (text.match(BARE_AMOUNT_RE) || []);
+  const dollar = findAmountMatches(text, DOLLAR_AMOUNT_RE);
+  const bare = findAmountMatches(text, BARE_AMOUNT_RE).filter(row => (
+    !dollar.some(hit => row.start < hit.end && row.end > hit.start)
+  ));
   const amounts = [];
-  for (const raw of tokens) {
-    const parsed = parseCallerAmount(String(raw).replace(/\s+/g, ''));
+  for (const row of dollar.concat(bare)) {
+    const parsed = parseCallerAmount(String(row.raw).replace(/\s+/g, ''));
     if (parsed.ok && !amounts.includes(parsed.amount)) amounts.push(parsed.amount);
   }
   return amounts;
 }
 
-function extractAgreesWithQuestion(question, amount, debtLabel) {
+function recoverCallerDebtTargets(question, debts, packet) {
+  if (typeof question !== 'string' || !question.trim()) return [];
+  const catalog = catalogFromDebts(debts, packet);
+  const targets = [];
+  for (const row of catalog) {
+    const named = row.names.some(name => (
+      name && !isGenericDebtQuery(name) && containsNormalizedPhrase(question, name)
+    ));
+    if (named) targets.push(row.id);
+  }
+  return targets;
+}
+
+function extractAgreesWithQuestion(question, amount, debtLabel, debts, packet) {
   if (typeof question !== 'string' || !question.trim()) {
     return { ok: false, reason: 'extract-mismatch' };
   }
@@ -152,17 +181,23 @@ function extractAgreesWithQuestion(question, amount, debtLabel) {
   }
   const parsedAmount = parseCallerAmount(amount);
   if (!parsedAmount.ok) return { ok: false, reason: parsedAmount.reason };
-  const recovered = recoverCallerAmounts(question);
-  if (recovered.length !== 1 || recovered[0] !== parsedAmount.amount) {
+  const recoveredAmounts = recoverCallerAmounts(question);
+  if (recoveredAmounts.length !== 1 || recoveredAmounts[0] !== parsedAmount.amount) {
     return { ok: false, reason: 'extract-mismatch' };
   }
-  if (!containsNormalizedPhrase(question, debtLabel)) {
+  const recoveredTargets = recoverCallerDebtTargets(question, debts, packet);
+  if (recoveredTargets.length !== 1) {
+    return { ok: false, reason: 'ambiguous-target' };
+  }
+  const resolved = resolveDebtLabel(debtLabel, debts, packet);
+  if (!resolved.ok || resolved.debtId !== recoveredTargets[0]) {
     return { ok: false, reason: 'extract-mismatch' };
   }
   return {
     ok: true,
     amount: parsedAmount.amount,
     debtLabel: debtLabel.trim(),
+    debtId: resolved.debtId,
   };
 }
 
@@ -221,17 +256,15 @@ function unavailable(reason) {
 }
 
 function evaluate({ amount, debtLabel, question, plan, debts, packet }) {
-  const agreed = extractAgreesWithQuestion(question, amount, debtLabel);
+  const agreed = extractAgreesWithQuestion(question, amount, debtLabel, debts, packet);
   if (!agreed.ok) return unavailable(agreed.reason);
-  const resolved = resolveDebtLabel(agreed.debtLabel, debts, packet);
-  if (!resolved.ok) return unavailable(resolved.reason);
   if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
     return unavailable('missing-plan');
   }
   const asOf = plan.opening && plan.opening.asOf;
   return Forecast.hypotheticalExtraPayment(plan, debts, asOf, {
     amount: agreed.amount,
-    debtId: resolved.debtId,
+    debtId: agreed.debtId,
     nature: 'hypothetical',
   });
 }
@@ -241,6 +274,7 @@ module.exports = {
   HYPOTHETICAL_EXTRA_MAX,
   parseCallerAmount,
   recoverCallerAmounts,
+  recoverCallerDebtTargets,
   extractAgreesWithQuestion,
   resolveDebtLabel,
   parseExtract,

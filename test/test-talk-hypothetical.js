@@ -78,6 +78,11 @@ function fixture() {
       structure: 'Interest-only revolving — never amortises', secured: true, limit: 6000,
     },
     {
+      id: 'mbna', label: 'Amazon.ca Rewards Mastercard (MBNA)',
+      balance: 700, pending: 0, rate: 21.74, rateConvention: 'card',
+      structure: 'Revolving — synthetic mbna', secured: false, limit: 800,
+    },
+    {
       id: 'mortgage', label: 'Mortgage',
       balance: 200000, pending: 0, rate: 3.64, rateConvention: 'variable',
       structure: 'Amortising — synthetic', secured: true, limit: null,
@@ -243,6 +248,39 @@ console.log('\n=== 4. Fail-closed planner acts and Forecast ineligibility ===');
     debts,
   }).status === 'unavailable',
     'TD card extract stays unavailable even when it is in the question');
+  ok(TalkHypothetical.recoverCallerDebtTargets(
+    'What if I put $1,000 on MBNA or the HELOC?',
+    debts
+  ).length === 2,
+    'MBNA or HELOC recovers two catalog targets from the original question');
+  ok(TalkHypothetical.evaluate({
+    amount: 1000,
+    debtLabel: 'MBNA',
+    question: 'What if I put $1,000 on MBNA or the HELOC?',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'Gemini choosing MBNA from MBNA or HELOC fails closed');
+  ok(TalkHypothetical.evaluate({
+    amount: 1000,
+    debtLabel: 'HELOC',
+    question: 'What if I put $1,000 on MBNA or the HELOC?',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'Gemini choosing HELOC from MBNA or HELOC fails closed');
+  ok(TalkHypothetical.recoverCallerAmounts(
+    'What if I put $1,000 on MBNA or 500 on the HELOC?'
+  ).length === 2,
+    'mixed $1,000 and bare 500 are both recovered as caller amounts');
+  ok(TalkHypothetical.evaluate({
+    amount: 1000,
+    debtLabel: 'MBNA',
+    question: 'What if I put $1,000 on MBNA or 500 on the HELOC?',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'mixed-amount multi-target question fails closed');
   const funded = F.hypotheticalExtraPayment(plan, debts, START, {
     amount: 50, debtId: 'heloc', nature: 'hypothetical', fundFrom: 'heloc',
   });

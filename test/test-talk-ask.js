@@ -2089,6 +2089,11 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         balance: 5000, pending: 0, rate: 4.9, rateConvention: 'variable',
         structure: 'Interest-only revolving — never amortises', secured: true, limit: 6000,
       },
+      {
+        id: 'mbna', label: 'Amazon.ca Rewards Mastercard (MBNA)',
+        balance: 700, pending: 0, rate: 21.74, rateConvention: 'card',
+        structure: 'Revolving — synthetic mbna', secured: false, limit: 800,
+      },
     ];
     const hypPacket = {
       schema: Assistant.SCHEMA,
@@ -2206,6 +2211,16 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         intent: 'hypothetical-extra-payment',
         amount: 200,
         debtLabel: 'TD card',
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment',
+        amount: 1000,
+        debtLabel: 'MBNA',
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment',
+        amount: 1000,
+        debtLabel: 'MBNA',
       }),
     ]);
     const periodPacket = {
@@ -2410,6 +2425,30 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       });
       ok(tdCard.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
         'generic TD card is unavailable');
+
+      const mbnaOrHeloc = await TalkGemini.ask({
+        question: 'What if I put $1,000 on MBNA or the HELOC?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(mbnaOrHeloc.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
+        '$1,000 on MBNA or HELOC fails closed even when Gemini picks MBNA');
+
+      const mixedAmount = await TalkGemini.ask({
+        question: 'What if I put $1,000 on MBNA or 500 on the HELOC?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(mixedAmount.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
+        'mixed-amount multi-target question fails closed');
     } finally {
       await mock.close();
     }
