@@ -385,7 +385,7 @@ console.log('\n=== 6. Cards and plain answers still work ===');
     claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 }],
   }, remainingPacket());
   const ui = loadTalkApi();
-  const cards = ui.talkAnswerNode(presented);
+  const cards = ui.talkAnswerNode(Object.assign({}, presented, { summary: null }));
   const mount = cards.children[0];
   const cardBodies = mount.children.map(card => {
     const body = card.children.find(child => child.className === 'talk-card-body');

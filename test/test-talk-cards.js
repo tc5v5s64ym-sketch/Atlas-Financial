@@ -220,7 +220,7 @@ console.log('\n=== 3. Trusted cards reprint server strings; figures match presen
       && presented.cards.items[0].body.indexOf(independent) !== -1,
     'extractive card body is the server answer and the independently formatted remaining');
   const ui = loadTalkApi();
-  const rendered = ui.api.talkAnswerNode(presented);
+  const rendered = ui.api.talkAnswerNode(Object.assign({}, presented, { summary: null }));
   const bodies = cardBodies(rendered);
   ok(/talk-bubble-cards/.test(rendered.className)
       && bodies[0] === presented.answer
@@ -243,7 +243,7 @@ console.log('\n=== 3. Trusted cards reprint server strings; figures match presen
     closest() { return null; },
   };
   const reservedUi = loadTalkApi({ talkCards: reserved });
-  reservedUi.api.talkAnswerNode(presented);
+  reservedUi.api.talkAnswerNode(Object.assign({}, presented, { summary: null }));
   ok(reserved.hidden === false
       && reserved.children.length >= 1
       && reserved.children[0].children[1].textContent === presented.answer,
@@ -352,7 +352,7 @@ console.log('\n=== 5. Hypo / compare / preference cards match Forecast fields ==
     'preference cards reprint the same option figures and the server PREFER / NOT YET sentence');
 
   const ui = loadTalkApi();
-  const renderedPrefer = ui.api.talkAnswerNode(presentedPrefer);
+  const renderedPrefer = ui.api.talkAnswerNode(Object.assign({}, presentedPrefer, { summary: null }));
   const preferBodies = cardBodies(renderedPrefer);
   ok(preferBodies.some(body => body && body.indexOf(interestA) !== -1)
       && preferBodies.some(body => body && body.indexOf(interestB) !== -1),

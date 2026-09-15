@@ -18,6 +18,11 @@
  * the Talk card surface. Cards do not add numbers. Household-facing
  * citations are assembled here from the same source / trust / as-of /
  * action fields. Gemini does not invent them.
+ * Optional presentation.summary is a five-section household decision
+ * briefing assembled from those already-verified presentation fields,
+ * card bodies, and citation labels. It does not calculate, rank, or
+ * convert uncertainty into a recommendation. Assembly failure leaves
+ * the incumbent answer, cards, and citations in place.
  *
  * Unknown paths stay conservative: path-is-value wording, no human
  * meaning, no Forecast/Bills/Credit/Planning provenance, no nav action.
@@ -78,6 +83,33 @@ const CARD_KINDS = Object.freeze({
   provenance: true,
   action: true,
   note: true,
+});
+const SUMMARY_VERSION = 1;
+const SUMMARY_SECTION_ORDER = Object.freeze([
+  'knows',
+  'changes',
+  'unchanged',
+  'risk',
+  'unknown',
+]);
+const SUMMARY_TITLES = Object.freeze({
+  knows: 'What Atlas knows',
+  changes: 'What changes',
+  unchanged: 'What does not change',
+  risk: 'Risk / uncertainty',
+  unknown: 'What Atlas cannot determine yet',
+});
+const SUMMARY_CLOSED = Object.freeze({
+  noForecastChange: 'This answer does not compute a Forecast change.',
+  reprintsOnly: 'This reprints already-published Atlas fields. It does not change household balances.',
+  reprintsForecastChange: 'This reprints already-published Forecast change fields.',
+  packetOnly: 'Atlas cannot determine facts that are not in this request\'s packet.',
+  unavailableNotNumber: 'Unavailable is not a number.',
+  unknownNotFigure: 'Unknown is not a published figure.',
+  estimatedNotConfirmed: 'Estimated is not confirmed.',
+  staleNotCurrent: 'Stale is not current.',
+  datedOpeningNotCurrent: 'A dated opening is not current spendable household cash.',
+  freshnessUnavailable: 'Packet freshness is unavailable.',
 });
 
 function isPrimitive(value) {
@@ -996,6 +1028,207 @@ function trailingMetaCards(presentation, claimRows) {
   return trailingMetaCard(presentation);
 }
 
+function uniqueStrings(values) {
+  const out = [];
+  const seen = Object.create(null);
+  if (!Array.isArray(values)) return out;
+  for (const value of values) {
+    if (typeof value !== 'string' || !value || seen[value]) continue;
+    seen[value] = true;
+    out.push(value);
+  }
+  return out;
+}
+
+function sectionItems(bodies) {
+  return uniqueStrings(bodies).map(body => ({ body }));
+}
+
+function objectKeysAllowed(value, allowed) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  if (!keys.length) return false;
+  for (const key of keys) {
+    if (!allowed[key]) return false;
+  }
+  return true;
+}
+
+function sanitizeDecisionSummary(summary) {
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) return null;
+  if (summary.version !== SUMMARY_VERSION) return null;
+  if (!objectKeysAllowed(summary, { version: true, sections: true })) return null;
+  if (!Array.isArray(summary.sections) || summary.sections.length !== SUMMARY_SECTION_ORDER.length) {
+    return null;
+  }
+  const sections = [];
+  for (let i = 0; i < SUMMARY_SECTION_ORDER.length; i += 1) {
+    const raw = summary.sections[i];
+    const key = SUMMARY_SECTION_ORDER[i];
+    const title = SUMMARY_TITLES[key];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (!objectKeysAllowed(raw, { key: true, title: true, items: true })) return null;
+    if (raw.key !== key || raw.title !== title) return null;
+    if (!Array.isArray(raw.items) || !raw.items.length) return null;
+    const items = [];
+    for (const item of raw.items) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      if (!objectKeysAllowed(item, { body: true })) return null;
+      if (typeof item.body !== 'string' || !item.body || item.body.length > 2000) return null;
+      items.push({ body: item.body });
+    }
+    sections.push({ key, title, items });
+  }
+  return { version: SUMMARY_VERSION, sections };
+}
+
+function trustedSummaryPool(presentation, extras) {
+  const pool = Object.create(null);
+  const closed = Object.keys(SUMMARY_CLOSED);
+  for (let i = 0; i < closed.length; i += 1) {
+    pool[SUMMARY_CLOSED[closed[i]]] = true;
+  }
+  if (presentation && typeof presentation.answer === 'string' && presentation.answer) {
+    pool[presentation.answer] = true;
+  }
+  const leading = extras && Array.isArray(extras.items) ? extras.items : [];
+  for (const item of leading) {
+    if (item && typeof item.body === 'string' && item.body) pool[item.body] = true;
+  }
+  const claimRows = extras && Array.isArray(extras.claimRows) ? extras.claimRows : [];
+  for (const row of claimRows) {
+    if (row && typeof row.text === 'string' && row.text) pool[row.text] = true;
+  }
+  const citations = presentation && Array.isArray(presentation.citations)
+    ? presentation.citations
+    : [];
+  for (const cite of citations) {
+    if (cite && typeof cite.label === 'string' && cite.label) pool[cite.label] = true;
+  }
+  const provenance = presentation ? provenanceText(presentation) : null;
+  if (provenance) pool[provenance] = true;
+  return pool;
+}
+
+function everySummaryBodyTrusted(summary, pool) {
+  if (!summary || !Array.isArray(summary.sections)) return false;
+  for (const section of summary.sections) {
+    if (!section || !Array.isArray(section.items)) return false;
+    for (const item of section.items) {
+      if (!item || typeof item.body !== 'string' || !pool[item.body]) return false;
+    }
+  }
+  return true;
+}
+
+function trustRiskSentences(trust, freshness) {
+  const sentences = [];
+  if (trust === 'unavailable') sentences.push(SUMMARY_CLOSED.unavailableNotNumber);
+  if (trust === 'unknown') sentences.push(SUMMARY_CLOSED.unknownNotFigure);
+  if (trust === 'dated-opening') sentences.push(SUMMARY_CLOSED.datedOpeningNotCurrent);
+  if (trust === 'estimated') sentences.push(SUMMARY_CLOSED.estimatedNotConfirmed);
+  if (trust === 'stale' || freshness === 'stale') sentences.push(SUMMARY_CLOSED.staleNotCurrent);
+  if (freshness === 'estimated' && trust !== 'estimated') {
+    sentences.push(SUMMARY_CLOSED.estimatedNotConfirmed);
+  }
+  return sentences;
+}
+
+function noteSummaryBucket(body) {
+  if (/Conversation history is not household-financial evidence/.test(body)
+      || /already-published Forecast baseline/.test(body)) {
+    return 'risk';
+  }
+  return 'unchanged';
+}
+
+function assembleDecisionSummary(presentation, extras) {
+  try {
+    if (!presentation || typeof presentation !== 'object' || Array.isArray(presentation)) {
+      return null;
+    }
+    extras = extras || {};
+    const leading = Array.isArray(extras.items) ? extras.items : [];
+    const knows = [];
+    const changes = [];
+    const unchanged = [];
+    const risk = [];
+    const unknown = [];
+
+    for (const item of leading) {
+      if (!item || typeof item.body !== 'string' || !item.body) continue;
+      if (item.kind === 'answer') {
+        knows.push(item.body);
+      } else if (item.kind === 'option') {
+        changes.push(item.body);
+      } else if (item.kind === 'result') {
+        if (item.title === 'Already published') knows.push(item.body);
+        else changes.push(item.body);
+      } else if (item.kind === 'judgment') {
+        if (/NOT YET \/ INDETERMINATE/.test(item.body)) unknown.push(item.body);
+        else knows.push(item.body);
+      } else if (item.kind === 'note') {
+        if (noteSummaryBucket(item.body) === 'risk') risk.push(item.body);
+        else unchanged.push(item.body);
+      }
+    }
+
+    const claimRows = Array.isArray(extras.claimRows) ? extras.claimRows : [];
+    for (const row of claimRows) {
+      if (!row || typeof row.text !== 'string' || !row.text) continue;
+      if (row.mapped === false || row.trust === 'unavailable') {
+        unknown.push(row.text);
+      }
+    }
+
+    if (!knows.length && typeof presentation.answer === 'string' && presentation.answer) {
+      knows.push(presentation.answer);
+    }
+    if (!changes.length) changes.push(SUMMARY_CLOSED.noForecastChange);
+    if (!unchanged.length) {
+      const hasForecastChange = changes.some(function (body) {
+        return body !== SUMMARY_CLOSED.noForecastChange;
+      });
+      unchanged.push(
+        hasForecastChange
+          ? SUMMARY_CLOSED.reprintsForecastChange
+          : SUMMARY_CLOSED.reprintsOnly
+      );
+    }
+
+    const citations = Array.isArray(presentation.citations) ? presentation.citations : [];
+    for (const cite of citations) {
+      if (cite && cite.kind === 'provenance' && typeof cite.label === 'string' && cite.label) {
+        risk.push(cite.label);
+      }
+    }
+    const provenance = provenanceText(presentation);
+    if (provenance) risk.push(provenance);
+    const trustSentences = trustRiskSentences(presentation.trust, presentation.freshness);
+    for (const sentence of trustSentences) risk.push(sentence);
+    if (!risk.length) risk.push(SUMMARY_CLOSED.freshnessUnavailable);
+
+    if (!unknown.length) unknown.push(SUMMARY_CLOSED.packetOnly);
+    if (!knows.length) return null;
+
+    const draft = {
+      version: SUMMARY_VERSION,
+      sections: [
+        { key: 'knows', title: SUMMARY_TITLES.knows, items: sectionItems(knows) },
+        { key: 'changes', title: SUMMARY_TITLES.changes, items: sectionItems(changes) },
+        { key: 'unchanged', title: SUMMARY_TITLES.unchanged, items: sectionItems(unchanged) },
+        { key: 'risk', title: SUMMARY_TITLES.risk, items: sectionItems(risk) },
+        { key: 'unknown', title: SUMMARY_TITLES.unknown, items: sectionItems(unknown) },
+      ],
+    };
+    const pool = trustedSummaryPool(presentation, extras);
+    if (!everySummaryBodyTrusted(draft, pool)) return null;
+    return sanitizeDecisionSummary(draft);
+  } catch (err) {
+    return null;
+  }
+}
+
 function finishPresentation(presentation, extras) {
   const leading = extras && Array.isArray(extras.items) ? extras.items : [];
   const claimRows = extras && extras.claimRows;
@@ -1006,6 +1239,11 @@ function finishPresentation(presentation, extras) {
   presentation.citations = Array.isArray(claimRows)
     ? assembleClaimCitations(claimRows, presentation)
     : assembleCitations(presentation);
+  try {
+    presentation.summary = assembleDecisionSummary(presentation, extras);
+  } catch (err) {
+    presentation.summary = null;
+  }
   return presentation;
 }
 
@@ -1477,7 +1715,12 @@ module.exports = {
   CITATION_TRUST,
   CARD_VERSION,
   CARD_KINDS,
+  SUMMARY_VERSION,
+  SUMMARY_SECTION_ORDER,
+  SUMMARY_TITLES,
+  SUMMARY_CLOSED,
   sanitizePresentationCards,
+  sanitizeDecisionSummary,
   sanitizeCitations,
   assembleCitations,
   assembleClaimCitations,

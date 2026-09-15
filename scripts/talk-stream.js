@@ -40,6 +40,7 @@ const RESULT_KEYS = Object.freeze([
   'action',
   'cards',
   'citations',
+  'summary',
 ]);
 
 function wantsStream(req) {
@@ -65,6 +66,7 @@ function publicAskBody(presented) {
     action: presented.action || null,
     cards: presented.cards || null,
     citations: presented.citations || null,
+    summary: presented.summary || null,
   };
 }
 
