@@ -935,15 +935,17 @@ function uniqueMappedSurfaces(rows) {
     const action = publicAction(row.action);
     if (!source || !action) continue;
     const key = source + '\0' + action.href;
-    if (seen[key]) continue;
-    seen[key] = true;
-    surfaces.push({
-      source,
-      action,
-      trust: row.trust || null,
-    });
+    if (!seen[key]) {
+      seen[key] = { source, action, trusts: [] };
+      surfaces.push(seen[key]);
+    }
+    seen[key].trusts.push(row.trust);
   }
-  return surfaces;
+  return surfaces.map(surface => ({
+    source: surface.source,
+    action: surface.action,
+    trust: weakestTrust(surface.trusts) || null,
+  }));
 }
 
 function trailingMetaCard(fields) {

@@ -617,6 +617,64 @@ console.log('\n=== 8. Mixed mapped answers keep per-claim source citations ===')
         item.kind === 'action' && item.href === '/credit.html' && item.label === 'View Credit'
       )),
     'mixed Forecast+Credit keep per-claim Budget and Credit surfaces');
+
+  const mixedSameSurface = TalkPresentation.presentVerifiedClaims({
+    status: 'explained',
+    claims: [
+      { path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 },
+      { path: 'current.spendableHouseholdCash.value', value: 2000 },
+      { path: 'current.nextSignificantObligations.nextDue.amount', value: 17 },
+    ],
+  }, {
+    metadata: {
+      effectiveAsOf: '2026-09-14',
+      freshness: { confidence: 'live' },
+    },
+    forecast: {
+      currentPeriodAction: {
+        essentialRemaining: 1415.95,
+        remainingClaim: 'posted-only',
+      },
+    },
+    current: {
+      spendableHouseholdCash: { value: 2000, trust: 'unknown' },
+      nextSignificantObligations: {
+        nextDue: { amount: 17, confidence: 'estimated' },
+      },
+    },
+  });
+  const spendableText = `Spendable household cash is ${TalkPresentation.formatCurrency(2000)}.`;
+  const forecastCite = mixedSameSurface.citations.find(item => (
+    item.kind === 'provenance' && item.source === 'Forecast'
+  ));
+  const forecastCard = (mixedSameSurface.cards.items || []).find(item => (
+    item.kind === 'provenance' && item.body.indexOf('Forecast') !== -1
+  ));
+  ok(mixedSameSurface.answer.indexOf(remainingText) !== -1
+      && mixedSameSurface.answer.indexOf(spendableText) !== -1
+      && mixedSameSurface.answer.indexOf(dueText) !== -1,
+    'mixed same-surface answer reprints independently formatted remaining, spendable, and due');
+  ok(forecastCite
+      && forecastCite.trust === 'unknown'
+      && forecastCite.trust !== 'posted-only'
+      && forecastCite.trust !== 'verified'
+      && forecastCite.label === 'Forecast · as of 2026-09-14 · unknown · live',
+    'same-surface Forecast citations use the weakest unknown label, not posted-only');
+  ok(forecastCard
+      && forecastCard.body === forecastCite.label
+      && forecastCard.body.indexOf('unknown') !== -1
+      && forecastCard.body.indexOf('posted-only') === -1
+      && !/verified/i.test(forecastCard.body),
+    'mixed same-surface Forecast cards use the same weakest trust as citations');
+  ok(mixedSameSurface.citations.some(item => (
+    item.kind === 'provenance'
+    && item.source === 'Bills'
+    && item.trust === 'estimated'
+  ))
+      && (mixedSameSurface.cards.items || []).some(item => (
+        item.kind === 'provenance' && item.body === 'Bills · as of 2026-09-14 · estimated · live'
+      )),
+    'Bills estimated provenance stays estimated beside the weaker Forecast label');
 }
 
 console.log('\n=== 9. Citation allowlist stays the existing Atlas surfaces ===');
