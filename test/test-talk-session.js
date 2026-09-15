@@ -225,6 +225,11 @@ console.log('=== 1. Session context is RAM-only conversational context ===');
       && /canonical household fact store/.test(sessionRaw)
       && /createHmac\('sha256'/.test(sessionSrc),
     'session module states the conversational-only contract');
+  ok(!/EXPLAINER_FACT_RE/.test(sessionRaw)
+      && /authorizedFollowupGrammar/.test(sessionSrc)
+      && /AUTHORIZED_FOLLOWUP_WORDS/.test(sessionSrc)
+      && /positive skeleton/.test(sessionRaw),
+    'follow-up inheritance is positively gated, not explainer-blacklisted');
   ok(/createSessionContext/.test(serverSrc)
       && /resolveFollowup/.test(serverSrc)
       && /keys\.length !== 1 \|\| keys\[0] !== 'question'/.test(serverSrc),
@@ -339,6 +344,15 @@ console.log('\n=== 3. Authorized follow-up contract fails closed on ambiguity ==
       && targetSwap.amount === 200
       && targetSwap.debtId === 'heloc',
     'target substitution keeps the last caller-stated amount');
+  const insteadSwap = TalkSession.resolveFollowup({
+    question: 'And the HELOC instead?',
+    priorTurn: priorHyp,
+    debts,
+  });
+  ok(insteadSwap.status === 'resolved-hypothetical'
+      && insteadSwap.amount === 200
+      && insteadSwap.debtId === 'heloc',
+    'explicit instead-shorthand still inherits the last caller-stated amount');
   const compareAdd = TalkSession.resolveFollowup({
     question: 'Compare that with $200 on the HELOC.',
     priorTurn: priorHyp,
@@ -379,6 +393,27 @@ console.log('\n=== 3. Authorized follow-up contract fails closed on ambiguity ==
     debts,
   }).status === 'none',
     'an explainer-fact HELOC question is not a silent target swap');
+  for (const [question, label] of [
+    ['And what about the HELOC payment?', 'payment'],
+    ['And what about the HELOC minimum?', 'minimum'],
+    ['And what about the HELOC utilization?', 'utilization'],
+    ['And what about the HELOC statement?', 'statement'],
+    ['How about the High-rate card APR?', 'APR'],
+  ]) {
+    const explainer = TalkSession.resolveFollowup({
+      question,
+      priorTurn: priorHyp,
+      debts,
+    });
+    ok(explainer.status === 'none',
+      `${label} explainer follow-up is not a silent inherited extra`);
+  }
+  ok(TalkSession.resolveFollowup({
+    question: 'And what about the $200 payment?',
+    priorTurn: priorHyp,
+    debts,
+  }).status === 'none',
+    'an amount-plus-payment explainer is not a silent inherited extra');
   const prefer = TalkSession.resolveFollowup({
     question: 'Which of those should I prefer?',
     priorTurn: {
@@ -556,6 +591,26 @@ console.log('\n=== 4. Chat text cannot become a verified household fact ===');
         && helocExpected.status === 'ready'
         && helocBody.answer.indexOf(TalkPresentation.formatCurrency(helocExpected.delta.cash.ending)) !== -1,
       'HELOC follow-up keeps the last caller amount and recomputes on current Forecast');
+
+    const silentExtra = Forecast.hypotheticalExtraPayment(
+      liveData.plan,
+      liveData.debts,
+      liveData.plan.opening.asOf,
+      { amount: 500, debtId: 'cashback', nature: 'hypothetical' }
+    );
+    const geminiBeforeExplainer = liveMock.captured.length;
+    const paymentExplainer = await askJson(
+      base, sessionA.cookie, 'And what about the TD Cash Back Visa payment?'
+    );
+    const paymentBody = await paymentExplainer.json();
+    ok(paymentExplainer.status === 200
+        && paymentBody.answer !== TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER
+        && liveMock.captured.length === geminiBeforeExplainer + 1
+        && silentExtra.status === 'ready'
+        && paymentBody.answer.indexOf(
+          TalkPresentation.formatCurrency(silentExtra.delta.cash.ending)
+        ) === -1,
+      'Visa payment explainer follow-up is not a silent inherited extra');
 
     const ambiguous = await askJson(base, sessionA.cookie, 'Compare that with the first option.');
     const ambiguousBody = await ambiguous.json();

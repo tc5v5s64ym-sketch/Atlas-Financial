@@ -13,9 +13,12 @@
  * Logout and a new login start empty. Session A cannot read session B.
  *
  * Follow-up amounts and named debts are resolved only by the explicit
- * contract below. Ambiguity returns unavailable. Gemini never fills a
- * missing amount or target from chat text. Current Atlas state and
- * Forecast remain the only financial authorities.
+ * contract below. History may fill a missing amount or named debt only
+ * when the question is authorized follow-up grammar — a positive
+ * deixis/extra skeleton with no leftover wording. An explainer
+ * blacklist is not the gate. Ambiguity returns unavailable. Gemini
+ * never fills a missing amount or target from chat text. Current Atlas
+ * state and Forecast remain the only financial authorities.
  */
 
 const crypto = require('crypto');
@@ -29,9 +32,19 @@ const PRESENTED_MAX = 400;
 const LABEL_MAX = 80;
 const SCENARIO_MAX = 6;
 const FOLLOWUP_DEIXIS_RE = /\b(?:what about|how about|and(?:\s+what)?|instead|also|same(?:\s+amount)?|that)\b/i;
-const EXTRA_LANGUAGE_RE = /\b(?:extra|pay(?:ment)?|put|toward|towards|instead)\b/i;
+const EXTRA_LANGUAGE_RE = /\b(?:extra|put(?:ting)?|toward|towards|instead)\b/i;
 const COMPARISON_FOLLOWUP_RE = /\b(?:compare(?:d)?|versus|vs\.?|against)\b/i;
-const EXPLAINER_FACT_RE = /\b(?:balance|rate|limit|due|owing|as of|available credit|interest|trust|verified|estimated)\b/i;
+/* Authorized inheritance grammar is a positive skeleton: deixis / extra-
+ * application words plus structural glue. After masking recovered amounts
+ * and named debts, any leftover word fails closed. Payment, minimum,
+ * utilization, and other debt-explainer nouns are not in this set.
+ */
+const FOLLOWUP_INTENT_RE = /\b(?:what about|how about|and(?:\s+what)?|instead|also|same(?:\s+amount)?|that|extra|put(?:ting)?|toward|towards)\b/i;
+const AUTHORIZED_FOLLOWUP_WORDS = new Set([
+  'what', 'about', 'how', 'and', 'instead', 'also', 'same', 'amount',
+  'that', 'extra', 'put', 'putting', 'toward', 'towards',
+  'the', 'a', 'an', 'on', 'to', 'of', 'for', 'with', 'my', 'our',
+]);
 
 function hmacKey(secret, token) {
   if (typeof secret !== 'string' || secret.length < 16) return '';
@@ -129,14 +142,36 @@ function incompleteExtraShape(amountCount, targetCount) {
     || (amountCount === 0 && targetCount === 1);
 }
 
-function looksLikeIncompleteExtra(question, amountCount, targetCount) {
+function maskSpans(text, spans) {
+  if (!Array.isArray(spans) || !spans.length) return text;
+  const chars = String(text).split('');
+  for (const span of spans) {
+    const start = span && Number.isFinite(span.start) ? span.start : -1;
+    const end = span && Number.isFinite(span.end) ? span.end : -1;
+    if (start < 0 || end <= start) continue;
+    for (let i = start; i < end && i < chars.length; i += 1) {
+      chars[i] = ' ';
+    }
+  }
+  return chars.join('');
+}
+
+function authorizedFollowupGrammar(question, debts, packet) {
+  if (typeof question !== 'string' || !question.trim()) return false;
+  if (!FOLLOWUP_INTENT_RE.test(question)) return false;
+  const spans = TalkHypothetical.recoverCallerAmountOccurrences(question)
+    .concat(TalkHypothetical.recoverCallerDebtTargetOccurrences(question, debts, packet));
+  const words = maskSpans(question, spans).toLowerCase().match(/[a-z0-9]+/g) || [];
+  return words.every(word => AUTHORIZED_FOLLOWUP_WORDS.has(word));
+}
+
+function looksLikeIncompleteExtra(question, amountCount, targetCount, debts, packet) {
+  if (!incompleteExtraShape(amountCount, targetCount)) return false;
+  if (!authorizedFollowupGrammar(question, debts, packet)) return false;
   if (amountCount === 1 && targetCount === 0) {
     return FOLLOWUP_DEIXIS_RE.test(question) || EXTRA_LANGUAGE_RE.test(question);
   }
-  if (amountCount === 0 && targetCount === 1) {
-    return EXTRA_LANGUAGE_RE.test(question);
-  }
-  return false;
+  return EXTRA_LANGUAGE_RE.test(question);
 }
 
 function resolveFollowup({ question, priorTurn, debts, packet }) {
@@ -150,8 +185,7 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
   const plannerAct = TalkHypothetical.questionIsPlannerActComparison(parsed);
   const wantsPreference = TalkHypothetical.questionAsksAuthorizedPreference(parsed);
   const compareAsk = COMPARISON_FOLLOWUP_RE.test(parsed);
-  const deixis = FOLLOWUP_DEIXIS_RE.test(parsed);
-  const explainerFact = EXPLAINER_FACT_RE.test(parsed);
+  const authorizedFollowup = authorizedFollowupGrammar(parsed, debts, packet);
 
   if (recoveredPairs.ok) {
     return { status: 'none' };
@@ -221,7 +255,7 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
   }
 
   if (amounts.length === 1 && targets.length === 0
-      && (deixis || EXTRA_LANGUAGE_RE.test(parsed))
+      && authorizedFollowup
       && prior && prior.kind === 'hypothetical'
       && currentDebtStillLive(debts, packet, prior.debtId, prior.debtLabel)) {
     return {
@@ -233,7 +267,7 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
   }
 
   if (amounts.length === 0 && targets.length === 1
-      && deixis && !explainerFact && !compareAsk
+      && authorizedFollowup && !compareAsk
       && prior && prior.kind === 'hypothetical'
       && finiteAmount(prior.amount)) {
     const newId = targets[0];
@@ -249,7 +283,7 @@ function resolveFollowup({ question, priorTurn, debts, packet }) {
     };
   }
 
-  if (looksLikeIncompleteExtra(parsed, amounts.length, targets.length)) {
+  if (looksLikeIncompleteExtra(parsed, amounts.length, targets.length, debts, packet)) {
     return { status: 'ambiguous', nature: 'hypothetical' };
   }
 
