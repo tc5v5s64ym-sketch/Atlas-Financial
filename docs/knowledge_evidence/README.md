@@ -41,8 +41,12 @@ Every record keeps:
 A record may later inform an explanation of an already-published Atlas or
 Forecast result. It is never a Forecast input, never a published figure, never
 owner policy, and never permission to act. `may_inform` paths stay under
-`docs/`; `data.json`, `public/forecast.js`, and the assistant packet are not
-consumers of this register.
+`docs/` after normalization — a `docs/../public/...` alias is not under
+`docs/`. `data.json`, `public/forecast.js`, and the assistant packet are not
+consumers of this register. The exported household calendar is not a
+`may_inform` surface: `scripts/calendar-ics.js` derives the mortgage-renewal
+reminder text from the named record so that overlay cannot go stale as a
+second home.
 
 ## Coverage is explicit IDs only
 

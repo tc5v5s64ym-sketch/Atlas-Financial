@@ -11,7 +11,9 @@
  *      figure, household date, or provider identifier of its own.
  *
  * It also proves the first record's re-homing: the TD renewal claim body no
- * longer sits inline in docs/ACCOUNT_FACTS.md, which now points at the record.
+ * longer sits inline in docs/ACCOUNT_FACTS.md, which now points at the record,
+ * and scripts/calendar-ics.js derives the matching reminder text from the
+ * same record instead of authoring a second copy.
  *
  * It does NOT prove:
  *   - that the external claim is true, or that the institution still applies it;
@@ -30,6 +32,7 @@ const ROOT = path.join(__dirname, '..');
 const REGISTER_PATH = path.join(ROOT, 'docs/knowledge_evidence/register.json');
 const EVIDENCE_USE_PATH = path.join(ROOT, 'docs/evidence_use/register.json');
 const ACCOUNT_FACTS_PATH = path.join(ROOT, 'docs/ACCOUNT_FACTS.md');
+const CALENDAR_ICS_PATH = path.join(ROOT, 'scripts/calendar-ics.js');
 
 const ID_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-[0-9]{3}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -64,9 +67,28 @@ function hasHeading(text, heading) {
   });
 }
 
+function resolveUnderDocs(relPath) {
+  if (typeof relPath !== 'string' || !relPath.trim()) return null;
+  const posix = relPath.replace(/\\/g, '/');
+  if (path.posix.isAbsolute(posix) || posix.includes('\0')) return null;
+  const normalized = path.posix.normalize(posix);
+  if (normalized !== 'docs' && !normalized.startsWith('docs/')) return null;
+  if (normalized.split('/').includes('..')) return null;
+  return normalized;
+}
+
 function fsCtx(root) {
   const abs = (p) => path.join(root, p);
+  const docsRoot = path.resolve(root, 'docs');
   return {
+    resolveDocs: (p) => {
+      const normalized = resolveUnderDocs(p);
+      if (!normalized) return null;
+      const resolvedAbs = path.resolve(root, normalized);
+      const rel = path.relative(docsRoot, resolvedAbs);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+      return normalized;
+    },
     exists: (p) => fs.existsSync(abs(p)),
     read: (p) => fs.readFileSync(abs(p), 'utf8'),
   };
@@ -159,18 +181,22 @@ function recordProblems(register, ctx) {
           problems.push(`${where}: may_inform[${i}].path is required`);
           continue;
         }
-        if (!/^docs\//.test(target.path)) {
+        const resolved = ctx.resolveDocs
+          ? ctx.resolveDocs(target.path)
+          : resolveUnderDocs(target.path);
+        if (!resolved) {
           problems.push(`${where}: may_inform[${i}].path "${target.path}" must be under docs/ (explanation only; not Forecast, data.json, or a page)`);
+          continue;
         }
-        if (ctx.exists && !ctx.exists(target.path)) {
-          problems.push(`${where}: may_inform[${i}].path "${target.path}" does not exist`);
+        if (ctx.exists && !ctx.exists(resolved)) {
+          problems.push(`${where}: may_inform[${i}].path "${resolved}" does not exist`);
         } else if (ctx.read) {
-          const text = ctx.read(target.path);
+          const text = ctx.read(resolved);
           if (target.heading && !hasHeading(text, target.heading)) {
-            problems.push(`${where}: may_inform[${i}].heading "${target.heading}" not found in ${target.path}`);
+            problems.push(`${where}: may_inform[${i}].heading "${target.heading}" not found in ${resolved}`);
           }
           if (!text.includes(row.id)) {
-            problems.push(`${where}: ${target.path} does not point back at ${row.id}`);
+            problems.push(`${where}: ${resolved} does not point back at ${row.id}`);
           }
         }
         if (!target.as || !String(target.as).trim()) problems.push(`${where}: may_inform[${i}].as is required`);
@@ -290,6 +316,57 @@ ok(!/extendable to about 150/.test(facts) && !/four to five months out/.test(fac
   'the claim body sentences are not duplicated in ACCOUNT_FACTS');
 ok(/1 May 2027/.test(facts), 'the household maturity date stays a household fact in ACCOUNT_FACTS');
 
+console.log('\n=== calendar-ics.js derives the TD renewal claim; it is not a second home ===');
+const icsSrc = sourceText(fs.readFileSync(CALENDAR_ICS_PATH, 'utf8'));
+const icsMod = require('../scripts/calendar-ics.js');
+ok(icsSrc.includes('EXT-TD-RENEWAL-001') && icsSrc.includes('knowledge_evidence/register.json'),
+  'calendar-ics.js names EXT-TD-RENEWAL-001 and reads the register');
+ok(!/extendable to about 150/.test(icsSrc) && !/four to five months/.test(icsSrc),
+  'the claim-body sentences are not hardcoded in calendar-ics.js');
+ok(!/td\.com\/ca\/en\/personal-banking\/products\/mortgages/.test(icsSrc)
+  && !/mortgagerenewalhub\.ca/.test(icsSrc)
+  && !/truemortgageplus\.com/.test(icsSrc),
+  'the source URLs are not hardcoded in calendar-ics.js');
+const plan = require('../data.json').plan;
+const builtIcs = icsMod.buildHouseholdCalendar(plan, '2026-08-09');
+const hold = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-hold@household');
+const windowRem = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-window@household');
+const letter = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-letter@household');
+const maturity = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-maturity@household');
+ok(!!hold && !!windowRem && !!letter && !!maturity, 'the four mortgage-renewal reminders still exist');
+if (hold && windowRem && letter && maturity && td) {
+  for (const [name, rem] of [['hold', hold], ['window', windowRem], ['letter', letter], ['maturity', maturity]]) {
+    ok(rem.description.includes('EXT-TD-RENEWAL-001'),
+      `${name} reminder names EXT-TD-RENEWAL-001`);
+    ok(rem.description.includes('extendable to about 150')
+      && rem.description.includes('120 days before maturity'),
+    `${name} reminder derives the 150-day and 120-day claims from the record`);
+    ok(td.provenance.sources.every((s) => rem.description.includes(s.url)),
+      `${name} reminder derives its source URLs from the record`);
+  }
+  const mutatedReg = clone(register);
+  const mutRow = mutatedReg.items.find((row) => row.id === 'EXT-TD-RENEWAL-001');
+  mutRow.claims = ['MUTATED-TD-RENEWAL-CLAIM-UNIQUE'];
+  mutRow.provenance.sources[0].url = 'https://example.test/mutated-td-source';
+  const mutatedIcs = icsMod.buildHouseholdCalendar(plan, '2026-08-09', undefined, mutatedReg);
+  const mutHold = mutatedIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-hold@household');
+  ok(!!mutHold && mutHold.description.includes('MUTATED-TD-RENEWAL-CLAIM-UNIQUE')
+    && mutHold.description.includes('https://example.test/mutated-td-source'),
+  'a register edit moves the ICS reminder text');
+  ok(!!mutHold && !/extendable to about 150/.test(mutHold.description)
+    && !/td\.com\/ca\/en\/personal-banking\/products\/mortgages/.test(mutHold.description),
+  'the previous claim body and TD URL leave the ICS when the record changes');
+  let missingThrew = false;
+  try {
+    const empty = clone(register);
+    empty.items = [];
+    icsMod.buildHouseholdCalendar(plan, '2026-08-09', undefined, empty);
+  } catch (err) {
+    missingThrew = /EXT-TD-RENEWAL-001/.test(err && err.message);
+  }
+  ok(missingThrew, 'ICS generation fails closed when EXT-TD-RENEWAL-001 is missing');
+}
+
 console.log('\n=== mutation bite: the validator rejects each contract breach ===');
 const ctx = fsCtx(ROOT);
 const bite = (label, mutate, expect) => {
@@ -318,6 +395,12 @@ bite('pointing may_inform at data.json fails',
   (_, row) => { row.may_inform[0].path = 'data.json'; }, /must be under docs\//);
 bite('pointing may_inform at Forecast fails',
   (_, row) => { row.may_inform[0].path = 'public/forecast.js'; }, /must be under docs\//);
+bite('pointing may_inform at docs/../public/plan.js fails',
+  (_, row) => { row.may_inform[0].path = 'docs/../public/plan.js'; }, /must be under docs\//);
+bite('pointing may_inform at docs/../public/forecast.js fails',
+  (_, row) => { row.may_inform[0].path = 'docs/../public/forecast.js'; }, /must be under docs\//);
+bite('docs/../ARCHITECTURE.md fails even though that file names the ID',
+  (_, row) => { row.may_inform[0].path = 'docs/../ARCHITECTURE.md'; }, /must be under docs\//);
 bite('a may_inform heading that does not exist fails',
   (_, row) => { row.may_inform[0].heading = 'No Such Heading'; }, /heading .* not found/);
 bite('a may_inform surface that does not point back at the ID fails',

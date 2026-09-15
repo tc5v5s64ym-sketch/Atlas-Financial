@@ -23,6 +23,8 @@ const DEFAULT_AS_OF = (data.meta && data.meta.asOf) || '2026-08-09';
 // same expander rather than a second recurrence engine.
 const ICS_HORIZON_END = '2027-05-01';
 const OUT = path.join(__dirname, '..', 'derived', 'household-payments.ics');
+const KNOWLEDGE_REGISTER_PATH = path.join(__dirname, '..', 'docs/knowledge_evidence/register.json');
+const TD_RENEWAL_KNOWLEDGE_ID = 'EXT-TD-RENEWAL-001';
 
 const esc = s => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;')
                           .replace(/,/g, '\\,').replace(/\n/g, '\\n');
@@ -130,8 +132,44 @@ function vevent(stamp, { uid, summary, start, rrule, description, alarms = 'full
   return lines;
 }
 
-function standingReminders(asOf) {
+function loadKnowledgeRecord(id, register) {
+  const data = register || JSON.parse(fs.readFileSync(KNOWLEDGE_REGISTER_PATH, 'utf8'));
+  const row = (data.items || []).find(r => r.id === id);
+  if (!row) {
+    throw new Error(`knowledge record ${id} is missing from docs/knowledge_evidence/register.json`);
+  }
+  if (!Array.isArray(row.claims) || row.claims.length === 0
+      || row.claims.some(c => typeof c !== 'string' || !c.trim())) {
+    throw new Error(`knowledge record ${id} has no claims`);
+  }
+  return row;
+}
+
+function derivedExternalReferenceText(row) {
+  const sources = ((row.provenance && row.provenance.sources) || [])
+    .map(s => s && s.url)
+    .filter(Boolean);
+  if (sources.length === 0) {
+    throw new Error(`knowledge record ${row.id} has no source URLs`);
+  }
+  const reviewBy = row.freshness && row.freshness.review_by;
+  if (!reviewBy) {
+    throw new Error(`knowledge record ${row.id} has no freshness.review_by`);
+  }
+  return [
+    row.claims.join('\n\n'),
+    `External claims: ${row.id}. Review by ${reviewBy}. Not a household fact.`,
+    `Sources:\n${sources.join('\n')}`,
+  ].join('\n\n');
+}
+
+function standingReminders(asOf, register) {
   const src = `\n\nKind: reminder — not a chequing outflow. Standing look-point from the household finance review, read from the institutions on ${asOf}.`;
+  // Mortgage-renewal reminder text derives from EXT-TD-RENEWAL-001.
+  // Do not hard-code that claim body or its source URLs here.
+  const tdRenewalText = derivedExternalReferenceText(
+    loadKnowledgeRecord(TD_RENEWAL_KNOWLEDGE_ID, register)
+  );
   const events = [];
 
   for (const [day, card, note] of [
@@ -176,25 +214,25 @@ function standingReminders(asOf) {
     { uid: 'atlas-reminder-renewal-hold@household',
       summary: 'Reminder — Mortgage renewal: 150 days out, TD can hold a rate for existing clients', start: '2026-12-02',
       kind: 'reminder',
-      description: 'TD\'s standard rate hold is 120 days, extendable to about 150 for existing clients. From roughly today, ask TD to hold a rate.\n\nA held rate is a floor, not a commitment — if rates fall before maturity you normally get the lower one, and if they rise you keep the hold. There is no cost to asking.\n\nSources:\nhttps://www.td.com/ca/en/personal-banking/products/mortgages/renew-refinance/how-to-renew\nhttps://truemortgageplus.com/guides/how-early-can-i-renew-my-td-mortgage/' + src },
+      description: 'From roughly today, ask TD to hold a rate. There is no cost to asking.\n\n' + tdRenewalText + src },
     { uid: 'atlas-reminder-renewal-window@household',
       summary: 'Reminder — Mortgage renewal: 120-day window OPENS (renew with no prepayment charge)', start: '2027-01-01',
       kind: 'reminder',
-      description: 'Exactly 120 days before the 1 May 2027 maturity. From today TD lets you renew a closed mortgage early WITHOUT a prepayment charge or fee, and this is the standard rate-hold window across lenders — so it is also the point at which switching to another lender becomes practical.\n\nIf you are going to move lenders, start now: a switch needs time for approval, appraisal and discharge, and leaving it to April means renewing under time pressure with whatever is offered.\n\nSources:\nhttps://www.td.com/ca/en/personal-banking/products/mortgages/renew-refinance/how-to-renew\nhttps://mortgagerenewalhub.ca/early-mortgage-renewal/' + src },
+      description: 'Exactly 120 days before the 1 May 2027 maturity. If a lender switch is going to happen, do not leave it to April.\n\n' + tdRenewalText + src },
     { uid: 'atlas-reminder-renewal-letter@household',
       summary: 'Reminder — Mortgage renewal: TD offer letter should have arrived', start: '2027-04-01',
       kind: 'reminder',
-      description: 'TD usually posts the renewal offer about a month before maturity. If nothing has arrived, chase it.\n\nThe posted renewal rate is an opening offer, not a fixed price. It is normal to negotiate it, and having a competing quote in hand is what makes that work.' + src },
+      description: 'If nothing has arrived, chase it. A competing quote in hand is what makes negotiating the opening offer work.\n\n' + tdRenewalText + src },
     { uid: 'atlas-reminder-maturity@household',
       summary: 'Reminder — MORTGAGE MATURES', start: '2027-05-01',
       kind: 'reminder',
-      description: 'The single most consequential date in the whole picture. 60-month term taken 1 May 2022 at TD Mortgage Prime − 0.96%.\n\nIf nothing is signed by today the mortgage typically rolls onto a short open or posted-rate term, which is materially more expensive. Do not let it arrive undecided.\n\nBalance about $546,027, 17 yr 9 mth of amortisation remaining, $1,600 bi-weekly.' + src },
+      description: 'The single most consequential date in the whole picture. 60-month term taken 1 May 2022 at TD Mortgage Prime − 0.96%.\n\nDo not let it arrive undecided.\n\nBalance about $546,027, 17 yr 9 mth of amortisation remaining, $1,600 bi-weekly.\n\n' + tdRenewalText + src },
   );
 
   return events;
 }
 
-function buildHouseholdCalendar(plan, asOf, end) {
+function buildHouseholdCalendar(plan, asOf, end, register) {
   asOf = asOf || DEFAULT_AS_OF;
   end = end || ICS_HORIZON_END;
   const stamp = asOf.replace(/-/g, '') + 'T120000Z';
@@ -238,7 +276,7 @@ function buildHouseholdCalendar(plan, asOf, end) {
     });
   }
 
-  const reminders = derivedReminders.concat(standingReminders(asOf));
+  const reminders = derivedReminders.concat(standingReminders(asOf, register));
   const events = payments.concat(reminders);
   const body = [
     'BEGIN:VCALENDAR',
@@ -287,6 +325,9 @@ if (require.main === module) {
 module.exports = {
   buildHouseholdCalendar,
   writeHouseholdCalendar,
+  loadKnowledgeRecord,
+  derivedExternalReferenceText,
+  TD_RENEWAL_KNOWLEDGE_ID,
   ICS_HORIZON_END,
   DEFAULT_AS_OF,
 };
