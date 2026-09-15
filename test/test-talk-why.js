@@ -245,8 +245,10 @@ console.log('=== 1. Why-trace is explanation, not a second planner ===');
   ok(/TalkWhy\.questionAsksWhy/.test(serverSrc)
       && /presentWhyExplanation/.test(serverSrc)
       && /stale-baseline/.test(serverSrc)
+      && /asOf:\s*presented\.sessionTurn && presented\.sessionTurn\.asOf/.test(serverSrc)
+      && /freshness:\s*presented\.sessionTurn && presented\.sessionTurn\.freshness/.test(serverSrc)
       && !/unresolved-referent/.test(serverSrc),
-    'server short-circuits determined why results and lets unresolved referents reach extract');
+    'server short-circuits determined why results, stores sanitized baseline, and lets unresolved referents reach extract');
   ok(!/why-trace|presentWhyExplanation|talk-why/.test(forecastSrc),
     'public/forecast.js is untouched');
 }
@@ -686,6 +688,59 @@ console.log('\n=== 5. Session /talk/ask publishes why without inventing ===');
   } finally {
     await atlas.stop();
     await mock.close();
+  }
+
+  const hypoMock = await startMockGemini([
+    JSON.stringify({
+      intent: 'hypothetical-extra-payment',
+      amount: 200,
+      debtLabel: 'TD Cash Back Visa',
+    }),
+  ]);
+  const hypoPort = await freePort();
+  const hypoAtlas = await startAtlas(isolatedEnv({
+    PORT: String(hypoPort),
+    SITE_PASSWORD: PASS,
+    SESSION_SECRET: SECRET,
+    ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN,
+    ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+    ATLAS_TALK_GEMINI_BASE_URL: hypoMock.url,
+  }));
+  const hypoBase = `http://127.0.0.1:${hypoPort}`;
+  try {
+    const session = await login(hypoBase);
+    const first = await fetch(`${hypoBase}/talk/ask`, {
+      method: 'POST',
+      headers: { cookie: session.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ question: 'What if I put $200 on the TD Cash Back Visa?' }),
+    });
+    const firstBody = await first.json();
+    ok(first.status === 200
+        && firstBody.source === 'Forecast'
+        && typeof firstBody.asOf === 'string'
+        && firstBody.asOf,
+      'hypothetical /talk/ask publishes a Forecast baseline');
+    const geminiAfterFirst = hypoMock.captured.length;
+    const explain = await fetch(`${hypoBase}/talk/ask`, {
+      method: 'POST',
+      headers: { cookie: session.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ question: 'Explain that.' }),
+    });
+    const explainBody = await explain.json();
+    ok(explain.status === 200
+        && explainBody.answer !== TalkPresentation.WHY_UNAVAILABLE_ANSWER
+        && /already-published consequences/.test(explainBody.answer)
+        && /\$200\.00/.test(explainBody.answer)
+        && /TD Cash Back Visa/.test(explainBody.answer)
+        && explainBody.source === 'Forecast'
+        && explainBody.trust === 'calculated'
+        && explainBody.asOf === firstBody.asOf
+        && explainBody.freshness === firstBody.freshness
+        && hypoMock.captured.length === geminiAfterFirst,
+      '/talk/ask Explain that after a hypothetical keeps the stored Forecast baseline');
+  } finally {
+    await hypoAtlas.stop();
+    await hypoMock.close();
   }
 
   const extractMock = await startMockGemini([

@@ -444,6 +444,9 @@ function appendTalkSessionTurn(sessionKey, question, presented) {
     scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
     referentPaths: presented.sessionTurn && presented.sessionTurn.referentPaths,
     priorKind: presented.sessionTurn && presented.sessionTurn.priorKind,
+    // Already-sanitized published Forecast baseline only. Not evidence.
+    asOf: presented.sessionTurn && presented.sessionTurn.asOf,
+    freshness: presented.sessionTurn && presented.sessionTurn.freshness,
   });
 }
 
