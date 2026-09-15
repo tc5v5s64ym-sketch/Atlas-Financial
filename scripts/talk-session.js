@@ -25,12 +25,16 @@
  * household-financial evidence and not a later packet substitute.
  *
  * Campaign-style verified follow-ups ("what about next payday?",
- * "what about that card?", "how much interest was that again?") resolve
- * only against ephemeral structured refs from a prior verified
- * presentation — allowlisted packet paths and published result keys,
- * never conversation prose. The server re-reads this request's packet
- * or recomputes Forecast on the stored hyp inputs. Ambiguous deixis
- * is unavailable. No durable household fact store.
+ * "what about that card?", "how much interest was that again?",
+ * "what does that leave us with?") resolve only against ephemeral
+ * structured refs from a prior verified presentation — allowlisted
+ * packet paths and published result keys, never conversation prose.
+ * Payday leftover is Forecast.paydayAllocation.runningLeftover from
+ * this request's packet. "What does this payday leave us with?" reads
+ * that leftover now. "What does that leave us with?" binds only when
+ * leftover was already earned. Ambiguous deixis is unavailable. The
+ * server re-reads this request's packet or recomputes Forecast on the
+ * stored hyp inputs. No durable household fact store.
  */
 
 const crypto = require('crypto');
@@ -78,6 +82,7 @@ const FOLLOWUP_REFERENT_KEYS = Object.freeze({
   'interest': true,
   'card': true,
   'last-presented': true,
+  'payday-leftover': true,
 });
 const FOLLOWUP_KEY_PATHS = Object.freeze({
   'next-payday': Object.freeze([
@@ -94,12 +99,37 @@ const FOLLOWUP_KEY_PATHS = Object.freeze({
   'interest': Object.freeze([
     'current.debts.monthlyInterest',
   ]),
+  'payday-leftover': Object.freeze([
+    'forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+  ]),
+});
+const LEFTOVER_INTENT = 'payday-leftover';
+const LEFTOVER_PATH = 'forecast.paydayAllocation.runningLeftover.afterBigPurchases';
+const LEFTOVER_EXTRACT_KEYS = Object.freeze({
+  intent: true,
+  referentKey: true,
+});
+const LEFTOVER_REFERENT_KEYS = Object.freeze({
+  'payday-leftover': true,
+  'last-presented': true,
+  'pay-period': true,
+});
+const LEFTOVER_FORBIDDEN_KEYS = Object.freeze({
+  leftover: true,
+  amount: true,
+  equals: true,
+  value: true,
+  runningLeftover: true,
+  afterBigPurchases: true,
+  leftoverAmount: true,
 });
 const FACILITY_REF_RE = /^current\.debts\.facilities\[(\d{1,3})\]\.(?:available|label)$/;
 const NEXT_PAYDAY_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)(?:\s+the)?\s+next\s+payday\??$/i;
 const THAT_CARD_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+(?:that|this|the)\s+card\??$/i;
 const INTEREST_AGAIN_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:how much interest (?:was|is) that(?: again)?|(?:what(?:'s| is)|whats) (?:the )?interest (?:again|on that)|interest again)\??$/i;
 const BARE_THAT_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+that\??$/i;
+const THIS_PAYDAY_LEFTOVER_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does this payday leave us with\??$/i;
+const THAT_LEAVE_US_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does that leave us with\??$/i;
 
 function hmacKey(secret, token) {
   if (typeof secret !== 'string' || secret.length < 16) return '';
@@ -249,6 +279,8 @@ function uniqueFacilityFollowup(prior, packet) {
 function classifyVerifiedFollowup(question) {
   if (typeof question !== 'string' || !question.trim()) return null;
   const parsed = question.trim().replace(/\s+/g, ' ');
+  if (THIS_PAYDAY_LEFTOVER_RE.test(parsed)) return 'payday-leftover';
+  if (THAT_LEAVE_US_RE.test(parsed)) return 'payday-leftover-deixis';
   if (NEXT_PAYDAY_FOLLOWUP_RE.test(parsed)) return 'next-payday';
   if (THAT_CARD_FOLLOWUP_RE.test(parsed)) return 'card';
   if (INTEREST_AGAIN_RE.test(parsed)) return 'interest';
@@ -256,10 +288,68 @@ function classifyVerifiedFollowup(question) {
   return null;
 }
 
+function leftoverReference(priorRequired, prior) {
+  if (priorRequired && !priorHasReferentKey(prior, 'payday-leftover')) {
+    return { status: 'ambiguous', nature: 'reference' };
+  }
+  return {
+    status: 'resolved-reference',
+    paths: FOLLOWUP_KEY_PATHS['payday-leftover'].slice(),
+    referentKey: 'payday-leftover',
+  };
+}
+
+function parseLeftoverExtract(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'not-leftover' };
+  }
+  if (parsed.intent !== LEFTOVER_INTENT) return { ok: false, reason: 'not-leftover' };
+  const keys = Object.keys(parsed);
+  if (keys.some(key => LEFTOVER_FORBIDDEN_KEYS[key])) {
+    return { ok: false, reason: 'invented leftover' };
+  }
+  if (keys.some(key => !LEFTOVER_EXTRACT_KEYS[key])) {
+    return { ok: false, reason: 'unexpected fields' };
+  }
+  if (keys.includes('referentKey')) {
+    if (typeof parsed.referentKey !== 'string' || !LEFTOVER_REFERENT_KEYS[parsed.referentKey]) {
+      return { ok: false, reason: 'invalid referentKey' };
+    }
+    return {
+      ok: true,
+      intent: LEFTOVER_INTENT,
+      referentKey: parsed.referentKey,
+    };
+  }
+  return { ok: true, intent: LEFTOVER_INTENT };
+}
+
+function resolvePaydayLeftover({ question, priorTurn, extract }) {
+  const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
+  if (extract && extract.ok && extract.intent === LEFTOVER_INTENT) {
+    if (extract.referentKey === 'last-presented' || extract.referentKey === 'pay-period') {
+      return leftoverReference(true, prior);
+    }
+    return leftoverReference(false, prior);
+  }
+  const kind = classifyVerifiedFollowup(question);
+  if (kind === 'payday-leftover') return leftoverReference(false, prior);
+  if (kind === 'payday-leftover-deixis') return leftoverReference(true, prior);
+  return { status: 'none' };
+}
+
 function resolveVerifiedReference({ question, priorTurn, packet }) {
   const kind = classifyVerifiedFollowup(question);
   if (!kind) return { status: 'none' };
   const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
+
+  if (kind === 'payday-leftover') {
+    return leftoverReference(false, prior);
+  }
+
+  if (kind === 'payday-leftover-deixis') {
+    return leftoverReference(true, prior);
+  }
 
   if (kind === 'next-payday') {
     if (priorHasReferentKey(prior, 'next-payday') || priorHasReferentKey(prior, 'pay-period')) {
@@ -730,9 +820,13 @@ module.exports = {
   TTL_MS,
   QUESTION_MAX,
   PRESENTED_MAX,
+  LEFTOVER_INTENT,
+  LEFTOVER_PATH,
   createSessionContext,
   resolveFollowup,
   resolveVerifiedReference,
+  resolvePaydayLeftover,
+  parseLeftoverExtract,
   bindReferentKeysFromPaths,
   classifyVerifiedFollowup,
   FOLLOWUP_REFERENT_KEYS,
