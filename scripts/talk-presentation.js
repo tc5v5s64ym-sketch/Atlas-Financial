@@ -833,6 +833,67 @@ function assembleCitations(fields) {
   return sanitizeCitations(items);
 }
 
+function assembleClaimCitations(rows, fields) {
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return null;
+  if (!Array.isArray(rows) || !rows.length) return assembleCitations(fields);
+  if (rows.some(row => !row || !row.mapped)) return assembleCitations(fields);
+
+  const items = [];
+  const seenSurface = Object.create(null);
+  const groups = [];
+  const groupIndex = Object.create(null);
+  for (const row of rows) {
+    const source = ALLOWED_SOURCES.includes(row.source) ? row.source : null;
+    if (!source) continue;
+    const action = publicAction(row.action);
+    if (action) {
+      const surfaceKey = source + '\0' + action.href;
+      if (!seenSurface[surfaceKey]) {
+        const label = SURFACE_LABELS[action.href];
+        if (label) {
+          seenSurface[surfaceKey] = true;
+          items.push({
+            kind: 'surface',
+            source,
+            href: action.href,
+            label,
+          });
+        }
+      }
+    }
+    if (groupIndex[source] == null) {
+      groupIndex[source] = groups.length;
+      groups.push({ source, rows: [row] });
+    } else {
+      groups[groupIndex[source]].rows.push(row);
+    }
+  }
+
+  const asOf = publicAsOf(fields.asOf);
+  const freshnessRaw = publicCitationTrust(fields.freshness);
+  for (const group of groups) {
+    const trust = publicCitationTrust(weakestTrust(group.rows.map(row => row.trust)));
+    const freshness = freshnessRaw && freshnessRaw !== trust ? freshnessRaw : null;
+    const label = provenanceText({
+      source: group.source,
+      asOf,
+      trust,
+      freshness,
+    });
+    if (label) {
+      items.push({
+        kind: 'provenance',
+        source: group.source,
+        asOf,
+        trust,
+        freshness,
+        label,
+      });
+    }
+  }
+  return sanitizeCitations(items) || assembleCitations(fields);
+}
+
 function sanitizePresentationCards(cards) {
   if (!cards || typeof cards !== 'object' || Array.isArray(cards)) return null;
   if (cards.version !== CARD_VERSION) return null;
@@ -889,7 +950,10 @@ function finishPresentation(presentation, extras) {
     version: CARD_VERSION,
     items: leading.concat(trailingMetaCards(presentation)),
   });
-  presentation.citations = assembleCitations(presentation);
+  const claimRows = extras && extras.claimRows;
+  presentation.citations = Array.isArray(claimRows)
+    ? assembleClaimCitations(claimRows, presentation)
+    : assembleCitations(presentation);
   return presentation;
 }
 
@@ -1184,6 +1248,7 @@ function presentVerifiedClaims(published, packet) {
       title: 'Answer',
       body: row.mapped ? row.text : genericSentence(claims[index]),
     })),
+    claimRows: presented,
   });
 }
 
@@ -1206,6 +1271,7 @@ module.exports = {
   sanitizePresentationCards,
   sanitizeCitations,
   assembleCitations,
+  assembleClaimCitations,
   publicCitationTrust,
   formatCurrency,
   formatClaimValue,

@@ -133,9 +133,14 @@ console.log('=== 1. Contract: server owns citations; Gemini cannot invent them =
   const serverSrc = read('server.js');
   const talkSrc = stripComments(read('public/talk.js'));
   ok(/assembleCitations/.test(presentationSrc)
+      && /assembleClaimCitations/.test(presentationSrc)
       && /sanitizeCitations/.test(presentationSrc)
       && /SURFACE_LABELS/.test(presentationSrc),
-    'presentation assembles and sanitizes household citations');
+    'presentation assembles aggregate and per-claim household citations');
+  ok(/CLAIM_VALUE_KEYS/.test(geminiSrc)
+      && /claimValueField/.test(geminiSrc)
+      && !/claimKeys\.some\(key => MODEL_CITATION_KEYS\[key\]\)/.test(geminiSrc),
+    'claim parser uses an exact path-plus-value allowlist, not a citation-key blacklist');
   ok(!/require\(['"][^'"]*forecast/i.test(presentationSrc)
       && !/require\(['"][^'"]*forecast/i.test(geminiSrc),
     'citation assembly still does not import Forecast');
@@ -234,6 +239,36 @@ console.log('\n=== 3. Gemini-invented citation fields fail closed ===');
     url: 'https://evil.example',
   }), packet).ok === false,
     'materialize drops a turn that tries to publish a model URL');
+  ok(TalkGemini.parseTalkModelOutput(JSON.stringify({
+    status: 'explained',
+    claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 }],
+  })).ok === true,
+    'path plus equals remains the exact allowed claim schema');
+  ok(TalkGemini.parseTalkModelOutput(JSON.stringify({
+    status: 'explained',
+    claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 }],
+  })).ok === true,
+    'path plus value remains the exact allowed claim schema');
+  ok(TalkGemini.parseTalkModelOutput(JSON.stringify({
+    status: 'explained',
+    claims: [{
+      path: 'forecast.currentPeriodAction.essentialRemaining',
+      equals: 1415.95,
+      value: 1415.95,
+    }],
+  })).ok === false,
+    'path plus both value fields fails closed');
+  ['sourcePath', 'sourceURL', 'link', 'reference'].forEach(key => {
+    ok(TalkGemini.parseTalkModelOutput(JSON.stringify({
+      status: 'explained',
+      claims: [{
+        path: 'forecast.currentPeriodAction.essentialRemaining',
+        equals: 1415.95,
+        [key]: 'https://evil.example/raw/statement.pdf',
+      }],
+    })).ok === false,
+      `claim-level ${key} is outside the allowlist and fails closed`);
+  });
   ok(TalkPresentation.sanitizeCitations([
     { kind: 'surface', source: 'Forecast', href: 'https://evil.example', label: 'Budget' },
   ]) === null
@@ -481,7 +516,72 @@ console.log('\n=== 7. Hypo / compare / preference keep Forecast citations, no ne
     'unavailable hypothetical cites Forecast as unavailable and does not invent zero');
 }
 
-console.log('\n=== 8. Citation allowlist stays the existing Atlas surfaces ===');
+console.log('\n=== 8. Mixed mapped answers keep per-claim source citations ===');
+{
+  const mixedSurfaces = TalkPresentation.presentVerifiedClaims({
+    status: 'explained',
+    claims: [
+      { path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 },
+      { path: 'current.nextSignificantObligations.nextDue.amount', value: 17 },
+    ],
+  }, {
+    metadata: {
+      effectiveAsOf: '2026-09-14',
+      freshness: { confidence: 'live' },
+    },
+    forecast: {
+      currentPeriodAction: {
+        essentialRemaining: 1415.95,
+        remainingClaim: 'posted-only',
+      },
+    },
+    current: {
+      nextSignificantObligations: {
+        nextDue: { amount: 17, confidence: 'estimated' },
+      },
+    },
+  });
+  const remainingText = `You have ${TalkPresentation.formatCurrency(1415.95)} remaining in the current pay period.`;
+  const dueText = `The next due amount is ${TalkPresentation.formatCurrency(17)}.`;
+  ok(mixedSurfaces.answer === `${remainingText} ${dueText}`,
+    'mixed mapped answer reprints both independently formatted Atlas sentences');
+  ok(mixedSurfaces.source === null && mixedSurfaces.action === null,
+    'mixed mapped answers still have no single aggregate source or action');
+  ok(mixedSurfaces.citations.some(item => (
+    item.kind === 'surface'
+    && item.source === 'Forecast'
+    && item.href === '/'
+    && item.label === 'Budget'
+  )),
+    'mixed mapped answers keep the Forecast/Budget surface citation');
+  ok(mixedSurfaces.citations.some(item => (
+    item.kind === 'surface'
+    && item.source === 'Bills'
+    && item.href === '/bills.html'
+    && item.label === 'Bills'
+  )),
+    'mixed mapped answers keep the Bills surface citation');
+  ok(mixedSurfaces.citations.some(item => (
+    item.kind === 'provenance'
+    && item.source === 'Forecast'
+    && item.trust === 'posted-only'
+    && item.asOf === '2026-09-14'
+    && item.label === 'Forecast · as of 2026-09-14 · posted-only · live'
+  )),
+    'Forecast provenance stays posted-only and is not collapsed to unsourced aggregate');
+  ok(mixedSurfaces.citations.some(item => (
+    item.kind === 'provenance'
+    && item.source === 'Bills'
+    && item.trust === 'estimated'
+    && item.trust !== 'verified'
+    && item.label === 'Bills · as of 2026-09-14 · estimated · live'
+  )),
+    'Bills provenance stays estimated and is not promoted or dropped');
+  ok(!mixedSurfaces.citations.some(item => item.kind === 'provenance' && !item.source),
+    'mixed mapped answers do not publish unsourced aggregate provenance');
+}
+
+console.log('\n=== 9. Citation allowlist stays the existing Atlas surfaces ===');
 {
   ok(TalkPresentation.SURFACE_LABELS['/'] === 'Budget'
       && TalkPresentation.SURFACE_LABELS['/bills.html'] === 'Bills'

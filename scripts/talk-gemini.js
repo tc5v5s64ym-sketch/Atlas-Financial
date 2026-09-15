@@ -56,6 +56,12 @@ const MODEL_CITATION_KEYS = Object.freeze({
   file: true,
   filename: true,
 });
+const CLAIM_VALUE_KEYS = Object.freeze({
+  equals: true,
+  value: true,
+});
+// Claim objects are an exact allowlist: `path` plus exactly one value field.
+// Unanticipated keys such as sourcePath, sourceURL, link, or reference fail closed.
 
 const INSTRUCTION = [
   'You are Atlas Talk, an explainer of the incumbent Atlas household-financial picture for this one request.',
@@ -428,6 +434,14 @@ function parseExtractiveOutput(text) {
   return parseExtractiveObject(parsed);
 }
 
+function claimValueField(claim) {
+  if (!claim || typeof claim !== 'object' || Array.isArray(claim)) return null;
+  const keys = Object.keys(claim);
+  if (keys.length !== 2 || !keys.includes('path')) return null;
+  const valueKey = keys[0] === 'path' ? keys[1] : keys[0];
+  return CLAIM_VALUE_KEYS[valueKey] ? valueKey : null;
+}
+
 function parseExtractiveObject(parsed) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, reason: 'not structured' };
@@ -453,21 +467,17 @@ function parseExtractiveObject(parsed) {
   const claims = [];
   const seen = new Set();
   for (const claim of parsed.claims) {
-    if (!claim || typeof claim !== 'object' || Array.isArray(claim)) {
-      return { ok: false, reason: 'invalid claim' };
-    }
-    const claimKeys = Object.keys(claim);
-    if (!claimKeys.length || claimKeys.some(key => MODEL_CITATION_KEYS[key])) {
-      return { ok: false, reason: 'unexpected fields' };
+    const valueKey = claimValueField(claim);
+    if (!valueKey) {
+      return { ok: false, reason: claim && typeof claim === 'object' && !Array.isArray(claim)
+        ? 'unexpected fields'
+        : 'invalid claim' };
     }
     if (typeof claim.path !== 'string' || seen.has(claim.path)) {
       return { ok: false, reason: 'invalid path' };
     }
-    const hasEquals = Object.prototype.hasOwnProperty.call(claim, 'equals');
-    const hasValue = Object.prototype.hasOwnProperty.call(claim, 'value');
-    if (!hasEquals && !hasValue) return { ok: false, reason: 'unexpected fields' };
     seen.add(claim.path);
-    claims.push({ path: claim.path, equals: hasEquals ? claim.equals : claim.value });
+    claims.push({ path: claim.path, equals: claim[valueKey] });
   }
   return { ok: true, status: 'explained', claims };
 }

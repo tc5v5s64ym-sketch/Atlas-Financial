@@ -1675,10 +1675,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       }),
       domainPacket
     );
-    ok(extraClaimNote.ok === true
-        && extraClaimNote.answer === 'The current weekly spending cap is $225.00.'
-        && !/watch this cap/.test(extraClaimNote.answer),
-      'an extra note on a verified claim is ignored and not published');
+    ok(extraClaimNote.ok === false,
+      'an extra note on a verified claim is an unexpected key and fails closed');
 
     ok(TalkGemini.materializeExplainerAnswer(
         'What should I do with my extra cash? Put it toward the Visa.',
