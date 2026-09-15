@@ -89,6 +89,10 @@ const INSTRUCTION = [
   '{"intent":"payday-leftover","referentKey":"last-presented"}',
   'Do not return leftover, amount, equals, runningLeftover, afterBigPurchases, leftoverAmount, or any leftover figure. The server reads Forecast leftover from this request\'s packet. Gemini extracts leftover intent or referent only.',
   '',
+  'If and only if the household question asks what this payday looks like, reply with exactly:',
+  '{"intent":"payday-picture"}',
+  'Do not return leftover, amount, equals, allocated, runningLeftover, currentBalance, afterBills, afterHouseholdBudget, afterDebtRepayment, afterBigPurchases, leftoverAmount, claims, or any payday figure. The server reads Forecast paydayAllocation stage balances and leftover-consuming allocated amounts from this request\'s packet. Gemini extracts payday-picture intent only. This is not leftover intent.',
+  '',
   'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array. An explicit comparison that also asks which of those already-named options to prefer is still the comparison extract, not unavailable and not a winner.',
   '',
   'You MAY:',
@@ -101,10 +105,12 @@ const INSTRUCTION = [
   '- extract only intent and scenarios of amount plus debtLabel for an explicit comparison that already names both on each option',
   '- extract only intent and an optional allowlisted referentPath or referentKey for a why-question about an already-published result',
   '- extract only leftover intent, or leftover intent plus last-presented, for a payday-leftover question; never a leftover amount',
+  '- extract only payday-picture intent for a what-this-payday-looks-like question; never a payday amount',
   '- return status "unavailable" when something is not in the packet',
   '',
   'For pay-period, upcoming-commitment / bills, credit-picture, and factual decision-policy questions, cite only primitive path/equals claims already in this packet. Preferred paths:',
   '- payday leftover: forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+  '- payday look-like: forecast.paydayAllocation.runningLeftover.currentBalance, forecast.paydayAllocation.obligations.allocated, forecast.paydayAllocation.runningLeftover.afterBills, forecast.paydayAllocation.essentials.allocated, forecast.paydayAllocation.runningLeftover.afterHouseholdBudget, forecast.paydayAllocation.extraDebt.allocated, forecast.paydayAllocation.runningLeftover.afterDebtRepayment, forecast.paydayAllocation.runningLeftover.afterBigPurchases',
   '- pay period: forecast.currentPeriodAction.periodStart, forecast.currentPeriodAction.periodEnd, forecast.currentPeriodAction.nextPayday, forecast.currentPeriodAction.essentialRemaining, forecast.currentPeriodAction.weeklyCap, forecast.currentPeriodAction.remainingClaim, current.spendableHouseholdCash.value',
   '- next commitment / bills: current.nextSignificantObligations.nextDue.label, current.nextSignificantObligations.nextDue.date, current.nextSignificantObligations.nextDue.amount, current.nextSignificantObligations.nextDue.daysUntil',
   '- credit picture: current.debts.totalAvailableCredit, current.pending.totalKnownPending, current.debts.overLimitCount, current.debts.securedDebt, current.debts.monthlyInterest',
@@ -469,6 +475,11 @@ function parseTalkModelOutput(text) {
   if (leftover.reason !== 'not-leftover') {
     return { ok: false, kind: TalkSession.LEFTOVER_INTENT, reason: leftover.reason };
   }
+  const picture = TalkSession.parsePaydayPictureExtract(parsed);
+  if (picture.ok) return picture;
+  if (picture.reason !== 'not-payday-picture') {
+    return { ok: false, kind: TalkSession.PAYDAY_PICTURE_INTENT, reason: picture.reason };
+  }
   const hyp = TalkHypothetical.parseExtract(parsed);
   if (hyp.ok) return hyp;
   if (hyp.reason !== 'not-hypothetical') {
@@ -651,6 +662,28 @@ function presentLeftoverExtract(extract, packet, question, priorTurn) {
   );
 }
 
+function presentPaydayPictureExtract(extract, packet, question) {
+  const resolved = TalkSession.resolvePaydayPicture({
+    question,
+    extract,
+  });
+  if (resolved.status !== 'resolved-reference') {
+    return attachSessionTurn(
+      TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
+      { kind: 'unavailable' }
+    );
+  }
+  const claims = TalkWhy.publishablePaths(resolved.paths, packet);
+  const presented = TalkPresentation.presentVerifiedClaims(
+    claims.length ? { status: 'explained', claims } : { status: 'unavailable', claims: [] },
+    packet
+  );
+  return attachSessionTurn(
+    presented,
+    claims.length ? TalkWhy.sessionTurnFromExplained(claims) : { kind: 'unavailable' }
+  );
+}
+
 function presentWhyExtract(extract, packet, question, priorTurn) {
   const result = TalkWhy.resolve({
     question,
@@ -700,7 +733,8 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
   if (!text) throw talkAnswerUnavailable();
   const model = parseTalkModelOutput(text);
   if (!model.ok) {
-    if (model.kind === TalkSession.LEFTOVER_INTENT) {
+    if (model.kind === TalkSession.LEFTOVER_INTENT
+        || model.kind === TalkSession.PAYDAY_PICTURE_INTENT) {
       return attachSessionTurn(
         TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
         { kind: 'unavailable' }
@@ -728,6 +762,13 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
   }
   if (model.intent === TalkSession.LEFTOVER_INTENT) {
     const presented = presentLeftoverExtract(model, packet, parsed.question, priorTurn);
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      throw talkAnswerUnavailable();
+    }
+    return presented;
+  }
+  if (model.intent === TalkSession.PAYDAY_PICTURE_INTENT) {
+    const presented = presentPaydayPictureExtract(model, packet, parsed.question);
     if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
       throw talkAnswerUnavailable();
     }

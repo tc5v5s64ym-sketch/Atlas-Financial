@@ -155,10 +155,17 @@ function remainingClaimTrust(packet) {
 }
 
 function leftoverTrust(packet) {
+  return paydayAllocationMoneyTrust(
+    packet,
+    'forecast.paydayAllocation.runningLeftover.afterBigPurchases'
+  );
+}
+
+function paydayAllocationMoneyTrust(packet, path) {
   const status = packetGet(packet, 'forecast.paydayAllocation.status');
   if (status === 'unavailable') return 'unavailable';
-  const leftover = packetGet(packet, 'forecast.paydayAllocation.runningLeftover.afterBigPurchases');
-  if (leftover == null || !Number.isFinite(Number(leftover))) return 'unavailable';
+  const value = packetGet(packet, path);
+  if (value == null || !Number.isFinite(Number(value))) return 'unavailable';
   return 'calculated';
 }
 
@@ -250,6 +257,111 @@ const PATH_RULES = [
       return moneySentence({
         available: money => `You have ${money} remaining in the current pay period.`,
         unavailable: 'Current pay-period remaining is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.runningLeftover.currentBalance',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.runningLeftover.currentBalance'
+    ),
+    present(value) {
+      return moneySentence({
+        available: money => `This payday has ${money}.`,
+        unavailable: 'What this payday has is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.obligations.allocated',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.obligations.allocated'
+    ),
+    present(value) {
+      return moneySentence({
+        available: money => `Forecast set aside ${money} for bills.`,
+        unavailable: 'The bills set-aside is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.runningLeftover.afterBills',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.runningLeftover.afterBills'
+    ),
+    present(value) {
+      return moneySentence({
+        available: money => `After bills, ${money} remains.`,
+        unavailable: 'The amount remaining after bills is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.essentials.allocated',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.essentials.allocated'
+    ),
+    present(value) {
+      return moneySentence({
+        available: money => `Forecast is holding ${money} for household costs.`,
+        unavailable: 'The household-cost hold is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.runningLeftover.afterHouseholdBudget',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.runningLeftover.afterHouseholdBudget'
+    ),
+    present(value) {
+      return moneySentence({
+        available: money => `After household costs, ${money} remains.`,
+        unavailable: 'The amount remaining after household costs is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.extraDebt.allocated',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.extraDebt.allocated'
+    ),
+    present(value) {
+      return moneySentence({
+        available: money => `Forecast allocated ${money} to extra debt.`,
+        unavailable: 'The extra-debt allocation is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.runningLeftover.afterDebtRepayment',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.runningLeftover.afterDebtRepayment'
+    ),
+    present(value) {
+      return moneySentence({
+        available: money => `After extra debt, ${money} remains.`,
+        unavailable: 'The amount remaining after extra debt is unavailable.',
       }, value);
     },
   },

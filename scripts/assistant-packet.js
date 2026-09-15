@@ -148,10 +148,17 @@ function money(value) {
   return round2(value);
 }
 
-// Smallest leftover projection: copy Forecast.paydayAllocation.runningLeftover
-// money fields. Talk reprints them. This is not a leftover calculator.
+function allocatedMoney(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  return money(row.allocated);
+}
+
+// Smallest operating-picture projection: copy Forecast leftover stages plus
+// the leftover-consuming allocated amounts Talk reprints. Talk does not
+// reconstruct a stage by subtracting. This is not a payday calculator.
 function projectPaydayAllocation(advice) {
-  const leftover = advice && advice.paydayAllocation && advice.paydayAllocation.runningLeftover;
+  const alloc = advice && advice.paydayAllocation;
+  const leftover = alloc && alloc.runningLeftover;
   if (!leftover || typeof leftover !== 'object' || Array.isArray(leftover)) {
     return unavailable('payday-leftover-unavailable');
   }
@@ -165,6 +172,9 @@ function projectPaydayAllocation(advice) {
       afterDebtRepayment: money(leftover.afterDebtRepayment),
       afterBigPurchases: money(leftover.afterBigPurchases),
     },
+    obligations: { allocated: allocatedMoney(alloc.obligations) },
+    essentials: { allocated: allocatedMoney(alloc.essentials) },
+    extraDebt: { allocated: allocatedMoney(alloc.extraDebt) },
   };
 }
 
