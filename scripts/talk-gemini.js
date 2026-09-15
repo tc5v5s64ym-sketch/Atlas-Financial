@@ -93,6 +93,17 @@ const INSTRUCTION = [
   '{"intent":"payday-picture"}',
   'Do not return leftover, amount, equals, allocated, runningLeftover, currentBalance, afterBills, afterHouseholdBudget, afterDebtRepayment, afterBigPurchases, leftoverAmount, claims, or any payday figure. The server reads Forecast paydayAllocation stage balances and leftover-consuming allocated amounts from this request\'s packet. Gemini extracts payday-picture intent only. This is not leftover intent.',
   '',
+  'If and only if the household question asks which household bills are coming before the next payday, remain this pay period, or still need to come out this pay period, reply with exactly:',
+  '{"intent":"payday-remaining-bills"}',
+  'If and only if that ask is which bills have already been covered, reply with exactly:',
+  '{"intent":"payday-remaining-bills","referentKey":"covered"}',
+  'If and only if that ask names one bill or obligation ("is Shaw still due?"), reply with exactly:',
+  '{"intent":"payday-remaining-bills","billLabel":"<caller-named bill text>"}',
+  'billLabel is the caller-named bill text only. Do not invent an id, amount, date, settlement, paid, unpaid, late, overdue, remaining, wanted, or items list.',
+  'If and only if that remaining-bills ask is a deictic follow-up about one already-shown remaining bill ("what about that one?"), reply with exactly:',
+  '{"intent":"payday-remaining-bills","referentKey":"last-presented"}',
+  'Do not return leftover, amount, equals, remaining, wanted, allocated, items, settlement, paid, unpaid, late, overdue, covered, claims, or any bill figure or status. The server reads Forecast currentPeriodAction.bills from this request\'s packet. Gemini extracts remaining-bills intent, covered referent, last-presented referent, or caller-named billLabel only. This is not leftover or payday-picture intent.',
+  '',
   'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array. An explicit comparison that also asks which of those already-named options to prefer is still the comparison extract, not unavailable and not a winner.',
   '',
   'You MAY:',
@@ -106,11 +117,13 @@ const INSTRUCTION = [
   '- extract only intent and an optional allowlisted referentPath or referentKey for a why-question about an already-published result',
   '- extract only leftover intent, or leftover intent plus last-presented, for a payday-leftover question; never a leftover amount',
   '- extract only payday-picture intent for a what-this-payday-looks-like question; never a payday amount',
+  '- extract only remaining-bills intent, or covered / last-presented referent, or caller-named billLabel, for a payday remaining-bills question; never an amount or settlement status',
   '- return status "unavailable" when something is not in the packet',
   '',
   'For pay-period, upcoming-commitment / bills, credit-picture, and factual decision-policy questions, cite only primitive path/equals claims already in this packet. Preferred paths:',
   '- payday leftover: forecast.paydayAllocation.runningLeftover.afterBigPurchases',
   '- payday look-like: forecast.paydayAllocation.runningLeftover.currentBalance, forecast.paydayAllocation.obligations.allocated, forecast.paydayAllocation.runningLeftover.afterBills, forecast.paydayAllocation.essentials.allocated, forecast.paydayAllocation.runningLeftover.afterHouseholdBudget, forecast.paydayAllocation.extraDebt.allocated, forecast.paydayAllocation.runningLeftover.afterDebtRepayment, forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+  '- payday remaining bills: extract remaining-bills intent only; the server reads forecast.currentPeriodAction.bills',
   '- pay period: forecast.currentPeriodAction.periodStart, forecast.currentPeriodAction.periodEnd, forecast.currentPeriodAction.nextPayday, forecast.currentPeriodAction.essentialRemaining, forecast.currentPeriodAction.weeklyCap, forecast.currentPeriodAction.remainingClaim, current.spendableHouseholdCash.value',
   '- next commitment / bills: current.nextSignificantObligations.nextDue.label, current.nextSignificantObligations.nextDue.date, current.nextSignificantObligations.nextDue.amount, current.nextSignificantObligations.nextDue.daysUntil',
   '- credit picture: current.debts.totalAvailableCredit, current.pending.totalKnownPending, current.debts.overLimitCount, current.debts.securedDebt, current.debts.monthlyInterest',
@@ -118,7 +131,7 @@ const INSTRUCTION = [
   'Do not cite a whole object or array as equals. Cite at most 8 claims. If the question asks what to do, how to allocate extra cash, how much buffer, safe-to-spend, a payoff or Visa amount, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
   '',
   'You MUST NOT:',
-  '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, debtLabel, scenarios, referentPath, and referentKey',
+  '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, debtLabel, billLabel, scenarios, referentPath, and referentKey',
   '- invent a cause, reason, because-clause, or other causal financial explanation',
   '- invent citations, source paths, URLs, Forecast provenance, trust labels, or account facts',
   '- return a citations, sources, urls, href, provenance, trust, or asOf field',
@@ -480,6 +493,11 @@ function parseTalkModelOutput(text) {
   if (picture.reason !== 'not-payday-picture') {
     return { ok: false, kind: TalkSession.PAYDAY_PICTURE_INTENT, reason: picture.reason };
   }
+  const remainingBills = TalkSession.parseRemainingBillsExtract(parsed);
+  if (remainingBills.ok) return remainingBills;
+  if (remainingBills.reason !== 'not-remaining-bills') {
+    return { ok: false, kind: TalkSession.REMAINING_BILLS_INTENT, reason: remainingBills.reason };
+  }
   const hyp = TalkHypothetical.parseExtract(parsed);
   if (hyp.ok) return hyp;
   if (hyp.reason !== 'not-hypothetical') {
@@ -684,6 +702,28 @@ function presentPaydayPictureExtract(extract, packet, question) {
   );
 }
 
+function presentRemainingBillsExtract(extract, packet, question, priorTurn) {
+  const resolved = TalkSession.resolvePaydayRemainingBills({
+    question,
+    priorTurn,
+    packet,
+    extract,
+  });
+  if (resolved.status !== 'resolved-reference') {
+    return attachSessionTurn(
+      TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
+      { kind: 'unavailable' }
+    );
+  }
+  const presented = TalkPresentation.presentPaydayRemainingBills(resolved, packet);
+  return attachSessionTurn(
+    presented,
+    presented && presented.trust !== 'unavailable'
+      ? TalkSession.sessionTurnFromRemainingBills(resolved)
+      : { kind: 'unavailable' }
+  );
+}
+
 function presentWhyExtract(extract, packet, question, priorTurn) {
   const result = TalkWhy.resolve({
     question,
@@ -734,7 +774,8 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
   const model = parseTalkModelOutput(text);
   if (!model.ok) {
     if (model.kind === TalkSession.LEFTOVER_INTENT
-        || model.kind === TalkSession.PAYDAY_PICTURE_INTENT) {
+        || model.kind === TalkSession.PAYDAY_PICTURE_INTENT
+        || model.kind === TalkSession.REMAINING_BILLS_INTENT) {
       return attachSessionTurn(
         TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
         { kind: 'unavailable' }
@@ -769,6 +810,18 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
   }
   if (model.intent === TalkSession.PAYDAY_PICTURE_INTENT) {
     const presented = presentPaydayPictureExtract(model, packet, parsed.question);
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      throw talkAnswerUnavailable();
+    }
+    return presented;
+  }
+  if (model.intent === TalkSession.REMAINING_BILLS_INTENT) {
+    const presented = presentRemainingBillsExtract(
+      model,
+      packet,
+      parsed.question,
+      priorTurn
+    );
     if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
       throw talkAnswerUnavailable();
     }

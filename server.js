@@ -447,6 +447,8 @@ function appendTalkSessionTurn(sessionKey, question, presented) {
     scenarios: presented.sessionTurn && presented.sessionTurn.scenarios,
     referentPaths: presented.sessionTurn && presented.sessionTurn.referentPaths,
     referentKeys: presented.sessionTurn && presented.sessionTurn.referentKeys,
+    billId: presented.sessionTurn && presented.sessionTurn.billId,
+    billLabel: presented.sessionTurn && presented.sessionTurn.billLabel,
     priorKind: presented.sessionTurn && presented.sessionTurn.priorKind,
     // Already-sanitized published Forecast baseline only. Not evidence.
     asOf: presented.sessionTurn && presented.sessionTurn.asOf,
@@ -512,14 +514,21 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
     presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
     presented.sessionTurn = TalkSession.sessionTurnFromComparison(result, presented);
   } else if (follow.status === 'resolved-reference') {
-    const claims = TalkWhy.publishablePaths(follow.paths, packet);
-    presented = TalkPresentation.presentVerifiedClaims(
-      claims.length ? { status: 'explained', claims } : { status: 'unavailable', claims: [] },
-      packet
-    );
-    presented.sessionTurn = claims.length
-      ? TalkWhy.sessionTurnFromExplained(claims)
-      : { kind: 'unavailable' };
+    if (follow.referentKey === TalkSession.REMAINING_BILLS_INTENT) {
+      presented = TalkPresentation.presentPaydayRemainingBills(follow, packet);
+      presented.sessionTurn = presented && presented.trust !== 'unavailable'
+        ? TalkSession.sessionTurnFromRemainingBills(follow)
+        : { kind: 'unavailable' };
+    } else {
+      const claims = TalkWhy.publishablePaths(follow.paths, packet);
+      presented = TalkPresentation.presentVerifiedClaims(
+        claims.length ? { status: 'explained', claims } : { status: 'unavailable', claims: [] },
+        packet
+      );
+      presented.sessionTurn = claims.length
+        ? TalkWhy.sessionTurnFromExplained(claims)
+        : { kind: 'unavailable' };
+    }
   } else if (TalkWhy.questionAsksWhy(parsed.question)) {
     const why = TalkWhy.resolve({
       question: parsed.question,

@@ -153,6 +153,55 @@ function allocatedMoney(row) {
   return money(row.allocated);
 }
 
+function closedPeriodBillConfidence(tag) {
+  return tag === 'confirmed' || tag === 'estimated' || tag === 'planned' ? tag : null;
+}
+
+function closedPeriodBillSettlement(tag) {
+  return tag === 'upcoming' || tag === 'unverified' || tag === 'represented'
+    ? tag
+    : null;
+}
+
+function clipPacketText(value, max) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
+}
+
+// Copy one Forecast current-period bill. Settlement is Forecast-owned
+// (represented | upcoming | unverified). Talk does not date-filter this
+// list, invent paid rows, or treat unverified as unpaid.
+function projectCurrentPeriodBill(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const id = clipPacketText(item.id, 80);
+  const label = clipPacketText(item.label, 120);
+  if (!id && !label) return null;
+  const row = {
+    id,
+    label,
+    date: clipPacketText(item.date, 40),
+    planned: money(item.planned),
+    remaining: money(item.remaining),
+    actual: item.actual == null ? null : money(item.actual),
+    settlement: closedPeriodBillSettlement(item.settlement),
+    confidence: closedPeriodBillConfidence(item.confidence),
+  };
+  return row;
+}
+
+function projectCurrentPeriodBills(items) {
+  if (!Array.isArray(items)) return null;
+  const out = [];
+  for (const item of items) {
+    const row = projectCurrentPeriodBill(item);
+    if (row) out.push(row);
+    if (out.length >= 32) break;
+  }
+  return out;
+}
+
 // Smallest operating-picture projection: copy Forecast leftover stages plus
 // the leftover-consuming allocated amounts Talk reprints. Talk does not
 // reconstruct a stage by subtracting. This is not a payday calculator.
@@ -554,6 +603,9 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
         weeklyCap: money(action.weeklyCap),
         noMovementToday: action.noMovementToday === true,
         currentShortfall: action.currentShortfall === true,
+        bills: action.unavailable === true
+          ? null
+          : projectCurrentPeriodBills(action.bills),
       }
       : unavailable('current-period-action-unavailable'),
     paydayAllocation: projectPaydayAllocation(advice),

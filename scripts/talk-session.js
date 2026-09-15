@@ -35,9 +35,13 @@
  * Forecast leftover stages plus leftover-consuming allocated amounts
  * from that same object. "What does that leave us with?" binds only
  * when leftover was already earned, including from that look-like
- * presentation. Ambiguous deixis is unavailable. The server re-reads
- * this request's packet or recomputes Forecast on the stored hyp
- * inputs. No durable household fact store.
+ * presentation. Remaining payday bills reprint Forecast-owned
+ * currentPeriodAction.bills. Settlement is Forecast-owned
+ * (represented | upcoming | unverified). Talk does not date-filter
+ * that list, invent a paid list, or treat unverified as unpaid.
+ * Ambiguous deixis is unavailable. The server re-reads this request's
+ * packet or recomputes Forecast on the stored hyp inputs. No durable
+ * household fact store.
  */
 
 const crypto = require('crypto');
@@ -87,6 +91,7 @@ const FOLLOWUP_REFERENT_KEYS = Object.freeze({
   'last-presented': true,
   'payday-leftover': true,
   'payday-picture': true,
+  'payday-remaining-bills': true,
 });
 const FOLLOWUP_KEY_PATHS = Object.freeze({
   'next-payday': Object.freeze([
@@ -157,6 +162,35 @@ const PAYDAY_PICTURE_FORBIDDEN_KEYS = Object.freeze({
   leftoverAmount: true,
   claims: true,
 });
+const REMAINING_BILLS_INTENT = 'payday-remaining-bills';
+const REMAINING_BILLS_EXTRACT_KEYS = Object.freeze({
+  intent: true,
+  referentKey: true,
+  billLabel: true,
+});
+const REMAINING_BILLS_REFERENT_KEYS = Object.freeze({
+  covered: true,
+  'last-presented': true,
+});
+const REMAINING_BILLS_FORBIDDEN_KEYS = Object.freeze({
+  leftover: true,
+  amount: true,
+  equals: true,
+  value: true,
+  remaining: true,
+  remainingCount: true,
+  wanted: true,
+  allocated: true,
+  items: true,
+  settlement: true,
+  paid: true,
+  unpaid: true,
+  late: true,
+  overdue: true,
+  covered: true,
+  claims: true,
+  status: true,
+});
 const FACILITY_REF_RE = /^current\.debts\.facilities\[(\d{1,3})\]\.(?:available|label)$/;
 const NEXT_PAYDAY_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)(?:\s+the)?\s+next\s+payday\??$/i;
 const THAT_CARD_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+(?:that|this|the)\s+card\??$/i;
@@ -165,6 +199,10 @@ const BARE_THAT_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what abou
 const THIS_PAYDAY_LOOK_LIKE_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does this payday look like\??$/i;
 const THIS_PAYDAY_LEFTOVER_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does this payday leave us with\??$/i;
 const THAT_LEAVE_US_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?what does that leave us with\??$/i;
+const REMAINING_BILLS_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what bills are coming before (?:the )?next payday|what bills do we still have before (?:the )?next payday|what still needs to come out this pay period|what bills are left)\??$/i;
+const COVERED_BILLS_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?which bills have already been covered\??$/i;
+const NAMED_BILL_DUE_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?is\s+(.+?)\s+still\s+due\??$/i;
+const THAT_ONE_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+that\s+one\??$/i;
 
 function hmacKey(secret, token) {
   if (typeof secret !== 'string' || secret.length < 16) return '';
@@ -317,11 +355,116 @@ function classifyVerifiedFollowup(question) {
   if (THIS_PAYDAY_LOOK_LIKE_RE.test(parsed)) return 'payday-picture';
   if (THIS_PAYDAY_LEFTOVER_RE.test(parsed)) return 'payday-leftover';
   if (THAT_LEAVE_US_RE.test(parsed)) return 'payday-leftover-deixis';
+  if (REMAINING_BILLS_RE.test(parsed)) return 'payday-remaining-bills';
+  if (COVERED_BILLS_RE.test(parsed)) return 'payday-remaining-bills-covered';
+  if (NAMED_BILL_DUE_RE.test(parsed)) return 'payday-named-bill';
   if (NEXT_PAYDAY_FOLLOWUP_RE.test(parsed)) return 'next-payday';
   if (THAT_CARD_FOLLOWUP_RE.test(parsed)) return 'card';
   if (INTEREST_AGAIN_RE.test(parsed)) return 'interest';
+  if (THAT_ONE_FOLLOWUP_RE.test(parsed)) return 'last-presented-one';
   if (BARE_THAT_FOLLOWUP_RE.test(parsed)) return 'last-presented';
   return null;
+}
+
+function namedBillLabelFromQuestion(question) {
+  if (typeof question !== 'string' || !question.trim()) return '';
+  const parsed = question.trim().replace(/\s+/g, ' ');
+  const match = NAMED_BILL_DUE_RE.exec(parsed);
+  return match && match[1] ? clipText(match[1], LABEL_MAX) : '';
+}
+
+function normalizeBillToken(value) {
+  if (typeof value !== 'string') return '';
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function packetRemainingBillItems(packet) {
+  const action = packet && packet.forecast && packet.forecast.currentPeriodAction;
+  if (!action || action.status === 'unavailable') {
+    return null;
+  }
+  const items = action.bills;
+  return Array.isArray(items) ? items : null;
+}
+
+function forecastStillDueBills(items) {
+  if (!Array.isArray(items)) return null;
+  return items.filter(item => item && (
+    item.settlement === 'upcoming' || item.settlement === 'unverified'
+  ));
+}
+
+function matchRemainingBill(items, query, preferredId) {
+  if (!Array.isArray(items)) return { status: 'unavailable' };
+  const preferred = typeof preferredId === 'string' ? preferredId : '';
+  if (preferred) {
+    const byId = items.filter(item => item && item.id === preferred);
+    if (byId.length === 1) return { status: 'unique', item: byId[0] };
+    if (byId.length > 1) return { status: 'ambiguous' };
+    return { status: 'none' };
+  }
+  const q = normalizeBillToken(query);
+  if (!q) return { status: 'none' };
+  const matches = [];
+  const seen = Object.create(null);
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const id = normalizeBillToken(item.id || '');
+    const label = normalizeBillToken(item.label || '');
+    const key = item.id || item.label || '';
+    if (!key || seen[key]) continue;
+    const exact = (id && id === q) || (label && label === q);
+    const contains = q.length >= 3 && (
+      (id && (id === q || id.indexOf(q) !== -1 || q.indexOf(id) !== -1))
+      || (label && (label.indexOf(q) !== -1 || q.indexOf(label) !== -1))
+    );
+    if (exact || contains) {
+      seen[key] = true;
+      matches.push(item);
+    }
+  }
+  if (matches.length === 1) return { status: 'unique', item: matches[0] };
+  if (matches.length > 1) return { status: 'ambiguous' };
+  return { status: 'none' };
+}
+
+function remainingBillsReference(ask, billLabel, packet, preferredId) {
+  const resolved = {
+    status: 'resolved-reference',
+    referentKey: REMAINING_BILLS_INTENT,
+    ask,
+  };
+  if (ask !== 'named') {
+    const listed = packetRemainingBillItems(packet);
+    const stillDue = forecastStillDueBills(listed);
+    if (ask === 'remaining' && stillDue && stillDue.length === 1 && stillDue[0] && stillDue[0].id) {
+      resolved.billId = stillDue[0].id;
+      resolved.billLabel = clipText(stillDue[0].label, LABEL_MAX) || stillDue[0].id;
+    }
+    return resolved;
+  }
+  const label = clipText(billLabel, LABEL_MAX);
+  if (!label) return { status: 'ambiguous', nature: 'reference' };
+  resolved.billLabel = label;
+  const listed = packetRemainingBillItems(packet);
+  if (!listed) return resolved;
+  const match = matchRemainingBill(listed, label, preferredId);
+  if (match.status === 'ambiguous') return { status: 'ambiguous', nature: 'reference' };
+  if (match.status === 'unique' && match.item && match.item.id) {
+    resolved.billId = match.item.id;
+    resolved.billLabel = clipText(match.item.label, LABEL_MAX) || label;
+  }
+  return resolved;
+}
+
+function remainingBillsDeixis(prior, packet) {
+  if (!priorHasReferentKey(prior, REMAINING_BILLS_INTENT)) {
+    return { status: 'none' };
+  }
+  const billId = prior && typeof prior.billId === 'string' ? prior.billId : '';
+  const billLabel = prior && typeof prior.billLabel === 'string' ? prior.billLabel : '';
+  if (!billId) return { status: 'ambiguous', nature: 'reference' };
+  return remainingBillsReference('named', billLabel || billId, packet, billId);
 }
 
 function leftoverReference(priorRequired, prior) {
@@ -385,6 +528,49 @@ function parsePaydayPictureExtract(parsed) {
   return { ok: true, intent: PAYDAY_PICTURE_INTENT };
 }
 
+function parseRemainingBillsExtract(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'not-remaining-bills' };
+  }
+  if (parsed.intent !== REMAINING_BILLS_INTENT) {
+    return { ok: false, reason: 'not-remaining-bills' };
+  }
+  const keys = Object.keys(parsed);
+  if (keys.some(key => REMAINING_BILLS_FORBIDDEN_KEYS[key])) {
+    return { ok: false, reason: 'invented remaining bills' };
+  }
+  if (keys.some(key => !REMAINING_BILLS_EXTRACT_KEYS[key])) {
+    return { ok: false, reason: 'unexpected fields' };
+  }
+  const hasKey = keys.includes('referentKey');
+  const hasLabel = keys.includes('billLabel');
+  if (hasKey && hasLabel) return { ok: false, reason: 'unexpected fields' };
+  if (hasKey) {
+    if (typeof parsed.referentKey !== 'string'
+        || !REMAINING_BILLS_REFERENT_KEYS[parsed.referentKey]) {
+      return { ok: false, reason: 'invalid referentKey' };
+    }
+    return {
+      ok: true,
+      intent: REMAINING_BILLS_INTENT,
+      referentKey: parsed.referentKey,
+    };
+  }
+  if (hasLabel) {
+    if (typeof parsed.billLabel !== 'string' || !parsed.billLabel.trim()) {
+      return { ok: false, reason: 'invalid billLabel' };
+    }
+    const billLabel = clipText(parsed.billLabel, LABEL_MAX);
+    if (!billLabel) return { ok: false, reason: 'invalid billLabel' };
+    return {
+      ok: true,
+      intent: REMAINING_BILLS_INTENT,
+      billLabel,
+    };
+  }
+  return { ok: true, intent: REMAINING_BILLS_INTENT };
+}
+
 function resolvePaydayLeftover({ question, priorTurn, extract }) {
   const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
   if (extract && extract.ok && extract.intent === LEFTOVER_INTENT) {
@@ -408,6 +594,39 @@ function resolvePaydayPicture({ question, extract }) {
   return { status: 'none' };
 }
 
+function resolvePaydayRemainingBills({ question, priorTurn, packet, extract }) {
+  const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
+  if (extract && extract.ok && extract.intent === REMAINING_BILLS_INTENT) {
+    if (extract.referentKey === 'last-presented') {
+      const deixis = remainingBillsDeixis(prior, packet);
+      return deixis.status === 'none'
+        ? { status: 'ambiguous', nature: 'reference' }
+        : deixis;
+    }
+    if (extract.referentKey === 'covered') {
+      return remainingBillsReference('covered', null, packet);
+    }
+    if (extract.billLabel) {
+      return remainingBillsReference('named', extract.billLabel, packet);
+    }
+    return remainingBillsReference('remaining', null, packet);
+  }
+  const kind = classifyVerifiedFollowup(question);
+  if (kind === 'payday-remaining-bills') {
+    return remainingBillsReference('remaining', null, packet);
+  }
+  if (kind === 'payday-remaining-bills-covered') {
+    return remainingBillsReference('covered', null, packet);
+  }
+  if (kind === 'payday-named-bill') {
+    return remainingBillsReference('named', namedBillLabelFromQuestion(question), packet);
+  }
+  if (kind === 'last-presented-one') {
+    return remainingBillsDeixis(prior, packet);
+  }
+  return { status: 'none' };
+}
+
 function resolveVerifiedReference({ question, priorTurn, packet }) {
   const kind = classifyVerifiedFollowup(question);
   if (!kind) return { status: 'none' };
@@ -423,6 +642,23 @@ function resolveVerifiedReference({ question, priorTurn, packet }) {
 
   if (kind === 'payday-leftover-deixis') {
     return leftoverReference(true, prior);
+  }
+
+  if (kind === 'payday-remaining-bills') {
+    return remainingBillsReference('remaining', null, packet);
+  }
+
+  if (kind === 'payday-remaining-bills-covered') {
+    return remainingBillsReference('covered', null, packet);
+  }
+
+  if (kind === 'payday-named-bill') {
+    return remainingBillsReference('named', namedBillLabelFromQuestion(question), packet);
+  }
+
+  if (kind === 'last-presented-one') {
+    const thatOne = remainingBillsDeixis(prior, packet);
+    if (thatOne.status !== 'none') return thatOne;
   }
 
   if (kind === 'next-payday') {
@@ -534,6 +770,12 @@ function sanitizeTurn(raw) {
       .concat(bindReferentKeysFromPaths(referentPaths).keys)
   );
   if (referentKeys.length) turn.referentKeys = referentKeys;
+  if (referentKeys.includes(REMAINING_BILLS_INTENT)) {
+    const billId = clipText(raw.billId, LABEL_MAX);
+    const billLabel = clipText(raw.billLabel, LABEL_MAX);
+    if (billId) turn.billId = billId;
+    if (billLabel) turn.billLabel = billLabel;
+  }
   if (kind === 'why' && (raw.priorKind === 'hypothetical' || raw.priorKind === 'comparison')) {
     turn.priorKind = raw.priorKind;
   }
@@ -794,6 +1036,22 @@ function sessionTurnFromHypothetical(result, provenance) {
   });
 }
 
+function sessionTurnFromRemainingBills(resolved) {
+  if (!resolved || resolved.status !== 'resolved-reference'
+      || resolved.referentKey !== REMAINING_BILLS_INTENT) {
+    return { kind: 'unavailable' };
+  }
+  const turn = {
+    kind: 'explained',
+    referentKeys: [REMAINING_BILLS_INTENT],
+  };
+  const billId = clipText(resolved.billId, LABEL_MAX);
+  const billLabel = clipText(resolved.billLabel, LABEL_MAX);
+  if (billId) turn.billId = billId;
+  if (billLabel) turn.billLabel = billLabel;
+  return turn;
+}
+
 function sessionTurnFromComparison(result, provenance) {
   if (!result || result.status !== 'ready' || !Array.isArray(result.scenarios)) {
     return { kind: 'unavailable' };
@@ -898,13 +1156,16 @@ module.exports = {
   LEFTOVER_PATH,
   PAYDAY_PICTURE_INTENT,
   PAYDAY_PICTURE_PATHS,
+  REMAINING_BILLS_INTENT,
   createSessionContext,
   resolveFollowup,
   resolveVerifiedReference,
   resolvePaydayLeftover,
   resolvePaydayPicture,
+  resolvePaydayRemainingBills,
   parseLeftoverExtract,
   parsePaydayPictureExtract,
+  parseRemainingBillsExtract,
   bindReferentKeysFromPaths,
   classifyVerifiedFollowup,
   FOLLOWUP_REFERENT_KEYS,
@@ -913,5 +1174,6 @@ module.exports = {
   lastTurn,
   sessionTurnFromHypothetical,
   sessionTurnFromComparison,
+  sessionTurnFromRemainingBills,
   hmacKey,
 };

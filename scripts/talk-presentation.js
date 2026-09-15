@@ -13,7 +13,9 @@
  * freshness; it does not attach a later packet as-of to an unrecomputed
  * result. This file still does not call Forecast,
  * does not compute leftover or remaining, and does not invent a second
- * financial schema.
+ * financial schema. Remaining payday bills reprint Forecast-owned
+ * currentPeriodAction.bills; Talk does not date-filter that list, sum
+ * remaining amounts, invent a paid list, or treat unverified as unpaid.
  * Optional presentation.cards reprint those same trusted strings for
  * the Talk card surface. Cards do not add numbers. Household-facing
  * citations are assembled here from the same source / trust / as-of /
@@ -33,6 +35,12 @@
  */
 
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
+const REMAINING_BILLS_UNAVAILABLE_ANSWER = 'Remaining payday bills are unavailable.';
+const REMAINING_BILLS_EMPTY_ANSWER = 'Forecast lists no remaining payday bills before the next payday.';
+const REMAINING_BILLS_COVERED_LEAD = 'Forecast lists these bills as represented on this payday period.';
+const REMAINING_BILLS_COVERED_EMPTY = 'Forecast lists no represented bills on this payday period.';
+const REMAINING_BILLS_UNVERIFIED_NOTE = 'Forecast has not verified that it posted. That is not unpaid, late, overdue, or definitely due.';
+const REMAINING_BILLS_LEAD = 'Forecast still lists these bills before the next payday.';
 const HYPOTHETICAL_UNAVAILABLE_ANSWER = 'That hypothetical extra payment is not available from Forecast';
 const HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER = 'That hypothetical comparison is not available from Forecast';
 const WHY_UNAVAILABLE_ANSWER = 'That explanation is not available from this request\'s packet.';
@@ -1783,6 +1791,211 @@ function presentWhyExplanation(result, packet) {
   }, { items, claimRows: claimRows.length ? claimRows : undefined });
 }
 
+function remainingBillsPacketState(packet) {
+  const action = packetGet(packet, 'forecast.currentPeriodAction');
+  if (!action || typeof action !== 'object' || Array.isArray(action)) {
+    return { status: 'unavailable' };
+  }
+  if (action.status === 'unavailable') {
+    return { status: 'unavailable' };
+  }
+  if (action.status !== 'ok' || action.source !== 'Forecast.currentPeriodAction') {
+    return { status: 'unavailable' };
+  }
+  if (!Array.isArray(action.bills)) return { status: 'unavailable' };
+  return {
+    status: 'ok',
+    items: action.bills,
+  };
+}
+
+function forecastBillsBySettlement(items, settlement) {
+  if (!Array.isArray(items)) return [];
+  return items.filter(item => item && item.settlement === settlement);
+}
+
+function forecastStillDueBills(items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter(item => item && (
+    item.settlement === 'upcoming' || item.settlement === 'unverified'
+  ));
+}
+
+function remainingBillMoney(value) {
+  return formatCurrency(value);
+}
+
+function remainingBillLabel(item) {
+  if (item && typeof item.label === 'string' && item.label.trim()) return item.label.trim();
+  if (item && typeof item.id === 'string' && item.id.trim()) return item.id.trim();
+  return '';
+}
+
+function remainingBillAmount(item) {
+  if (!item) return null;
+  if (item.settlement === 'represented') {
+    return remainingBillMoney(item.actual != null ? item.actual : item.planned);
+  }
+  if (item.remaining != null) return remainingBillMoney(item.remaining);
+  return remainingBillMoney(item.planned);
+}
+
+function remainingBillSentence(item) {
+  if (!item || typeof item !== 'object') return null;
+  const label = remainingBillLabel(item);
+  const amount = remainingBillAmount(item);
+  const date = typeof item.date === 'string' && item.date ? item.date : '';
+  if (!label || !amount || !date) return null;
+  const estimated = item.confidence === 'estimated' ? ' (estimated)' : '';
+  if (item.settlement === 'unverified') {
+    return `${label} was scheduled ${date} for ${amount}${estimated}. ${REMAINING_BILLS_UNVERIFIED_NOTE}`;
+  }
+  if (item.settlement === 'upcoming') {
+    return `${label} is still due ${date} for ${amount}${estimated}.`;
+  }
+  if (item.settlement === 'represented') {
+    return `${label} is represented ${date} for ${amount}${estimated}. That is not still due.`;
+  }
+  return `${label} is listed ${date} for ${amount}${estimated}. Forecast settlement for that item is unavailable.`;
+}
+
+function remainingBillsNotListedSentence(label) {
+  const named = typeof label === 'string' && label.trim() ? label.trim() : 'that bill';
+  return `Forecast does not list ${named} among this payday period's bills.`;
+}
+
+function presentPaydayRemainingBills(resolved, packet) {
+  const asOf = readAsOf(packet);
+  const freshness = readFreshness(packet);
+  const unavailable = () => emptyPresentation(REMAINING_BILLS_UNAVAILABLE_ANSWER, {
+    source: 'Forecast',
+    trust: 'unavailable',
+    asOf,
+    freshness,
+    action: ALLOWED_ACTIONS.bills,
+  });
+  if (!resolved || resolved.status !== 'resolved-reference'
+      || resolved.referentKey !== 'payday-remaining-bills') {
+    return unavailable();
+  }
+  const state = remainingBillsPacketState(packet);
+  if (state.status !== 'ok') return unavailable();
+
+  const ask = resolved.ask;
+  const items = [];
+  const sentences = [];
+
+  if (ask === 'covered') {
+    const covered = forecastBillsBySettlement(state.items, 'represented');
+    if (!covered.length) {
+      sentences.push(REMAINING_BILLS_COVERED_EMPTY);
+      items.push({ kind: 'answer', title: 'Answer', body: REMAINING_BILLS_COVERED_EMPTY });
+      return finishPresentation({
+        answer: sentences.join(' '),
+        source: 'Forecast',
+        trust: 'calculated',
+        asOf,
+        freshness,
+        action: ALLOWED_ACTIONS.bills,
+      }, { items });
+    }
+    sentences.push(REMAINING_BILLS_COVERED_LEAD);
+    items.push({ kind: 'answer', title: 'Answer', body: REMAINING_BILLS_COVERED_LEAD });
+    for (const row of covered) {
+      const body = remainingBillSentence(row);
+      if (!body) return unavailable();
+      sentences.push(body);
+      items.push({ kind: 'result', title: 'Already published', body });
+    }
+    return finishPresentation({
+      answer: sentences.join(' '),
+      source: 'Forecast',
+      trust: 'calculated',
+      asOf,
+      freshness,
+      action: ALLOWED_ACTIONS.bills,
+    }, { items });
+  }
+
+  if (ask === 'named') {
+    const listed = state.items;
+    const query = resolved.billLabel || resolved.billId || '';
+    let found = null;
+    if (resolved.billId) {
+      const byId = listed.filter(row => row && row.id === resolved.billId);
+      found = byId.length === 1 ? byId[0] : null;
+      if (byId.length > 1) return unavailable();
+    } else if (query) {
+      const q = String(query).toLowerCase();
+      const matches = listed.filter((row) => {
+        const id = row && typeof row.id === 'string' ? row.id.toLowerCase() : '';
+        const label = row && typeof row.label === 'string' ? row.label.toLowerCase() : '';
+        return (id && (id === q || id.indexOf(q) !== -1 || q.indexOf(id) !== -1))
+          || (label && (label === q || label.indexOf(q) !== -1 || q.indexOf(label) !== -1));
+      });
+      if (matches.length > 1) return unavailable();
+      found = matches.length === 1 ? matches[0] : null;
+    }
+    if (!found) {
+      const body = remainingBillsNotListedSentence(query);
+      sentences.push(body);
+      items.push({ kind: 'answer', title: 'Answer', body });
+      return finishPresentation({
+        answer: sentences.join(' '),
+        source: 'Forecast',
+        trust: 'calculated',
+        asOf,
+        freshness,
+        action: ALLOWED_ACTIONS.bills,
+      }, { items });
+    }
+    const body = remainingBillSentence(found);
+    if (!body) return unavailable();
+    sentences.push(body);
+    items.push({ kind: 'answer', title: 'Answer', body });
+    return finishPresentation({
+      answer: sentences.join(' '),
+      source: 'Forecast',
+      trust: found.confidence === 'estimated' ? 'estimated' : 'calculated',
+      asOf,
+      freshness,
+      action: ALLOWED_ACTIONS.bills,
+    }, { items });
+  }
+
+  const stillDue = forecastStillDueBills(state.items);
+  if (!stillDue.length) {
+    sentences.push(REMAINING_BILLS_EMPTY_ANSWER);
+    items.push({ kind: 'answer', title: 'Answer', body: REMAINING_BILLS_EMPTY_ANSWER });
+    return finishPresentation({
+      answer: sentences.join(' '),
+      source: 'Forecast',
+      trust: 'calculated',
+      asOf,
+      freshness,
+      action: ALLOWED_ACTIONS.bills,
+    }, { items });
+  }
+
+  sentences.push(REMAINING_BILLS_LEAD);
+  items.push({ kind: 'answer', title: 'Answer', body: REMAINING_BILLS_LEAD });
+  for (const row of stillDue) {
+    const body = remainingBillSentence(row);
+    if (!body) return unavailable();
+    sentences.push(body);
+    items.push({ kind: 'result', title: 'Already published', body });
+  }
+  const estimated = stillDue.some(row => row && row.confidence === 'estimated');
+  return finishPresentation({
+    answer: sentences.join(' '),
+    source: 'Forecast',
+    trust: estimated ? 'estimated' : 'calculated',
+    asOf,
+    freshness,
+    action: ALLOWED_ACTIONS.bills,
+  }, { items });
+}
+
 function presentVerifiedClaims(published, packet) {
   if (!published || published.status === 'unavailable') {
     return emptyPresentation(UNAVAILABLE_ANSWER, {
@@ -1832,6 +2045,12 @@ function isAllowedActionHref(href) {
 
 module.exports = {
   UNAVAILABLE_ANSWER,
+  REMAINING_BILLS_UNAVAILABLE_ANSWER,
+  REMAINING_BILLS_EMPTY_ANSWER,
+  REMAINING_BILLS_COVERED_LEAD,
+  REMAINING_BILLS_COVERED_EMPTY,
+  REMAINING_BILLS_UNVERIFIED_NOTE,
+  REMAINING_BILLS_LEAD,
   HYPOTHETICAL_UNAVAILABLE_ANSWER,
   HYPOTHETICAL_COMPARISON_UNAVAILABLE_ANSWER,
   WHY_UNAVAILABLE_ANSWER,
@@ -1862,6 +2081,7 @@ module.exports = {
   isPrimitive,
   ruleFor,
   presentVerifiedClaims,
+  presentPaydayRemainingBills,
   presentWhyExplanation,
   presentHypotheticalExtra,
   presentHypotheticalComparison,
