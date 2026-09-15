@@ -6,6 +6,8 @@
  * comparison of the same amount+debtId rows. Gemini cannot choose the
  * winner. Existing prefer-grammar still works. Leftover, payday-picture,
  * remaining-bills, and follow-up-ref asks stay on their incumbent paths.
+ * Buffer rollover of an earlier distinct A-vs-B cannot make a later
+ * C-vs-D look unique.
  * `node test/test-talk-which-one-preference.js`
  */
 const fs = require('fs');
@@ -463,19 +465,131 @@ console.log('\n=== 6. Server recomputes Forecast; docs record the referent ===')
   const serverSrc = read('server.js');
   const sessionSrc = read('scripts/talk-session.js');
   const hypoSrc = read('scripts/talk-hypothetical.js');
+  const contextSrc = read('CONTEXT.md');
+  const architectureSrc = read('ARCHITECTURE.md');
   ok(/priorTurns/.test(serverSrc)
       && /resolved-preference/.test(serverSrc)
       && /judgeComparisonPreference/.test(serverSrc),
     'server passes session turns into resolveFollowup and still judges preference on Forecast');
   ok(/questionAsksWhichOneReferent/.test(sessionSrc)
       && /resolved-preference/.test(sessionSrc)
-      && /currentDebtStillLive/.test(sessionSrc),
-    'talk-session resolves Which one? against live current debts');
+      && /currentDebtStillLive/.test(sessionSrc)
+      && /sessionComparison/.test(sessionSrc)
+      && /becameAmbiguous/.test(sessionSrc)
+      && /survives 8-turn/.test(sessionSrc),
+    'talk-session resolves Which one? against live current debts and session uniqueness');
+  ok(/sessionComparison/.test(serverSrc),
+    'server passes the session-scoped comparison signal into resolveFollowup');
+  ok(/Session uniqueness is a compact ephemeral comparison-identity signal/.test(contextSrc)
+      && /survives 8-turn eviction/.test(architectureSrc),
+    'docs record session-scoped uniqueness, not buffer-only uniqueness');
   ok(/questionAsksWhichOneReferent/.test(hypoSrc)
       && /AUTHORIZED_PREFERENCE_ASK_RES/.test(hypoSrc)
       && !/which\\s\+one/.test(hypoSrc.split('AUTHORIZED_PREFERENCE_ASK_RES')[1].split('function questionAsksAuthorizedPreference')[0]),
     'prefer-grammar is not broadened to include bare Which one?');
   ok(hashFile(DATA) === liveHash, 'data.json bytes unchanged');
+}
+
+console.log('\n=== 7. Buffer-rollover multi-comparison stays fail-closed ===');
+{
+  const { debts } = fixture();
+  const packet = packetFor(debts);
+  const first = avbTurn();
+  const second = {
+    kind: 'comparison',
+    question: 'Compare $200 on the High-rate card versus $200 on the HELOC.',
+    presented: 'A later comparison.',
+    scenarios: [
+      { amount: 200, debtId: 'high', debtLabel: 'High-rate card' },
+      { amount: 200, debtId: 'heloc', debtLabel: 'HELOC' },
+    ],
+  };
+  const store = TalkSession.createSessionContext({
+    secret: 'synthetic-which-one-rollover-secret',
+    maxTurns: TalkSession.MAX_TURNS,
+  });
+  const key = store.keyFromToken('cookie-which-one-rollover');
+  ok(store.append(key, first) === true, 'session records the first A-vs-B');
+  for (let i = 0; i < TalkSession.MAX_TURNS - 1; i += 1) {
+    store.append(key, leftoverTurn());
+  }
+  ok(store.append(key, second) === true, 'session records a later C-vs-D');
+  const priorTurns = store.turns(key);
+  const last = TalkSession.lastTurn(priorTurns);
+  const stillHoldsFirst = priorTurns.some(turn => (
+    turn && turn.kind === 'comparison'
+      && Array.isArray(turn.scenarios)
+      && turn.scenarios.some(row => row.debtId === 'low')
+  ));
+  ok(priorTurns.length === TalkSession.MAX_TURNS
+      && stillHoldsFirst === false
+      && last && last.kind === 'comparison'
+      && last.scenarios[1].debtId === 'heloc',
+    '8-turn eviction drops A-vs-B and leaves only C-vs-D in the buffer');
+  const bufferOnly = TalkSession.resolveFollowup({
+    question: 'Which one?',
+    priorTurn: last,
+    priorTurns,
+    debts,
+    packet,
+  });
+  ok(bufferOnly.status === 'resolved-preference'
+      && bufferOnly.scenarios[0].debtId === 'high'
+      && bufferOnly.scenarios[1].debtId === 'heloc',
+    'buffer-only uniqueness would still bind the remaining C-vs-D — the defect');
+  const gated = TalkSession.resolveFollowup({
+    question: 'Which one?',
+    priorTurn: last,
+    priorTurns,
+    debts,
+    packet,
+    sessionComparison: store.sessionComparison(key),
+  });
+  ok(store.sessionComparison(key).becameAmbiguous === true
+      && Object.keys(store.sessionComparison(key)).join() === 'becameAmbiguous'
+      && gated.status === 'ambiguous'
+      && gated.nature === 'comparison',
+    'session signal survives eviction and Which one? stays unavailable');
+
+  const uniqueStore = TalkSession.createSessionContext({
+    secret: 'synthetic-which-one-unique-secret',
+    maxTurns: TalkSession.MAX_TURNS,
+  });
+  const uniqueKey = uniqueStore.keyFromToken('cookie-which-one-unique');
+  uniqueStore.append(uniqueKey, first);
+  const uniqueTurns = uniqueStore.turns(uniqueKey);
+  const uniqueFollow = TalkSession.resolveFollowup({
+    question: 'Which one?',
+    priorTurn: TalkSession.lastTurn(uniqueTurns),
+    priorTurns: uniqueTurns,
+    debts,
+    packet,
+    sessionComparison: uniqueStore.sessionComparison(uniqueKey),
+  });
+  ok(uniqueStore.sessionComparison(uniqueKey).becameAmbiguous === false
+      && uniqueFollow.status === 'resolved-preference'
+      && uniqueFollow.scenarios[0].debtId === 'high'
+      && uniqueFollow.scenarios[1].debtId === 'low',
+    'exactly one earned A-vs-B in the session still binds Which one?');
+
+  uniqueStore.append(uniqueKey, leftoverTurn());
+  for (let i = 0; i < TalkSession.MAX_TURNS - 2; i += 1) {
+    uniqueStore.append(uniqueKey, leftoverTurn());
+  }
+  uniqueStore.append(uniqueKey, first);
+  const repeatTurns = uniqueStore.turns(uniqueKey);
+  const repeatFollow = TalkSession.resolveFollowup({
+    question: 'Which one?',
+    priorTurn: TalkSession.lastTurn(repeatTurns),
+    priorTurns: repeatTurns,
+    debts,
+    packet,
+    sessionComparison: uniqueStore.sessionComparison(uniqueKey),
+  });
+  ok(uniqueStore.sessionComparison(uniqueKey).becameAmbiguous === false
+      && repeatFollow.status === 'resolved-preference'
+      && repeatFollow.scenarios[1].debtId === 'low',
+    'repeating the same sole identity after fillers still binds');
 }
 
 if (failures) {

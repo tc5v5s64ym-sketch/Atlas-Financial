@@ -479,6 +479,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
     priorTurns,
     debts: atlas.debts,
     packet,
+    sessionComparison: talkSessions.sessionComparison(sessionKey),
   });
   let presented;
   if (follow.status === 'ambiguous') {

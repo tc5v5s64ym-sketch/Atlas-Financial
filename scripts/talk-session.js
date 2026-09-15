@@ -42,10 +42,16 @@
  * Ambiguous deixis is unavailable. After exactly one earned two-option
  * A-vs-B comparison in the session, a bare "Which one?" refers to those
  * exact two options and invokes only the incumbent owner preference
- * rule. Multiple comparisons, 3+ options, leftover/bills/hypothetical
- * last turns, stale debts, or an unearned prior fail closed. The server
- * re-reads this request's packet or recomputes Forecast on the stored
- * hyp inputs. No durable household fact store.
+ * rule. Session uniqueness is a compact ephemeral comparison-identity
+ * signal on the same RAM record as the turn buffer. It survives 8-turn
+ * eviction, is keyed to the auth session, and is not household-financial
+ * evidence, not prose, and not amounts as financial truth. Once more
+ * than one distinct A-vs-B identity has appeared in this session, later
+ * Which one? fails closed even if the earlier comparison has rolled out
+ * of the buffer. Multiple comparisons, 3+ options, leftover/bills/
+ * hypothetical last turns, stale debts, or an unearned prior fail
+ * closed. The server re-reads this request's packet or recomputes
+ * Forecast on the stored hyp inputs. No durable household fact store.
  */
 
 const crypto = require('crypto');
@@ -899,13 +905,61 @@ function comparisonTurnsFrom(priorTurns, priorTurn) {
   return out;
 }
 
-function resolveWhichOnePreference({ question, priorTurn, priorTurns, debts, packet }) {
+function emptyComparisonState() {
+  return { becameAmbiguous: false, soleIdentity: '' };
+}
+
+function noteComparisonState(state, turn) {
+  const next = state && typeof state === 'object'
+    ? {
+      becameAmbiguous: state.becameAmbiguous === true,
+      soleIdentity: typeof state.soleIdentity === 'string' ? state.soleIdentity : '',
+    }
+    : emptyComparisonState();
+  if (next.becameAmbiguous) {
+    next.soleIdentity = '';
+    return next;
+  }
+  if (!turn || typeof turn !== 'object') return next;
+  const isComparison = turn.kind === 'comparison' || turn.priorKind === 'comparison';
+  if (!isComparison || !Array.isArray(turn.scenarios) || turn.scenarios.length < 2) {
+    return next;
+  }
+  if (turn.scenarios.length !== 2) {
+    return { becameAmbiguous: true, soleIdentity: '' };
+  }
+  const id = comparisonIdentity(turn.scenarios);
+  if (!id) return { becameAmbiguous: true, soleIdentity: '' };
+  if (!next.soleIdentity) {
+    next.soleIdentity = id;
+    return next;
+  }
+  if (next.soleIdentity !== id) {
+    return { becameAmbiguous: true, soleIdentity: '' };
+  }
+  return next;
+}
+
+function publicSessionComparison(state) {
+  return { becameAmbiguous: !!(state && state.becameAmbiguous) };
+}
+
+function sessionComparisonBecameAmbiguous(sessionComparison) {
+  return !!(sessionComparison && sessionComparison.becameAmbiguous);
+}
+
+function resolveWhichOnePreference({
+  question, priorTurn, priorTurns, debts, packet, sessionComparison,
+}) {
   if (!TalkHypothetical.questionAsksWhichOneReferent(question)) {
     return { status: 'none' };
   }
   const amounts = TalkHypothetical.recoverCallerAmounts(question);
   const targets = TalkHypothetical.recoverCallerDebtTargets(question, debts, packet);
   if (amounts.length || targets.length) {
+    return { status: 'ambiguous', nature: 'comparison' };
+  }
+  if (sessionComparisonBecameAmbiguous(sessionComparison)) {
     return { status: 'ambiguous', nature: 'comparison' };
   }
   const turns = comparisonTurnsFrom(priorTurns, priorTurn);
@@ -952,7 +1006,7 @@ function resolveWhichOnePreference({ question, priorTurn, priorTurns, debts, pac
   return { status: 'resolved-preference', scenarios: live };
 }
 
-function resolveFollowup({ question, priorTurn, debts, packet, priorTurns }) {
+function resolveFollowup({ question, priorTurn, debts, packet, priorTurns, sessionComparison }) {
   const parsed = typeof question === 'string' ? question.trim() : '';
   if (!parsed) return { status: 'none' };
 
@@ -985,6 +1039,7 @@ function resolveFollowup({ question, priorTurn, debts, packet, priorTurns }) {
       priorTurns,
       debts,
       packet,
+      sessionComparison,
     });
   }
 
@@ -1215,12 +1270,30 @@ function createSessionContext(options) {
     if (!turn) return false;
     const now = nowFn();
     prune(now);
-    const rec = map.get(key) || { turns: [], updatedAt: now };
+    const rec = map.get(key) || {
+      turns: [],
+      updatedAt: now,
+      comparisonState: emptyComparisonState(),
+    };
+    rec.comparisonState = noteComparisonState(rec.comparisonState, turn);
     rec.turns = rec.turns.concat([turn]).slice(-maxTurns);
     rec.updatedAt = now;
     map.set(key, rec);
     prune(now);
     return true;
+  }
+
+  function sessionComparison(key) {
+    if (typeof key !== 'string' || !key) return publicSessionComparison(null);
+    const now = nowFn();
+    prune(now);
+    const rec = map.get(key);
+    if (!rec) return publicSessionComparison(null);
+    if (now - rec.updatedAt > ttlMs) {
+      map.delete(key);
+      return publicSessionComparison(null);
+    }
+    return publicSessionComparison(rec.comparisonState);
   }
 
   function clear(key) {
@@ -1232,6 +1305,7 @@ function createSessionContext(options) {
     keyFromToken,
     turns,
     append,
+    sessionComparison,
     clear,
     publicConversation,
     sessionCount() {
