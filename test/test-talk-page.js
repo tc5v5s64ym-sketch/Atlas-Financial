@@ -79,8 +79,11 @@ console.log('=== 1. Talk page identity, empty state, composer, prompts ===');
       && /talk-prompt/.test(css) && /talk-bubble/.test(css)
       && /talk-context/.test(css)
       && /talk-answer-meta/.test(css)
-      && /talk-answer-action/.test(css),
-    'talk.css styles the empty state, composer, prompts, context, answer meta and action');
+      && /talk-answer-action/.test(css)
+      && /talk-card-title/.test(css)
+      && /talk-card-body/.test(css)
+      && /talk-card-judgment/.test(css),
+    'talk.css styles the empty state, composer, prompts, context, answer meta, action and cards');
 }
 
 console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistant auth ===');
@@ -105,7 +108,9 @@ console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistan
       && /talkModelAvailable/.test(src),
     'Send starts disabled and submit is gated on capability');
   ok(/talk-cards/.test(html) && /hidden/.test(html),
-    'structured answer cards have a reserved hidden mount');
+    'structured answer cards mount starts hidden until a trusted payload arrives');
+  ok(/talkValidCards/.test(src) && /fail closed to the plain answer/.test(read('public/talk.js')),
+    'talk.js fail-closes missing or malformed cards to the plain answer bubble');
   try {
     new vm.Script(read('public/talk.js'), { filename: 'talk.js' });
     ok(true, 'talk.js compiles');

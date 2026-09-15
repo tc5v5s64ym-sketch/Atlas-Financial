@@ -319,6 +319,11 @@ console.log('\n=== 5. Presentation uses Forecast fields only ===');
   ok(presented.answer.indexOf(interest) !== -1
       && presented.answer.indexOf(cash) !== -1,
     'wording reprints independent Forecast interest and cash deltas');
+  ok(presented.cards
+      && presented.cards.items.some(item => item.body.indexOf(interest) !== -1)
+      && presented.cards.items.some(item => item.body.indexOf(cash) !== -1)
+      && presented.cards.items.every(item => presented.answer.indexOf(item.body) !== -1),
+    'hypothetical cards reprint the same Forecast deltas already in the answer');
   ok(/not available cash or safe-to-spend/.test(presented.answer),
     'amount is not presented as available or safe-to-spend');
   ok(/Available credit is not cash/.test(presented.answer) === !!credit,
@@ -858,6 +863,14 @@ console.log('\n=== 8. Talk A-vs-B preference judgment uses Forecast figures only
       && !/\bshould\b/i.test(presentedPrefer.answer)
       && !/\brank/i.test(presentedPrefer.answer),
     'preference presentation keeps Option A/B Forecast figures and names PREFER by label/amount');
+  ok(presentedPrefer.cards
+      && presentedPrefer.cards.items.some(item => item.kind === 'option' && item.body.indexOf(interestA) !== -1)
+      && presentedPrefer.cards.items.some(item => item.kind === 'option' && item.body.indexOf(interestB) !== -1)
+      && presentedPrefer.cards.items.some(item => (
+        item.kind === 'judgment'
+        && item.body.indexOf(`PREFER ${preferLabel} on High-rate card`) !== -1
+      )),
+    'preference cards keep Option A/B Forecast figures and the PREFER judgment');
 
   const presentedNotYet = TalkPresentation.presentHypotheticalComparison(
     unequalCash, packet, unequalJudged

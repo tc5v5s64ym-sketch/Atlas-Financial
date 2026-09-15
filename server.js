@@ -459,6 +459,7 @@ app.post('/talk/ask', (req, res, next) => {
       asOf: presented.asOf || null,
       freshness: presented.freshness || null,
       action: presented.action || null,
+      cards: presented.cards || null,
     });
   } catch (err) {
     if (err && err.code === 'TALK_UNAVAILABLE') {
