@@ -59,8 +59,9 @@ const INSTRUCTION = [
   'If and only if the household question is an explicit comparison of two or more hypothetical extra debt payments, and EACH option names BOTH a specific dollar amount AND a specific named debt, reply with exactly:',
   '{"intent":"hypothetical-extra-payment-comparison","scenarios":[{"amount":<JSON number>,"debtLabel":"<caller-named debt label>"}, ...]}',
   'Preserve each caller amount with the debt the caller paired it to. Different amounts are allowed only when the caller stated them. Do not omit, add, or swap options. Do not invent a debt id. Do not return balances, interest, cash, ranking, a winner, a recommendation, affordability, policy, permission, or free-form financial prose as authority.',
+  'If that same explicit comparison also asks which of those already-named options to prefer, or which is better for interest given the same cash, still reply with only that comparison extract. Do not return a winner, ranking, recommendation, or preference field. The server applies any authorized preference from Forecast comparison figures only.',
   '',
-  'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array.',
+  'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array. An explicit comparison that also asks which of those already-named options to prefer is still the comparison extract, not unavailable and not a winner.',
   '',
   'You MAY:',
   '- cite facts that are already present in this request\'s packet as path/equals claims',
@@ -519,7 +520,10 @@ function presentComparisonExtract(extract, packet, atlas, question) {
     debts: atlas && atlas.debts,
     packet,
   });
-  return TalkPresentation.presentHypotheticalComparison(result, packet);
+  const preference = TalkHypothetical.questionAsksAuthorizedPreference(question)
+    ? TalkHypothetical.judgeComparisonPreference(result)
+    : null;
+  return TalkPresentation.presentHypotheticalComparison(result, packet, preference);
 }
 
 async function ask({ question, packet, env, atlas }) {

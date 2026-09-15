@@ -3,7 +3,8 @@
  *
  * Independent of Gemini HTTP: amount rules, debt-label resolve, pairing,
  * the exact Forecast.hypotheticalExtraPayment and
- * Forecast.hypotheticalExtraPaymentComparison calls, and Atlas wording
+ * Forecast.hypotheticalExtraPaymentComparison calls, the owner
+ * A-vs-B preference rule over those Forecast figures, and Atlas wording
  * from Forecast fields only. Does not weaken the Forecast comparison suite.
  * `node test/test-talk-hypothetical.js`
  */
@@ -604,6 +605,272 @@ console.log('\n=== 7. Talk A-vs-B comparison adapter is fail-closed and Forecast
       && orCompare.scenarios[1].input.debtId === 'heloc'
       && orCompare.scenarios[1].input.amount === 500,
     'explicit mixed amounts on named debts are a comparison, not a swap');
+}
+
+console.log('\n=== 8. Talk A-vs-B preference judgment uses Forecast figures only ===');
+{
+  const { plan, debts } = fixture();
+  const packet = {
+    metadata: { effectiveAsOf: START, freshness: { confidence: 'canonical-opening' } },
+    current: {
+      debts: { facilities: debts.map(row => ({ id: row.id, label: row.label })) },
+    },
+  };
+  const src = read('scripts/talk-hypothetical.js');
+  const judgeStart = src.indexOf('function forecastCentsEqual');
+  const judgeEnd = src.indexOf('function normalizeName');
+  const judgeBody = judgeStart >= 0 && judgeEnd > judgeStart
+    ? src.slice(judgeStart, judgeEnd)
+    : '';
+  ok(judgeBody.length > 0
+      && /scenario\.cash\.ending/.test(judgeBody)
+      && /absorbed\.unabsorbed/.test(judgeBody)
+      && /delta\.debt\.interest/.test(judgeBody),
+    'preference rule reads Forecast cash ending, absorbed, and interest-reduction fields');
+  ok(!/decisionPosture/.test(judgeBody)
+      && !/targetBuffer/.test(judgeBody)
+      && !/velocity/i.test(judgeBody)
+      && !/resilience/i.test(judgeBody)
+      && !/breathing/i.test(judgeBody)
+      && !/weight/i.test(judgeBody)
+      && !/affordab/i.test(judgeBody)
+      && !/%/.test(judgeBody),
+    'preference rule does not use decisionPosture, targetBuffer, scores, weights, or percent');
+
+  const preferQuestion = 'Which should I prefer, $200 on the High-rate card versus $200 on the Low-rate card?';
+  ok(TalkHypothetical.questionAsksAuthorizedPreference(preferQuestion) === true
+      && TalkHypothetical.questionIsPlannerActComparison(preferQuestion) === false
+      && TalkHypothetical.extractComparisonAgreesWithQuestion(preferQuestion, [
+        { amount: 200, debtLabel: 'High-rate card' },
+        { amount: 200, debtLabel: 'Low-rate card' },
+      ], debts, packet).ok === true,
+    'explicit A-vs-B preference ask is not an unauthorized planner act');
+  ok(TalkHypothetical.questionAsksAuthorizedPreference(
+    'Which is better for interest given the same cash, $200 on the High-rate card versus $200 on the Low-rate card?'
+  ) === true,
+    'which-is-better-for-interest over explicit pairs is an authorized preference ask');
+  ok(TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 1000, debtLabel: 'HELOC' },
+      { amount: 1000, debtLabel: 'High-rate card' },
+    ],
+    question: 'Use HELOC funds for the better card, $1,000 on HELOC or $1,000 on the High-rate card.',
+    plan,
+    debts,
+    packet,
+  }).status === 'unavailable',
+    'HELOC-funds planner act still fails closed beside a preference word');
+
+  const high = F.hypotheticalExtraPayment(plan, debts, START, {
+    amount: 200, debtId: 'high', nature: 'hypothetical',
+  });
+  const low = F.hypotheticalExtraPayment(plan, debts, START, {
+    amount: 200, debtId: 'low', nature: 'hypothetical',
+  });
+  const reductionHigh = high.baseline.debt.interest - high.scenario.debt.interest;
+  const reductionLow = low.baseline.debt.interest - low.scenario.debt.interest;
+  ok(high.status === 'ready' && low.status === 'ready'
+      && high.absorbed.unabsorbed === 0 && low.absorbed.unabsorbed === 0
+      && Math.abs(high.scenario.cash.ending - low.scenario.cash.ending) <= F.EPSILON
+      && reductionHigh > reductionLow + F.EPSILON,
+    'independent Slice 6 walks: same cash ending, both absorbed, High-rate interest reduction is strictly greater');
+
+  const expected = F.hypotheticalExtraPaymentComparison(plan, debts, START, {
+    nature: 'hypothetical-comparison',
+    scenarios: [
+      { amount: 200, debtId: 'high' },
+      { amount: 200, debtId: 'low' },
+    ],
+  });
+  const reversedForecast = F.hypotheticalExtraPaymentComparison(plan, debts, START, {
+    nature: 'hypothetical-comparison',
+    scenarios: [
+      { amount: 200, debtId: 'low' },
+      { amount: 200, debtId: 'high' },
+    ],
+  });
+  ok(expected.status === 'ready' && reversedForecast.status === 'ready',
+    'independent Forecast comparison is ready for $200 High-rate vs $200 Low-rate');
+
+  const got = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 200, debtLabel: 'High-rate card' },
+      { amount: 200, debtLabel: 'Low-rate card' },
+    ],
+    question: preferQuestion,
+    plan,
+    debts,
+    packet,
+  });
+  ok(got.status === 'ready'
+      && got.recommendation === null
+      && got.ranking === null
+      && got.affordability === null
+      && got.actionPermission === 'not-granted'
+      && got.writesCanonicalState === false
+      && got.scenarios[0].result.delta.debt.interest
+        === expected.scenarios[0].result.delta.debt.interest
+      && got.scenarios[1].result.delta.cash.ending
+        === expected.scenarios[1].result.delta.cash.ending,
+    'preference ask still returns unchanged Forecast comparison figures and no write');
+
+  const judged = TalkHypothetical.judgeComparisonPreference(got);
+  const judgedReversed = TalkHypothetical.judgeComparisonPreference(reversedForecast);
+  ok(judged.verdict === 'PREFER'
+      && judged.preferred.debtId === 'high'
+      && judged.preferred.amount === 200
+      && judged.preferred.debtLabel === 'High-rate card'
+      && judged.actionPermission === 'not-granted'
+      && judged.recommendation === null,
+    'owner rule prefers the High-rate $200 extra from Forecast interest reduction');
+  ok(judgedReversed.verdict === 'PREFER'
+      && judgedReversed.preferred.debtId === judged.preferred.debtId
+      && judgedReversed.preferred.amount === judged.preferred.amount,
+    'A/B scenario-order swap does not change the substantive preferred option');
+
+  const mutatedPlan = JSON.parse(JSON.stringify(plan));
+  mutatedPlan.decisionPosture = { posture: 'invented-aggressive', numericThreshold: 999 };
+  mutatedPlan.defaults.targetBuffer = 9999;
+  const mutated = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 200, debtLabel: 'High-rate card' },
+      { amount: 200, debtLabel: 'Low-rate card' },
+    ],
+    question: preferQuestion,
+    plan: mutatedPlan,
+    debts,
+    packet,
+  });
+  ok(TalkHypothetical.judgeComparisonPreference(mutated).preferred.debtId === 'high'
+      && mutated.scenarios[0].result.delta.debt.interest
+        === got.scenarios[0].result.delta.debt.interest,
+    'decisionPosture and targetBuffer do not change the preference judgment');
+
+  const withWinner = JSON.parse(JSON.stringify(got));
+  withWinner.ranking = 'low';
+  withWinner.recommendation = 'Low-rate card';
+  withWinner.winner = 'low';
+  ok(TalkHypothetical.judgeComparisonPreference(withWinner).preferred.debtId === 'high',
+    'Gemini or caller cannot pick or change the winner on the comparison object');
+
+  const unequalCash = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 200, debtLabel: 'High-rate card' },
+      { amount: 100, debtLabel: 'Low-rate card' },
+    ],
+    question: 'Which should I prefer, $200 on the High-rate card versus $100 on the Low-rate card?',
+    plan,
+    debts,
+    packet,
+  });
+  const unequalJudged = TalkHypothetical.judgeComparisonPreference(unequalCash);
+  ok(unequalCash.status === 'ready'
+      && unequalCash.scenarios.every(row => row.result.absorbed.unabsorbed === 0)
+      && !forecastEqualCash(unequalCash)
+      && unequalJudged.verdict === 'NOT YET'
+      && unequalJudged.reason === 'cash-endings-differ'
+      && unequalJudged.preferred === null,
+    'unequal household cash-ending consequences are NOT YET');
+
+  const unabsorbed = TalkHypothetical.evaluateComparison({
+    scenarios: [
+      { amount: 1000, debtLabel: 'TD Cash Back Visa' },
+      { amount: 1000, debtLabel: 'HELOC' },
+    ],
+    question: 'Which should I prefer, $1,000 on the TD Cash Back Visa versus $1,000 on the HELOC?',
+    plan,
+    debts,
+    packet,
+  });
+  const unabsorbedJudged = TalkHypothetical.judgeComparisonPreference(unabsorbed);
+  ok(unabsorbed.status === 'ready'
+      && unabsorbed.scenarios.some(row => row.result.absorbed.unabsorbed > 0)
+      && unabsorbedJudged.verdict === 'NOT YET'
+      && unabsorbedJudged.reason === 'not-fully-absorbed'
+      && unabsorbedJudged.preferred === null,
+    'an extra that is not fully absorbed is NOT YET');
+
+  const equalInterest = JSON.parse(JSON.stringify(got));
+  equalInterest.scenarios[1] = JSON.parse(JSON.stringify(equalInterest.scenarios[0]));
+  equalInterest.scenarios[1].input = {
+    amount: 200,
+    debtId: 'low',
+    debtLabel: 'Low-rate card',
+    asOf: START,
+    nature: 'hypothetical',
+  };
+  const equalJudged = TalkHypothetical.judgeComparisonPreference(equalInterest);
+  ok(equalJudged.verdict === 'NOT YET'
+      && equalJudged.reason === 'interest-reductions-equal'
+      && equalJudged.preferred === null,
+    'equal Forecast interest reductions are NOT YET');
+
+  const missing = JSON.parse(JSON.stringify(got));
+  delete missing.scenarios[0].result.delta.debt.interest;
+  delete missing.scenarios[0].result.baseline.debt.interest;
+  delete missing.scenarios[0].result.scenario.debt.interest;
+  const missingJudged = TalkHypothetical.judgeComparisonPreference(missing);
+  ok(missingJudged.verdict === 'NOT YET'
+      && missingJudged.reason === 'unavailable'
+      && missingJudged.preferred === null
+      && !/\$0/.test(JSON.stringify(missingJudged)),
+    'missing required Forecast fields are NOT YET / unavailable, not zero');
+
+  const presentedCompare = TalkPresentation.presentHypotheticalComparison(got, packet);
+  const interestA = TalkPresentation.formatCurrency(
+    expected.scenarios[0].result.delta.debt.interest
+  );
+  const interestB = TalkPresentation.formatCurrency(
+    expected.scenarios[1].result.delta.debt.interest
+  );
+  ok(/does not rank these options/.test(presentedCompare.answer)
+      && !/PREFER /.test(presentedCompare.answer)
+      && presentedCompare.answer.indexOf(interestA) !== -1
+      && presentedCompare.answer.indexOf(interestB) !== -1,
+    'plain comparison presentation still does not apply preference');
+
+  const presentedPrefer = TalkPresentation.presentHypotheticalComparison(
+    got, packet, judged
+  );
+  const preferLabel = TalkPresentation.formatCurrency(200);
+  ok(presentedPrefer.source === 'Forecast'
+      && presentedPrefer.trust === 'calculated'
+      && presentedPrefer.action === null
+      && /Option A/.test(presentedPrefer.answer)
+      && /Option B/.test(presentedPrefer.answer)
+      && presentedPrefer.answer.indexOf(interestA) !== -1
+      && presentedPrefer.answer.indexOf(interestB) !== -1
+      && presentedPrefer.answer.indexOf(`PREFER ${preferLabel} on High-rate card`) !== -1
+      && /not a payment authority/i.test(presentedPrefer.answer)
+      && /not a recommendation to execute/i.test(presentedPrefer.answer)
+      && !/does not rank these options/.test(presentedPrefer.answer)
+      && !/\bbetter\b/i.test(presentedPrefer.answer)
+      && !/\bwinner\b/i.test(presentedPrefer.answer)
+      && !/\bshould\b/i.test(presentedPrefer.answer)
+      && !/\brank/i.test(presentedPrefer.answer),
+    'preference presentation keeps Option A/B Forecast figures and names PREFER by label/amount');
+
+  const presentedNotYet = TalkPresentation.presentHypotheticalComparison(
+    unequalCash, packet, unequalJudged
+  );
+  const unequalInterestA = TalkPresentation.formatCurrency(
+    unequalCash.scenarios[0].result.delta.debt.interest
+  );
+  ok(/NOT YET \/ INDETERMINATE/.test(presentedNotYet.answer)
+      && /cash-ending consequences differ/i.test(presentedNotYet.answer)
+      && presentedNotYet.answer.indexOf(unequalInterestA) !== -1
+      && presentedNotYet.action === null,
+    'NOT YET keeps Forecast figures and states the owner-rule reason');
+}
+
+function forecastEqualCash(comparison) {
+  if (!comparison || !Array.isArray(comparison.scenarios) || comparison.scenarios.length < 2) {
+    return false;
+  }
+  const first = comparison.scenarios[0].result.scenario.cash.ending;
+  return comparison.scenarios.every(row => (
+    Math.abs(row.result.scenario.cash.ending - first) <= F.EPSILON
+  ));
 }
 
 ok(hashFile(DATA) === liveHash, 'live data.json bytes unchanged at suite end');
