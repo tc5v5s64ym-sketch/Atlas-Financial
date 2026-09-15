@@ -592,8 +592,8 @@ app.post('/talk/ask', (req, res, next) => {
         TalkStream.endStream(res);
         return;
       }
-      const wrote = TalkStream.writeResult(res, outcome.presented);
-      if (wrote && !gate.closed) {
+      const write = TalkStream.writeResult(res, outcome.presented);
+      if (write.accepted) {
         appendTalkSessionTurn(sessionKey, parsed.question, outcome.presented);
       }
       TalkStream.endStream(res);

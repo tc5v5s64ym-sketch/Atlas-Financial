@@ -17,6 +17,7 @@ const crypto = require('crypto');
 const vm = require('vm');
 const { spawn } = require('child_process');
 const TalkStream = require('../scripts/talk-stream.js');
+const TalkSession = require('../scripts/talk-session.js');
 const TalkGemini = require('../scripts/talk-gemini.js');
 const { sourceText } = require('./test-source-text');
 
@@ -351,8 +352,13 @@ console.log('=== 1. Stream contract is allowlisted status, then verified payload
   ok(/TalkStream\.wantsStream/.test(serverSrc)
       && /presentTalkAskTurn/.test(serverSrc)
       && /TalkGemini\.ask/.test(serverSrc)
-      && /publicAskBody/.test(serverSrc),
-    'JSON and stream paths share one present-and-publish turn');
+      && /publicAskBody/.test(serverSrc)
+      && /const write = TalkStream\.writeResult\(res, outcome\.presented\)/.test(serverSrc)
+      && /if \(write\.accepted\)/.test(serverSrc)
+      && /appendTalkSessionTurn\(sessionKey, parsed\.question, outcome\.presented\)/.test(serverSrc)
+      && !/if \(wrote && !gate\.closed\)/.test(serverSrc)
+      && !/return wrote !== false/.test(streamSrc),
+    'JSON and stream paths share one present-and-publish turn; stream appends on write.accepted');
   ok(/accept:\s*'text\/event-stream'/.test(talkSrc)
       && /JSON\.stringify\(\{ question \}\)/.test(talkSrc)
       && !/conversation|history|priorTurns/.test(talkSrc),
@@ -389,6 +395,88 @@ console.log('=== 1. Stream contract is allowlisted status, then verified payload
       && incomplete.type === 'ignore'
       && ignoredMessage.type === 'ignore',
     'browser ignores token events, incomplete JSON, and raw message events');
+}
+
+console.log('\n=== 1b. res.write() === false is accepted; session turn is retained ===');
+{
+  const presented = {
+    answer: 'Forecast remains the planner.',
+    source: 'packet',
+    trust: 'calculated',
+    asOf: '2026-09-15',
+    freshness: 'current',
+    action: null,
+    cards: null,
+    citations: [{ label: 'Forecast', href: '#forecast' }],
+    sessionTurn: { kind: 'explained' },
+  };
+  const question = 'What should I know today?';
+
+  function mockRes(writeReturn, extras) {
+    return Object.assign({
+      writableEnded: false,
+      destroyed: false,
+      chunks: [],
+      write(chunk) {
+        this.chunks.push(chunk);
+        return writeReturn;
+      },
+      flush() { this.flushed = true; },
+      end() { this.writableEnded = true; },
+    }, extras || {});
+  }
+
+  function retainIfAccepted(write, sessions, key) {
+    if (write.accepted) {
+      sessions.append(key, {
+        question,
+        presented: presented.answer,
+        kind: presented.sessionTurn.kind,
+      });
+    }
+  }
+
+  const backpressure = mockRes(false);
+  const write = TalkStream.writeResult(backpressure, presented);
+  ok(write && write.accepted === true && write.backpressure === true,
+    'res.write() === false is accepted backpressure, not a failed write');
+  ok(backpressure.chunks.length === 1
+      && backpressure.chunks[0].indexOf('event: result') === 0
+      && backpressure.chunks[0].indexOf(presented.answer) !== -1
+      && backpressure.chunks[0].indexOf('sessionTurn') === -1,
+    'backpressure still queues the verified public result');
+
+  const sessions = TalkSession.createSessionContext({ secret: SECRET });
+  retainIfAccepted(write, sessions, 'session-a');
+  TalkStream.endStream(backpressure);
+  const turns = sessions.turns('session-a');
+  ok(turns.length === 1
+      && turns[0].question === question
+      && turns[0].presented === presented.answer
+      && turns[0].kind === 'explained'
+      && backpressure.writableEnded === true,
+    'accepted backpressure retains the session turn before the response ends');
+
+  const dead = mockRes(true, { destroyed: true });
+  const deadWrite = TalkStream.writeResult(dead, presented);
+  const deadSessions = TalkSession.createSessionContext({ secret: SECRET });
+  retainIfAccepted(deadWrite, deadSessions, 'session-a');
+  ok(deadWrite.accepted === false
+      && deadWrite.reason === 'undeliverable'
+      && dead.chunks.length === 0
+      && deadSessions.turns('session-a').length === 0,
+    'a destroyed socket is undeliverable and retains no session turn');
+
+  const ended = mockRes(true, { writableEnded: true });
+  ok(TalkStream.writeResult(ended, presented).accepted === false
+      && ended.chunks.length === 0,
+    'an ended response is not accepted');
+
+  const flushed = mockRes(true);
+  const okWrite = TalkStream.writeResult(flushed, presented);
+  ok(okWrite.accepted === true && okWrite.backpressure === false
+      && flushed.chunks.length === 1,
+    'res.write() === true is accepted without backpressure');
 }
 
 (async () => {

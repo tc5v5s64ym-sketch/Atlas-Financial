@@ -99,11 +99,18 @@ function beginStream(res) {
   return true;
 }
 
+function undeliverableWrite() {
+  return { accepted: false, reason: 'undeliverable' };
+}
+
 function writeEncoded(res, encoded) {
-  if (!encoded || !res || res.writableEnded || res.destroyed) return false;
-  const wrote = res.write(encoded);
+  if (!encoded || !res || res.writableEnded || res.destroyed) {
+    return undeliverableWrite();
+  }
+  // Node returns false under backpressure; the chunk is still queued.
+  const flushed = res.write(encoded);
   if (typeof res.flush === 'function') res.flush();
-  return wrote !== false;
+  return { accepted: true, backpressure: flushed === false };
 }
 
 function writeStatus(res, phase) {
@@ -112,7 +119,7 @@ function writeStatus(res, phase) {
 
 function writeResult(res, presented) {
   const body = publicAskBody(presented);
-  if (!body) return false;
+  if (!body) return undeliverableWrite();
   return writeEncoded(res, encodeEvent('result', body));
 }
 
