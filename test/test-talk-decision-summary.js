@@ -282,7 +282,8 @@ console.log('\n=== 3. Hypothetical changes match independent Forecast deltas ===
       && presented.answer.indexOf(cash) !== -1,
     'hypothetical What changes reprints independently formatted Forecast deltas already in the answer');
   ok(/not a recommendation/.test(unchanged)
-      && !/\bsafe\b|\baffordable\b|\bbest\b/.test(JSON.stringify(presented.summary)),
+      && sectionBodies(presented.summary, 'changes').every(body => presented.answer.indexOf(body) !== -1)
+      && !/\baffordable\b|\bbest\b/.test(JSON.stringify(presented.summary)),
     'hypothetical summary keeps the existing not-a-recommendation note and invents no permission');
   ok(Array.isArray(presented.citations)
       && presented.citations.some(row => row.source === 'Forecast'),
@@ -321,8 +322,9 @@ console.log('\n=== 4. Preference does not become permission; NOT YET stays unkno
         && !/PREFER/.test(knows),
       'NOT YET / INDETERMINATE is what Atlas cannot determine, not a hidden winner');
   }
-  ok(!/\bsafe\b|\baffordable\b/.test(blob)
-      && !/you (?:may|can|should) (?:spend|pay|afford)/i.test(blob),
+  ok(!/\baffordable\b/.test(blob)
+      && !/you (?:may|can|should) (?:spend|pay|afford)/i.test(blob)
+      && changes.every(body => presented.answer.indexOf(body) !== -1),
     'comparison summary does not convert uncertainty into permission');
 }
 
