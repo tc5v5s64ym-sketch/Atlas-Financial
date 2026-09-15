@@ -358,7 +358,8 @@ console.log('\n=== 10. No ranking / recommend / afford / policy ===');
       && result.provenance.recommendation === null
       && result.provenance.affordability === null,
     'provenance repeats those withheld decision fields');
-  ok(!/should pay|put every|afford|permission to|recommended|best debt|saves most/i.test(blob),
+  const language = blob.replace(/"affordability":null/g, '');
+  ok(!/should pay|put every|afford|permission to|recommended|best debt|saves most/i.test(language),
     'the structured result has no free-form recommendation language');
   ok(!Object.prototype.hasOwnProperty.call(result, 'extraDebtCapacity')
       && !/extraDebtCapacity|endingSurplus|safeToSpend|breathingRoom|decisionPosture/.test(blob),
