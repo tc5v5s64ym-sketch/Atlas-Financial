@@ -1796,10 +1796,7 @@ function remainingBillsPacketState(packet) {
   if (!action || typeof action !== 'object' || Array.isArray(action)) {
     return { status: 'unavailable' };
   }
-  if (action.status === 'unavailable') {
-    return { status: 'unavailable' };
-  }
-  if (action.status !== 'ok' || action.source !== 'Forecast.currentPeriodAction') {
+  if (action.status !== 'ok') {
     return { status: 'unavailable' };
   }
   if (!Array.isArray(action.bills)) return { status: 'unavailable' };
