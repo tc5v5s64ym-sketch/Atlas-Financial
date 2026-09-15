@@ -8,6 +8,8 @@
  * also maps an already-computed Forecast hypothetical result into
  * wording; this file still does not call Forecast, does not compute
  * leftover or remaining, and does not invent a second financial schema.
+ * Optional presentation.cards reprint those same trusted strings for
+ * the Talk card surface. Cards do not add numbers.
  *
  * Unknown paths stay conservative: path-is-value wording, no human
  * meaning, no Forecast/Bills/Credit/Planning provenance, no nav action.
@@ -30,6 +32,16 @@ const ALLOWED_ACTIONS = Object.freeze({
 
 const ALLOWED_ACTION_HREFS = Object.freeze(['/', '/bills.html', '/credit.html', '/planning.html']);
 const ALLOWED_SOURCES = Object.freeze(['Forecast', 'Bills', 'Credit', 'Planning']);
+const CARD_VERSION = 1;
+const CARD_KINDS = Object.freeze({
+  answer: true,
+  option: true,
+  result: true,
+  judgment: true,
+  provenance: true,
+  action: true,
+  note: true,
+});
 
 function isPrimitive(value) {
   if (value === null) return true;
@@ -677,16 +689,93 @@ function publicAction(action) {
   return { href: action.href, label: action.label };
 }
 
+function provenanceText(fields) {
+  const parts = [];
+  if (ALLOWED_SOURCES.includes(fields.source)) parts.push(fields.source);
+  if (typeof fields.asOf === 'string' && fields.asOf) {
+    parts.push('as of ' + fields.asOf);
+  }
+  if (typeof fields.trust === 'string' && fields.trust) {
+    parts.push(fields.trust);
+  }
+  if (typeof fields.freshness === 'string' && fields.freshness
+      && fields.freshness !== fields.trust) {
+    parts.push(fields.freshness);
+  }
+  return parts.length ? parts.join(' · ') : null;
+}
+
+function sanitizePresentationCards(cards) {
+  if (!cards || typeof cards !== 'object' || Array.isArray(cards)) return null;
+  if (cards.version !== CARD_VERSION) return null;
+  if (!Array.isArray(cards.items) || !cards.items.length) return null;
+  const items = [];
+  for (const raw of cards.items) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (!CARD_KINDS[raw.kind]) return null;
+    if (typeof raw.title !== 'string' || !raw.title) return null;
+    if (typeof raw.body !== 'string' || !raw.body) return null;
+    if (raw.kind === 'action') {
+      const action = publicAction({ href: raw.href, label: raw.label || raw.body });
+      if (!action) return null;
+      items.push({
+        kind: 'action',
+        title: raw.title,
+        body: action.label,
+        href: action.href,
+        label: action.label,
+      });
+      continue;
+    }
+    items.push({
+      kind: raw.kind,
+      title: raw.title,
+      body: raw.body,
+    });
+  }
+  return items.length ? { version: CARD_VERSION, items } : null;
+}
+
+function trailingMetaCards(presentation) {
+  const items = [];
+  const provenance = provenanceText(presentation);
+  if (provenance) {
+    items.push({ kind: 'provenance', title: 'Source', body: provenance });
+  }
+  const action = publicAction(presentation.action);
+  if (action) {
+    items.push({
+      kind: 'action',
+      title: 'Open',
+      body: action.label,
+      href: action.href,
+      label: action.label,
+    });
+  }
+  return items;
+}
+
+function finishPresentation(presentation, extras) {
+  const leading = extras && Array.isArray(extras.items) ? extras.items : [];
+  presentation.cards = sanitizePresentationCards({
+    version: CARD_VERSION,
+    items: leading.concat(trailingMetaCards(presentation)),
+  });
+  return presentation;
+}
+
 function emptyPresentation(answer, extras) {
   extras = extras || {};
-  return {
+  return finishPresentation({
     answer,
     source: extras.source || null,
     trust: extras.trust || null,
     asOf: extras.asOf || null,
     freshness: extras.freshness || null,
     action: extras.action || null,
-  };
+  }, {
+    items: [{ kind: 'answer', title: 'Answer', body: answer }],
+  });
 }
 
 function hypotheticalConsequenceSentences(result) {
@@ -790,18 +879,27 @@ function presentHypotheticalExtra(result, packet) {
       freshness,
     });
   }
-  const sentences = [
-    `If you put ${amountText} on ${label} as a hypothetical extra on ${day}:`,
-  ].concat(hypotheticalConsequenceSentences(result));
-  sentences.push('This is a hypothetical scenario from Forecast and is not a recommendation.');
-  return {
+  const lead = `If you put ${amountText} on ${label} as a hypothetical extra on ${day}:`;
+  const consequences = hypotheticalConsequenceSentences(result);
+  const note = 'This is a hypothetical scenario from Forecast and is not a recommendation.';
+  const sentences = [lead].concat(consequences);
+  sentences.push(note);
+  return finishPresentation({
     answer: sentences.join(' '),
     source: 'Forecast',
     trust: 'calculated',
     asOf: day,
     freshness,
     action: null,
-  };
+  }, {
+    items: [{ kind: 'answer', title: 'Answer', body: lead }]
+      .concat(consequences.map(body => ({
+        kind: 'result',
+        title: 'Forecast result',
+        body,
+      })))
+      .concat([{ kind: 'note', title: 'Note', body: note }]),
+  });
 }
 
 function comparisonOptionLabel(index, count) {
@@ -875,6 +973,7 @@ function presentHypotheticalComparison(result, packet, preference) {
     });
   }
   const optionLines = [];
+  const optionItems = [];
   for (let i = 0; i < result.scenarios.length; i += 1) {
     const row = result.scenarios[i];
     const input = row && row.input;
@@ -890,29 +989,31 @@ function presentHypotheticalComparison(result, packet, preference) {
       });
     }
     const body = hypotheticalConsequenceSentences(inner);
-    optionLines.push(
-      `${comparisonOptionLabel(i, result.scenarios.length)} — If you put ${amountText} on ${label} as a hypothetical extra on ${day}: ${body.join(' ')}`
-    );
+    const optionTitle = comparisonOptionLabel(i, result.scenarios.length);
+    const optionBody = `If you put ${amountText} on ${label} as a hypothetical extra on ${day}: ${body.join(' ')}`;
+    optionLines.push(`${optionTitle} — ${optionBody}`);
+    optionItems.push({ kind: 'option', title: optionTitle, body: optionBody });
   }
-  const sentences = [
-    `Hypothetical comparison · Forecast as of ${day}. The Forecast window is ${Number(horizon)} days.`,
-  ].concat(optionLines);
+  const header = `Hypothetical comparison · Forecast as of ${day}. The Forecast window is ${Number(horizon)} days.`;
+  const sentences = [header].concat(optionLines);
   const preferenceSentence = presentPreferenceSentence(preference);
+  const note = 'This is a hypothetical comparison from Forecast and is not a recommendation. Forecast does not rank these options.';
+  const items = [{ kind: 'answer', title: 'Answer', body: header }].concat(optionItems);
   if (preferenceSentence) {
     sentences.push(preferenceSentence);
+    items.push({ kind: 'judgment', title: 'Preference', body: preferenceSentence });
   } else {
-    sentences.push(
-      'This is a hypothetical comparison from Forecast and is not a recommendation. Forecast does not rank these options.'
-    );
+    sentences.push(note);
+    items.push({ kind: 'note', title: 'Note', body: note });
   }
-  return {
+  return finishPresentation({
     answer: sentences.join(' '),
     source: 'Forecast',
     trust: 'calculated',
     asOf: day,
     freshness,
     action: null,
-  };
+  }, { items });
 }
 
 function presentVerifiedClaims(published, packet) {
@@ -941,14 +1042,20 @@ function presentVerifiedClaims(published, packet) {
     )).join(' ');
   const source = unmapped.length ? null : sharedValue(mapped.map(row => row.source));
   const action = unmapped.length ? null : publicAction(sharedValue(mapped.map(row => row.action)));
-  return {
+  return finishPresentation({
     answer,
     source,
     trust: weakestTrust(presented.map(row => row.trust)),
     asOf: readAsOf(packet),
     freshness: readFreshness(packet),
     action,
-  };
+  }, {
+    items: presented.map((row, index) => ({
+      kind: 'answer',
+      title: 'Answer',
+      body: row.mapped ? row.text : genericSentence(claims[index]),
+    })),
+  });
 }
 
 function isAllowedActionHref(href) {
@@ -962,6 +1069,9 @@ module.exports = {
   ALLOWED_ACTIONS,
   ALLOWED_ACTION_HREFS,
   ALLOWED_SOURCES,
+  CARD_VERSION,
+  CARD_KINDS,
+  sanitizePresentationCards,
   formatCurrency,
   formatClaimValue,
   isPrimitive,

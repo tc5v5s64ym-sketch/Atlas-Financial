@@ -8,12 +8,13 @@
  * the Talk model secret, does not read Forecast, and does not publish
  * a figure of its own. Model answer text is assigned via textContent.
  * Provenance, trust, and one optional action link come from the server
- * presentation. This file does not format money and only follows existing
- * Atlas routes.
+ * presentation. Structured answer cards reprint server.cards strings into
+ * #talk-cards. Missing or malformed cards fail closed to the plain answer
+ * bubble. This file does not invent card content from answer text, does
+ * not format money, and only follows existing Atlas routes.
  *
  * Send stays disabled until capability says the model path is available.
- * When it is not, suggested prompts keep the Slice 1/2 stub. Structured
- * answer cards stay reserved in #talk-cards.
+ * When it is not, suggested prompts keep the Slice 1/2 stub.
  */
 
 const TALK_STUB_COPY = 'Talk is not connected yet. It will not invent an answer.';
@@ -177,12 +178,112 @@ function replaceTalkLoading(node) {
 
 function talkPresentation(value) {
   if (typeof value === 'string') {
-    return { answer: value, source: null, trust: null, asOf: null, freshness: null, action: null };
+    return { answer: value, source: null, trust: null, asOf: null, freshness: null, action: null, cards: null };
   }
   if (!value || typeof value !== 'object' || typeof value.answer !== 'string') {
-    return { answer: '', source: null, trust: null, asOf: null, freshness: null, action: null };
+    return { answer: '', source: null, trust: null, asOf: null, freshness: null, action: null, cards: null };
   }
-  return value;
+  return {
+    answer: value.answer,
+    source: value.source || null,
+    trust: value.trust || null,
+    asOf: value.asOf || null,
+    freshness: value.freshness || null,
+    action: value.action || null,
+    cards: value.cards || null,
+  };
+}
+
+const TALK_CARD_KINDS = {
+  answer: true,
+  option: true,
+  result: true,
+  judgment: true,
+  provenance: true,
+  action: true,
+  note: true,
+};
+
+function talkValidCards(cards) {
+  if (!cards || typeof cards !== 'object' || cards.version !== 1) return null;
+  if (!Array.isArray(cards.items) || !cards.items.length) return null;
+  const items = [];
+  for (let i = 0; i < cards.items.length; i += 1) {
+    const raw = cards.items[i];
+    if (!raw || typeof raw !== 'object') return null;
+    if (!TALK_CARD_KINDS[raw.kind]) return null;
+    if (typeof raw.title !== 'string' || !raw.title) return null;
+    if (typeof raw.body !== 'string' || !raw.body) return null;
+    if (raw.kind === 'action') {
+      const action = talkAllowedAction({ href: raw.href, label: raw.label || raw.body });
+      if (!action) return null;
+      items.push({
+        kind: 'action',
+        title: raw.title,
+        body: action.label,
+        href: action.href,
+        label: action.label,
+      });
+    } else {
+      items.push({
+        kind: raw.kind,
+        title: raw.title,
+        body: raw.body,
+      });
+    }
+  }
+  return items.length ? items : null;
+}
+
+function talkCardsMount() {
+  const reserved = $('talk-cards');
+  if (reserved) {
+    const insideAnswer = typeof reserved.closest === 'function'
+      && reserved.closest('[data-talk-role="atlas-answer"]');
+    if (!insideAnswer) {
+      reserved.hidden = false;
+      if (typeof reserved.removeAttribute === 'function') reserved.removeAttribute('hidden');
+      while (reserved.firstChild) reserved.removeChild(reserved.firstChild);
+      return reserved;
+    }
+  }
+  const mount = document.createElement('div');
+  mount.className = 'talk-cards';
+  return mount;
+}
+
+function talkCardsAnswerNode(cards) {
+  const article = document.createElement('article');
+  article.className = 'talk-bubble talk-bubble-atlas talk-bubble-answer talk-bubble-cards';
+  article.setAttribute('data-talk-role', 'atlas-answer');
+  const mount = talkCardsMount();
+  for (let i = 0; i < cards.length; i += 1) {
+    const item = cards[i];
+    const card = document.createElement('section');
+    card.className = 'talk-card talk-card-' + item.kind;
+    card.setAttribute('data-talk-card', item.kind);
+    const title = document.createElement('h3');
+    title.className = 'talk-card-title';
+    title.textContent = item.title;
+    card.appendChild(title);
+    if (item.kind === 'action') {
+      const nav = document.createElement('p');
+      nav.className = 'talk-answer-action';
+      const link = document.createElement('a');
+      link.setAttribute('href', item.href);
+      link.textContent = item.label;
+      nav.appendChild(link);
+      card.appendChild(nav);
+    } else {
+      const body = document.createElement('p');
+      body.className = 'talk-card-body';
+      body.textContent = item.body;
+      card.appendChild(body);
+    }
+    mount.appendChild(card);
+  }
+  article.appendChild(mount);
+  return article;
 }
 
 function talkAnswerMetaText(presentation) {
@@ -218,6 +319,8 @@ function talkAllowedAction(action) {
 
 function talkAnswerNode(value) {
   const presentation = talkPresentation(value);
+  const cards = talkValidCards(presentation.cards);
+  if (cards) return talkCardsAnswerNode(cards);
   const article = document.createElement('article');
   article.className = 'talk-bubble talk-bubble-atlas talk-bubble-answer';
   article.setAttribute('data-talk-role', 'atlas-answer');
@@ -281,6 +384,7 @@ async function askTalk(question) {
     asOf: body.asOf || null,
     freshness: body.freshness || null,
     action: body.action || null,
+    cards: body.cards || null,
   };
 }
 

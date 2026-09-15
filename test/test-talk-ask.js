@@ -338,7 +338,7 @@ function loadTalkApi() {
   };
   vm.createContext(sandbox);
   vm.runInContext(
-    src + '\nthis.__api = { talkEscape, renderTalkModelAvailability, talkAnswerNode, talkErrorNode, talkAllowedAction, talkAnswerMetaText };',
+    src + '\nthis.__api = { talkEscape, renderTalkModelAvailability, talkAnswerNode, talkErrorNode, talkAllowedAction, talkAnswerMetaText, talkValidCards, talkPresentation };',
     sandbox
   );
   return { api: sandbox.__api, send, seam, created };
@@ -623,8 +623,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       const askedBody = await asked.json();
       ok(askedBody.answer === DEFAULT_ANSWER
           && !forbiddenBlob(askedBody)
-          && Object.keys(askedBody).sort().join() === 'action,answer,asOf,freshness,source,trust',
-        'Talk ask returns the presented packet-backed answer without extra payload');
+          && Object.keys(askedBody).sort().join() === 'action,answer,asOf,cards,freshness,source,trust',
+        'Talk ask returns the presented packet-backed answer plus optional cards, without extra payload');
       ok(liveMock.captured.length >= 1
           && requestHasInstruction(liveMock.captured[liveMock.captured.length - 1].body)
           && /What commitments are coming up\?/.test(userText(liveMock.captured[liveMock.captured.length - 1].body)),
@@ -1044,6 +1044,18 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         && remaining.presentation.action.href === '/'
         && remaining.presentation.action.label === 'View Budget',
       'remaining presentation carries Forecast provenance, packet trust, as-of, freshness, and Budget link');
+    ok(remaining.presentation.cards
+        && remaining.presentation.cards.version === 1
+        && remaining.presentation.cards.items[0]
+        && remaining.presentation.cards.items[0].body === remaining.answer
+        && remaining.presentation.cards.items.some(item => (
+          item.kind === 'provenance'
+          && item.body === 'Forecast · as of 2026-09-14 · posted-only · live'
+        ))
+        && remaining.presentation.cards.items.some(item => (
+          item.kind === 'action' && item.href === '/' && item.label === 'View Budget'
+        )),
+      'remaining cards reprint the same answer, provenance, and Budget action');
 
     const spendableOk = TalkPresentation.presentVerifiedClaims({
       status: 'explained',
@@ -1170,6 +1182,11 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         && !/\$0/.test(unavailableMoney.answer)
         && !/0\.00/.test(unavailableMoney.answer),
       'unavailable remaining is not published as zero');
+    ok(unavailableMoney.cards
+        && unavailableMoney.cards.items[0].body === unavailableMoney.answer
+        && !/\$0/.test(JSON.stringify(unavailableMoney.cards))
+        && !/0\.00/.test(JSON.stringify(unavailableMoney.cards)),
+      'unavailable remaining cards stay unavailable and are not published as zero');
 
     const bills = TalkPresentation.presentVerifiedClaims({
       status: 'explained',
@@ -1286,6 +1303,34 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       'browser drops non-Atlas action hrefs');
     ok(!/innerHTML\s*=/.test(talkSrc),
       'presentation render still does not assign innerHTML');
+    const malformed = ui.api.talkAnswerNode({
+      answer: 'You have $1,415.95 remaining in the current pay period.',
+      source: 'Forecast',
+      cards: {
+        version: 1,
+        items: [{ kind: 'invented', title: 'Answer', body: '$99.00' }],
+      },
+    });
+    ok(malformed.children[0]
+        && malformed.children[0].textContent === 'You have $1,415.95 remaining in the current pay period.'
+        && !/talk-bubble-cards/.test(malformed.className),
+      'malformed cards fail closed to the plain answer bubble');
+    const structured = ui.api.talkAnswerNode({
+      answer: 'You have $1,415.95 remaining in the current pay period.',
+      source: 'Forecast',
+      cards: remaining.presentation.cards,
+    });
+    const structuredMount = structured.children[0];
+    const structuredBodies = structuredMount && structuredMount.children
+      ? structuredMount.children.map(card => {
+        const body = card.children.find(child => child.className === 'talk-card-body');
+        return body ? body.textContent : null;
+      })
+      : [];
+    ok(/talk-bubble-cards/.test(structured.className)
+        && structuredBodies[0] === remaining.answer
+        && structuredBodies.indexOf('Forecast · as of 2026-09-14 · posted-only · live') !== -1,
+      'trusted cards render server strings via textContent and do not invent figures');
   }
 
   {
