@@ -54,7 +54,8 @@ function renderRecords(d) {
       (d.plan.bills || []).map(b => li(b.label, money2(b.amount), freqWord(b), b.confidence, b.note)).join('') +
       (d.plan.billsNote ? `<p class="deriv-note">${d.plan.billsNote}</p>` : '') +
       '<h3>Commitments</h3>' +
-      settledCommitments.map(c => li(`${c.label} — ${fmtDate(c.date)}`, money2(c.amount),
+      settledCommitments.map(c => li(`${c.label} — ${c.date ? fmtDate(c.date)
+        : (c.when || (c.settledOn ? fmtDate(c.settledOn) : 'TBD'))}`, money2(c.amount),
         'settled', c.confidence, c.note)).join('') +
       (pub.commitmentItems || []).map(i => li(`${i.what} — ${i.when}`, shownAmount(i),
         i.adjustable ? 'optional' : 'one-time',

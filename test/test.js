@@ -184,6 +184,7 @@ const suites = [
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],
   ['Q1 planning policy (2026-08-29 coaching gravy)', 'test-q1-planning-policy.js'],
   ['major future costs on the master plan', 'test-major-future-costs.js'],
+  ['Fusion household + Warriors U13 plan commitments', 'test-fusion-warriors-plan-commitments.js'],
   ['master forecast engine (B94 / AF-PLAN-01)', 'test-master-forecast.js'],
   ['end-to-end payday proof (B96 / AF-PLAN-02)', 'test-b96-payday.js'],
   ['payday allocation waterfall', 'test-payday-allocation.js'],
