@@ -12046,6 +12046,162 @@
     };
   }
 
+  // Weaker of calculated / estimated / unavailable. Missing confidence
+  // is not confirmed: do not promote an estimate.
+  function trajectoryWeakerStatus() {
+    const list = Array.prototype.slice.call(arguments);
+    if (list.some(status => status === 'unavailable')) return 'unavailable';
+    if (list.some(status => status === 'estimated')) return 'estimated';
+    return 'calculated';
+  }
+
+  function trajectoryEventsStatus(events) {
+    if (!events || !events.length) return 'calculated';
+    for (const event of events) {
+      if (!event || event.confidence !== 'confirmed') return 'estimated';
+    }
+    return 'calculated';
+  }
+
+  function trajectoryFundingUnavailable(reason) {
+    const row = { status: 'unavailable', reason };
+    return {
+      stage1: Object.assign({ id: 'normal-life', label: 'Normal life' }, row),
+      stage2: Object.assign({ id: 'after-planned-spending', label: 'After planned spending' }, row),
+      stage3: Object.assign({ id: 'after-debt-strategy', label: 'After debt strategy' }, row),
+    };
+  }
+
+  // Three-stage selected-period funding from the same baselineTrajectory
+  // walk already built for this calendar month. Not a second calculator.
+  // Stage 1 = income − joint-cash bills − required obligations − planned
+  // Household Budget already applied by incumbent simulate (weeklyVariable
+  // / 7 on each walk day in the published month). Stage 2 = stage1
+  // − dated non-optional commitments. Stage 3 = stage2 − walk kind:'extra'
+  // from plan.defaults.extraDebtMonthly / extraAbsorbed only. Scenario
+  // hypothetical extras, owner surplus-target policy, payday leftover,
+  // reserved current-regime smear, card-paid bills, optional
+  // commitments, and planned-debt flows are not Stage 3 and not a
+  // balancing bucket. Household Budget is not a separate calendar-month
+  // smear and is not a residual of the cash close.
+  // Fail closed when this month's income or cash walk is unavailable.
+  function baselineTrajectoryWalkVariableDays(daily, span) {
+    if (!span || !span.start || !span.end || !Array.isArray(daily)) return 0;
+    let days = 0;
+    for (const row of daily) {
+      if (row && row.date >= span.start && row.date <= span.end) days += 1;
+    }
+    return days;
+  }
+
+  function baselineTrajectoryMonthFunding(input) {
+    input = input || {};
+    const income = input.income;
+    const cash = input.cash;
+    const span = input.span;
+    const weekly = input.weeklyVariable;
+    if (!income || income.status === 'unavailable'
+        || income.amount == null || !isFinite(Number(income.amount))) {
+      return trajectoryFundingUnavailable(
+        (income && income.reason)
+        || 'Projected income for this month is unavailable. Not $0.');
+    }
+    if (!cash || cash.status === 'unavailable') {
+      return trajectoryFundingUnavailable(
+        (cash && cash.reason)
+        || 'The cash walk for this month is unavailable. Not $0.');
+    }
+    if (weekly == null || !isFinite(weekly) || weekly < 0) {
+      return trajectoryFundingUnavailable(
+        'A planned Household Budget weeklyVariable is required. Not $0.');
+    }
+    if (!span || !span.start || !span.end) {
+      return trajectoryFundingUnavailable(
+        'Forecast could not establish this month span. Not $0.');
+    }
+    const walkDaily = Array.isArray(input.walkDaily) ? input.walkDaily : null;
+    if (!walkDaily) {
+      return trajectoryFundingUnavailable(
+        'The baseline walk days for this month are unavailable. Not $0.');
+    }
+    const walkDays = baselineTrajectoryWalkVariableDays(walkDaily, span);
+    if (!(walkDays > 0)) {
+      return trajectoryFundingUnavailable(
+        'The baseline walk did not apply Household Budget days in this month. Not $0.');
+    }
+
+    const events = Array.isArray(input.events) ? input.events : [];
+    const incomeAmount = roundCent(Number(income.amount));
+    const incomeStatus = income.status === 'estimated' ? 'estimated' : 'calculated';
+    const bills = events.filter(e =>
+      e && e.kind === 'bill' && e.jointCash !== false && !e.cardPaid);
+    const obligations = events.filter(e => e && e.kind === 'obligation');
+    const commitments = events.filter(e => e && e.kind === 'commitment');
+    const extras = events.filter(e =>
+      e && e.kind === 'extra' && e.id !== 'hypothetical-extra');
+    const sumOut = rows => roundCent(rows.reduce((s, e) => s + (-Number(e.amount) || 0), 0));
+    const billsAmount = sumOut(bills);
+    const obligationsAmount = sumOut(obligations);
+    const commitmentsAmount = sumOut(commitments);
+    const extrasAmount = sumOut(extras);
+    const householdBudgetAmount = roundCent(weekly * walkDays / 7);
+    const billsStatus = trajectoryEventsStatus(bills);
+    const obligationsStatus = trajectoryEventsStatus(obligations);
+    const commitmentsStatus = trajectoryEventsStatus(commitments);
+    const extrasStatus = 'calculated';
+    const householdBudgetStatus = 'calculated';
+    const stage1Status = trajectoryWeakerStatus(
+      incomeStatus, billsStatus, obligationsStatus, householdBudgetStatus);
+    const stage1Amount = roundCent(
+      incomeAmount - billsAmount - obligationsAmount - householdBudgetAmount);
+    const stage2Status = trajectoryWeakerStatus(stage1Status, commitmentsStatus);
+    const stage2Amount = roundCent(stage1Amount - commitmentsAmount);
+    const stage3Status = trajectoryWeakerStatus(stage2Status, extrasStatus);
+    const stage3Amount = roundCent(stage2Amount - extrasAmount);
+    function component(amount, status) {
+      return { amount: roundCent(amount), status };
+    }
+    function result(amount, status) {
+      return { amount: roundCent(amount), status };
+    }
+    return {
+      stage1: {
+        id: 'normal-life',
+        label: 'Normal life',
+        status: stage1Status,
+        income: component(incomeAmount, incomeStatus),
+        bills: component(billsAmount, billsStatus),
+        obligations: component(obligationsAmount, obligationsStatus),
+        householdBudget: {
+          amount: householdBudgetAmount,
+          status: householdBudgetStatus,
+          weeklyVariable: roundCent(weekly),
+          walkDays,
+          identity: 'simulate weeklyVariable applied days in month',
+        },
+        result: result(stage1Amount, stage1Status),
+      },
+      stage2: {
+        id: 'after-planned-spending',
+        label: 'After planned spending',
+        status: stage2Status,
+        commitments: component(commitmentsAmount, commitmentsStatus),
+        result: result(stage2Amount, stage2Status),
+      },
+      stage3: {
+        id: 'after-debt-strategy',
+        label: 'After debt strategy',
+        status: stage3Status,
+        extras: {
+          amount: extrasAmount,
+          status: extrasStatus,
+          source: 'plan.defaults.extraDebtMonthly',
+        },
+        result: result(stage3Amount, stage3Status),
+      },
+    };
+  }
+
   // Read-only baseline cash+debt trajectory over the incumbent
   // knowledgeHorizon. Composes budgetBreakdown planned weeklyVariable,
   // simulate, projectDebts, and trajectory-local estimated Dale/Seaspan
@@ -12074,10 +12230,18 @@
   // first published month-end at which a modelled balance is $0.
   // Planned weeklyVariable does not invent future card borrowing.
   // Available credit is not cash. Unpublished debt months contribute
-  // no invented direction. Caller-supplied additional-debt-payment
+  // no invented direction. Each published calendar month also carries a
+  // three-stage selected-period funding decomposition from that same
+  // walk: Stage 1 normal life, Stage 2 after planned spending, Stage 3
+  // after debt strategy from plan.defaults.extraDebtMonthly / absorbed
+  // kind:'extra' only. Household Budget is the weeklyVariable already
+  // applied by incumbent simulate on the walk days in that month, not a
+  // separate calendar-month smear. Fail closed when that month's income
+  // or cash walk is unavailable. Caller-supplied additional-debt-payment
   // scenario consequence against this same walk is
   // baselineTrajectoryScenario, not hypotheticalExtraPayment and not
-  // counterfactuals.
+  // counterfactuals. Scenario amounts, owner surplus-target policy, and payday
+  // leftover are not Stage 3.
   function baselineTrajectory(plan, debts, asOf, opts) {
     const ctx = prepareBaselineTrajectoryWalk(plan, debts, asOf, opts);
     if (!ctx || ctx.status !== 'ready') {
@@ -12248,6 +12412,17 @@
           ? { status: 'calculated', amount: roundCent(close.balance), asOf: close.date }
           : { status: 'unavailable', reason: 'Forecast could not read month-end cash.' };
       }
+      const funding = baselineTrajectoryMonthFunding({
+        span,
+        weeklyVariable: weekly,
+        events: monthEvents,
+        income: row.income,
+        cash: row.cash,
+        walkDaily: sim.daily,
+      });
+      row.stage1 = funding.stage1;
+      row.stage2 = funding.stage2;
+      row.stage3 = funding.stage3;
       return row;
     });
 
@@ -12333,6 +12508,11 @@
         debtDirection: 'walk-derived-coupled-marks',
         debtDirectionInventedBorrowing: false,
         availableCreditIsNotCash: true,
+        fundingStages: 'walk-derived',
+        fundingStagesPolicyThresholds: 'none',
+        fundingStage3: 'plan.defaults.extraDebtMonthly',
+        fundingStage3Scenario: 'not-used',
+        fundingStage3NextDollar: 'not-used',
         incomeRegimesImplemented: regimeReady,
         incomeRegimesNamedFailClosed: !regimeReady,
         incomeRegimesDollarModel: regimeReady,
