@@ -338,6 +338,131 @@ function planningTrajectoryPressureHtml(traj) {
   };
 }
 
+const PLANNING_DEBT_DIRECTION_LABEL = {
+  declining: 'Declining',
+  persistent: 'Persistent',
+  increasing: 'Increasing',
+};
+
+function planningTrajectoryDebtDirectionInterestHtml(interest) {
+  if (!interest || typeof interest !== 'object') {
+    return '<small class="planning-trajectory-reason">Interest was not published.</small>';
+  }
+  if (interest.status === 'calculated' && interest.amount != null && isFinite(Number(interest.amount))) {
+    return `${planningTrajectoryPressureAmountField('Interest', interest.amount)}${planningTrajectoryChip('calculated')}`;
+  }
+  const reason = interest.reason || 'Interest was not established on the coupled walk.';
+  return `<span class="chip c">Forecast unavailable</span><small class="planning-trajectory-reason">${reason}</small>`;
+}
+
+function planningTrajectoryDebtDirectionBalanceHtml(label, balance) {
+  if (!balance || balance.direction == null) return '';
+  const dirLabel = PLANNING_DEBT_DIRECTION_LABEL[balance.direction] || balance.direction;
+  const fields = [
+    planningTrajectoryPressureTextField('Direction', dirLabel),
+    planningTrajectoryPressureAmountField('Opening', balance.opening),
+    planningTrajectoryPressureAmountField('Ending', balance.ending),
+    planningTrajectoryPressureAmountField('Change', balance.delta),
+  ].filter(Boolean).join('');
+  return `<div class="planning-trajectory-debt-direction-balance" data-trajectory-debt-direction-balance="${label}">${fields}</div>`;
+}
+
+function planningTrajectoryDebtDirectionIdListHtml(kind, ids) {
+  const list = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  if (!list.length) {
+    return `<p class="lede planning-trajectory-debt-direction-idlist" data-trajectory-debt-direction-${kind}="none">No ${kind} debts.</p>`;
+  }
+  const items = list.map(id => `<li data-trajectory-debt-direction-debt-id="${id}">${id}</li>`).join('');
+  return `<ul class="planning-trajectory-debt-direction-idlist" data-trajectory-debt-direction-${kind}="ready">${items}</ul>`;
+}
+
+function planningTrajectoryDebtDirectionDebtHtml(debt, index) {
+  if (!debt || !debt.id) return '';
+  const dirLabel = PLANNING_DEBT_DIRECTION_LABEL[debt.direction] || debt.direction || '';
+  const attrs = [
+    `data-trajectory-debt-direction-index="${index}"`,
+    `data-trajectory-debt-direction-debt-id="${debt.id}"`,
+    debt.direction ? `data-trajectory-debt-direction-direction="${debt.direction}"` : '',
+  ].filter(Boolean);
+  const fields = [
+    planningTrajectoryPressureTextField('Label', debt.label || debt.id),
+    planningTrajectoryPressureTextField('Direction', dirLabel),
+    planningTrajectoryPressureAmountField('Opening', debt.opening),
+    planningTrajectoryPressureAmountField('Ending', debt.ending),
+    planningTrajectoryPressureAmountField('Change', debt.delta),
+    planningTrajectoryPressureAmountField('Paid on walk', debt.paid),
+  ].filter(Boolean).join('');
+  const interest = planningTrajectoryDebtDirectionInterestHtml(debt.interest);
+  let milestone = '';
+  if (debt.milestone && debt.milestone.kind === 'cleared-within-published-horizon') {
+    const m = debt.milestone;
+    milestone = `<div class="planning-trajectory-debt-direction-milestone" data-trajectory-debt-direction-milestone="${m.kind}"${m.month ? ` data-trajectory-debt-direction-milestone-month="${m.month}"` : ''}${m.asOf ? ` data-trajectory-debt-direction-milestone-asof="${m.asOf}"` : ''}>`
+      + '<small class="planning-trajectory-pressure-field"><span>Cleared within published horizon</span> '
+      + `${m.month ? `month ${m.month}` : 'month unknown'}`
+      + `${m.asOf ? ` (as-of ${fmtDateFull(m.asOf)})` : ''}`
+      + '</small></div>';
+  }
+  const title = debt.label ? `${debt.label} (${debt.id})` : debt.id;
+  return `<li class="planning-trajectory-debt-direction-item"${attrs.length ? ' ' + attrs.join(' ') : ''}><span class="planning-trajectory-debt-direction-debt-title">${title}</span>${fields}${interest}${milestone}</li>`;
+}
+
+function planningTrajectoryDebtDirectionHtml(traj) {
+  const note = 'Debt direction is Forecast.baselineTrajectory.debtDirection only — as-of opening versus the last published month-end on the coupled walk. This page copies the household picture, per-debt facts, and id lists in Forecast order; it does not rank debts, recommend which debt to pay first, or compute direction. Persistent means unchanged at whole-cent identity only. When Forecast publishes availableCreditIsNotCash, available credit is not cash.';
+  const dd = traj && traj.debtDirection;
+  if (!dd || dd.status !== 'ready') {
+    const reason = (dd && dd.reason) || (traj && traj.reason) || 'Baseline trajectory debt direction unavailable.';
+    return {
+      lede: '',
+      list: `<div class="note-box crit" data-trajectory-debt-direction="unavailable">${reason}</div>`,
+      note,
+    };
+  }
+  const household = dd.household || {};
+  const householdDir = PLANNING_DEBT_DIRECTION_LABEL[household.direction] || household.direction || '';
+  const householdBlock = `<div class="planning-trajectory-debt-direction-household" data-trajectory-debt-direction-household-direction="${household.direction || ''}">`
+    + `<p class="lede"><strong>Household total</strong> — ${householdDir || 'direction withheld'} from opening to last published month-end.</p>`
+    + planningTrajectoryDebtDirectionBalanceHtml('total', household)
+    + planningTrajectoryDebtDirectionBalanceHtml('consumer', household.consumer)
+    + planningTrajectoryDebtDirectionBalanceHtml('secured', household.secured)
+    + planningTrajectoryDebtDirectionBalanceHtml('heloc', household.heloc)
+    + (household.paid != null && isFinite(Number(household.paid))
+      ? planningTrajectoryPressureAmountField('Paid on walk (household)', household.paid) : '')
+    + planningTrajectoryDebtDirectionInterestHtml(household.interest)
+    + '</div>';
+  const flags = [];
+  if (dd.anySupportedIncrease === true) {
+    flags.push('<small class="planning-trajectory-pressure-field"><span>Any supported increase</span> yes</small>');
+  } else if (dd.anySupportedIncrease === false) {
+    flags.push('<small class="planning-trajectory-pressure-field"><span>Any supported increase</span> no</small>');
+  }
+  if (dd.inventedBorrowing === false) {
+    flags.push('<small class="planning-trajectory-pressure-field"><span>Invented borrowing</span> no (Forecast)</small>');
+  }
+  if (dd.availableCreditIsNotCash === true) {
+    flags.push('<small class="planning-trajectory-pressure-field"><span>Available credit is not cash</span> yes (Forecast)</small>');
+  }
+  const span = (dd.from && dd.through)
+    ? `From ${fmtDateFull(dd.from)} through ${fmtDateFull(dd.through)}.`
+    : '';
+  const idLists = `<div class="planning-trajectory-debt-direction-groups">`
+    + '<p class="subhead">Declining</p>' + planningTrajectoryDebtDirectionIdListHtml('declining', dd.declining)
+    + '<p class="subhead">Persistent</p>' + planningTrajectoryDebtDirectionIdListHtml('persistent', dd.persistent)
+    + '<p class="subhead">Increasing</p>' + planningTrajectoryDebtDirectionIdListHtml('increasing', dd.increasing)
+    + '</div>';
+  const debts = Array.isArray(dd.debts) ? dd.debts : [];
+  const debtItems = debts.map((debt, index) => planningTrajectoryDebtDirectionDebtHtml(debt, index)).join('');
+  const debtList = debtItems
+    ? `<ol class="planning-trajectory-debt-direction-list" data-trajectory-debt-direction-debts="ready">${debtItems}</ol>`
+    : '<p class="lede" data-trajectory-debt-direction-debts="empty">Forecast published no per-debt direction rows.</p>';
+  return {
+    lede: span + (debts.length
+      ? ` ${debts.length} modelled debt${debts.length === 1 ? '' : 's'} with direction over the published horizon.`
+      : ' Household direction with no per-debt rows.'),
+    list: `<div class="planning-trajectory-debt-direction" data-trajectory-debt-direction="ready">${flags.join('')}${householdBlock}${idLists}${debtList}</div>`,
+    note,
+  };
+}
+
 function planningTrajectoryDebtHtml(debt) {
   if (!debt || debt.status === 'unavailable') {
     const reason = debt && debt.reason
@@ -475,6 +600,10 @@ function renderPlanning(d, periods) {
   $('planning-trajectory-pressure-lede').textContent = pressureHtml.lede;
   $('planning-trajectory-pressure').innerHTML = pressureHtml.list;
   $('planning-trajectory-pressure-note').textContent = pressureHtml.note;
+  const debtDirectionHtml = planningTrajectoryDebtDirectionHtml(traj);
+  $('planning-trajectory-debt-direction-lede').textContent = debtDirectionHtml.lede;
+  $('planning-trajectory-debt-direction').innerHTML = debtDirectionHtml.list;
+  $('planning-trajectory-debt-direction-note').textContent = debtDirectionHtml.note;
 }
 
 App.register(renderPlanning);

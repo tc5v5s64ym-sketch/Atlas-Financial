@@ -669,8 +669,10 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
     'Planning page reprints traj.pressure from Forecast.baselineTrajectory without computing pressure');
   ok(!/debtDirection/.test(trajPacketCode),
     'assistant packet trajectory block does not reprint debtDirection in this outcome');
-  ok(!/debtDirection/.test(planningSrc),
-    'Planning page does not reprint debtDirection in this outcome');
+  ok(/planningTrajectoryDebtDirectionHtml\(/.test(planningSrc)
+    && /traj\.debtDirection/.test(planningSrc)
+    && !/baselineTrajectoryDebtDirection/.test(planningSrc),
+    'Planning page reprints traj.debtDirection from Forecast.baselineTrajectory without computing direction');
   ok(trajHasNoRank(ask(plan, debts)),
     'ranking / recommendation / affordability stay null');
 }

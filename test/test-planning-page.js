@@ -61,6 +61,9 @@ function loadPage(script) {
     composePressure(data, p) {
       return ctx.planningTrajectoryPressureHtml(ctx.planningTrajectory(data, p || null));
     },
+    composeDebtDirection(data, p) {
+      return ctx.planningTrajectoryDebtDirectionHtml(ctx.planningTrajectory(data, p || null));
+    },
   };
 }
 
@@ -354,8 +357,8 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
     'pressure reprint still uses the incumbent Forecast.baselineTrajectory call');
   ok(!/baselineTrajectoryPressure|trajectorySignalAttribution|trajectoryPressureUnavailable/.test(src),
     'planning.js does not compute pressure or attribution');
-  ok(!/debtDirection|baselineTrajectoryScenario/.test(src),
-    'planning.js does not reprint debtDirection or baselineTrajectoryScenario');
+  ok(!/baselineTrajectoryScenario/.test(src),
+    'planning.js does not reprint baselineTrajectoryScenario');
   ok(/planningTrajectoryAttributionHtml\(/.test(src)
     && /signal\.attribution/.test(src),
     'planning.js reprints signal.attribution from Forecast only');
@@ -475,6 +478,114 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
     'pressure footnote says the page does not compute pressure or attribution');
 }
 
+console.log('\n=== 17. Trajectory debt direction reprints Forecast.baselineTrajectory.debtDirection ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(/Forecast\.baselineTrajectory\(/.test(src),
+    'debt direction reprint still uses the incumbent Forecast.baselineTrajectory call');
+  ok(/planningTrajectoryDebtDirectionHtml\(/.test(src) && /traj\.debtDirection/.test(src),
+    'planning.js reprints traj.debtDirection from Forecast only');
+  ok(!/baselineTrajectoryDebtDirection|trajectoryBalanceDirection|trajectoryDebtDirectionUnavailable/.test(src),
+    'planning.js does not compute debt direction');
+  ok(!/baselineTrajectoryScenario|assistant-packet|\/talk\//.test(src),
+    'planning.js does not touch scenario, packet, or Talk seams');
+  ok(!/payoff order|comfort band|affordability|safe-to-spend|RYG/i.test(src),
+    'debt direction copy carries no ranking or policy-threshold wording');
+
+  const liveEl = page.render(live, periods);
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.debtDirection && traj.debtDirection.status === 'ready'
+    && Array.isArray(traj.debtDirection.debts),
+    'live baselineTrajectory debtDirection is ready with per-debt rows');
+  const ddHtml = liveEl['planning-trajectory-debt-direction'].innerHTML;
+  ok(/data-trajectory-debt-direction="ready"/.test(ddHtml),
+    'live debt direction block is marked ready');
+  const h = traj.debtDirection.household || {};
+  if (h.direction) {
+    ok(new RegExp(`data-trajectory-debt-direction-household-direction="${h.direction}"`).test(ddHtml),
+      'live household direction is copied');
+    if (h.opening != null && isFinite(Number(h.opening))) {
+      ok(ddHtml.includes(money2(h.opening)), 'live household opening is copied');
+    }
+    if (h.ending != null && isFinite(Number(h.ending))) {
+      ok(ddHtml.includes(money2(h.ending)), 'live household ending is copied');
+    }
+  }
+  if (traj.debtDirection.inventedBorrowing === false) {
+    ok(/Invented borrowing/.test(ddHtml) && /no \(Forecast\)/.test(ddHtml),
+      'live inventedBorrowing false is copied');
+  }
+  if (traj.debtDirection.availableCreditIsNotCash === true) {
+    ok(/Available credit is not cash/.test(ddHtml),
+      'live availableCreditIsNotCash is stated');
+  }
+  for (const kind of ['declining', 'persistent', 'increasing']) {
+    const ids = Array.isArray(traj.debtDirection[kind]) ? traj.debtDirection[kind] : [];
+    if (!ids.length) {
+      ok(new RegExp(`data-trajectory-debt-direction-${kind}="none"`).test(ddHtml),
+        `live: no ${kind} debts marker is present`);
+    } else {
+      ok(new RegExp(`data-trajectory-debt-direction-${kind}="ready"`).test(ddHtml),
+        `live: ${kind} id list is present`);
+      for (const id of ids) {
+        ok(new RegExp(`data-trajectory-debt-direction-debt-id="${id}"`).test(ddHtml),
+          `live: ${kind} list includes ${id}`);
+      }
+    }
+  }
+  ok(traj.debtDirection.debts.length > 0, 'live fixture has per-debt direction rows');
+  for (let i = 0; i < traj.debtDirection.debts.length; i++) {
+    const debt = traj.debtDirection.debts[i];
+    const itemRe = new RegExp(
+      `<li class="planning-trajectory-debt-direction-item"[^>]*data-trajectory-debt-direction-index="${i}"[^>]*>`);
+    ok(itemRe.test(ddHtml), `live: debt direction row ${i} (${debt.id}) is present`);
+    if (debt.direction) {
+      ok(new RegExp(`data-trajectory-debt-direction-index="${i}"[^>]*data-trajectory-debt-direction-direction="${debt.direction}"`).test(ddHtml),
+        `live: debt ${debt.id} direction ${debt.direction} is copied`);
+    }
+    if (debt.opening != null && isFinite(Number(debt.opening))) {
+      ok(ddHtml.includes(money2(debt.opening)), `live: debt ${debt.id} opening is copied`);
+    }
+    if (debt.ending != null && isFinite(Number(debt.ending))) {
+      ok(ddHtml.includes(money2(debt.ending)), `live: debt ${debt.id} ending is copied`);
+    }
+    if (debt.interest && debt.interest.status === 'calculated'
+      && debt.interest.amount != null && isFinite(Number(debt.interest.amount))) {
+      ok(ddHtml.includes(money2(debt.interest.amount)),
+        `live: debt ${debt.id} interest amount is copied`);
+    } else if (debt.interest && debt.interest.status === 'unavailable' && debt.interest.reason) {
+      ok(ddHtml.includes(debt.interest.reason),
+        `live: debt ${debt.id} unavailable interest prints reason, not $0`);
+    }
+    if (debt.milestone && debt.milestone.kind === 'cleared-within-published-horizon') {
+      ok(new RegExp(`data-trajectory-debt-direction-milestone="${debt.milestone.kind}"`).test(ddHtml),
+        `live: debt ${debt.id} cleared-within-published-horizon milestone is copied`);
+      if (debt.milestone.month) {
+        ok(new RegExp(`data-trajectory-debt-direction-milestone-month="${debt.milestone.month}"`).test(ddHtml),
+          `live: debt ${debt.id} milestone month is copied`);
+      }
+    }
+  }
+  const debtOrder = [...ddHtml.matchAll(/data-trajectory-debt-direction-index="(\d+)"[^>]*data-trajectory-debt-direction-debt-id="([^"]+)"/g)]
+    .sort((a, b) => Number(a[1]) - Number(b[1]))
+    .map(m => m[2]);
+  ok(debtOrder.join(',') === traj.debtDirection.debts.map(d => d.id).join(','),
+    'live: per-debt order matches Forecast');
+
+  const missingTraj = F.baselineTrajectory(null, [], live.meta.asOf, { periods });
+  const missingDd = page.composeDebtDirection({ plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null }, periods);
+  ok(missingTraj.debtDirection && missingTraj.debtDirection.status === 'unavailable',
+    'missing plan debtDirection is unavailable on Forecast');
+  ok(/data-trajectory-debt-direction="unavailable"/.test(missingDd.list),
+    'unavailable debt direction is not rendered as an empty success');
+  ok(missingDd.list.includes(missingTraj.debtDirection.reason),
+    'unavailable debt direction prints Forecast debtDirection.reason');
+  ok(/does not rank debts, recommend which debt to pay first, or compute direction/.test(missingDd.note),
+    'debt direction footnote says the page does not compute direction');
+}
+
 console.log('\n=== Page contract ===');
 {
   const src = stripComments(read('public/planning.js'));
@@ -485,7 +596,7 @@ console.log('\n=== Page contract ===');
     'heading Planning with the plain-language lede');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note'].every(id => ids.has(id)),
+  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note', 'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction', 'planning-trajectory-debt-direction-note'].every(id => ids.has(id)),
     'planning.html has every element planning.js writes to');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js">/.test(html), 'planning.html loads forecast.js before planning.js');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),

@@ -1577,6 +1577,15 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-pressure-field { display:block; margin-top:3px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; }
 .planning-trajectory-pressure-field b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .planning-trajectory-pressure-attribution { margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle); }
+.planning-trajectory-debt-direction { margin:12px 0 0; }
+.planning-trajectory-debt-direction-household { margin:12px 0; padding:12px; border:1px solid var(--border-subtle); border-radius:8px; }
+.planning-trajectory-debt-direction-balance { margin-top:6px; }
+.planning-trajectory-debt-direction-groups { margin:16px 0; }
+.planning-trajectory-debt-direction-idlist { margin:4px 0 12px; padding-left:1.25rem; }
+.planning-trajectory-debt-direction-list { margin:0; padding-left:1.25rem; }
+.planning-trajectory-debt-direction-item { margin:0 0 14px; }
+.planning-trajectory-debt-direction-debt-title { display:block; font-weight:600; margin-bottom:4px; }
+.planning-trajectory-debt-direction-milestone { margin-top:6px; }
 .planning-trajectory-attribution-change { display:block; margin-bottom:4px; color:var(--text-secondary); font-size:.72rem; }
 .planning-trajectory-attribution-change b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .planning-trajectory-attribution-drivers,
