@@ -197,13 +197,17 @@ ok(JSON.stringify((before.plan.obligations || []).map(obligationKey))
   'plan.obligations identity, amount and cadence are unchanged');
 function commitmentKey(row) {
   const copy = Object.assign({}, row);
-  if (copy.id === 'home-insurance') delete copy.note;
+  if (copy.id === 'home-insurance' || copy.id === 'tryouts') delete copy.note;
   return JSON.stringify(copy);
 }
-ok((before.plan.commitments || []).length === (plan.commitments || []).length
-    && (before.plan.commitments || []).every((row, i) =>
-      commitmentKey(row) === commitmentKey(plan.commitments[i])),
-  'pre-existing commitments keep identity and amounts (home-insurance note may record the $3,000-not-$6,000 correction)');
+const SUPERSEDED_COMMITMENT_IDS = new Set(['fusion-season', 'warriors']);
+ok((before.plan.commitments || [])
+  .filter(row => !SUPERSEDED_COMMITMENT_IDS.has(row.id))
+  .every((row) => {
+    const afterRow = (plan.commitments || []).find(c => c.id === row.id);
+    return afterRow && commitmentKey(row) === commitmentKey(afterRow);
+  }),
+  'pre-existing commitments (except superseded Fusion/Warriors rows) keep identity and amounts');
 function incomeKey(stream) {
   return JSON.stringify({
     id: stream.id,

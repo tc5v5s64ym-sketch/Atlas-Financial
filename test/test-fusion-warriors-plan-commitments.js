@@ -28,11 +28,11 @@ console.log('\n=== Fusion paid settled on Interac evidence ===');
 const paid = byId['fusion-household-paid'];
 ok(paid && near(paid.amount, OWNER_PAID) && paid.settledOn === '2026-09-10',
   'paid row is $1,200 settledOn 2026-09-10');
-ok(/2482361282/.test(paid.note || '') && /C1AkZfteDgMe|logan and lindens first payment/i.test(paid.note || ''),
+ok(paid && /2482361282/.test(paid.note || '') && /C1AkZfteDgMe|logan and lindens first payment/i.test(paid.note || ''),
   'note cites live LM id 2482361282 and Interac ref/memo');
-ok(/2482361281/.test(paid.note || '') && /IQ255|1,925|1925/.test(paid.note || ''),
+ok(paid && /2482361281/.test(paid.note || '') && /IQ255|1,925|1925/.test(paid.note || ''),
   'Sep-10 chain context cites coaching LM id and tennis remainder only in note');
-ok(/never plan\.income|do not encode \$3,125 or \$1,925 as plan income/i.test(paid.note || ''),
+ok(paid && /never plan\.income|do not encode \$3,125 or \$1,925 as plan income/i.test(paid.note || ''),
   'coaching and tennis remainder are not plan income');
 ok(!(plan.income || []).some(s => /3125|1925|2482361281|2482361282/i.test(JSON.stringify(s))),
   'plan.income has no Sep-10 coaching or Fusion LM rows');

@@ -57,6 +57,8 @@ const SUITES = [
   'test-reconcile.js',
   'test-cutover.js',
   'test-b20-history.js',
+  'test-fusion-warriors-plan-commitments.js',
+  'test-major-future-costs.js',
 ];
 
 const CASES = [
@@ -89,13 +91,10 @@ const CASES = [
   },
   {
     id: 'commitment',
-    label: 'CASE D — remove Fusion camp commitment from the input',
-    // Index pointers into plan.commitments are a current-main routing
-    // snapshot. Removing an earlier row can make a later index fail
-    // existence. That is related routing, not a household-figure rewrite.
-    allow: ['test-evidence-use-register.js'],
+    label: 'CASE D — remove Fusion household paid commitment from the input',
+    allow: ['test-fusion-warriors-plan-commitments.js', 'test-major-future-costs.js'],
     mutate(d) {
-      d.plan.commitments = d.plan.commitments.filter(c => c.id !== 'fusioncamp');
+      d.plan.commitments = d.plan.commitments.filter(c => c.id !== 'fusion-household-paid');
     },
   },
 ];
