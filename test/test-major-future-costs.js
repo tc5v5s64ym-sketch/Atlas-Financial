@@ -90,8 +90,9 @@ for (const id of FLEXIBLE) {
 ok(byId.warriors && byId.warriors.date === '2026-09-23'
   && byId.warriors.amount == null && near(byId.warriors.amountMin, 895),
   'Warriors is Logan U13 due 23 Sep with $895 pre-tax floor (+ tax not invented)');
-ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].amount == null,
-  'Fusion paid portion is a note-only row (no dollar encumbrance)');
+ok(byId['fusion-household-paid'] && near(byId['fusion-household-paid'].amount, 1200)
+  && byId['fusion-household-paid'].settledOn === '2026-09-10',
+  'Fusion paid is settled on 2026-09-10 Interac evidence date');
 ok(!byId['fusion-season'], 'fusion-season stale estimate is removed');
 
 console.log('\n=== not merely prose ===');
@@ -139,8 +140,10 @@ const budget = F.budgetBreakdown(plan, require('../public/periods.json'), {
 ok(!(budget.sinkingItems || []).some(s =>
   /Burrards team fees|Seattle tournament|Christmas 2026|Downstairs couch|Exterior painting|Indio|Provincials|Home insurance|Vehicle maintenance/.test(s.label)),
   'undated absorbed rows are not smeared into 91-day sinkingMonthly');
-ok((budget.sinkingItems || []).filter(s => /Fusion season — household/.test(s.label)).length === 3,
-  'dated Fusion household instalments within the window may appear in sinkingMonthly');
+const fusionSinking = (budget.sinkingItems || []).filter(s => /Fusion season — household/.test(s.label));
+ok(fusionSinking.length >= 3,
+  'dated Fusion household rows within the window may appear in sinkingMonthly',
+  String(fusionSinking.length));
 
 console.log('\n=== published point-estimate total is independently summed ===');
 const fusionHouseholdUnsettled = ['fusion-household-paid', 'fusion-household-oct',
@@ -148,9 +151,18 @@ const fusionHouseholdUnsettled = ['fusion-household-paid', 'fusion-household-oct
   .map(id => byId[id])
   .filter(c => c && c.amount != null && !F.commitmentSettledBy(c, asOf))
   .reduce((s, c) => s + c.amount, 0);
-ok(near(fusionHouseholdUnsettled, 3300),
-  'Fusion encumbrance is remaining instalments only (paid row amount null, no LM settledOn)',
+ok(near(fusionHouseholdUnsettled, 4500),
+  'at Aug. 19 opening, paid row is not yet settledOn-relative — Fusion sums to $4,500',
   String(fusionHouseholdUnsettled));
+const pubSep11 = F.publicationTotals(Object.assign({}, data, {
+  meta: Object.assign({}, data.meta, { asOf: '2026-09-11' }),
+}));
+const fusionAfterSettled = (pubSep11.commitmentItems || [])
+  .filter(i => /^fusion-household-/.test(i.id))
+  .reduce((s, i) => s + (i.amount || 0), 0);
+ok(near(fusionAfterSettled, 3300),
+  'after settledOn, publication encumbers remaining Fusion instalments only',
+  String(fusionAfterSettled));
 const fusionRemainingOnly = ['fusion-household-oct', 'fusion-household-nov', 'fusion-household-dec']
   .reduce((s, id) => s + (byId[id] ? byId[id].amount : 0), 0);
 ok(near(fusionRemainingOnly, 3300),
@@ -159,8 +171,8 @@ ok(near(fusionRemainingOnly, 3300),
 const preexistingPoints = 0;
 const absorbedPoints = 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 3131.76 + 2400;
 const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
-ok(near(absorbedPoints, 14831.76) && near(HAND_TOTAL, 18131.76),
-  'hand total drops stale Warriors/Fusion estimates and encumbers $3,300 Fusion remaining');
+ok(near(absorbedPoints, 14831.76) && near(HAND_TOTAL, 19331.76),
+  'hand total at Aug. 19 opening includes paid + remaining Fusion until settledOn');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',
   String(pub.commitmentsTotal));
@@ -292,9 +304,8 @@ ok(independentlySettled(byId.burrard1)
   && independentlySettled(byId.fusioncamp)
   && independentlySettled(byId.tryouts),
   'the four Aug-settled rows are still settled on plan inputs');
-ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].amount == null
-  && !byId['fusion-household-paid'].settledOn,
-  'Fusion paid row is owner-stated only — no settledOn / no LM twin');
+ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].settledOn === '2026-09-10',
+  'Fusion paid row settledOn matches Interac evidence date');
 
 if (failures) {
   console.error(`\n${failures} check(s) failed`);

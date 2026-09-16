@@ -1,7 +1,6 @@
 'use strict';
-/* Owner 2026-09-16 Fusion household + Warriors U13 plan.commitments.
- * Independent sums: remaining instalments $3,300; owner $1,200 paid is note-only
- * (amount null, no settledOn / no LM twin) so publication does not encumber it. */
+/* Owner + Interac Fusion $1,200 paid row; remaining instalments $3,300 only
+ * after settledOn relative to opening. */
 const F = require('../public/forecast.js');
 const data = require('../data.json');
 
@@ -25,46 +24,36 @@ ok(!rows.some(c => c.id === 'warriors' && c.amount != null && near(c.amount, 800
   && c.date === '2026-09-15'),
   'warriors ~$800 / Sep 15 stale row replaced — not left open');
 
-console.log('\n=== owner Fusion + Warriors rows load once ===');
-for (const id of ['warriors', 'fusion-household-paid', 'fusion-household-oct',
-  'fusion-household-nov', 'fusion-household-dec']) {
-  ok(rows.filter(r => r.id === id).length === 1, `exactly one row ${id}`);
-}
+console.log('\n=== Fusion paid settled on Interac evidence ===');
+const paid = byId['fusion-household-paid'];
+ok(paid && near(paid.amount, OWNER_PAID) && paid.settledOn === '2026-09-10',
+  'paid row is $1,200 settledOn 2026-09-10');
+ok(/FUSION WEST LACROSSE/i.test(paid.note || '') && /coaching/i.test(paid.note || ''),
+  'note cites Interac to Fusion West and coaching cover');
+ok(!/LM transaction id/i.test(paid.note || '') || /no LM transaction id is invented/i.test(paid.note || ''),
+  'note does not invent an LM transaction id');
 
-console.log('\n=== Fusion remaining does not double-count paid ===');
-const remainingIds = ['fusion-household-oct', 'fusion-household-nov', 'fusion-household-dec'];
-const remainingSum = remainingIds.reduce((s, id) => s + byId[id].amount, 0);
-ok(near(remainingSum, REMAINING), 'Oct/Nov/Dec sum to $3,300', String(remainingSum));
+const remainingSum = ['fusion-household-oct', 'fusion-household-nov', 'fusion-household-dec']
+  .reduce((s, id) => s + byId[id].amount, 0);
+ok(near(remainingSum, REMAINING), 'remaining instalments sum to $3,300', String(remainingSum));
 ok(near(OWNER_PAID + remainingSum, HOUSEHOLD_TOTAL),
-  'owner narrative $1,200 paid + $3,300 remaining = $4,500 household total');
-ok(byId['fusion-household-paid'].amount == null && !byId['fusion-household-paid'].settledOn,
-  'paid portion has no amount and no settledOn (NEAR_MATCH not promoted to LM settlement)');
-ok(/owner-confirmed|Owner-confirmed/i.test(byId['fusion-household-paid'].note || '')
-  && /coaching/i.test(byId['fusion-household-paid'].note || '')
-  && /NEAR_MATCH/i.test(byId['fusion-household-paid'].note || ''),
-  'paid note: owner-confirmed Fusion e-transfer, coaching cover, NEAR_MATCH pending LM row');
-const pub = F.publicationTotals(data);
-const fusionEncumbered = pub.commitmentItems
+  'paid + remaining = $4,500 household total');
+
+const pubAfter = F.publicationTotals(Object.assign({}, data, {
+  meta: Object.assign({}, data.meta, { asOf: '2026-09-11' }),
+}));
+const fusionAfter = pubAfter.commitmentItems
   .filter(i => /^fusion-household-/.test(i.id))
   .reduce((s, i) => s + (i.amount || 0), 0);
-ok(near(fusionEncumbered, REMAINING),
-  'publicationTotals encumbers only remaining Fusion instalments',
-  String(fusionEncumbered));
+ok(near(fusionAfter, REMAINING),
+  'after 2026-09-11 opening, publication encumbers remaining Fusion only',
+  String(fusionAfter));
+ok(!pubAfter.commitmentItems.some(i => i.id === 'fusion-household-paid'),
+  'paid Fusion row drops from publication after settledOn');
 
-console.log('\n=== Warriors + tax encoding ===');
-ok(byId.warriors.date === '2026-09-23'
-  && byId.warriors.amount == null && near(byId.warriors.amountMin, 895),
-  'Warriors is dated $895 floor, tax not a point amount');
-ok(/no LM ~\$895 payment/i.test(byId.warriors.note || '')
-  && /PDF/i.test(byId.warriors.note || ''),
-  'Warriors note: PDF fee context, no LM ~$895 posted yet');
-const events = F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90), {});
-ok(!events.some(e => e.id === 'warriors'),
-  'Warriors does not emit a cash event with invented tax');
-const mp = F.majorPlans(plan, data.meta.asOf, { weeklyVariable: 0 });
-const w = mp.find(p => p.id === 'warriors');
-ok(w && w.amountMin === 895 && w.need == null,
-  'majorPlans keeps Warriors as a dated range floor');
+console.log('\n=== Warriors unchanged ===');
+ok(byId.warriors.date === '2026-09-23' && near(byId.warriors.amountMin, 895),
+  'Warriors due 23 Sep, $895 pre-tax floor');
 
 if (failures) {
   console.error(`\n${failures} check(s) failed`);

@@ -522,14 +522,15 @@
             },
             {
                 "id": "fusion-household-paid",
-                "label": "Fusion season — household (already paid)",
-                "amount": null,
-                "when": "owner-confirmed paid ~2026-09-10 (e-transfer)",
+                "date": "2026-09-10",
+                "label": "Fusion season — household (paid)",
+                "amount": 1200,
                 "budgetCategory": "sport",
                 "confidence": "confirmed",
                 "group": "fusion-household",
                 "sinkingFund": true,
-                "note": "Owner-confirmed 2026-09-16 (Dale): the $1,200 is the Fusion payment — treat the 2026-09-10 SEND E-TFR −$1,200 as Fusion paid; Amanda coaching income covered it. Of the $4,500 household Fusion total, $1,200 is paid and $3,300 remains on fusion-household-oct/nov/dec. Coordinator/Money NEAR_MATCH: Gmail LM notify 2026-09-11 for that −$1,200 (Fusion/Logan LM keywords missed it; thread 1a08f9414e482d41); Money still confirming the live LM row — until then no settledOn and no invented LM id, payee, or transaction identity. Prior LM keyword noise (Fusion West $70.60+$76, Vancouver Warriors −$40) and named Fusion West e-transfers (~$2,234 across five) are not settled twins. Email fee context only: G6 $2,295+GST and G4 $2,195+GST due 2026-09-10 — household Fusion, not assigned to children. This row is note-only (amount null) so remaining instalments are not double-counted."
+                "settledOn": "2026-09-10",
+                "note": "Settled 2026-09-10 (Interac evidence date). Owner-confirmed 2026-09-16 (Dale): the $1,200 e-transfer is the Fusion payment; Amanda coaching income covered it. Amanda Gmail Interac 2026-09-10 (thread 1a08cf3b0a658140): \"Your $1,200.00 transfer to FUSION WEST LACROSSE has been successfully deposited.\" Same day Amanda received Interac $3,125.00 (thread 1a08b57dd078eba1; owner: coaching income from Lavinio Cavalcante covered this Fusion payment — do not treat as a second Fusion cost). Dale Gmail LM notify 2026-09-11 (thread 1a08f9414e482d41): 2026-09-10 SEND E-TFR −$1,200 (same day as +$3,125 E-TRANSFER); Money still confirming the live LM row — no LM transaction id is invented here. Of the $4,500 household Fusion total, $1,200 is paid; remaining cash schedule is fusion-household-oct/nov/dec ($3,300). Email fee context only: G6 $2,295+GST and G4 $2,195+GST due 2026-09-10 — household, not assigned to children."
             },
             {
                 "id": "fusion-household-oct",
