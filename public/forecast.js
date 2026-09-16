@@ -11419,35 +11419,53 @@
   }
 
   // Horizon debt direction / consequence from the same coupled
-  // month-end projectDebts marks baselineTrajectory already publishes.
-  // First published mark versus last published mark after whole-cent
-  // rounding — not a comfort band, ranking, or affordability score.
-  // Planned weeklyVariable is a cash instruction; it does not invent
-  // future card borrowing. Available credit / headroom is not cash and
-  // is not a direction input. Unpublished debt months contribute no
-  // invented direction. Payoff is the first published month-end at
-  // which a modelled balance is $0 after a positive opening — the
-  // engine's existing marks, not Forecast.payoffModel.
-  function baselineTrajectoryDebtDirection(months) {
+  // projectDebts walk baselineTrajectory already publishes as
+  // month-end marks. As-of openingBalance versus last published
+  // month-end after whole-cent rounding — not a comfort band,
+  // ranking, or affordability score. Planned weeklyVariable is a
+  // cash instruction; it does not invent future card borrowing.
+  // Available credit / headroom is not cash and is not a direction
+  // input. Unpublished debt months contribute no invented direction.
+  // Payoff is the first published month-end at which a modelled
+  // balance is $0 after a positive opening — the engine's existing
+  // marks, not Forecast.payoffModel.
+  function baselineTrajectoryDebtDirection(months, debts, asOf) {
     const published = (months || []).filter(trajectoryMonthHasPublishedDebt);
-    if (published.length < 2) {
+    if (!published.length) {
       return trajectoryDebtDirectionUnavailable(
-        published.length
-          ? 'A single published debt mark cannot establish direction.'
-          : 'No coupled debt walk was available for published months.');
+        'No coupled debt walk was available for published months.');
     }
-    const first = published[0];
     const last = published[published.length - 1];
-    const firstDebt = first.debt;
     const lastDebt = last.debt;
+    const openingRows = [];
+    let openingConsumer = 0;
+    let openingSecured = 0;
+    let openingHeloc = 0;
+    for (const d of debts || []) {
+      if (!d || !d.id) continue;
+      const opening = openingBalance(d);
+      if (!isFinite(opening)) continue;
+      const amount = roundCent(opening);
+      openingRows.push({
+        id: d.id,
+        label: d.label,
+        opening: amount,
+        secured: !!d.secured,
+      });
+      if (d.secured) openingSecured += amount;
+      else openingConsumer += amount;
+      if (d.id === 'heloc') openingHeloc = amount;
+    }
+    openingConsumer = roundCent(openingConsumer);
+    openingSecured = roundCent(openingSecured);
+    openingHeloc = roundCent(openingHeloc);
     const household = trajectoryBalanceDirection(
-      trajectoryDebtTotal(firstDebt),
+      roundCent(openingConsumer + openingSecured),
       trajectoryDebtTotal(lastDebt));
-    household.consumer = trajectoryBalanceDirection(firstDebt.consumer, lastDebt.consumer);
-    household.secured = trajectoryBalanceDirection(firstDebt.secured, lastDebt.secured);
-    household.heloc = trajectoryBalanceDirection(firstDebt.heloc, lastDebt.heloc);
-    const paidTotal = trajectoryPaidTotal(lastDebt);
-    household.paid = paidTotal;
+    household.consumer = trajectoryBalanceDirection(openingConsumer, lastDebt.consumer);
+    household.secured = trajectoryBalanceDirection(openingSecured, lastDebt.secured);
+    household.heloc = trajectoryBalanceDirection(openingHeloc, lastDebt.heloc);
+    household.paid = trajectoryPaidTotal(lastDebt);
     if (lastDebt.interestToDate != null && isFinite(lastDebt.interestToDate)) {
       household.interest = {
         status: 'calculated',
@@ -11468,13 +11486,11 @@
     const declining = [];
     const persistent = [];
     const increasing = [];
-    for (const row of firstDebt.debts || []) {
-      if (!row || !row.id) continue;
+    for (const row of openingRows) {
       const closing = lastById.get(row.id);
       if (!closing) continue;
-      if (row.balance == null || !isFinite(row.balance)
-        || closing.balance == null || !isFinite(closing.balance)) continue;
-      const picture = trajectoryBalanceDirection(row.balance, closing.balance);
+      if (closing.balance == null || !isFinite(closing.balance)) continue;
+      const picture = trajectoryBalanceDirection(row.opening, closing.balance);
       let interest;
       if (closing.interest != null && isFinite(closing.interest)) {
         interest = { status: 'calculated', amount: roundCent(closing.interest) };
@@ -11524,7 +11540,7 @@
     return {
       status: 'ready',
       source: 'projectDebts-coupled-marks',
-      from: firstDebt.asOf || first.end,
+      from: asOf || null,
       through: lastDebt.asOf || last.end,
       household,
       debts: debtsOut,
@@ -11929,8 +11945,9 @@
   // closed when candidate drivers cannot be established. It does not invent
   // a household minimum, breathing-room, safe-to-spend, RYG, risk-score,
   // or affordability threshold. debtDirection is the same coupled
-  // month-end marks read as a horizon picture: which modelled debts
-  // decline, which stay persistent at whole-cent identity, whether any
+  // projectDebts walk read as a horizon picture: as-of openingBalance
+  // versus last published month-end. Which modelled debts decline,
+  // which stay persistent at whole-cent identity, whether any
   // supported balance increases, interest the walk established, and
   // first published month-end at which a modelled balance is $0.
   // Planned weeklyVariable does not invent future card borrowing.
@@ -12205,7 +12222,7 @@
       reservedDaily: currentRegimeMonthly(plan) * 12 / 365.25,
       payrollDeposits: (regime && regime.allDeposits) || (regime && regime.deposits) || [],
     });
-    const debtDirection = baselineTrajectoryDebtDirection(series);
+    const debtDirection = baselineTrajectoryDebtDirection(series, walkOpts.debts, day);
 
     return {
       status: 'ready',

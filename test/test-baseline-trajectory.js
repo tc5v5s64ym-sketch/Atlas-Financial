@@ -12,10 +12,11 @@
  * unavailable. Trajectory-local only. Objective pressure signals carry
  * walk-derived cause attribution that reconciles to the named change,
  * or fail closed when candidate drivers cannot be established.
- * Horizon debtDirection is composed from those coupled month-end
- * marks: declining / persistent / increasing modelled debts, interest
- * the walk established, and first published month-end at $0. Planned
- * weeklyVariable does not invent borrowing. Available credit is not cash.
+ * Horizon debtDirection is composed from that coupled walk's as-of
+ * opening versus last published month-end: declining / persistent /
+ * increasing modelled debts, interest the walk established, and first
+ * published month-end at $0. Planned weeklyVariable does not invent
+ * borrowing. Available credit is not cash.
  * `node test/test-baseline-trajectory.js`
  */
 const fs = require('fs');
@@ -1577,8 +1578,9 @@ console.log('\n=== 13. Horizon debtDirection from coupled projectDebts marks ===
     400, 0, 0, 0, START, persistentTraj.debtDirection.through);
   ok(near(persistWalk.balance, 400) && near(persistWalk.interest, 0) && persistWalk.paid === 0,
     'independent zero-rate unpaid card stays $400 with $0 interest');
-  ok(persistentTraj.debtDirection && persistentTraj.debtDirection.status === 'ready',
-    'zero-rate unpaid card publishes ready debtDirection');
+  ok(persistentTraj.debtDirection && persistentTraj.debtDirection.status === 'ready'
+    && persistentTraj.debtDirection.from === START,
+    'zero-rate unpaid card publishes ready debtDirection from the as-of opening');
   const persistRow = directionDebt(persistentTraj, 'card');
   ok(persistRow && persistRow.direction === 'persistent'
     && near(persistRow.opening, 400) && near(persistRow.ending, persistWalk.balance)
