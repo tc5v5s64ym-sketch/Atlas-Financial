@@ -1612,6 +1612,17 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-month-row.planning-trajectory-month-selected { outline:2px solid var(--accent); outline-offset:-2px; }
 .planning-trajectory-funding { margin:12px 0 0; }
 .planning-trajectory-funding-picker-wrap { margin:8px 0 12px; }
+.planning-trajectory-granularity {
+  display:inline-flex; flex-wrap:wrap; gap:4px; margin-right:12px; margin-bottom:8px;
+  padding:2px; border:1px solid var(--border-subtle); border-radius:8px;
+}
+.planning-trajectory-granularity-btn {
+  font:inherit; font-size:.82rem; padding:6px 12px; border:0; border-radius:6px;
+  background:transparent; cursor:pointer;
+}
+.planning-trajectory-granularity-btn[aria-pressed="true"] {
+  background:var(--surface-raised, rgba(127,127,127,.12)); font-weight:600;
+}
 .planning-trajectory-funding-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:.85rem; }
 .planning-trajectory-funding-picker-label { font-weight:600; }
 .planning-trajectory-funding-select { font:inherit; padding:4px 8px; }

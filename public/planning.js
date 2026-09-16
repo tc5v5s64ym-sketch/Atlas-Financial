@@ -513,7 +513,11 @@ function planningTrajectoryFundingStageHtml(stage, stageNum) {
         hb += planningTrajectoryPressureTextField('Weekly variable', money2(stage.householdBudget.weeklyVariable));
       }
       if (stage.householdBudget.walkDays != null && isFinite(Number(stage.householdBudget.walkDays))) {
-        hb += planningTrajectoryPressureTextField('Walk days in month', String(stage.householdBudget.walkDays));
+        const walkDaysLabel = stage.householdBudget.identity
+          && /pay-period/i.test(stage.householdBudget.identity)
+          ? 'Walk days in pay period'
+          : 'Walk days in month';
+        hb += planningTrajectoryPressureTextField(walkDaysLabel, String(stage.householdBudget.walkDays));
       }
       if (hb) componentParts.push(hb);
     }
@@ -537,46 +541,136 @@ function planningTrajectoryFundingStageHtml(stage, stageNum) {
   </article>`;
 }
 
-function planningTrajectoryFundingMonthHtml(month) {
-  if (!month || !month.month) return '';
-  return `<div class="planning-trajectory-funding-month" data-trajectory-funding-month="${month.month}">
+function planningTrajectoryFundingPeriodPanelHtml(period, granularity) {
+  if (!period) return '';
+  if (granularity === 'pay-period') {
+    const key = period.payday || period.id;
+    if (!key) return '';
+    const range = period.rangeLabel
+      || (period.start && period.end ? `${fmtDateFull(period.start)} – ${fmtDateFull(period.end)}` : '');
+    const rangeNote = range
+      ? `<small class="planning-trajectory-period-dates">${range}</small>` : '';
+    return `<div class="planning-trajectory-funding-period" data-trajectory-funding-granularity="pay-period" data-trajectory-funding-pay-period="${key}">
+    ${rangeNote}
     <div class="planning-trajectory-funding-stages">
-      ${planningTrajectoryFundingStageHtml(month.stage1, 1)}
-      ${planningTrajectoryFundingStageHtml(month.stage2, 2)}
-      ${planningTrajectoryFundingStageHtml(month.stage3, 3)}
+      ${planningTrajectoryFundingStageHtml(period.stage1, 1)}
+      ${planningTrajectoryFundingStageHtml(period.stage2, 2)}
+      ${planningTrajectoryFundingStageHtml(period.stage3, 3)}
+    </div>
+  </div>`;
+  }
+  if (!period.month) return '';
+  return `<div class="planning-trajectory-funding-period" data-trajectory-funding-granularity="month" data-trajectory-funding-month="${period.month}">
+    <div class="planning-trajectory-funding-stages">
+      ${planningTrajectoryFundingStageHtml(period.stage1, 1)}
+      ${planningTrajectoryFundingStageHtml(period.stage2, 2)}
+      ${planningTrajectoryFundingStageHtml(period.stage3, 3)}
     </div>
   </div>`;
 }
 
-function planningTrajectoryFundingHtml(traj, selectedMonthKey) {
-  const note = 'Three-stage funding is Forecast.baselineTrajectory stage1 / stage2 / stage3 only — Normal life, After planned spending, After debt strategy. This page copies component totals and results when Forecast publishes them; it does not subtract stages, recompute funding, or treat unavailable as $0.';
-  if (!traj || traj.status !== 'ready' || !Array.isArray(traj.months) || !traj.months.length) {
+const PLANNING_TRAJECTORY_FUNDING_GRANULARITY = {
+  month: { id: 'month', label: 'Month' },
+  'pay-period': { id: 'pay-period', label: 'Pay period' },
+};
+
+function planningTrajectoryFundingGranularityBtn(granularity, current) {
+  const row = PLANNING_TRAJECTORY_FUNDING_GRANULARITY[granularity];
+  if (!row) return '';
+  const pressed = current === granularity ? 'true' : 'false';
+  return `<button type="button" class="planning-trajectory-granularity-btn" data-trajectory-funding-granularity="${row.id}" aria-pressed="${pressed}">${row.label}</button>`;
+}
+
+function planningTrajectoryFundingHtml(traj, granularity, selectedKey) {
+  const note = 'Three-stage funding is Forecast.baselineTrajectory stage1 / stage2 / stage3 only — Normal life, After planned spending, After debt strategy. Month view copies months[]; Pay period view copies payPeriods[] from the same baseline walk. This page copies component totals and results when Forecast publishes them; it does not subtract stages, recompute funding, or treat unavailable as $0.';
+  const view = granularity === 'pay-period' ? 'pay-period' : 'month';
+  const granularitySwitch = `<div class="planning-trajectory-granularity" role="group" aria-label="Trajectory period granularity">
+    ${planningTrajectoryFundingGranularityBtn('month', view)}
+    ${planningTrajectoryFundingGranularityBtn('pay-period', view)}
+  </div>`;
+  if (!traj || traj.status !== 'ready') {
     const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
     return {
       lede: '',
-      picker: '',
+      picker: granularitySwitch,
       panel: `<div class="note-box crit" data-trajectory-funding="unavailable">${reason}</div>`,
       note,
+      granularity: view,
       selectedMonth: null,
+      selectedPayPeriod: null,
     };
   }
-  const months = traj.months;
-  const selected = months.find(m => m.month === selectedMonthKey) || months[0];
+  if (view === 'pay-period') {
+    const payPeriods = Array.isArray(traj.payPeriods) ? traj.payPeriods : [];
+    if (!payPeriods.length) {
+      const prov = traj.provenance && traj.provenance.payPeriodSeries;
+      const reason = prov === 'unavailable'
+        ? 'Forecast could not publish pay-period spans on this opening (Seaspan payroll calendar missing or clipped empty). Monthly funding remains available in Month view.'
+        : 'Forecast published no pay periods on this baseline walk.';
+      return {
+        lede: '',
+        picker: granularitySwitch,
+        panel: `<div class="note-box crit" data-trajectory-funding="unavailable" data-trajectory-funding-granularity="pay-period">${reason}</div>`,
+        note,
+        granularity: view,
+        selectedMonth: null,
+        selectedPayPeriod: null,
+      };
+    }
+    const selected = payPeriods.find(p => (p.payday || p.id) === selectedKey) || payPeriods[0];
+    const selectedId = selected.payday || selected.id;
+    const lede = 'Compare Normal life, After planned spending, and After debt strategy for one Seaspan pay period — the same three stages Forecast publishes on the baseline walk. Pick a pay period below.';
+    const picker = `${granularitySwitch}<label class="planning-trajectory-funding-picker"><span class="planning-trajectory-funding-picker-label">Trajectory pay period</span> `
+      + `<select class="planning-trajectory-funding-select" data-trajectory-funding-picker="select" aria-label="Trajectory pay period for three-stage funding">`
+      + payPeriods.map(p => {
+        const id = p.payday || p.id;
+        const label = p.rangeLabel ? `${id} · ${p.rangeLabel}` : id;
+        return `<option value="${id}"${id === selectedId ? ' selected' : ''}>${label}</option>`;
+      }).join('')
+      + '</select></label>';
+    return {
+      lede,
+      picker,
+      panel: planningTrajectoryFundingPeriodPanelHtml(selected, 'pay-period'),
+      note,
+      granularity: view,
+      selectedMonth: null,
+      selectedPayPeriod: selectedId,
+    };
+  }
+  const months = Array.isArray(traj.months) ? traj.months : [];
+  if (!months.length) {
+    const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
+    return {
+      lede: '',
+      picker: granularitySwitch,
+      panel: `<div class="note-box crit" data-trajectory-funding="unavailable">${reason}</div>`,
+      note,
+      granularity: view,
+      selectedMonth: null,
+      selectedPayPeriod: null,
+    };
+  }
+  const selected = months.find(m => m.month === selectedKey) || months[0];
   const lede = 'Compare Normal life, After planned spending, and After debt strategy for one trajectory month — the same three stages Forecast publishes on the baseline walk. Select a month in the table above or the picker below.';
-  const picker = `<label class="planning-trajectory-funding-picker"><span class="planning-trajectory-funding-picker-label">Trajectory month</span> `
+  const picker = `${granularitySwitch}<label class="planning-trajectory-funding-picker"><span class="planning-trajectory-funding-picker-label">Trajectory month</span> `
     + `<select class="planning-trajectory-funding-select" data-trajectory-funding-picker="select" aria-label="Trajectory month for three-stage funding">`
     + months.map(m => `<option value="${m.month}"${m.month === selected.month ? ' selected' : ''}>${m.month}</option>`).join('')
     + '</select></label>';
   return {
     lede,
     picker,
-    panel: planningTrajectoryFundingMonthHtml(selected),
+    panel: planningTrajectoryFundingPeriodPanelHtml(selected, 'month'),
     note,
+    granularity: view,
     selectedMonth: selected.month,
+    selectedPayPeriod: null,
   };
 }
 
 let planningTrajectorySelectedMonth = null;
+let planningTrajectorySelectedPayPeriod = null;
+let planningTrajectoryFundingGranularity = 'month';
 
 function planningTrajectoryDebtHtml(debt) {
   if (!debt || debt.status === 'unavailable') {
@@ -714,8 +808,27 @@ function renderPlanning(d, periods) {
   } else {
     planningTrajectorySelectedMonth = null;
   }
-  const fundingHtml = planningTrajectoryFundingHtml(traj, planningTrajectorySelectedMonth);
+  if (traj && traj.status === 'ready' && Array.isArray(traj.payPeriods) && traj.payPeriods.length) {
+    if (!planningTrajectorySelectedPayPeriod
+      || !traj.payPeriods.some(p => (p.payday || p.id) === planningTrajectorySelectedPayPeriod)) {
+      const first = traj.payPeriods[0];
+      planningTrajectorySelectedPayPeriod = first.payday || first.id;
+    }
+  } else if (planningTrajectoryFundingGranularity === 'pay-period') {
+    planningTrajectorySelectedPayPeriod = null;
+  }
+  if (planningTrajectoryFundingGranularity !== 'month'
+    && planningTrajectoryFundingGranularity !== 'pay-period') {
+    planningTrajectoryFundingGranularity = 'month';
+  }
+  const fundingSelectedKey = planningTrajectoryFundingGranularity === 'pay-period'
+    ? planningTrajectorySelectedPayPeriod
+    : planningTrajectorySelectedMonth;
+  const fundingHtml = planningTrajectoryFundingHtml(
+    traj, planningTrajectoryFundingGranularity, fundingSelectedKey);
   if (fundingHtml.selectedMonth) planningTrajectorySelectedMonth = fundingHtml.selectedMonth;
+  if (fundingHtml.selectedPayPeriod) planningTrajectorySelectedPayPeriod = fundingHtml.selectedPayPeriod;
+  if (fundingHtml.granularity) planningTrajectoryFundingGranularity = fundingHtml.granularity;
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;
   $('planning-note').textContent = html.note;
@@ -734,22 +847,38 @@ function renderPlanning(d, periods) {
   $('planning-trajectory-debt-direction').innerHTML = debtDirectionHtml.list;
   $('planning-trajectory-debt-direction-note').textContent = debtDirectionHtml.note;
 
-  const fundingSelect = $('planning-trajectory-funding-picker').querySelector('[data-trajectory-funding-picker="select"]');
+  const fundingPickerRoot = $('planning-trajectory-funding-picker');
+  const fundingSelect = fundingPickerRoot.querySelector('[data-trajectory-funding-picker="select"]');
   if (fundingSelect) {
     fundingSelect.onchange = () => {
-      planningTrajectorySelectedMonth = fundingSelect.value;
+      if (planningTrajectoryFundingGranularity === 'pay-period') {
+        planningTrajectorySelectedPayPeriod = fundingSelect.value;
+      } else {
+        planningTrajectorySelectedMonth = fundingSelect.value;
+      }
+      renderPlanning(d, periods);
+    };
+  }
+  const granularityBtns = fundingPickerRoot.querySelectorAll('[data-trajectory-funding-granularity]');
+  for (const btn of granularityBtns) {
+    btn.onclick = () => {
+      const next = btn.getAttribute('data-trajectory-funding-granularity');
+      if (!next || next === planningTrajectoryFundingGranularity) return;
+      planningTrajectoryFundingGranularity = next;
       renderPlanning(d, periods);
     };
   }
   const monthRows = $('planning-trajectory').querySelectorAll('tr[data-trajectory-month]');
   for (const tr of monthRows) {
     const monthKey = tr.getAttribute('data-trajectory-month');
-    const selected = monthKey === planningTrajectorySelectedMonth;
+    const selected = planningTrajectoryFundingGranularity === 'month'
+      && monthKey === planningTrajectorySelectedMonth;
     tr.classList.toggle('planning-trajectory-month-selected', selected);
     const selectBtn = tr.querySelector('[data-trajectory-month-select]');
     if (!selectBtn) continue;
     selectBtn.setAttribute('aria-pressed', selected ? 'true' : 'false');
     selectBtn.onclick = () => {
+      planningTrajectoryFundingGranularity = 'month';
       planningTrajectorySelectedMonth = monthKey;
       renderPlanning(d, periods);
     };
