@@ -324,6 +324,12 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'pressure helper does not search Forecast.recommend');
   ok(/signal\.attribution = trajectorySignalAttribution\(/.test(pressureBody),
     'pressure attaches walk-derived attribution on each signal');
+  const signAttrBody = src.slice(
+    src.indexOf("if (signal.kind === 'cash-sign-change')"),
+    src.indexOf("if (signal.kind === 'lowest-projected-cash'"));
+  ok(/openingMatchesFrom/.test(signAttrBody)
+    && !/\.some\(row => row && row\.date < signal\.date\)/.test(signAttrBody),
+    'sign-change opening window is not gated on an empty published-close series');
   ok(/payrollPlanningAssumptions/.test(src)
     && /readPayrollPlanningAssumptions\(/.test(src),
     'trajectory-local payroll reads plan.payrollPlanningAssumptions');
@@ -1211,6 +1217,42 @@ console.log('\n=== 12. Walk-derived cause attribution on pressure signals ===');
   ok(!((attributionOf(drainSign) && attributionOf(drainSign).drivers) || [])
       .some(d => d.class === 'income-timing' || d.class === 'bonus-timing'),
     'drain fixture invents no income or bonus driver');
+
+  const openZeroNeg = zeroSpendFixture({
+    startingCash: { amount: 1 },
+    bills: [
+      {
+        id: 'as-of-to-zero', label: 'Synthetic as-of to-zero bill',
+        frequency: 'once', date: START, amount: 1, confidence: 'confirmed',
+      },
+      {
+        id: 'later-negative', label: 'Synthetic later-negative bill',
+        frequency: 'once', date: '2026-06-18', amount: 1, confidence: 'confirmed',
+      },
+    ],
+  }, []);
+  const openZeroNegTraj = ask(openZeroNeg.plan, openZeroNeg.debts);
+  const openZeroNegEvents = [
+    { date: START, amount: -1, kind: 'bill', id: 'as-of-to-zero' },
+    { date: '2026-06-18', amount: -1, kind: 'bill', id: 'later-negative' },
+  ];
+  const openZeroNegWalk = independentDailyCloses(1, START, '2026-06-18', openZeroNegEvents, 0, 0);
+  const oz15 = openZeroNegWalk.daily.find(d => d.date === START);
+  const oz16 = openZeroNegWalk.daily.find(d => d.date === '2026-06-16');
+  const oz17 = openZeroNegWalk.daily.find(d => d.date === '2026-06-17');
+  const oz18 = openZeroNegWalk.daily.find(d => d.date === '2026-06-18');
+  ok(oz15 && near(oz15.amount, 0) && oz16 && near(oz16.amount, 0)
+    && oz17 && near(oz17.amount, 0) && oz18 && near(oz18.amount, -1),
+    'independent opening→exact-$0 close→negative walk is +$1 opening, $0 on as-of, then −$1',
+    [oz15 && oz15.amount, oz16 && oz16.amount, oz17 && oz17.amount, oz18 && oz18.amount].join(' → '));
+  const openZeroNegSign = signalsOf(openZeroNegTraj, 'cash-sign-change')[0];
+  ok(openZeroNegSign && openZeroNegSign.date === '2026-06-18'
+    && near(openZeroNegSign.fromAmount, 1) && near(openZeroNegSign.toAmount, -1),
+    'cash-sign-change still fires from the positive opening through exact $0 to −$1',
+    JSON.stringify(openZeroNegSign));
+  expectReadyAttribution(openZeroNegSign, 'opening→$0 close→negative sign-change', -2, {
+    'recurring-bills': -2,
+  });
 
   const budgetOnly = zeroSpendFixture({
     startingCash: { amount: 10000 },

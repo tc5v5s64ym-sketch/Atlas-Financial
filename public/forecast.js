@@ -11008,13 +11008,15 @@
         return trajectoryAttributionUnavailable(
           'Sign-change has no dated walk window.', change);
       }
-      // fromAmount is the last strictly positive close, or the same-day
-      // opening. The attributed change is the subsequent walk through
-      // toAmount.
+      // fromAmount is the last strictly positive observation: a published
+      // close, or the walk opening when later published closes are exact
+      // $0. The attributed change is the subsequent walk through
+      // toAmount. A published $0 row is not a last-positive match and
+      // must not block dating the opening window.
       let windowStart = null;
-      const openingSameDay = ctx.walkStart === signal.date
-        && ctx.openingCash != null && isFinite(ctx.openingCash)
+      const openingMatchesFrom = ctx.openingCash != null && isFinite(ctx.openingCash)
         && roundCent(ctx.openingCash) === roundCent(signal.fromAmount);
+      const openingSameDay = ctx.walkStart === signal.date && openingMatchesFrom;
       if (openingSameDay) {
         windowStart = signal.date;
       } else {
@@ -11022,13 +11024,11 @@
           .reverse()
           .find(row => row && row.date < signal.date
             && roundCent(row.amount) === roundCent(signal.fromAmount));
-        if (lastPositive) windowStart = addDays(lastPositive.date, 1);
-      }
-      if (!windowStart && ctx.walkStart && signal.date > ctx.walkStart
-        && ctx.openingCash != null && isFinite(ctx.openingCash)
-        && roundCent(ctx.openingCash) === roundCent(signal.fromAmount)
-        && !(ctx.publishedDaily || []).some(row => row && row.date < signal.date)) {
-        windowStart = ctx.walkStart;
+        if (lastPositive) {
+          windowStart = addDays(lastPositive.date, 1);
+        } else if (openingMatchesFrom && ctx.walkStart && signal.date > ctx.walkStart) {
+          windowStart = ctx.walkStart;
+        }
       }
       if (!windowStart) {
         return trajectoryAttributionUnavailable(
