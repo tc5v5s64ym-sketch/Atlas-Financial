@@ -574,6 +574,12 @@ const PLANNING_TRAJECTORY_FUNDING_GRANULARITY = {
   'pay-period': { id: 'pay-period', label: 'Pay period' },
 };
 
+function planningTrajectoryFundingRegionAriaLabel(granularity) {
+  return granularity === 'pay-period'
+    ? 'Three-stage funding for selected Seaspan pay period'
+    : 'Three-stage funding for selected trajectory month';
+}
+
 function planningTrajectoryFundingGranularityBtn(granularity, current) {
   const row = PLANNING_TRAJECTORY_FUNDING_GRANULARITY[granularity];
   if (!row) return '';
@@ -837,7 +843,12 @@ function renderPlanning(d, periods) {
   $('planning-trajectory-note').textContent = trajHtml.note;
   $('planning-trajectory-funding-lede').textContent = fundingHtml.lede;
   $('planning-trajectory-funding-picker').innerHTML = fundingHtml.picker;
-  $('planning-trajectory-funding').innerHTML = fundingHtml.panel;
+  const fundingRegion = $('planning-trajectory-funding');
+  fundingRegion.innerHTML = fundingHtml.panel;
+  fundingRegion.setAttribute(
+    'aria-label',
+    planningTrajectoryFundingRegionAriaLabel(fundingHtml.granularity || 'month'),
+  );
   $('planning-trajectory-funding-note').textContent = fundingHtml.note;
   $('planning-trajectory-pressure-lede').textContent = pressureHtml.lede;
   $('planning-trajectory-pressure').innerHTML = pressureHtml.list;

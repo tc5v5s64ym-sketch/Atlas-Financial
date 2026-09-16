@@ -44,7 +44,7 @@ function loadPage(script) {
     App: { hooks: [], bootOpts: null, register(fn) { this.hooks.push(fn); }, boot(opts) { this.bootOpts = opts || {}; } },
   };
   vm.runInNewContext(
-    `${helpers}\nfunction planningStubEl(){ return { innerHTML: '', textContent: '', querySelector(){return null;}, querySelectorAll(){return [];}, classList:{toggle(){},add(){},remove(){}}, setAttribute(){}, getAttribute(){return null;} }; }\nconst $ = id => elements[id] || (elements[id] = planningStubEl());\n${read(script)}`,
+    `${helpers}\nfunction planningStubEl(){ const attrs = {}; return { innerHTML: '', textContent: '', querySelector(){return null;}, querySelectorAll(){return [];}, classList:{toggle(){},add(){},remove(){}}, setAttribute(k,v){ attrs[k]=v; }, getAttribute(k){ return attrs[k] != null ? attrs[k] : null; } }; }\nconst $ = id => elements[id] || (elements[id] = planningStubEl());\n${read(script)}`,
     ctx, { filename: script });
   return {
     ctx,
@@ -830,6 +830,44 @@ console.log('\n=== 20. Trajectory Month ↔ Pay Period funding granularity ===')
     'pressure reprint remains after granularity work');
   ok(/data-trajectory-debt-direction=/.test(ddStill),
     'debt direction reprint remains after granularity work');
+}
+
+console.log('\n=== 21. Trajectory funding region accessible name matches granularity ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  const html = read('public/planning.html');
+  ok(/function planningTrajectoryFundingRegionAriaLabel\(/.test(src),
+    'planning.js centralizes funding region aria-label copy');
+  ok(/setAttribute\(\s*['"]aria-label['"]/.test(src)
+    && /planningTrajectoryFundingRegionAriaLabel\(/.test(src),
+    'renderPlanning syncs funding region aria-label with granularity');
+  ok(/aria-label="Three-stage funding for selected period"/.test(html),
+    'planning.html loads with granularity-neutral funding region name');
+  ok(!/aria-label="Three-stage funding for selected trajectory month"/.test(html),
+    'planning.html does not hardcode month-only funding region name');
+
+  const monthLabel = page.ctx.planningTrajectoryFundingRegionAriaLabel('month');
+  const payLabel = page.ctx.planningTrajectoryFundingRegionAriaLabel('pay-period');
+  ok(/trajectory month/i.test(monthLabel) && !/pay period/i.test(monthLabel),
+    'Month aria-label names a trajectory month, not a pay period');
+  ok(/Seaspan pay period/i.test(payLabel) && !/trajectory month/i.test(payLabel),
+    'Pay period aria-label names a Seaspan pay period, not a trajectory month');
+
+  const liveEl = page.render(live, periods);
+  const monthAria = liveEl['planning-trajectory-funding'].getAttribute('aria-label');
+  ok(monthAria === monthLabel,
+    'default Month render sets funding region aria-label to month copy');
+  ok(!/pay period/i.test(monthAria || ''),
+    'default Month render does not tell AT the funding panel is a pay period');
+
+  const payFunding = page.composeFunding(live, periods, 'pay-period',
+    (F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+      periods, extraFacilities: live.revolvingExtra,
+    }).payPeriods[0].payday));
+  ok(/data-trajectory-funding-granularity="pay-period"/.test(payFunding.panel),
+    'Pay period compose still targets pay-period panel');
+  ok(payLabel !== monthLabel,
+    'Month and Pay period accessible names do not contradict each other');
 }
 
 console.log('\n=== Page contract ===');
