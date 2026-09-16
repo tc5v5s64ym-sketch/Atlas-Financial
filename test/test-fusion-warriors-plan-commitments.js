@@ -28,8 +28,12 @@ console.log('\n=== Fusion paid settled on Interac evidence ===');
 const paid = byId['fusion-household-paid'];
 ok(paid && near(paid.amount, OWNER_PAID) && paid.settledOn === '2026-09-10',
   'paid row is $1,200 settledOn 2026-09-10');
-ok(/FUSION WEST LACROSSE/i.test(paid.note || '') && /coaching/i.test(paid.note || ''),
-  'note cites Interac to Fusion West and coaching cover');
+ok(/FUSION WEST LACROSSE/i.test(paid.note || '') && /logan and lindens first payment/i.test(paid.note || ''),
+  'note cites Interac MATCH to Fusion West with memo');
+ok(/never Forecast income|baselineTrajectory income/i.test(paid.note || ''),
+  'owner policy lock: coaching \$3,125 is note context only, not income');
+ok(!(plan.income || []).some(s => /3125|Lavinio|Cavalcante/i.test(JSON.stringify(s))),
+  'plan.income has no coaching bonus row for Fusion settlement context');
 ok(!/LM transaction id/i.test(paid.note || '') || /no LM transaction id is invented/i.test(paid.note || ''),
   'note does not invent an LM transaction id');
 
