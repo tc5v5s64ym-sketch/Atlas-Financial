@@ -268,8 +268,8 @@ console.log('\n=== 10–11. stale Fusion 3 × $500 gone; future estimate is not 
     'remaining Fusion schedule is $3,300 (Oct/Nov/Dec), independent of paid portion',
     money(fusionRemaining));
   const fusionPaid = (plan.commitments || []).find(c => c.id === 'fusion-household-paid');
-  ok(fusionPaid && near(fusionPaid.amount, 1200) && fusionPaid.settledOn === '2026-09-16',
-    'paid $1,200 is a separate settled row, not folded into remaining instalments');
+  ok(fusionPaid && fusionPaid.amount == null && !fusionPaid.settledOn,
+    'paid $1,200 is owner-stated only (no amount, no LM settledOn)');
   ok(/^ANSWERED\b/.test(statusOf('Q23')), 'Q23 is ANSWERED', statusOf('Q23'));
 }
 

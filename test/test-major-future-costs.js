@@ -90,8 +90,8 @@ for (const id of FLEXIBLE) {
 ok(byId.warriors && byId.warriors.date === '2026-09-23'
   && byId.warriors.amount == null && near(byId.warriors.amountMin, 895),
   'Warriors is Logan U13 due 23 Sep with $895 pre-tax floor (+ tax not invented)');
-ok(byId['fusion-household-paid'] && near(byId['fusion-household-paid'].amount, 1200),
-  'Fusion paid portion is its own row');
+ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].amount == null,
+  'Fusion paid portion is a note-only row (no dollar encumbrance)');
 ok(!byId['fusion-season'], 'fusion-season stale estimate is removed');
 
 console.log('\n=== not merely prose ===');
@@ -148,19 +148,19 @@ const fusionHouseholdUnsettled = ['fusion-household-paid', 'fusion-household-oct
   .map(id => byId[id])
   .filter(c => c && c.amount != null && !F.commitmentSettledBy(c, asOf))
   .reduce((s, c) => s + c.amount, 0);
-ok(near(fusionHouseholdUnsettled, 4500),
-  'at the Aug. 19 opening, paid + remaining Fusion rows sum to $4,500 before settlement date',
+ok(near(fusionHouseholdUnsettled, 3300),
+  'Fusion encumbrance is remaining instalments only (paid row amount null, no LM settledOn)',
   String(fusionHouseholdUnsettled));
 const fusionRemainingOnly = ['fusion-household-oct', 'fusion-household-nov', 'fusion-household-dec']
   .reduce((s, id) => s + (byId[id] ? byId[id].amount : 0), 0);
 ok(near(fusionRemainingOnly, 3300),
-  'remaining instalments alone are $3,300, independent of the paid row',
+  'remaining instalments alone are $3,300, independent of owner-stated paid row',
   String(fusionRemainingOnly));
 const preexistingPoints = 0;
 const absorbedPoints = 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 3131.76 + 2400;
 const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
-ok(near(absorbedPoints, 14831.76) && near(HAND_TOTAL, 19331.76),
-  'hand total drops stale Warriors/Fusion estimates and adds owner Fusion rows');
+ok(near(absorbedPoints, 14831.76) && near(HAND_TOTAL, 18131.76),
+  'hand total drops stale Warriors/Fusion estimates and encumbers $3,300 Fusion remaining');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',
   String(pub.commitmentsTotal));
@@ -265,12 +265,14 @@ for (const c of rows) {
     ok(!amount.includes('$0.00'),
       `${c.id} does not publish $0.00 for a null amount`,
       amount);
-    const expected = Object.prototype.hasOwnProperty.call(RANGES, c.id)
-      ? independentWholeDollar(RANGES[c.id][0]) + '–' + independentWholeDollar(RANGES[c.id][1])
-      : independentAmountText(c);
-    ok(amount.includes(expected),
-      `${c.id} amount span publishes the independent range ${expected}`,
-      amount);
+    if (Object.prototype.hasOwnProperty.call(RANGES, c.id) || c.amountMin != null) {
+      const expected = Object.prototype.hasOwnProperty.call(RANGES, c.id)
+        ? independentWholeDollar(RANGES[c.id][0]) + '–' + independentWholeDollar(RANGES[c.id][1])
+        : independentAmountText(c);
+      ok(amount.includes(expected),
+        `${c.id} amount span publishes the independent range ${expected}`,
+        amount);
+    }
   }
   if (c.date == null && !independentlySettled(c)) {
     ok(!label.includes('Invalid Date'),
@@ -290,8 +292,9 @@ ok(independentlySettled(byId.burrard1)
   && independentlySettled(byId.fusioncamp)
   && independentlySettled(byId.tryouts),
   'the four Aug-settled rows are still settled on plan inputs');
-ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].settledOn === '2026-09-16',
-  'Fusion paid row carries owner evidence settledOn');
+ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].amount == null
+  && !byId['fusion-household-paid'].settledOn,
+  'Fusion paid row is owner-stated only — no settledOn / no LM twin');
 
 if (failures) {
   console.error(`\n${failures} check(s) failed`);

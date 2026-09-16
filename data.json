@@ -518,19 +518,18 @@
                 "budgetCategory": "sport",
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-16: due 23 September 2026; $895 plus tax. Tax dollars are not verified from PDF — no GST amount is invented; the floor is the stated pre-tax $895. Email Vancouver Warriors U13 Elite Academy 26.27 roster evidence is non-conflicting and not verified settlement."
+                "note": "Owner 2026-09-16: due 23 September 2026; $895 plus tax. Tax dollars are not verified from PDF — no GST amount is invented; floor is pre-tax $895. Money 2026-09-16: U13 Elite selection email only — no LM ~$895 payment yet (LM Warriors keyword: Vancouver Warriors −$40 on 2026-08-11 only). Not verified settlement."
             },
             {
                 "id": "fusion-household-paid",
-                "label": "Fusion season — household (paid portion)",
-                "amount": 1200,
-                "when": "paid — owner 2026-09-16",
+                "label": "Fusion season — household (already paid)",
+                "amount": null,
+                "when": "owner-stated paid 2026-09-16",
                 "budgetCategory": "sport",
                 "confidence": "confirmed",
                 "group": "fusion-household",
                 "sinkingFund": true,
-                "settledOn": "2026-09-16",
-                "note": "Owner 2026-09-16: $1,200 of the household Fusion season total ($4,500) is already paid. settledOn is the owner evidence date; exact posting is not proven and no Lunch Money twin is claimed. Remaining end-of-month schedule is on fusion-household-oct/nov/dec. Household row — do not assign to a specific athlete."
+                "note": "Owner 2026-09-16: $1,200 of the $4,500 household Fusion total is already paid. Money packet 2026-09-16: LM Fusion/Logan/Warriors keyword search NO_MATCH for a $1,200 twin; closest noise only Fusion West Travel Visa $70.60+$76 (2026-08-12) and Vancouver Warriors −$40 (2026-08-11). Named Fusion West e-transfers (~$2,234 across five) are not encoded as settled twins. Owner-stated paid only — no settledOn and no LM id. Forecast encumbrance for cash still owed is only fusion-household-oct/nov/dec ($3,300)."
             },
             {
                 "id": "fusion-household-oct",
@@ -541,7 +540,7 @@
                 "confidence": "estimated",
                 "group": "fusion-household",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $1,200 in October. Part of $4,500 household total after $1,200 already paid; not double-counted with fusion-household-paid."
+                "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $1,200 in October. Part of $4,500 household total after $1,200 owner-stated paid (see fusion-household-paid; no LM twin)."
             },
             {
                 "id": "fusion-household-nov",
