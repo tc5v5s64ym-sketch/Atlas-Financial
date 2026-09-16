@@ -2140,6 +2140,10 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
   ok(!/\d+\s*\/\s*week/.test(JSON.stringify(packet.forecast.recommendation))
       && packet.forecast.recommendation.weekly == null,
     'assistant forecast recommendation does not carry a weekly spend permission');
+  ok(packet.planning && packet.planning.trajectory
+      && packet.planning.trajectory.status === 'ready'
+      && packet.planning.trajectory.source === 'Forecast.baselineTrajectory',
+    'stale operating plan still exposes baseline trajectory like Planning');
 
   const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
   const helperSrc = [

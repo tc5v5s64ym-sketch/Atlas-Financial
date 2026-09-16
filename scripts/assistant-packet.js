@@ -227,6 +227,116 @@ function projectPaydayAllocation(advice) {
   };
 }
 
+function trajectoryAsOfDate(data) {
+  return (data && data.meta && data.meta.asOf)
+    || (data && data.plan && data.plan.opening && data.plan.opening.asOf)
+    || null;
+}
+
+function projectBaselineTrajectoryIncome(income) {
+  if (!income || typeof income !== 'object' || Array.isArray(income)) {
+    return { status: 'unavailable', reason: 'Forecast unavailable.' };
+  }
+  const row = { status: income.status || 'unavailable' };
+  if (income.amount != null) row.amount = money(income.amount);
+  const reason = clipPacketText(income.reason, 500);
+  if (reason) row.reason = reason;
+  return row;
+}
+
+function projectBaselineTrajectoryCash(cash) {
+  if (!cash || typeof cash !== 'object' || Array.isArray(cash)) {
+    return { status: 'unavailable', reason: 'Forecast unavailable.' };
+  }
+  const row = { status: cash.status || 'unavailable' };
+  if (cash.amount != null) row.amount = money(cash.amount);
+  if (cash.asOf) row.asOf = clipPacketText(cash.asOf, 40);
+  const reason = clipPacketText(cash.reason, 500);
+  if (reason) row.reason = reason;
+  return row;
+}
+
+function projectBaselineTrajectoryDebt(debt) {
+  if (!debt || typeof debt !== 'object' || Array.isArray(debt)) {
+    return { status: 'unavailable', reason: 'Forecast unavailable.' };
+  }
+  const row = { status: debt.status || 'unavailable' };
+  if (debt.consumer != null) row.consumer = money(debt.consumer);
+  if (debt.secured != null) row.secured = money(debt.secured);
+  if (debt.heloc != null) row.heloc = money(debt.heloc);
+  if (debt.asOf) row.asOf = clipPacketText(debt.asOf, 40);
+  const reason = clipPacketText(debt.reason, 500);
+  if (reason) row.reason = reason;
+  return row;
+}
+
+function projectBaselineTrajectoryMonth(month) {
+  if (!month || typeof month !== 'object' || Array.isArray(month)) return null;
+  const monthKey = clipPacketText(month.month, 16);
+  if (!monthKey) return null;
+  const row = {
+    month: monthKey,
+    periodStart: clipPacketText(month.start, 40),
+    periodEnd: clipPacketText(month.end, 40),
+    income: projectBaselineTrajectoryIncome(month.income),
+    cash: projectBaselineTrajectoryCash(month.cash),
+    debt: projectBaselineTrajectoryDebt(month.debt),
+  };
+  return row;
+}
+
+// Same Forecast.baselineTrajectory call and reprint surface as public/planning.js.
+// Not gated on liveOverlay.operatingPlan — Planning still prints trajectory when
+// current operating verdicts are withheld.
+function projectBaselineTrajectory(data, periods) {
+  const plan = data && data.plan;
+  const asOf = trajectoryAsOfDate(data);
+  if (!plan || !asOf) {
+    return unavailable('baseline-trajectory-unavailable');
+  }
+  const trajectory = Forecast.baselineTrajectory(plan, data.debts, asOf, {
+    periods: periods || null,
+    extraFacilities: data.revolvingExtra,
+  });
+  if (!trajectory || trajectory.status !== 'ready') {
+    const reason = clipPacketText(trajectory && trajectory.reason, 500)
+      || 'Baseline trajectory unavailable.';
+    return {
+      status: (trajectory && trajectory.status) || 'unavailable',
+      source: 'Forecast.baselineTrajectory',
+      reason,
+    };
+  }
+  const months = [];
+  for (const month of trajectory.months || []) {
+    const row = projectBaselineTrajectoryMonth(month);
+    if (row) months.push(row);
+  }
+  const regimes = Array.isArray(trajectory.incomeRegimes)
+    ? trajectory.incomeRegimes.map(regime => ({
+      id: clipPacketText(regime && regime.id, 80),
+      status: clipPacketText(regime && regime.status, 40),
+      through: clipPacketText(regime && regime.through, 40),
+      from: clipPacketText(regime && regime.from, 40),
+      note: clipPacketText(regime && regime.note, 500),
+      reason: clipPacketText(regime && regime.reason, 500),
+    })).filter(row => row.id)
+    : [];
+  return {
+    status: 'ready',
+    source: 'Forecast.baselineTrajectory',
+    asOf: trajectory.asOf || asOf,
+    horizonEnd: trajectory.horizon && trajectory.horizon.end
+      ? trajectory.horizon.end
+      : null,
+    weeklyVariable: trajectory.weeklyVariable && trajectory.weeklyVariable.amount != null
+      ? money(trajectory.weeklyVariable.amount)
+      : null,
+    incomeRegimes: regimes.length ? regimes : null,
+    months,
+  };
+}
+
 function trustFor(value) {
   if (value == null) return 'unknown';
   return 'calculated';
@@ -838,6 +948,9 @@ function buildPacket(opts) {
     }, advice),
     current: currentBlock(data, asOf, advice, used),
     forecast: forecastBlock(data, asOf, advice, debtProj, periods),
+    planning: {
+      trajectory: projectBaselineTrajectory(data, periods),
+    },
     actuals: actualsBlock(data, periods, advice),
     uncertainty: uncertaintyBlock(data, periods, questionsMarkdown, advice),
   };
@@ -864,6 +977,7 @@ module.exports = {
   versionIdentifier,
   looksSanitized,
   projectDecisionPosture,
+  projectBaselineTrajectory,
   loadPeriods,
   tokenConfigured,
   clone,
