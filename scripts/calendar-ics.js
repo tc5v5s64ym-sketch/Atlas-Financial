@@ -163,13 +163,55 @@ function derivedExternalReferenceText(row) {
   ].join('\n\n');
 }
 
+function subtractCalendarDays(iso, days) {
+  const t = new Date(iso + 'T00:00:00Z');
+  t.setUTCDate(t.getUTCDate() - days);
+  return t.toISOString().slice(0, 10);
+}
+
+function householdMortgageMaturity() {
+  const maturity = data.mortgage && data.mortgage.maturity;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(maturity || '')) {
+    throw new Error('household mortgage maturity is missing from data.json');
+  }
+  return maturity;
+}
+
+// Offsets come from the knowledge record. Do not hard-code 150/120 here.
+const HOLD_OFFSET_RE = /extendable to about (\d+) days/;
+const WINDOW_OFFSET_RE = /up to (\d+) days before maturity/;
+
+function tdRenewalClaimOffsets(row) {
+  const text = (row.claims || []).join('\n');
+  const hold = HOLD_OFFSET_RE.exec(text);
+  const window = WINDOW_OFFSET_RE.exec(text);
+  const holdDays = hold ? Number(hold[1]) : NaN;
+  const windowDays = window ? Number(window[1]) : NaN;
+  return {
+    holdDays: Number.isFinite(holdDays) && holdDays > 0 ? holdDays : null,
+    windowDays: Number.isFinite(windowDays) && windowDays > 0 ? windowDays : null,
+  };
+}
+
+function renewalLookPoint(uid, days, maturity, recordId, lead, description) {
+  return {
+    uid,
+    summary: `Reminder — Mortgage renewal look-point (${days} days before household maturity; ${recordId})`,
+    start: subtractCalendarDays(maturity, days),
+    kind: 'reminder',
+    description: lead + description,
+  };
+}
+
 function standingReminders(asOf, register) {
   const src = `\n\nKind: reminder — not a chequing outflow. Standing look-point from the household finance review, read from the institutions on ${asOf}.`;
-  // Mortgage-renewal reminder text derives from EXT-TD-RENEWAL-001.
-  // Do not hard-code that claim body or its source URLs here.
-  const tdRenewalText = derivedExternalReferenceText(
-    loadKnowledgeRecord(TD_RENEWAL_KNOWLEDGE_ID, register)
-  );
+  // Mortgage-renewal reminder text, and the 150/120 look-point labels and
+  // dates, derive from EXT-TD-RENEWAL-001. Do not hard-code that claim body,
+  // those offsets, or the source URLs here.
+  const tdRow = loadKnowledgeRecord(TD_RENEWAL_KNOWLEDGE_ID, register);
+  const tdRenewalText = derivedExternalReferenceText(tdRow);
+  const maturity = householdMortgageMaturity();
+  const offsets = tdRenewalClaimOffsets(tdRow);
   const events = [];
 
   for (const [day, card, note] of [
@@ -211,14 +253,28 @@ function standingReminders(asOf, register) {
       summary: 'Reminder — Mortgage renewal: start collecting quotes (6 months out)', start: '2026-11-02',
       kind: 'reminder',
       description: 'The mortgage matures 1 May 2027. Nothing can be locked yet, but this is the point to start gathering competing offers so you are comparing rather than accepting.\n\nThe live question is whether to fold the interest-only HELOC into the mortgage. The HELOC is $201,586 at 4.90% and 99.5% drawn; folding it in would force principal repayment and lower the rate, at the cost of a higher monthly payment. The renewal modeller on the site runs that trade-off.\n\nLoan-to-value on the mortgage and HELOC together is about 62% at the 2026-08-29 $1.20m planning home estimate — under 80%. The $1.30m figure is an optimistic high only, not the plan. A lender will order its own appraisal and will not take an owner estimate.' + src },
-    { uid: 'atlas-reminder-renewal-hold@household',
-      summary: 'Reminder — Mortgage renewal: 150 days out, TD can hold a rate for existing clients', start: '2026-12-02',
-      kind: 'reminder',
-      description: 'From roughly today, ask TD to hold a rate. There is no cost to asking.\n\n' + tdRenewalText + src },
-    { uid: 'atlas-reminder-renewal-window@household',
-      summary: 'Reminder — Mortgage renewal: 120-day window OPENS (renew with no prepayment charge)', start: '2027-01-01',
-      kind: 'reminder',
-      description: 'Exactly 120 days before the 1 May 2027 maturity. If a lender switch is going to happen, do not leave it to April.\n\n' + tdRenewalText + src },
+  );
+  if (offsets.holdDays != null) {
+    events.push(renewalLookPoint(
+      'atlas-reminder-renewal-hold@household',
+      offsets.holdDays,
+      maturity,
+      TD_RENEWAL_KNOWLEDGE_ID,
+      'From roughly today, ask TD to hold a rate. There is no cost to asking.\n\n',
+      tdRenewalText + src
+    ));
+  }
+  if (offsets.windowDays != null) {
+    events.push(renewalLookPoint(
+      'atlas-reminder-renewal-window@household',
+      offsets.windowDays,
+      maturity,
+      TD_RENEWAL_KNOWLEDGE_ID,
+      'If a lender switch is going to happen, do not leave it to April.\n\n',
+      tdRenewalText + src
+    ));
+  }
+  events.push(
     { uid: 'atlas-reminder-renewal-letter@household',
       summary: 'Reminder — Mortgage renewal: TD offer letter should have arrived', start: '2027-04-01',
       kind: 'reminder',
@@ -327,6 +383,8 @@ module.exports = {
   writeHouseholdCalendar,
   loadKnowledgeRecord,
   derivedExternalReferenceText,
+  tdRenewalClaimOffsets,
+  subtractCalendarDays,
   TD_RENEWAL_KNOWLEDGE_ID,
   ICS_HORIZON_END,
   DEFAULT_AS_OF,

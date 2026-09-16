@@ -12,8 +12,9 @@
  *
  * It also proves the first record's re-homing: the TD renewal claim body no
  * longer sits inline in docs/ACCOUNT_FACTS.md, which now points at the record,
- * and scripts/calendar-ics.js derives the matching reminder text from the
- * same record instead of authoring a second copy.
+ * and scripts/calendar-ics.js derives the matching reminder text and the
+ * 150/120 look-point labels and dates from the same record instead of
+ * authoring a second copy.
  *
  * It does NOT prove:
  *   - that the external claim is true, or that the institution still applies it;
@@ -323,11 +324,20 @@ ok(icsSrc.includes('EXT-TD-RENEWAL-001') && icsSrc.includes('knowledge_evidence/
   'calendar-ics.js names EXT-TD-RENEWAL-001 and reads the register');
 ok(!/extendable to about 150/.test(icsSrc) && !/four to five months/.test(icsSrc),
   'the claim-body sentences are not hardcoded in calendar-ics.js');
+ok(!/150 days out, TD can hold a rate/.test(icsSrc)
+  && !/120-day window OPENS/.test(icsSrc)
+  && !/Exactly 120 days before/.test(icsSrc)
+  && !/2026-12-02/.test(icsSrc)
+  && !/'2027-01-01'/.test(icsSrc),
+  'the 150/120 claim labels and claim-derived dates are not hardcoded in calendar-ics.js');
 ok(!/td\.com\/ca\/en\/personal-banking\/products\/mortgages/.test(icsSrc)
   && !/mortgagerenewalhub\.ca/.test(icsSrc)
   && !/truemortgageplus\.com/.test(icsSrc),
   'the source URLs are not hardcoded in calendar-ics.js');
 const plan = require('../data.json').plan;
+const householdMaturity = require('../data.json').mortgage.maturity;
+ok(householdMaturity === '2027-05-01',
+  'household maturity remains 2027-05-01 (independent of the knowledge record)');
 const builtIcs = icsMod.buildHouseholdCalendar(plan, '2026-08-09');
 const hold = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-hold@household');
 const windowRem = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-window@household');
@@ -335,6 +345,16 @@ const letter = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-
 const maturity = builtIcs.reminders.find((r) => r.uid === 'atlas-reminder-maturity@household');
 ok(!!hold && !!windowRem && !!letter && !!maturity, 'the four mortgage-renewal reminders still exist');
 if (hold && windowRem && letter && maturity && td) {
+  // Independent calendar arithmetic: 1 May 2027 minus 150 days is 2 Dec 2026;
+  // minus 120 days is 1 Jan 2027 (Jan 1 + 31 + 28 + 31 + 30 = 120 to May 1).
+  ok(hold.start === '2026-12-02' && /150 days before household maturity/.test(hold.summary)
+    && hold.summary.includes('EXT-TD-RENEWAL-001')
+    && !/TD can hold a rate/.test(hold.summary),
+  'hold label/date derive from the record\'s 150-day extension applied to household maturity');
+  ok(windowRem.start === '2027-01-01' && /120 days before household maturity/.test(windowRem.summary)
+    && windowRem.summary.includes('EXT-TD-RENEWAL-001')
+    && !/prepayment charge/.test(windowRem.summary),
+  'window label/date derive from the record\'s 120-day window applied to household maturity');
   for (const [name, rem] of [['hold', hold], ['window', windowRem], ['letter', letter], ['maturity', maturity]]) {
     ok(rem.description.includes('EXT-TD-RENEWAL-001'),
       `${name} reminder names EXT-TD-RENEWAL-001`);
@@ -344,18 +364,44 @@ if (hold && windowRem && letter && maturity && td) {
     ok(td.provenance.sources.every((s) => rem.description.includes(s.url)),
       `${name} reminder derives its source URLs from the record`);
   }
+  const shiftedReg = clone(register);
+  const shiftedRow = shiftedReg.items.find((row) => row.id === 'EXT-TD-RENEWAL-001');
+  shiftedRow.claims = [
+    'TD lets a closed mortgage renew early up to 90 days before maturity with no prepayment charge and no fee.',
+    'TD\'s standard rate hold is 90 days, extendable to about 100 days for existing clients. A held rate is a floor, not a commitment.',
+  ];
+  const shiftedIcs = icsMod.buildHouseholdCalendar(plan, '2026-08-09', undefined, shiftedReg);
+  const shiftedHold = shiftedIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-hold@household');
+  const shiftedWindow = shiftedIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-window@household');
+  ok(!!shiftedHold && shiftedHold.start === '2027-01-21'
+    && /100 days before household maturity/.test(shiftedHold.summary)
+    && !/150 days/.test(shiftedHold.summary) && shiftedHold.start !== '2026-12-02',
+  'changing the record\'s 150-day claim moves the hold look-point (1 May 2027 minus 100 days is 21 Jan 2027)');
+  ok(!!shiftedWindow && shiftedWindow.start === '2027-01-31'
+    && /90 days before household maturity/.test(shiftedWindow.summary)
+    && !/120 days/.test(shiftedWindow.summary) && shiftedWindow.start !== '2027-01-01',
+  'changing the record\'s 120-day claim moves the window look-point (1 May 2027 minus 90 days is 31 Jan 2027)');
   const mutatedReg = clone(register);
   const mutRow = mutatedReg.items.find((row) => row.id === 'EXT-TD-RENEWAL-001');
   mutRow.claims = ['MUTATED-TD-RENEWAL-CLAIM-UNIQUE'];
   mutRow.provenance.sources[0].url = 'https://example.test/mutated-td-source';
   const mutatedIcs = icsMod.buildHouseholdCalendar(plan, '2026-08-09', undefined, mutatedReg);
   const mutHold = mutatedIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-hold@household');
-  ok(!!mutHold && mutHold.description.includes('MUTATED-TD-RENEWAL-CLAIM-UNIQUE')
-    && mutHold.description.includes('https://example.test/mutated-td-source'),
-  'a register edit moves the ICS reminder text');
-  ok(!!mutHold && !/extendable to about 150/.test(mutHold.description)
-    && !/td\.com\/ca\/en\/personal-banking\/products\/mortgages/.test(mutHold.description),
+  const mutWindow = mutatedIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-window@household');
+  const mutLetter = mutatedIcs.reminders.find((r) => r.uid === 'atlas-reminder-renewal-letter@household');
+  ok(!mutHold && !mutWindow,
+    'the calendar cannot retain the 150/120 look-points when the record no longer asserts those windows');
+  ok(!!mutLetter && mutLetter.description.includes('MUTATED-TD-RENEWAL-CLAIM-UNIQUE')
+    && mutLetter.description.includes('https://example.test/mutated-td-source'),
+  'a register edit moves the remaining ICS reminder text');
+  ok(!!mutLetter && !/extendable to about 150/.test(mutLetter.description)
+    && !/td\.com\/ca\/en\/personal-banking\/products\/mortgages/.test(mutLetter.description),
   'the previous claim body and TD URL leave the ICS when the record changes');
+  const claimBearing = mutatedIcs.reminders.filter((r) =>
+    /150 days out|120-day window|TD can hold a rate|prepayment charge/.test(`${r.summary}\n${r.start}`)
+    || r.start === '2026-12-02' || (r.uid.includes('renewal-window') && r.start === '2027-01-01'));
+  ok(claimBearing.length === 0,
+    'no reminder keeps a 150/120 renewal assertion after the record is stripped');
   let missingThrew = false;
   try {
     const empty = clone(register);
