@@ -177,10 +177,24 @@ function independentWalkDays(walkStart, walkEnd, spanStart, spanEnd) {
   return n;
 }
 
+// Independent of Forecast.cashWalkDate: joint-cash outflows scheduled
+// before the walk start apply at the opening; income / non-cash / in-window
+// events keep their scheduled date.
+function independentCashWalkDate(event, start) {
+  if (event && start && event.date < start
+      && event.amount < 0 && event.kind !== 'noncash' && event.jointCash !== false) {
+    return start;
+  }
+  return event && event.date;
+}
+
 function independentMonth(plan, debts, span) {
   const walk = independentWalkEvents(plan, debts);
-  const events = (walk.events || []).filter(e =>
-    e && e.date >= span.start && e.date <= span.end);
+  const events = (walk.events || []).filter(e => {
+    if (!e) return false;
+    const apply = independentCashWalkDate(e, START);
+    return apply >= span.start && apply <= span.end;
+  });
   const walkDays = independentWalkDays(
     walk.horizon.start, walk.horizon.end, span.start, span.end);
   const sumKind = (pred, sign) => roundCent(events.filter(pred)
@@ -244,6 +258,8 @@ console.log('=== 1. Forecast is the sole calculator; helper is not exported ==='
     'funding helper does not take Stage 3 from the scenario or hypotheticalExtraPayment');
   ok(!/currentRegimeMonthly\(/.test(helper),
     'funding helper does not fold reserved current-regime smear into Stage 1');
+  ok(/cashWalkDate\(/.test(helper),
+    'span picture attributes month funding events by incumbent cashWalkDate');
   ok(!/safeToSpend|breathingRoom|minCash|\bryg\b/.test(helper),
     'funding helper invents no min-cash / breathing-room / safe-to-spend / RYG');
   const planning = read('public/planning.js');
@@ -517,7 +533,59 @@ console.log('\n=== 6. Month-boundary walk days, not a 30-day June smear ===');
     'June Stage 3 and cash change are not the 30-day calendar smear');
 }
 
-console.log('\n=== 7. Live extraDebtMonthly $0 is honest zero on published months ===');
+console.log('\n=== 7. Carried unresolved joint-cash outflow uses cashWalkDate at opening ===');
+{
+  const CARRY_DATE = '2026-06-10';
+  const CARRY = 237;
+  const shared = {
+    startingCash: { amount: 10000 },
+    defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
+  };
+  const base = fixture(shared);
+  const carried = fixture(Object.assign({}, shared, {
+    bills: (base.plan.bills || []).concat([{
+      id: 'carried-once-joint',
+      label: 'Carried once joint-cash bill',
+      frequency: 'once',
+      date: CARRY_DATE,
+      amount: CARRY,
+      confidence: 'confirmed',
+    }]),
+  }));
+  const trajBase = ask(base.plan, base.debts);
+  const traj = ask(carried.plan, carried.debts);
+  const june = traj.months.find(m => m.month === '2026-06');
+  const juneBase = trajBase.months.find(m => m.month === '2026-06');
+  const expected = independentMonth(carried.plan, carried.debts, june);
+  ok(june && june.start === START && CARRY_DATE < june.start,
+    'carried bill is scheduled before the clipped first month');
+  const walkEvents = independentWalkEvents(carried.plan, carried.debts).events || [];
+  ok(!walkEvents.some(e => e.id === 'carried-once-joint'
+      && e.date >= june.start && e.date <= june.end),
+    'a scheduled-date month filter would omit the carried bill');
+  ok(walkEvents.some(e => e.id === 'carried-once-joint'
+      && independentCashWalkDate(e, START) >= june.start
+      && independentCashWalkDate(e, START) <= june.end),
+    'independent cashWalkDate places the carried bill in the clipped first month');
+  ok(near(june.stage1.bills.amount, juneBase.stage1.bills.amount + CARRY)
+    && near(june.stage1.bills.amount, expected.bills),
+    'June Stage 1 bills include the carried amount applied at opening',
+    `${june.stage1.bills.amount} vs base ${juneBase.stage1.bills.amount} + ${CARRY}`);
+  ok(near(june.stage1.result.amount, juneBase.stage1.result.amount - CARRY)
+    && near(june.stage1.result.amount, expected.stage1),
+    'June Stage 1 result is lower by the carried amount');
+  ok(near(june.cash.amount, juneBase.cash.amount - CARRY)
+    && near(juneBase.cash.amount - june.cash.amount,
+      june.stage1.bills.amount - juneBase.stage1.bills.amount),
+    'June month-end cash deducts the same carried amount Stage 1 bills now include');
+  const july = traj.months.find(m => m.month === JUL);
+  const julyBase = trajBase.months.find(m => m.month === JUL);
+  ok(july && julyBase
+    && near(july.stage1.bills.amount, julyBase.stage1.bills.amount),
+    'later months do not re-attribute the opening-applied carried bill');
+}
+
+console.log('\n=== 8. Live extraDebtMonthly $0 is honest zero on published months ===');
 {
   const live = JSON.parse(fs.readFileSync(DATA, 'utf8'));
   const periods = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/periods.json'), 'utf8'));
