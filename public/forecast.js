@@ -8606,7 +8606,8 @@
       crossings: state.filter(s => s.firstOver)
         .map(s => ({ id: s.id, label: s.label, date: s.firstOver, limit: s.limit,
           day: diffDays(start, s.firstOver),
-          alreadyOver: s.limit != null && s.opening > s.limit }))
+          alreadyOver: s.limit != null && s.opening > s.limit,
+          pendingUnknown: !!s.pendingUnknown }))
         .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
       // Everything an extra payment did NOT reach, so an untargeted one is
       // visible rather than silently vanishing into cash.
@@ -10553,6 +10554,377 @@
       recommendation: null,
       ranking: null,
       affordability: null,
+      pressure: trajectoryPressureUnavailable(reason),
+    };
+  }
+
+  const TRAJECTORY_PRESSURE_KIND_ORDER = {
+    'lowest-projected-cash': 0,
+    'cash-trough': 1,
+    'cash-sign-change': 2,
+    'month-cash-decline': 3,
+    'outflow-exceeds-inflow': 4,
+    'dated-commitment': 5,
+    'debt-increase': 6,
+    'debt-not-declining-after-payment': 7,
+    'debt-limit-crossing': 8,
+  };
+
+  function trajectoryPressureUnavailable(reason) {
+    return {
+      status: 'unavailable',
+      reason: reason || 'Baseline trajectory unavailable.',
+      signals: [],
+      policyThresholds: 'none',
+      ranking: null,
+      recommendation: null,
+      affordability: null,
+    };
+  }
+
+  function trajectoryMonthHasPublishedCash(row) {
+    return !!(row && row.cash
+      && (row.cash.status === 'calculated' || row.cash.status === 'estimated')
+      && row.cash.amount != null && isFinite(row.cash.amount));
+  }
+
+  function trajectoryMonthHasPublishedDebt(row) {
+    return !!(row && row.debt && row.debt.status === 'calculated'
+      && row.debt.consumer != null && isFinite(row.debt.consumer)
+      && row.debt.secured != null && isFinite(row.debt.secured));
+  }
+
+  function trajectoryCashTrust(status) {
+    return status === 'estimated' ? 'estimated' : 'calculated';
+  }
+
+  // Signal trust is the weaker of its inputs. An estimated household
+  // input is never published as calculated.
+  function trajectoryInputTrust(confidence) {
+    return confidence === 'confirmed' ? 'calculated' : 'estimated';
+  }
+
+  function trajectoryWeakerTrust() {
+    for (let i = 0; i < arguments.length; i++) {
+      if (arguments[i] === 'estimated') return 'estimated';
+    }
+    return 'calculated';
+  }
+
+  function trajectoryDebtPendingUnknown(debts, debtId) {
+    if (!debtId || !Array.isArray(debts)) return false;
+    const debt = debts.find(row => row && row.id === debtId);
+    return pendingUnknown(debt);
+  }
+
+  function trajectoryDebtTotal(debt) {
+    return roundCent((Number(debt && debt.consumer) || 0) + (Number(debt && debt.secured) || 0));
+  }
+
+  function trajectoryPaidTotal(debt) {
+    return roundCent(((debt && debt.debts) || []).reduce((sum, row) => (
+      sum + (Number(row && row.paid) || 0)
+    ), 0));
+  }
+
+  // Objective pressure from the existing baselineTrajectory walk only.
+  // Describes mechanical facts the walk already established. Does not
+  // invent a household minimum, breathing-room, safe-to-spend, RYG,
+  // risk-score, affordability, or other owner-policy threshold.
+  // Unpublished cash or debt months fail closed: no invented signals.
+  function baselineTrajectoryPressure(input) {
+    input = input || {};
+    const signals = [];
+    const daily = Array.isArray(input.daily) ? input.daily : [];
+    const events = Array.isArray(input.events) ? input.events : [];
+    const months = Array.isArray(input.months) ? input.months : [];
+    const crossings = Array.isArray(input.crossings) ? input.crossings : [];
+    const debts = Array.isArray(input.debts) ? input.debts : [];
+    const walkStart = input.walkStart || null;
+    const weeklyVariable = Number(input.weeklyVariable) || 0;
+    const reservedDaily = Number(input.reservedDaily) || 0;
+    const dailyVariable = weeklyVariable / 7;
+    const publishedCashMonths = months.filter(trajectoryMonthHasPublishedCash);
+    const publishedDebtMonths = months.filter(trajectoryMonthHasPublishedDebt);
+
+    function monthForDate(date) {
+      if (!date) return null;
+      return months.find(row => row && date >= row.start && date <= row.end) || null;
+    }
+
+    function publishedCashMonthForDate(date) {
+      if (!date) return null;
+      return publishedCashMonths.find(row => date >= row.start && date <= row.end) || null;
+    }
+
+    const publishedDaily = [];
+    for (const row of daily) {
+      if (!row || !row.date || row.balance == null || !isFinite(row.balance)) continue;
+      const month = publishedCashMonthForDate(row.date);
+      if (!month) continue;
+      publishedDaily.push({
+        date: row.date,
+        amount: roundCent(row.balance),
+        month: month.month,
+        trust: trajectoryCashTrust(month.cash.status),
+      });
+    }
+
+    let lowest = null;
+    for (const point of publishedDaily) {
+      if (!lowest
+        || point.amount < lowest.amount
+        || (point.amount === lowest.amount && point.date < lowest.date)) {
+        lowest = point;
+      }
+    }
+    const walkMin = input.min;
+    if (walkMin && walkMin.date && walkMin.balance != null && isFinite(walkMin.balance)) {
+      const minMonth = publishedCashMonthForDate(walkMin.date);
+      if (minMonth) {
+        const amount = roundCent(walkMin.balance);
+        if (!lowest
+          || amount < lowest.amount
+          || (amount === lowest.amount && walkMin.date < lowest.date)) {
+          lowest = {
+            date: walkMin.date,
+            amount,
+            month: minMonth.month,
+            trust: trajectoryCashTrust(minMonth.cash.status),
+          };
+        }
+      }
+    }
+    if (lowest) {
+      signals.push({
+        kind: 'lowest-projected-cash',
+        date: lowest.date,
+        month: lowest.month,
+        amount: lowest.amount,
+        trust: lowest.trust,
+      });
+    }
+
+    for (const month of publishedCashMonths) {
+      const inMonth = publishedDaily.filter(point => point.month === month.month);
+      if (!inMonth.length) continue;
+      let trough = inMonth[0];
+      for (const point of inMonth) {
+        if (point.amount < trough.amount
+          || (point.amount === trough.amount && point.date < trough.date)) {
+          trough = point;
+        }
+      }
+      signals.push({
+        kind: 'cash-trough',
+        date: trough.date,
+        month: trough.month,
+        amount: trough.amount,
+        trust: trough.trust,
+      });
+    }
+
+    // Positive → negative even when intermediate published closes are
+    // exactly $0. Zero is the walk's sign identity, not a comfort
+    // threshold. Unpublished gaps fail closed: lastPositive is dropped.
+    const signSeries = [];
+    const openingCash = input.openingCash;
+    if (publishedDaily.length
+      && walkStart
+      && publishedDaily[0].date === walkStart
+      && openingCash != null && isFinite(openingCash)) {
+      signSeries.push({
+        date: walkStart,
+        amount: roundCent(openingCash),
+        month: publishedDaily[0].month,
+        trust: publishedDaily[0].trust,
+        opening: true,
+      });
+    }
+    for (const point of publishedDaily) signSeries.push(point);
+    let lastPositive = null;
+    let prevSign = null;
+    for (const curr of signSeries) {
+      if (prevSign) {
+        const sameDayOpeningToClose = !!prevSign.opening && curr.date === prevSign.date;
+        const consecutive = sameDayOpeningToClose
+          || (!prevSign.opening && diffDays(prevSign.date, curr.date) === 1);
+        if (!consecutive) lastPositive = null;
+      }
+      if (curr.amount > 0) {
+        lastPositive = curr;
+      } else if (curr.amount < 0 && lastPositive) {
+        signals.push({
+          kind: 'cash-sign-change',
+          date: curr.date,
+          month: curr.month,
+          fromAmount: lastPositive.amount,
+          toAmount: curr.amount,
+          trust: (lastPositive.trust === 'estimated' || curr.trust === 'estimated')
+            ? 'estimated' : 'calculated',
+        });
+        lastPositive = null;
+      }
+      prevSign = curr;
+    }
+
+    for (let i = 1; i < publishedCashMonths.length; i++) {
+      const prev = publishedCashMonths[i - 1];
+      const curr = publishedCashMonths[i];
+      if (diffDays(prev.end, curr.start) !== 1) continue;
+      const fromAmount = roundCent(prev.cash.amount);
+      const toAmount = roundCent(curr.cash.amount);
+      if (!(toAmount < fromAmount)) continue;
+      signals.push({
+        kind: 'month-cash-decline',
+        month: curr.month,
+        fromMonth: prev.month,
+        fromAmount,
+        toAmount,
+        delta: roundCent(toAmount - fromAmount),
+        trust: (prev.cash.status === 'estimated' || curr.cash.status === 'estimated')
+          ? 'estimated' : 'calculated',
+      });
+    }
+
+    for (const month of publishedCashMonths) {
+      let inflow = 0;
+      let outflow = 0;
+      for (const event of events) {
+        if (!event) continue;
+        const apply = cashWalkDate(event, walkStart);
+        if (!apply || apply < month.start || apply > month.end) continue;
+        if (event.kind === 'noncash' || event.jointCash === false) continue;
+        const amount = Number(event.amount) || 0;
+        if (!amount) continue;
+        if (amount > 0) inflow += amount;
+        else outflow += -amount;
+      }
+      const days = diffDays(month.start, month.end) + 1;
+      if (days > 0) outflow += days * (dailyVariable + reservedDaily);
+      inflow = roundCent(inflow);
+      outflow = roundCent(outflow);
+      if (!(outflow > inflow)) continue;
+      signals.push({
+        kind: 'outflow-exceeds-inflow',
+        month: month.month,
+        start: month.start,
+        end: month.end,
+        inflow,
+        outflow,
+        net: roundCent(inflow - outflow),
+        trust: trajectoryCashTrust(month.cash.status),
+      });
+    }
+
+    for (const event of events) {
+      if (!event || event.kind !== 'commitment' || event.jointCash === false) continue;
+      const apply = cashWalkDate(event, walkStart);
+      const month = publishedCashMonthForDate(apply);
+      if (!month) continue;
+      const amount = roundCent(Math.abs(Number(event.amount) || 0));
+      if (!(amount > 0)) continue;
+      const day = publishedDaily.find(point => point.date === apply);
+      signals.push({
+        kind: 'dated-commitment',
+        date: apply,
+        month: month.month,
+        id: event.id || null,
+        label: event.label || null,
+        amount,
+        cashAfter: day ? day.amount : null,
+        trust: trajectoryWeakerTrust(
+          trajectoryInputTrust(event.confidence),
+          day ? day.trust : trajectoryCashTrust(month.cash.status)),
+      });
+    }
+
+    for (let i = 1; i < publishedDebtMonths.length; i++) {
+      const prev = publishedDebtMonths[i - 1];
+      const curr = publishedDebtMonths[i];
+      if (diffDays(prev.end, curr.start) !== 1) continue;
+      const fromTotal = trajectoryDebtTotal(prev.debt);
+      const toTotal = trajectoryDebtTotal(curr.debt);
+      const paidDelta = roundCent(trajectoryPaidTotal(curr.debt) - trajectoryPaidTotal(prev.debt));
+      const debtDelta = roundCent(toTotal - fromTotal);
+      if (toTotal > fromTotal) {
+        signals.push({
+          kind: 'debt-increase',
+          month: curr.month,
+          asOf: curr.debt.asOf || curr.end,
+          fromMonth: prev.month,
+          fromAsOf: prev.debt.asOf || prev.end,
+          fromTotal,
+          toTotal,
+          delta: debtDelta,
+          consumerDelta: roundCent(
+            (Number(curr.debt.consumer) || 0) - (Number(prev.debt.consumer) || 0)),
+          securedDelta: roundCent(
+            (Number(curr.debt.secured) || 0) - (Number(prev.debt.secured) || 0)),
+          helocDelta: roundCent(
+            (Number(curr.debt.heloc) || 0) - (Number(prev.debt.heloc) || 0)),
+        });
+      }
+      if (paidDelta > 0 && !(toTotal < fromTotal)) {
+        signals.push({
+          kind: 'debt-not-declining-after-payment',
+          month: curr.month,
+          asOf: curr.debt.asOf || curr.end,
+          fromMonth: prev.month,
+          paidDelta,
+          debtDelta,
+          fromTotal,
+          toTotal,
+        });
+      }
+    }
+
+    for (const crossing of crossings) {
+      if (!crossing || !crossing.date) continue;
+      const month = monthForDate(crossing.date);
+      if (!month || !trajectoryMonthHasPublishedDebt(month)) continue;
+      // A below-limit posted opening plus unknown pending is not a
+      // knowable crossing: pending may already put the account over.
+      // Posted already-over remains knowable regardless of pending.
+      const pendingUnknowable = crossing.pendingUnknown === true
+        || trajectoryDebtPendingUnknown(debts, crossing.id);
+      if (pendingUnknowable && !crossing.alreadyOver) continue;
+      signals.push({
+        kind: 'debt-limit-crossing',
+        date: crossing.date,
+        month: month.month,
+        debtId: crossing.id || null,
+        label: crossing.label || null,
+        limit: crossing.limit != null && isFinite(crossing.limit)
+          ? roundCent(crossing.limit) : null,
+        alreadyOver: !!crossing.alreadyOver,
+      });
+    }
+
+    function signalDate(signal) {
+      if (signal && signal.date) return signal.date;
+      const month = months.find(row => row && row.month === (signal && signal.month));
+      return (month && month.start) || (signal && signal.month) || '';
+    }
+    signals.sort((a, b) => {
+      const dateA = signalDate(a);
+      const dateB = signalDate(b);
+      if (dateA !== dateB) return dateA < dateB ? -1 : 1;
+      const rankA = TRAJECTORY_PRESSURE_KIND_ORDER[a.kind];
+      const rankB = TRAJECTORY_PRESSURE_KIND_ORDER[b.kind];
+      const orderA = rankA == null ? 99 : rankA;
+      const orderB = rankB == null ? 99 : rankB;
+      if (orderA !== orderB) return orderA - orderB;
+      return String(a.month || '').localeCompare(String(b.month || ''));
+    });
+
+    return {
+      status: 'ready',
+      signals,
+      policyThresholds: 'none',
+      ranking: null,
+      recommendation: null,
+      affordability: null,
     };
   }
 
@@ -10933,7 +11305,14 @@
   // ESTIMATED, not verified future pay, not $0, and not expandEvents-
   // carried 2026 post-CPP/EI-max net. After the authorized year the path
   // fails closed. Owner raise/bonus rates are read from the plan; they
-  // are not Forecast constants.
+  // are not Forecast constants. pressure is derived only from that same
+  // walk: mechanical troughs, sign changes, month-over-month cash
+  // declines, outflow-versus-inflow, dated commitments (weaker of
+  // input confidence and cash walk), coupled debt direction, and
+  // incumbent projectDebts crossings when pending exposure is knowable.
+  // It does not invent
+  // a household minimum, breathing-room, safe-to-spend, RYG, risk-score,
+  // or affordability threshold.
   function baselineTrajectory(plan, debts, asOf, opts) {
     opts = opts || {};
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
@@ -11021,15 +11400,16 @@
         return extra;
       })(),
     };
+    let debtWalk = null;
     if (walkOpts.debts.length) {
-      const caps = projectDebts(plan, walkOpts.debts, day, Object.assign({}, walkOpts, {
+      debtWalk = projectDebts(plan, walkOpts.debts, day, Object.assign({}, walkOpts, {
         debtHorizonDays: horizon.days,
         extraAbsorbed: null,
         obligationAbsorbed: null,
       }));
-      if (caps) {
-        walkOpts.extraAbsorbed = caps.extraAbsorbed;
-        walkOpts.obligationAbsorbed = caps.obligationAbsorbed;
+      if (debtWalk) {
+        walkOpts.extraAbsorbed = debtWalk.extraAbsorbed;
+        walkOpts.obligationAbsorbed = debtWalk.obligationAbsorbed;
       }
     }
 
@@ -11189,6 +11569,19 @@
       return row;
     });
 
+    const pressure = baselineTrajectoryPressure({
+      walkStart: day,
+      openingCash: startingCashAmount(plan),
+      min: sim.min,
+      daily: sim.daily,
+      events,
+      months: series,
+      crossings: (debtWalk && debtWalk.crossings) || [],
+      debts,
+      weeklyVariable: weekly,
+      reservedDaily: currentRegimeMonthly(plan) * 12 / 365.25,
+    });
+
     return {
       status: 'ready',
       calculator: 'Forecast',
@@ -11241,6 +11634,7 @@
         },
       ],
       months: series,
+      pressure,
       provenance: {
         calculator: 'Forecast',
         primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts', 'daleEstimatedPayrollDeposits'],
@@ -11248,6 +11642,8 @@
         historicalActuals: 'excluded',
         recommendWeeklyCap: 'not-used',
         knowledgeHorizon: 'incumbent-unmodified',
+        pressure: 'walk-derived',
+        pressurePolicyThresholds: 'none',
         incomeRegimesImplemented: regimeReady,
         incomeRegimesNamedFailClosed: !regimeReady,
         incomeRegimesDollarModel: regimeReady,

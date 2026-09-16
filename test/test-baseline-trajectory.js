@@ -46,6 +46,118 @@ function roundCent(n) {
   return Math.round(n * 100) / 100;
 }
 
+function cashApplyDate(event, start) {
+  if (event && start && event.date < start
+    && event.amount < 0 && event.kind !== 'noncash' && event.jointCash !== false) {
+    return start;
+  }
+  return event && event.date;
+}
+
+// Independent of Forecast.baselineTrajectoryPressure: end-of-day closes
+// from a known opening, dated cash events, and a constant daily drain.
+function independentDailyCloses(opening, start, end, events, weeklyVariable, reservedDaily) {
+  const dailyVariable = (weeklyVariable || 0) / 7;
+  const reserved = reservedDaily || 0;
+  const byDate = new Map();
+  for (const event of events || []) {
+    if (!event) continue;
+    const apply = cashApplyDate(event, start);
+    if (!apply || apply < start || apply > end) continue;
+    if (!byDate.has(apply)) byDate.set(apply, []);
+    byDate.get(apply).push(event);
+  }
+  for (const list of byDate.values()) {
+    list.sort((a, b) => (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
+  }
+  const daily = [];
+  let balance = opening;
+  let min = { date: start, balance };
+  let date = start;
+  while (date <= end) {
+    for (const event of byDate.get(date) || []) {
+      if (event.kind === 'noncash' || event.jointCash === false) continue;
+      balance += Number(event.amount) || 0;
+      if (balance < min.balance) min = { date, balance };
+    }
+    balance -= reserved;
+    balance -= dailyVariable;
+    if (balance < min.balance) min = { date, balance };
+    daily.push({ date, amount: roundCent(balance) });
+    date = addDays(date, 1);
+  }
+  return { daily, min: { date: min.date, amount: roundCent(min.balance) } };
+}
+
+function independentMonthNet(events, start, spanStart, spanEnd, weeklyVariable, reservedDaily) {
+  let inflow = 0;
+  let outflow = 0;
+  for (const event of events || []) {
+    if (!event) continue;
+    const apply = cashApplyDate(event, start);
+    if (!apply || apply < spanStart || apply > spanEnd) continue;
+    if (event.kind === 'noncash' || event.jointCash === false) continue;
+    const amount = Number(event.amount) || 0;
+    if (!amount) continue;
+    if (amount > 0) inflow += amount;
+    else outflow += -amount;
+  }
+  const days = Math.round((Date.parse(spanEnd + 'T00:00:00Z') - Date.parse(spanStart + 'T00:00:00Z')) / 86400000) + 1;
+  if (days > 0) outflow += days * ((weeklyVariable || 0) / 7 + (reservedDaily || 0));
+  return {
+    inflow: roundCent(inflow),
+    outflow: roundCent(outflow),
+    net: roundCent(inflow - outflow),
+  };
+}
+
+function independentCardMonthEnd(opening, rate, paymentDay, paymentAmount, start, end, limit) {
+  let balance = opening;
+  let paid = 0;
+  let firstOver = null;
+  let date = start;
+  while (date <= end) {
+    const daily = balance * (rate / 100) / 365;
+    balance += daily;
+    if (paymentAmount > 0 && Number(date.slice(8, 10)) === paymentDay && balance > 0) {
+      const take = Math.min(paymentAmount, balance);
+      balance -= take;
+      paid += take;
+    }
+    if (firstOver == null && limit != null && balance > limit) firstOver = date;
+    date = addDays(date, 1);
+  }
+  return { balance: roundCent(balance), paid: roundCent(paid), firstOver };
+}
+
+function zeroSpendFixture(extraPlan, extraDebts) {
+  return fixture(Object.assign({
+    startingCash: { amount: 200 },
+    budget: {
+      basis: 'ytd',
+      categories: [
+        {
+          id: 'groceries', label: 'Groceries', class: 'essential',
+          from: ['Groceries'], plannedWeekly: 0,
+        },
+      ],
+    },
+    income: [],
+    obligations: [],
+    bills: [],
+    commitments: [],
+  }, extraPlan || {}), extraDebts);
+}
+
+function signalsOf(traj, kind) {
+  return ((traj && traj.pressure && traj.pressure.signals) || []).filter(s => s.kind === kind);
+}
+
+function hasPolicyLeak(pressure) {
+  const text = JSON.stringify(pressure || {});
+  return /targetBuffer|belowBuffer|riskScore|safeToSpend|breathingRoom|RYG|affordabilityThreshold/.test(text);
+}
+
 // Independent of Forecast: calendar months that intersect [start, end].
 function monthsIntersecting(start, end) {
   const months = [];
@@ -158,6 +270,22 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'year≥2027 blanket is gone');
   ok(/daleEstimatedPayrollDeposits\(/.test(body),
     'trajectory can replace 2027 Dale unavailable with estimated Seaspan deposits');
+  ok(/function baselineTrajectoryPressure\(/.test(src),
+    'pressure is a Forecast-owned helper inside forecast.js');
+  ok(typeof F.baselineTrajectoryPressure !== 'function',
+    'the pressure helper is not a second exported engine');
+  ok(/pressure: trajectoryPressureUnavailable\(/.test(src)
+    && /pressure,/.test(body),
+    'baselineTrajectory publishes pressure on ready and unavailable paths');
+  const pressureBody = src.slice(
+    src.indexOf('function baselineTrajectoryPressure('),
+    src.indexOf('function baselineTrajectory('));
+  ok(/policyThresholds:\s*'none'/.test(pressureBody),
+    'pressure declares that it adds no policy thresholds');
+  ok(!/defaults\.targetBuffer/.test(pressureBody) && !/belowBuffer/.test(pressureBody),
+    'pressure helper does not read targetBuffer or belowBuffer');
+  ok(!/recommend\(/.test(pressureBody) && !/recommendWeekly\(/.test(pressureBody),
+    'pressure helper does not search Forecast.recommend');
   ok(/payrollPlanningAssumptions/.test(src)
     && /readPayrollPlanningAssumptions\(/.test(src),
     'trajectory-local payroll reads plan.payrollPlanningAssumptions');
@@ -411,9 +539,18 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
 {
   ok(F.baselineTrajectory(null, [], START, { periods: periodsFixture() }).status
     === 'unavailable', 'missing plan is unavailable');
+  const missingPlan = F.baselineTrajectory(null, [], START, { periods: periodsFixture() });
+  ok(missingPlan.pressure && missingPlan.pressure.status === 'unavailable'
+    && Array.isArray(missingPlan.pressure.signals)
+    && missingPlan.pressure.signals.length === 0,
+    'unavailable plan fails closed with no invented pressure signals');
   const { plan, debts } = fixture();
   ok(F.baselineTrajectory(plan, debts, START, {}).status === 'unavailable',
     'missing periods/breakdown is unavailable, not a $0 weekly walk');
+  const missingPeriods = F.baselineTrajectory(plan, debts, START, {});
+  ok(missingPeriods.pressure && missingPeriods.pressure.status === 'unavailable'
+    && missingPeriods.pressure.signals.length === 0,
+    'missing breakdown fails closed with no invented pressure signals');
   const talkSrc = [
     read('public/talk.js'),
     read('scripts/talk-hypothetical.js'),
@@ -427,11 +564,15 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
     .split('function forecastAdvice(')[0];
   ok(!/Forecast\.simulate\(|Forecast\.projectDebts\(|Forecast\.expandEvents\(/.test(trajPacketCode),
     'assistant packet trajectory block does not re-walk cash or debt');
+  ok(!/pressure/.test(trajPacketCode),
+    'assistant packet trajectory block does not reprint pressure signals in this outcome');
   const planningSrc = read('public/planning.js');
   ok(/Forecast\.baselineTrajectory\(/.test(planningSrc),
     'Planning page calls Forecast.baselineTrajectory and does not re-walk cash or debt');
   ok(!/Forecast\.simulate\(|Forecast\.projectDebts\(|Forecast\.expandEvents\(/.test(planningSrc),
     'Planning page does not call simulate, projectDebts, or expandEvents for trajectory');
+  ok(!/\.pressure/.test(planningSrc) && !/pressure\.signals/.test(planningSrc),
+    'Planning page does not reprint pressure signals in this outcome');
   ok(trajHasNoRank(ask(plan, debts)),
     'ranking / recommendation / affordability stay null');
 }
@@ -439,7 +580,11 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
 function trajHasNoRank(traj) {
   return traj.recommendation == null && traj.ranking == null && traj.affordability == null
     && traj.provenance.ranking == null && traj.provenance.recommendation == null
-    && traj.provenance.affordability == null;
+    && traj.provenance.affordability == null
+    && (!traj.pressure || (traj.pressure.ranking == null
+      && traj.pressure.recommendation == null
+      && traj.pressure.affordability == null
+      && traj.pressure.policyThresholds === 'none'));
 }
 
 console.log('\n=== 8. Dated split is Dale-specific, not a year blanket ===');
@@ -572,6 +717,23 @@ console.log('\n=== 9. Live household document is unread for cents and unwritten 
     'live December 2026 Dale net stays modelled');
   ok(traj.provenance.incomeRegimesImplemented === true,
     'live provenance sets incomeRegimesImplemented once the estimated 2027 Dale net exists');
+  ok(traj.pressure && traj.pressure.status === 'ready'
+    && Array.isArray(traj.pressure.signals)
+    && traj.provenance.pressure === 'walk-derived'
+    && traj.provenance.pressurePolicyThresholds === 'none',
+    'live trajectory publishes walk-derived pressure with no policy thresholds');
+  ok(!hasPolicyLeak(traj.pressure),
+    'live pressure JSON does not carry buffer / RYG / risk-score / safe-to-spend fields');
+  const unpublishedCash = new Set(traj.months
+    .filter(m => !(m.cash && (m.cash.status === 'calculated' || m.cash.status === 'estimated')
+      && m.cash.amount != null))
+    .map(m => m.month));
+  ok(traj.pressure.signals.every(s => {
+    if (!s.month) return true;
+    if (s.kind === 'debt-increase' || s.kind === 'debt-not-declining-after-payment'
+      || s.kind === 'debt-limit-crossing') return true;
+    return !unpublishedCash.has(s.month);
+  }), 'live cash pressure signals omit months whose cash series is unpublished');
   const liveJan = traj.months.find(m => m.month === '2027-01');
   const carriedJan = F.expandEvents(live.plan, '2027-01-01', '2027-01-31')
     .filter(e => e.kind === 'income' && e.id === 'payroll')
@@ -656,6 +818,301 @@ console.log('\n=== 10. Assistant packet reprints the Planning trajectory surface
   ok(Assistant.looksSanitized(packet),
     'trajectory projection stays within assistant sanitization rules');
   ok(hashFile(DATA) === liveHash, 'packet trajectory test did not write data.json');
+}
+
+console.log('\n=== 11. Objective pressure signals from the existing walk ===');
+{
+  const cashKinds = new Set([
+    'lowest-projected-cash', 'cash-trough', 'cash-sign-change',
+    'month-cash-decline', 'outflow-exceeds-inflow', 'dated-commitment',
+  ]);
+
+  const drain = zeroSpendFixture({
+    startingCash: { amount: 200 },
+    bills: [{
+      id: 'once-bill', label: 'Synthetic once bill',
+      frequency: 'once', date: '2026-06-20', amount: 250, confidence: 'confirmed',
+    }],
+  }, []);
+  const drainTraj = ask(drain.plan, drain.debts);
+  ok(drainTraj.status === 'ready' && drainTraj.pressure.status === 'ready',
+    'zero-spend drain fixture publishes ready pressure');
+  ok(near(drainTraj.weeklyVariable.amount, 0),
+    'drain fixture planned weeklyVariable is independently $0');
+  const drainHorizonEnd = drainTraj.months
+    .filter(m => m.cash && m.cash.status === 'calculated' && m.cash.amount != null)
+    .reduce((end, m) => (!end || m.end > end) ? m.end : end, null);
+  const drainEvents = [
+    { date: '2026-06-20', amount: -250, kind: 'bill', id: 'once-bill', label: 'Synthetic once bill' },
+  ];
+  const drainWalk = independentDailyCloses(200, START, drainHorizonEnd, drainEvents, 0, 0);
+  ok(near(drainWalk.min.amount, -50) && drainWalk.min.date === '2026-06-20',
+    'independent walk trough is −$50 on 2026-06-20',
+    `${drainWalk.min.amount} on ${drainWalk.min.date}`);
+  const juneClose = drainWalk.daily.find(d => d.date === '2026-06-30');
+  const julyClose = drainWalk.daily.find(d => d.date === '2026-07-31');
+  ok(juneClose && near(juneClose.amount, -50) && julyClose && near(julyClose.amount, -50),
+    'independent June and July closes stay at −$50 with no further drain');
+  const lowest = signalsOf(drainTraj, 'lowest-projected-cash');
+  ok(lowest.length === 1 && lowest[0].date === '2026-06-20' && near(lowest[0].amount, -50),
+    'Forecast lowest-projected-cash matches the independent walk min',
+    JSON.stringify(lowest[0]));
+  const juneTrough = signalsOf(drainTraj, 'cash-trough').find(s => s.month === '2026-06');
+  ok(juneTrough && juneTrough.date === '2026-06-20' && near(juneTrough.amount, -50),
+    'June cash-trough is the independent daily min in that month');
+  const sign = signalsOf(drainTraj, 'cash-sign-change');
+  ok(sign.length === 1 && sign[0].date === '2026-06-20'
+    && near(sign[0].fromAmount, 200) && near(sign[0].toAmount, -50),
+    'cash-sign-change is the independent positive-to-negative step on 2026-06-20');
+
+  const throughZero = zeroSpendFixture({
+    startingCash: { amount: 1 },
+    bills: [
+      {
+        id: 'to-zero', label: 'Synthetic to-zero bill',
+        frequency: 'once', date: '2026-06-16', amount: 1, confidence: 'confirmed',
+      },
+      {
+        id: 'through-zero', label: 'Synthetic through-zero bill',
+        frequency: 'once', date: '2026-06-18', amount: 1, confidence: 'confirmed',
+      },
+    ],
+  }, []);
+  const throughZeroTraj = ask(throughZero.plan, throughZero.debts);
+  const throughZeroEvents = [
+    { date: '2026-06-16', amount: -1, kind: 'bill', id: 'to-zero' },
+    { date: '2026-06-18', amount: -1, kind: 'bill', id: 'through-zero' },
+  ];
+  const throughZeroWalk = independentDailyCloses(1, START, '2026-06-18', throughZeroEvents, 0, 0);
+  const d15 = throughZeroWalk.daily.find(d => d.date === '2026-06-15');
+  const d16 = throughZeroWalk.daily.find(d => d.date === '2026-06-16');
+  const d17 = throughZeroWalk.daily.find(d => d.date === '2026-06-17');
+  const d18 = throughZeroWalk.daily.find(d => d.date === '2026-06-18');
+  ok(d15 && near(d15.amount, 1) && d16 && near(d16.amount, 0)
+    && d17 && near(d17.amount, 0) && d18 && near(d18.amount, -1),
+    'independent walk is +$1 → $0 → $0 → −$1',
+    [d15 && d15.amount, d16 && d16.amount, d17 && d17.amount, d18 && d18.amount].join(' → '));
+  const throughZeroSign = signalsOf(throughZeroTraj, 'cash-sign-change');
+  ok(throughZeroSign.length === 1 && throughZeroSign[0].date === '2026-06-18'
+    && near(throughZeroSign[0].fromAmount, 1) && near(throughZeroSign[0].toAmount, -1),
+    'cash-sign-change fires on the first negative day after a walk through zero',
+    JSON.stringify(throughZeroSign[0]));
+  ok(!throughZeroSign.some(s => s.date === '2026-06-16' || s.date === '2026-06-17'),
+    'exact $0 closes are not themselves a positive-to-negative signal');
+
+  const recoverZero = zeroSpendFixture({
+    startingCash: { amount: 1 },
+    bills: [{
+      id: 'to-zero-only', label: 'Synthetic to-zero-only bill',
+      frequency: 'once', date: '2026-06-16', amount: 1, confidence: 'confirmed',
+    }],
+    income: [{
+      id: 'recover', label: 'Synthetic recovery inflow',
+      frequency: 'once', date: '2026-06-17', amount: 2, confidence: 'confirmed',
+    }],
+  }, []);
+  const recoverTraj = ask(recoverZero.plan, recoverZero.debts);
+  const recoverEvents = [
+    { date: '2026-06-16', amount: -1, kind: 'bill', id: 'to-zero-only' },
+    { date: '2026-06-17', amount: 2, kind: 'income', id: 'recover' },
+  ];
+  const recoverWalk = independentDailyCloses(1, START, '2026-06-17', recoverEvents, 0, 0);
+  const r16 = recoverWalk.daily.find(d => d.date === '2026-06-16');
+  const r17 = recoverWalk.daily.find(d => d.date === '2026-06-17');
+  ok(r16 && near(r16.amount, 0) && r17 && near(r17.amount, 2),
+    'independent recover walk is +$1 → $0 → +$2');
+  ok(signalsOf(recoverTraj, 'cash-sign-change').length === 0,
+    'a walk that touches $0 then recovers positive is not a cash-sign-change');
+  const juneSpan = drainTraj.months.find(m => m.month === '2026-06');
+  const juneNet = independentMonthNet(drainEvents, START, juneSpan.start, juneSpan.end, 0, 0);
+  ok(juneNet.outflow > juneNet.inflow && near(juneNet.outflow, 250) && near(juneNet.inflow, 0),
+    'independent June outflows exceed inflows by the $250 bill');
+  const juneOut = signalsOf(drainTraj, 'outflow-exceeds-inflow').find(s => s.month === '2026-06');
+  ok(juneOut && near(juneOut.inflow, juneNet.inflow) && near(juneOut.outflow, juneNet.outflow)
+    && near(juneOut.net, juneNet.net),
+    'June outflow-exceeds-inflow matches the independent month net');
+  ok(!signalsOf(drainTraj, 'month-cash-decline').some(s => s.fromMonth === '2026-06' && s.month === '2026-07'),
+    'flat −$50 June→July is not a month-cash-decline');
+  ok(!hasPolicyLeak(drainTraj.pressure) && trajHasNoRank(drainTraj),
+    'drain pressure carries no ranking, affordability, or policy-threshold leak');
+
+  const withheld = fixture();
+  const withheldTraj = ask(withheld.plan, withheld.debts);
+  ok(withheldTraj.months.some(m => m.month >= '2027-01' && m.cash && m.cash.status === 'unavailable'),
+    'Dale-payroll fixture withholds 2027 cash rather than walking carried 2026 net');
+  ok(withheldTraj.pressure.signals.filter(s => cashKinds.has(s.kind))
+    .every(s => s.month && s.month < '2027-01'),
+    'withheld 2027 cash months invent no cash pressure signals');
+
+  const openingLow = zeroSpendFixture({
+    startingCash: { amount: 80 },
+    income: [{
+      id: 'once-in', label: 'Synthetic inflow',
+      frequency: 'once', date: START, amount: 500, confidence: 'confirmed',
+    }],
+  }, []);
+  const openingTraj = ask(openingLow.plan, openingLow.debts);
+  const openingEvents = [
+    { date: START, amount: 500, kind: 'income', id: 'once-in', label: 'Synthetic inflow' },
+  ];
+  const openingWalk = independentDailyCloses(80, START, START, openingEvents, 0, 0);
+  ok(near(openingWalk.min.amount, 80) && near(openingWalk.daily[0].amount, 580),
+    'independent as-of walk keeps the $80 opening as the min and closes at $580');
+  const openingLowest = signalsOf(openingTraj, 'lowest-projected-cash')[0];
+  ok(openingLowest && openingLowest.date === START && near(openingLowest.amount, 80),
+    'lowest-projected-cash reports the independent opening min, not the post-income close');
+
+  const decline = zeroSpendFixture({
+    startingCash: { amount: 1000 },
+    bills: [{
+      id: 'monthly-bill', label: 'Synthetic monthly bill',
+      frequency: 'monthly', day: 20, amount: 100, confidence: 'confirmed',
+    }],
+  }, []);
+  const declineTraj = ask(decline.plan, decline.debts);
+  const declineEvents = F.expandEvents(decline.plan, START, '2026-07-31')
+    .filter(e => e.kind === 'bill');
+  ok(declineEvents.some(e => e.date === '2026-06-20' && e.amount === -100)
+    && declineEvents.some(e => e.date === '2026-07-20' && e.amount === -100),
+    'independent expandEvents emits the $100 bill on 20 Jun and 20 Jul');
+  const declineWalk = independentDailyCloses(1000, START, '2026-07-31', declineEvents, 0, 0);
+  const junEnd = declineWalk.daily.find(d => d.date === '2026-06-30');
+  const julEnd = declineWalk.daily.find(d => d.date === '2026-07-31');
+  ok(junEnd && near(junEnd.amount, 900) && julEnd && near(julEnd.amount, 800),
+    'independent month-end cash is $900 then $800',
+    `${junEnd && junEnd.amount} → ${julEnd && julEnd.amount}`);
+  const mom = signalsOf(declineTraj, 'month-cash-decline')
+    .find(s => s.fromMonth === '2026-06' && s.month === '2026-07');
+  ok(mom && near(mom.fromAmount, 900) && near(mom.toAmount, 800) && near(mom.delta, -100),
+    'month-cash-decline is the independent June→July $100 drop, not a comfort threshold');
+
+  const commit = zeroSpendFixture({
+    startingCash: { amount: 5000 },
+    commitments: [{
+      id: 'known-cost', label: 'Synthetic dated commitment',
+      date: '2026-08-15', amount: 800, flexibility: 'required', confidence: 'confirmed',
+    }],
+  }, []);
+  const commitTraj = ask(commit.plan, commit.debts);
+  const commitEvents = F.expandEvents(commit.plan, START, '2026-08-15')
+    .filter(e => e.kind === 'commitment');
+  ok(commitEvents.length === 1 && commitEvents[0].date === '2026-08-15'
+    && commitEvents[0].amount === -800,
+    'independent expandEvents emits the $800 dated commitment on 2026-08-15');
+  const commitWalk = independentDailyCloses(5000, START, '2026-08-15', commitEvents, 0, 0);
+  const commitDay = commitWalk.daily.find(d => d.date === '2026-08-15');
+  ok(commitDay && near(commitDay.amount, 4200),
+    'independent cash after the commitment is $4,200');
+  const dated = signalsOf(commitTraj, 'dated-commitment');
+  ok(dated.length === 1 && dated[0].id === 'known-cost' && dated[0].date === '2026-08-15'
+    && near(dated[0].amount, 800) && near(dated[0].cashAfter, 4200)
+    && dated[0].trust === 'calculated',
+    'dated-commitment matches the independent event and post-event cash');
+
+  const estCommit = zeroSpendFixture({
+    startingCash: { amount: 5000 },
+    commitments: [{
+      id: 'est-cost', label: 'Synthetic estimated commitment',
+      date: '2026-08-15', amount: 800, flexibility: 'required', confidence: 'estimated',
+    }],
+  }, []);
+  const estCommitTraj = ask(estCommit.plan, estCommit.debts);
+  const estCommitEvents = F.expandEvents(estCommit.plan, START, '2026-08-15')
+    .filter(e => e.kind === 'commitment');
+  ok(estCommitEvents.length === 1 && estCommitEvents[0].date === '2026-08-15'
+    && estCommitEvents[0].amount === -800
+    && estCommitEvents[0].confidence === 'estimated',
+    'independent expandEvents retains estimated confidence on the $800 commitment');
+  const estCommitWalk = independentDailyCloses(5000, START, '2026-08-15', estCommitEvents, 0, 0);
+  const estCommitDay = estCommitWalk.daily.find(d => d.date === '2026-08-15');
+  ok(estCommitDay && near(estCommitDay.amount, 4200),
+    'independent cash after the estimated commitment is still $4,200');
+  const estDated = signalsOf(estCommitTraj, 'dated-commitment');
+  ok(estDated.length === 1 && estDated[0].id === 'est-cost' && estDated[0].date === '2026-08-15'
+    && near(estDated[0].amount, 800) && near(estDated[0].cashAfter, 4200)
+    && estDated[0].trust === 'estimated',
+    'dated-commitment keeps the weaker estimated input trust on a calculated cash walk');
+
+  const rising = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+    obligations: [{
+      id: 'card-min', debtId: 'card', effect: 'payment',
+      label: 'Card minimum', frequency: 'monthly', day: 20,
+      amount: 10, confidence: 'confirmed',
+    }],
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 1000, pending: 0, rate: 29.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 5000,
+  }]);
+  const risingTraj = ask(rising.plan, rising.debts);
+  const junDebt = independentCardMonthEnd(1000, 29.99, 20, 10, START, '2026-06-30');
+  const julDebt = independentCardMonthEnd(1000, 29.99, 20, 10, START, '2026-07-31');
+  ok(julDebt.balance > junDebt.balance && julDebt.paid > junDebt.paid,
+    'independent card walk rises June→July even though paid increased',
+    `${junDebt.balance} → ${julDebt.balance}; paid ${junDebt.paid} → ${julDebt.paid}`);
+  const rise = signalsOf(risingTraj, 'debt-increase')
+    .find(s => s.fromMonth === '2026-06' && s.month === '2026-07');
+  ok(rise && near(rise.fromTotal, junDebt.balance) && near(rise.toTotal, julDebt.balance)
+    && rise.delta > 0,
+    'debt-increase matches the independent June→July card balance rise');
+  const stuck = signalsOf(risingTraj, 'debt-not-declining-after-payment')
+    .find(s => s.fromMonth === '2026-06' && s.month === '2026-07');
+  ok(stuck && near(stuck.paidDelta, julDebt.paid - junDebt.paid)
+    && near(stuck.fromTotal, junDebt.balance) && near(stuck.toTotal, julDebt.balance)
+    && !(stuck.toTotal < stuck.fromTotal),
+    'debt-not-declining-after-payment is the independent paid-up / balance-not-down fact');
+
+  const crossing = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 100, pending: 0, rate: 19.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 100,
+  }]);
+  const crossingTraj = ask(crossing.plan, crossing.debts);
+  const crossWalk = independentCardMonthEnd(100, 19.99, 0, 0, START, addDays(START, 5), 100);
+  ok(crossWalk.firstOver === START,
+    'independent first day of interest is the limit-crossing date',
+    String(crossWalk.firstOver));
+  const crossed = signalsOf(crossingTraj, 'debt-limit-crossing');
+  ok(crossed.length === 1 && crossed[0].debtId === 'card' && crossed[0].date === START
+    && near(crossed[0].limit, 100) && crossed[0].alreadyOver === false,
+    'debt-limit-crossing is the incumbent projectDebts crossing on the independent date');
+
+  const already = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 150, pending: 0, rate: 19.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 100,
+  }]);
+  const alreadyTraj = ask(already.plan, already.debts);
+  const alreadySignal = signalsOf(alreadyTraj, 'debt-limit-crossing')[0];
+  ok(alreadySignal && alreadySignal.alreadyOver === true && alreadySignal.date === START,
+    'an opening already over the limit is reported as alreadyOver, not a comfort score');
+
+  const unknownPending = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 99, pendingUnknown: true, rate: 19.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 100,
+  }]);
+  const unknownPendingTraj = ask(unknownPending.plan, unknownPending.debts);
+  const unknownPostedWalk = independentCardMonthEnd(
+    99, 19.99, 0, 0, START, addDays(START, 90), 100);
+  ok(99 < 100,
+    'independent posted opening $99 is below the $100 limit');
+  ok(unknownPostedWalk.firstOver != null,
+    'independent posted-only walk would invent a future crossing',
+    String(unknownPostedWalk.firstOver));
+  ok((99 + 2) > 100,
+    'independent unknown pending of $2 or more would already be over at opening');
+  const unknownCrossed = signalsOf(unknownPendingTraj, 'debt-limit-crossing');
+  ok(unknownCrossed.length === 0,
+    'debt-limit-crossing is withheld while pending exposure is unknown',
+    JSON.stringify(unknownCrossed));
 }
 
 console.log('\n' + '═'.repeat(60));
