@@ -158,8 +158,11 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'year≥2027 blanket is gone');
   ok(/incomeRegimesImplemented:\s*false/.test(body),
     'incomeRegimesImplemented stays false until a 2027 Dale net model exists');
-  ok(/appliedDollars:\s*false/.test(body),
-    'owner 4% / Amanda-flat notes are constraint notes, not applied dollars');
+  ok(!/ownerPlanningNotes/.test(body) && !/appliedDollars/.test(body),
+    'runtime trajectory does not hard-code owner planning notes');
+  ok(!/4% raise/.test(body) && !/Amanda salary unchanged/.test(body)
+    && !/calendar 2027 Seaspan/.test(body),
+    'owner 4% / Amanda-flat / effective-date facts are omitted from runtime output');
   const expandBody = src.slice(src.indexOf('function expandEvents('),
     src.indexOf('\n  function simulate('));
   ok(!/2027-01-01/.test(expandBody) && !/year\s*>=\s*2027/.test(expandBody),
@@ -298,16 +301,14 @@ console.log('\n=== 4. Named dated split — 2026 modelled, 2027 Dale unavailable
     '2027 payroll/bonus regime is named unavailable from 2027-01-01');
   ok(datedRegime && datedRegime.status === 'unavailable',
     'dated 2027 income regimes stay unavailable rather than dollar-implemented');
-  const notes = datedRegime && datedRegime.ownerPlanningNotes;
-  ok(notes && notes.nature === 'constraint-notes' && notes.appliedDollars === false,
-    'owner planning notes are constraint notes and not applied dollars');
-  ok(notes && /4%/.test(notes.daleSeaspanSalary)
-    && /Dale\/Seaspan salary only/.test(notes.daleSeaspanSalary),
-    '4% raise is recorded for calendar 2027 Dale/Seaspan salary only');
-  ok(notes && notes.amandaSalary === 'unchanged',
-    'Amanda salary unchanged is recorded as a constraint note');
-  ok(notes && notes.defaultEffectiveDate === 'calendar 2027 Seaspan',
-    'default effective date is calendar 2027 Seaspan');
+  ok(!datedRegime.ownerPlanningNotes,
+    'dated-regime marker omits owner planning notes until canonical plan data contains them');
+  ok(traj.incomeRegimes.every(r => !r.ownerPlanningNotes),
+    'no incomeRegime row publishes hard-coded owner planning notes');
+  ok(!/4%/.test(JSON.stringify(traj.incomeRegimes))
+    && !/Amanda salary unchanged/.test(JSON.stringify(traj))
+    && !/calendar 2027 Seaspan/.test(JSON.stringify(traj)),
+    'published trajectory does not carry 4% / Amanda-flat / calendar-2027 effective-date facts');
   ok(traj.provenance.incomeRegimesImplemented === false,
     'incomeRegimesImplemented remains false — named/fail-closed, not dollar-implemented');
   ok(traj.provenance.incomeRegimesNamedFailClosed === true
@@ -319,8 +320,8 @@ console.log('\n=== 4. Named dated split — 2026 modelled, 2027 Dale unavailable
   const trajBody = read('public/forecast.js').slice(
     read('public/forecast.js').indexOf('function baselineTrajectory('),
     read('public/forecast.js').indexOf('function hypotheticalExtraPayment('));
-  ok(!/\*\s*1\.04|\*\s*0\.04/.test(trajBody),
-    'trajectory does not multiply a 4% raise into a net');
+  ok(!/\*\s*1\.04|\*\s*0\.04/.test(trajBody) && !/ownerPlanningNotes/.test(trajBody),
+    'trajectory does not multiply a raise into a net or store owner planning notes');
 }
 
 console.log('\n=== 5. Coupled debts — independent month-end walk ===');
@@ -441,7 +442,7 @@ console.log('\n=== 8. Dated split is Dale-specific, not a year blanket ===');
   ok(amandaJan.cash.status === 'calculated' && typeof amandaJan.cash.amount === 'number',
     'Amanda-only 2027 cash stays calculated because no unmodelled Dale net entered the walk');
 
-  const bonusPlan = fixture({
+  const otherBonusPlan = fixture({
     income: [
       {
         id: 'amandaSalary15', label: 'Amanda salary — Tennis BC — 15th',
@@ -453,19 +454,74 @@ console.log('\n=== 8. Dated split is Dale-specific, not a year blanket ===');
       },
     ],
   });
-  const bonusEvents = F.expandEvents(bonusPlan.plan, '2027-02-01', '2027-02-28')
+  const otherBonusEvents = F.expandEvents(otherBonusPlan.plan, '2027-02-01', '2027-02-28')
+    .filter(e => e.kind === 'income');
+  const otherBonusSum = otherBonusEvents.reduce((s, e) => s + e.amount, 0);
+  ok(otherBonusEvents.some(e => e.id === 'bonus') && otherBonusSum === 11999,
+    'expandEvents would still emit a 2027 other bonus if asked', String(otherBonusSum));
+  const otherBonusTraj = ask(otherBonusPlan.plan, otherBonusPlan.debts);
+  const otherFeb = otherBonusTraj.months.find(m => m.month === '2027-02');
+  ok(otherFeb && otherFeb.income.status !== 'unavailable'
+    && near(otherFeb.income.amount, otherBonusSum),
+    'Amanda/other 2027 bonus stays modelled — bonus is not Dale-owned without Seaspan signals',
+    `${otherFeb && otherFeb.income.status} ${otherFeb && otherFeb.income.amount}`);
+  ok(otherFeb.cash.status === 'calculated' && typeof otherFeb.cash.amount === 'number',
+    'cash stays calculated when no Dale income is withheld');
+
+  const amandaBonusPlan = fixture({
+    income: [
+      {
+        id: 'amandaSalary15', label: 'Amanda salary — Tennis BC — 15th',
+        frequency: 'monthly', day: 15, amount: 2000, confidence: 'confirmed',
+      },
+      {
+        id: 'amandaBonus', label: 'Amanda bonus — Tennis BC',
+        frequency: 'once', date: '2027-02-25', amount: 500, confidence: 'confirmed',
+      },
+    ],
+  });
+  const amandaBonusTraj = ask(amandaBonusPlan.plan, amandaBonusPlan.debts);
+  const amandaFeb = amandaBonusTraj.months.find(m => m.month === '2027-02');
+  const amandaBonusSum = F.expandEvents(amandaBonusPlan.plan, '2027-02-01', '2027-02-28')
+    .filter(e => e.kind === 'income')
+    .reduce((s, e) => s + e.amount, 0);
+  ok(amandaFeb && amandaFeb.income.status === 'calculated'
+    && near(amandaFeb.income.amount, amandaBonusSum) && amandaBonusSum === 2500,
+    'Amanda-labelled 2027 bonus stays modelled',
+    `${amandaFeb && amandaFeb.income.status} ${amandaFeb && amandaFeb.income.amount}`);
+  ok(amandaFeb.cash.status === 'calculated',
+    'Amanda bonus does not make 2027 cash unavailable');
+
+  const daleBonusPlan = fixture({
+    income: [
+      {
+        id: 'amandaSalary15', label: 'Amanda salary — Tennis BC — 15th',
+        frequency: 'monthly', day: 15, amount: 2000, confidence: 'confirmed',
+      },
+      {
+        id: 'bonus', label: 'Seaspan bonus',
+        frequency: 'once', date: '2027-02-25', amount: 9999, confidence: 'estimated',
+      },
+    ],
+  });
+  const daleBonusEvents = F.expandEvents(daleBonusPlan.plan, '2027-02-01', '2027-02-28')
     .filter(e => e.kind === 'income' && e.id === 'bonus');
-  const bonusSum = bonusEvents.reduce((s, e) => s + e.amount, 0);
-  ok(bonusEvents.length === 1 && bonusSum === 9999,
-    'expandEvents would still emit a 2027 bonus if asked', String(bonusSum));
-  const bonusTraj = ask(bonusPlan.plan, bonusPlan.debts);
-  const feb = bonusTraj.months.find(m => m.month === '2027-02');
-  ok(feb && feb.income.status === 'unavailable',
-    '2027 bonus month is unavailable rather than publishing the expandEvents bonus');
-  ok(feb.income.amount !== 9999 && feb.income.amount !== bonusSum,
-    'published February 2027 income is not the expandEvents bonus sum');
-  ok(feb.cash.status === 'unavailable',
-    'cash after an unmodelled 2027 bonus is unavailable, not a carried 2026 net');
+  const daleBonusSum = daleBonusEvents.reduce((s, e) => s + e.amount, 0);
+  ok(daleBonusEvents.length === 1 && daleBonusSum === 9999,
+    'expandEvents would still emit a 2027 Dale/Seaspan bonus if asked', String(daleBonusSum));
+  const daleBonusTraj = ask(daleBonusPlan.plan, daleBonusPlan.debts);
+  const daleJan = daleBonusTraj.months.find(m => m.month === '2027-01');
+  const daleFeb = daleBonusTraj.months.find(m => m.month === '2027-02');
+  ok(daleJan && daleJan.income.status === 'calculated' && daleJan.income.amount === 2000
+    && daleJan.cash.status === 'calculated',
+    'January 2027 stays modelled before the Dale bonus date — cash unavailable only when Dale income is withheld');
+  ok(daleFeb && daleFeb.income.status === 'unavailable',
+    'Dale/Seaspan 2027 bonus month is unavailable rather than publishing the expandEvents bonus');
+  ok(daleFeb.income.amount !== 9999 && daleFeb.income.amount !== daleBonusSum
+    && daleFeb.income.amount !== 11999,
+    'published February 2027 income is not the expandEvents Dale bonus sum');
+  ok(daleFeb.cash.status === 'unavailable',
+    'cash after withheld Dale/Seaspan bonus is unavailable, not a carried 2026 net');
 }
 
 console.log('\n=== 9. Live household document is unread for cents and unwritten ===');

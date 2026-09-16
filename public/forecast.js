@@ -10564,10 +10564,7 @@
     }
     function isDalePayrollOrBonusIncome(event) {
       if (!event || event.kind !== 'income') return false;
-      const stream = streamForIncomeEvent(event);
-      if (isDalePayrollStream(stream)) return true;
-      if (!stream || isAmandaSalaryStream(stream)) return false;
-      return /bonus/i.test(`${stream.id || ''} ${stream.label || ''}`);
+      return isDalePayrollStream(streamForIncomeEvent(event));
     }
     function dalePayrollUnmodelledOn(date) {
       return !!(date && date >= DALE_PAYROLL_UNAVAILABLE_FROM);
@@ -10758,14 +10755,7 @@
           id: '2027-dated-income-regimes',
           from: '2027-01-01',
           status: 'unavailable',
-          reason: 'Dated 2027 income regimes are named and fail-closed. No 2027 Dale net is modelled and no raise dollars are applied.',
-          ownerPlanningNotes: {
-            nature: 'constraint-notes',
-            appliedDollars: false,
-            daleSeaspanSalary: '4% raise, calendar 2027 Dale/Seaspan salary only',
-            amandaSalary: 'unchanged',
-            defaultEffectiveDate: 'calendar 2027 Seaspan',
-          },
+          reason: 'Dated 2027 income regimes are named and fail-closed. No 2027 Dale net is modelled.',
         },
       ],
       months: series,
