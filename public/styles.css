@@ -1562,6 +1562,11 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-facts small { display:block; margin-top:2px; color:var(--muted); font-size:.7rem; line-height:1.25; }
 .planning-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:10px; }
 .planning-meta > span:first-child { margin-right:auto; color:var(--text-secondary); font-size:.82rem; }
+.planning-trajectory { margin:12px 0 0; }
+.planning-trajectory-table td { vertical-align:top; }
+.planning-trajectory-reason { display:block; margin-top:4px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; }
+.planning-trajectory-table [data-trajectory-debt] { margin-bottom:4px; }
+.planning-trajectory-table [data-trajectory-debt] b { font-variant-numeric:tabular-nums; }
 @media (min-width:641px) {
   .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }

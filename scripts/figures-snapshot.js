@@ -377,6 +377,42 @@ if (advice.operatingPlanUnavailable === true) {
   }
 }
 
+/* ---- Planning trajectory: Forecast.baselineTrajectory — same opts as planning.js */
+const trajectory = F.baselineTrajectory(plan, data.debts, asOf, {
+  periods,
+  extraFacilities: data.revolvingExtra,
+});
+put('planning.trajectory.status', trajectory.status);
+if (trajectory.status === 'ready') {
+  if (trajectory.asOf) put('planning.trajectory.asOf', trajectory.asOf);
+  if (trajectory.horizon && trajectory.horizon.end) {
+    put('planning.trajectory.horizonEnd', trajectory.horizon.end);
+  }
+  if (trajectory.weeklyVariable && trajectory.weeklyVariable.amount != null) {
+    put('planning.trajectory.weeklyVariable', trajectory.weeklyVariable.amount);
+  }
+  for (const month of trajectory.months || []) {
+    if (!month || !month.month) continue;
+    const p = `planning.trajectory.${month.month}`;
+    const income = month.income || {};
+    const cash = month.cash || {};
+    const debt = month.debt || {};
+    put(`${p}.income.status`, income.status);
+    if (income.amount != null) put(`${p}.income.amount`, income.amount);
+    if (income.reason) put(`${p}.income.reason`, income.reason);
+    put(`${p}.cash.status`, cash.status);
+    if (cash.amount != null) put(`${p}.cash.amount`, cash.amount);
+    if (cash.reason) put(`${p}.cash.reason`, cash.reason);
+    put(`${p}.debt.status`, debt.status);
+    if (debt.consumer != null) put(`${p}.debt.consumer`, debt.consumer);
+    if (debt.secured != null) put(`${p}.debt.secured`, debt.secured);
+    if (debt.heloc != null) put(`${p}.debt.heloc`, debt.heloc);
+    if (debt.reason) put(`${p}.debt.reason`, debt.reason);
+  }
+} else if (trajectory.reason) {
+  put('planning.trajectory.reason', trajectory.reason);
+}
+
 return out;
 }
 
