@@ -10627,11 +10627,452 @@
     ), 0));
   }
 
+  const TRAJECTORY_DRIVER_CLASS_ORDER = {
+    'income-timing': 0,
+    'bonus-timing': 1,
+    'household-budget': 2,
+    'recurring-bills': 3,
+    'debt-payment': 4,
+    'debt-interest': 5,
+    'dated-commitment': 6,
+    'mortgage-or-major-obligation': 7,
+  };
+
+  function trajectoryAttributionUnavailable(reason, change) {
+    return {
+      status: 'unavailable',
+      reason: reason || 'Walk-derived drivers could not be established.',
+      change: change == null || !isFinite(change) ? null : roundCent(change),
+      drivers: [],
+      facts: [],
+    };
+  }
+
+  function trajectoryIsBonusIncome(event) {
+    if (!event || event.kind !== 'income') return false;
+    if (event.id === 'payrollBonus') return true;
+    return /bonus/i.test(`${event.id || ''} ${event.label || ''}`);
+  }
+
+  function trajectoryIsMortgageObligation(event) {
+    if (!event || event.kind !== 'obligation') return false;
+    if (event.debtId === 'mortgage' || event.id === 'mortgage') return true;
+    return /mortgage/i.test(`${event.id || ''} ${event.label || ''}`);
+  }
+
+  // Closed candidate classes only. An event the walk applied that does
+  // not map onto one of them is unmapped: attribution fails closed
+  // rather than inventing an "other" cause.
+  function trajectoryCashDriverClass(event) {
+    if (!event) return { skip: true, unmapped: false };
+    if (event.kind === 'noncash' || event.jointCash === false) {
+      return { skip: true, unmapped: false };
+    }
+    const amount = Number(event.amount) || 0;
+    if (!amount) return { skip: true, unmapped: false };
+    if (event.kind === 'income') {
+      return {
+        skip: false,
+        unmapped: false,
+        class: trajectoryIsBonusIncome(event) ? 'bonus-timing' : 'income-timing',
+      };
+    }
+    if (event.kind === 'bill') {
+      return { skip: false, unmapped: false, class: 'recurring-bills' };
+    }
+    if (event.kind === 'commitment') {
+      return { skip: false, unmapped: false, class: 'dated-commitment' };
+    }
+    if (event.kind === 'obligation') {
+      return {
+        skip: false,
+        unmapped: false,
+        class: trajectoryIsMortgageObligation(event)
+          ? 'mortgage-or-major-obligation'
+          : 'debt-payment',
+      };
+    }
+    if (event.kind === 'extra' || event.kind === 'planned-debt') {
+      return { skip: false, unmapped: false, class: 'debt-payment' };
+    }
+    return { skip: false, unmapped: true, class: null };
+  }
+
+  function trajectorySortDrivers(drivers) {
+    return (drivers || []).slice().sort((a, b) => {
+      const rankA = TRAJECTORY_DRIVER_CLASS_ORDER[a && a.class];
+      const rankB = TRAJECTORY_DRIVER_CLASS_ORDER[b && b.class];
+      const orderA = rankA == null ? 99 : rankA;
+      const orderB = rankB == null ? 99 : rankB;
+      if (orderA !== orderB) return orderA - orderB;
+      return String((a && a.class) || '').localeCompare(String((b && b.class) || ''));
+    });
+  }
+
+  function trajectoryReconcileDrivers(drivers, change) {
+    const rows = trajectorySortDrivers(drivers);
+    const target = roundCent(change);
+    const sum = roundCent(rows.reduce((s, row) => s + (Number(row && row.amount) || 0), 0));
+    if (sum === target) return rows;
+    const gap = roundCent(target - sum);
+    if (Math.abs(gap) > 0.01) return null;
+    const idx = rows.findIndex(row => row && row.class === 'household-budget');
+    if (idx < 0) return null;
+    rows[idx] = Object.assign({}, rows[idx], {
+      amount: roundCent((Number(rows[idx].amount) || 0) + gap),
+    });
+    const next = roundCent(rows.reduce((s, row) => s + (Number(row && row.amount) || 0), 0));
+    return next === target ? rows : null;
+  }
+
+  function trajectoryPaydayCadenceFact(incomeItems) {
+    if (!Array.isArray(incomeItems) || !incomeItems.length) return null;
+    const byId = new Map();
+    for (const item of incomeItems) {
+      if (!item) continue;
+      const id = item.id || item.label || '';
+      if (!byId.has(id)) byId.set(id, []);
+      byId.get(id).push(item);
+    }
+    const groups = Array.from(byId.entries()).map(([id, rows]) => ({
+      id,
+      count: rows.length,
+      label: (rows[0] && rows[0].label) || null,
+      payroll: id === 'payroll' || /seaspan/i.test(`${id} ${(rows[0] && rows[0].label) || ''}`),
+    }));
+    const payroll = groups.find(row => row.payroll && (row.count === 2 || row.count === 3));
+    const twoThree = groups.filter(row => row.count === 2 || row.count === 3);
+    const picked = payroll || (twoThree.length === 1 ? twoThree[0] : null);
+    if (!picked) return null;
+    return {
+      class: 'income-timing',
+      cadence: picked.count === 3 ? 'three-pay-month' : 'two-pay-month',
+      count: picked.count,
+      id: picked.id || null,
+      label: picked.label,
+    };
+  }
+
+  function trajectoryPayrollRegimeFacts(deposits, start, end) {
+    const facts = [];
+    if (!Array.isArray(deposits) || !start || !end) return facts;
+    const regular = deposits.filter(row => row && row.kind === 'regular' && row.date)
+      .slice()
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    for (let i = 1; i < regular.length; i++) {
+      const prior = regular[i - 1];
+      const curr = regular[i];
+      if (curr.date < start || curr.date > end) continue;
+      const gross = Number(curr.gross);
+      const priorGross = Number(prior.gross);
+      if (!isFinite(gross) || !isFinite(priorGross) || roundCent(gross) !== roundCent(priorGross)) {
+        continue;
+      }
+      const currDed = (Number(curr.tax) || 0) + (Number(curr.cpp) || 0)
+        + (Number(curr.cpp2) || 0) + (Number(curr.ei) || 0) + (Number(curr.pension) || 0);
+      const priorDed = (Number(prior.tax) || 0) + (Number(prior.cpp) || 0)
+        + (Number(prior.cpp2) || 0) + (Number(prior.ei) || 0) + (Number(prior.pension) || 0);
+      if (roundCent(currDed) === roundCent(priorDed)) continue;
+      const net = Number(curr.net);
+      const priorNet = Number(prior.net);
+      if (!isFinite(net) || !isFinite(priorNet) || roundCent(net) === roundCent(priorNet)) {
+        continue;
+      }
+      facts.push({
+        class: 'payroll-deduction-regime',
+        date: curr.date,
+        priorDate: prior.date,
+        gross: roundCent(gross),
+        net: roundCent(net),
+        priorNet: roundCent(priorNet),
+        deductionDelta: roundCent(currDed - priorDed),
+      });
+    }
+    return facts;
+  }
+
+  function trajectoryCollectCashDrivers(input) {
+    input = input || {};
+    const start = input.start;
+    const end = input.end;
+    const events = Array.isArray(input.events) ? input.events : [];
+    const walkStart = input.walkStart;
+    const weeklyVariable = Number(input.weeklyVariable) || 0;
+    const reservedDaily = Number(input.reservedDaily) || 0;
+    if (!start || !end || start > end) {
+      return { ok: false, reason: 'Attribution window is not a dated walk period.' };
+    }
+    const byClass = new Map();
+    const incomeItems = [];
+    let unmapped = false;
+    for (const event of events) {
+      const apply = cashWalkDate(event, walkStart);
+      if (!apply || apply < start || apply > end) continue;
+      const mapped = trajectoryCashDriverClass(event);
+      if (mapped.skip) continue;
+      if (mapped.unmapped || !mapped.class) {
+        unmapped = true;
+        continue;
+      }
+      const amount = Number(event.amount) || 0;
+      const prev = byClass.get(mapped.class) || { class: mapped.class, amount: 0, count: 0 };
+      prev.amount += amount;
+      prev.count += 1;
+      byClass.set(mapped.class, prev);
+      if (mapped.class === 'income-timing') {
+        incomeItems.push({ id: event.id || null, label: event.label || null, date: apply });
+      }
+    }
+    if (unmapped) {
+      return {
+        ok: false,
+        reason: 'The walk includes a cash movement that is not a candidate driver class.',
+      };
+    }
+    const days = diffDays(start, end) + 1;
+    const budgetDrain = days > 0 ? days * ((weeklyVariable / 7) + reservedDaily) : 0;
+    if (budgetDrain) {
+      const prev = byClass.get('household-budget')
+        || { class: 'household-budget', amount: 0, count: 0 };
+      prev.amount -= budgetDrain;
+      prev.count += days;
+      byClass.set('household-budget', prev);
+    }
+    const drivers = [];
+    for (const row of byClass.values()) {
+      const amount = roundCent(row.amount);
+      if (!amount) continue;
+      const driver = { class: row.class, amount };
+      if (row.count) driver.count = row.count;
+      drivers.push(driver);
+    }
+    const facts = [];
+    const cadence = trajectoryPaydayCadenceFact(incomeItems);
+    if (cadence) facts.push(cadence);
+    for (const fact of trajectoryPayrollRegimeFacts(input.payrollDeposits, start, end)) {
+      facts.push(fact);
+    }
+    return { ok: true, drivers, facts };
+  }
+
+  function trajectoryCashWindowAttribution(change, window, ctx) {
+    const target = roundCent(change);
+    if (!window || !window.start || !window.end || window.start > window.end) {
+      return trajectoryAttributionUnavailable(
+        'No dated walk window isolates this trajectory change.', target);
+    }
+    const collected = trajectoryCollectCashDrivers({
+      start: window.start,
+      end: window.end,
+      events: ctx.events,
+      walkStart: ctx.walkStart,
+      weeklyVariable: ctx.weeklyVariable,
+      reservedDaily: ctx.reservedDaily,
+      payrollDeposits: ctx.payrollDeposits,
+    });
+    if (!collected.ok) {
+      return trajectoryAttributionUnavailable(collected.reason, target);
+    }
+    if (!collected.drivers.length && target !== 0) {
+      return trajectoryAttributionUnavailable(
+        'No walk-derived drivers reconcile to this trajectory change.', target);
+    }
+    const drivers = trajectoryReconcileDrivers(collected.drivers, target);
+    if (!drivers) {
+      return trajectoryAttributionUnavailable(
+        'Classified drivers do not reconcile to this trajectory change.', target);
+    }
+    if (!drivers.length && target === 0) {
+      return trajectoryAttributionUnavailable(
+        'No walk-derived cash change to attribute.', target);
+    }
+    return {
+      status: 'ready',
+      change: target,
+      drivers,
+      facts: collected.facts || [],
+    };
+  }
+
+  function trajectoryDebtMarkAttribution(signal, prev, curr) {
+    const change = signal && signal.delta != null
+      ? roundCent(signal.delta)
+      : roundCent(trajectoryDebtTotal(curr) - trajectoryDebtTotal(prev));
+    if (!prev || !curr) {
+      return trajectoryAttributionUnavailable(
+        'Coupled month-end debt marks are required to attribute this change.', change);
+    }
+    const interestDelta = roundCent(
+      (Number(curr.interestToDate) || 0) - (Number(prev.interestToDate) || 0));
+    const paidDelta = roundCent(trajectoryPaidTotal(curr) - trajectoryPaidTotal(prev));
+    const explained = roundCent(interestDelta - paidDelta);
+    if (explained !== change) {
+      return trajectoryAttributionUnavailable(
+        'Coupled debt marks do not isolate interest and payments for this change.',
+        change);
+    }
+    const drivers = [];
+    if (interestDelta) {
+      drivers.push({ class: 'debt-interest', amount: interestDelta });
+    }
+    if (paidDelta) {
+      drivers.push({ class: 'debt-payment', amount: roundCent(-paidDelta) });
+    }
+    const reconciled = trajectoryReconcileDrivers(drivers, change);
+    if (!reconciled || (!reconciled.length && change !== 0)) {
+      return trajectoryAttributionUnavailable(
+        'Classified debt drivers do not reconcile to this trajectory change.', change);
+    }
+    if (!reconciled.length && change === 0) {
+      return trajectoryAttributionUnavailable(
+        'No walk-derived debt change to attribute.', change);
+    }
+    return {
+      status: 'ready',
+      change,
+      drivers: reconciled,
+      facts: [],
+    };
+  }
+
+  function trajectoryPreviousClose(ctx, date) {
+    if (!date) return null;
+    if (ctx.walkStart && date === ctx.walkStart
+      && ctx.openingCash != null && isFinite(ctx.openingCash)) {
+      return { date: ctx.walkStart, amount: roundCent(ctx.openingCash), opening: true };
+    }
+    const prevDate = addDays(date, -1);
+    const prev = (ctx.publishedDaily || []).find(row => row && row.date === prevDate);
+    if (prev) return { date: prev.date, amount: prev.amount, opening: false };
+    return null;
+  }
+
+  function trajectorySignalAttribution(signal, ctx) {
+    if (!signal || !signal.kind) {
+      return trajectoryAttributionUnavailable('Pressure signal is missing.');
+    }
+    if (signal.kind === 'debt-limit-crossing') {
+      return trajectoryAttributionUnavailable(
+        'The walk does not isolate a candidate driver class for a facility limit crossing without inventing a daily interest split.');
+    }
+    if (signal.kind === 'dated-commitment') {
+      const amount = Number(signal.amount) || 0;
+      const change = roundCent(-amount);
+      if (!(amount > 0) || !signal.date) {
+        return trajectoryAttributionUnavailable(
+          'Dated commitment has no walk-derived amount to attribute.', change);
+      }
+      return {
+        status: 'ready',
+        change,
+        drivers: [{
+          class: 'dated-commitment',
+          amount: change,
+          count: 1,
+          id: signal.id || null,
+          label: signal.label || null,
+          date: signal.date,
+        }],
+        facts: [],
+      };
+    }
+    if (signal.kind === 'debt-increase'
+      || signal.kind === 'debt-not-declining-after-payment') {
+      const prev = (ctx.publishedDebtMonths || []).find(row =>
+        row && row.month === signal.fromMonth);
+      const curr = (ctx.publishedDebtMonths || []).find(row =>
+        row && row.month === signal.month);
+      return trajectoryDebtMarkAttribution(signal, prev && prev.debt, curr && curr.debt);
+    }
+    if (signal.kind === 'month-cash-decline') {
+      const curr = (ctx.publishedCashMonths || []).find(row =>
+        row && row.month === signal.month);
+      if (!curr) {
+        return trajectoryAttributionUnavailable(
+          'The declined month is not a published cash month.');
+      }
+      return trajectoryCashWindowAttribution(signal.delta, {
+        start: curr.start,
+        end: curr.end,
+      }, ctx);
+    }
+    if (signal.kind === 'outflow-exceeds-inflow') {
+      return trajectoryCashWindowAttribution(signal.net, {
+        start: signal.start,
+        end: signal.end,
+      }, ctx);
+    }
+    if (signal.kind === 'cash-sign-change') {
+      const change = roundCent((Number(signal.toAmount) || 0) - (Number(signal.fromAmount) || 0));
+      if (!signal.date) {
+        return trajectoryAttributionUnavailable(
+          'Sign-change has no dated walk window.', change);
+      }
+      // fromAmount is the last strictly positive observation: a published
+      // close, or the walk opening when later published closes are exact
+      // $0. The attributed change is the subsequent walk through
+      // toAmount. A published $0 row is not a last-positive match and
+      // must not block dating the opening window.
+      let windowStart = null;
+      const openingMatchesFrom = ctx.openingCash != null && isFinite(ctx.openingCash)
+        && roundCent(ctx.openingCash) === roundCent(signal.fromAmount);
+      const openingSameDay = ctx.walkStart === signal.date && openingMatchesFrom;
+      if (openingSameDay) {
+        windowStart = signal.date;
+      } else {
+        const lastPositive = (ctx.publishedDaily || []).slice()
+          .reverse()
+          .find(row => row && row.date < signal.date
+            && roundCent(row.amount) === roundCent(signal.fromAmount));
+        if (lastPositive) {
+          windowStart = addDays(lastPositive.date, 1);
+        } else if (openingMatchesFrom && ctx.walkStart && signal.date > ctx.walkStart) {
+          windowStart = ctx.walkStart;
+        }
+      }
+      if (!windowStart) {
+        return trajectoryAttributionUnavailable(
+          'The last positive close that this sign-change leaves could not be dated.',
+          change);
+      }
+      return trajectoryCashWindowAttribution(change, {
+        start: windowStart,
+        end: signal.date,
+      }, ctx);
+    }
+    if (signal.kind === 'lowest-projected-cash' || signal.kind === 'cash-trough') {
+      if (!signal.date || signal.amount == null || !isFinite(signal.amount)) {
+        return trajectoryAttributionUnavailable(
+          'This cash level has no dated walk amount to attribute.');
+      }
+      const previous = trajectoryPreviousClose(ctx, signal.date);
+      if (!previous) {
+        return trajectoryAttributionUnavailable(
+          'The prior published close for this cash level could not be dated.');
+      }
+      const change = roundCent(signal.amount - previous.amount);
+      if (change === 0) {
+        return trajectoryAttributionUnavailable(
+          'This cash level is the prior close or opening, not a walk-derived change.',
+          change);
+      }
+      return trajectoryCashWindowAttribution(change, {
+        start: signal.date,
+        end: signal.date,
+      }, ctx);
+    }
+    return trajectoryAttributionUnavailable(
+      'No candidate driver class is established for this pressure kind.');
+  }
+
   // Objective pressure from the existing baselineTrajectory walk only.
   // Describes mechanical facts the walk already established. Does not
   // invent a household minimum, breathing-room, safe-to-spend, RYG,
   // risk-score, affordability, or other owner-policy threshold.
   // Unpublished cash or debt months fail closed: no invented signals.
+  // Cause attribution is the same helper: mechanical drivers from the
+  // same events, daily drain, and coupled debt marks. It fails closed
+  // when those drivers cannot be established or do not reconcile.
   function baselineTrajectoryPressure(input) {
     input = input || {};
     const signals = [];
@@ -10644,6 +11085,7 @@
     const weeklyVariable = Number(input.weeklyVariable) || 0;
     const reservedDaily = Number(input.reservedDaily) || 0;
     const dailyVariable = weeklyVariable / 7;
+    const payrollDeposits = Array.isArray(input.payrollDeposits) ? input.payrollDeposits : [];
     const publishedCashMonths = months.filter(trajectoryMonthHasPublishedCash);
     const publishedDebtMonths = months.filter(trajectoryMonthHasPublishedDebt);
 
@@ -10917,6 +11359,21 @@
       if (orderA !== orderB) return orderA - orderB;
       return String(a.month || '').localeCompare(String(b.month || ''));
     });
+
+    const attributionCtx = {
+      events,
+      publishedDaily,
+      publishedCashMonths,
+      publishedDebtMonths,
+      walkStart,
+      openingCash: input.openingCash,
+      weeklyVariable,
+      reservedDaily,
+      payrollDeposits,
+    };
+    for (const signal of signals) {
+      signal.attribution = trajectorySignalAttribution(signal, attributionCtx);
+    }
 
     return {
       status: 'ready',
@@ -11310,7 +11767,9 @@
   // declines, outflow-versus-inflow, dated commitments (weaker of
   // input confidence and cash walk), coupled debt direction, and
   // incumbent projectDebts crossings when pending exposure is knowable.
-  // It does not invent
+  // Each ready signal also carries walk-derived cause attribution
+  // that reconciles to that signal's trajectory change, or fails
+  // closed when candidate drivers cannot be established. It does not invent
   // a household minimum, breathing-room, safe-to-spend, RYG, risk-score,
   // or affordability threshold.
   function baselineTrajectory(plan, debts, asOf, opts) {
@@ -11580,6 +12039,7 @@
       debts,
       weeklyVariable: weekly,
       reservedDaily: currentRegimeMonthly(plan) * 12 / 365.25,
+      payrollDeposits: (regime && regime.allDeposits) || (regime && regime.deposits) || [],
     });
 
     return {
@@ -11643,6 +12103,7 @@
         recommendWeeklyCap: 'not-used',
         knowledgeHorizon: 'incumbent-unmodified',
         pressure: 'walk-derived',
+        pressureAttribution: 'walk-derived-fail-closed',
         pressurePolicyThresholds: 'none',
         incomeRegimesImplemented: regimeReady,
         incomeRegimesNamedFailClosed: !regimeReady,
