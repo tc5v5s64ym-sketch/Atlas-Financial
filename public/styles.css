@@ -1576,6 +1576,16 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-pressure-kind { display:block; font-weight:600; margin-bottom:4px; }
 .planning-trajectory-pressure-field { display:block; margin-top:3px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; }
 .planning-trajectory-pressure-field b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
+.planning-trajectory-pressure-attribution { margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle); }
+.planning-trajectory-attribution-change { display:block; margin-bottom:4px; color:var(--text-secondary); font-size:.72rem; }
+.planning-trajectory-attribution-change b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
+.planning-trajectory-attribution-drivers,
+.planning-trajectory-attribution-facts { margin:4px 0 0; padding-left:1.1rem; }
+.planning-trajectory-attribution-driver,
+.planning-trajectory-attribution-fact { margin:0 0 6px; font-size:.72rem; color:var(--text-secondary); line-height:1.35; }
+.planning-trajectory-attribution-driver-kind,
+.planning-trajectory-attribution-fact-kind { font-weight:600; color:var(--text-primary); }
+.planning-trajectory-attribution-driver b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
 @media (min-width:641px) {
   .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }

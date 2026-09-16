@@ -339,6 +339,10 @@ When `Forecast.baselineTrajectory` identifies an objective pressure signal, it a
 
 `public/planning.js` reprints `Forecast.baselineTrajectory.pressure.signals` from the incumbent `planningTrajectory()` call when `pressure.status === 'ready'`. Plain-language labels for closed signal kinds; Forecast date/month/amount/trust/id/asOf copied when present; estimated vs calculated visible; Forecast order preserved. Unready pressure prints Forecast `pressure.reason`, not a blank success. No attribution, debtDirection, scenario, ranking, or page-side pressure math. Packet/Talk reprint, O5 discovery, and remaining O4 scenario classes remain out of scope.
 
+**B105h · Planning page reprints pressure signal attribution** · **DONE 2026-09-16** · *owner instruction; presentation only*
+
+Under each reprinted pressure signal, `public/planning.js` copies `signal.attribution` when Forecast published it on `Forecast.baselineTrajectory.pressure.signals`: ready attribution prints attributed change, driver classes/amounts/count/id/label/date, and facts in Forecast order with plain household labels for closed driver classes; unavailable attribution prints Forecast `attribution.reason`; a missing attribution object is unavailable, not invented. No page-side attribution math, no ranking, no debtDirection/scenario/packet/Talk reprint. Forecast-only compose of attribution remains in `forecast.js` only.
+
 **B104 · Decision Intelligence comparison foundation** · **IN PROGRESS 2026-09-15** · *owner instruction; Forecast-only compose of Slice 6*
 
 Dale authorized a Forecast-owned read-only comparison of two or more caller-supplied explicit hypothetical extra debt payments from one identical household baseline. It composes `Forecast.hypotheticalExtraPayment` per scenario. It does not rank, recommend, infer affordability, apply `decisionPosture`, or write. Talk / Gemini / UI and `Forecast.counterfactuals` are out of scope. Unavailable underlying scenarios fail the comparison; unavailable is not zero.

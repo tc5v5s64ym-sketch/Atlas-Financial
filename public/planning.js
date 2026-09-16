@@ -157,6 +157,27 @@ const PLANNING_PRESSURE_KIND = {
   'debt-limit-crossing': 'Credit limit crossing on the walk',
 };
 
+const PLANNING_ATTRIBUTION_DRIVER = {
+  'income-timing': 'Income timing',
+  'bonus-timing': 'Bonus timing',
+  'household-budget': 'Household budget spending',
+  'recurring-bills': 'Recurring bills',
+  'debt-payment': 'Debt payment',
+  'debt-interest': 'Debt interest',
+  'dated-commitment': 'Dated commitment',
+  'mortgage-or-major-obligation': 'Mortgage or major obligation',
+};
+
+const PLANNING_ATTRIBUTION_FACT = {
+  'income-timing': 'Income timing',
+  'payroll-deduction-regime': 'Payroll deduction change',
+};
+
+const PLANNING_PAY_CADENCE = {
+  'two-pay-month': 'Two-pay month',
+  'three-pay-month': 'Three-pay month',
+};
+
 function planningTrajectoryPressureAmountField(label, amount) {
   if (amount == null || !isFinite(Number(amount))) return '';
   return `<small class="planning-trajectory-pressure-field"><span>${label}</span> <b>${money2(amount)}</b></small>`;
@@ -165,6 +186,81 @@ function planningTrajectoryPressureAmountField(label, amount) {
 function planningTrajectoryPressureTextField(label, value) {
   if (value == null || value === '') return '';
   return `<small class="planning-trajectory-pressure-field"><span>${label}</span> ${value}</small>`;
+}
+
+function planningAttributionDriverLabel(className) {
+  return PLANNING_ATTRIBUTION_DRIVER[className] || className || '';
+}
+
+function planningAttributionFactLabel(className) {
+  return PLANNING_ATTRIBUTION_FACT[className] || className || '';
+}
+
+function planningTrajectoryAttributionDriverHtml(driver, index) {
+  if (!driver || !driver.class) return '';
+  const label = planningAttributionDriverLabel(driver.class);
+  const parts = [`<span class="planning-trajectory-attribution-driver-kind">${label}</span>`];
+  if (driver.amount != null && isFinite(Number(driver.amount))) {
+    parts.push(`<b>${money2(driver.amount)}</b>`);
+  }
+  const meta = [];
+  if (driver.count != null && isFinite(Number(driver.count))) {
+    meta.push(planningTrajectoryPressureTextField('Count', String(driver.count)));
+  }
+  if (driver.id) meta.push(planningTrajectoryPressureTextField('Id', driver.id));
+  if (driver.label) meta.push(planningTrajectoryPressureTextField('Label', driver.label));
+  if (driver.date) meta.push(planningTrajectoryPressureTextField('Date', fmtDateFull(driver.date)));
+  return `<li class="planning-trajectory-attribution-driver" data-trajectory-attribution-driver-index="${index}" data-trajectory-attribution-driver-class="${driver.class}">${parts.join(' ')}${meta.join('')}</li>`;
+}
+
+function planningTrajectoryAttributionFactHtml(fact, index) {
+  if (!fact || !fact.class) return '';
+  const label = planningAttributionFactLabel(fact.class);
+  const parts = [`<span class="planning-trajectory-attribution-fact-kind">${label}</span>`];
+  const meta = [];
+  if (fact.class === 'income-timing') {
+    if (fact.cadence && PLANNING_PAY_CADENCE[fact.cadence]) {
+      meta.push(planningTrajectoryPressureTextField('Cadence', PLANNING_PAY_CADENCE[fact.cadence]));
+    } else if (fact.cadence) {
+      meta.push(planningTrajectoryPressureTextField('Cadence', fact.cadence));
+    }
+    if (fact.count != null && isFinite(Number(fact.count))) {
+      meta.push(planningTrajectoryPressureTextField('Pay count', String(fact.count)));
+    }
+    if (fact.id) meta.push(planningTrajectoryPressureTextField('Id', fact.id));
+    if (fact.label) meta.push(planningTrajectoryPressureTextField('Label', fact.label));
+  }
+  if (fact.class === 'payroll-deduction-regime') {
+    if (fact.date) meta.push(planningTrajectoryPressureTextField('Date', fmtDateFull(fact.date)));
+    if (fact.priorDate) meta.push(planningTrajectoryPressureTextField('Prior date', fmtDateFull(fact.priorDate)));
+    meta.push(planningTrajectoryPressureAmountField('Gross', fact.gross));
+    meta.push(planningTrajectoryPressureAmountField('Net', fact.net));
+    meta.push(planningTrajectoryPressureAmountField('Prior net', fact.priorNet));
+    meta.push(planningTrajectoryPressureAmountField('Deduction change', fact.deductionDelta));
+  }
+  return `<li class="planning-trajectory-attribution-fact" data-trajectory-attribution-fact-index="${index}" data-trajectory-attribution-fact-class="${fact.class}">${parts.join(' ')}${meta.join('')}</li>`;
+}
+
+function planningTrajectoryAttributionHtml(attribution) {
+  if (!attribution || typeof attribution !== 'object') {
+    return `<div class="planning-trajectory-pressure-attribution" data-trajectory-pressure-attribution="unavailable"><small class="planning-trajectory-reason">Forecast did not publish attribution for this signal.</small></div>`;
+  }
+  if (attribution.status === 'ready') {
+    const change = attribution.change != null && isFinite(Number(attribution.change))
+      ? `<small class="planning-trajectory-attribution-change"><span>Attributed change</span> <b>${money2(attribution.change)}</b></small>`
+      : '';
+    const drivers = Array.isArray(attribution.drivers) ? attribution.drivers : [];
+    const driverList = drivers.length
+      ? `<ul class="planning-trajectory-attribution-drivers">${drivers.map((d, i) => planningTrajectoryAttributionDriverHtml(d, i)).join('')}</ul>`
+      : '';
+    const facts = Array.isArray(attribution.facts) ? attribution.facts : [];
+    const factList = facts.length
+      ? `<ul class="planning-trajectory-attribution-facts">${facts.map((f, i) => planningTrajectoryAttributionFactHtml(f, i)).join('')}</ul>`
+      : '';
+    return `<div class="planning-trajectory-pressure-attribution" data-trajectory-pressure-attribution="ready">${change}${driverList}${factList}</div>`;
+  }
+  const reason = attribution.reason || 'Walk-derived drivers could not be established.';
+  return `<div class="planning-trajectory-pressure-attribution" data-trajectory-pressure-attribution="unavailable"><small class="planning-trajectory-reason">${reason}</small></div>`;
 }
 
 function planningTrajectoryPressureSignalHtml(signal, index) {
@@ -211,11 +307,12 @@ function planningTrajectoryPressureSignalHtml(signal, index) {
   if (signal.trust === 'calculated' || signal.trust === 'estimated') {
     fields.push(planningTrajectoryChip(signal.trust));
   }
-  return `<li class="planning-trajectory-pressure-item"${attrs.length ? ' ' + attrs.join(' ') : ''}><span class="planning-trajectory-pressure-kind">${kindLabel}</span>${fields.join('')}</li>`;
+  const attribution = planningTrajectoryAttributionHtml(signal.attribution);
+  return `<li class="planning-trajectory-pressure-item"${attrs.length ? ' ' + attrs.join(' ') : ''}><span class="planning-trajectory-pressure-kind">${kindLabel}</span>${fields.join('')}${attribution}</li>`;
 }
 
 function planningTrajectoryPressureHtml(traj) {
-  const note = 'Pressure signals are Forecast.baselineTrajectory.pressure only — mechanical facts from the baseline walk. This page copies them in Forecast order; it does not score, rank, or compute pressure.';
+  const note = 'Pressure signals and their cause attribution are Forecast.baselineTrajectory.pressure only — mechanical facts and walk-derived drivers from the baseline walk. This page copies them in Forecast order; it does not score, rank, or compute pressure or attribution.';
   const pressure = traj && traj.pressure;
   if (!pressure || pressure.status !== 'ready') {
     const reason = (pressure && pressure.reason) || (traj && traj.reason) || 'Baseline trajectory pressure unavailable.';

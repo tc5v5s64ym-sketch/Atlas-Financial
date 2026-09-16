@@ -353,11 +353,16 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
   ok(/Forecast\.baselineTrajectory\(/.test(src),
     'pressure reprint still uses the incumbent Forecast.baselineTrajectory call');
   ok(!/baselineTrajectoryPressure|trajectorySignalAttribution|trajectoryPressureUnavailable/.test(src),
-    'planning.js does not compute pressure');
+    'planning.js does not compute pressure or attribution');
   ok(!/debtDirection|baselineTrajectoryScenario/.test(src),
     'planning.js does not reprint debtDirection or baselineTrajectoryScenario');
-  ok(!/attribution/.test(src),
-    'planning.js does not reprint signal attribution');
+  ok(/planningTrajectoryAttributionHtml\(/.test(src)
+    && /signal\.attribution/.test(src),
+    'planning.js reprints signal.attribution from Forecast only');
+  ok(!/TRAJECTORY_DRIVER_CLASS_ORDER|trajectoryCollectCashDrivers|trajectoryCashWindowAttribution/.test(src),
+    'planning.js does not import Forecast attribution math');
+  ok(!/TOTAL RISK|safe-to-spend|RYG|affordability/i.test(src),
+    'planning pressure attribution carries no ranking or policy-threshold wording');
   ok(!/assistant-packet|\/talk\//.test(src),
     'planning.js does not touch packet or Talk seams');
 
@@ -410,8 +415,53 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
         `live: signal ${i} asOf ${s.asOf} is copied`);
     }
   }
-  ok(!/data-trajectory-pressure-attribution|planning-trajectory-pressure-attribution/.test(pressureHtml),
-    'live pressure HTML does not print attribution');
+  const readyWithDrivers = traj.pressure.signals.find(s => s.attribution
+    && s.attribution.status === 'ready'
+    && Array.isArray(s.attribution.drivers)
+    && s.attribution.drivers.length > 0);
+  ok(readyWithDrivers, 'live fixture has a ready attribution with drivers');
+  if (readyWithDrivers) {
+    const idx = traj.pressure.signals.indexOf(readyWithDrivers);
+    ok(new RegExp(`data-trajectory-pressure-index="${idx}"[\\s\\S]*?data-trajectory-pressure-attribution="ready"`).test(pressureHtml),
+      'live: ready attribution block is printed under its signal');
+    const driver = readyWithDrivers.attribution.drivers[0];
+    ok(new RegExp(`data-trajectory-attribution-driver-class="${driver.class}"`).test(pressureHtml),
+      `live: first driver class ${driver.class} is copied`);
+    if (driver.amount != null && isFinite(Number(driver.amount))) {
+      ok(pressureHtml.includes(money2(driver.amount)),
+        `live: driver amount ${money2(driver.amount)} is copied`);
+    }
+    const itemRe = new RegExp(
+      `<li class="planning-trajectory-pressure-item"[^>]*data-trajectory-pressure-index="${idx}"[^>]*>[\\s\\S]*?</li>`);
+    const itemMatch = itemRe.exec(pressureHtml);
+    const itemHtml = itemMatch ? itemMatch[0] : '';
+    const driverOrder = [...itemHtml.matchAll(/data-trajectory-attribution-driver-class="([^"]+)"/g)].map(m => m[1]);
+    const forecastOrder = readyWithDrivers.attribution.drivers.map(d => d.class);
+    ok(driverOrder.join(',') === forecastOrder.join(','),
+      'live: driver order under one signal matches Forecast', `${driverOrder.join(',')} vs ${forecastOrder.join(',')}`);
+    if (readyWithDrivers.attribution.change != null && isFinite(Number(readyWithDrivers.attribution.change))) {
+      ok(pressureHtml.includes(money2(readyWithDrivers.attribution.change)),
+        'live: attributed change amount is copied');
+    }
+  }
+  const unavailableAttr = traj.pressure.signals.find(s => s.attribution
+    && s.attribution.status === 'unavailable' && s.attribution.reason);
+  ok(unavailableAttr, 'live fixture has unavailable attribution with a reason');
+  if (unavailableAttr) {
+    const idx = traj.pressure.signals.indexOf(unavailableAttr);
+    ok(new RegExp(`data-trajectory-pressure-index="${idx}"[\\s\\S]*?data-trajectory-pressure-attribution="unavailable"`).test(pressureHtml),
+      'live: unavailable attribution block is printed under its signal');
+    ok(pressureHtml.includes(unavailableAttr.attribution.reason),
+      'live: unavailable attribution prints Forecast attribution.reason');
+  }
+
+  const missingAttrHtml = page.ctx.planningTrajectoryPressureSignalHtml({
+    kind: 'cash-trough', date: '2026-01-01', amount: 100,
+  }, 0);
+  ok(/data-trajectory-pressure-attribution="unavailable"/.test(missingAttrHtml),
+    'missing attribution object is unavailable, not invented');
+  ok(!/data-trajectory-attribution-driver-class=/.test(missingAttrHtml),
+    'missing attribution does not invent drivers');
 
   const missingTraj = F.baselineTrajectory(null, [], live.meta.asOf, { periods });
   const missingPressure = page.composePressure({ plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null }, periods);
@@ -421,8 +471,8 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
     'unavailable pressure is not rendered as an empty success');
   ok(missingPressure.list.includes(missingTraj.pressure.reason),
     'unavailable pressure prints Forecast pressure.reason');
-  ok(/does not score, rank, or compute pressure/.test(missingPressure.note),
-    'pressure footnote says the page does not compute pressure');
+  ok(/does not score, rank, or compute pressure or attribution/.test(missingPressure.note),
+    'pressure footnote says the page does not compute pressure or attribution');
 }
 
 console.log('\n=== Page contract ===');
