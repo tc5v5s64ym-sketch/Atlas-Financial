@@ -28,14 +28,19 @@ console.log('\n=== Fusion paid settled on Interac evidence ===');
 const paid = byId['fusion-household-paid'];
 ok(paid && near(paid.amount, OWNER_PAID) && paid.settledOn === '2026-09-10',
   'paid row is $1,200 settledOn 2026-09-10');
-ok(/FUSION WEST LACROSSE/i.test(paid.note || '') && /logan and lindens first payment/i.test(paid.note || ''),
-  'note cites Interac MATCH to Fusion West with memo');
-ok(/never Forecast income|baselineTrajectory income/i.test(paid.note || ''),
-  'owner policy lock: coaching \$3,125 is note context only, not income');
+ok(/C1AkZfteDgMe|logan and lindens first payment/i.test(paid.note || ''),
+  'note cites Interac ref and memo');
+ok(/live LM id PENDING|do not invent LM transaction id/i.test(paid.note || ''),
+  'LM id left pending — Interac settledOn only');
+ok(/576\.19.*602\.44|Linden.*Logan/i.test(paid.note || ''),
+  'Kara split noted; no further kid allocations invented');
+ok(/50 percent of Fall term fees/i.test(paid.note || '')
+  && /never plan\.income|baselineTrajectory income/i.test(paid.note || ''),
+  'coaching cover is settlement context with income policy lock');
 ok(!(plan.income || []).some(s => /3125|Lavinio|Cavalcante/i.test(JSON.stringify(s))),
   'plan.income has no coaching bonus row for Fusion settlement context');
-ok(!/LM transaction id/i.test(paid.note || '') || /no LM transaction id is invented/i.test(paid.note || ''),
-  'note does not invent an LM transaction id');
+ok(!paid.lmId && !paid.lunchMoneyId,
+  'row carries no invented LM id field');
 
 const remainingSum = ['fusion-household-oct', 'fusion-household-nov', 'fusion-household-dec']
   .reduce((s, id) => s + byId[id].amount, 0);
