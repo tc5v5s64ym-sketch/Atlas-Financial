@@ -374,12 +374,17 @@ cadence.
 
 The renewal is the single most consequential date in this file.
 
-### The renewal countdown *(researched 2026-08-09)*
+### The renewal countdown *(derived 2026-08-09; external claims: `EXT-TD-RENEWAL-001`)*
 
-TD lets you renew a closed mortgage **120 days before maturity with no
-prepayment charge and no fee**. Its standard rate hold is **120 days,
-extendable to about 150 for existing clients**. TD normally makes contact four
-to five months out and posts the offer letter about a month before maturity.
+The TD renewal-process claims behind this table — the early-renewal window,
+the rate hold and its existing-client extension, and TD's contact and
+offer-letter timing — are **external-reference** knowledge, not household
+facts. Their one home, with sources and the date they were checked, is
+`EXT-TD-RENEWAL-001` in
+[`knowledge_evidence/register.json`](knowledge_evidence/register.json).
+Re-check that record's freshness before acting on any date below. This table
+only applies those claims to the verified 1 May 2027 maturity; it does not
+restate them.
 
 | Date | Days out | What it is |
 |---|---|---|
@@ -398,9 +403,6 @@ estimate** is about **62%** — under 80%. About 57% at the **$1,300,000
 optimistic high**, which is not the plan. A lender orders its own appraisal
 and will not take an owner's estimate. Live derived LTV lives on
 `docs/positions.csv`.
-
-Sources: [TD renewal process](https://www.td.com/ca/en/personal-banking/products/mortgages/renew-refinance/how-to-renew) ·
-[early renewal windows](https://mortgagerenewalhub.ca/early-mortgage-renewal/)
 
 ## HELOC — TD *(verified 2026-08-09)*
 
