@@ -145,6 +145,102 @@ function planningTrajectoryCashHtml(cash) {
   return `${amount}${planningTrajectoryChip(cash.status)}${asOf}`;
 }
 
+const PLANNING_PRESSURE_KIND = {
+  'lowest-projected-cash': 'Lowest projected cash on this walk',
+  'cash-trough': 'Lowest cash within the month',
+  'cash-sign-change': 'Cash turns negative after being positive',
+  'month-cash-decline': 'Month-end cash falls versus the prior month',
+  'outflow-exceeds-inflow': 'Outflows exceed inflows in the month',
+  'dated-commitment': 'Dated commitment on the walk',
+  'debt-increase': 'Total modelled debt increases',
+  'debt-not-declining-after-payment': 'Debt does not fall after a payment',
+  'debt-limit-crossing': 'Credit limit crossing on the walk',
+};
+
+function planningTrajectoryPressureAmountField(label, amount) {
+  if (amount == null || !isFinite(Number(amount))) return '';
+  return `<small class="planning-trajectory-pressure-field"><span>${label}</span> <b>${money2(amount)}</b></small>`;
+}
+
+function planningTrajectoryPressureTextField(label, value) {
+  if (value == null || value === '') return '';
+  return `<small class="planning-trajectory-pressure-field"><span>${label}</span> ${value}</small>`;
+}
+
+function planningTrajectoryPressureSignalHtml(signal, index) {
+  if (!signal || !signal.kind) return '';
+  const kindLabel = PLANNING_PRESSURE_KIND[signal.kind] || signal.kind;
+  const attrs = [
+    `data-trajectory-pressure-index="${index}"`,
+    `data-trajectory-pressure-kind="${signal.kind}"`,
+  ];
+  if (signal.month) attrs.push(`data-trajectory-pressure-month="${signal.month}"`);
+  if (signal.date) attrs.push(`data-trajectory-pressure-date="${signal.date}"`);
+  if (signal.trust) attrs.push(`data-trajectory-pressure-trust="${signal.trust}"`);
+  if (signal.id) attrs.push(`data-trajectory-pressure-id="${signal.id}"`);
+  if (signal.asOf) attrs.push(`data-trajectory-pressure-asof="${signal.asOf}"`);
+  if (signal.debtId) attrs.push(`data-trajectory-pressure-debt-id="${signal.debtId}"`);
+  const fields = [];
+  if (signal.date) fields.push(planningTrajectoryPressureTextField('Date', fmtDateFull(signal.date)));
+  if (signal.month) fields.push(planningTrajectoryPressureTextField('Month', signal.month));
+  fields.push(planningTrajectoryPressureAmountField('Amount', signal.amount));
+  fields.push(planningTrajectoryPressureAmountField('From amount', signal.fromAmount));
+  fields.push(planningTrajectoryPressureAmountField('To amount', signal.toAmount));
+  fields.push(planningTrajectoryPressureAmountField('Change', signal.delta));
+  fields.push(planningTrajectoryPressureAmountField('Inflow', signal.inflow));
+  fields.push(planningTrajectoryPressureAmountField('Outflow', signal.outflow));
+  fields.push(planningTrajectoryPressureAmountField('Net', signal.net));
+  fields.push(planningTrajectoryPressureAmountField('Cash after', signal.cashAfter));
+  fields.push(planningTrajectoryPressureAmountField('From total', signal.fromTotal));
+  fields.push(planningTrajectoryPressureAmountField('To total', signal.toTotal));
+  fields.push(planningTrajectoryPressureAmountField('Paid', signal.paidDelta));
+  fields.push(planningTrajectoryPressureAmountField('Consumer change', signal.consumerDelta));
+  fields.push(planningTrajectoryPressureAmountField('Secured change', signal.securedDelta));
+  fields.push(planningTrajectoryPressureAmountField('HELOC change', signal.helocDelta));
+  fields.push(planningTrajectoryPressureAmountField('Limit', signal.limit));
+  if (signal.fromMonth) fields.push(planningTrajectoryPressureTextField('From month', signal.fromMonth));
+  if (signal.fromAsOf) fields.push(planningTrajectoryPressureTextField('From as-of', fmtDateFull(signal.fromAsOf)));
+  if (signal.asOf) fields.push(planningTrajectoryPressureTextField('As-of', fmtDateFull(signal.asOf)));
+  if (signal.start && signal.end) {
+    fields.push(planningTrajectoryPressureTextField('Period', `${fmtDateFull(signal.start)} – ${fmtDateFull(signal.end)}`));
+  }
+  if (signal.id) fields.push(planningTrajectoryPressureTextField('Id', signal.id));
+  if (signal.debtId) fields.push(planningTrajectoryPressureTextField('Debt id', signal.debtId));
+  if (signal.label) fields.push(planningTrajectoryPressureTextField('Label', signal.label));
+  if (signal.alreadyOver === true) fields.push('<small class="planning-trajectory-pressure-field"><span>Already over limit</span> yes</small>');
+  if (signal.trust === 'calculated' || signal.trust === 'estimated') {
+    fields.push(planningTrajectoryChip(signal.trust));
+  }
+  return `<li class="planning-trajectory-pressure-item"${attrs.length ? ' ' + attrs.join(' ') : ''}><span class="planning-trajectory-pressure-kind">${kindLabel}</span>${fields.join('')}</li>`;
+}
+
+function planningTrajectoryPressureHtml(traj) {
+  const note = 'Pressure signals are Forecast.baselineTrajectory.pressure only — mechanical facts from the baseline walk. This page copies them in Forecast order; it does not score, rank, or compute pressure.';
+  const pressure = traj && traj.pressure;
+  if (!pressure || pressure.status !== 'ready') {
+    const reason = (pressure && pressure.reason) || (traj && traj.reason) || 'Baseline trajectory pressure unavailable.';
+    return {
+      lede: '',
+      list: `<div class="note-box crit" data-trajectory-pressure="unavailable">${reason}</div>`,
+      note,
+    };
+  }
+  const signals = Array.isArray(pressure.signals) ? pressure.signals : [];
+  if (!signals.length) {
+    return {
+      lede: 'Forecast published no pressure signals on this baseline walk.',
+      list: '<p class="lede" data-trajectory-pressure="empty">No pressure signals on this walk.</p>',
+      note,
+    };
+  }
+  const items = signals.map((signal, index) => planningTrajectoryPressureSignalHtml(signal, index)).join('');
+  return {
+    lede: `${signals.length} pressure signal${signals.length === 1 ? '' : 's'} from the baseline walk, in Forecast order.`,
+    list: `<ol class="planning-trajectory-pressure-list" data-trajectory-pressure="ready">${items}</ol>`,
+    note,
+  };
+}
+
 function planningTrajectoryDebtHtml(debt) {
   if (!debt || debt.status === 'unavailable') {
     const reason = debt && debt.reason
@@ -270,13 +366,18 @@ function planningAdvice(d, periods) {
 
 function renderPlanning(d, periods) {
   const html = planningPageHtml(planningAdvice(d, periods), d.liveOverlay);
-  const trajHtml = planningTrajectoryHtml(planningTrajectory(d, periods));
+  const traj = planningTrajectory(d, periods);
+  const trajHtml = planningTrajectoryHtml(traj);
+  const pressureHtml = planningTrajectoryPressureHtml(traj);
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;
   $('planning-note').textContent = html.note;
   $('planning-trajectory-lede').textContent = trajHtml.lede;
   $('planning-trajectory').innerHTML = trajHtml.table;
   $('planning-trajectory-note').textContent = trajHtml.note;
+  $('planning-trajectory-pressure-lede').textContent = pressureHtml.lede;
+  $('planning-trajectory-pressure').innerHTML = pressureHtml.list;
+  $('planning-trajectory-pressure-note').textContent = pressureHtml.note;
 }
 
 App.register(renderPlanning);
