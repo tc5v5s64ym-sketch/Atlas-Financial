@@ -58,6 +58,9 @@ function loadPage(script) {
     composeTrajectory(data, p) {
       return ctx.planningTrajectoryHtml(ctx.planningTrajectory(data, p || null));
     },
+    composePressure(data, p) {
+      return ctx.planningTrajectoryPressureHtml(ctx.planningTrajectory(data, p || null));
+    },
   };
 }
 
@@ -344,6 +347,84 @@ console.log('\n=== 13–15. Baseline trajectory reprints Forecast.baselineTrajec
   }
 }
 
+console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.pressure ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(/Forecast\.baselineTrajectory\(/.test(src),
+    'pressure reprint still uses the incumbent Forecast.baselineTrajectory call');
+  ok(!/baselineTrajectoryPressure|trajectorySignalAttribution|trajectoryPressureUnavailable/.test(src),
+    'planning.js does not compute pressure');
+  ok(!/debtDirection|baselineTrajectoryScenario/.test(src),
+    'planning.js does not reprint debtDirection or baselineTrajectoryScenario');
+  ok(!/attribution/.test(src),
+    'planning.js does not reprint signal attribution');
+  ok(!/assistant-packet|\/talk\//.test(src),
+    'planning.js does not touch packet or Talk seams');
+
+  const liveEl = page.render(live, periods);
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.pressure && traj.pressure.status === 'ready'
+    && Array.isArray(traj.pressure.signals),
+    'live baselineTrajectory pressure is ready with signals');
+  const pressureHtml = liveEl['planning-trajectory-pressure'].innerHTML;
+  ok(/data-trajectory-pressure="ready"/.test(pressureHtml),
+    'live pressure list is marked ready');
+  ok(traj.pressure.signals.length > 0,
+    'live fixture has at least one pressure signal to copy');
+  const kindOrder = [...pressureHtml.matchAll(/data-trajectory-pressure-kind="([^"]+)"/g)].map(m => m[1]);
+  ok(kindOrder.length === traj.pressure.signals.length,
+    'live: every Forecast pressure signal is printed');
+  ok(kindOrder.every((kind, i) => kind === traj.pressure.signals[i].kind),
+    'live: pressure signal order matches Forecast');
+  for (let i = 0; i < traj.pressure.signals.length; i++) {
+    const s = traj.pressure.signals[i];
+    const itemRe = new RegExp(
+      `<li class="planning-trajectory-pressure-item"[^>]*data-trajectory-pressure-index="${i}"[^>]*>`);
+    ok(itemRe.test(pressureHtml), `live: pressure signal ${i} (${s.kind}) is present`);
+    if (s.month) {
+      ok(new RegExp(`data-trajectory-pressure-index="${i}"[^>]*data-trajectory-pressure-month="${s.month}"`).test(pressureHtml),
+        `live: signal ${i} month ${s.month} is copied`);
+    }
+    if (s.date) {
+      ok(new RegExp(`data-trajectory-pressure-index="${i}"[^>]*data-trajectory-pressure-date="${s.date}"`).test(pressureHtml),
+        `live: signal ${i} date ${s.date} is copied`);
+    }
+    if (s.trust) {
+      ok(new RegExp(`data-trajectory-pressure-index="${i}"[^>]*data-trajectory-pressure-trust="${s.trust}"`).test(pressureHtml),
+        `live: signal ${i} trust ${s.trust} is copied`);
+      ok(new RegExp(`data-trajectory-pressure-index="${i}"[\\s\\S]*?${s.trust.toUpperCase()}`).test(pressureHtml),
+        `live: signal ${i} trust chip is visible`);
+    }
+    if (s.amount != null && isFinite(Number(s.amount))) {
+      ok(pressureHtml.includes(money2(s.amount)),
+        `live: signal ${i} amount ${money2(s.amount)} is copied`);
+    }
+    if (s.id) {
+      ok(new RegExp(`data-trajectory-pressure-index="${i}"[^>]*data-trajectory-pressure-id="${s.id}"`).test(pressureHtml),
+        `live: signal ${i} id ${s.id} is copied`);
+    }
+    if (s.asOf) {
+      ok(new RegExp(`data-trajectory-pressure-index="${i}"[^>]*data-trajectory-pressure-asof="${s.asOf}"`).test(pressureHtml),
+        `live: signal ${i} asOf ${s.asOf} is copied`);
+    }
+  }
+  ok(!/data-trajectory-pressure-attribution|planning-trajectory-pressure-attribution/.test(pressureHtml),
+    'live pressure HTML does not print attribution');
+
+  const missingTraj = F.baselineTrajectory(null, [], live.meta.asOf, { periods });
+  const missingPressure = page.composePressure({ plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null }, periods);
+  ok(missingTraj.pressure && missingTraj.pressure.status === 'unavailable',
+    'missing plan pressure is unavailable on Forecast');
+  ok(/data-trajectory-pressure="unavailable"/.test(missingPressure.list),
+    'unavailable pressure is not rendered as an empty success');
+  ok(missingPressure.list.includes(missingTraj.pressure.reason),
+    'unavailable pressure prints Forecast pressure.reason');
+  ok(/does not score, rank, or compute pressure/.test(missingPressure.note),
+    'pressure footnote says the page does not compute pressure');
+}
+
 console.log('\n=== Page contract ===');
 {
   const src = stripComments(read('public/planning.js'));
@@ -354,7 +435,7 @@ console.log('\n=== Page contract ===');
     'heading Planning with the plain-language lede');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note'].every(id => ids.has(id)),
+  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note'].every(id => ids.has(id)),
     'planning.html has every element planning.js writes to');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js">/.test(html), 'planning.html loads forecast.js before planning.js');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),

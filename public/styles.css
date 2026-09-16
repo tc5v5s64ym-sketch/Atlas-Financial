@@ -1570,6 +1570,12 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-partial { color:var(--serious); }
 .planning-trajectory-table [data-trajectory-debt] { margin-bottom:4px; }
 .planning-trajectory-table [data-trajectory-debt] b { font-variant-numeric:tabular-nums; }
+.planning-trajectory-pressure { margin:12px 0 0; }
+.planning-trajectory-pressure-list { margin:0; padding-left:1.25rem; }
+.planning-trajectory-pressure-item { margin:0 0 12px; }
+.planning-trajectory-pressure-kind { display:block; font-weight:600; margin-bottom:4px; }
+.planning-trajectory-pressure-field { display:block; margin-top:3px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; }
+.planning-trajectory-pressure-field b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
 @media (min-width:641px) {
   .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }

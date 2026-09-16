@@ -663,8 +663,10 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
     'Planning page calls Forecast.baselineTrajectory and does not re-walk cash or debt');
   ok(!/Forecast\.simulate\(|Forecast\.projectDebts\(|Forecast\.expandEvents\(/.test(planningSrc),
     'Planning page does not call simulate, projectDebts, or expandEvents for trajectory');
-  ok(!/\.pressure/.test(planningSrc) && !/pressure\.signals/.test(planningSrc),
-    'Planning page does not reprint pressure signals in this outcome');
+  ok(/planningTrajectoryPressureHtml\(/.test(planningSrc)
+    && /traj\.pressure/.test(planningSrc)
+    && !/baselineTrajectoryPressure/.test(planningSrc),
+    'Planning page reprints traj.pressure from Forecast.baselineTrajectory without computing pressure');
   ok(!/debtDirection/.test(trajPacketCode),
     'assistant packet trajectory block does not reprint debtDirection in this outcome');
   ok(!/debtDirection/.test(planningSrc),
