@@ -55,6 +55,9 @@ function loadPage(script) {
     },
     // The same composer the page runs, on an advice object the test controls.
     compose(advice, liveOverlay) { return ctx.planningPageHtml(advice, liveOverlay); },
+    composeTrajectory(data, p) {
+      return ctx.planningTrajectoryHtml(ctx.planningTrajectory(data, p || null));
+    },
   };
 }
 
@@ -258,6 +261,88 @@ console.log('\n=== 11–12. No saved balance is invented; no independent ranking
   ok(el['planning-lede'].textContent.includes(longDate(liveAdvice.knowledge.end)), 'the lede names the Forecast knowledge horizon end');
 }
 
+console.log('\n=== 13–15. Baseline trajectory reprints Forecast.baselineTrajectory ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(/Forecast\.baselineTrajectory\(/.test(src),
+    'planning.js calls Forecast.baselineTrajectory');
+  ok(!/Forecast\.simulate\(|Forecast\.projectDebts\(|Forecast\.expandEvents\(/.test(src),
+    'planning.js does not walk cash or debt for the trajectory table');
+  const liveEl = page.render(live, periods);
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready' && Array.isArray(traj.months) && traj.months.length > 0,
+    'live baselineTrajectory is ready with months');
+  const tableHtml = liveEl['planning-trajectory'].innerHTML;
+  ok(/planning-trajectory-table/.test(tableHtml), 'trajectory renders a table');
+  for (const month of traj.months) {
+    ok(new RegExp(`data-trajectory-month="${month.month}"`).test(tableHtml),
+      `live: month ${month.month} is printed, not omitted`);
+    const income = month.income || {};
+    ok(new RegExp(`data-trajectory-month="${month.month}"[^>]*data-trajectory-income-status="${income.status}"`).test(tableHtml),
+      `live: ${month.month} income status is ${income.status}`);
+    if (income.status === 'unavailable') {
+      ok(/Forecast unavailable/.test(tableHtml) && income.reason && tableHtml.includes(income.reason),
+        `live: ${month.month} unavailable income prints Forecast reason`);
+      ok(!new RegExp(`data-trajectory-month="${month.month}"[\\s\\S]*?planning-trajectory-income[^>]*>\\s*<b>\\$0\\.00</b>`).test(tableHtml),
+        `live: ${month.month} unavailable income is not printed as $0`);
+    } else if (income.amount != null) {
+      ok(tableHtml.includes(money2(income.amount)), `live: ${month.month} income amount matches Forecast`);
+    }
+    const cash = month.cash || {};
+    ok(new RegExp(`data-trajectory-month="${month.month}"[^>]*data-trajectory-cash-status="${cash.status}"`).test(tableHtml),
+      `live: ${month.month} cash status is ${cash.status}`);
+    if (cash.status === 'unavailable') {
+      ok(cash.reason && tableHtml.includes(cash.reason),
+        `live: ${month.month} unavailable cash prints Forecast reason`);
+    } else if (cash.amount != null) {
+      ok(tableHtml.includes(money2(cash.amount)), `live: ${month.month} cash amount matches Forecast`);
+    }
+  }
+  const jan2027 = traj.months.find(m => m.month === '2027-01');
+  ok(jan2027 && jan2027.income && jan2027.income.status === 'unavailable'
+    && jan2027.cash && jan2027.cash.status === 'unavailable',
+    'live: January 2027 is Forecast-unavailable for income and cash, not carried 2026 net');
+  ok(/does not walk cash or debt itself/.test(liveEl['planning-trajectory-note'].textContent),
+    'trajectory footnote says the page does not walk cash or debt');
+  ok(!/Cash \(month-end\)/.test(tableHtml),
+    'cash column is not labelled month-end (period end matches Forecast span)');
+  ok(/Cash \(period end\)/.test(tableHtml), 'cash column names period end');
+  ok(/Secured incl\. HELOC/.test(tableHtml) && /of which HELOC/.test(tableHtml),
+    'secured vs HELOC relationship is explicit on the page');
+  for (const month of traj.months) {
+    ok(new RegExp(`data-trajectory-period-start="${month.start}"`).test(tableHtml)
+      && new RegExp(`data-trajectory-period-end="${month.end}"`).test(tableHtml),
+      `live: ${month.month} prints Forecast period ${month.start}–${month.end}`);
+    const rowRe = new RegExp(
+      `<tr[^>]*data-trajectory-month="${month.month}"[^>]*>[\\s\\S]*?</tr>`);
+    const rowMatch = rowRe.exec(tableHtml);
+    ok(rowMatch, `live: ${month.month} row is present for period inspection`);
+    if (month.start.slice(0, 7) === month.month) {
+      const [y, m] = month.month.split('-').map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+      const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const partial = month.start !== monthStart || month.end !== monthEnd;
+      if (partial) {
+        ok(/data-trajectory-partial="true"/.test(rowMatch[0]) && /Partial period/.test(rowMatch[0]),
+          `live: ${month.month} partial boundary row is marked`);
+      }
+    }
+    const cash = month.cash || {};
+    if (cash.asOf) {
+      ok(new RegExp(`data-trajectory-cash-asof="${cash.asOf}"`).test(tableHtml),
+        `live: ${month.month} cash.asOf ${cash.asOf} is visible`);
+    }
+    const debt = month.debt || {};
+    if (debt.asOf) {
+      ok(new RegExp(`data-trajectory-debt-asof="${debt.asOf}"`).test(tableHtml),
+        `live: ${month.month} debt.asOf ${debt.asOf} is visible`);
+    }
+  }
+}
+
 console.log('\n=== Page contract ===');
 {
   const src = stripComments(read('public/planning.js'));
@@ -268,7 +353,8 @@ console.log('\n=== Page contract ===');
     'heading Planning with the plain-language lede');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-  ok(['planning-lede', 'planning-list', 'planning-note'].every(id => ids.has(id)), 'planning.html has every element planning.js writes to');
+  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note'].every(id => ids.has(id)),
+    'planning.html has every element planning.js writes to');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js">/.test(html), 'planning.html loads forecast.js before planning.js');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),
     'no example list is hardcoded in the page or script');

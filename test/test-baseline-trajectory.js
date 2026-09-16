@@ -404,13 +404,17 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
   ok(F.baselineTrajectory(plan, debts, START, {}).status === 'unavailable',
     'missing periods/breakdown is unavailable, not a $0 weekly walk');
   const src = [
-    read('public/plan.js'),
     read('public/talk.js'),
     read('scripts/assistant-packet.js'),
     read('scripts/talk-hypothetical.js'),
   ].join('\n');
   ok(!/baselineTrajectory/.test(src),
-    'no page, Talk, or assistant packet consumes baselineTrajectory');
+    'Talk and assistant packet do not consume baselineTrajectory');
+  const planningSrc = read('public/planning.js');
+  ok(/Forecast\.baselineTrajectory\(/.test(planningSrc),
+    'Planning page calls Forecast.baselineTrajectory and does not re-walk cash or debt');
+  ok(!/Forecast\.simulate\(|Forecast\.projectDebts\(|Forecast\.expandEvents\(/.test(planningSrc),
+    'Planning page does not call simulate, projectDebts, or expandEvents for trajectory');
   ok(trajHasNoRank(ask(plan, debts)),
     'ranking / recommendation / affordability stay null');
 }

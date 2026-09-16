@@ -288,16 +288,77 @@ console.log('\n=== 2. Planning / majorPlans published figures have stable snapsh
     'snapshot does not store the range midpoint as a value');
 }
 
+console.log('\n=== 2b. Planning trajectory published figures have stable snapshot keys ===');
+{
+  const snap = buildFiguresSnapshot(live, periods);
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready', 'live baselineTrajectory is ready for snapshot');
+  ok(snap['planning.trajectory.status'] === 'ready',
+    'planning.trajectory.status is Forecast.baselineTrajectory.status');
+  ok(snap['planning.trajectory.horizonEnd'] === traj.horizon.end,
+    'planning.trajectory.horizonEnd is trajectory horizon end');
+  ok(same(snap['planning.trajectory.weeklyVariable'], round(traj.weeklyVariable.amount)),
+    'planning.trajectory.weeklyVariable is trajectory weeklyVariable.amount');
+  for (const month of traj.months || []) {
+    const p = `planning.trajectory.${month.month}`;
+    ok(snap[`${p}.income.status`] === month.income.status,
+      `${month.month} income.status copied`);
+    ok(snap[`${p}.cash.status`] === month.cash.status,
+      `${month.month} cash.status copied`);
+    if (month.income.amount != null) {
+      ok(same(snap[`${p}.income.amount`], round(month.income.amount)),
+        `${month.month} income.amount copied when Forecast publishes one`);
+    }
+    if (month.cash.amount != null) {
+      ok(same(snap[`${p}.cash.amount`], round(month.cash.amount)),
+        `${month.month} cash.amount copied when Forecast publishes one`);
+    }
+    if (month.cash.asOf) {
+      ok(snap[`${p}.cash.asOf`] === month.cash.asOf,
+        `${month.month} cash.asOf copied for visible period-end date`);
+    }
+    if (month.start) ok(snap[`${p}.periodStart`] === month.start, `${month.month} periodStart copied`);
+    if (month.end) ok(snap[`${p}.periodEnd`] === month.end, `${month.month} periodEnd copied`);
+    if (month.income.reason) {
+      ok(snap[`${p}.income.reason`] === month.income.reason,
+        `${month.month} income.reason copied verbatim`);
+    }
+    if (month.cash.reason) {
+      ok(snap[`${p}.cash.reason`] === month.cash.reason,
+        `${month.month} cash.reason copied verbatim`);
+    }
+    if (month.debt && month.debt.status === 'calculated') {
+      ok(same(snap[`${p}.debt.consumer`], round(month.debt.consumer)),
+        `${month.month} debt.consumer copied`);
+      if (month.debt.asOf) {
+        ok(snap[`${p}.debt.asOf`] === month.debt.asOf,
+          `${month.month} debt.asOf copied for visible as-of date`);
+      }
+    }
+  }
+  const jan = traj.months.find(m => m.month === '2027-01');
+  ok(jan && snap['planning.trajectory.2027-01.income.status'] === 'unavailable'
+    && snap['planning.trajectory.2027-01.cash.status'] === 'unavailable',
+    '2027-01 unavailable months are snapshotted, not omitted');
+  ok(snap['planning.trajectory.2027-01.income.amount'] === undefined,
+    'unavailable 2027-01 income omits an amount key');
+}
+
 console.log('\n=== 3. Snapshot copies incumbent outputs; no second arithmetic ===');
 {
   const creditBlock = snapSrc.split('Credit: Forecast.creditAccounts')[1] || '';
   const billsBlock = snapSrc.split('Bills: Forecast.householdBills')[1] || '';
   const subscriptionsBlock = snapSrc.split('Subscriptions: Forecast.householdSubscriptions')[1] || '';
   const planningBlock = snapSrc.split('Planning: Forecast.majorPlans')[1] || '';
+  const trajectoryBlock = snapSrc.split('Planning trajectory: Forecast.baselineTrajectory')[1]
+    || snapSrc.split('Planning trajectory:')[1] || '';
   const creditCode = stripComments(creditBlock.split('Bills: Forecast.householdBills')[0] || '');
   const billsCode = stripComments(billsBlock.split('Subscriptions: Forecast.householdSubscriptions')[0] || '');
   const subscriptionsCode = stripComments(subscriptionsBlock.split('Planning: Forecast.majorPlans')[0] || '');
-  const planningCode = stripComments(planningBlock);
+  const planningCode = stripComments((planningBlock.split('Planning trajectory:')[0] || planningBlock));
+  const trajectoryCode = stripComments(trajectoryBlock.split('return out;')[0] || '');
   ok(/F\.creditAccounts\(plan, data\.debts, asOf/.test(creditCode),
     'Credit keys come from Forecast.creditAccounts');
   ok(!/limit\s*[-+*/]|balance\s*[-+*/]|pending\s*[-+*/]/.test(creditCode),
@@ -320,6 +381,10 @@ console.log('\n=== 3. Snapshot copies incumbent outputs; no second arithmetic ==
     'Planning block does not average a range');
   ok(!/plan\.commitments/.test(planningCode),
     'Planning block does not read plan.commitments');
+  ok(/F\.baselineTrajectory\(plan, data\.debts, asOf/.test(trajectoryCode),
+    'trajectory keys come from Forecast.baselineTrajectory');
+  ok(!/simulate\(|projectDebts\(|expandEvents\(/.test(trajectoryCode),
+    'trajectory snapshot block does not re-walk Forecast');
 
   const liveSnap = buildFiguresSnapshot(live, periods);
   const liveAccounts = F.creditAccounts(live.plan, live.debts, live.meta.asOf, {

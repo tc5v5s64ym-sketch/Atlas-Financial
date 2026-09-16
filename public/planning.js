@@ -89,6 +89,126 @@ function planningRowHtml(row, payday, unresolved) {
     </article>`;
 }
 
+function planningTrajectoryIsPartialMonth(month) {
+  if (!month || !month.month || !month.start || !month.end) return false;
+  const [y, m] = month.month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+  const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return month.start !== monthStart || month.end !== monthEnd;
+}
+
+function planningTrajectoryPeriodCell(month) {
+  const partial = planningTrajectoryIsPartialMonth(month);
+  const periodText = `${fmtDateFull(month.start)} – ${fmtDateFull(month.end)}`;
+  const partialAttr = partial ? ' data-trajectory-partial="true"' : '';
+  const partialNote = partial
+    ? `<small class="planning-trajectory-partial">Partial period · ${periodText}</small>`
+    : `<small class="planning-trajectory-period-dates">${periodText}</small>`;
+  return `<span class="planning-trajectory-period">${month.month}</span>${partialNote}`;
+}
+
+function planningTrajectoryChip(status) {
+  const map = {
+    calculated: { cls: 'v', label: 'CALCULATED' },
+    estimated: { cls: 'w', label: 'ESTIMATED' },
+    unavailable: { cls: 'c', label: 'UNAVAILABLE' },
+  };
+  const row = map[status] || { cls: 'e', label: String(status || 'UNKNOWN').toUpperCase() };
+  return `<span class="chip ${row.cls}">${row.label}</span>`;
+}
+
+function planningTrajectoryIncomeHtml(income) {
+  if (!income || income.status === 'unavailable') {
+    const reason = income && income.reason
+      ? income.reason
+      : 'Forecast unavailable.';
+    return `<span class="chip c">Forecast unavailable</span><small class="planning-trajectory-reason">${reason}</small>`;
+  }
+  const amount = income.amount != null && isFinite(Number(income.amount))
+    ? `<b>${money2(income.amount)}</b>` : '';
+  return `${amount}${planningTrajectoryChip(income.status)}`;
+}
+
+function planningTrajectoryCashHtml(cash) {
+  if (!cash || cash.status === 'unavailable') {
+    const reason = cash && cash.reason
+      ? cash.reason
+      : 'Forecast unavailable.';
+    return `<span class="chip c">Forecast unavailable</span><small class="planning-trajectory-reason">${reason}</small>`;
+  }
+  const amount = cash.amount != null && isFinite(Number(cash.amount))
+    ? `<b>${money2(cash.amount)}</b>` : '';
+  const asOf = cash.asOf
+    ? `<small data-trajectory-cash-asof="${cash.asOf}">at period end · ${fmtDateFull(cash.asOf)}</small>`
+    : '';
+  return `${amount}${planningTrajectoryChip(cash.status)}${asOf}`;
+}
+
+function planningTrajectoryDebtHtml(debt) {
+  if (!debt || debt.status === 'unavailable') {
+    const reason = debt && debt.reason
+      ? debt.reason
+      : 'Forecast unavailable.';
+    return `<span class="chip c">Forecast unavailable</span><small class="planning-trajectory-reason">${reason}</small>`;
+  }
+  if (debt.status !== 'calculated') {
+    return planningTrajectoryChip(debt.status);
+  }
+  const asOf = debt.asOf ? `<small data-trajectory-debt-asof="${debt.asOf}">as-of ${fmtDateFull(debt.asOf)}</small>` : '';
+  return `<div data-trajectory-debt="consumer"><b>${money2(debt.consumer)}</b><small>Consumer</small></div>
+    <div data-trajectory-debt="secured"><b>${money2(debt.secured)}</b><small>Secured incl. HELOC</small></div>
+    <div data-trajectory-debt="heloc"><b>${money2(debt.heloc)}</b><small>of which HELOC</small></div>
+    ${planningTrajectoryChip(debt.status)}${asOf}`;
+}
+
+function planningTrajectoryHtml(traj) {
+  const note = 'Monthly cash and debt are Forecast.baselineTrajectory only — planned weekly variable, not historical actuals and not the payday weekly cap. This page copies status, amounts, and notes; it does not walk cash or debt itself.';
+  if (!traj || traj.status !== 'ready' || !Array.isArray(traj.months) || !traj.months.length) {
+    const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
+    return {
+      lede: '',
+      table: `<div class="note-box crit" data-trajectory="unavailable">${reason}</div>`,
+      note,
+    };
+  }
+  const horizon = traj.horizon && traj.horizon.end
+    ? `Forecast baseline cash and debt by calendar month through ${fmtDateFull(traj.horizon.end)}.`
+    : 'Forecast baseline cash and debt by calendar month over the knowledge horizon.';
+  const weekly = traj.weeklyVariable && traj.weeklyVariable.amount != null
+    ? ` Planned weekly variable: ${money2(traj.weeklyVariable.amount)} (${traj.weeklyVariable.source || 'budgetBreakdown.planned'}).`
+    : '';
+  const regimeNotes = Array.isArray(traj.incomeRegimes)
+    ? traj.incomeRegimes.filter(r => r && (r.note || r.reason)).map(r => r.note || r.reason).join(' ')
+    : '';
+  const rows = traj.months.map(month => {
+    const income = month.income || {};
+    const cash = month.cash || {};
+    const partial = planningTrajectoryIsPartialMonth(month);
+    return `<tr data-trajectory-month="${month.month}" data-trajectory-period-start="${month.start}" data-trajectory-period-end="${month.end}"${partial ? ' data-trajectory-partial="true"' : ''} data-trajectory-income-status="${income.status || ''}" data-trajectory-cash-status="${cash.status || ''}">
+      <th scope="row">${planningTrajectoryPeriodCell(month)}</th>
+      <td class="planning-trajectory-income">${planningTrajectoryIncomeHtml(income)}</td>
+      <td class="planning-trajectory-cash">${planningTrajectoryCashHtml(cash)}</td>
+      <td class="planning-trajectory-debt">${planningTrajectoryDebtHtml(month.debt)}</td>
+    </tr>`;
+  }).join('');
+  return {
+    lede: horizon + weekly + (regimeNotes ? ` ${regimeNotes}` : ''),
+    table: `<div class="scroll"><table class="stackable planning-trajectory-table" aria-label="Baseline cash and debt by month">
+      <thead><tr><th scope="col">Period</th><th scope="col">Income</th><th scope="col">Cash (period end)</th><th scope="col">Debt</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`,
+    note,
+  };
+}
+
+function planningTrajectory(d, periods) {
+  return Forecast.baselineTrajectory(d.plan, d.debts, d.meta.asOf, {
+    periods: periods || null,
+    extraFacilities: d.revolvingExtra,
+  });
+}
+
 function planningPageHtml(advice, liveOverlay) {
   advice = advice || {};
   const unavailable = advice.operatingPlanUnavailable === true
@@ -150,9 +270,13 @@ function planningAdvice(d, periods) {
 
 function renderPlanning(d, periods) {
   const html = planningPageHtml(planningAdvice(d, periods), d.liveOverlay);
+  const trajHtml = planningTrajectoryHtml(planningTrajectory(d, periods));
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;
   $('planning-note').textContent = html.note;
+  $('planning-trajectory-lede').textContent = trajHtml.lede;
+  $('planning-trajectory').innerHTML = trajHtml.table;
+  $('planning-trajectory-note').textContent = trajHtml.note;
 }
 
 App.register(renderPlanning);
