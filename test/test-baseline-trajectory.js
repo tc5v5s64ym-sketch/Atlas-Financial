@@ -292,12 +292,20 @@ console.log('=== 1. Forecast is the sole calculator ===');
   const src = read('public/forecast.js');
   ok(/function baselineTrajectory\(/.test(src),
     'Forecast.baselineTrajectory is defined in public/forecast.js');
-  const body = src.slice(src.indexOf('function plannedWeeklyVariable('),
+    const body = src.slice(src.indexOf('function plannedWeeklyVariable('),
     src.indexOf('function hypotheticalExtraPayment('));
   ok(/knowledgeHorizon\(/.test(body) && /budgetBreakdown\(/.test(body),
     'the boundary composes knowledgeHorizon and budgetBreakdown');
   ok(/simulate\(/.test(body) && /projectDebts\(/.test(body),
     'the boundary composes simulate and projectDebts');
+  ok(/function prepareBaselineTrajectoryWalk\(/.test(src),
+    'the shared planned-HB walk helper lives inside Forecast');
+  ok(typeof F.prepareBaselineTrajectoryWalk !== 'function',
+    'the shared walk helper is not a second exported engine');
+  ok(/prepareBaselineTrajectoryWalk\(/.test(
+    src.slice(src.indexOf('function baselineTrajectory('),
+      src.indexOf('function baselineTrajectoryScenario('))),
+    'baselineTrajectory composes the shared walk helper');
   ok(!/recommend\(/.test(body) && !/recommendWeekly\(/.test(body),
     'the boundary does not search Forecast.recommend for a weekly cap');
   ok(/historical-actual/.test(body) && /source === 'historical-actual'/.test(body),

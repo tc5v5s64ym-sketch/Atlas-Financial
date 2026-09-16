@@ -86,6 +86,7 @@ const suites = [
   ['hypothetical extra-payment scenario (Talk Slice 6)', 'test-hypothetical-extra-payment.js'],
   ['hypothetical extra-payment comparison (Decision Intelligence foundation)', 'test-hypothetical-extra-payment-comparison.js'],
   ['Forecast baseline trajectory (Financial Trajectory)', 'test-baseline-trajectory.js'],
+  ['Forecast baseline trajectory additional-debt-payment scenario (O4)', 'test-baseline-trajectory-scenario.js'],
   ['Dale/Seaspan estimated payroll regime (independent stubs)', 'test-dale-payroll-regime.js'],
   ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
   ['Planning page — Forecast.majorPlans rendered', 'test-planning-page.js'],
