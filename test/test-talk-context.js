@@ -338,6 +338,10 @@ console.log('=== 1. Talk UI consumes metadata only; no Forecast, no model ===');
         && talkPacket.policy.decisionPosture.numericThreshold === 'none'
         && talkPacket.policy.decisionPosture.forecastApplication === 'not-applied-this-slice',
       'Talk context carries the owner decision-posture projection');
+    ok(talkPacket.planning
+        && talkPacket.planning.trajectory
+        && talkPacket.planning.trajectory.source === 'Forecast.baselineTrajectory',
+      'Talk context exposes the Planning baseline trajectory projection');
 
     const assistantRes = await fetch(`${base}/assistant/current`, {
       headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },

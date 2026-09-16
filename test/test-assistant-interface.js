@@ -435,6 +435,13 @@ console.log('=== packet builder consumes Forecast, not a second planner ===');
       && posture.provenance === 'owner-stated'
       && posture.provenanceDate === '2026-09-14',
     'packet projects owner decisionPosture labels without a numeric threshold');
+  ok(packet.planning
+      && packet.planning.trajectory
+      && packet.planning.trajectory.status === 'ready'
+      && packet.planning.trajectory.source === 'Forecast.baselineTrajectory'
+      && Array.isArray(packet.planning.trajectory.months)
+      && packet.planning.trajectory.months.length > 0,
+    'packet projects Forecast.baselineTrajectory for Planning parity');
   ok(packet.authority.planner === 'Forecast'
       && /not a second planner/.test(packet.authority.note),
     'adding the policy projection does not create a second planner');

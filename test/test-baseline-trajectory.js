@@ -403,13 +403,19 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
   const { plan, debts } = fixture();
   ok(F.baselineTrajectory(plan, debts, START, {}).status === 'unavailable',
     'missing periods/breakdown is unavailable, not a $0 weekly walk');
-  const src = [
+  const talkSrc = [
     read('public/talk.js'),
-    read('scripts/assistant-packet.js'),
     read('scripts/talk-hypothetical.js'),
   ].join('\n');
-  ok(!/baselineTrajectory/.test(src),
-    'Talk and assistant packet do not consume baselineTrajectory');
+  ok(!/baselineTrajectory/.test(talkSrc),
+    'Talk does not consume baselineTrajectory');
+  const packetSrc = read('scripts/assistant-packet.js');
+  ok(/Forecast\.baselineTrajectory\(/.test(packetSrc),
+    'assistant packet calls Forecast.baselineTrajectory');
+  const trajPacketCode = (packetSrc.split('function projectBaselineTrajectory(')[1] || '')
+    .split('function forecastAdvice(')[0];
+  ok(!/Forecast\.simulate\(|Forecast\.projectDebts\(|Forecast\.expandEvents\(/.test(trajPacketCode),
+    'assistant packet trajectory block does not re-walk cash or debt');
   const planningSrc = read('public/planning.js');
   ok(/Forecast\.baselineTrajectory\(/.test(planningSrc),
     'Planning page calls Forecast.baselineTrajectory and does not re-walk cash or debt');
@@ -555,6 +561,80 @@ console.log('\n=== 9. Live household document is unread for cents and unwritten 
   ok(traj.weeklyVariable.historicalActuals === 'excluded',
     'live weeklyVariable still excludes historical actuals');
   ok(hashFile(DATA) === liveHash, 'data.json was not written');
+}
+
+console.log('\n=== 10. Assistant packet reprints the Planning trajectory surface ===');
+{
+  const Assistant = require('../scripts/assistant-packet.js');
+  const { buildFiguresSnapshot } = require('../scripts/figures-snapshot.js');
+  const live = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+  const periods = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/periods.json'), 'utf8'));
+  const asOf = live.meta.asOf;
+  const traj = F.baselineTrajectory(live.plan, live.debts, asOf, {
+    periods,
+    extraFacilities: live.revolvingExtra,
+  });
+  const packet = Assistant.buildPacket({
+    data: live,
+    periods,
+    questionsMarkdown: '',
+    now: '2026-08-24T12:00:00.000Z',
+    env: {},
+  });
+  const projected = packet.planning && packet.planning.trajectory;
+  ok(projected && projected.status === 'ready'
+    && projected.source === 'Forecast.baselineTrajectory',
+    'packet planning.trajectory is ready from Forecast.baselineTrajectory');
+  ok(projected.asOf === traj.asOf, 'packet trajectory asOf matches Forecast');
+  ok(projected.horizonEnd === traj.horizon.end, 'packet horizonEnd matches Forecast');
+  ok(near(projected.weeklyVariable, roundCent(traj.weeklyVariable.amount)),
+    'packet weeklyVariable matches Forecast planned weekly');
+  ok(Array.isArray(projected.months) && projected.months.length === traj.months.length,
+    'packet publishes every horizon month');
+  const snap = buildFiguresSnapshot(live, periods);
+  ok(snap['planning.trajectory.status'] === 'ready',
+    'figures snapshot planning.trajectory.status is ready');
+  for (const month of traj.months) {
+    const packetMonth = projected.months.find(row => row.month === month.month);
+    ok(packetMonth, `packet includes month ${month.month}`);
+    const p = `planning.trajectory.${month.month}`;
+    ok(packetMonth.income.status === month.income.status,
+      `${month.month} packet income.status matches Forecast`);
+    ok(snap[`${p}.income.status`] === month.income.status,
+      `${month.month} snapshot income.status matches Forecast`);
+    ok(packetMonth.cash.status === month.cash.status,
+      `${month.month} packet cash.status matches Forecast`);
+    if (month.income.amount != null) {
+      ok(near(packetMonth.income.amount, roundCent(month.income.amount)),
+        `${month.month} packet income.amount matches Forecast`);
+      ok(snap[`${p}.income.amount`] === undefined
+        || near(snap[`${p}.income.amount`], roundCent(month.income.amount)),
+        `${month.month} snapshot income.amount matches Forecast when present`);
+    } else {
+      ok(packetMonth.income.amount == null,
+        `${month.month} unavailable income omits amount in packet`);
+      ok(snap[`${p}.income.amount`] === undefined,
+        `${month.month} unavailable income omits amount in snapshot`);
+    }
+    if (month.debt && month.debt.status === 'calculated') {
+      ok(near(packetMonth.debt.secured, roundCent(month.debt.secured)),
+        `${month.month} packet debt.secured matches Forecast`);
+      ok(near(packetMonth.debt.heloc, roundCent(month.debt.heloc)),
+        `${month.month} packet debt.heloc matches Forecast`);
+      ok(snap[`${p}.debt.secured`] === undefined
+        || near(snap[`${p}.debt.secured`], roundCent(month.debt.secured)),
+        `${month.month} snapshot secured debt matches when published`);
+    }
+    if (month.start) {
+      ok(packetMonth.periodStart === month.start,
+        `${month.month} periodStart matches Forecast`);
+      ok(snap[`${p}.periodStart`] === month.start,
+        `${month.month} snapshot periodStart matches Forecast`);
+    }
+  }
+  ok(Assistant.looksSanitized(packet),
+    'trajectory projection stays within assistant sanitization rules');
+  ok(hashFile(DATA) === liveHash, 'packet trajectory test did not write data.json');
 }
 
 console.log('\n' + '═'.repeat(60));
