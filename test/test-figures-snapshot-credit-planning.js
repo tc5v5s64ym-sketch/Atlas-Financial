@@ -339,11 +339,12 @@ console.log('\n=== 2b. Planning trajectory published figures have stable snapsho
     }
   }
   const jan = traj.months.find(m => m.month === '2027-01');
-  ok(jan && snap['planning.trajectory.2027-01.income.status'] === 'unavailable'
-    && snap['planning.trajectory.2027-01.cash.status'] === 'unavailable',
-    '2027-01 unavailable months are snapshotted, not omitted');
-  ok(snap['planning.trajectory.2027-01.income.amount'] === undefined,
-    'unavailable 2027-01 income omits an amount key');
+  ok(jan && snap['planning.trajectory.2027-01.income.status'] === 'estimated'
+    && snap['planning.trajectory.2027-01.cash.status'] === 'estimated',
+    '2027-01 estimated months are snapshotted, not omitted');
+  ok(jan && jan.income.amount != null
+    && same(snap['planning.trajectory.2027-01.income.amount'], round(jan.income.amount)),
+    'estimated 2027-01 income copies Forecast amount rather than omitting it');
 }
 
 console.log('\n=== 3. Snapshot copies incumbent outputs; no second arithmetic ===');
