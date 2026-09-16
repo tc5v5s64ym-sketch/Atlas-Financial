@@ -301,9 +301,10 @@ console.log('\n=== 13–15. Baseline trajectory reprints Forecast.baselineTrajec
     }
   }
   const jan2027 = traj.months.find(m => m.month === '2027-01');
-  ok(jan2027 && jan2027.income && jan2027.income.status === 'unavailable'
-    && jan2027.cash && jan2027.cash.status === 'unavailable',
-    'live: January 2027 is Forecast-unavailable for income and cash, not carried 2026 net');
+  ok(jan2027 && jan2027.income && jan2027.income.status === 'estimated'
+    && jan2027.cash && jan2027.cash.status === 'estimated'
+    && typeof jan2027.income.amount === 'number' && jan2027.income.amount !== 0,
+    'live: January 2027 is Forecast-estimated Dale income and cash, not carried 2026 net');
   ok(/does not walk cash or debt itself/.test(liveEl['planning-trajectory-note'].textContent),
     'trajectory footnote says the page does not walk cash or debt');
   ok(!/Cash \(month-end\)/.test(tableHtml),

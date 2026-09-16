@@ -14,9 +14,10 @@
     {
       "id": "EMP-002",
       "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
-      "disposition": "EXCLUDED",
-      "exclusion_reason": "Base-salary history remains in source intake and is not routed into ACCOUNT_FACTS. The 91-day forecast consumes observed net (EMP-004), not base salary.",
-      "review_date": "2026-11-13"
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "public/forecast.js"
+      }
     },
     {
       "id": "EMP-003",
@@ -37,16 +38,18 @@
     {
       "id": "EMP-005",
       "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
-      "disposition": "EXCLUDED",
-      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
-      "review_date": "2026-11-13"
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "public/forecast.js"
+      }
     },
     {
       "id": "EMP-006",
       "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
-      "disposition": "EXCLUDED",
-      "exclusion_reason": "No live Forecast consumer exists for this item. Exclusion is intentional until a named incumbent is earned. This is not a claim about the observation’s quality.",
-      "no_review_reason": "No statutory payroll engine is authorised. Exclusion holds until a named consumer exists; not a junk-drawer parking of an unknown."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "public/forecast.js"
+      }
     },
     {
       "id": "EMP-007",

@@ -77,6 +77,65 @@
         "rehomed_on": "2026-09-15",
         "note": "The claim body sat inline under a 'researched 2026-08-09' tag that is not one of the four household trust values. ACCOUNT_FACTS now points here and keeps only the household application of the claim."
       }
+    },
+    {
+      "id": "EXT-CRA-PAYROLL-2027-001",
+      "trust_class": "external-reference",
+      "content_class": "external",
+      "subject": "Publication status of next-year Canadian payroll statutory tables",
+      "claims": [
+        "As of mid-September 2026, the Canada Revenue Agency had not published the next calendar year's Canada Pension Plan Year's Maximum Pensionable Earnings, additional CPP second-earnings ceiling, Employment Insurance Maximum Insurable Earnings, or federal personal-income-tax indexation amounts. The registered-plans limits table leaves those next-year CPP columns blank.",
+        "The latest official payroll-deductions formulas guide in force is the July 2026 T4127 edition. That edition records a Government of Canada intention to reduce the base Canada Pension Plan employee contribution rate from the following January. An intention recorded in a prior-year guide is not itself a next-year contribution-rates table.",
+        "British Columbia published a subsequent-year first-bracket personal-income-tax rate after the 2026 mid-year change, and paused indexation of those brackets for several following years. That subsequent-year table is distinct from the mid-year prorated withholding table used for the second half of 2026."
+      ],
+      "provenance": {
+        "researched_on": "2026-09-16",
+        "method": "Public web pages read during the 2026-09-16 Atlas research session. No institution login, no household account data, no provider feed.",
+        "sources": [
+          {
+            "publisher": "Canada Revenue Agency",
+            "kind": "institution-published",
+            "url": "https://www.canada.ca/en/revenue-agency/services/tax/registered-plans-administrators/pspa/mp-rrsp-dpsp-tfsa-limits-ympe.html"
+          },
+          {
+            "publisher": "Canada Revenue Agency",
+            "kind": "institution-published",
+            "url": "https://www.canada.ca/en/revenue-agency/services/forms-publications/payroll/t4127-payroll-deductions-formulas/t4127-jul/t4127-jul-payroll-deductions-formulas.html"
+          },
+          {
+            "publisher": "Canada Revenue Agency",
+            "kind": "institution-published",
+            "url": "https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/payroll/payroll-deductions-contributions/canada-pension-plan-cpp/cpp-contribution-rates-maximums-exemptions.html"
+          },
+          {
+            "publisher": "Government of British Columbia",
+            "kind": "institution-published",
+            "url": "https://www2.gov.bc.ca/gov/content/taxes/income-taxes/personal/tax-rates"
+          }
+        ]
+      },
+      "freshness": {
+        "checked_on": "2026-09-16",
+        "review_by": "2026-12-15",
+        "review_reason": "CRA typically publishes next-year YMPE, EI maxima, and T4127 near calendar year-end. Re-read the official sources before treating next-year statutory tables as known, and at least every 90 days. After review_by, treat the publication-status claim as needing re-checking, not as current."
+      },
+      "may_inform": [
+        {
+          "path": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+          "heading": "2027 statutory planning assumption",
+          "as": "explanation of why next-year CPP, EI, and federal indexation are last-published prior-year tables labelled as a planning assumption, and why the British Columbia subsequent-year first-bracket rate is used rather than the mid-year prorated withholding table"
+        }
+      ],
+      "is_not": [
+        "household-fact",
+        "forecast-input",
+        "forecast-output",
+        "owner-policy",
+        "transaction-evidence",
+        "provider-evidence",
+        "financial-permission",
+        "sufficient-authority"
+      ]
     }
   ]
 }
