@@ -463,6 +463,121 @@ function planningTrajectoryDebtDirectionHtml(traj) {
   };
 }
 
+function planningTrajectoryFundingUnavailableHtml(stageOrResult) {
+  const reason = (stageOrResult && stageOrResult.reason)
+    ? stageOrResult.reason
+    : 'Forecast unavailable.';
+  return `<span class="chip c">Forecast unavailable</span><small class="planning-trajectory-reason">${reason}</small>`;
+}
+
+function planningTrajectoryFundingComponentHtml(label, component, dataKey) {
+  if (!component || component.status === 'unavailable') {
+    if (!component || !component.reason) return '';
+    return `<div class="planning-trajectory-funding-component unavailable" data-trajectory-funding-component="${dataKey || label}">${planningTrajectoryFundingUnavailableHtml(component)}</div>`;
+  }
+  if (component.amount == null || !isFinite(Number(component.amount))) return '';
+  const chip = component.status ? planningTrajectoryChip(component.status) : '';
+  return `<div class="planning-trajectory-funding-component" data-trajectory-funding-component="${dataKey || label}"><span class="planning-trajectory-funding-component-label">${label}</span> <b>${money2(component.amount)}</b>${chip}</div>`;
+}
+
+function planningTrajectoryFundingResultHtml(result) {
+  if (!result || result.status === 'unavailable') {
+    return `<div class="planning-trajectory-funding-result unavailable" data-trajectory-funding-result="unavailable">${planningTrajectoryFundingUnavailableHtml(result || {})}</div>`;
+  }
+  if (result.amount == null || !isFinite(Number(result.amount))) {
+    return `<div class="planning-trajectory-funding-result unavailable" data-trajectory-funding-result="unavailable">${planningTrajectoryFundingUnavailableHtml({ reason: 'Forecast did not publish a result for this stage.' })}</div>`;
+  }
+  const chip = result.status ? planningTrajectoryChip(result.status) : '';
+  return `<div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready"><b>${money2(result.amount)}</b>${chip}</div>`;
+}
+
+function planningTrajectoryFundingStageHtml(stage, stageNum) {
+  if (!stage) return '';
+  const label = stage.label || (stageNum === 1 ? 'Normal life' : stageNum === 2 ? 'After planned spending' : 'After debt strategy');
+  const attrs = [
+    `data-trajectory-funding-stage="${stageNum}"`,
+    stage.id ? `data-trajectory-funding-stage-id="${stage.id}"` : '',
+    stage.status ? `data-trajectory-funding-stage-status="${stage.status}"` : '',
+  ].filter(Boolean).join(' ');
+  if (stage.status === 'unavailable') {
+    return `<article class="planning-trajectory-funding-stage unavailable"${attrs.length ? ' ' + attrs : ''}><h3 class="planning-trajectory-funding-stage-title">${label}</h3>${planningTrajectoryFundingUnavailableHtml(stage)}</article>`;
+  }
+  const componentParts = [];
+  if (stageNum === 1) {
+    componentParts.push(planningTrajectoryFundingComponentHtml('Income', stage.income, 'income'));
+    componentParts.push(planningTrajectoryFundingComponentHtml('Bills', stage.bills, 'bills'));
+    componentParts.push(planningTrajectoryFundingComponentHtml('Debt obligations', stage.obligations, 'obligations'));
+    if (stage.householdBudget) {
+      let hb = planningTrajectoryFundingComponentHtml('Household Budget', stage.householdBudget, 'household-budget');
+      if (stage.householdBudget.weeklyVariable != null && isFinite(Number(stage.householdBudget.weeklyVariable))) {
+        hb += planningTrajectoryPressureTextField('Weekly variable', money2(stage.householdBudget.weeklyVariable));
+      }
+      if (stage.householdBudget.walkDays != null && isFinite(Number(stage.householdBudget.walkDays))) {
+        hb += planningTrajectoryPressureTextField('Walk days in month', String(stage.householdBudget.walkDays));
+      }
+      if (hb) componentParts.push(hb);
+    }
+  } else if (stageNum === 2) {
+    componentParts.push(planningTrajectoryFundingComponentHtml('Dated commitments', stage.commitments, 'commitments'));
+  } else if (stageNum === 3 && stage.extras) {
+    let extras = planningTrajectoryFundingComponentHtml('Extra debt payments', stage.extras, 'extras');
+    if (stage.extras.source) {
+      extras += planningTrajectoryPressureTextField('Source', stage.extras.source);
+    }
+    if (extras) componentParts.push(extras);
+  }
+  const components = componentParts.filter(Boolean).join('');
+  const details = components
+    ? `<details class="planning-trajectory-funding-components"><summary>Component totals</summary>${components}</details>`
+    : '';
+  return `<article class="planning-trajectory-funding-stage"${attrs.length ? ' ' + attrs : ''}>
+    <h3 class="planning-trajectory-funding-stage-title">${label}</h3>
+    ${planningTrajectoryFundingResultHtml(stage.result)}
+    ${details}
+  </article>`;
+}
+
+function planningTrajectoryFundingMonthHtml(month) {
+  if (!month || !month.month) return '';
+  return `<div class="planning-trajectory-funding-month" data-trajectory-funding-month="${month.month}">
+    <div class="planning-trajectory-funding-stages">
+      ${planningTrajectoryFundingStageHtml(month.stage1, 1)}
+      ${planningTrajectoryFundingStageHtml(month.stage2, 2)}
+      ${planningTrajectoryFundingStageHtml(month.stage3, 3)}
+    </div>
+  </div>`;
+}
+
+function planningTrajectoryFundingHtml(traj, selectedMonthKey) {
+  const note = 'Three-stage funding is Forecast.baselineTrajectory stage1 / stage2 / stage3 only — Normal life, After planned spending, After debt strategy. This page copies component totals and results when Forecast publishes them; it does not subtract stages, recompute funding, or treat unavailable as $0.';
+  if (!traj || traj.status !== 'ready' || !Array.isArray(traj.months) || !traj.months.length) {
+    const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
+    return {
+      lede: '',
+      picker: '',
+      panel: `<div class="note-box crit" data-trajectory-funding="unavailable">${reason}</div>`,
+      note,
+      selectedMonth: null,
+    };
+  }
+  const months = traj.months;
+  const selected = months.find(m => m.month === selectedMonthKey) || months[0];
+  const lede = 'Compare Normal life, After planned spending, and After debt strategy for one trajectory month — the same three stages Forecast publishes on the baseline walk. Select a month in the table above or the picker below.';
+  const picker = `<label class="planning-trajectory-funding-picker"><span class="planning-trajectory-funding-picker-label">Trajectory month</span> `
+    + `<select class="planning-trajectory-funding-select" data-trajectory-funding-picker="select" aria-label="Trajectory month for three-stage funding">`
+    + months.map(m => `<option value="${m.month}"${m.month === selected.month ? ' selected' : ''}>${m.month}</option>`).join('')
+    + '</select></label>';
+  return {
+    lede,
+    picker,
+    panel: planningTrajectoryFundingMonthHtml(selected),
+    note,
+    selectedMonth: selected.month,
+  };
+}
+
+let planningTrajectorySelectedMonth = null;
+
 function planningTrajectoryDebtHtml(debt) {
   if (!debt || debt.status === 'unavailable') {
     const reason = debt && debt.reason
@@ -503,7 +618,7 @@ function planningTrajectoryHtml(traj) {
     const income = month.income || {};
     const cash = month.cash || {};
     const partial = planningTrajectoryIsPartialMonth(month);
-    return `<tr data-trajectory-month="${month.month}" data-trajectory-period-start="${month.start}" data-trajectory-period-end="${month.end}"${partial ? ' data-trajectory-partial="true"' : ''} data-trajectory-income-status="${income.status || ''}" data-trajectory-cash-status="${cash.status || ''}">
+    return `<tr class="planning-trajectory-month-row" tabindex="0" role="button" data-trajectory-month="${month.month}" data-trajectory-period-start="${month.start}" data-trajectory-period-end="${month.end}"${partial ? ' data-trajectory-partial="true"' : ''} data-trajectory-income-status="${income.status || ''}" data-trajectory-cash-status="${cash.status || ''}" aria-label="Show three-stage funding for ${month.month}">
       <th scope="row">${planningTrajectoryPeriodCell(month)}</th>
       <td class="planning-trajectory-income">${planningTrajectoryIncomeHtml(income)}</td>
       <td class="planning-trajectory-cash">${planningTrajectoryCashHtml(cash)}</td>
@@ -591,12 +706,26 @@ function renderPlanning(d, periods) {
   const traj = planningTrajectory(d, periods);
   const trajHtml = planningTrajectoryHtml(traj);
   const pressureHtml = planningTrajectoryPressureHtml(traj);
+  if (traj && traj.status === 'ready' && Array.isArray(traj.months) && traj.months.length) {
+    if (!planningTrajectorySelectedMonth
+      || !traj.months.some(m => m.month === planningTrajectorySelectedMonth)) {
+      planningTrajectorySelectedMonth = traj.months[0].month;
+    }
+  } else {
+    planningTrajectorySelectedMonth = null;
+  }
+  const fundingHtml = planningTrajectoryFundingHtml(traj, planningTrajectorySelectedMonth);
+  if (fundingHtml.selectedMonth) planningTrajectorySelectedMonth = fundingHtml.selectedMonth;
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;
   $('planning-note').textContent = html.note;
   $('planning-trajectory-lede').textContent = trajHtml.lede;
   $('planning-trajectory').innerHTML = trajHtml.table;
   $('planning-trajectory-note').textContent = trajHtml.note;
+  $('planning-trajectory-funding-lede').textContent = fundingHtml.lede;
+  $('planning-trajectory-funding-picker').innerHTML = fundingHtml.picker;
+  $('planning-trajectory-funding').innerHTML = fundingHtml.panel;
+  $('planning-trajectory-funding-note').textContent = fundingHtml.note;
   $('planning-trajectory-pressure-lede').textContent = pressureHtml.lede;
   $('planning-trajectory-pressure').innerHTML = pressureHtml.list;
   $('planning-trajectory-pressure-note').textContent = pressureHtml.note;
@@ -604,6 +733,32 @@ function renderPlanning(d, periods) {
   $('planning-trajectory-debt-direction-lede').textContent = debtDirectionHtml.lede;
   $('planning-trajectory-debt-direction').innerHTML = debtDirectionHtml.list;
   $('planning-trajectory-debt-direction-note').textContent = debtDirectionHtml.note;
+
+  const fundingSelect = $('planning-trajectory-funding-picker').querySelector('[data-trajectory-funding-picker="select"]');
+  if (fundingSelect) {
+    fundingSelect.onchange = () => {
+      planningTrajectorySelectedMonth = fundingSelect.value;
+      renderPlanning(d, periods);
+    };
+  }
+  const monthRows = $('planning-trajectory').querySelectorAll('tr[data-trajectory-month]');
+  for (const tr of monthRows) {
+    const monthKey = tr.getAttribute('data-trajectory-month');
+    const selected = monthKey === planningTrajectorySelectedMonth;
+    tr.classList.toggle('planning-trajectory-month-selected', selected);
+    tr.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    tr.onclick = () => {
+      planningTrajectorySelectedMonth = monthKey;
+      renderPlanning(d, periods);
+    };
+    tr.onkeydown = evt => {
+      if (evt.key === 'Enter' || evt.key === ' ') {
+        evt.preventDefault();
+        planningTrajectorySelectedMonth = monthKey;
+        renderPlanning(d, periods);
+      }
+    };
+  }
 }
 
 App.register(renderPlanning);

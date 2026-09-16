@@ -249,8 +249,12 @@ console.log('=== 1. Forecast is the sole calculator; helper is not exported ==='
   const planning = read('public/planning.js');
   const packet = read('scripts/assistant-packet.js');
   const talk = read('public/talk.js');
-  ok(!/stage1|stage2|stage3|baselineTrajectoryMonthFunding/.test(planning),
-    'Planning does not reprint or compute funding stages');
+  ok(/month\.stage1/.test(planning) && /month\.stage2/.test(planning) && /month\.stage3/.test(planning),
+    'Planning reprints trajectory month stage1 / stage2 / stage3 from Forecast only');
+  ok(!/baselineTrajectoryMonthFunding/.test(planning),
+    'Planning does not call the internal funding helper');
+  ok(!/stage1Amount|stage2Amount|stage3Amount|stage1\s*-\s*stage2/.test(planning),
+    'Planning does not recompute stage amounts');
   ok(!/stage1|stage2|stage3|baselineTrajectoryMonthFunding/.test(packet),
     'assistant packet does not project funding stages in this PR');
   ok(!/stage1|stage2|stage3|baselineTrajectoryMonthFunding/.test(talk),
