@@ -9,7 +9,9 @@
  * ESTIMATED regime (not verified future pay, not $0, not expandEvents-
  * carried 2026 post-CPP/EI-max net). After 2027-12-31 the path fails
  * closed. Streams without Seaspan salary evidence stay fail-closed
- * unavailable. Trajectory-local only.
+ * unavailable. Trajectory-local only. Objective pressure signals carry
+ * walk-derived cause attribution that reconciles to the named change,
+ * or fail closed when candidate drivers cannot be established.
  * `node test/test-baseline-trajectory.js`
  */
 const fs = require('fs');
@@ -158,6 +160,32 @@ function hasPolicyLeak(pressure) {
   return /targetBuffer|belowBuffer|riskScore|safeToSpend|breathingRoom|RYG|affordabilityThreshold/.test(text);
 }
 
+function attributionOf(signal) {
+  return signal && signal.attribution || null;
+}
+
+function driverOf(signal, cls) {
+  const attr = attributionOf(signal);
+  return ((attr && attr.drivers) || []).find(d => d && d.class === cls) || null;
+}
+
+function driversSum(signal) {
+  const attr = attributionOf(signal);
+  return roundCent(((attr && attr.drivers) || []).reduce((s, d) => s + (Number(d && d.amount) || 0), 0));
+}
+
+function independentBiweekly(anchor, start, end) {
+  const out = [];
+  let t = anchor;
+  while (t > start) t = addDays(t, -14);
+  while (t < start) t = addDays(t, 14);
+  while (t <= end) {
+    if (t >= start) out.push(t);
+    t = addDays(t, 14);
+  }
+  return out;
+}
+
 // Independent of Forecast: calendar months that intersect [start, end].
 function monthsIntersecting(start, end) {
   const months = [];
@@ -274,9 +302,17 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'pressure is a Forecast-owned helper inside forecast.js');
   ok(typeof F.baselineTrajectoryPressure !== 'function',
     'the pressure helper is not a second exported engine');
+  ok(/function trajectorySignalAttribution\(/.test(src)
+    && /function trajectoryCollectCashDrivers\(/.test(src),
+    'cause attribution is a Forecast-owned helper inside forecast.js');
+  ok(typeof F.trajectorySignalAttribution !== 'function'
+    && typeof F.trajectoryCollectCashDrivers !== 'function',
+    'the attribution helper is not a second exported engine');
   ok(/pressure: trajectoryPressureUnavailable\(/.test(src)
     && /pressure,/.test(body),
     'baselineTrajectory publishes pressure on ready and unavailable paths');
+  ok(/payrollDeposits:/.test(body) && /signal\.attribution = trajectorySignalAttribution\(/.test(src),
+    'baselineTrajectory feeds the same walk into signal attribution');
   const pressureBody = src.slice(
     src.indexOf('function baselineTrajectoryPressure('),
     src.indexOf('function baselineTrajectory('));
@@ -286,6 +322,8 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'pressure helper does not read targetBuffer or belowBuffer');
   ok(!/recommend\(/.test(pressureBody) && !/recommendWeekly\(/.test(pressureBody),
     'pressure helper does not search Forecast.recommend');
+  ok(/signal\.attribution = trajectorySignalAttribution\(/.test(pressureBody),
+    'pressure attaches walk-derived attribution on each signal');
   ok(/payrollPlanningAssumptions/.test(src)
     && /readPayrollPlanningAssumptions\(/.test(src),
     'trajectory-local payroll reads plan.payrollPlanningAssumptions');
@@ -720,10 +758,18 @@ console.log('\n=== 9. Live household document is unread for cents and unwritten 
   ok(traj.pressure && traj.pressure.status === 'ready'
     && Array.isArray(traj.pressure.signals)
     && traj.provenance.pressure === 'walk-derived'
+    && traj.provenance.pressureAttribution === 'walk-derived-fail-closed'
     && traj.provenance.pressurePolicyThresholds === 'none',
     'live trajectory publishes walk-derived pressure with no policy thresholds');
   ok(!hasPolicyLeak(traj.pressure),
     'live pressure JSON does not carry buffer / RYG / risk-score / safe-to-spend fields');
+  ok(traj.pressure.signals.every(s => {
+    const attr = s && s.attribution;
+    if (!attr || (attr.status !== 'ready' && attr.status !== 'unavailable')) return false;
+    if (!Array.isArray(attr.drivers) || !Array.isArray(attr.facts)) return false;
+    if (attr.status === 'unavailable') return attr.drivers.length === 0;
+    return near(driversSum(s), attr.change);
+  }), 'live pressure signals carry fail-closed or reconciling walk-derived attribution');
   const unpublishedCash = new Set(traj.months
     .filter(m => !(m.cash && (m.cash.status === 'calculated' || m.cash.status === 'estimated')
       && m.cash.amount != null))
@@ -1113,6 +1159,308 @@ console.log('\n=== 11. Objective pressure signals from the existing walk ===');
   ok(unknownCrossed.length === 0,
     'debt-limit-crossing is withheld while pending exposure is unknown',
     JSON.stringify(unknownCrossed));
+}
+
+console.log('\n=== 12. Walk-derived cause attribution on pressure signals ===');
+{
+  function expectReadyAttribution(signal, label, expectedChange, expectedDrivers) {
+    const attr = attributionOf(signal);
+    ok(!!signal, `${label}: signal exists`);
+    ok(attr && attr.status === 'ready',
+      `${label}: attribution is ready`, JSON.stringify(attr));
+    if (!attr || attr.status !== 'ready') return;
+    ok(near(attr.change, expectedChange),
+      `${label}: attributed change matches the independent trajectory change`,
+      `${attr.change} vs ${expectedChange}`);
+    ok(near(driversSum(signal), expectedChange),
+      `${label}: driver amounts reconcile to that change`,
+      `${driversSum(signal)} vs ${expectedChange}`);
+    const classes = ((attr.drivers) || []).map(d => d.class).sort().join(',');
+    const expectClasses = Object.keys(expectedDrivers).sort().join(',');
+    ok(classes === expectClasses,
+      `${label}: driver classes are exactly the independent fixture classes`,
+      `${classes} vs ${expectClasses}`);
+    for (const [cls, amount] of Object.entries(expectedDrivers)) {
+      const row = driverOf(signal, cls);
+      ok(row && near(row.amount, amount),
+        `${label}: ${cls} matches the independent amount`,
+        `${row && row.amount} vs ${amount}`);
+    }
+  }
+
+  const drain = zeroSpendFixture({
+    startingCash: { amount: 200 },
+    bills: [{
+      id: 'once-bill', label: 'Synthetic once bill',
+      frequency: 'once', date: '2026-06-20', amount: 250, confidence: 'confirmed',
+    }],
+  }, []);
+  const drainTraj = ask(drain.plan, drain.debts);
+  const drainSign = signalsOf(drainTraj, 'cash-sign-change')[0];
+  const drainOut = signalsOf(drainTraj, 'outflow-exceeds-inflow')
+    .find(s => s.month === '2026-06');
+  const drainLowest = signalsOf(drainTraj, 'lowest-projected-cash')[0];
+  const drainTrough = signalsOf(drainTraj, 'cash-trough').find(s => s.month === '2026-06');
+  expectReadyAttribution(drainSign, 'drain sign-change', -250, { 'recurring-bills': -250 });
+  expectReadyAttribution(drainOut, 'drain June outflow-exceeds-inflow', -250,
+    { 'recurring-bills': -250 });
+  expectReadyAttribution(drainLowest, 'drain lowest-projected-cash', -250,
+    { 'recurring-bills': -250 });
+  expectReadyAttribution(drainTrough, 'drain June cash-trough', -250,
+    { 'recurring-bills': -250 });
+  ok(!((attributionOf(drainSign) && attributionOf(drainSign).drivers) || [])
+      .some(d => d.class === 'income-timing' || d.class === 'bonus-timing'),
+    'drain fixture invents no income or bonus driver');
+
+  const budgetOnly = zeroSpendFixture({
+    startingCash: { amount: 10000 },
+    budget: {
+      basis: 'ytd',
+      categories: [{
+        id: 'groceries', label: 'Groceries', class: 'essential',
+        from: ['Groceries'], plannedWeekly: 70,
+      }],
+    },
+  }, []);
+  const budgetTraj = ask(budgetOnly.plan, budgetOnly.debts);
+  ok(near(budgetTraj.weeklyVariable.amount, 70),
+    'budget-only fixture planned weeklyVariable is independently $70/week');
+  const julyDecline = signalsOf(budgetTraj, 'month-cash-decline')
+    .find(s => s.fromMonth === '2026-06' && s.month === '2026-07');
+  const julyDays = 31;
+  const independentJulyBudget = roundCent(-julyDays * (70 / 7));
+  const julyWalk = independentDailyCloses(10000, START, '2026-07-31', [], 70, 0);
+  const juneEnd = julyWalk.daily.find(d => d.date === '2026-06-30');
+  const julyEnd = julyWalk.daily.find(d => d.date === '2026-07-31');
+  ok(juneEnd && julyEnd && near(julyEnd.amount - juneEnd.amount, independentJulyBudget),
+    'independent June→July cash change is 31 days of $10/day Household Budget drain',
+    `${julyEnd && julyEnd.amount} − ${juneEnd && juneEnd.amount}`);
+  expectReadyAttribution(julyDecline, 'July household-budget month-cash-decline',
+    independentJulyBudget, { 'household-budget': independentJulyBudget });
+
+  const twoPay = zeroSpendFixture({
+    startingCash: { amount: 5000 },
+    income: [{
+      id: 'payroll', label: 'Synthetic payroll',
+      frequency: 'biweekly', anchor: '2026-06-12',
+      amount: 1000, confidence: 'confirmed',
+    }],
+    bills: [{
+      id: 'rent', label: 'Synthetic rent',
+      frequency: 'monthly', day: 5, amount: 2500, confidence: 'confirmed',
+    }],
+  }, []);
+  const twoPayTraj = ask(twoPay.plan, twoPay.debts);
+  const julyPays = independentBiweekly('2026-06-12', '2026-07-01', '2026-07-31');
+  const octPays = independentBiweekly('2026-06-12', '2026-10-01', '2026-10-31');
+  ok(julyPays.length === 2 && julyPays[0] === '2026-07-10' && julyPays[1] === '2026-07-24',
+    'independent July 2026 payday list is two-pay', julyPays.join(','));
+  ok(octPays.length === 3 && octPays[0] === '2026-10-02'
+    && octPays[1] === '2026-10-16' && octPays[2] === '2026-10-30',
+    'independent October 2026 payday list is three-pay', octPays.join(','));
+  const julyOut = signalsOf(twoPayTraj, 'outflow-exceeds-inflow').find(s => s.month === '2026-07');
+  const octOut = signalsOf(twoPayTraj, 'outflow-exceeds-inflow').find(s => s.month === '2026-10');
+  ok(julyOut && near(julyOut.inflow, 2000) && near(julyOut.outflow, 2500),
+    'independent July two-pay inflow $2,000 is below the $2,500 bill');
+  ok(!octOut,
+    'October three-pay $3,000 covers the $2,500 bill, so no outflow-exceeds-inflow');
+  expectReadyAttribution(julyOut, 'July two-pay outflow-exceeds-inflow', -500, {
+    'income-timing': 2000,
+    'recurring-bills': -2500,
+  });
+  const julyCadence = ((attributionOf(julyOut) && attributionOf(julyOut).facts) || [])
+    .find(f => f && f.class === 'income-timing');
+  ok(julyCadence && julyCadence.cadence === 'two-pay-month' && julyCadence.count === 2,
+    'July attribution records two-pay-month as a fact, not a missing third pay amount',
+    JSON.stringify(julyCadence));
+
+  const bonus = zeroSpendFixture({
+    startingCash: { amount: 1000 },
+    income: [{
+      id: 'payrollBonus', label: 'Synthetic bonus',
+      frequency: 'once', date: '2026-06-20', amount: 500, confidence: 'confirmed',
+    }],
+    bills: [{
+      id: 'once-bill', label: 'Synthetic once bill',
+      frequency: 'once', date: '2026-06-25', amount: 800, confidence: 'confirmed',
+    }],
+  }, []);
+  const bonusTraj = ask(bonus.plan, bonus.debts);
+  const bonusOut = signalsOf(bonusTraj, 'outflow-exceeds-inflow').find(s => s.month === '2026-06');
+  ok(bonusOut && near(bonusOut.inflow, 500) && near(bonusOut.outflow, 800),
+    'independent June bonus $500 and bill $800 produce net −$300');
+  expectReadyAttribution(bonusOut, 'June bonus+bill outflow-exceeds-inflow', -300, {
+    'bonus-timing': 500,
+    'recurring-bills': -800,
+  });
+  ok(!driverOf(bonusOut, 'income-timing'),
+    'bonus cash is bonus-timing, not generic income-timing');
+
+  const mortgage = zeroSpendFixture({
+    startingCash: { amount: 10000 },
+    obligations: [{
+      id: 'mortgage-pmt', debtId: 'mortgage', effect: 'payment',
+      label: 'Mortgage', frequency: 'monthly', day: 1,
+      amount: 2000, confidence: 'confirmed',
+    }],
+  }, [{
+    id: 'mortgage', label: 'Mortgage',
+    balance: 400000, pending: 0, rate: 0, rateConvention: 'variable',
+    structure: 'Amortising — synthetic', secured: true,
+  }]);
+  const mortgageTraj = ask(mortgage.plan, mortgage.debts);
+  const mortgageEvents = F.expandEvents(mortgage.plan, START, '2026-07-31')
+    .filter(e => e.kind === 'obligation' && e.debtId === 'mortgage');
+  ok(mortgageEvents.some(e => e.date === '2026-07-01' && e.amount === -2000),
+    'independent expandEvents emits the $2,000 mortgage on 2026-07-01');
+  const mtgWalk = independentDailyCloses(10000, START, '2026-07-31', mortgageEvents, 0, 0);
+  const mtgJun = mtgWalk.daily.find(d => d.date === '2026-06-30');
+  const mtgJul = mtgWalk.daily.find(d => d.date === '2026-07-31');
+  ok(mtgJun && near(mtgJun.amount, 10000) && mtgJul && near(mtgJul.amount, 8000),
+    'independent June→July cash drop is the July mortgage payment');
+  const mtgDecline = signalsOf(mortgageTraj, 'month-cash-decline')
+    .find(s => s.fromMonth === '2026-06' && s.month === '2026-07');
+  expectReadyAttribution(mtgDecline, 'July mortgage month-cash-decline', -2000, {
+    'mortgage-or-major-obligation': -2000,
+  });
+
+  const commit = zeroSpendFixture({
+    startingCash: { amount: 5000 },
+    commitments: [{
+      id: 'known-cost', label: 'Synthetic dated commitment',
+      date: '2026-08-15', amount: 800, flexibility: 'required', confidence: 'confirmed',
+    }],
+  }, []);
+  const commitTraj = ask(commit.plan, commit.debts);
+  const dated = signalsOf(commitTraj, 'dated-commitment')[0];
+  expectReadyAttribution(dated, 'dated-commitment signal', -800, {
+    'dated-commitment': -800,
+  });
+  ok(driverOf(dated, 'dated-commitment')
+    && driverOf(dated, 'dated-commitment').id === 'known-cost'
+    && driverOf(dated, 'dated-commitment').date === '2026-08-15',
+    'dated-commitment attribution keeps the independent event identity');
+
+  const rising = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+    obligations: [{
+      id: 'card-min', debtId: 'card', effect: 'payment',
+      label: 'Card minimum', frequency: 'monthly', day: 20,
+      amount: 10, confidence: 'confirmed',
+    }],
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 1000, pending: 0, rate: 29.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 5000,
+  }]);
+  const risingTraj = ask(rising.plan, rising.debts);
+  const junDebt = independentCardMonthEnd(1000, 29.99, 20, 10, START, '2026-06-30');
+  const julDebt = independentCardMonthEnd(1000, 29.99, 20, 10, START, '2026-07-31');
+  const interestJun = roundCent(junDebt.balance - 1000 + junDebt.paid);
+  const interestJul = roundCent(julDebt.balance - 1000 + julDebt.paid);
+  const interestDelta = roundCent(interestJul - interestJun);
+  const paidDelta = roundCent(julDebt.paid - junDebt.paid);
+  const debtDelta = roundCent(julDebt.balance - junDebt.balance);
+  ok(near(interestDelta - paidDelta, debtDelta),
+    'independent card identity: interest − paid = June→July debt change',
+    `${interestDelta} − ${paidDelta} vs ${debtDelta}`);
+  const rise = signalsOf(risingTraj, 'debt-increase')
+    .find(s => s.fromMonth === '2026-06' && s.month === '2026-07');
+  const stuck = signalsOf(risingTraj, 'debt-not-declining-after-payment')
+    .find(s => s.fromMonth === '2026-06' && s.month === '2026-07');
+  expectReadyAttribution(rise, 'June→July debt-increase', debtDelta, {
+    'debt-interest': interestDelta,
+    'debt-payment': roundCent(-paidDelta),
+  });
+  expectReadyAttribution(stuck, 'June→July paid-but-not-down', debtDelta, {
+    'debt-interest': interestDelta,
+    'debt-payment': roundCent(-paidDelta),
+  });
+
+  const openingLow = zeroSpendFixture({
+    startingCash: { amount: 80 },
+    income: [{
+      id: 'once-in', label: 'Synthetic inflow',
+      frequency: 'once', date: START, amount: 500, confidence: 'confirmed',
+    }],
+  }, []);
+  const openingTraj = ask(openingLow.plan, openingLow.debts);
+  const openingLowest = signalsOf(openingTraj, 'lowest-projected-cash')[0];
+  ok(openingLowest && openingLowest.date === START && near(openingLowest.amount, 80),
+    'opening lowest-projected-cash remains the $80 opening');
+  ok(attributionOf(openingLowest) && attributionOf(openingLowest).status === 'unavailable'
+    && attributionOf(openingLowest).drivers.length === 0,
+    'opening cash is not attributed as a walk-derived cause',
+    JSON.stringify(attributionOf(openingLowest)));
+
+  const crossing = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 100, pending: 0, rate: 19.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 100,
+  }]);
+  const crossingTraj = ask(crossing.plan, crossing.debts);
+  const crossed = signalsOf(crossingTraj, 'debt-limit-crossing')[0];
+  ok(crossed && crossed.date === START,
+    'limit-crossing fixture still publishes the mechanical crossing');
+  ok(attributionOf(crossed) && attributionOf(crossed).status === 'unavailable'
+    && attributionOf(crossed).drivers.length === 0,
+    'limit-crossing fails closed rather than inventing a daily interest driver',
+    JSON.stringify(attributionOf(crossed)));
+
+  const seaspan = zeroSpendFixture({
+    startingCash: { amount: 8000 },
+    income: [{
+      id: 'payroll', label: 'Payroll — Seaspan',
+      frequency: 'biweekly', anchor: '2026-06-12',
+      amount: 2400, confidence: 'confirmed',
+    }],
+    bills: [{
+      id: 'jan-pressure', label: 'Synthetic January pressure bill',
+      frequency: 'once', date: '2027-01-15', amount: 10000, confidence: 'confirmed',
+    }],
+    payrollPlanningAssumptions: {
+      salaryRaiseFactor: 1.04,
+      bonusRate: 0.18,
+      authorizedThroughYear: 2027,
+    },
+  }, []);
+  const seaspanTraj = ask(seaspan.plan, seaspan.debts);
+  const deposits = F.daleEstimatedPayrollDeposits(
+    seaspan.plan, '2026-12-01', '2027-02-28');
+  ok(deposits && deposits.status === 'ready',
+    'Seaspan fixture can form estimated Dale deposits independently of attribution');
+  const regular = ((deposits.allDeposits || deposits.deposits) || [])
+    .filter(d => d.kind === 'regular');
+  const last2026 = regular.filter(d => d.date <= '2026-12-31').pop();
+  const first2027 = regular.find(d => d.date >= '2027-01-01');
+  ok(last2026 && first2027 && near(last2026.gross, first2027.gross)
+    && !near(last2026.net, first2027.net),
+    'independent 2026→2027 regular deposits keep the same gross and change net',
+    last2026 && first2027
+      ? `${last2026.date} net ${last2026.net} → ${first2027.date} net ${first2027.net}`
+      : 'missing deposits');
+  const janOut = signalsOf(seaspanTraj, 'outflow-exceeds-inflow')
+    .find(s => s.month === '2027-01');
+  ok(janOut && janOut.attribution && janOut.attribution.status === 'ready',
+    'January 2027 pressure window is ready so the CPP/EI reset payday can be attributed');
+  const regime = ((attributionOf(janOut) && attributionOf(janOut).facts) || [])
+    .find(f => f && f.class === 'payroll-deduction-regime' && f.date === first2027.date);
+  ok(regime && near(regime.gross, first2027.gross)
+    && near(regime.net, first2027.net)
+    && near(regime.priorNet, last2026.net),
+    'payroll-deduction-regime fact matches independent same-gross net change',
+    JSON.stringify(regime));
+  ok(!((attributionOf(janOut) && attributionOf(janOut).drivers) || [])
+      .some(d => d.class === 'payroll-deduction-regime'),
+    'payroll-deduction-regime is a fact, not a second cash driver');
+
+  ok(!hasPolicyLeak(drainTraj.pressure) && trajHasNoRank(drainTraj),
+    'attribution JSON carries no ranking, affordability, or policy-threshold leak');
+  ok(drainTraj.pressure.signals.every(s => s.attribution
+    && (s.attribution.status === 'ready' || s.attribution.status === 'unavailable')),
+    'every drain pressure signal has fail-closed or ready attribution');
 }
 
 console.log('\n' + '═'.repeat(60));
