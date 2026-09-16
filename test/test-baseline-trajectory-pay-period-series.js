@@ -4,7 +4,8 @@
  * the same prepareBaselineTrajectoryWalk / simulate / projectDebts walk.
  * Three-stage funding reuses the monthly helpers; Household Budget is
  * walk-applied weeklyVariable / 7 on simulate days in the Seaspan span,
- * not a 14-day calendar smear. Unavailable is not $0.
+ * not a 14-day calendar smear. Carried unresolved joint-cash outflows
+ * use the same cash-application date as simulate. Unavailable is not $0.
  * `node test/test-baseline-trajectory-pay-period-series.js`
  */
 const fs = require('fs');
@@ -175,10 +176,27 @@ function independentWalkDays(walkStart, walkEnd, spanStart, spanEnd) {
   return n;
 }
 
+// Same application rule simulate documents: a past unresolved
+// joint-cash outflow is applied at this opening; other events keep
+// their scheduled date. Reconstruct the rule here so a scheduled-date
+// filter cannot false-green the carried-outflow case.
+function independentApplyDate(event, walkStart) {
+  if (event && walkStart && event.date < walkStart
+      && event.amount < 0 && event.kind !== 'noncash'
+      && event.jointCash !== false) {
+    return walkStart;
+  }
+  return event && event.date;
+}
+
 function independentSpan(plan, debts, span, asOf, periods) {
   const walk = independentWalkEvents(plan, debts, asOf, periods);
-  const events = (walk.events || []).filter(e =>
-    e && e.date >= span.start && e.date <= span.end);
+  const walkStart = asOf || START;
+  const events = (walk.events || []).filter(e => {
+    if (!e) return false;
+    const apply = independentApplyDate(e, walkStart);
+    return apply >= span.start && apply <= span.end;
+  });
   const walkDays = independentWalkDays(
     walk.horizon.start, walk.horizon.end, span.start, span.end);
   const sumKind = (pred, sign) => roundCent(events.filter(pred)
@@ -288,6 +306,8 @@ console.log('=== 1. Forecast is the sole calculator; pay-period helper is not ex
     'span picture does not search recommend, paydayAllocation, nextDollar, or the scenario');
   ok(!/safeToSpend|breathingRoom|minCash|\bryg\b/.test(pictureFn),
     'pay-period helper invents no min-cash / breathing-room / safe-to-spend / RYG');
+  ok(/cashWalkDate\(e, walkStart\)/.test(pictureFn),
+    'span picture attributes funding events by incumbent cashWalkDate, not scheduled date alone');
   const planning = read('public/planning.js');
   const packet = read('scripts/assistant-packet.js');
   const talk = read('public/talk.js');
@@ -542,6 +562,130 @@ console.log('\n=== 6. Live Seaspan series: clipped opening, honest $0 extras, 20
       === 'simulate weeklyVariable applied days in month',
     'live month series keeps the month Household Budget identity');
   ok(hashFile(DATA) === liveHash, 'pay-period tests did not write data.json');
+}
+
+console.log('\n=== 7. Carried joint-cash outflows use walk-application date ===');
+{
+  function withCarriedBill(amount, extra) {
+    return fixture(Object.assign({
+      opening: { asOf: START, priorAsOf: '2026-06-13' },
+      bills: [
+        {
+          id: 'hydro', label: 'Hydro', frequency: 'monthly', day: 5,
+          amount: 120, confidence: 'confirmed',
+        },
+        {
+          id: 'card-stream', label: 'Card-paid stream', frequency: 'monthly', day: 8,
+          amount: 50, jointCash: false, confidence: 'confirmed',
+        },
+        {
+          id: 'carried-joint', label: 'Carried once joint-cash bill',
+          frequency: 'once', date: '2026-06-14',
+          amount: amount, confidence: 'confirmed',
+        },
+      ],
+    }, extra || {}));
+  }
+
+  const low = withCarriedBill(100);
+  const high = withCarriedBill(200);
+  const trajLow = ask(low.plan, low.debts);
+  const trajHigh = ask(high.plan, high.debts);
+  const firstLow = trajLow.payPeriods[0];
+  const firstHigh = trajHigh.payPeriods[0];
+  const monthLow = trajLow.months[0];
+  const monthHigh = trajHigh.months[0];
+  ok(firstLow && firstLow.start === START && firstLow.end === '2026-06-25'
+    && monthLow && monthLow.start === START,
+    'first pay-period and first month both contain the clipped opening');
+  const expectedLow = independentSpan(low.plan, low.debts, firstLow);
+  const expectedHigh = independentSpan(high.plan, high.debts, firstHigh);
+  const expectedMonthLow = independentSpan(low.plan, low.debts, monthLow);
+  ok(expectedLow.bills === 100 && expectedHigh.bills === 200
+    && expectedMonthLow.bills === 100,
+    'independent reconstruct attributes the Jun 14 carried bill to the opening span, not the scheduled date');
+  ok(stageReady(firstLow.stage1) && stageReady(firstHigh.stage1)
+    && near(firstLow.stage1.bills.amount, 100)
+    && near(firstHigh.stage1.bills.amount, 200)
+    && near(firstLow.stage1.bills.amount, expectedLow.bills)
+    && near(firstHigh.stage1.bills.amount, expectedHigh.bills),
+    'first-period Stage 1 bills include the carried joint-cash amount');
+  ok(near(firstHigh.stage1.bills.amount - firstLow.stage1.bills.amount, 100)
+    && near(firstLow.stage1.result.amount - firstHigh.stage1.result.amount, 100)
+    && near(firstLow.stage3.result.amount - firstHigh.stage3.result.amount, 100)
+    && near(firstLow.cash.amount - firstHigh.cash.amount, 100),
+    'raising the carried bill $100 moves first-period Stage 1 bills/result and period-end cash together');
+  ok(near(monthHigh.stage1.bills.amount - monthLow.stage1.bills.amount, 100)
+    && near(monthLow.stage1.result.amount - monthHigh.stage1.result.amount, 100)
+    && near(monthLow.cash.amount - monthHigh.cash.amount, 100),
+    'the same carried bill moves first-month Stage 1 and month-end cash together');
+
+  const settledLow = withCarriedBill(100, {
+    opening: {
+      asOf: START,
+      priorAsOf: '2026-06-13',
+      representedEvents: [{ id: 'carried-joint', date: '2026-06-14' }],
+    },
+  });
+  const settledHigh = withCarriedBill(200, {
+    opening: {
+      asOf: START,
+      priorAsOf: '2026-06-13',
+      representedEvents: [{ id: 'carried-joint', date: '2026-06-14' }],
+    },
+  });
+  const settledFirstLow = ask(settledLow.plan, settledLow.debts).payPeriods[0];
+  const settledFirstHigh = ask(settledHigh.plan, settledHigh.debts).payPeriods[0];
+  ok(near(settledFirstLow.stage1.bills.amount, 0)
+    && near(settledFirstHigh.stage1.bills.amount, 0)
+    && near(settledFirstLow.cash.amount, settledFirstHigh.cash.amount),
+    'a represented once bill is not carried to the opening — scheduled-date / settlement semantics stay');
+
+  function withLaterBill(amount) {
+    return fixture({
+      bills: [
+        {
+          id: 'hydro', label: 'Hydro', frequency: 'monthly', day: 5,
+          amount: 120, confidence: 'confirmed',
+        },
+        {
+          id: 'card-stream', label: 'Card-paid stream', frequency: 'monthly', day: 8,
+          amount: 50, jointCash: false, confidence: 'confirmed',
+        },
+        {
+          id: 'later-joint', label: 'Later once joint-cash bill',
+          frequency: 'once', date: '2026-06-26',
+          amount: amount, confidence: 'confirmed',
+        },
+      ],
+    });
+  }
+  const laterLow = withLaterBill(100);
+  const laterHigh = withLaterBill(200);
+  const laterFirstLow = ask(laterLow.plan, laterLow.debts).payPeriods[0];
+  const laterFirstHigh = ask(laterHigh.plan, laterHigh.debts).payPeriods[0];
+  ok(near(laterFirstLow.stage1.bills.amount, 0)
+    && near(laterFirstHigh.stage1.bills.amount, 0)
+    && near(laterFirstLow.stage1.result.amount, laterFirstHigh.stage1.result.amount)
+    && near(laterFirstLow.cash.amount, laterFirstHigh.cash.amount),
+    'a once bill scheduled after the first span keeps scheduled-date semantics and is not pulled to the opening');
+
+  const staleCommitment = fixture({
+    opening: { asOf: START, priorAsOf: '2026-06-13' },
+    commitments: [
+      {
+        id: 'old-camp', label: 'Past required camp', date: '2026-06-10',
+        amount: 250, flexibility: 'required', confidence: 'confirmed',
+      },
+      {
+        id: 'camp', label: 'Required camp', date: '2026-07-10',
+        amount: 400, flexibility: 'required', confidence: 'confirmed',
+      },
+    ],
+  });
+  const staleFirst = ask(staleCommitment.plan, staleCommitment.debts).payPeriods[0];
+  ok(stageReady(staleFirst.stage2) && near(staleFirst.stage2.commitments.amount, 0),
+    'a commitment before priorAsOf is not carried to the opening — Forecast does not apply it at this start');
 }
 
 if (failures) {

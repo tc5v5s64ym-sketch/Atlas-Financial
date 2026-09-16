@@ -177,10 +177,22 @@ function independentWalkDays(walkStart, walkEnd, spanStart, spanEnd) {
   return n;
 }
 
+function independentApplyDate(event, walkStart) {
+  if (event && walkStart && event.date < walkStart
+      && event.amount < 0 && event.kind !== 'noncash'
+      && event.jointCash !== false) {
+    return walkStart;
+  }
+  return event && event.date;
+}
+
 function independentMonth(plan, debts, span) {
   const walk = independentWalkEvents(plan, debts);
-  const events = (walk.events || []).filter(e =>
-    e && e.date >= span.start && e.date <= span.end);
+  const events = (walk.events || []).filter(e => {
+    if (!e) return false;
+    const apply = independentApplyDate(e, START);
+    return apply >= span.start && apply <= span.end;
+  });
   const walkDays = independentWalkDays(
     walk.horizon.start, walk.horizon.end, span.start, span.end);
   const sumKind = (pred, sign) => roundCent(events.filter(pred)

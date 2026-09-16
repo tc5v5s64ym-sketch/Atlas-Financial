@@ -345,6 +345,10 @@ console.log('=== 1. Forecast is the sole calculator ===');
     src.slice(src.indexOf('function baselineTrajectorySpanPicture('),
       src.indexOf('function baselineTrajectory('))),
     'the span helper reuses the monthly funding arithmetic');
+  ok(/cashWalkDate\(e, walkStart\)/.test(
+    src.slice(src.indexOf('function baselineTrajectorySpanPicture('),
+      src.indexOf('function baselineTrajectory('))),
+    'span funding attributes events by incumbent cashWalkDate');
   ok(/function trajectorySignalAttribution\(/.test(src)
     && /function trajectoryCollectCashDrivers\(/.test(src),
     'cause attribution is a Forecast-owned helper inside forecast.js');

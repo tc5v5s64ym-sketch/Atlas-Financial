@@ -12247,11 +12247,16 @@
   // monthly series already publishes, for one dated span. Trust follows
   // span-end Dale-payroll rules: unavailable is not $0. Household Budget
   // is walk-applied weeklyVariable / 7 on simulate days in the span.
+  // Funding attribution uses the same cashWalkDate simulate uses: a
+  // carried unresolved joint-cash outflow keeps e.date and is counted
+  // in the span that contains this opening. Events Forecast does not
+  // carry or apply at the opening keep scheduled-date semantics.
   function baselineTrajectorySpanPicture(input) {
     input = input || {};
     const plan = input.plan;
     const span = input.span;
     const allEvents = Array.isArray(input.allEvents) ? input.allEvents : [];
+    const walkStart = input.walkStart;
     const isDalePayrollOrBonusIncome = input.isDalePayrollOrBonusIncome
       || function () { return false; };
     const regimeReady = !!input.regimeReady;
@@ -12260,7 +12265,11 @@
     const close = input.close || null;
     const closeMissingReason = input.closeMissingReason
       || 'Forecast could not read month-end cash.';
-    const spanEvents = allEvents.filter(e => e && span && e.date >= span.start && e.date <= span.end);
+    const spanEvents = allEvents.filter(e => {
+      if (!e || !span) return false;
+      const apply = cashWalkDate(e, walkStart);
+      return apply >= span.start && apply <= span.end;
+    });
     const incomeEvents = spanEvents.filter(e => e.kind === 'income');
     const dale2027Events = incomeEvents.filter(e =>
       isDalePayrollOrBonusIncome(e)
@@ -12440,6 +12449,7 @@
     const spanPictureInput = {
       plan,
       allEvents: events,
+      walkStart: day,
       weeklyVariable: weekly,
       walkDaily: sim.daily,
       isDalePayrollOrBonusIncome,
