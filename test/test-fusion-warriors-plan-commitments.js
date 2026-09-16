@@ -39,8 +39,10 @@ ok(near(OWNER_PAID + remainingSum, HOUSEHOLD_TOTAL),
   'owner narrative $1,200 paid + $3,300 remaining = $4,500 household total');
 ok(byId['fusion-household-paid'].amount == null && !byId['fusion-household-paid'].settledOn,
   'paid portion has no amount and no settledOn (NEAR_MATCH not promoted to LM settlement)');
-ok(/NEAR_MATCH/i.test(byId['fusion-household-paid'].note || ''),
-  'paid note records NEAR_MATCH pending LM confirmation');
+ok(/owner-confirmed|Owner-confirmed/i.test(byId['fusion-household-paid'].note || '')
+  && /coaching/i.test(byId['fusion-household-paid'].note || '')
+  && /NEAR_MATCH/i.test(byId['fusion-household-paid'].note || ''),
+  'paid note: owner-confirmed Fusion e-transfer, coaching cover, NEAR_MATCH pending LM row');
 const pub = F.publicationTotals(data);
 const fusionEncumbered = pub.commitmentItems
   .filter(i => /^fusion-household-/.test(i.id))

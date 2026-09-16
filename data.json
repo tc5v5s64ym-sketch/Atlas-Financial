@@ -524,12 +524,12 @@
                 "id": "fusion-household-paid",
                 "label": "Fusion season — household (already paid)",
                 "amount": null,
-                "when": "owner-stated paid 2026-09-16",
+                "when": "owner-confirmed paid ~2026-09-10 (e-transfer)",
                 "budgetCategory": "sport",
                 "confidence": "confirmed",
                 "group": "fusion-household",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-16: $1,200 of the $4,500 household Fusion total is already paid — owner figure stands. Money 2026-09-16 update: NEAR_MATCH (not yet fully LM-confirmed) — Gmail LM notify 2026-09-11 for 2026-09-10 SEND E-TFR −$1,200 (Fusion/Logan LM keywords missed it); Money is confirming the live LM row. Until that confirmation, do not set settledOn or invent LM settlement identity, payee, or transaction id. Prior LM keyword search was NO_MATCH; closest noise remains Fusion West Travel Visa $70.60+$76 (2026-08-12) and Vancouver Warriors −$40 (2026-08-11). Named Fusion West e-transfers (~$2,234 across five) are not settled twins. Email fee context only (non-conflicting): G6 season $2,295+GST and G4 $2,195+GST due 2026-09-10 — household Fusion, not assigned to children. Forecast encumbrance for cash still owed is only fusion-household-oct/nov/dec ($3,300)."
+                "note": "Owner-confirmed 2026-09-16 (Dale): the $1,200 is the Fusion payment — treat the 2026-09-10 SEND E-TFR −$1,200 as Fusion paid; Amanda coaching income covered it. Of the $4,500 household Fusion total, $1,200 is paid and $3,300 remains on fusion-household-oct/nov/dec. Coordinator/Money NEAR_MATCH: Gmail LM notify 2026-09-11 for that −$1,200 (Fusion/Logan LM keywords missed it; thread 1a08f9414e482d41); Money still confirming the live LM row — until then no settledOn and no invented LM id, payee, or transaction identity. Prior LM keyword noise (Fusion West $70.60+$76, Vancouver Warriors −$40) and named Fusion West e-transfers (~$2,234 across five) are not settled twins. Email fee context only: G6 $2,295+GST and G4 $2,195+GST due 2026-09-10 — household Fusion, not assigned to children. This row is note-only (amount null) so remaining instalments are not double-counted."
             },
             {
                 "id": "fusion-household-oct",
@@ -540,7 +540,7 @@
                 "confidence": "estimated",
                 "group": "fusion-household",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $1,200 in October. Part of $4,500 household total after $1,200 owner-stated paid (see fusion-household-paid; no LM twin)."
+                "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $1,200 in October. Part of $4,500 household total after $1,200 owner-confirmed Fusion e-transfer paid (fusion-household-paid; coaching cover)."
             },
             {
                 "id": "fusion-household-nov",
