@@ -518,7 +518,7 @@
                 "budgetCategory": "sport",
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-16: due 23 September 2026; $895 plus tax. Tax dollars are not verified from PDF — no GST amount is invented; floor is pre-tax $895. Money 2026-09-16: U13 Elite selection email only — no LM ~$895 payment yet (LM Warriors keyword: Vancouver Warriors −$40 on 2026-08-11 only). Not verified settlement."
+                "note": "Owner 2026-09-16: due 23 September 2026; $895 plus tax (owner due date wins over form-by 25 Sep noon). Tax dollars are not verified from PDF — no GST amount is invented; floor is pre-tax $895. Registration form deadline email and PDF fee exist; no LM ~$895 payment posted yet (LM Warriors keyword: Vancouver Warriors −$40 on 2026-08-11 only). Not verified settlement."
             },
             {
                 "id": "fusion-household-paid",
@@ -529,7 +529,7 @@
                 "confidence": "confirmed",
                 "group": "fusion-household",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-16: $1,200 of the $4,500 household Fusion total is already paid. Money packet 2026-09-16: LM Fusion/Logan/Warriors keyword search NO_MATCH for a $1,200 twin; closest noise only Fusion West Travel Visa $70.60+$76 (2026-08-12) and Vancouver Warriors −$40 (2026-08-11). Named Fusion West e-transfers (~$2,234 across five) are not encoded as settled twins. Owner-stated paid only — no settledOn and no LM id. Forecast encumbrance for cash still owed is only fusion-household-oct/nov/dec ($3,300)."
+                "note": "Owner 2026-09-16: $1,200 of the $4,500 household Fusion total is already paid — owner figure stands. Money 2026-09-16 update: NEAR_MATCH (not yet fully LM-confirmed) — Gmail LM notify 2026-09-11 for 2026-09-10 SEND E-TFR −$1,200 (Fusion/Logan LM keywords missed it); Money is confirming the live LM row. Until that confirmation, do not set settledOn or invent LM settlement identity, payee, or transaction id. Prior LM keyword search was NO_MATCH; closest noise remains Fusion West Travel Visa $70.60+$76 (2026-08-12) and Vancouver Warriors −$40 (2026-08-11). Named Fusion West e-transfers (~$2,234 across five) are not settled twins. Email fee context only (non-conflicting): G6 season $2,295+GST and G4 $2,195+GST due 2026-09-10 — household Fusion, not assigned to children. Forecast encumbrance for cash still owed is only fusion-household-oct/nov/dec ($3,300)."
             },
             {
                 "id": "fusion-household-oct",

@@ -38,7 +38,9 @@ ok(near(remainingSum, REMAINING), 'Oct/Nov/Dec sum to $3,300', String(remainingS
 ok(near(OWNER_PAID + remainingSum, HOUSEHOLD_TOTAL),
   'owner narrative $1,200 paid + $3,300 remaining = $4,500 household total');
 ok(byId['fusion-household-paid'].amount == null && !byId['fusion-household-paid'].settledOn,
-  'paid portion has no amount and no settledOn (no invented LM twin)');
+  'paid portion has no amount and no settledOn (NEAR_MATCH not promoted to LM settlement)');
+ok(/NEAR_MATCH/i.test(byId['fusion-household-paid'].note || ''),
+  'paid note records NEAR_MATCH pending LM confirmation');
 const pub = F.publicationTotals(data);
 const fusionEncumbered = pub.commitmentItems
   .filter(i => /^fusion-household-/.test(i.id))
@@ -51,8 +53,9 @@ console.log('\n=== Warriors + tax encoding ===');
 ok(byId.warriors.date === '2026-09-23'
   && byId.warriors.amount == null && near(byId.warriors.amountMin, 895),
   'Warriors is dated $895 floor, tax not a point amount');
-ok(/no LM ~\$895 payment yet/i.test(byId.warriors.note || ''),
-  'Warriors note records email-only / no LM payment yet');
+ok(/no LM ~\$895 payment/i.test(byId.warriors.note || '')
+  && /PDF/i.test(byId.warriors.note || ''),
+  'Warriors note: PDF fee context, no LM ~$895 posted yet');
 const events = F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90), {});
 ok(!events.some(e => e.id === 'warriors'),
   'Warriors does not emit a cash event with invented tax');
