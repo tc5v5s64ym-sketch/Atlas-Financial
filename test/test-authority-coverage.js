@@ -8,7 +8,7 @@
  *
  *   1. Forecast exports — every export must be either an explicitly classified
  *      non-authority helper or named in ARCHITECTURE.md's incumbent table.
- *   2. data.json plan policy keys — actions, nextDollar, decisionPosture and budget.
+ *   2. data.json plan policy keys — actions, nextDollar, decisionPosture, payrollPlanningAssumptions and budget.
  *   3. the calculators that used to live in public/app.js, the shared page core:
  *      each must be defined in the engine and absent from the page.
  *   4. the named artifact-writing scripts already named as financial
@@ -141,7 +141,7 @@ ok(!pageCalculatorReturns(read('public/app.js')),
   'and the real page core does not trip it');
 
 console.log('\n=== data.json plan policy coverage ===');
-for (const key of ['actions', 'nextDollar', 'decisionPosture', 'budget']) {
+for (const key of ['actions', 'nextDollar', 'decisionPosture', 'payrollPlanningAssumptions', 'budget']) {
   ok(Object.prototype.hasOwnProperty.call(data.plan || {}, key),
     `data.json plan.${key} exists`);
   ok(new RegExp(`plan\\.${key}\\b`).test(incumbentTable),

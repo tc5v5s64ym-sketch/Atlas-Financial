@@ -127,11 +127,11 @@ This ledger deliberately uses descriptive source statuses rather than inventing 
 | ID | Item | Source status | Intended canonical destination | Intended consumer/use | Current state or blocker |
 |---|---|---|---|---|---|
 | EMP-001 | Employer, employment grade, and employment dates | Observed | Standing employment facts | Records and compensation context | Preserved in synthesis; not on `main` |
-| EMP-002 | Effective-dated base-salary history; current salary $158,091 | Observed | Effective-dated income facts | Payroll calendar and income scenarios | Preserved; current engine uses a simpler net deposit |
+| EMP-002 | Effective-dated base-salary history; current salary $158,091 | Observed | Effective-dated income facts | Payroll calendar and income scenarios | CONSUMED by trajectory-local `Forecast.daleEstimatedPayrollDeposits`; 91-day operating plan still uses observed net (EMP-004) |
 | EMP-003 | Semi-monthly-to-biweekly conversion and 26-pay cadence | Observed | Payroll schedule | Shared event calendar and cash forecast | Preserved; not absorbed |
 | EMP-004 | Current $6,080.42 gross and observed $4,248–$4,275 recurring net range | Observed | Dated payroll observations | Near-term cash forecast and payroll reconciliation | Preserved; net range must not become a timeless guarantee |
-| EMP-005 | 2024–2026 bonus payouts and late-February cadence | Observed | Dated bonus observations plus bonus-plan terms | Cash scenarios and statutory-deduction model | Preserved; future bonus remains variable |
-| EMP-006 | CPP, CPP2, and EI completion dates and deposit-year rule | Observed/calculated | Statutory-deduction history/rules | Payroll engine | Preserved; no per-deposit statutory model yet |
+| EMP-005 | 2024–2026 bonus payouts and late-February cadence | Observed | Dated bonus observations plus bonus-plan terms | Cash scenarios and statutory-deduction model | CONSUMED by trajectory-local estimated bonus cadence; future bonus remains an ESTIMATED planning assumption |
+| EMP-006 | CPP, CPP2, and EI completion dates and deposit-year rule | Observed/calculated | Statutory-deduction history/rules | Payroll engine | CONSUMED by trajectory-local `Forecast.daleEstimatedPayrollDeposits`; not a change to global expandEvents / recommend |
 | EMP-007 | 2024 and 2025 T4 reconciliation | Observed | Tax-year employment summaries | Records and annual reconciliation | Preserved; must not overwrite base salary |
 | EMP-008 | Annual raise occurs around March 1; recent raises remembered as 4–5% | Owner-stated pattern/history | Attributed evidence beside compensation history | Calendar context only | Current evidence shows 2026 effective date Feb 22; no future percentage may be hard-coded |
 

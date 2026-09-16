@@ -1258,10 +1258,33 @@
     const events = [];
     for (const s of plan.income) {
       const per = streamAmount(s, opts);
-      if (!per) continue;
+      if (!per && typeof opts.incomeOccurrenceAdjust !== 'function') continue;
       for (const date of occurrences(s, start, end)) {
-        events.push({ date, amount: per, kind: 'income', label: s.label, id: s.id, confidence: s.confidence });
+        let amount = per;
+        let confidence = s.confidence;
+        if (typeof opts.incomeOccurrenceAdjust === 'function') {
+          const adj = opts.incomeOccurrenceAdjust(s, date, per);
+          if (adj && adj.omit) continue;
+          if (adj && adj.amount != null) amount = adj.amount;
+          if (adj && adj.confidence) confidence = adj.confidence;
+        }
+        if (!amount) continue;
+        events.push({ date, amount, kind: 'income', label: s.label, id: s.id, confidence });
       }
+    }
+    for (const extra of opts.additionalIncomeEvents || []) {
+      if (!extra || extra.kind !== 'income' || !extra.date) continue;
+      if (extra.date < start || extra.date > end) continue;
+      const amount = Number(extra.amount);
+      if (!isFinite(amount) || !amount) continue;
+      events.push({
+        date: extra.date,
+        amount,
+        kind: 'income',
+        label: extra.label,
+        id: extra.id,
+        confidence: extra.confidence || 'estimated',
+      });
     }
     for (const o of plan.obligations) {
       for (const date of outflowDates(o, start, end)) {
@@ -10533,15 +10556,384 @@
     };
   }
 
+  // Trajectory-local estimated Dale/Seaspan payroll. Does not change
+  // default expandEvents / simulate / recommend semantics. 2026 regular
+  // net on the operating plan stays the incumbent modelled amount.
+  // 2027 Dale deposits are estimated from salary evidence,
+  // plan.payrollPlanningAssumptions, and last-published CRA statutory
+  // tables. After the owner-authorized year the regime fails closed
+  // until a later year is authorized and independently proved.
+  const SEASPAN_CURRENT_ANNUAL = 158091;
+  const SEASPAN_RAISE_LAST_EFFECTIVE = '2026-02-22';
+  const SEASPAN_RAISE_NEXT_EFFECTIVE = '2027-02-22';
+  const SEASPAN_OPTIONAL_PENSION_FROM = '2026-06-19';
+  const SEASPAN_BONUS_LAST_DEPOSIT = '2026-02-25';
+  const DALE_NET_MODELLED_THROUGH = '2026-12-31';
+  const DALE_PAYROLL_REGIME_FROM = '2027-01-01';
+
+  const SEASPAN_OBSERVED_SALARY_REGIMES = [
+    { from: '2025-03-01', annual: 151283, trust: 'observed' },
+    { from: SEASPAN_RAISE_LAST_EFFECTIVE, annual: SEASPAN_CURRENT_ANNUAL, trust: 'observed' },
+  ];
+  const SEASPAN_OBSERVED_BONUS_GROSS = {
+    '2024-02-26': 23640.11,
+    '2025-02-26': 26441.46,
+    '2026-02-25': 29168.11,
+  };
+
+  // Last published CRA 2026 payroll-statutory table. 2027 YMPE / YAMPE /
+  // EI maxima / federal indexation were unpublished as of 2026-09-16
+  // (CRA registered-plans YMPE column for 2027 is blank; latest T4127
+  // is the July 2026 edition). 2027 deposits reuse this table as an
+  // explicitly labelled ESTIMATED planning assumption. T4127 records a
+  // Government of Canada intention to cut the base CPP employee rate
+  // from 4.95% to 4.75% on 2027-01-01; that intention is not applied
+  // here because it is not an official 2027 contribution-rates table
+  // and YMPE remains unpublished. Never invent 2027 ceilings by
+  // incrementing 2026. BC 2027 first-bracket 5.60% is published
+  // (indexation paused at 2026 brackets) and is used, not the 2026 H2
+  // 6.14% payroll-withholding proration.
+  const CRA_2026_STATUTORY = {
+    year: 2026,
+    ybe: 3500,
+    ympe: 74600,
+    yampe: 85000,
+    cppRate: 0.0595,
+    cppMax: 4230.45,
+    cppBaseMax: 3519.45,
+    cppBaseShare: 0.0495 / 0.0595,
+    cpp2Rate: 0.04,
+    cpp2Max: 416,
+    eiRate: 0.0163,
+    eiMie: 68900,
+    eiMax: 1123.07,
+    payPeriods: 26,
+    federalLowRate: 0.14,
+    bpaf: 16452,
+    cea: 1501,
+    bcBpa: 13216,
+    federalBrackets: [
+      { upTo: 58523, rate: 0.14, k: 0 },
+      { upTo: 117045, rate: 0.205, k: 3804 },
+      { upTo: 181440, rate: 0.26, k: 10241 },
+      { upTo: 258482, rate: 0.29, k: 15685 },
+      { upTo: Infinity, rate: 0.33, k: 26024 },
+    ],
+    source: 'cra-2026-published',
+  };
+  const BC_BRACKETS_2026_H1 = [
+    { upTo: 50363, rate: 0.0506, k: 0 },
+    { upTo: 100728, rate: 0.077, k: 1330 },
+    { upTo: 115648, rate: 0.105, k: 4150 },
+    { upTo: 140430, rate: 0.1229, k: 6220 },
+    { upTo: 190405, rate: 0.147, k: 9604 },
+    { upTo: 265545, rate: 0.168, k: 13603 },
+    { upTo: Infinity, rate: 0.205, k: 23428 },
+  ];
+  const BC_BRACKETS_2026_H2 = [
+    { upTo: 50363, rate: 0.0614, k: 0 },
+    { upTo: 100728, rate: 0.077, k: 786 },
+    { upTo: 115648, rate: 0.105, k: 3606 },
+    { upTo: 140430, rate: 0.1229, k: 5676 },
+    { upTo: 190405, rate: 0.147, k: 9061 },
+    { upTo: 265545, rate: 0.168, k: 13059 },
+    { upTo: Infinity, rate: 0.205, k: 22884 },
+  ];
+  const BC_BRACKETS_2027 = [
+    { upTo: 50363, rate: 0.056, k: 0 },
+    { upTo: 100728, rate: 0.077, k: 1058 },
+    { upTo: 115648, rate: 0.105, k: 3878 },
+    { upTo: 140430, rate: 0.1229, k: 5948 },
+    { upTo: 190405, rate: 0.147, k: 9332 },
+    { upTo: 265545, rate: 0.168, k: 13331 },
+    { upTo: Infinity, rate: 0.205, k: 23156 },
+  ];
+
+  function isSeaspanPayrollEvidenceStream(stream) {
+    if (!isDalePayrollStream(stream)) return false;
+    return /seaspan/i.test(`${stream.id || ''} ${stream.label || ''}`);
+  }
+  function isDaleBonusStream(stream) {
+    if (!isDalePayrollStream(stream)) return false;
+    return /bonus/i.test(`${stream.id || ''} ${stream.label || ''}`);
+  }
+  function incomeStreamFor(plan, event) {
+    if (!event) return null;
+    const rows = (plan && plan.income) || [];
+    return rows.find(s => s && s.id === event.id) || event;
+  }
+  function seaspanBiweeklyGross(annual) {
+    return roundCent(Number(annual) / 26);
+  }
+  function readPayrollPlanningAssumptions(plan) {
+    const row = plan && plan.payrollPlanningAssumptions;
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+    const salaryRaiseFactor = Number(row.salaryRaiseFactor);
+    const bonusRate = Number(row.bonusRate);
+    const authorizedThroughYear = Number(row.authorizedThroughYear);
+    if (!Number.isFinite(salaryRaiseFactor) || salaryRaiseFactor <= 0) return null;
+    if (!Number.isFinite(bonusRate) || bonusRate < 0) return null;
+    if (!Number.isInteger(authorizedThroughYear) || authorizedThroughYear < 1000) return null;
+    return {
+      salaryRaiseFactor,
+      bonusRate,
+      authorizedThroughYear,
+      estimatedThrough: `${authorizedThroughYear}-12-31`,
+      unavailableFrom: `${authorizedThroughYear + 1}-01-01`,
+      trust: 'estimated',
+      source: 'plan.payrollPlanningAssumptions',
+    };
+  }
+  function seaspanSalaryRegimes(assumptions) {
+    const rows = SEASPAN_OBSERVED_SALARY_REGIMES.slice();
+    if (assumptions) {
+      rows.push({
+        from: SEASPAN_RAISE_NEXT_EFFECTIVE,
+        annual: roundCent(SEASPAN_CURRENT_ANNUAL * assumptions.salaryRaiseFactor),
+        trust: 'estimated',
+        planningAssumption: 'plan.payrollPlanningAssumptions.salaryRaiseFactor',
+      });
+    }
+    return rows;
+  }
+  function seaspanSalaryOnPeriodStart(periodStart, assumptions) {
+    const through = assumptions && assumptions.estimatedThrough;
+    if (!periodStart || (through && periodStart > through)) return null;
+    let found = null;
+    for (const row of seaspanSalaryRegimes(assumptions)) {
+      if (periodStart >= row.from) found = row;
+    }
+    return found;
+  }
+  function seaspanEmployeePensionRate(date) {
+    return date >= SEASPAN_OPTIONAL_PENSION_FROM ? 0.06 : 0.05;
+  }
+  function payrollStatutoryForDate(date) {
+    const year = Number(String(date).slice(0, 4));
+    const bc = date < '2026-07-01'
+      ? { brackets: BC_BRACKETS_2026_H1, low: 0.0506, label: 'bc-2026-h1' }
+      : date < '2027-01-01'
+        ? { brackets: BC_BRACKETS_2026_H2, low: 0.0614, label: 'bc-2026-h2-prorated' }
+        : { brackets: BC_BRACKETS_2027, low: 0.056, label: 'bc-2027-subsequent-paused-indexation' };
+    return {
+      year: year,
+      tableYear: 2026,
+      params: CRA_2026_STATUTORY,
+      bc,
+      source: year <= 2026
+        ? 'cra-2026-published'
+        : 'cra-2026-last-published-planning-assumption',
+      unpublished2027: year > 2026,
+    };
+  }
+  function taxBracket(table, amount) {
+    for (const row of table) {
+      if (amount <= row.upTo) return row;
+    }
+    return table[table.length - 1];
+  }
+  function t4127AnnualTax(A, statutory, cppExhausted, eiExhausted) {
+    const p = statutory.params;
+    const fb = taxBracket(p.federalBrackets, A);
+    const k2cpp = p.cppBaseMax;
+    const k2ei = p.eiMax;
+    const federal = Math.max(0, fb.rate * A - fb.k
+      - p.federalLowRate * p.bpaf
+      - p.federalLowRate * (k2cpp + k2ei)
+      - p.federalLowRate * p.cea);
+    const pb = taxBracket(statutory.bc.brackets, A);
+    const provincial = Math.max(0, pb.rate * A - pb.k
+      - statutory.bc.low * p.bcBpa
+      - statutory.bc.low * (k2cpp + k2ei));
+    return federal + provincial;
+  }
+  function t4127RegularTax(gross, pension, statutory) {
+    const p = statutory.params;
+    const A = p.payPeriods * (gross - pension);
+    return roundCent(t4127AnnualTax(A, statutory) / p.payPeriods);
+  }
+  function t4127BonusTax(regularGross, regularPension, bonusGross, statutory) {
+    const p = statutory.params;
+    const A0 = p.payPeriods * (regularGross - regularPension);
+    const A1 = A0 + bonusGross;
+    return roundCent(t4127AnnualTax(A1, statutory) - t4127AnnualTax(A0, statutory));
+  }
+  function newPayrollAccumulator() {
+    return { ytdPen: 0, ytdIns: 0, cppPaid: 0, cpp2Paid: 0, eiPaid: 0 };
+  }
+  function applyStatutoryDeductions(acc, gross, kind, statutory) {
+    const p = statutory.params;
+    const exemption = kind === 'regular' ? (p.ybe / p.payPeriods) : 0;
+    const roomYmpe = Math.max(0, p.ympe - acc.ytdPen);
+    const firstCeiling = Math.min(gross, roomYmpe);
+    const cppContrib = Math.max(0, firstCeiling - Math.min(exemption, firstCeiling));
+    let cpp = roundCent(cppContrib * p.cppRate);
+    cpp = Math.min(cpp, roundCent(Math.max(0, p.cppMax - acc.cppPaid)));
+
+    const ytdPenAfter = acc.ytdPen + gross;
+    const cpp2Earn = Math.max(0, Math.min(ytdPenAfter, p.yampe) - Math.max(acc.ytdPen, p.ympe));
+    let cpp2 = roundCent(cpp2Earn * p.cpp2Rate);
+    cpp2 = Math.min(cpp2, roundCent(Math.max(0, p.cpp2Max - acc.cpp2Paid)));
+
+    const roomMie = Math.max(0, p.eiMie - acc.ytdIns);
+    let ei = roundCent(Math.min(gross, roomMie) * p.eiRate);
+    ei = Math.min(ei, roundCent(Math.max(0, p.eiMax - acc.eiPaid)));
+
+    acc.ytdPen = ytdPenAfter;
+    acc.ytdIns = acc.ytdIns + gross;
+    acc.cppPaid = roundCent(acc.cppPaid + cpp);
+    acc.cpp2Paid = roundCent(acc.cpp2Paid + cpp2);
+    acc.eiPaid = roundCent(acc.eiPaid + ei);
+    return { cpp, cpp2, ei };
+  }
+  function bonusGrossForYear(year, assumptions) {
+    const observed = Object.keys(SEASPAN_OBSERVED_BONUS_GROSS).find(d => d.slice(0, 4) === String(year));
+    if (observed) return { gross: SEASPAN_OBSERVED_BONUS_GROSS[observed], date: observed, trust: 'observed' };
+    if (!assumptions) return null;
+    if (Number(year) > 2026 && Number(year) <= assumptions.authorizedThroughYear) {
+      const monthDay = SEASPAN_BONUS_LAST_DEPOSIT.slice(5);
+      return {
+        gross: roundCent(SEASPAN_CURRENT_ANNUAL * assumptions.bonusRate),
+        date: `${year}-${monthDay}`,
+        trust: 'estimated',
+      };
+    }
+    return null;
+  }
+  function daleEstimatedPayrollDeposits(plan, start, end) {
+    const rows = (plan && plan.income) || [];
+    const stream = rows.find(row => row
+      && isSeaspanPayrollEvidenceStream(row)
+      && row.frequency === 'biweekly'
+      && row.anchor) || null;
+    if (!isSeaspanPayrollEvidenceStream(stream)) {
+      return {
+        status: 'unavailable',
+        reason: 'Seaspan payroll evidence is required to estimate a Dale net.',
+        deposits: [],
+      };
+    }
+    const assumptions = readPayrollPlanningAssumptions(plan);
+    if (!assumptions) {
+      return {
+        status: 'unavailable',
+        reason: 'Owner payroll planning assumptions are required to estimate a Dale net.',
+        deposits: [],
+      };
+    }
+    const anchor = financialDate(stream.anchor);
+    if (!anchor || !start || !end || start > end) {
+      return {
+        status: 'unavailable',
+        reason: 'A Seaspan payday calendar is required to estimate a Dale net.',
+        deposits: [],
+      };
+    }
+    const walkStart = `${start.slice(0, 4)}-01-01`;
+    const paydays = biweeklyDates(anchor, walkStart, end);
+    const byDate = [];
+    const years = new Set(paydays.map(d => d.slice(0, 4)));
+    if (end >= DALE_PAYROLL_REGIME_FROM || start < DALE_PAYROLL_REGIME_FROM) {
+      for (let y = Number(walkStart.slice(0, 4)); y <= Number(end.slice(0, 4)); y++) years.add(String(y));
+    }
+    const bonusByDate = new Map();
+    for (const y of years) {
+      const bonus = bonusGrossForYear(Number(y), assumptions);
+      if (bonus && bonus.date >= walkStart && bonus.date <= end) bonusByDate.set(bonus.date, bonus);
+    }
+    const dates = Array.from(new Set(paydays.concat(Array.from(bonusByDate.keys())))).sort();
+    const accByYear = new Map();
+    const deposits = [];
+    let currentRegular = null;
+    for (const date of dates) {
+      if (date > end) break;
+      if (date > assumptions.estimatedThrough) continue;
+      const year = date.slice(0, 4);
+      if (!accByYear.has(year)) accByYear.set(year, newPayrollAccumulator());
+      const acc = accByYear.get(year);
+      const statutory = payrollStatutoryForDate(date);
+      const bonus = bonusByDate.get(date);
+      if (bonus) {
+        const regular = currentRegular || {
+          gross: seaspanBiweeklyGross(SEASPAN_CURRENT_ANNUAL),
+          pension: roundCent(seaspanBiweeklyGross(SEASPAN_CURRENT_ANNUAL) * seaspanEmployeePensionRate(date)),
+        };
+        const deds = applyStatutoryDeductions(acc, bonus.gross, 'bonus', statutory);
+        const tax = t4127BonusTax(regular.gross, regular.pension, bonus.gross, statutory);
+        const net = roundCent(bonus.gross - tax - deds.cpp - deds.cpp2 - deds.ei);
+        deposits.push({
+          date,
+          kind: 'bonus',
+          id: 'payrollBonus',
+          label: 'Payroll bonus — Seaspan',
+          gross: bonus.gross,
+          pension: 0,
+          tax, cpp: deds.cpp, cpp2: deds.cpp2, ei: deds.ei, net,
+          confidence: 'estimated',
+          trust: bonus.trust === 'observed' ? 'estimated' : 'estimated',
+          salaryAnnual: SEASPAN_CURRENT_ANNUAL,
+          statutoryYear: statutory.year,
+          statutorySource: statutory.source,
+        });
+      }
+      if (paydays.indexOf(date) < 0) continue;
+      const periodStart = addDays(date, -13);
+      const salary = seaspanSalaryOnPeriodStart(periodStart, assumptions);
+      if (!salary) continue;
+      const gross = seaspanBiweeklyGross(salary.annual);
+      const pension = roundCent(gross * seaspanEmployeePensionRate(date));
+      currentRegular = { gross, pension, annual: salary.annual };
+      const deds = applyStatutoryDeductions(acc, gross, 'regular', statutory);
+      const tax = t4127RegularTax(gross, pension, statutory);
+      const net = roundCent(gross - tax - deds.cpp - deds.cpp2 - deds.ei - pension);
+      deposits.push({
+        date,
+        kind: 'regular',
+        id: stream.id || 'payroll',
+        label: stream.label || 'Payroll — Seaspan',
+        gross, pension, tax,
+        cpp: deds.cpp, cpp2: deds.cpp2, ei: deds.ei, net,
+        confidence: 'estimated',
+        trust: 'estimated',
+        salaryAnnual: salary.annual,
+        salaryTrust: salary.trust,
+        statutoryYear: statutory.year,
+        statutorySource: statutory.source,
+      });
+    }
+    return {
+      status: 'ready',
+      deposits: deposits.filter(d =>
+        d.date >= start && d.date <= end && d.date <= assumptions.estimatedThrough),
+      allDeposits: deposits,
+      calendarAnchor: anchor,
+      planningAssumptions: {
+        salaryRaiseFactor: assumptions.salaryRaiseFactor,
+        salaryRaiseEffective: SEASPAN_RAISE_NEXT_EFFECTIVE,
+        salaryRaiseDerivedFrom: SEASPAN_RAISE_LAST_EFFECTIVE,
+        bonusRate: assumptions.bonusRate,
+        bonusEligibleBasis: SEASPAN_CURRENT_ANNUAL,
+        authorizedThroughYear: assumptions.authorizedThroughYear,
+        estimatedThrough: assumptions.estimatedThrough,
+        unavailableFrom: assumptions.unavailableFrom,
+        source: assumptions.source,
+        trust: 'estimated',
+      },
+    };
+  }
+
   // Read-only baseline cash+debt trajectory over the incumbent
   // knowledgeHorizon. Composes budgetBreakdown planned weeklyVariable,
-  // simulate, and projectDebts. Does not search Forecast.recommend,
-  // does not extend the horizon, and does not implement a 2027 Dale net.
-  // Named dated income-regime split (trajectory-local): current modelled
-  // Dale net through 2026-12-31; Dale payroll/bonus from 2027-01-01 is
-  // unavailable (deposit-year CPP/EI reset). Not $0 and not expandEvents-
-  // carried 2026 post-CPP/EI-max net. expandEvents / simulate / recommend
-  // are not year-stopped.
+  // simulate, projectDebts, and trajectory-local estimated Dale/Seaspan
+  // payroll from 2027-01-01 through the owner-authorized year in
+  // plan.payrollPlanningAssumptions. Does not search Forecast.recommend,
+  // does not extend the horizon, and does not change default expandEvents /
+  // simulate / recommend payroll semantics. 2026 Dale net stays the
+  // incumbent modelled stream. 2027 Dale payroll/bonus is evidence-derived
+  // ESTIMATED, not verified future pay, not $0, and not expandEvents-
+  // carried 2026 post-CPP/EI-max net. After the authorized year the path
+  // fails closed. Owner raise/bonus rates are read from the plan; they
+  // are not Forecast constants.
   function baselineTrajectory(plan, debts, asOf, opts) {
     opts = opts || {};
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
@@ -10555,24 +10947,37 @@
       return trajectoryUnavailable('A planned Household Budget breakdown is required.');
     }
 
-    const DALE_NET_MODELLED_THROUGH = '2026-12-31';
-    const DALE_PAYROLL_UNAVAILABLE_FROM = '2027-01-01';
-    function streamForIncomeEvent(event) {
-      if (!event) return null;
-      const rows = (plan && plan.income) || [];
-      return rows.find(s => s && s.id === event.id) || event;
-    }
     function isDalePayrollOrBonusIncome(event) {
       if (!event || event.kind !== 'income') return false;
-      return isDalePayrollStream(streamForIncomeEvent(event));
-    }
-    function dalePayrollUnmodelledOn(date) {
-      return !!(date && date >= DALE_PAYROLL_UNAVAILABLE_FROM);
+      return isDalePayrollStream(incomeStreamFor(plan, event));
     }
 
     const horizon = knowledgeHorizon(plan, day, opts);
     if (!horizon || !horizon.start || !horizon.end || !(horizon.days > 0)) {
       return trajectoryUnavailable('Forecast could not establish the knowledge horizon.');
+    }
+
+    const regime = daleEstimatedPayrollDeposits(plan, horizon.start, horizon.end);
+    const regimeReady = !!(regime && regime.status === 'ready');
+    const planning = regimeReady ? regime.planningAssumptions : null;
+    const estimatedThrough = planning && planning.estimatedThrough;
+    const unavailableAfter = planning && planning.unavailableFrom;
+    const estimatedByDate = new Map();
+    const superseded = representedKeySet(plan, opts, day);
+    if (regimeReady) {
+      for (const dep of regime.deposits || []) {
+        if (dep.date < DALE_PAYROLL_REGIME_FROM) continue;
+        if (estimatedThrough && dep.date > estimatedThrough) continue;
+        if (superseded.has(dep.id + '@' + dep.date)) continue;
+        estimatedByDate.set(dep.kind + ':' + dep.date, dep);
+      }
+    }
+    const planDaleBonusDates = new Set();
+    for (const s of (plan && plan.income) || []) {
+      if (!isDaleBonusStream(s)) continue;
+      for (const date of occurrences(s, horizon.start, horizon.end)) {
+        if (date >= DALE_PAYROLL_REGIME_FROM) planDaleBonusDates.add(date);
+      }
     }
 
     const walkOpts = {
@@ -10589,6 +10994,32 @@
       representedEvents: opts.representedEvents,
       paypalPerMonth: opts.paypalPerMonth,
       periods,
+      incomeOccurrenceAdjust: (stream, date) => {
+        if (!isDalePayrollStream(stream) || date < DALE_PAYROLL_REGIME_FROM) return null;
+        if (isDaleBonusStream(stream)) return null;
+        if (!isSeaspanPayrollEvidenceStream(stream) || !regimeReady) return null;
+        const dep = estimatedByDate.get('regular:' + date);
+        if (!dep) return { omit: true };
+        return { amount: dep.net, confidence: 'estimated' };
+      },
+      additionalIncomeEvents: (() => {
+        if (!regimeReady) return [];
+        const extra = [];
+        for (const dep of estimatedByDate.values()) {
+          if (dep.kind !== 'bonus') continue;
+          if (planDaleBonusDates.has(dep.date)) continue;
+          if (superseded.has(dep.id + '@' + dep.date)) continue;
+          extra.push({
+            date: dep.date,
+            amount: dep.net,
+            kind: 'income',
+            id: dep.id,
+            label: dep.label,
+            confidence: 'estimated',
+          });
+        }
+        return extra;
+      })(),
     };
     if (walkOpts.debts.length) {
       const caps = projectDebts(plan, walkOpts.debts, day, Object.assign({}, walkOpts, {
@@ -10613,28 +11044,58 @@
       const close = byDate.get(span.end) || null;
       const monthEvents = (events || []).filter(e => e && e.date >= span.start && e.date <= span.end);
       const incomeEvents = monthEvents.filter(e => e.kind === 'income');
-      const unmodelledDaleEvents = incomeEvents.filter(e =>
-        isDalePayrollOrBonusIncome(e) && dalePayrollUnmodelledOn(e.date)
+      const dale2027Events = incomeEvents.filter(e =>
+        isDalePayrollOrBonusIncome(e)
+        && e.date >= DALE_PAYROLL_REGIME_FROM
+        && (!estimatedThrough || e.date <= estimatedThrough)
       );
-      const modelledIncomeEvents = incomeEvents.filter(e =>
-        !(isDalePayrollOrBonusIncome(e) && dalePayrollUnmodelledOn(e.date))
+      const withheldLaterDale = !!(regimeReady && estimatedThrough && span.end > estimatedThrough);
+      const withheldDale = !regimeReady && incomeEvents.some(e =>
+        isDalePayrollOrBonusIncome(e) && e.date >= DALE_PAYROLL_REGIME_FROM
+        && !isDaleBonusStream(incomeStreamFor(plan, e))
       );
-      const daleUnmodelledInMonth = unmodelledDaleEvents.length > 0;
-      const daleUnmodelledThroughMonthEnd = (events || []).some(e =>
-        e && e.kind === 'income' && e.date >= DALE_PAYROLL_UNAVAILABLE_FROM
+      const withheldDaleThroughMonthEnd = !regimeReady && (events || []).some(e =>
+        e && e.kind === 'income' && e.date >= DALE_PAYROLL_REGIME_FROM
         && e.date <= span.end && isDalePayrollOrBonusIncome(e)
+        && !isDaleBonusStream(incomeStreamFor(plan, e))
+      );
+      const modelledIncomeEvents = withheldDale
+        ? incomeEvents.filter(e =>
+          !(isDalePayrollOrBonusIncome(e) && e.date >= DALE_PAYROLL_REGIME_FROM
+            && !isDaleBonusStream(incomeStreamFor(plan, e))))
+        : incomeEvents;
+      const daleEstimatedInMonth = regimeReady && dale2027Events.length > 0;
+      const daleEstimatedThroughMonthEnd = regimeReady && (events || []).some(e =>
+        e && e.kind === 'income' && e.date >= DALE_PAYROLL_REGIME_FROM
+        && e.date <= span.end && isDalePayrollOrBonusIncome(e)
+        && (!estimatedThrough || e.date <= estimatedThrough)
       );
       const daleModelledInMonth = incomeEvents.some(e =>
-        isDalePayrollOrBonusIncome(e) && !dalePayrollUnmodelledOn(e.date)
+        isDalePayrollOrBonusIncome(e) && e.date <= DALE_NET_MODELLED_THROUGH
       );
       const incomeSum = modelledIncomeEvents.reduce((s, e) => s + (Number(e.amount) || 0), 0);
       const estimated = modelledIncomeEvents.some(e => e.confidence !== 'confirmed');
-      const dalePayrollMarker = daleUnmodelledInMonth || daleUnmodelledThroughMonthEnd
+      const dalePayrollMarker = withheldDale || withheldDaleThroughMonthEnd
         ? {
             status: 'unavailable',
-            from: DALE_PAYROLL_UNAVAILABLE_FROM,
+            from: DALE_PAYROLL_REGIME_FROM,
             boundary: 'deposit-year-cpp-ei-reset',
           }
+        : withheldLaterDale
+          ? {
+              status: 'unavailable',
+              from: unavailableAfter,
+              through: estimatedThrough,
+              boundary: 'authorized-2027-regime-ends',
+            }
+        : daleEstimatedInMonth || daleEstimatedThroughMonthEnd
+          ? {
+              status: 'estimated',
+              from: DALE_PAYROLL_REGIME_FROM,
+              through: estimatedThrough,
+              trust: 'estimated',
+              boundary: 'deposit-year-cpp-ei-reset',
+            }
         : daleModelledInMonth
           ? { status: 'modelled', through: DALE_NET_MODELLED_THROUGH }
           : { status: 'not-applicable' };
@@ -10694,10 +11155,12 @@
         },
         debt: debtPicture,
       };
-      if (daleUnmodelledInMonth) {
+      if (withheldDale || withheldLaterDale) {
         row.income = {
           status: 'unavailable',
-          reason: 'Dale payroll/bonus from 2027-01-01 is unmodelled (deposit-year CPP/EI reset). Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.',
+          reason: withheldLaterDale
+            ? 'Dale payroll/bonus after 2027-12-31 is unmodelled until a later regime is authorized and independently proved. Not $0 and not the 2027 estimated raise, bonus, or last-published statutory carry-forward.'
+            : 'Dale payroll/bonus from 2027-01-01 is unmodelled (deposit-year CPP/EI reset). Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.',
           dalePayroll: dalePayrollMarker,
         };
       } else {
@@ -10707,11 +11170,17 @@
           dalePayroll: dalePayrollMarker,
         };
       }
-      if (daleUnmodelledThroughMonthEnd) {
+      if (withheldDaleThroughMonthEnd || withheldLaterDale) {
         row.cash = {
           status: 'unavailable',
-          reason: 'Cash after 2027-01-01 is unavailable until a modelled 2027 Dale net exists. Not a $0 or carried 2026 post-CPP/EI-max net.',
+          reason: withheldLaterDale
+            ? 'Cash after 2027-12-31 is unavailable until a later Dale net is authorized and independently proved. Not a $0 or carried 2027 estimated net.'
+            : 'Cash after 2027-01-01 is unavailable until a modelled 2027 Dale net exists. Not a $0 or carried 2026 post-CPP/EI-max net.',
         };
+      } else if (daleEstimatedThroughMonthEnd) {
+        row.cash = close
+          ? { status: 'estimated', amount: roundCent(close.balance), asOf: close.date, trust: 'estimated' }
+          : { status: 'unavailable', reason: 'Forecast could not read month-end cash.' };
       } else {
         row.cash = close
           ? { status: 'calculated', amount: roundCent(close.balance), asOf: close.date }
@@ -10747,32 +11216,50 @@
         {
           id: '2027-payroll-bonus',
           from: '2027-01-01',
-          status: 'unavailable',
+          through: estimatedThrough || null,
+          status: regimeReady ? 'estimated' : 'unavailable',
           boundary: 'deposit-year-cpp-ei-reset',
-          reason: 'From 2027-01-01, Dale payroll/bonus remain unmodelled. Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net. January deposit-year CPP/EI reset is the evidenced boundary.',
+          reason: regimeReady
+            ? 'From 2027-01-01 through the owner-authorized year, Dale/Seaspan payroll and bonus are an evidence-derived ESTIMATED regime. Planning estimate — not verified future pay. Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.'
+            : 'From 2027-01-01, Dale payroll/bonus remain unmodelled. Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net. January deposit-year CPP/EI reset is the evidenced boundary.',
         },
         {
           id: '2027-dated-income-regimes',
           from: '2027-01-01',
+          through: estimatedThrough || null,
+          status: regimeReady ? 'estimated' : 'unavailable',
+          reason: regimeReady
+            ? 'Dated 2027 Dale/Seaspan income is estimated from salary evidence, plan.payrollPlanningAssumptions, and last-published CRA statutory tables. The estimate is authorized only through that owner-stated year.'
+            : 'Dated 2027 income regimes are named and fail-closed. No 2027 Dale net is modelled.',
+        },
+        {
+          id: 'after-2027-payroll-bonus',
+          from: unavailableAfter || '2028-01-01',
           status: 'unavailable',
-          reason: 'Dated 2027 income regimes are named and fail-closed. No 2027 Dale net is modelled.',
+          boundary: 'authorized-2027-regime-ends',
+          reason: 'After the owner-authorized payroll year, Dale/Seaspan payroll and bonus remain unmodelled until a later regime is authorized and independently proved. Not $0 and not the authorized estimated raise, bonus, or last-published statutory carry-forward.',
         },
       ],
       months: series,
       provenance: {
         calculator: 'Forecast',
-        primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts'],
+        primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts', 'daleEstimatedPayrollDeposits'],
         cashBaseline: 'budgetBreakdown-planned-weekly',
         historicalActuals: 'excluded',
         recommendWeeklyCap: 'not-used',
         knowledgeHorizon: 'incumbent-unmodified',
-        incomeRegimesImplemented: false,
-        incomeRegimesNamedFailClosed: true,
-        incomeRegimesDollarModel: false,
+        incomeRegimesImplemented: regimeReady,
+        incomeRegimesNamedFailClosed: !regimeReady,
+        incomeRegimesDollarModel: regimeReady,
         dalePayrollModelledThrough: '2026-12-31',
-        dalePayrollUnavailableFrom: '2027-01-01',
+        dalePayrollEstimatedFrom: regimeReady ? '2027-01-01' : null,
+        dalePayrollEstimatedThrough: regimeReady ? estimatedThrough : null,
+        dalePayrollUnavailableFrom: regimeReady ? unavailableAfter : '2027-01-01',
         dalePayrollBoundary: 'deposit-year-cpp-ei-reset',
-        expandEvents2027DaleIncome: 'not-published',
+        dalePayrollTrust: regimeReady ? 'estimated' : 'unavailable',
+        expandEvents2027DaleIncome: regimeReady ? 'replaced-trajectory-local' : 'not-published',
+        statutory2027: regimeReady ? 'cra-2026-last-published-planning-assumption' : null,
+        planningAssumptions: regimeReady ? regime.planningAssumptions : null,
         ranking: null,
         recommendation: null,
         affordability: null,
@@ -11144,7 +11631,7 @@
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
-    projectDebts, baselineTrajectory,
+    projectDebts, baselineTrajectory, daleEstimatedPayrollDeposits,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,

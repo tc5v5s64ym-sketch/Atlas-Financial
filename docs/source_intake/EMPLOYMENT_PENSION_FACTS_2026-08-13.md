@@ -220,3 +220,36 @@ These figures are scenarios, not promises.
 - Record pension balances as dated snapshots; do not overwrite history with the latest value.
 - Store investment returns as historical observations, never as guaranteed forecast inputs.
 - Keep verified facts, owner decisions, projections, and open questions visibly distinct.
+
+## 9. 2027 estimated payroll regime (trajectory-local)
+
+**Added 2026-09-16.** This section records how the employment synthesis is consumed by `Forecast.baselineTrajectory` only. It is a planning estimate. It is not verified future pay, not a change to the 91-day operating modelled net, and not a promotion of any estimate to confirmed.
+
+### Raise timing derived from evidence
+
+Historical raises were mostly effective March 1. The last observed raise was effective **2026-02-22**, and the first supplied regular entirely at the new hourly-equivalent $76.005 was **2026-03-13** (the 2026-02-27 deposit still used the old rate). The 2027 planning raise therefore uses the anniversary of that last observed effective date, **2027-02-22**, and the first new-rate regular is the payday whose 14-day period starts on or after that date (**2027-03-12** at $164,414.64 / 26 = $6,323.64). Interview memory of “around March 1” (`EMP-008`) is not encoded as the effective date.
+
+### Owner-authorized planning assumptions
+
+Live owner-policy home is `data.json` `plan.payrollPlanningAssumptions` (`salaryRaiseFactor` 1.04, `bonusRate` 0.18, `authorizedThroughYear` 2027). Forecast reads those values and fails closed if they are absent. They remain estimated. Later actual payroll evidence replaces the matching `id@date` estimate; it does not add a second calendar or a second income event.
+
+- Future salary raise: +4% of the current $158,091 base → $164,414.64 annual. Biweekly conversion is annual/26, not a rounded $164,415 as canonical.
+- Annual bonus: 18% of the evidence-supported eligible salary basis $158,091 → $28,456.38 gross, deposited on the last-observed late-February cadence (**2027-02-25**). Separate deposit, no incremental DCPP. Do not encode an observed ~53.4% net/gross ratio as the tax model.
+- Current employee pension election remains 6% (required 5% plus optional 1% from 2026-06-19).
+
+### 2027 statutory planning assumption
+
+`EXT-CRA-PAYROLL-2027-001` records the external-reference claim. As of 2026-09-16, CRA had not published 2027 YMPE, YAMPE, EI Maximum Insurable Earnings, or federal personal-income-tax indexation (the registered-plans YMPE column for 2027 is blank; the latest T4127 is the July 2026 edition). Forecast therefore reuses last-published 2026 CPP/CPP2/EI and federal T4127 tables as an explicitly labelled ESTIMATED planning assumption. It does not invent 2027 ceilings by incrementing 2026. T4127 records a Government of Canada intention to cut the base CPP employee rate from 4.95% to 4.75% on 2027-01-01; that intention is not applied, because it is not an official 2027 contribution-rates table and YMPE remains unpublished.
+
+British Columbia’s 2027 first-bracket rate of 5.60% is published, with bracket indexation paused at 2026 levels for 2027–2030. Trajectory 2027 withholdings use that subsequent-year rate, not the 2026 H2 6.14% payroll-withholding proration.
+
+Statutory deductions accumulate deposit-by-deposit against those annual limits. Bonus and regular share one deposit-year accumulator. January 2027 restarts CPP/EI; the 2026 post-maximum net is not carried forward.
+
+Sanitized independent reconciliation fixtures used to prove the engine (no employee number, address, bank, tax ID, or other private identifier):
+
+| Deposit | Kind | Gross | Tax | CPP | EI | Pension | Net |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 2026-03-13 | regular while CPP/EI active | $6,080.42 | $1,441.14 | $354.07 | $99.11 | $304.02 | $3,882.08 |
+| 2026-03-27 | EI annual-max transition | $6,080.42 | — | $358.03 | $73.28 | $304.02 | $3,877.15 |
+
+Observed 2026 exhaustion outcomes (not calendar rules to encode): EI finished 2026-03-27; base CPP 2026-04-10; CPP2 through 2026-05-08; from 2026-05-22 no CPP/CPP2/EI on regular. Bonus deposits 2024-02-26 / 2025-02-26 / 2026-02-25 remain as in section 2.
