@@ -864,6 +864,65 @@ console.log('\n=== 11. Objective pressure signals from the existing walk ===');
   ok(sign.length === 1 && sign[0].date === '2026-06-20'
     && near(sign[0].fromAmount, 200) && near(sign[0].toAmount, -50),
     'cash-sign-change is the independent positive-to-negative step on 2026-06-20');
+
+  const throughZero = zeroSpendFixture({
+    startingCash: { amount: 1 },
+    bills: [
+      {
+        id: 'to-zero', label: 'Synthetic to-zero bill',
+        frequency: 'once', date: '2026-06-16', amount: 1, confidence: 'confirmed',
+      },
+      {
+        id: 'through-zero', label: 'Synthetic through-zero bill',
+        frequency: 'once', date: '2026-06-18', amount: 1, confidence: 'confirmed',
+      },
+    ],
+  }, []);
+  const throughZeroTraj = ask(throughZero.plan, throughZero.debts);
+  const throughZeroEvents = [
+    { date: '2026-06-16', amount: -1, kind: 'bill', id: 'to-zero' },
+    { date: '2026-06-18', amount: -1, kind: 'bill', id: 'through-zero' },
+  ];
+  const throughZeroWalk = independentDailyCloses(1, START, '2026-06-18', throughZeroEvents, 0, 0);
+  const d15 = throughZeroWalk.daily.find(d => d.date === '2026-06-15');
+  const d16 = throughZeroWalk.daily.find(d => d.date === '2026-06-16');
+  const d17 = throughZeroWalk.daily.find(d => d.date === '2026-06-17');
+  const d18 = throughZeroWalk.daily.find(d => d.date === '2026-06-18');
+  ok(d15 && near(d15.amount, 1) && d16 && near(d16.amount, 0)
+    && d17 && near(d17.amount, 0) && d18 && near(d18.amount, -1),
+    'independent walk is +$1 → $0 → $0 → −$1',
+    [d15 && d15.amount, d16 && d16.amount, d17 && d17.amount, d18 && d18.amount].join(' → '));
+  const throughZeroSign = signalsOf(throughZeroTraj, 'cash-sign-change');
+  ok(throughZeroSign.length === 1 && throughZeroSign[0].date === '2026-06-18'
+    && near(throughZeroSign[0].fromAmount, 1) && near(throughZeroSign[0].toAmount, -1),
+    'cash-sign-change fires on the first negative day after a walk through zero',
+    JSON.stringify(throughZeroSign[0]));
+  ok(!throughZeroSign.some(s => s.date === '2026-06-16' || s.date === '2026-06-17'),
+    'exact $0 closes are not themselves a positive-to-negative signal');
+
+  const recoverZero = zeroSpendFixture({
+    startingCash: { amount: 1 },
+    bills: [{
+      id: 'to-zero-only', label: 'Synthetic to-zero-only bill',
+      frequency: 'once', date: '2026-06-16', amount: 1, confidence: 'confirmed',
+    }],
+    income: [{
+      id: 'recover', label: 'Synthetic recovery inflow',
+      frequency: 'once', date: '2026-06-17', amount: 2, confidence: 'confirmed',
+    }],
+  }, []);
+  const recoverTraj = ask(recoverZero.plan, recoverZero.debts);
+  const recoverEvents = [
+    { date: '2026-06-16', amount: -1, kind: 'bill', id: 'to-zero-only' },
+    { date: '2026-06-17', amount: 2, kind: 'income', id: 'recover' },
+  ];
+  const recoverWalk = independentDailyCloses(1, START, '2026-06-17', recoverEvents, 0, 0);
+  const r16 = recoverWalk.daily.find(d => d.date === '2026-06-16');
+  const r17 = recoverWalk.daily.find(d => d.date === '2026-06-17');
+  ok(r16 && near(r16.amount, 0) && r17 && near(r17.amount, 2),
+    'independent recover walk is +$1 → $0 → +$2');
+  ok(signalsOf(recoverTraj, 'cash-sign-change').length === 0,
+    'a walk that touches $0 then recovers positive is not a cash-sign-change');
   const juneSpan = drainTraj.months.find(m => m.month === '2026-06');
   const juneNet = independentMonthNet(drainEvents, START, juneSpan.start, juneSpan.end, 0, 0);
   ok(juneNet.outflow > juneNet.inflow && near(juneNet.outflow, 250) && near(juneNet.inflow, 0),

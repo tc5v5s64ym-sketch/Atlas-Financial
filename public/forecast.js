@@ -10703,36 +10703,48 @@
       });
     }
 
+    // Positive → negative even when intermediate published closes are
+    // exactly $0. Zero is the walk's sign identity, not a comfort
+    // threshold. Unpublished gaps fail closed: lastPositive is dropped.
+    const signSeries = [];
     const openingCash = input.openingCash;
     if (publishedDaily.length
       && walkStart
       && publishedDaily[0].date === walkStart
-      && openingCash != null && isFinite(openingCash)
-      && openingCash > 0
-      && publishedDaily[0].amount < 0) {
-      signals.push({
-        kind: 'cash-sign-change',
-        date: publishedDaily[0].date,
+      && openingCash != null && isFinite(openingCash)) {
+      signSeries.push({
+        date: walkStart,
+        amount: roundCent(openingCash),
         month: publishedDaily[0].month,
-        fromAmount: roundCent(openingCash),
-        toAmount: publishedDaily[0].amount,
         trust: publishedDaily[0].trust,
+        opening: true,
       });
     }
-    for (let i = 1; i < publishedDaily.length; i++) {
-      const prev = publishedDaily[i - 1];
-      const curr = publishedDaily[i];
-      if (diffDays(prev.date, curr.date) !== 1) continue;
-      if (!(prev.amount > 0 && curr.amount < 0)) continue;
-      signals.push({
-        kind: 'cash-sign-change',
-        date: curr.date,
-        month: curr.month,
-        fromAmount: prev.amount,
-        toAmount: curr.amount,
-        trust: (prev.trust === 'estimated' || curr.trust === 'estimated')
-          ? 'estimated' : 'calculated',
-      });
+    for (const point of publishedDaily) signSeries.push(point);
+    let lastPositive = null;
+    let prevSign = null;
+    for (const curr of signSeries) {
+      if (prevSign) {
+        const sameDayOpeningToClose = !!prevSign.opening && curr.date === prevSign.date;
+        const consecutive = sameDayOpeningToClose
+          || (!prevSign.opening && diffDays(prevSign.date, curr.date) === 1);
+        if (!consecutive) lastPositive = null;
+      }
+      if (curr.amount > 0) {
+        lastPositive = curr;
+      } else if (curr.amount < 0 && lastPositive) {
+        signals.push({
+          kind: 'cash-sign-change',
+          date: curr.date,
+          month: curr.month,
+          fromAmount: lastPositive.amount,
+          toAmount: curr.amount,
+          trust: (lastPositive.trust === 'estimated' || curr.trust === 'estimated')
+            ? 'estimated' : 'calculated',
+        });
+        lastPositive = null;
+      }
+      prevSign = curr;
     }
 
     for (let i = 1; i < publishedCashMonths.length; i++) {
