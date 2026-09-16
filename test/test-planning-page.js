@@ -938,8 +938,8 @@ console.log('\n=== Page contract ===');
   ok(/App\.register\(renderPlanning\)/.test(src) && /App\.boot\(\{ periods: true \}\)/.test(src), 'planning.js registers on the shared boot and asks for periods');
   ok(!/fetch\(|XMLHttpRequest|require\(|data\.json/.test(src), 'planning.js fetches nothing itself');
   const html = read('public/planning.html');
-  ok(/<h1>Your Financial Road Ahead<\/h1>/.test(html),
-    'heading Your Financial Road Ahead');
+  ok(/<h1>Planning<\/h1>/.test(html) && /Your Financial Road Ahead/.test(html),
+    'page h1 identifies as Planning; trajectory dashboard section is Your Financial Road Ahead');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
   ok(['planning-road-ahead', 'planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-funding-lede', 'planning-trajectory-funding-picker', 'planning-trajectory-funding', 'planning-trajectory-funding-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note', 'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction', 'planning-trajectory-debt-direction-note'].every(id => ids.has(id)),
