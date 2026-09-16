@@ -265,8 +265,11 @@ console.log('=== 1. Forecast is the sole calculator; helper is not exported ==='
   const planning = read('public/planning.js');
   const packet = read('scripts/assistant-packet.js');
   const talk = read('public/talk.js');
-  ok(/month\.stage1/.test(planning) && /month\.stage2/.test(planning) && /month\.stage3/.test(planning),
-    'Planning reprints trajectory month stage1 / stage2 / stage3 from Forecast only');
+  ok(/period\.stage1/.test(planning) && /period\.stage2/.test(planning) && /period\.stage3/.test(planning)
+    && /traj\.months/.test(planning),
+    'Planning reprints Forecast-published stage1 / stage2 / stage3 for months (shared period panel)');
+  ok(/traj\.payPeriods/.test(planning),
+    'Planning may also reprint payPeriods[] stages in Pay period view (B105m)');
   ok(!/baselineTrajectoryMonthFunding/.test(planning),
     'Planning does not call the internal funding helper');
   ok(!/stage1Amount|stage2Amount|stage3Amount|stage1\s*-\s*stage2/.test(planning),

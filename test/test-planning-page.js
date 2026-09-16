@@ -44,7 +44,7 @@ function loadPage(script) {
     App: { hooks: [], bootOpts: null, register(fn) { this.hooks.push(fn); }, boot(opts) { this.bootOpts = opts || {}; } },
   };
   vm.runInNewContext(
-    `${helpers}\nfunction planningStubEl(){ return { innerHTML: '', textContent: '', querySelector(){return null;}, querySelectorAll(){return [];}, classList:{toggle(){},add(){},remove(){}}, setAttribute(){}, getAttribute(){return null;} }; }\nconst $ = id => elements[id] || (elements[id] = planningStubEl());\n${read(script)}`,
+    `${helpers}\nfunction planningStubEl(){ const attrs = {}; return { innerHTML: '', textContent: '', querySelector(){return null;}, querySelectorAll(){return [];}, classList:{toggle(){},add(){},remove(){}}, setAttribute(k,v){ attrs[k]=v; }, getAttribute(k){ return attrs[k] != null ? attrs[k] : null; } }; }\nconst $ = id => elements[id] || (elements[id] = planningStubEl());\n${read(script)}`,
     ctx, { filename: script });
   return {
     ctx,
@@ -64,8 +64,9 @@ function loadPage(script) {
     composeDebtDirection(data, p) {
       return ctx.planningTrajectoryDebtDirectionHtml(ctx.planningTrajectory(data, p || null));
     },
-    composeFunding(data, p, monthKey) {
-      return ctx.planningTrajectoryFundingHtml(ctx.planningTrajectory(data, p || null), monthKey);
+    composeFunding(data, p, granularity, periodKey) {
+      return ctx.planningTrajectoryFundingHtml(
+        ctx.planningTrajectory(data, p || null), granularity || 'month', periodKey);
     },
   };
 }
@@ -594,9 +595,10 @@ console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baseline
   const src = stripComments(read('public/planning.js'));
   ok(/Forecast\.baselineTrajectory\(/.test(src),
     'funding reprint still uses the incumbent Forecast.baselineTrajectory call');
-  ok(/planningTrajectoryFundingHtml\(/.test(src) && /month\.stage1/.test(src)
-    && /month\.stage2/.test(src) && /month\.stage3/.test(src),
-    'planning.js reprints month stage1 / stage2 / stage3 from Forecast only');
+  ok(/planningTrajectoryFundingHtml\(/.test(src) && /period\.stage1/.test(src)
+    && /period\.stage2/.test(src) && /period\.stage3/.test(src)
+    && /traj\.months/.test(src),
+    'planning.js reprints Forecast stage1 / stage2 / stage3 from months[] or payPeriods[] only');
   ok(!/baselineTrajectoryMonthFunding/.test(src),
     'planning.js does not call the internal funding helper');
   ok(!/stage1Amount|stage2Amount|stage3Amount/.test(src),
@@ -639,7 +641,7 @@ console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baseline
   }
   const unavailableMonth = traj.months.find(m => m.stage1 && m.stage1.status === 'unavailable');
   if (unavailableMonth) {
-    const withheld = page.composeFunding(live, periods, unavailableMonth.month);
+    const withheld = page.composeFunding(live, periods, 'month', unavailableMonth.month);
     ok(/data-trajectory-funding-stage-status="unavailable"/.test(withheld.panel),
       'unavailable month stage prints unavailable status');
     ok(unavailableMonth.stage1.reason && withheld.panel.includes(unavailableMonth.stage1.reason),
@@ -650,7 +652,7 @@ console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baseline
 
   const composed = page.composeFunding({
     plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null,
-  }, periods, null);
+  }, periods, 'month', null);
   ok(/data-trajectory-funding="unavailable"/.test(composed.panel),
     'missing trajectory funding is not rendered as an empty success');
   ok(/does not subtract stages, recompute funding/.test(composed.note),
@@ -722,6 +724,150 @@ console.log('\n=== 19. Trajectory month selection keeps table row semantics ==='
         `live: ${month.month} Forecast cash amount remains in the row cells`);
     }
   }
+}
+
+console.log('\n=== 20. Trajectory Month ↔ Pay Period funding granularity ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(/traj\.payPeriods/.test(src) && /payPeriods\.map/.test(src),
+    'planning.js consumes Forecast payPeriods[] for Pay period view');
+  ok(/traj\.months/.test(src) && /period\.stage1/.test(src),
+    'planning.js still consumes Forecast months[] for Month view');
+  ok(/data-trajectory-funding-granularity=/.test(src),
+    'planning.js exposes Month / Pay period granularity control');
+  ok(!/baselineTrajectoryMonthFunding/.test(src)
+    && !/stage1Amount|stage2Amount|stage3Amount/.test(src),
+    'planning.js does not recompute stage amounts in either granularity');
+  ok(!/public\/forecast\.js/.test(src) && !/assistant-packet|\/talk\//.test(src),
+    'planning.js does not edit forecast, packet, or Talk seams');
+
+  const liveEl = page.render(live, periods);
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready' && traj.months.length > 0, 'live trajectory has months');
+  ok(Array.isArray(traj.payPeriods) && traj.payPeriods.length > 0,
+    'live trajectory has payPeriods for granularity proof');
+
+  const monthFunding = page.composeFunding(live, periods, 'month', traj.months[0].month);
+  const pickMonth = traj.months[0];
+  ok(/data-trajectory-funding-granularity="month"/.test(monthFunding.panel),
+    'Month view panel names month granularity');
+  ok(monthFunding.panel.includes(money2(pickMonth.stage1.result.amount)),
+    'Month view copies Forecast months[] stage1 result without Planning arithmetic');
+  if (pickMonth.stage2 && pickMonth.stage2.result && isFinite(pickMonth.stage2.result.amount)) {
+    ok(monthFunding.panel.includes(money2(pickMonth.stage2.result.amount)),
+      'Month view copies stage2 result from Forecast');
+  }
+  if (pickMonth.stage3 && pickMonth.stage3.result && isFinite(pickMonth.stage3.result.amount)) {
+    ok(monthFunding.panel.includes(money2(pickMonth.stage3.result.amount)),
+      'Month view copies stage3 result from Forecast');
+  }
+
+  const pickPeriod = traj.payPeriods[0];
+  const periodId = pickPeriod.payday || pickPeriod.id;
+  const periodFunding = page.composeFunding(live, periods, 'pay-period', periodId);
+  ok(/data-trajectory-funding-granularity="pay-period"/.test(periodFunding.panel),
+    'Pay period view panel names pay-period granularity');
+  ok(/data-trajectory-funding-pay-period="/.test(periodFunding.panel),
+    'Pay period view keys the selected pay period from Forecast');
+  ok(periodFunding.panel.includes(money2(pickPeriod.stage1.result.amount)),
+    'Pay period view copies Forecast payPeriods[] stage1 result');
+  if (pickPeriod.stage2 && pickPeriod.stage2.result && isFinite(pickPeriod.stage2.result.amount)) {
+    ok(periodFunding.panel.includes(money2(pickPeriod.stage2.result.amount)),
+      'Pay period view copies stage2 from Forecast payPeriods[]');
+  }
+  if (pickPeriod.stage3 && pickPeriod.stage3.result && isFinite(pickPeriod.stage3.result.amount)) {
+    ok(periodFunding.panel.includes(money2(pickPeriod.stage3.result.amount)),
+      'Pay period view copies stage3 from Forecast payPeriods[]');
+  }
+
+  const pickerHtml = liveEl['planning-trajectory-funding-picker'].innerHTML;
+  ok(/data-trajectory-funding-granularity="month"/.test(pickerHtml)
+    && /data-trajectory-funding-granularity="pay-period"/.test(pickerHtml),
+    'live page renders Month and Pay period controls');
+
+  const estimatedPeriod = traj.payPeriods.find(p => p.stage1 && p.stage1.status === 'estimated');
+  if (estimatedPeriod) {
+    const estHtml = page.composeFunding(live, periods, 'pay-period',
+      estimatedPeriod.payday || estimatedPeriod.id).panel;
+    ok(/ESTIMATED/.test(estHtml), 'estimated pay-period stage stays estimated on the page');
+  }
+  const unavailableStageMonth = traj.months.find(m => m.stage1 && m.stage1.status === 'unavailable');
+  if (unavailableStageMonth) {
+    const withheld = page.composeFunding(live, periods, 'month', unavailableStageMonth.month).panel;
+    ok(unavailableStageMonth.stage1.reason && withheld.includes(unavailableStageMonth.stage1.reason),
+      'unavailable month stage still prints Forecast reason in Month view');
+    ok(!new RegExp(`<b>\\$0\\.00</b>[\\s\\S]*?data-trajectory-funding-stage="1"`).test(withheld),
+      'unavailable month funding is not implied $0 surplus');
+  }
+
+  const altPlan = JSON.parse(JSON.stringify(live.plan));
+  if (altPlan.defaults) altPlan.defaults.extraDebtMonthly = (altPlan.defaults.extraDebtMonthly || 0) + 50;
+  const altTraj = F.baselineTrajectory(altPlan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const altPeriod = altTraj.payPeriods[0];
+  const basePeriod = traj.payPeriods[0];
+  const altPanel = page.composeFunding(
+    { plan: altPlan, debts: live.debts, meta: live.meta, revolvingExtra: live.revolvingExtra },
+    periods, 'pay-period', altPeriod.payday || altPeriod.id).panel;
+  const basePanel = page.composeFunding(live, periods, 'pay-period', basePeriod.payday || basePeriod.id).panel;
+  if (altPeriod.stage3 && basePeriod.stage3
+    && isFinite(altPeriod.stage3.result.amount) && isFinite(basePeriod.stage3.result.amount)
+    && altPeriod.stage3.result.amount !== basePeriod.stage3.result.amount) {
+    ok(altPanel.includes(money2(altPeriod.stage3.result.amount))
+      && !altPanel.includes(money2(basePeriod.stage3.result.amount)),
+      'changing Forecast fixture changes rendered pay-period stage3 without Planning arithmetic');
+  }
+
+  const pressureStill = liveEl['planning-trajectory-pressure'].innerHTML;
+  const ddStill = liveEl['planning-trajectory-debt-direction'].innerHTML;
+  const tableStill = liveEl['planning-trajectory'].innerHTML;
+  ok(/planning-trajectory-table/.test(tableStill),
+    'monthly cash/debt table remains after granularity work');
+  ok(/data-trajectory-pressure=/.test(pressureStill),
+    'pressure reprint remains after granularity work');
+  ok(/data-trajectory-debt-direction=/.test(ddStill),
+    'debt direction reprint remains after granularity work');
+}
+
+console.log('\n=== 21. Trajectory funding region accessible name matches granularity ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  const html = read('public/planning.html');
+  ok(/function planningTrajectoryFundingRegionAriaLabel\(/.test(src),
+    'planning.js centralizes funding region aria-label copy');
+  ok(/setAttribute\(\s*['"]aria-label['"]/.test(src)
+    && /planningTrajectoryFundingRegionAriaLabel\(/.test(src),
+    'renderPlanning syncs funding region aria-label with granularity');
+  ok(/aria-label="Three-stage funding for selected period"/.test(html),
+    'planning.html loads with granularity-neutral funding region name');
+  ok(!/aria-label="Three-stage funding for selected trajectory month"/.test(html),
+    'planning.html does not hardcode month-only funding region name');
+
+  const monthLabel = page.ctx.planningTrajectoryFundingRegionAriaLabel('month');
+  const payLabel = page.ctx.planningTrajectoryFundingRegionAriaLabel('pay-period');
+  ok(/trajectory month/i.test(monthLabel) && !/pay period/i.test(monthLabel),
+    'Month aria-label names a trajectory month, not a pay period');
+  ok(/Seaspan pay period/i.test(payLabel) && !/trajectory month/i.test(payLabel),
+    'Pay period aria-label names a Seaspan pay period, not a trajectory month');
+
+  const liveEl = page.render(live, periods);
+  const monthAria = liveEl['planning-trajectory-funding'].getAttribute('aria-label');
+  ok(monthAria === monthLabel,
+    'default Month render sets funding region aria-label to month copy');
+  ok(!/pay period/i.test(monthAria || ''),
+    'default Month render does not tell AT the funding panel is a pay period');
+
+  const payFunding = page.composeFunding(live, periods, 'pay-period',
+    (F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+      periods, extraFacilities: live.revolvingExtra,
+    }).payPeriods[0].payday));
+  ok(/data-trajectory-funding-granularity="pay-period"/.test(payFunding.panel),
+    'Pay period compose still targets pay-period panel');
+  ok(payLabel !== monthLabel,
+    'Month and Pay period accessible names do not contradict each other');
 }
 
 console.log('\n=== Page contract ===');
