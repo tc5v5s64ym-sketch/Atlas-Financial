@@ -10838,13 +10838,260 @@
     };
   }
 
+  // Planned weekly variable spend from Household Budget / budgetBreakdown.
+  // Owner-target and current-regime planned remainders only. Historical
+  // actuals are later variance and never become this baseline number.
+  // Null when the breakdown cannot be formed — unavailable, not $0.
+  function plannedWeeklyVariable(plan, periods, opts) {
+    const bd = budgetBreakdown(plan, periods, opts || {});
+    if (!bd || !Array.isArray(bd.categories)) return null;
+    let monthly = 0;
+    for (const c of bd.categories) {
+      if (!c) continue;
+      if (c.class === 'reserve') continue;
+      if (c.source === 'historical-actual') continue;
+      const planned = Number(c.planned);
+      if (isFinite(planned)) monthly += planned;
+    }
+    return roundCent(monthly / WEEKS_PER_MONTH);
+  }
+
+  function calendarMonthsIntersecting(start, end) {
+    const months = [];
+    if (!start || !end || start > end) return months;
+    let [y, m] = start.split('-').map(Number);
+    const [endY, endM] = end.split('-').map(Number);
+    while (y < endY || (y === endY && m <= endM)) {
+      const last = daysInMonth(y, m);
+      const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+      const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+      months.push({
+        month: `${y}-${String(m).padStart(2, '0')}`,
+        year: y,
+        start: start > monthStart ? start : monthStart,
+        end: end < monthEnd ? end : monthEnd,
+      });
+      m += 1;
+      if (m > 12) { m = 1; y += 1; }
+    }
+    return months;
+  }
+
+  function trajectoryUnavailable(reason) {
+    return {
+      status: 'unavailable',
+      reason,
+      calculator: 'Forecast',
+      writesCanonicalState: false,
+      productionWrite: false,
+      actionPermission: 'not-granted',
+      recommendation: null,
+      ranking: null,
+      affordability: null,
+    };
+  }
+
+  // Read-only baseline cash+debt trajectory over the incumbent
+  // knowledgeHorizon. Composes budgetBreakdown planned weeklyVariable,
+  // simulate, and projectDebts. Does not search Forecast.recommend,
+  // does not extend the horizon, and does not implement dated 2027
+  // income regimes. Unmodelled regimes are unavailable, not $0.
+  function baselineTrajectory(plan, debts, asOf, opts) {
+    opts = opts || {};
+    if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+      return trajectoryUnavailable('A plan baseline is required.');
+    }
+    const day = financialDate(asOf);
+    if (!day) return trajectoryUnavailable('A dated plan baseline is required.');
+    const periods = opts.periods;
+    const weekly = plannedWeeklyVariable(plan, periods, Object.assign({}, opts, { asOf: day }));
+    if (weekly == null || !isFinite(weekly) || weekly < 0) {
+      return trajectoryUnavailable('A planned Household Budget breakdown is required.');
+    }
+
+    const horizon = knowledgeHorizon(plan, day, opts);
+    if (!horizon || !horizon.start || !horizon.end || !(horizon.days > 0)) {
+      return trajectoryUnavailable('Forecast could not establish the knowledge horizon.');
+    }
+
+    const walkOpts = {
+      weeklyVariable: weekly,
+      horizonDays: horizon.days,
+      viewDays: horizon.days,
+      debts: Array.isArray(debts) ? debts : [],
+      extraFacilities: opts.extraFacilities,
+      extraDebtMonthly: (plan.defaults && plan.defaults.extraDebtMonthly) || 0,
+      extraDebtTarget: opts.extraDebtTarget,
+      targetBuffer: plan.defaults && plan.defaults.targetBuffer,
+      scenario: (plan.defaults && plan.defaults.scenario) || 'expected',
+      disabled: opts.disabled,
+      representedEvents: opts.representedEvents,
+      paypalPerMonth: opts.paypalPerMonth,
+      periods,
+    };
+    if (walkOpts.debts.length) {
+      const caps = projectDebts(plan, walkOpts.debts, day, Object.assign({}, walkOpts, {
+        debtHorizonDays: horizon.days,
+        extraAbsorbed: null,
+        obligationAbsorbed: null,
+      }));
+      if (caps) {
+        walkOpts.extraAbsorbed = caps.extraAbsorbed;
+        walkOpts.obligationAbsorbed = caps.obligationAbsorbed;
+      }
+    }
+
+    const sim = simulate(plan, day, walkOpts);
+    if (!sim || !Array.isArray(sim.daily)) {
+      return trajectoryUnavailable('Forecast could not establish the cash walk.');
+    }
+    const byDate = new Map(sim.daily.map(row => [row.date, row]));
+    const events = expandEvents(plan, horizon.start, horizon.end, walkOpts);
+    const months = calendarMonthsIntersecting(horizon.start, horizon.end);
+    const series = months.map(span => {
+      const unmodelled = span.year >= 2027;
+      const close = byDate.get(span.end) || null;
+      const monthEvents = (events || []).filter(e => e && e.date >= span.start && e.date <= span.end);
+      const incomeEvents = monthEvents.filter(e => e.kind === 'income');
+      const incomeSum = incomeEvents.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const estimated = incomeEvents.some(e => e.confidence !== 'confirmed');
+      let debtPicture = {
+        status: 'unavailable',
+        reason: 'No coupled debt walk was available for this month.',
+      };
+      if (walkOpts.debts.length) {
+        const monthDays = diffDays(day, span.end) + 1;
+        if (monthDays > 0) {
+          const walked = projectDebts(plan, walkOpts.debts, day, Object.assign({}, walkOpts, {
+            debtHorizonDays: monthDays,
+          }));
+          const mark = walked && walked.marks && walked.marks.length
+            ? walked.marks[walked.marks.length - 1] : null;
+          if (mark) {
+            debtPicture = {
+              status: 'calculated',
+              asOf: mark.date,
+              consumer: roundCent(mark.consumer),
+              secured: roundCent(mark.secured),
+              heloc: roundCent(mark.heloc),
+              headroom: roundCent(mark.headroom),
+              interestToDate: roundCent(mark.interestToDate),
+              debts: (mark.debts || []).map(d => ({
+                id: d.id,
+                label: d.label,
+                balance: roundCent(d.balance),
+                paid: roundCent(d.paid),
+                interest: roundCent(d.interest),
+              })),
+            };
+          }
+        }
+      } else {
+        debtPicture = {
+          status: 'calculated',
+          asOf: span.end,
+          consumer: 0,
+          secured: 0,
+          heloc: 0,
+          headroom: 0,
+          interestToDate: 0,
+          debts: [],
+        };
+      }
+
+      const row = {
+        month: span.month,
+        start: span.start,
+        end: span.end,
+        spend: {
+          weeklyVariable: weekly,
+          status: 'calculated',
+          source: 'budgetBreakdown.planned',
+          historicalActuals: 'excluded',
+        },
+        debt: debtPicture,
+      };
+      if (unmodelled) {
+        row.income = {
+          status: 'unavailable',
+          reason: '2027 payroll/bonus is unmodelled. Not $0 and not a carry of current post-CPP/EI-max net.',
+        };
+        row.cash = {
+          status: 'unavailable',
+          reason: 'Cash in an unmodelled income-regime month is unavailable, not a $0 or carried 2026 net.',
+        };
+      } else {
+        row.income = {
+          status: estimated ? 'estimated' : 'calculated',
+          amount: roundCent(incomeSum),
+        };
+        row.cash = close
+          ? { status: 'calculated', amount: roundCent(close.balance), asOf: close.date }
+          : { status: 'unavailable', reason: 'Forecast could not read month-end cash.' };
+      }
+      return row;
+    });
+
+    return {
+      status: 'ready',
+      calculator: 'Forecast',
+      writesCanonicalState: false,
+      productionWrite: false,
+      actionPermission: 'not-granted',
+      recommendation: null,
+      ranking: null,
+      affordability: null,
+      asOf: day,
+      horizon: { start: horizon.start, end: horizon.end, days: horizon.days },
+      weeklyVariable: {
+        amount: weekly,
+        status: 'calculated',
+        source: 'budgetBreakdown.planned',
+        historicalActuals: 'excluded',
+      },
+      incomeRegimes: [
+        {
+          id: 'current-modelled-income',
+          through: '2026-12-31',
+          status: 'modelled',
+          note: 'Incumbent plan.income streams on their declared cadence through the current modelled year.',
+        },
+        {
+          id: '2027-payroll-bonus',
+          from: '2027-01-01',
+          status: 'unavailable',
+          reason: '2027 payroll/bonus is unmodelled. Not $0 and not a carry of current post-CPP/EI-max net.',
+        },
+        {
+          id: '2027-dated-income-regimes',
+          from: '2027-01-01',
+          status: 'unavailable',
+          reason: 'Dated income regimes (EMPLOYMENT_PENSION_FACTS and owner 4% Dale raise / Amanda flat) are a later outcome.',
+        },
+      ],
+      months: series,
+      provenance: {
+        calculator: 'Forecast',
+        primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts'],
+        cashBaseline: 'budgetBreakdown-planned-weekly',
+        historicalActuals: 'excluded',
+        recommendWeeklyCap: 'not-used',
+        knowledgeHorizon: 'incumbent-unmodified',
+        incomeRegimesImplemented: false,
+        ranking: null,
+        recommendation: null,
+        affordability: null,
+      },
+    };
+  }
+
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
-    projectDebts,
+    projectDebts, baselineTrajectory,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,

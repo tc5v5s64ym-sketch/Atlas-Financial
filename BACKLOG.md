@@ -305,6 +305,10 @@ set-aside on lookahead spans by Forecast design. Decide with the Credit and
 Planning content PRs whether that view also stops at the household-budget
 boundary. Not a Forecast change.
 
+**B105 · Financial Trajectory Slice 1 — Forecast baselineTrajectory** · **IN PROGRESS 2026-09-16** · *owner instruction; Forecast-only compose*
+
+Dale authorized a Forecast-owned read-only monthly cash+debt baseline over the incumbent `knowledgeHorizon`. `weeklyVariable` comes from planned Household Budget / `budgetBreakdown` (owner-target / current-regime planned remainder), not historical actuals and not `Forecast.recommend`. Coupled `projectDebts`. 2027 payroll/bonus and dated income regimes are named unavailable, not $0. Does not modify `knowledgeHorizon` or published caps, and does not implement EMPLOYMENT_PENSION_FACTS / 4% Dale raise / Amanda flat. Page, Talk, packet, ranking, and affordability are later outcomes.
+
 **B104 · Decision Intelligence comparison foundation** · **IN PROGRESS 2026-09-15** · *owner instruction; Forecast-only compose of Slice 6*
 
 Dale authorized a Forecast-owned read-only comparison of two or more caller-supplied explicit hypothetical extra debt payments from one identical household baseline. It composes `Forecast.hypotheticalExtraPayment` per scenario. It does not rank, recommend, infer affordability, apply `decisionPosture`, or write. Talk / Gemini / UI and `Forecast.counterfactuals` are out of scope. Unavailable underlying scenarios fail the comparison; unavailable is not zero.
