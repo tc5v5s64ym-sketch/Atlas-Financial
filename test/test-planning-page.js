@@ -664,6 +664,66 @@ console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baseline
     'debt direction reprint remains after funding section');
 }
 
+console.log('\n=== 19. Trajectory month selection keeps table row semantics ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(!/<tr[^>]*\brole="button"/.test(src),
+    'planning.js does not assign role=button to trajectory rows');
+  ok(!/<tr[^>]*aria-label="Show three-stage funding/.test(src),
+    'planning.js does not replace the row accessible name with a funding-action label');
+  ok(/<button type="button"[^>]*data-trajectory-month-select=/.test(src),
+    'month selection is a real button inside the row');
+
+  const liveEl = page.render(live, periods);
+  const tableHtml = liveEl['planning-trajectory'].innerHTML;
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready' && traj.months.length > 0, 'live trajectory has months for row-semantics proof');
+  ok(/<table[^>]*class="[^"]*planning-trajectory-table/.test(tableHtml)
+    && /<th scope="col">Period<\/th>/.test(tableHtml)
+    && /<th scope="col">Income<\/th>/.test(tableHtml)
+    && /<th scope="col">Cash \(period end\)<\/th>/.test(tableHtml)
+    && /<th scope="col">Debt<\/th>/.test(tableHtml),
+    'trajectory table keeps column headers for period, income, cash, and debt');
+  ok(!/<tr[^>]*\brole="button"/.test(tableHtml),
+    'rendered trajectory rows keep implicit row role');
+  ok(!/<tr[^>]*aria-label=/.test(tableHtml),
+    'rendered trajectory rows have no aria-label that would hide cell figures');
+  ok(!/Show three-stage funding/.test(tableHtml),
+    'funding-action wording is not the row or button accessible name');
+
+  for (const month of traj.months) {
+    const rowRe = new RegExp(
+      `<tr[^>]*data-trajectory-month="${month.month}"[^>]*>([\\s\\S]*?)</tr>`);
+    const rowMatch = rowRe.exec(tableHtml);
+    ok(rowMatch && !/\brole="button"/.test(rowMatch[0].slice(0, rowMatch[0].indexOf('>'))),
+      `live: ${month.month} remains a table row without an override role`);
+    if (!rowMatch) continue;
+    const rowHtml = rowMatch[1];
+    ok(/<th scope="row">/.test(rowHtml),
+      `live: ${month.month} keeps a row header`);
+    ok(/<td class="planning-trajectory-income">/.test(rowHtml)
+      && /<td class="planning-trajectory-cash">/.test(rowHtml)
+      && /<td class="planning-trajectory-debt">/.test(rowHtml),
+      `live: ${month.month} income, cash, and debt stay table cells`);
+    const buttonRe = new RegExp(
+      `<button type="button"[^>]*data-trajectory-month-select="${month.month}"[^>]*>[\\s\\S]*?<span class="planning-trajectory-period">${month.month}</span>[\\s\\S]*?</button>`);
+    ok(buttonRe.test(rowHtml),
+      `live: ${month.month} selection is a button named after the month, inside the row`);
+    const income = month.income || {};
+    if (income.status !== 'unavailable' && income.amount != null) {
+      ok(rowHtml.includes(money2(income.amount)),
+        `live: ${month.month} Forecast income amount remains in the row cells`);
+    }
+    const cash = month.cash || {};
+    if (cash.status !== 'unavailable' && cash.amount != null) {
+      ok(rowHtml.includes(money2(cash.amount)),
+        `live: ${month.month} Forecast cash amount remains in the row cells`);
+    }
+  }
+}
+
 console.log('\n=== Page contract ===');
 {
   const src = stripComments(read('public/planning.js'));

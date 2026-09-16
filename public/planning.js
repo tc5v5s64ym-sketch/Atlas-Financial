@@ -105,7 +105,7 @@ function planningTrajectoryPeriodCell(month) {
   const partialNote = partial
     ? `<small class="planning-trajectory-partial">Partial period · ${periodText}</small>`
     : `<small class="planning-trajectory-period-dates">${periodText}</small>`;
-  return `<span class="planning-trajectory-period">${month.month}</span>${partialNote}`;
+  return `<button type="button" class="planning-trajectory-month-select" data-trajectory-month-select="${month.month}"><span class="planning-trajectory-period">${month.month}</span></button>${partialNote}`;
 }
 
 function planningTrajectoryChip(status) {
@@ -618,7 +618,7 @@ function planningTrajectoryHtml(traj) {
     const income = month.income || {};
     const cash = month.cash || {};
     const partial = planningTrajectoryIsPartialMonth(month);
-    return `<tr class="planning-trajectory-month-row" tabindex="0" role="button" data-trajectory-month="${month.month}" data-trajectory-period-start="${month.start}" data-trajectory-period-end="${month.end}"${partial ? ' data-trajectory-partial="true"' : ''} data-trajectory-income-status="${income.status || ''}" data-trajectory-cash-status="${cash.status || ''}" aria-label="Show three-stage funding for ${month.month}">
+    return `<tr class="planning-trajectory-month-row" data-trajectory-month="${month.month}" data-trajectory-period-start="${month.start}" data-trajectory-period-end="${month.end}"${partial ? ' data-trajectory-partial="true"' : ''} data-trajectory-income-status="${income.status || ''}" data-trajectory-cash-status="${cash.status || ''}">
       <th scope="row">${planningTrajectoryPeriodCell(month)}</th>
       <td class="planning-trajectory-income">${planningTrajectoryIncomeHtml(income)}</td>
       <td class="planning-trajectory-cash">${planningTrajectoryCashHtml(cash)}</td>
@@ -746,17 +746,12 @@ function renderPlanning(d, periods) {
     const monthKey = tr.getAttribute('data-trajectory-month');
     const selected = monthKey === planningTrajectorySelectedMonth;
     tr.classList.toggle('planning-trajectory-month-selected', selected);
-    tr.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    tr.onclick = () => {
+    const selectBtn = tr.querySelector('[data-trajectory-month-select]');
+    if (!selectBtn) continue;
+    selectBtn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    selectBtn.onclick = () => {
       planningTrajectorySelectedMonth = monthKey;
       renderPlanning(d, periods);
-    };
-    tr.onkeydown = evt => {
-      if (evt.key === 'Enter' || evt.key === ' ') {
-        evt.preventDefault();
-        planningTrajectorySelectedMonth = monthKey;
-        renderPlanning(d, periods);
-      }
     };
   }
 }
