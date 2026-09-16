@@ -315,6 +315,12 @@ console.log('\n=== 2b. Planning trajectory published figures have stable snapsho
       ok(same(snap[`${p}.cash.amount`], round(month.cash.amount)),
         `${month.month} cash.amount copied when Forecast publishes one`);
     }
+    if (month.cash.asOf) {
+      ok(snap[`${p}.cash.asOf`] === month.cash.asOf,
+        `${month.month} cash.asOf copied for visible period-end date`);
+    }
+    if (month.start) ok(snap[`${p}.periodStart`] === month.start, `${month.month} periodStart copied`);
+    if (month.end) ok(snap[`${p}.periodEnd`] === month.end, `${month.month} periodEnd copied`);
     if (month.income.reason) {
       ok(snap[`${p}.income.reason`] === month.income.reason,
         `${month.month} income.reason copied verbatim`);
@@ -326,6 +332,10 @@ console.log('\n=== 2b. Planning trajectory published figures have stable snapsho
     if (month.debt && month.debt.status === 'calculated') {
       ok(same(snap[`${p}.debt.consumer`], round(month.debt.consumer)),
         `${month.month} debt.consumer copied`);
+      if (month.debt.asOf) {
+        ok(snap[`${p}.debt.asOf`] === month.debt.asOf,
+          `${month.month} debt.asOf copied for visible as-of date`);
+      }
     }
   }
   const jan = traj.months.find(m => m.month === '2027-01');

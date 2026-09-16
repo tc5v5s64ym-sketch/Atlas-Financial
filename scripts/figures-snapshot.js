@@ -400,13 +400,17 @@ if (trajectory.status === 'ready') {
     put(`${p}.income.status`, income.status);
     if (income.amount != null) put(`${p}.income.amount`, income.amount);
     if (income.reason) put(`${p}.income.reason`, income.reason);
+    if (month.start) put(`${p}.periodStart`, month.start);
+    if (month.end) put(`${p}.periodEnd`, month.end);
     put(`${p}.cash.status`, cash.status);
     if (cash.amount != null) put(`${p}.cash.amount`, cash.amount);
+    if (cash.asOf) put(`${p}.cash.asOf`, cash.asOf);
     if (cash.reason) put(`${p}.cash.reason`, cash.reason);
     put(`${p}.debt.status`, debt.status);
     if (debt.consumer != null) put(`${p}.debt.consumer`, debt.consumer);
     if (debt.secured != null) put(`${p}.debt.secured`, debt.secured);
     if (debt.heloc != null) put(`${p}.debt.heloc`, debt.heloc);
+    if (debt.asOf) put(`${p}.debt.asOf`, debt.asOf);
     if (debt.reason) put(`${p}.debt.reason`, debt.reason);
   }
 } else if (trajectory.reason) {

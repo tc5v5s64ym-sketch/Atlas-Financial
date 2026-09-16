@@ -306,6 +306,41 @@ console.log('\n=== 13–15. Baseline trajectory reprints Forecast.baselineTrajec
     'live: January 2027 is Forecast-unavailable for income and cash, not carried 2026 net');
   ok(/does not walk cash or debt itself/.test(liveEl['planning-trajectory-note'].textContent),
     'trajectory footnote says the page does not walk cash or debt');
+  ok(!/Cash \(month-end\)/.test(tableHtml),
+    'cash column is not labelled month-end (period end matches Forecast span)');
+  ok(/Cash \(period end\)/.test(tableHtml), 'cash column names period end');
+  ok(/Secured incl\. HELOC/.test(tableHtml) && /of which HELOC/.test(tableHtml),
+    'secured vs HELOC relationship is explicit on the page');
+  for (const month of traj.months) {
+    ok(new RegExp(`data-trajectory-period-start="${month.start}"`).test(tableHtml)
+      && new RegExp(`data-trajectory-period-end="${month.end}"`).test(tableHtml),
+      `live: ${month.month} prints Forecast period ${month.start}–${month.end}`);
+    const rowRe = new RegExp(
+      `<tr[^>]*data-trajectory-month="${month.month}"[^>]*>[\\s\\S]*?</tr>`);
+    const rowMatch = rowRe.exec(tableHtml);
+    ok(rowMatch, `live: ${month.month} row is present for period inspection`);
+    if (month.start.slice(0, 7) === month.month) {
+      const [y, m] = month.month.split('-').map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+      const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const partial = month.start !== monthStart || month.end !== monthEnd;
+      if (partial) {
+        ok(/data-trajectory-partial="true"/.test(rowMatch[0]) && /Partial period/.test(rowMatch[0]),
+          `live: ${month.month} partial boundary row is marked`);
+      }
+    }
+    const cash = month.cash || {};
+    if (cash.asOf) {
+      ok(new RegExp(`data-trajectory-cash-asof="${cash.asOf}"`).test(tableHtml),
+        `live: ${month.month} cash.asOf ${cash.asOf} is visible`);
+    }
+    const debt = month.debt || {};
+    if (debt.asOf) {
+      ok(new RegExp(`data-trajectory-debt-asof="${debt.asOf}"`).test(tableHtml),
+        `live: ${month.month} debt.asOf ${debt.asOf} is visible`);
+    }
+  }
 }
 
 console.log('\n=== Page contract ===');

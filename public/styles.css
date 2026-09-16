@@ -1565,6 +1565,9 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory { margin:12px 0 0; }
 .planning-trajectory-table td { vertical-align:top; }
 .planning-trajectory-reason { display:block; margin-top:4px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; }
+.planning-trajectory-period-dates,
+.planning-trajectory-partial { display:block; margin-top:3px; color:var(--text-secondary); font-size:.72rem; line-height:1.35; font-weight:400; }
+.planning-trajectory-partial { color:var(--serious); }
 .planning-trajectory-table [data-trajectory-debt] { margin-bottom:4px; }
 .planning-trajectory-table [data-trajectory-debt] b { font-variant-numeric:tabular-nums; }
 @media (min-width:641px) {

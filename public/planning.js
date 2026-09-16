@@ -89,6 +89,25 @@ function planningRowHtml(row, payday, unresolved) {
     </article>`;
 }
 
+function planningTrajectoryIsPartialMonth(month) {
+  if (!month || !month.month || !month.start || !month.end) return false;
+  const [y, m] = month.month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+  const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return month.start !== monthStart || month.end !== monthEnd;
+}
+
+function planningTrajectoryPeriodCell(month) {
+  const partial = planningTrajectoryIsPartialMonth(month);
+  const periodText = `${fmtDateFull(month.start)} – ${fmtDateFull(month.end)}`;
+  const partialAttr = partial ? ' data-trajectory-partial="true"' : '';
+  const partialNote = partial
+    ? `<small class="planning-trajectory-partial">Partial period · ${periodText}</small>`
+    : `<small class="planning-trajectory-period-dates">${periodText}</small>`;
+  return `<span class="planning-trajectory-period">${month.month}</span>${partialNote}`;
+}
+
 function planningTrajectoryChip(status) {
   const map = {
     calculated: { cls: 'v', label: 'CALCULATED' },
@@ -120,7 +139,9 @@ function planningTrajectoryCashHtml(cash) {
   }
   const amount = cash.amount != null && isFinite(Number(cash.amount))
     ? `<b>${money2(cash.amount)}</b>` : '';
-  const asOf = cash.asOf ? `<small>as-of ${fmtDateFull(cash.asOf)}</small>` : '';
+  const asOf = cash.asOf
+    ? `<small data-trajectory-cash-asof="${cash.asOf}">at period end · ${fmtDateFull(cash.asOf)}</small>`
+    : '';
   return `${amount}${planningTrajectoryChip(cash.status)}${asOf}`;
 }
 
@@ -134,10 +155,10 @@ function planningTrajectoryDebtHtml(debt) {
   if (debt.status !== 'calculated') {
     return planningTrajectoryChip(debt.status);
   }
-  const asOf = debt.asOf ? `<small>as-of ${fmtDateFull(debt.asOf)}</small>` : '';
+  const asOf = debt.asOf ? `<small data-trajectory-debt-asof="${debt.asOf}">as-of ${fmtDateFull(debt.asOf)}</small>` : '';
   return `<div data-trajectory-debt="consumer"><b>${money2(debt.consumer)}</b><small>Consumer</small></div>
-    <div data-trajectory-debt="secured"><b>${money2(debt.secured)}</b><small>Secured</small></div>
-    <div data-trajectory-debt="heloc"><b>${money2(debt.heloc)}</b><small>HELOC</small></div>
+    <div data-trajectory-debt="secured"><b>${money2(debt.secured)}</b><small>Secured incl. HELOC</small></div>
+    <div data-trajectory-debt="heloc"><b>${money2(debt.heloc)}</b><small>of which HELOC</small></div>
     ${planningTrajectoryChip(debt.status)}${asOf}`;
 }
 
@@ -163,8 +184,9 @@ function planningTrajectoryHtml(traj) {
   const rows = traj.months.map(month => {
     const income = month.income || {};
     const cash = month.cash || {};
-    return `<tr data-trajectory-month="${month.month}" data-trajectory-income-status="${income.status || ''}" data-trajectory-cash-status="${cash.status || ''}">
-      <th scope="row">${month.month}</th>
+    const partial = planningTrajectoryIsPartialMonth(month);
+    return `<tr data-trajectory-month="${month.month}" data-trajectory-period-start="${month.start}" data-trajectory-period-end="${month.end}"${partial ? ' data-trajectory-partial="true"' : ''} data-trajectory-income-status="${income.status || ''}" data-trajectory-cash-status="${cash.status || ''}">
+      <th scope="row">${planningTrajectoryPeriodCell(month)}</th>
       <td class="planning-trajectory-income">${planningTrajectoryIncomeHtml(income)}</td>
       <td class="planning-trajectory-cash">${planningTrajectoryCashHtml(cash)}</td>
       <td class="planning-trajectory-debt">${planningTrajectoryDebtHtml(month.debt)}</td>
@@ -173,7 +195,7 @@ function planningTrajectoryHtml(traj) {
   return {
     lede: horizon + weekly + (regimeNotes ? ` ${regimeNotes}` : ''),
     table: `<div class="scroll"><table class="stackable planning-trajectory-table" aria-label="Baseline cash and debt by month">
-      <thead><tr><th scope="col">Month</th><th scope="col">Income</th><th scope="col">Cash (month-end)</th><th scope="col">Debt</th></tr></thead>
+      <thead><tr><th scope="col">Period</th><th scope="col">Income</th><th scope="col">Cash (period end)</th><th scope="col">Debt</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`,
     note,
