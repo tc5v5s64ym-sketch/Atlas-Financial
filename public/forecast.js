@@ -10543,6 +10543,42 @@
     return months;
   }
 
+  // Seaspan payday-to-payday windows intersecting [start, end], clipped
+  // to that range the same way the monthly series clips calendar months.
+  // Identity is the cycle payday; start/end are the published walk
+  // window. Amanda salary does not start or end a window. Fail closed
+  // to [] when the incumbent Seaspan payroll stream / biweekly anchor
+  // cannot be established.
+  function seaspanPayPeriodsIntersecting(plan, start, end) {
+    const from = financialDate(start);
+    const to = financialDate(end);
+    if (!from || !to || from > to) return [];
+    const stream = seaspanPayroll(plan);
+    const anchor = stream && financialDate(stream.anchor);
+    if (!stream || !anchor) return [];
+    const dates = biweeklyDates(anchor, addDays(from, -14), addDays(to, 14));
+    const periods = [];
+    for (let i = 0; i < dates.length; i++) {
+      const payday = dates[i];
+      const nextPayday = dates[i + 1] || addDays(payday, 14);
+      if (nextPayday <= payday) continue;
+      const cycleEnd = addDays(nextPayday, -1);
+      if (cycleEnd < from || payday > to) continue;
+      const spanStart = payday < from ? from : payday;
+      const spanEnd = cycleEnd > to ? to : cycleEnd;
+      if (spanStart > spanEnd) continue;
+      periods.push({
+        payday,
+        nextPayday,
+        start: spanStart,
+        end: spanEnd,
+        days: diffDays(spanStart, spanEnd) + 1,
+        rangeLabel: formatSpendingCycleRange(spanStart, spanEnd),
+      });
+    }
+    return periods;
+  }
+
   function trajectoryUnavailable(reason) {
     return {
       status: 'unavailable',
@@ -10554,6 +10590,7 @@
       recommendation: null,
       ranking: null,
       affordability: null,
+      payPeriods: [],
       pressure: trajectoryPressureUnavailable(reason),
       debtDirection: trajectoryDebtDirectionUnavailable(reason),
     };
@@ -12100,16 +12137,19 @@
     const cash = input.cash;
     const span = input.span;
     const weekly = input.weeklyVariable;
+    const spanNoun = input.spanNoun || 'month';
+    const householdBudgetIdentity = input.householdBudgetIdentity
+      || 'simulate weeklyVariable applied days in month';
     if (!income || income.status === 'unavailable'
         || income.amount == null || !isFinite(Number(income.amount))) {
       return trajectoryFundingUnavailable(
         (income && income.reason)
-        || 'Projected income for this month is unavailable. Not $0.');
+        || ('Projected income for this ' + spanNoun + ' is unavailable. Not $0.'));
     }
     if (!cash || cash.status === 'unavailable') {
       return trajectoryFundingUnavailable(
         (cash && cash.reason)
-        || 'The cash walk for this month is unavailable. Not $0.');
+        || ('The cash walk for this ' + spanNoun + ' is unavailable. Not $0.'));
     }
     if (weekly == null || !isFinite(weekly) || weekly < 0) {
       return trajectoryFundingUnavailable(
@@ -12117,17 +12157,18 @@
     }
     if (!span || !span.start || !span.end) {
       return trajectoryFundingUnavailable(
-        'Forecast could not establish this month span. Not $0.');
+        'Forecast could not establish this ' + spanNoun + ' span. Not $0.');
     }
     const walkDaily = Array.isArray(input.walkDaily) ? input.walkDaily : null;
     if (!walkDaily) {
       return trajectoryFundingUnavailable(
-        'The baseline walk days for this month are unavailable. Not $0.');
+        'The baseline walk days for this ' + spanNoun + ' are unavailable. Not $0.');
     }
     const walkDays = baselineTrajectoryWalkVariableDays(walkDaily, span);
     if (!(walkDays > 0)) {
       return trajectoryFundingUnavailable(
-        'The baseline walk did not apply Household Budget days in this month. Not $0.');
+        'The baseline walk did not apply Household Budget days in this '
+        + spanNoun + '. Not $0.');
     }
 
     const events = Array.isArray(input.events) ? input.events : [];
@@ -12177,7 +12218,7 @@
           status: householdBudgetStatus,
           weeklyVariable: roundCent(weekly),
           walkDays,
-          identity: 'simulate weeklyVariable applied days in month',
+          identity: householdBudgetIdentity,
         },
         result: result(stage1Amount, stage1Status),
       },
@@ -12199,6 +12240,132 @@
         },
         result: result(stage3Amount, stage3Status),
       },
+    };
+  }
+
+  // Same walk-owned income / cash / three-stage funding picture the
+  // monthly series already publishes, for one dated span. Trust follows
+  // span-end Dale-payroll rules: unavailable is not $0. Household Budget
+  // is walk-applied weeklyVariable / 7 on simulate days in the span.
+  function baselineTrajectorySpanPicture(input) {
+    input = input || {};
+    const plan = input.plan;
+    const span = input.span;
+    const allEvents = Array.isArray(input.allEvents) ? input.allEvents : [];
+    const isDalePayrollOrBonusIncome = input.isDalePayrollOrBonusIncome
+      || function () { return false; };
+    const regimeReady = !!input.regimeReady;
+    const estimatedThrough = input.estimatedThrough;
+    const unavailableAfter = input.unavailableAfter;
+    const close = input.close || null;
+    const closeMissingReason = input.closeMissingReason
+      || 'Forecast could not read month-end cash.';
+    const spanEvents = allEvents.filter(e => e && span && e.date >= span.start && e.date <= span.end);
+    const incomeEvents = spanEvents.filter(e => e.kind === 'income');
+    const dale2027Events = incomeEvents.filter(e =>
+      isDalePayrollOrBonusIncome(e)
+      && e.date >= DALE_PAYROLL_REGIME_FROM
+      && (!estimatedThrough || e.date <= estimatedThrough)
+    );
+    const withheldLaterDale = !!(regimeReady && estimatedThrough && span && span.end > estimatedThrough);
+    const withheldDale = !regimeReady && incomeEvents.some(e =>
+      isDalePayrollOrBonusIncome(e) && e.date >= DALE_PAYROLL_REGIME_FROM
+      && !isDaleBonusStream(incomeStreamFor(plan, e))
+    );
+    const withheldDaleThroughSpanEnd = !regimeReady && allEvents.some(e =>
+      e && e.kind === 'income' && e.date >= DALE_PAYROLL_REGIME_FROM
+      && span && e.date <= span.end && isDalePayrollOrBonusIncome(e)
+      && !isDaleBonusStream(incomeStreamFor(plan, e))
+    );
+    const modelledIncomeEvents = withheldDale
+      ? incomeEvents.filter(e =>
+        !(isDalePayrollOrBonusIncome(e) && e.date >= DALE_PAYROLL_REGIME_FROM
+          && !isDaleBonusStream(incomeStreamFor(plan, e))))
+      : incomeEvents;
+    const daleEstimatedInSpan = regimeReady && dale2027Events.length > 0;
+    const daleEstimatedThroughSpanEnd = regimeReady && allEvents.some(e =>
+      e && e.kind === 'income' && e.date >= DALE_PAYROLL_REGIME_FROM
+      && span && e.date <= span.end && isDalePayrollOrBonusIncome(e)
+      && (!estimatedThrough || e.date <= estimatedThrough)
+    );
+    const daleModelledInSpan = incomeEvents.some(e =>
+      isDalePayrollOrBonusIncome(e) && e.date <= DALE_NET_MODELLED_THROUGH
+    );
+    const incomeSum = modelledIncomeEvents.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const estimated = modelledIncomeEvents.some(e => e.confidence !== 'confirmed');
+    const dalePayrollMarker = withheldDale || withheldDaleThroughSpanEnd
+      ? {
+          status: 'unavailable',
+          from: DALE_PAYROLL_REGIME_FROM,
+          boundary: 'deposit-year-cpp-ei-reset',
+        }
+      : withheldLaterDale
+        ? {
+            status: 'unavailable',
+            from: unavailableAfter,
+            through: estimatedThrough,
+            boundary: 'authorized-2027-regime-ends',
+          }
+      : daleEstimatedInSpan || daleEstimatedThroughSpanEnd
+        ? {
+            status: 'estimated',
+            from: DALE_PAYROLL_REGIME_FROM,
+            through: estimatedThrough,
+            trust: 'estimated',
+            boundary: 'deposit-year-cpp-ei-reset',
+          }
+      : daleModelledInSpan
+        ? { status: 'modelled', through: DALE_NET_MODELLED_THROUGH }
+        : { status: 'not-applicable' };
+    let income;
+    let cash;
+    if (withheldDale || withheldLaterDale) {
+      income = {
+        status: 'unavailable',
+        reason: withheldLaterDale
+          ? 'Dale payroll/bonus after 2027-12-31 is unmodelled until a later regime is authorized and independently proved. Not $0 and not the 2027 estimated raise, bonus, or last-published statutory carry-forward.'
+          : 'Dale payroll/bonus from 2027-01-01 is unmodelled (deposit-year CPP/EI reset). Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.',
+        dalePayroll: dalePayrollMarker,
+      };
+    } else {
+      income = {
+        status: estimated ? 'estimated' : 'calculated',
+        amount: roundCent(incomeSum),
+        dalePayroll: dalePayrollMarker,
+      };
+    }
+    if (withheldDaleThroughSpanEnd || withheldLaterDale) {
+      cash = {
+        status: 'unavailable',
+        reason: withheldLaterDale
+          ? 'Cash after 2027-12-31 is unavailable until a later Dale net is authorized and independently proved. Not a $0 or carried 2027 estimated net.'
+          : 'Cash after 2027-01-01 is unavailable until a modelled 2027 Dale net exists. Not a $0 or carried 2026 post-CPP/EI-max net.',
+      };
+    } else if (daleEstimatedThroughSpanEnd) {
+      cash = close
+        ? { status: 'estimated', amount: roundCent(close.balance), asOf: close.date, trust: 'estimated' }
+        : { status: 'unavailable', reason: closeMissingReason };
+    } else {
+      cash = close
+        ? { status: 'calculated', amount: roundCent(close.balance), asOf: close.date }
+        : { status: 'unavailable', reason: closeMissingReason };
+    }
+    const funding = baselineTrajectoryMonthFunding({
+      span,
+      weeklyVariable: input.weeklyVariable,
+      events: spanEvents,
+      income,
+      cash,
+      walkDaily: input.walkDaily,
+      householdBudgetIdentity: input.householdBudgetIdentity,
+      spanNoun: input.spanNoun,
+    });
+    return {
+      income,
+      cash,
+      stage1: funding.stage1,
+      stage2: funding.stage2,
+      stage3: funding.stage3,
     };
   }
 
@@ -12237,7 +12404,12 @@
   // kind:'extra' only. Household Budget is the weeklyVariable already
   // applied by incumbent simulate on the walk days in that month, not a
   // separate calendar-month smear. Fail closed when that month's income
-  // or cash walk is unavailable. Caller-supplied additional-debt-payment
+  // or cash walk is unavailable. The same walk also publishes a Seaspan
+  // payday-to-payday series (`payPeriods`) with the same three-stage
+  // funding helpers and trust rules: Month and Pay Period are two views
+  // of one baselineTrajectory walk. Pay-period spans are incumbent
+  // spendingCycle windows clipped to the knowledge horizon, not calendar
+  // halves and not a second cash engine. Caller-supplied additional-debt-payment
   // scenario consequence against this same walk is
   // baselineTrajectoryScenario, not hypotheticalExtraPayment and not
   // counterfactuals. Scenario amounts, owner surplus-target policy, and payday
@@ -12265,66 +12437,26 @@
     }
 
     const byDate = new Map(sim.daily.map(row => [row.date, row]));
+    const spanPictureInput = {
+      plan,
+      allEvents: events,
+      weeklyVariable: weekly,
+      walkDaily: sim.daily,
+      isDalePayrollOrBonusIncome,
+      regimeReady,
+      estimatedThrough,
+      unavailableAfter,
+    };
     const months = calendarMonthsIntersecting(horizon.start, horizon.end);
     const series = months.map(span => {
       const close = byDate.get(span.end) || null;
-      const monthEvents = (events || []).filter(e => e && e.date >= span.start && e.date <= span.end);
-      const incomeEvents = monthEvents.filter(e => e.kind === 'income');
-      const dale2027Events = incomeEvents.filter(e =>
-        isDalePayrollOrBonusIncome(e)
-        && e.date >= DALE_PAYROLL_REGIME_FROM
-        && (!estimatedThrough || e.date <= estimatedThrough)
-      );
-      const withheldLaterDale = !!(regimeReady && estimatedThrough && span.end > estimatedThrough);
-      const withheldDale = !regimeReady && incomeEvents.some(e =>
-        isDalePayrollOrBonusIncome(e) && e.date >= DALE_PAYROLL_REGIME_FROM
-        && !isDaleBonusStream(incomeStreamFor(plan, e))
-      );
-      const withheldDaleThroughMonthEnd = !regimeReady && (events || []).some(e =>
-        e && e.kind === 'income' && e.date >= DALE_PAYROLL_REGIME_FROM
-        && e.date <= span.end && isDalePayrollOrBonusIncome(e)
-        && !isDaleBonusStream(incomeStreamFor(plan, e))
-      );
-      const modelledIncomeEvents = withheldDale
-        ? incomeEvents.filter(e =>
-          !(isDalePayrollOrBonusIncome(e) && e.date >= DALE_PAYROLL_REGIME_FROM
-            && !isDaleBonusStream(incomeStreamFor(plan, e))))
-        : incomeEvents;
-      const daleEstimatedInMonth = regimeReady && dale2027Events.length > 0;
-      const daleEstimatedThroughMonthEnd = regimeReady && (events || []).some(e =>
-        e && e.kind === 'income' && e.date >= DALE_PAYROLL_REGIME_FROM
-        && e.date <= span.end && isDalePayrollOrBonusIncome(e)
-        && (!estimatedThrough || e.date <= estimatedThrough)
-      );
-      const daleModelledInMonth = incomeEvents.some(e =>
-        isDalePayrollOrBonusIncome(e) && e.date <= DALE_NET_MODELLED_THROUGH
-      );
-      const incomeSum = modelledIncomeEvents.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-      const estimated = modelledIncomeEvents.some(e => e.confidence !== 'confirmed');
-      const dalePayrollMarker = withheldDale || withheldDaleThroughMonthEnd
-        ? {
-            status: 'unavailable',
-            from: DALE_PAYROLL_REGIME_FROM,
-            boundary: 'deposit-year-cpp-ei-reset',
-          }
-        : withheldLaterDale
-          ? {
-              status: 'unavailable',
-              from: unavailableAfter,
-              through: estimatedThrough,
-              boundary: 'authorized-2027-regime-ends',
-            }
-        : daleEstimatedInMonth || daleEstimatedThroughMonthEnd
-          ? {
-              status: 'estimated',
-              from: DALE_PAYROLL_REGIME_FROM,
-              through: estimatedThrough,
-              trust: 'estimated',
-              boundary: 'deposit-year-cpp-ei-reset',
-            }
-        : daleModelledInMonth
-          ? { status: 'modelled', through: DALE_NET_MODELLED_THROUGH }
-          : { status: 'not-applicable' };
+      const picture = baselineTrajectorySpanPicture(Object.assign({}, spanPictureInput, {
+        span,
+        close,
+        householdBudgetIdentity: 'simulate weeklyVariable applied days in month',
+        spanNoun: 'month',
+        closeMissingReason: 'Forecast could not read month-end cash.',
+      }));
       let debtPicture = {
         status: 'unavailable',
         reason: 'No coupled debt walk was available for this month.',
@@ -12369,7 +12501,7 @@
         };
       }
 
-      const row = {
+      return {
         month: span.month,
         start: span.start,
         end: span.end,
@@ -12380,50 +12512,44 @@
           historicalActuals: 'excluded',
         },
         debt: debtPicture,
+        income: picture.income,
+        cash: picture.cash,
+        stage1: picture.stage1,
+        stage2: picture.stage2,
+        stage3: picture.stage3,
       };
-      if (withheldDale || withheldLaterDale) {
-        row.income = {
-          status: 'unavailable',
-          reason: withheldLaterDale
-            ? 'Dale payroll/bonus after 2027-12-31 is unmodelled until a later regime is authorized and independently proved. Not $0 and not the 2027 estimated raise, bonus, or last-published statutory carry-forward.'
-            : 'Dale payroll/bonus from 2027-01-01 is unmodelled (deposit-year CPP/EI reset). Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.',
-          dalePayroll: dalePayrollMarker,
-        };
-      } else {
-        row.income = {
-          status: estimated ? 'estimated' : 'calculated',
-          amount: roundCent(incomeSum),
-          dalePayroll: dalePayrollMarker,
-        };
-      }
-      if (withheldDaleThroughMonthEnd || withheldLaterDale) {
-        row.cash = {
-          status: 'unavailable',
-          reason: withheldLaterDale
-            ? 'Cash after 2027-12-31 is unavailable until a later Dale net is authorized and independently proved. Not a $0 or carried 2027 estimated net.'
-            : 'Cash after 2027-01-01 is unavailable until a modelled 2027 Dale net exists. Not a $0 or carried 2026 post-CPP/EI-max net.',
-        };
-      } else if (daleEstimatedThroughMonthEnd) {
-        row.cash = close
-          ? { status: 'estimated', amount: roundCent(close.balance), asOf: close.date, trust: 'estimated' }
-          : { status: 'unavailable', reason: 'Forecast could not read month-end cash.' };
-      } else {
-        row.cash = close
-          ? { status: 'calculated', amount: roundCent(close.balance), asOf: close.date }
-          : { status: 'unavailable', reason: 'Forecast could not read month-end cash.' };
-      }
-      const funding = baselineTrajectoryMonthFunding({
+    });
+
+    const payPeriodSpans = seaspanPayPeriodsIntersecting(plan, horizon.start, horizon.end);
+    const payPeriods = payPeriodSpans.map(span => {
+      const close = byDate.get(span.end) || null;
+      const picture = baselineTrajectorySpanPicture(Object.assign({}, spanPictureInput, {
         span,
-        weeklyVariable: weekly,
-        events: monthEvents,
-        income: row.income,
-        cash: row.cash,
-        walkDaily: sim.daily,
-      });
-      row.stage1 = funding.stage1;
-      row.stage2 = funding.stage2;
-      row.stage3 = funding.stage3;
-      return row;
+        close,
+        householdBudgetIdentity: 'simulate weeklyVariable applied days in pay-period',
+        spanNoun: 'pay period',
+        closeMissingReason: 'Forecast could not read pay-period-end cash.',
+      }));
+      return {
+        id: span.payday,
+        payday: span.payday,
+        nextPayday: span.nextPayday,
+        start: span.start,
+        end: span.end,
+        rangeLabel: span.rangeLabel,
+        calendar: 'seaspan-spending-cycle',
+        spend: {
+          weeklyVariable: weekly,
+          status: 'calculated',
+          source: 'budgetBreakdown.planned',
+          historicalActuals: 'excluded',
+        },
+        income: picture.income,
+        cash: picture.cash,
+        stage1: picture.stage1,
+        stage2: picture.stage2,
+        stage3: picture.stage3,
+      };
     });
 
     const pressure = baselineTrajectoryPressure({
@@ -12493,6 +12619,7 @@
         },
       ],
       months: series,
+      payPeriods,
       pressure,
       debtDirection,
       provenance: {
@@ -12513,6 +12640,8 @@
         fundingStage3: 'plan.defaults.extraDebtMonthly',
         fundingStage3Scenario: 'not-used',
         fundingStage3NextDollar: 'not-used',
+        payPeriodSeries: payPeriodSpans.length ? 'seaspan-spending-cycle' : 'unavailable',
+        payPeriodFundingStages: 'walk-derived',
         incomeRegimesImplemented: regimeReady,
         incomeRegimesNamedFailClosed: !regimeReady,
         incomeRegimesDollarModel: regimeReady,
