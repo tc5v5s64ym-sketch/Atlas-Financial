@@ -138,7 +138,7 @@ console.log('=== 1. Forecast is the sole calculator ===');
   ok(/function baselineTrajectory\(/.test(src),
     'Forecast.baselineTrajectory is defined in public/forecast.js');
   const body = src.slice(src.indexOf('function plannedWeeklyVariable('),
-    src.indexOf('const Forecast = {'));
+    src.indexOf('function hypotheticalExtraPayment('));
   ok(/knowledgeHorizon\(/.test(body) && /budgetBreakdown\(/.test(body),
     'the boundary composes knowledgeHorizon and budgetBreakdown');
   ok(/simulate\(/.test(body) && /projectDebts\(/.test(body),
