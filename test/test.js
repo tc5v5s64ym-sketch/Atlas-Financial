@@ -85,7 +85,7 @@ const suites = [
   ['owner decision posture policy (Talk Slice 5)', 'test-decision-posture.js'],
   ['hypothetical extra-payment scenario (Talk Slice 6)', 'test-hypothetical-extra-payment.js'],
   ['hypothetical extra-payment comparison (Decision Intelligence foundation)', 'test-hypothetical-extra-payment-comparison.js'],
-  ['Forecast baseline trajectory (Financial Trajectory Slice 1)', 'test-baseline-trajectory.js'],
+  ['Forecast baseline trajectory (Financial Trajectory Slice 2)', 'test-baseline-trajectory.js'],
   ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
   ['Planning page — Forecast.majorPlans rendered', 'test-planning-page.js'],
   ['Bills page — Forecast.householdBills rendered', 'test-bills-page.js'],

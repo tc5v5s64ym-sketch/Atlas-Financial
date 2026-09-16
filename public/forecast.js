@@ -10536,8 +10536,12 @@
   // Read-only baseline cash+debt trajectory over the incumbent
   // knowledgeHorizon. Composes budgetBreakdown planned weeklyVariable,
   // simulate, and projectDebts. Does not search Forecast.recommend,
-  // does not extend the horizon, and does not implement dated 2027
-  // income regimes. Unmodelled regimes are unavailable, not $0.
+  // does not extend the horizon, and does not implement a 2027 Dale net.
+  // Named dated income-regime split (trajectory-local): current modelled
+  // Dale net through 2026-12-31; Dale payroll/bonus from 2027-01-01 is
+  // unavailable (deposit-year CPP/EI reset). Not $0 and not expandEvents-
+  // carried 2026 post-CPP/EI-max net. expandEvents / simulate / recommend
+  // are not year-stopped.
   function baselineTrajectory(plan, debts, asOf, opts) {
     opts = opts || {};
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
@@ -10549,6 +10553,21 @@
     const weekly = plannedWeeklyVariable(plan, periods, Object.assign({}, opts, { asOf: day }));
     if (weekly == null || !isFinite(weekly) || weekly < 0) {
       return trajectoryUnavailable('A planned Household Budget breakdown is required.');
+    }
+
+    const DALE_NET_MODELLED_THROUGH = '2026-12-31';
+    const DALE_PAYROLL_UNAVAILABLE_FROM = '2027-01-01';
+    function streamForIncomeEvent(event) {
+      if (!event) return null;
+      const rows = (plan && plan.income) || [];
+      return rows.find(s => s && s.id === event.id) || event;
+    }
+    function isDalePayrollOrBonusIncome(event) {
+      if (!event || event.kind !== 'income') return false;
+      return isDalePayrollStream(streamForIncomeEvent(event));
+    }
+    function dalePayrollUnmodelledOn(date) {
+      return !!(date && date >= DALE_PAYROLL_UNAVAILABLE_FROM);
     }
 
     const horizon = knowledgeHorizon(plan, day, opts);
@@ -10591,12 +10610,34 @@
     const events = expandEvents(plan, horizon.start, horizon.end, walkOpts);
     const months = calendarMonthsIntersecting(horizon.start, horizon.end);
     const series = months.map(span => {
-      const unmodelled = span.year >= 2027;
       const close = byDate.get(span.end) || null;
       const monthEvents = (events || []).filter(e => e && e.date >= span.start && e.date <= span.end);
       const incomeEvents = monthEvents.filter(e => e.kind === 'income');
-      const incomeSum = incomeEvents.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-      const estimated = incomeEvents.some(e => e.confidence !== 'confirmed');
+      const unmodelledDaleEvents = incomeEvents.filter(e =>
+        isDalePayrollOrBonusIncome(e) && dalePayrollUnmodelledOn(e.date)
+      );
+      const modelledIncomeEvents = incomeEvents.filter(e =>
+        !(isDalePayrollOrBonusIncome(e) && dalePayrollUnmodelledOn(e.date))
+      );
+      const daleUnmodelledInMonth = unmodelledDaleEvents.length > 0;
+      const daleUnmodelledThroughMonthEnd = (events || []).some(e =>
+        e && e.kind === 'income' && e.date >= DALE_PAYROLL_UNAVAILABLE_FROM
+        && e.date <= span.end && isDalePayrollOrBonusIncome(e)
+      );
+      const daleModelledInMonth = incomeEvents.some(e =>
+        isDalePayrollOrBonusIncome(e) && !dalePayrollUnmodelledOn(e.date)
+      );
+      const incomeSum = modelledIncomeEvents.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const estimated = modelledIncomeEvents.some(e => e.confidence !== 'confirmed');
+      const dalePayrollMarker = daleUnmodelledInMonth || daleUnmodelledThroughMonthEnd
+        ? {
+            status: 'unavailable',
+            from: DALE_PAYROLL_UNAVAILABLE_FROM,
+            boundary: 'deposit-year-cpp-ei-reset',
+          }
+        : daleModelledInMonth
+          ? { status: 'modelled', through: DALE_NET_MODELLED_THROUGH }
+          : { status: 'not-applicable' };
       let debtPicture = {
         status: 'unavailable',
         reason: 'No coupled debt walk was available for this month.',
@@ -10653,20 +10694,25 @@
         },
         debt: debtPicture,
       };
-      if (unmodelled) {
+      if (daleUnmodelledInMonth) {
         row.income = {
           status: 'unavailable',
-          reason: '2027 payroll/bonus is unmodelled. Not $0 and not a carry of current post-CPP/EI-max net.',
-        };
-        row.cash = {
-          status: 'unavailable',
-          reason: 'Cash in an unmodelled income-regime month is unavailable, not a $0 or carried 2026 net.',
+          reason: 'Dale payroll/bonus from 2027-01-01 is unmodelled (deposit-year CPP/EI reset). Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.',
+          dalePayroll: dalePayrollMarker,
         };
       } else {
         row.income = {
           status: estimated ? 'estimated' : 'calculated',
           amount: roundCent(incomeSum),
+          dalePayroll: dalePayrollMarker,
         };
+      }
+      if (daleUnmodelledThroughMonthEnd) {
+        row.cash = {
+          status: 'unavailable',
+          reason: 'Cash after 2027-01-01 is unavailable until a modelled 2027 Dale net exists. Not a $0 or carried 2026 post-CPP/EI-max net.',
+        };
+      } else {
         row.cash = close
           ? { status: 'calculated', amount: roundCent(close.balance), asOf: close.date }
           : { status: 'unavailable', reason: 'Forecast could not read month-end cash.' };
@@ -10693,22 +10739,23 @@
       },
       incomeRegimes: [
         {
-          id: 'current-modelled-income',
+          id: 'current-modelled-dale-net',
           through: '2026-12-31',
           status: 'modelled',
-          note: 'Incumbent plan.income streams on their declared cadence through the current modelled year.',
+          note: 'Current modelled Dale net through 2026-12-31. January deposit-year CPP/EI reset is the evidenced boundary.',
         },
         {
           id: '2027-payroll-bonus',
           from: '2027-01-01',
           status: 'unavailable',
-          reason: '2027 payroll/bonus is unmodelled. Not $0 and not a carry of current post-CPP/EI-max net.',
+          boundary: 'deposit-year-cpp-ei-reset',
+          reason: 'From 2027-01-01, Dale payroll/bonus remain unmodelled. Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net. January deposit-year CPP/EI reset is the evidenced boundary.',
         },
         {
           id: '2027-dated-income-regimes',
           from: '2027-01-01',
           status: 'unavailable',
-          reason: 'Dated income regimes (EMPLOYMENT_PENSION_FACTS and owner 4% Dale raise / Amanda flat) are a later outcome.',
+          reason: 'Dated 2027 income regimes are named and fail-closed. No 2027 Dale net is modelled.',
         },
       ],
       months: series,
@@ -10720,6 +10767,12 @@
         recommendWeeklyCap: 'not-used',
         knowledgeHorizon: 'incumbent-unmodified',
         incomeRegimesImplemented: false,
+        incomeRegimesNamedFailClosed: true,
+        incomeRegimesDollarModel: false,
+        dalePayrollModelledThrough: '2026-12-31',
+        dalePayrollUnavailableFrom: '2027-01-01',
+        dalePayrollBoundary: 'deposit-year-cpp-ei-reset',
+        expandEvents2027DaleIncome: 'not-published',
         ranking: null,
         recommendation: null,
         affordability: null,
