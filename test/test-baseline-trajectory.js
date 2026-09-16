@@ -328,14 +328,23 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'the debtDirection helper is not a second exported engine');
   ok(/function baselineTrajectoryMonthFunding\(/.test(src),
     'month funding stages are a Forecast-owned helper inside forecast.js');
+  ok(/function baselineTrajectorySpanPicture\(/.test(src)
+    && /function seaspanPayPeriodsIntersecting\(/.test(src),
+    'pay-period series reuses a span picture helper and Seaspan spending-cycle spans');
   ok(typeof F.baselineTrajectoryMonthFunding !== 'function'
     && typeof F.trajectoryFundingUnavailable !== 'function'
-    && typeof F.baselineTrajectoryWalkVariableDays !== 'function',
+    && typeof F.baselineTrajectoryWalkVariableDays !== 'function'
+    && typeof F.baselineTrajectorySpanPicture !== 'function'
+    && typeof F.seaspanPayPeriodsIntersecting !== 'function',
     'the funding-stage helper is not a second exported engine');
-  ok(/baselineTrajectoryMonthFunding\(/.test(
+  ok(/baselineTrajectorySpanPicture\(/.test(
     src.slice(src.indexOf('function baselineTrajectory('),
       src.indexOf('function baselineTrajectoryScenario('))),
-    'baselineTrajectory publishes funding stages from the shared walk helper');
+    'baselineTrajectory publishes month and pay-period funding from the shared span helper');
+  ok(/baselineTrajectoryMonthFunding\(/.test(
+    src.slice(src.indexOf('function baselineTrajectorySpanPicture('),
+      src.indexOf('function baselineTrajectory('))),
+    'the span helper reuses the monthly funding arithmetic');
   ok(/function trajectorySignalAttribution\(/.test(src)
     && /function trajectoryCollectCashDrivers\(/.test(src),
     'cause attribution is a Forecast-owned helper inside forecast.js');
@@ -643,6 +652,8 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
     && missingPlan.debtDirection.debts.length === 0
     && missingPlan.debtDirection.anySupportedIncrease === false,
     'unavailable plan fails closed with no invented debt direction');
+  ok(Array.isArray(missingPlan.payPeriods) && missingPlan.payPeriods.length === 0,
+    'unavailable plan publishes no invented pay-period series');
   const { plan, debts } = fixture();
   ok(F.baselineTrajectory(plan, debts, START, {}).status === 'unavailable',
     'missing periods/breakdown is unavailable, not a $0 weekly walk');
