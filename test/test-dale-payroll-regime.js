@@ -146,6 +146,13 @@ function independentWalk() {
         amount: 4264,
         confidence: 'estimated',
       }],
+      payrollPlanningAssumptions: {
+        salaryRaiseFactor: 1.04,
+        bonusRate: 0.18,
+        authorizedThroughYear: 2027,
+        trust: 'estimated',
+        provenance: 'owner-stated',
+      },
       obligations: [],
       bills: [],
       commitments: [],
@@ -347,6 +354,7 @@ console.log('\n=== 4. 2027 estimated regime — trust, raise, bonus, no duplicat
       bills: [],
       commitments: [],
       income: seaspanPlan.income,
+      payrollPlanningAssumptions: seaspanPlan.payrollPlanningAssumptions,
     }, extraPlan || {}), [], asOf, Object.assign({
       periods: { periods: { ytd: { label: 'YTD', months: 1, spending: [{ label: 'Groceries', total: 1000 }] } } },
     }, extraOpts || {}));
@@ -440,6 +448,7 @@ console.log('\n=== 6. Authorized 2027 regime fails closed after 2027-12-31 ===')
     bills: [],
     commitments: [],
     income: seaspanPlan.income,
+    payrollPlanningAssumptions: seaspanPlan.payrollPlanningAssumptions,
   }), [], laterStart, {
     periods: { periods: { ytd: { label: 'YTD', months: 1, spending: [{ label: 'Groceries', total: 1000 }] } } },
   });
@@ -468,6 +477,75 @@ console.log('\n=== 6. Authorized 2027 regime fails closed after 2027-12-31 ===')
   ok(traj.provenance.dalePayrollEstimatedThrough === '2027-12-31'
     && traj.provenance.dalePayrollUnavailableFrom === '2028-01-01',
     'provenance bounds the estimate through 2027-12-31 and withholds from 2028-01-01');
+}
+
+console.log('\n=== 7. Canonical owner-policy assumptions — one home, fail closed if absent ===');
+{
+  const ready = F.daleEstimatedPayrollDeposits(seaspanPlan, '2027-01-01', '2027-03-31');
+  ok(ready.status === 'ready' && ready.planningAssumptions
+    && ready.planningAssumptions.source === 'plan.payrollPlanningAssumptions'
+    && ready.planningAssumptions.salaryRaiseFactor === 1.04
+    && ready.planningAssumptions.bonusRate === 0.18
+    && ready.planningAssumptions.authorizedThroughYear === 2027,
+    'ready regime cites the canonical plan assumptions rather than engine constants');
+
+  const missing = Object.assign({}, seaspanPlan);
+  delete missing.payrollPlanningAssumptions;
+  const withheld = F.daleEstimatedPayrollDeposits(missing, '2027-01-01', '2027-03-31');
+  ok(withheld.status === 'unavailable' && (withheld.deposits || []).length === 0,
+    'removing plan.payrollPlanningAssumptions withholds the 2027 estimate');
+
+  const trajMissing = F.baselineTrajectory(Object.assign({
+    windowDays: 91,
+    startingCash: { amount: 2500 },
+    defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
+    budget: {
+      basis: 'ytd',
+      categories: [{ id: 'groceries', label: 'Groceries', class: 'essential', from: ['Groceries'], plannedWeekly: 140 }],
+    },
+    obligations: [],
+    bills: [],
+    commitments: [],
+    income: seaspanPlan.income,
+  }), [], '2026-08-19', {
+    periods: { periods: { ytd: { label: 'YTD', months: 1, spending: [{ label: 'Groceries', total: 1000 }] } } },
+  });
+  const missingJan = trajMissing.months.find(m => m.month === '2027-01');
+  ok(missingJan && missingJan.income.status === 'unavailable'
+    && missingJan.cash.status === 'unavailable',
+    'trajectory withholds 2027 Dale income/cash when owner assumptions are absent');
+
+  const bumpedRaise = roundCent(158091 * 1.05);
+  const bumpedGross = roundCent(bumpedRaise / 26);
+  const bumped = Object.assign({}, seaspanPlan, {
+    payrollPlanningAssumptions: Object.assign({}, seaspanPlan.payrollPlanningAssumptions, {
+      salaryRaiseFactor: 1.05,
+    }),
+  });
+  const rBumped = F.daleEstimatedPayrollDeposits(bumped, '2027-01-01', '2027-03-31');
+  const raisedBumped = (rBumped.deposits || []).find(d => d.kind === 'regular' && d.date === '2027-03-12');
+  const raisedBase = F.daleEstimatedPayrollDeposits(seaspanPlan, '2027-01-01', '2027-03-31')
+    .deposits.find(d => d.kind === 'regular' && d.date === '2027-03-12');
+  ok(raisedBumped && raisedBumped.salaryAnnual === bumpedRaise && raisedBumped.gross === bumpedGross,
+    'changing plan.payrollPlanningAssumptions.salaryRaiseFactor changes the estimated raise',
+    raisedBumped && `${raisedBumped.salaryAnnual} / ${raisedBumped.gross}`);
+  ok(raisedBase && raisedBase.salaryAnnual === 164414.64 && raisedBumped.salaryAnnual !== raisedBase.salaryAnnual,
+    'the bumped raise is not the canonical 1.04 result');
+
+  const bumpedBonusPlan = Object.assign({}, seaspanPlan, {
+    payrollPlanningAssumptions: Object.assign({}, seaspanPlan.payrollPlanningAssumptions, {
+      bonusRate: 0.20,
+    }),
+  });
+  const rBonus = F.daleEstimatedPayrollDeposits(bumpedBonusPlan, '2027-02-01', '2027-02-28');
+  const bonusBumped = (rBonus.deposits || []).find(d => d.kind === 'bonus');
+  const bonusBase = F.daleEstimatedPayrollDeposits(seaspanPlan, '2027-02-01', '2027-02-28')
+    .deposits.find(d => d.kind === 'bonus');
+  ok(bonusBumped && bonusBumped.gross === roundCent(158091 * 0.20),
+    'changing plan.payrollPlanningAssumptions.bonusRate changes the estimated bonus',
+    bonusBumped && String(bonusBumped.gross));
+  ok(bonusBase && bonusBase.gross === 28456.38 && bonusBumped.gross !== bonusBase.gross,
+    'the bumped bonus is not the canonical 0.18 result');
 }
 
 console.log('\n' + '═'.repeat(60));

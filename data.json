@@ -969,6 +969,16 @@
             "provenanceNote": "Owner-authorized Atlas Coordinator Talk Slice 5 (2026-09-14, America/Vancouver): get to the financial goal as fast as possible without making the household so tight the plan becomes unrealistic or forces re-borrowing. Velocity (fastest to goal) and Resilience (enough cash and flexibility for real life plus known commitments) are distinct dimensions. The posture is aggressive, but not brittle. Breathing room is enough slack to stay sustainable and reduce immediate re-borrow risk. It is not waste permission, comfort-max, avoiding hard choices, or slowing without a demonstrated resilience reason. Known authorized future commitments exert gravity. Mathematically cheapest is not the best household decision when that cheapest path is unacceptably brittle. No universal numeric breathing-room threshold is recorded.",
             "note": "This records policy only. Forecast does not apply this row in this slice. This row stores no target, rate ranking, payment, transfer, cash capacity, borrowing permission, min chequing, emergency reserve, percent buffer, safe-to-spend, min leftover, or debt-payment ceiling."
         },
+        "payrollPlanningAssumptions": {
+            "salaryRaiseFactor": 1.04,
+            "bonusRate": 0.18,
+            "authorizedThroughYear": 2027,
+            "trust": "estimated",
+            "provenance": "owner-stated",
+            "provenanceDate": "2026-09-16",
+            "provenanceNote": "Owner-authorized planning assumptions for the trajectory-local 2027 Dale/Seaspan estimated payroll regime: future raise +4% of the evidence-supported $158,091 base, and an 18% bonus of that same eligible salary basis. Authorized through calendar year 2027 only. A later year stays unpublished until a later regime is authorized and independently proved.",
+            "note": "This records owner-stated planning assumptions only. Forecast.daleEstimatedPayrollDeposits and Forecast.baselineTrajectory read salaryRaiseFactor, bonusRate, and authorizedThroughYear and fail closed if they are absent. Evidence-derived salary, raise anniversary, bonus cadence, and statutory tables stay in Forecast. These values stay estimated and never promote to verified."
+        },
         "actions": [
             {
                 "what": "Cancel CMAW Local 1995 dues",

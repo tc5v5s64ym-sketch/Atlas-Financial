@@ -231,7 +231,7 @@ Historical raises were mostly effective March 1. The last observed raise was eff
 
 ### Owner-authorized planning assumptions
 
-These remain estimated. Later actual payroll evidence replaces the matching `id@date` estimate; it does not add a second calendar or a second income event.
+Live owner-policy home is `data.json` `plan.payrollPlanningAssumptions` (`salaryRaiseFactor` 1.04, `bonusRate` 0.18, `authorizedThroughYear` 2027). Forecast reads those values and fails closed if they are absent. They remain estimated. Later actual payroll evidence replaces the matching `id@date` estimate; it does not add a second calendar or a second income event.
 
 - Future salary raise: +4% of the current $158,091 base → $164,414.64 annual. Biweekly conversion is annual/26, not a rounded $164,415 as canonical.
 - Annual bonus: 18% of the evidence-supported eligible salary basis $158,091 → $28,456.38 gross, deposited on the last-observed late-February cadence (**2027-02-25**). Separate deposit, no incremental DCPP. Do not encode an observed ~53.4% net/gross ratio as the tax model.

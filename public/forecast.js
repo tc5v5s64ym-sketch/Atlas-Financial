@@ -10559,31 +10559,21 @@
   // Trajectory-local estimated Dale/Seaspan payroll. Does not change
   // default expandEvents / simulate / recommend semantics. 2026 regular
   // net on the operating plan stays the incumbent modelled amount.
-  // 2027 Dale deposits are estimated from salary evidence, owner
-  // planning assumptions, and last-published CRA statutory tables.
-  // After 2027-12-31 the regime fails closed until a later year is
-  // authorized and independently proved.
+  // 2027 Dale deposits are estimated from salary evidence,
+  // plan.payrollPlanningAssumptions, and last-published CRA statutory
+  // tables. After the owner-authorized year the regime fails closed
+  // until a later year is authorized and independently proved.
   const SEASPAN_CURRENT_ANNUAL = 158091;
-  const SEASPAN_PLANNING_RAISE_FACTOR = 1.04;
-  const SEASPAN_PLANNING_BONUS_RATE = 0.18;
   const SEASPAN_RAISE_LAST_EFFECTIVE = '2026-02-22';
   const SEASPAN_RAISE_NEXT_EFFECTIVE = '2027-02-22';
   const SEASPAN_OPTIONAL_PENSION_FROM = '2026-06-19';
   const SEASPAN_BONUS_LAST_DEPOSIT = '2026-02-25';
   const DALE_NET_MODELLED_THROUGH = '2026-12-31';
   const DALE_PAYROLL_REGIME_FROM = '2027-01-01';
-  const DALE_PAYROLL_REGIME_THROUGH = '2027-12-31';
-  const DALE_PAYROLL_UNAVAILABLE_AFTER = '2028-01-01';
 
-  const SEASPAN_SALARY_REGIMES = [
+  const SEASPAN_OBSERVED_SALARY_REGIMES = [
     { from: '2025-03-01', annual: 151283, trust: 'observed' },
-    { from: '2026-02-22', annual: SEASPAN_CURRENT_ANNUAL, trust: 'observed' },
-    {
-      from: SEASPAN_RAISE_NEXT_EFFECTIVE,
-      annual: roundCent(SEASPAN_CURRENT_ANNUAL * SEASPAN_PLANNING_RAISE_FACTOR),
-      trust: 'estimated',
-      planningAssumption: 'owner-authorized-4pct',
-    },
+    { from: SEASPAN_RAISE_LAST_EFFECTIVE, annual: SEASPAN_CURRENT_ANNUAL, trust: 'observed' },
   ];
   const SEASPAN_OBSERVED_BONUS_GROSS = {
     '2024-02-26': 23640.11,
@@ -10675,10 +10665,42 @@
   function seaspanBiweeklyGross(annual) {
     return roundCent(Number(annual) / 26);
   }
-  function seaspanSalaryOnPeriodStart(periodStart) {
-    if (!periodStart || periodStart > DALE_PAYROLL_REGIME_THROUGH) return null;
+  function readPayrollPlanningAssumptions(plan) {
+    const row = plan && plan.payrollPlanningAssumptions;
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+    const salaryRaiseFactor = Number(row.salaryRaiseFactor);
+    const bonusRate = Number(row.bonusRate);
+    const authorizedThroughYear = Number(row.authorizedThroughYear);
+    if (!Number.isFinite(salaryRaiseFactor) || salaryRaiseFactor <= 0) return null;
+    if (!Number.isFinite(bonusRate) || bonusRate < 0) return null;
+    if (!Number.isInteger(authorizedThroughYear) || authorizedThroughYear < 1000) return null;
+    return {
+      salaryRaiseFactor,
+      bonusRate,
+      authorizedThroughYear,
+      estimatedThrough: `${authorizedThroughYear}-12-31`,
+      unavailableFrom: `${authorizedThroughYear + 1}-01-01`,
+      trust: 'estimated',
+      source: 'plan.payrollPlanningAssumptions',
+    };
+  }
+  function seaspanSalaryRegimes(assumptions) {
+    const rows = SEASPAN_OBSERVED_SALARY_REGIMES.slice();
+    if (assumptions) {
+      rows.push({
+        from: SEASPAN_RAISE_NEXT_EFFECTIVE,
+        annual: roundCent(SEASPAN_CURRENT_ANNUAL * assumptions.salaryRaiseFactor),
+        trust: 'estimated',
+        planningAssumption: 'plan.payrollPlanningAssumptions.salaryRaiseFactor',
+      });
+    }
+    return rows;
+  }
+  function seaspanSalaryOnPeriodStart(periodStart, assumptions) {
+    const through = assumptions && assumptions.estimatedThrough;
+    if (!periodStart || (through && periodStart > through)) return null;
     let found = null;
-    for (const row of SEASPAN_SALARY_REGIMES) {
+    for (const row of seaspanSalaryRegimes(assumptions)) {
       if (periodStart >= row.from) found = row;
     }
     return found;
@@ -10764,13 +10786,15 @@
     acc.eiPaid = roundCent(acc.eiPaid + ei);
     return { cpp, cpp2, ei };
   }
-  function bonusGrossForYear(year) {
+  function bonusGrossForYear(year, assumptions) {
     const observed = Object.keys(SEASPAN_OBSERVED_BONUS_GROSS).find(d => d.slice(0, 4) === String(year));
     if (observed) return { gross: SEASPAN_OBSERVED_BONUS_GROSS[observed], date: observed, trust: 'observed' };
-    if (Number(year) === 2027) {
+    if (!assumptions) return null;
+    if (Number(year) > 2026 && Number(year) <= assumptions.authorizedThroughYear) {
+      const monthDay = SEASPAN_BONUS_LAST_DEPOSIT.slice(5);
       return {
-        gross: roundCent(SEASPAN_CURRENT_ANNUAL * SEASPAN_PLANNING_BONUS_RATE),
-        date: '2027-02-25',
+        gross: roundCent(SEASPAN_CURRENT_ANNUAL * assumptions.bonusRate),
+        date: `${year}-${monthDay}`,
         trust: 'estimated',
       };
     }
@@ -10786,6 +10810,14 @@
       return {
         status: 'unavailable',
         reason: 'Seaspan payroll evidence is required to estimate a Dale net.',
+        deposits: [],
+      };
+    }
+    const assumptions = readPayrollPlanningAssumptions(plan);
+    if (!assumptions) {
+      return {
+        status: 'unavailable',
+        reason: 'Owner payroll planning assumptions are required to estimate a Dale net.',
         deposits: [],
       };
     }
@@ -10806,7 +10838,7 @@
     }
     const bonusByDate = new Map();
     for (const y of years) {
-      const bonus = bonusGrossForYear(Number(y));
+      const bonus = bonusGrossForYear(Number(y), assumptions);
       if (bonus && bonus.date >= walkStart && bonus.date <= end) bonusByDate.set(bonus.date, bonus);
     }
     const dates = Array.from(new Set(paydays.concat(Array.from(bonusByDate.keys())))).sort();
@@ -10815,7 +10847,7 @@
     let currentRegular = null;
     for (const date of dates) {
       if (date > end) break;
-      if (date > DALE_PAYROLL_REGIME_THROUGH) continue;
+      if (date > assumptions.estimatedThrough) continue;
       const year = date.slice(0, 4);
       if (!accByYear.has(year)) accByYear.set(year, newPayrollAccumulator());
       const acc = accByYear.get(year);
@@ -10846,7 +10878,7 @@
       }
       if (paydays.indexOf(date) < 0) continue;
       const periodStart = addDays(date, -13);
-      const salary = seaspanSalaryOnPeriodStart(periodStart);
+      const salary = seaspanSalaryOnPeriodStart(periodStart, assumptions);
       if (!salary) continue;
       const gross = seaspanBiweeklyGross(salary.annual);
       const pension = roundCent(gross * seaspanEmployeePensionRate(date));
@@ -10872,37 +10904,36 @@
     return {
       status: 'ready',
       deposits: deposits.filter(d =>
-        d.date >= start && d.date <= end && d.date <= DALE_PAYROLL_REGIME_THROUGH),
+        d.date >= start && d.date <= end && d.date <= assumptions.estimatedThrough),
       allDeposits: deposits,
       calendarAnchor: anchor,
       planningAssumptions: {
-        salaryRaiseFactor: SEASPAN_PLANNING_RAISE_FACTOR,
+        salaryRaiseFactor: assumptions.salaryRaiseFactor,
         salaryRaiseEffective: SEASPAN_RAISE_NEXT_EFFECTIVE,
         salaryRaiseDerivedFrom: SEASPAN_RAISE_LAST_EFFECTIVE,
-        bonusRate: SEASPAN_PLANNING_BONUS_RATE,
+        bonusRate: assumptions.bonusRate,
         bonusEligibleBasis: SEASPAN_CURRENT_ANNUAL,
+        authorizedThroughYear: assumptions.authorizedThroughYear,
+        estimatedThrough: assumptions.estimatedThrough,
+        unavailableFrom: assumptions.unavailableFrom,
+        source: assumptions.source,
         trust: 'estimated',
       },
     };
   }
 
-  // Trajectory-local: only an income occurrence actually settled into
-  // this opening may replace its estimate. Reuses representedKeySet so
-  // a future represented date cannot suppress an unsettled estimate.
-  function trajectorySupersededIncomeKeys(plan, opts, start) {
-    return representedKeySet(plan, opts, start);
-  }
-
   // Read-only baseline cash+debt trajectory over the incumbent
   // knowledgeHorizon. Composes budgetBreakdown planned weeklyVariable,
   // simulate, projectDebts, and trajectory-local estimated Dale/Seaspan
-  // payroll from 2027-01-01 through 2027-12-31. Does not search
-  // Forecast.recommend, does not extend the horizon, and does not change
-  // default expandEvents / simulate / recommend payroll semantics. 2026
-  // Dale net stays the incumbent modelled stream. 2027 Dale payroll/bonus
-  // is evidence-derived ESTIMATED, not verified future pay, not $0, and
-  // not expandEvents-carried 2026 post-CPP/EI-max net. After 2027-12-31
-  // the path fails closed.
+  // payroll from 2027-01-01 through the owner-authorized year in
+  // plan.payrollPlanningAssumptions. Does not search Forecast.recommend,
+  // does not extend the horizon, and does not change default expandEvents /
+  // simulate / recommend payroll semantics. 2026 Dale net stays the
+  // incumbent modelled stream. 2027 Dale payroll/bonus is evidence-derived
+  // ESTIMATED, not verified future pay, not $0, and not expandEvents-
+  // carried 2026 post-CPP/EI-max net. After the authorized year the path
+  // fails closed. Owner raise/bonus rates are read from the plan; they
+  // are not Forecast constants.
   function baselineTrajectory(plan, debts, asOf, opts) {
     opts = opts || {};
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
@@ -10928,11 +10959,15 @@
 
     const regime = daleEstimatedPayrollDeposits(plan, horizon.start, horizon.end);
     const regimeReady = !!(regime && regime.status === 'ready');
+    const planning = regimeReady ? regime.planningAssumptions : null;
+    const estimatedThrough = planning && planning.estimatedThrough;
+    const unavailableAfter = planning && planning.unavailableFrom;
     const estimatedByDate = new Map();
-    const superseded = trajectorySupersededIncomeKeys(plan, opts, day);
+    const superseded = representedKeySet(plan, opts, day);
     if (regimeReady) {
       for (const dep of regime.deposits || []) {
-        if (dep.date < DALE_PAYROLL_REGIME_FROM || dep.date > DALE_PAYROLL_REGIME_THROUGH) continue;
+        if (dep.date < DALE_PAYROLL_REGIME_FROM) continue;
+        if (estimatedThrough && dep.date > estimatedThrough) continue;
         if (superseded.has(dep.id + '@' + dep.date)) continue;
         estimatedByDate.set(dep.kind + ':' + dep.date, dep);
       }
@@ -11012,9 +11047,9 @@
       const dale2027Events = incomeEvents.filter(e =>
         isDalePayrollOrBonusIncome(e)
         && e.date >= DALE_PAYROLL_REGIME_FROM
-        && e.date <= DALE_PAYROLL_REGIME_THROUGH
+        && (!estimatedThrough || e.date <= estimatedThrough)
       );
-      const withheldLaterDale = regimeReady && span.end > DALE_PAYROLL_REGIME_THROUGH;
+      const withheldLaterDale = !!(regimeReady && estimatedThrough && span.end > estimatedThrough);
       const withheldDale = !regimeReady && incomeEvents.some(e =>
         isDalePayrollOrBonusIncome(e) && e.date >= DALE_PAYROLL_REGIME_FROM
         && !isDaleBonusStream(incomeStreamFor(plan, e))
@@ -11033,6 +11068,7 @@
       const daleEstimatedThroughMonthEnd = regimeReady && (events || []).some(e =>
         e && e.kind === 'income' && e.date >= DALE_PAYROLL_REGIME_FROM
         && e.date <= span.end && isDalePayrollOrBonusIncome(e)
+        && (!estimatedThrough || e.date <= estimatedThrough)
       );
       const daleModelledInMonth = incomeEvents.some(e =>
         isDalePayrollOrBonusIncome(e) && e.date <= DALE_NET_MODELLED_THROUGH
@@ -11048,15 +11084,15 @@
         : withheldLaterDale
           ? {
               status: 'unavailable',
-              from: DALE_PAYROLL_UNAVAILABLE_AFTER,
-              through: DALE_PAYROLL_REGIME_THROUGH,
+              from: unavailableAfter,
+              through: estimatedThrough,
               boundary: 'authorized-2027-regime-ends',
             }
         : daleEstimatedInMonth || daleEstimatedThroughMonthEnd
           ? {
               status: 'estimated',
               from: DALE_PAYROLL_REGIME_FROM,
-              through: DALE_PAYROLL_REGIME_THROUGH,
+              through: estimatedThrough,
               trust: 'estimated',
               boundary: 'deposit-year-cpp-ei-reset',
             }
@@ -11180,28 +11216,28 @@
         {
           id: '2027-payroll-bonus',
           from: '2027-01-01',
-          through: DALE_PAYROLL_REGIME_THROUGH,
+          through: estimatedThrough || null,
           status: regimeReady ? 'estimated' : 'unavailable',
           boundary: 'deposit-year-cpp-ei-reset',
           reason: regimeReady
-            ? 'From 2027-01-01 through 2027-12-31, Dale/Seaspan payroll and bonus are an evidence-derived ESTIMATED regime. Planning estimate — not verified future pay. Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.'
+            ? 'From 2027-01-01 through the owner-authorized year, Dale/Seaspan payroll and bonus are an evidence-derived ESTIMATED regime. Planning estimate — not verified future pay. Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.'
             : 'From 2027-01-01, Dale payroll/bonus remain unmodelled. Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net. January deposit-year CPP/EI reset is the evidenced boundary.',
         },
         {
           id: '2027-dated-income-regimes',
           from: '2027-01-01',
-          through: DALE_PAYROLL_REGIME_THROUGH,
+          through: estimatedThrough || null,
           status: regimeReady ? 'estimated' : 'unavailable',
           reason: regimeReady
-            ? 'Dated 2027 Dale/Seaspan income is estimated from salary evidence, owner planning assumptions, and last-published CRA statutory tables. The estimate is authorized for 2027 only.'
+            ? 'Dated 2027 Dale/Seaspan income is estimated from salary evidence, plan.payrollPlanningAssumptions, and last-published CRA statutory tables. The estimate is authorized only through that owner-stated year.'
             : 'Dated 2027 income regimes are named and fail-closed. No 2027 Dale net is modelled.',
         },
         {
           id: 'after-2027-payroll-bonus',
-          from: DALE_PAYROLL_UNAVAILABLE_AFTER,
+          from: unavailableAfter || '2028-01-01',
           status: 'unavailable',
           boundary: 'authorized-2027-regime-ends',
-          reason: 'After 2027-12-31, Dale/Seaspan payroll and bonus remain unmodelled until a later regime is authorized and independently proved. Not $0 and not the 2027 estimated raise, bonus, or last-published statutory carry-forward.',
+          reason: 'After the owner-authorized payroll year, Dale/Seaspan payroll and bonus remain unmodelled until a later regime is authorized and independently proved. Not $0 and not the authorized estimated raise, bonus, or last-published statutory carry-forward.',
         },
       ],
       months: series,
@@ -11217,8 +11253,8 @@
         incomeRegimesDollarModel: regimeReady,
         dalePayrollModelledThrough: '2026-12-31',
         dalePayrollEstimatedFrom: regimeReady ? '2027-01-01' : null,
-        dalePayrollEstimatedThrough: regimeReady ? DALE_PAYROLL_REGIME_THROUGH : null,
-        dalePayrollUnavailableFrom: regimeReady ? DALE_PAYROLL_UNAVAILABLE_AFTER : '2027-01-01',
+        dalePayrollEstimatedThrough: regimeReady ? estimatedThrough : null,
+        dalePayrollUnavailableFrom: regimeReady ? unavailableAfter : '2027-01-01',
         dalePayrollBoundary: 'deposit-year-cpp-ei-reset',
         dalePayrollTrust: regimeReady ? 'estimated' : 'unavailable',
         expandEvents2027DaleIncome: regimeReady ? 'replaced-trajectory-local' : 'not-published',

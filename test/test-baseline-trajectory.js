@@ -158,16 +158,20 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'year≥2027 blanket is gone');
   ok(/daleEstimatedPayrollDeposits\(/.test(body),
     'trajectory can replace 2027 Dale unavailable with estimated Seaspan deposits');
-  ok(/DALE_PAYROLL_REGIME_THROUGH/.test(body)
-    && /authorized-2027-regime-ends/.test(body),
+  ok(/payrollPlanningAssumptions/.test(src)
+    && /readPayrollPlanningAssumptions\(/.test(src),
+    'trajectory-local payroll reads plan.payrollPlanningAssumptions');
+  ok(/authorized-2027-regime-ends/.test(body),
     'the 2027 estimated regime is bounded and fails closed afterward');
-  ok(/trajectorySupersededIncomeKeys\(plan, opts, day\)/.test(body),
-    'trajectory income replacement is keyed from the opening as-of');
+  ok(/representedKeySet\(plan, opts, day\)/.test(body),
+    'trajectory income replacement uses opening-relative representedKeySet');
   ok(/incomeRegimesImplemented:\s*regimeReady/.test(body),
     'incomeRegimesImplemented is true only when the estimated 2027 Dale regime is ready');
-  ok(/SEASPAN_PLANNING_RAISE_FACTOR/.test(body)
-    && /SEASPAN_PLANNING_BONUS_RATE/.test(body),
-    'owner-authorized 4% raise and 18% bonus live as labelled planning assumptions');
+  ok(!/SEASPAN_PLANNING_RAISE_FACTOR/.test(src)
+    && !/SEASPAN_PLANNING_BONUS_RATE/.test(src),
+    'Forecast does not store owner raise/bonus policy as engine constants');
+  ok(!/\b1\.04\b/.test(src) && !/\b0\.18\b/.test(src),
+    'Forecast source has no duplicate 1.04 / 0.18 owner-policy values');
   ok(/cra-2026-last-published-planning-assumption/.test(body),
     '2027 statutory tables are last-published 2026 values, labelled as a planning assumption');
   const expandBody = src.slice(src.indexOf('function expandEvents('),
