@@ -326,6 +326,15 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'debtDirection is a Forecast-owned helper inside forecast.js');
   ok(typeof F.baselineTrajectoryDebtDirection !== 'function',
     'the debtDirection helper is not a second exported engine');
+  ok(/function baselineTrajectoryMonthFunding\(/.test(src),
+    'month funding stages are a Forecast-owned helper inside forecast.js');
+  ok(typeof F.baselineTrajectoryMonthFunding !== 'function'
+    && typeof F.trajectoryFundingUnavailable !== 'function',
+    'the funding-stage helper is not a second exported engine');
+  ok(/baselineTrajectoryMonthFunding\(/.test(
+    src.slice(src.indexOf('function baselineTrajectory('),
+      src.indexOf('function baselineTrajectoryScenario('))),
+    'baselineTrajectory publishes funding stages from the shared walk helper');
   ok(/function trajectorySignalAttribution\(/.test(src)
     && /function trajectoryCollectCashDrivers\(/.test(src),
     'cause attribution is a Forecast-owned helper inside forecast.js');
