@@ -521,6 +521,11 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       presented.sessionTurn = presented && presented.trust !== 'unavailable'
         ? TalkSession.sessionTurnFromRemainingBills(follow)
         : { kind: 'unavailable' };
+    } else if (follow.referentKey === TalkSession.PLANNING_HORIZON_TRAJECTORY_INTENT) {
+      presented = TalkPresentation.presentPlanningHorizonTrajectory(packet);
+      presented.sessionTurn = presented && presented.trust !== 'unavailable'
+        ? TalkSession.sessionTurnFromPlanningHorizonTrajectory(follow)
+        : { kind: 'unavailable' };
     } else {
       const claims = TalkWhy.publishablePaths(follow.paths, packet);
       presented = TalkPresentation.presentVerifiedClaims(

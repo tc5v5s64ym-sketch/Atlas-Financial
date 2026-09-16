@@ -172,6 +172,36 @@ const PAYDAY_PICTURE_FORBIDDEN_KEYS = Object.freeze({
   leftoverAmount: true,
   claims: true,
 });
+const PLANNING_HORIZON_TRAJECTORY_INTENT = 'planning-horizon-trajectory';
+const PLANNING_HORIZON_TRAJECTORY_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:(?:what does our monthly cash and debt look like over the planning horizon)|(?:show(?: me)? the baseline (?:cash and )?debt trajectory)|(?:what is our (?:baseline )?financial trajectory by month))\??$/i;
+const PLANNING_TRAJECTORY_EXTRACT_KEYS = Object.freeze({
+  intent: true,
+});
+const PLANNING_TRAJECTORY_FORBIDDEN_KEYS = Object.freeze({
+  months: true,
+  month: true,
+  trajectory: true,
+  income: true,
+  cash: true,
+  debt: true,
+  horizon: true,
+  horizonEnd: true,
+  weeklyVariable: true,
+  amount: true,
+  equals: true,
+  value: true,
+  claims: true,
+  status: true,
+  asOf: true,
+  reason: true,
+  source: true,
+  incomeRegimes: true,
+  consumer: true,
+  secured: true,
+  heloc: true,
+  periodStart: true,
+  periodEnd: true,
+});
 const REMAINING_BILLS_INTENT = 'payday-remaining-bills';
 const REMAINING_BILLS_EXTRACT_KEYS = Object.freeze({
   intent: true,
@@ -213,6 +243,23 @@ const REMAINING_BILLS_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what bills a
 const COVERED_BILLS_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?which bills have already been covered\??$/i;
 const NAMED_BILL_DUE_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?is\s+(.+?)\s+still\s+due\??$/i;
 const THAT_ONE_FOLLOWUP_RE = /^(?:ok[,.]?\s+|and\s+|so\s+|then\s+)?(?:what about|how about)\s+that\s+one\??$/i;
+
+function questionCollidesWithPaydayLeftoverGrammar(question) {
+  if (typeof question !== 'string' || !question.trim()) return false;
+  const parsed = question.trim().replace(/\s+/g, ' ');
+  if (THIS_PAYDAY_LOOK_LIKE_RE.test(parsed)
+      || THIS_PAYDAY_LEFTOVER_RE.test(parsed)
+      || THAT_LEAVE_US_RE.test(parsed)
+      || REMAINING_BILLS_RE.test(parsed)
+      || COVERED_BILLS_RE.test(parsed)
+      || NAMED_BILL_DUE_RE.test(parsed)) {
+    return true;
+  }
+  if (/\bpayday\b/i.test(parsed)) return true;
+  if (/\bleftover\b/i.test(parsed)) return true;
+  if (/\bleave us with\b/i.test(parsed)) return true;
+  return false;
+}
 
 function hmacKey(secret, token) {
   if (typeof secret !== 'string' || secret.length < 16) return '';
@@ -368,6 +415,10 @@ function classifyVerifiedFollowup(question) {
   if (REMAINING_BILLS_RE.test(parsed)) return 'payday-remaining-bills';
   if (COVERED_BILLS_RE.test(parsed)) return 'payday-remaining-bills-covered';
   if (NAMED_BILL_DUE_RE.test(parsed)) return 'payday-named-bill';
+  if (PLANNING_HORIZON_TRAJECTORY_RE.test(parsed)
+      && !questionCollidesWithPaydayLeftoverGrammar(parsed)) {
+    return PLANNING_HORIZON_TRAJECTORY_INTENT;
+  }
   if (NEXT_PAYDAY_FOLLOWUP_RE.test(parsed)) return 'next-payday';
   if (THAT_CARD_FOLLOWUP_RE.test(parsed)) return 'card';
   if (INTEREST_AGAIN_RE.test(parsed)) return 'interest';
@@ -521,6 +572,30 @@ function parseLeftoverExtract(parsed) {
   return { ok: true, intent: LEFTOVER_INTENT };
 }
 
+function planningHorizonTrajectoryReference() {
+  return {
+    status: 'resolved-reference',
+    referentKey: PLANNING_HORIZON_TRAJECTORY_INTENT,
+  };
+}
+
+function parsePlanningHorizonTrajectoryExtract(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'not-planning-horizon-trajectory' };
+  }
+  if (parsed.intent !== PLANNING_HORIZON_TRAJECTORY_INTENT) {
+    return { ok: false, reason: 'not-planning-horizon-trajectory' };
+  }
+  const keys = Object.keys(parsed);
+  if (keys.some(key => PLANNING_TRAJECTORY_FORBIDDEN_KEYS[key])) {
+    return { ok: false, reason: 'invented trajectory' };
+  }
+  if (keys.some(key => !PLANNING_TRAJECTORY_EXTRACT_KEYS[key])) {
+    return { ok: false, reason: 'unexpected fields' };
+  }
+  return { ok: true, intent: PLANNING_HORIZON_TRAJECTORY_INTENT };
+}
+
 function parsePaydayPictureExtract(parsed) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, reason: 'not-payday-picture' };
@@ -604,6 +679,20 @@ function resolvePaydayPicture({ question, extract }) {
   return { status: 'none' };
 }
 
+function resolvePlanningHorizonTrajectory({ question, extract }) {
+  if (questionCollidesWithPaydayLeftoverGrammar(question)) {
+    return { status: 'ambiguous', nature: 'reference' };
+  }
+  if (extract && extract.ok && extract.intent === PLANNING_HORIZON_TRAJECTORY_INTENT) {
+    return planningHorizonTrajectoryReference();
+  }
+  const kind = classifyVerifiedFollowup(question);
+  if (kind === PLANNING_HORIZON_TRAJECTORY_INTENT) {
+    return planningHorizonTrajectoryReference();
+  }
+  return { status: 'none' };
+}
+
 function resolvePaydayRemainingBills({ question, priorTurn, packet, extract }) {
   const prior = priorTurn && typeof priorTurn === 'object' ? priorTurn : null;
   if (extract && extract.ok && extract.intent === REMAINING_BILLS_INTENT) {
@@ -664,6 +753,13 @@ function resolveVerifiedReference({ question, priorTurn, packet }) {
 
   if (kind === 'payday-named-bill') {
     return remainingBillsReference('named', namedBillLabelFromQuestion(question), packet);
+  }
+
+  if (kind === PLANNING_HORIZON_TRAJECTORY_INTENT) {
+    if (questionCollidesWithPaydayLeftoverGrammar(question)) {
+      return { status: 'ambiguous', nature: 'reference' };
+    }
+    return planningHorizonTrajectoryReference();
   }
 
   if (kind === 'last-presented-one') {
@@ -1186,6 +1282,17 @@ function sessionTurnFromHypothetical(result, provenance) {
   });
 }
 
+function sessionTurnFromPlanningHorizonTrajectory(resolved) {
+  if (!resolved || resolved.status !== 'resolved-reference'
+      || resolved.referentKey !== PLANNING_HORIZON_TRAJECTORY_INTENT) {
+    return { kind: 'unavailable' };
+  }
+  return {
+    kind: 'explained',
+    referentKeys: [PLANNING_HORIZON_TRAJECTORY_INTENT],
+  };
+}
+
 function sessionTurnFromRemainingBills(resolved) {
   if (!resolved || resolved.status !== 'resolved-reference'
       || resolved.referentKey !== REMAINING_BILLS_INTENT) {
@@ -1325,16 +1432,20 @@ module.exports = {
   LEFTOVER_PATH,
   PAYDAY_PICTURE_INTENT,
   PAYDAY_PICTURE_PATHS,
+  PLANNING_HORIZON_TRAJECTORY_INTENT,
   REMAINING_BILLS_INTENT,
   createSessionContext,
   resolveFollowup,
   resolveVerifiedReference,
   resolvePaydayLeftover,
   resolvePaydayPicture,
+  resolvePlanningHorizonTrajectory,
   resolvePaydayRemainingBills,
   parseLeftoverExtract,
   parsePaydayPictureExtract,
+  parsePlanningHorizonTrajectoryExtract,
   parseRemainingBillsExtract,
+  questionCollidesWithPaydayLeftoverGrammar,
   bindReferentKeysFromPaths,
   classifyVerifiedFollowup,
   FOLLOWUP_REFERENT_KEYS,
@@ -1344,5 +1455,6 @@ module.exports = {
   sessionTurnFromHypothetical,
   sessionTurnFromComparison,
   sessionTurnFromRemainingBills,
+  sessionTurnFromPlanningHorizonTrajectory,
   hmacKey,
 };

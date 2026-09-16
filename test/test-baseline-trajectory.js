@@ -403,12 +403,20 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
   const { plan, debts } = fixture();
   ok(F.baselineTrajectory(plan, debts, START, {}).status === 'unavailable',
     'missing periods/breakdown is unavailable, not a $0 weekly walk');
-  const talkSrc = [
-    read('public/talk.js'),
-    read('scripts/talk-hypothetical.js'),
+  const trajTalkSrc = [
+    read('scripts/talk-session.js'),
+    read('scripts/talk-gemini.js'),
+    read('scripts/talk-presentation.js'),
   ].join('\n');
-  ok(!/baselineTrajectory/.test(talkSrc),
-    'Talk does not consume baselineTrajectory');
+  ok(!/Forecast\.baselineTrajectory\s*\(|require\([^)]*forecast/i.test(trajTalkSrc),
+    'Talk trajectory path does not call Forecast.baselineTrajectory or import Forecast');
+  ok(/planning\.trajectory/.test(trajTalkSrc),
+    'Talk consumes planning.trajectory from the assistant packet');
+  ok(!/decisionPosture/.test(
+    (read('scripts/talk-presentation.js').split('function presentPlanningHorizonTrajectory')[1] || '')
+      .split('function presentPaydayRemainingBills')[0]
+  ),
+    'Talk trajectory presentation does not cite decisionPosture');
   const packetSrc = read('scripts/assistant-packet.js');
   ok(/Forecast\.baselineTrajectory\(/.test(packetSrc),
     'assistant packet calls Forecast.baselineTrajectory');

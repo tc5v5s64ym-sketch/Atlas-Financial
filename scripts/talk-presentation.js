@@ -35,6 +35,9 @@
  */
 
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
+const BASELINE_TRAJECTORY_PACKET_SOURCE = ['Forecast', 'baselineTrajectory'].join('.');
+const PLANNING_TRAJECTORY_UNAVAILABLE_ANSWER = 'Baseline cash and debt trajectory is unavailable.';
+const PLANNING_TRAJECTORY_NOTE = 'Monthly cash and debt are the Planning baseline trajectory only — planned weekly variable, not historical actuals and not the payday weekly cap. Talk copies status, amounts, and notes from planning.trajectory; it does not walk cash or debt itself.';
 const REMAINING_BILLS_UNAVAILABLE_ANSWER = 'Remaining payday bills are unavailable.';
 const REMAINING_BILLS_EMPTY_ANSWER = 'Forecast lists no remaining payday bills before the next payday.';
 const REMAINING_BILLS_COVERED_LEAD = 'Forecast lists these bills as represented on this payday period.';
@@ -1861,6 +1864,144 @@ function remainingBillsNotListedSentence(label) {
   return `Forecast does not list ${named} among this payday period's bills.`;
 }
 
+function formatFullDate(iso) {
+  if (typeof iso !== 'string' || !iso) return '';
+  const parsed = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleDateString('en-CA', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function trajectoryIsPartialMonth(month) {
+  if (!month || !month.month || !month.periodStart || !month.periodEnd) return false;
+  const [y, m] = month.month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+  const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return month.periodStart !== monthStart || month.periodEnd !== monthEnd;
+}
+
+function trajectoryIncomePhrase(income) {
+  if (!income || income.status === 'unavailable') {
+    const reason = income && income.reason ? income.reason : 'Forecast unavailable.';
+    return `Income unavailable (${reason})`;
+  }
+  const money = formatCurrency(income.amount);
+  const amount = money ? money : 'an unavailable amount';
+  return `Income ${amount} (${income.status || 'unknown'})`;
+}
+
+function trajectoryCashPhrase(cash) {
+  if (!cash || cash.status === 'unavailable') {
+    const reason = cash && cash.reason ? cash.reason : 'Forecast unavailable.';
+    return `Cash at period end unavailable (${reason})`;
+  }
+  const money = formatCurrency(cash.amount);
+  const amount = money ? money : 'an unavailable amount';
+  const asOf = cash.asOf ? ` at period end ${formatFullDate(cash.asOf)}` : '';
+  return `Cash at period end ${amount}${asOf} (${cash.status || 'unknown'})`;
+}
+
+function trajectoryDebtPhrase(debt) {
+  if (!debt || debt.status === 'unavailable') {
+    const reason = debt && debt.reason ? debt.reason : 'Forecast unavailable.';
+    return `Debt unavailable (${reason})`;
+  }
+  if (debt.status !== 'calculated') {
+    return `Debt (${debt.status || 'unknown'})`;
+  }
+  const consumer = formatCurrency(debt.consumer);
+  const secured = formatCurrency(debt.secured);
+  const heloc = formatCurrency(debt.heloc);
+  const asOf = debt.asOf ? ` as-of ${formatFullDate(debt.asOf)}` : '';
+  if (!consumer || !secured || !heloc) {
+    return `Debt figures unavailable${asOf}`;
+  }
+  return `Consumer debt ${consumer}, secured incl. HELOC ${secured}, of which HELOC ${heloc}${asOf} (calculated)`;
+}
+
+function trajectoryMonthSentence(month) {
+  if (!month || typeof month !== 'object') return null;
+  const period = trajectoryIsPartialMonth(month)
+    ? `${month.month} (${formatFullDate(month.periodStart)} – ${formatFullDate(month.periodEnd)}, partial period)`
+    : `${month.month} (${formatFullDate(month.periodStart)} – ${formatFullDate(month.periodEnd)})`;
+  const income = trajectoryIncomePhrase(month.income);
+  const cash = trajectoryCashPhrase(month.cash);
+  const debt = trajectoryDebtPhrase(month.debt);
+  return `${period}: ${income}. ${cash}. ${debt}.`;
+}
+
+function presentPlanningHorizonTrajectory(packet) {
+  const asOf = readAsOf(packet);
+  const freshness = readFreshness(packet);
+  const unavailable = () => emptyPresentation(PLANNING_TRAJECTORY_UNAVAILABLE_ANSWER, {
+    source: 'Planning',
+    trust: 'unavailable',
+    asOf,
+    freshness,
+    action: ALLOWED_ACTIONS.planning,
+  });
+  const traj = packetGet(packet, 'planning.trajectory');
+  if (!traj || typeof traj !== 'object' || traj.source !== BASELINE_TRAJECTORY_PACKET_SOURCE) {
+    return unavailable();
+  }
+  if (traj.status !== 'ready' || !Array.isArray(traj.months) || !traj.months.length) {
+    const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
+    return finishPresentation({
+      answer: `${PLANNING_TRAJECTORY_UNAVAILABLE_ANSWER} ${reason}`,
+      source: 'Planning',
+      trust: 'unavailable',
+      asOf,
+      freshness,
+      action: ALLOWED_ACTIONS.planning,
+    }, {
+      items: [{
+        kind: 'answer',
+        title: 'Answer',
+        body: reason,
+      }, {
+        kind: 'note',
+        title: 'Note',
+        body: PLANNING_TRAJECTORY_NOTE,
+      }],
+    });
+  }
+  const horizon = traj.horizonEnd
+    ? `Forecast baseline cash and debt by calendar month through ${formatFullDate(traj.horizonEnd)}.`
+    : 'Forecast baseline cash and debt by calendar month over the knowledge horizon.';
+  const weekly = traj.weeklyVariable != null && Number.isFinite(Number(traj.weeklyVariable))
+    ? ` Planned weekly variable: ${formatCurrency(traj.weeklyVariable)} (budgetBreakdown.planned).`
+    : '';
+  const regimeNotes = Array.isArray(traj.incomeRegimes)
+    ? traj.incomeRegimes
+      .map(row => (row && (row.note || row.reason)) || '')
+      .filter(Boolean)
+      .join(' ')
+    : '';
+  const lede = horizon + weekly + (regimeNotes ? ` ${regimeNotes}` : '');
+  const sentences = [lede];
+  const items = [{ kind: 'answer', title: 'Answer', body: lede }];
+  for (const month of traj.months) {
+    const body = trajectoryMonthSentence(month);
+    if (!body) return unavailable();
+    sentences.push(body);
+    items.push({ kind: 'result', title: month.month || 'Month', body });
+  }
+  sentences.push(PLANNING_TRAJECTORY_NOTE);
+  items.push({ kind: 'note', title: 'Note', body: PLANNING_TRAJECTORY_NOTE });
+  return finishPresentation({
+    answer: sentences.join(' '),
+    source: 'Planning',
+    trust: 'calculated',
+    asOf: traj.asOf || asOf,
+    freshness,
+    action: ALLOWED_ACTIONS.planning,
+  }, { items });
+}
+
 function presentPaydayRemainingBills(resolved, packet) {
   const asOf = readAsOf(packet);
   const freshness = readFreshness(packet);
@@ -2078,6 +2219,9 @@ module.exports = {
   isPrimitive,
   ruleFor,
   presentVerifiedClaims,
+  presentPlanningHorizonTrajectory,
+  PLANNING_TRAJECTORY_UNAVAILABLE_ANSWER,
+  PLANNING_TRAJECTORY_NOTE,
   presentPaydayRemainingBills,
   presentWhyExplanation,
   presentHypotheticalExtra,

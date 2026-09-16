@@ -108,6 +108,10 @@ const INSTRUCTION = [
   '{"intent":"payday-remaining-bills","referentKey":"last-presented"}',
   'Do not return leftover, amount, equals, remaining, wanted, allocated, items, settlement, paid, unpaid, late, overdue, covered, claims, or any bill figure or status. The server reads Forecast currentPeriodAction.bills from this request\'s packet. Gemini extracts remaining-bills intent, covered referent, last-presented referent, or caller-named billLabel only. This is not leftover or payday-picture intent.',
   '',
+  'If and only if the household question asks for the baseline monthly cash and debt trajectory over the planning horizon (monthly cash and debt by month across the knowledge horizon), reply with exactly:',
+  '{"intent":"planning-horizon-trajectory"}',
+  'Do not return months, month, trajectory, income, cash, debt, horizon, horizonEnd, weeklyVariable, amount, equals, claims, status, asOf, reason, source, incomeRegimes, consumer, secured, heloc, periodStart, periodEnd, or any trajectory figure. The server reads planning.trajectory from this request\'s packet. Gemini extracts planning-horizon-trajectory intent only. This is not leftover, payday-picture, or remaining-bills intent.',
+  '',
   'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array. An explicit comparison that also asks which of those already-named options to prefer is still the comparison extract, not unavailable and not a winner.',
   '',
   'You MAY:',
@@ -122,6 +126,7 @@ const INSTRUCTION = [
   '- extract only leftover intent, or leftover intent plus last-presented, for a payday-leftover question; never a leftover amount',
   '- extract only payday-picture intent for a what-this-payday-looks-like question; never a payday amount',
   '- extract only remaining-bills intent, or covered / last-presented referent, or caller-named billLabel, for a payday remaining-bills question; never an amount or settlement status',
+  '- extract only planning-horizon-trajectory intent for a baseline monthly cash-and-debt trajectory over the planning horizon; never a month, amount, or trajectory figure',
   '- extract only comparison intent plus last-presented for a bare Which one? about an already-shown two-option comparison; never a winner, ranking, preference, scenarios, amount, or debtLabel',
   '- return status "unavailable" when something is not in the packet',
   '',
@@ -503,6 +508,15 @@ function parseTalkModelOutput(text) {
   if (remainingBills.reason !== 'not-remaining-bills') {
     return { ok: false, kind: TalkSession.REMAINING_BILLS_INTENT, reason: remainingBills.reason };
   }
+  const trajectory = TalkSession.parsePlanningHorizonTrajectoryExtract(parsed);
+  if (trajectory.ok) return trajectory;
+  if (trajectory.reason !== 'not-planning-horizon-trajectory') {
+    return {
+      ok: false,
+      kind: TalkSession.PLANNING_HORIZON_TRAJECTORY_INTENT,
+      reason: trajectory.reason,
+    };
+  }
   const hyp = TalkHypothetical.parseExtract(parsed);
   if (hyp.ok) return hyp;
   if (hyp.reason !== 'not-hypothetical') {
@@ -734,6 +748,26 @@ function presentPaydayPictureExtract(extract, packet, question) {
   );
 }
 
+function presentPlanningHorizonTrajectoryExtract(extract, packet, question) {
+  const resolved = TalkSession.resolvePlanningHorizonTrajectory({
+    question,
+    extract,
+  });
+  if (resolved.status !== 'resolved-reference') {
+    return attachSessionTurn(
+      TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
+      { kind: 'unavailable' }
+    );
+  }
+  const presented = TalkPresentation.presentPlanningHorizonTrajectory(packet);
+  return attachSessionTurn(
+    presented,
+    presented && presented.trust !== 'unavailable'
+      ? TalkSession.sessionTurnFromPlanningHorizonTrajectory(resolved)
+      : { kind: 'unavailable' }
+  );
+}
+
 function presentRemainingBillsExtract(extract, packet, question, priorTurn) {
   const resolved = TalkSession.resolvePaydayRemainingBills({
     question,
@@ -807,7 +841,8 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn, prio
   if (!model.ok) {
     if (model.kind === TalkSession.LEFTOVER_INTENT
         || model.kind === TalkSession.PAYDAY_PICTURE_INTENT
-        || model.kind === TalkSession.REMAINING_BILLS_INTENT) {
+        || model.kind === TalkSession.REMAINING_BILLS_INTENT
+        || model.kind === TalkSession.PLANNING_HORIZON_TRAJECTORY_INTENT) {
       return attachSessionTurn(
         TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
         { kind: 'unavailable' }
@@ -853,6 +888,17 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn, prio
       packet,
       parsed.question,
       priorTurn
+    );
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      throw talkAnswerUnavailable();
+    }
+    return presented;
+  }
+  if (model.intent === TalkSession.PLANNING_HORIZON_TRAJECTORY_INTENT) {
+    const presented = presentPlanningHorizonTrajectoryExtract(
+      model,
+      packet,
+      parsed.question
     );
     if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
       throw talkAnswerUnavailable();
