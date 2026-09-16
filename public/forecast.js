@@ -12075,14 +12075,25 @@
   // Three-stage selected-period funding from the same baselineTrajectory
   // walk already built for this calendar month. Not a second calculator.
   // Stage 1 = income − joint-cash bills − required obligations − planned
-  // Household Budget (weeklyVariable × periodDays / 7). Stage 2 = stage1
+  // Household Budget already applied by incumbent simulate (weeklyVariable
+  // / 7 on each walk day in the published month). Stage 2 = stage1
   // − dated non-optional commitments. Stage 3 = stage2 − walk kind:'extra'
   // from plan.defaults.extraDebtMonthly / extraAbsorbed only. Scenario
   // hypothetical extras, owner surplus-target policy, payday leftover,
   // reserved current-regime smear, card-paid bills, optional
   // commitments, and planned-debt flows are not Stage 3 and not a
-  // balancing bucket.
+  // balancing bucket. Household Budget is not a separate calendar-month
+  // smear and is not a residual of the cash close.
   // Fail closed when this month's income or cash walk is unavailable.
+  function baselineTrajectoryWalkVariableDays(daily, span) {
+    if (!span || !span.start || !span.end || !Array.isArray(daily)) return 0;
+    let days = 0;
+    for (const row of daily) {
+      if (row && row.date >= span.start && row.date <= span.end) days += 1;
+    }
+    return days;
+  }
+
   function baselineTrajectoryMonthFunding(input) {
     input = input || {};
     const income = input.income;
@@ -12108,10 +12119,15 @@
       return trajectoryFundingUnavailable(
         'Forecast could not establish this month span. Not $0.');
     }
-    const periodDays = diffDays(span.start, span.end) + 1;
-    if (!(periodDays > 0)) {
+    const walkDaily = Array.isArray(input.walkDaily) ? input.walkDaily : null;
+    if (!walkDaily) {
       return trajectoryFundingUnavailable(
-        'Forecast could not establish this month span. Not $0.');
+        'The baseline walk days for this month are unavailable. Not $0.');
+    }
+    const walkDays = baselineTrajectoryWalkVariableDays(walkDaily, span);
+    if (!(walkDays > 0)) {
+      return trajectoryFundingUnavailable(
+        'The baseline walk did not apply Household Budget days in this month. Not $0.');
     }
 
     const events = Array.isArray(input.events) ? input.events : [];
@@ -12128,7 +12144,7 @@
     const obligationsAmount = sumOut(obligations);
     const commitmentsAmount = sumOut(commitments);
     const extrasAmount = sumOut(extras);
-    const householdBudgetAmount = roundCent(weekly * periodDays / 7);
+    const householdBudgetAmount = roundCent(weekly * walkDays / 7);
     const billsStatus = trajectoryEventsStatus(bills);
     const obligationsStatus = trajectoryEventsStatus(obligations);
     const commitmentsStatus = trajectoryEventsStatus(commitments);
@@ -12160,8 +12176,8 @@
           amount: householdBudgetAmount,
           status: householdBudgetStatus,
           weeklyVariable: roundCent(weekly),
-          periodDays,
-          identity: 'weeklyVariable * periodDays / 7',
+          walkDays,
+          identity: 'simulate weeklyVariable applied days in month',
         },
         result: result(stage1Amount, stage1Status),
       },
@@ -12218,8 +12234,10 @@
   // three-stage selected-period funding decomposition from that same
   // walk: Stage 1 normal life, Stage 2 after planned spending, Stage 3
   // after debt strategy from plan.defaults.extraDebtMonthly / absorbed
-  // kind:'extra' only. Fail closed when that month's income or cash
-  // walk is unavailable. Caller-supplied additional-debt-payment
+  // kind:'extra' only. Household Budget is the weeklyVariable already
+  // applied by incumbent simulate on the walk days in that month, not a
+  // separate calendar-month smear. Fail closed when that month's income
+  // or cash walk is unavailable. Caller-supplied additional-debt-payment
   // scenario consequence against this same walk is
   // baselineTrajectoryScenario, not hypotheticalExtraPayment and not
   // counterfactuals. Scenario amounts, owner surplus-target policy, and payday
@@ -12400,6 +12418,7 @@
         events: monthEvents,
         income: row.income,
         cash: row.cash,
+        walkDaily: sim.daily,
       });
       row.stage1 = funding.stage1;
       row.stage2 = funding.stage2;

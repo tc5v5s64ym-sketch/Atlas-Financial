@@ -3,8 +3,9 @@
  * Forecast.baselineTrajectory calendar months.
  *
  * Independent of the publishing helper: expandEvents sums by kind plus
- * Household Budget = weeklyVariable × (periodDays / 7). Stage 3 extras
- * are plan.defaults.extraDebtMonthly / absorbed kind:'extra' only.
+ * Household Budget = walk-applied weeklyVariable / 7 for each simulate
+ * day in the published month. Stage 3 extras are
+ * plan.defaults.extraDebtMonthly / absorbed kind:'extra' only.
  * `node test/test-baseline-trajectory-funding-stages.js`
  */
 const fs = require('fs');
@@ -155,11 +156,33 @@ function independentWalkEvents(plan, debts) {
   return { weekly, horizon, events, extraAbsorbed: debtWalk && debtWalk.extraAbsorbed };
 }
 
+function addDays(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+// Reconstruct incumbent simulate's day loop: weeklyVariable / 7 on every
+// knowledge-horizon day, independently of the publishing helper.
+function independentWalkDays(walkStart, walkEnd, spanStart, spanEnd) {
+  let n = 0;
+  let date = walkStart;
+  while (date <= walkEnd) {
+    if (date >= spanStart && date <= spanEnd) n += 1;
+    date = addDays(date, 1);
+  }
+  return n;
+}
+
 function independentMonth(plan, debts, span) {
   const walk = independentWalkEvents(plan, debts);
   const events = (walk.events || []).filter(e =>
     e && e.date >= span.start && e.date <= span.end);
-  const periodDays = F.diffDays(span.start, span.end) + 1;
+  const walkDays = independentWalkDays(
+    walk.horizon.start, walk.horizon.end, span.start, span.end);
   const sumKind = (pred, sign) => roundCent(events.filter(pred)
     .reduce((s, e) => s + sign * (Number(e.amount) || 0), 0));
   const income = sumKind(e => e.kind === 'income', 1);
@@ -167,13 +190,13 @@ function independentMonth(plan, debts, span) {
   const obligations = sumKind(e => e.kind === 'obligation', -1);
   const commitments = sumKind(e => e.kind === 'commitment', -1);
   const extras = sumKind(e => e.kind === 'extra' && e.id !== 'hypothetical-extra', -1);
-  const householdBudget = roundCent(walk.weekly * periodDays / 7);
+  const householdBudget = roundCent(walk.weekly * walkDays / 7);
   const stage1 = roundCent(income - bills - obligations - householdBudget);
   const stage2 = roundCent(stage1 - commitments);
   const stage3 = roundCent(stage2 - extras);
   return {
     weekly: walk.weekly,
-    periodDays,
+    walkDays,
     income,
     bills,
     obligations,
@@ -185,6 +208,7 @@ function independentMonth(plan, debts, span) {
     stage3,
     events,
     extraAbsorbed: walk.extraAbsorbed,
+    horizon: walk.horizon,
   };
 }
 
@@ -201,12 +225,17 @@ console.log('=== 1. Forecast is the sole calculator; helper is not exported ==='
     src.indexOf('function baselineTrajectory('));
   ok(/function baselineTrajectoryMonthFunding\(/.test(src),
     'funding stages live inside public/forecast.js');
-  ok(typeof F.baselineTrajectoryMonthFunding !== 'function',
+  ok(typeof F.baselineTrajectoryMonthFunding !== 'function'
+    && typeof F.baselineTrajectoryWalkVariableDays !== 'function',
     'the funding helper is not a second exported engine');
   ok(/kind === 'extra'/.test(helper) && /hypothetical-extra/.test(helper),
     'Stage 3 reads walk kind:extra and excludes hypothetical extras');
-  ok(/weekly \* periodDays \/ 7/.test(helper) || /weeklyVariable \* periodDays \/ 7/.test(helper),
-    'Household Budget uses weeklyVariable × periodDays / 7');
+  ok(/walkDaily/.test(helper) && /walkDays/.test(helper)
+    && /simulate weeklyVariable applied days in month/.test(helper),
+    'Household Budget counts incumbent simulate walk days in the month');
+  ok(!/weekly \* periodDays \/ 7/.test(helper)
+    && !/weeklyVariable \* periodDays \/ 7/.test(helper),
+    'Household Budget is not a separate calendar-month smear');
   ok(!/recommend\(/.test(helper) && !/recommendWeekly\(/.test(helper),
     'funding helper does not search Forecast.recommend');
   ok(!/nextDollar/.test(helper) && !/paydayAllocation\(/.test(helper),
@@ -259,12 +288,14 @@ console.log('\n=== 2. Independent July 2026 reconciliation ===');
   ok(near(july.stage1.obligations.amount, expected.obligations) && near(expected.obligations, 80),
     'Stage 1 obligations match independent expandEvents required debt payments',
     String(july.stage1.obligations.amount));
-  ok(july.stage1.householdBudget.periodDays === expected.periodDays
-    && expected.periodDays === 31,
-    'July Household Budget uses the 31-day calendar span');
+  ok(july.stage1.householdBudget.walkDays === expected.walkDays
+    && expected.walkDays === 31,
+    'July Household Budget uses the 31 walk days simulate already drained');
+  ok(july.stage1.householdBudget.identity === 'simulate weeklyVariable applied days in month',
+    'July Household Budget names the walk-applied identity, not a calendar smear');
   ok(near(july.stage1.householdBudget.amount, expected.householdBudget)
-    && near(expected.householdBudget, expected.weekly * 31 / 7),
-    'Household Budget equals weeklyVariable × 31 / 7',
+    && near(expected.householdBudget, expected.weekly * expected.walkDays / 7),
+    'Household Budget equals walk-applied weeklyVariable / 7 × 31 July walk days',
     `${july.stage1.householdBudget.amount} vs ${expected.householdBudget}`);
   const reservedSmear = 400 * 12 / 365.25 * 31;
   ok(!near(july.stage1.householdBudget.amount, expected.householdBudget + reservedSmear, 1),
@@ -330,7 +361,7 @@ console.log('\n=== 3. Honest $0 extras and confirmed-income calculated stages ==
   const expectedCalc = independentMonth(confirmed.plan, confirmed.debts, julyCalc);
   ok(near(julyCalc.stage1.result.amount, expectedCalc.stage1)
     && near(julyCalc.stage3.extras.amount, expectedCalc.extras),
-    'calculated July still reconciles to independent expandEvents + HB identity');
+    'calculated July still reconciles to independent expandEvents + walk-applied HB');
 }
 
 console.log('\n=== 4. Fail closed when income/cash is unavailable — not $0 ===');
@@ -395,7 +426,94 @@ console.log('\n=== 5. Absorbed extras, not the raw extraDebtMonthly, and not a s
     'Stage 3 extras are not the planned extra plus the scenario amount');
 }
 
-console.log('\n=== 6. Live extraDebtMonthly $0 is honest zero on published months ===');
+console.log('\n=== 6. Month-boundary walk days, not a 30-day June smear ===');
+{
+  const budgetOnly = fixture({
+    startingCash: { amount: 10000 },
+    defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
+    budget: {
+      basis: 'ytd',
+      categories: [{
+        id: 'groceries', label: 'Groceries', class: 'essential',
+        from: ['Groceries'], plannedWeekly: 70,
+      }],
+    },
+    income: [],
+    obligations: [],
+    bills: [],
+    commitments: [],
+  }, []);
+  const traj = ask(budgetOnly.plan, budgetOnly.debts);
+  const june = traj.months.find(m => m.month === '2026-06');
+  const july = traj.months.find(m => m.month === JUL);
+  ok(traj.status === 'ready' && june && july
+    && june.cash.status !== 'unavailable' && july.cash.status !== 'unavailable',
+    'budget-only trajectory publishes June and July cash');
+  const expectedJune = independentMonth(budgetOnly.plan, budgetOnly.debts, june);
+  const expectedJuly = independentMonth(budgetOnly.plan, budgetOnly.debts, july);
+  ok(near(traj.weeklyVariable.amount, 70) && near(expectedJune.weekly, 70),
+    'budget-only planned weeklyVariable is independently $70/week');
+  ok(expectedJune.walkDays === 16 && june.start === START && june.end === '2026-06-30',
+    'independent June walk days are 16 (as-of through month-end), not the calendar month');
+  ok(expectedJuly.walkDays === 31 && july.start === '2026-07-01' && july.end === '2026-07-31',
+    'independent July walk days are the 31 simulate days after the June boundary');
+  const juneCalendarDays = daysInMonth(2026, 6);
+  const calendarJuneSmear = roundCent(expectedJune.weekly * juneCalendarDays / 7);
+  ok(juneCalendarDays === 30 && !near(expectedJune.householdBudget, calendarJuneSmear, 1),
+    'walk-applied June Household Budget is not the 30-day calendar smear',
+    `${expectedJune.householdBudget} vs calendar ${calendarJuneSmear}`);
+  ok(near(june.stage1.householdBudget.amount, expectedJune.householdBudget)
+    && near(expectedJune.householdBudget, expectedJune.weekly * 16 / 7)
+    && june.stage1.householdBudget.walkDays === 16,
+    'June Household Budget is 16 walk-applied days of $70/week',
+    String(june.stage1.householdBudget.amount));
+  ok(near(july.stage1.householdBudget.amount, expectedJuly.householdBudget)
+    && near(expectedJuly.householdBudget, expectedJuly.weekly * 31 / 7)
+    && july.stage1.householdBudget.walkDays === 31,
+    'July Household Budget is 31 walk-applied days of $70/week',
+    String(july.stage1.householdBudget.amount));
+  const straddlingWeekStart = '2026-06-29';
+  const straddlingWeekEnd = '2026-07-05';
+  const juneWeekDays = independentWalkDays(
+    expectedJune.horizon.start, expectedJune.horizon.end,
+    straddlingWeekStart, '2026-06-30');
+  const julyWeekDays = independentWalkDays(
+    expectedJuly.horizon.start, expectedJuly.horizon.end,
+    '2026-07-01', straddlingWeekEnd);
+  ok(juneWeekDays === 2 && julyWeekDays === 5,
+    'the as-of-aligned week that crosses June/July splits 2 walk days / 5 walk days');
+
+  const juneOpen = 10000;
+  const dailyVariable = expectedJune.weekly / 7;
+  let balance = juneOpen;
+  let date = START;
+  const closes = {};
+  while (date <= '2026-07-31') {
+    balance -= dailyVariable;
+    closes[date] = balance;
+    date = addDays(date, 1);
+  }
+  const juneClose = roundCent(closes['2026-06-30']);
+  const julyClose = roundCent(closes['2026-07-31']);
+  const juneCashDelta = roundCent(juneClose - juneOpen);
+  const julyCashDelta = roundCent(julyClose - juneClose);
+  ok(near(june.cash.amount, juneClose) && near(july.cash.amount, julyClose),
+    'independent daily walk closes match published June and July cash',
+    `${june.cash.amount} / ${july.cash.amount} vs ${juneClose} / ${julyClose}`);
+  ok(near(june.stage3.result.amount, juneCashDelta)
+    && near(june.stage3.result.amount, -expectedJune.householdBudget),
+    'June Stage 3 equals the independent June cash change from walk-applied Household Budget',
+    `${june.stage3.result.amount} vs cash ${juneCashDelta}`);
+  ok(near(july.stage3.result.amount, julyCashDelta)
+    && near(july.stage3.result.amount, -expectedJuly.householdBudget),
+    'July Stage 3 equals the independent June→July cash change from walk-applied Household Budget',
+    `${july.stage3.result.amount} vs cash ${julyCashDelta}`);
+  ok(!near(june.stage3.result.amount, -calendarJuneSmear, 1)
+    && !near(juneCashDelta, -calendarJuneSmear, 1),
+    'June Stage 3 and cash change are not the 30-day calendar smear');
+}
+
+console.log('\n=== 7. Live extraDebtMonthly $0 is honest zero on published months ===');
 {
   const live = JSON.parse(fs.readFileSync(DATA, 'utf8'));
   const periods = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/periods.json'), 'utf8'));

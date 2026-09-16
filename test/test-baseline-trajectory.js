@@ -329,7 +329,8 @@ console.log('=== 1. Forecast is the sole calculator ===');
   ok(/function baselineTrajectoryMonthFunding\(/.test(src),
     'month funding stages are a Forecast-owned helper inside forecast.js');
   ok(typeof F.baselineTrajectoryMonthFunding !== 'function'
-    && typeof F.trajectoryFundingUnavailable !== 'function',
+    && typeof F.trajectoryFundingUnavailable !== 'function'
+    && typeof F.baselineTrajectoryWalkVariableDays !== 'function',
     'the funding-stage helper is not a second exported engine');
   ok(/baselineTrajectoryMonthFunding\(/.test(
     src.slice(src.indexOf('function baselineTrajectory('),
