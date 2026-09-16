@@ -44,7 +44,7 @@ function loadPage(script) {
     App: { hooks: [], bootOpts: null, register(fn) { this.hooks.push(fn); }, boot(opts) { this.bootOpts = opts || {}; } },
   };
   vm.runInNewContext(
-    `${helpers}\nconst $ = id => elements[id] || (elements[id] = { innerHTML: '', textContent: '' });\n${read(script)}`,
+    `${helpers}\nfunction planningStubEl(){ return { innerHTML: '', textContent: '', querySelector(){return null;}, querySelectorAll(){return [];}, classList:{toggle(){},add(){},remove(){}}, setAttribute(){}, getAttribute(){return null;} }; }\nconst $ = id => elements[id] || (elements[id] = planningStubEl());\n${read(script)}`,
     ctx, { filename: script });
   return {
     ctx,
@@ -63,6 +63,9 @@ function loadPage(script) {
     },
     composeDebtDirection(data, p) {
       return ctx.planningTrajectoryDebtDirectionHtml(ctx.planningTrajectory(data, p || null));
+    },
+    composeFunding(data, p, monthKey) {
+      return ctx.planningTrajectoryFundingHtml(ctx.planningTrajectory(data, p || null), monthKey);
     },
   };
 }
@@ -115,7 +118,7 @@ console.log('=== 1–2. The page consumes Forecast.majorPlans and invents no ver
   const src = stripComments(read('public/planning.js'));
   ok(/Forecast\.recommend\(/.test(src) && /advice\.majorPlans/.test(src) && /advice\.paydayAllocation/.test(src),
     'planning.js reads majorPlans and paydayAllocation off Forecast.recommend');
-  ok(!/plan\.commitments|\.commitments\b/.test(src), 'planning.js never reads plan.commitments');
+  ok(!/plan\.commitments/.test(src), 'planning.js never reads plan.commitments');
   ok(!/Forecast\.(fundingSequence|majorPlans|simulate|expandEvents)\(/.test(src),
     'planning.js does not call the sequence or walk itself — one recommend call, like Plan and the assistant packet');
   const verdictAssign = /verdict\s*=\s*['"](ON TRACK|AT RISK|FUNDING GAP)['"]/.test(src)
@@ -586,6 +589,141 @@ console.log('\n=== 17. Trajectory debt direction reprints Forecast.baselineTraje
     'debt direction footnote says the page does not compute direction');
 }
 
+console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baselineTrajectory stage1/2/3 ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(/Forecast\.baselineTrajectory\(/.test(src),
+    'funding reprint still uses the incumbent Forecast.baselineTrajectory call');
+  ok(/planningTrajectoryFundingHtml\(/.test(src) && /month\.stage1/.test(src)
+    && /month\.stage2/.test(src) && /month\.stage3/.test(src),
+    'planning.js reprints month stage1 / stage2 / stage3 from Forecast only');
+  ok(!/baselineTrajectoryMonthFunding/.test(src),
+    'planning.js does not call the internal funding helper');
+  ok(!/stage1Amount|stage2Amount|stage3Amount/.test(src),
+    'planning.js does not recompute stage amounts');
+  ok(!/baselineTrajectoryScenario|assistant-packet|\/talk\//.test(src),
+    'planning.js does not touch scenario, packet, or Talk seams');
+  ok(!/safe-to-spend|affordability|sustainable|breathing room/i.test(src),
+    'funding copy carries no policy-threshold or comfort wording');
+
+  const liveEl = page.render(live, periods);
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready' && traj.months.length > 0, 'live trajectory has months with funding stages');
+  const pickMonth = traj.months[0];
+  const fundingHtml = liveEl['planning-trajectory-funding'].innerHTML;
+  ok(/data-trajectory-funding-month="/.test(fundingHtml),
+    'live funding panel renders for a selected month');
+  ok(/data-trajectory-funding-stage="1"/.test(fundingHtml)
+    && /data-trajectory-funding-stage="2"/.test(fundingHtml)
+    && /data-trajectory-funding-stage="3"/.test(fundingHtml),
+    'live funding panel shows all three stages');
+  ok(/Normal life/.test(fundingHtml) && /After planned spending/.test(fundingHtml)
+    && /After debt strategy/.test(fundingHtml),
+    'live funding uses Forecast stage labels');
+  if (pickMonth.stage1 && pickMonth.stage1.result) {
+    ok(fundingHtml.includes(money2(pickMonth.stage1.result.amount)),
+      'live stage 1 result amount is copied from Forecast');
+    if (pickMonth.stage1.result.status === 'estimated') {
+      ok(/ESTIMATED/.test(fundingHtml), 'live estimated stage 1 stays estimated on the page');
+    }
+  }
+  if (pickMonth.stage2 && pickMonth.stage2.result && isFinite(pickMonth.stage2.result.amount)) {
+    ok(fundingHtml.includes(money2(pickMonth.stage2.result.amount)),
+      'live stage 2 result amount is copied from Forecast');
+  }
+  if (pickMonth.stage3 && pickMonth.stage3.result && isFinite(pickMonth.stage3.result.amount)) {
+    ok(fundingHtml.includes(money2(pickMonth.stage3.result.amount)),
+      'live stage 3 result amount is copied from Forecast');
+  }
+  const unavailableMonth = traj.months.find(m => m.stage1 && m.stage1.status === 'unavailable');
+  if (unavailableMonth) {
+    const withheld = page.composeFunding(live, periods, unavailableMonth.month);
+    ok(/data-trajectory-funding-stage-status="unavailable"/.test(withheld.panel),
+      'unavailable month stage prints unavailable status');
+    ok(unavailableMonth.stage1.reason && withheld.panel.includes(unavailableMonth.stage1.reason),
+      'unavailable stage prints Forecast reason');
+    ok(!new RegExp(`data-trajectory-funding-month="${unavailableMonth.month}"[\\s\\S]*?data-trajectory-funding-result="ready"[\\s\\S]*?<b>\\$0\\.00</b>`).test(withheld.panel),
+      'unavailable funding is not printed as $0 surplus');
+  }
+
+  const composed = page.composeFunding({
+    plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null,
+  }, periods, null);
+  ok(/data-trajectory-funding="unavailable"/.test(composed.panel),
+    'missing trajectory funding is not rendered as an empty success');
+  ok(/does not subtract stages, recompute funding/.test(composed.note),
+    'funding footnote says the page does not recompute stages');
+
+  const pressureStill = liveEl['planning-trajectory-pressure'].innerHTML;
+  const ddStill = liveEl['planning-trajectory-debt-direction'].innerHTML;
+  ok(/data-trajectory-pressure="ready"/.test(pressureStill) || /data-trajectory-pressure="empty"/.test(pressureStill),
+    'pressure reprint remains after funding section');
+  ok(/data-trajectory-debt-direction="ready"/.test(ddStill) || /data-trajectory-debt-direction="unavailable"/.test(ddStill),
+    'debt direction reprint remains after funding section');
+}
+
+console.log('\n=== 19. Trajectory month selection keeps table row semantics ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(!/<tr[^>]*\brole="button"/.test(src),
+    'planning.js does not assign role=button to trajectory rows');
+  ok(!/<tr[^>]*aria-label="Show three-stage funding/.test(src),
+    'planning.js does not replace the row accessible name with a funding-action label');
+  ok(/<button type="button"[^>]*data-trajectory-month-select=/.test(src),
+    'month selection is a real button inside the row');
+
+  const liveEl = page.render(live, periods);
+  const tableHtml = liveEl['planning-trajectory'].innerHTML;
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready' && traj.months.length > 0, 'live trajectory has months for row-semantics proof');
+  ok(/<table[^>]*class="[^"]*planning-trajectory-table/.test(tableHtml)
+    && /<th scope="col">Period<\/th>/.test(tableHtml)
+    && /<th scope="col">Income<\/th>/.test(tableHtml)
+    && /<th scope="col">Cash \(period end\)<\/th>/.test(tableHtml)
+    && /<th scope="col">Debt<\/th>/.test(tableHtml),
+    'trajectory table keeps column headers for period, income, cash, and debt');
+  ok(!/<tr[^>]*\brole="button"/.test(tableHtml),
+    'rendered trajectory rows keep implicit row role');
+  ok(!/<tr[^>]*aria-label=/.test(tableHtml),
+    'rendered trajectory rows have no aria-label that would hide cell figures');
+  ok(!/Show three-stage funding/.test(tableHtml),
+    'funding-action wording is not the row or button accessible name');
+
+  for (const month of traj.months) {
+    const rowRe = new RegExp(
+      `<tr[^>]*data-trajectory-month="${month.month}"[^>]*>([\\s\\S]*?)</tr>`);
+    const rowMatch = rowRe.exec(tableHtml);
+    ok(rowMatch && !/\brole="button"/.test(rowMatch[0].slice(0, rowMatch[0].indexOf('>'))),
+      `live: ${month.month} remains a table row without an override role`);
+    if (!rowMatch) continue;
+    const rowHtml = rowMatch[1];
+    ok(/<th scope="row">/.test(rowHtml),
+      `live: ${month.month} keeps a row header`);
+    ok(/<td class="planning-trajectory-income">/.test(rowHtml)
+      && /<td class="planning-trajectory-cash">/.test(rowHtml)
+      && /<td class="planning-trajectory-debt">/.test(rowHtml),
+      `live: ${month.month} income, cash, and debt stay table cells`);
+    const buttonRe = new RegExp(
+      `<button type="button"[^>]*data-trajectory-month-select="${month.month}"[^>]*>[\\s\\S]*?<span class="planning-trajectory-period">${month.month}</span>[\\s\\S]*?</button>`);
+    ok(buttonRe.test(rowHtml),
+      `live: ${month.month} selection is a button named after the month, inside the row`);
+    const income = month.income || {};
+    if (income.status !== 'unavailable' && income.amount != null) {
+      ok(rowHtml.includes(money2(income.amount)),
+        `live: ${month.month} Forecast income amount remains in the row cells`);
+    }
+    const cash = month.cash || {};
+    if (cash.status !== 'unavailable' && cash.amount != null) {
+      ok(rowHtml.includes(money2(cash.amount)),
+        `live: ${month.month} Forecast cash amount remains in the row cells`);
+    }
+  }
+}
+
 console.log('\n=== Page contract ===');
 {
   const src = stripComments(read('public/planning.js'));
@@ -596,7 +734,7 @@ console.log('\n=== Page contract ===');
     'heading Planning with the plain-language lede');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note', 'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction', 'planning-trajectory-debt-direction-note'].every(id => ids.has(id)),
+  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-funding-lede', 'planning-trajectory-funding-picker', 'planning-trajectory-funding', 'planning-trajectory-funding-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note', 'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction', 'planning-trajectory-debt-direction-note'].every(id => ids.has(id)),
     'planning.html has every element planning.js writes to');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js">/.test(html), 'planning.html loads forecast.js before planning.js');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),

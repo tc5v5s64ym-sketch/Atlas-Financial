@@ -1595,6 +1595,37 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-attribution-driver-kind,
 .planning-trajectory-attribution-fact-kind { font-weight:600; color:var(--text-primary); }
 .planning-trajectory-attribution-driver b { font-variant-numeric:tabular-nums; color:var(--text-primary); }
+.planning-trajectory-month-select {
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
+}
+.planning-trajectory-month-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.planning-trajectory-month-row.planning-trajectory-month-selected { outline:2px solid var(--accent); outline-offset:-2px; }
+.planning-trajectory-funding { margin:12px 0 0; }
+.planning-trajectory-funding-picker-wrap { margin:8px 0 12px; }
+.planning-trajectory-funding-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:.85rem; }
+.planning-trajectory-funding-picker-label { font-weight:600; }
+.planning-trajectory-funding-select { font:inherit; padding:4px 8px; }
+.planning-trajectory-funding-stages { display:grid; gap:12px; }
+@media (min-width:720px) {
+  .planning-trajectory-funding-stages { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+}
+.planning-trajectory-funding-stage { padding:12px; border:1px solid var(--border-subtle); border-radius:8px; }
+.planning-trajectory-funding-stage-title { margin:0 0 8px; font-size:.95rem; }
+.planning-trajectory-funding-result b { font-variant-numeric:tabular-nums; }
+.planning-trajectory-funding-components { margin-top:10px; font-size:.78rem; }
+.planning-trajectory-funding-component { margin-top:6px; }
+.planning-trajectory-funding-component-label { font-weight:600; }
+.planning-trajectory-funding-component b { font-variant-numeric:tabular-nums; }
 @media (min-width:641px) {
   .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
