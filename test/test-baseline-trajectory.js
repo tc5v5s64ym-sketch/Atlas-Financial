@@ -5,10 +5,11 @@
  * weeklyVariable from planned Household Budget / budgetBreakdown, not
  * historical actuals and not Forecast.recommend. Named dated income-regime
  * split: modelled Dale net through 2026-12-31; Seaspan-evidenced Dale
- * payroll/bonus from 2027-01-01 is an evidence-derived ESTIMATED regime
- * (not verified future pay, not $0, not expandEvents-carried 2026
- * post-CPP/EI-max net). Streams without Seaspan salary evidence stay
- * fail-closed unavailable. Trajectory-local only.
+ * payroll/bonus from 2027-01-01 through 2027-12-31 is an evidence-derived
+ * ESTIMATED regime (not verified future pay, not $0, not expandEvents-
+ * carried 2026 post-CPP/EI-max net). After 2027-12-31 the path fails
+ * closed. Streams without Seaspan salary evidence stay fail-closed
+ * unavailable. Trajectory-local only.
  * `node test/test-baseline-trajectory.js`
  */
 const fs = require('fs');
@@ -157,6 +158,11 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'year≥2027 blanket is gone');
   ok(/daleEstimatedPayrollDeposits\(/.test(body),
     'trajectory can replace 2027 Dale unavailable with estimated Seaspan deposits');
+  ok(/DALE_PAYROLL_REGIME_THROUGH/.test(body)
+    && /authorized-2027-regime-ends/.test(body),
+    'the 2027 estimated regime is bounded and fails closed afterward');
+  ok(/trajectorySupersededIncomeKeys\(plan, opts, day\)/.test(body),
+    'trajectory income replacement is keyed from the opening as-of');
   ok(/incomeRegimesImplemented:\s*regimeReady/.test(body),
     'incomeRegimesImplemented is true only when the estimated 2027 Dale regime is ready');
   ok(/SEASPAN_PLANNING_RAISE_FACTOR/.test(body)

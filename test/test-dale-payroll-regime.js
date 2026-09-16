@@ -334,36 +334,55 @@ console.log('\n=== 4. 2027 estimated regime — trust, raise, bonus, no duplicat
   ok(defaultJan.length === 3 && defaultJan.every(e => e.amount === 4264),
     'default expandEvents still emits the incumbent 2026 post-max net — trajectory-local only');
 
-  const representedPlan = {
-    income: seaspanPlan.income,
-    opening: { asOf: '2026-08-19', representedEvents: [{ id: 'payroll', date: '2027-01-01' }] },
-  };
-  const traj = F.baselineTrajectory(Object.assign({
-    windowDays: 91,
-    startingCash: { amount: 2500 },
-    defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
-    opening: representedPlan.opening,
-    budget: {
-      basis: 'ytd',
-      categories: [{ id: 'groceries', label: 'Groceries', class: 'essential', from: ['Groceries'], plannedWeekly: 140 }],
-    },
-    obligations: [],
-    bills: [],
-    commitments: [],
-  }, { income: seaspanPlan.income }), [], '2026-08-19', {
-    periods: { periods: { ytd: { label: 'YTD', months: 1, spending: [{ label: 'Groceries', total: 1000 }] } } },
-    representedEvents: [{ id: 'payroll', date: '2027-01-01' }],
-  });
-  const jan = traj.months.find(m => m.month === '2027-01');
+    function trajectoryAsk(asOf, extraPlan, extraOpts) {
+    return F.baselineTrajectory(Object.assign({
+      windowDays: 91,
+      startingCash: { amount: 2500 },
+      defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
+      budget: {
+        basis: 'ytd',
+        categories: [{ id: 'groceries', label: 'Groceries', class: 'essential', from: ['Groceries'], plannedWeekly: 140 }],
+      },
+      obligations: [],
+      bills: [],
+      commitments: [],
+      income: seaspanPlan.income,
+    }, extraPlan || {}), [], asOf, Object.assign({
+      periods: { periods: { ytd: { label: 'YTD', months: 1, spending: [{ label: 'Groceries', total: 1000 }] } } },
+    }, extraOpts || {}));
+  }
   const janPays = F.daleEstimatedPayrollDeposits(seaspanPlan, '2027-01-01', '2027-01-31')
     .deposits.filter(d => d.kind === 'regular');
   ok(janPays.length === 3, 'January 2027 has three Seaspan regulars');
-  ok(jan && jan.income.status === 'estimated' && jan.income.amount !== 0,
-    'represented 2027-01-01 does not zero the month');
-  ok(jan && janPays.length === 3
-    && near(jan.income.amount, janPays[1].net + janPays[2].net, 0.02),
-    'actual/represented 2027-01-01 replaces that estimate only — no duplicate third cheque',
-    `${jan && jan.income.amount} vs ${janPays[1].net + janPays[2].net}`);
+  const allJan = janPays[0].net + janPays[1].net + janPays[2].net;
+  const laterJan = janPays[1].net + janPays[2].net;
+
+  const futureRepresented = trajectoryAsk('2026-08-19', {
+    opening: { asOf: '2026-08-19', representedEvents: [{ id: 'payroll', date: '2027-01-01' }] },
+  }, {
+    representedEvents: [{ id: 'payroll', date: '2027-01-01' }],
+  });
+  const futureJan = futureRepresented.months.find(m => m.month === '2027-01');
+  ok(futureJan && futureJan.income.status === 'estimated' && futureJan.income.amount !== 0,
+    'future represented 2027-01-01 does not zero the month');
+  ok(futureJan && near(futureJan.income.amount, allJan, 0.02),
+    'future represented payroll@2027-01-01 cannot settle into a 2026-08-19 opening — all three January estimates remain',
+    `${futureJan && futureJan.income.amount} vs ${allJan}`);
+  ok(futureJan.income.amount !== laterJan,
+    'January 2027 is not understated by the unsettled future represented cheque',
+    `${futureJan.income.amount} vs later-two ${laterJan}`);
+
+  const settledRepresented = trajectoryAsk('2027-01-01', {
+    opening: { asOf: '2027-01-01', representedEvents: [{ id: 'payroll', date: '2027-01-01' }] },
+  }, {
+    representedEvents: [{ id: 'payroll', date: '2027-01-01' }],
+  });
+  const settledJan = settledRepresented.months.find(m => m.month === '2027-01');
+  ok(settledJan && settledJan.income.status === 'estimated' && settledJan.income.amount !== 0,
+    'opening-settled 2027-01-01 does not zero the remaining month');
+  ok(settledJan && near(settledJan.income.amount, laterJan, 0.02),
+    'same-day represented payroll@2027-01-01 replaces that estimate only — no duplicate third cheque',
+    `${settledJan && settledJan.income.amount} vs ${laterJan}`);
 }
 
 console.log('\n=== 5. Non-Seaspan streams stay fail-closed ===');
@@ -373,6 +392,82 @@ console.log('\n=== 5. Non-Seaspan streams stay fail-closed ===');
   }, '2027-01-01', '2027-01-31');
   ok(synthetic.status === 'unavailable',
     'synthetic payroll without Seaspan evidence cannot mint a 2027 Dale net');
+}
+
+console.log('\n=== 6. Authorized 2027 regime fails closed after 2027-12-31 ===');
+{
+  const laterStart = '2027-06-01';
+  const horizonDays = 365;
+  const [hy, hm, hd] = laterStart.split('-').map(Number);
+  const independentHorizonEnd = new Date(Date.UTC(hy, hm - 1, hd + (horizonDays - 1)))
+    .toISOString().slice(0, 10);
+  ok(independentHorizonEnd === '2028-05-30',
+    'a 365-day horizon from 2027-06-01 independently ends 2028-05-30 (2028 leap day)',
+    independentHorizonEnd);
+  const fcHorizon = F.knowledgeHorizon(seaspanPlan, laterStart);
+  ok(fcHorizon && fcHorizon.end >= '2028-02-25',
+    'Forecast knowledgeHorizon from 2027-06-01 crosses the unauthorized 2028 bonus date',
+    fcHorizon && fcHorizon.end);
+
+  const unauthorizedBonus = roundCent(158091 * 0.18);
+  const unauthorizedRaise = roundCent(158091 * 1.04);
+  ok(unauthorizedBonus === 28456.38 && unauthorizedRaise === 164414.64,
+    'independent 2027 planning amounts are 18% × 158091 and 4% × 158091');
+
+  const r2028 = F.daleEstimatedPayrollDeposits(seaspanPlan, '2028-01-01', '2028-03-31');
+  ok(r2028.status === 'ready', 'a 2028 window stays ready rather than inventing a later regime');
+  ok((r2028.deposits || []).length === 0,
+    'daleEstimatedPayrollDeposits emits no 2028 salary or bonus');
+
+  const rCross = F.daleEstimatedPayrollDeposits(seaspanPlan, '2027-12-01', '2028-03-31');
+  ok((rCross.deposits || []).length > 0
+    && (rCross.deposits || []).every(d => d.date >= '2027-12-01' && d.date <= '2027-12-31'),
+    'a walk that crosses 2028 still emits only authorized 2027 deposits');
+  ok(!(rCross.deposits || []).some(d => d.kind === 'bonus' && d.date.startsWith('2028')),
+    'no February 2028 bonus is minted from the 2027 18% rate');
+  ok(!(rCross.deposits || []).some(d => d.salaryAnnual === unauthorizedRaise && d.date.startsWith('2028')),
+    'the 2027 raise is not carried into a 2028 salary');
+
+  const traj = F.baselineTrajectory(Object.assign({
+    windowDays: 91,
+    startingCash: { amount: 2500 },
+    defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
+    budget: {
+      basis: 'ytd',
+      categories: [{ id: 'groceries', label: 'Groceries', class: 'essential', from: ['Groceries'], plannedWeekly: 140 }],
+    },
+    obligations: [],
+    bills: [],
+    commitments: [],
+    income: seaspanPlan.income,
+  }), [], laterStart, {
+    periods: { periods: { ytd: { label: 'YTD', months: 1, spending: [{ label: 'Groceries', total: 1000 }] } } },
+  });
+  const feb2028 = traj.months.find(m => m.month === '2028-02');
+  ok(feb2028 && feb2028.income.status === 'unavailable' && feb2028.cash.status === 'unavailable',
+    'February 2028 Dale-containing income and cash stay unavailable');
+  ok(!Object.prototype.hasOwnProperty.call(feb2028.income, 'amount')
+    || feb2028.income.amount == null,
+    'unavailable 2028 income omits an amount rather than publishing the 2027 bonus');
+  ok(feb2028.income.amount !== unauthorizedBonus,
+    'published 2028 income is not the unauthorized $28,456.38 2027-rate bonus');
+  ok(feb2028.income.dalePayroll && feb2028.income.dalePayroll.status === 'unavailable'
+    && feb2028.income.dalePayroll.from === '2028-01-01'
+    && feb2028.income.dalePayroll.boundary === 'authorized-2027-regime-ends',
+    'February 2028 names the authorized-2027-regime-ends boundary');
+
+  const jun2027 = traj.months.find(m => m.month === '2027-06');
+  ok(jun2027 && jun2027.income.status === 'estimated' && typeof jun2027.income.amount === 'number'
+    && jun2027.income.amount !== 0,
+    'June 2027 stays on the authorized estimated regime');
+
+  const after = traj.incomeRegimes.find(r => r.id === 'after-2027-payroll-bonus');
+  ok(after && after.status === 'unavailable' && after.from === '2028-01-01'
+    && after.boundary === 'authorized-2027-regime-ends',
+    'incomeRegimes names the post-2027 fail-closed regime');
+  ok(traj.provenance.dalePayrollEstimatedThrough === '2027-12-31'
+    && traj.provenance.dalePayrollUnavailableFrom === '2028-01-01',
+    'provenance bounds the estimate through 2027-12-31 and withholds from 2028-01-01');
 }
 
 console.log('\n' + '═'.repeat(60));
