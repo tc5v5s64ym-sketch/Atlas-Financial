@@ -12,6 +12,10 @@
  * unavailable. Trajectory-local only. Objective pressure signals carry
  * walk-derived cause attribution that reconciles to the named change,
  * or fail closed when candidate drivers cannot be established.
+ * Horizon debtDirection is composed from those coupled month-end
+ * marks: declining / persistent / increasing modelled debts, interest
+ * the walk established, and first published month-end at $0. Planned
+ * weeklyVariable does not invent borrowing. Available credit is not cash.
  * `node test/test-baseline-trajectory.js`
  */
 const fs = require('fs');
@@ -116,11 +120,13 @@ function independentMonthNet(events, start, spanStart, spanEnd, weeklyVariable, 
 function independentCardMonthEnd(opening, rate, paymentDay, paymentAmount, start, end, limit) {
   let balance = opening;
   let paid = 0;
+  let interest = 0;
   let firstOver = null;
   let date = start;
   while (date <= end) {
     const daily = balance * (rate / 100) / 365;
     balance += daily;
+    interest += daily;
     if (paymentAmount > 0 && Number(date.slice(8, 10)) === paymentDay && balance > 0) {
       const take = Math.min(paymentAmount, balance);
       balance -= take;
@@ -129,7 +135,12 @@ function independentCardMonthEnd(opening, rate, paymentDay, paymentAmount, start
     if (firstOver == null && limit != null && balance > limit) firstOver = date;
     date = addDays(date, 1);
   }
-  return { balance: roundCent(balance), paid: roundCent(paid), firstOver };
+  return {
+    balance: roundCent(balance),
+    paid: roundCent(paid),
+    interest: roundCent(interest),
+    firstOver,
+  };
 }
 
 function zeroSpendFixture(extraPlan, extraDebts) {
@@ -302,6 +313,10 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'pressure is a Forecast-owned helper inside forecast.js');
   ok(typeof F.baselineTrajectoryPressure !== 'function',
     'the pressure helper is not a second exported engine');
+  ok(/function baselineTrajectoryDebtDirection\(/.test(src),
+    'debtDirection is a Forecast-owned helper inside forecast.js');
+  ok(typeof F.baselineTrajectoryDebtDirection !== 'function',
+    'the debtDirection helper is not a second exported engine');
   ok(/function trajectorySignalAttribution\(/.test(src)
     && /function trajectoryCollectCashDrivers\(/.test(src),
     'cause attribution is a Forecast-owned helper inside forecast.js');
@@ -311,17 +326,33 @@ console.log('=== 1. Forecast is the sole calculator ===');
   ok(/pressure: trajectoryPressureUnavailable\(/.test(src)
     && /pressure,/.test(body),
     'baselineTrajectory publishes pressure on ready and unavailable paths');
+  ok(/debtDirection: trajectoryDebtDirectionUnavailable\(/.test(src)
+    && /debtDirection,/.test(body),
+    'baselineTrajectory publishes debtDirection on ready and unavailable paths');
   ok(/payrollDeposits:/.test(body) && /signal\.attribution = trajectorySignalAttribution\(/.test(src),
     'baselineTrajectory feeds the same walk into signal attribution');
   const pressureBody = src.slice(
     src.indexOf('function baselineTrajectoryPressure('),
-    src.indexOf('function baselineTrajectory('));
+    src.indexOf('function baselineTrajectoryDebtDirection('));
   ok(/policyThresholds:\s*'none'/.test(pressureBody),
     'pressure declares that it adds no policy thresholds');
   ok(!/defaults\.targetBuffer/.test(pressureBody) && !/belowBuffer/.test(pressureBody),
     'pressure helper does not read targetBuffer or belowBuffer');
   ok(!/recommend\(/.test(pressureBody) && !/recommendWeekly\(/.test(pressureBody),
     'pressure helper does not search Forecast.recommend');
+  const directionBody = src.slice(
+    src.indexOf('function baselineTrajectoryDebtDirection('),
+    src.indexOf('function daleEstimatedPayrollDeposits('));
+  ok(/policyThresholds:\s*'none'/.test(directionBody),
+    'debtDirection declares that it adds no policy thresholds');
+  ok(/inventedBorrowing:\s*false/.test(directionBody)
+    && /availableCreditIsNotCash:\s*true/.test(directionBody),
+    'debtDirection declares no invented borrowing and that available credit is not cash');
+  ok(!/payoffModel\(/.test(directionBody) && !/plannedDebt\(/.test(directionBody)
+    && !/recommend\(/.test(directionBody),
+    'debtDirection does not call payoffModel, plannedDebt, or recommend');
+  ok(!/\bheadroom\s*:/.test(directionBody) && !/mark\.headroom/.test(directionBody),
+    'debtDirection does not consume headroom as cash or as a direction input');
   ok(/signal\.attribution = trajectorySignalAttribution\(/.test(pressureBody),
     'pressure attaches walk-derived attribution on each signal');
   const signAttrBody = src.slice(
@@ -588,6 +619,11 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
     && Array.isArray(missingPlan.pressure.signals)
     && missingPlan.pressure.signals.length === 0,
     'unavailable plan fails closed with no invented pressure signals');
+  ok(missingPlan.debtDirection && missingPlan.debtDirection.status === 'unavailable'
+    && Array.isArray(missingPlan.debtDirection.debts)
+    && missingPlan.debtDirection.debts.length === 0
+    && missingPlan.debtDirection.anySupportedIncrease === false,
+    'unavailable plan fails closed with no invented debt direction');
   const { plan, debts } = fixture();
   ok(F.baselineTrajectory(plan, debts, START, {}).status === 'unavailable',
     'missing periods/breakdown is unavailable, not a $0 weekly walk');
@@ -595,6 +631,9 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
   ok(missingPeriods.pressure && missingPeriods.pressure.status === 'unavailable'
     && missingPeriods.pressure.signals.length === 0,
     'missing breakdown fails closed with no invented pressure signals');
+  ok(missingPeriods.debtDirection && missingPeriods.debtDirection.status === 'unavailable'
+    && missingPeriods.debtDirection.debts.length === 0,
+    'missing breakdown fails closed with no invented debt direction');
   const talkSrc = [
     read('public/talk.js'),
     read('scripts/talk-hypothetical.js'),
@@ -617,6 +656,10 @@ console.log('\n=== 7. Fail-closed and non-goals ===');
     'Planning page does not call simulate, projectDebts, or expandEvents for trajectory');
   ok(!/\.pressure/.test(planningSrc) && !/pressure\.signals/.test(planningSrc),
     'Planning page does not reprint pressure signals in this outcome');
+  ok(!/debtDirection/.test(trajPacketCode),
+    'assistant packet trajectory block does not reprint debtDirection in this outcome');
+  ok(!/debtDirection/.test(planningSrc),
+    'Planning page does not reprint debtDirection in this outcome');
   ok(trajHasNoRank(ask(plan, debts)),
     'ranking / recommendation / affordability stay null');
 }
@@ -628,7 +671,13 @@ function trajHasNoRank(traj) {
     && (!traj.pressure || (traj.pressure.ranking == null
       && traj.pressure.recommendation == null
       && traj.pressure.affordability == null
-      && traj.pressure.policyThresholds === 'none'));
+      && traj.pressure.policyThresholds === 'none'))
+    && (!traj.debtDirection || (traj.debtDirection.ranking == null
+      && traj.debtDirection.recommendation == null
+      && traj.debtDirection.affordability == null
+      && traj.debtDirection.policyThresholds === 'none'
+      && traj.debtDirection.inventedBorrowing === false
+      && traj.debtDirection.availableCreditIsNotCash === true));
 }
 
 console.log('\n=== 8. Dated split is Dale-specific, not a year blanket ===');
@@ -767,8 +816,14 @@ console.log('\n=== 9. Live household document is unread for cents and unwritten 
     && traj.provenance.pressureAttribution === 'walk-derived-fail-closed'
     && traj.provenance.pressurePolicyThresholds === 'none',
     'live trajectory publishes walk-derived pressure with no policy thresholds');
-  ok(!hasPolicyLeak(traj.pressure),
-    'live pressure JSON does not carry buffer / RYG / risk-score / safe-to-spend fields');
+  ok(traj.debtDirection && traj.debtDirection.status === 'ready'
+    && Array.isArray(traj.debtDirection.debts)
+    && traj.provenance.debtDirection === 'walk-derived-coupled-marks'
+    && traj.provenance.debtDirectionInventedBorrowing === false
+    && traj.provenance.availableCreditIsNotCash === true,
+    'live trajectory publishes walk-derived debtDirection from coupled marks');
+  ok(!hasPolicyLeak(traj.pressure) && !hasPolicyLeak(traj.debtDirection),
+    'live pressure / debtDirection JSON does not carry buffer / RYG / risk-score / safe-to-spend fields');
   ok(traj.pressure.signals.every(s => {
     const attr = s && s.attribution;
     if (!attr || (attr.status !== 'ready' && attr.status !== 'unavailable')) return false;
@@ -1503,6 +1558,203 @@ console.log('\n=== 12. Walk-derived cause attribution on pressure signals ===');
   ok(drainTraj.pressure.signals.every(s => s.attribution
     && (s.attribution.status === 'ready' || s.attribution.status === 'unavailable')),
     'every drain pressure signal has fail-closed or ready attribution');
+}
+
+console.log('\n=== 13. Horizon debtDirection from coupled projectDebts marks ===');
+{
+  function directionDebt(traj, id) {
+    return ((traj && traj.debtDirection && traj.debtDirection.debts) || [])
+      .find(d => d && d.id === id) || null;
+  }
+
+  const persistent = zeroSpendFixture({}, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 400, pending: 0, rate: 0, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 5000,
+  }]);
+  const persistentTraj = ask(persistent.plan, persistent.debts);
+  const persistWalk = independentCardMonthEnd(
+    400, 0, 0, 0, START, persistentTraj.debtDirection.through);
+  ok(near(persistWalk.balance, 400) && near(persistWalk.interest, 0) && persistWalk.paid === 0,
+    'independent zero-rate unpaid card stays $400 with $0 interest');
+  ok(persistentTraj.debtDirection && persistentTraj.debtDirection.status === 'ready',
+    'zero-rate unpaid card publishes ready debtDirection');
+  const persistRow = directionDebt(persistentTraj, 'card');
+  ok(persistRow && persistRow.direction === 'persistent'
+    && near(persistRow.opening, 400) && near(persistRow.ending, persistWalk.balance)
+    && persistRow.interest && persistRow.interest.status === 'calculated'
+    && near(persistRow.interest.amount, persistWalk.interest)
+    && persistRow.milestone == null,
+    'Forecast persistent identity matches the independent $400 stay');
+  ok(persistentTraj.debtDirection.persistent.join(',') === 'card'
+    && persistentTraj.debtDirection.declining.length === 0
+    && persistentTraj.debtDirection.increasing.length === 0
+    && persistentTraj.debtDirection.anySupportedIncrease === false,
+    'persistent partition lists only the unpaid zero-rate card');
+  ok(persistentTraj.debtDirection.household.direction === 'persistent'
+    && near(persistentTraj.debtDirection.household.opening, 400)
+    && near(persistentTraj.debtDirection.household.ending, 400),
+    'household total is persistent at the independent $400');
+  ok(!/headroom/.test(JSON.stringify(persistentTraj.debtDirection)),
+    'debtDirection JSON does not publish headroom as cash or as a direction input');
+  ok(persistentTraj.debtDirection.availableCreditIsNotCash === true
+    && !near(persistentTraj.debtDirection.household.opening, 4600, 1),
+    'available credit $4,600 is not treated as household cash or opening debt');
+
+  const rising = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+    obligations: [{
+      id: 'card-min', debtId: 'card', effect: 'payment',
+      label: 'Card minimum', frequency: 'monthly', day: 20,
+      amount: 10, confidence: 'confirmed',
+    }],
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 1000, pending: 0, rate: 29.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 5000,
+  }]);
+  const risingTraj = ask(rising.plan, rising.debts);
+  const risingWalk = independentCardMonthEnd(
+    1000, 29.99, 20, 10, START, risingTraj.debtDirection.through);
+  ok(risingWalk.balance > 1000 && risingWalk.interest > risingWalk.paid,
+    'independent high-rate $10 payment walk increases and interest exceeds paid',
+    `${risingWalk.balance}; interest ${risingWalk.interest}; paid ${risingWalk.paid}`);
+  const riseRow = directionDebt(risingTraj, 'card');
+  ok(riseRow && riseRow.direction === 'increasing'
+    && near(riseRow.opening, 1000)
+    && near(riseRow.ending, risingWalk.balance)
+    && riseRow.interest && riseRow.interest.status === 'calculated'
+    && near(riseRow.interest.amount, risingWalk.interest)
+    && near(riseRow.paid, risingWalk.paid)
+    && near(riseRow.delta, risingWalk.balance - 1000),
+    'Forecast increasing card matches independent ending, interest, and paid');
+  ok(risingTraj.debtDirection.increasing.join(',') === 'card'
+    && risingTraj.debtDirection.anySupportedIncrease === true
+    && risingTraj.debtDirection.household.direction === 'increasing'
+    && near(risingTraj.debtDirection.household.interest.amount, risingWalk.interest),
+    'household increasing interest identity is the independent coupled-walk interest');
+
+  const payoff = zeroSpendFixture({
+    startingCash: { amount: 5000 },
+    obligations: [{
+      id: 'card-min', debtId: 'card', effect: 'payment',
+      label: 'Card minimum', frequency: 'monthly', day: 20,
+      amount: 80, confidence: 'confirmed',
+    }],
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 150, pending: 0, rate: 0, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 5000,
+  }]);
+  const payoffTraj = ask(payoff.plan, payoff.debts);
+  const junPay = independentCardMonthEnd(150, 0, 20, 80, START, '2026-06-30');
+  const julPay = independentCardMonthEnd(150, 0, 20, 80, START, '2026-07-31');
+  ok(near(junPay.balance, 70) && near(julPay.balance, 0) && near(julPay.paid, 150),
+    'independent zero-rate $80 payment clears $150 on the July 20th payment',
+    `${junPay.balance} → ${julPay.balance}; paid ${julPay.paid}`);
+  const payRow = directionDebt(payoffTraj, 'card');
+  ok(payRow && payRow.direction === 'declining'
+    && near(payRow.opening, 150) && near(payRow.ending, 0)
+    && near(payRow.paid, 150)
+    && payRow.milestone && payRow.milestone.kind === 'cleared-within-published-horizon'
+    && payRow.milestone.month === '2026-07'
+    && payRow.milestone.asOf === '2026-07-31',
+    'Forecast declining card clears at the first published July month-end, not an invented intra-month date');
+  ok(payoffTraj.debtDirection.declining.join(',') === 'card'
+    && payoffTraj.debtDirection.anySupportedIncrease === false,
+    'cleared card is declining, not an increase and not ranked');
+
+  const spend = zeroSpendFixture({
+    startingCash: { amount: 8000 },
+    budget: {
+      basis: 'ytd',
+      categories: [{
+        id: 'groceries', label: 'Groceries', class: 'essential',
+        from: ['Groceries'], plannedWeekly: 500,
+      }],
+    },
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 400, pending: 0, rate: 0, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 5000,
+  }]);
+  const spendTraj = ask(spend.plan, spend.debts);
+  const spendWalk = independentCardMonthEnd(
+    400, 0, 0, 0, START, spendTraj.debtDirection.through);
+  ok(near(spendTraj.weeklyVariable.amount, 500),
+    'planned weeklyVariable is $500 so invented card borrowing would be visible');
+  ok(near(spendWalk.balance, 400),
+    'independent card walk still ignores planned cash spending');
+  const spendRow = directionDebt(spendTraj, 'card');
+  ok(spendRow && spendRow.direction === 'persistent' && near(spendRow.ending, 400)
+    && spendTraj.debtDirection.inventedBorrowing === false
+    && spendTraj.debtDirection.anySupportedIncrease === false,
+    'planned variable spending does not manufacture future card borrowing');
+
+  const mixed = zeroSpendFixture({
+    startingCash: { amount: 8000 },
+    obligations: [
+      {
+        id: 'visa-pay', debtId: 'visa', effect: 'payment',
+        label: 'Visa payment', frequency: 'monthly', day: 20,
+        amount: 100, confidence: 'confirmed',
+      },
+      {
+        id: 'store-min', debtId: 'store', effect: 'payment',
+        label: 'Store minimum', frequency: 'monthly', day: 20,
+        amount: 10, confidence: 'confirmed',
+      },
+    ],
+  }, [
+    {
+      id: 'visa', label: 'Synthetic Visa',
+      balance: 500, pending: 0, rate: 0, rateConvention: 'card',
+      structure: 'Revolving — synthetic', secured: false, limit: 5000,
+    },
+    {
+      id: 'store', label: 'Synthetic store card',
+      balance: 1000, pending: 0, rate: 29.99, rateConvention: 'card',
+      structure: 'Revolving — synthetic', secured: false, limit: 5000,
+    },
+  ]);
+  const mixedTraj = ask(mixed.plan, mixed.debts);
+  const visaWalk = independentCardMonthEnd(
+    500, 0, 20, 100, START, mixedTraj.debtDirection.through);
+  const storeWalk = independentCardMonthEnd(
+    1000, 29.99, 20, 10, START, mixedTraj.debtDirection.through);
+  const visaRow = directionDebt(mixedTraj, 'visa');
+  const storeRow = directionDebt(mixedTraj, 'store');
+  ok(visaWalk.balance === 0 && storeWalk.balance > 1000,
+    'independent mixed walk: Visa clears, store card increases');
+  ok(visaRow && visaRow.direction === 'declining' && near(visaRow.ending, 0)
+    && visaRow.milestone && visaRow.milestone.kind === 'cleared-within-published-horizon',
+    'Forecast Visa declines and clears on published marks');
+  ok(storeRow && storeRow.direction === 'increasing'
+    && near(storeRow.ending, storeWalk.balance)
+    && near(storeRow.interest.amount, storeWalk.interest),
+    'Forecast store card increases with independent interest identity');
+  ok(mixedTraj.debtDirection.declining.join(',') === 'visa'
+    && mixedTraj.debtDirection.increasing.join(',') === 'store'
+    && mixedTraj.debtDirection.anySupportedIncrease === true,
+    'mixed partitions follow mark order, not a rate ranking');
+  ok(mixedTraj.debtDirection.household.interest.status === 'calculated'
+    && near(mixedTraj.debtDirection.household.interest.amount,
+      roundCent(visaWalk.interest + storeWalk.interest)),
+    'household interest is the independent sum of coupled-walk interest');
+
+  const none = zeroSpendFixture({}, []);
+  const noneTraj = ask(none.plan, none.debts);
+  ok(noneTraj.debtDirection && noneTraj.debtDirection.status === 'ready'
+    && noneTraj.debtDirection.debts.length === 0
+    && noneTraj.debtDirection.anySupportedIncrease === false
+    && noneTraj.debtDirection.household.direction === 'persistent'
+    && near(noneTraj.debtDirection.household.opening, 0)
+    && near(noneTraj.debtDirection.household.ending, 0),
+    'no modelled debts is a ready persistent-zero picture, not an invented increase');
+
+  ok(!hasPolicyLeak(persistentTraj.debtDirection) && trajHasNoRank(persistentTraj)
+    && trajHasNoRank(risingTraj) && trajHasNoRank(payoffTraj) && trajHasNoRank(spendTraj),
+    'debtDirection JSON carries no ranking, affordability, or policy-threshold leak');
 }
 
 console.log('\n' + '═'.repeat(60));

@@ -10555,6 +10555,7 @@
       ranking: null,
       affordability: null,
       pressure: trajectoryPressureUnavailable(reason),
+      debtDirection: trajectoryDebtDirectionUnavailable(reason),
     };
   }
 
@@ -10579,6 +10580,38 @@
       ranking: null,
       recommendation: null,
       affordability: null,
+    };
+  }
+
+  function trajectoryDebtDirectionUnavailable(reason) {
+    return {
+      status: 'unavailable',
+      reason: reason || 'Coupled debt walk was unavailable.',
+      debts: [],
+      declining: [],
+      persistent: [],
+      increasing: [],
+      anySupportedIncrease: false,
+      inventedBorrowing: false,
+      availableCreditIsNotCash: true,
+      unpublishedMonthsContribute: false,
+      policyThresholds: 'none',
+      ranking: null,
+      recommendation: null,
+      affordability: null,
+    };
+  }
+
+  function trajectoryBalanceDirection(fromAmount, toAmount) {
+    const opening = roundCent(fromAmount);
+    const ending = roundCent(toAmount);
+    return {
+      opening,
+      ending,
+      delta: roundCent(ending - opening),
+      direction: ending < opening ? 'declining'
+        : ending > opening ? 'increasing'
+        : 'persistent',
     };
   }
 
@@ -11385,6 +11418,130 @@
     };
   }
 
+  // Horizon debt direction / consequence from the same coupled
+  // month-end projectDebts marks baselineTrajectory already publishes.
+  // First published mark versus last published mark after whole-cent
+  // rounding — not a comfort band, ranking, or affordability score.
+  // Planned weeklyVariable is a cash instruction; it does not invent
+  // future card borrowing. Available credit / headroom is not cash and
+  // is not a direction input. Unpublished debt months contribute no
+  // invented direction. Payoff is the first published month-end at
+  // which a modelled balance is $0 after a positive opening — the
+  // engine's existing marks, not Forecast.payoffModel.
+  function baselineTrajectoryDebtDirection(months) {
+    const published = (months || []).filter(trajectoryMonthHasPublishedDebt);
+    if (published.length < 2) {
+      return trajectoryDebtDirectionUnavailable(
+        published.length
+          ? 'A single published debt mark cannot establish direction.'
+          : 'No coupled debt walk was available for published months.');
+    }
+    const first = published[0];
+    const last = published[published.length - 1];
+    const firstDebt = first.debt;
+    const lastDebt = last.debt;
+    const household = trajectoryBalanceDirection(
+      trajectoryDebtTotal(firstDebt),
+      trajectoryDebtTotal(lastDebt));
+    household.consumer = trajectoryBalanceDirection(firstDebt.consumer, lastDebt.consumer);
+    household.secured = trajectoryBalanceDirection(firstDebt.secured, lastDebt.secured);
+    household.heloc = trajectoryBalanceDirection(firstDebt.heloc, lastDebt.heloc);
+    const paidTotal = trajectoryPaidTotal(lastDebt);
+    household.paid = paidTotal;
+    if (lastDebt.interestToDate != null && isFinite(lastDebt.interestToDate)) {
+      household.interest = {
+        status: 'calculated',
+        amount: roundCent(lastDebt.interestToDate),
+      };
+    } else {
+      household.interest = {
+        status: 'unavailable',
+        reason: 'Interest was not established on the coupled walk.',
+      };
+    }
+
+    const lastById = new Map();
+    for (const row of lastDebt.debts || []) {
+      if (row && row.id) lastById.set(row.id, row);
+    }
+    const debtsOut = [];
+    const declining = [];
+    const persistent = [];
+    const increasing = [];
+    for (const row of firstDebt.debts || []) {
+      if (!row || !row.id) continue;
+      const closing = lastById.get(row.id);
+      if (!closing) continue;
+      if (row.balance == null || !isFinite(row.balance)
+        || closing.balance == null || !isFinite(closing.balance)) continue;
+      const picture = trajectoryBalanceDirection(row.balance, closing.balance);
+      let interest;
+      if (closing.interest != null && isFinite(closing.interest)) {
+        interest = { status: 'calculated', amount: roundCent(closing.interest) };
+      } else {
+        interest = {
+          status: 'unavailable',
+          reason: 'Interest was not established on the coupled walk.',
+        };
+      }
+      let milestone = null;
+      if (picture.opening > 0 && picture.ending === 0) {
+        for (const month of published) {
+          const mark = ((month.debt && month.debt.debts) || [])
+            .find(d => d && d.id === row.id);
+          if (!mark || mark.balance == null || !isFinite(mark.balance)) {
+            milestone = null;
+            break;
+          }
+          if (roundCent(mark.balance) === 0) {
+            milestone = {
+              kind: 'cleared-within-published-horizon',
+              month: month.month,
+              asOf: month.debt.asOf || month.end,
+            };
+            break;
+          }
+        }
+      }
+      const entry = {
+        id: row.id,
+        label: closing.label || row.label || row.id,
+        opening: picture.opening,
+        ending: picture.ending,
+        delta: picture.delta,
+        direction: picture.direction,
+        paid: closing.paid != null && isFinite(closing.paid)
+          ? roundCent(closing.paid) : null,
+        interest,
+        milestone,
+      };
+      debtsOut.push(entry);
+      if (picture.direction === 'declining') declining.push(row.id);
+      else if (picture.direction === 'increasing') increasing.push(row.id);
+      else persistent.push(row.id);
+    }
+
+    return {
+      status: 'ready',
+      source: 'projectDebts-coupled-marks',
+      from: firstDebt.asOf || first.end,
+      through: lastDebt.asOf || last.end,
+      household,
+      debts: debtsOut,
+      declining,
+      persistent,
+      increasing,
+      anySupportedIncrease: increasing.length > 0,
+      inventedBorrowing: false,
+      availableCreditIsNotCash: true,
+      unpublishedMonthsContribute: false,
+      policyThresholds: 'none',
+      ranking: null,
+      recommendation: null,
+      affordability: null,
+    };
+  }
+
   // Trajectory-local estimated Dale/Seaspan payroll. Does not change
   // default expandEvents / simulate / recommend semantics. 2026 regular
   // net on the operating plan stays the incumbent modelled amount.
@@ -11771,7 +11928,14 @@
   // that reconciles to that signal's trajectory change, or fails
   // closed when candidate drivers cannot be established. It does not invent
   // a household minimum, breathing-room, safe-to-spend, RYG, risk-score,
-  // or affordability threshold.
+  // or affordability threshold. debtDirection is the same coupled
+  // month-end marks read as a horizon picture: which modelled debts
+  // decline, which stay persistent at whole-cent identity, whether any
+  // supported balance increases, interest the walk established, and
+  // first published month-end at which a modelled balance is $0.
+  // Planned weeklyVariable does not invent future card borrowing.
+  // Available credit is not cash. Unpublished debt months contribute
+  // no invented direction.
   function baselineTrajectory(plan, debts, asOf, opts) {
     opts = opts || {};
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
@@ -12041,6 +12205,7 @@
       reservedDaily: currentRegimeMonthly(plan) * 12 / 365.25,
       payrollDeposits: (regime && regime.allDeposits) || (regime && regime.deposits) || [],
     });
+    const debtDirection = baselineTrajectoryDebtDirection(series);
 
     return {
       status: 'ready',
@@ -12095,6 +12260,7 @@
       ],
       months: series,
       pressure,
+      debtDirection,
       provenance: {
         calculator: 'Forecast',
         primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts', 'daleEstimatedPayrollDeposits'],
@@ -12105,6 +12271,9 @@
         pressure: 'walk-derived',
         pressureAttribution: 'walk-derived-fail-closed',
         pressurePolicyThresholds: 'none',
+        debtDirection: 'walk-derived-coupled-marks',
+        debtDirectionInventedBorrowing: false,
+        availableCreditIsNotCash: true,
         incomeRegimesImplemented: regimeReady,
         incomeRegimesNamedFailClosed: !regimeReady,
         incomeRegimesDollarModel: regimeReady,
