@@ -230,11 +230,13 @@ const opti = F.simulate(plan, asOf, { scenario: 'optimistic', weeklyVariable: 0 
 ok(cons.daily.every((d, i) => d.balance <= expected.daily[i].balance + 1e-9), 'conservative never exceeds expected');
 ok(expected.daily.every((d, i) => d.balance <= opti.daily[i].balance + 1e-9), 'expected never exceeds optimistic');
 
-// Disabling an adjustable commitment raises the ending balance by its amount.
+// Warriors is a dated pre-tax floor (+ tax unverified), not a cash event.
 const warriors = plan.commitments.find(c => c.id === 'warriors');
+ok(warriors && warriors.date === '2026-09-23' && warriors.amount == null && near(warriors.amountMin, 895),
+  'Warriors is owner Logan U13 due 23 Sep with $895 floor only');
 const noWarriors = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, disabled: ['warriors'] });
-ok(near(noWarriors.ending - expected.ending, warriors.amount),
-  'disabling Warriors adds that commitment back to the ending cash');
+ok(near(noWarriors.ending, expected.ending),
+  'disabling Warriors does not change cash ending (dated range, not expandEvents cash)');
 
 // Extra debt payments reduce ending cash by the months applied.
 const extra = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, extraDebtMonthly: 200 });

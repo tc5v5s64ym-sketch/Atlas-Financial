@@ -507,28 +507,63 @@
                 "confidence": "confirmed",
                 "sinkingFund": true,
                 "settledOn": "2026-08-14",
-                "note": "Aug. 14 payday evidence: already paid. settledOn records that fact; the row is retained. Owner-confirmed 2026-08-16: there are currently NO pending Fusion instalments; the three live-plan $500 rows were stale and have been removed."
+                "note": "Aug. 14 payday evidence: already paid. settledOn records that fact; the row is retained. The stale three × $500 Fusion season rows were removed 2026-08-16; household Fusion season totals now live on fusion-household-* rows (owner 2026-09-16)."
             },
             {
                 "id": "warriors",
-                "date": "2026-09-15",
-                "label": "Warriors Elite Academy",
-                "amount": 800,
-                "budgetCategory": "sport",
-                "confidence": "estimated",
-                "adjustable": true,
-                "note": "Owner estimate ~$800, around Sep 2026, not yet invoiced. The 15th is the existing mid-month assumption already on this row; this absorption does not invent a new day.",
-                "sinkingFund": true
-            },
-            {
-                "id": "fusion-season",
-                "label": "Fusion season",
-                "amount": 2000,
-                "when": "late Sep 2026",
+                "date": "2026-09-23",
+                "label": "Logan Warriors Elite Academy U13",
+                "amount": null,
+                "amountMin": 895,
                 "budgetCategory": "sport",
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner estimate ~$2,000, likely beginning late Sep 2026. Not an invoice and not a confirmed instalment schedule. No day is invented. Camp and tryouts stay the settled rows; this is the upcoming season, not those."
+                "note": "Owner 2026-09-16: due 23 September 2026; $895 plus tax (owner due date wins over form-by 25 Sep noon). Tax dollars are not verified from PDF — no GST amount is invented; floor is pre-tax $895. Registration form deadline email and PDF fee exist; no LM ~$895 payment posted yet (LM Warriors keyword: Vancouver Warriors −$40 on 2026-08-11 only). Not verified settlement."
+            },
+            {
+                "id": "fusion-household-paid",
+                "date": "2026-09-10",
+                "label": "Fusion season — household (paid)",
+                "amount": 1200,
+                "budgetCategory": "sport",
+                "confidence": "confirmed",
+                "group": "fusion-household",
+                "sinkingFund": true,
+                "settledOn": "2026-09-10",
+                "note": "MATCH settled 2026-09-10 (Interac + live LM read-only match; no LM writes). Fusion paid −$1,200: Lunch Money lm_id 2482361282 | 2026-09-10 | SEND E-TFR ***gMe | TD Canada Trust BILLS ACCOUNT | Payment, Transfer | unreviewed uncleared. Interac: Amanda → FUSION WEST LACROSSE $1,200.00 CAD; message \"logan and lindens first payment\"; ref C1AkZfteDgMe. Gmail threads: Amanda Interac 1a08cf3b0a658140; Dale LM notify 1a08f9414e482d41. Kara Fusion ops: first-instalment split Linden $576.19 + Logan $602.44 (memo names both; do not invent further kid allocations for remaining season). Optional handoff: Atlas candidate tx-332 2026-09-10 $1,200 (payee stripped). Owner Dale 2026-09-16 Sep-10 chain context only (NOT Forecast income): +$3,125 E-TRANSFER ***sEg Amanda coaching gravy (Lavinio; lm_id 2482361281); −$1,200 Fusion MATCH (above); ±$1,925 IQ255 remainder to Amanda tennis account for her coaches (3,125−1,200=1,925). Coaching never plan.income, Forecast income, or baselineTrajectory income — do not encode $3,125 or $1,925 as plan income. Amanda Tennis BC stays planned salary only. Household Fusion $4,500: $1,200 paid; remaining fusion-household-oct/nov/dec $1,200 / $1,200 / $900 ($3,300)."
+            },
+            {
+                "id": "fusion-household-oct",
+                "date": "2026-10-31",
+                "label": "Fusion season — household (October)",
+                "amount": 1200,
+                "budgetCategory": "sport",
+                "confidence": "estimated",
+                "group": "fusion-household",
+                "sinkingFund": true,
+                "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $1,200 in October. Part of $4,500 household total after $1,200 Fusion Interac paid (fusion-household-paid)."
+            },
+            {
+                "id": "fusion-household-nov",
+                "date": "2026-11-30",
+                "label": "Fusion season — household (November)",
+                "amount": 1200,
+                "budgetCategory": "sport",
+                "confidence": "estimated",
+                "group": "fusion-household",
+                "sinkingFund": true,
+                "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $1,200 in November."
+            },
+            {
+                "id": "fusion-household-dec",
+                "date": "2026-12-31",
+                "label": "Fusion season — household (December)",
+                "amount": 900,
+                "budgetCategory": "sport",
+                "confidence": "estimated",
+                "group": "fusion-household",
+                "sinkingFund": true,
+                "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $900 in December. Remaining schedule after paid portion totals $3,300 ($1,200 + $1,200 + $900)."
             },
             {
                 "id": "burrards-team-fees",

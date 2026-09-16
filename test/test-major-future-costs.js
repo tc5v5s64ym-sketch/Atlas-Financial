@@ -27,7 +27,6 @@ const rows = plan.commitments || [];
 const byId = Object.fromEntries(rows.map(r => [r.id, r]));
 
 const NEW_IDS = [
-  'fusion-season',
   'burrards-team-fees',
   'seattle-nov',
   'seattle-dec',
@@ -40,7 +39,6 @@ const NEW_IDS = [
   'vehicle-maintenance',
 ];
 const POINT = {
-  'fusion-season': 2000,
   'burrards-team-fees': 700,
   'seattle-nov': 1200,
   'seattle-dec': 1200,
@@ -89,8 +87,13 @@ for (const [id, [lo, hi]] of Object.entries(RANGES)) {
 for (const id of FLEXIBLE) {
   ok(byId[id] && byId[id].adjustable === true, `${id} is marked flexible`);
 }
-ok(byId.warriors && byId.warriors.date === '2026-09-15' && near(byId.warriors.amount, 800),
-  'Warriors keeps its existing dated row — this PR does not invent a second one');
+ok(byId.warriors && byId.warriors.date === '2026-09-23'
+  && byId.warriors.amount == null && near(byId.warriors.amountMin, 895),
+  'Warriors is Logan U13 due 23 Sep with $895 pre-tax floor (+ tax not invented)');
+ok(byId['fusion-household-paid'] && near(byId['fusion-household-paid'].amount, 1200)
+  && byId['fusion-household-paid'].settledOn === '2026-09-10',
+  'Fusion paid is settled on 2026-09-10 Interac evidence date');
+ok(!byId['fusion-season'], 'fusion-season stale estimate is removed');
 
 console.log('\n=== not merely prose ===');
 ok(data.commitments.items == null && data.commitments.schedule == null,
@@ -108,8 +111,11 @@ const newCash = events.filter(e => NEW_IDS.includes(e.id));
 ok(newCash.length === 0,
   'expandEvents emits no cash event for an undated absorbed cost',
   newCash.map(e => e.id).join(',') || 'none');
-ok(events.some(e => e.id === 'warriors' && e.date === '2026-09-15'),
-  'Warriors still emits on its existing 15 September date');
+ok(!events.some(e => e.id === 'warriors'),
+  'Warriors + tax row emits no invented cash event');
+const seq = F.fundingSequence(plan, asOf, {});
+ok(seq.some(c => c.id === 'warriors' && c.date === '2026-09-23'),
+  'Warriors stays in fundingSequence on 23 September');
 const later = F.expandEvents(plan, asOf, '2027-12-31', {});
 ok(!later.some(e => NEW_IDS.includes(e.id)),
   'a longer expander walk still invents no day for undated rows');
@@ -132,16 +138,41 @@ const budget = F.budgetBreakdown(plan, require('../public/periods.json'), {
   asOf,
 });
 ok(!(budget.sinkingItems || []).some(s =>
-  /Fusion season|Burrards team fees|Seattle tournament|Christmas 2026|Downstairs couch|Exterior painting|Indio|Provincials|Home insurance|Vehicle maintenance/.test(s.label)),
-  'undated rows are not smeared into 91-day sinkingMonthly');
+  /Burrards team fees|Seattle tournament|Christmas 2026|Downstairs couch|Exterior painting|Indio|Provincials|Home insurance|Vehicle maintenance/.test(s.label)),
+  'undated absorbed rows are not smeared into 91-day sinkingMonthly');
+const fusionSinking = (budget.sinkingItems || []).filter(s => /Fusion season — household/.test(s.label));
+ok(fusionSinking.length >= 3,
+  'dated Fusion household rows within the window may appear in sinkingMonthly',
+  String(fusionSinking.length));
 
 console.log('\n=== published point-estimate total is independently summed ===');
-const preexistingPoints = 800;
-const absorbedPoints = 2000 + 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 3131.76 + 2400;
-const HAND_TOTAL = preexistingPoints + absorbedPoints;
-ok(near(preexistingPoints, 800) && near(absorbedPoints, 16831.76)
-  && near(HAND_TOTAL, 17631.76),
-  'hand total is unsettled Warriors $800 plus the absorbed point estimates; settled rows are excluded');
+const fusionHouseholdUnsettled = ['fusion-household-paid', 'fusion-household-oct',
+  'fusion-household-nov', 'fusion-household-dec']
+  .map(id => byId[id])
+  .filter(c => c && c.amount != null && !F.commitmentSettledBy(c, asOf))
+  .reduce((s, c) => s + c.amount, 0);
+ok(near(fusionHouseholdUnsettled, 4500),
+  'at Aug. 19 opening, paid row is not yet settledOn-relative — Fusion sums to $4,500',
+  String(fusionHouseholdUnsettled));
+const pubSep11 = F.publicationTotals(Object.assign({}, data, {
+  meta: Object.assign({}, data.meta, { asOf: '2026-09-11' }),
+}));
+const fusionAfterSettled = (pubSep11.commitmentItems || [])
+  .filter(i => /^fusion-household-/.test(i.id))
+  .reduce((s, i) => s + (i.amount || 0), 0);
+ok(near(fusionAfterSettled, 3300),
+  'after settledOn, publication encumbers remaining Fusion instalments only',
+  String(fusionAfterSettled));
+const fusionRemainingOnly = ['fusion-household-oct', 'fusion-household-nov', 'fusion-household-dec']
+  .reduce((s, id) => s + (byId[id] ? byId[id].amount : 0), 0);
+ok(near(fusionRemainingOnly, 3300),
+  'remaining instalments alone are $3,300, independent of owner-stated paid row',
+  String(fusionRemainingOnly));
+const preexistingPoints = 0;
+const absorbedPoints = 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 3131.76 + 2400;
+const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
+ok(near(absorbedPoints, 14831.76) && near(HAND_TOTAL, 19331.76),
+  'hand total at Aug. 19 opening includes paid + remaining Fusion until settledOn');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',
   String(pub.commitmentsTotal));
@@ -246,14 +277,16 @@ for (const c of rows) {
     ok(!amount.includes('$0.00'),
       `${c.id} does not publish $0.00 for a null amount`,
       amount);
-    const expected = Object.prototype.hasOwnProperty.call(RANGES, c.id)
-      ? independentWholeDollar(RANGES[c.id][0]) + '–' + independentWholeDollar(RANGES[c.id][1])
-      : independentAmountText(c);
-    ok(amount.includes(expected),
-      `${c.id} amount span publishes the independent range ${expected}`,
-      amount);
+    if (Object.prototype.hasOwnProperty.call(RANGES, c.id) || c.amountMin != null) {
+      const expected = Object.prototype.hasOwnProperty.call(RANGES, c.id)
+        ? independentWholeDollar(RANGES[c.id][0]) + '–' + independentWholeDollar(RANGES[c.id][1])
+        : independentAmountText(c);
+      ok(amount.includes(expected),
+        `${c.id} amount span publishes the independent range ${expected}`,
+        amount);
+    }
   }
-  if (c.date == null) {
+  if (c.date == null && !independentlySettled(c)) {
     ok(!label.includes('Invalid Date'),
       `${c.id} does not publish Invalid Date for a missing date`,
       label);
@@ -270,7 +303,9 @@ ok(independentlySettled(byId.burrard1)
   && independentlySettled(byId.burrard2)
   && independentlySettled(byId.fusioncamp)
   && independentlySettled(byId.tryouts),
-  'the four currently settled rows are still settled on plan inputs');
+  'the four Aug-settled rows are still settled on plan inputs');
+ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].settledOn === '2026-09-10',
+  'Fusion paid row settledOn matches Interac evidence date');
 
 if (failures) {
   console.error(`\n${failures} check(s) failed`);

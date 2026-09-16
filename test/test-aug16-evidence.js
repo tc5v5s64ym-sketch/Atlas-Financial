@@ -259,10 +259,17 @@ console.log('\n=== 10–11. stale Fusion 3 × $500 gone; future estimate is not 
   ok(!events.some(e => /fusion-sep|fusion-oct|fusion-nov/.test(e.id)
     || (e.label && /Fusion season —/.test(e.label) && near(Math.abs(e.amount), 500))),
     'Forecast emits no confirmed $500 Fusion season cash events');
-  const item = (plan.commitments || []).find(c => c.id === 'fusion-season');
-  ok(item && item.confidence === 'estimated' && item.date == null
-    && near(item.amount, 2000),
-    'upcoming Fusion is an undated estimated plan row, not a confirmed invoice');
+  ok(!(plan.commitments || []).some(c => c.id === 'fusion-season'),
+    'stale fusion-season $2,000 row is gone');
+  const fusionRemaining = (plan.commitments || [])
+    .filter(c => /^fusion-household-(oct|nov|dec)$/.test(c.id))
+    .reduce((s, c) => s + (c.amount || 0), 0);
+  ok(near(fusionRemaining, 3300),
+    'remaining Fusion schedule is $3,300 (Oct/Nov/Dec), independent of paid portion',
+    money(fusionRemaining));
+  const fusionPaid = (plan.commitments || []).find(c => c.id === 'fusion-household-paid');
+  ok(fusionPaid && near(fusionPaid.amount, 1200) && fusionPaid.settledOn === '2026-09-10',
+    'paid $1,200 settledOn 2026-09-10 (Interac); remaining instalments separate');
   ok(/^ANSWERED\b/.test(statusOf('Q23')), 'Q23 is ANSWERED', statusOf('Q23'));
 }
 
