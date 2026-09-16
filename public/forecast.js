@@ -12260,7 +12260,17 @@
     const close = input.close || null;
     const closeMissingReason = input.closeMissingReason
       || 'Forecast could not read month-end cash.';
-    const spanEvents = allEvents.filter(e => e && span && e.date >= span.start && e.date <= span.end);
+    // Same application date simulate / projectDebts already use. A carried
+    // unresolved joint-cash outflow keeps event.date; only cash application
+    // lands on the walk opening. Filtering the span on scheduled date would
+    // drop that outflow from Stage 1 while span-end cash still deducts it.
+    // Income, non-cash, and in-window events keep scheduled-date semantics.
+    const walkStart = input.walkStart;
+    const spanEvents = allEvents.filter(e => {
+      if (!e || !span) return false;
+      const apply = cashWalkDate(e, walkStart);
+      return apply >= span.start && apply <= span.end;
+    });
     const incomeEvents = spanEvents.filter(e => e.kind === 'income');
     const dale2027Events = incomeEvents.filter(e =>
       isDalePayrollOrBonusIncome(e)
@@ -12442,6 +12452,7 @@
       allEvents: events,
       weeklyVariable: weekly,
       walkDaily: sim.daily,
+      walkStart: day,
       isDalePayrollOrBonusIncome,
       regimeReady,
       estimatedThrough,

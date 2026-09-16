@@ -175,10 +175,25 @@ function independentWalkDays(walkStart, walkEnd, spanStart, spanEnd) {
   return n;
 }
 
+// Independent of Forecast.cashWalkDate: joint-cash outflows scheduled
+// before the walk start apply at the opening; income / non-cash / in-window
+// events keep their scheduled date.
+function independentCashWalkDate(event, start) {
+  if (event && start && event.date < start
+      && event.amount < 0 && event.kind !== 'noncash' && event.jointCash !== false) {
+    return start;
+  }
+  return event && event.date;
+}
+
 function independentSpan(plan, debts, span, asOf, periods) {
   const walk = independentWalkEvents(plan, debts, asOf, periods);
-  const events = (walk.events || []).filter(e =>
-    e && e.date >= span.start && e.date <= span.end);
+  const walkStart = asOf || START;
+  const events = (walk.events || []).filter(e => {
+    if (!e) return false;
+    const apply = independentCashWalkDate(e, walkStart);
+    return apply >= span.start && apply <= span.end;
+  });
   const walkDays = independentWalkDays(
     walk.horizon.start, walk.horizon.end, span.start, span.end);
   const sumKind = (pred, sign) => roundCent(events.filter(pred)
@@ -288,6 +303,8 @@ console.log('=== 1. Forecast is the sole calculator; pay-period helper is not ex
     'span picture does not search recommend, paydayAllocation, nextDollar, or the scenario');
   ok(!/safeToSpend|breathingRoom|minCash|\bryg\b/.test(pictureFn),
     'pay-period helper invents no min-cash / breathing-room / safe-to-spend / RYG');
+  ok(/cashWalkDate\(/.test(pictureFn),
+    'span picture attributes funding events by incumbent cashWalkDate, not scheduled date alone');
   const planning = read('public/planning.js');
   const packet = read('scripts/assistant-packet.js');
   const talk = read('public/talk.js');
@@ -484,7 +501,140 @@ console.log('\n=== 5. Stage 3 extras stay extraDebtMonthly / walk kind:extra; mo
     'pay-period Stage 3 extras are not the planned extra plus the scenario amount');
 }
 
-console.log('\n=== 6. Live Seaspan series: clipped opening, honest $0 extras, 2027 fail-closed ===');
+console.log('\n=== 6. Carried unresolved joint-cash outflow uses cashWalkDate, not scheduled date ===');
+{
+  const CARRY_DATE = '2026-06-10';
+  const CARRY = 237;
+  const LATER_DATE = '2026-06-28';
+  const LATER = 41;
+  const shared = {
+    startingCash: { amount: 10000 },
+    defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
+  };
+  const base = fixture(shared);
+  const carried = fixture(Object.assign({}, shared, {
+    bills: (base.plan.bills || []).concat([{
+      id: 'carried-once-joint',
+      label: 'Carried once joint-cash bill',
+      frequency: 'once',
+      date: CARRY_DATE,
+      amount: CARRY,
+      confidence: 'confirmed',
+    }]),
+  }));
+  const withLater = fixture(Object.assign({}, shared, {
+    bills: (base.plan.bills || []).concat([{
+      id: 'later-once-joint',
+      label: 'In-window once joint-cash bill',
+      frequency: 'once',
+      date: LATER_DATE,
+      amount: LATER,
+      confidence: 'confirmed',
+    }]),
+  }));
+  const withPastIncome = fixture(Object.assign({}, shared, {
+    income: (base.plan.income || []).concat([{
+      id: 'past-once-income',
+      label: 'Past once income',
+      frequency: 'once',
+      date: CARRY_DATE,
+      amount: 500,
+      confidence: 'confirmed',
+    }]),
+  }));
+
+  const walk = independentWalkEvents(carried.plan, carried.debts);
+  const carriedEvent = (walk.events || []).find(e => e.id === 'carried-once-joint');
+  ok(carriedEvent && carriedEvent.date === CARRY_DATE && carriedEvent.kind === 'bill'
+    && carriedEvent.amount === -CARRY && carriedEvent.date < START,
+    'expandEvents keeps the unresolved once bill on its scheduled date before the walk start');
+  ok(independentCashWalkDate(carriedEvent, START) === START,
+    'independent cashWalkDate applies that joint-cash outflow at the opening');
+
+  const trajBase = ask(base.plan, base.debts);
+  const traj = ask(carried.plan, carried.debts);
+  const first = traj.payPeriods[0];
+  const firstBase = trajBase.payPeriods[0];
+  ok(first && first.start === START && CARRY_DATE < first.start
+    && firstBase && firstBase.start === START,
+    'scheduled date sits before the clipped first pay-period');
+  const scheduledHits = (walk.events || []).filter(e =>
+    e.id === 'carried-once-joint' && e.date >= first.start && e.date <= first.end);
+  ok(scheduledHits.length === 0,
+    'a scheduled-date span filter would omit the carried bill from the first period');
+  const appliedHits = (walk.events || []).filter(e =>
+    e.id === 'carried-once-joint'
+    && independentCashWalkDate(e, START) >= first.start
+    && independentCashWalkDate(e, START) <= first.end);
+  ok(appliedHits.length === 1,
+    'cashWalkDate places the carried bill inside the clipped first period');
+
+  const expected = independentSpan(carried.plan, carried.debts, first);
+  ok(near(expected.bills, firstBase.stage1.bills.amount + CARRY)
+    && near(first.stage1.bills.amount, expected.bills)
+    && near(first.stage1.bills.amount, firstBase.stage1.bills.amount + CARRY),
+    'first-period Stage 1 bills include the carried amount applied at opening',
+    `${first.stage1.bills.amount} vs base ${firstBase.stage1.bills.amount} + ${CARRY}`);
+  ok(near(first.stage1.result.amount, firstBase.stage1.result.amount - CARRY)
+    && near(first.stage1.result.amount, expected.stage1),
+    'first-period Stage 1 result is lower by the carried amount');
+
+  const weekly = independentWeekly(carried.plan);
+  const sim = F.simulate(carried.plan, START, {
+    weeklyVariable: weekly,
+    extraDebtMonthly: 0,
+    periods: periodsFixture(),
+  });
+  const simBase = F.simulate(base.plan, START, {
+    weeklyVariable: independentWeekly(base.plan),
+    extraDebtMonthly: 0,
+    periods: periodsFixture(),
+  });
+  const close = (sim.daily || []).find(d => d.date === first.end);
+  const closeBase = (simBase.daily || []).find(d => d.date === first.end);
+  ok(close && closeBase && near(close.balance, closeBase.balance - CARRY),
+    'incumbent simulate period-end cash deducts the carried amount at opening');
+  ok(near(first.cash.amount, close.balance)
+    && near(first.cash.amount, firstBase.cash.amount - CARRY)
+    && near(firstBase.cash.amount - first.cash.amount,
+      first.stage1.bills.amount - firstBase.stage1.bills.amount),
+    'published first-period cash matches simulate and the Stage 1 bills increase');
+
+  const june = traj.months.find(m => m.month === '2026-06');
+  const juneBase = trajBase.months.find(m => m.month === '2026-06');
+  const expectedJune = independentSpan(carried.plan, carried.debts, june);
+  ok(june && june.start === START && CARRY_DATE < june.start
+    && near(june.stage1.bills.amount, juneBase.stage1.bills.amount + CARRY)
+    && near(june.stage1.bills.amount, expectedJune.bills)
+    && near(june.cash.amount, juneBase.cash.amount - CARRY),
+    'clipped first month Stage 1 bills and cash also include the opening-applied carry');
+
+  const interior = traj.payPeriods.find(p => p.payday === '2026-06-26');
+  const interiorBase = trajBase.payPeriods.find(p => p.payday === '2026-06-26');
+  ok(interior && interiorBase
+    && near(interior.stage1.bills.amount, interiorBase.stage1.bills.amount)
+    && near(interior.cash.amount, interiorBase.cash.amount - CARRY),
+    'later periods do not re-count the carried bill; cash already moved at opening');
+
+  const trajLater = ask(withLater.plan, withLater.debts);
+  const firstLater = trajLater.payPeriods[0];
+  const laterPeriod = trajLater.payPeriods.find(p => p.payday === '2026-06-26');
+  ok(LATER_DATE > firstLater.start
+    && near(firstLater.stage1.bills.amount, firstBase.stage1.bills.amount)
+    && near(laterPeriod.stage1.bills.amount, interiorBase.stage1.bills.amount + LATER),
+    'a joint-cash bill scheduled after opening keeps scheduled-date attribution');
+
+  const trajIncome = ask(withPastIncome.plan, withPastIncome.debts);
+  const firstIncome = trajIncome.payPeriods[0];
+  const pastIncomeEvents = independentWalkEvents(withPastIncome.plan, withPastIncome.debts)
+    .events.filter(e => e.id === 'past-once-income');
+  ok(pastIncomeEvents.length === 0
+    && near(firstIncome.stage1.income.amount, firstBase.stage1.income.amount)
+    && near(firstIncome.cash.amount, firstBase.cash.amount),
+    'once income before start keeps window semantics — it is not carried onto opening Stage 1 or cash');
+}
+
+console.log('\n=== 7. Live Seaspan series: clipped opening, honest $0 extras, 2027 fail-closed ===');
 {
   const live = JSON.parse(fs.readFileSync(DATA, 'utf8'));
   const periods = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/periods.json'), 'utf8'));
