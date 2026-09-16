@@ -1005,8 +1005,33 @@ console.log('\n=== 11. Objective pressure signals from the existing walk ===');
     'independent cash after the commitment is $4,200');
   const dated = signalsOf(commitTraj, 'dated-commitment');
   ok(dated.length === 1 && dated[0].id === 'known-cost' && dated[0].date === '2026-08-15'
-    && near(dated[0].amount, 800) && near(dated[0].cashAfter, 4200),
+    && near(dated[0].amount, 800) && near(dated[0].cashAfter, 4200)
+    && dated[0].trust === 'calculated',
     'dated-commitment matches the independent event and post-event cash');
+
+  const estCommit = zeroSpendFixture({
+    startingCash: { amount: 5000 },
+    commitments: [{
+      id: 'est-cost', label: 'Synthetic estimated commitment',
+      date: '2026-08-15', amount: 800, flexibility: 'required', confidence: 'estimated',
+    }],
+  }, []);
+  const estCommitTraj = ask(estCommit.plan, estCommit.debts);
+  const estCommitEvents = F.expandEvents(estCommit.plan, START, '2026-08-15')
+    .filter(e => e.kind === 'commitment');
+  ok(estCommitEvents.length === 1 && estCommitEvents[0].date === '2026-08-15'
+    && estCommitEvents[0].amount === -800
+    && estCommitEvents[0].confidence === 'estimated',
+    'independent expandEvents retains estimated confidence on the $800 commitment');
+  const estCommitWalk = independentDailyCloses(5000, START, '2026-08-15', estCommitEvents, 0, 0);
+  const estCommitDay = estCommitWalk.daily.find(d => d.date === '2026-08-15');
+  ok(estCommitDay && near(estCommitDay.amount, 4200),
+    'independent cash after the estimated commitment is still $4,200');
+  const estDated = signalsOf(estCommitTraj, 'dated-commitment');
+  ok(estDated.length === 1 && estDated[0].id === 'est-cost' && estDated[0].date === '2026-08-15'
+    && near(estDated[0].amount, 800) && near(estDated[0].cashAfter, 4200)
+    && estDated[0].trust === 'estimated',
+    'dated-commitment keeps the weaker estimated input trust on a calculated cash walk');
 
   const rising = zeroSpendFixture({
     startingCash: { amount: 2000 },
@@ -1066,6 +1091,28 @@ console.log('\n=== 11. Objective pressure signals from the existing walk ===');
   const alreadySignal = signalsOf(alreadyTraj, 'debt-limit-crossing')[0];
   ok(alreadySignal && alreadySignal.alreadyOver === true && alreadySignal.date === START,
     'an opening already over the limit is reported as alreadyOver, not a comfort score');
+
+  const unknownPending = zeroSpendFixture({
+    startingCash: { amount: 2000 },
+  }, [{
+    id: 'card', label: 'Synthetic card',
+    balance: 99, pendingUnknown: true, rate: 19.99, rateConvention: 'card',
+    structure: 'Revolving — synthetic', secured: false, limit: 100,
+  }]);
+  const unknownPendingTraj = ask(unknownPending.plan, unknownPending.debts);
+  const unknownPostedWalk = independentCardMonthEnd(
+    99, 19.99, 0, 0, START, addDays(START, 90), 100);
+  ok(99 < 100,
+    'independent posted opening $99 is below the $100 limit');
+  ok(unknownPostedWalk.firstOver != null,
+    'independent posted-only walk would invent a future crossing',
+    String(unknownPostedWalk.firstOver));
+  ok((99 + 2) > 100,
+    'independent unknown pending of $2 or more would already be over at opening');
+  const unknownCrossed = signalsOf(unknownPendingTraj, 'debt-limit-crossing');
+  ok(unknownCrossed.length === 0,
+    'debt-limit-crossing is withheld while pending exposure is unknown',
+    JSON.stringify(unknownCrossed));
 }
 
 console.log('\n' + '═'.repeat(60));

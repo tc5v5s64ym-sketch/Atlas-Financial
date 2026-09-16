@@ -8606,7 +8606,8 @@
       crossings: state.filter(s => s.firstOver)
         .map(s => ({ id: s.id, label: s.label, date: s.firstOver, limit: s.limit,
           day: diffDays(start, s.firstOver),
-          alreadyOver: s.limit != null && s.opening > s.limit }))
+          alreadyOver: s.limit != null && s.opening > s.limit,
+          pendingUnknown: !!s.pendingUnknown }))
         .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
       // Everything an extra payment did NOT reach, so an untargeted one is
       // visible rather than silently vanishing into cash.
@@ -10597,6 +10598,25 @@
     return status === 'estimated' ? 'estimated' : 'calculated';
   }
 
+  // Signal trust is the weaker of its inputs. An estimated household
+  // input is never published as calculated.
+  function trajectoryInputTrust(confidence) {
+    return confidence === 'confirmed' ? 'calculated' : 'estimated';
+  }
+
+  function trajectoryWeakerTrust() {
+    for (let i = 0; i < arguments.length; i++) {
+      if (arguments[i] === 'estimated') return 'estimated';
+    }
+    return 'calculated';
+  }
+
+  function trajectoryDebtPendingUnknown(debts, debtId) {
+    if (!debtId || !Array.isArray(debts)) return false;
+    const debt = debts.find(row => row && row.id === debtId);
+    return pendingUnknown(debt);
+  }
+
   function trajectoryDebtTotal(debt) {
     return roundCent((Number(debt && debt.consumer) || 0) + (Number(debt && debt.secured) || 0));
   }
@@ -10619,6 +10639,7 @@
     const events = Array.isArray(input.events) ? input.events : [];
     const months = Array.isArray(input.months) ? input.months : [];
     const crossings = Array.isArray(input.crossings) ? input.crossings : [];
+    const debts = Array.isArray(input.debts) ? input.debts : [];
     const walkStart = input.walkStart || null;
     const weeklyVariable = Number(input.weeklyVariable) || 0;
     const reservedDaily = Number(input.reservedDaily) || 0;
@@ -10812,7 +10833,9 @@
         label: event.label || null,
         amount,
         cashAfter: day ? day.amount : null,
-        trust: day ? day.trust : trajectoryCashTrust(month.cash.status),
+        trust: trajectoryWeakerTrust(
+          trajectoryInputTrust(event.confidence),
+          day ? day.trust : trajectoryCashTrust(month.cash.status)),
       });
     }
 
@@ -10860,6 +10883,12 @@
       if (!crossing || !crossing.date) continue;
       const month = monthForDate(crossing.date);
       if (!month || !trajectoryMonthHasPublishedDebt(month)) continue;
+      // A below-limit posted opening plus unknown pending is not a
+      // knowable crossing: pending may already put the account over.
+      // Posted already-over remains knowable regardless of pending.
+      const pendingUnknowable = crossing.pendingUnknown === true
+        || trajectoryDebtPendingUnknown(debts, crossing.id);
+      if (pendingUnknowable && !crossing.alreadyOver) continue;
       signals.push({
         kind: 'debt-limit-crossing',
         date: crossing.date,
@@ -11278,8 +11307,10 @@
   // fails closed. Owner raise/bonus rates are read from the plan; they
   // are not Forecast constants. pressure is derived only from that same
   // walk: mechanical troughs, sign changes, month-over-month cash
-  // declines, outflow-versus-inflow, dated commitments, coupled debt
-  // direction, and incumbent projectDebts crossings. It does not invent
+  // declines, outflow-versus-inflow, dated commitments (weaker of
+  // input confidence and cash walk), coupled debt direction, and
+  // incumbent projectDebts crossings when pending exposure is knowable.
+  // It does not invent
   // a household minimum, breathing-room, safe-to-spend, RYG, risk-score,
   // or affordability threshold.
   function baselineTrajectory(plan, debts, asOf, opts) {
@@ -11546,6 +11577,7 @@
       events,
       months: series,
       crossings: (debtWalk && debtWalk.crossings) || [],
+      debts,
       weeklyVariable: weekly,
       reservedDaily: currentRegimeMonthly(plan) * 12 / 365.25,
     });
