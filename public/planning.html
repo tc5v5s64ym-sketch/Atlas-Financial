@@ -33,46 +33,59 @@
 <div class="wrap wrap-reading">
 
   <section id="planning" data-page-shell="planning">
-    <div class="kicker">Planning</div>
-    <h1>Planning</h1>
-    <p class="sub">Known future costs Atlas is protecting and planning for. Each one is a Forecast verdict on the master plan; the payday plan itself is on <a href="/">Budget</a>.</p>
-    <p class="lede" id="planning-lede"></p>
+    <div class="kicker">Trajectory</div>
+    <h1>Your Financial Road Ahead</h1>
+    <p class="sub">See how expected income, bills, planned spending, and debt strategy fit together on the Forecast baseline walk — and where pressure appears.</p>
 
-    <div id="planning-list" class="planning-list" aria-label="Future costs">
-      <p class="lede">Loading the served opening…</p>
+    <div id="planning-road-ahead" class="planning-road-ahead" aria-label="Financial road ahead dashboard">
+      <p class="lede">Loading trajectory…</p>
     </div>
 
-    <p class="lede footnote" id="planning-note"></p>
+    <details class="planning-road-disclosure">
+      <summary>Known future costs Atlas is protecting</summary>
+      <p class="lede" id="planning-lede"></p>
+      <div id="planning-list" class="planning-list" aria-label="Future costs">
+        <p class="lede">Loading the served opening…</p>
+      </div>
+      <p class="lede footnote" id="planning-note"></p>
+    </details>
 
-    <div class="kicker" style="margin-top:28px">Baseline trajectory</div>
-    <h2 class="subhead">Monthly cash and debt</h2>
-    <p class="lede" id="planning-trajectory-lede"></p>
-    <div id="planning-trajectory" class="planning-trajectory" aria-label="Baseline trajectory by month">
-      <p class="lede">Loading baseline trajectory…</p>
-    </div>
-    <p class="lede footnote" id="planning-trajectory-note"></p>
+    <details class="planning-road-disclosure">
+      <summary>Monthly cash and debt (full table)</summary>
+      <p class="lede" id="planning-trajectory-lede"></p>
+      <div id="planning-trajectory" class="planning-trajectory" aria-label="Baseline trajectory by month">
+        <p class="lede">Loading baseline trajectory…</p>
+      </div>
+      <p class="lede footnote" id="planning-trajectory-note"></p>
+    </details>
 
-    <h2 class="subhead" style="margin-top:28px">Does normal life work in this period?</h2>
-    <p class="lede" id="planning-trajectory-funding-lede"></p>
-    <div id="planning-trajectory-funding-picker" class="planning-trajectory-funding-picker-wrap"></div>
-    <div id="planning-trajectory-funding" class="planning-trajectory-funding" aria-label="Three-stage funding for selected period">
-      <p class="lede">Loading three-stage funding…</p>
-    </div>
-    <p class="lede footnote" id="planning-trajectory-funding-note"></p>
+    <details class="planning-road-disclosure">
+      <summary>Three-stage funding picker (legacy layout)</summary>
+      <p class="lede" id="planning-trajectory-funding-lede"></p>
+      <div id="planning-trajectory-funding-picker" class="planning-trajectory-funding-picker-wrap"></div>
+      <div id="planning-trajectory-funding" class="planning-trajectory-funding" aria-label="Three-stage funding for selected period">
+        <p class="lede">Loading three-stage funding…</p>
+      </div>
+      <p class="lede footnote" id="planning-trajectory-funding-note"></p>
+    </details>
 
-    <h2 class="subhead" style="margin-top:28px">When does this plan come under pressure?</h2>
-    <p class="lede" id="planning-trajectory-pressure-lede"></p>
-    <div id="planning-trajectory-pressure" class="planning-trajectory-pressure" aria-label="Baseline trajectory pressure signals">
-      <p class="lede">Loading pressure signals…</p>
-    </div>
-    <p class="lede footnote" id="planning-trajectory-pressure-note"></p>
+    <details class="planning-road-disclosure">
+      <summary>All pressure signals on the baseline walk</summary>
+      <p class="lede" id="planning-trajectory-pressure-lede"></p>
+      <div id="planning-trajectory-pressure" class="planning-trajectory-pressure" aria-label="Baseline trajectory pressure signals">
+        <p class="lede">Loading pressure signals…</p>
+      </div>
+      <p class="lede footnote" id="planning-trajectory-pressure-note"></p>
+    </details>
 
-    <h2 class="subhead" style="margin-top:28px">Which debts decline, stay level, or rise?</h2>
-    <p class="lede" id="planning-trajectory-debt-direction-lede"></p>
-    <div id="planning-trajectory-debt-direction" class="planning-trajectory-debt-direction" aria-label="Baseline trajectory debt direction">
-      <p class="lede">Loading debt direction…</p>
-    </div>
-    <p class="lede footnote" id="planning-trajectory-debt-direction-note"></p>
+    <details class="planning-road-disclosure">
+      <summary>Debt direction over the published horizon</summary>
+      <p class="lede" id="planning-trajectory-debt-direction-lede"></p>
+      <div id="planning-trajectory-debt-direction" class="planning-trajectory-debt-direction" aria-label="Baseline trajectory debt direction">
+        <p class="lede">Loading debt direction…</p>
+      </div>
+      <p class="lede footnote" id="planning-trajectory-debt-direction-note"></p>
+    </details>
   </section>
 
   <footer>

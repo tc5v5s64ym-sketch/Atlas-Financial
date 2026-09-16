@@ -363,6 +363,10 @@ Under each reprinted pressure signal, `public/planning.js` copies `signal.attrib
 
 `public/planning.js` exposes a Month / Pay period control on the trajectory three-stage funding section from the incumbent `planningTrajectory()` call. Month view reprints `Forecast.baselineTrajectory` `months[]` `stage1` / `stage2` / `stage3` for a household-selected calendar month; Pay period view reprints `payPeriods[]` stages for a household-selected Seaspan pay period — same baseline walk, two Forecast-published granularities. Component totals and results copy when present; calculated vs estimated chips preserved; unavailable stages print Forecast `reason`, not $0 or implied surplus. No page-side stage arithmetic. Monthly cash/debt table, pressure, attribution, and debtDirection reprints stay month-scoped and intact. Packet / Talk reprint, `public/forecast.js`, dashboard compose (O3), scenario UI, and Outcome 5 remain out of scope.
 
+**B105n · Planning page — Your Financial Road Ahead trajectory dashboard compose** · **DONE 2026-09-16** · *owner instruction; presentation only; Trajectory Dashboard Campaign Outcome 3*
+
+`public/planning.js` / `planning.html` compose the household Planning first screen **Your Financial Road Ahead** from the incumbent `planningTrajectory()` → `Forecast.baselineTrajectory` call only. Lead: first forward negative `stage3.result` when Forecast publishes one (projected funding gap wording) else first forward `pressure.signals` fact; timeline: published `stage3` projected results by Month or Pay period with the existing granularity control; selected period: three-stage funding progression plus per-period pressure in disclosure. Full cash/debt table, legacy funding picker, all pressure signals, debt direction, and future costs sit in progressive disclosure. No `public/forecast.js` edits; no sustainable/safe/RYG/min-cash/affordability/recommendation cards; no page-side stage or pressure math. Scenario UI (O4) and Outcome 5 remain out of scope.
+
 
 **B104 · Decision Intelligence comparison foundation** · **IN PROGRESS 2026-09-15** · *owner instruction; Forecast-only compose of Slice 6*
 
