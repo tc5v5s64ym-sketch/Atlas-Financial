@@ -1,12 +1,15 @@
 'use strict';
-/* Financial Trajectory Slice 1 — Forecast-owned baselineTrajectory.
+/* Financial Trajectory Slice 1+2 — Forecast-owned baselineTrajectory.
  *
  * Monthly cash+debt picture over the incumbent knowledgeHorizon.
  * weeklyVariable from planned Household Budget / budgetBreakdown, not
- * historical actuals and not Forecast.recommend. 2027 income regimes
- * are unavailable, not $0. Controlled fixtures; independent month list,
- * planned-weekly identity, cash walk, and debt walk — not a second call
- * of the producing helper as the only proof.
+ * historical actuals and not Forecast.recommend. Named dated income-regime
+ * split: modelled Dale net through 2026-12-31; Dale payroll/bonus from
+ * 2027-01-01 unavailable (deposit-year CPP/EI reset), not $0 and not the
+ * expandEvents-carried 2026 post-CPP/EI-max net. Trajectory-local cutoff
+ * only. Controlled fixtures; independent month list, planned-weekly
+ * identity, cash walk, debt walk, and expandEvents Dale sum — not a
+ * second call of the producing helper as the only proof.
  * `node test/test-baseline-trajectory.js`
  */
 const fs = require('fs');
@@ -147,8 +150,24 @@ console.log('=== 1. Forecast is the sole calculator ===');
     'the boundary does not search Forecast.recommend for a weekly cap');
   ok(/historical-actual/.test(body) && /source === 'historical-actual'/.test(body),
     'planned weeklyVariable skips historical-actual categories');
-  ok(/2027 payroll\/bonus is unmodelled/.test(body),
-    '2027 payroll/bonus is named unmodelled rather than zeroed');
+  ok(/isDalePayrollStream\(/.test(body),
+    'trajectory uses isDalePayrollStream rather than a year blanket');
+  ok(/2027-01-01/.test(body) && /deposit-year CPP\/EI reset/.test(body),
+    'trajectory names the 2027-01-01 deposit-year CPP/EI reset cutoff');
+  ok(!/span\.year\s*>=\s*2027/.test(body) && !/year\s*>=\s*2027/.test(src),
+    'year≥2027 blanket is gone');
+  ok(/incomeRegimesImplemented:\s*false/.test(body),
+    'incomeRegimesImplemented stays false until a 2027 Dale net model exists');
+  ok(/appliedDollars:\s*false/.test(body),
+    'owner 4% / Amanda-flat notes are constraint notes, not applied dollars');
+  const expandBody = src.slice(src.indexOf('function expandEvents('),
+    src.indexOf('\n  function simulate('));
+  ok(!/2027-01-01/.test(expandBody) && !/year\s*>=\s*2027/.test(expandBody),
+    'expandEvents is not year-stopped');
+  const recommendBody = src.slice(src.indexOf('function recommend('),
+    src.indexOf('\n  function incomeDeadline('));
+  ok(!/2027-01-01/.test(recommendBody) && !/year\s*>=\s*2027/.test(recommendBody),
+    'Forecast.recommend is not year-stopped');
   ok(!/KNOWLEDGE_MIN_DAYS\s*=\s*548/.test(src) && /KNOWLEDGE_MIN_DAYS\s*=\s*365/.test(src),
     'knowledgeHorizon minimum remains the incumbent ~12-month 365 days');
 }
@@ -215,46 +234,93 @@ console.log('\n=== 3. weeklyVariable is planned, not historical ===');
     'every month reprints the planned weeklyVariable source');
 }
 
-console.log('\n=== 4. Unmodelled 2027 regimes are unavailable, not $0 ===');
+console.log('\n=== 4. Named dated split — 2026 modelled, 2027 Dale unavailable ===');
 {
   const { plan, debts } = fixture();
   const traj = ask(plan, debts);
   const jan = traj.months.find(m => m.month === '2027-01');
   const jun = traj.months.find(m => m.month === '2026-06');
-  ok(!!jan && !!jun, 'series includes a 2026 modelled month and a 2027 month');
+  const dec = traj.months.find(m => m.month === '2026-12');
+  ok(!!jan && !!jun && !!dec, 'series includes 2026 modelled months and a 2027 month');
   ok(jun.income.status === 'estimated' && typeof jun.income.amount === 'number',
     '2026 income is published from the modelled streams',
     `${jun.income.status} ${jun.income.amount}`);
   ok(jun.income.amount !== 0, 'modelled 2026 income is not silently zero');
+  ok(jun.income.dalePayroll && jun.income.dalePayroll.status === 'modelled'
+    && jun.income.dalePayroll.through === '2026-12-31',
+    'June 2026 Dale payroll marker is modelled through 2026-12-31');
+  ok(dec.income.status === 'estimated' && typeof dec.income.amount === 'number',
+    'December 2026 income stays modelled on the dated split',
+    `${dec.income.status} ${dec.income.amount}`);
+  ok(dec.income.dalePayroll && dec.income.dalePayroll.status === 'modelled',
+    'December 2026 Dale net is modelled, not year-stopped');
   ok(jan.income.status === 'unavailable',
-    '2027 income is unavailable');
+    'January 2027 Dale-containing income is unavailable');
+  ok(jan.income.dalePayroll && jan.income.dalePayroll.status === 'unavailable'
+    && jan.income.dalePayroll.from === '2027-01-01'
+    && jan.income.dalePayroll.boundary === 'deposit-year-cpp-ei-reset',
+    'January 2027 names the deposit-year CPP/EI reset, not a year blanket');
   ok(!Object.prototype.hasOwnProperty.call(jan.income, 'amount')
     || jan.income.amount == null,
     'unavailable 2027 income omits an amount rather than publishing $0');
   ok(jan.income.amount !== 0, 'unavailable 2027 income is not the number 0');
-  const continuing = F.expandEvents(plan, '2027-01-01', '2027-01-31')
-    .filter(e => e.kind === 'income')
+
+  const janDaleEvents = F.expandEvents(plan, '2027-01-01', '2027-01-31')
+    .filter(e => e.kind === 'income' && e.id === 'payroll');
+  const continuingDale = janDaleEvents.reduce((s, e) => s + e.amount, 0);
+  ok(janDaleEvents.length > 0 && continuingDale > 0,
+    'expandEvents would still emit 2027 Dale payroll if asked',
+    `${janDaleEvents.length} events summing ${continuingDale}`);
+  ok(jan.income.amount !== continuingDale,
+    'published trajectory does not use the expandEvents 2027 Dale sum');
+
+  const decDale = F.expandEvents(plan, '2026-12-01', '2026-12-31')
+    .filter(e => e.kind === 'income' && e.id === 'payroll')
     .reduce((s, e) => s + e.amount, 0);
-  ok(continuing > 0, 'expandEvents would still emit 2027 payroll if asked',
-    String(continuing));
-  ok(jan.income.amount !== continuing,
-    '2027 income is not the continuing 2026 net carried forward');
+  ok(decDale > 0 && near(dec.income.amount, decDale),
+    'December 2026 published income matches independent expandEvents Dale sum',
+    `${dec.income.amount} vs ${decDale}`);
+
   ok(jan.cash.status === 'unavailable',
-    '2027 cash is unavailable because it would depend on unmodelled income');
+    '2027 cash is unavailable until a modelled 2027 Dale net exists');
   ok(!Object.prototype.hasOwnProperty.call(jan.cash, 'amount')
     || jan.cash.amount == null,
     'unavailable 2027 cash omits an amount rather than publishing $0');
+
+  const modelled = traj.incomeRegimes.find(r => r.id === 'current-modelled-dale-net');
   const payrollRegime = traj.incomeRegimes.find(r => r.id === '2027-payroll-bonus');
   const datedRegime = traj.incomeRegimes.find(r => r.id === '2027-dated-income-regimes');
-  ok(payrollRegime && payrollRegime.status === 'unavailable',
-    '2027 payroll/bonus regime is named unavailable');
+  ok(modelled && modelled.status === 'modelled' && modelled.through === '2026-12-31',
+    'current modelled Dale net is named through 2026-12-31');
+  ok(payrollRegime && payrollRegime.status === 'unavailable'
+    && payrollRegime.from === '2027-01-01'
+    && payrollRegime.boundary === 'deposit-year-cpp-ei-reset',
+    '2027 payroll/bonus regime is named unavailable from 2027-01-01');
   ok(datedRegime && datedRegime.status === 'unavailable',
-    'dated 2027 income regimes are named unavailable rather than implemented');
-  ok(!/4%/.test(read('public/forecast.js').slice(
+    'dated 2027 income regimes stay unavailable rather than dollar-implemented');
+  const notes = datedRegime && datedRegime.ownerPlanningNotes;
+  ok(notes && notes.nature === 'constraint-notes' && notes.appliedDollars === false,
+    'owner planning notes are constraint notes and not applied dollars');
+  ok(notes && /4%/.test(notes.daleSeaspanSalary)
+    && /Dale\/Seaspan salary only/.test(notes.daleSeaspanSalary),
+    '4% raise is recorded for calendar 2027 Dale/Seaspan salary only');
+  ok(notes && notes.amandaSalary === 'unchanged',
+    'Amanda salary unchanged is recorded as a constraint note');
+  ok(notes && notes.defaultEffectiveDate === 'calendar 2027 Seaspan',
+    'default effective date is calendar 2027 Seaspan');
+  ok(traj.provenance.incomeRegimesImplemented === false,
+    'incomeRegimesImplemented remains false — named/fail-closed, not dollar-implemented');
+  ok(traj.provenance.incomeRegimesNamedFailClosed === true
+    && traj.provenance.incomeRegimesDollarModel === false,
+    'provenance says regimes are named/fail-closed but not dollar-implemented');
+  ok(traj.provenance.expandEvents2027DaleIncome === 'not-published',
+    'provenance says expandEvents 2027 Dale income is not published');
+
+  const trajBody = read('public/forecast.js').slice(
     read('public/forecast.js').indexOf('function baselineTrajectory('),
-    read('public/forecast.js').indexOf('const Forecast = {')))
-    || /later outcome/.test(datedRegime.reason),
-    'the function names the later dated-regime outcome instead of implementing it');
+    read('public/forecast.js').indexOf('function hypotheticalExtraPayment('));
+  ok(!/\*\s*1\.04|\*\s*0\.04/.test(trajBody),
+    'trajectory does not multiply a 4% raise into a net');
 }
 
 console.log('\n=== 5. Coupled debts — independent month-end walk ===');
@@ -354,7 +420,55 @@ function trajHasNoRank(traj) {
     && traj.provenance.affordability == null;
 }
 
-console.log('\n=== 8. Live household document is unread for cents and unwritten ===');
+console.log('\n=== 8. Dated split is Dale-specific, not a year blanket ===');
+{
+  const amandaOnly = fixture({
+    income: [
+      {
+        id: 'amandaSalary15', label: 'Amanda salary — Tennis BC — 15th',
+        frequency: 'monthly', day: 15, amount: 2000, confidence: 'confirmed',
+      },
+    ],
+  });
+  const amandaTraj = ask(amandaOnly.plan, amandaOnly.debts);
+  const amandaJan = amandaTraj.months.find(m => m.month === '2027-01');
+  ok(!!amandaJan, 'Amanda-only series still includes January 2027');
+  ok(amandaJan.income.status === 'calculated' && amandaJan.income.amount === 2000,
+    '2027 Amanda income is still published — the cutoff is Dale payroll, not year≥2027',
+    `${amandaJan.income.status} ${amandaJan.income.amount}`);
+  ok(amandaJan.income.dalePayroll && amandaJan.income.dalePayroll.status === 'not-applicable',
+    'Amanda-only 2027 month does not pretend Dale payroll was modelled');
+  ok(amandaJan.cash.status === 'calculated' && typeof amandaJan.cash.amount === 'number',
+    'Amanda-only 2027 cash stays calculated because no unmodelled Dale net entered the walk');
+
+  const bonusPlan = fixture({
+    income: [
+      {
+        id: 'amandaSalary15', label: 'Amanda salary — Tennis BC — 15th',
+        frequency: 'monthly', day: 15, amount: 2000, confidence: 'confirmed',
+      },
+      {
+        id: 'bonus', label: 'Annual bonus',
+        frequency: 'once', date: '2027-02-25', amount: 9999, confidence: 'estimated',
+      },
+    ],
+  });
+  const bonusEvents = F.expandEvents(bonusPlan.plan, '2027-02-01', '2027-02-28')
+    .filter(e => e.kind === 'income' && e.id === 'bonus');
+  const bonusSum = bonusEvents.reduce((s, e) => s + e.amount, 0);
+  ok(bonusEvents.length === 1 && bonusSum === 9999,
+    'expandEvents would still emit a 2027 bonus if asked', String(bonusSum));
+  const bonusTraj = ask(bonusPlan.plan, bonusPlan.debts);
+  const feb = bonusTraj.months.find(m => m.month === '2027-02');
+  ok(feb && feb.income.status === 'unavailable',
+    '2027 bonus month is unavailable rather than publishing the expandEvents bonus');
+  ok(feb.income.amount !== 9999 && feb.income.amount !== bonusSum,
+    'published February 2027 income is not the expandEvents bonus sum');
+  ok(feb.cash.status === 'unavailable',
+    'cash after an unmodelled 2027 bonus is unavailable, not a carried 2026 net');
+}
+
+console.log('\n=== 9. Live household document is unread for cents and unwritten ===');
 {
   const live = JSON.parse(fs.readFileSync(DATA, 'utf8'));
   const periods = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/periods.json'), 'utf8'));
@@ -368,8 +482,16 @@ console.log('\n=== 8. Live household document is unread for cents and unwritten 
     `${traj.months.length} vs ${expected.length}`);
   const unmodelled = traj.months.filter(m => m.month >= '2027-01');
   ok(unmodelled.length > 0 && unmodelled.every(m =>
-    m.income.status === 'unavailable' && m.cash.status === 'unavailable'),
-    'live 2027 months stay unavailable for income and cash');
+    m.income.status === 'unavailable' && m.cash.status === 'unavailable'
+    && m.income.dalePayroll && m.income.dalePayroll.status === 'unavailable'
+    && m.income.dalePayroll.from === '2027-01-01'),
+    'live 2027 months stay unavailable for Dale income and cash');
+  const liveDec = traj.months.find(m => m.month === '2026-12');
+  ok(liveDec && liveDec.income.status !== 'unavailable'
+    && liveDec.income.dalePayroll && liveDec.income.dalePayroll.status === 'modelled',
+    'live December 2026 Dale net stays modelled');
+  ok(traj.provenance.incomeRegimesImplemented === false,
+    'live provenance keeps incomeRegimesImplemented false');
   ok(traj.weeklyVariable.historicalActuals === 'excluded',
     'live weeklyVariable still excludes historical actuals');
   ok(hashFile(DATA) === liveHash, 'data.json was not written');
