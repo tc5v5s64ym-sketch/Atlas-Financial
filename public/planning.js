@@ -1366,7 +1366,7 @@ function planningRoadAheadScrollSelectedTimeline(root, selectedKey) {
   if (!strip || typeof strip.scrollLeft !== 'number') return;
   const maxScroll = strip.scrollWidth - strip.clientWidth;
   if (maxScroll <= 0) return;
-  const target = item.offsetLeft + (item.offsetWidth / 2) - (strip.clientWidth / 2);
+  const target = item.offsetLeft + (item.offsetWidth * 0.5) - (strip.clientWidth * 0.5);
   const left = Math.max(0, Math.min(maxScroll, target));
   try {
     strip.scrollTo({ left, behavior: 'instant' });
