@@ -785,14 +785,47 @@ function planningRoadAheadMonthParts(monthKey) {
   return { year, short: PLANNING_ROAD_MONTH_SHORT[mi], long: PLANNING_ROAD_MONTH_LONG[mi] };
 }
 
-function planningRoadAheadChipLabel(period, granularity) {
-  if (!period) return '';
+function planningRoadAheadPeriodYear(period, granularity) {
+  if (!period) return null;
   if (granularity === 'pay-period') {
-    const payday = period.payday || period.id || '';
-    return payday.length >= 10 ? fmtDate(payday) : payday;
+    const iso = period.payday || period.start || period.id || '';
+    return String(iso).length >= 4 ? String(iso).slice(0, 4) : null;
   }
   const parts = planningRoadAheadMonthParts(period.month);
-  return parts ? parts.short : (period.month || '');
+  return parts ? parts.year : null;
+}
+
+/** When the published series crosses calendar years, Fable timeline chips keep the
+ *  anchor year short and suffix later years (e.g. Jan '27). Presentation only. */
+function planningRoadAheadTimelineYearContext(periods, granularity) {
+  const years = [];
+  for (const period of periods || []) {
+    const year = planningRoadAheadPeriodYear(period, granularity);
+    if (year) years.push(year);
+  }
+  if (!years.length) return { multiYear: false, anchorYear: null };
+  const unique = new Set(years);
+  return { multiYear: unique.size > 1, anchorYear: years[0] };
+}
+
+function planningRoadAheadChipYearSuffix(year, yearContext) {
+  if (!yearContext || !yearContext.multiYear || !year || !yearContext.anchorYear) return '';
+  if (year === yearContext.anchorYear) return '';
+  return ` '${String(year).slice(-2)}`;
+}
+
+function planningRoadAheadChipLabel(period, granularity, yearContext) {
+  if (!period) return '';
+  const year = planningRoadAheadPeriodYear(period, granularity);
+  const suffix = planningRoadAheadChipYearSuffix(year, yearContext);
+  if (granularity === 'pay-period') {
+    const payday = period.payday || period.id || '';
+    const base = payday.length >= 10 ? fmtDate(payday) : payday;
+    return `${base}${suffix}`;
+  }
+  const parts = planningRoadAheadMonthParts(period.month);
+  if (!parts) return period.month || '';
+  return `${parts.short}${suffix}`;
 }
 
 function planningRoadAheadPeriodDisplayLabel(period, granularity) {
@@ -1025,6 +1058,7 @@ function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
     return `<div class="note-box crit" data-road-timeline="unavailable">${reason}</div>`;
   }
   let maxAbs = 0;
+  const yearContext = planningRoadAheadTimelineYearContext(periods, granularity);
   const entries = periods.map(period => {
     const key = planningRoadAheadPeriodKey(period, granularity);
     const result = planningRoadAheadStage3Result(period);
@@ -1035,7 +1069,7 @@ function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
   const bars = entries.map(entry => {
     const selected = entry.key === selectedKey;
     const phrase = entry.result ? planningRoadAheadResultPhrase(entry.result) : { label: 'Withheld', cls: 'withheld' };
-    const shortLabel = planningRoadAheadChipLabel(entry.period, granularity) || entry.key || '';
+    const shortLabel = planningRoadAheadChipLabel(entry.period, granularity, yearContext) || entry.key || '';
     const widthPct = entry.amount != null && isFinite(entry.amount) && maxAbs > 0
       ? Math.max(8, Math.round((Math.abs(entry.amount) / maxAbs) * 100))
       : 8;

@@ -1747,7 +1747,11 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   outline: 2px solid var(--accent, var(--s1));
   outline-offset: 1px;
 }
-.planning-road-timeline-label { font-weight: 600; margin-bottom: 6px; }
+.planning-road-timeline-label {
+  font-weight: 600;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
 .planning-road-timeline-bar {
   display: block;
   height: 6px;

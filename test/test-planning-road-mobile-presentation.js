@@ -268,7 +268,45 @@ console.log('\n=== 6. Desktop presentation preserved ===');
     'desktop road-ahead selected period keeps three-column stage grid');
 }
 
-console.log('\n=== 7. Timeline scroll containment (no window jump) ===');
+console.log('\n=== 7. Cross-year timeline chip labels (Fable trajectory strip) ===');
+{
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const monthYears = new Set((traj.months || []).map(m => String(m.month).slice(0, 4)));
+  ok(monthYears.size > 1,
+    'live baseline trajectory spans multiple calendar years for chip-label proof');
+  const road = page.composeRoad(live, periods, 'month', '2027-01', live.meta.asOf);
+  const jan27 = road.timeline.match(
+    /data-road-timeline-period="2027-01"[\s\S]*?planning-road-timeline-label">([^<]+)</);
+  const aug26 = road.timeline.match(
+    /data-road-timeline-period="2026-08"[\s\S]*?planning-road-timeline-label">([^<]+)</);
+  ok(jan27 && jan27[1] === "Jan '27",
+    'months after the anchor year disambiguate with a compact year suffix on the chip',
+    jan27 ? jan27[1] : 'missing');
+  ok(aug26 && aug26[1] === 'Aug',
+    'anchor-year months keep short month-only chip labels',
+    aug26 ? aug26[1] : 'missing');
+  const dec26 = road.timeline.match(
+    /data-road-timeline-period="2026-12"[\s\S]*?planning-road-timeline-label">([^<]+)</);
+  ok(dec26 && dec26[1] === 'Dec',
+    'the last anchor-year month stays short before the year turns on the strip');
+
+  const payRoad = page.composeRoad(live, periods, 'pay-period', '2027-07-30', live.meta.asOf);
+  const payChip = payRoad.timeline.match(
+    /data-road-timeline-period="2027-07-30"[\s\S]*?planning-road-timeline-label">([^<]+)</);
+  ok(payChip && payChip[1].endsWith("'27"),
+    'pay-period chips suffix the compact year after the anchor year',
+    payChip ? payChip[1] : 'missing');
+
+  const chipFn = planningSrc.match(/function planningRoadAheadChipLabel\([\s\S]*?\n\}/);
+  ok(chipFn && /yearContext/.test(chipFn[0]) && /planningRoadAheadChipYearSuffix/.test(chipFn[0]),
+    'chip label helper accepts multi-year context and applies compact year suffixes');
+  ok(/function planningRoadAheadTimelineYearContext/.test(planningSrc),
+    'multi-year context helper is present for static contract check');
+}
+
+console.log('\n=== 8. Timeline scroll containment (no window jump) ===');
 {
   const road = page.render(live, periods)['planning-road-ahead'].innerHTML;
   ok(!/As of\s+As at/i.test(road) && !/planning-road-app-asof-label/.test(road),
