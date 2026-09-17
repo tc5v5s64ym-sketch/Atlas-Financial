@@ -2011,6 +2011,37 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   line-height: 1.2;
   letter-spacing: -.015em;
 }
+/* Segmented control base — one component at every width; the phone block
+   only changes its size and the strip head layout. */
+.planning-road-segmented.planning-trajectory-granularity,
+.planning-road-granularity.planning-trajectory-granularity {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  gap: 0;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--grid);
+}
+.planning-road-segmented .planning-trajectory-granularity-btn,
+.planning-road-granularity .planning-trajectory-granularity-btn {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: .85rem;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.planning-road-segmented .planning-trajectory-granularity-btn[aria-selected="true"],
+.planning-road-granularity .planning-trajectory-granularity-btn[aria-selected="true"] {
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  font-weight: 700;
+  color: var(--text-primary);
+}
 .planning-road-view-note {
   margin: 0 0 12px;
   padding: 11px 13px;
@@ -2602,7 +2633,9 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
     padding-right: 16px;
   }
   .planning-road-intro-inline { display: none; }
-  .planning-road-app-title { font-size: 2rem; }
+  /* The title and the freshness pill share one row at 390pt. Below that the
+     title scales rather than wrapping "Road Ahead" onto two lines. */
+  .planning-road-app-title { font-size: clamp(1.66rem, 7.6vw, 2rem); }
   .planning-road-lead,
   .planning-road-hero-card {
     padding: 18px 18px 18px;
@@ -2687,6 +2720,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-spine-step:not(:last-child)::before { content: none; }
   .planning-road-spine-index { margin-bottom: 8px; }
   .planning-road-stage-card { height: 100%; }
+  .planning-road-hero-cta { max-width: 22rem; }
 }
 
 @media (min-width:641px) {

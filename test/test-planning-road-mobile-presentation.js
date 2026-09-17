@@ -306,6 +306,50 @@ console.log('\n=== 1c. Frame 01/03 gap variant — hero attribution, stage story
     'a withheld stage or component stays an em-dash with the not-$0 sentence');
 }
 
+console.log('\n=== 1d. Trust badges cover every figure the stage card reprints ===');
+{
+  // Frame 03 stage copy reprints the stage result and the component Forecast
+  // subtracts at that stage. Both appear on one card carrying one badge, so
+  // that badge must never be stronger than any figure on it. Forecast's own
+  // weaker-of rule is what makes that true; this asserts it rather than
+  // assuming it, because an estimate must never read as confirmed.
+  const rank = { calculated: 3, confirmed: 3, estimated: 2, unavailable: 1 };
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  let stage2Holds = true;
+  let stage3Holds = true;
+  let checked = 0;
+  for (const month of traj.months || []) {
+    const commitments = month.stage2 && month.stage2.commitments;
+    const extras = month.stage3 && month.stage3.extras;
+    if (commitments && commitments.status && month.stage2.result.status) {
+      checked++;
+      if (rank[month.stage2.result.status] > rank[commitments.status]) stage2Holds = false;
+    }
+    if (extras && extras.status && month.stage3.result.status) {
+      if (rank[month.stage3.result.status] > rank[extras.status]) stage3Holds = false;
+    }
+  }
+  ok(checked > 0 && stage2Holds,
+    'the stage 2 badge is never stronger than the planned-spending figure its copy reprints',
+    `${checked} months checked`);
+  ok(stage3Holds,
+    'the stage 3 badge is never stronger than the extra-payment figure its copy reprints');
+
+  const estimatedMonth = (traj.months || []).find(m => m.stage1
+    && m.stage1.result && m.stage1.result.status === 'estimated');
+  if (estimatedMonth) {
+    const road = page.composeRoadTraj(traj, 'month', estimatedMonth.month, live.meta.asOf);
+    const card = road.stages.split('data-trajectory-funding-stage="2"')[0];
+    ok(/planning-road-trust-estimated">Estimated</.test(card)
+      && card.includes(money2(estimatedMonth.stage1.result.amount)),
+      'an estimated stage prints its amount and the Estimated badge on the same card');
+  } else {
+    ok(true, 'live opening publishes no estimated stage to badge-check');
+  }
+}
+
 console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical stages ===');
 {
   ok(mobile.length > 200, 'phone-native road-ahead CSS block is present');
