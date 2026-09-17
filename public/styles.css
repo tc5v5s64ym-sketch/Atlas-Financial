@@ -1800,6 +1800,204 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   cursor: pointer;
   margin-bottom: 10px;
 }
+
+/* Planning — Road Ahead phone-native shell (presentation only) */
+.planning-road-shell { margin: 0; }
+.planning-road-app-head {
+  margin: 0 0 14px;
+  padding: 0;
+}
+.planning-road-app-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 10px;
+}
+.planning-road-app-kicker {
+  font-size: .78rem;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.planning-road-app-title {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+.planning-road-app-asof {
+  margin: 6px 0 0;
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+.planning-road-app-asof-label { font-weight: 600; }
+.planning-road-about {
+  display: none;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+.planning-road-about > summary {
+  font-weight: 650;
+  cursor: pointer;
+}
+.planning-road-primary { margin-bottom: 14px; }
+.planning-road-period-nav { margin: 0 0 18px; }
+.planning-road-period-heading,
+.planning-road-timeline-heading { margin-bottom: 8px; }
+.planning-road-period-detail { margin: 0 0 20px; }
+.planning-trajectory-funding-result[data-trajectory-funding-result-sign="gap"] b {
+  color: var(--critical);
+}
+.planning-trajectory-funding-result[data-trajectory-funding-result-sign="surplus"] b {
+  color: var(--ok, #1a7f4b);
+}
+
+@media (max-width:640px) {
+  #planning > .kicker,
+  #planning > h1,
+  #planning > .sub,
+  #planning > .planning-road-title,
+  #planning > .planning-road-sub {
+    display: none;
+  }
+  body:has(#planning) .site-head-row .brand,
+  body:has(#planning) .site-head-row .spacer {
+    display: none;
+  }
+  body:has(#planning) .site-head-row {
+    justify-content: flex-end;
+  }
+  body:has(#planning) .site-head-row .chip {
+    order: 1;
+    flex: 1 1 auto;
+    margin-top: 0;
+    text-align: left;
+  }
+  .planning-road-intro-inline { display: none; }
+  .planning-road-about { display: block; }
+  .planning-road-lead {
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+  }
+  .planning-road-lead-amount { font-size: 1.55rem; }
+  .planning-road-lead-jump {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 14px;
+    margin-top: 8px;
+    text-decoration: none;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--surface-raised, var(--bg));
+  }
+  .planning-road-granularity.planning-trajectory-granularity {
+    display: flex;
+    width: 100%;
+    margin: 0 0 12px;
+    padding: 3px;
+    border-radius: 10px;
+  }
+  .planning-road-granularity .planning-trajectory-granularity-btn {
+    flex: 1 1 50%;
+    min-height: 44px;
+    font-size: .9rem;
+    border-radius: 8px;
+  }
+  .planning-road-timeline-wrap { margin: 0; }
+  .planning-road-timeline {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px;
+    padding: 2px 2px 10px;
+    margin: 0 -2px;
+  }
+  .planning-road-timeline-item {
+    scroll-snap-align: center;
+    min-width: 5.75rem;
+  }
+  .planning-road-timeline-btn {
+    min-height: 5.25rem;
+    min-width: 44px;
+    padding: 10px 8px;
+    font-size: .76rem;
+    border-radius: 10px;
+  }
+  .planning-road-selected {
+    margin-top: 0;
+    padding: 14px 14px 16px;
+    border-radius: 12px;
+  }
+  .planning-road-selected > .subhead,
+  .planning-road-selected > .lede {
+    display: none;
+  }
+  .planning-road-selected-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .planning-road-nav-btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+    font-size: .88rem;
+  }
+  .planning-road-selected .planning-trajectory-funding-stages {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .planning-road-selected .planning-trajectory-funding-stage {
+    margin: 0 0 8px;
+    padding: 14px;
+    border-radius: 10px;
+  }
+  .planning-road-selected .planning-trajectory-funding-stage:not(:last-child) {
+    margin-bottom: 4px;
+  }
+  .planning-road-selected .planning-trajectory-funding-stage:not(:last-child)::after {
+    content: "";
+    display: block;
+    width: 2px;
+    height: 12px;
+    margin: 6px auto 2px;
+    border-radius: 1px;
+    background: var(--border-subtle);
+  }
+  .planning-road-selected .planning-trajectory-funding-stage-title {
+    font-size: .92rem;
+  }
+  .planning-road-selected .planning-trajectory-funding-result {
+    font-size: 1.1rem;
+    margin-top: 4px;
+  }
+  .planning-road-final-result {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-raised, var(--bg));
+  }
+  .planning-road-scenario-detail {
+    margin-top: 8px;
+  }
+}
+
+@media (min-width:641px) {
+  .planning-road-app-head { display: none; }
+  .planning-road-about { display: none !important; }
+  .planning-road-period-heading,
+  .planning-road-timeline-heading { display: none; }
+  .planning-road-selected .planning-trajectory-funding-stages {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (min-width:641px) {
   .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
