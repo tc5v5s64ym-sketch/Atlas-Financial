@@ -630,6 +630,36 @@ function planningRoadAheadPeriods(traj, granularity) {
   return Array.isArray(traj.months) ? traj.months : [];
 }
 
+// Same fail-closed series gate as planningTrajectoryFundingHtml — road-ahead lead/timeline
+// must not fall through to monthly pressure or stage3 when the requested granularity has no series.
+function planningRoadAheadGranularitySeriesGate(traj, granularity) {
+  if (!traj || traj.status !== 'ready') {
+    return {
+      available: false,
+      reason: (traj && traj.reason) || 'Baseline trajectory unavailable.',
+    };
+  }
+  if (granularity === 'pay-period') {
+    const payPeriods = Array.isArray(traj.payPeriods) ? traj.payPeriods : [];
+    if (!payPeriods.length) {
+      const prov = traj.provenance && traj.provenance.payPeriodSeries;
+      const reason = prov === 'unavailable'
+        ? 'Forecast could not publish pay-period spans on this opening (Seaspan payroll calendar missing or clipped empty). Monthly funding remains available in Month view.'
+        : 'Forecast published no pay periods on this baseline walk.';
+      return { available: false, reason };
+    }
+    return { available: true, reason: null };
+  }
+  const months = Array.isArray(traj.months) ? traj.months : [];
+  if (!months.length) {
+    return {
+      available: false,
+      reason: (traj && traj.reason) || 'Baseline trajectory unavailable.',
+    };
+  }
+  return { available: true, reason: null };
+}
+
 function planningRoadAheadIsForwardPeriod(period, granularity, asOf) {
   if (!asOf) return true;
   const asOfMonth = asOf.length >= 7 ? asOf.slice(0, 7) : null;
@@ -709,6 +739,13 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
       focusKey: null,
     };
   }
+  const seriesGate = planningRoadAheadGranularitySeriesGate(traj, granularity);
+  if (!seriesGate.available) {
+    return {
+      html: `<div class="planning-road-lead planning-road-lead-unavailable" data-road-lead="series-unavailable" data-road-lead-granularity="${granularity}"><div class="note-box crit">${seriesGate.reason}</div></div>`,
+      focusKey: selectedKey,
+    };
+  }
   const gapLead = planningRoadAheadFindFundingGapLead(traj, granularity, asOf);
   if (gapLead) {
     const phrase = planningRoadAheadResultPhrase(gapLead.result);
@@ -776,8 +813,12 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
 }
 
 function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
+  const seriesGate = planningRoadAheadGranularitySeriesGate(traj, granularity);
+  if (!seriesGate.available) {
+    return `<div class="note-box crit" data-road-timeline="unavailable" data-road-timeline-granularity="${granularity}">${seriesGate.reason}</div>`;
+  }
   const periods = planningRoadAheadPeriods(traj, granularity);
-  if (!traj || traj.status !== 'ready' || !periods.length) {
+  if (!periods.length) {
     const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
     return `<div class="note-box crit" data-road-timeline="unavailable">${reason}</div>`;
   }

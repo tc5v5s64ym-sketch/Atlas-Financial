@@ -76,6 +76,14 @@ function loadPage(script) {
         asOf || (data && data.meta && data.meta.asOf) || null,
       );
     },
+    composeRoadAheadTraj(traj, granularity, periodKey, asOf) {
+      return ctx.planningRoadAheadHtml(
+        traj,
+        granularity || 'month',
+        periodKey,
+        asOf || null,
+      );
+    },
   };
 }
 
@@ -930,6 +938,39 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
   const withheld = page.composeRoadAhead({ plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null }, periods, 'month', null, live.meta.asOf);
   ok(/data-road-lead="unavailable"|data-road-timeline="unavailable"/.test(withheld.lead + withheld.timeline),
     'unavailable trajectory fails closed on the dashboard');
+}
+
+console.log('\n=== 23. Pay period road-ahead lead fails closed when payPeriods[] is empty ===');
+{
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready' && traj.months.length > 0 && traj.payPeriods.length > 0,
+    'live walk publishes both month and pay-period series before strip');
+  ok(traj.pressure && traj.pressure.status === 'ready' && traj.pressure.signals.length > 0,
+    'live monthly pressure.signals publish on the same walk');
+  const stripped = Object.assign({}, traj, {
+    payPeriods: [],
+    provenance: Object.assign({}, traj.provenance || {}, { payPeriodSeries: 'unavailable' }),
+  });
+  const monthLead = page.composeRoadAheadTraj(stripped, 'month', traj.months[0].month, live.meta.asOf).lead;
+  ok(/data-road-lead="pressure"|data-road-lead="funding-gap"|data-road-lead="no-forward-pressure"/.test(monthLead),
+    'Month granularity may still use monthly pressure or gap lead when months[] exists');
+  const payLead = page.composeRoadAheadTraj(stripped, 'pay-period', null, live.meta.asOf).lead;
+  ok(/data-road-lead="series-unavailable"/.test(payLead)
+    && /data-road-lead-granularity="pay-period"/.test(payLead),
+    'Pay period lead is series-unavailable, not monthly pressure');
+  ok(!/data-road-lead="pressure"/.test(payLead),
+    'Pay period lead does not fall through to global monthly pressure.signals');
+  ok(/Seaspan payroll calendar missing or clipped empty/.test(payLead),
+    'Pay period unavailable lead prints Forecast pay-period-series reason');
+  const forward = traj.pressure.signals.find(s => (s.date && s.date >= live.meta.asOf)
+    || (s.month && s.month >= live.meta.asOf.slice(0, 7)));
+  if (forward && forward.amount != null && isFinite(Number(forward.amount))
+    && /data-road-lead="pressure"/.test(monthLead)) {
+    ok(monthLead.includes(money2(forward.amount)) && !payLead.includes(money2(forward.amount)),
+      'monthly pressure amount on Month lead is absent from Pay period lead when series unavailable');
+  }
 }
 
 console.log('\n=== Page contract ===');
