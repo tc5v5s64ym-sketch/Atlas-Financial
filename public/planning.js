@@ -1156,8 +1156,14 @@ function planningTrajectoryScenarioDeltaRow(label, value, dataKey) {
   </tr>`;
 }
 
-function planningTrajectoryScenarioCompareHtml(result) {
+function planningTrajectoryScenarioCompareHtml(result, scenarioRequested) {
   const note = 'Additional-debt-payment scenario is Forecast.baselineTrajectoryScenario only — one caller-supplied extra on the identical planned Household Budget baseline walk. Baseline and scenario columns copy Forecast; deltas copy Forecast.delta. This is hypothetical exploration, not a payment instruction. Atlas does not infer the amount, rank debts, or write household evidence.';
+  if (!scenarioRequested) {
+    return {
+      panel: '<p class="lede planning-trajectory-scenario-idle" data-trajectory-scenario="idle">No scenario is active. Enter a debt and amount, then choose Show scenario.</p>',
+      note,
+    };
+  }
   if (!result || result.status !== 'ready') {
     const reason = (result && result.reason) || 'Forecast scenario unavailable.';
     return {
@@ -1415,18 +1421,20 @@ function renderPlanning(d, periods) {
   const scenarioControls = planningTrajectoryScenarioControlsHtml(
     d.debts, planningScenarioDraftDebtId, planningScenarioDraftAmount, planningScenarioFormError);
   let scenarioResult = null;
-  if (planningScenarioActive && planningScenarioActive.debtId != null
-    && typeof planningScenarioActive.amount === 'number') {
+  const scenarioRequested = !!(planningScenarioActive && planningScenarioActive.debtId != null
+    && typeof planningScenarioActive.amount === 'number');
+  if (scenarioRequested) {
     scenarioResult = planningTrajectoryScenario(d, periods, {
       debtId: planningScenarioActive.debtId,
       amount: planningScenarioActive.amount,
     });
   }
-  const scenarioCompare = planningTrajectoryScenarioCompareHtml(scenarioResult);
+  const scenarioCompare = planningTrajectoryScenarioCompareHtml(scenarioResult, scenarioRequested);
+  const scenarioDetailOpen = scenarioRequested ? ' open' : '';
   const roadRoot = $('planning-road-ahead');
   if (roadRoot) {
     roadRoot.innerHTML = `<p class="lede planning-road-intro">${roadHtml.intro}</p>
-      <details class="planning-road-scenario-detail" data-trajectory-scenario-section="controls">
+      <details class="planning-road-scenario-detail"${scenarioDetailOpen} data-trajectory-scenario-section="controls">
         <summary>Extra debt payment scenario (hypothetical)</summary>
         <p class="lede">${scenarioControls.intro}</p>
         ${scenarioControls.controls}

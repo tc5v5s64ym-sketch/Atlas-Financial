@@ -85,13 +85,14 @@ function loadPage(script) {
       );
     },
     composeScenario(data, p, debtId, amount) {
-      const input = debtId != null && amount != null
+      const requested = debtId != null && amount != null;
+      const input = requested
         ? { debtId, amount, nature: 'additional-debt-payment' }
         : null;
       const result = input
         ? ctx.planningTrajectoryScenario(data, p || null, input)
         : null;
-      return ctx.planningTrajectoryScenarioCompareHtml(result);
+      return ctx.planningTrajectoryScenarioCompareHtml(result, requested);
     },
     applyScenarioAndRender(data, p, debtId, amount) {
       ctx.planningScenarioSetActive(debtId != null && amount != null ? { debtId, amount } : null);
@@ -1084,6 +1085,23 @@ console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajecto
     'clearing the scenario removes the ready comparison panel');
   ok(/data-trajectory-scenario-form="ready"/.test(roadCleared),
     'controls remain after clear');
+  ok(/data-trajectory-scenario="idle"/.test(roadCleared),
+    'after Clear the scenario result panel is idle, not unavailable');
+  ok(!/data-trajectory-scenario="unavailable"/.test(roadCleared)
+    && !/Forecast scenario unavailable/.test(roadCleared),
+    'after Clear does not publish Forecast-unavailable messaging');
+
+  const idleRender = page.render(live, periods);
+  const roadIdle = idleRender['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-scenario="idle"/.test(roadIdle),
+    'initial load shows idle scenario state');
+  ok(!/data-trajectory-scenario="unavailable"/.test(roadIdle)
+    && !/Forecast scenario unavailable/.test(roadIdle),
+    'initial load does not publish Forecast-unavailable messaging');
+
+  const idleComposed = page.composeScenario(live, periods, null, null);
+  ok(/data-trajectory-scenario="idle"/.test(idleComposed.panel),
+    'compose with no request is idle, not unavailable');
 
   const bad = page.composeScenario(live, periods, pick.id, 0);
   ok(/data-trajectory-scenario="unavailable"/.test(bad.panel),
