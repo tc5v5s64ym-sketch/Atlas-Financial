@@ -1220,6 +1220,14 @@
   // outflows at this opening. Represented names are omitted. Income is
   // not invented. Nested expandEvents does not re-enter: inner start
   // is not opening.asOf.
+  //
+  // That inner start is the lookback origin, so commitmentSettledBy
+  // there uses the earlier cutoff rather than this Forecast opening.
+  // A dated commitment whose valid settledOn is on or before THIS
+  // opening is already satisfied for current/future funding and is
+  // not carried. Recurring joint-cash bills in the same interval stay
+  // reserved: priorAsOf is not weakened. This is not a date-wide or
+  // group-wide skip, and representedEvents is not the settler.
   function carriedUnresolvedJointCashOutflows(plan, start, opts, already) {
     const opening = plan && plan.opening;
     if (!opening || opening.asOf !== start || !opening.priorAsOf) return [];
@@ -1234,6 +1242,10 @@
     for (const event of inner) {
       if (!isJointCashOutflow(event)) continue;
       if (event.date < from || event.date > to) continue;
+      if (event.kind === 'commitment') {
+        const row = (plan.commitments || []).find(c => c && c.id === event.id);
+        if (row && commitmentSettledBy(row, start)) continue;
+      }
       const key = event.id + '@' + event.date;
       if (represented.has(key)) continue;
       if (already && already.has(key)) continue;
