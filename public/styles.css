@@ -1637,6 +1637,127 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-funding-component { margin-top:6px; }
 .planning-trajectory-funding-component-label { font-weight:600; }
 .planning-trajectory-funding-component b { font-variant-numeric:tabular-nums; }
+
+/* Planning — Your Financial Road Ahead (trajectory dashboard compose) */
+.planning-road-ahead { margin: 8px 0 28px; }
+.planning-road-intro { margin-bottom: 16px; }
+.planning-road-lead {
+  padding: 16px 18px;
+  margin: 0 0 20px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-raised, var(--bg));
+}
+.planning-road-lead-gap { border-left: 4px solid var(--critical); }
+.planning-road-lead-pressure { border-left: 4px solid var(--serious); }
+.planning-road-lead-kicker { margin: 0 0 6px; font-weight: 650; font-size: .95rem; }
+.planning-road-lead-kind { margin: 0 0 8px; color: var(--text-secondary); font-size: .88rem; }
+.planning-road-lead-amount { margin: 0 0 8px; font-size: 1.35rem; }
+.planning-road-lead-amount b { font-variant-numeric: tabular-nums; }
+.planning-road-lead-why { margin: 0 0 10px; font-size: .85rem; color: var(--text-secondary); }
+.planning-road-lead-jump {
+  margin-top: 4px;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--accent, var(--s1));
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.planning-road-timeline-wrap { margin: 20px 0; }
+.planning-road-granularity { margin-bottom: 12px; }
+.planning-road-timeline {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+  margin: 0;
+  list-style: none;
+}
+.planning-road-timeline-item { flex: 0 0 auto; min-width: 4.5rem; }
+.planning-road-timeline-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  min-height: 5.5rem;
+  padding: 8px 6px;
+  font: inherit;
+  font-size: .72rem;
+  text-align: center;
+  background: var(--surface-raised, var(--bg));
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.planning-road-timeline-item.is-selected .planning-road-timeline-btn {
+  outline: 2px solid var(--accent, var(--s1));
+  outline-offset: 1px;
+}
+.planning-road-timeline-label { font-weight: 600; margin-bottom: 6px; }
+.planning-road-timeline-bar {
+  display: block;
+  height: 6px;
+  width: var(--road-bar, 50%);
+  margin: 0 auto 6px;
+  border-radius: 3px;
+  background: var(--muted);
+}
+.planning-road-timeline-bar-surplus { background: var(--ok, #1a7f4b); }
+.planning-road-timeline-bar-gap { background: var(--critical); }
+.planning-road-timeline-bar-withheld { background: var(--muted); opacity: .5; }
+.planning-road-timeline-value {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: .78rem;
+}
+.planning-road-selected {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+.planning-road-selected-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.planning-road-selected-title { margin: 0 0 6px; font-size: 1.15rem; }
+.planning-road-selected-nav { display: flex; gap: 8px; }
+.planning-road-nav-btn {
+  font: inherit;
+  font-size: .82rem;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+.planning-road-final-result {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.planning-road-final-label { display: block; font-size: .82rem; font-weight: 600; margin-bottom: 6px; }
+.planning-road-pressure-detail { margin-top: 14px; }
+.planning-road-disclosure {
+  margin: 18px 0;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.planning-road-disclosure > summary {
+  font-weight: 650;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
 @media (min-width:641px) {
   .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }

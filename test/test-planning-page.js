@@ -68,6 +68,22 @@ function loadPage(script) {
       return ctx.planningTrajectoryFundingHtml(
         ctx.planningTrajectory(data, p || null), granularity || 'month', periodKey);
     },
+    composeRoadAhead(data, p, granularity, periodKey, asOf) {
+      return ctx.planningRoadAheadHtml(
+        ctx.planningTrajectory(data, p || null),
+        granularity || 'month',
+        periodKey,
+        asOf || (data && data.meta && data.meta.asOf) || null,
+      );
+    },
+    composeRoadAheadTraj(traj, granularity, periodKey, asOf) {
+      return ctx.planningRoadAheadHtml(
+        traj,
+        granularity || 'month',
+        periodKey,
+        asOf || null,
+      );
+    },
   };
 }
 
@@ -870,17 +886,104 @@ console.log('\n=== 21. Trajectory funding region accessible name matches granula
     'Month and Pay period accessible names do not contradict each other');
 }
 
+console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(/function planningRoadAheadHtml\(/.test(src) && /planningRoadAheadLeadHtml\(/.test(src),
+    'planning.js composes the road-ahead dashboard from Forecast trajectory only');
+  ok(/stage3\.result/.test(src) && /pressure\.signals/.test(src),
+    'road-ahead lead and timeline read Forecast stage3 results and pressure.signals');
+  const roadSrc = src.split('function planningRoadAheadPeriodKey')[1].split('function planningTrajectoryFundingHtml')[0];
+  ok(!/sustainable|on track|healthy|affordability|safe-to-spend|RYG|min-cash|What can you do/i.test(roadSrc),
+    'road-ahead copy carries no invented judgment or recommendation engine');
+  ok(!/stage1Amount|stage2Amount|stage3Amount|baselineTrajectoryMonthFunding/.test(src),
+    'road-ahead does not recompute stage amounts');
+
+  const liveEl = page.render(live, periods);
+  const roadHtml = liveEl['planning-road-ahead'].innerHTML;
+  ok(/Your Financial Road Ahead|planning-road-ahead|data-road-timeline="ready"/.test(roadHtml)
+    || /data-road-lead=/.test(roadHtml),
+    'live page renders the road-ahead dashboard region');
+  ok(/data-road-timeline="ready"/.test(roadHtml), 'live timeline is marked ready');
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const pickMonth = traj.months[0];
+  const road = page.composeRoadAhead(live, periods, 'month', pickMonth.month, live.meta.asOf);
+  ok(road.timeline.includes(money2(pickMonth.stage3.result.amount)),
+    'timeline bar copies Forecast stage3 result for the first month');
+  ok(road.selected.includes(money2(pickMonth.stage3.result.amount)),
+    'selected period panel copies the same Forecast stage3 result');
+  const gapMonth = traj.months.find(m => m.stage3 && m.stage3.result
+    && isFinite(m.stage3.result.amount) && m.stage3.result.amount < 0);
+  if (gapMonth) {
+    const gapRoad = page.composeRoadAhead(live, periods, 'month', gapMonth.month, live.meta.asOf);
+    ok(/data-road-lead="funding-gap"/.test(gapRoad.lead) && gapRoad.lead.includes(money2(gapMonth.stage3.result.amount)),
+      'when Forecast publishes a negative stage3, lead card names a projected funding gap with that amount');
+  } else {
+    ok(/data-road-lead="pressure"|data-road-lead="no-forward-pressure"|data-road-lead="pressure-unavailable"/.test(road.lead),
+      'without a negative stage3 on live data, lead uses pressure or fail-closed copy — not an invented gap');
+  }
+  ok(/data-road-lead="(funding-gap|pressure|no-forward-pressure|pressure-unavailable|unavailable)"/.test(road.lead),
+    'lead card uses a closed Forecast-backed lead kind');
+  if (traj.pressure && traj.pressure.status === 'ready') {
+    const forward = traj.pressure.signals.find(s => (s.date && s.date >= live.meta.asOf)
+      || (s.month && s.month >= live.meta.asOf.slice(0, 7)));
+    if (forward && forward.amount != null && isFinite(Number(forward.amount))
+      && /data-road-lead="pressure"/.test(road.lead)) {
+      ok(road.lead.includes(money2(forward.amount)),
+        'pressure lead copies the first forward signal amount from Forecast');
+    }
+  }
+  const withheld = page.composeRoadAhead({ plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null }, periods, 'month', null, live.meta.asOf);
+  ok(/data-road-lead="unavailable"|data-road-timeline="unavailable"/.test(withheld.lead + withheld.timeline),
+    'unavailable trajectory fails closed on the dashboard');
+}
+
+console.log('\n=== 23. Pay period road-ahead lead fails closed when payPeriods[] is empty ===');
+{
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  ok(traj.status === 'ready' && traj.months.length > 0 && traj.payPeriods.length > 0,
+    'live walk publishes both month and pay-period series before strip');
+  ok(traj.pressure && traj.pressure.status === 'ready' && traj.pressure.signals.length > 0,
+    'live monthly pressure.signals publish on the same walk');
+  const stripped = Object.assign({}, traj, {
+    payPeriods: [],
+    provenance: Object.assign({}, traj.provenance || {}, { payPeriodSeries: 'unavailable' }),
+  });
+  const monthLead = page.composeRoadAheadTraj(stripped, 'month', traj.months[0].month, live.meta.asOf).lead;
+  ok(/data-road-lead="pressure"|data-road-lead="funding-gap"|data-road-lead="no-forward-pressure"/.test(monthLead),
+    'Month granularity may still use monthly pressure or gap lead when months[] exists');
+  const payLead = page.composeRoadAheadTraj(stripped, 'pay-period', null, live.meta.asOf).lead;
+  ok(/data-road-lead="series-unavailable"/.test(payLead)
+    && /data-road-lead-granularity="pay-period"/.test(payLead),
+    'Pay period lead is series-unavailable, not monthly pressure');
+  ok(!/data-road-lead="pressure"/.test(payLead),
+    'Pay period lead does not fall through to global monthly pressure.signals');
+  ok(/Seaspan payroll calendar missing or clipped empty/.test(payLead),
+    'Pay period unavailable lead prints Forecast pay-period-series reason');
+  const forward = traj.pressure.signals.find(s => (s.date && s.date >= live.meta.asOf)
+    || (s.month && s.month >= live.meta.asOf.slice(0, 7)));
+  if (forward && forward.amount != null && isFinite(Number(forward.amount))
+    && /data-road-lead="pressure"/.test(monthLead)) {
+    ok(monthLead.includes(money2(forward.amount)) && !payLead.includes(money2(forward.amount)),
+      'monthly pressure amount on Month lead is absent from Pay period lead when series unavailable');
+  }
+}
+
 console.log('\n=== Page contract ===');
 {
   const src = stripComments(read('public/planning.js'));
   ok(/App\.register\(renderPlanning\)/.test(src) && /App\.boot\(\{ periods: true \}\)/.test(src), 'planning.js registers on the shared boot and asks for periods');
   ok(!/fetch\(|XMLHttpRequest|require\(|data\.json/.test(src), 'planning.js fetches nothing itself');
   const html = read('public/planning.html');
-  ok(/<h1>Planning<\/h1>/.test(html) && /Known future costs Atlas is protecting and planning for\./.test(html),
-    'heading Planning with the plain-language lede');
+  ok(/<h1>Planning<\/h1>/.test(html) && /Your Financial Road Ahead/.test(html),
+    'page h1 identifies as Planning; trajectory dashboard section is Your Financial Road Ahead');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-  ok(['planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-funding-lede', 'planning-trajectory-funding-picker', 'planning-trajectory-funding', 'planning-trajectory-funding-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note', 'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction', 'planning-trajectory-debt-direction-note'].every(id => ids.has(id)),
+  ok(['planning-road-ahead', 'planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-funding-lede', 'planning-trajectory-funding-picker', 'planning-trajectory-funding', 'planning-trajectory-funding-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note', 'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction', 'planning-trajectory-debt-direction-note'].every(id => ids.has(id)),
     'planning.html has every element planning.js writes to');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js">/.test(html), 'planning.html loads forecast.js before planning.js');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),

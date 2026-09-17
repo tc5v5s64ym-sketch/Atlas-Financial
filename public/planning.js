@@ -587,6 +587,347 @@ function planningTrajectoryFundingGranularityBtn(granularity, current) {
   return `<button type="button" class="planning-trajectory-granularity-btn" data-trajectory-funding-granularity="${row.id}" aria-pressed="${pressed}">${row.label}</button>`;
 }
 
+function planningRoadAheadPeriodKey(period, granularity) {
+  if (!period) return null;
+  if (granularity === 'pay-period') return period.payday || period.id || null;
+  return period.month || null;
+}
+
+function planningRoadAheadPeriodLabel(period, granularity) {
+  if (!period) return '';
+  if (granularity === 'pay-period') {
+    const id = period.payday || period.id || '';
+    const range = period.rangeLabel
+      || (period.start && period.end ? `${fmtDateFull(period.start)} – ${fmtDateFull(period.end)}` : '');
+    return range ? `${id} · ${range}` : id;
+  }
+  return period.month || '';
+}
+
+function planningRoadAheadStage3Result(period) {
+  if (!period || !period.stage3 || !period.stage3.result) return null;
+  const result = period.stage3.result;
+  if (result.status === 'unavailable') return null;
+  if (result.amount == null || !isFinite(Number(result.amount))) return null;
+  return result;
+}
+
+function planningRoadAheadResultPhrase(result) {
+  if (!result || result.amount == null || !isFinite(Number(result.amount))) {
+    return { label: 'Projected result withheld', cls: 'neutral' };
+  }
+  const amount = Number(result.amount);
+  if (amount < 0) return { label: 'Projected funding gap', cls: 'gap' };
+  if (amount > 0) return { label: 'Projected surplus', cls: 'surplus' };
+  return { label: 'Projected result', cls: 'neutral' };
+}
+
+function planningRoadAheadPeriods(traj, granularity) {
+  if (!traj || traj.status !== 'ready') return [];
+  if (granularity === 'pay-period') {
+    return Array.isArray(traj.payPeriods) ? traj.payPeriods : [];
+  }
+  return Array.isArray(traj.months) ? traj.months : [];
+}
+
+// Same fail-closed series gate as planningTrajectoryFundingHtml — road-ahead lead/timeline
+// must not fall through to monthly pressure or stage3 when the requested granularity has no series.
+function planningRoadAheadGranularitySeriesGate(traj, granularity) {
+  if (!traj || traj.status !== 'ready') {
+    return {
+      available: false,
+      reason: (traj && traj.reason) || 'Baseline trajectory unavailable.',
+    };
+  }
+  if (granularity === 'pay-period') {
+    const payPeriods = Array.isArray(traj.payPeriods) ? traj.payPeriods : [];
+    if (!payPeriods.length) {
+      const prov = traj.provenance && traj.provenance.payPeriodSeries;
+      const reason = prov === 'unavailable'
+        ? 'Forecast could not publish pay-period spans on this opening (Seaspan payroll calendar missing or clipped empty). Monthly funding remains available in Month view.'
+        : 'Forecast published no pay periods on this baseline walk.';
+      return { available: false, reason };
+    }
+    return { available: true, reason: null };
+  }
+  const months = Array.isArray(traj.months) ? traj.months : [];
+  if (!months.length) {
+    return {
+      available: false,
+      reason: (traj && traj.reason) || 'Baseline trajectory unavailable.',
+    };
+  }
+  return { available: true, reason: null };
+}
+
+function planningRoadAheadIsForwardPeriod(period, granularity, asOf) {
+  if (!asOf) return true;
+  const asOfMonth = asOf.length >= 7 ? asOf.slice(0, 7) : null;
+  if (granularity === 'pay-period') {
+    if (period.end && period.end < asOf) return false;
+    if (period.start && period.start >= asOf) return true;
+    return !(period.end && period.end < asOf);
+  }
+  if (period.month && asOfMonth) return period.month >= asOfMonth;
+  return true;
+}
+
+function planningRoadAheadForwardPressureSignals(traj, asOf) {
+  const pressure = traj && traj.pressure;
+  if (!pressure || pressure.status !== 'ready') {
+    return {
+      status: 'unavailable',
+      reason: (pressure && pressure.reason) || (traj && traj.reason) || 'Baseline trajectory pressure unavailable.',
+      signals: [],
+    };
+  }
+  const signals = Array.isArray(pressure.signals) ? pressure.signals : [];
+  const asOfMonth = asOf && asOf.length >= 7 ? asOf.slice(0, 7) : null;
+  const forward = signals.filter(signal => {
+    if (signal.date && signal.date >= asOf) return true;
+    if (signal.month && asOfMonth && signal.month >= asOfMonth) return true;
+    return false;
+  });
+  return { status: 'ready', signals: forward, all: signals };
+}
+
+function planningRoadAheadFindFundingGapLead(traj, granularity, asOf) {
+  const periods = planningRoadAheadPeriods(traj, granularity);
+  for (const period of periods) {
+    if (!planningRoadAheadIsForwardPeriod(period, granularity, asOf)) continue;
+    const result = planningRoadAheadStage3Result(period);
+    if (!result || Number(result.amount) >= 0) continue;
+    return {
+      kind: 'funding-gap',
+      period,
+      key: planningRoadAheadPeriodKey(period, granularity),
+      result,
+    };
+  }
+  return null;
+}
+
+function planningRoadAheadFindPressureLead(traj, asOf) {
+  const forward = planningRoadAheadForwardPressureSignals(traj, asOf);
+  if (forward.status !== 'ready') return forward;
+  if (!forward.signals.length) {
+    return { status: 'empty', signals: forward.all };
+  }
+  const signal = forward.signals[0];
+  return { status: 'ready', signal, index: forward.all.indexOf(signal) };
+}
+
+function planningRoadAheadSignalsForPeriod(traj, period, granularity) {
+  const pressure = traj && traj.pressure;
+  if (!pressure || pressure.status !== 'ready') return [];
+  const all = Array.isArray(pressure.signals) ? pressure.signals : [];
+  const month = granularity === 'month' ? period.month : null;
+  const start = period.start;
+  const end = period.end;
+  return all.filter(signal => {
+    if (month && signal.month === month) return true;
+    if (signal.date && start && end && signal.date >= start && signal.date <= end) return true;
+    return false;
+  });
+}
+
+function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
+  if (!traj || traj.status !== 'ready') {
+    const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
+    return {
+      html: `<div class="planning-road-lead planning-road-lead-unavailable" data-road-lead="unavailable"><div class="note-box crit">${reason}</div></div>`,
+      focusKey: null,
+    };
+  }
+  const seriesGate = planningRoadAheadGranularitySeriesGate(traj, granularity);
+  if (!seriesGate.available) {
+    return {
+      html: `<div class="planning-road-lead planning-road-lead-unavailable" data-road-lead="series-unavailable" data-road-lead-granularity="${granularity}"><div class="note-box crit">${seriesGate.reason}</div></div>`,
+      focusKey: selectedKey,
+    };
+  }
+  const gapLead = planningRoadAheadFindFundingGapLead(traj, granularity, asOf);
+  if (gapLead) {
+    const phrase = planningRoadAheadResultPhrase(gapLead.result);
+    const label = planningRoadAheadPeriodLabel(gapLead.period, granularity);
+    const chip = gapLead.result.status ? planningTrajectoryChip(gapLead.result.status) : '';
+    const focusKey = gapLead.key;
+    const signals = planningRoadAheadSignalsForPeriod(traj, gapLead.period, granularity);
+    const why = signals.length
+      ? `<p class="planning-road-lead-why">Forecast published ${signals.length} pressure signal${signals.length === 1 ? '' : 's'} on this ${granularity === 'pay-period' ? 'pay period' : 'month'} — see details below.</p>`
+      : '';
+    return {
+      html: `<article class="planning-road-lead planning-road-lead-gap" data-road-lead="funding-gap" data-road-lead-period="${focusKey || ''}">
+        <p class="planning-road-lead-kicker">${phrase.label} in ${label}</p>
+        <p class="planning-road-lead-amount" data-road-lead-amount="${gapLead.result.amount}"><b>${money2(gapLead.result.amount)}</b>${chip}</p>
+        ${why}
+        <button type="button" class="planning-road-lead-jump" data-road-select-period="${focusKey || ''}">View ${granularity === 'pay-period' ? 'pay period' : 'month'} details</button>
+      </article>`,
+      focusKey,
+    };
+  }
+  const pressureLead = planningRoadAheadFindPressureLead(traj, asOf);
+  if (pressureLead.status === 'unavailable') {
+    return {
+      html: `<div class="planning-road-lead planning-road-lead-unavailable" data-road-lead="pressure-unavailable"><div class="note-box crit">${pressureLead.reason}</div></div>`,
+      focusKey: selectedKey,
+    };
+  }
+  if (pressureLead.status === 'empty') {
+    return {
+      html: `<article class="planning-road-lead planning-road-lead-clear" data-road-lead="no-forward-pressure">
+        <p class="planning-road-lead-kicker">No forward pressure signals after the opening date</p>
+        <p class="lede">Forecast published ${pressureLead.signals.length} pressure signal${pressureLead.signals.length === 1 ? '' : 's'} on this baseline walk, all on or before the opening date.</p>
+      </article>`,
+      focusKey: selectedKey,
+    };
+  }
+  const signal = pressureLead.signal;
+  const kindLabel = PLANNING_PRESSURE_KIND[signal.kind] || signal.kind;
+  const when = signal.month
+    ? signal.month
+    : (signal.date ? fmtDateFull(signal.date) : 'date withheld');
+  const amountField = signal.amount != null && isFinite(Number(signal.amount))
+    ? `<p class="planning-road-lead-amount"><b>${money2(signal.amount)}</b></p>` : '';
+  const trust = (signal.trust === 'calculated' || signal.trust === 'estimated')
+    ? planningTrajectoryChip(signal.trust) : '';
+  let focusKey = selectedKey;
+  if (signal.month && granularity === 'month') focusKey = signal.month;
+  else if (granularity === 'pay-period' && signal.date) {
+    const periods = planningRoadAheadPeriods(traj, granularity);
+    const match = periods.find(p => p.start && p.end && signal.date >= p.start && signal.date <= p.end);
+    if (match) focusKey = planningRoadAheadPeriodKey(match, granularity);
+  }
+  const attr = focusKey ? ` data-road-select-period="${focusKey}"` : '';
+  const jump = focusKey
+    ? `<button type="button" class="planning-road-lead-jump"${attr}>View period details</button>` : '';
+  return {
+    html: `<article class="planning-road-lead planning-road-lead-pressure" data-road-lead="pressure" data-trajectory-pressure-kind="${signal.kind}">
+      <p class="planning-road-lead-kicker">Next pressure on the baseline walk — ${when}</p>
+      <p class="planning-road-lead-kind">${kindLabel}</p>
+      ${amountField}${trust}
+      ${jump}
+    </article>`,
+    focusKey,
+  };
+}
+
+function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
+  const seriesGate = planningRoadAheadGranularitySeriesGate(traj, granularity);
+  if (!seriesGate.available) {
+    return `<div class="note-box crit" data-road-timeline="unavailable" data-road-timeline-granularity="${granularity}">${seriesGate.reason}</div>`;
+  }
+  const periods = planningRoadAheadPeriods(traj, granularity);
+  if (!periods.length) {
+    const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
+    return `<div class="note-box crit" data-road-timeline="unavailable">${reason}</div>`;
+  }
+  let maxAbs = 0;
+  const entries = periods.map(period => {
+    const key = planningRoadAheadPeriodKey(period, granularity);
+    const result = planningRoadAheadStage3Result(period);
+    const amount = result ? Number(result.amount) : null;
+    if (amount != null && isFinite(amount)) maxAbs = Math.max(maxAbs, Math.abs(amount));
+    return { period, key, result, amount };
+  });
+  const bars = entries.map(entry => {
+    const selected = entry.key === selectedKey;
+    const phrase = entry.result ? planningRoadAheadResultPhrase(entry.result) : { label: 'Withheld', cls: 'withheld' };
+    const shortLabel = granularity === 'pay-period'
+      ? (entry.period.payday || entry.key || '')
+      : (entry.period.month || entry.key || '');
+    const widthPct = entry.amount != null && isFinite(entry.amount) && maxAbs > 0
+      ? Math.max(8, Math.round((Math.abs(entry.amount) / maxAbs) * 100))
+      : 8;
+    const amountHtml = entry.result
+      ? `<span class="planning-road-timeline-value">${money2(entry.amount)}</span>${entry.result.status ? planningTrajectoryChip(entry.result.status) : ''}`
+      : '<span class="chip c">Withheld</span>';
+    return `<li class="planning-road-timeline-item${selected ? ' is-selected' : ''}" data-road-timeline-period="${entry.key || ''}">
+      <button type="button" class="planning-road-timeline-btn" data-road-select-period="${entry.key || ''}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${shortLabel} — ${phrase.label}">
+        <span class="planning-road-timeline-label">${shortLabel}</span>
+        <span class="planning-road-timeline-bar planning-road-timeline-bar-${phrase.cls}" style="--road-bar:${widthPct}%"></span>
+        ${amountHtml}
+      </button>
+    </li>`;
+  }).join('');
+  return `<ol class="planning-road-timeline" data-road-timeline="ready" data-road-timeline-granularity="${granularity}">${bars}</ol>`;
+}
+
+function planningRoadAheadSelectedNavHtml(traj, granularity, selectedKey) {
+  const periods = planningRoadAheadPeriods(traj, granularity);
+  const idx = periods.findIndex(p => planningRoadAheadPeriodKey(p, granularity) === selectedKey);
+  if (idx < 0) return '';
+  const prev = idx > 0 ? periods[idx - 1] : null;
+  const next = idx < periods.length - 1 ? periods[idx + 1] : null;
+  const prevBtn = prev
+    ? `<button type="button" class="planning-road-nav-btn" data-road-select-period="${planningRoadAheadPeriodKey(prev, granularity)}">Previous</button>`
+    : '';
+  const nextBtn = next
+    ? `<button type="button" class="planning-road-nav-btn" data-road-select-period="${planningRoadAheadPeriodKey(next, granularity)}">Next</button>`
+    : '';
+  return `<div class="planning-road-selected-nav" role="group" aria-label="Selected period navigation">${prevBtn}${nextBtn}</div>`;
+}
+
+function planningRoadAheadSelectedHtml(traj, granularity, selectedKey, asOf) {
+  const periods = planningRoadAheadPeriods(traj, granularity);
+  const period = periods.find(p => planningRoadAheadPeriodKey(p, granularity) === selectedKey)
+    || periods[0];
+  if (!period) {
+    return '<p class="lede" data-road-selected="empty">Select a period on the timeline.</p>';
+  }
+  const key = planningRoadAheadPeriodKey(period, granularity);
+  const label = planningRoadAheadPeriodLabel(period, granularity);
+  const stage3 = planningRoadAheadStage3Result(period);
+  const phrase = stage3 ? planningRoadAheadResultPhrase(stage3) : { label: 'Final projected result withheld', cls: 'withheld' };
+  const badge = `<span class="chip ${phrase.cls === 'gap' ? 'c' : phrase.cls === 'surplus' ? 'v' : 'e'}">${phrase.label}</span>`;
+  const fundingPanel = planningTrajectoryFundingPeriodPanelHtml(period, granularity === 'pay-period' ? 'pay-period' : 'month');
+  const signals = planningRoadAheadSignalsForPeriod(traj, period, granularity);
+  const allSignals = (traj.pressure && Array.isArray(traj.pressure.signals)) ? traj.pressure.signals : [];
+  const pressureBlock = signals.length
+    ? `<details class="planning-road-pressure-detail"><summary>Pressure signals on this ${granularity === 'pay-period' ? 'pay period' : 'month'} (${signals.length})</summary><ol class="planning-trajectory-pressure-list" data-trajectory-pressure="ready">${signals.map(signal => {
+      const index = allSignals.indexOf(signal);
+      return planningTrajectoryPressureSignalHtml(signal, index >= 0 ? index : 0);
+    }).join('')}</ol></details>`
+    : '<p class="lede planning-road-pressure-detail" data-road-period-pressure="none">Forecast published no pressure signals on this period.</p>';
+  const finalResult = period.stage3 && period.stage3.result
+    ? planningTrajectoryFundingResultHtml(period.stage3.result)
+    : planningTrajectoryFundingUnavailableHtml(period.stage3 && period.stage3.result ? period.stage3.result : {});
+  return `<article class="planning-road-selected" data-road-selected-period="${key || ''}">
+    <header class="planning-road-selected-head">
+      <div>
+        <h2 class="planning-road-selected-title">${label}</h2>
+        ${badge}
+      </div>
+      ${planningRoadAheadSelectedNavHtml(traj, granularity, key)}
+    </header>
+    <p class="subhead">Funding progression</p>
+    <p class="lede">Normal life → After planned spending → After debt strategy → final projected result. Figures are Forecast stage1 / stage2 / stage3 only.</p>
+    ${fundingPanel}
+    <div class="planning-road-final-result">
+      <span class="planning-road-final-label">Final projected result (stage 3)</span>
+      ${finalResult}
+    </div>
+    ${pressureBlock}
+  </article>`;
+}
+
+function planningRoadAheadHtml(traj, granularity, selectedKey, asOf) {
+  const intro = 'Projected income, bills, planned spending, and debt strategy on the Forecast baseline walk — one period at a time. Figures are copied from Forecast; this page does not calculate them.';
+  const lead = planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey);
+  const picker = `<div class="planning-trajectory-granularity planning-road-granularity" role="group" aria-label="Trajectory period granularity">
+    ${planningTrajectoryFundingGranularityBtn('month', granularity)}
+    ${planningTrajectoryFundingGranularityBtn('pay-period', granularity)}
+  </div>`;
+  return {
+    intro,
+    lead: lead.html,
+    focusKey: lead.focusKey,
+    picker,
+    timeline: planningRoadAheadTimelineHtml(traj, granularity, selectedKey),
+    selected: planningRoadAheadSelectedHtml(traj, granularity, selectedKey, asOf),
+  };
+}
+
 function planningTrajectoryFundingHtml(traj, granularity, selectedKey) {
   const note = 'Three-stage funding is Forecast.baselineTrajectory stage1 / stage2 / stage3 only — Normal life, After planned spending, After debt strategy. Month view copies months[]; Pay period view copies payPeriods[] from the same baseline walk. This page copies component totals and results when Forecast publishes them; it does not subtract stages, recompute funding, or treat unavailable as $0.';
   const view = granularity === 'pay-period' ? 'pay-period' : 'month';
@@ -801,11 +1142,38 @@ function planningAdvice(d, periods) {
   });
 }
 
+function planningRoadAheadWireSelection(root, d, periods) {
+  if (!root) return;
+  const buttons = root.querySelectorAll('[data-road-select-period]');
+  for (const btn of buttons) {
+    btn.onclick = () => {
+      const key = btn.getAttribute('data-road-select-period');
+      if (!key) return;
+      if (planningTrajectoryFundingGranularity === 'pay-period') {
+        planningTrajectorySelectedPayPeriod = key;
+      } else {
+        planningTrajectorySelectedMonth = key;
+      }
+      renderPlanning(d, periods);
+    };
+  }
+  const granBtns = root.querySelectorAll('[data-trajectory-funding-granularity]');
+  for (const btn of granBtns) {
+    btn.onclick = () => {
+      const next = btn.getAttribute('data-trajectory-funding-granularity');
+      if (!next || next === planningTrajectoryFundingGranularity) return;
+      planningTrajectoryFundingGranularity = next;
+      renderPlanning(d, periods);
+    };
+  }
+}
+
 function renderPlanning(d, periods) {
   const html = planningPageHtml(planningAdvice(d, periods), d.liveOverlay);
   const traj = planningTrajectory(d, periods);
   const trajHtml = planningTrajectoryHtml(traj);
   const pressureHtml = planningTrajectoryPressureHtml(traj);
+  const asOf = d && d.meta && d.meta.asOf ? d.meta.asOf : null;
   if (traj && traj.status === 'ready' && Array.isArray(traj.months) && traj.months.length) {
     if (!planningTrajectorySelectedMonth
       || !traj.months.some(m => m.month === planningTrajectorySelectedMonth)) {
@@ -835,6 +1203,22 @@ function renderPlanning(d, periods) {
   if (fundingHtml.selectedMonth) planningTrajectorySelectedMonth = fundingHtml.selectedMonth;
   if (fundingHtml.selectedPayPeriod) planningTrajectorySelectedPayPeriod = fundingHtml.selectedPayPeriod;
   if (fundingHtml.granularity) planningTrajectoryFundingGranularity = fundingHtml.granularity;
+  const roadSelectedKey = planningTrajectoryFundingGranularity === 'pay-period'
+    ? planningTrajectorySelectedPayPeriod
+    : planningTrajectorySelectedMonth;
+  const roadHtml = planningRoadAheadHtml(traj, planningTrajectoryFundingGranularity, roadSelectedKey, asOf);
+  const roadRoot = $('planning-road-ahead');
+  if (roadRoot) {
+    roadRoot.innerHTML = `<p class="lede planning-road-intro">${roadHtml.intro}</p>
+      ${roadHtml.lead}
+      <div class="planning-road-timeline-wrap">
+        <p class="subhead">Projected period results</p>
+        ${roadHtml.picker}
+        ${roadHtml.timeline}
+      </div>
+      ${roadHtml.selected}`;
+    planningRoadAheadWireSelection(roadRoot, d, periods);
+  }
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;
   $('planning-note').textContent = html.note;
