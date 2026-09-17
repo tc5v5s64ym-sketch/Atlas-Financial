@@ -517,6 +517,113 @@ function planningTrajectoryFundingResultHtml(result) {
   return `<div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready" data-trajectory-funding-result-sign="${sign}"><b>${money2(result.amount)}</b>${chip}</div>`;
 }
 
+/** Forecast's published figure for one stage result or component, or null when
+ *  Forecast withheld it. Null stays null — it is never read as $0. */
+function planningRoadFigure(node) {
+  if (!node || node.status === 'unavailable') return null;
+  if (node.amount == null || !isFinite(Number(node.amount))) return null;
+  return Number(node.amount);
+}
+
+function planningRoadPeriodNoun(granularity) {
+  return granularity === 'pay-period' ? 'pay period' : 'month';
+}
+
+/** DESIGN §4 "what's included" line — the household wording for the inputs
+ *  Forecast already folded into this stage. */
+function planningRoadStageIncludes(stageNum, granularity, monthName) {
+  if (stageNum === 1) {
+    return 'Income minus bills, required debt payments and your household budget';
+  }
+  if (stageNum === 2) {
+    const when = monthName || ('this ' + planningRoadPeriodNoun(granularity));
+    return `Adds the dated spending you have planned for ${when}`;
+  }
+  return 'Adds the extra debt payment in your current plan';
+}
+
+/** Frame 03 plain-language note. Every branch is chosen from the sign of a
+ *  figure Forecast published and reprints that figure; nothing is derived. */
+function planningRoadStageNarrative(period, stageNum, granularity, monthName) {
+  const noun = planningRoadPeriodNoun(granularity);
+  const subject = monthName ? `${monthName}'s` : `this ${noun}'s`;
+  const s1 = planningRoadFigure(period.stage1 && period.stage1.result);
+  const s2 = planningRoadFigure(period.stage2 && period.stage2.result);
+  const s3 = planningRoadFigure(period.stage3 && period.stage3.result);
+  if (stageNum === 1) {
+    if (s1 == null) {
+      return `Forecast has not published a normal-life result for this ${noun}. It is not counted as $0.`;
+    }
+    if (s1 > 0) {
+      return `Your regular household costs are covered this ${noun}, with ${money2(s1)} left over.`;
+    }
+    if (s1 === 0) {
+      return `Your regular household costs use exactly the income Forecast projects for this ${noun}.`;
+    }
+    return `Your regular household costs are more than the income Forecast projects for this ${noun}.`;
+  }
+  if (stageNum === 2) {
+    const commitments = planningRoadFigure(period.stage2 && period.stage2.commitments);
+    if (commitments == null) {
+      return `Forecast has not published planned spending for this ${noun}. It is not counted as $0.`;
+    }
+    if (commitments === 0) {
+      return `Forecast has no dated spending planned for this ${noun}.`;
+    }
+    if (s2 == null) {
+      return `${subject} planned spending of ${money2(commitments)} is counted here; Forecast has not published the running total.`;
+    }
+    if (s2 < 0 && s1 != null && s1 >= 0) {
+      return `${subject} planned spending of ${money2(commitments)} is more than the normal-life surplus.`;
+    }
+    if (s2 < 0) {
+      return `${subject} planned spending of ${money2(commitments)} adds to the shortfall already in normal life.`;
+    }
+    return `${subject} planned spending of ${money2(commitments)} still leaves a projected surplus.`;
+  }
+  const extras = planningRoadFigure(period.stage3 && period.stage3.extras);
+  if (extras == null) {
+    return `Forecast has not published the extra debt payment for this ${noun}. It is not counted as $0.`;
+  }
+  if (extras === 0) {
+    return `Your current plan has no extra debt payment in this ${noun}.`;
+  }
+  if (s3 == null) {
+    return `The planned ${money2(extras)} extra payment is counted here; Forecast has not published the running total.`;
+  }
+  if (s3 < 0 && s2 != null && s2 < 0) {
+    return `The planned ${money2(extras)} extra payment widens ${subject} gap.`;
+  }
+  if (s3 < 0) {
+    return `The planned ${money2(extras)} extra payment turns this ${noun} into a funding gap.`;
+  }
+  return `The planned ${money2(extras)} extra payment still leaves a projected surplus.`;
+}
+
+/** Frame 03 delta pill. The leading minus is the direction Forecast published
+ *  the component in — stage 2 and stage 3 subtract it — not page arithmetic. */
+function planningRoadStageDeltaPill(stage, stageNum) {
+  if (stageNum === 2) {
+    const commitments = stage && stage.commitments;
+    const amount = planningRoadFigure(commitments);
+    if (commitments && amount == null) {
+      return `<span class="planning-road-stage-pill unavailable" data-road-stage-delta="commitments">${planningRoadAmountReprint({ status: 'unavailable' })} planned spending</span>`;
+    }
+    if (amount == null || amount === 0) return '';
+    return `<span class="planning-road-stage-pill" data-road-stage-delta="commitments">−${money2(amount)} planned spending</span>`;
+  }
+  if (stageNum === 3) {
+    const extras = stage && stage.extras;
+    const amount = planningRoadFigure(extras);
+    if (extras && amount == null) {
+      return `<span class="planning-road-stage-pill unavailable" data-road-stage-delta="extras">${planningRoadAmountReprint({ status: 'unavailable' })} extra debt payment</span>`;
+    }
+    if (amount == null || amount === 0) return '';
+    return `<span class="planning-road-stage-pill" data-road-stage-delta="extras">−${money2(amount)} extra debt payment</span>`;
+  }
+  return '';
+}
+
 function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
   if (!stage) return '';
   const omitComponentDetails = stageOpts && stageOpts.omitComponentDetails === true;
@@ -534,7 +641,13 @@ function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
   ].filter(Boolean).join(' ');
   if (stage.status === 'unavailable') {
     const body = fableStage
-      ? `${stageIndex}<div class="planning-road-spine-body"><h3 class="planning-trajectory-funding-stage-title">${label}</h3>${planningRoadAmountReprint({ status: 'unavailable' })}</div>`
+      ? `${stageIndex}<div class="planning-road-spine-body"><div class="planning-road-stage-card">
+        <div class="planning-road-stage-headrow">
+          <h3 class="planning-trajectory-funding-stage-title">${label}</h3>
+          <div class="planning-trajectory-funding-result" data-trajectory-funding-result="unavailable">${planningRoadAmountReprint({ status: 'unavailable' })}</div>
+        </div>
+        <p class="planning-road-stage-note">${stage.reason || 'Forecast has not published this stage. It is not counted as $0.'}</p>
+      </div></div>`
       : `<h3 class="planning-trajectory-funding-stage-title">${label}</h3>${planningTrajectoryFundingUnavailableHtml(stage)}`;
     return `<${tag} class="planning-trajectory-funding-stage unavailable${fableCls}"${attrs.length ? ' ' + attrs : ''}>${body}</${tag}>`;
   }
@@ -584,11 +697,25 @@ function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
     roadResult = planningTrajectoryFundingResultHtml(stage.result);
   }
   if (fableStage) {
+    const granularity = (stageOpts && stageOpts.granularity) || 'month';
+    const monthName = (stageOpts && stageOpts.monthName) || null;
+    const period = stageOpts && stageOpts.period;
+    const includes = planningRoadStageIncludes(stageNum, granularity, monthName);
+    const narrative = period
+      ? planningRoadStageNarrative(period, stageNum, granularity, monthName) : '';
+    const pill = planningRoadStageDeltaPill(stage, stageNum);
     return `<${tag} class="planning-trajectory-funding-stage${fableCls}"${attrs.length ? ' ' + attrs : ''}>
     ${stageIndex}
     <div class="planning-road-spine-body">
-      <h3 class="planning-trajectory-funding-stage-title">${label}</h3>
-      <div class="planning-road-spine-bar">${roadResult}</div>
+      <div class="planning-road-stage-card">
+        <div class="planning-road-stage-headrow">
+          <h3 class="planning-trajectory-funding-stage-title">${label}</h3>
+          ${roadResult}
+        </div>
+        <p class="planning-road-stage-includes">${includes}</p>
+        ${narrative ? `<p class="planning-road-stage-note">${narrative}</p>` : ''}
+        ${pill}
+      </div>
     </div>
   </${tag}>`;
   }
@@ -599,13 +726,22 @@ function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
   </article>`;
 }
 
-function planningRoadAheadStageOpts() {
-  return { omitComponentDetails: true, roadTrustChips: true, fableStage: true };
+function planningRoadAheadStageOpts(period, granularity) {
+  const parts = period && granularity !== 'pay-period'
+    ? planningRoadAheadMonthParts(period.month) : null;
+  return {
+    omitComponentDetails: true,
+    roadTrustChips: true,
+    fableStage: true,
+    granularity: granularity || 'month',
+    monthName: parts ? parts.long : null,
+    period: period || null,
+  };
 }
 
 function planningRoadAheadFundingStagesHtml(period, granularity) {
   if (!period) return '';
-  const stageOpts = planningRoadAheadStageOpts();
+  const stageOpts = planningRoadAheadStageOpts(period, granularity);
   const stages = `<ol class="planning-trajectory-funding-stages planning-road-spine" data-planning-road-stages="ready">
       ${planningTrajectoryFundingStageHtml(period.stage1, 1, stageOpts)}
       ${planningTrajectoryFundingStageHtml(period.stage2, 2, stageOpts)}
@@ -614,12 +750,9 @@ function planningRoadAheadFundingStagesHtml(period, granularity) {
   if (granularity === 'pay-period') {
     const key = period.payday || period.id;
     if (!key) return '';
-    const range = period.rangeLabel
-      || (period.start && period.end ? `${fmtDateFull(period.start)} – ${fmtDateFull(period.end)}` : '');
-    const rangeNote = range
-      ? `<small class="planning-trajectory-period-dates">${range}</small>` : '';
+    // The pay-period header already names the span; repeating it above the
+    // spine reads as two different labels for one period.
     return `<div class="planning-trajectory-funding-period" data-trajectory-funding-granularity="pay-period" data-trajectory-funding-pay-period="${key}">
-    ${rangeNote}
     ${stages}
   </div>`;
   }
@@ -633,11 +766,11 @@ function planningRoadBreakdownComponentRow(label, component, dataKey) {
   if (!component) return '';
   if (component.status === 'unavailable') {
     const reason = component.reason
-      ? `<small class="planning-trajectory-reason">${component.reason}</small>` : '';
+      || 'Atlas cannot see this amount yet. It is not counted as $0.';
     return `<li class="planning-road-breakdown-row unavailable" data-planning-road-breakdown="${dataKey || label}">
       <span class="planning-road-breakdown-label">${label}</span>
       <span class="planning-road-breakdown-value">${planningRoadAmountReprint(component)}</span>
-      ${reason}
+      <small class="planning-trajectory-reason">${reason}</small>
     </li>`;
   }
   if (component.amount == null || !isFinite(Number(component.amount))) {
@@ -655,46 +788,66 @@ function planningRoadBreakdownComponentRow(label, component, dataKey) {
   </li>`;
 }
 
-function planningRoadAheadBreakdownSheetHtml(period) {
+function planningRoadBreakdownGroup(title, rows) {
+  const list = rows.filter(Boolean).join('');
+  if (!list) return '';
+  return `<div class="planning-road-breakdown-group">
+      <p class="planning-road-breakdown-group-title">${title}</p>
+      <ul class="planning-road-breakdown-list">${list}</ul>
+    </div>`;
+}
+
+/* Frame 06 — progressive disclosure of exactly what Forecast counted, grouped
+ * money in / required costs / planned spending / debt strategy / stage results.
+ * Every row keeps its trust badge; withheld rows stay em-dashes. */
+function planningRoadAheadBreakdownSheetHtml(period, granularity) {
   if (!period) return '';
-  const rows = [];
   const s1 = period.stage1;
   const s2 = period.stage2;
   const s3 = period.stage3;
-  if (s1) {
-    rows.push(planningRoadBreakdownComponentRow('Income', s1.income, 'income'));
-    rows.push(planningRoadBreakdownComponentRow('Bills', s1.bills, 'bills'));
-    rows.push(planningRoadBreakdownComponentRow('Debt obligations', s1.obligations, 'obligations'));
-    if (s1.householdBudget) {
-      rows.push(planningRoadBreakdownComponentRow('Household budget', s1.householdBudget, 'household-budget'));
-    }
-  }
-  if (s2) {
-    rows.push(planningRoadBreakdownComponentRow('Dated commitments', s2.commitments, 'commitments'));
-  }
-  if (s3 && s3.extras) {
-    rows.push(planningRoadBreakdownComponentRow('Extra debt payments', s3.extras, 'extras'));
-  }
-  const stageResults = [
-    { label: 'Normal life', result: s1 && s1.result },
-    { label: 'After planned spending', result: s2 && s2.result },
-    { label: 'After debt strategy', result: s3 && s3.result },
-  ];
-  for (const row of stageResults) {
-    if (!row.result) continue;
-    rows.push(`<li class="planning-road-breakdown-row planning-road-breakdown-stage-result" data-planning-road-breakdown="${row.label}">
+  const monthParts = granularity === 'pay-period'
+    ? null : planningRoadAheadMonthParts(period.month);
+  const plannedTitle = monthParts
+    ? `Planned spending · ${monthParts.long}`
+    : 'Planned spending';
+  const groups = [
+    planningRoadBreakdownGroup('Money in', [
+      s1 ? planningRoadBreakdownComponentRow('Income', s1.income, 'income') : '',
+    ]),
+    planningRoadBreakdownGroup('Bills & required costs', s1 ? [
+      planningRoadBreakdownComponentRow('Bills', s1.bills, 'bills'),
+      planningRoadBreakdownComponentRow('Required debt payments', s1.obligations, 'obligations'),
+      s1.householdBudget
+        ? planningRoadBreakdownComponentRow('Household budget', s1.householdBudget, 'household-budget') : '',
+    ] : []),
+    planningRoadBreakdownGroup(plannedTitle, [
+      s2 ? planningRoadBreakdownComponentRow('Dated commitments', s2.commitments, 'commitments') : '',
+    ]),
+    planningRoadBreakdownGroup('Debt strategy', [
+      s3 && s3.extras
+        ? planningRoadBreakdownComponentRow('Extra debt payments', s3.extras, 'extras') : '',
+    ]),
+    planningRoadBreakdownGroup('Stage results', [
+      { label: 'Normal life', result: s1 && s1.result },
+      { label: 'After planned spending', result: s2 && s2.result },
+      { label: 'After debt strategy', result: s3 && s3.result },
+    ].map(row => (row.result
+      ? `<li class="planning-road-breakdown-row planning-road-breakdown-stage-result" data-planning-road-breakdown="${row.label}">
       <span class="planning-road-breakdown-label">${row.label}</span>
       <span class="planning-road-breakdown-value">${planningRoadAmountReprint(row.result)}</span>
-    </li>`);
-  }
-  const list = rows.filter(Boolean).join('');
-  if (!list) {
+    </li>`
+      : ''))),
+  ].filter(Boolean).join('');
+  if (!groups) {
     return `<p class="lede" data-planning-road-breakdown="empty">Forecast published no line items for this period.</p>`;
   }
+  const summary = monthParts
+    ? `Full ${monthParts.long} breakdown`
+    : 'Full period breakdown';
   return `<details class="planning-road-breakdown-sheet" data-planning-road-breakdown="sheet">
-    <summary>Period breakdown</summary>
-    <p class="lede planning-road-breakdown-intro">Line items and stage results copied from Forecast for the selected period. Unavailable figures show — and are not counted as $0.</p>
-    <ul class="planning-road-breakdown-list">${list}</ul>
+    <summary><span class="planning-road-breakdown-summary-label">${summary}</span><span class="planning-road-breakdown-summary-chevron" aria-hidden="true">›</span></summary>
+    <p class="lede planning-road-breakdown-intro">Everything counted for this period, copied from Forecast. Unavailable figures show — and are not counted as $0.</p>
+    ${groups}
   </details>`;
 }
 
@@ -703,18 +856,25 @@ function planningRoadAheadHorizonCountsHtml(traj, granularity, asOf) {
   const reason = !seriesGate.available
     ? seriesGate.reason
     : 'Forecast has not published surplus and funding-gap counts on this view yet. Planning does not count periods here.';
+  const noun = planningRoadPeriodNoun(granularity);
+  const horizon = planningRoadAheadHorizonLabel(traj);
+  const caption = horizon
+    ? `${horizon}, as far as Forecast can currently project.`
+    : 'As far as Forecast can currently project.';
   return `<section class="planning-road-horizon planning-road-horizon-unavailable" data-planning-road-horizon="unavailable" aria-label="Horizon">
-    <p class="planning-road-horizon-kicker">Horizon</p>
     <div class="planning-road-horizon-stats">
       <div class="planning-road-horizon-stat" data-road-horizon-stat="surplus">
+        <span class="planning-road-horizon-stat-dot planning-road-horizon-stat-dot-surplus" aria-hidden="true"></span>
         <span class="planning-road-horizon-stat-value" aria-label="Unavailable">—</span>
-        <span class="planning-road-horizon-stat-label">Surplus</span>
+        <span class="planning-road-horizon-stat-label">${noun}s with a projected surplus</span>
       </div>
       <div class="planning-road-horizon-stat" data-road-horizon-stat="gap">
+        <span class="planning-road-horizon-stat-dot planning-road-horizon-stat-dot-gap" aria-hidden="true"></span>
         <span class="planning-road-horizon-stat-value" aria-label="Unavailable">—</span>
-        <span class="planning-road-horizon-stat-label">Funding gap</span>
+        <span class="planning-road-horizon-stat-label">${noun}s with a funding gap</span>
       </div>
     </div>
+    <p class="planning-road-horizon-caption">${caption}</p>
     <p class="planning-road-horizon-lede">${reason}</p>
   </section>`;
 }
@@ -765,12 +925,14 @@ function planningTrajectoryFundingGranularityBtn(granularity, current) {
   return `<button type="button" class="planning-trajectory-granularity-btn" data-trajectory-funding-granularity="${row.id}" aria-pressed="${pressed}">${row.label}</button>`;
 }
 
+/* DESIGN §8 — iOS-style segmented control with tablist semantics. It swaps the
+ * bucketing of one Forecast trajectory; it never selects a different walk. */
 function planningRoadAheadSegmentedHtml(current) {
-  const monthPressed = current === 'month' ? 'true' : 'false';
-  const payPressed = current === 'pay-period' ? 'true' : 'false';
-  return `<div class="planning-road-segmented planning-trajectory-granularity planning-road-granularity" role="group" aria-label="Month or Pay view">
-    <button type="button" class="planning-road-segmented-btn planning-trajectory-granularity-btn" data-trajectory-funding-granularity="month" aria-pressed="${monthPressed}">Month</button>
-    <button type="button" class="planning-road-segmented-btn planning-trajectory-granularity-btn" data-trajectory-funding-granularity="pay-period" aria-pressed="${payPressed}">Pay</button>
+  const monthOn = current === 'month';
+  const payOn = current === 'pay-period';
+  return `<div class="planning-road-segmented planning-trajectory-granularity planning-road-granularity" role="tablist" aria-label="Month or pay period view">
+    <button type="button" role="tab" class="planning-road-segmented-btn planning-trajectory-granularity-btn" data-trajectory-funding-granularity="month" aria-selected="${monthOn ? 'true' : 'false'}" aria-controls="planning-road-view-panel" tabindex="${monthOn ? '0' : '-1'}">Month</button>
+    <button type="button" role="tab" class="planning-road-segmented-btn planning-trajectory-granularity-btn" data-trajectory-funding-granularity="pay-period" aria-selected="${payOn ? 'true' : 'false'}" aria-controls="planning-road-view-panel" tabindex="${payOn ? '0' : '-1'}">Pay period</button>
   </div>`;
 }
 
@@ -795,37 +957,37 @@ function planningRoadAheadPeriodYear(period, granularity) {
   return parts ? parts.year : null;
 }
 
-/** When the published series crosses calendar years, Fable timeline chips keep the
- *  anchor year short and suffix later years (e.g. Jan '27). Presentation only. */
-function planningRoadAheadTimelineYearContext(periods, granularity) {
-  const years = [];
-  for (const period of periods || []) {
-    const year = planningRoadAheadPeriodYear(period, granularity);
-    if (year) years.push(year);
-  }
-  if (!years.length) return { multiYear: false, anchorYear: null };
-  const unique = new Set(years);
-  return { multiYear: unique.size > 1, anchorYear: years[0] };
-}
-
-function planningRoadAheadChipYearSuffix(year, yearContext) {
-  if (!yearContext || !yearContext.multiYear || !year || !yearContext.anchorYear) return '';
-  if (year === yearContext.anchorYear) return '';
-  return ` '${String(year).slice(-2)}`;
-}
-
-function planningRoadAheadChipLabel(period, granularity, yearContext) {
+/** Frame 01/05 trajectory chip: a short period line over a year line. Every
+ *  chip carries its own year, so two chips for the same month in different
+ *  calendar years never read as the same period on the strip. */
+function planningRoadAheadChipLabel(period, granularity) {
   if (!period) return '';
-  const year = planningRoadAheadPeriodYear(period, granularity);
-  const suffix = planningRoadAheadChipYearSuffix(year, yearContext);
   if (granularity === 'pay-period') {
+    if (period.start && period.end) return `${fmtDate(period.start)} – ${fmtDate(period.end)}`;
     const payday = period.payday || period.id || '';
-    const base = payday.length >= 10 ? fmtDate(payday) : payday;
-    return `${base}${suffix}`;
+    return payday.length >= 10 ? fmtDate(payday) : payday;
   }
   const parts = planningRoadAheadMonthParts(period.month);
   if (!parts) return period.month || '';
-  return `${parts.short}${suffix}`;
+  return parts.short;
+}
+
+function planningRoadAheadChipYear(period, granularity) {
+  return planningRoadAheadPeriodYear(period, granularity) || '';
+}
+
+/** VoiceOver reads the whole period, never the abbreviated chip line. */
+function planningRoadAheadChipAccessibleLabel(period, granularity) {
+  if (!period) return '';
+  if (granularity === 'pay-period') {
+    if (period.start && period.end) {
+      return `${fmtDateFull(period.start)} to ${fmtDateFull(period.end)}`;
+    }
+    const payday = period.payday || period.id || '';
+    return payday.length >= 10 ? fmtDateFull(payday) : payday;
+  }
+  const parts = planningRoadAheadMonthParts(period.month);
+  return parts ? `${parts.long} ${parts.year}` : (period.month || '');
 }
 
 function planningRoadAheadPeriodDisplayLabel(period, granularity) {
@@ -974,6 +1136,118 @@ function planningRoadAheadSignalsForPeriod(traj, period, granularity) {
   });
 }
 
+/* DESIGN §4 — household wording for the pressure kinds Forecast publishes.
+ * The hero reprints Forecast's signal; these strings only translate its kind
+ * out of implementation vocabulary. */
+const PLANNING_ROAD_PRESSURE_HEADLINE = {
+  'lowest-projected-cash': 'Lowest projected cash in this projection',
+  'cash-trough': 'Lowest projected cash inside the month',
+  'cash-sign-change': 'Projected cash turns negative',
+  'month-cash-decline': 'Projected cash falls from the month before',
+  'outflow-exceeds-inflow': 'More is projected to go out than to come in',
+  'dated-commitment': 'A dated cost you have planned falls due',
+  'debt-increase': 'Total modelled debt is projected to increase',
+  'debt-not-declining-after-payment': 'Debt is not projected to fall after a payment',
+  'debt-limit-crossing': 'A credit limit is projected to be crossed',
+};
+
+const PLANNING_ROAD_PRESSURE_NARRATIVE = {
+  'lowest-projected-cash': 'This is the lowest point projected cash reaches anywhere in this projection.',
+  'cash-trough': 'Projected cash dips to its lowest point inside this month before recovering.',
+  'cash-sign-change': 'Projected cash was positive and is projected to turn negative here.',
+  'month-cash-decline': 'Projected month-end cash is lower than the month before it.',
+  'outflow-exceeds-inflow': 'More money is projected to leave than to arrive in this month.',
+  'dated-commitment': 'A cost with a date on it comes due in this period.',
+  'debt-increase': 'Total modelled debt is higher at the end of this step than at the start.',
+  'debt-not-declining-after-payment': 'A payment is projected but total debt does not fall.',
+  'debt-limit-crossing': 'The projection crosses a credit limit on one facility.',
+};
+
+/** DESIGN §4 — "the next 18 months" / "as far as Forecast can currently
+ *  project", taken from the horizon Forecast published for this walk. */
+function planningRoadAheadHorizonLabel(traj) {
+  const end = traj && traj.horizon && traj.horizon.end;
+  if (!end) return '';
+  return `Through ${fmtDateFull(end)}`;
+}
+
+/** DESIGN §4 — relative time next to the absolute period, in whole calendar
+ *  months from the opening date. Calendar distance only; no financial figure. */
+function planningRoadAheadRelativePhrase(asOf, period, granularity) {
+  if (!asOf || String(asOf).length < 7 || !period) return '';
+  const anchor = granularity === 'pay-period'
+    ? String(period.start || period.payday || period.id || '')
+    : String(period.month || '');
+  if (anchor.length < 7) return '';
+  const fromY = Number(String(asOf).slice(0, 4));
+  const fromM = Number(String(asOf).slice(5, 7));
+  const toY = Number(anchor.slice(0, 4));
+  const toM = Number(anchor.slice(5, 7));
+  if (![fromY, fromM, toY, toM].every(n => isFinite(n) && n > 0)) return '';
+  const months = (toY - fromY) * 12 + (toM - fromM);
+  if (months <= 0) return 'this month';
+  if (months === 1) return 'next month';
+  return `in ${months} months`;
+}
+
+function planningRoadAheadWhenLine(label, relative) {
+  const rel = relative
+    ? `<span class="planning-road-hero-relative"> · ${relative}</span>` : '';
+  return `<p class="planning-road-hero-when"><span class="planning-road-hero-period">${label}</span>${rel}</p>`;
+}
+
+function planningRoadAheadHeroHead(eyebrow, label, relative, kind) {
+  return `<div class="planning-road-hero-top">
+      <span class="planning-road-hero-icon planning-road-hero-icon-${kind}" aria-hidden="true"></span>
+      <div class="planning-road-hero-heading">
+        <p class="planning-road-hero-eyebrow">${eyebrow}</p>
+        ${planningRoadAheadWhenLine(label, relative)}
+      </div>
+    </div>`;
+}
+
+/** Frame 01 hero attribution. Which stage turned the period negative is read
+ *  from the signs Forecast published for stage1 / stage2 / stage3. */
+function planningRoadAheadHeroAttribution(period, granularity) {
+  const noun = planningRoadPeriodNoun(granularity);
+  const parts = granularity === 'pay-period'
+    ? null : planningRoadAheadMonthParts(period.month);
+  const subject = parts ? `${parts.long}'s` : `This ${noun}'s`;
+  const s1 = planningRoadFigure(period.stage1 && period.stage1.result);
+  const s2 = planningRoadFigure(period.stage2 && period.stage2.result);
+  const extras = planningRoadFigure(period.stage3 && period.stage3.extras);
+  const hasExtra = extras != null && extras > 0;
+  if (s1 == null || s2 == null) {
+    return `Forecast published this result without a full stage story for that ${noun}.`;
+  }
+  if (s1 < 0) {
+    return `${subject} regular household costs are more than the income Forecast projects for that ${noun}.`;
+  }
+  if (s2 < 0) {
+    return hasExtra
+      ? `Your regular household costs are covered that ${noun}. ${subject} planned spending and the extra debt payment create this gap.`
+      : `Your regular household costs are covered that ${noun}. ${subject} planned spending creates this gap.`;
+  }
+  if (hasExtra) {
+    return `Your regular household costs and planned spending are covered that ${noun}. The extra debt payment creates this gap.`;
+  }
+  return `Forecast published this result without naming a stage that creates the gap.`;
+}
+
+function planningRoadAheadHeroCta(period, granularity, key) {
+  if (!key) return '';
+  const parts = granularity === 'pay-period'
+    ? null : planningRoadAheadMonthParts(period && period.month);
+  const label = parts
+    ? parts.long
+    : planningRoadAheadPeriodDisplayLabel(period, granularity);
+  if (!label) return '';
+  return `<button type="button" class="planning-road-hero-cta" data-road-select-period="${key}" data-road-focus-period="${key}">
+      <span>See what's behind ${label}</span>
+      <span class="planning-road-hero-cta-chevron" aria-hidden="true">›</span>
+    </button>`;
+}
+
 function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
   if (!traj || traj.status !== 'ready') {
     const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
@@ -994,11 +1268,13 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
     const label = planningRoadAheadPeriodDisplayLabel(gapLead.period, granularity);
     const chip = gapLead.result.status ? planningRoadTrustChip(gapLead.result.status) : '';
     const focusKey = gapLead.key;
+    const relative = planningRoadAheadRelativePhrase(asOf, gapLead.period, granularity);
     return {
       html: `<article class="planning-road-lead planning-road-lead-gap planning-road-hero-card" data-road-lead="funding-gap" data-road-lead-period="${focusKey || ''}">
-        <p class="planning-road-hero-eyebrow">NEXT FUNDING GAP</p>
-        <p class="planning-road-lead-amount" data-road-lead-amount="${gapLead.result.amount}"><b>${money2(gapLead.result.amount)}</b></p>
-        <p class="planning-road-hero-meta"><span class="planning-road-hero-period">in ${label}</span>${chip}</p>
+        ${planningRoadAheadHeroHead('NEXT FUNDING GAP', label, relative, 'gap')}
+        <p class="planning-road-lead-amount" data-road-lead-amount="${gapLead.result.amount}"><b>${money2(gapLead.result.amount)}</b>${chip}</p>
+        <p class="planning-road-hero-narrative">${planningRoadAheadHeroAttribution(gapLead.period, granularity)}</p>
+        ${planningRoadAheadHeroCta(gapLead.period, granularity, focusKey)}
       </article>`,
       focusKey,
     };
@@ -1011,24 +1287,29 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
     };
   }
   if (pressureLead.status === 'empty') {
+    const horizonLabel = planningRoadAheadHorizonLabel(traj);
     return {
-      html: `<article class="planning-road-lead planning-road-lead-clear planning-road-hero-card" data-road-lead="no-forward-pressure">
-        <p class="planning-road-hero-eyebrow">NEXT PRESSURE</p>
-        <p class="planning-road-lead-kind">No forward pressure after the opening date</p>
+      html: `<article class="planning-road-lead planning-road-lead-clear planning-road-hero-card planning-road-lead-noamount" data-road-lead="no-forward-pressure">
+        ${planningRoadAheadHeroHead('NEXT PRESSURE', horizonLabel || 'This projection', '', 'clear')}
+        <p class="planning-road-lead-kind">No funding gap or pressure ahead in this projection</p>
+        <p class="planning-road-hero-narrative">Forecast published no pressure signal after the opening date. That is a Forecast result for this projection, not a verdict on your plan.</p>
       </article>`,
       focusKey: selectedKey,
     };
   }
   const signal = pressureLead.signal;
-  const kindLabel = PLANNING_PRESSURE_KIND[signal.kind] || signal.kind;
+  const headline = PLANNING_ROAD_PRESSURE_HEADLINE[signal.kind]
+    || PLANNING_PRESSURE_KIND[signal.kind] || signal.kind;
+  const narrative = PLANNING_ROAD_PRESSURE_NARRATIVE[signal.kind] || '';
   const monthParts = signal.month ? planningRoadAheadMonthParts(signal.month) : null;
   const when = monthParts
     ? `${monthParts.long} ${monthParts.year}`
     : (signal.date ? fmtDateFull(signal.date) : 'date withheld');
-  const amountField = signal.amount != null && isFinite(Number(signal.amount))
-    ? `<p class="planning-road-lead-amount"><b>${money2(signal.amount)}</b></p>` : '';
+  const hasAmount = signal.amount != null && isFinite(Number(signal.amount));
   const trust = (signal.trust === 'calculated' || signal.trust === 'estimated')
     ? planningRoadTrustChip(signal.trust) : '';
+  const amountField = hasAmount
+    ? `<p class="planning-road-lead-amount"><b>${money2(signal.amount)}</b>${trust}</p>` : '';
   let focusKey = selectedKey;
   if (signal.month && granularity === 'month') focusKey = signal.month;
   else if (granularity === 'pay-period' && signal.date) {
@@ -1036,12 +1317,17 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
     const match = periods.find(p => p.start && p.end && signal.date >= p.start && signal.date <= p.end);
     if (match) focusKey = planningRoadAheadPeriodKey(match, granularity);
   }
+  const focusPeriod = planningRoadAheadPeriods(traj, granularity)
+    .find(p => planningRoadAheadPeriodKey(p, granularity) === focusKey) || null;
+  const relative = planningRoadAheadRelativePhrase(asOf, focusPeriod, granularity);
   return {
-    html: `<article class="planning-road-lead planning-road-lead-pressure planning-road-hero-card" data-road-lead="pressure" data-trajectory-pressure-kind="${signal.kind}">
-      <p class="planning-road-hero-eyebrow">NEXT PRESSURE</p>
-      <p class="planning-road-lead-kind">${kindLabel}</p>
+    html: `<article class="planning-road-lead planning-road-lead-pressure planning-road-hero-card${hasAmount ? '' : ' planning-road-lead-noamount'}" data-road-lead="pressure" data-trajectory-pressure-kind="${signal.kind}">
+      ${planningRoadAheadHeroHead('NEXT PRESSURE', when, relative, 'pressure')}
+      <p class="planning-road-lead-kind">${headline}</p>
       ${amountField}
-      <p class="planning-road-hero-meta"><span class="planning-road-hero-period">${when}</span>${trust}</p>
+      ${narrative ? `<p class="planning-road-hero-narrative">${narrative}</p>` : ''}
+      ${hasAmount ? '' : `<p class="planning-road-hero-meta">${trust}</p>`}
+      ${planningRoadAheadHeroCta(focusPeriod, granularity, focusKey)}
     </article>`,
     focusKey,
   };
@@ -1058,7 +1344,6 @@ function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
     return `<div class="note-box crit" data-road-timeline="unavailable">${reason}</div>`;
   }
   let maxAbs = 0;
-  const yearContext = planningRoadAheadTimelineYearContext(periods, granularity);
   const entries = periods.map(period => {
     const key = planningRoadAheadPeriodKey(period, granularity);
     const result = planningRoadAheadStage3Result(period);
@@ -1069,17 +1354,23 @@ function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
   const bars = entries.map(entry => {
     const selected = entry.key === selectedKey;
     const phrase = entry.result ? planningRoadAheadResultPhrase(entry.result) : { label: 'Withheld', cls: 'withheld' };
-    const shortLabel = planningRoadAheadChipLabel(entry.period, granularity, yearContext) || entry.key || '';
-    const widthPct = entry.amount != null && isFinite(entry.amount) && maxAbs > 0
+    const shortLabel = planningRoadAheadChipLabel(entry.period, granularity) || entry.key || '';
+    const year = planningRoadAheadChipYear(entry.period, granularity);
+    const fullLabel = planningRoadAheadChipAccessibleLabel(entry.period, granularity)
+      || shortLabel || entry.key || '';
+    const barPct = entry.amount != null && isFinite(entry.amount) && maxAbs > 0
       ? Math.max(8, Math.round((Math.abs(entry.amount) / maxAbs) * 100))
       : 8;
     const amountHtml = entry.result
       ? `<span class="planning-road-timeline-value">${money2(entry.amount)}</span>`
       : `<span class="planning-road-amount-unavailable" aria-label="Unavailable">—</span>`;
-    return `<li class="planning-road-timeline-item${selected ? ' is-selected' : ''}" data-road-timeline-period="${entry.key || ''}">
-      <button type="button" class="planning-road-timeline-btn" data-road-select-period="${entry.key || ''}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${shortLabel} — ${phrase.label}">
+    return `<li class="planning-road-timeline-item${selected ? ' is-selected' : ''} planning-road-timeline-item-${phrase.cls}" data-road-timeline-period="${entry.key || ''}" data-road-timeline-sign="${phrase.cls}">
+      <button type="button" class="planning-road-timeline-btn" data-road-select-period="${entry.key || ''}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${fullLabel} — ${phrase.label}">
         <span class="planning-road-timeline-label">${shortLabel}</span>
-        <span class="planning-road-timeline-bar planning-road-timeline-bar-${phrase.cls}" style="--road-bar:${widthPct}%"></span>
+        <span class="planning-road-timeline-year">${year}</span>
+        <span class="planning-road-timeline-plot" aria-hidden="true">
+          <span class="planning-road-timeline-bar planning-road-timeline-bar-${phrase.cls}" style="--road-bar:${barPct}%"></span>
+        </span>
         ${amountHtml}
       </button>
     </li>`;
@@ -1087,19 +1378,22 @@ function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
   return `<ol class="planning-road-timeline" data-road-timeline="ready" data-road-timeline-granularity="${granularity}">${bars}</ol>`;
 }
 
+/* Frame 03 pager — chevrons that step periods without returning to the strip.
+ * The accessible name is the real period name, never "next". */
 function planningRoadAheadSelectedNavHtml(traj, granularity, selectedKey) {
   const periods = planningRoadAheadPeriods(traj, granularity);
   const idx = periods.findIndex(p => planningRoadAheadPeriodKey(p, granularity) === selectedKey);
   if (idx < 0) return '';
   const prev = idx > 0 ? periods[idx - 1] : null;
   const next = idx < periods.length - 1 ? periods[idx + 1] : null;
-  const prevBtn = prev
-    ? `<button type="button" class="planning-road-nav-btn" data-road-select-period="${planningRoadAheadPeriodKey(prev, granularity)}">Previous</button>`
-    : '';
-  const nextBtn = next
-    ? `<button type="button" class="planning-road-nav-btn" data-road-select-period="${planningRoadAheadPeriodKey(next, granularity)}">Next</button>`
-    : '';
-  return `<div class="planning-road-selected-nav" role="group" aria-label="Selected period navigation">${prevBtn}${nextBtn}</div>`;
+  const btn = (period, dir, glyph) => {
+    if (!period) {
+      return `<span class="planning-road-nav-btn is-disabled" aria-hidden="true">${glyph}</span>`;
+    }
+    const name = planningRoadAheadChipAccessibleLabel(period, granularity);
+    return `<button type="button" class="planning-road-nav-btn" data-road-select-period="${planningRoadAheadPeriodKey(period, granularity)}" data-road-pager="${dir}" aria-label="${name}"><span aria-hidden="true">${glyph}</span></button>`;
+  };
+  return `<div class="planning-road-selected-nav planning-road-pager" role="group" aria-label="Selected period navigation">${btn(prev, 'previous', '‹')}${btn(next, 'next', '›')}</div>`;
 }
 
 function planningRoadAheadSelectedHeaderHtml(traj, granularity, selectedKey) {
@@ -1111,13 +1405,15 @@ function planningRoadAheadSelectedHeaderHtml(traj, granularity, selectedKey) {
   const label = planningRoadAheadPeriodDisplayLabel(period, granularity);
   const stage3 = planningRoadAheadStage3Result(period);
   const phrase = stage3 ? planningRoadAheadResultPhrase(stage3) : { label: 'Projected result withheld', cls: 'withheld' };
-  const badge = `<span class="chip ${phrase.cls === 'gap' ? 'c' : phrase.cls === 'surplus' ? 'v' : 'e'}">${phrase.label}</span>`;
+  const noun = planningRoadPeriodNoun(granularity);
+  const badge = `<span class="planning-road-status-pill planning-road-status-${phrase.cls}" data-road-period-sign="${phrase.cls}">${phrase.label}</span>`;
   return `<header class="planning-road-selected-head">
-      <div>
-        <h2 class="planning-road-selected-title">${label}</h2>
+      <div class="planning-road-selected-headline">
+        <h2 class="planning-road-selected-title" id="planning-road-period-title" tabindex="-1">${label}</h2>
         ${badge}
       </div>
       ${planningRoadAheadSelectedNavHtml(traj, granularity, key)}
+      <p class="planning-road-selected-sub">Three steps from your regular life to this ${noun}'s result</p>
     </header>`;
 }
 
@@ -1135,10 +1431,14 @@ function planningRoadAheadStagesHtml(traj, granularity, selectedKey) {
   const finalResult = stage3
     ? planningRoadAmountReprint(period.stage3.result)
     : planningRoadAmountReprint({ status: 'unavailable' });
+  const phrase = stage3
+    ? planningRoadAheadResultPhrase(stage3) : { label: 'Projected result withheld', cls: 'withheld' };
+  const monthParts = view === 'month' ? planningRoadAheadMonthParts(period.month) : null;
+  const label = monthParts ? `Projected ${monthParts.long} result` : 'Projected result';
   return `<article class="planning-road-stages" data-road-stages-period="${key || ''}" data-planning-road-stages="ready">
     ${stagesPanel}
-    <div class="planning-road-final-result planning-road-projected-result">
-      <span class="planning-road-final-label">Projected result</span>
+    <div class="planning-road-final-result planning-road-projected-result planning-road-projected-result-${phrase.cls}" data-road-result-sign="${phrase.cls}">
+      <span class="planning-road-final-label">${label}</span>
       <div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready">${finalResult}</div>
     </div>
   </article>`;
@@ -1149,7 +1449,7 @@ function planningRoadAheadBreakdownHtml(traj, granularity, selectedKey) {
   const period = periods.find(p => planningRoadAheadPeriodKey(p, granularity) === selectedKey)
     || periods[0];
   if (!period) return '';
-  const sheet = planningRoadAheadBreakdownSheetHtml(period);
+  const sheet = planningRoadAheadBreakdownSheetHtml(period, granularity);
   const signals = planningRoadAheadSignalsForPeriod(traj, period, granularity);
   const allSignals = (traj.pressure && Array.isArray(traj.pressure.signals)) ? traj.pressure.signals : [];
   const pressureBlock = signals.length
@@ -1179,13 +1479,25 @@ function planningRoadAheadSelectedHtml(traj, granularity, selectedKey, asOf) {
   </article>`;
 }
 
+/* Frame 05 guardrail — the two views are one projection, split differently.
+ * The copy says so on the surface where the split appears. */
+function planningRoadAheadViewNoteHtml(granularity) {
+  if (granularity !== 'pay-period') return '';
+  return `<p class="planning-road-view-note" data-road-view-note="pay-period"><b>Same projection, split by your pay dates.</b> Each block runs from one pay day to the next, so a month's result is spread across the pay periods that fall inside it.</p>`;
+}
+
 function planningRoadAheadHtml(traj, granularity, selectedKey, asOf) {
   const intro = 'Expected income, bills, household spending, and debt strategy — one period at a time. Figures are copied from Forecast; this page does not calculate them.';
   const lead = planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey);
   const picker = planningRoadAheadSegmentedHtml(granularity);
   const selected = planningRoadAheadSelectedHtml(traj, granularity, selectedKey, asOf);
+  const noun = planningRoadPeriodNoun(granularity);
   return {
     intro,
+    subtitle: `Your projected money, ${noun} by ${noun}`,
+    stripTitle: granularity === 'pay-period'
+      ? 'Projected result by pay period' : 'Projected monthly result',
+    viewNote: planningRoadAheadViewNoteHtml(granularity),
     lead: lead.html,
     focusKey: lead.focusKey,
     horizonCounts: planningRoadAheadHorizonCountsHtml(traj, granularity, asOf),
@@ -1432,7 +1744,7 @@ function planningTrajectoryScenarioIdlePreviewHtml() {
     <p class="subhead planning-road-whatif-preview-title">Preview</p>
     <div class="planning-road-whatif-preview-grid" aria-label="Hypothetical preview (inactive)">
       <div class="planning-road-whatif-preview-row planning-road-whatif-preview-head" aria-hidden="true">
-        <span></span><span>Baseline</span><span>Preview</span>
+        <span></span><span>Plan</span><span>Preview</span>
       </div>
       <div class="planning-road-whatif-preview-row"><span>Projected cash</span><span>${dash}</span><span>${dash}</span></div>
       <div class="planning-road-whatif-preview-row"><span>Named debt ending</span><span>${dash}</span><span>${dash}</span></div>
@@ -1663,6 +1975,30 @@ function planningRoadAheadScrollSelectedTimeline(root, selectedKey) {
   }
 }
 
+/** The hero's "See what's behind …" is layer 1 → layer 3 in one tap: it selects
+ *  that period and moves reading position to its story. */
+let planningRoadPendingStoryFocus = false;
+
+function planningRoadAheadFocusPeriodStory(root) {
+  if (!planningRoadPendingStoryFocus) return;
+  planningRoadPendingStoryFocus = false;
+  if (!root || typeof root.querySelector !== 'function') return;
+  const title = root.querySelector('#planning-road-period-title');
+  if (!title || typeof title.focus !== 'function') return;
+  try {
+    title.focus({ preventScroll: true });
+  } catch (_) {
+    title.focus();
+  }
+  if (typeof title.scrollIntoView === 'function') {
+    try {
+      title.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } catch (_2) {
+      title.scrollIntoView();
+    }
+  }
+}
+
 function planningRoadAheadWireSelection(root, d, periods) {
   if (!root) return;
   const buttons = root.querySelectorAll('[data-road-select-period]');
@@ -1670,6 +2006,7 @@ function planningRoadAheadWireSelection(root, d, periods) {
     btn.onclick = () => {
       const key = btn.getAttribute('data-road-select-period');
       if (!key) return;
+      if (btn.getAttribute('data-road-focus-period')) planningRoadPendingStoryFocus = true;
       if (planningTrajectoryFundingGranularity === 'pay-period') {
         planningTrajectorySelectedPayPeriod = key;
       } else {
@@ -1743,10 +2080,19 @@ function renderPlanning(d, periods) {
   const scenarioDetailOpen = scenarioRequested ? ' open' : '';
   const roadRoot = $('planning-road-ahead');
   if (roadRoot) {
+    const freshness = asOf
+      ? `<p class="planning-road-freshness" data-road-freshness="as-at"><span class="planning-road-freshness-icon" aria-hidden="true"></span>As at ${fmtDateLong(asOf)}</p>`
+      : '';
     roadRoot.innerHTML = `<div class="planning-road-shell" data-planning-road-shell="ready" data-planning-road-fable="ready">
       <header class="planning-road-app-head" aria-label="Road Ahead">
-        <p class="planning-road-app-eyebrow">PLANNING</p>
-        <h2 class="planning-road-app-title">Road Ahead</h2>
+        <div class="planning-road-app-head-row">
+          <div class="planning-road-app-identity">
+            <p class="planning-road-app-eyebrow">PLANNING</p>
+            <h2 class="planning-road-app-title">Road Ahead</h2>
+          </div>
+          ${freshness}
+        </div>
+        <p class="planning-road-app-sub">${roadHtml.subtitle}</p>
       </header>
       <p class="lede planning-road-intro planning-road-intro-inline">${roadHtml.intro}</p>
       <div class="planning-road-primary" data-planning-road-primary="lead">
@@ -1757,8 +2103,12 @@ function renderPlanning(d, periods) {
           ${roadHtml.horizonCounts}
         </div>
         <div class="planning-road-period-nav" data-planning-road-primary="strip-controls" aria-label="Trajectory period navigation">
-          ${roadHtml.picker}
-          <div class="planning-road-timeline-wrap" data-planning-road-primary="strip">
+          <div class="planning-road-strip-head">
+            <h3 class="planning-road-strip-title">${roadHtml.stripTitle}</h3>
+            ${roadHtml.picker}
+          </div>
+          ${roadHtml.viewNote}
+          <div class="planning-road-timeline-wrap" id="planning-road-view-panel" role="tabpanel" data-planning-road-primary="strip">
             ${roadHtml.timeline}
           </div>
         </div>
@@ -1771,8 +2121,8 @@ function renderPlanning(d, periods) {
         ${roadHtml.breakdown}
       </div>
       <details class="planning-road-scenario-detail planning-road-whatif-quarantine"${scenarioDetailOpen} data-trajectory-scenario-section="controls" data-planning-road-primary="whatif">
-        <summary>What if</summary>
-        <p class="planning-road-whatif-banner" role="note">Preview only — not a plan change. Reset clears this preview; nothing is saved.</p>
+        <summary>What-if: extra payment</summary>
+        <p class="planning-road-whatif-banner" role="note">This is a preview, not a change. Trying numbers here never updates your plan and never moves or schedules money.</p>
         <p class="lede">${scenarioControls.intro}</p>
         ${scenarioControls.controls}
         <div class="planning-trajectory-scenario-result" data-trajectory-scenario-result="panel">${scenarioCompare.panel}</div>
@@ -1782,6 +2132,7 @@ function renderPlanning(d, periods) {
     planningRoadAheadWireSelection(roadRoot, d, periods);
     planningRoadScenarioWire(roadRoot, d, periods);
     planningRoadAheadScrollSelectedTimeline(roadRoot, roadSelectedKey);
+    planningRoadAheadFocusPeriodStory(roadRoot);
   }
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;

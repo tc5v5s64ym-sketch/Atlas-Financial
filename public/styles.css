@@ -1665,159 +1665,6 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 /* Planning — Your Financial Road Ahead (trajectory dashboard compose) */
 .planning-road-ahead { margin: 8px 0 28px; }
 .planning-road-intro { margin-bottom: 16px; }
-.planning-road-lead {
-  padding: 16px 18px;
-  margin: 0 0 20px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: var(--surface-raised, var(--bg));
-}
-.planning-road-hero-card {
-  border-radius: var(--radius-lg);
-  box-shadow: none;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-}
-.planning-road-lead-gap { border-left: 0; }
-.planning-road-lead-pressure { border-left: 0; }
-.planning-road-lead-clear { border-left: 0; }
-.planning-road-hero-eyebrow {
-  margin: 0 0 8px;
-  font-size: .68rem;
-  font-weight: 700;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-.planning-road-lead-kicker { margin: 0 0 6px; font-weight: 650; font-size: .95rem; }
-.planning-road-lead-kind { margin: 0 0 8px; color: var(--text-secondary); font-size: .95rem; }
-.planning-road-lead-amount { margin: 0 0 8px; font-size: 2.2rem; line-height: 1.05; letter-spacing: -.03em; }
-.planning-road-lead-amount b { font-variant-numeric: tabular-nums; font-weight: 700; }
-.planning-road-hero-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: .88rem;
-}
-.planning-road-hero-period { color: var(--text-secondary); }
-.planning-road-lead-why { margin: 0 0 10px; font-size: .85rem; color: var(--text-secondary); }
-.planning-road-lead-jump {
-  margin-top: 4px;
-  font: inherit;
-  font-size: .85rem;
-  font-weight: 600;
-  color: var(--accent, var(--s1));
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.planning-road-timeline-wrap { margin: 20px 0; }
-.planning-road-granularity { margin-bottom: 12px; }
-.planning-road-timeline {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 4px 0 8px;
-  margin: 0;
-  list-style: none;
-}
-.planning-road-timeline-item { flex: 0 0 auto; min-width: 4.5rem; }
-.planning-road-timeline-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  min-height: 5.5rem;
-  padding: 8px 6px;
-  font: inherit;
-  font-size: .72rem;
-  text-align: center;
-  background: var(--surface-raised, var(--bg));
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  cursor: pointer;
-}
-.planning-road-timeline-item.is-selected .planning-road-timeline-btn {
-  outline: 2px solid var(--accent, var(--s1));
-  outline-offset: 1px;
-}
-.planning-road-timeline-label {
-  font-weight: 600;
-  margin-bottom: 6px;
-  white-space: nowrap;
-}
-.planning-road-timeline-bar {
-  display: block;
-  height: 6px;
-  width: var(--road-bar, 50%);
-  margin: 0 auto 6px;
-  border-radius: 3px;
-  background: var(--muted);
-}
-.planning-road-timeline-bar-surplus { background: var(--road-surplus, var(--ok, #1a7f4b)); }
-.planning-road-timeline-bar-gap { background: var(--road-gap, var(--critical)); }
-.planning-road-timeline-bar-withheld { background: var(--muted); opacity: .5; }
-.planning-road-timeline-value {
-  display: block;
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
-  font-size: .78rem;
-}
-.planning-road-selected {
-  margin-top: 20px;
-  padding: 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-}
-.planning-road-selected-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.planning-road-selected-title { margin: 0 0 6px; font-size: 1.15rem; }
-.planning-road-selected-nav { display: flex; gap: 8px; }
-.planning-road-nav-btn {
-  font: inherit;
-  font-size: .82rem;
-  padding: 6px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--bg);
-  cursor: pointer;
-}
-.planning-road-final-result {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-}
-.planning-road-final-label { display: block; font-size: .82rem; font-weight: 600; margin-bottom: 6px; }
-.planning-road-pressure-detail { margin-top: 14px; }
-.planning-road-disclosure {
-  margin: 18px 0;
-  padding: 0 0 8px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.planning-road-scenario-detail {
-  margin: 16px 0 20px;
-  padding: 12px 14px;
-  border: 1px solid var(--border, rgba(0,0,0,.08));
-  border-radius: 8px;
-  background: var(--surface-elevated, rgba(0,0,0,.02));
-}
-.planning-road-scenario-detail > summary {
-  cursor: pointer;
-  font-weight: 650;
-  margin-bottom: 8px;
-}
 .planning-trajectory-scenario-form {
   display: grid;
   gap: 12px;
@@ -1848,155 +1695,531 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-scenario-table th[scope="row"] { text-align: left; }
 .planning-trajectory-scenario-disclaimer { margin-top: 10px; }
 
-.planning-road-disclosure > summary {
-  font-weight: 650;
-  cursor: pointer;
-  margin-bottom: 10px;
+/* Planning — Road Ahead phone-native shell (presentation only)
+ *
+ * Implements the Fable frames: hero (Frame 01), horizon band, Month | Pay
+ * period control, trajectory strip, numbered stage spine with narrative and
+ * delta pills, projected-result bar (Frame 03), breakdown groups (Frame 06),
+ * quarantined what-if (Frames 07–08). Nothing here decides a number: every
+ * sign class is set from a Forecast figure by planning.js.
+ */
+.planning-road-shell {
+  /* DESIGN §9 tints, scoped to Road Ahead so no other page palette moves.
+     Dark is re-tuned toward the surface, not inverted. */
+  --road-gap-tint: #fdf1ef;
+  --road-gap-edge: rgba(199, 55, 55, .28);
+  --road-surplus-tint: #edf7f2;
+  --road-surplus-edge: rgba(26, 154, 74, .26);
+  --road-est-tint: #fbf3e2;
+  --road-unav-tint: #eef0f4;
+  --road-node-tint: #e6edfb;
+  --road-node-ink: var(--s1);
+  --road-pill-tint: rgba(21, 21, 19, .05);
+  margin: 0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .planning-road-shell {
+    --road-gap-tint: #2c1518;
+    --road-gap-edge: rgba(224, 82, 82, .38);
+    --road-surplus-tint: #10251c;
+    --road-surplus-edge: rgba(52, 179, 95, .34);
+    --road-est-tint: #2a2212;
+    --road-unav-tint: #1e2432;
+    --road-node-tint: rgba(90, 149, 234, .18);
+    --road-pill-tint: rgba(255, 255, 255, .08);
+  }
+}
+:root[data-theme="dark"] .planning-road-shell {
+  --road-gap-tint: #2c1518;
+  --road-gap-edge: rgba(224, 82, 82, .38);
+  --road-surplus-tint: #10251c;
+  --road-surplus-edge: rgba(52, 179, 95, .34);
+  --road-est-tint: #2a2212;
+  --road-unav-tint: #1e2432;
+  --road-node-tint: rgba(90, 149, 234, .18);
+  --road-pill-tint: rgba(255, 255, 255, .08);
 }
 
-/* Planning — Road Ahead phone-native shell (presentation only) */
-.planning-road-shell { margin: 0; }
-.planning-road-app-head {
-  margin: 0 0 18px;
-  padding: 0;
+.planning-road-shell :where(.planning-road-lead-amount b,
+  .planning-road-timeline-value,
+  .planning-road-horizon-stat-value,
+  .planning-trajectory-funding-result b,
+  .planning-road-breakdown-value b) {
+  font-variant-numeric: tabular-nums;
 }
-.planning-road-app-eyebrow,
-.planning-road-app-kicker {
-  display: block;
-  margin: 0 0 4px;
-  font-size: .68rem;
-  font-weight: 700;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
+
+/* ---------------------------------------------------------- page identity */
+.planning-road-app-head {
+  margin: 0 0 14px;
+  padding: 0;
 }
 .planning-road-app-head-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.planning-road-app-eyebrow {
+  display: block;
+  margin: 0 0 2px;
+  font-size: .69rem;
+  font-weight: 750;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--s1);
 }
 .planning-road-app-title {
   margin: 0;
   font-size: 1.85rem;
   line-height: 1.1;
-  letter-spacing: -.02em;
-  font-weight: 700;
+  letter-spacing: -.025em;
+  font-weight: 750;
 }
-.planning-road-app-asof {
-  margin: 6px 0 0;
-  font-size: .78rem;
+.planning-road-app-sub {
+  margin: 4px 0 0;
+  font-size: .9rem;
+  line-height: 1.35;
   color: var(--text-secondary);
 }
-.planning-road-app-asof-label { font-weight: 600; }
-.planning-road-about {
-  display: none;
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-}
-.planning-road-about > summary {
-  font-weight: 650;
-  cursor: pointer;
-}
-.planning-road-primary { margin-bottom: 14px; }
-.planning-road-period-nav { margin: 0 0 18px; }
-.planning-road-period-heading,
-.planning-road-timeline-heading { margin-bottom: 8px; }
-.planning-road-period-detail { margin: 0 0 20px; }
-.planning-road-horizon {
-  margin: 0 0 16px;
-  padding: 14px 14px 12px;
-  border-radius: 16px;
+.planning-road-freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin: 4px 0 0;
+  padding: 7px 12px;
   border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  font-size: .76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.planning-road-freshness-icon {
+  width: 13px;
+  height: 13px;
+  background-color: var(--s1);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.5 12a8.5 8.5 0 1 1-2.6-6.1'/%3E%3Cpath d='M20.5 4v5h-5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.5 12a8.5 8.5 0 1 1-2.6-6.1'/%3E%3Cpath d='M20.5 4v5h-5'/%3E%3C/svg%3E");
+  -webkit-mask-size: 13px 13px;
+  mask-size: 13px 13px;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* ------------------------------------------------------------------- hero */
+.planning-road-primary { margin-bottom: 14px; }
+.planning-road-lead {
+  padding: 16px 18px;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
   background: var(--surface-1);
 }
-.planning-road-horizon-kicker {
-  margin: 0 0 10px;
-  font-size: .68rem;
-  font-weight: 700;
-  letter-spacing: .12em;
+.planning-road-hero-card {
+  border-radius: 20px;
+  box-shadow: var(--shadow-1);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+.planning-road-hero-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.planning-road-hero-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background-color: var(--road-unav-tint);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 20px 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235b5a55' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2'/%3E%3Cpath d='M3.5 9.5h17'/%3E%3Cpath d='M8 3.5v4M16 3.5v4'/%3E%3C/svg%3E");
+}
+.planning-road-hero-icon-gap {
+  background-color: var(--road-gap-tint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c73737' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2'/%3E%3Cpath d='M3.5 9.5h17'/%3E%3Cpath d='M8 3.5v4M16 3.5v4'/%3E%3C/svg%3E");
+}
+.planning-road-hero-icon-pressure {
+  background-color: var(--road-est-tint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e0a112' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4.5 20.5 19.5H3.5z'/%3E%3Cpath d='M12 10v4.2M12 17h.01'/%3E%3C/svg%3E");
+}
+.planning-road-hero-icon-clear {
+  background-color: var(--road-surplus-tint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a9a4a' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13.5 9 18.5 20 6.5'/%3E%3C/svg%3E");
+}
+.planning-road-hero-heading { min-width: 0; }
+.planning-road-hero-eyebrow {
+  margin: 0 0 3px;
+  font-size: .69rem;
+  font-weight: 750;
+  letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
-.planning-road-horizon-lede {
-  margin: 0 0 10px;
-  font-size: .85rem;
+.planning-road-lead-gap .planning-road-hero-eyebrow { color: var(--road-gap); }
+.planning-road-lead-pressure .planning-road-hero-eyebrow { color: var(--road-pressure); }
+.planning-road-hero-when {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+.planning-road-hero-period { color: var(--text-primary); }
+.planning-road-hero-relative { color: var(--text-secondary); font-weight: 600; }
+.planning-road-lead-kind {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.planning-road-lead-noamount .planning-road-lead-kind {
+  font-size: 1.4rem;
+  font-weight: 750;
+  letter-spacing: -.02em;
+}
+.planning-road-lead-amount {
+  margin: 2px 0 8px;
+  font-size: 2.6rem;
+  line-height: 1.02;
+  letter-spacing: -.025em;
+}
+.planning-road-lead-amount b { font-weight: 750; }
+.planning-road-lead-gap .planning-road-lead-amount b { color: var(--road-gap); }
+.planning-road-lead-pressure .planning-road-lead-amount b { color: var(--text-primary); }
+.planning-road-hero-narrative {
+  margin: 0;
+  font-size: .87rem;
+  line-height: 1.45;
   color: var(--text-secondary);
+}
+.planning-road-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: .85rem;
+}
+.planning-road-hero-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 48px;
+  margin: 14px 0 0;
+  padding: 12px 16px;
+  font: inherit;
+  font-size: .97rem;
+  font-weight: 650;
+  color: #fff;
+  background: var(--s1);
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+}
+.planning-road-hero-cta > span:first-child {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.planning-road-hero-cta-chevron { font-size: 1.05rem; line-height: 1; }
+.planning-road-hero-cta:active { filter: brightness(.96); }
+
+/* ---------------------------------------------------------- horizon band */
+.planning-road-trajectory-band { margin: 0 0 18px; }
+.planning-road-horizon {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 .planning-road-horizon-stats {
   display: flex;
   gap: 10px;
-  margin-bottom: 8px;
+  margin: 0 0 8px;
 }
 .planning-road-horizon-stat {
   flex: 1 1 50%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-subtle);
-  text-align: center;
+  min-width: 0;
+  padding: 12px 13px 13px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  text-align: left;
 }
+.planning-road-horizon-stat-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 0 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.planning-road-horizon-stat-dot-surplus { background: var(--road-surplus); }
+.planning-road-horizon-stat-dot-gap { background: var(--road-gap); }
 .planning-road-horizon-stat-value {
   display: block;
-  font-size: 1.45rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  font-size: 1.6rem;
+  font-weight: 750;
+  line-height: 1.05;
+  letter-spacing: -.02em;
 }
 .planning-road-horizon-stat-label {
   display: block;
   margin-top: 4px;
   font-size: .78rem;
+  line-height: 1.3;
   color: var(--text-secondary);
 }
-.planning-road-horizon-summary { margin: 0; font-size: .82rem; }
-.planning-road-trust-chip {
-  display: inline-block;
-  margin-left: 6px;
-  font-size: .68rem;
+.planning-road-horizon-caption {
+  margin: 0 0 4px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+.planning-road-horizon-lede {
+  margin: 0;
+  font-size: .76rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ------------------------------------------- Month | Pay period + strip */
+.planning-road-period-nav { margin: 0; }
+.planning-road-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.planning-road-strip-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+}
+.planning-road-view-note {
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  font-size: .82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.planning-road-view-note b { color: var(--text-primary); }
+.planning-road-timeline-wrap { margin: 0; }
+.planning-road-granularity { margin-bottom: 0; }
+.planning-road-timeline {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  margin: 0 -2px;
+  list-style: none;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.planning-road-timeline-item {
+  flex: 0 0 auto;
+  min-width: 4.9rem;
+  scroll-snap-align: center;
+}
+.planning-road-timeline[data-road-timeline-granularity="pay-period"] .planning-road-timeline-item {
+  min-width: 7.6rem;
+}
+.planning-road-timeline-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 8px 8px;
+  font: inherit;
+  text-align: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.planning-road-timeline-label {
+  display: block;
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.planning-road-timeline-year {
+  display: block;
+  margin-top: 1px;
+  font-size: .66rem;
   font-weight: 600;
-  letter-spacing: .02em;
-  vertical-align: middle;
+  color: var(--muted);
+  letter-spacing: .01em;
 }
-.planning-road-trust-confirmed {
-  color: var(--road-trust-confirmed);
-  font-weight: 500;
-}
-.planning-road-trust-calculated {
-  color: var(--success-text);
-  font-weight: 500;
-}
-.planning-road-trust-estimated {
-  color: var(--road-trust-estimated);
-  font-weight: 600;
-}
-.planning-road-trust-unavailable {
-  color: var(--road-trust-unavailable);
-  font-weight: 500;
-}
-.planning-road-trust-planned {
-  color: var(--road-trust-planned);
-  font-weight: 600;
-}
-.planning-road-trajectory-band {
-  margin: 0 0 18px;
-}
-.planning-road-horizon-stat[data-road-horizon-kind="gap"] .planning-road-horizon-stat-value {
-  color: var(--road-gap);
-}
-.planning-road-horizon-stat[data-road-horizon-kind="surplus"] .planning-road-horizon-stat-value {
-  color: var(--road-surplus);
-}
-.planning-road-lead-gap .planning-road-lead-amount b { color: var(--road-gap); }
-.planning-road-fable-stage {
+.planning-road-timeline-plot {
   position: relative;
-  background: transparent;
+  display: block;
+  width: 100%;
+  height: 38px;
+  margin: 7px 0 6px;
+}
+.planning-road-timeline-plot::before {
+  content: "";
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 1px;
+  background: var(--axis);
+}
+.planning-road-timeline-bar {
+  position: absolute;
+  left: 50%;
+  width: 12px;
+  min-height: 3px;
+  height: calc(var(--road-bar, 20%) * .5);
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: var(--muted);
+}
+.planning-road-timeline-bar-surplus {
+  bottom: 50%;
+  background: var(--road-surplus);
+}
+.planning-road-timeline-bar-gap {
+  top: 50%;
+  background: var(--road-gap);
+}
+.planning-road-timeline-bar-withheld {
+  top: calc(50% - 1px);
+  height: 3px;
+  background: var(--muted);
+  opacity: .5;
+}
+.planning-road-timeline-value {
+  display: block;
+  font-weight: 650;
+  font-size: .76rem;
+  letter-spacing: -.01em;
+}
+.planning-road-timeline-item-surplus .planning-road-timeline-value { color: var(--success-text); }
+.planning-road-timeline-item-gap .planning-road-timeline-value { color: var(--road-gap); }
+.planning-road-timeline-item.is-selected .planning-road-timeline-btn {
+  border-color: var(--axis);
+  box-shadow: 0 0 0 2px var(--road-pill-tint), var(--shadow-1);
+}
+.planning-road-timeline-item-gap.is-selected .planning-road-timeline-btn {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+  box-shadow: 0 0 0 2px var(--road-gap-edge), var(--shadow-1);
+}
+.planning-road-timeline-item-surplus.is-selected .planning-road-timeline-btn {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+  box-shadow: 0 0 0 2px var(--road-surplus-edge), var(--shadow-1);
+}
+
+/* ------------------------------------------------ selected period header */
+.planning-road-period-detail { margin: 18px 0 18px; }
+.planning-road-selected {
+  margin-top: 0;
+  padding: 0;
   border: 0;
 }
-.planning-road-fable-stage-1,
-.planning-road-fable-stage-2,
-.planning-road-fable-stage-3 { border-left: 0; }
+.planning-road-selected-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+}
+.planning-road-selected-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.planning-road-selected-title {
+  margin: 0;
+  font-size: 1.38rem;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -.025em;
+}
+.planning-road-selected-title:focus-visible { outline: 2px solid var(--s1); outline-offset: 3px; }
+.planning-road-selected-sub {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .85rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.planning-road-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--road-pill-tint);
+  color: var(--text-secondary);
+}
+.planning-road-status-gap {
+  background: var(--road-gap-tint);
+  color: var(--road-gap);
+  border: 1px solid var(--road-gap-edge);
+}
+.planning-road-status-surplus {
+  background: var(--road-surplus-tint);
+  color: var(--success-text);
+  border: 1px solid var(--road-surplus-edge);
+}
+.planning-road-selected-nav {
+  display: flex;
+  gap: 8px;
+  justify-self: end;
+}
+.planning-road-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 40px;
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.planning-road-nav-btn.is-disabled {
+  color: var(--muted);
+  opacity: .45;
+  box-shadow: none;
+}
+
+/* ----------------------------------------------- numbered stage spine */
 .planning-road-spine {
   list-style: none;
   margin: 0;
@@ -2012,7 +2235,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   align-items: start;
   position: relative;
   margin: 0;
-  padding: 0 0 22px;
+  padding: 0 0 14px;
   border: 0;
   background: transparent;
 }
@@ -2020,76 +2243,220 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-road-spine-step:not(:last-child)::before {
   content: "";
   position: absolute;
-  left: 0.82rem;
-  top: 1.7rem;
-  bottom: 2px;
+  left: .82rem;
+  top: 1.85rem;
+  bottom: 0;
   width: 2px;
   background: var(--grid);
 }
+.planning-road-fable-stage {
+  position: relative;
+  background: transparent;
+  border: 0;
+}
+.planning-road-fable-stage-1,
+.planning-road-fable-stage-2,
+.planning-road-fable-stage-3 { border-left: 0; }
 .planning-road-stage-index,
 .planning-road-spine-index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  margin: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: .2rem 0 0;
   border-radius: 999px;
-  font-size: .78rem;
-  font-weight: 700;
-  color: #fff;
-  background: var(--text-secondary);
+  font-size: .82rem;
+  font-weight: 750;
+  color: var(--road-node-ink);
+  background: var(--road-node-tint);
   position: relative;
   z-index: 1;
 }
 .planning-road-spine-body { min-width: 0; }
+.planning-road-stage-card {
+  padding: 13px 15px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.planning-road-stage-headrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
 .planning-road-spine-body .planning-trajectory-funding-stage-title {
-  margin: 0.15rem 0 8px;
-  font-size: 1rem;
-  font-weight: 650;
-}
-.planning-road-spine-bar {
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface-1);
-}
-.planning-road-spine-bar .planning-trajectory-funding-result {
   margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
 }
+.planning-road-stage-card .planning-trajectory-funding-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 1.1rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.planning-road-stage-card .planning-trajectory-funding-result .planning-road-trust-chip {
+  margin: 3px 0 0;
+}
+.planning-road-stage-card .planning-trajectory-funding-result b { font-weight: 750; }
+.planning-road-stage-includes {
+  margin: 6px 0 0;
+  font-size: .77rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.planning-road-stage-note {
+  margin: 7px 0 0;
+  font-size: .87rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.planning-road-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  margin: 11px 0 0;
+  padding: 5px 11px;
+  border-radius: 9px;
+  background: var(--road-pill-tint);
+  font-size: .78rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------- projected result bar */
+.planning-road-final-result,
 .planning-road-projected-result {
-  margin-top: 8px;
-  padding: 14px 16px;
-  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 15px 16px;
+  border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--surface-1);
 }
-.planning-road-fable-stage-1 .planning-road-stage-index { background: var(--road-stage-1); }
-.planning-road-fable-stage-2 .planning-road-stage-index { background: var(--road-stage-2); }
-.planning-road-fable-stage-3 .planning-road-stage-index { background: var(--road-stage-3); }
-.planning-road-breakdown-planned-note {
+.planning-road-projected-result-gap {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+}
+.planning-road-projected-result-surplus {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+}
+.planning-road-final-label {
   display: block;
-  width: 100%;
-  margin-top: 4px;
-  font-size: .72rem;
+  margin: 0;
+  font-size: .97rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.planning-road-projected-result-gap .planning-road-final-label { color: var(--road-gap); }
+.planning-road-projected-result-surplus .planning-road-final-label { color: var(--success-text); }
+.planning-road-projected-result .planning-trajectory-funding-result {
+  font-size: 1.3rem;
+  font-weight: 750;
+  text-align: right;
+}
+.planning-road-pressure-detail { margin-top: 14px; }
+
+/* ------------------------------------------------------- trust badges */
+.planning-road-trust-chip {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 2px 7px;
+  border-radius: 7px;
+  font-size: .67rem;
+  font-weight: 650;
+  letter-spacing: .01em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.planning-road-trust-confirmed {
+  color: var(--road-trust-confirmed);
+  background: var(--road-pill-tint);
+  font-weight: 550;
+}
+.planning-road-trust-calculated {
   color: var(--text-secondary);
+  background: var(--road-pill-tint);
+  font-weight: 550;
+}
+.planning-road-trust-estimated {
+  color: var(--road-trust-estimated);
+  background: var(--road-est-tint);
+}
+.planning-road-trust-unavailable {
+  color: var(--road-trust-unavailable);
+  background: var(--road-unav-tint);
+  border: 1px dashed var(--axis);
+  font-weight: 550;
+}
+.planning-road-trust-planned {
+  color: var(--road-trust-planned);
+  background: var(--road-node-tint);
 }
 .planning-road-amount-unavailable {
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
+
+/* --------------------------------------------------- breakdown groups */
+.planning-road-breakdown-band { margin: 0 0 4px; }
 .planning-road-breakdown-sheet {
   margin: 0 0 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--surface-raised, var(--bg));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
 }
 .planning-road-breakdown-sheet > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  padding: 14px 16px;
   font-weight: 650;
+  font-size: .97rem;
   cursor: pointer;
+  list-style: none;
 }
-.planning-road-breakdown-intro { font-size: .82rem; margin: 8px 0 10px; }
+.planning-road-breakdown-sheet > summary::-webkit-details-marker { display: none; }
+.planning-road-breakdown-summary-chevron {
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.planning-road-breakdown-sheet[open] .planning-road-breakdown-summary-chevron {
+  transform: rotate(90deg);
+}
+.planning-road-breakdown-intro {
+  margin: 0 16px 12px;
+  font-size: .8rem;
+  color: var(--text-secondary);
+}
+.planning-road-breakdown-group { margin: 0 16px 14px; }
+.planning-road-breakdown-group-title {
+  margin: 0 0 4px;
+  font-size: .67rem;
+  font-weight: 750;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 .planning-road-breakdown-list {
   list-style: none;
   margin: 0;
@@ -2099,34 +2466,82 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 6px 12px;
+  align-items: baseline;
+  gap: 4px 12px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--grid);
 }
 .planning-road-breakdown-row:last-child { border-bottom: 0; }
 .planning-road-breakdown-label {
-  font-size: .88rem;
+  font-size: .89rem;
+  color: var(--text-primary);
+}
+.planning-road-breakdown-value {
+  font-size: .92rem;
+  font-weight: 650;
+  text-align: right;
+}
+.planning-road-breakdown-value b { font-weight: 650; }
+.planning-road-breakdown-row.unavailable .planning-trajectory-reason {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: .75rem;
+}
+.planning-road-breakdown-stage-result .planning-road-breakdown-label { font-weight: 650; }
+.planning-road-breakdown-planned-note {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-size: .72rem;
   color: var(--text-secondary);
 }
-.planning-road-breakdown-value b { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------ what-if quarantine */
+.planning-road-disclosure {
+  margin: 18px 0;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.planning-road-disclosure > summary {
+  font-weight: 650;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.planning-road-scenario-detail {
+  margin: 16px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 8px;
+  background: var(--surface-elevated, rgba(0,0,0,.02));
+}
+.planning-road-scenario-detail > summary {
+  cursor: pointer;
+  font-weight: 650;
+  margin-bottom: 8px;
+}
 .planning-road-whatif-quarantine {
   margin-top: 12px;
   padding: 14px 14px 16px;
   border-radius: var(--radius-md);
-  border: 2px solid var(--hypo-border);
+  border: 2px dashed var(--hypo-border);
   background: linear-gradient(180deg, var(--hypo-bg), transparent 52%);
 }
 .planning-road-whatif-quarantine > summary {
-  font-weight: 650;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
   color: var(--hypo-accent);
 }
 .planning-road-whatif-banner {
   margin: 8px 0 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
   font-size: .82rem;
+  line-height: 1.45;
+  color: var(--hypo-accent);
   background: var(--hypo-banner-bg);
-  border: 1px solid var(--hypo-border);
+  border: 1px dashed var(--hypo-border);
 }
 .planning-road-whatif-preview-grid {
   display: grid;
@@ -2145,18 +2560,27 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   font-size: .82rem;
 }
 .planning-road-whatif-preview-head {
-  font-weight: 650;
-  color: var(--text-secondary);
-  font-size: .75rem;
+  font-weight: 700;
+  color: var(--hypo-accent);
+  font-size: .72rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 .planning-road-whatif-preview-hint { font-size: .82rem; margin: 0; }
 .planning-trajectory-funding-result[data-trajectory-funding-result-sign="gap"] b {
-  color: var(--critical);
+  color: var(--road-gap);
 }
 .planning-trajectory-funding-result[data-trajectory-funding-result-sign="surplus"] b {
-  color: var(--ok, #1a7f4b);
+  color: var(--success-text);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .planning-road-breakdown-sheet[open] .planning-road-breakdown-summary-chevron {
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------ phone-first overrides */
 @media (max-width:640px) {
   #planning > .kicker,
   #planning > h1,
@@ -2178,24 +2602,20 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
     padding-right: 16px;
   }
   .planning-road-intro-inline { display: none; }
-  .planning-road-about { display: none; }
   .planning-road-app-title { font-size: 2rem; }
   .planning-road-lead,
   .planning-road-hero-card {
-    padding: 18px 18px 16px;
-    margin-bottom: 14px;
-    border-radius: 18px;
+    padding: 18px 18px 18px;
+    margin-bottom: 16px;
   }
-  .planning-road-lead-amount { font-size: 2.45rem; line-height: 1.05; }
-  .planning-road-lead-kicker { font-size: .88rem; text-transform: none; }
-  .planning-road-horizon-band { margin-bottom: 14px; }
-  .planning-road-lead-jump { display: none; }
+  .planning-road-lead-amount { font-size: 2.85rem; }
   .planning-road-segmented.planning-trajectory-granularity,
   .planning-road-granularity.planning-trajectory-granularity {
     display: flex;
     flex-wrap: nowrap;
-    width: 100%;
-    margin: 0 0 12px;
+    flex: 0 0 auto;
+    width: 10.5rem;
+    margin: 0;
     padding: 3px;
     border: 0;
     gap: 0;
@@ -2206,66 +2626,25 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-granularity .planning-trajectory-granularity-btn {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 44px;
-    font-size: .95rem;
+    min-height: 40px;
+    padding: 6px 4px;
+    font-size: .82rem;
     border-radius: 999px;
     background: transparent;
+    color: var(--text-secondary);
   }
+  .planning-road-segmented .planning-trajectory-granularity-btn[aria-selected="true"],
+  .planning-road-granularity .planning-trajectory-granularity-btn[aria-selected="true"],
   .planning-road-segmented .planning-trajectory-granularity-btn[aria-pressed="true"],
   .planning-road-granularity .planning-trajectory-granularity-btn[aria-pressed="true"] {
     background: var(--surface-1);
     box-shadow: var(--shadow-1);
-    font-weight: 650;
-  }
-  .planning-road-timeline-wrap { margin: 0; }
-  .planning-road-timeline {
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    gap: 10px;
-    padding: 2px 2px 12px;
-    margin: 0 -2px;
-  }
-  .planning-road-timeline-item {
-    scroll-snap-align: center;
-    min-width: 4.75rem;
-  }
-  .planning-road-timeline-btn {
-    min-height: 5.5rem;
-    min-width: 44px;
-    padding: 10px 8px 8px;
-    font-size: .72rem;
-    border-radius: 14px;
-    background: var(--surface-1);
-  }
-  .planning-road-timeline-item.is-selected .planning-road-timeline-btn {
-    outline: 2px solid var(--s1);
-    outline-offset: 1px;
-  }
-  .planning-road-timeline-bar {
-    height: 5px;
-    border-radius: 999px;
-  }
-  .planning-road-selected {
-    margin-top: 0;
-    padding: 4px 0 8px;
-    border: 0;
-    background: transparent;
+    font-weight: 700;
+    color: var(--text-primary);
   }
   .planning-road-selected > .subhead,
   .planning-road-selected > .lede {
     display: none;
-  }
-  .planning-road-selected-head {
-    flex-direction: column;
-    align-items: stretch;
-    margin-bottom: 14px;
-  }
-  .planning-road-selected-nav { display: none; }
-  .planning-road-selected-head .chip { display: none; }
-  .planning-road-nav-btn {
-    flex: 1 1 auto;
-    min-height: 44px;
-    font-size: .88rem;
   }
   .planning-road-selected .planning-trajectory-funding-stages,
   .planning-road-stages .planning-trajectory-funding-stages,
@@ -2277,7 +2656,6 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-selected .planning-trajectory-funding-stage,
   .planning-road-stages .planning-trajectory-funding-stage {
     margin: 0;
-    padding: 0 0 22px;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -2285,34 +2663,6 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-selected .planning-trajectory-funding-stage:not(:last-child)::after,
   .planning-road-stages .planning-trajectory-funding-stage:not(:last-child)::after {
     content: none;
-  }
-  .planning-road-selected .planning-trajectory-funding-stage-title,
-  .planning-road-stages .planning-trajectory-funding-stage-title {
-    font-size: 1.02rem;
-  }
-  .planning-road-selected .planning-trajectory-funding-result,
-  .planning-road-stages .planning-trajectory-funding-result {
-    font-size: 1.15rem;
-    margin-top: 0;
-  }
-  .planning-road-final-result,
-  .planning-road-projected-result {
-    margin-top: 4px;
-    padding: 14px 16px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: var(--surface-1);
-  }
-  .planning-road-horizon {
-    padding: 14px 16px 12px;
-    margin-bottom: 14px;
-  }
-  .planning-road-period-detail .planning-road-selected-head {
-    margin-bottom: 10px;
-  }
-  .planning-road-stages-heading,
-  .planning-road-stages-lede {
-    display: none;
   }
   .planning-road-scenario-detail,
   .planning-road-whatif-quarantine {
@@ -2322,9 +2672,6 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 
 @media (min-width:641px) {
   .planning-road-app-head { display: none; }
-  .planning-road-about { display: none !important; }
-  .planning-road-period-heading,
-  .planning-road-timeline-heading { display: none; }
   .planning-road-selected .planning-trajectory-funding-stages,
   .planning-road-stages .planning-trajectory-funding-stages {
     display: grid;
@@ -2333,13 +2680,13 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   }
   .planning-road-spine-step {
     display: block;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface-1);
+    padding: 0;
+    border: 0;
+    background: transparent;
   }
   .planning-road-spine-step:not(:last-child)::before { content: none; }
   .planning-road-spine-index { margin-bottom: 8px; }
+  .planning-road-stage-card { height: 100%; }
 }
 
 @media (min-width:641px) {
