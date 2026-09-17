@@ -105,7 +105,7 @@ const suites = [
   ['current-period Household Budget classification', 'test-current-period-household-budget-classification.js'],
   ['Lunch Money Dale/Amanda guilt-free category assignment', 'test-lunchmoney-dale-amanda-guilt-free.js'],
   ['BC Hydro Sep 4 Other-spending classification', 'test-bc-hydro-sep4-classification.js'],
-  ['standing Fortis / Shaw / TD / YouTube settlement identities', 'test-bill-settlement-identities.js'],
+  ['standing Fortis / Shaw / Netflix / TD / YouTube settlement identities', 'test-bill-settlement-identities.js'],
   ['unresolved pending→posted household-spend treatment', 'test-unresolved-pending-posted-spend.js'],
   ['current-period Other-residual classification contract', 'test-current-period-other-residual-contract.js'],
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
