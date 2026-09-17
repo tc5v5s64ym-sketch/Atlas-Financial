@@ -121,7 +121,7 @@ function planningTrajectoryChip(status) {
 /** Road Ahead Fable trust chips — presentation only; status comes from Forecast fields. */
 function planningRoadTrustChip(status) {
   const map = {
-    calculated: { cls: 'planning-road-trust-confirmed', label: 'Confirmed' },
+    calculated: { cls: 'planning-road-trust-calculated', label: 'Calculated' },
     estimated: { cls: 'planning-road-trust-estimated', label: 'Estimated' },
     unavailable: { cls: 'planning-road-trust-unavailable', label: 'Unavailable' },
     planned: { cls: 'planning-road-trust-planned', label: 'Planned' },
@@ -564,9 +564,19 @@ function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
   const details = !omitComponentDetails && components
     ? `<details class="planning-trajectory-funding-components"><summary>Component totals</summary>${components}</details>`
     : '';
-  const roadResult = stageOpts && stageOpts.roadTrustChips
-    ? `<div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready">${planningRoadAmountReprint(stage.result)}</div>`
-    : planningTrajectoryFundingResultHtml(stage.result);
+  let roadResult;
+  if (stageOpts && stageOpts.roadTrustChips) {
+    const result = stage.result;
+    if (!result || result.status === 'unavailable'
+      || result.amount == null || !isFinite(Number(result.amount))) {
+      roadResult = `<div class="planning-trajectory-funding-result unavailable" data-trajectory-funding-result="unavailable">${planningRoadAmountReprint({ status: 'unavailable' })}</div>`;
+    } else {
+      const sign = Number(result.amount) < 0 ? 'gap' : Number(result.amount) > 0 ? 'surplus' : 'neutral';
+      roadResult = `<div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready" data-trajectory-funding-result-sign="${sign}">${planningRoadAmountReprint(result)}</div>`;
+    }
+  } else {
+    roadResult = planningTrajectoryFundingResultHtml(stage.result);
+  }
   return `<article class="planning-trajectory-funding-stage${fableCls}"${attrs.length ? ' ' + attrs : ''}>
     <h3 class="planning-trajectory-funding-stage-title">${stageIndex}${label}</h3>
     ${roadResult}
@@ -680,46 +690,9 @@ function planningRoadAheadHorizonCountsHtml(traj, granularity, asOf) {
       <p class="lede">${seriesGate.reason}</p>
     </div>`;
   }
-  const periods = planningRoadAheadPeriods(traj, granularity);
-  let surplus = 0;
-  let gap = 0;
-  let neutral = 0;
-  let withheld = 0;
-  for (const period of periods) {
-    if (!planningRoadAheadIsForwardPeriod(period, granularity, asOf)) continue;
-    const result = planningRoadAheadStage3Result(period);
-    if (!result) {
-      withheld += 1;
-      continue;
-    }
-    const amount = Number(result.amount);
-    if (amount < 0) gap += 1;
-    else if (amount > 0) surplus += 1;
-    else neutral += 1;
-  }
-  const unit = granularity === 'pay-period' ? 'pay period' : 'month';
-  const plural = (n) => `${n} ${unit}${n === 1 ? '' : 's'}`;
-  const parts = [];
-  if (surplus) parts.push(`${plural(surplus)} with projected surplus`);
-  if (gap) parts.push(`${plural(gap)} with projected funding gap`);
-  if (neutral) parts.push(`${plural(neutral)} at projected $0`);
-  if (withheld) parts.push(`${plural(withheld)} with result withheld`);
-  const summary = parts.length
-    ? parts.join('; ')
-    : 'Forecast published no forward periods on this view.';
-  return `<section class="planning-road-horizon" data-planning-road-horizon="ready" aria-label="Horizon counts">
-    <p class="planning-road-horizon-lede">As far as Forecast can currently project on this ${granularity === 'pay-period' ? 'pay-period' : 'monthly'} view:</p>
-    <div class="planning-road-horizon-stats">
-      <div class="planning-road-horizon-stat" data-road-horizon-kind="surplus">
-        <span class="planning-road-horizon-stat-value">${surplus}</span>
-        <span class="planning-road-horizon-stat-label">Surplus ${unit}${surplus === 1 ? '' : 's'}</span>
-      </div>
-      <div class="planning-road-horizon-stat" data-road-horizon-kind="gap">
-        <span class="planning-road-horizon-stat-value">${gap}</span>
-        <span class="planning-road-horizon-stat-label">Gap ${unit}${gap === 1 ? '' : 's'}</span>
-      </div>
-    </div>
-    <p class="planning-road-horizon-summary lede">${summary}.</p>
+  const viewLabel = granularity === 'pay-period' ? 'pay-period' : 'monthly';
+  return `<section class="planning-road-horizon planning-road-horizon-unavailable" data-planning-road-horizon="unavailable" aria-label="Horizon counts">
+    <p class="planning-road-horizon-lede lede">Forecast has not published surplus and funding-gap counts across the trajectory on this ${viewLabel} view yet. This band will show those figures when Forecast provides them; Planning does not count periods here.</p>
   </section>`;
 }
 

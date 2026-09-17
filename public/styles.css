@@ -1928,6 +1928,10 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   color: var(--road-trust-confirmed);
   font-weight: 500;
 }
+.planning-road-trust-calculated {
+  color: var(--success-text);
+  font-weight: 500;
+}
 .planning-road-trust-estimated {
   color: var(--road-trust-estimated);
   font-weight: 600;
@@ -2223,7 +2227,8 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-about { display: none !important; }
   .planning-road-period-heading,
   .planning-road-timeline-heading { display: none; }
-  .planning-road-selected .planning-trajectory-funding-stages {
+  .planning-road-selected .planning-trajectory-funding-stages,
+  .planning-road-stages .planning-trajectory-funding-stages {
     display: grid;
     gap: 12px;
     grid-template-columns: repeat(3, minmax(0, 1fr));

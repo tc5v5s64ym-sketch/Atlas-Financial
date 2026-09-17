@@ -87,8 +87,10 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   ok(/data-planning-road-primary="lead"/.test(road), 'lead card is in the primary viewport band');
   ok(/data-planning-road-primary="counts-and-strip"/.test(road)
     && /data-planning-road-primary="horizon"/.test(road)
-    && /data-planning-road-horizon="ready"/.test(road),
-    'objective counts and trajectory strip share the Fable counts-and-strip band');
+    && /data-planning-road-horizon="unavailable"/.test(road),
+    'horizon band is present but fail-closed until Forecast publishes surplus/gap counts');
+  ok(/has not published surplus and funding-gap counts/i.test(road),
+    'horizon band explains Forecast has not published surplus/gap counts');
   ok(/data-planning-road-primary="strip"/.test(road), 'trajectory strip is a named primary band');
   ok(/data-planning-road-primary="stages"/.test(road) && /data-planning-road-stages="ready"/.test(road),
     'three-stage story is its own primary band');
@@ -176,6 +178,14 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
   ok(!/\+\s*period\.stage|stage\d\.result\.amount\s*[-+*/]/.test(
     planningSrc.split('function planningRoadAheadHtml')[1].split('function planningTrajectoryFundingHtml')[0]),
     'road-ahead helpers do not derive new amounts from stage results');
+  const horizonFn = planningSrc.match(
+    /function planningRoadAheadHorizonCountsHtml\([\s\S]*?\n\}/);
+  ok(horizonFn && !/surplus\s*\+|gap\s*\+|data-road-horizon-kind/.test(horizonFn[0]),
+    'horizon counts helper does not aggregate periods into surplus/gap tallies');
+  ok(/data-trajectory-funding-result-sign="(gap|surplus)"/.test(shell),
+    'Fable stage amounts expose Forecast sign for gap/surplus presentation CSS');
+  ok(/planning-road-trust-calculated|>Calculated</.test(shell),
+    'calculated trust reprints as Calculated, not Confirmed');
 }
 
 console.log('\n=== 4. Granularity, accessibility, and fail-closed presentation ===');
