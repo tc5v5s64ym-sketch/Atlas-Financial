@@ -579,6 +579,9 @@ function planningRoadStageNarrative(period, stageNum, granularity, monthName) {
     if (s2 < 0) {
       return `${subject} planned spending of ${money2(commitments)} adds to the shortfall already in normal life.`;
     }
+    if (s2 === 0) {
+      return `${subject} planned spending of ${money2(commitments)} lands at break-even, leaving ${money2(0)}.`;
+    }
     return `${subject} planned spending of ${money2(commitments)} still leaves a projected surplus.`;
   }
   const extras = planningRoadFigure(period.stage3 && period.stage3.extras);
@@ -596,6 +599,9 @@ function planningRoadStageNarrative(period, stageNum, granularity, monthName) {
   }
   if (s3 < 0) {
     return `The planned ${money2(extras)} extra payment turns this ${noun} into a funding gap.`;
+  }
+  if (s3 === 0) {
+    return `The planned ${money2(extras)} extra payment lands at break-even, leaving ${money2(0)}.`;
   }
   return `The planned ${money2(extras)} extra payment still leaves a projected surplus.`;
 }

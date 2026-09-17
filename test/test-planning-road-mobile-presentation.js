@@ -734,6 +734,38 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
     'a dated pressure signal still maps the CTA to the pay period that contains that date');
 }
 
+console.log('\n=== 1g. Stage 2/3 break-even narrative — $0 running total is not called surplus ===');
+{
+  const page = loadPage();
+  const narrative = page.ctx.planningRoadStageNarrative;
+  const monthName = 'March';
+  const period = {
+    stage1: { result: { amount: 500, status: 'calculated' } },
+    stage2: {
+      commitments: { amount: 500, status: 'calculated' },
+      result: { amount: 0, status: 'calculated' },
+    },
+    stage3: {
+      extras: { amount: 200, status: 'calculated' },
+      result: { amount: 0, status: 'calculated' },
+    },
+  };
+  const stage2Note = narrative(period, 2, 'month', monthName);
+  const stage3Note = narrative(period, 3, 'month', monthName);
+  ok(!/surplus/i.test(stage2Note),
+    'stage 2 note for a $0 running total does not say surplus',
+    stage2Note);
+  ok(/break-even/i.test(stage2Note),
+    'stage 2 note names break-even when the running total is exactly $0',
+    stage2Note);
+  ok(!/surplus/i.test(stage3Note),
+    'stage 3 note for a $0 running total does not say surplus',
+    stage3Note);
+  ok(/break-even/i.test(stage3Note),
+    'stage 3 note names break-even when the running total is exactly $0',
+    stage3Note);
+}
+
 if (failures) {
   console.error(`\n${failures} failure(s)`);
   process.exit(1);
