@@ -84,6 +84,30 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   const road = liveEl['planning-road-ahead'].innerHTML;
   ok(/data-planning-road-shell="ready"/.test(road), 'render wraps road-ahead in phone-native shell');
   ok(/planning-road-app-head/.test(road), 'shell includes compact page identity header');
+  ok(/planning-road-app-eyebrow">PLANNING</.test(road)
+    && /<h2 class="planning-road-app-title">Road Ahead</.test(road),
+    'Frame 01 identity is PLANNING eyebrow plus Road Ahead title');
+  ok(/planning-road-hero-eyebrow/.test(road)
+    && /NEXT FUNDING GAP|NEXT PRESSURE/.test(road),
+    'Frame 01 hero uses NEXT FUNDING GAP or NEXT PRESSURE language');
+  ok(/planning-road-segmented/.test(road)
+    && />Month</.test(road) && />Pay</.test(road)
+    && /data-trajectory-funding-granularity="month"/.test(road)
+    && /data-trajectory-funding-granularity="pay-period"/.test(road),
+    'Frame 01 Month|Pay segmented control is present');
+  ok(/planning-road-spine/.test(road)
+    && /Normal life/.test(road)
+    && /After planned spending/.test(road)
+    && /After debt strategy/.test(road)
+    && /planning-road-spine-index/.test(road)
+    && /Projected result/.test(road),
+    'Frame 03 vertical numbered spine uses household stage titles plus projected-result bar');
+  ok(/planning-road-horizon-stats/.test(road)
+    && /data-road-horizon-stat="surplus"/.test(road)
+    && /data-road-horizon-stat="gap"/.test(road),
+    'horizon band keeps Fable surplus/gap shape while counts stay unavailable');
+  ok(!/About this view/.test(road) && !/planning-road-app-asof/.test(road),
+    'road-ahead shell strips About this view and dense as-of chrome');
   ok(/data-planning-road-primary="lead"/.test(road), 'lead card is in the primary viewport band');
   ok(/data-planning-road-primary="counts-and-strip"/.test(road)
     && /data-planning-road-primary="horizon"/.test(road)
@@ -154,6 +178,11 @@ console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical 
     'stage results expose Forecast sign for presentation-only gap/surplus styling');
   ok(/body:has\(#planning\)[\s\S]*\.site-head-row \.brand[\s\S]*display:\s*none/.test(mobile),
     'planning phone view trims masthead brand chrome');
+  ok(/body:has\(#planning\)[\s\S]*\.site-head-row \.chip[\s\S]*display:\s*none/.test(mobile),
+    'planning phone view hides the dense site-head as-of chip');
+  ok(/planning-road-spine[\s\S]*flex-direction:\s*column/.test(css)
+    || /planning-road-spine[\s\S]*flex-direction:\s*column/.test(mobile),
+    'Frame 03 stage spine is a vertical column');
 }
 
 console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory math ===');
@@ -184,8 +213,15 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
     'horizon counts helper does not aggregate periods into surplus/gap tallies');
   ok(/data-trajectory-funding-result-sign="(gap|surplus)"/.test(shell),
     'Fable stage amounts expose Forecast sign for gap/surplus presentation CSS');
-  ok(/planning-road-trust-calculated|>Calculated</.test(shell),
+  ok(/planning-road-trust-calculated/.test(shell) && />Calculated</.test(shell),
     'calculated trust reprints as Calculated, not Confirmed');
+  ok(!/planning-road-trust-calculated[^>]*>Confirmed</.test(shell),
+    'Calculated chip label is never Confirmed');
+  const chipFn = planningSrc.match(/function planningRoadTrustChip\([\s\S]*?\n\}/);
+  ok(chipFn && /calculated: \{ cls: 'planning-road-trust-calculated', label: 'Calculated' \}/.test(chipFn[0]),
+    'trust map sends Forecast calculated to Calculated');
+  ok(chipFn && !/calculated:[^}]*Confirmed/.test(chipFn[0]),
+    'trust map does not alias calculated to Confirmed');
 }
 
 console.log('\n=== 4. Granularity, accessibility, and fail-closed presentation ===');
@@ -229,11 +265,9 @@ console.log('\n=== 6. Desktop presentation preserved ===');
     'desktop road-ahead selected period keeps three-column stage grid');
 }
 
-console.log('\n=== 7. Tip repair — as-of identity and timeline scroll containment ===');
+console.log('\n=== 7. Timeline scroll containment (no window jump) ===');
 {
   const road = page.render(live, periods)['planning-road-ahead'].innerHTML;
-  ok(/planning-road-app-asof/.test(road) && road.includes(`As at ${live.meta.asOf}`),
-    'phone identity reprints the boot as-of chip text once');
   ok(!/As of\s+As at/i.test(road) && !/planning-road-app-asof-label/.test(road),
     'road-ahead header does not prefix a second As of label onto As at …');
 
