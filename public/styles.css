@@ -28,6 +28,14 @@
   --road-stage-1:var(--s1);
   --road-stage-2:var(--s2);
   --road-stage-3:var(--s3);
+  /* Road Ahead — DESIGN §9 trust / status (presentation) */
+  --road-trust-confirmed:var(--muted);
+  --road-trust-estimated:var(--warning);
+  --road-trust-planned:var(--s1);
+  --road-trust-unavailable:var(--muted);
+  --road-gap:var(--critical);
+  --road-surplus:var(--good);
+  --road-pressure:var(--serious);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -1730,8 +1738,8 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   border-radius: 3px;
   background: var(--muted);
 }
-.planning-road-timeline-bar-surplus { background: var(--ok, #1a7f4b); }
-.planning-road-timeline-bar-gap { background: var(--critical); }
+.planning-road-timeline-bar-surplus { background: var(--road-surplus, var(--ok, #1a7f4b)); }
+.planning-road-timeline-bar-gap { background: var(--road-gap, var(--critical)); }
 .planning-road-timeline-bar-withheld { background: var(--muted); opacity: .5; }
 .planning-road-timeline-value {
   display: block;
@@ -1917,17 +1925,31 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   vertical-align: middle;
 }
 .planning-road-trust-confirmed {
-  color: var(--text-secondary);
+  color: var(--road-trust-confirmed);
+  font-weight: 500;
 }
 .planning-road-trust-estimated {
-  color: var(--warn, #b8860b);
+  color: var(--road-trust-estimated);
+  font-weight: 600;
 }
 .planning-road-trust-unavailable {
-  color: var(--text-secondary);
+  color: var(--road-trust-unavailable);
+  font-weight: 500;
 }
 .planning-road-trust-planned {
-  color: var(--s1);
+  color: var(--road-trust-planned);
+  font-weight: 600;
 }
+.planning-road-trajectory-band {
+  margin: 0 0 18px;
+}
+.planning-road-horizon-stat[data-road-horizon-kind="gap"] .planning-road-horizon-stat-value {
+  color: var(--road-gap);
+}
+.planning-road-horizon-stat[data-road-horizon-kind="surplus"] .planning-road-horizon-stat-value {
+  color: var(--road-surplus);
+}
+.planning-road-lead-gap .planning-road-lead-amount b { color: var(--road-gap); }
 .planning-road-fable-stage {
   position: relative;
   background: var(--surface-1);

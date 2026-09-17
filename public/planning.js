@@ -335,7 +335,7 @@ function planningTrajectoryPressureSignalHtml(signal, index) {
 }
 
 function planningTrajectoryPressureHtml(traj) {
-  const note = 'Pressure signals and their cause attribution are Forecast.baselineTrajectory.pressure only — mechanical facts and walk-derived drivers from the baseline walk. This page copies them in Forecast order; it does not score, rank, or compute pressure or attribution.';
+  const note = 'Pressure signals and their cause attribution are Forecast.baselineTrajectory.pressure only — mechanical facts and walk-derived drivers from the Forecast projection. This page copies them in Forecast order; it does not score, rank, or compute pressure or attribution.';
   const pressure = traj && traj.pressure;
   if (!pressure || pressure.status !== 'ready') {
     const reason = (pressure && pressure.reason) || (traj && traj.reason) || 'Baseline trajectory pressure unavailable.';
@@ -348,14 +348,14 @@ function planningTrajectoryPressureHtml(traj) {
   const signals = Array.isArray(pressure.signals) ? pressure.signals : [];
   if (!signals.length) {
     return {
-      lede: 'Forecast published no pressure signals on this baseline walk.',
+      lede: 'Forecast published no pressure signals in this projection.',
       list: '<p class="lede" data-trajectory-pressure="empty">No pressure signals on this walk.</p>',
       note,
     };
   }
   const items = signals.map((signal, index) => planningTrajectoryPressureSignalHtml(signal, index)).join('');
   return {
-    lede: `${signals.length} pressure signal${signals.length === 1 ? '' : 's'} from the baseline walk, in Forecast order.`,
+    lede: `${signals.length} pressure signal${signals.length === 1 ? '' : 's'} in this projection, in Forecast order.`,
     list: `<ol class="planning-trajectory-pressure-list" data-trajectory-pressure="ready">${items}</ol>`,
     note,
   };
@@ -420,7 +420,7 @@ function planningTrajectoryDebtDirectionDebtHtml(debt, index) {
   if (debt.milestone && debt.milestone.kind === 'cleared-within-published-horizon') {
     const m = debt.milestone;
     milestone = `<div class="planning-trajectory-debt-direction-milestone" data-trajectory-debt-direction-milestone="${m.kind}"${m.month ? ` data-trajectory-debt-direction-milestone-month="${m.month}"` : ''}${m.asOf ? ` data-trajectory-debt-direction-milestone-asof="${m.asOf}"` : ''}>`
-      + '<small class="planning-trajectory-pressure-field"><span>Cleared within published horizon</span> '
+      + '<small class="planning-trajectory-pressure-field"><span>Cleared within projection window</span> '
       + `${m.month ? `month ${m.month}` : 'month unknown'}`
       + `${m.asOf ? ` (as-of ${fmtDateFull(m.asOf)})` : ''}`
       + '</small></div>';
@@ -479,7 +479,7 @@ function planningTrajectoryDebtDirectionHtml(traj) {
     : '<p class="lede" data-trajectory-debt-direction-debts="empty">Forecast published no per-debt direction rows.</p>';
   return {
     lede: span + (debts.length
-      ? ` ${debts.length} modelled debt${debts.length === 1 ? '' : 's'} with direction over the published horizon.`
+      ? ` ${debts.length} modelled debt${debts.length === 1 ? '' : 's'} with direction across the projection window.`
       : ' Household direction with no per-debt rows.'),
     list: `<div class="planning-trajectory-debt-direction" data-trajectory-debt-direction="ready">${flags.join('')}${householdBlock}${idLists}${debtList}</div>`,
     note,
@@ -607,14 +607,20 @@ function planningRoadAheadFundingStagesHtml(period, granularity) {
 function planningRoadBreakdownComponentRow(label, component, dataKey) {
   if (!component) return '';
   if (component.status === 'unavailable') {
-    if (!component.reason) return '';
+    const reason = component.reason
+      ? `<small class="planning-trajectory-reason">${component.reason}</small>` : '';
     return `<li class="planning-road-breakdown-row unavailable" data-planning-road-breakdown="${dataKey || label}">
       <span class="planning-road-breakdown-label">${label}</span>
       <span class="planning-road-breakdown-value">${planningRoadAmountReprint(component)}</span>
-      <small class="planning-trajectory-reason">${component.reason}</small>
+      ${reason}
     </li>`;
   }
-  if (component.amount == null || !isFinite(Number(component.amount))) return '';
+  if (component.amount == null || !isFinite(Number(component.amount))) {
+    return `<li class="planning-road-breakdown-row unavailable" data-planning-road-breakdown="${dataKey || label}">
+      <span class="planning-road-breakdown-label">${label}</span>
+      <span class="planning-road-breakdown-value">${planningRoadAmountReprint({ status: 'unavailable' })}</span>
+    </li>`;
+  }
   const chip = component.status ? planningRoadTrustChip(component.status) : '';
   const plannedNote = component.status === 'planned'
     ? '<span class="planning-road-breakdown-planned-note">Planned item — not counted as $0 when withheld.</span>' : '';
@@ -821,7 +827,7 @@ function planningRoadAheadGranularitySeriesGate(traj, granularity) {
       const prov = traj.provenance && traj.provenance.payPeriodSeries;
       const reason = prov === 'unavailable'
         ? 'Forecast could not publish pay-period spans on this opening (Seaspan payroll calendar missing or clipped empty). Monthly funding remains available in Month view.'
-        : 'Forecast published no pay periods on this baseline walk.';
+        : 'Forecast published no pay periods in this projection.';
       return { available: false, reason };
     }
     return { available: true, reason: null };
@@ -1146,7 +1152,7 @@ function planningRoadAheadHtml(traj, granularity, selectedKey, asOf) {
 }
 
 function planningTrajectoryFundingHtml(traj, granularity, selectedKey) {
-  const note = 'Three-stage funding is Forecast.baselineTrajectory stage1 / stage2 / stage3 only — Normal life, After planned spending, After debt strategy. Month view copies months[]; Pay period view copies payPeriods[] from the same baseline walk. This page copies component totals and results when Forecast publishes them; it does not subtract stages, recompute funding, or treat unavailable as $0.';
+  const note = 'Three-stage funding is Forecast.baselineTrajectory stage1 / stage2 / stage3 only — Normal life, After planned spending, After debt strategy. Month view copies months[]; Pay period view copies payPeriods[] from the same Forecast projection. This page copies component totals and results when Forecast publishes them; it does not subtract stages, recompute funding, or treat unavailable as $0.';
   const view = granularity === 'pay-period' ? 'pay-period' : 'month';
   const granularitySwitch = `<div class="planning-trajectory-granularity" role="group" aria-label="Trajectory period granularity">
     ${planningTrajectoryFundingGranularityBtn('month', view)}
@@ -1170,7 +1176,7 @@ function planningTrajectoryFundingHtml(traj, granularity, selectedKey) {
       const prov = traj.provenance && traj.provenance.payPeriodSeries;
       const reason = prov === 'unavailable'
         ? 'Forecast could not publish pay-period spans on this opening (Seaspan payroll calendar missing or clipped empty). Monthly funding remains available in Month view.'
-        : 'Forecast published no pay periods on this baseline walk.';
+        : 'Forecast published no pay periods in this projection.';
       return {
         lede: '',
         picker: granularitySwitch,
@@ -1183,7 +1189,7 @@ function planningTrajectoryFundingHtml(traj, granularity, selectedKey) {
     }
     const selected = payPeriods.find(p => (p.payday || p.id) === selectedKey) || payPeriods[0];
     const selectedId = selected.payday || selected.id;
-    const lede = 'Compare Normal life, After planned spending, and After debt strategy for one Seaspan pay period — the same three stages Forecast publishes on the baseline walk. Pick a pay period below.';
+    const lede = 'Compare Normal life, After planned spending, and After debt strategy for one Seaspan pay period — the same three stages Forecast publishes for this opening. Pick a pay period below.';
     const picker = `${granularitySwitch}<label class="planning-trajectory-funding-picker"><span class="planning-trajectory-funding-picker-label">Trajectory pay period</span> `
       + `<select class="planning-trajectory-funding-select" data-trajectory-funding-picker="select" aria-label="Trajectory pay period for three-stage funding">`
       + payPeriods.map(p => {
@@ -1216,7 +1222,7 @@ function planningTrajectoryFundingHtml(traj, granularity, selectedKey) {
     };
   }
   const selected = months.find(m => m.month === selectedKey) || months[0];
-  const lede = 'Compare Normal life, After planned spending, and After debt strategy for one trajectory month — the same three stages Forecast publishes on the baseline walk. Select a month in the table above or the picker below.';
+  const lede = 'Compare Normal life, After planned spending, and After debt strategy for one trajectory month — the same three stages Forecast publishes for this opening. Select a month in the detailed view above or the picker below.';
   const picker = `${granularitySwitch}<label class="planning-trajectory-funding-picker"><span class="planning-trajectory-funding-picker-label">Trajectory month</span> `
     + `<select class="planning-trajectory-funding-select" data-trajectory-funding-picker="select" aria-label="Trajectory month for three-stage funding">`
     + months.map(m => `<option value="${m.month}"${m.month === selected.month ? ' selected' : ''}>${m.month}</option>`).join('')
@@ -1713,15 +1719,17 @@ function renderPlanning(d, periods) {
       <div class="planning-road-primary" data-planning-road-primary="lead">
         ${roadHtml.lead}
       </div>
-      <div class="planning-road-horizon-band" data-planning-road-primary="horizon">
-        ${roadHtml.horizonCounts}
-      </div>
-      <section class="planning-road-period-nav" aria-label="Trajectory period navigation">
-        <p class="subhead planning-road-period-heading">Month or pay period</p>
-        ${roadHtml.picker}
-        <div class="planning-road-timeline-wrap" data-planning-road-primary="strip">
-          <p class="subhead planning-road-timeline-heading">Trajectory</p>
-          ${roadHtml.timeline}
+      <section class="planning-road-trajectory-band" aria-label="Projection counts and trajectory" data-planning-road-primary="counts-and-strip">
+        <div class="planning-road-horizon-band" data-planning-road-primary="horizon">
+          ${roadHtml.horizonCounts}
+        </div>
+        <div class="planning-road-period-nav" data-planning-road-primary="strip-controls" aria-label="Trajectory period navigation">
+          <p class="subhead planning-road-period-heading">Month or pay period</p>
+          ${roadHtml.picker}
+          <div class="planning-road-timeline-wrap" data-planning-road-primary="strip">
+            <p class="subhead planning-road-timeline-heading">Trajectory</p>
+            ${roadHtml.timeline}
+          </div>
         </div>
       </section>
       <section class="planning-road-period-detail" aria-label="Selected period story" data-planning-road-primary="stages">

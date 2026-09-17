@@ -85,13 +85,18 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   ok(/data-planning-road-shell="ready"/.test(road), 'render wraps road-ahead in phone-native shell');
   ok(/planning-road-app-head/.test(road), 'shell includes compact page identity header');
   ok(/data-planning-road-primary="lead"/.test(road), 'lead card is in the primary viewport band');
-  ok(/data-planning-road-primary="horizon"/.test(road) && /data-planning-road-horizon="ready"/.test(road),
-    'horizon counts sit in the Fable stack after the lead');
+  ok(/data-planning-road-primary="counts-and-strip"/.test(road)
+    && /data-planning-road-primary="horizon"/.test(road)
+    && /data-planning-road-horizon="ready"/.test(road),
+    'objective counts and trajectory strip share the Fable counts-and-strip band');
   ok(/data-planning-road-primary="strip"/.test(road), 'trajectory strip is a named primary band');
   ok(/data-planning-road-primary="stages"/.test(road) && /data-planning-road-stages="ready"/.test(road),
     'three-stage story is its own primary band');
   ok(/data-planning-road-primary="breakdown"/.test(road) && /data-planning-road-breakdown="sheet"/.test(road),
     'progressive breakdown sheet follows the stage story');
+  const htmlStatic = read('public/planning.html');
+  ok(!/baseline walk|published horizon|legacy layout|full table/i.test(htmlStatic),
+    'planning.html static copy follows DESIGN glossary');
   const leadAt = road.indexOf('data-planning-road-primary="lead"');
   const horizonAt = road.indexOf('data-planning-road-primary="horizon"');
   const stripAt = road.indexOf('data-planning-road-primary="strip"');
@@ -139,6 +144,8 @@ console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical 
     'estimated trust chip uses amber presentation class');
   ok(/--hypo-accent/.test(css) && /--hypo-border/.test(css),
     'what-if quarantine uses hypo design tokens');
+  ok(/--road-trust-confirmed/.test(css) && /--road-gap/.test(css),
+    'Road Ahead uses DESIGN §9 trust and status tokens');
   ok(/planning-road-trust-planned/.test(css),
     'planned trust chip uses blue presentation class');
   ok(/data-trajectory-funding-result-sign="gap"/.test(css),
