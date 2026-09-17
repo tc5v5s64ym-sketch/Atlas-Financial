@@ -1,11 +1,11 @@
 'use strict';
-/* Standing bill-settlement identities: Fortis, Shaw, and TD fees are
- * identity-plus-evidence each cycle; YouTube Premium is schedule-trust
- * on the due date. Matching confirmed-settled txs create
+/* Standing bill-settlement identities: Fortis, Shaw, Netflix, and TD
+ * fees are identity-plus-evidence each cycle; YouTube Premium is
+ * schedule-trust on the due date. Matching confirmed-settled txs create
  * representedActuals and mark PAID. Without matching evidence Fortis,
- * Shaw, and TD stay still-due / unverified. YouTube does not require an
- * isolated bank tx or Apple scrape. Synthetic observe fixtures and
- * independent arithmetic (L-002 / L-006).
+ * Shaw, Netflix, and TD stay still-due / unverified. YouTube does not
+ * require an isolated bank tx or Apple scrape. Synthetic observe
+ * fixtures and independent arithmetic (L-002 / L-006).
  *
  * `node test/test-bill-settlement-identities.js`
  */
@@ -33,6 +33,11 @@ const SHAW_ID = 'shaw';
 const SHAW_DUE = '2026-09-14';
 const SHAW_PLANNED = 78.4;
 const SHAW_OBSERVED = 78.4;
+const NETFLIX_ID = 'netflix';
+const NETFLIX_DUE = '2026-09-17';
+const NETFLIX_PLANNED = 26.87;
+const NETFLIX_OBSERVED = 26.87;
+const SPOTIFY_ID = 'spotify';
 const FEE_ID = 'tdfees';
 const FEE_DUE = '2026-08-30';
 const FEE_LEG = 17.95;
@@ -227,6 +232,20 @@ function shawTx(extra) {
   }, extra || {});
 }
 
+function netflixTx(extra) {
+  return Object.assign({
+    id: 9640, account_id: 1002, date: NETFLIX_DUE, amount: NETFLIX_OBSERVED,
+    is_pending: false, payee: 'Netflix', original_name: 'Netflix',
+  }, extra || {});
+}
+
+function spotifyTx(extra) {
+  return Object.assign({
+    id: 9641, account_id: 1002, date: NETFLIX_DUE, amount: NETFLIX_OBSERVED,
+    is_pending: false, payee: 'Spotify', original_name: 'Spotify',
+  }, extra || {});
+}
+
 function feeTxA(extra) {
   return Object.assign({
     id: 9602, account_id: 1001, date: FEE_DUE, amount: FEE_LEG,
@@ -276,6 +295,14 @@ console.log('\n=== 1. standing identities are encoded ===');
       && (shaw.payeePatterns || []).includes('Shaw Cable')
       && !shaw.settlesWhen,
     'shaw identity is payee + Chequing A + debit + early-or-covers-due; amount is not identity');
+  const netflix = (identity.rules || []).find(r => r && r.eventId === NETFLIX_ID);
+  ok(netflix && netflix.atlasAccountId === 'chequing-b' && netflix.direction === 'debit'
+      && netflix.postingDateRule === EARLY_RULE
+      && (netflix.payeePatterns || []).includes('Netflix')
+      && !netflix.settlesWhen,
+    'netflix identity is payee + Chequing B + debit + early-or-covers-due; amount is not identity');
+  ok(!(identity.rules || []).some(r => r && r.eventId === SPOTIFY_ID),
+    'this identity file does not invent a spotify settlement rule');
 }
 
 console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube waits for due date ===');
@@ -300,6 +327,11 @@ console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube wai
     'no Shaw debit does not represent shaw');
   ok(billUnpaid(recommendFromReport(shawEmpty, SHAW_DUE), SHAW_ID, SHAW_DUE),
     'Shaw stays still-due / unverified without matching evidence');
+  const netflixEmpty = observeWith(identity, NETFLIX_DUE, []);
+  ok(!(netflixEmpty.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
+    'no Netflix debit does not represent netflix');
+  ok(billUnpaid(recommendFromReport(netflixEmpty, NETFLIX_DUE), NETFLIX_ID, NETFLIX_DUE),
+    'Netflix stays still-due / unverified without matching evidence');
 }
 
 console.log('\n=== 3. Fortis early pay before due creates representedActuals and PAID ===');
@@ -408,6 +440,84 @@ console.log('\n=== 3b. Shaw same-day SHAW CABLE TV BPY creates representedActual
   ok(near(roundCent(beforeRemain - afterRemain), SHAW_PLANNED),
     'matching shaw releases independently the planned $78.40',
     `${beforeRemain} → ${afterRemain} vs ${SHAW_PLANNED}`);
+}
+
+console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals and PAID; Spotify does not ===');
+{
+  const liveNetflix = ((liveData().plan && liveData().plan.bills) || [])
+    .find(b => b && b.id === NETFLIX_ID);
+  ok(liveNetflix && liveNetflix.day === 17 && liveNetflix.payingAccount === 'chequing-a'
+      && near(liveNetflix.amount, NETFLIX_PLANNED),
+    'live plan.bills netflix is $26.87 on the 17th; payingAccount stays chequing-a');
+  const liveSpotify = ((liveData().plan && liveData().plan.bills) || [])
+    .find(b => b && b.id === SPOTIFY_ID);
+  ok(liveSpotify && liveSpotify.day === 17 && near(liveSpotify.amount, NETFLIX_PLANNED),
+    'live plan.bills spotify is the same $26.87 / day-17 twin; it is a separate bill');
+  ok(near(NETFLIX_PLANNED, 26.87),
+    'independent scheduled amount is $26.87, not identity');
+  const identity = identityDoc();
+  const missing = observeWith(identityWithout(identity, [NETFLIX_ID]), NETFLIX_DUE, [netflixTx()]);
+  ok(!(missing.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
+    'without the netflix rule, Netflix on chequing-b stays unmatched');
+  ok(billUnpaid(recommendFromReport(missing, NETFLIX_DUE), NETFLIX_ID, NETFLIX_DUE),
+    'without the netflix rule the Sep 17 bill stays still-due / PENDING');
+  const report = observeWith(identity, NETFLIX_DUE, [netflixTx()]);
+  const hit = (report.representedEventCandidates || [])
+    .find(c => c && c.id === NETFLIX_ID && c.date === NETFLIX_DUE);
+  ok(hit && hit.postingDate === NETFLIX_DUE
+      && hit.postingDateRelation === 'same-day'
+      && hit.amountNotUsed === true
+      && hit.atlasAccountId === 'chequing-b'
+      && near(hit.observedAmount, NETFLIX_OBSERVED),
+    'Sep 17 Netflix debit on chequing-b settles the Sep 17 netflix occurrence as same-day');
+  ok(!(report.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'the Netflix debit does not represent spotify');
+  const row = ((report.currentPeriodActuals || {}).representedActuals || [])
+    .find(r => r && r.id === NETFLIX_ID && r.date === NETFLIX_DUE);
+  ok(row && row.transactionId && near(row.actual, NETFLIX_OBSERVED)
+      && row.postedOn === NETFLIX_DUE,
+    'representedActuals carries the observed Netflix debit against netflix@Sep 17');
+  ok(!((report.currentPeriodActuals || {}).representedActuals || [])
+      .some(r => r && r.id === SPOTIFY_ID),
+    'representedActuals does not name spotify from the Netflix debit');
+  const advice = recommendFromReport(report, NETFLIX_DUE);
+  const bill = actionBill(advice, NETFLIX_ID, NETFLIX_DUE)
+    || calendarBill(advice, NETFLIX_ID, NETFLIX_DUE);
+  ok(billPaid(advice, NETFLIX_ID, NETFLIX_DUE)
+      && bill && near(bill.planned != null ? bill.planned : bill.amount, NETFLIX_PLANNED)
+      && near(bill.actual != null ? bill.actual : 0, NETFLIX_OBSERVED),
+    'matching Netflix evidence marks PAID at the observed amount; planned $26.87 stays');
+  ok(billUnpaid(advice, SPOTIFY_ID, NETFLIX_DUE),
+    'Spotify stays still-due / PENDING after the Netflix debit settles netflix');
+  const wrongPayee = observeWith(identity, NETFLIX_DUE, [netflixTx({
+    id: 9642, payee: 'UNKNOWN DEBIT', original_name: 'UNKNOWN DEBIT',
+  })]);
+  ok(!(wrongPayee.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
+    'date + amount without the Netflix alias does not settle netflix');
+  const spotifyPayee = observeWith(identity, NETFLIX_DUE, [spotifyTx()]);
+  ok(!(spotifyPayee.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
+    'Spotify payee on chequing-b does not settle netflix');
+  ok(!(spotifyPayee.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'Spotify payee does not invent a spotify settlement');
+  ok(billUnpaid(recommendFromReport(spotifyPayee, NETFLIX_DUE), NETFLIX_ID, NETFLIX_DUE),
+    'a Spotify debit leaves Netflix still-due / PENDING');
+  const wrongAccount = observeWith(identity, NETFLIX_DUE, [netflixTx({
+    id: 9643, account_id: 1001,
+  })]);
+  ok(!(wrongAccount.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
+    'the Netflix alias on Chequing A does not settle the WEEKLY identity');
+  const remaining = adviceRow => {
+    const bills = (((adviceRow && adviceRow.currentPeriodAction) || {}).bills) || [];
+    return bills
+      .filter(row => row && row.settlement !== 'represented')
+      .reduce((sum, row) => sum + Math.abs(Number(row.remaining != null
+        ? row.remaining : row.planned) || 0), 0);
+  };
+  const beforeRemain = remaining(recommendFromReport(missing, NETFLIX_DUE));
+  const afterRemain = remaining(advice);
+  ok(near(roundCent(beforeRemain - afterRemain), NETFLIX_PLANNED),
+    'matching netflix releases independently the planned $26.87',
+    `${beforeRemain} → ${afterRemain} vs ${NETFLIX_PLANNED}`);
 }
 
 console.log('\n=== 4. TD two-leg MONTHLY ACCOUNT FEE evidence settles $35.90; one leg does not ===');
@@ -522,7 +632,8 @@ console.log('\n=== 6. independent remaining-bill deltas ===');
 console.log('\n=== 7. pages do not special-case these merchants ===');
 {
   const planSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public', 'plan.js'), 'utf8'));
-  ok(!/Fortisbc Energy|MONTHLY ACCOUNT FEE|YouTube Premium|SHAW CABLE TV BPY/.test(planSrc),
+  ok(!/Fortisbc Energy|MONTHLY ACCOUNT FEE|YouTube Premium|SHAW CABLE TV BPY/.test(planSrc)
+      && !/\bNetflix\b/.test(planSrc),
     'plan.js only prints; it does not special-case these identities');
 }
 
