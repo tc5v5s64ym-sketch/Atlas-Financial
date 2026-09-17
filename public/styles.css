@@ -2189,16 +2189,19 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-segmented.planning-trajectory-granularity,
   .planning-road-granularity.planning-trajectory-granularity {
     display: flex;
+    flex-wrap: nowrap;
     width: 100%;
     margin: 0 0 12px;
     padding: 3px;
     border: 0;
+    gap: 0;
     border-radius: 999px;
     background: var(--grid);
   }
   .planning-road-segmented .planning-trajectory-granularity-btn,
   .planning-road-granularity .planning-trajectory-granularity-btn {
-    flex: 1 1 50%;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 44px;
     font-size: .95rem;
     border-radius: 999px;

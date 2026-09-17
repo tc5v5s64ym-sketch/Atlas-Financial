@@ -183,6 +183,9 @@ console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical 
   ok(/planning-road-spine[\s\S]*flex-direction:\s*column/.test(css)
     || /planning-road-spine[\s\S]*flex-direction:\s*column/.test(mobile),
     'Frame 03 stage spine is a vertical column');
+  ok(/planning-road-segmented[\s\S]*flex-wrap:\s*nowrap/.test(mobile)
+    || /planning-road-granularity[\s\S]*flex-wrap:\s*nowrap/.test(mobile),
+    'Month|Pay segmented control stays on one row at phone width');
 }
 
 console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory math ===');
