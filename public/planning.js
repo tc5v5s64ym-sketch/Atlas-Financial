@@ -124,6 +124,7 @@ function planningRoadTrustChip(status) {
     calculated: { cls: 'planning-road-trust-confirmed', label: 'Confirmed' },
     estimated: { cls: 'planning-road-trust-estimated', label: 'Estimated' },
     unavailable: { cls: 'planning-road-trust-unavailable', label: 'Unavailable' },
+    planned: { cls: 'planning-road-trust-planned', label: 'Planned' },
   };
   const row = map[status] || { cls: 'planning-road-trust-unknown', label: String(status || 'Unknown') };
   return `<span class="planning-road-trust-chip ${row.cls}">${row.label}</span>`;
@@ -518,13 +519,18 @@ function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
   if (!stage) return '';
   const omitComponentDetails = stageOpts && stageOpts.omitComponentDetails === true;
   const label = stage.label || (stageNum === 1 ? 'Normal life' : stageNum === 2 ? 'After planned spending' : 'After debt strategy');
+  const fableStage = stageOpts && stageOpts.fableStage === true;
+  const fableCls = fableStage ? ` planning-road-fable-stage planning-road-fable-stage-${stageNum}` : '';
+  const stageIndex = fableStage
+    ? `<span class="planning-road-stage-index" aria-hidden="true">${stageNum}</span> `
+    : '';
   const attrs = [
     `data-trajectory-funding-stage="${stageNum}"`,
     stage.id ? `data-trajectory-funding-stage-id="${stage.id}"` : '',
     stage.status ? `data-trajectory-funding-stage-status="${stage.status}"` : '',
   ].filter(Boolean).join(' ');
   if (stage.status === 'unavailable') {
-    return `<article class="planning-trajectory-funding-stage unavailable"${attrs.length ? ' ' + attrs : ''}><h3 class="planning-trajectory-funding-stage-title">${label}</h3>${planningTrajectoryFundingUnavailableHtml(stage)}</article>`;
+    return `<article class="planning-trajectory-funding-stage unavailable${fableCls}"${attrs.length ? ' ' + attrs : ''}><h3 class="planning-trajectory-funding-stage-title">${stageIndex}${label}</h3>${fableStage ? planningRoadAmountReprint({ status: 'unavailable' }) : planningTrajectoryFundingUnavailableHtml(stage)}</article>`;
   }
   const componentParts = [];
   if (stageNum === 1) {
@@ -561,15 +567,15 @@ function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
   const roadResult = stageOpts && stageOpts.roadTrustChips
     ? `<div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready">${planningRoadAmountReprint(stage.result)}</div>`
     : planningTrajectoryFundingResultHtml(stage.result);
-  return `<article class="planning-trajectory-funding-stage"${attrs.length ? ' ' + attrs : ''}>
-    <h3 class="planning-trajectory-funding-stage-title">${label}</h3>
+  return `<article class="planning-trajectory-funding-stage${fableCls}"${attrs.length ? ' ' + attrs : ''}>
+    <h3 class="planning-trajectory-funding-stage-title">${stageIndex}${label}</h3>
     ${roadResult}
     ${details}
   </article>`;
 }
 
 function planningRoadAheadStageOpts() {
-  return { omitComponentDetails: true, roadTrustChips: true };
+  return { omitComponentDetails: true, roadTrustChips: true, fableStage: true };
 }
 
 function planningRoadAheadFundingStagesHtml(period, granularity) {
@@ -610,9 +616,11 @@ function planningRoadBreakdownComponentRow(label, component, dataKey) {
   }
   if (component.amount == null || !isFinite(Number(component.amount))) return '';
   const chip = component.status ? planningRoadTrustChip(component.status) : '';
+  const plannedNote = component.status === 'planned'
+    ? '<span class="planning-road-breakdown-planned-note">Planned item — not counted as $0 when withheld.</span>' : '';
   return `<li class="planning-road-breakdown-row" data-planning-road-breakdown="${dataKey || label}">
     <span class="planning-road-breakdown-label">${label}</span>
-    <span class="planning-road-breakdown-value"><b>${money2(component.amount)}</b>${chip}</span>
+    <span class="planning-road-breakdown-value"><b>${money2(component.amount)}</b>${chip}${plannedNote}</span>
   </li>`;
 }
 
@@ -654,7 +662,7 @@ function planningRoadAheadBreakdownSheetHtml(period) {
   }
   return `<details class="planning-road-breakdown-sheet" data-planning-road-breakdown="sheet">
     <summary>Period breakdown</summary>
-    <p class="lede planning-road-breakdown-intro">Line items and stage results copied from Forecast for the selected period. Unavailable figures show —, not $0.</p>
+    <p class="lede planning-road-breakdown-intro">Line items and stage results copied from Forecast for the selected period. Unavailable figures show — and are not counted as $0.</p>
     <ul class="planning-road-breakdown-list">${list}</ul>
   </details>`;
 }
@@ -925,7 +933,7 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
       ? `<p class="planning-road-lead-why">Forecast published ${signals.length} pressure signal${signals.length === 1 ? '' : 's'} on this ${granularity === 'pay-period' ? 'pay period' : 'month'} — see details below.</p>`
       : '';
     return {
-      html: `<article class="planning-road-lead planning-road-lead-gap" data-road-lead="funding-gap" data-road-lead-period="${focusKey || ''}">
+      html: `<article class="planning-road-lead planning-road-lead-gap planning-road-hero-card" data-road-lead="funding-gap" data-road-lead-period="${focusKey || ''}">
         <p class="planning-road-lead-kicker">${phrase.label} in ${label}</p>
         <p class="planning-road-lead-amount" data-road-lead-amount="${gapLead.result.amount}"><b>${money2(gapLead.result.amount)}</b>${chip}</p>
         ${why}
@@ -943,9 +951,9 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
   }
   if (pressureLead.status === 'empty') {
     return {
-      html: `<article class="planning-road-lead planning-road-lead-clear" data-road-lead="no-forward-pressure">
+      html: `<article class="planning-road-lead planning-road-lead-clear planning-road-hero-card" data-road-lead="no-forward-pressure">
         <p class="planning-road-lead-kicker">No forward pressure signals after the opening date</p>
-        <p class="lede">Forecast published ${pressureLead.signals.length} pressure signal${pressureLead.signals.length === 1 ? '' : 's'} on this baseline walk, all on or before the opening date.</p>
+        <p class="lede">Forecast published ${pressureLead.signals.length} pressure signal${pressureLead.signals.length === 1 ? '' : 's'} on or before the opening date in this projection.</p>
       </article>`,
       focusKey: selectedKey,
     };
@@ -970,8 +978,8 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
   const jump = focusKey
     ? `<button type="button" class="planning-road-lead-jump"${attr}>View period details</button>` : '';
   return {
-    html: `<article class="planning-road-lead planning-road-lead-pressure" data-road-lead="pressure" data-trajectory-pressure-kind="${signal.kind}">
-      <p class="planning-road-lead-kicker">Next pressure on the baseline walk — ${when}</p>
+    html: `<article class="planning-road-lead planning-road-lead-pressure planning-road-hero-card" data-road-lead="pressure" data-trajectory-pressure-kind="${signal.kind}">
+      <p class="planning-road-lead-kicker">Next pressure in this projection — ${when}</p>
       <p class="planning-road-lead-kind">${kindLabel}</p>
       ${amountField}${trust}
       ${jump}
@@ -1365,11 +1373,26 @@ function planningTrajectoryScenarioDeltaRow(label, value, dataKey) {
   </tr>`;
 }
 
+function planningTrajectoryScenarioIdlePreviewHtml() {
+  const dash = '<span class="planning-road-amount-unavailable" aria-label="Unavailable">—</span>';
+  return `<div class="planning-trajectory-scenario-preview planning-road-whatif-preview" data-trajectory-scenario="idle" data-trajectory-scenario-preview="idle">
+    <p class="subhead planning-road-whatif-preview-title">Preview</p>
+    <div class="planning-road-whatif-preview-grid" aria-label="Hypothetical preview (inactive)">
+      <div class="planning-road-whatif-preview-row planning-road-whatif-preview-head" aria-hidden="true">
+        <span></span><span>Baseline</span><span>Preview</span>
+      </div>
+      <div class="planning-road-whatif-preview-row"><span>Projected cash</span><span>${dash}</span><span>${dash}</span></div>
+      <div class="planning-road-whatif-preview-row"><span>Named debt ending</span><span>${dash}</span><span>${dash}</span></div>
+    </div>
+    <p class="lede planning-road-whatif-preview-hint">Change debt or amount above, then choose Show scenario. Until then, preview stays — (not $0).</p>
+  </div>`;
+}
+
 function planningTrajectoryScenarioCompareHtml(result, scenarioRequested) {
-  const note = 'Additional-debt-payment scenario is Forecast.baselineTrajectoryScenario only — one caller-supplied extra on the identical planned Household Budget baseline walk. Baseline and scenario columns copy Forecast; deltas copy Forecast.delta. This is hypothetical exploration, not a payment instruction. Atlas does not infer the amount, rank debts, or write household evidence.';
+  const note = 'Additional-debt-payment scenario is Forecast.baselineTrajectoryScenario only — one caller-supplied extra on the identical planned Household Budget opening. Baseline and scenario columns copy Forecast; deltas copy Forecast.delta. This is hypothetical exploration, not a payment instruction. Atlas does not infer the amount, rank debts, or write household evidence.';
   if (!scenarioRequested) {
     return {
-      panel: '<p class="lede planning-trajectory-scenario-idle" data-trajectory-scenario="idle">No scenario is active. Enter a debt and amount, then choose Show scenario.</p>',
+      panel: planningTrajectoryScenarioIdlePreviewHtml(),
       note,
     };
   }

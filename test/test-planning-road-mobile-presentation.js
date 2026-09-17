@@ -104,8 +104,15 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   const scenarioAt = road.indexOf('data-trajectory-scenario-section="controls"');
   ok(scenarioAt === whatifAt || scenarioAt > breakdownAt,
     'hypothetical scenario sits below breakdown on the phone-first stack');
-  ok(!/sustainable|on track|safe to spend|key takeaway/i.test(road),
+  ok(!/sustainable|on track|safe to spend|key takeaway|what can you do/i.test(road),
     'road-ahead shell renders no forbidden verdict copy');
+  ok(!/baseline walk|published horizon|legacy layout|full table/i.test(road),
+    'road-ahead shell avoids DESIGN glossary banned phrases');
+  ok(/data-trajectory-scenario-preview="idle"/.test(road)
+    && /planning-road-whatif-preview/.test(road),
+    'idle what-if preview shows em-dash placeholders until user runs a scenario');
+  ok(/planning-road-hero-card/.test(road) && /planning-road-fable-stage/.test(road),
+    'Fable hero card and numbered stage treatments render on live shell');
   ok(/planning-road-whatif-quarantine/.test(road) && /Reset/.test(road),
     'what-if is quarantined and offers Reset only (no save-as-plan)');
   ok(!/save as plan|save-as-plan/i.test(road),
@@ -130,6 +137,10 @@ console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical 
     'what-if quarantine styling is present for Fable preview framing');
   ok(/planning-road-trust-estimated/.test(css),
     'estimated trust chip uses amber presentation class');
+  ok(/--hypo-accent/.test(css) && /--hypo-border/.test(css),
+    'what-if quarantine uses hypo design tokens');
+  ok(/planning-road-trust-planned/.test(css),
+    'planned trust chip uses blue presentation class');
   ok(/data-trajectory-funding-result-sign="gap"/.test(css),
     'stage results expose Forecast sign for presentation-only gap/surplus styling');
   ok(/body:has\(#planning\)[\s\S]*\.site-head-row \.brand[\s\S]*display:\s*none/.test(mobile),
