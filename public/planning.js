@@ -1190,6 +1190,46 @@ function planningRoadAheadRelativePhrase(asOf, period, granularity) {
   return `in ${months} months`;
 }
 
+/** Hero when-line and relative phrase follow the published pressure period,
+ *  never the currently selected chip. */
+function planningRoadAheadPressureWhen(signal) {
+  if (!signal) return 'date withheld';
+  const monthParts = signal.month ? planningRoadAheadMonthParts(signal.month) : null;
+  if (monthParts) return `${monthParts.long} ${monthParts.year}`;
+  if (signal.date) return fmtDateFull(signal.date);
+  return 'date withheld';
+}
+
+function planningRoadAheadPressureRelative(asOf, signal) {
+  if (!signal) return '';
+  if (signal.month) return planningRoadAheadRelativePhrase(asOf, { month: signal.month }, 'month');
+  if (signal.date) return planningRoadAheadRelativePhrase(asOf, { start: signal.date }, 'pay-period');
+  return '';
+}
+
+/** CTA may select a period only when that period is the published pressure
+ *  period in the current granularity. Month-only signals have no pay-period
+ *  identity, so Pay period view fails closed rather than selecting the
+ *  currently highlighted chip. */
+function planningRoadAheadPressureCtaTarget(traj, granularity, signal) {
+  if (!signal) return null;
+  const periods = planningRoadAheadPeriods(traj, granularity);
+  if (!periods.length) return null;
+  if (granularity === 'month') {
+    if (!signal.month) return null;
+    const period = periods.find(p => p.month === signal.month);
+    return period ? { period, key: planningRoadAheadPeriodKey(period, granularity) } : null;
+  }
+  if (granularity === 'pay-period') {
+    if (!signal.date) return null;
+    const period = periods.find(p => (
+      p.start && p.end && signal.date >= p.start && signal.date <= p.end
+    ));
+    return period ? { period, key: planningRoadAheadPeriodKey(period, granularity) } : null;
+  }
+  return null;
+}
+
 function planningRoadAheadWhenLine(label, relative) {
   const rel = relative
     ? `<span class="planning-road-hero-relative"> · ${relative}</span>` : '';
@@ -1301,25 +1341,15 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
   const headline = PLANNING_ROAD_PRESSURE_HEADLINE[signal.kind]
     || PLANNING_PRESSURE_KIND[signal.kind] || signal.kind;
   const narrative = PLANNING_ROAD_PRESSURE_NARRATIVE[signal.kind] || '';
-  const monthParts = signal.month ? planningRoadAheadMonthParts(signal.month) : null;
-  const when = monthParts
-    ? `${monthParts.long} ${monthParts.year}`
-    : (signal.date ? fmtDateFull(signal.date) : 'date withheld');
+  const when = planningRoadAheadPressureWhen(signal);
   const hasAmount = signal.amount != null && isFinite(Number(signal.amount));
   const trust = (signal.trust === 'calculated' || signal.trust === 'estimated')
     ? planningRoadTrustChip(signal.trust) : '';
   const amountField = hasAmount
     ? `<p class="planning-road-lead-amount"><b>${money2(signal.amount)}</b>${trust}</p>` : '';
-  let focusKey = selectedKey;
-  if (signal.month && granularity === 'month') focusKey = signal.month;
-  else if (granularity === 'pay-period' && signal.date) {
-    const periods = planningRoadAheadPeriods(traj, granularity);
-    const match = periods.find(p => p.start && p.end && signal.date >= p.start && signal.date <= p.end);
-    if (match) focusKey = planningRoadAheadPeriodKey(match, granularity);
-  }
-  const focusPeriod = planningRoadAheadPeriods(traj, granularity)
-    .find(p => planningRoadAheadPeriodKey(p, granularity) === focusKey) || null;
-  const relative = planningRoadAheadRelativePhrase(asOf, focusPeriod, granularity);
+  const target = planningRoadAheadPressureCtaTarget(traj, granularity, signal);
+  const focusKey = target ? target.key : null;
+  const relative = planningRoadAheadPressureRelative(asOf, signal);
   return {
     html: `<article class="planning-road-lead planning-road-lead-pressure planning-road-hero-card${hasAmount ? '' : ' planning-road-lead-noamount'}" data-road-lead="pressure" data-trajectory-pressure-kind="${signal.kind}">
       ${planningRoadAheadHeroHead('NEXT PRESSURE', when, relative, 'pressure')}
@@ -1327,7 +1357,7 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
       ${amountField}
       ${narrative ? `<p class="planning-road-hero-narrative">${narrative}</p>` : ''}
       ${hasAmount ? '' : `<p class="planning-road-hero-meta">${trust}</p>`}
-      ${planningRoadAheadHeroCta(focusPeriod, granularity, focusKey)}
+      ${planningRoadAheadHeroCta(target && target.period, granularity, focusKey)}
     </article>`,
     focusKey,
   };
@@ -1978,6 +2008,42 @@ function planningRoadAheadScrollSelectedTimeline(root, selectedKey) {
 /** The hero's "See what's behind …" is layer 1 → layer 3 in one tap: it selects
  *  that period and moves reading position to its story. */
 let planningRoadPendingStoryFocus = false;
+let planningRoadPendingTabFocus = false;
+
+function planningRoadAheadTablistNextGranularity(tabs, key) {
+  if (!tabs) return null;
+  const rows = [];
+  const n = typeof tabs.length === 'number' ? tabs.length : 0;
+  for (let i = 0; i < n; i++) {
+    const tab = tabs[i];
+    const id = tab && typeof tab.getAttribute === 'function'
+      ? tab.getAttribute('data-trajectory-funding-granularity')
+      : null;
+    if (id) rows.push({ tab, id });
+  }
+  if (!rows.length) return null;
+  const selectedAt = rows.findIndex(row => row.tab.getAttribute('aria-selected') === 'true');
+  const current = selectedAt >= 0 ? selectedAt : 0;
+  let next = current;
+  if (key === 'ArrowRight') next = (current + 1) % rows.length;
+  else if (key === 'ArrowLeft') next = (current - 1 + rows.length) % rows.length;
+  else if (key === 'Home') next = 0;
+  else if (key === 'End') next = rows.length - 1;
+  else return null;
+  return rows[next].id;
+}
+
+function planningRoadAheadFocusSelectedTab(root) {
+  if (!planningRoadPendingTabFocus) return;
+  planningRoadPendingTabFocus = false;
+  if (!root || typeof root.querySelector !== 'function') return;
+  const selected = root.querySelector(
+    '.planning-road-segmented[role="tablist"] [role="tab"][aria-selected="true"]');
+  if (!selected || typeof selected.focus !== 'function') return;
+  try {
+    selected.focus();
+  } catch (_) { /* ignore */ }
+}
 
 function planningRoadAheadFocusPeriodStory(root) {
   if (!planningRoadPendingStoryFocus) return;
@@ -2021,6 +2087,26 @@ function planningRoadAheadWireSelection(root, d, periods) {
       const next = btn.getAttribute('data-trajectory-funding-granularity');
       if (!next || next === planningTrajectoryFundingGranularity) return;
       planningTrajectoryFundingGranularity = next;
+      renderPlanning(d, periods);
+    };
+  }
+  const tablist = typeof root.querySelector === 'function'
+    ? root.querySelector('.planning-road-segmented[role="tablist"]')
+    : null;
+  if (tablist) {
+    tablist.onkeydown = (event) => {
+      if (!event || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'
+        && event.key !== 'Home' && event.key !== 'End')) {
+        return;
+      }
+      const tabs = typeof tablist.querySelectorAll === 'function'
+        ? tablist.querySelectorAll('[role="tab"][data-trajectory-funding-granularity]')
+        : [];
+      const next = planningRoadAheadTablistNextGranularity(tabs, event.key);
+      if (!next || next === planningTrajectoryFundingGranularity) return;
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+      planningTrajectoryFundingGranularity = next;
+      planningRoadPendingTabFocus = true;
       renderPlanning(d, periods);
     };
   }
@@ -2133,6 +2219,7 @@ function renderPlanning(d, periods) {
     planningRoadScenarioWire(roadRoot, d, periods);
     planningRoadAheadScrollSelectedTimeline(roadRoot, roadSelectedKey);
     planningRoadAheadFocusPeriodStory(roadRoot);
+    planningRoadAheadFocusSelectedTab(roadRoot);
   }
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;

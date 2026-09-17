@@ -564,6 +564,176 @@ console.log('\n=== 8. Timeline scroll containment (no window jump) ===');
     'scroll helper moves the horizontal timeline strip only');
 }
 
+console.log('\n=== 9. Tablist keyboard switching (Systems Review blocker 1) ===');
+{
+  const fakeTab = (id, selected) => ({
+    getAttribute(name) {
+      if (name === 'data-trajectory-funding-granularity') return id;
+      if (name === 'aria-selected') return selected ? 'true' : 'false';
+      return null;
+    },
+  });
+  const monthSelected = [fakeTab('month', true), fakeTab('pay-period', false)];
+  const paySelected = [fakeTab('month', false), fakeTab('pay-period', true)];
+  const next = page.ctx.planningRoadAheadTablistNextGranularity;
+  ok(typeof next === 'function', 'tablist key helper is on the planning page');
+  ok(next(monthSelected, 'ArrowRight') === 'pay-period'
+    && next(monthSelected, 'End') === 'pay-period',
+    'from Month, ArrowRight and End name the Pay period tab');
+  ok(next(monthSelected, 'ArrowLeft') === 'pay-period',
+    'from Month, ArrowLeft wraps to Pay period');
+  ok(next(paySelected, 'ArrowLeft') === 'month'
+    && next(paySelected, 'Home') === 'month',
+    'from Pay period, ArrowLeft and Home name the Month tab');
+  ok(next(paySelected, 'ArrowRight') === 'month',
+    'from Pay period, ArrowRight wraps to Month');
+  ok(next(monthSelected, 'Tab') == null && next(monthSelected, 'Enter') == null,
+    'Tab and Enter are not captured as tablist movement keys');
+
+  const monthBtn = {
+    attrs: {
+      'data-trajectory-funding-granularity': 'month',
+      'aria-selected': 'true',
+    },
+    onclick: null,
+    getAttribute(k) { return this.attrs[k] != null ? String(this.attrs[k]) : null; },
+  };
+  const payBtn = {
+    attrs: {
+      'data-trajectory-funding-granularity': 'pay-period',
+      'aria-selected': 'false',
+    },
+    onclick: null,
+    getAttribute(k) { return this.attrs[k] != null ? String(this.attrs[k]) : null; },
+  };
+  const tabs = [monthBtn, payBtn];
+  const tablist = {
+    onkeydown: null,
+    querySelectorAll() { return tabs; },
+  };
+  const root = {
+    querySelector(sel) { return String(sel).includes('tablist') ? tablist : null; },
+    querySelectorAll(sel) {
+      if (String(sel).includes('data-road-select-period')) return [];
+      if (String(sel).includes('data-trajectory-funding-granularity')) return tabs;
+      return [];
+    },
+  };
+  const els = page.render(live, periods);
+  const before = els['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-funding-granularity="month" aria-selected="true"/.test(before),
+    'live shell starts on the Month tab');
+  page.ctx.planningRoadAheadWireSelection(root, live, periods);
+  ok(typeof tablist.onkeydown === 'function',
+    'the tablist receives a keydown handler');
+  let prevented = false;
+  tablist.onkeydown({
+    key: 'ArrowRight',
+    preventDefault() { prevented = true; },
+  });
+  const after = els['planning-road-ahead'].innerHTML;
+  ok(prevented, 'ArrowRight is consumed so the page does not scroll');
+  ok(/data-trajectory-funding-granularity="pay-period" aria-selected="true"/.test(after)
+    && /data-trajectory-funding-granularity="month" aria-selected="false"/.test(after),
+    'ArrowRight switches the rendered view to Pay period');
+  monthBtn.onclick();
+  const reset = els['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-funding-granularity="month" aria-selected="true"/.test(reset),
+    'Month click restores the default tab after the keyboard proof');
+}
+
+console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (blocker 2) ===');
+{
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const asOf = live.meta.asOf;
+  const asOfMonth = String(asOf).slice(0, 7);
+  const signalMonth = (traj.months || []).map(m => m.month)
+    .find(month => month && month > asOfMonth);
+  const selectedPay = (traj.payPeriods || []).find(p => {
+    const startMonth = String(p.start || p.payday || '').slice(0, 7);
+    return startMonth && startMonth === asOfMonth;
+  }) || (traj.payPeriods || [])[0];
+  const selectedKey = selectedPay ? (selectedPay.payday || selectedPay.id) : null;
+  ok(signalMonth && selectedKey,
+    'fixture has a later published month and a selected opening pay period');
+
+  const clearGap = period => {
+    if (period && period.stage3 && period.stage3.result
+      && isFinite(Number(period.stage3.result.amount))
+      && Number(period.stage3.result.amount) < 0) {
+      period.stage3.result = Object.assign({}, period.stage3.result, { amount: 0 });
+    }
+  };
+  const pressureTraj = JSON.parse(JSON.stringify(traj));
+  (pressureTraj.months || []).forEach(clearGap);
+  (pressureTraj.payPeriods || []).forEach(clearGap);
+  pressureTraj.pressure = {
+    status: 'ready',
+    signals: [{
+      kind: 'month-cash-decline',
+      month: signalMonth,
+      amount: 250,
+      trust: 'calculated',
+    }],
+  };
+
+  const monthParts = {
+    '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+    '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+    '09': 'September', '10': 'October', '11': 'November', '12': 'December',
+  };
+  const signalLabel = `${monthParts[signalMonth.slice(5, 7)]} ${signalMonth.slice(0, 4)}`;
+  const fromY = Number(asOfMonth.slice(0, 4));
+  const fromM = Number(asOfMonth.slice(5, 7));
+  const toY = Number(signalMonth.slice(0, 4));
+  const toM = Number(signalMonth.slice(5, 7));
+  const monthDelta = (toY - fromY) * 12 + (toM - fromM);
+  const expectedRelative = monthDelta <= 0
+    ? 'this month'
+    : monthDelta === 1 ? 'next month' : `in ${monthDelta} months`;
+
+  const payLead = page.composeRoadTraj(
+    pressureTraj, 'pay-period', selectedKey, asOf).lead;
+  ok(/data-road-lead="pressure"/.test(payLead)
+    && payLead.includes(signalLabel),
+    'Pay period hero still names the published pressure month');
+  ok(payLead.includes(expectedRelative),
+    'relative phrase is calendar distance to the published month, not the selected pay period',
+    expectedRelative);
+  ok(!new RegExp(`data-road-select-period="${selectedKey}"`).test(payLead),
+    'CTA does not fall back to the currently selected pay period');
+  ok(!/planning-road-hero-cta/.test(payLead),
+    'month-only pressure fails closed on the CTA in Pay period view');
+
+  const monthLead = page.composeRoadTraj(
+    pressureTraj, 'month', asOfMonth, asOf).lead;
+  ok(/planning-road-hero-cta/.test(monthLead)
+    && monthLead.includes(`data-road-select-period="${signalMonth}"`)
+    && monthLead.includes(`See what's behind ${monthParts[signalMonth.slice(5, 7)]}`),
+    'Month view still binds the CTA to the published pressure month');
+
+  const dated = JSON.parse(JSON.stringify(pressureTraj));
+  const datedPay = (dated.payPeriods || []).find(p => p.start && p.end && p.start.slice(0, 7) === signalMonth)
+    || (dated.payPeriods || []).find(p => p.start && p.end);
+  ok(datedPay && datedPay.start && datedPay.end,
+    'dated-signal proof has a pay period with a published range');
+  dated.pressure.signals = [{
+    kind: 'dated-commitment',
+    date: datedPay.start,
+    month: signalMonth,
+    amount: 250,
+    trust: 'calculated',
+  }];
+  const otherPay = (dated.payPeriods || []).find(p => (p.payday || p.id) !== (datedPay.payday || datedPay.id));
+  const datedLead = page.composeRoadTraj(
+    dated, 'pay-period', otherPay ? (otherPay.payday || otherPay.id) : selectedKey, asOf).lead;
+  const datedKey = datedPay.payday || datedPay.id;
+  ok(datedLead.includes(`data-road-select-period="${datedKey}"`),
+    'a dated pressure signal still maps the CTA to the pay period that contains that date');
+}
+
 if (failures) {
   console.error(`\n${failures} failure(s)`);
   process.exit(1);
