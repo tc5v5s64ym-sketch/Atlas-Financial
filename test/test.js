@@ -147,6 +147,7 @@ const suites = [
   ['current-state cutover (B91)', 'test-cutover.js'],
   ['unresolved once obligations survive cutover', 'test-cutover-unresolved.js'],
   ['commitment settlement (B91 D3)', 'test-settlement.js'],
+  ['settled commitment not carried through priorAsOf', 'test-settled-commitment-priorasof.js'],
   ['Hydro dated obligation (B91 D4+D5)', 'test-hydro.js'],
   ['Amanda income split (B91 D2)', 'test-amanda-income.js'],
   ['card current state (B91 D8)', 'test-card-state.js'],
