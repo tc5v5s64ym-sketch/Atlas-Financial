@@ -920,6 +920,11 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
     'road-ahead copy carries no invented judgment or recommendation engine');
   ok(!/stage1Amount|stage2Amount|stage3Amount|baselineTrajectoryMonthFunding/.test(src),
     'road-ahead does not recompute stage amounts');
+  const scrollFn = src.match(/function planningRoadAheadScrollSelectedTimeline\([\s\S]*?\n\}/);
+  ok(scrollFn && !/scrollIntoView/.test(scrollFn[0]),
+    'road-ahead timeline scroll keeps selection visible without scrollIntoView');
+  ok(scrollFn && /scrollTo|scrollLeft/.test(scrollFn[0]),
+    'road-ahead timeline scroll adjusts the horizontal strip only');
 
   const liveEl = page.render(live, periods);
   const roadHtml = liveEl['planning-road-ahead'].innerHTML;

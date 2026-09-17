@@ -488,7 +488,8 @@ function planningTrajectoryFundingResultHtml(result) {
     return `<div class="planning-trajectory-funding-result unavailable" data-trajectory-funding-result="unavailable">${planningTrajectoryFundingUnavailableHtml({ reason: 'Forecast did not publish a result for this stage.' })}</div>`;
   }
   const chip = result.status ? planningTrajectoryChip(result.status) : '';
-  return `<div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready"><b>${money2(result.amount)}</b>${chip}</div>`;
+  const sign = Number(result.amount) < 0 ? 'gap' : Number(result.amount) > 0 ? 'surplus' : 'neutral';
+  return `<div class="planning-trajectory-funding-result" data-trajectory-funding-result="ready" data-trajectory-funding-result-sign="${sign}"><b>${money2(result.amount)}</b>${chip}</div>`;
 }
 
 function planningTrajectoryFundingStageHtml(stage, stageNum) {
@@ -1353,6 +1354,31 @@ function planningAdvice(d, periods) {
   });
 }
 
+function planningRoadAheadScrollSelectedTimeline(root, selectedKey) {
+  if (!root || !selectedKey) return;
+  const esc = typeof CSS !== 'undefined' && CSS.escape
+    ? CSS.escape(selectedKey)
+    : String(selectedKey).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const item = root.querySelector(`[data-road-timeline-period="${esc}"]`);
+  if (!item) return;
+  const strip = item.closest('.planning-road-timeline')
+    || root.querySelector('[data-road-timeline="ready"]');
+  if (!strip || typeof strip.scrollLeft !== 'number') return;
+  const maxScroll = strip.scrollWidth - strip.clientWidth;
+  if (maxScroll <= 0) return;
+  const target = item.offsetLeft + (item.offsetWidth * 0.5) - (strip.clientWidth * 0.5);
+  const left = Math.max(0, Math.min(maxScroll, target));
+  try {
+    strip.scrollTo({ left, behavior: 'instant' });
+  } catch (_) {
+    try {
+      strip.scrollTo({ left, behavior: 'auto' });
+    } catch (_2) {
+      strip.scrollLeft = left;
+    }
+  }
+}
+
 function planningRoadAheadWireSelection(root, d, periods) {
   if (!root) return;
   const buttons = root.querySelectorAll('[data-road-select-period]');
@@ -1433,7 +1459,40 @@ function renderPlanning(d, periods) {
   const scenarioDetailOpen = scenarioRequested ? ' open' : '';
   const roadRoot = $('planning-road-ahead');
   if (roadRoot) {
-    roadRoot.innerHTML = `<p class="lede planning-road-intro">${roadHtml.intro}</p>
+    const asOfChip = $('asof');
+    const refreshLabel = asOfChip && asOfChip.textContent
+      ? asOfChip.textContent.replace(/\s+/g, ' ').trim()
+      : '';
+    const refreshHtml = refreshLabel && refreshLabel !== 'Loading…'
+      ? `<p class="planning-road-app-asof">${refreshLabel}</p>`
+      : '';
+    roadRoot.innerHTML = `<div class="planning-road-shell" data-planning-road-shell="ready">
+      <header class="planning-road-app-head" aria-label="Your Financial Road Ahead">
+        <div class="planning-road-app-head-row">
+          <span class="planning-road-app-kicker">Planning</span>
+          <h2 class="planning-road-app-title">Road Ahead</h2>
+        </div>
+        ${refreshHtml}
+      </header>
+      <p class="lede planning-road-intro planning-road-intro-inline">${roadHtml.intro}</p>
+      <details class="planning-road-about">
+        <summary>About this walk</summary>
+        <p class="lede">${roadHtml.intro}</p>
+      </details>
+      <div class="planning-road-primary" data-planning-road-primary="lead">
+        ${roadHtml.lead}
+      </div>
+      <section class="planning-road-period-nav" aria-label="Trajectory period navigation">
+        <p class="subhead planning-road-period-heading">Month or pay period</p>
+        ${roadHtml.picker}
+        <div class="planning-road-timeline-wrap">
+          <p class="subhead planning-road-timeline-heading">Trajectory</p>
+          ${roadHtml.timeline}
+        </div>
+      </section>
+      <section class="planning-road-period-detail" aria-label="Selected period detail">
+        ${roadHtml.selected}
+      </section>
       <details class="planning-road-scenario-detail"${scenarioDetailOpen} data-trajectory-scenario-section="controls">
         <summary>Extra debt payment scenario (hypothetical)</summary>
         <p class="lede">${scenarioControls.intro}</p>
@@ -1441,15 +1500,10 @@ function renderPlanning(d, periods) {
         <div class="planning-trajectory-scenario-result" data-trajectory-scenario-result="panel">${scenarioCompare.panel}</div>
         <p class="lede footnote" data-trajectory-scenario-note="footnote">${scenarioCompare.note}</p>
       </details>
-      ${roadHtml.lead}
-      <div class="planning-road-timeline-wrap">
-        <p class="subhead">Projected period results</p>
-        ${roadHtml.picker}
-        ${roadHtml.timeline}
-      </div>
-      ${roadHtml.selected}`;
+    </div>`;
     planningRoadAheadWireSelection(roadRoot, d, periods);
     planningRoadScenarioWire(roadRoot, d, periods);
+    planningRoadAheadScrollSelectedTimeline(roadRoot, roadSelectedKey);
   }
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;
