@@ -85,10 +85,31 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   ok(/data-planning-road-shell="ready"/.test(road), 'render wraps road-ahead in phone-native shell');
   ok(/planning-road-app-head/.test(road), 'shell includes compact page identity header');
   ok(/data-planning-road-primary="lead"/.test(road), 'lead card is in the primary viewport band');
+  ok(/data-planning-road-primary="horizon"/.test(road) && /data-planning-road-horizon="ready"/.test(road),
+    'horizon counts sit in the Fable stack after the lead');
+  ok(/data-planning-road-primary="strip"/.test(road), 'trajectory strip is a named primary band');
+  ok(/data-planning-road-primary="stages"/.test(road) && /data-planning-road-stages="ready"/.test(road),
+    'three-stage story is its own primary band');
+  ok(/data-planning-road-primary="breakdown"/.test(road) && /data-planning-road-breakdown="sheet"/.test(road),
+    'progressive breakdown sheet follows the stage story');
   const leadAt = road.indexOf('data-planning-road-primary="lead"');
+  const horizonAt = road.indexOf('data-planning-road-primary="horizon"');
+  const stripAt = road.indexOf('data-planning-road-primary="strip"');
+  const stagesAt = road.indexOf('data-planning-road-primary="stages"');
+  const breakdownAt = road.indexOf('data-planning-road-primary="breakdown"');
+  const whatifAt = road.indexOf('data-planning-road-primary="whatif"');
+  ok(leadAt >= 0 && horizonAt > leadAt && stripAt > horizonAt && stagesAt > stripAt
+    && breakdownAt > stagesAt && whatifAt > breakdownAt,
+    'phone order is hero → horizon → strip → stages → breakdown → quarantined what-if');
   const scenarioAt = road.indexOf('data-trajectory-scenario-section="controls"');
-  ok(leadAt >= 0 && scenarioAt > leadAt,
-    'hypothetical scenario sits below lead/timeline/selected on the phone-first stack');
+  ok(scenarioAt === whatifAt || scenarioAt > breakdownAt,
+    'hypothetical scenario sits below breakdown on the phone-first stack');
+  ok(!/sustainable|on track|safe to spend|key takeaway/i.test(road),
+    'road-ahead shell renders no forbidden verdict copy');
+  ok(/planning-road-whatif-quarantine/.test(road) && /Reset/.test(road),
+    'what-if is quarantined and offers Reset only (no save-as-plan)');
+  ok(!/save as plan|save-as-plan/i.test(road),
+    'road-ahead what-if has no save-as-plan affordance');
   ok(/planning-road-period-nav/.test(road) && /aria-label="Trajectory period navigation"/.test(road),
     'period navigation is a named landmark section');
 }
@@ -102,8 +123,13 @@ console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical 
     'mobile road-ahead controls meet touch-target floor');
   ok(/#planning > h1[\s\S]*display:\s*none/.test(mobile),
     'duplicate desktop Planning h1 is hidden on phone');
-  ok(/planning-road-selected[\s\S]*flex-direction:\s*column/.test(mobile),
+  ok(/planning-road-selected[\s\S]*flex-direction:\s*column/.test(mobile)
+    || /planning-road-stages[\s\S]*flex-direction:\s*column/.test(mobile),
     'three-stage funding stacks vertically in the selected-period story');
+  ok(/planning-road-whatif-quarantine/.test(css),
+    'what-if quarantine styling is present for Fable preview framing');
+  ok(/planning-road-trust-estimated/.test(css),
+    'estimated trust chip uses amber presentation class');
   ok(/data-trajectory-funding-result-sign="gap"/.test(css),
     'stage results expose Forecast sign for presentation-only gap/surplus styling');
   ok(/body:has\(#planning\)[\s\S]*\.site-head-row \.brand[\s\S]*display:\s*none/.test(mobile),
@@ -152,6 +178,10 @@ console.log('\n=== 4. Granularity, accessibility, and fail-closed presentation =
     periods, 'month', null, live.meta.asOf);
   ok(/unavailable|Withheld|Forecast unavailable/.test(withheld.lead + withheld.timeline),
     'unavailable trajectory still fails closed in the mobile shell path');
+  const roadBlock = planningSrc.split('function planningRoadAheadScrollSelectedTimeline')[0];
+  ok(/planning-road-amount-unavailable[\s\S]*—/.test(roadBlock)
+    || /aria-label="Unavailable">—</.test(roadBlock),
+    'unavailable amounts reprint as em dash, not $0');
 }
 
 console.log('\n=== 5. Bottom dock — incumbent safe-area rules untouched ===');
