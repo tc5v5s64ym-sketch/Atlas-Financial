@@ -1124,6 +1124,8 @@ console.log('\n=== Page contract ===');
   const html = read('public/planning.html');
   ok(/<h1>Planning<\/h1>/.test(html) && /Road Ahead/.test(html),
     'page h1 identifies as Planning; trajectory dashboard section is Road Ahead');
+  ok(/<div class="kicker">PLANNING<\/div>/.test(html),
+    'static page kicker is PLANNING per Frame 01 eyebrow');
   ok(!/baseline walk|published horizon|legacy layout|full table/i.test(html),
     'planning.html avoids DESIGN glossary banned phrases in static copy');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
