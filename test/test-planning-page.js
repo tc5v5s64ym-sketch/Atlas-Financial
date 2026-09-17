@@ -46,7 +46,7 @@ function loadPage(script) {
   vm.runInNewContext(
     `${helpers}\nfunction planningStubEl(){ const attrs = {}; return { innerHTML: '', textContent: '', querySelector(){return null;}, querySelectorAll(){return [];}, classList:{toggle(){},add(){},remove(){}}, setAttribute(k,v){ attrs[k]=v; }, getAttribute(k){ return attrs[k] != null ? attrs[k] : null; } }; }\nconst $ = id => elements[id] || (elements[id] = planningStubEl());\n${read(script)}`,
     ctx, { filename: script });
-  return {
+  const pageApi = {
     ctx,
     render(data, p) {
       for (const k of Object.keys(elements)) delete elements[k];
@@ -84,7 +84,28 @@ function loadPage(script) {
         asOf || null,
       );
     },
+    composeScenario(data, p, debtId, amount) {
+      const input = debtId != null && amount != null
+        ? { debtId, amount, nature: 'additional-debt-payment' }
+        : null;
+      const result = input
+        ? ctx.planningTrajectoryScenario(data, p || null, input)
+        : null;
+      return ctx.planningTrajectoryScenarioCompareHtml(result);
+    },
+    applyScenarioAndRender(data, p, debtId, amount) {
+      ctx.planningScenarioSetActive(debtId != null && amount != null ? { debtId, amount } : null);
+      return pageApi.render(data, p);
+    },
+    clearScenarioAndRender(data, p) {
+      ctx.planningScenarioSetActive(null);
+      ctx.planningScenarioDraftDebtId = '';
+      ctx.planningScenarioDraftAmount = '';
+      ctx.planningScenarioFormError = '';
+      return pageApi.render(data, p);
+    },
   };
+  return pageApi;
 }
 
 function row(html, id) {
@@ -377,8 +398,8 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
     'pressure reprint still uses the incumbent Forecast.baselineTrajectory call');
   ok(!/baselineTrajectoryPressure|trajectorySignalAttribution|trajectoryPressureUnavailable/.test(src),
     'planning.js does not compute pressure or attribution');
-  ok(!/baselineTrajectoryScenario/.test(src),
-    'planning.js does not reprint baselineTrajectoryScenario');
+  ok(/Forecast\.baselineTrajectoryScenario\(/.test(src),
+    'pressure section coexists with Forecast.baselineTrajectoryScenario wiring');
   ok(/planningTrajectoryAttributionHtml\(/.test(src)
     && /signal\.attribution/.test(src),
     'planning.js reprints signal.attribution from Forecast only');
@@ -507,8 +528,8 @@ console.log('\n=== 17. Trajectory debt direction reprints Forecast.baselineTraje
     'planning.js reprints traj.debtDirection from Forecast only');
   ok(!/baselineTrajectoryDebtDirection|trajectoryBalanceDirection|trajectoryDebtDirectionUnavailable/.test(src),
     'planning.js does not compute debt direction');
-  ok(!/baselineTrajectoryScenario|assistant-packet|\/talk\//.test(src),
-    'planning.js does not touch scenario, packet, or Talk seams');
+  ok(!/assistant-packet|\/talk\//.test(src),
+    'planning.js does not touch packet or Talk seams');
   ok(!/payoff order|comfort band|affordability|safe-to-spend|RYG/i.test(src),
     'debt direction copy carries no ranking or policy-threshold wording');
 
@@ -619,8 +640,8 @@ console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baseline
     'planning.js does not call the internal funding helper');
   ok(!/stage1Amount|stage2Amount|stage3Amount/.test(src),
     'planning.js does not recompute stage amounts');
-  ok(!/baselineTrajectoryScenario|assistant-packet|\/talk\//.test(src),
-    'planning.js does not touch scenario, packet, or Talk seams');
+  ok(!/assistant-packet|\/talk\//.test(src),
+    'planning.js does not touch packet or Talk seams');
   ok(!/safe-to-spend|affordability|sustainable|breathing room/i.test(src),
     'funding copy carries no policy-threshold or comfort wording');
 
@@ -971,6 +992,105 @@ console.log('\n=== 23. Pay period road-ahead lead fails closed when payPeriods[]
     ok(monthLead.includes(money2(forward.amount)) && !payLead.includes(money2(forward.amount)),
       'monthly pressure amount on Month lead is absent from Pay period lead when series unavailable');
   }
+}
+
+console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajectoryScenario on Planning ===');
+{
+  const src = stripComments(read('public/planning.js'));
+  ok(/function planningTrajectoryScenario\(/.test(src)
+    && /Forecast\.baselineTrajectoryScenario\(/.test(src),
+    'planning.js calls Forecast.baselineTrajectoryScenario through one helper');
+  ok(/planningTrajectoryScenarioCompareHtml\(/.test(src)
+    && /result\.delta/.test(src)
+    && /result\.baseline/.test(src)
+    && /result\.scenario/.test(src),
+    'scenario compare copies Forecast baseline, scenario, and delta only');
+  ok(!/delta\.debt\.ending\s*[-+*/]/.test(src)
+    && !/delta\.cash\.ending\s*[-+*/]/.test(src),
+    'planning.js does not recompute scenario deltas in the browser');
+  ok(!/recommend\(|safe-to-spend|affordability|RYG|min-cash|should pay|recommended/i.test(
+    src.split('function planningTrajectoryScenarioCompareHtml')[1].split('function planningTrajectoryScenarioControlsHtml')[0]),
+    'scenario panel copy carries no recommendation or policy-threshold wording');
+  ok(!/writeFile|fetch\(|localStorage|sessionStorage/.test(src),
+    'scenario UI does not persist or fetch household evidence');
+
+  const eligible = (live.debts || []).filter(d => page.ctx.planningScenarioEligibleDebt(d));
+  ok(eligible.length > 0, 'live opening has at least one scenario-eligible debt');
+  const pick = eligible[0];
+  const amountA = 100;
+  const amountB = 250;
+  const forecastA = F.baselineTrajectoryScenario(live.plan, live.debts, live.meta.asOf, {
+    nature: 'additional-debt-payment',
+    debtId: pick.id,
+    amount: amountA,
+    periods,
+    extraFacilities: live.revolvingExtra,
+  });
+  const forecastB = F.baselineTrajectoryScenario(live.plan, live.debts, live.meta.asOf, {
+    nature: 'additional-debt-payment',
+    debtId: pick.id,
+    amount: amountB,
+    periods,
+    extraFacilities: live.revolvingExtra,
+  });
+  ok(forecastA.status === 'ready' && forecastB.status === 'ready',
+    'live Forecast scenario API is ready for two explicit amounts');
+  const composedA = page.composeScenario(live, periods, pick.id, amountA);
+  ok(/data-trajectory-scenario="ready"/.test(composedA.panel),
+    'composed scenario panel is ready when Forecast is ready');
+  if (forecastA.baseline && forecastA.baseline.cash && forecastA.baseline.cash.ending != null) {
+    ok(composedA.panel.includes(money2(forecastA.baseline.cash.ending)),
+      'baseline projected cash matches Forecast.baselineTrajectoryScenario');
+  }
+  if (forecastA.scenario && forecastA.scenario.cash && forecastA.scenario.cash.ending != null) {
+    ok(composedA.panel.includes(money2(forecastA.scenario.cash.ending)),
+      'scenario projected cash matches Forecast.baselineTrajectoryScenario');
+  }
+  if (forecastA.baseline && forecastA.baseline.debt) {
+    ok(composedA.panel.includes(money2(forecastA.baseline.debt.ending)),
+      'baseline named debt ending matches Forecast');
+    ok(composedA.panel.includes(money2(forecastA.scenario.debt.ending)),
+      'scenario named debt ending matches Forecast');
+  }
+  if (forecastA.delta && forecastA.delta.debt && forecastA.delta.debt.ending != null) {
+    ok(composedA.panel.includes(money2(forecastA.delta.debt.ending)),
+      'named debt ending delta is copied from Forecast.delta');
+  }
+  ok(forecastA.writesCanonicalState === false && forecastA.actionPermission === 'not-granted',
+    'Forecast scenario does not grant writes or action permission');
+  const planBefore = JSON.stringify(live.plan);
+  const debtsBefore = JSON.stringify(live.debts);
+  const renderedA = page.applyScenarioAndRender(live, periods, pick.id, amountA);
+  ok(JSON.stringify(live.plan) === planBefore && JSON.stringify(live.debts) === debtsBefore,
+    'applying a scenario does not mutate plan or debts');
+  const roadA = renderedA['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-scenario="ready"/.test(roadA),
+    'road-ahead region renders an active scenario');
+  const trajBaseline = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const roadBaselineStage3 = trajBaseline.months[0].stage3.result.amount;
+  ok(roadA.includes(money2(roadBaselineStage3)),
+    'road-ahead timeline still shows baseline Forecast stage3, not scenario stage3');
+  const composedB = page.composeScenario(live, periods, pick.id, amountB);
+  if (forecastA.scenario.debt.ending !== forecastB.scenario.debt.ending) {
+    ok(composedB.panel.includes(money2(forecastB.scenario.debt.ending))
+      && !composedB.panel.includes(money2(forecastA.scenario.debt.ending)),
+      'changing the explicit amount changes rendered Forecast scenario output');
+  }
+  const cleared = page.clearScenarioAndRender(live, periods);
+  const roadCleared = cleared['planning-road-ahead'].innerHTML;
+  ok(!/data-trajectory-scenario="ready"/.test(roadCleared),
+    'clearing the scenario removes the ready comparison panel');
+  ok(/data-trajectory-scenario-form="ready"/.test(roadCleared),
+    'controls remain after clear');
+
+  const bad = page.composeScenario(live, periods, pick.id, 0);
+  ok(/data-trajectory-scenario="unavailable"/.test(bad.panel),
+    'zero amount fails closed through Forecast');
+  const missing = page.composeScenario({ plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null }, periods, pick.id, 50);
+  ok(/data-trajectory-scenario="unavailable"/.test(missing.panel),
+    'missing plan fails closed on scenario compare');
 }
 
 console.log('\n=== Page contract ===');

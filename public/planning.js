@@ -1083,6 +1083,211 @@ function planningTrajectory(d, periods) {
   });
 }
 
+// Slice 6 eligibility mirror — must stay aligned with Forecast.hypotheticalExtraEligible.
+function planningScenarioEligibleDebt(debt) {
+  if (!debt || typeof debt.id !== 'string' || !debt.id) return false;
+  if (debt.id === 'heloc') return true;
+  return !debt.secured && /^Revolving\b/i.test(debt.structure || '');
+}
+
+function planningScenarioEligibleDebts(debts) {
+  if (!Array.isArray(debts)) return [];
+  return debts.filter(planningScenarioEligibleDebt);
+}
+
+function planningScenarioParseAmount(raw) {
+  if (raw == null || String(raw).trim() === '') {
+    return { ok: false, reason: 'Enter an additional payment amount.' };
+  }
+  const n = Number(String(raw).replace(/,/g, ''));
+  if (typeof n !== 'number' || !Number.isFinite(n)) {
+    return { ok: false, reason: 'The amount is not a finite number Atlas can apply.' };
+  }
+  if (n <= 0) {
+    return { ok: false, reason: 'The amount must be greater than zero.' };
+  }
+  const cents = Math.round(n * 100) / 100;
+  if (Math.abs(n - cents) > 1e-9) {
+    return { ok: false, reason: 'The amount must be a whole-cent figure.' };
+  }
+  return { ok: true, amount: cents };
+}
+
+function planningTrajectoryScenario(d, periods, input) {
+  const base = {
+    periods: periods || null,
+    extraFacilities: d.revolvingExtra,
+    nature: 'additional-debt-payment',
+  };
+  return Forecast.baselineTrajectoryScenario(d.plan, d.debts, d.meta.asOf, Object.assign(base, input || {}));
+}
+
+function planningTrajectoryScenarioCashReprint(cash) {
+  if (!cash || cash.status === 'unavailable') {
+    const reason = cash && cash.reason
+      ? cash.reason
+      : 'Forecast unavailable.';
+    return `<span class="chip c">Forecast unavailable</span><small class="planning-trajectory-reason">${reason}</small>`;
+  }
+  const amount = cash.ending != null && isFinite(Number(cash.ending))
+    ? `<b>${money2(cash.ending)}</b>` : '';
+  const asOf = cash.asOf
+    ? `<small data-trajectory-scenario-cash-asof="${cash.asOf}">at ${fmtDateFull(cash.asOf)}</small>`
+    : '';
+  return `${amount}${planningTrajectoryChip(cash.status)}${asOf}`;
+}
+
+function planningTrajectoryScenarioDebtReprint(debt) {
+  if (!debt) {
+    return '<span class="chip c">Forecast unavailable</span>';
+  }
+  const label = debt.label ? `<span class="planning-trajectory-scenario-debt-label">${debt.label}</span>` : '';
+  return `${label}
+    <div data-trajectory-scenario-debt="ending"><b>${money2(debt.ending)}</b><small>Ending balance</small></div>
+    <div data-trajectory-scenario-debt="paid"><b>${money2(debt.paid)}</b><small>Paid on walk</small></div>
+    <div data-trajectory-scenario-debt="interest"><b>${money2(debt.interest)}</b><small>Interest on walk</small></div>`;
+}
+
+function planningTrajectoryScenarioDeltaRow(label, value, dataKey) {
+  if (value == null || !isFinite(Number(value))) return '';
+  return `<tr data-trajectory-scenario-delta="${dataKey || ''}">
+    <th scope="row">${label}</th>
+    <td colspan="2"><b>${money2(value)}</b><small>Forecast delta (scenario − baseline)</small></td>
+  </tr>`;
+}
+
+function planningTrajectoryScenarioCompareHtml(result) {
+  const note = 'Additional-debt-payment scenario is Forecast.baselineTrajectoryScenario only — one caller-supplied extra on the identical planned Household Budget baseline walk. Baseline and scenario columns copy Forecast; deltas copy Forecast.delta. This is hypothetical exploration, not a payment instruction. Atlas does not infer the amount, rank debts, or write household evidence.';
+  if (!result || result.status !== 'ready') {
+    const reason = (result && result.reason) || 'Forecast scenario unavailable.';
+    return {
+      panel: `<div class="note-box crit" data-trajectory-scenario="unavailable">${reason}</div>`,
+      note,
+    };
+  }
+  const debtLabel = result.input && result.input.debtLabel ? result.input.debtLabel : result.input.debtId;
+  const amount = result.input && result.input.amount != null ? money2(result.input.amount) : '';
+  const absorbed = result.absorbed && result.absorbed.amount != null && isFinite(Number(result.absorbed.amount))
+    ? `<p class="lede planning-trajectory-scenario-absorbed" data-trajectory-scenario-absorbed="${result.absorbed.amount}">Forecast absorbed <b>${money2(result.absorbed.amount)}</b> of the ${amount} extra toward <b>${debtLabel}</b> on ${fmtDateFull(result.input.asOf)}.</p>`
+    : '';
+  const deltaRows = [
+    planningTrajectoryScenarioDeltaRow('Projected cash (published close)', result.delta && result.delta.cash ? result.delta.cash.ending : null, 'cash-ending'),
+    planningTrajectoryScenarioDeltaRow('Named debt ending', result.delta && result.delta.debt ? result.delta.debt.ending : null, 'debt-ending'),
+    planningTrajectoryScenarioDeltaRow('Named debt paid', result.delta && result.delta.debt ? result.delta.debt.paid : null, 'debt-paid'),
+    planningTrajectoryScenarioDeltaRow('Named debt interest', result.delta && result.delta.debt ? result.delta.debt.interest : null, 'debt-interest'),
+  ].join('');
+  const panel = `<div class="planning-trajectory-scenario-compare" data-trajectory-scenario="ready" data-trajectory-scenario-nature="${result.nature || ''}">
+    <p class="subhead">Baseline vs scenario — ${amount} extra toward ${debtLabel}</p>
+    ${absorbed}
+    <div class="scroll"><table class="stackable planning-trajectory-scenario-table" aria-label="Baseline versus scenario trajectory consequences">
+      <thead><tr><th scope="col">Measure</th><th scope="col">Baseline</th><th scope="col">Scenario</th></tr></thead>
+      <tbody>
+        <tr data-trajectory-scenario-row="cash">
+          <th scope="row">Projected cash (published close)</th>
+          <td data-trajectory-scenario-baseline="cash">${planningTrajectoryScenarioCashReprint(result.baseline && result.baseline.cash)}</td>
+          <td data-trajectory-scenario-scenario="cash">${planningTrajectoryScenarioCashReprint(result.scenario && result.scenario.cash)}</td>
+        </tr>
+        <tr data-trajectory-scenario-row="debt">
+          <th scope="row">Named debt on walk</th>
+          <td data-trajectory-scenario-baseline="debt">${planningTrajectoryScenarioDebtReprint(result.baseline && result.baseline.debt)}</td>
+          <td data-trajectory-scenario-scenario="debt">${planningTrajectoryScenarioDebtReprint(result.scenario && result.scenario.debt)}</td>
+        </tr>
+        ${deltaRows}
+      </tbody>
+    </table></div>
+    <p class="lede footnote planning-trajectory-scenario-disclaimer">Hypothetical only — not affordable, safe, or an instruction to pay. No money moves. Amount is not spendable cash; available credit is not cash.</p>
+  </div>`;
+  return { panel, note };
+}
+
+function planningTrajectoryScenarioControlsHtml(debts, draftDebtId, draftAmount, formError) {
+  const eligible = planningScenarioEligibleDebts(debts);
+  const intro = 'Ask what happens if you put an explicit extra payment toward one eligible debt on today\'s opening. Enter the amount and debt — Atlas does not suggest either.';
+  if (!eligible.length) {
+    return {
+      intro,
+      controls: '<div class="note-box crit" data-trajectory-scenario="no-eligible-debts">Forecast published no eligible revolving or HELOC debt for an additional-debt-payment scenario on this opening.</div>',
+    };
+  }
+  const options = eligible.map(d => {
+    const label = d.label || d.id;
+    const selected = d.id === draftDebtId ? ' selected' : '';
+    return `<option value="${d.id}"${selected}>${label}</option>`;
+  }).join('');
+  const amountAttr = draftAmount != null && draftAmount !== '' ? ` value="${String(draftAmount).replace(/"/g, '&quot;')}"` : '';
+  const err = formError
+    ? `<div class="note-box crit" data-trajectory-scenario="form-error">${formError}</div>` : '';
+  const controls = `<form class="planning-trajectory-scenario-form" data-trajectory-scenario-form="ready">
+    ${err}
+    <label class="planning-trajectory-scenario-field">
+      <span class="planning-trajectory-scenario-label">Debt</span>
+      <select name="debtId" data-trajectory-scenario-debt="select" aria-label="Debt for additional payment scenario" required>
+        <option value=""${draftDebtId ? '' : ' selected'} disabled>Select a debt</option>
+        ${options}
+      </select>
+    </label>
+    <label class="planning-trajectory-scenario-field">
+      <span class="planning-trajectory-scenario-label">Extra payment amount</span>
+      <input type="text" name="amount" inputmode="decimal" autocomplete="off" data-trajectory-scenario-amount="input" aria-label="Extra debt payment amount" placeholder="e.g. 100.00"${amountAttr} required>
+    </label>
+    <div class="planning-trajectory-scenario-actions">
+      <button type="submit" class="planning-trajectory-scenario-apply" data-trajectory-scenario-action="apply">Show scenario</button>
+      <button type="button" class="planning-trajectory-scenario-clear" data-trajectory-scenario-action="clear">Clear scenario</button>
+    </div>
+  </form>`;
+  return { intro, controls };
+}
+
+var planningScenarioActive = null;
+var planningScenarioDraftDebtId = '';
+var planningScenarioDraftAmount = '';
+var planningScenarioFormError = '';
+
+function planningScenarioSetActive(input) {
+  planningScenarioActive = input;
+}
+
+function planningRoadScenarioWire(root, d, periods) {
+  if (!root) return;
+  const form = root.querySelector('[data-trajectory-scenario-form="ready"]');
+  if (form) {
+    form.onsubmit = ev => {
+      ev.preventDefault();
+      const debtEl = form.querySelector('[data-trajectory-scenario-debt="select"]');
+      const amountEl = form.querySelector('[data-trajectory-scenario-amount="input"]');
+      const debtId = debtEl ? debtEl.value : '';
+      const parsed = planningScenarioParseAmount(amountEl ? amountEl.value : '');
+      planningScenarioDraftDebtId = debtId;
+      planningScenarioDraftAmount = amountEl ? amountEl.value : '';
+      if (!debtId) {
+        planningScenarioFormError = 'Select a debt.';
+        planningScenarioActive = null;
+        renderPlanning(d, periods);
+        return;
+      }
+      if (!parsed.ok) {
+        planningScenarioFormError = parsed.reason;
+        planningScenarioActive = null;
+        renderPlanning(d, periods);
+        return;
+      }
+      planningScenarioFormError = '';
+      planningScenarioActive = { debtId, amount: parsed.amount };
+      renderPlanning(d, periods);
+    };
+  }
+  const clearBtn = root.querySelector('[data-trajectory-scenario-action="clear"]');
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      planningScenarioActive = null;
+      planningScenarioDraftDebtId = '';
+      planningScenarioDraftAmount = '';
+      planningScenarioFormError = '';
+      renderPlanning(d, periods);
+    };
+  }
+}
+
 function planningPageHtml(advice, liveOverlay) {
   advice = advice || {};
   const unavailable = advice.operatingPlanUnavailable === true
@@ -1207,9 +1412,27 @@ function renderPlanning(d, periods) {
     ? planningTrajectorySelectedPayPeriod
     : planningTrajectorySelectedMonth;
   const roadHtml = planningRoadAheadHtml(traj, planningTrajectoryFundingGranularity, roadSelectedKey, asOf);
+  const scenarioControls = planningTrajectoryScenarioControlsHtml(
+    d.debts, planningScenarioDraftDebtId, planningScenarioDraftAmount, planningScenarioFormError);
+  let scenarioResult = null;
+  if (planningScenarioActive && planningScenarioActive.debtId != null
+    && typeof planningScenarioActive.amount === 'number') {
+    scenarioResult = planningTrajectoryScenario(d, periods, {
+      debtId: planningScenarioActive.debtId,
+      amount: planningScenarioActive.amount,
+    });
+  }
+  const scenarioCompare = planningTrajectoryScenarioCompareHtml(scenarioResult);
   const roadRoot = $('planning-road-ahead');
   if (roadRoot) {
     roadRoot.innerHTML = `<p class="lede planning-road-intro">${roadHtml.intro}</p>
+      <details class="planning-road-scenario-detail" data-trajectory-scenario-section="controls">
+        <summary>Extra debt payment scenario (hypothetical)</summary>
+        <p class="lede">${scenarioControls.intro}</p>
+        ${scenarioControls.controls}
+        <div class="planning-trajectory-scenario-result" data-trajectory-scenario-result="panel">${scenarioCompare.panel}</div>
+        <p class="lede footnote" data-trajectory-scenario-note="footnote">${scenarioCompare.note}</p>
+      </details>
       ${roadHtml.lead}
       <div class="planning-road-timeline-wrap">
         <p class="subhead">Projected period results</p>
@@ -1218,6 +1441,7 @@ function renderPlanning(d, periods) {
       </div>
       ${roadHtml.selected}`;
     planningRoadAheadWireSelection(roadRoot, d, periods);
+    planningRoadScenarioWire(roadRoot, d, periods);
   }
   $('planning-lede').textContent = html.lede;
   $('planning-list').innerHTML = html.list;
