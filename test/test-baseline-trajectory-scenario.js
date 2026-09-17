@@ -568,7 +568,6 @@ console.log('\n=== 7. HELOC is an eligible target; HELOC-as-funding is not ===')
 console.log('\n=== 8. Planning / packet / Talk reprint stay out of scope ===');
 {
   for (const file of [
-    'public/planning.js',
     'public/talk.js',
     'scripts/talk-hypothetical.js',
     'scripts/assistant-packet.js',

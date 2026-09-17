@@ -1753,6 +1753,48 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   padding: 0 0 8px;
   border-bottom: 1px solid var(--border-subtle);
 }
+.planning-road-scenario-detail {
+  margin: 16px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 8px;
+  background: var(--surface-elevated, rgba(0,0,0,.02));
+}
+.planning-road-scenario-detail > summary {
+  cursor: pointer;
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+.planning-trajectory-scenario-form {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+  max-width: 28rem;
+}
+.planning-trajectory-scenario-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.planning-trajectory-scenario-label { font-size: .82rem; font-weight: 600; }
+.planning-trajectory-scenario-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.planning-trajectory-scenario-apply,
+.planning-trajectory-scenario-clear {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(0,0,0,.15));
+  background: var(--surface, #fff);
+  cursor: pointer;
+}
+.planning-trajectory-scenario-compare { margin-top: 12px; }
+.planning-trajectory-scenario-table th[scope="row"] { text-align: left; }
+.planning-trajectory-scenario-disclaimer { margin-top: 10px; }
+
 .planning-road-disclosure > summary {
   font-weight: 650;
   cursor: pointer;
