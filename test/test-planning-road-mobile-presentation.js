@@ -50,7 +50,10 @@ function loadPage() {
     ctx,
     render(data, p) {
       for (const k of Object.keys(elements)) delete elements[k];
-      elements.asof = { textContent: `As of ${data.meta.asOf}`, innerHTML: `As of ${data.meta.asOf}` };
+      elements.asof = {
+        textContent: `As at ${data.meta.asOf}`,
+        innerHTML: `As at ${data.meta.asOf}`,
+      };
       for (const fn of ctx.App.hooks) fn(data, p || null, null);
       return elements;
     },
@@ -166,6 +169,25 @@ console.log('\n=== 6. Desktop presentation preserved ===');
     'compact app head is phone-only; desktop keeps incumbent page chrome');
   ok(/@media \(min-width:641px\)[\s\S]*grid-template-columns: repeat\(3/.test(css),
     'desktop road-ahead selected period keeps three-column stage grid');
+}
+
+console.log('\n=== 7. Tip repair — as-of identity and timeline scroll containment ===');
+{
+  const road = page.render(live, periods)['planning-road-ahead'].innerHTML;
+  ok(/planning-road-app-asof/.test(road) && road.includes(`As at ${live.meta.asOf}`),
+    'phone identity reprints the boot as-of chip text once');
+  ok(!/As of\s+As at/i.test(road) && !/planning-road-app-asof-label/.test(road),
+    'road-ahead header does not prefix a second As of label onto As at …');
+
+  const scrollFnMatch = planningSrc.match(
+    /function planningRoadAheadScrollSelectedTimeline\([\s\S]*?\n\}/);
+  const scrollFn = scrollFnMatch ? scrollFnMatch[0] : '';
+  ok(scrollFn.length > 80, 'scroll helper is present for static contract check');
+  ok(!/scrollIntoView/.test(scrollFn),
+    'selected timeline scroll does not call window scrollIntoView after renderPlanning');
+  ok(/planning-road-timeline|closest\(/.test(scrollFn)
+    && /scrollTo|scrollLeft/.test(scrollFn),
+    'scroll helper moves the horizontal timeline strip only');
 }
 
 if (failures) {

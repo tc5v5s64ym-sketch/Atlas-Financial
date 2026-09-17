@@ -1360,11 +1360,22 @@ function planningRoadAheadScrollSelectedTimeline(root, selectedKey) {
     ? CSS.escape(selectedKey)
     : String(selectedKey).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const item = root.querySelector(`[data-road-timeline-period="${esc}"]`);
-  if (!item || typeof item.scrollIntoView !== 'function') return;
+  if (!item) return;
+  const strip = item.closest('.planning-road-timeline')
+    || root.querySelector('[data-road-timeline="ready"]');
+  if (!strip || typeof strip.scrollLeft !== 'number') return;
+  const maxScroll = strip.scrollWidth - strip.clientWidth;
+  if (maxScroll <= 0) return;
+  const target = item.offsetLeft + (item.offsetWidth / 2) - (strip.clientWidth / 2);
+  const left = Math.max(0, Math.min(maxScroll, target));
   try {
-    item.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
+    strip.scrollTo({ left, behavior: 'instant' });
   } catch (_) {
-    item.scrollIntoView();
+    try {
+      strip.scrollTo({ left, behavior: 'auto' });
+    } catch (_2) {
+      strip.scrollLeft = left;
+    }
   }
 }
 
@@ -1453,7 +1464,7 @@ function renderPlanning(d, periods) {
       ? asOfChip.textContent.replace(/\s+/g, ' ').trim()
       : '';
     const refreshHtml = refreshLabel && refreshLabel !== 'Loading…'
-      ? `<p class="planning-road-app-asof"><span class="planning-road-app-asof-label">As of</span> ${refreshLabel}</p>`
+      ? `<p class="planning-road-app-asof">${refreshLabel}</p>`
       : '';
     roadRoot.innerHTML = `<div class="planning-road-shell" data-planning-road-shell="ready">
       <header class="planning-road-app-head" aria-label="Your Financial Road Ahead">
