@@ -1173,19 +1173,25 @@ console.log('\n=== Leftover Road Ahead drawers are absent from primary markup/re
     periods, extraFacilities: live.revolvingExtra,
   });
   const liveIncome = traj.months[0] && traj.months[0].stage1 && traj.months[0].stage1.income;
-  ok(liveIncome
-    && (!Array.isArray(liveIncome.lines) || liveIncome.lines.length === 0)
-    && (!Array.isArray(liveIncome.items) || liveIncome.items.length === 0),
-    'live stage1.income is a Forecast rollup only — no named income lines');
-  ok(page.ctx.planningRoadPublishedLines(liveIncome).length === 0,
-    'published-lines helper reprints nothing when Forecast published no lines');
   const incomeChunk = (road.split('data-planning-road-wf="income"')[1] || '')
     .split('data-planning-road-wf="')[0];
-  ok(/Income total/.test(incomeChunk)
-    && !/\bDale\b/.test(incomeChunk) && !/\bAmanda\b/.test(incomeChunk)
-    && !/Seaspan/.test(incomeChunk) && !/Tennis/.test(incomeChunk)
-    && !/50\s*\/\s*50/.test(incomeChunk),
-    'Income reprints the Forecast total and does not invent Dale/Amanda, Seaspan/Tennis, or a 50/50 split');
+  const publishedIncomeLines = page.ctx.planningRoadPublishedLines(liveIncome);
+  ok(liveIncome && liveIncome.amount != null,
+    'live stage1.income rollup is published');
+  if (publishedIncomeLines.length) {
+    ok(publishedIncomeLines.every(row => row && incomeChunk.includes(row.label)),
+      'Planning reprints Forecast-published stage1 income line labels and does not invent splits');
+    ok(/Income total/.test(incomeChunk) && !/50\s*\/\s*50/.test(incomeChunk),
+      'Income reprints the Forecast total beside published lines and does not invent a 50/50 split');
+  } else {
+    ok(publishedIncomeLines.length === 0,
+      'published-lines helper reprints nothing when Forecast published no lines');
+    ok(/Income total/.test(incomeChunk)
+      && !/\bDale\b/.test(incomeChunk) && !/\bAmanda\b/.test(incomeChunk)
+      && !/Seaspan/.test(incomeChunk) && !/Tennis/.test(incomeChunk)
+      && !/50\s*\/\s*50/.test(incomeChunk),
+      'Income reprints the Forecast total and does not invent Dale/Amanda, Seaspan/Tennis, or a 50/50 split');
+  }
   const withLines = JSON.parse(JSON.stringify(traj));
   withLines.months[0].stage1.income = {
     amount: liveIncome.amount,

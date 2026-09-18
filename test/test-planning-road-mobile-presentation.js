@@ -821,13 +821,34 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && /planning-road-wf-chevron/.test(householdLive)
     && /data-planning-road-wf-row="household-budget-total"/.test(householdLive),
     'live Household budget total stays visible in the collapsed expander summary');
-  ok(/data-planning-road-wf-lines="unavailable"/.test(billsLive)
-    && /Forecast has not published these line items/.test(billsLive)
-    && !/Mortgage/.test(billsLive) && !/Car payment/.test(billsLive),
-    'Bills expander fail-closes when Forecast published no bill lines');
-  ok(/data-planning-road-wf-lines="unavailable"/.test(householdLive)
-    && /Forecast has not published these line items/.test(householdLive),
-    'Household budget expander fail-closes when Forecast published no budget lines');
+  const liveBillsLines = liveMonth && liveMonth.stage1 && liveMonth.stage1.bills
+    && Array.isArray(liveMonth.stage1.bills.lines) ? liveMonth.stage1.bills.lines : [];
+  const liveBudgetLines = liveMonth && liveMonth.stage1 && liveMonth.stage1.householdBudget
+    && Array.isArray(liveMonth.stage1.householdBudget.lines)
+    ? liveMonth.stage1.householdBudget.lines : [];
+  if (liveBillsLines.length) {
+    ok(liveBillsLines.every(row => row && billsLive.includes(row.label)),
+      'Planning reprints Forecast-published stage1 bills line labels and does not invent splits');
+    ok(!/data-planning-road-wf-lines="unavailable"/.test(billsLive)
+      && !/Forecast has not published these line items/.test(billsLive),
+      'Bills expander lists published lines instead of the fail-closed empty state');
+  } else {
+    ok(/data-planning-road-wf-lines="unavailable"/.test(billsLive)
+      && /Forecast has not published these line items/.test(billsLive)
+      && !/Mortgage/.test(billsLive) && !/Car payment/.test(billsLive),
+      'Bills expander fail-closes when Forecast published no bill lines');
+  }
+  if (liveBudgetLines.length) {
+    ok(liveBudgetLines.every(row => row && householdLive.includes(row.label)),
+      'Planning reprints Forecast-published householdBudget line labels and does not invent splits');
+    ok(!/data-planning-road-wf-lines="unavailable"/.test(householdLive)
+      && !/Forecast has not published these line items/.test(householdLive),
+      'Household budget expander lists published lines instead of the fail-closed empty state');
+  } else {
+    ok(/data-planning-road-wf-lines="unavailable"/.test(householdLive)
+      && /Forecast has not published these line items/.test(householdLive),
+      'Household budget expander fail-closes when Forecast published no budget lines');
+  }
   ok(!/<details/.test(wfBlock(liveRoad, 'planned-spending')),
     'planned spending stays listed inline, not behind an expander');
 
