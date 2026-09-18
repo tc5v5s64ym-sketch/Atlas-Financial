@@ -913,8 +913,8 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
   const src = stripComments(read('public/planning.js'));
   ok(/function planningRoadAheadHtml\(/.test(src) && /planningRoadAheadLeadHtml\(/.test(src),
     'planning.js composes the road-ahead dashboard from Forecast trajectory only');
-  ok(/stage3\.result/.test(src) && /pressure\.signals/.test(src),
-    'road-ahead lead and timeline read Forecast stage3 results and pressure.signals');
+  ok(/stage3\.result/.test(src) && /planningRoadAheadWaterfallHtml\(/.test(src),
+    'road-ahead lead and waterfall read Forecast stage3 results');
   const roadSrc = src.split('function planningRoadAheadPeriodKey')[1].split('function planningTrajectoryFundingHtml')[0];
   ok(!/sustainable|on track|healthy|affordability|safe-to-spend|RYG|min-cash|What can you do/i.test(roadSrc),
     'road-ahead copy carries no invented judgment or recommendation engine');
@@ -937,21 +937,24 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
   });
   const pickMonth = traj.months[0];
   const road = page.composeRoadAhead(live, periods, 'month', pickMonth.month, live.meta.asOf);
-  ok(road.timeline.includes(money2(pickMonth.stage3.result.amount)),
-    'timeline bar copies Forecast stage3 result for the first month');
+  ok(road.lead.includes(page.ctx.planningRoadSignedMoney
+    ? page.ctx.planningRoadSignedMoney(pickMonth.stage3.result.amount)
+    : money2(pickMonth.stage3.result.amount))
+    || road.lead.includes(money2(pickMonth.stage3.result.amount)),
+    'hero copies Forecast stage3 result for the selected month');
   ok(road.selected.includes(money2(pickMonth.stage3.result.amount)),
     'selected period panel copies the same Forecast stage3 result');
   const gapMonth = traj.months.find(m => m.stage3 && m.stage3.result
     && isFinite(m.stage3.result.amount) && m.stage3.result.amount < 0);
   if (gapMonth) {
     const gapRoad = page.composeRoadAhead(live, periods, 'month', gapMonth.month, live.meta.asOf);
-    ok(/data-road-lead="funding-gap"/.test(gapRoad.lead) && gapRoad.lead.includes(money2(gapMonth.stage3.result.amount)),
-      'when Forecast publishes a negative stage3, lead card names a projected funding gap with that amount');
+    ok(/data-road-lead="period-shortfall"/.test(gapRoad.lead) && gapRoad.lead.includes(money2(gapMonth.stage3.result.amount)),
+      'when Forecast publishes a negative stage3, selecting that month leads with that shortfall');
   } else {
-    ok(/data-road-lead="pressure"|data-road-lead="no-forward-pressure"|data-road-lead="pressure-unavailable"/.test(road.lead),
-      'without a negative stage3 on live data, lead uses pressure or fail-closed copy — not an invented gap');
+    ok(/data-road-lead="period-surplus"|data-road-lead="period-even"|data-road-lead="period-unavailable"/.test(road.lead),
+      'without a negative stage3 on live data, lead reprints the selected month Forecast result — not an invented gap');
   }
-  ok(/data-road-lead="(funding-gap|pressure|no-forward-pressure|pressure-unavailable|unavailable)"/.test(road.lead),
+  ok(/data-road-lead="(period-surplus|period-shortfall|period-even|period-unavailable|unavailable|series-unavailable)"/.test(road.lead),
     'lead card uses a closed Forecast-backed lead kind');
   if (traj.pressure && traj.pressure.status === 'ready') {
     const forward = traj.pressure.signals.find(s => (s.date && s.date >= live.meta.asOf)
@@ -981,8 +984,8 @@ console.log('\n=== 23. Pay period road-ahead lead fails closed when payPeriods[]
     provenance: Object.assign({}, traj.provenance || {}, { payPeriodSeries: 'unavailable' }),
   });
   const monthLead = page.composeRoadAheadTraj(stripped, 'month', traj.months[0].month, live.meta.asOf).lead;
-  ok(/data-road-lead="pressure"|data-road-lead="funding-gap"|data-road-lead="no-forward-pressure"/.test(monthLead),
-    'Month granularity may still use monthly pressure or gap lead when months[] exists');
+  ok(/data-road-lead="period-surplus"|data-road-lead="period-shortfall"|data-road-lead="period-even"|data-road-lead="period-unavailable"/.test(monthLead),
+    'Month granularity still reprints a monthly Forecast result when months[] exists');
   const payLead = page.composeRoadAheadTraj(stripped, 'pay-period', null, live.meta.asOf).lead;
   ok(/data-road-lead="series-unavailable"/.test(payLead)
     && /data-road-lead-granularity="pay-period"/.test(payLead),

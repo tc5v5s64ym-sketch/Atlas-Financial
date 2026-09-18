@@ -2527,6 +2527,261 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   color: var(--text-secondary);
 }
 
+/* ------------------------------------------ Budget-waterfall primary UX */
+.planning-road-horizon-band { margin: 0 0 8px; }
+.planning-road-horizon-caption {
+  margin: 0 0 8px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+.planning-road-horizon-chips.planning-road-timeline {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 4px 2px 10px;
+  margin: 0;
+  list-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+.planning-road-horizon-chips .planning-road-timeline-item {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  width: auto;
+}
+.planning-road-horizon-chips .planning-road-timeline-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 52px;
+  min-height: 64px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.planning-road-horizon-chips .planning-road-timeline-label {
+  font-size: .82rem;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.planning-road-horizon-chips .planning-road-timeline-year {
+  font-size: .62rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.planning-road-horizon-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.planning-road-horizon-chip-dot-surplus { background: var(--road-surplus); }
+.planning-road-horizon-chip-dot-gap { background: var(--road-gap); }
+.planning-road-horizon-chip-dot-neutral,
+.planning-road-horizon-chip-dot-withheld { background: var(--muted); opacity: .7; }
+.planning-road-horizon-chips .planning-road-timeline-item.is-selected .planning-road-timeline-btn {
+  border-color: var(--axis);
+  box-shadow: 0 0 0 2px var(--road-pill-tint), var(--shadow-1);
+}
+
+.planning-road-selected-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+.planning-road-selected-head .planning-road-segmented {
+  align-self: flex-start;
+}
+
+.planning-road-hero-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.planning-road-hero-kind {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  letter-spacing: -.01em;
+}
+.planning-road-lead.planning-road-lead-surplus,
+.planning-road-lead.planning-road-lead-clear {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+}
+.planning-road-lead.planning-road-lead-gap {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+}
+.planning-road-lead-surplus .planning-road-hero-kind,
+.planning-road-lead-surplus .planning-road-lead-amount b { color: var(--success-text); }
+.planning-road-lead-gap .planning-road-hero-kind,
+.planning-road-lead-gap .planning-road-lead-amount b { color: var(--road-gap); }
+.planning-road-lead-amount {
+  margin: 0;
+  font-size: 2.35rem;
+  line-height: 1.02;
+  letter-spacing: -.03em;
+  text-align: right;
+}
+.planning-road-hero-card .planning-road-hero-narrative {
+  margin: 8px 0 0;
+}
+
+.planning-road-waterfall {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.planning-road-wf-block {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.planning-road-wf-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 16px;
+  font-size: .78rem;
+  font-weight: 750;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.planning-road-wf-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--road-pill-tint);
+  color: var(--text-primary);
+  font-size: .85rem;
+  font-weight: 750;
+}
+.planning-road-wf-badge-income {
+  background: var(--road-surplus-tint);
+  color: var(--success-text);
+}
+.planning-road-wf-badge-income::before { content: "+"; }
+.planning-road-wf-badge-bills {
+  background: var(--road-gap-tint);
+  color: var(--road-gap);
+}
+.planning-road-wf-badge-bills::before { content: "B"; }
+.planning-road-wf-badge-obligations {
+  background: var(--road-est-tint);
+  color: var(--road-trust-estimated);
+}
+.planning-road-wf-badge-obligations::before { content: "D"; }
+.planning-road-wf-badge-household-budget {
+  background: var(--road-surplus-tint);
+  color: var(--success-text);
+}
+.planning-road-wf-badge-household-budget::before { content: "H"; }
+.planning-road-wf-badge-planned-spending {
+  background: var(--road-unav-tint);
+  color: var(--text-primary);
+}
+.planning-road-wf-badge-planned-spending::before { content: "P"; }
+.planning-road-wf-badge-extra-debt {
+  background: var(--road-unav-tint);
+  color: var(--text-primary);
+}
+.planning-road-wf-badge-extra-debt::before { content: "E"; }
+.planning-road-wf-income .planning-road-wf-kicker {
+  color: var(--success-text);
+  background: var(--road-surplus-tint);
+  border-bottom: 1px solid var(--road-surplus-edge);
+}
+.planning-road-wf-block[data-planning-road-wf="bills"] .planning-road-wf-kicker {
+  color: var(--road-gap);
+  background: var(--road-gap-tint);
+  border-bottom: 1px solid var(--road-gap-edge);
+}
+.planning-road-wf-list,
+.planning-road-wf-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px 8px;
+}
+.planning-road-wf-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--grid);
+  font-size: .95rem;
+}
+.planning-road-wf-row:last-child { border-bottom: 0; }
+.planning-road-wf-label { color: var(--text-primary); }
+.planning-road-wf-amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.planning-road-wf-about { color: var(--text-secondary); font-size: .82rem; margin-right: 4px; }
+.planning-road-wf-income .planning-road-wf-amount b { color: var(--success-text); }
+.planning-road-wf-expand { margin: 0; }
+.planning-road-wf-summary {
+  display: block;
+  cursor: pointer;
+  list-style: none;
+  padding: 0 16px;
+}
+.planning-road-wf-summary::-webkit-details-marker { display: none; }
+.planning-road-wf-expand .planning-road-wf-lines { padding-top: 0; }
+.planning-road-wf-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.planning-road-wf-result-surplus {
+  background: var(--road-surplus-tint);
+  border-color: var(--road-surplus-edge);
+  color: var(--success-text);
+}
+.planning-road-wf-result-gap {
+  background: var(--road-gap-tint);
+  border-color: var(--road-gap-edge);
+  color: var(--road-gap);
+}
+.planning-road-wf-result-label { font-weight: 700; font-size: .95rem; }
+.planning-road-wf-result-value {
+  font-size: 1.15rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.planning-road-wf-footnote {
+  margin: 2px 4px 0;
+  font-size: .72rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
 /* ------------------------------------------------ what-if quarantine */
 .planning-road-disclosure {
   margin: 18px 0;
@@ -2705,6 +2960,11 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 
 @media (min-width:641px) {
   .planning-road-app-head { display: none; }
+  .planning-road-waterfall,
+  .planning-road-stages {
+    display: flex;
+    flex-direction: column;
+  }
   .planning-road-selected .planning-trajectory-funding-stages,
   .planning-road-stages .planning-trajectory-funding-stages {
     display: grid;

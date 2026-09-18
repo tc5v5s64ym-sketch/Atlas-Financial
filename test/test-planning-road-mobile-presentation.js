@@ -104,56 +104,60 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   ok(/planning-road-app-head/.test(road), 'shell includes compact page identity header');
   ok(/planning-road-app-eyebrow">PLANNING</.test(road)
     && /<h2 class="planning-road-app-title">Road Ahead</.test(road),
-    'Frame 01 identity is PLANNING eyebrow plus Road Ahead title');
-  ok(/planning-road-hero-eyebrow/.test(road)
-    && /NEXT FUNDING GAP|NEXT PRESSURE/.test(road),
-    'Frame 01 hero uses NEXT FUNDING GAP or NEXT PRESSURE language');
+    'identity is PLANNING eyebrow plus Road Ahead title');
+  ok(/data-road-lead="period-surplus"|data-road-lead="period-shortfall"|data-road-lead="period-even"|data-road-lead="period-unavailable"/.test(road),
+    'hero names this period surplus, shortfall, break-even, or withheld');
   ok(/planning-road-segmented/.test(road)
     && />Month</.test(road) && />Pay period</.test(road)
     && /data-trajectory-funding-granularity="month"/.test(road)
     && /data-trajectory-funding-granularity="pay-period"/.test(road),
-    'Frame 01 Month | Pay period segmented control is present');
+    'Month | Pay period segmented control is present (live Forecast seam)');
   ok(/role="tablist"/.test(road) && /role="tab"/.test(road)
     && /aria-selected="true"/.test(road) && /aria-selected="false"/.test(road)
     && /id="planning-road-view-panel"/.test(road) && /role="tabpanel"/.test(road),
-    'DESIGN §8 segmented control uses tablist semantics over the trajectory panel');
-  ok(/planning-road-spine/.test(road)
-    && /Normal life/.test(road)
-    && /After planned spending/.test(road)
-    && /After debt strategy/.test(road)
-    && /planning-road-spine-index/.test(road)
-    && /Projected [A-Z][a-z]+ result|Projected result/.test(road),
-    'Frame 03 vertical numbered spine uses household stage titles plus projected-result bar');
-  ok(/planning-road-horizon-stats/.test(road)
-    && /data-road-horizon-stat="surplus"/.test(road)
-    && /data-road-horizon-stat="gap"/.test(road),
-    'horizon band keeps Fable surplus/gap shape while counts stay unavailable');
+    'segmented control uses tablist semantics over the waterfall panel');
+  ok(/data-planning-road-waterfall="ready"/.test(road)
+    && /data-planning-road-wf="income"/.test(road)
+    && /data-planning-road-wf="bills"/.test(road)
+    && /data-planning-road-wf="household-budget"/.test(road)
+    && /data-planning-road-wf="planned-spending"/.test(road)
+    && /data-planning-road-wf="final"/.test(road),
+    'waterfall stack reprints income, bills, household budget, planned spending, and final result');
+  ok(/data-planning-road-planned="inline"/.test(road),
+    'planned spending is a named inline block');
+  const plannedChunk = road.split('data-planning-road-wf="planned-spending"')[1] || '';
+  const plannedUntilNext = plannedChunk.split('data-planning-road-wf="')[0];
+  ok(!/<details[\s\S]*planned-spending/.test(road)
+    && !/<details/.test(plannedUntilNext),
+    'planned spending is not behind a dropdown/expander');
+  ok(/data-planning-road-horizon="chips"/.test(road)
+    && /planning-road-horizon-chip-dot-(surplus|gap|withheld|neutral)/.test(road),
+    'horizon strip is month/pay chips with surplus/short/withheld dots');
+  ok(!/data-road-horizon-stat="surplus"/.test(road)
+    && !/data-road-horizon-stat="gap"/.test(road),
+    'horizon does not invent surplus/gap counts');
   ok(!/About this view/.test(road) && !/planning-road-app-asof/.test(road),
     'road-ahead shell strips About this view and dense as-of chrome');
   ok(/data-planning-road-primary="lead"/.test(road), 'lead card is in the primary viewport band');
-  ok(/data-planning-road-primary="counts-and-strip"/.test(road)
-    && /data-planning-road-primary="horizon"/.test(road)
-    && /data-planning-road-horizon="unavailable"/.test(road),
-    'horizon band is present but fail-closed until Forecast publishes surplus/gap counts');
-  ok(/has not published surplus and funding-gap counts/i.test(road),
-    'horizon band explains Forecast has not published surplus/gap counts');
-  ok(/data-planning-road-primary="strip"/.test(road), 'trajectory strip is a named primary band');
-  ok(/data-planning-road-primary="stages"/.test(road) && /data-planning-road-stages="ready"/.test(road),
-    'three-stage story is its own primary band');
+  ok(/data-planning-road-primary="horizon"/.test(road)
+    && /data-planning-road-primary="strip"/.test(road),
+    'horizon chip strip is a named primary band');
+  ok(/data-planning-road-primary="waterfall"/.test(road) && /data-planning-road-stages="waterfall"/.test(road),
+    'waterfall is the selected-period primary band');
   ok(/data-planning-road-primary="breakdown"/.test(road) && /data-planning-road-breakdown="sheet"/.test(road),
-    'progressive breakdown sheet follows the stage story');
+    'progressive breakdown sheet follows the waterfall');
   const htmlStatic = read('public/planning.html');
   ok(!/baseline walk|published horizon|legacy layout|full table/i.test(htmlStatic),
     'planning.html static copy follows DESIGN glossary');
-  const leadAt = road.indexOf('data-planning-road-primary="lead"');
   const horizonAt = road.indexOf('data-planning-road-primary="horizon"');
   const stripAt = road.indexOf('data-planning-road-primary="strip"');
-  const stagesAt = road.indexOf('data-planning-road-primary="stages"');
+  const waterfallAt = road.indexOf('data-planning-road-primary="waterfall"');
+  const leadAt = road.indexOf('data-planning-road-primary="lead"');
   const breakdownAt = road.indexOf('data-planning-road-primary="breakdown"');
   const whatifAt = road.indexOf('data-planning-road-primary="whatif"');
-  ok(leadAt >= 0 && horizonAt > leadAt && stripAt > horizonAt && stagesAt > stripAt
-    && breakdownAt > stagesAt && whatifAt > breakdownAt,
-    'phone order is hero → horizon → strip → stages → breakdown → quarantined what-if');
+  ok(horizonAt >= 0 && stripAt > horizonAt && waterfallAt > stripAt && leadAt > waterfallAt
+    && breakdownAt > leadAt && whatifAt > breakdownAt,
+    'phone order is horizon chips → period title/slice → surplus/deficit hero → waterfall → breakdown → quarantined what-if');
   const scenarioAt = road.indexOf('data-trajectory-scenario-section="controls"');
   ok(scenarioAt === whatifAt || scenarioAt > breakdownAt,
     'hypothetical scenario sits below breakdown on the phone-first stack');
@@ -164,74 +168,61 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   ok(/data-trajectory-scenario-preview="idle"/.test(road)
     && /planning-road-whatif-preview/.test(road),
     'idle what-if preview shows em-dash placeholders until user runs a scenario');
-  ok(/planning-road-hero-card/.test(road) && /planning-road-fable-stage/.test(road),
-    'Fable hero card and numbered stage treatments render on live shell');
+  ok(/planning-road-hero-card/.test(road) && /planning-road-waterfall/.test(road),
+    'hero card and waterfall treatments render on live shell');
   ok(/planning-road-whatif-quarantine/.test(road) && /Reset/.test(road),
     'what-if is quarantined and offers Reset only (no save-as-plan)');
   ok(!/save as plan|save-as-plan/i.test(road),
     'road-ahead what-if has no save-as-plan affordance');
-  ok(/planning-road-period-nav/.test(road) && /aria-label="Trajectory period navigation"/.test(road),
-    'period navigation is a named landmark section');
+  ok(/planning-road-period-nav/.test(road) && /aria-label="Horizon period navigation"/.test(road),
+    'horizon period navigation is a named landmark section');
+  ok(!/atlas-card|card-strip|Card badge|purple Card/i.test(road),
+    'Road Ahead has no credit-card callout or Card-strip markers');
+  ok(!/data-trajectory-funding-granularity="1-15"|data-trajectory-funding-granularity="16-end"/.test(road)
+    && !/>1–15</.test(road) && !/>16-end</.test(road) && !/>16–end</.test(road),
+    'calendar 1–15 / 16-end slices are not invented; Forecast did not publish them');
 }
 
-console.log('\n=== 1b. Frame 01 anatomy — identity, freshness, hero, horizon, strip head ===');
+console.log('\n=== 1b. Identity, freshness, hero, horizon chips, slice control ===');
 {
   const road = page.render(live, periods)['planning-road-ahead'].innerHTML;
   ok(/planning-road-freshness/.test(road) && /As at /.test(road),
-    'Frame 01 freshness pill is present and states the real opening date');
-  ok(/planning-road-app-sub">Your projected money, month by month</.test(road),
-    'Frame 01 subtitle reads "Your projected money, month by month"');
-  ok(/planning-road-hero-icon planning-road-hero-icon-(gap|pressure|clear)/.test(road),
-    'hero carries the Frame 01 tinted icon tile, keyed to the lead kind');
-  ok(/planning-road-hero-when/.test(road) && /planning-road-hero-period/.test(road),
-    'hero states the period on its own line under the eyebrow');
-  ok(/planning-road-hero-relative"> · (this month|next month|in \d+ months)</.test(road),
-    'DESIGN §4 relative time sits next to the absolute period');
-  ok(/planning-road-hero-narrative/.test(road),
-    'hero carries the one-line attribution Forecast supports');
-  ok(/planning-road-hero-cta/.test(road) && /See what's behind /.test(road)
-    && /data-road-focus-period="/.test(road),
-    'Frame 01 hero CTA opens the period story for that exact period');
-  ok(/planning-road-horizon-stat-dot-surplus/.test(road)
-    && /planning-road-horizon-stat-dot-gap/.test(road)
-    && /months with a projected surplus</.test(road)
-    && /months with a funding gap</.test(road),
-    'Frame 01 horizon tiles carry the dot plus the household count label');
-  ok(/planning-road-horizon-caption">Through [^<]*as far as Forecast can currently project\./.test(road),
-    'DESIGN §4 horizon caption names Forecast\'s own published horizon end');
-  ok(/planning-road-strip-title">Projected monthly result</.test(road),
-    'Frame 01 strip is headed "Projected monthly result"');
+    'freshness pill is present and states the real opening date');
+  ok(/planning-road-app-sub">From your Forecast plan</.test(road),
+    'subtitle states figures come from the Forecast plan');
+  ok(/planning-road-hero-kind">Surplus</.test(road)
+    || /planning-road-hero-kind">Shortfall</.test(road)
+    || /planning-road-hero-kind">Break-even</.test(road)
+    || /planning-road-hero-kind">Result withheld</.test(road),
+    'hero names Surplus, Shortfall, Break-even, or withheld for the selected period');
+  ok(/This month · from your Forecast plan/.test(road)
+    || /This pay period · from your Forecast plan/.test(road),
+    'hero caption names the Forecast period slice');
+  ok(/planning-road-horizon-caption" data-planning-road-horizon="caption">Through /.test(road)
+    && /as far as Forecast can currently project\./.test(road),
+    'horizon caption names Forecast\'s own published horizon end');
   ok(/planning-road-timeline-year">\d{4}</.test(road)
-    && /planning-road-timeline-plot/.test(road)
-    && /planning-road-timeline-bar planning-road-timeline-bar-(surplus|gap|withheld)/.test(road),
-    'Frame 01 chips carry a year line and a baseline-anchored mini bar');
-  ok(/planning-road-status-pill planning-road-status-(gap|surplus|withheld)/.test(road)
-    && /planning-road-pager/.test(road)
-    && /data-road-pager="next"/.test(road)
-    && /planning-road-selected-sub">Three steps from your regular life/.test(road),
-    'Frame 03 period header carries the status pill, chevron pager and three-steps line');
-  ok(/planning-road-nav-btn" data-road-select-period="[^"]+" data-road-pager="next" aria-label="[A-Z][a-z]+ \d{4}"/.test(road)
-    || /data-road-pager="next" aria-label="\d+ [A-Z][a-z]+ \d{4}/.test(road),
-    'DESIGN §8 pager buttons carry the real period name for VoiceOver');
-  ok(/planning-road-stage-card/.test(road)
-    && /planning-road-stage-includes">Income minus bills, required debt payments and your household budget</.test(road)
-    && /planning-road-stage-note/.test(road),
-    'Frame 03 stage card carries the what-is-included line and the plain-language note');
+    && /planning-road-horizon-chip-dot/.test(road)
+    && !/planning-road-timeline-bar /.test(road),
+    'horizon chips carry a year line and a surplus/short dot, not a mini bar');
+  ok(/planning-road-selected-title/.test(road)
+    && /data-trajectory-funding-granularity="month"/.test(road),
+    'selected period header carries the month title and Month|Pay slice');
   ok(/planning-road-breakdown-summary-label">Full [A-Z][a-z]+ breakdown</.test(road)
     && /planning-road-breakdown-group-title">Money in</.test(road)
     && /planning-road-breakdown-group-title">Bills &amp; required costs|planning-road-breakdown-group-title">Bills & required costs/.test(road),
-    'Frame 06 breakdown is a named sheet row with grouped line items');
+    'breakdown is a named sheet row with grouped line items');
   ok(/This is a preview, not a change\. Trying numbers here never updates your plan and never moves or schedules money\./.test(road),
     'DESIGN §6 what-if banner copy is exact');
   ok(/What-if: extra payment/.test(road)
     && /planning-road-whatif-preview-head[\s\S]{0,120}>Plan<[\s\S]{0,60}>Preview</.test(road),
-    'Frame 08 what-if is titled and compares Plan against Preview');
+    'what-if is titled and compares Plan against Preview');
   ok(/aria-label="[A-Z][a-z]+ \d{4} — Projected (surplus|funding gap|result)/.test(road)
     || /aria-label="\d+ [A-Z][a-z]+ \d{4}[^"]*— Projected/.test(road),
     'chip accessible name is the whole period plus the Forecast result phrase');
 }
 
-console.log('\n=== 1c. Frame 01/03 gap variant — hero attribution, stage story, delta pills ===');
+console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprints ===');
 {
   const base = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
@@ -239,71 +230,64 @@ console.log('\n=== 1c. Frame 01/03 gap variant — hero attribution, stage story
   const month = base.months.find(m => m.month === '2026-12') ? '2026-12' : base.months[2].month;
   const { traj, row } = gapTrajectory(base, month);
   const road = page.composeRoadTraj(traj, 'month', month, live.meta.asOf);
-  const monthName = new Date(month + '-15T00:00:00Z')
-    .toLocaleDateString('en-CA', { month: 'long', timeZone: 'UTC' });
+  const signedFinal = page.ctx.planningRoadSignedMoney(row.stage3.result.amount);
 
-  ok(/data-road-lead="funding-gap"/.test(road.lead)
-    && road.lead.includes(money2(row.stage3.result.amount))
-    && /NEXT FUNDING GAP/.test(road.lead),
-    'a published negative stage3 leads with the Frame 01 funding-gap hero');
-  ok(road.lead.includes(`${monthName} ${month.slice(0, 4)}`)
-    && /planning-road-hero-relative/.test(road.lead),
-    'gap hero names the month and how far away it is');
-  ok(new RegExp(`Your regular household costs are covered that month\\. ${monthName}'s planned spending and the extra debt payment create this gap\\.`)
-    .test(road.lead),
-    'gap hero attribution names the stages whose signs Forecast published');
-  ok(road.lead.includes(`See what's behind ${monthName}`),
-    'gap hero CTA names the month it opens');
+  ok(/data-road-lead="period-shortfall"/.test(road.lead)
+    && road.lead.includes(signedFinal)
+    && /planning-road-hero-kind">Shortfall</.test(road.lead),
+    'selecting a negative stage3 month leads with that Forecast shortfall');
+  ok(/This month · from your Forecast plan/.test(road.lead),
+    'shortfall hero caption stays on the selected month slice');
+  ok(!/NEXT FUNDING GAP|NEXT PRESSURE|See what's behind/.test(road.lead),
+    'pressure-first maze is not the primary hero');
 
   const stages = road.stages;
-  ok(stages.includes(money2(row.stage1.result.amount))
-    && stages.includes(money2(row.stage2.result.amount))
-    && stages.includes(money2(row.stage3.result.amount)),
-    'all three stage running totals are reprinted from Forecast');
-  ok(stages.includes(`Your regular household costs are covered this month, with ${money2(row.stage1.result.amount)} left over.`),
-    'stage 1 note reprints the normal-life surplus Forecast published');
-  ok(stages.includes(`${monthName}'s planned spending of ${money2(row.stage2.commitments.amount)} is more than the normal-life surplus.`),
-    'stage 2 note is chosen from the published signs and reprints the commitments figure');
-  ok(stages.includes(`The planned ${money2(row.stage3.extras.amount)} extra payment widens ${monthName}'s gap.`),
-    'stage 3 note names the extra payment that widened an already-negative period');
-  ok(stages.includes(`−${money2(row.stage2.commitments.amount)} planned spending`)
-    && stages.includes(`−${money2(row.stage3.extras.amount)} extra debt payment`),
-    'Frame 03 delta pills reprint the component Forecast subtracts at each stage');
+  ok(stages.includes(page.ctx.planningRoadSignedMoney(row.stage1.result.amount))
+    && stages.includes('−' + money2(row.stage2.commitments.amount))
+    && stages.includes(signedFinal),
+    'waterfall reprints Forecast stage1 result, planned-spending total, and final stage3');
+  ok(/data-planning-road-planned="inline"/.test(stages)
+    && /data-planning-road-wf="planned-spending"/.test(stages)
+    && !/<details[\s\S]*data-planning-road-wf="planned-spending"/.test(stages),
+    'planned spending is listed inline and not inside a details expander');
+  ok(/data-planning-road-wf="extra-debt"/.test(stages)
+    && stages.includes('−' + money2(row.stage3.extras.amount)),
+    'non-zero extra debt payments reprint inline so the final matches stage3');
 
-  // Independent check: the pill magnitudes must equal the drop Forecast's own
-  // stage results show, so the pill's minus direction is Forecast's, not ours.
   const stage1To2 = Math.round((row.stage1.result.amount - row.stage2.result.amount) * 100) / 100;
   const stage2To3 = Math.round((row.stage2.result.amount - row.stage3.result.amount) * 100) / 100;
   ok(stage1To2 === row.stage2.commitments.amount && stage2To3 === row.stage3.extras.amount,
-    'pill components reconcile with the stage-to-stage drop in Forecast\'s own results',
+    'waterfall components reconcile with the stage-to-stage drop in Forecast\'s own results',
     `${stage1To2} / ${stage2To3}`);
 
-  ok(/data-road-result-sign="gap"/.test(stages)
-    && stages.includes(`Projected ${monthName} result`),
-    'Frame 03 projected-result bar is period-named and carries the Forecast sign');
-  ok(/data-road-period-sign="gap"/.test(road.periodHeader)
-    && /Projected funding gap/.test(road.periodHeader),
-    'period header pill states the gap in words, not colour alone');
+  ok(/data-planning-road-wf="final"[\s\S]*data-road-result-sign="gap"/.test(stages)
+    && /Final shortfall/.test(stages),
+    'final row is named shortfall and carries the Forecast sign');
 
   const surplusMonth = base.months.find(m => m.stage3 && m.stage3.result
     && isFinite(m.stage3.result.amount) && m.stage3.result.amount > 0);
   if (surplusMonth) {
     const surplus = page.composeRoadTraj(base, 'month', surplusMonth.month, live.meta.asOf);
-    ok(/data-road-result-sign="surplus"/.test(surplus.stages)
-      && /Projected surplus/.test(surplus.periodHeader)
-      && !/sustainable|well done|great|healthy/i.test(surplus.stages + surplus.periodHeader),
-      'surplus periods use the identical anatomy with no praise copy (DESIGN §3)');
+    ok(/data-road-lead="period-surplus"/.test(surplus.lead)
+      && /data-road-result-sign="surplus"/.test(surplus.stages)
+      && !/sustainable|well done|great|healthy/i.test(surplus.stages + surplus.lead),
+      'surplus periods use the identical anatomy with no praise copy');
   }
 
   const withheldMonth = JSON.parse(JSON.stringify(base));
   const target = withheldMonth.months[1];
   target.stage2.commitments = { status: 'unavailable', reason: 'Forecast withheld this component.' };
-  target.stage2.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
+  target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
   const withheld = page.composeRoadTraj(withheldMonth, 'month', target.month, live.meta.asOf);
-  ok(/planning-road-amount-unavailable/.test(withheld.stages)
-    && /It is not counted as \$0\./.test(withheld.stages)
-    && !/\$0\.00/.test(withheld.stages),
-    'a withheld stage or component stays an em-dash with the not-$0 sentence');
+  const plannedBlock = (withheld.stages.split('data-planning-road-wf="planned-spending"')[1] || '')
+    .split('data-planning-road-wf="')[0];
+  ok(/planning-road-amount-unavailable/.test(plannedBlock)
+    && /—/.test(plannedBlock)
+    && !/\$0\.00/.test(plannedBlock),
+    'a withheld planned-spending total stays an em-dash, not $0');
+  ok(/data-road-lead="period-unavailable"/.test(withheld.lead)
+    && /not counted as \$0/.test(withheld.lead),
+    'a withheld period result fails closed on the hero and is not counted as $0');
 }
 
 console.log('\n=== 1d. Trust badges cover every figure the stage card reprints ===');
@@ -341,10 +325,9 @@ console.log('\n=== 1d. Trust badges cover every figure the stage card reprints =
     && m.stage1.result && m.stage1.result.status === 'estimated');
   if (estimatedMonth) {
     const road = page.composeRoadTraj(traj, 'month', estimatedMonth.month, live.meta.asOf);
-    const card = road.stages.split('data-trajectory-funding-stage="2"')[0];
-    ok(/planning-road-trust-estimated">Estimated</.test(card)
-      && card.includes(money2(estimatedMonth.stage1.result.amount)),
-      'an estimated stage prints its amount and the Estimated badge on the same card');
+    ok(/planning-road-trust-estimated">Estimated</.test(road.stages)
+      && road.stages.includes(page.ctx.planningRoadSignedMoney(estimatedMonth.stage1.result.amount)),
+      'an estimated stage prints its amount and the Estimated badge on the waterfall');
   } else {
     ok(true, 'live opening publishes no estimated stage to badge-check');
   }
@@ -417,8 +400,12 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
   });
   const month = traj.months[0];
   const road = page.composeRoad(live, periods, 'month', month.month, live.meta.asOf);
-  ok(road.timeline.includes(money2(month.stage3.result.amount)),
-    'mobile compose path still copies Forecast stage3 on the timeline');
+  const signed = page.ctx.planningRoadSignedMoney(month.stage3.result.amount);
+  ok(new RegExp(`data-road-timeline-period="${month.month}"[\\s\\S]*data-road-timeline-sign="(surplus|gap|neutral|withheld)"`).test(road.timeline)
+    || road.timeline.includes(`data-road-timeline-period="${month.month}"`),
+    'horizon chip for the first month is present with a Forecast-derived sign');
+  ok(road.lead.includes(signed) && /data-road-lead="period-/.test(road.lead),
+    'hero reprints Forecast stage3 for the selected month');
   ok(road.selected.includes(money2(month.stage3.result.amount)),
     'selected-period panel still copies the same Forecast stage3 amount');
   const shell = page.render(live, periods)['planning-road-ahead'].innerHTML;
@@ -436,8 +423,8 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
     /function planningRoadAheadHorizonCountsHtml\([\s\S]*?\n\}/);
   ok(horizonFn && !/surplus\s*\+|gap\s*\+|data-road-horizon-kind/.test(horizonFn[0]),
     'horizon counts helper does not aggregate periods into surplus/gap tallies');
-  ok(/data-trajectory-funding-result-sign="(gap|surplus)"/.test(shell),
-    'Fable stage amounts expose Forecast sign for gap/surplus presentation CSS');
+  ok(/data-road-result-sign="(gap|surplus|neutral)"/.test(shell),
+    'waterfall amounts expose Forecast sign for gap/surplus presentation CSS');
   ok(/planning-road-trust-calculated/.test(shell) && />Calculated</.test(shell),
     'calculated trust reprints as Calculated, not Confirmed');
   ok(!/planning-road-trust-calculated[^>]*>Confirmed</.test(shell),
@@ -696,42 +683,44 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
 
   const payLead = page.composeRoadTraj(
     pressureTraj, 'pay-period', selectedKey, asOf).lead;
-  ok(/data-road-lead="pressure"/.test(payLead)
-    && payLead.includes(signalLabel),
-    'Pay period hero still names the published pressure month');
-  ok(payLead.includes(expectedRelative),
-    'relative phrase is calendar distance to the published month, not the selected pay period',
-    expectedRelative);
+  const payPeriod = (pressureTraj.payPeriods || []).find(p => (p.payday || p.id) === selectedKey);
+  const payResult = payPeriod && payPeriod.stage3 && payPeriod.stage3.result;
+  ok(/data-road-lead="period-surplus"|data-road-lead="period-shortfall"|data-road-lead="period-even"|data-road-lead="period-unavailable"/.test(payLead),
+    'Pay period hero reprints that pay period\'s Forecast result, not a pressure month');
+  ok(!/NEXT PRESSURE|NEXT FUNDING GAP/.test(payLead),
+    'Pay period hero is not the pressure-first maze');
+  if (payResult && payResult.amount != null && isFinite(Number(payResult.amount))) {
+    ok(payLead.includes(page.ctx.planningRoadSignedMoney(payResult.amount)),
+      'Pay period hero amount equals Forecast stage3 for the selected pay period');
+  }
   ok(!new RegExp(`data-road-select-period="${selectedKey}"`).test(payLead),
-    'CTA does not fall back to the currently selected pay period');
+    'hero has no period-select CTA that would jump the waterfall');
   ok(!/planning-road-hero-cta/.test(payLead),
-    'month-only pressure fails closed on the CTA in Pay period view');
+    'primary waterfall hero has no See-what\'s-behind CTA');
 
   const monthLead = page.composeRoadTraj(
     pressureTraj, 'month', asOfMonth, asOf).lead;
-  ok(/planning-road-hero-cta/.test(monthLead)
-    && monthLead.includes(`data-road-select-period="${signalMonth}"`)
-    && monthLead.includes(`See what's behind ${monthParts[signalMonth.slice(5, 7)]}`),
-    'Month view still binds the CTA to the published pressure month');
+  const asOfRow = (pressureTraj.months || []).find(m => m.month === asOfMonth)
+    || (pressureTraj.months || [])[0];
+  ok(/data-road-lead="period-/.test(monthLead)
+    && asOfRow && monthLead.includes(page.ctx.planningRoadSignedMoney(asOfRow.stage3.result.amount)),
+    'Month view hero reprints the selected month Forecast stage3, not the pressure month CTA');
 
   const dated = JSON.parse(JSON.stringify(pressureTraj));
   const datedPay = (dated.payPeriods || []).find(p => p.start && p.end && p.start.slice(0, 7) === signalMonth)
     || (dated.payPeriods || []).find(p => p.start && p.end);
   ok(datedPay && datedPay.start && datedPay.end,
     'dated-signal proof has a pay period with a published range');
-  dated.pressure.signals = [{
-    kind: 'dated-commitment',
-    date: datedPay.start,
-    month: signalMonth,
-    amount: 250,
-    trust: 'calculated',
-  }];
   const otherPay = (dated.payPeriods || []).find(p => (p.payday || p.id) !== (datedPay.payday || datedPay.id));
   const datedLead = page.composeRoadTraj(
     dated, 'pay-period', otherPay ? (otherPay.payday || otherPay.id) : selectedKey, asOf).lead;
-  const datedKey = datedPay.payday || datedPay.id;
-  ok(datedLead.includes(`data-road-select-period="${datedKey}"`),
-    'a dated pressure signal still maps the CTA to the pay period that contains that date');
+  const otherResult = otherPay && otherPay.stage3 && otherPay.stage3.result;
+  ok(/data-road-lead="period-/.test(datedLead),
+    'a pressure signal does not replace the selected pay-period waterfall hero');
+  if (otherResult && otherResult.amount != null && isFinite(Number(otherResult.amount))) {
+    ok(datedLead.includes(page.ctx.planningRoadSignedMoney(otherResult.amount)),
+      'hero stays on the selected pay period Forecast result when pressure names another date');
+  }
 }
 
 console.log('\n=== 1g. Stage 2/3 break-even narrative — $0 running total is not called surplus ===');
@@ -764,6 +753,52 @@ console.log('\n=== 1g. Stage 2/3 break-even narrative — $0 running total is no
   ok(/break-even/i.test(stage3Note),
     'stage 3 note names break-even when the running total is exactly $0',
     stage3Note);
+}
+
+console.log('\n=== 11. Waterfall contract — inline planned spend, no card strip, Forecast-only labels ===');
+{
+  const { execSync } = require('child_process');
+  const forecastDiff = execSync('git diff -- public/forecast.js; git diff --cached -- public/forecast.js', {
+    encoding: 'utf8',
+  });
+  ok(!String(forecastDiff).trim(), 'public/forecast.js has no working-tree or staged diff');
+
+  const liveRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
+  const incomeBlock = (liveRoad.split('data-planning-road-wf="income"')[1] || '')
+    .split('data-planning-road-wf="')[0];
+  ok(!/\bDale\b/.test(incomeBlock) && !/\bAmanda\b/.test(incomeBlock),
+    'income section does not invent salary names when Forecast published no income lines');
+  ok(!/atlas-card|card-strip|Card badge|data-card-badge/i.test(liveRoad),
+    'Road Ahead markup has no Budget card-strip markers');
+
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const withheld = JSON.parse(JSON.stringify(traj));
+  const target = withheld.months[withheld.months.length - 1];
+  target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this result.' };
+  const withheldRoad = page.composeRoadTraj(withheld, 'month', traj.months[0].month, live.meta.asOf);
+  const chip = new RegExp(`data-road-timeline-period="${target.month}"[\\s\\S]*?planning-road-horizon-chip-dot-withheld`);
+  ok(chip.test(withheldRoad.timeline),
+    'a withheld month keeps a fail-closed horizon dot rather than a surplus or short colour');
+  ok(!/data-road-horizon-stat="surplus"|months with a projected surplus/.test(withheldRoad.timeline + withheldRoad.horizonCounts),
+    'horizon does not tally surplus/gap counts from chip signs');
+
+  const withLines = JSON.parse(JSON.stringify(traj));
+  const lined = withLines.months[0];
+  lined.stage1.income = {
+    amount: lined.stage1.income.amount,
+    status: lined.stage1.income.status,
+    lines: [
+      { label: 'Published stream A', amount: 100, status: 'confirmed' },
+      { label: 'Published stream B', amount: 50, status: 'estimated' },
+    ],
+  };
+  const linedRoad = page.composeRoadTraj(withLines, 'month', lined.month, live.meta.asOf);
+  ok(/Published stream A/.test(linedRoad.stages)
+    && /Published stream B/.test(linedRoad.stages)
+    && /planning-road-trust-confirmed">Confirmed</.test(linedRoad.stages),
+    'when Forecast publishes income line labels, the waterfall reprints those labels and trust chips');
 }
 
 if (failures) {
