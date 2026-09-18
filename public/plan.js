@@ -2053,9 +2053,11 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
       ${total}
     </div>`;
   }
-  // Presentation only: when Forecast withheld row.recon (remaining claim
-  // unavailable) but overlay current-period txs exist, list those txs in
-  // the existing Spent details path. Do not recompute spent or remaining.
+  // Presentation only: when Forecast withheld Spent (`row.spent == null`)
+  // and row.recon is empty, list overlay current-period txs in the
+  // existing Spent details path. Membership reuses Forecast
+  // classifyCurrentPeriodTransaction, householdBudgetSupportingSpendEligible,
+  // and skipSplitParent. Do not recompute spent or remaining.
   const overlayPacket = liveOverlay && liveOverlay.currentPeriodActuals;
   const overlayTxs = overlayPacket && Array.isArray(overlayPacket.transactions)
     ? overlayPacket.transactions : [];
@@ -2063,8 +2065,14 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
     && typeof Forecast.classifyCurrentPeriodTransaction === 'function')
     ? Forecast.classifyCurrentPeriodTransaction : null;
   const eligible = classify && classify.householdBudgetSupportingSpendEligible;
+  const skipSplitParent = classify && classify.skipSplitParent;
   const overlayReconForRow = row => {
     if (!row || (Array.isArray(row.recon) && row.recon.length)) {
+      return Array.isArray(row.recon) ? row.recon : [];
+    }
+    // Overlay listing is withheld-Spent only. A published 0 (or any
+    // known Spent) is Forecast's figure; do not attach overlay txs.
+    if (row.spent != null) {
       return Array.isArray(row.recon) ? row.recon : [];
     }
     if (!period || period.role !== 'active' || !overlayTxs.length) return [];
@@ -2079,6 +2087,9 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
       if (!tx) continue;
       if (windowStart && tx.date && tx.date < windowStart) continue;
       if (through && tx.date && tx.date > through) continue;
+      if (typeof skipSplitParent === 'function' && skipSplitParent(tx, overlayPacket)) {
+        continue;
+      }
       const amt = Number(tx.amount);
       if (!isFinite(amt) || amt === 0) continue;
       if (classify) {

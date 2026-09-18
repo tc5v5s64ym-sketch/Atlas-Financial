@@ -4,9 +4,11 @@
  *
  * Presentation only: plan.js lists overlay currentPeriodActuals.transactions
  * in the existing Spent details path. It does not invent spent or remaining.
- * Membership follows Forecast.classifyCurrentPeriodTransaction, the same
- * classifier Forecast already owns (L-001). Independent arithmetic for the
- * withheld remaining figure (L-002 / L-006).
+ * Membership follows Forecast.classifyCurrentPeriodTransaction,
+ * householdBudgetSupportingSpendEligible, and skipSplitParent — the same
+ * helpers Forecast already owns (L-001). Overlay fallback is withheld-Spent
+ * only (`row.spent == null`). Independent arithmetic for the withheld
+ * remaining figure (L-002 / L-006).
  *
  * `node test/test-household-budget-overlay-spent-drilldown.js`
  */
@@ -292,6 +294,100 @@ console.log('\n=== 4. Forecast recon wins; empty overlay keeps the row flat ==='
   const futureHtml = composer.calendarBudgetHtml(future, overlay(overlayTxs), plan);
   ok(!/<details/.test(futureHtml),
     'next-period rows do not inherit this-period overlay txs');
+}
+
+const PARENT = 70.10;
+const CHILD_A = 40.00;
+const CHILD_B = 30.10;
+const splitParent = {
+  id: 'tx-groc-parent', date: '2026-08-29', amount: PARENT, pending: false,
+  isGroup: true, categoryLabel: 'Groceries', accountRole: 'household-cash',
+  displayedPayee: 'Save-On-Foods group', originalMerchant: 'Save-On-Foods group',
+};
+const splitChildA = {
+  id: 'tx-groc-child-a', date: '2026-08-29', amount: CHILD_A, pending: false,
+  parentId: 'tx-groc-parent', categoryLabel: 'Groceries',
+  accountRole: 'household-cash',
+  displayedPayee: 'Save-On-Foods produce', originalMerchant: 'Save-On-Foods produce',
+};
+const splitChildB = {
+  id: 'tx-groc-child-b', date: '2026-08-29', amount: CHILD_B, pending: false,
+  parentId: 'tx-groc-parent', categoryLabel: 'Groceries',
+  accountRole: 'household-cash',
+  displayedPayee: 'Save-On-Foods dairy', originalMerchant: 'Save-On-Foods dairy',
+};
+const splitPacket = [splitParent, splitChildA, splitChildB];
+
+console.log('\n=== 5. split parent excluded; children stay overlay disclosure members ===');
+{
+  const skip = F.classifyCurrentPeriodTransaction.skipSplitParent;
+  ok(typeof skip === 'function'
+      && skip(splitParent, { transactions: splitPacket }) === true
+      && skip(splitChildA, { transactions: splitPacket }) === false
+      && skip(splitChildB, { transactions: splitPacket }) === false,
+    'Forecast skipSplitParent excludes the group parent and keeps both children');
+  const childACls = F.classifyCurrentPeriodTransaction(splitChildA, plan);
+  const childBCls = F.classifyCurrentPeriodTransaction(splitChildB, plan);
+  const parentCls = F.classifyCurrentPeriodTransaction(splitParent, plan);
+  const eligible = F.classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible;
+  ok(childACls.categoryId === 'groceries' && childBCls.categoryId === 'groceries'
+      && eligible(childACls) === true && eligible(childBCls) === true,
+    'children classify onto Groceries and remain HH-budget eligible as Forecast recon would');
+  ok(parentCls.categoryId === 'groceries' && eligible(parentCls) === true,
+    'parent would classify onto Groceries if skipSplitParent did not exclude it');
+  ok(near(roundCent(CHILD_A + CHILD_B), PARENT),
+    'constructed parent amount equals the child sum (independent of the page)');
+
+  const html = composer.calendarBudgetHtml(
+    withheldPeriod(), overlay(splitPacket.concat([overlayTxs[1]])), plan
+  );
+  const groceries = block(html, 'groceries');
+  const fuel = block(html, 'fuel');
+  const grocIds = txIds(groceries);
+  const grocPayees = txPayees(groceries);
+  ok(/<details class="household-budget-spent-detail" data-budget-spent="groceries">/.test(groceries)
+      && grocIds.length === 2
+      && grocIds.includes('tx-groc-child-a') && grocIds.includes('tx-groc-child-b')
+      && !grocIds.includes('tx-groc-parent')
+      && grocPayees.includes('Save-On-Foods produce')
+      && grocPayees.includes('Save-On-Foods dairy')
+      && !grocPayees.includes('Save-On-Foods group'),
+    'Groceries overlay disclosure lists children and omits the LM group parent');
+  ok(groceries.includes(composer.money2(CHILD_A))
+      && groceries.includes(composer.money2(CHILD_B))
+      && !groceries.includes(composer.money2(PARENT))
+      && !/data-budget-spent-total="groceries">/.test(groceries)
+      && /household-budget-spent-amount">—</.test(groceries),
+    'child amounts list; parent total is not printed; Spent stays em dash with no Total');
+  ok(txIds(fuel).join() === 'tx-fuel',
+    'sibling withheld-Spent Fuel row still lists its overlay tx');
+}
+
+console.log('\n=== 6. Forecast-published spent:0 does not attach overlay disclosure ===');
+{
+  const period = withheldPeriod();
+  period.householdBudget[0] = {
+    id: 'groceries', label: 'Groceries',
+    planned: GROCERY_PLANNED, spent: 0, remaining: GROCERY_PLANNED, recon: [],
+  };
+  const html = composer.calendarBudgetHtml(period, overlay(overlayTxs), plan);
+  const groceries = block(html, 'groceries');
+  const fuel = block(html, 'fuel');
+  ok(!/<details/.test(groceries) && !/data-budget-spent="groceries"/.test(groceries)
+      && !txIds(groceries).length
+      && !/data-budget-spent-total/.test(groceries),
+    'published spent:0 stays non-expandable; overlay txs are not listed and no Total is printed');
+  ok(/<dt>Spent<\/dt>/.test(groceries)
+      && groceries.includes(composer.money2(0))
+      && !groceries.includes(composer.money2(GROCERY)),
+    'Forecast-published Spent $0.00 is printed; overlay grocery amount is absent');
+  ok(groceries.includes(composer.money2(GROCERY_PLANNED))
+      && /<dt>Planned<\/dt>/.test(groceries)
+      && /<dt>Remaining<\/dt>/.test(groceries),
+    'Planned and Remaining stay the Forecast-published figures');
+  ok(/<details class="household-budget-spent-detail" data-budget-spent="fuel">/.test(fuel)
+      && txIds(fuel).join() === 'tx-fuel',
+    'sibling withheld-Spent rows still expand from overlay txs');
 }
 
 if (failures) {
