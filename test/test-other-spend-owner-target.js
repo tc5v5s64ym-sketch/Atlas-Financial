@@ -318,7 +318,7 @@ console.log('\n=== 8. Live trajectory Household Budget path includes the $800 mo
   const walkDays = sep.stage1.householdBudget.walkDays;
   const expectedOtherLine = roundCent((OTHER_MONTHLY / WEEKS_PER_MONTH) * walkDays / 7);
   const otherLine = lineByLabel(sep.stage1.householdBudget.lines, OTHER_LABEL);
-  ok(otherLine && near(otherLine.amount, expectedOtherLine) && otherLine.status === 'calculated',
+  ok(otherLine && near(otherLine.amount, expectedOtherLine, 0.01) && otherLine.status === 'calculated',
     'live September householdBudget lines include Other spend from independently smeared $800/month',
     otherLine ? `${otherLine.amount} vs ${expectedOtherLine}` : 'missing');
   const withoutLines = sepWithout && sepWithout.stage1 && sepWithout.stage1.householdBudget
