@@ -351,7 +351,11 @@ estimated firstDue 2026-10-01 — start of the next-bill month after the
 1 September once due) planned from BILLS ACCOUNT. The ~9–11th window is
 when notices typically arrive, not a confirmed cash-calendar due. The
 9 September 2026 notice also shows a **−$53.08 credit still on the Hydro
-account**. Forecast nets the **next** equal-payment cash hit to
+account**. Owner MyHydro screenshot this turn corroborates **current
+balance $53.08 Credit** and a 9 September 2026 bill amount of
+**−$53.08**. The screenshot's **5 September – 6 October 2026** billing
+period is a period window only — not a confirmed payment or due date
+(including 9 October). Forecast nets the **next** equal-payment cash hit to
 **$145.92** ($199 − $53.08); later months are full $199. That credit is
 a utility-account balance, not +$53.08 joint cash on 9 September. It is
 not a usage-based or metered amount. Next annual adjustment is September

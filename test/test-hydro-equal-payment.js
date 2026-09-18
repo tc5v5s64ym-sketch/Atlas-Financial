@@ -280,6 +280,9 @@ console.log('\n=== 4. live plan encodes the owner $199 series without rewriting 
       && equal.budgetCategory == null && equal.confidence === 'estimated'
       && near(equal.utilityAccountCredit && equal.utilityAccountCredit.amount, CREDIT),
     'live hydro-equal-payment is estimated-timing $199 monthly from 2026-10-01 with $53.08 account credit');
+  ok(equal && equal.day !== 9 && equal.firstDue !== '2026-10-09'
+      && equal.confidence !== 'confirmed',
+    'live encoding does not publish a confirmed 9 October payment/due date');
   ok(!bills.some(b => b.id === 'hydro-due-now'),
     'the settled 14 August Hydro due is still absent');
   ok(bills.length === 2,
@@ -470,6 +473,10 @@ console.log('\n=== 8. utility observation MATCHES firstDue; Fortis/Shaw untouche
   ok(equalRow && equalRow.status === 'MATCH' && near(equalRow.canonicalValue, EQUAL_AMT)
       && equalRow.canonicalDate === FIRST_DUE,
     'equal-payment observation MATCHES hydro-equal-payment estimated firstDue 2026-10-01');
+  const creditRow = result.rows.find(r => r.observationId === 'owner-hydro-account-credit-53-08');
+  ok(creditRow && creditRow.fact === 'account-balance' && creditRow.status === 'MATCH'
+      && creditRow.scheduled === false && near(creditRow.evidenceValue, CREDIT),
+    'MyHydro $53.08 Credit is informational account state, not a scheduled cash bill');
 
   const fortis = (live.plan.bills || []).find(b => b.id === 'fortis');
   const shaw = (live.plan.bills || []).find(b => b.id === 'shaw');
@@ -477,6 +484,39 @@ console.log('\n=== 8. utility observation MATCHES firstDue; Fortis/Shaw untouche
     'Fortis is unchanged');
   ok(shaw && shaw.frequency === 'monthly' && shaw.day === 14 && near(shaw.amount, 78.4),
     'Shaw is unchanged');
+}
+
+console.log('\n=== 9. MyHydro screenshot corroborates credit; period is not a due ===');
+{
+  const intakePath = path.join(__dirname, '..',
+    'docs/source_intake/BC_HYDRO_MYHYDRO_CREDIT_2026-09-18.md');
+  const intake = fs.readFileSync(intakePath, 'utf8');
+  ok(/BILL-HYD-006/.test(intake) && /\$53\.08 Credit/.test(intake)
+      && /−\$53\.08/.test(intake),
+    'MyHydro intake records $53.08 Credit and the 9 September bill amount −$53.08');
+  ok(/5 September – 6 October 2026/.test(intake)
+      && /period window only/.test(intake)
+      && /not payment-date evidence/.test(intake),
+    'MyHydro billing period is documented as a period window, not a due');
+  ok(!/confirmed cash-calendar/.test(intake)
+      || /Not a confirmed cash-calendar/.test(intake),
+    'MyHydro intake does not promote a confirmed cash-calendar due');
+  const register = load('docs/evidence_use/register.json');
+  const row = (register.items || []).find(r => r && r.id === 'BILL-HYD-006');
+  ok(row && row.disposition === 'CONSUMED'
+      && row.routed_to && row.routed_to.path === 'data.json'
+      && row.routed_to.json_pointer === '/plan/bills/11/utilityAccountCredit',
+    'BILL-HYD-006 is routed to the equal-payment utilityAccountCredit');
+  const live = liveData();
+  const equal = (live.plan.bills || []).find(b => b.id === EQUAL_ID);
+  const sepEvents = F.expandEvents(live.plan, '2026-09-05', '2026-09-09', {});
+  ok(equal && near(equal.utilityAccountCredit.amount, CREDIT)
+      && equal.utilityAccountCredit.asOf === '2026-09-09',
+    'live credit encoding is unchanged at $53.08 as-of 9 September');
+  ok(!sepEvents.some(e => e.kind === 'income' && near(e.amount, CREDIT)),
+    'MyHydro credit still does not invent +$53.08 joint cash on 9 September');
+  ok(!sepEvents.some(e => e.id === EQUAL_ID),
+    'the 5 September–6 October period window does not emit an equal-payment cash hit in September');
 }
 
 if (failures) {

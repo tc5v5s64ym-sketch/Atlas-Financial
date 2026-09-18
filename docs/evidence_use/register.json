@@ -183,6 +183,15 @@
       }
     },
     {
+      "id": "BILL-HYD-006",
+      "source": "docs/source_intake/BC_HYDRO_MYHYDRO_CREDIT_2026-09-18.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills/11/utilityAccountCredit"
+      }
+    },
+    {
       "id": "BILL-FOR-001",
       "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
       "disposition": "EXCLUDED",

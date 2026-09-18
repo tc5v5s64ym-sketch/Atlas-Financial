@@ -27,7 +27,11 @@ BILL-HYD-005
   When the $199 equal payment posts, cash charged is **$145.92**
   ($199 − $53.08). Later months are full $199 after the credit is
   consumed. This is a utility-account credit, not chequing income on
-  9 September.
+  9 September. Owner MyHydro screenshot this turn (`BILL-HYD-006`)
+  corroborates the same **$53.08 Credit** current balance and a
+  9 September 2026 bill amount of **−$53.08**. The screenshot's
+  **5 September – 6 October 2026** billing period is a period window
+  only — not payment/due-date evidence.
 - Next annual adjustment: **September 2027**.
 - Cadence: monthly. Notices typically around the **9th–11th**. That
   window is not evidence that cash is due or posts on the 9th.
@@ -39,7 +43,9 @@ BILL-HYD-005
 
 - Not a usage-based or metered amount for any month.
 - Not a confirmed cash-calendar payment/due date of 9 October.
-  Notices ~9th–11th are a notice window, not posting proof.
+  Notices ~9th–11th are a notice window, not posting proof. The
+  MyHydro billing period 5 September – 6 October 2026 is likewise a
+  period window, not a due.
 - Not +$53.08 joint cash / chequing income on 9 September. The
   $53.08 is a utility-account credit that nets the next Hydro cash
   outflow.

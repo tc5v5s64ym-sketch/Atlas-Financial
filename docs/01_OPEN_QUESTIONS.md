@@ -448,7 +448,11 @@ the monthly amount becomes $199.00**. Atlas encodes that from the next
 bill forward as `hydro-equal-payment` ($199 monthly, estimated firstDue
 2026-10-01) on BILLS ACCOUNT. The $199 amount is confirmed; the payment
 day is not. The same notice shows a **−$53.08 credit still on the Hydro
-account**. Forecast nets the next equal-payment cash hit to **$145.92**
+account**. Owner MyHydro screenshot this turn corroborates current
+balance **$53.08 Credit** and a 9 September 2026 bill amount of
+**−$53.08**. The **5 September – 6 October 2026** billing period on that
+screen is a period window only, not payment/due-date evidence. Forecast
+nets the next equal-payment cash hit to **$145.92**
 ($199 − $53.08); later months are full $199. That credit is not
 +$53.08 joint cash on 9 September. The 1 September $237.45
 `hydro-due-sep1` once due remains. This does not reopen the arrears
