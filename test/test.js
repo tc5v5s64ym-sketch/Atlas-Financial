@@ -87,6 +87,7 @@ const suites = [
   ['hypothetical extra-payment comparison (Decision Intelligence foundation)', 'test-hypothetical-extra-payment-comparison.js'],
   ['Forecast baseline trajectory (Financial Trajectory)', 'test-baseline-trajectory.js'],
   ['Forecast baseline trajectory three-stage funding decomposition', 'test-baseline-trajectory-funding-stages.js'],
+  ['Forecast stage1 income named Dale/Amanda lines', 'test-baseline-trajectory-income-lines.js'],
   ['Forecast baseline trajectory pay-period series (B105l)', 'test-baseline-trajectory-pay-period-series.js'],
   ['Forecast baseline trajectory additional-debt-payment scenario (O4)', 'test-baseline-trajectory-scenario.js'],
   ['Dale/Seaspan estimated payroll regime (independent stubs)', 'test-dale-payroll-regime.js'],
