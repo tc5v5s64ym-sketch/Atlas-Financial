@@ -32,11 +32,12 @@ function planningRequirement(row) {
   return { amount: 'Unresolved', label: 'Cost amount', kind: 'unresolved' };
 }
 
-// Owner wording for approximate timing is printed as given. Only an exact
-// Forecast date becomes a calendar date.
+// Forecast calendar date wins when present. Approximate `when` is printed as
+// given only when Forecast published no date. This helper does not invent a
+// day from month or holiday wording.
 function planningTiming(row) {
-  if (row.when) return { text: row.when, kind: 'approximate' };
   if (row.date) return { text: fmtDateFull(row.date), kind: 'dated' };
+  if (row.when) return { text: row.when, kind: 'approximate' };
   return { text: 'Timing unresolved', kind: 'unresolved' };
 }
 

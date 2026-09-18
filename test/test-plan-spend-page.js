@@ -174,6 +174,94 @@ console.log('\n=== 3. Points, ranges, approximate timing, and Forecast remaining
   }
 }
 
+console.log('\n=== 3b. Forecast date wins over approximate when; no invented dates ===');
+{
+  const timingSpan = html => {
+    const m = /<span data-plan-spend-when>([^<]*)<\/span>/.exec(html || '');
+    return m ? m[1] : null;
+  };
+  const adviceRow = extra => ({
+    id: extra.id,
+    label: extra.label,
+    date: extra.date,
+    when: extra.when,
+    need: 1,
+    remaining: 1,
+    verdict: 'ON TRACK',
+    flexibility: 'required',
+    confidence: 'estimated',
+  });
+  const datedWithWhen = page.compose({
+    majorPlans: [adviceRow({
+      id: 'dated-with-when',
+      label: 'Dated with month wording',
+      date: '2026-12-09',
+      when: 'Dec 2026',
+    })],
+    paydayAllocation: {},
+    knowledge: {},
+  }, null).list;
+  const datedRow = row(datedWithWhen, 'dated-with-when');
+  ok(/data-plan-spend-timing="dated"/.test(datedRow)
+      && timingSpan(datedRow) === longDate('2026-12-09')
+      && timingSpan(datedRow) !== 'Dec 2026',
+    'date 2026-12-09 wins over when Dec 2026 and prints the calendar date');
+  ok(!/Dec 2026/.test(datedRow), 'approximate when is not printed beside a Forecast date');
+
+  const christmas = page.compose({
+    majorPlans: [adviceRow({
+      id: 'dated-christmas',
+      label: 'Dated holiday wording',
+      date: '2026-12-25',
+      when: 'by Christmas 2026',
+    })],
+    paydayAllocation: {},
+    knowledge: {},
+  }, null).list;
+  const christmasRow = row(christmas, 'dated-christmas');
+  ok(/data-plan-spend-timing="dated"/.test(christmasRow)
+      && timingSpan(christmasRow) === longDate('2026-12-25')
+      && !/by Christmas 2026/.test(christmasRow),
+    'date 2026-12-25 wins over when by Christmas 2026');
+
+  const whenOnly = page.compose({
+    majorPlans: [adviceRow({
+      id: 'when-only',
+      label: 'Approximate only',
+      date: null,
+      when: 'Dec 2026',
+    })],
+    paydayAllocation: {},
+    knowledge: {},
+  }, null).list;
+  const whenRow = row(whenOnly, 'when-only');
+  ok(/data-plan-spend-timing="approximate"/.test(whenRow) && timingSpan(whenRow) === 'Dec 2026',
+    'when-only rows still print approximate when');
+  ok(!whenRow.includes(longDate('2026-12-09'))
+      && !whenRow.includes(longDate('2026-12-15'))
+      && !whenRow.includes(longDate('2026-12-25'))
+      && !/December/.test(whenRow),
+    'no calendar day is invented from Dec 2026');
+
+  const liveHtml = pageList(live, periods).list;
+  const liveAdvice = adviceFrom(live, periods);
+  const liveDated = liveAdvice.majorPlans.filter(p => p.date);
+  ok(liveDated.length > 0 && liveDated.every(p => {
+    const r = row(liveHtml, p.id);
+    return r && /data-plan-spend-timing="dated"/.test(r) && timingSpan(r) === longDate(p.date);
+  }), `live: ${liveDated.length} Forecast-dated rows print fmtDateFull(date)`);
+  const liveApprox = liveAdvice.majorPlans.filter(p => !p.date && p.when);
+  ok(liveApprox.length > 0 && liveApprox.every(p => {
+    const r = row(liveHtml, p.id);
+    return r && /data-plan-spend-timing="approximate"/.test(r) && timingSpan(r) === p.when;
+  }), `live: ${liveApprox.length} when-only rows print when verbatim`);
+  const advice = adviceFrom(fixture(), null);
+  for (const p of advice.majorPlans) {
+    ok(strip(factOf(row(html, p.id), 'remaining')).startsWith(money2(p.remaining)),
+      `${p.id} prints Forecast remaining ${money2(p.remaining)} unchanged`);
+  }
+}
+
 console.log('\n=== 4. Fail-closed empty / unavailable; no invented saved balance ===');
 {
   const withheld = page.compose(
