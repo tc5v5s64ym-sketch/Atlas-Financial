@@ -399,7 +399,7 @@ console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ==
 {
   const live = require('../data.json');
   const listed = [
-    'mortgage', 'fortis', 'hydro-due-sep1', 'shaw', 'bell', 'bcaa', 'icbc',
+    'mortgage', 'fortis', 'hydro-due-sep1', 'hydro-equal-payment', 'shaw', 'bell', 'bcaa', 'icbc',
     'resp', 'fit4less', 'tdfees', 'noble-garbage', 'affirm-final', 'netflix',
     'spotify', 'google-storage-100gb', 'icloud-storage', 'youtube-premium',
     'ultimate-guitar', 'chatgpt-plus-dale', 'chatgpt-plus-amanda', 'heloc',

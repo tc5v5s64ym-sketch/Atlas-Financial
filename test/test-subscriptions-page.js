@@ -347,7 +347,7 @@ console.log('\n=== 6. Live plan.bills reconcile independently ===');
   ok(viewIds.includes('netflix') && viewIds.includes('spotify') && viewIds.includes('ultimate-guitar'),
     'live default budgetCategory: subscriptions rows appear');
   ok(!viewIds.includes('fortis') && !viewIds.includes('noble-garbage') && !viewIds.includes('bell')
-    && !viewIds.includes('hydro-due-sep1'),
+    && !viewIds.includes('hydro-due-sep1') && !viewIds.includes('hydro-equal-payment'),
     'live household bills stay off Subscriptions');
   ok(CANCELLED_ABSENT.every(id => !viewIds.includes(id)
     && !((live.plan.bills || []).some(b => b && b.id === id))),

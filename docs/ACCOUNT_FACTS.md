@@ -342,8 +342,25 @@ household-obligation reporting. Owner 2026-08-30: future dated Hydro dues
 (including the 1 September $237.45 `hydro-due-sep1`) are planned from BILLS
 ACCOUNT (Chequing A) and reduce joint cash. Owner-confirmed 2026-08-16: the
 old questioned outstanding Hydro amount is **settled**. The 1 September
-$237.45 due remains. It must not be carried inside the household variable
-budget either, and a utility account balance must not be scheduled as a cash
+$237.45 due remains. Owner 2026-09-09 BC Hydro annual-adjustment notice:
+the household is on the equal monthly payments plan; the current monthly
+was $234 and **on the next bill becomes $199.00**. That $199 amount and
+monthly cadence are confirmed. The notice does not establish a payment or
+due day. Atlas reserves the series as `hydro-equal-payment` (monthly,
+estimated firstDue 2026-10-01 — start of the next-bill month after the
+1 September once due) planned from BILLS ACCOUNT. The ~9–11th window is
+when notices typically arrive, not a confirmed cash-calendar due. The
+9 September 2026 notice also shows a **−$53.08 credit still on the Hydro
+account**. Owner MyHydro screenshot this turn corroborates **current
+balance $53.08 Credit** and a 9 September 2026 bill amount of
+**−$53.08**. The screenshot's **5 September – 6 October 2026** billing
+period is a period window only — not a confirmed payment or due date
+(including 9 October). Forecast nets the **next** equal-payment cash hit to
+**$145.92** ($199 − $53.08); later months are full $199. That credit is
+a utility-account balance, not +$53.08 joint cash on 9 September. It is
+not a usage-based or metered amount. Next annual adjustment is September
+2027; that later amount is unknown until the notice. Earlier 2026 equal-payment steps ($207, then $234) are historical.
+It must not be carried inside the household variable budget either, and a utility account balance must not be scheduled as a cash
 event — only dated amounts due are cash requirements. See "What she pays
 directly" below for the historical TENNIS INCOME list.
 

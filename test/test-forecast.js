@@ -168,8 +168,10 @@ ok(near(expected.totals.noncash, wantNoncash), 'HELOC interest is tracked but no
   const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer }).ending;
   ok(near(withHeloc, without), 'removing the non-cash charge changes nothing', `${withHeloc.toFixed(2)} vs ${without.toFixed(2)}`);
 }
+// streamTotal independently nets a utility-account credit from the firstDue
+// occurrence (not household income). Later months stay at the declared amount.
 const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, { plan, onceOutflowsBind: true });
-ok(near(expected.totals.bills, wantBills), '90-day named bills', expected.totals.bills.toFixed(2));
+ok(near(expected.totals.bills, wantBills), '90-day named bills net utility-account credit once', expected.totals.bills.toFixed(2));
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
 ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);
 const wantCommit = (plan.commitments || [])

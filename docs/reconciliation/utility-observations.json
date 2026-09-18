@@ -39,7 +39,31 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "bills", "id": "hydro-due-sep1" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Dated household cash requirement due 2026-09-01. Not the $451.24 account balance."
+      "note": "Dated household cash requirement due 2026-09-01. Not the $451.24 account balance. Owner 2026-09-09 equal-payment $199 from the next bill is a separate canonical bill (hydro-equal-payment), not this once due."
+    },
+    {
+      "observationId": "owner-hydro-equal-payment-199",
+      "fact": "dated-due",
+      "utility": "bc-hydro",
+      "label": "BC Hydro equal payment from next bill",
+      "amount": 199,
+      "dueDate": "2026-10-01",
+      "observedAsOf": "2026-09-09",
+      "canonical": { "collection": "bills", "id": "hydro-equal-payment" },
+      "source": "docs/source_intake/BC_HYDRO_EQUAL_PAYMENT_2026-09-09.md",
+      "note": "Owner 2026-09-09 BC Hydro annual-adjustment notice: equal monthly payments become $199.00 on the next bill. Canonical firstDue is the estimated next-bill-month start 2026-10-01, not a confirmed payment day. The −$53.08 Hydro-account credit is encoded on the bill as first-occurrence netting, not as this dated-due amount. Owner MyHydro screenshot this turn corroborates $53.08 Credit still on the account; the 5 Sep–6 Oct 2026 billing period is a period window only, not a due. Not a usage-based amount. Not the 1 September $237.45 once due."
+    },
+    {
+      "observationId": "owner-hydro-account-credit-53-08",
+      "fact": "account-balance",
+      "role": "informational",
+      "utility": "bc-hydro",
+      "label": "BC Hydro account credit",
+      "amount": 53.08,
+      "observedAsOf": "2026-09-09",
+      "forbiddenBillIds": ["hydro-account-credit", "hydro-account-balance"],
+      "source": "docs/source_intake/BC_HYDRO_MYHYDRO_CREDIT_2026-09-18.md",
+      "note": "MyHydro current balance $53.08 Credit; 9 September 2026 bill amount −$53.08. Informational utility-account state. Must not become a scheduled cash event or 9 September chequing income. Forecast nets it from the first hydro-equal-payment cash occurrence. The 5 September–6 October 2026 billing period on the same screen is a period window only, not a payment or due date."
     },
     {
       "observationId": "payday-hydro-paying-account",

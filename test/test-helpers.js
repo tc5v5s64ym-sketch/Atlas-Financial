@@ -39,7 +39,8 @@ function currentRegimeReservedDaily(plan) {
 function cardPaidReservedTotal(plan, asOf, end, occurrences) {
   return ((plan && plan.bills) || []).reduce((s, b) => {
     if (!F.isCardPaidBill(b, plan) || b.needsDate) return s;
-    return s + occurrences(b, asOf, end).length * Number(b.amount || 0);
+    return s + occurrences(b, asOf, end)
+      .reduce((n, d) => n + independentlyBillOccurrenceAmount(b, d), 0);
   }, 0);
 }
 
@@ -47,7 +48,7 @@ function cardPaidReservedOnDate(plan, date, occurrences) {
   return ((plan && plan.bills) || []).reduce((s, b) => {
     if (!F.isCardPaidBill(b, plan) || b.needsDate) return s;
     if (!occurrences(b, date, date).length) return s;
-    return s + Number(b.amount || 0);
+    return s + independentlyBillOccurrenceAmount(b, date);
   }, 0);
 }
 
@@ -71,6 +72,28 @@ function independentlyOnceOutflowDates(item, start, end) {
   if (item.date >= start) return [item.date];
   if (item.nonCash) return [];
   return [item.date];
+}
+
+function independentlyRoundCent(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+// Reconstruct one bill occurrence's cash from Plan inputs. A
+// utility-account credit is not chequing income; it only reduces the
+// firstDue occurrence. Independent of Forecast.billOccurrenceCashAmount
+// (L-002): the arithmetic is scheduled amount minus the encoded credit
+// on that date, not a second call into expandEvents.
+function independentlyBillOccurrenceAmount(bill, date) {
+  const scheduled = Number(bill && bill.amount || 0);
+  if (!isFinite(scheduled)) return 0;
+  const raw = bill && bill.utilityAccountCredit;
+  if (raw == null) return scheduled;
+  const credit = typeof raw === 'number' ? Number(raw)
+    : (raw && typeof raw === 'object' ? Number(raw.amount) : NaN);
+  if (!isFinite(credit) || credit <= 0) return scheduled;
+  const first = bill.firstDue || null;
+  if (!first || String(date) !== String(first)) return scheduled;
+  return independentlyRoundCent(Math.max(0, scheduled - credit));
 }
 
 function outflowHitsDate(item, date, occurrences, start) {
@@ -101,7 +124,7 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
       if (elsewhere) continue;
     }
     if (!outflowHitsDate(b, date, occurrences, start)) continue;
-    n -= Number(b.amount || 0);
+    n -= independentlyBillOccurrenceAmount(b, date);
   }
   for (const c of plan.commitments || []) {
     const settledOn = typeof c.settledOn === 'string'
@@ -131,7 +154,7 @@ function streamTotal(items, asOf, end, occurrences, opts) {
     const dates = onceOutflowsBind && item.frequency === 'once'
       ? independentlyOnceOutflowDates(item, asOf, end)
       : occurrences(item, asOf, end);
-    return s + dates.length * Number(item.amount || 0);
+    return s + dates.reduce((n, d) => n + independentlyBillOccurrenceAmount(item, d), 0);
   }, 0);
 }
 
@@ -162,6 +185,7 @@ module.exports = {
   gapAtBuffer,
   cashOnDate,
   streamTotal,
+  independentlyBillOccurrenceAmount,
   fundingById,
   usableFunding,
 };

@@ -164,8 +164,11 @@ console.log('\n=== 1. incumbent hydro-due-sep1 authority is already on main ==='
       && hydro.budgetCategory == null
       && near(hydro.amount, 237.45),
     'canonical hydro-due-sep1 remains the one 1 September BILLS ACCOUNT due');
-  ok(hydroBills.length === 1 && hydroBills[0].id === HYDRO_ID,
-    'no second BC Hydro bill is invented on the plan');
+  ok(hydroBills.some(b => b.id === HYDRO_ID)
+      && hydroBills.some(b => b.id === 'hydro-equal-payment')
+      && !hydroBills.some(b => b.id === 'hydro-due-now')
+      && hydroBills.length === 2,
+    'Sep. 1 once due is preserved; authorized equal-payment series is the only other Hydro bill');
 }
 
 console.log('\n=== 2. BEFORE-DEFECT PATH: missing identity leaves $232 in Other spending ===');
@@ -284,8 +287,10 @@ console.log('\n=== 5. BILL / ACTUAL VISIBILITY and planned amount stay distinct 
     'classification does not rewrite the planned hydro-due-sep1 amount');
   const hydroBills = (data.plan.bills || []).filter(b =>
     b && (/hydro/i.test(String(b.id || '')) || /bc hydro/i.test(String(b.label || ''))));
-  ok(hydroBills.length === 1 && hydroBills[0].id === HYDRO_ID,
-    'observe + Forecast do not invent a second Hydro bill');
+  ok(hydroBills.some(b => b.id === HYDRO_ID)
+      && hydroBills.some(b => b.id === 'hydro-equal-payment')
+      && hydroBills.length === 2,
+    'observe + Forecast keep the Sep. 1 once due and do not invent hydro-due-now');
 }
 
 console.log('\n=== 6. EXACTLY ONCE: $232 is not Other spending and a second spend ===');
@@ -360,21 +365,22 @@ console.log('\n=== 8. amount / account / payee are not guessed ===');
     'a same-day Chequing A BC Hydro debit still matches; observed amount is kept');
 
   const later = observeWith(identity, [{
-    id: 9501, account_id: 1001, date: '2026-10-01', amount: HYDRO_TX,
+    id: 9501, account_id: 1001, date: '2026-09-15', amount: HYDRO_TX,
     is_pending: false, payee: 'BC Hydro', original_name: 'BC Hydro',
   }]);
-  ok(!(later.representedEventCandidates || []).some(c => c.id === HYDRO_ID),
-    'a later Chequing A BC Hydro debit does not reuse the once September occurrence');
+  ok(!(later.representedEventCandidates || []).some(c => c.id === HYDRO_ID
+        || c.id === 'hydro-equal-payment'),
+    'a mid-September Chequing A BC Hydro debit does not reuse the once due or settle the next-bill series');
   const laterPacket = later.currentPeriodActuals;
   const laterTx = ((laterPacket && laterPacket.transactions) || [])
     .find(tx => Number(tx.amount) === HYDRO_TX);
   ok(laterTx && laterTx.representedBill !== true,
-    'the October debit is not flagged representedBill');
+    'the mid-September debit is not flagged representedBill');
   const laterCls = F.classifyCurrentPeriodTransaction(laterTx, liveData().plan, {
     currentPeriodActuals: laterPacket,
   });
   ok(laterCls.kind !== 'bill' || laterCls.reason !== 'represented-bill',
-    'the October debit is not classified as the September bill');
+    'the mid-September debit is not classified as the September bill');
 }
 
 console.log('\n=== 9. pages render; no Plan merchant special case ===');

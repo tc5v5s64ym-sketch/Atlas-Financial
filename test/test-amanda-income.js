@@ -808,8 +808,10 @@ console.log('\n=== live Fusion / Hydro / HELOC / card surfaces ===');
   ok(instalments.length === 0,
     'the three stale $500 Fusion season instalments are gone');
   const liveHydro = (live.plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
-  ok(liveHydro.length === 1 && liveHydro[0].id === 'hydro-due-sep1',
-    'live plan.bills has the 1 September Hydro dated due');
+  ok(liveHydro.some(b => b.id === 'hydro-due-sep1')
+      && liveHydro.some(b => b.id === 'hydro-equal-payment')
+      && liveHydro.length === 2,
+    'live plan.bills has the 1 September Hydro dated due and the $199 equal-payment series');
   ok(!liveHydro.some(b => b.id === 'hydro-due-now'),
     'the 14 August Hydro due is still absent');
   const heloc = live.plan.obligations.find(o => o.id === 'heloc');
