@@ -915,6 +915,51 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && !/Seaspan/.test(linedIncome) && !/Tennis/.test(linedIncome)
     && !/50\s*\/\s*50/.test(linedIncome),
     'reprinting published income lines does not invent Dale/Amanda, Seaspan/Tennis, or a 50/50 split');
+
+  lined.stage2.commitments = {
+    amount: 400,
+    status: 'estimated',
+    lines: [
+      {
+        id: 'pub-commit-a',
+        label: 'Published commitment A',
+        date: '2026-12-09',
+        amount: 250,
+        status: 'estimated',
+      },
+      {
+        id: 'pub-commit-b',
+        label: 'Published commitment B',
+        date: '2026-12-25',
+        amount: 150,
+        status: 'estimated',
+      },
+    ],
+  };
+  const linedCommit = page.composeRoadTraj(withLines, 'month', lined.month, live.meta.asOf);
+  const linedPlanned = wfBlock(linedCommit.stages, 'planned-spending');
+  ok(/Published commitment A/.test(linedPlanned)
+    && /Published commitment B/.test(linedPlanned)
+    && /9 December 2026/.test(linedPlanned)
+    && /25 December 2026/.test(linedPlanned)
+    && !/<details/.test(linedPlanned),
+    'waterfall Planned spending reprints mock Stage2 commitment labels and dates inline');
+  ok(/Published commitment A/.test(linedCommit.breakdown)
+    && /Published commitment B/.test(linedCommit.breakdown)
+    && /Dated commitments/.test(linedCommit.breakdown)
+    && linedCommit.breakdown.includes(money2(400)),
+    'breakdown sheet reprints mock Stage2 commitment labels beside the Dated commitments total');
+
+  const noLines = JSON.parse(JSON.stringify(traj));
+  noLines.months[0].stage2.commitments = {
+    amount: 400,
+    status: 'estimated',
+  };
+  const totalOnly = page.composeRoadTraj(noLines, 'month', noLines.months[0].month, live.meta.asOf);
+  ok(!/Published commitment A/.test(wfBlock(totalOnly.stages, 'planned-spending'))
+    && !/Published commitment A/.test(totalOnly.breakdown)
+    && /Dated commitments/.test(totalOnly.breakdown),
+    'absent Stage2 commitment lines keep Planned spending / Dated commitments total-only');
 }
 
 console.log('\n=== 12. Uniform headers, expanders with published lines, Dale/Amanda reprint ===');
