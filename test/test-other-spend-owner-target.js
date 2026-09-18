@@ -216,8 +216,11 @@ console.log('\n=== 5. Forecast Other spending confirmation row is not the planni
   const calendarIds = src.slice(
     src.indexOf('const CALENDAR_PERIOD_BUDGET_IDS = ['),
     src.indexOf('function householdBudgetSupportingSpendEligible('));
-  ok(!/other-spend/.test(calendarIds),
-    'CALENDAR_PERIOD_BUDGET_IDS does not invent a payday hold for other-spend');
+  ok(/'other-spend'/.test(calendarIds),
+    'CALENDAR_PERIOD_BUDGET_IDS publishes other-spend on the calendar waterfall');
+  ok(/const OTHER_SPENDING_ID = 'other-spending'/.test(src)
+      && calendarIds.indexOf('other-spending') < 0,
+    'confirmation other-spending is not a calendar planned id');
 }
 
 console.log('\n=== 6. budgetBreakdown owner-target monthly is independently 800 ===');

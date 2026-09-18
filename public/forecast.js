@@ -3534,17 +3534,23 @@
 
   // Owner-target household lines Dale asked the default view to print.
   // Print only categories that already exist as Atlas plan.budget owner
-  // targets. Dale/Amanda guilt-free rows exist only as the two owner-target
-  // ids on the calendar waterfall; do not invent further personal rows.
+  // targets. Dale/Amanda guilt-free and Other spend exist only as
+  // owner-target ids on the calendar waterfall (Budget → Household
+  // budget Q06). This kitchen-counter glance is the More-views
+  // ten-block, not that Budget print; do not invent further personal
+  // rows here.
   const DEFAULT_VIEW_BUDGET_IDS = ['groceries', 'fuel', 'pets', 'restaurants'];
   // Variable owner-target lines the calendar waterfall holds. Medical,
   // children/sports, combined Personal/shopping, and subscriptions are not
   // holds: subscriptions are itemized bills; Lunch Money Dale / Amanda
   // categories map directly to the two guilt-free ids; Shopping/Personal
   // actuals still map there only with account/payee/note/tag evidence.
+  // Other spend is the $800/month owner target (`plannedMonthly`); the
+  // cycle Planned/hold is incumbent paydayCyclePlanned, not a second
+  // planner and not OTHER_SPENDING_ID confirmation actuals.
   const CALENDAR_PERIOD_BUDGET_IDS = [
     'groceries', 'fuel', 'household', 'pets', 'restaurants',
-    'dale-guilt-free', 'amanda-guilt-free',
+    'dale-guilt-free', 'amanda-guilt-free', 'other-spend',
   ];
 
   // Incumbent Household Budget supporting-row predicate. calendarHouseholdBudget
@@ -3569,6 +3575,7 @@
     household: 'Household',
     'dale-guilt-free': 'Dale guilt-free spending',
     'amanda-guilt-free': 'Amanda guilt-free spending',
+    'other-spend': 'Other spend',
   };
   const DALE_GUILT_FREE_ID = 'dale-guilt-free';
   const AMANDA_GUILT_FREE_ID = 'amanda-guilt-free';
