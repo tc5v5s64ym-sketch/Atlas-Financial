@@ -107,6 +107,7 @@ const suites = [
   ['Household planned target removed', 'test-household-target-removed.js'],
   ['Household Budget Other spending residual', 'test-household-budget-other-spending.js'],
   ['Household Budget Spent transaction drill-down', 'test-household-budget-spent-drilldown.js'],
+  ['Household Budget overlay Spent drill-down when recon withheld', 'test-household-budget-overlay-spent-drilldown.js'],
   ['Household Budget Spent possible-replacement drill-down', 'test-household-budget-spent-possible-replacement-drilldown.js'],
   ['current-period Household Budget classification', 'test-current-period-household-budget-classification.js'],
   ['Lunch Money Dale/Amanda guilt-free category assignment', 'test-lunchmoney-dale-amanda-guilt-free.js'],

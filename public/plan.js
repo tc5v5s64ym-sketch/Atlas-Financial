@@ -1918,7 +1918,8 @@ function householdBudgetMetric(label, amount, opts) {
   const cls = remaining
     ? 'household-budget-metric household-budget-remaining'
     : 'household-budget-metric';
-  const value = money2(amount);
+  const knownAmount = amount != null && isFinite(Number(amount));
+  const value = knownAmount ? money2(amount) : '—';
   const recon = opts && Array.isArray(opts.recon) ? opts.recon : null;
   if (label === 'Spent' && recon && recon.length) {
     const esc = v => String(v == null ? '' : v)
@@ -1964,6 +1965,9 @@ function householdBudgetMetric(label, amount, opts) {
       </li>`;
     }).join('');
     const spentId = opts && opts.id ? esc(opts.id) : '';
+    const totalLine = knownAmount
+      ? `<p class="household-budget-tx-total"><span>Total</span><span data-budget-spent-total="${spentId}">${value}</span></p>`
+      : '';
     return `<div class="${cls} household-budget-spent-openable">
       <dt>Spent</dt>
       <dd>
@@ -1974,7 +1978,7 @@ function householdBudgetMetric(label, amount, opts) {
           </summary>
           <div class="household-budget-breakdown" data-budget-spent-detail>
             <ul class="household-budget-txs">${lines}</ul>
-            <p class="household-budget-tx-total"><span>Total</span><span data-budget-spent-total="${spentId}">${value}</span></p>
+            ${totalLine}
           </div>
         </details>
       </dd>
@@ -2001,10 +2005,11 @@ function householdBudgetCategoryHtml(row) {
     : (row.plannedWeekly != null ? `${money2(row.plannedWeekly)}/week` : '');
   const contextHtml = context
     ? `<p class="household-budget-context">${context}</p>` : '';
+  const recon = Array.isArray(row.recon) ? row.recon : [];
   const metrics = [];
   if (!other && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned));
-  if (row.spent != null) {
-    metrics.push(householdBudgetMetric('Spent', row.spent, { recon: row.recon, id: row.id }));
+  if (row.spent != null || recon.length) {
+    metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id }));
   }
   if (!other && row.remaining != null) {
     metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true }));
@@ -2020,7 +2025,7 @@ function householdBudgetCategoryHtml(row) {
   </div>`;
 }
 
-function calendarBudgetHtml(period) {
+function calendarBudgetHtml(period, liveOverlay, plan) {
   if (period && period.operatingPlanUnavailable) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${calendarCurrentUnavailableHtml(period)}
@@ -2048,7 +2053,65 @@ function calendarBudgetHtml(period) {
       ${total}
     </div>`;
   }
-  const blocks = rows.map(householdBudgetCategoryHtml).join('');
+  // Presentation only: when Forecast withheld row.recon (remaining claim
+  // unavailable) but overlay current-period txs exist, list those txs in
+  // the existing Spent details path. Do not recompute spent or remaining.
+  const overlayPacket = liveOverlay && liveOverlay.currentPeriodActuals;
+  const overlayTxs = overlayPacket && Array.isArray(overlayPacket.transactions)
+    ? overlayPacket.transactions : [];
+  const classify = (typeof Forecast !== 'undefined' && Forecast
+    && typeof Forecast.classifyCurrentPeriodTransaction === 'function')
+    ? Forecast.classifyCurrentPeriodTransaction : null;
+  const eligible = classify && classify.householdBudgetSupportingSpendEligible;
+  const overlayReconForRow = row => {
+    if (!row || (Array.isArray(row.recon) && row.recon.length)) {
+      return Array.isArray(row.recon) ? row.recon : [];
+    }
+    if (!period || period.role !== 'active' || !overlayTxs.length) return [];
+    const windowStart = (period.spendingCycle && period.spendingCycle.start)
+      || period.start || null;
+    const through = period.end
+      || (period.spendingCycle && period.spendingCycle.end)
+      || null;
+    const matched = [];
+    for (let i = 0; i < overlayTxs.length; i++) {
+      const tx = overlayTxs[i];
+      if (!tx) continue;
+      if (windowStart && tx.date && tx.date < windowStart) continue;
+      if (through && tx.date && tx.date > through) continue;
+      const amt = Number(tx.amount);
+      if (!isFinite(amt) || amt === 0) continue;
+      if (classify) {
+        const cls = classify(tx, plan, {
+          packet: overlayPacket,
+          currentPeriodActuals: overlayPacket,
+        });
+        if (typeof eligible === 'function' && !eligible(cls)) continue;
+        if (row.otherSpending === true || row.needsConfirmation === true) {
+          if (!(cls && (cls.needsConfirmation || cls.kind === 'unclassified'))) continue;
+        } else {
+          const catId = cls && (cls.atlasRow || cls.categoryId);
+          if (catId !== row.id) continue;
+        }
+      } else {
+        const label = String(tx.categoryLabel || '').trim().toLowerCase();
+        if (!label) continue;
+        const rowLabel = String(row.label || '').trim().toLowerCase();
+        const rowId = String(row.id || '').trim().toLowerCase();
+        if (label !== rowLabel && label !== rowId) continue;
+      }
+      matched.push(tx);
+    }
+    return matched;
+  };
+  const blocks = rows.map(row => {
+    const recon = overlayReconForRow(row);
+    if (recon === row.recon || (Array.isArray(row.recon) && row.recon.length)) {
+      return householdBudgetCategoryHtml(row);
+    }
+    if (!recon.length) return householdBudgetCategoryHtml(row);
+    return householdBudgetCategoryHtml(Object.assign({}, row, { recon }));
+  }).join('');
   return `<div class="payday-household-budget" data-payday-household-budget>
     ${cycle}
     <div class="household-budget-list">${blocks}</div>
@@ -2113,7 +2176,7 @@ function extraRepaymentHtml(period) {
 // computes the extra-debt / big-purchase chain and the projected ending on
 // each period (the next period opens from it); those rows are not part of the
 // household Plan surface.
-function calendarWaterfallHtml(period, liveOverlay, alloc) {
+function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
   const showSnapshotOpening = period.openingKnown === true || period.role !== 'active';
@@ -2158,7 +2221,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
-    ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period))}
+    ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan))}
     ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget), 'balance')}
   </section>`;
 }
@@ -2271,7 +2334,7 @@ function calendarPickerHtml(view, show, extraControls) {
   </div>`;
 }
 
-function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls) {
+function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, plan) {
   const periods = (view && view.calendarPeriods) || [];
   if (!periods.length) return '';
   const activeId = (view && view.activeCalendarPeriodId) || (periods[0] && periods[0].id);
@@ -2290,7 +2353,7 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls) {
   return `<div class="calendar-waterfalls" data-calendar-waterfalls>
     ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${calendarPickerHtml(view, pick, extraControls)}
-    ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc)).join('')}
+    ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
     ${undatedBlock}
   </div>`;
 }
@@ -2692,7 +2755,8 @@ function operatingSurfaceHtml(ctx) {
       ctx.planCalendarShow,
       ctx.liveOverlay,
       alloc,
-      picker
+      picker,
+      ctx.plan
     )
     : '';
   const historical = pastLook && view && view.start
