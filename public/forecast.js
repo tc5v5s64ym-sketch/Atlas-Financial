@@ -3534,23 +3534,25 @@
 
   // Owner-target household lines Dale asked the default view to print.
   // Print only categories that already exist as Atlas plan.budget owner
-  // targets. Dale/Amanda guilt-free and Other spend exist only as
-  // owner-target ids on the calendar waterfall (Budget → Household
-  // budget Q06). This kitchen-counter glance is the More-views
-  // ten-block, not that Budget print; do not invent further personal
-  // rows here.
+  // targets. Dale/Amanda guilt-free exist as owner-target ids on the
+  // calendar waterfall (Budget → Household budget Q06). Other spend
+  // ($800/month plannedMonthly) is a Forecast / Road Ahead planning
+  // assumption, not a calendar hold. This kitchen-counter glance is
+  // the More-views ten-block, not that Budget print; do not invent
+  // further personal rows here.
   const DEFAULT_VIEW_BUDGET_IDS = ['groceries', 'fuel', 'pets', 'restaurants'];
   // Variable owner-target lines the calendar waterfall holds. Medical,
   // children/sports, combined Personal/shopping, and subscriptions are not
   // holds: subscriptions are itemized bills; Lunch Money Dale / Amanda
   // categories map directly to the two guilt-free ids; Shopping/Personal
   // actuals still map there only with account/payee/note/tag evidence.
-  // Other spend is the $800/month owner target (`plannedMonthly`); the
-  // cycle Planned/hold is incumbent paydayCyclePlanned, not a second
-  // planner and not OTHER_SPENDING_ID confirmation actuals.
+  // Other spend (`other-spend`, plannedMonthly 800) is not a calendar
+  // hold: owner policy 2026-09-18 keeps that $800/month on Forecast /
+  // Road Ahead / trajectory via budgetBreakdown, while Budget calendar
+  // prints only Other spending confirmation actuals (OTHER_SPENDING_ID).
   const CALENDAR_PERIOD_BUDGET_IDS = [
     'groceries', 'fuel', 'household', 'pets', 'restaurants',
-    'dale-guilt-free', 'amanda-guilt-free', 'other-spend',
+    'dale-guilt-free', 'amanda-guilt-free',
   ];
 
   // Incumbent Household Budget supporting-row predicate. calendarHouseholdBudget

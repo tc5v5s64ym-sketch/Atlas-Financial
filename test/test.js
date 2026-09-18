@@ -49,7 +49,7 @@ const suites = [
   ['household budget reconciliation', 'test-budget.js'],
   ['workbook evidence cannot overwrite owner policy', 'test-workbook-authority.js'],
   ['Other spend $800/month owner target', 'test-other-spend-owner-target.js'],
-  ['Other spend Household Budget calendar Planned row', 'test-other-spend-calendar-hold.js'],
+  ['Other spend is not a Household Budget calendar hold', 'test-other-spend-calendar-hold.js'],
   ['spending classification reconciliation', 'test-classification.js'],
   ['Lunch Money historical actuals authority (AF-OPERATE-01)', 'test-periods-lunchmoney.js'],
   ['read-only recurring card-charge audit', 'test-recurring-audit.js'],
