@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>Household finances — bills</title>
+<title>Household finances — plan spend</title>
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/nav-glass.css">
 </head>
@@ -22,28 +22,27 @@
     <nav class="sitenav sitenav-household" aria-label="Pages">
       <a href="/" data-nav="budget"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Budget</span></a>
       <a href="/planning.html" data-nav="forecast"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Forecast</span></a>
-      <a href="/bills.html" data-nav="bills" aria-current="page"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Bills</span></a>
+      <a href="/bills.html" data-nav="bills"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Bills</span></a>
       <a href="/subscriptions.html" data-nav="subscriptions"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Subscriptions</span></a>
       <a href="/credit.html" data-nav="credit"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Credit</span></a>
-      <a href="/plan-spend.html" data-nav="plan-spend"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Plan spend</span></a>
+      <a href="/plan-spend.html" data-nav="plan-spend" aria-current="page"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Plan spend</span></a>
     </nav>
   </div>
 </header>
 
 <div class="wrap wrap-reading">
 
-  <section id="bills" data-page-shell="bills">
-    <div class="kicker">Bills</div>
-    <h1>Bills</h1>
-    <p class="sub">Recurring household bills Atlas already knows: utilities, insurance, phones, internet, and similar obligations. Amounts, cadence and next dates are Forecast. Subscriptions are not on this page.</p>
-    <p class="lede" id="bills-lede"></p>
+  <section id="plan-spend" data-page-shell="plan-spend">
+    <div class="kicker">Plan spend</div>
+    <h1>Plan spend</h1>
+    <p class="sub">Planned spending and commitments Forecast has already published. Amounts, dates and verdicts are copied from Forecast. The funding story stays on <a href="/planning.html">Forecast</a>.</p>
+    <p class="lede" id="plan-spend-lede"></p>
 
-    <div id="bills-list" class="fact-card-list" aria-label="Household bills">
+    <div id="plan-spend-list" class="planning-list" aria-label="Planned spending">
       <p class="lede">Loading the served opening…</p>
     </div>
 
-    <div id="bills-total" class="bills-total" aria-label="Total monthly equivalent"></div>
-    <p class="lede footnote" id="bills-note"></p>
+    <p class="lede footnote" id="plan-spend-note"></p>
   </section>
 
   <footer>
@@ -54,6 +53,6 @@
 <div class="tip" id="tip"></div>
 <script src="/app.js"></script>
 <script src="/forecast.js"></script>
-<script src="/bills.js"></script>
+<script src="/plan-spend.js"></script>
 </body>
 </html>

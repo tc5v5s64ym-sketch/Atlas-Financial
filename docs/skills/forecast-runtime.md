@@ -4,7 +4,7 @@
 (`actions`, `nextDollar`, `decisionPosture`, `budget`, obligations, bills, commitments,
 opening), or a page script that currently renders a household-facing
 figure (`public/plan.js`, `bills.js`, `subscriptions.js`, `credit.js`,
-`planning.js`, `modellers.js`, `deepdive.js`, `records.js`, `app.js`).
+`planning.js`, `plan-spend.js`, `modellers.js`, `deepdive.js`, `records.js`, `app.js`).
 
 **Do not load for** copy edits that cannot move a figure, or for
 evidence intake that does not touch the engine.

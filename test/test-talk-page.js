@@ -1,7 +1,7 @@
 'use strict';
 /* Talk to Atlas — household conversation shell.
  *
- * Proves the authenticated UI surface exists, sits first-class on the
+ * Proves the authenticated UI surface exists, remains routable off the
  * household dock, publishes no figure, and does not hold a model secret.
  * Send stays disabled in markup until capability says otherwise.
  * `node test/test-talk-page.js`
@@ -132,15 +132,15 @@ console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistan
     'talk.js allowlists only Budget, Bills, Credit and Planning action routes');
 }
 
-console.log('\n=== 3. Talk is first-class on every household dock ===');
+console.log('\n=== 3. Talk is off every household dock ===');
 {
   const expected = JSON.stringify([
     ['/', 'Budget'],
+    ['/planning.html', 'Forecast'],
     ['/bills.html', 'Bills'],
     ['/subscriptions.html', 'Subscriptions'],
     ['/credit.html', 'Credit'],
-    ['/planning.html', 'Planning'],
-    ['/talk.html', 'Talk'],
+    ['/plan-spend.html', 'Plan spend'],
   ]);
   for (const file of [
     'public/index.html',
@@ -148,11 +148,14 @@ console.log('\n=== 3. Talk is first-class on every household dock ===');
     'public/subscriptions.html',
     'public/credit.html',
     'public/planning.html',
+    'public/plan-spend.html',
     'public/talk.html',
   ]) {
     const nav = siteNav(read(file));
     ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === expected,
-      `${file} dock reads Budget | Bills | Subscriptions | Credit | Planning | Talk`);
+      `${file} dock reads Budget | Forecast | Bills | Subscriptions | Credit | Plan spend`);
+    ok(nav && !nav.some(l => l.label === 'Talk' || l.href === '/talk.html'),
+      `${file} has no Talk tab`);
   }
 }
 
@@ -229,8 +232,8 @@ function startAtlas(env) {
     const body = await page.text();
     const nav = siteNav(body);
     ok(page.status === 200 && /<h1>Talk to Atlas<\/h1>/.test(body)
-        && nav && nav.find(l => l.current).label === 'Talk',
-      '/talk.html serves 200 with Talk current');
+        && nav && !nav.some(l => l.label === 'Talk' || l.href === '/talk.html'),
+      '/talk.html serves 200 with Talk identity and no Talk dock tab');
     ok(/no-store/.test(page.headers.get('cache-control') || '')
         && /script-src 'self'/.test(page.headers.get('content-security-policy') || ''),
       '/talk.html carries the incumbent no-store and CSP headers');

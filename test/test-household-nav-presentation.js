@@ -1,7 +1,8 @@
 'use strict';
-/* Household mobile navigation presentation: Budget | Bills | Subscriptions |
- * Credit | Planning | Talk, shared dock treatment, iPhone safe-area clearance,
- * and no new UI dependency. Presentation only — Forecast authority is untouched.
+/* Household mobile navigation presentation: Budget | Forecast | Bills |
+ * Subscriptions | Credit | Plan spend, shared dock treatment, iPhone
+ * safe-area clearance, and no new UI dependency. Presentation only —
+ * Forecast authority is untouched. Talk remains routable off the dock.
  *
  * `node test/test-household-nav-presentation.js`
  */
@@ -20,19 +21,19 @@ const ok = (cond, label, detail = '') => {
 
 const HOUSEHOLD_PAGES = [
   ['public/index.html', 'Budget', '/'],
+  ['public/planning.html', 'Forecast', '/planning.html'],
   ['public/bills.html', 'Bills', '/bills.html'],
   ['public/subscriptions.html', 'Subscriptions', '/subscriptions.html'],
   ['public/credit.html', 'Credit', '/credit.html'],
-  ['public/planning.html', 'Planning', '/planning.html'],
-  ['public/talk.html', 'Talk', '/talk.html'],
+  ['public/plan-spend.html', 'Plan spend', '/plan-spend.html'],
 ];
 const HOUSEHOLD_NAV = [
   ['/', 'Budget', 'budget'],
+  ['/planning.html', 'Forecast', 'forecast'],
   ['/bills.html', 'Bills', 'bills'],
   ['/subscriptions.html', 'Subscriptions', 'subscriptions'],
   ['/credit.html', 'Credit', 'credit'],
-  ['/planning.html', 'Planning', 'planning'],
-  ['/talk.html', 'Talk', 'talk'],
+  ['/plan-spend.html', 'Plan spend', 'plan-spend'],
 ];
 
 function siteNav(html) {
@@ -78,13 +79,15 @@ console.log('=== 1–8. Shared household destinations, routes, order, and curren
     ok(nav && nav.length === 6, `${file} has exactly six household destinations`,
       nav ? nav.map(l => l.label).join(' | ') : 'no nav');
     ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === expected,
-      `${file} reads Budget | Bills | Subscriptions | Credit | Planning | Talk`);
+      `${file} reads Budget | Forecast | Bills | Subscriptions | Credit | Plan spend`);
     ok(nav && nav[0].href === '/' && nav[0].label === 'Budget',
       `${file} Budget still routes to /`);
-    ok(nav && nav[1].href === '/bills.html' && nav[2].href === '/subscriptions.html'
-        && nav[3].href === '/credit.html' && nav[4].href === '/planning.html'
-        && nav[5].href === '/talk.html',
-      `${file} keeps the incumbent Bills / Subscriptions / Credit / Planning / Talk routes`);
+    ok(nav && nav[1].href === '/planning.html' && nav[1].label === 'Forecast'
+        && nav[2].href === '/bills.html' && nav[3].href === '/subscriptions.html'
+        && nav[4].href === '/credit.html' && nav[5].href === '/plan-spend.html',
+      `${file} keeps Forecast beside Budget, then Bills / Subscriptions / Credit / Plan spend`);
+    ok(nav && !nav.some(l => l.label === 'Talk' || l.href === '/talk.html' || l.dataNav === 'talk'),
+      `${file} has no Talk tab`);
     const current = nav ? nav.filter(l => l.current) : [];
     ok(current.length === 1 && current[0].label === label,
       `${file} marks exactly one destination current: ${label}`);
@@ -92,6 +95,17 @@ console.log('=== 1–8. Shared household destinations, routes, order, and curren
       `${file} uses the shared icon + data-nav vocabulary, not label-only links`);
     ok(/class="sitenav sitenav-household"/.test(read(file)),
       `${file} marks the household dock so diagnostic sitenav is not restyled`);
+  }
+  {
+    const talk = read('public/talk.html');
+    const nav = siteNav(talk);
+    ok(/class="sitenav sitenav-household"/.test(talk),
+      'talk.html still uses the household dock so a direct URL can leave Talk');
+    ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === expected
+        && !nav.some(l => l.label === 'Talk' || l.href === '/talk.html'),
+      'talk.html dock matches the household destinations and has no Talk tab');
+    ok(nav && nav.filter(l => l.current).length === 0,
+      'talk.html marks no dock destination current because Talk is off the nav');
   }
 }
 
@@ -159,7 +173,7 @@ console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ==='
 {
   ok(/^@import url\('\/nav-glass\.css'\);/.test(householdView),
     'Budget loads the shared glass dock through its existing household-view stylesheet');
-  for (const file of ['public/bills.html', 'public/subscriptions.html', 'public/credit.html', 'public/planning.html', 'public/talk.html']) {
+  for (const file of ['public/bills.html', 'public/subscriptions.html', 'public/credit.html', 'public/planning.html', 'public/plan-spend.html', 'public/talk.html']) {
     ok(/<link rel="stylesheet" href="\/nav-glass\.css">/.test(read(file)),
       `${file} loads the shared glass dock stylesheet`);
   }
@@ -208,13 +222,14 @@ console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ==='
     'aria-current alone places the lens on six deterministic slots that line up with the grid columns');
   const label = /font-size:clamp\(([\d.]+)rem,([\d.]+)vw,([\d.]+)rem\)/.exec(glassMobile);
   const labelAt390 = label ? Math.min(Math.max(Number(label[1]) * 16, Number(label[2]) * 3.9), Number(label[3]) * 16) : NaN;
-  ok(factors.length === 6 && factors[2] > 1 && factors[2] === Math.max(...factors)
-      && factors.filter(f => f === factors[2]).length === 1
-      && factors[0] === factors[1] && factors[1] === factors[3]
-      && factors[3] === factors[4] && factors[4] === factors[5]
+  ok(factors.length === 6 && factors[3] > 1 && factors[3] === Math.max(...factors)
+      && factors.filter(f => f === factors[3]).length === 1
+      && factors[0] === factors[1] && factors[1] === factors[2]
+      && factors[2] === factors[4] && factors[4] === factors[5]
+      && HOUSEHOLD_NAV[3][2] === 'subscriptions'
       && /white-space:nowrap/.test(glassMobile) && !/overflow-wrap:anywhere/.test(glassMobile)
       && label && Number(label[1]) * 16 >= 8 && labelAt390 >= 9.5 && Number(label[3]) * 16 <= 11,
-    'Subscriptions owns the unique widest slot; the other five short labels share equal width, stay on one line, and labels read ≥9.5px at the 390px target',
+    'Subscriptions owns the unique widest slot; the other five shorter labels share equal width, stay on one line, and labels read ≥9.5px at the 390px target',
     `label ${label ? labelAt390.toFixed(2) : '?'}px at 390px`);
   ok(lensInset > 0 && lensHeight > 0 && lensHeight < dockHeight - 2 * edge
       && /top:calc\(\(var\(--nav-dock-height\) - var\(--nav-lens-height\)\) \/ 2\)/.test(lens)
@@ -267,7 +282,10 @@ console.log('\n=== 14–17. No new dependency; Forecast and Credit content stay 
       && /--nav-icon-subscriptions:url\("data:image\/svg\+xml/.test(css)
       && /--nav-icon-credit:url\("data:image\/svg\+xml/.test(css)
       && /--nav-icon-planning:url\("data:image\/svg\+xml/.test(css)
-      && /--nav-icon-talk:url\("data:image\/svg\+xml/.test(css),
+      && /--nav-icon-plan-spend:url\("data:image\/svg\+xml/.test(css)
+      && /data-nav="forecast"/.test(css)
+      && /data-nav="plan-spend"/.test(css)
+      && !/data-nav="talk"/.test(css),
     'the six icons remain inline SVG data URIs with no external icon dependency');
   ok(!/cdn\.|unpkg\.|jsdelivr|fontawesome|fonts\.google/.test(css + glass)
       && HOUSEHOLD_PAGES.every(([file]) => !/cdn\.|unpkg\.|jsdelivr/.test(read(file))),

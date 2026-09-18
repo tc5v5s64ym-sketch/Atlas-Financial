@@ -77,7 +77,10 @@ console.log('\n=== approved hierarchy and app navigation are present ===');
     && /--nav-icon-subscriptions/.test(shared)
     && /--nav-icon-credit/.test(shared)
     && /--nav-icon-planning/.test(shared)
-    && /--nav-icon-talk/.test(shared),
+    && /--nav-icon-plan-spend/.test(shared)
+    && /data-nav="forecast"/.test(shared)
+    && /data-nav="plan-spend"/.test(shared)
+    && !/--nav-icon-talk/.test(shared),
     'all six household tab icons remain defined');
   ok(/\.sitenav-household \.sitenav-icon[\s\S]*display:block/.test(shared),
     'phone tab selector renders icons');

@@ -382,7 +382,7 @@ Dale authorized Talk Slice 1 on 2026-09-14 via Atlas Coordinator: an authenticat
 
 **B99 · Modellers / Deep Dive / Records still carry the legacy four-link nav** · **READY** · *presentation only; found 2026-09-03*
 
-The household nav is Budget | Bills | Subscriptions | Credit | Planning | Talk. `modellers.html`, `deepdive.html`
+The household nav is Budget | Forecast | Bills | Subscriptions | Credit | Plan spend. Talk remains routable off that dock. `modellers.html`, `deepdive.html`
 and `records.html` remain routable but their own header still links Plan |
 Modellers | Deep Dive | Records. The household floating dock is scoped to
 `sitenav-household` so those diagnostic pages keep the four-link text nav;

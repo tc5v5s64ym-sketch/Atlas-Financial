@@ -94,6 +94,7 @@ const suites = [
   ['Dale/Seaspan estimated payroll regime (independent stubs)', 'test-dale-payroll-regime.js'],
   ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
   ['Planning page — Forecast.majorPlans rendered', 'test-planning-page.js'],
+  ['Plan spend page — Forecast.majorPlans reprinted', 'test-plan-spend-page.js'],
   ['Planning Road Ahead phone-native presentation', 'test-planning-road-mobile-presentation.js'],
   ['Bills page — Forecast.householdBills rendered', 'test-bills-page.js'],
   ['Subscriptions page — Forecast.householdSubscriptions rendered', 'test-subscriptions-page.js'],

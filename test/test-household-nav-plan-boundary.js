@@ -1,9 +1,9 @@
 'use strict';
-/* Household information architecture: nav Budget | Bills | Subscriptions | Credit | Planning | Talk,
- * routable Bills / Subscriptions / Credit / Planning pages on the incumbent
+/* Household information architecture: nav Budget | Forecast | Bills | Subscriptions | Credit | Plan spend,
+ * routable Bills / Subscriptions / Credit / Forecast / Plan spend pages on the incumbent
  * header (content proved in test-bills-page.js, test-subscriptions-page.js,
- * test-credit-page.js and test-planning-page.js), and a Plan waterfall that
- * ends at Balance after household budget.
+ * test-credit-page.js, test-planning-page.js and test-plan-spend-page.js), and a Plan waterfall that
+ * ends at Balance after household budget. Talk remains routable off the dock.
  *
  * Presentation only. Forecast still computes the extra-debt / big-purchase
  * chain and the projected ending; this suite proves those fields survive and
@@ -38,11 +38,11 @@ const exists = file => fs.existsSync(path.join(ROOT, file));
 
 const HOUSEHOLD_NAV = [
   ['/', 'Budget'],
+  ['/planning.html', 'Forecast'],
   ['/bills.html', 'Bills'],
   ['/subscriptions.html', 'Subscriptions'],
   ['/credit.html', 'Credit'],
-  ['/planning.html', 'Planning'],
-  ['/talk.html', 'Talk'],
+  ['/plan-spend.html', 'Plan spend'],
 ];
 const RETIRED_FROM_NAV = ['Modellers', 'Deep Dive', 'Records'];
 const REMOVED_ROWS = [
@@ -173,19 +173,23 @@ function currentAdvice() {
   });
 }
 
-console.log('=== 1. Plan household nav is Budget | Bills | Subscriptions | Credit | Planning | Talk ===');
+console.log('=== 1. Plan household nav is Budget | Forecast | Bills | Subscriptions | Credit | Plan spend ===');
 {
   const nav = siteNav(read('public/index.html'));
   ok(nav && nav.length === 6, 'the Plan page has exactly six household nav links',
     nav ? nav.map(l => l.label).join(' | ') : 'no nav');
   ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
-    'links are Budget (/), Bills (/bills.html), Subscriptions (/subscriptions.html), Credit (/credit.html), Planning (/planning.html), Talk (/talk.html) in that order');
+    'links are Budget (/), Forecast (/planning.html), Bills, Subscriptions, Credit, Plan spend in that order');
+  ok(nav && nav[0].label === 'Budget' && nav[1].label === 'Forecast',
+    'Forecast sits immediately beside Budget');
+  ok(nav && !nav.some(l => l.label === 'Talk' || l.href === '/talk.html'),
+    'Talk is not on the Plan household nav');
   ok(nav && nav.filter(l => l.current).length === 1 && nav[0].current,
     'Budget is the one aria-current page on the Plan nav');
 }
 
-console.log('\n=== 2. Bills, Subscriptions, Credit and Planning shells share the household nav on the incumbent header ===');
-for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptions.html', 'Subscriptions', 'subscriptions'], ['credit.html', 'Credit', 'credit'], ['planning.html', 'Planning', 'planning']]) {
+console.log('\n=== 2. Bills, Subscriptions, Credit, Forecast and Plan spend shells share the household nav on the incumbent header ===');
+for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptions.html', 'Subscriptions', 'subscriptions'], ['credit.html', 'Credit', 'credit'], ['planning.html', 'Forecast', 'planning'], ['plan-spend.html', 'Plan spend', 'plan-spend']]) {
   ok(exists('public/' + page), `${page} exists`);
   const html = read('public/' + page);
   const nav = siteNav(html);
@@ -225,9 +229,10 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptio
   const nav = siteNav(html);
   ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
     'talk.html carries the same six household nav links in the same order');
-  const current = nav ? nav.filter(l => l.current) : [];
-  ok(current.length === 1 && current[0].label === 'Talk',
-    'talk.html marks Talk as the aria-current page');
+  ok(nav && !nav.some(l => l.label === 'Talk' || l.href === '/talk.html'),
+    'talk.html household nav has no Talk tab');
+  ok(nav && nav.filter(l => l.current).length === 0,
+    'talk.html marks no dock destination current');
   ok(/<title>Household finances — talk<\/title>/.test(html)
       && /<h1>Talk to Atlas<\/h1>/.test(html)
       && /data-page-shell="talk"/.test(html),
@@ -256,7 +261,7 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptio
 
 console.log('\n=== 3. Modellers, Deep Dive, Records leave the household nav but stay routable ===');
 {
-  for (const page of ['index.html', 'bills.html', 'subscriptions.html', 'credit.html', 'planning.html', 'talk.html']) {
+  for (const page of ['index.html', 'bills.html', 'subscriptions.html', 'credit.html', 'planning.html', 'plan-spend.html', 'talk.html']) {
     const nav = siteNav(read('public/' + page)) || [];
     ok(!nav.some(l => RETIRED_FROM_NAV.includes(l.label))
         && !nav.some(l => /modellers|deepdive|records/.test(l.href)),
@@ -489,7 +494,7 @@ function startAtlas(env) {
   const atlas = await startAtlas(env);
   const base = `http://127.0.0.1:${port}`;
   try {
-    for (const page of ['/bills.html', '/subscriptions.html', '/credit.html', '/planning.html', '/talk.html']) {
+    for (const page of ['/bills.html', '/subscriptions.html', '/credit.html', '/planning.html', '/plan-spend.html', '/talk.html']) {
       const anon = await fetch(base + page, { redirect: 'manual' });
       ok(anon.status === 302 && /\/login$/.test(anon.headers.get('location') || ''),
         `${page} without a session redirects to /login`);
@@ -502,7 +507,7 @@ function startAtlas(env) {
     });
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
     ok(login.status === 302 && /^hfd_session=/.test(cookie), 'synthetic login issues a session');
-    for (const [page, label] of [['/bills.html', 'Bills'], ['/subscriptions.html', 'Subscriptions'], ['/credit.html', 'Credit'], ['/planning.html', 'Planning'], ['/talk.html', 'Talk'], ['/', 'Budget']]) {
+    for (const [page, label] of [['/bills.html', 'Bills'], ['/subscriptions.html', 'Subscriptions'], ['/credit.html', 'Credit'], ['/planning.html', 'Forecast'], ['/plan-spend.html', 'Plan spend'], ['/', 'Budget']]) {
       const res = await fetch(base + page, { headers: { cookie } });
       const body = await res.text();
       const nav = siteNav(body);
@@ -514,7 +519,17 @@ function startAtlas(env) {
           && /script-src 'self'/.test(res.headers.get('content-security-policy') || ''),
         `${page} carries the incumbent no-store and CSP headers`);
     }
-    for (const script of ['/bills.js', '/subscriptions.js', '/credit.js', '/planning.js', '/talk.js']) {
+    {
+      const res = await fetch(base + '/talk.html', { headers: { cookie } });
+      const body = await res.text();
+      const nav = siteNav(body);
+      ok(res.status === 200 && /<h1>Talk to Atlas<\/h1>/.test(body)
+          && nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV)
+          && !nav.some(l => l.label === 'Talk')
+          && nav.filter(l => l.current).length === 0,
+        '/talk.html remains routable with the household dock and no Talk tab');
+    }
+    for (const script of ['/bills.js', '/subscriptions.js', '/credit.js', '/planning.js', '/plan-spend.js', '/talk.js']) {
       const res = await fetch(base + script, { headers: { cookie } });
       ok(res.status === 200, `${script} is served to a session`);
     }
