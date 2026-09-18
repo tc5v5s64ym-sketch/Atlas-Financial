@@ -102,9 +102,9 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   const road = liveEl['planning-road-ahead'].innerHTML;
   ok(/data-planning-road-shell="ready"/.test(road), 'render wraps road-ahead in phone-native shell');
   ok(/planning-road-app-head/.test(road), 'shell includes compact page identity header');
-  ok(/planning-road-app-eyebrow">PLANNING</.test(road)
+  ok(/planning-road-app-eyebrow">FORECAST</.test(road)
     && /<h2 class="planning-road-app-title">Road Ahead</.test(road),
-    'identity is PLANNING eyebrow plus Road Ahead title');
+    'identity is FORECAST eyebrow plus Road Ahead title');
   ok(/data-road-lead="period-surplus"|data-road-lead="period-shortfall"|data-road-lead="period-even"|data-road-lead="period-unavailable"/.test(road),
     'hero names this period surplus, shortfall, break-even, or withheld');
   ok(/planning-road-segmented/.test(road)

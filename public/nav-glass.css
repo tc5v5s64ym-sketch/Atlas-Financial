@@ -9,7 +9,7 @@
  *     dock edge on every side, so its corner is concentric with the dock corner
  *     (dock radius - lens radius = edge + lens inset);
  *   - Subscriptions is the longest label, so its slot is wider than the other
- *     five short labels; the lens can enclose that label at a readable size
+ *     five shorter labels; the lens can enclose that label at a readable size
  *     instead of forcing every label smaller.
  * The lens has no border. Its edge comes from translucency, a top rim highlight
  * and a soft lift shadow, so it reads as glass inside glass rather than as a
@@ -78,7 +78,7 @@
     --nav-slot-span:1;
     isolation:isolate;
     overflow:hidden;
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);
     gap:0;
     padding:var(--nav-edge);
     border:0;
@@ -93,11 +93,11 @@
   }
 
   .sitenav-household:has(a[data-nav="budget"][aria-current="page"]) { --nav-slot-start:0; }
-  .sitenav-household:has(a[data-nav="bills"][aria-current="page"]) { --nav-slot-start:1; }
-  .sitenav-household:has(a[data-nav="subscriptions"][aria-current="page"]) { --nav-slot-start:2; --nav-slot-span:1.3; }
-  .sitenav-household:has(a[data-nav="credit"][aria-current="page"]) { --nav-slot-start:3.3; }
-  .sitenav-household:has(a[data-nav="planning"][aria-current="page"]) { --nav-slot-start:4.3; }
-  .sitenav-household:has(a[data-nav="talk"][aria-current="page"]) { --nav-slot-start:5.3; }
+  .sitenav-household:has(a[data-nav="forecast"][aria-current="page"]) { --nav-slot-start:1; }
+  .sitenav-household:has(a[data-nav="bills"][aria-current="page"]) { --nav-slot-start:2; }
+  .sitenav-household:has(a[data-nav="subscriptions"][aria-current="page"]) { --nav-slot-start:3; --nav-slot-span:1.3; }
+  .sitenav-household:has(a[data-nav="credit"][aria-current="page"]) { --nav-slot-start:4.3; }
+  .sitenav-household:has(a[data-nav="plan-spend"][aria-current="page"]) { --nav-slot-start:5.3; }
 
   .sitenav-household::before {
     content:"";

@@ -2255,7 +2255,7 @@ function renderPlanning(d, periods) {
       <header class="planning-road-app-head" aria-label="Road Ahead">
         <div class="planning-road-app-head-row">
           <div class="planning-road-app-identity">
-            <p class="planning-road-app-eyebrow">PLANNING</p>
+            <p class="planning-road-app-eyebrow">FORECAST</p>
             <h2 class="planning-road-app-title">Road Ahead</h2>
           </div>
           ${freshness}

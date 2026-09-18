@@ -1127,10 +1127,10 @@ console.log('\n=== Page contract ===');
   ok(/App\.register\(renderPlanning\)/.test(src) && /App\.boot\(\{ periods: true \}\)/.test(src), 'planning.js registers on the shared boot and asks for periods');
   ok(!/fetch\(|XMLHttpRequest|require\(|data\.json/.test(src), 'planning.js fetches nothing itself');
   const html = read('public/planning.html');
-  ok(/<h1>Planning<\/h1>/.test(html) && /Road Ahead/.test(html),
-    'page h1 identifies as Planning; trajectory dashboard section is Road Ahead');
-  ok(/<div class="kicker">PLANNING<\/div>/.test(html),
-    'static page kicker is PLANNING per Frame 01 eyebrow');
+  ok(/<h1>Forecast<\/h1>/.test(html) && /Road Ahead/.test(html),
+    'page h1 identifies as Forecast; trajectory dashboard section is Road Ahead');
+  ok(/<div class="kicker">FORECAST<\/div>/.test(html),
+    'static page kicker is FORECAST');
   ok(!/baseline walk|published horizon|legacy layout|full table/i.test(html),
     'planning.html avoids DESIGN glossary banned phrases in static copy');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
