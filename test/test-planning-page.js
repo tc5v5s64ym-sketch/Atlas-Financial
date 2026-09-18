@@ -1291,6 +1291,27 @@ console.log('\n=== Leftover Road Ahead drawers are absent from primary markup/re
 
 console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
 {
+  const waterfallRowLabels = html => [...String(html || '')
+    .matchAll(/class="planning-road-wf-label">([^<]*)/g)].map(m => m[1]);
+  const plannedBlock = html => (String(html || '')
+    .split('data-planning-road-wf="planned-spending"')[1] || '')
+    .split('data-planning-road-wf="')[0];
+  const mockLines = [
+    {
+      id: 'pub-commit-a',
+      label: 'Published commitment A',
+      date: '2026-12-09',
+      amount: 250,
+      status: 'estimated',
+    },
+    {
+      id: 'pub-commit-b',
+      label: 'Published commitment B',
+      date: '2026-12-25',
+      amount: 150,
+      status: 'estimated',
+    },
+  ];
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
@@ -1299,32 +1320,23 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
   withLinesTraj.months[0].stage2.commitments = {
     amount: 400,
     status: 'estimated',
-    lines: [
-      {
-        id: 'pub-commit-a',
-        label: 'Published commitment A',
-        date: '2026-12-09',
-        amount: 250,
-        status: 'estimated',
-      },
-      {
-        id: 'pub-commit-b',
-        label: 'Published commitment B',
-        date: '2026-12-25',
-        amount: 150,
-        status: 'estimated',
-      },
-    ],
+    lines: mockLines,
   };
   const lined = page.composeRoadAheadTraj(
     withLinesTraj, 'month', withLinesTraj.months[0].month, live.meta.asOf);
-  const plannedWf = (lined.stages.split('data-planning-road-wf="planned-spending"')[1] || '')
-    .split('data-planning-road-wf="')[0];
+  const plannedWf = plannedBlock(lined.stages);
   const plannedSheet = lined.breakdown;
+  const linedLabels = waterfallRowLabels(plannedWf);
   ok(/Published commitment A/.test(plannedWf) && /Published commitment B/.test(plannedWf)
-    && /Planned spending/.test(plannedWf)
-    && plannedWf.includes(money2(400)),
-    'waterfall Planned spending reprints mock Stage2 commitment labels and the rollup');
+    && /planning-road-wf-kicker[\s\S]*Planned spending/.test(plannedWf)
+    && linedLabels.includes('Published commitment A')
+    && linedLabels.includes('Published commitment B')
+    && !linedLabels.includes('Planned spending')
+    && !/data-planning-road-wf-row="planned-spending-total"/.test(plannedWf)
+    && plannedWf.includes(money2(250))
+    && plannedWf.includes(money2(150))
+    && !plannedWf.includes(money2(400)),
+    'waterfall reprints named Stage2 lines and omits a same-label Planned spending total');
   ok(/Published commitment A/.test(plannedSheet) && /Published commitment B/.test(plannedSheet)
     && /Dated commitments/.test(plannedSheet)
     && plannedSheet.includes(money2(400))
@@ -1342,23 +1354,61 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
     'breakdown keeps the rollup row after named commitment lines');
 
   const noLinesTraj = JSON.parse(JSON.stringify(traj));
+  const noAmt = month.stage2.commitments && month.stage2.commitments.amount != null
+    ? month.stage2.commitments.amount : 400;
   noLinesTraj.months[0].stage2.commitments = {
-    amount: month.stage2.commitments && month.stage2.commitments.amount != null
-      ? month.stage2.commitments.amount : 400,
+    amount: noAmt,
     status: (month.stage2.commitments && month.stage2.commitments.status) || 'estimated',
   };
   const totalling = page.composeRoadAheadTraj(
     noLinesTraj, 'month', noLinesTraj.months[0].month, live.meta.asOf);
-  const noWf = (totalling.stages.split('data-planning-road-wf="planned-spending"')[1] || '')
-    .split('data-planning-road-wf="')[0];
+  const noWf = plannedBlock(totalling.stages);
   const noSheet = totalling.breakdown;
   ok(/Planned spending/.test(noWf) && !/Published commitment A/.test(noWf)
-    && !/data-planning-road-wf-row="planned-spending-line-/.test(noWf),
+    && !/data-planning-road-wf-row="planned-spending-line-/.test(noWf)
+    && /data-planning-road-wf-row="planned-spending-total"/.test(noWf)
+    && waterfallRowLabels(noWf).includes('Planned spending')
+    && noWf.includes(money2(noAmt)),
     'waterfall Planned spending stays total-only when Stage2 commitments have no lines');
   ok(/Dated commitments/.test(noSheet) && !/Published commitment A/.test(noSheet)
     && !/data-planning-road-breakdown="commitments-line-/.test(noSheet)
     && /data-planning-road-breakdown="commitments"/.test(noSheet),
     'breakdown Dated commitments stays aggregate-only when Forecast published no lines');
+
+  const emptyLinesTraj = JSON.parse(JSON.stringify(traj));
+  emptyLinesTraj.months[0].stage2.commitments = {
+    amount: 700,
+    status: 'estimated',
+    lines: [],
+  };
+  const emptyLined = page.composeRoadAheadTraj(
+    emptyLinesTraj, 'month', emptyLinesTraj.months[0].month, live.meta.asOf);
+  const emptyWf = plannedBlock(emptyLined.stages);
+  ok(/data-planning-road-wf-row="planned-spending-total"/.test(emptyWf)
+    && waterfallRowLabels(emptyWf).includes('Planned spending')
+    && emptyWf.includes('−' + money2(700))
+    && !/Published commitment A/.test(emptyWf),
+    'empty Stage2 commitment lines still show the Planned spending aggregate');
+
+  if (Array.isArray(traj.payPeriods) && traj.payPeriods[0]) {
+    const withPay = JSON.parse(JSON.stringify(traj));
+    withPay.payPeriods[0].stage2 = withPay.payPeriods[0].stage2 || {};
+    withPay.payPeriods[0].stage2.commitments = {
+      amount: 400,
+      status: 'estimated',
+      lines: mockLines,
+    };
+    const payKey = withPay.payPeriods[0].payday || withPay.payPeriods[0].id;
+    const payLined = page.composeRoadAheadTraj(
+      withPay, 'pay-period', payKey, live.meta.asOf);
+    const payWf = plannedBlock(payLined.stages);
+    ok(/Published commitment A/.test(payWf)
+      && /Published commitment B/.test(payWf)
+      && !/data-planning-road-wf-row="planned-spending-total"/.test(payWf)
+      && !waterfallRowLabels(payWf).includes('Planned spending')
+      && !payWf.includes(money2(400)),
+      'pay-period waterfall also omits the Planned spending total when named lines exist');
+  }
 
   const dec = traj.months.find(m => m.month === '2026-12');
   const liveLines = dec
@@ -1366,9 +1416,13 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
     : [];
   if (dec && liveLines.length) {
     const liveRoad = page.composeRoadAheadTraj(traj, 'month', '2026-12', live.meta.asOf);
+    const livePlanned = plannedBlock(liveRoad.stages);
     ok(liveLines.every(row => liveRoad.stages.includes(row.label)
       && liveRoad.breakdown.includes(row.label)),
       'live December waterfall and breakdown reprint Forecast-published Stage2 commitment labels');
+    ok(!/data-planning-road-wf-row="planned-spending-total"/.test(livePlanned)
+      && !waterfallRowLabels(livePlanned).includes('Planned spending'),
+      'live December does not reprint a Planned spending total row beside named lines');
     const dated = liveLines.filter(row => row && typeof row.date === 'string' && row.date);
     ok(!dated.length || dated.every(row =>
       liveRoad.stages.includes(longDate(row.date))

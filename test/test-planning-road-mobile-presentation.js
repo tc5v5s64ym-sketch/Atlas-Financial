@@ -943,8 +943,14 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && /Published commitment B/.test(linedPlanned)
     && linedPlanned.includes(longDate('2026-12-09'))
     && linedPlanned.includes(longDate('2026-12-25'))
-    && !/<details/.test(linedPlanned),
-    'waterfall Planned spending reprints mock Stage2 commitment labels and dates inline');
+    && !/<details/.test(linedPlanned)
+    && /planning-road-wf-kicker[\s\S]*Planned spending/.test(linedPlanned)
+    && !/planning-road-wf-label">Planned spending</.test(linedPlanned)
+    && !/data-planning-road-wf-row="planned-spending-total"/.test(linedPlanned)
+    && linedPlanned.includes(money2(250))
+    && linedPlanned.includes(money2(150))
+    && !linedPlanned.includes(money2(400)),
+    'waterfall reprints named Stage2 lines inline and omits a same-label Planned spending total');
   ok(/Published commitment A/.test(linedCommit.breakdown)
     && /Published commitment B/.test(linedCommit.breakdown)
     && /Dated commitments/.test(linedCommit.breakdown)
@@ -957,9 +963,13 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     status: 'estimated',
   };
   const totalOnly = page.composeRoadTraj(noLines, 'month', noLines.months[0].month, live.meta.asOf);
-  ok(!/Published commitment A/.test(wfBlock(totalOnly.stages, 'planned-spending'))
+  const totalOnlyPlanned = wfBlock(totalOnly.stages, 'planned-spending');
+  ok(!/Published commitment A/.test(totalOnlyPlanned)
     && !/Published commitment A/.test(totalOnly.breakdown)
-    && /Dated commitments/.test(totalOnly.breakdown),
+    && /Dated commitments/.test(totalOnly.breakdown)
+    && /data-planning-road-wf-row="planned-spending-total"/.test(totalOnlyPlanned)
+    && /planning-road-wf-label">Planned spending</.test(totalOnlyPlanned)
+    && totalOnlyPlanned.includes('−' + money2(400)),
     'absent Stage2 commitment lines keep Planned spending / Dated commitments total-only');
 }
 
