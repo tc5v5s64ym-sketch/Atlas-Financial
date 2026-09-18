@@ -223,7 +223,7 @@ ok((before.plan.commitments || [])
   }),
   'pre-existing commitments (except superseded Fusion/Warriors rows) keep identity and amounts');
 function incomeKey(stream) {
-  return JSON.stringify({
+  const copy = {
     id: stream.id,
     label: stream.label,
     frequency: stream.frequency,
@@ -233,11 +233,16 @@ function incomeKey(stream) {
     firstDue: stream.firstDue,
     anchor: stream.anchor,
     confidence: stream.confidence,
-  });
+  };
+  // Child-benefit amount restated 2026-09-18 from evidenced CCB deposits.
+  // That restatement is not a CMAW side-effect. Identity, cadence, and
+  // confidence still have to match.
+  if (copy.id === 'childBenefit') delete copy.amount;
+  return JSON.stringify(copy);
 }
 ok(JSON.stringify((before.plan.income || []).map(incomeKey))
     === JSON.stringify((plan.income || []).map(incomeKey)),
-  'plan.income identity, amount and cadence are unchanged');
+  'plan.income identity, cadence and confidence are unchanged (childBenefit amount restated separately)');
 function debtOpening(row) {
   const copy = JSON.parse(JSON.stringify(row || {}));
   delete copy.statementCloseDay;

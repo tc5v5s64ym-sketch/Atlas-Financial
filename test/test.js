@@ -117,6 +117,7 @@ const suites = [
   ['current-period Other-residual classification contract', 'test-current-period-other-residual-contract.js'],
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
   ['owner income-recognition policy 2026-09-11', 'test-income-recognition-owner-policy.js'],
+  ['Canada Child Benefit amount $219.45', 'test-child-benefit-amount.js'],
   ['Other Income payday waterfall', 'test-other-income.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Sep 10 to Sep 11 payday rollover boundary', 'test-payday-rollover-boundary.js'],

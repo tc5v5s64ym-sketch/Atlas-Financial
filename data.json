@@ -77,9 +77,9 @@
                 "label": "Child benefit",
                 "frequency": "monthly",
                 "day": 20,
-                "amount": 153.59,
+                "amount": 219.45,
                 "confidence": "confirmed",
-                "note": "Eighteen consecutive months observed. The amount is fixed; the day of month is approximate."
+                "note": "Amount stepped at the CRA benefit year (~Jul/Aug 2026). Evidence: 2026-08-20 Lunch Money / Atlas tx-141 $219.45 and owner 2026-09-18 TD Unlimited Chequing CHILD TAX BEN CCB $219.45. Prior ~18 months through Jul 2026 were $153.59. Scheduled day remains the 20th; 2026-09-18 is the Friday bank post before Sunday 2026-09-20 CRA cadence."
             },
             {
                 "id": "amandaSalary15",

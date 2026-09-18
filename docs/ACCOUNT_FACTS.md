@@ -21,7 +21,7 @@ is `Forecast.financialDate`. Do not slice a UTC timestamp into a calendar
 date, and do not scatter a second timezone through observation or cutover
 code.
 
-## Household income the plan uses *(owner-stated 2026-08-29; salary recognition restated 2026-09-01; income-recognition policy 2026-09-11)*
+## Household income the plan uses *(owner-stated 2026-08-29; salary recognition restated 2026-09-01; income-recognition policy 2026-09-11; child-benefit amount 2026-09-18)*
 
 Forecast is the only planner. The income `plan.income` may use is Dale's
 Seaspan payroll, Amanda's two fixed Tennis BC salary deposits
@@ -366,7 +366,7 @@ directly" below for the historical TENNIS INCOME list.
 
 Income: payroll **bi-weekly, every 14 days** from the incumbent
 2026-08-14 anchor — **not twice per month** (~$4,264 current recurring net
-after 2026 CPP/CPP2/EI completion), child benefit **monthly** (~$153.59).
+after 2026 CPP/CPP2/EI completion), child benefit **monthly** (~$219.45; stepped from $153.59 at the ~Jul/Aug 2026 CRA benefit year).
 Bonus or vacation pay has historically landed in **February and July**.
 **Amanda's Tennis BC pay is semi-monthly — the 15th and month-end — not
 bi-weekly**, and it does not land with the payroll. The detail and the evidence
