@@ -2398,8 +2398,6 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   font-weight: 750;
   text-align: right;
 }
-.planning-road-pressure-detail { margin-top: 14px; }
-
 /* ------------------------------------------------------- trust badges */
 .planning-road-trust-chip {
   display: inline-block;
@@ -2825,77 +2823,6 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   text-align: center;
 }
 
-/* ------------------------------------------------ what-if quarantine */
-.planning-road-disclosure {
-  margin: 18px 0;
-  padding: 0 0 8px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.planning-road-disclosure > summary {
-  font-weight: 650;
-  cursor: pointer;
-  margin-bottom: 10px;
-}
-.planning-road-scenario-detail {
-  margin: 16px 0 20px;
-  padding: 12px 14px;
-  border: 1px solid var(--border, rgba(0,0,0,.08));
-  border-radius: 8px;
-  background: var(--surface-elevated, rgba(0,0,0,.02));
-}
-.planning-road-scenario-detail > summary {
-  cursor: pointer;
-  font-weight: 650;
-  margin-bottom: 8px;
-}
-.planning-road-whatif-quarantine {
-  margin-top: 12px;
-  padding: 14px 14px 16px;
-  border-radius: var(--radius-md);
-  border: 2px dashed var(--hypo-border);
-  background: linear-gradient(180deg, var(--hypo-bg), transparent 52%);
-}
-.planning-road-whatif-quarantine > summary {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  font-weight: 700;
-  color: var(--hypo-accent);
-}
-.planning-road-whatif-banner {
-  margin: 8px 0 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: .82rem;
-  line-height: 1.45;
-  color: var(--hypo-accent);
-  background: var(--hypo-banner-bg);
-  border: 1px dashed var(--hypo-border);
-}
-.planning-road-whatif-preview-grid {
-  display: grid;
-  gap: 8px;
-  margin: 8px 0 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px dashed var(--hypo-border);
-  background: var(--surface-1);
-}
-.planning-road-whatif-preview-row {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
-  gap: 8px;
-  align-items: center;
-  font-size: .82rem;
-}
-.planning-road-whatif-preview-head {
-  font-weight: 700;
-  color: var(--hypo-accent);
-  font-size: .72rem;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-.planning-road-whatif-preview-hint { font-size: .82rem; margin: 0; }
 .planning-trajectory-funding-result[data-trajectory-funding-result-sign="gap"] b {
   color: var(--road-gap);
 }
@@ -2995,10 +2922,6 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-selected .planning-trajectory-funding-stage:not(:last-child)::after,
   .planning-road-stages .planning-trajectory-funding-stage:not(:last-child)::after {
     content: none;
-  }
-  .planning-road-scenario-detail,
-  .planning-road-whatif-quarantine {
-    margin-top: 10px;
   }
 }
 
