@@ -3,8 +3,9 @@
  *
  * Starts server.js with synthetic SITE_PASSWORD / SESSION_SECRET and a
  * loopback Lunch Money mock. Independent remaining arithmetic uses fixture
- * dollars and plan monthly targets, not the server. Never writes canonical
- * files. Never commits a real token or live provider account id.
+ * dollars and declared plannedPayday / monthly targets, not the server.
+ * Never writes canonical files. Never commits a real token or live
+ * provider account id.
  */
 const fs = require('fs');
 const path = require('path');
@@ -747,15 +748,15 @@ function independentGroceryRemaining(plan, asOf) {
     const fuel = (action.categories || []).find(row => row.id === 'fuel');
     const fuelCat = ((data.plan.budget && data.plan.budget.categories) || [])
       .find(row => row && row.id === 'fuel');
-    const fuelMonthly = fuelCat && fuelCat.plannedPayday != null
-      ? Number(fuelCat.plannedPayday) * MONTH / 14
-      : Number(fuelCat && fuelCat.plannedMonthly);
-    const fuelPlanned = round2(fuelMonthly
-      * (Forecast.diffDays(action.periodStart, action.periodEnd) + 1) / MONTH);
+    const fuelNeedDays = Forecast.diffDays(action.periodStart, action.periodEnd) + 1;
+    const fuelPlanned = fuelCat && fuelCat.plannedPayday != null
+      ? round2(Number(fuelCat.plannedPayday))
+      : round2(Number(fuelCat && fuelCat.plannedMonthly) * fuelNeedDays / MONTH);
     ok(fuel && near(fuel.committed, FUEL_POSTED),
       'fuel committed is the fixture $22.10');
     ok(fuel && near(fuel.remaining, round2(fuelPlanned - FUEL_POSTED)),
-      'fuel remaining matches independent arithmetic');
+      'fuel remaining matches independent payday-cycle Planned minus committed',
+      fuel ? `${fuel.remaining} vs ${round2(fuelPlanned - FUEL_POSTED)}` : 'missing');
     ok(action.remainingClaim === 'precise' || action.remainingClaim === 'posted-only',
       'Forecast remaining claim is available on complete coverage',
       action.remainingClaim);
