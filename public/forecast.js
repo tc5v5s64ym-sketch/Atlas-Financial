@@ -12139,7 +12139,20 @@
   // identity) and Amanda (Tennis BC salary identity) when those sources
   // contribute, plus remaining modelled income so sum(lines) equals the
   // unchanged income.amount. Coaching/gravy is not a Dale or Amanda
-  // salary line. Stage arithmetic is otherwise unchanged.
+  // salary line. Stage 1 bills and obligations publish attributable
+  // named lines grouped by id/label from the same span events already
+  // used for those rollups (joint-cash non-card-paid bills; required
+  // debt obligations). Line amount is the absolute outflow sum; status
+  // is trajectoryEventsStatus of that group. Stage 1 householdBudget
+  // publishes attributable lines from plan.budget.categories that feed
+  // planned weeklyVariable (budgetBreakdown owner-target /
+  // current-regime planned remainder, not historical actuals): each
+  // contributing category is smeared as planned / WEEKS_PER_MONTH ×
+  // walkDays / 7. A single Household budget smear line is published
+  // only when the walk-applied total is non-zero and no contributing
+  // category can be named. Empty sets omit lines. sum(lines) equals
+  // the unchanged component amount. Stage arithmetic is otherwise
+  // unchanged.
   function isCoachingOrGravyIncome(stream) {
     if (!stream) return false;
     return /coach|gravy/i.test(`${stream.id || ''} ${stream.label || ''}`);
@@ -12227,6 +12240,81 @@
     }
     return lines;
   }
+
+  function reconcileTrajectoryLineAmounts(lines, targetAmount) {
+    if (!lines || !lines.length) return lines || [];
+    const total = roundCent(lines.reduce((s, row) => s + row.amount, 0));
+    const target = roundCent(targetAmount);
+    if (total !== target) {
+      const last = lines[lines.length - 1];
+      last.amount = roundCent(last.amount + (target - total));
+    }
+    return lines;
+  }
+
+  // Group the same span events already used for a Stage 1 outflow
+  // rollup (joint-cash non-card-paid bills, or required obligations)
+  // by id/label. Empty sets return [] so the caller omits `lines`.
+  function baselineTrajectoryEventLines(events, rollupAmount) {
+    if (!events || !events.length) return [];
+    const byId = new Map();
+    for (const event of events) {
+      const key = event.id || event.label || 'untitled';
+      if (!byId.has(key)) byId.set(key, []);
+      byId.get(key).push(event);
+    }
+    const lines = [];
+    const ids = Array.from(byId.keys()).sort();
+    for (const id of ids) {
+      const rows = byId.get(id);
+      lines.push({
+        label: rows[0].label || id,
+        amount: roundCent(rows.reduce((s, e) => s + (-Number(e.amount) || 0), 0)),
+        status: trajectoryEventsStatus(rows),
+      });
+    }
+    return reconcileTrajectoryLineAmounts(lines, rollupAmount);
+  }
+
+  // Attribute the walk-applied Household Budget smear across the same
+  // plan.budget.categories that feed planned weeklyVariable. Do not
+  // invent categories. Historical-actual and reserve rows are excluded
+  // by the incumbent plannedWeeklyVariable identity.
+  function baselineTrajectoryHouseholdBudgetLines(input, walkDays, householdBudgetAmount) {
+    const target = roundCent(householdBudgetAmount);
+    if (!(walkDays > 0)) return [];
+    const bd = budgetBreakdown(input.plan, input.periods, input.breakdownOpts || {});
+    const contributing = [];
+    if (bd && Array.isArray(bd.categories)) {
+      for (const c of bd.categories) {
+        if (!c) continue;
+        if (c.class === 'reserve') continue;
+        if (c.source === 'historical-actual') continue;
+        const planned = Number(c.planned);
+        if (!isFinite(planned) || planned <= 0) continue;
+        contributing.push(c);
+      }
+    }
+    const lines = [];
+    if (contributing.length) {
+      for (const c of contributing) {
+        lines.push({
+          label: c.label || c.id || 'Household budget',
+          amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * walkDays / 7),
+          status: 'calculated',
+        });
+      }
+    } else if (target !== 0) {
+      lines.push({
+        label: 'Household budget',
+        amount: target,
+        status: 'calculated',
+      });
+    }
+    if (!lines.length) return [];
+    return reconcileTrajectoryLineAmounts(lines, target);
+  }
+
   function baselineTrajectoryWalkVariableDays(daily, span) {
     if (!span || !span.start || !span.end || !Array.isArray(daily)) return 0;
     let days = 0;
@@ -12304,8 +12392,10 @@
     const stage2Amount = roundCent(stage1Amount - commitmentsAmount);
     const stage3Status = trajectoryWeakerStatus(stage2Status, extrasStatus);
     const stage3Amount = roundCent(stage2Amount - extrasAmount);
-    function component(amount, status) {
-      return { amount: roundCent(amount), status };
+    function component(amount, status, lines) {
+      const row = { amount: roundCent(amount), status };
+      if (lines && lines.length) row.lines = lines;
+      return row;
     }
     function incomeComponent(amount, status) {
       const row = component(amount, status);
@@ -12316,21 +12406,28 @@
     function result(amount, status) {
       return { amount: roundCent(amount), status };
     }
+    const householdBudget = {
+      amount: householdBudgetAmount,
+      status: householdBudgetStatus,
+      weeklyVariable: roundCent(weekly),
+      walkDays,
+      identity: householdBudgetIdentity,
+    };
+    const householdBudgetLines = baselineTrajectoryHouseholdBudgetLines(
+      input, walkDays, householdBudgetAmount);
+    if (householdBudgetLines.length) householdBudget.lines = householdBudgetLines;
     return {
       stage1: {
         id: 'normal-life',
         label: 'Normal life',
         status: stage1Status,
         income: incomeComponent(incomeAmount, incomeStatus),
-        bills: component(billsAmount, billsStatus),
-        obligations: component(obligationsAmount, obligationsStatus),
-        householdBudget: {
-          amount: householdBudgetAmount,
-          status: householdBudgetStatus,
-          weeklyVariable: roundCent(weekly),
-          walkDays,
-          identity: householdBudgetIdentity,
-        },
+        bills: component(
+          billsAmount, billsStatus, baselineTrajectoryEventLines(bills, billsAmount)),
+        obligations: component(
+          obligationsAmount, obligationsStatus,
+          baselineTrajectoryEventLines(obligations, obligationsAmount)),
+        householdBudget,
         result: result(stage1Amount, stage1Status),
       },
       stage2: {
@@ -12481,6 +12578,8 @@
       walkDaily: input.walkDaily,
       householdBudgetIdentity: input.householdBudgetIdentity,
       spanNoun: input.spanNoun,
+      periods: input.periods,
+      breakdownOpts: input.breakdownOpts,
     });
     return {
       income,
@@ -12569,6 +12668,8 @@
       regimeReady,
       estimatedThrough,
       unavailableAfter,
+      periods: opts.periods,
+      breakdownOpts: Object.assign({}, opts, { asOf: day }),
     };
     const months = calendarMonthsIntersecting(horizon.start, horizon.end);
     const series = months.map(span => {

@@ -165,10 +165,11 @@ console.log('=== 1. Publisher is Forecast-owned and unexported ===');
     src.indexOf('function baselineTrajectorySpanPicture('));
   ok(/incomeComponent\(incomeAmount, incomeStatus\)/.test(funding)
     && /row\.lines = lines/.test(funding),
-    'MonthFunding attaches lines only on the income component');
+    'MonthFunding attaches income lines via incomeComponent');
   ok(!/bills: incomeComponent/.test(funding)
-    && /bills: component\(billsAmount/.test(funding),
-    'bills / obligations stay rollup components without this income split');
+    && /baselineTrajectoryEventLines\(bills/.test(funding)
+    && !/isDalePayrollStream/.test(funding.slice(funding.indexOf('bills:'))),
+    'bills do not reuse the Dale/Amanda income splitter');
   const planning = read('public/planning.js');
   ok(/planningRoadPublishedLines/.test(planning)
     && /does not invent Dale\/Amanda labels or split a published total/.test(planning)
