@@ -145,7 +145,7 @@ console.log('=== 1. Publisher is Forecast-owned and unexported ===');
 {
   const src = read('public/forecast.js');
   const helper = src.slice(
-    src.indexOf('function baselineTrajectoryIncomeLines('),
+    src.indexOf('function isCoachingOrGravyIncome('),
     src.indexOf('function baselineTrajectoryWalkVariableDays('));
   ok(/function baselineTrajectoryIncomeLines\(/.test(src),
     'named income lines live inside public/forecast.js');
@@ -155,7 +155,7 @@ console.log('=== 1. Publisher is Forecast-owned and unexported ===');
   ok(/isDalePayrollStream\(/.test(helper) && /isAmandaSalaryStream\(/.test(helper)
     && /incomeStreamFor\(/.test(helper),
     'lines group span income via incomeStreamFor plus Dale/Amanda helpers');
-  ok(/coach\|gravy/.test(helper),
+  ok(/coach\|gravy/.test(helper) && /isCoachingOrGravyIncome\(/.test(helper),
     'coaching/gravy is excluded from Dale and Amanda salary lines');
   ok(/Dale — Seaspan payroll/.test(helper)
     && /Amanda — Tennis BC salary/.test(helper),
