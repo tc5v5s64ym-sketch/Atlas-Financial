@@ -260,8 +260,8 @@ const liveEst = liveEstRows.reduce((s, c) => s + c.amount, 0);
 const liveEstCount = liveEstRows.length;
 ok(liveOver.length >= 1,
   'live comparisons: at least one facility is over today');
-ok(liveHeloc && liveHeloc.date >= asOf,
-  'live HELOC crossing is inside the window', liveHeloc && liveHeloc.date);
+ok(!liveHeloc,
+  'live HELOC does not cross its limit in the 91-day window once the cash minimum is on the walk');
 const amanda15 = plan.income.find(s => s.id === 'amandaSalary15');
 const amandaEom = plan.income.find(s => s.id === 'amandaSalaryMonthEnd');
 const amandaAmt = amanda15 && amandaEom
@@ -292,8 +292,8 @@ ok(!!risk(live, 'amandaRequired') === !!liveTransfer.neededBy,
   'required vs optional follows whether a needed-by date exists');
 ok(risk(live, 'estimatedCommitments') && risk(live, 'estimatedCommitments').count >= 1,
   'live estimated commitments are named from the Plan rows');
-ok(risk(live, 'helocNoDraw') && same(risk(live, 'helocNoDraw').drawn, 0),
-  'live HELOC risk is no new borrowing — the gap is funded from Amanda');
+ok(!risk(live, 'helocNoDraw') && !risk(live, 'helocDrawn'),
+  'live HELOC risk is omitted — the cash-minimum walk does not cross and does not draw');
 ok((live.risks || []).filter(r => r.id === 'facilityCrossing')
     .map(r => r.debtId).join(',')
   === (liveDebt.crossings || []).filter(c => !c.alreadyOver && c.id !== 'heloc').map(c => c.id).join(','),
@@ -304,8 +304,8 @@ ok(!risk(live, 'telecomUnrouted'),
 const liveMission = F.mission(liveAdvice, liveDebt, { sim: liveSim });
 ok(!!liveMission.parts.find(p => p.id === 'overLimit') === (live.phases[1].titleId === 'overLimit'),
   'live over-limit-today is the same fact the mission already uses');
-ok(!!liveMission.parts.find(p => p.id === 'helocLimit') === !!risk(live, 'helocNoDraw'),
-  'live HELOC crossing is the same helper the mission already uses');
+ok(!liveMission.parts.find(p => p.id === 'helocLimit'),
+  'live mission has no HELOC-crossing part on this cash-minimum walk');
 
 console.log('\n=== page is a renderer ===');
 const page = read('public/plan.js');

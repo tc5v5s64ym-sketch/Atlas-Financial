@@ -92,12 +92,15 @@ const RATE_BASIS_NOTE = {
 
 // The paragraph beside the sliders: what today actually costs.
 const RENEWAL_CONTEXT = {
-  capitalised: r =>
-    `<b>Today, household cash:</b> the mortgage only — ${money(r.today.mortgageCash)}/month equivalent. `
-    + `Nothing leaves any chequing account for the HELOC.<br>`
-    + `<b>Today, HELOC economic cost:</b> ${money(r.today.helocEconomic)}/month of interest `
-    + `<b>capitalised onto the balance</b>, so the debt grows by that much every month with nothing `
-    + `repaying it. It is a real cost and it buys no equity — it is simply not a bill that gets paid.`,
+  capitalised: r => r.today.helocCash > 0
+    ? `<b>Today, household cash:</b> mortgage ${money(r.today.mortgageCash)}/month equivalent plus the HELOC cash minimum ${money(r.today.helocCash)} — ${money(r.today.householdCash)} a month.<br>`
+      + `<b>Today, HELOC economic cost:</b> ${money(r.today.helocEconomic)}/month of interest `
+      + `<b>capitalised onto the balance</b>. The cash minimum leaves chequing and is a payment against that balance; capitalised interest is the rest of the charge, not a second bill.`
+    : `<b>Today, household cash:</b> the mortgage only — ${money(r.today.mortgageCash)}/month equivalent. `
+      + `Nothing leaves any chequing account for the HELOC.<br>`
+      + `<b>Today, HELOC economic cost:</b> ${money(r.today.helocEconomic)}/month of interest `
+      + `<b>capitalised onto the balance</b>, so the debt grows by that much every month with nothing `
+      + `repaying it. It is a real cost and it buys no equity — it is simply not a bill that gets paid.`,
   paid: r =>
     `Today: mortgage ${money(r.today.mortgageCash)}/month equivalent plus the HELOC payment `
     + `${money(r.today.helocCash)} — ${money(r.today.householdCash)} a month of household cash.`,
@@ -106,8 +109,10 @@ const RENEWAL_CONTEXT = {
 // The closing note under the figures.
 const RENEWAL_NOTE = {
   consolidated: () => 'Both debts amortise. The HELOC principal actually gets repaid.',
-  interestOnlyCapitalising: r =>
-    `The HELOC stays interest-only AND its interest capitalises, so nothing repays it and it compounds:
+  interestOnlyCapitalising: r => r.today.helocCash > 0
+    ? `The HELOC stays interest-only AND its interest capitalises. The declared cash minimum is a payment against that compounding balance:
+           ${money(r.heloc.opening)} today becomes <b>${money(r.helocOwed)}</b> after ${r.years} years.`
+    : `The HELOC stays interest-only AND its interest capitalises, so nothing repays it and it compounds:
            ${money(r.heloc.opening)} today becomes <b>${money(r.helocOwed)}</b> after ${r.years} years.`,
   interestOnlyFlat: r =>
     `The HELOC stays interest-only, so after ${r.years} years its ${money(r.heloc.opening)} is still owed in full.`,

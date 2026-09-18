@@ -54,6 +54,19 @@ function capitaliseLedger(opening, charge, asOf, months) {
   });
 }
 
+function cashAndCapitaliseLedger(opening, charge, cashPayment, cashDay, cashFirstDue, asOf, months) {
+  let balance = opening;
+  return monthEndsFrom(asOf, months).map(date => {
+    const [y, m] = date.split('-').map(Number);
+    const cashDate = `${y}-${String(m).padStart(2, '0')}-${String(cashDay).padStart(2, '0')}`;
+    if (cashDate >= asOf && cashDate >= cashFirstDue && cashDate <= date) {
+      balance = Math.round((balance - cashPayment) * 100) / 100;
+    }
+    balance = Math.round((balance + charge) * 100) / 100;
+    return { date, balance };
+  });
+}
+
 function firstOver(ledger, limit) {
   return ledger.find(row => row.balance > limit) || null;
 }
@@ -90,37 +103,44 @@ ok(helocObl && sameCents(helocObl.amount, 814.18) && helocObl.nonCash === true
   'monthly capitalisation is still the $814.18 non-cash charge',
   money2(helocObl && helocObl.amount));
 ok(helocDebt.cashPayment === 0 && helocDebt.interestTreatment === 'capitalised',
-  'payment semantics are unchanged: capitalised, $0 household cash');
+  'payment semantics: interest is still capitalised; debt-record cashPayment stays $0');
 
 console.log('\n=== independent month-end ledger, without projectDebts ===');
-const ledger = capitaliseLedger(helocDebt.balance, helocObl.amount, asOf, 3);
+const interestOnly = capitaliseLedger(helocDebt.balance, helocObl.amount, asOf, 3);
+ok(interestOnly[0].date === '2026-08-31' && sameCents(interestOnly[0].balance, 201300.34),
+  'interest-only 31 August → $201,300.34', `${interestOnly[0].date} ${money2(interestOnly[0].balance)}`);
+ok(interestOnly[2].date === '2026-10-31' && sameCents(interestOnly[2].balance, 202928.70),
+  'interest-only 31 October would exceed the limit',
+  `${interestOnly[2].date} ${money2(interestOnly[2].balance)}`);
+ok(interestOnly[2].balance > helocDebt.limit,
+  'without the cash minimum the line would cross on capitalised interest alone',
+  money2(interestOnly[2].balance - helocDebt.limit));
+
+const ledger = cashAndCapitaliseLedger(
+  helocDebt.balance, helocObl.amount, helocObl.cashPayment, helocObl.cashDay,
+  helocObl.cashFirstDue, asOf, 3);
 ok(ledger[0].date === '2026-08-31' && sameCents(ledger[0].balance, 201300.34),
-  '31 August → $201,300.34', `${ledger[0].date} ${money2(ledger[0].balance)}`);
-ok(ledger[1].date === '2026-09-30' && sameCents(ledger[1].balance, 202114.52),
-  '30 September → $202,114.52, still under the limit',
+  'with cashFirstDue 2026-09-21, August still capitalises only',
+  `${ledger[0].date} ${money2(ledger[0].balance)}`);
+ok(ledger[1].date === '2026-09-30' && sameCents(ledger[1].balance, 201300.34),
+  'September cash minimum offsets that month\'s capitalise',
   `${ledger[1].date} ${money2(ledger[1].balance)}`);
-ok(ledger[2].date === '2026-10-31' && sameCents(ledger[2].balance, 202928.70),
-  '31 October → $202,928.70', `${ledger[2].date} ${money2(ledger[2].balance)}`);
-ok(ledger[1].balance < helocDebt.limit,
-  '30 September is $539.48 under the limit',
-  money2(helocDebt.limit - ledger[1].balance));
-ok(ledger[2].balance > helocDebt.limit,
-  '31 October is $274.70 over the limit',
-  money2(ledger[2].balance - helocDebt.limit));
+ok(ledger[2].date === '2026-10-31' && sameCents(ledger[2].balance, 201300.34),
+  'October stays under the limit at the same net',
+  `${ledger[2].date} ${money2(ledger[2].balance)}`);
+ok(ledger.every(row => row.balance < helocDebt.limit),
+  'the cash-minimum ledger does not cross $202,654 in these three months');
 const independent = firstOver(ledger, helocDebt.limit);
-ok(independent && independent.date === '2026-10-31',
-  'independent ledger first exceeds the limit on 2026-10-31',
-  independent && independent.date);
+ok(!independent, 'independent cash-minimum ledger has no first-over day');
 
 console.log('\n=== Forecast first crossing equals that ledger ===');
 const proj = projectHeloc(plan, data.debts, asOf);
 const cross = helocCrossing(proj);
-ok(cross && cross.date === '2026-10-31',
-  "Forecast's first HELOC crossing is 2026-10-31",
+ok(!cross,
+  "Forecast's first HELOC crossing is absent once the cash minimum is on the walk",
   cross && cross.date);
-ok(cross && independent && cross.date === independent.date,
-  'engine date equals the independent first-over day',
-  cross && cross.date);
+ok(!cross && !independent,
+  'engine and independent cash-minimum ledger agree: no crossing');
 
 const advice = F.recommend(plan, asOf, {
   scenario: plan.defaults.scenario,
@@ -135,9 +155,8 @@ const liveDebt = F.projectDebts(plan, data.debts, asOf, Object.assign({},
     extraDebtTarget: plan.nextDollar && plan.nextDollar.target }));
 const liveMission = F.mission(advice, liveDebt, { sim: advice.sim });
 const liveHelocPart = (liveMission.parts || []).find(p => p.id === 'helocLimit');
-ok(liveHelocPart && liveHelocPart.date === '2026-10-31',
-  'the household-facing mission date is the Forecast crossing, not a stored day',
-  liveHelocPart && liveHelocPart.date);
+ok(!liveHelocPart,
+  'the household-facing mission has no HELOC-crossing instruction on this walk');
 ok(near((advice.funding && advice.funding.borrowed) || 0, 0),
   'available HELOC credit is not borrowed cash on this opening');
 ok(advice.plannedDebt && advice.plannedDebt.permitted === false,
@@ -182,42 +201,41 @@ console.log('\n=== stored-date guard fails closed on any calendar day ===');
     'a crossing claim with no calendar day is still allowed');
 }
 
-console.log('\n=== mutating opening or capitalisation moves the derived crossing ===');
+console.log('\n=== mutating cash minimum or opening moves the derived crossing ===');
 {
   const mutated = clone(data);
-  const mDebt = mutated.debts.find(d => d.id === 'heloc');
-  mDebt.balance = helocDebt.balance + 600;
-  const mLedger = capitaliseLedger(mDebt.balance, helocObl.amount, asOf, 3);
-  const mIndependent = firstOver(mLedger, mDebt.limit);
+  mutated.plan.obligations.find(o => o.id === 'heloc').cashPayment = 0;
+  const mLedger = capitaliseLedger(helocDebt.balance, helocObl.amount, asOf, 3);
+  const mIndependent = firstOver(mLedger, helocDebt.limit);
   const mProj = projectHeloc(mutated.plan, mutated.debts, asOf);
   const mCross = helocCrossing(mProj);
-  ok(mIndependent && mIndependent.date === '2026-09-30',
-    'independent ledger moves to 30 September when the opening rises $600',
+  ok(mIndependent && mIndependent.date === '2026-10-31',
+    'independent interest-only ledger crosses 31 October when cashPayment is $0',
     mIndependent && `${mIndependent.date} ${money2(mIndependent.balance)}`);
   ok(mCross && mCross.date === mIndependent.date,
-    'Forecast follows that mutated ledger without a prose update',
+    'Forecast follows that no-cash ledger without a prose update',
     mCross && mCross.date);
-  ok(mCross.date !== cross.date,
-    'the derived crossing moved off 2026-10-31');
+  ok(!!mCross !== !!cross,
+    'removing the cash minimum restores a crossing the live walk no longer has');
   ok(storedCrossingClaims(data.plan).length === 0,
     'live stored narrative still has no exact date that needed editing');
 }
 {
   const mutated = clone(data);
-  const mObl = mutated.plan.obligations.find(o => o.id === 'heloc');
-  mObl.amount = 1200;
-  const mLedger = capitaliseLedger(helocDebt.balance, mObl.amount, asOf, 3);
-  const mIndependent = firstOver(mLedger, helocDebt.limit);
+  const mDebt = mutated.debts.find(d => d.id === 'heloc');
+  mDebt.balance = helocDebt.limit - 100;
+  const mLedger = cashAndCapitaliseLedger(
+    mDebt.balance, helocObl.amount, helocObl.cashPayment, helocObl.cashDay,
+    helocObl.cashFirstDue, asOf, 3);
+  const mIndependent = firstOver(mLedger, mDebt.limit);
   const mProj = projectHeloc(mutated.plan, mutated.debts, asOf);
   const mCross = helocCrossing(mProj);
-  ok(mIndependent && mIndependent.date === '2026-09-30',
-    'independent ledger moves to 30 September when capitalisation is $1,200',
+  ok(mIndependent && mIndependent.date === '2026-08-31',
+    'independent cash ledger crosses 31 August when opening is $100 under the limit',
     mIndependent && `${mIndependent.date} ${money2(mIndependent.balance)}`);
   ok(mCross && mCross.date === mIndependent.date,
-    'Forecast follows the mutated charge without a stored-date update',
+    'Forecast follows the mutated opening without a stored-date update',
     mCross && mCross.date);
-  ok(mCross.date !== cross.date,
-    'raising the monthly charge also moves the derived crossing');
   ok(near(data.plan.obligations.find(o => o.id === 'heloc').amount, 814.18),
     'the live $814.18 capitalisation is unchanged by the fixture');
 }

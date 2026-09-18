@@ -495,10 +495,14 @@ console.log('\n=== 4. HELOC cash is not double-counted with capitalised interest
   ok(heloc.length === 1 && heloc[0].date === '2026-09-21' && near(heloc[0].amount, 80),
     'September HELOC cash min prints once in Period 2 on the 21st');
   const events = F.expandEvents(plan, '2026-09-01', '2026-09-30');
-  ok(events.filter(e => e.id === 'heloc').every(e => e.kind === 'noncash'),
-    'expandEvents still emits only the capitalise event');
-  ok(!events.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
-    'HELOC cash is not a second household cash event on the walk');
+  const helocEv = events.filter(e => e.id === 'heloc');
+  ok(helocEv.filter(e => e.kind === 'noncash').length === 1
+      && helocEv.filter(e => e.kind === 'obligation').length === 1
+      && helocEv.find(e => e.kind === 'obligation').date === '2026-09-21'
+      && near(-helocEv.find(e => e.kind === 'obligation').amount, 80),
+    'expandEvents emits capitalise plus one cash minimum, not two chequing bills');
+  ok(!events.some(e => e.id === 'heloc' && e.kind === 'bill'),
+    'HELOC cash is not a bill event');
 }
 
 console.log('\n=== 5. Each active card min appears once, including paid ===');

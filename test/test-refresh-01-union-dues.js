@@ -246,6 +246,7 @@ ok(JSON.stringify((before.plan.income || []).map(incomeKey))
 function debtOpening(row) {
   const copy = JSON.parse(JSON.stringify(row || {}));
   delete copy.statementCloseDay;
+  delete copy.note; // narrative, not a posted opening
   return copy;
 }
 ok(JSON.stringify((before.debts || []).map(debtOpening))

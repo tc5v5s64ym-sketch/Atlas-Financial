@@ -135,13 +135,15 @@ const heloc = plan.obligations.find(o => o.id === 'heloc');
 ok(heloc && heloc.nonCash === true,
   'the plan marks HELOC interest as a non-cash charge');
 const withHeloc = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
-const stripped = JSON.parse(JSON.stringify(plan));
-stripped.obligations = stripped.obligations.filter(o => !o.nonCash);
-const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
-ok(near(withHeloc.ending, without.ending),
-  'and it therefore moves no cash', `${money(withHeloc.ending)} either way`);
-ok(withHeloc.totals.noncash > 0,
-  'while still being tracked as a real economic cost', money(withHeloc.totals.noncash));
+const noCashMin = JSON.parse(JSON.stringify(plan));
+noCashMin.obligations.find(o => o.id === 'heloc').cashPayment = 0;
+const withoutCash = F.simulate(noCashMin, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
+const wantHelocCash = (F.capitalisingCashMinimumOccurrences(heloc, asOf, withHeloc.end) || [])
+  .reduce((s, occ) => s + Number(occ.amount || 0), 0);
+ok(wantHelocCash > 0 && near(withoutCash.ending - withHeloc.ending, wantHelocCash),
+  'encoded HELOC cashPayment moves cash once', `${money(withoutCash.ending)} vs ${money(withHeloc.ending)}`);
+ok(near(withHeloc.totals.noncash, withoutCash.totals.noncash) && withHeloc.totals.noncash > 0,
+  'while capitalise is still tracked as a real economic cost', money(withHeloc.totals.noncash));
 // The economic cost has to appear on the debt side, or it is being hidden.
 ok(/capitalis/i.test(read('docs/ACCOUNT_FACTS.md')),
   'ACCOUNT_FACTS records the capitalisation');
@@ -154,7 +156,7 @@ ok(helocDebt.interestTreatment === 'capitalised',
   'the debt record is the canonical home for how HELOC interest is treated',
   helocDebt.interestTreatment);
 ok(helocDebt.cashPayment === 0,
-  'and it says $0.00 of household cash leaves for it', money(helocDebt.cashPayment));
+  'the debt record cashPayment stays $0 because interest itself is still capitalised', money(helocDebt.cashPayment));
 ok(helocDebt.monthlyInterest > 0,
   'while the economic cost is stated separately', money(helocDebt.monthlyInterest));
 ok(heloc.nonCash === true && near(heloc.amount, helocDebt.monthlyInterest),
@@ -193,8 +195,8 @@ const forecast = read('public/forecast.js');
 // and a comment naming a rule must not stand in for the rule.
 const codeOnly = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 const forecastCode = codeOnly(forecast), modellersCode = codeOnly(modellers);
-ok(/\.filter\(o => o\.debtId === debtId && !o\.nonCash\)/.test(forecastCode),
-  'the engine counts only cash obligations as household cash');
+ok(/o\.nonCash/.test(forecastCode) && /cashPayment/.test(forecastCode),
+  'the engine counts only cash obligations as household cash, including a capitalising cashPayment');
 ok(!/heloc\.payment/.test(forecastCode) && !/heloc\.payment/.test(modellersCode),
   'and neither it nor the Modeller treats the capitalised charge as a payment');
 ok(/interestTreatment === 'capitalised'/.test(forecastCode),
@@ -206,12 +208,17 @@ ok(/economic/i.test(modellers) && /helocEconomic/.test(forecastCode),
 // expandEvents, not a hand-kept upcoming calendar.
 const helocEvents = F.expandEvents(plan, asOf, F.addDays(asOf, (plan.windowDays || 91) - 1))
   .filter(e => e.id === 'heloc' || /HELOC/i.test(e.label));
+const helocNoncash = helocEvents.filter(e => e.kind === 'noncash');
+const helocCash = helocEvents.filter(e => e.kind === 'obligation');
 ok(helocEvents.length > 0, 'the HELOC charge still appears on the dated list');
-ok(helocEvents.every(e => e.kind === 'noncash'),
-  'but marked non-cash, not as a payment falling due',
-  helocEvents.map(e => e.kind).join(', '));
-ok(helocEvents.every(e => !/minimum/i.test(e.label)),
-  'and no longer called a "minimum"', helocEvents.map(e => e.label).join(', '));
+ok(helocNoncash.length > 0 && helocNoncash.every(e => e.effect === 'capitalise'),
+  'capitalise remains non-cash, not a chequing outflow',
+  helocNoncash.map(e => e.kind).join(', '));
+ok(helocCash.length > 0 && helocCash.every(e => e.effect === 'payment' && e.cashMinimum === true),
+  'and the encoded cash minimum is a separate obligation',
+  helocCash.map(e => `${e.date}:${e.kind}`).join(', '));
+ok(helocNoncash.every(e => !/minimum/i.test(e.label)),
+  'the capitalise row is not called a "minimum"', helocNoncash.map(e => e.label).join(', '));
 ok(/noncash/.test(read('public/deepdive.js')),
   'Deep Dive renders a non-cash row differently from a payment');
 
@@ -516,9 +523,15 @@ ok(/openingId = fundingShort \? 'unfunded'/.test(forecastCode),
 
 // 6. The Modeller charged SIMPLE interest on a balance the same page says
 //    capitalises, then reported the opening balance as still owed. The fix
-//    moved with the arithmetic into the engine.
-ok(/Math\.pow\(1 \+ RATE_BASIS\.variable\([^)]*\),\s*PAYMENTS_PER_YEAR\.monthly \* years\)/.test(forecastCode),
+//    moved with the arithmetic into the engine. A declared cash minimum is
+//    applied against that same monthly compounding; unpaid still uses
+//    opening × (1+r)^n.
+ok(/const helocMonthlyRate = RATE_BASIS\.variable\(heloc \? heloc\.rate : 0\)/.test(forecastCode),
   'the engine compounds capitalised HELOC interest at the monthly charge cadence');
+ok(/Math\.pow\(1 \+ helocMonthlyRate, helocMonths\)/.test(forecastCode),
+  'unpaid capitalise still uses monthly compounding, not an annual exponent');
+ok(/owed \+= charge - helocCash/.test(forecastCode),
+  'and a declared cash minimum is a payment against that compounding balance');
 // The HELOC is prime-linked whatever the mortgage renews into. Pricing it on a
 // fixed renewal convention would invent a rate the facility does not carry.
 ok(/RATE_BASIS\.variable\(heloc \? heloc\.rate : 0\)/.test(forecastCode),
@@ -984,11 +997,11 @@ const dataStr = JSON.stringify(data);
 // The exact HELOC crossing day is Forecast.projectDebts. A stored calendar
 // day in the assumptions (30 September on this opening) drifted from the
 // walk (31 October) and was published beside it.
-const helocCrossingAssumption = (plan.assumptions || [])
-  .find(a => /HELOC passes its own limit/.test(a));
-ok(!!helocCrossingAssumption,
-  'the HELOC-in-window assumption remains, without a stored crossing day');
-ok(helocCrossingAssumption && !containsCalendarDay(helocCrossingAssumption),
+const helocWalkAssumption = (plan.assumptions || [])
+  .find(a => /encoded HELOC cash minimum from cashFirstDue/.test(a));
+ok(!!helocWalkAssumption,
+  'the HELOC cash-minimum-on-the-walk assumption remains, without a stored crossing day');
+ok(helocWalkAssumption && !containsCalendarDay(helocWalkAssumption),
   'plan assumptions do not store an exact HELOC crossing calendar day');
 ok(storedCrossingClaims({ nextDollar: plan.nextDollar }).length === 0,
   'nextDollar does not store an exact HELOC crossing calendar day');

@@ -364,10 +364,12 @@ console.log('\n=== 5. card mins once; HELOC cash vs capitalise; no extra income 
     'September HELOC cash prints once on the 21st, estimated');
   const events = F.expandEvents(plan, '2026-09-01', '2026-09-30');
   const helocEv = events.filter(e => e.id === 'heloc');
-  ok(helocEv.length === 1 && helocEv[0].kind === 'noncash',
-    'expandEvents still emits only the capitalise event, not a second cash bill');
-  ok(!events.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
-    'HELOC cash is not a second household cash event on the walk');
+  ok(helocEv.filter(e => e.kind === 'noncash').length === 1
+      && helocEv.filter(e => e.kind === 'obligation').length === 1
+      && helocEv.find(e => e.kind === 'obligation').date === '2026-09-21',
+    'expandEvents emits capitalise plus one cash minimum, not a second cash bill');
+  ok(!events.some(e => e.id === 'heloc' && e.kind === 'bill'),
+    'HELOC cash is not a bill event on the walk');
   ok(view.billSections.length === 2
       && !view.billSections.some(s => /Seaspan|Amanda|payroll|salary/i.test(s.label)),
     'income dates do not spawn extra bill sections');

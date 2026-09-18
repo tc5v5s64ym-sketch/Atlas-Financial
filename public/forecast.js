@@ -321,9 +321,11 @@
   // The household CASH minimum on a capitalising obligation (the HELOC).
   // The interest itself is a non-cash `capitalise` event in expandEvents;
   // the cash minimum is a separate planned outflow keyed by `cashDay` /
-  // `cashFirstDue`. One rule, read by the Plan bills list and by the Credit
-  // page, so the two can never print different dates or amounts. Empty when
-  // the obligation is not capitalising or declares no cash minimum.
+  // `cashFirstDue`. One rule: expandEvents emits that cash as `kind:
+  // obligation` (Forecast Required debt), the Plan bills list prints it
+  // once, and the Credit page reads `nextCashMinimum`, so those surfaces
+  // cannot invent different dates or amounts. Empty when the obligation
+  // is not capitalising or declares no cash minimum.
   function capitalisingCashMinimumOccurrences(o, start, end) {
     const cashAmt = Number(o && o.cashPayment) || 0;
     if (!o || !o.nonCash || !(cashAmt > EPSILON) || o.cashDay == null) return [];
@@ -569,11 +571,11 @@
   // What ONE debt costs the household in CASH, per month, at today's cadence.
   //
   // Its recurring cash obligations and nothing else. A capitalising charge is a
-  // real economic cost and is reported separately, but no cash leaves an
-  // account for it, so it is not part of what the household pays. That is what
-  // makes the HELOC's $0.00 derived rather than asserted: its obligation is
-  // `nonCash`, so it contributes nothing by construction rather than by a field
-  // somebody has to remember.
+  // real economic cost and is reported separately; that interest posting is
+  // `nonCash` and is not itself a chequing outflow. A declared `cashPayment`
+  // on the same capitalising obligation IS household cash — the HELOC
+  // minimum — annualised at the same cadence. Capitalise without a cash
+  // minimum still contributes nothing, by construction.
   //
   // A cadence with no annual equivalent — a one-off, or one `PAYMENTS_PER_YEAR`
   // does not know — is REPORTED in `unmodelled` rather than dropped. Silently
@@ -602,9 +604,19 @@
     const unmodelled = [];
     const counted = [];
     const monthly = ((plan || {}).obligations || [])
-      .filter(o => o.debtId === debtId && !o.nonCash)
+      .filter(o => o && o.debtId === debtId)
       .reduce((sum, o) => {
         const perYear = PAYMENTS_PER_YEAR[o.frequency];
+        if (o.nonCash) {
+          const cashAmt = Number(o.cashPayment) || 0;
+          if (!(cashAmt > 0)) return sum;
+          if (!perYear) {
+            unmodelled.push(o.id);
+            return sum;
+          }
+          counted.push({ confidence: o.cashConfidence || o.confidence });
+          return sum + cashAmt * perYear / 12;
+        }
         if (!perYear) { unmodelled.push(o.id); return sum; }
         counted.push(o);
         return sum + o.amount * perYear / 12;
@@ -1391,6 +1403,21 @@
           label: o.label, id: o.id, confidence: o.confidence,
           debtId: o.debtId || null, effect: o.effect || null,
           payingAccount: o.payingAccount || null });
+      }
+      // Capitalising interest stays noncash above. The encoded cash
+      // minimum is a separate chequing obligation (Required debt), not a
+      // second copy of the capitalise row and not a Forecast bill.
+      for (const occ of capitalisingCashMinimumOccurrences(o, start, end)) {
+        const cashCap = opts.obligationAbsorbed;
+        const cashAmount = cashCap ? (cashCap[occ.date + ':' + o.id] || 0) : occ.amount;
+        if (cashAmount <= 0) continue;
+        events.push({
+          date: occ.date, amount: -cashAmount, kind: 'obligation',
+          label: occ.label, id: o.id, confidence: occ.confidence,
+          debtId: occ.debtId || o.debtId || null, effect: 'payment',
+          payingAccount: occ.payingAccount || null,
+          cashMinimum: true,
+        });
       }
     }
     for (const b of plan.bills || []) {
@@ -4778,6 +4805,7 @@
       payerLabel: plannedPayerLabel(payingAccount),
       needsDate: false,
       cardPaid: event.cardPaid === true,
+      cashMinimum: event.cashMinimum === true,
     };
   }
 
@@ -4839,9 +4867,10 @@
       }
       pushRow(due, row);
     }
-    // Planned cash minimum for a capitalising obligation. Printed once on
-    // the bills list; not a second expandEvents cash event and not a
-    // second copy of the capitalise row.
+    // Planned cash minimum for a capitalising obligation. expandEvents now
+    // emits that cash as kind:obligation; the seen key de-dupes this print
+    // so the Budget bills list still shows it once. Not a second copy of
+    // the capitalise row.
     for (const o of (plan && plan.obligations) || []) {
       for (const occ of capitalisingCashMinimumOccurrences(o, span.start, span.end)) {
         const key = (o.id || o.cashLabel || '') + '@' + occ.date;
@@ -10000,8 +10029,10 @@
   //
   // For a capitalising facility the interest charge is `nextCapitalise` —
   // a balance increase, not household cash — and the household cash minimum
-  // is `nextCashMinimum`, from the same rule the Plan bills list prints.
-  // They are two different facts and are never merged into one "payment".
+  // is `nextCashMinimum`, from the same `capitalisingCashMinimumOccurrences`
+  // rule expandEvents uses for the Required-debt cash obligation and the
+  // Plan bills list prints. They are two different facts and are never
+  // merged into one "payment".
   function creditAccounts(plan, debts, asOf, opts) {
     opts = opts || {};
     const extra = opts.extraFacilities || null;
@@ -10034,7 +10065,8 @@
     const rows = (debts || []).map((d, index) => {
       const u = utilById.get(d.id) || null;
       const unknownPending = pendingUnknown(d);
-      const nextPayment = paymentFact(firstEvent(d.id, e => e.kind === 'obligation' && e.effect === 'payment'));
+      const nextPayment = paymentFact(firstEvent(d.id, e =>
+        e.kind === 'obligation' && e.effect === 'payment' && e.cashMinimum !== true));
       const capEvent = firstEvent(d.id, e => e.kind === 'noncash' && e.effect === 'capitalise');
       let nextCashMinimum = null;
       for (const o of obligations) {
@@ -10153,14 +10185,19 @@
   //     and is no longer a second home for the balance, rate, or bi-weekly
   //     payment the arithmetic and the slider open on.
   //   TODAY'S HOUSEHOLD CASH comes from `plan.obligations`, the authority for
-  //     what is due and how often. That is what makes the HELOC's $0.00 derived
-  //     rather than asserted: its obligation is `nonCash`, so it contributes
-  //     nothing to cash by construction rather than by a field that has to be
-  //     remembered. It also means changing the mortgage payment moves the
-  //     comparison the household reads.
+  //     what is due and how often. Capitalising interest is `nonCash` and is
+  //     not itself a chequing outflow. A declared `cashPayment` on that same
+  //     obligation is household cash (the HELOC minimum) and is counted.
+  //     Changing the mortgage payment still moves the comparison the
+  //     household reads.
   //   HOW THE HELOC BEHAVES comes from the debt record, which
   //     `test-invariants.js` already names the canonical home for its interest
   //     treatment and for the split between economic cost and household cash.
+  //     Keep-separate applies the same `monthlyCashFor` cash minimum already
+  //     in household cash: it leaves chequing AND is a payment against the
+  //     capitalising balance. That is not a second schedule. Without a cash
+  //     minimum the horizon is unpaid compounding, identical to
+  //     opening × (1+r)^n.
   //
   // The old page code fell back to `heloc.payment` whenever `cashPayment` or
   // `monthlyInterest` was missing. That fallback is not carried over: treating
@@ -10239,18 +10276,39 @@
       // the default 18 years; compounding annually instead of monthly
       // understated it by a further $9,212.
       //
+      // The declared cash minimum is the same monthlyCashFor figure already in
+      // household cash: it leaves chequing AND is applied against this balance.
+      // Without a cash minimum the walk is unpaid compounding, identical to
+      // opening × (1+r)^n. Gross interest charged stays the cost; capitalised
+      // interest that cash does not cover remains on the balance.
+      //
       // The HELOC keeps its OWN convention. It is prime-linked and variable
       // whatever the mortgage renews into, so choosing a fixed renewal must not
       // silently reprice the facility that stays outside it.
-      helocOwed = capitalised
-        ? helocOpening * Math.pow(1 + RATE_BASIS.variable(heloc ? heloc.rate : 0),
-          PAYMENTS_PER_YEAR.monthly * years)
-        : helocOpening;
-      // Where the interest is PAID rather than capitalised the balance stands
-      // still, so the cost is simple interest on it for the whole horizon.
-      helocInterest = capitalised
-        ? helocOwed - helocOpening
-        : helocOpening * helocRate * years;
+      const helocMonthlyRate = RATE_BASIS.variable(heloc ? heloc.rate : 0);
+      const helocMonths = PAYMENTS_PER_YEAR.monthly * years;
+      if (capitalised) {
+        if (!(helocCash > 0)) {
+          helocOwed = helocOpening * Math.pow(1 + helocMonthlyRate, helocMonths);
+          helocInterest = helocOwed - helocOpening;
+        } else {
+          let owed = helocOpening;
+          let charged = 0;
+          for (let k = 0; k < helocMonths; k++) {
+            const charge = owed * helocMonthlyRate;
+            charged += charge;
+            owed += charge - helocCash;
+            if (owed < 0) owed = 0;
+          }
+          helocOwed = owed;
+          helocInterest = charged;
+        }
+      } else {
+        // Where the interest is PAID rather than capitalised the balance stands
+        // still, so the cost is simple interest on it for the whole horizon.
+        helocOwed = helocOpening;
+        helocInterest = helocOpening * helocRate * years;
+      }
     }
 
     const totalInterest = amortisingInterest + helocInterest;
@@ -10265,8 +10323,9 @@
       basis, rateMonthly,
       today: {
         // Which picture of "today" applies: a HELOC whose interest capitalises
-        // is not a bill, and saying so is the difference between a $3,466.67
-        // baseline and a $4,280.85 one that nobody pays.
+        // is not a bill for the interest charge itself. A declared cash
+        // minimum is household cash and is counted; inventing a bill from the
+        // capitalised charge is the $814 defect the split exists to prevent.
         id: capitalised ? 'capitalised' : 'paid',
         mortgageCash, helocCash, householdCash, helocEconomic, capitalised,
         // Cash obligations against these debts that have no monthly
@@ -10492,9 +10551,9 @@
           minimum: cash.monthly,
           minimumConfidence: cash.confidence,
           // Why there is, or is not, one — so the page states the reason rather
-          // than rendering a silent blank. A facility whose only charge is
-          // capitalised has no cash minimum, and saying so is the difference
-          // between "$0.00" and "$814.18 that nobody pays".
+          // than rendering a silent blank. Capitalise-only (no cashPayment)
+          // has no cash minimum. A capitalising obligation that declares
+          // cashPayment uses that cash, not the capitalise amount.
           minimumId: cash.monthly > 0 ? 'cash' : 'none',
           unmodelled: cash.unmodelled,
         };

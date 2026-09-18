@@ -56,19 +56,20 @@ ok(near(cashObligations, paidToDebts, 0.5),
   'cash paid out on obligations equals payments applied to debts',
   `${money(cashObligations)} vs ${money(paidToDebts)}`);
 
-console.log('\n=== the capitalising charge grows the balance and moves no cash ===');
+console.log('\n=== the capitalising charge grows the balance; cash minimum pays it down ===');
 const helocObl = plan.obligations.find(o => o.id === 'heloc');
 const helocEnd = end.debts.find(x => x.id === 'heloc');
 const charges = F.occurrences(helocObl, asOf, end.date).length;
 const helocStart = data.debts.find(x => x.id === 'heloc').balance;
-ok(helocEnd.balance > helocStart, 'the HELOC balance grows over the window',
-  `${money(helocStart)} → ${money(helocEnd.balance)}`);
-ok(near(helocEnd.balance, helocStart + charges * helocObl.amount, 0.5),
-  'by exactly the capitalised interest and nothing else',
-  `${charges} × ${money(helocObl.amount)}`);
-ok(proj.byId.heloc.paid === 0, 'and no cash is paid against it');
+const helocCashHits = (F.capitalisingCashMinimumOccurrences(helocObl, asOf, end.date) || []);
+const helocCashPaid = helocCashHits.reduce((s, occ) => s + Number(occ.amount || 0), 0);
+ok(near(helocEnd.balance, helocStart + charges * helocObl.amount - helocCashPaid, 0.5),
+  'ending HELOC is opening plus capitalised interest minus cash minima',
+  `${charges} × ${money(helocObl.amount)} − ${money(helocCashPaid)}`);
+ok(near(proj.byId.heloc.paid, helocCashPaid, 0.5),
+  'cash minima are paid against the HELOC', money(proj.byId.heloc.paid));
 ok(advice.sim.totals.noncash > 0 && near(advice.sim.totals.noncash, charges * helocObl.amount),
-  'the cash simulation agrees it is non-cash', money(advice.sim.totals.noncash));
+  'the cash simulation still tracks capitalise as non-cash', money(advice.sim.totals.noncash));
 
 console.log('\n=== the amortising payment splits interest from principal ===');
 const mort = data.debts.find(x => x.id === 'mortgage');
@@ -136,37 +137,19 @@ console.log('\n=== the over-limit findings the plan now rests on ===');
 // The TD Cash Back Visa is over its limit today.
 ok(today.overLimitCount >= 1, 'at least one facility is over its limit today',
   today.debts.filter(x => x.overLimit).map(x => x.label).join(', '));
-// The HELOC crosses its own limit inside the window with no new borrowing.
+console.log('\n=== the cash minimum keeps the HELOC under its limit in this window ===');
 const helocBreach = proj.marks.find(m => m.debts.some(x => x.id === 'heloc' && x.overLimit));
-ok(!!helocBreach, 'the HELOC crosses its limit inside the window without any new draw',
-  helocBreach ? `by ${helocBreach.date}` : 'no breach found');
-ok(helocBreach && helocBreach.day <= 90, 'and it happens within the 90 days',
-  helocBreach ? 'day ' + helocBreach.day : '');
-// Which is exactly why the plan ranks stopping HELOC growth above repayment.
+ok(!helocBreach, 'the HELOC does not cross its limit in the 91-day marks once cash minima repay it',
+  helocBreach ? `by ${helocBreach.date}` : 'no breach');
 ok(/HELOC/.test(JSON.stringify(plan.nextDollar)),
-  'the next-dollar policy accounts for it');
+  'the next-dollar policy still names the HELOC');
 
 /* ==================================================================
    The two things review caught, and neither can come back quietly.
    ================================================================== */
-console.log('\n=== the crossing date is the day it happens, not the next snapshot ===');
-// The HELOC crossing is the day the capitalising charge first takes the
-// balance over the limit. The 30-day marks can fall after that day, so
-// reading the breach off the marks reports a later month and puts the
-// household on the wrong side of the plan's own deadline.
+console.log('\n=== a HELOC crossing is the day it happens, not the next snapshot ===');
 const cross = proj.crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
-ok(!!cross, 'the HELOC crossing is reported at all');
-const helocChargeDates = F.occurrences(helocObl, asOf, proj.end);
-ok(helocChargeDates.includes(cross.date), 'and on the exact day the charge posts', cross.date);
-const markDate = proj.marks.find(m => m.debts.some(x => x.id === 'heloc' && x.overLimit)).date;
-ok(!!markDate && markDate >= cross.date,
-  'the 30-day snapshot is on or after the daily crossing', markDate);
-ok(cross.date < markDate, 'so the crossing must be read from the daily walk, not the marks',
-  `${cross.date} vs ${markDate}`);
-// The charge that does it, checked against the schedule rather than asserted.
-const helocCharges = F.occurrences(helocObl, asOf, proj.end);
-ok(helocCharges.includes(cross.date), 'the crossing day is a day the charge actually posts',
-  helocCharges.join(', '));
+ok(!cross, 'the live cash-minimum walk has no future HELOC crossing in this window');
 // A facility already over the limit today is a different problem and is marked.
 const already = proj.crossings.filter(c => c.alreadyOver).map(c => c.label);
 ok(already.includes('Amazon.ca Rewards Mastercard (MBNA)')
