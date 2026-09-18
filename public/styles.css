@@ -2735,18 +2735,26 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 }
 .planning-road-wf-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   padding: 12px 0;
   border-bottom: 1px solid var(--grid);
   font-size: .95rem;
 }
 .planning-road-wf-row:last-child { border-bottom: 0; }
-.planning-road-wf-label { color: var(--text-primary); }
+.planning-road-wf-label {
+  flex: 1 1 11rem;
+  min-width: 0;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
 .planning-road-wf-amount {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
   gap: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -2792,9 +2800,10 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 }
 .planning-road-wf-result {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid var(--border);
@@ -2810,11 +2819,20 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   border-color: var(--road-gap-edge);
   color: var(--road-gap);
 }
-.planning-road-wf-result-label { font-weight: 700; font-size: .95rem; }
+.planning-road-wf-result-label {
+  flex: 1 1 16rem;
+  min-width: 0;
+  line-height: 1.35;
+  font-weight: 700;
+  font-size: .95rem;
+}
 .planning-road-wf-result-value {
+  flex: 0 0 auto;
+  margin-left: auto;
   font-size: 1.15rem;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .planning-road-wf-footnote {
   margin: 2px 4px 0;
@@ -2922,6 +2940,18 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-selected .planning-trajectory-funding-stage:not(:last-child)::after,
   .planning-road-stages .planning-trajectory-funding-stage:not(:last-child)::after {
     content: none;
+  }
+  .planning-road-wf-result {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .planning-road-wf-result-label {
+    flex: 1 1 auto;
+  }
+  .planning-road-wf-result-value {
+    text-align: right;
+    margin-left: 0;
   }
 }
 
