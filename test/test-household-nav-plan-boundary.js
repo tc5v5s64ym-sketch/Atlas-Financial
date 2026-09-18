@@ -209,7 +209,7 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptio
     `${page} uses the incumbent header: brand, as-of chip, theme, sign out, stylesheet, noindex`);
   ok(/<script src="\/app.js"><\/script>/.test(html)
       && /<script src="\/forecast.js"><\/script>/.test(html)
-      && new RegExp(`<script src="/${id}.js"></script>`).test(html)
+      && new RegExp(`<script src="/${id}\\.js(?:\\?[^"]*)?"></script>`).test(html)
       && !/<script>/.test(html),
     `${page} loads the shared core, the Forecast engine and its own page script, and no inline script (CSP)`);
   const pageScript = read(`public/${id}.js`);
