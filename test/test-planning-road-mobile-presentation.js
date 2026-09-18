@@ -159,31 +159,30 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   const htmlStatic = read('public/planning.html');
   ok(!/baseline walk|published horizon|legacy layout|full table/i.test(htmlStatic),
     'planning.html static copy follows DESIGN glossary');
+  const leftoverDrawer = /Pressure signals on this (month|pay period)|What-if: extra payment|Known future costs Atlas is protecting|Monthly cash and debt \(detailed\)|Three-stage funding \(expanded picker\)|All pressure signals in this projection|Debt direction across the projection/;
+  ok(!leftoverDrawer.test(htmlStatic) && !leftoverDrawer.test(road),
+    'the seven leftover Road Ahead drawers/what-if are absent from static markup and live render');
   const horizonAt = road.indexOf('data-planning-road-primary="horizon"');
   const stripAt = road.indexOf('data-planning-road-primary="strip"');
   const waterfallAt = road.indexOf('data-planning-road-primary="waterfall"');
   const leadAt = road.indexOf('data-planning-road-primary="lead"');
   const breakdownAt = road.indexOf('data-planning-road-primary="breakdown"');
-  const whatifAt = road.indexOf('data-planning-road-primary="whatif"');
   ok(horizonAt >= 0 && stripAt > horizonAt && waterfallAt > stripAt && leadAt > waterfallAt
-    && breakdownAt > leadAt && whatifAt > breakdownAt,
-    'phone order is horizon chips → period title/slice → surplus/deficit hero → waterfall → breakdown → quarantined what-if');
-  const scenarioAt = road.indexOf('data-trajectory-scenario-section="controls"');
-  ok(scenarioAt === whatifAt || scenarioAt > breakdownAt,
-    'hypothetical scenario sits below breakdown on the phone-first stack');
+    && breakdownAt > leadAt,
+    'phone order is horizon chips → period title/slice → surplus/deficit hero → waterfall → breakdown');
+  ok(!/data-planning-road-primary="whatif"/.test(road)
+    && !/data-trajectory-scenario-section="controls"/.test(road)
+    && !/planning-road-whatif-quarantine/.test(road)
+    && !/planning-road-pressure-detail/.test(road),
+    'primary stack has no what-if quarantine and no in-flow pressure drawer');
   ok(!/sustainable|on track|safe to spend|key takeaway|what can you do/i.test(road),
     'road-ahead shell renders no forbidden verdict copy');
   ok(!/baseline walk|published horizon|legacy layout|full table/i.test(road),
     'road-ahead shell avoids DESIGN glossary banned phrases');
-  ok(/data-trajectory-scenario-preview="idle"/.test(road)
-    && /planning-road-whatif-preview/.test(road),
-    'idle what-if preview shows em-dash placeholders until user runs a scenario');
   ok(/planning-road-hero-card/.test(road) && /planning-road-waterfall/.test(road),
     'hero card and waterfall treatments render on live shell');
-  ok(/planning-road-whatif-quarantine/.test(road) && /Reset/.test(road),
-    'what-if is quarantined and offers Reset only (no save-as-plan)');
   ok(!/save as plan|save-as-plan/i.test(road),
-    'road-ahead what-if has no save-as-plan affordance');
+    'road-ahead has no save-as-plan affordance');
   ok(/planning-road-period-nav/.test(road) && /aria-label="Horizon period navigation"/.test(road),
     'horizon period navigation is a named landmark section');
   ok(!/atlas-card|card-strip|Card badge|purple Card/i.test(road),
@@ -222,11 +221,10 @@ console.log('\n=== 1b. Identity, freshness, hero, horizon chips, slice control =
     && /planning-road-breakdown-group-title">Money in</.test(road)
     && /planning-road-breakdown-group-title">Bills &amp; required costs|planning-road-breakdown-group-title">Bills & required costs/.test(road),
     'breakdown is a named sheet row with grouped line items');
-  ok(/This is a preview, not a change\. Trying numbers here never updates your plan and never moves or schedules money\./.test(road),
-    'DESIGN §6 what-if banner copy is exact');
-  ok(/What-if: extra payment/.test(road)
-    && /planning-road-whatif-preview-head[\s\S]{0,120}>Plan<[\s\S]{0,60}>Preview</.test(road),
-    'what-if is titled and compares Plan against Preview');
+  ok(!/This is a preview, not a change/.test(road)
+    && !/What-if: extra payment/.test(road)
+    && !/planning-road-whatif-preview-head/.test(road),
+    'leftover what-if banner, title, and Plan/Preview grid are absent');
   ok(/aria-label="[A-Z][a-z]+ \d{4} — Projected (surplus|funding gap|result)/.test(road)
     || /aria-label="\d+ [A-Z][a-z]+ \d{4}[^"]*— Projected/.test(road),
     'chip accessible name is the whole period plus the Forecast result phrase');
@@ -356,12 +354,12 @@ console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical 
   ok(/planning-road-selected[\s\S]*flex-direction:\s*column/.test(mobile)
     || /planning-road-stages[\s\S]*flex-direction:\s*column/.test(mobile),
     'three-stage funding stacks vertically in the selected-period story');
-  ok(/planning-road-whatif-quarantine/.test(css),
-    'what-if quarantine styling is present for Fable preview framing');
+  ok(!/planning-road-whatif-quarantine/.test(css)
+    && !/\.planning-road-disclosure/.test(css)
+    && !/\.planning-road-pressure-detail/.test(css),
+    'leftover drawer and what-if quarantine styling is gone');
   ok(/planning-road-trust-estimated/.test(css),
     'estimated trust chip uses amber presentation class');
-  ok(/--hypo-accent/.test(css) && /--hypo-border/.test(css),
-    'what-if quarantine uses hypo design tokens');
   ok(/--road-trust-confirmed/.test(css) && /--road-gap/.test(css),
     'Road Ahead uses DESIGN §9 trust and status tokens');
   ok(/planning-road-trust-planned/.test(css),
@@ -850,6 +848,10 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && /Income total/.test(linedIncome)
     && !/<details/.test(linedIncome),
     'when Forecast publishes income line labels, those lines and the income total stay always visible');
+  ok(!/\bDale\b/.test(linedIncome) && !/\bAmanda\b/.test(linedIncome)
+    && !/Seaspan/.test(linedIncome) && !/Tennis/.test(linedIncome)
+    && !/50\s*\/\s*50/.test(linedIncome),
+    'reprinting published income lines does not invent Dale/Amanda, Seaspan/Tennis, or a 50/50 split');
 }
 
 console.log('\n=== 12. Uniform headers, expanders with published lines, Dale/Amanda reprint ===');

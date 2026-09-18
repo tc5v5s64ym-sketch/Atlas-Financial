@@ -1596,17 +1596,9 @@ function planningRoadAheadBreakdownHtml(traj, granularity, selectedKey) {
     || periods[0];
   if (!period) return '';
   const sheet = planningRoadAheadBreakdownSheetHtml(period, granularity);
-  const signals = planningRoadAheadSignalsForPeriod(traj, period, granularity);
-  const allSignals = (traj.pressure && Array.isArray(traj.pressure.signals)) ? traj.pressure.signals : [];
-  const pressureBlock = signals.length
-    ? `<details class="planning-road-pressure-detail"><summary>Pressure signals on this ${granularity === 'pay-period' ? 'pay period' : 'month'} (${signals.length})</summary><ol class="planning-trajectory-pressure-list" data-trajectory-pressure="ready">${signals.map(signal => {
-      const index = allSignals.indexOf(signal);
-      return planningTrajectoryPressureSignalHtml(signal, index >= 0 ? index : 0);
-    }).join('')}</ol></details>`
-    : '<p class="lede planning-road-pressure-detail" data-road-period-pressure="none">Forecast published no pressure signals on this period.</p>';
+  if (!sheet) return '';
   return `<section class="planning-road-breakdown" data-planning-road-breakdown="region" aria-label="Selected period breakdown">
     ${sheet}
-    ${pressureBlock}
   </section>`;
 }
 
@@ -2227,10 +2219,7 @@ function planningRoadAheadWireSelection(root, d, periods) {
 }
 
 function renderPlanning(d, periods) {
-  const html = planningPageHtml(planningAdvice(d, periods), d.liveOverlay);
   const traj = planningTrajectory(d, periods);
-  const trajHtml = planningTrajectoryHtml(traj);
-  const pressureHtml = planningTrajectoryPressureHtml(traj);
   const asOf = d && d.meta && d.meta.asOf ? d.meta.asOf : null;
   if (traj && traj.status === 'ready' && Array.isArray(traj.months) && traj.months.length) {
     if (!planningTrajectorySelectedMonth
@@ -2253,31 +2242,10 @@ function renderPlanning(d, periods) {
     && planningTrajectoryFundingGranularity !== 'pay-period') {
     planningTrajectoryFundingGranularity = 'month';
   }
-  const fundingSelectedKey = planningTrajectoryFundingGranularity === 'pay-period'
-    ? planningTrajectorySelectedPayPeriod
-    : planningTrajectorySelectedMonth;
-  const fundingHtml = planningTrajectoryFundingHtml(
-    traj, planningTrajectoryFundingGranularity, fundingSelectedKey);
-  if (fundingHtml.selectedMonth) planningTrajectorySelectedMonth = fundingHtml.selectedMonth;
-  if (fundingHtml.selectedPayPeriod) planningTrajectorySelectedPayPeriod = fundingHtml.selectedPayPeriod;
-  if (fundingHtml.granularity) planningTrajectoryFundingGranularity = fundingHtml.granularity;
   const roadSelectedKey = planningTrajectoryFundingGranularity === 'pay-period'
     ? planningTrajectorySelectedPayPeriod
     : planningTrajectorySelectedMonth;
   const roadHtml = planningRoadAheadHtml(traj, planningTrajectoryFundingGranularity, roadSelectedKey, asOf);
-  const scenarioControls = planningTrajectoryScenarioControlsHtml(
-    d.debts, planningScenarioDraftDebtId, planningScenarioDraftAmount, planningScenarioFormError);
-  let scenarioResult = null;
-  const scenarioRequested = !!(planningScenarioActive && planningScenarioActive.debtId != null
-    && typeof planningScenarioActive.amount === 'number');
-  if (scenarioRequested) {
-    scenarioResult = planningTrajectoryScenario(d, periods, {
-      debtId: planningScenarioActive.debtId,
-      amount: planningScenarioActive.amount,
-    });
-  }
-  const scenarioCompare = planningTrajectoryScenarioCompareHtml(scenarioResult, scenarioRequested);
-  const scenarioDetailOpen = scenarioRequested ? ' open' : '';
   const roadRoot = $('planning-road-ahead');
   if (roadRoot) {
     const freshness = asOf
@@ -2315,79 +2283,11 @@ function renderPlanning(d, periods) {
       <div class="planning-road-breakdown-band" data-planning-road-primary="breakdown">
         ${roadHtml.breakdown}
       </div>
-      <details class="planning-road-scenario-detail planning-road-whatif-quarantine"${scenarioDetailOpen} data-trajectory-scenario-section="controls" data-planning-road-primary="whatif">
-        <summary>What-if: extra payment</summary>
-        <p class="planning-road-whatif-banner" role="note">This is a preview, not a change. Trying numbers here never updates your plan and never moves or schedules money.</p>
-        <p class="lede">${scenarioControls.intro}</p>
-        ${scenarioControls.controls}
-        <div class="planning-trajectory-scenario-result" data-trajectory-scenario-result="panel">${scenarioCompare.panel}</div>
-        <p class="lede footnote" data-trajectory-scenario-note="footnote">${scenarioCompare.note}</p>
-      </details>
     </div>`;
     planningRoadAheadWireSelection(roadRoot, d, periods);
-    planningRoadScenarioWire(roadRoot, d, periods);
     planningRoadAheadScrollSelectedTimeline(roadRoot, roadSelectedKey);
     planningRoadAheadFocusPeriodStory(roadRoot);
     planningRoadAheadFocusSelectedTab(roadRoot);
-  }
-  $('planning-lede').textContent = html.lede;
-  $('planning-list').innerHTML = html.list;
-  $('planning-note').textContent = html.note;
-  $('planning-trajectory-lede').textContent = trajHtml.lede;
-  $('planning-trajectory').innerHTML = trajHtml.table;
-  $('planning-trajectory-note').textContent = trajHtml.note;
-  $('planning-trajectory-funding-lede').textContent = fundingHtml.lede;
-  $('planning-trajectory-funding-picker').innerHTML = fundingHtml.picker;
-  const fundingRegion = $('planning-trajectory-funding');
-  fundingRegion.innerHTML = fundingHtml.panel;
-  fundingRegion.setAttribute(
-    'aria-label',
-    planningTrajectoryFundingRegionAriaLabel(fundingHtml.granularity || 'month'),
-  );
-  $('planning-trajectory-funding-note').textContent = fundingHtml.note;
-  $('planning-trajectory-pressure-lede').textContent = pressureHtml.lede;
-  $('planning-trajectory-pressure').innerHTML = pressureHtml.list;
-  $('planning-trajectory-pressure-note').textContent = pressureHtml.note;
-  const debtDirectionHtml = planningTrajectoryDebtDirectionHtml(traj);
-  $('planning-trajectory-debt-direction-lede').textContent = debtDirectionHtml.lede;
-  $('planning-trajectory-debt-direction').innerHTML = debtDirectionHtml.list;
-  $('planning-trajectory-debt-direction-note').textContent = debtDirectionHtml.note;
-
-  const fundingPickerRoot = $('planning-trajectory-funding-picker');
-  const fundingSelect = fundingPickerRoot.querySelector('[data-trajectory-funding-picker="select"]');
-  if (fundingSelect) {
-    fundingSelect.onchange = () => {
-      if (planningTrajectoryFundingGranularity === 'pay-period') {
-        planningTrajectorySelectedPayPeriod = fundingSelect.value;
-      } else {
-        planningTrajectorySelectedMonth = fundingSelect.value;
-      }
-      renderPlanning(d, periods);
-    };
-  }
-  const granularityBtns = fundingPickerRoot.querySelectorAll('[data-trajectory-funding-granularity]');
-  for (const btn of granularityBtns) {
-    btn.onclick = () => {
-      const next = btn.getAttribute('data-trajectory-funding-granularity');
-      if (!next || next === planningTrajectoryFundingGranularity) return;
-      planningTrajectoryFundingGranularity = next;
-      renderPlanning(d, periods);
-    };
-  }
-  const monthRows = $('planning-trajectory').querySelectorAll('tr[data-trajectory-month]');
-  for (const tr of monthRows) {
-    const monthKey = tr.getAttribute('data-trajectory-month');
-    const selected = planningTrajectoryFundingGranularity === 'month'
-      && monthKey === planningTrajectorySelectedMonth;
-    tr.classList.toggle('planning-trajectory-month-selected', selected);
-    const selectBtn = tr.querySelector('[data-trajectory-month-select]');
-    if (!selectBtn) continue;
-    selectBtn.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    selectBtn.onclick = () => {
-      planningTrajectoryFundingGranularity = 'month';
-      planningTrajectorySelectedMonth = monthKey;
-      renderPlanning(d, periods);
-    };
   }
 }
 

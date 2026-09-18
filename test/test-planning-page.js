@@ -152,6 +152,30 @@ function fixture(cashValue) {
 
 const page = loadPage('public/planning.js');
 
+const LEFTOVER_ROAD_DRAWER = /Pressure signals on this (month|pay period)|What-if: extra payment|Known future costs Atlas is protecting|Monthly cash and debt \(detailed\)|Three-stage funding \(expanded picker\)|All pressure signals in this projection|Debt direction across the projection/;
+const REMOVED_SHELL_IDS = [
+  'planning-lede', 'planning-list', 'planning-note',
+  'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note',
+  'planning-trajectory-funding-lede', 'planning-trajectory-funding-picker',
+  'planning-trajectory-funding', 'planning-trajectory-funding-note',
+  'planning-trajectory-pressure-lede', 'planning-trajectory-pressure',
+  'planning-trajectory-pressure-note',
+  'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction',
+  'planning-trajectory-debt-direction-note',
+];
+
+function adviceFrom(data, p) {
+  return F.recommend(data.plan, data.meta.asOf, {
+    fundingSources: data.plan && data.plan.funding && data.plan.funding.options,
+    debts: data.debts || [],
+    extraFacilities: data.revolvingExtra || [],
+    periods: p || null,
+  });
+}
+function pageList(data, p) {
+  return page.compose(adviceFrom(data, p), data.liveOverlay || null);
+}
+
 console.log('=== 1–2. The page consumes Forecast.majorPlans and invents no verdict ===');
 {
   const src = stripComments(read('public/planning.js'));
@@ -167,29 +191,27 @@ console.log('=== 1–2. The page consumes Forecast.majorPlans and invents no ver
     'no arithmetic on need, remaining or range bounds (no midpoint, no total)');
   ok(!/new Date\(\)|Date\.now|localStorage/.test(src), 'no browser clock and no persisted knob');
   const fx = fixture();
-  const el = page.render(fx, null);
-  const advice = F.recommend(fx.plan, AS_OF, { fundingSources: null, debts: [], extraFacilities: [], periods: null });
-  const rendered = ids(el['planning-list'].innerHTML);
+  const composed = pageList(fx, null);
+  const advice = adviceFrom(fx, null);
+  const rendered = ids(composed.list);
   ok(JSON.stringify(rendered) === JSON.stringify(advice.majorPlans.map(p => p.id)),
     'rows are exactly Forecast.majorPlans, in Forecast order', rendered.join(','));
   for (const p of advice.majorPlans) {
-    ok(new RegExp(`data-planning-verdict="${p.verdict}"`).test(row(el['planning-list'].innerHTML, p.id)),
+    ok(new RegExp(`data-planning-verdict="${p.verdict}"`).test(row(composed.list, p.id)),
       `${p.id} prints Forecast's verdict ${p.verdict}`);
   }
 }
 
 console.log('\n=== 3–4. Unsettled plans render; settled commitments are not savings goals ===');
 {
-  const el = page.render(fixture(), null);
-  const html = el['planning-list'].innerHTML;
+  const html = pageList(fixture(), null).list;
   ok(['dated-point', 'point', 'range', 'tbd', 'optional'].every(id => row(html, id)), 'every unsettled row renders');
   ok(!row(html, 'settled-camp') && !/Settled camp/.test(html), 'a settledOn ≤ as-of commitment does not appear');
   const later = fixture();
   later.plan.commitments.find(c => c.id === 'settled-camp').settledOn = '2026-03-20';
-  const laterHtml = page.render(later, null)['planning-list'].innerHTML;
+  const laterHtml = pageList(later, null).list;
   ok(!!row(laterHtml, 'settled-camp'), 'a commitment settled after as-of is still unsettled on this opening and renders (Forecast rule, not a page rule)');
-  const liveEl = page.render(live, periods);
-  const liveHtml = liveEl['planning-list'].innerHTML;
+  const liveHtml = pageList(live, periods).list;
   const settled = live.plan.commitments.filter(c => F.commitmentSettledBy(c, live.meta.asOf));
   ok(settled.length > 0 && settled.every(c => !row(liveHtml, c.id) && !liveHtml.includes(c.label)),
     `live: ${settled.length} settled commitments (${settled.map(c => c.id).join(', ')}) are absent`);
@@ -199,8 +221,7 @@ console.log('\n=== 3–4. Unsettled plans render; settled commitments are not sa
 
 console.log('\n=== 5–8. Points stay points, ranges stay ranges, approximate stays approximate, unknown stays unresolved ===');
 {
-  const el = page.render(fixture(), null);
-  const html = el['planning-list'].innerHTML;
+  const html = pageList(fixture(), null).list;
   const point = row(html, 'point');
   ok(/data-planning-amount="point"/.test(point) && strip(factOf(point, 'requirement')).includes('$2,000.00 Cost'),
     'a point estimate prints as one amount');
@@ -225,8 +246,7 @@ console.log('\n=== 5–8. Points stay points, ranges stay ranges, approximate st
   ok(/>FLEXIBLE</.test(range) && />REQUIRED</.test(point) && />OPTIONAL</.test(row(html, 'optional')),
     'flexibility chips follow Forecast flexibility');
   // Live ranges from the current data: whatever Forecast returns with both bounds.
-  const liveEl = page.render(live, periods);
-  const liveHtml = liveEl['planning-list'].innerHTML;
+  const liveHtml = pageList(live, periods).list;
   const liveAdvice = F.recommend(live.plan, live.meta.asOf, {
     fundingSources: live.plan.funding && live.plan.funding.options, debts: live.debts,
     extraFacilities: live.revolvingExtra, periods,
@@ -244,9 +264,8 @@ console.log('\n=== 5–8. Points stay points, ranges stay ranges, approximate st
 console.log('\n=== 9–10. Forecast remaining / projected values unchanged; set-aside only from Forecast allocation ===');
 {
   const fx = fixture();
-  const el = page.render(fx, null);
-  const html = el['planning-list'].innerHTML;
-  const advice = F.recommend(fx.plan, AS_OF, { fundingSources: null, debts: [], extraFacilities: [], periods: null });
+  const html = pageList(fx, null).list;
+  const advice = adviceFrom(fx, null);
   for (const p of advice.majorPlans) {
     ok(strip(factOf(row(html, p.id), 'remaining')).startsWith(money2(p.remaining)),
       `${p.id} prints Forecast remaining ${money2(p.remaining)} unchanged`);
@@ -287,10 +306,10 @@ console.log('\n=== 9–10. Forecast remaining / projected values unchanged; set-
 
 console.log('\n=== 11–12. No saved balance is invented; no independent ranking or total ===');
 {
-  const el = page.render(live, periods);
-  const html = el['planning-list'].innerHTML + el['planning-lede'].textContent + el['planning-note'].textContent;
+  const composed = pageList(live, periods);
+  const html = composed.list + composed.lede + composed.note;
   ok(!/Saved \$|saved so far|\bSaved\b.*\$0/i.test(html), 'no "Saved $0" or saved-so-far figure anywhere');
-  ok(/does not track a dedicated saved balance/.test(el['planning-note'].textContent), 'the page says Atlas does not track a saved balance');
+  ok(/does not track a dedicated saved balance/.test(composed.note), 'the page says Atlas does not track a saved balance');
   const src = stripComments(read('public/planning.js'));
   ok(!/savedSoFar|\.sort\(|reverse\(\)|priority/.test(src), 'planning.js does not sort, reverse, or read priority; Forecast order is rendered');
   const liveAdvice = F.recommend(live.plan, live.meta.asOf, {
@@ -302,11 +321,11 @@ console.log('\n=== 11–12. No saved balance is invented; no independent ranking
   const floorTotal = liveAdvice.majorPlans.reduce((s, p) => s + (p.need != null ? p.need : (p.amountMin || 0)), 0);
   ok(!html.includes(money2(floorTotal)) || Math.abs(floorTotal - liveAdvice.knowledge.encumbered) < 0.005,
     'no page-summed floor total appears unless it is Forecast\'s own protected floor');
-  ok(el['planning-lede'].textContent.includes(money2(liveAdvice.knowledge.encumbered))
-      && /protected floor, not a total/.test(el['planning-lede'].textContent)
-      && /ranges count at their low end/.test(el['planning-lede'].textContent),
+  ok(composed.lede.includes(money2(liveAdvice.knowledge.encumbered))
+      && /protected floor, not a total/.test(composed.lede)
+      && /ranges count at their low end/.test(composed.lede),
     'the only aggregate is Forecast knowledge.encumbered, labelled as a protected floor with ranges at their low end');
-  ok(el['planning-lede'].textContent.includes(longDate(liveAdvice.knowledge.end)), 'the lede names the Forecast knowledge horizon end');
+  ok(composed.lede.includes(longDate(liveAdvice.knowledge.end)), 'the lede names the Forecast knowledge horizon end');
 }
 
 console.log('\n=== 13–15. Baseline trajectory reprints Forecast.baselineTrajectory ===');
@@ -316,13 +335,13 @@ console.log('\n=== 13–15. Baseline trajectory reprints Forecast.baselineTrajec
     'planning.js calls Forecast.baselineTrajectory');
   ok(!/Forecast\.simulate\(|Forecast\.projectDebts\(|Forecast\.expandEvents\(/.test(src),
     'planning.js does not walk cash or debt for the trajectory table');
-  const liveEl = page.render(live, periods);
+  const trajHtml = page.composeTrajectory(live, periods);
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
   ok(traj.status === 'ready' && Array.isArray(traj.months) && traj.months.length > 0,
     'live baselineTrajectory is ready with months');
-  const tableHtml = liveEl['planning-trajectory'].innerHTML;
+  const tableHtml = trajHtml.table;
   ok(/planning-trajectory-table/.test(tableHtml), 'trajectory renders a table');
   for (const month of traj.months) {
     ok(new RegExp(`data-trajectory-month="${month.month}"`).test(tableHtml),
@@ -353,7 +372,7 @@ console.log('\n=== 13–15. Baseline trajectory reprints Forecast.baselineTrajec
     && jan2027.cash && jan2027.cash.status === 'estimated'
     && typeof jan2027.income.amount === 'number' && jan2027.income.amount !== 0,
     'live: January 2027 is Forecast-estimated Dale income and cash, not carried 2026 net');
-  ok(/does not walk cash or debt itself/.test(liveEl['planning-trajectory-note'].textContent),
+  ok(/does not walk cash or debt itself/.test(trajHtml.note),
     'trajectory footnote says the page does not walk cash or debt');
   ok(!/Cash \(month-end\)/.test(tableHtml),
     'cash column is not labelled month-end (period end matches Forecast span)');
@@ -411,14 +430,14 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
   ok(!/assistant-packet|\/talk\//.test(src),
     'planning.js does not touch packet or Talk seams');
 
-  const liveEl = page.render(live, periods);
+  const pressure = page.composePressure(live, periods);
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
   ok(traj.pressure && traj.pressure.status === 'ready'
     && Array.isArray(traj.pressure.signals),
     'live baselineTrajectory pressure is ready with signals');
-  const pressureHtml = liveEl['planning-trajectory-pressure'].innerHTML;
+  const pressureHtml = pressure.list;
   ok(/data-trajectory-pressure="ready"/.test(pressureHtml),
     'live pressure list is marked ready');
   ok(traj.pressure.signals.length > 0,
@@ -534,14 +553,14 @@ console.log('\n=== 17. Trajectory debt direction reprints Forecast.baselineTraje
   ok(!/payoff order|comfort band|affordability|safe-to-spend|RYG/i.test(src),
     'debt direction copy carries no ranking or policy-threshold wording');
 
-  const liveEl = page.render(live, periods);
+  const debtDirection = page.composeDebtDirection(live, periods);
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
   ok(traj.debtDirection && traj.debtDirection.status === 'ready'
     && Array.isArray(traj.debtDirection.debts),
     'live baselineTrajectory debtDirection is ready with per-debt rows');
-  const ddHtml = liveEl['planning-trajectory-debt-direction'].innerHTML;
+  const ddHtml = debtDirection.list;
   ok(/data-trajectory-debt-direction="ready"/.test(ddHtml),
     'live debt direction block is marked ready');
   const h = traj.debtDirection.household || {};
@@ -646,13 +665,13 @@ console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baseline
   ok(!/safe-to-spend|affordability|sustainable|breathing room/i.test(src),
     'funding copy carries no policy-threshold or comfort wording');
 
-  const liveEl = page.render(live, periods);
+  const funding = page.composeFunding(live, periods);
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
   ok(traj.status === 'ready' && traj.months.length > 0, 'live trajectory has months with funding stages');
   const pickMonth = traj.months[0];
-  const fundingHtml = liveEl['planning-trajectory-funding'].innerHTML;
+  const fundingHtml = funding.panel;
   ok(/data-trajectory-funding-month="/.test(fundingHtml),
     'live funding panel renders for a selected month');
   ok(/data-trajectory-funding-stage="1"/.test(fundingHtml)
@@ -696,12 +715,12 @@ console.log('\n=== 18. Trajectory three-stage funding reprints Forecast.baseline
   ok(/does not subtract stages, recompute funding/.test(composed.note),
     'funding footnote says the page does not recompute stages');
 
-  const pressureStill = liveEl['planning-trajectory-pressure'].innerHTML;
-  const ddStill = liveEl['planning-trajectory-debt-direction'].innerHTML;
+  const pressureStill = page.composePressure(live, periods).list;
+  const ddStill = page.composeDebtDirection(live, periods).list;
   ok(/data-trajectory-pressure="ready"/.test(pressureStill) || /data-trajectory-pressure="empty"/.test(pressureStill),
-    'pressure reprint remains after funding section');
+    'pressure composer remains after funding compose');
   ok(/data-trajectory-debt-direction="ready"/.test(ddStill) || /data-trajectory-debt-direction="unavailable"/.test(ddStill),
-    'debt direction reprint remains after funding section');
+    'debt direction composer remains after funding compose');
 }
 
 console.log('\n=== 19. Trajectory month selection keeps table row semantics ===');
@@ -714,8 +733,7 @@ console.log('\n=== 19. Trajectory month selection keeps table row semantics ==='
   ok(/<button type="button"[^>]*data-trajectory-month-select=/.test(src),
     'month selection is a real button inside the row');
 
-  const liveEl = page.render(live, periods);
-  const tableHtml = liveEl['planning-trajectory'].innerHTML;
+  const tableHtml = page.composeTrajectory(live, periods).table;
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
@@ -779,7 +797,6 @@ console.log('\n=== 20. Trajectory Month ↔ Pay Period funding granularity ===')
   ok(!/public\/forecast\.js/.test(src) && !/assistant-packet|\/talk\//.test(src),
     'planning.js does not edit forecast, packet, or Talk seams');
 
-  const liveEl = page.render(live, periods);
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
@@ -820,10 +837,10 @@ console.log('\n=== 20. Trajectory Month ↔ Pay Period funding granularity ===')
       'Pay period view copies stage3 from Forecast payPeriods[]');
   }
 
-  const pickerHtml = liveEl['planning-trajectory-funding-picker'].innerHTML;
+  const pickerHtml = page.composeFunding(live, periods, 'month', traj.months[0].month).picker;
   ok(/data-trajectory-funding-granularity="month"/.test(pickerHtml)
     && /data-trajectory-funding-granularity="pay-period"/.test(pickerHtml),
-    'live page renders Month and Pay period controls');
+    'funding composer still exposes Month and Pay period controls');
 
   const estimatedPeriod = traj.payPeriods.find(p => p.stage1 && p.stage1.status === 'estimated');
   if (estimatedPeriod) {
@@ -859,44 +876,33 @@ console.log('\n=== 20. Trajectory Month ↔ Pay Period funding granularity ===')
       'changing Forecast fixture changes rendered pay-period stage3 without Planning arithmetic');
   }
 
-  const pressureStill = liveEl['planning-trajectory-pressure'].innerHTML;
-  const ddStill = liveEl['planning-trajectory-debt-direction'].innerHTML;
-  const tableStill = liveEl['planning-trajectory'].innerHTML;
+  const pressureStill = page.composePressure(live, periods).list;
+  const ddStill = page.composeDebtDirection(live, periods).list;
+  const tableStill = page.composeTrajectory(live, periods).table;
   ok(/planning-trajectory-table/.test(tableStill),
-    'monthly cash/debt table remains after granularity work');
+    'monthly cash/debt composer remains after granularity work');
   ok(/data-trajectory-pressure=/.test(pressureStill),
-    'pressure reprint remains after granularity work');
+    'pressure composer remains after granularity work');
   ok(/data-trajectory-debt-direction=/.test(ddStill),
-    'debt direction reprint remains after granularity work');
+    'debt direction composer remains after granularity work');
 }
 
-console.log('\n=== 21. Trajectory funding region accessible name matches granularity ===');
+console.log('\n=== 21. Leftover three-stage funding drawer is absent from primary markup ===');
 {
-  const src = stripComments(read('public/planning.js'));
   const html = read('public/planning.html');
-  ok(/function planningTrajectoryFundingRegionAriaLabel\(/.test(src),
-    'planning.js centralizes funding region aria-label copy');
-  ok(/setAttribute\(\s*['"]aria-label['"]/.test(src)
-    && /planningTrajectoryFundingRegionAriaLabel\(/.test(src),
-    'renderPlanning syncs funding region aria-label with granularity');
-  ok(/aria-label="Three-stage funding for selected period"/.test(html),
-    'planning.html loads with granularity-neutral funding region name');
-  ok(!/aria-label="Three-stage funding for selected trajectory month"/.test(html),
-    'planning.html does not hardcode month-only funding region name');
-
+  ok(!/id="planning-trajectory-funding"/.test(html)
+    && !/Three-stage funding \(expanded picker\)/.test(html),
+    'planning.html has no three-stage funding drawer shell');
+  const liveEl = page.render(live, periods);
+  ok(!liveEl['planning-trajectory-funding']
+    && !liveEl['planning-trajectory-funding-picker'],
+    'renderPlanning does not fill leftover funding drawer ids');
   const monthLabel = page.ctx.planningTrajectoryFundingRegionAriaLabel('month');
   const payLabel = page.ctx.planningTrajectoryFundingRegionAriaLabel('pay-period');
   ok(/trajectory month/i.test(monthLabel) && !/pay period/i.test(monthLabel),
-    'Month aria-label names a trajectory month, not a pay period');
+    'Month aria-label helper still names a trajectory month, not a pay period');
   ok(/Seaspan pay period/i.test(payLabel) && !/trajectory month/i.test(payLabel),
-    'Pay period aria-label names a Seaspan pay period, not a trajectory month');
-
-  const liveEl = page.render(live, periods);
-  const monthAria = liveEl['planning-trajectory-funding'].getAttribute('aria-label');
-  ok(monthAria === monthLabel,
-    'default Month render sets funding region aria-label to month copy');
-  ok(!/pay period/i.test(monthAria || ''),
-    'default Month render does not tell AT the funding panel is a pay period');
+    'Pay period aria-label helper still names a Seaspan pay period, not a trajectory month');
 
   const payFunding = page.composeFunding(live, periods, 'pay-period',
     (F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
@@ -1073,8 +1079,11 @@ console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajecto
   ok(JSON.stringify(live.plan) === planBefore && JSON.stringify(live.debts) === debtsBefore,
     'applying a scenario does not mutate plan or debts');
   const roadA = renderedA['planning-road-ahead'].innerHTML;
-  ok(/data-trajectory-scenario="ready"/.test(roadA),
-    'road-ahead region renders an active scenario');
+  ok(!/What-if: extra payment/.test(roadA)
+    && !/data-planning-road-primary="whatif"/.test(roadA)
+    && !/planning-road-whatif-quarantine/.test(roadA)
+    && !/data-trajectory-scenario-section="controls"/.test(roadA),
+    'road-ahead primary render does not mount the leftover what-if drawer');
   const trajBaseline = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
@@ -1089,23 +1098,16 @@ console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajecto
   }
   const cleared = page.clearScenarioAndRender(live, periods);
   const roadCleared = cleared['planning-road-ahead'].innerHTML;
-  ok(!/data-trajectory-scenario="ready"/.test(roadCleared),
-    'clearing the scenario removes the ready comparison panel');
-  ok(/data-trajectory-scenario-form="ready"/.test(roadCleared),
-    'controls remain after clear');
-  ok(/data-trajectory-scenario="idle"/.test(roadCleared),
-    'after Clear the scenario result panel is idle, not unavailable');
-  ok(!/data-trajectory-scenario="unavailable"/.test(roadCleared)
-    && !/Forecast scenario unavailable/.test(roadCleared),
-    'after Clear does not publish Forecast-unavailable messaging');
+  ok(!/What-if: extra payment/.test(roadCleared)
+    && !/data-planning-road-primary="whatif"/.test(roadCleared),
+    'clearing leftover scenario state still leaves what-if off the primary render');
 
   const idleRender = page.render(live, periods);
   const roadIdle = idleRender['planning-road-ahead'].innerHTML;
-  ok(/data-trajectory-scenario="idle"/.test(roadIdle),
-    'initial load shows idle scenario state');
-  ok(!/data-trajectory-scenario="unavailable"/.test(roadIdle)
-    && !/Forecast scenario unavailable/.test(roadIdle),
-    'initial load does not publish Forecast-unavailable messaging');
+  ok(!/What-if: extra payment/.test(roadIdle)
+    && !/data-planning-road-primary="whatif"/.test(roadIdle)
+    && !/planning-road-whatif-quarantine/.test(roadIdle),
+    'initial load does not mount the leftover what-if drawer');
 
   const idleComposed = page.composeScenario(live, periods, null, null);
   ok(/data-trajectory-scenario="idle"/.test(idleComposed.panel),
@@ -1133,11 +1135,73 @@ console.log('\n=== Page contract ===');
     'planning.html avoids DESIGN glossary banned phrases in static copy');
   ok(!/\$\d|\d\.\d\d\b/.test(html.replace(/<meta[^>]*>/g, '')), 'planning.html hardcodes no figure');
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-  ok(['planning-road-ahead', 'planning-lede', 'planning-list', 'planning-note', 'planning-trajectory-lede', 'planning-trajectory', 'planning-trajectory-note', 'planning-trajectory-funding-lede', 'planning-trajectory-funding-picker', 'planning-trajectory-funding', 'planning-trajectory-funding-note', 'planning-trajectory-pressure-lede', 'planning-trajectory-pressure', 'planning-trajectory-pressure-note', 'planning-trajectory-debt-direction-lede', 'planning-trajectory-debt-direction', 'planning-trajectory-debt-direction-note'].every(id => ids.has(id)),
-    'planning.html has every element planning.js writes to');
+  ok(ids.has('planning-road-ahead'),
+    'planning.html mounts the Road Ahead region');
+  ok(REMOVED_SHELL_IDS.every(id => !ids.has(id)),
+    'planning.html has no leftover Road Ahead drawer shells');
+  ok(!LEFTOVER_ROAD_DRAWER.test(html),
+    'planning.html static copy does not name the leftover drawers');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js">/.test(html), 'planning.html loads forecast.js before planning.js');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),
     'no example list is hardcoded in the page or script');
+}
+
+console.log('\n=== Leftover Road Ahead drawers are absent from primary markup/render ===');
+{
+  const html = read('public/planning.html');
+  const liveEl = page.render(live, periods);
+  const road = liveEl['planning-road-ahead'].innerHTML;
+  const composed = page.composeRoadAhead(live, periods);
+  const primary = html + road + composed.lead + composed.stages + composed.breakdown + composed.selected;
+  ok(!LEFTOVER_ROAD_DRAWER.test(primary),
+    'the seven leftover drawers/what-if are absent from Road Ahead primary markup and render');
+  ok(!/planning-road-pressure-detail/.test(primary)
+    && !/data-road-period-pressure=/.test(primary),
+    'in-flow month/pay-period pressure drawer is gone from the waterfall');
+  ok(!/planning-road-whatif-quarantine/.test(primary)
+    && !/data-planning-road-primary="whatif"/.test(primary),
+    'purple what-if quarantine is gone from the primary stack');
+  ok(REMOVED_SHELL_IDS.every(id => !liveEl[id]),
+    'renderPlanning does not fill leftover drawer ids');
+  ok(/data-planning-road-waterfall="ready"/.test(road)
+    && /data-planning-road-wf="income"/.test(road)
+    && /data-planning-road-wf="planned-spending"/.test(road)
+    && /data-planning-road-horizon="chips"/.test(road),
+    'Budget-waterfall remains the primary Road Ahead');
+
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const liveIncome = traj.months[0] && traj.months[0].stage1 && traj.months[0].stage1.income;
+  ok(liveIncome
+    && (!Array.isArray(liveIncome.lines) || liveIncome.lines.length === 0)
+    && (!Array.isArray(liveIncome.items) || liveIncome.items.length === 0),
+    'live stage1.income is a Forecast rollup only — no named income lines');
+  ok(page.ctx.planningRoadPublishedLines(liveIncome).length === 0,
+    'published-lines helper reprints nothing when Forecast published no lines');
+  const incomeChunk = (road.split('data-planning-road-wf="income"')[1] || '')
+    .split('data-planning-road-wf="')[0];
+  ok(/Income total/.test(incomeChunk)
+    && !/\bDale\b/.test(incomeChunk) && !/\bAmanda\b/.test(incomeChunk)
+    && !/Seaspan/.test(incomeChunk) && !/Tennis/.test(incomeChunk)
+    && !/50\s*\/\s*50/.test(incomeChunk),
+    'Income reprints the Forecast total and does not invent Dale/Amanda, Seaspan/Tennis, or a 50/50 split');
+  const withLines = JSON.parse(JSON.stringify(traj));
+  withLines.months[0].stage1.income = {
+    amount: liveIncome.amount,
+    status: liveIncome.status,
+    lines: [
+      { label: 'Published stream A', amount: 100, status: 'confirmed' },
+      { label: 'Published stream B', amount: 50, status: 'estimated' },
+    ],
+  };
+  const lined = page.composeRoadAheadTraj(withLines, 'month', withLines.months[0].month, live.meta.asOf);
+  const linedIncome = (lined.stages.split('data-planning-road-wf="income"')[1] || '')
+    .split('data-planning-road-wf="')[0];
+  ok(/Published stream A/.test(linedIncome) && /Published stream B/.test(linedIncome)
+    && /Income total/.test(linedIncome)
+    && !/\bDale\b/.test(linedIncome) && !/\bAmanda\b/.test(linedIncome),
+    'when Forecast publishes named income lines, Planning reprints those labels and still invents none');
 }
 
 console.log('\n' + '═'.repeat(60));
