@@ -137,6 +137,9 @@ ok(F.commitmentCashDate({ date: '', when: 'Sep 2026' }) === '2026-09-15',
 console.log('\n=== expandEvents dates the occurrences (synthetic when-only + live Dec) ===');
 {
   const fixture = {
+    income: [],
+    obligations: [],
+    bills: [],
     commitments: [
       { id: 'when-only', label: 'When only', amount: 80, when: 'Sep 2026', confidence: 'estimated' },
       { id: 'explicit', label: 'Explicit', amount: 1200, date: '2026-12-09', when: 'Dec 2026', confidence: 'estimated' },
