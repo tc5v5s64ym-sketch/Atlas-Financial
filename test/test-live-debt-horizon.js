@@ -117,7 +117,28 @@ function independentLedger(days) {
     const card = !held && (debtIds.has(row.payingAccount) || row.jointCash === false);
     scope(!row.payingAccount || cashIds.has(row.payingAccount) || held || card,
       `${row.id}: unknown paying-account attribution`);
-    add(row, held ? 'external' : card ? 'reserved' : 'bill', !row.nonCash);
+    const kind = held ? 'external' : card ? 'reserved' : 'bill';
+    const dates = datesFor(row, days, !row.nonCash);
+    const rawCredit = row.utilityAccountCredit;
+    const credit = typeof rawCredit === 'number' ? rawCredit
+      : rawCredit && typeof rawCredit === 'object' ? Number(rawCredit.amount) : 0;
+    if (rawCredit != null) {
+      scope(Number.isFinite(credit) && credit > 0,
+        `${row.id}: invalid utility-account credit`);
+      scope(typeof row.firstDue === 'string' && Number.isFinite(time(row.firstDue)),
+        `${row.id}: utility-account credit needs a firstDue`);
+      if (rawCredit && typeof rawCredit === 'object' && rawCredit.asOf) {
+        scope(Number.isFinite(time(rawCredit.asOf)) && rawCredit.asOf <= row.firstDue,
+          `${row.id}: utility-account credit evidence post-dates firstDue`);
+      }
+    }
+    for (const date of dates) {
+      const amount = date === row.firstDue && credit > 0
+        ? Math.max(0, row.amount - credit)
+        : row.amount;
+      if (amount <= 0) continue;
+      rows.push({ id: row.id, date, kind, amount, debtId: row.debtId });
+    }
   }
   const end = iso(time(start) + (days - 1) * DAY);
   for (const row of unsettled) {
