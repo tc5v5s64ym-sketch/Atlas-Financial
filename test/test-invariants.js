@@ -523,9 +523,15 @@ ok(/openingId = fundingShort \? 'unfunded'/.test(forecastCode),
 
 // 6. The Modeller charged SIMPLE interest on a balance the same page says
 //    capitalises, then reported the opening balance as still owed. The fix
-//    moved with the arithmetic into the engine.
-ok(/Math\.pow\(1 \+ RATE_BASIS\.variable\([^)]*\),\s*PAYMENTS_PER_YEAR\.monthly \* years\)/.test(forecastCode),
+//    moved with the arithmetic into the engine. A declared cash minimum is
+//    applied against that same monthly compounding; unpaid still uses
+//    opening × (1+r)^n.
+ok(/const helocMonthlyRate = RATE_BASIS\.variable\(heloc \? heloc\.rate : 0\)/.test(forecastCode),
   'the engine compounds capitalised HELOC interest at the monthly charge cadence');
+ok(/Math\.pow\(1 \+ helocMonthlyRate, helocMonths\)/.test(forecastCode),
+  'unpaid capitalise still uses monthly compounding, not an annual exponent');
+ok(/owed \+= charge - helocCash/.test(forecastCode),
+  'and a declared cash minimum is a payment against that compounding balance');
 // The HELOC is prime-linked whatever the mortgage renews into. Pricing it on a
 // fixed renewal convention would invent a rate the facility does not carry.
 ok(/RATE_BASIS\.variable\(heloc \? heloc\.rate : 0\)/.test(forecastCode),
