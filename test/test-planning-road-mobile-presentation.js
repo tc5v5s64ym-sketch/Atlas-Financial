@@ -22,6 +22,7 @@ const ok = (cond, label, detail = '') => {
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
 };
 const money2 = n => (n < 0 ? '−$' : '$') + Math.abs(Number(n)).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const longDate = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'long', year: 'numeric' });
 const stripComments = src => String(src).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 function mobilePlanningRoadBlock(css) {
@@ -940,8 +941,8 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   const linedPlanned = wfBlock(linedCommit.stages, 'planned-spending');
   ok(/Published commitment A/.test(linedPlanned)
     && /Published commitment B/.test(linedPlanned)
-    && /9 December 2026/.test(linedPlanned)
-    && /25 December 2026/.test(linedPlanned)
+    && linedPlanned.includes(longDate('2026-12-09'))
+    && linedPlanned.includes(longDate('2026-12-25'))
     && !/<details/.test(linedPlanned),
     'waterfall Planned spending reprints mock Stage2 commitment labels and dates inline');
   ok(/Published commitment A/.test(linedCommit.breakdown)
