@@ -248,14 +248,16 @@ amount. It must not be double-counted.
 ### Q22. What are the remaining unknown tournament costs, and what are Provincials date/location/cost?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know (2026-08-16, estimates absorbed onto `plan.commitments` by
-`B95`):** the known major future costs already have **one Plan home**. This
-question does not restate their amounts, timing, or flexibility. Read the
-canonical rows: `fusion-season`, `burrards-team-fees`, `warriors`,
-`seattle-nov`, `seattle-dec`, `christmas-2026`, `downstairs-couch`,
-`exterior-painting`, `indio-tournament`, `provincials`. Annual irregulars
-already supported by Atlas evidence stay where they already live: home
-insurance and vehicle maintenance on `plan.commitments`; property tax as
-the existing reserve. Do not copy those values here.
+`B95`; Square One restated 2026-09-18 onto `plan.bills`):** the known major
+future costs already have **one Plan home**. This question does not restate
+their amounts, timing, or flexibility. Read the canonical rows:
+`burrards-team-fees`, `warriors`, `seattle-nov`, `seattle-dec`,
+`christmas-2026`, `downstairs-couch`, `exterior-painting`,
+`indio-tournament`, `provincials`. Vehicle maintenance stays on
+`plan.commitments`. Property tax stays the existing reserve. Square One
+home insurance is no longer an undated commitment: it is the dated yearly
+card-paid `plan.bills` row `square-one` (10 February, `firstDue`
+2027-02-10). Do not copy those values here.
 
 There are no other specifically known tournaments. Tacoma is not on the
 current known list.
@@ -263,7 +265,7 @@ current known list.
 Still unanswered, and only these:
 - exact due dates for rows whose `when` is not a single clear month-and-year:
   `downstairs-couch` (Nov–Dec 2026), `exterior-painting` (Fall 2026),
-  `provincials` (timing TBD), `home-insurance` (around Feb, no year),
+  `provincials` (timing TBD),
   `vehicle-maintenance` (annual)
 - a point amount for Indio (`indio-tournament` is still a range)
 - Provincials location and date (`provincials` timing is TBD; the cost

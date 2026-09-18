@@ -207,7 +207,7 @@ function commitmentKey(row) {
   }
   return JSON.stringify(copy);
 }
-const SUPERSEDED_COMMITMENT_IDS = new Set(['fusion-season', 'warriors']);
+const SUPERSEDED_COMMITMENT_IDS = new Set(['fusion-season', 'warriors', 'home-insurance']);
 const OWNER_DATED_COMMITMENT_IDS = new Set([
   'burrards-team-fees',
   'seattle-nov',
