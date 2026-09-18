@@ -48,6 +48,21 @@ const POINT = {
   'home-insurance': 3131.76,
   'vehicle-maintenance': 2400,
 };
+const OWNER_EXPLICIT_DATES = {
+  'seattle-dec': '2026-12-09',
+  'christmas-2026': '2026-12-25',
+};
+const OWNER_DAY15_DATES = {
+  'burrards-team-fees': '2026-09-15',
+  'seattle-nov': '2026-11-15',
+};
+const STILL_UNDATED = [
+  'downstairs-couch',
+  'exterior-painting',
+  'provincials',
+  'home-insurance',
+  'vehicle-maintenance',
+];
 const RANGES = {
   'exterior-painting': [700, 1200],
   'indio-tournament': [5260, 5460],
@@ -76,14 +91,27 @@ for (const [id, amount] of Object.entries(POINT)) {
   ok(row && near(row.amount, amount) && row.confidence === 'estimated',
     `${id} is the owner estimate $${amount}`,
     row ? String(row.amount) : 'missing');
-  ok(row && row.date == null, `${id} has no fabricated date`);
+}
+for (const [id, date] of Object.entries(OWNER_EXPLICIT_DATES)) {
+  ok(byId[id] && byId[id].date === date,
+    `${id} keeps the owner-assigned cash date ${date}`,
+    byId[id] ? String(byId[id].date) : 'missing');
+}
+for (const [id, date] of Object.entries(OWNER_DAY15_DATES)) {
+  ok(byId[id] && byId[id].date === date,
+    `${id} materializes the owner month-only 15th as ${date}`,
+    byId[id] ? String(byId[id].date) : 'missing');
+}
+for (const id of STILL_UNDATED) {
+  ok(byId[id] && byId[id].date == null, `${id} stays undated — month/year not clear`);
 }
 for (const [id, [lo, hi]] of Object.entries(RANGES)) {
   const row = byId[id];
   ok(row && row.amount == null && near(row.amountMin, lo) && near(row.amountMax, hi),
     `${id} keeps the range $${lo}–$${hi} and invents no midpoint`);
-  ok(row && row.date == null, `${id} has no fabricated date`);
 }
+ok(byId['indio-tournament'] && byId['indio-tournament'].date === '2027-01-15',
+  'indio-tournament is dated 2027-01-15 and still has no point amount');
 for (const id of FLEXIBLE) {
   ok(byId[id] && byId[id].adjustable === true, `${id} is marked flexible`);
 }
@@ -105,20 +133,34 @@ ok(Array.isArray(pub.commitmentItems)
 ok(!PREEXISTING.every(id => (data.commitments.note || '').includes(id)),
   'the Deep Dive note is chrome, not the row authority');
 
-console.log('\n=== undated rows do not become 91-day cash ===');
+console.log('\n=== unclear-month rows do not become 91-day cash ===');
 const events = F.expandEvents(plan, asOf, windowEnd, {});
-const newCash = events.filter(e => NEW_IDS.includes(e.id));
-ok(newCash.length === 0,
-  'expandEvents emits no cash event for an undated absorbed cost',
-  newCash.map(e => e.id).join(',') || 'none');
+const unclearCash = events.filter(e => STILL_UNDATED.includes(e.id));
+ok(unclearCash.length === 0,
+  'expandEvents emits no cash event for a still-undated absorbed cost',
+  unclearCash.map(e => e.id).join(',') || 'none');
+ok(events.some(e => e.id === 'burrards-team-fees' && e.date === '2026-09-15'
+    && near(e.amount, -700)),
+  '91-day expandEvents includes Burrards team fees on the owner 15th');
+ok(events.some(e => e.id === 'seattle-nov' && e.date === '2026-11-15'
+    && near(e.amount, -1200)),
+  '91-day expandEvents includes Seattle #1 on the owner 15th');
 ok(!events.some(e => e.id === 'warriors'),
   'Warriors + tax row emits no invented cash event');
 const seq = F.fundingSequence(plan, asOf, {});
 ok(seq.some(c => c.id === 'warriors' && c.date === '2026-09-23'),
   'Warriors stays in fundingSequence on 23 September');
 const later = F.expandEvents(plan, asOf, '2027-12-31', {});
-ok(!later.some(e => NEW_IDS.includes(e.id)),
-  'a longer expander walk still invents no day for undated rows');
+ok(!later.some(e => STILL_UNDATED.includes(e.id)),
+  'a longer expander walk still invents no day for unclear-month rows');
+ok(later.some(e => e.id === 'seattle-dec' && e.date === '2026-12-09'
+    && near(e.amount, -1200)),
+  'longer walk includes seattle-dec on the owner Dec 9 date');
+ok(later.some(e => e.id === 'christmas-2026' && e.date === '2026-12-25'
+    && near(e.amount, -3500)),
+  'longer walk includes christmas-2026 on the owner Dec 25 date');
+ok(!later.some(e => e.id === 'indio-tournament'),
+  'dated Indio range still emits no cash midpoint');
 
 console.log('\n=== undated rows encumber the master walk without becoming cash ===');
 const recOpts = {
@@ -138,8 +180,8 @@ const budget = F.budgetBreakdown(plan, require('../public/periods.json'), {
   asOf,
 });
 ok(!(budget.sinkingItems || []).some(s =>
-  /Burrards team fees|Seattle tournament|Christmas 2026|Downstairs couch|Exterior painting|Indio|Provincials|Home insurance|Vehicle maintenance/.test(s.label)),
-  'undated absorbed rows are not smeared into 91-day sinkingMonthly');
+  /Downstairs couch|Exterior painting|Provincials|Home insurance|Vehicle maintenance/.test(s.label)),
+  'unclear-month absorbed rows are not smeared into 91-day sinkingMonthly');
 const fusionSinking = (budget.sinkingItems || []).filter(s => /Fusion season — household/.test(s.label));
 ok(fusionSinking.length >= 3,
   'dated Fusion household rows within the window may appear in sinkingMonthly',

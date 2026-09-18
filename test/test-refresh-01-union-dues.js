@@ -198,9 +198,23 @@ ok(JSON.stringify((before.plan.obligations || []).map(obligationKey))
 function commitmentKey(row) {
   const copy = Object.assign({}, row);
   if (copy.id === 'home-insurance' || copy.id === 'tryouts') delete copy.note;
+  // Owner month-only / explicit cash dates and the notes that record them
+  // are this dating outcome, not a CMAW side-effect. Identity and amounts
+  // still have to match.
+  if (OWNER_DATED_COMMITMENT_IDS.has(copy.id)) {
+    delete copy.date;
+    delete copy.note;
+  }
   return JSON.stringify(copy);
 }
 const SUPERSEDED_COMMITMENT_IDS = new Set(['fusion-season', 'warriors']);
+const OWNER_DATED_COMMITMENT_IDS = new Set([
+  'burrards-team-fees',
+  'seattle-nov',
+  'seattle-dec',
+  'christmas-2026',
+  'indio-tournament',
+]);
 ok((before.plan.commitments || [])
   .filter(row => !SUPERSEDED_COMMITMENT_IDS.has(row.id))
   .every((row) => {

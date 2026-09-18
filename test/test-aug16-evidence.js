@@ -288,10 +288,10 @@ console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees rema
     'an Aug. 16 opening omits the paid registrations');
   const fees = (plan.commitments || []).find(c => c.id === 'burrards-team-fees');
   ok(fees && fees.confidence === 'estimated' && near(fees.amount, 700)
-    && fees.date == null,
-    '~$700 team fees remain an undated estimated plan row');
-  ok(!(plan.commitments || []).some(c => c.id === 'burrards-team-fees' && c.date),
-    'no fabricated exact Burrards team-fee date');
+    && fees.date === '2026-09-15' && fees.when === 'Sep 2026',
+    '~$700 team fees remain estimated, now dated 2026-09-15 under month-only policy');
+  ok(!(plan.commitments || []).some(c => c.id === 'burrards-team-fees' && c.date !== '2026-09-15'),
+    'Burrards team-fee cash date is the owner 15th, not another invented day');
 }
 
 console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not double-counted ===');

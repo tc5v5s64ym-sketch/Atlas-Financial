@@ -584,43 +584,47 @@
             },
             {
                 "id": "burrards-team-fees",
+                "date": "2026-09-15",
                 "label": "Burrards team fees",
                 "amount": 700,
                 "when": "Sep 2026",
                 "budgetCategory": "sport",
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner estimate ~$700, likely Sep 2026. Not a confirmed invoice. No September day is invented. Distinct from the settled 12 August registrations."
+                "note": "Owner estimate ~$700, likely Sep 2026. Not a confirmed invoice. Owner month-only dating policy: cash date 2026-09-15 (15th of the clear month). Distinct from the settled 12 August registrations."
             },
             {
                 "id": "seattle-nov",
+                "date": "2026-11-15",
                 "label": "Seattle tournament #1",
                 "amount": 1200,
                 "when": "Nov 2026",
                 "budgetCategory": "travel",
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner estimate $1,200, Nov 2026. Tournament dates are not a payment due date; no day is invented. Tacoma is not on the current known list."
+                "note": "Owner estimate $1,200, Nov 2026. Tournament dates are not a payment due date. Owner month-only dating policy: cash date 2026-11-15 (15th of the clear month). Tacoma is not on the current known list."
             },
             {
                 "id": "seattle-dec",
+                "date": "2026-12-09",
                 "label": "Seattle tournament #2",
                 "amount": 1200,
                 "when": "Dec 2026",
                 "budgetCategory": "travel",
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner estimate $1,200, Dec 2026. No day is invented. Distinct from Seattle #1."
+                "note": "Owner estimate $1,200, Dec 2026. Owner assigned cash date 2026-12-09 (Seattle tournament is Dec 9), not the month-only 15th. Distinct from Seattle #1."
             },
             {
                 "id": "christmas-2026",
+                "date": "2026-12-25",
                 "label": "Christmas 2026",
                 "amount": 3500,
                 "when": "by Christmas 2026",
                 "budgetCategory": null,
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner estimate $3,500 by Christmas 2026. Amanda's 10 August interview $5,000–$6,000/year remains interview evidence, not this row. No day is invented."
+                "note": "Owner estimate $3,500 by Christmas 2026. Owner assigned cash date 2026-12-25 (Christmas is Dec 25), not a month-only 15th. Amanda's 10 August interview $5,000–$6,000/year remains interview evidence, not this row."
             },
             {
                 "id": "downstairs-couch",
@@ -648,6 +652,7 @@
             },
             {
                 "id": "indio-tournament",
+                "date": "2027-01-15",
                 "label": "Indio tournament",
                 "amount": null,
                 "amountMin": 5260,
@@ -656,7 +661,7 @@
                 "budgetCategory": "travel",
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner estimate $5,260–$5,460, Jan 2027. Range only — no midpoint is invented and no day is invented."
+                "note": "Owner estimate $5,260–$5,460, Jan 2027. Range only — no midpoint is invented. Owner month-only dating policy: cash date 2027-01-15 (15th of the clear month)."
             },
             {
                 "id": "provincials",
