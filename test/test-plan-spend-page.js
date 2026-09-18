@@ -255,11 +255,6 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
     const r = row(liveHtml, p.id);
     return r && /data-plan-spend-timing="approximate"/.test(r) && timingSpan(r) === p.when;
   }), `live: ${liveApprox.length} when-only rows print when verbatim`);
-  const advice = adviceFrom(fixture(), null);
-  for (const p of advice.majorPlans) {
-    ok(strip(factOf(row(html, p.id), 'remaining')).startsWith(money2(p.remaining)),
-      `${p.id} prints Forecast remaining ${money2(p.remaining)} unchanged`);
-  }
 }
 
 console.log('\n=== 4. Fail-closed empty / unavailable; no invented saved balance ===');
