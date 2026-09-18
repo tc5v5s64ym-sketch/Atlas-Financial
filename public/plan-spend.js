@@ -32,9 +32,12 @@ function planSpendRequirement(row) {
   return { amount: 'Unresolved', label: 'Cost amount', kind: 'unresolved' };
 }
 
+// Forecast calendar date wins when present. Approximate `when` is printed as
+// given only when Forecast published no date. Does not invent a day from
+// month or holiday wording.
 function planSpendTiming(row) {
-  if (row.when) return { text: row.when, kind: 'approximate' };
   if (row.date) return { text: fmtDateFull(row.date), kind: 'dated' };
+  if (row.when) return { text: row.when, kind: 'approximate' };
   return { text: 'Timing unresolved', kind: 'unresolved' };
 }
 
