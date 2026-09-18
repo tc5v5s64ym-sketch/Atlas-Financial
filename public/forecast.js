@@ -1264,6 +1264,28 @@
     return stream.frequency === 'biweekly' ? monthly * 12 / 26 : monthly;
   }
 
+  // Utility-account credit on a recurring bill. This is not chequing
+  // income and not a second planner: it only reduces the cash outflow
+  // of the first cadence occurrence (`firstDue`). Later occurrences
+  // keep the scheduled equal-payment amount.
+  function billUtilityAccountCreditAmount(bill) {
+    const raw = bill && bill.utilityAccountCredit;
+    if (raw == null) return 0;
+    const n = typeof raw === 'number' ? Number(raw)
+      : raw && typeof raw === 'object' ? Number(raw.amount) : NaN;
+    if (!isFinite(n) || n <= 0) return 0;
+    return roundCent(n);
+  }
+  function billOccurrenceCashAmount(bill, date) {
+    const scheduled = Number(bill && bill.amount);
+    if (!isFinite(scheduled) || scheduled <= 0) return scheduled;
+    const credit = billUtilityAccountCreditAmount(bill);
+    if (!(credit > 0) || !date) return scheduled;
+    const first = bill.firstDue || null;
+    if (!first || String(date) !== String(first)) return scheduled;
+    return roundCent(Math.max(0, scheduled - credit));
+  }
+
   function expandEvents(plan, start, end, opts) {
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
@@ -1336,10 +1358,12 @@
       if (!billIsHouseholdObligation(b)) continue;
       if (b.needsDate) continue;
       for (const date of outflowDates(b, start, end)) {
+        const cash = billOccurrenceCashAmount(b, date);
+        if (!(cash > 0)) continue;
         const jointCash = billAffectsJointCash(b, plan);
         const cardPaid = isCardPaidBill(b, plan);
         events.push({
-          date, amount: -b.amount, kind: 'bill', label: b.label, id: b.id,
+          date, amount: -cash, kind: 'bill', label: b.label, id: b.id,
           confidence: b.confidence,
           householdObligation: true,
           payingAccount: b.payingAccount || null,

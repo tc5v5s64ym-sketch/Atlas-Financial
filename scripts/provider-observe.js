@@ -1035,6 +1035,18 @@ const ONCE_COVER_GRACE_DAYS = 7;
 const EARLY_PAY_LOOKAHEAD_DAYS = 7;
 const IDENTITY_AMOUNT_EPSILON = 0.005;
 
+function ruleEarlyPayLookaheadDays(rule) {
+  const fallback = EARLY_PAY_LOOKAHEAD_DAYS;
+  if (!rule || rule.postingDateRule !== COVER_EARLY_OR_DUE_ON_OR_BEFORE_POSTING) {
+    return fallback;
+  }
+  const raw = rule.earlyPayLookaheadDays;
+  if (raw == null || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) return fallback;
+  return Math.min(n, COVER_DUE_LOOKBACK_DAYS);
+}
+
 function rulePayeePatterns(rule) {
   const values = [].concat((rule && rule.payeePatterns) || [],
     rule && rule.payeePattern ? [rule.payeePattern] : []);
@@ -1242,7 +1254,7 @@ function postingDateRelation(scheduledDate, postingDate, rule) {
   }
   if (rule && rule.postingDateRule === COVER_EARLY_OR_DUE_ON_OR_BEFORE_POSTING) {
     if (scheduled < posted) return COVER_DUE_ON_OR_BEFORE_POSTING;
-    const earliest = Forecast.addDays(scheduled, -EARLY_PAY_LOOKAHEAD_DAYS);
+    const earliest = Forecast.addDays(scheduled, -ruleEarlyPayLookaheadDays(rule));
     return earliest && posted >= earliest ? 'early-pay-before-due' : null;
   }
   if (rule && rule.postingDateRule === COVER_DUE_ON_OR_BEFORE_POSTING
@@ -1271,8 +1283,9 @@ function sourceFrequency(plan, eventId) {
 function coveringEarlyOrDueDates(plan, rule, postingDate) {
   const posted = parseIsoDate(postingDate);
   if (!plan || !rule || !rule.eventId || !posted) return [];
+  const lookahead = ruleEarlyPayLookaheadDays(rule);
   const from = Forecast.addDays(posted, -COVER_DUE_LOOKBACK_DAYS);
-  const to = Forecast.addDays(posted, EARLY_PAY_LOOKAHEAD_DAYS);
+  const to = Forecast.addDays(posted, lookahead);
   if (!from || !to) return [];
   const events = scheduledEventsOnRange(plan, from, to)
     .filter(event => event && event.id === rule.eventId);
@@ -1282,7 +1295,7 @@ function coveringEarlyOrDueDates(plan, rule, postingDate) {
     const dist = calendarDaysBetween(posted, event.date);
     if (dist == null) continue;
     const abs = Math.abs(dist);
-    if (event.date > posted && abs > EARLY_PAY_LOOKAHEAD_DAYS) continue;
+    if (event.date > posted && abs > lookahead) continue;
     if (sourceFrequency(plan, rule.eventId) === 'once' && event.date < posted) {
       const lastAllowed = Forecast.addDays(event.date, ONCE_COVER_GRACE_DAYS);
       if (!lastAllowed || posted > lastAllowed) continue;
@@ -2096,7 +2109,8 @@ function allowedPostingDatesFor(scheduledDate, rule) {
     if (weekday === 0) dates.push(Forecast.addDays(scheduled, 1));
   }
   if (rule && rule.postingDateRule === COVER_EARLY_OR_DUE_ON_OR_BEFORE_POSTING) {
-    for (let i = 1; i <= EARLY_PAY_LOOKAHEAD_DAYS; i += 1) {
+    const lookahead = ruleEarlyPayLookaheadDays(rule);
+    for (let i = 1; i <= lookahead; i += 1) {
       dates.push(Forecast.addDays(scheduled, -i));
     }
   }
@@ -3618,6 +3632,7 @@ const api = {
   countTransferCounterparts,
   ruleHasIdentity,
   ruleMatchesTransactionIdentity,
+  ruleEarlyPayLookaheadDays,
   openingAsOfFromData,
   classifyRepresentedCandidate,
   postingObservationFromCandidate,
