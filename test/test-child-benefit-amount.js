@@ -10,7 +10,11 @@
  *
  * Independent proof (L-002 / L-006): hand-listed monthly dates at day 20
  * and 3 × 219.45 = 658.35 over the 91-day window starting 2026-08-19.
- * Live cents are the thing under test here, not a copied behaviour spec.
+ * Downstream weekly-cap / cash-path proof is the same restatement's
+ * identity, not a second planner: extra CCB before the cash-buffer bind
+ * unlocks STEP-sized weekly, and the longer window then spends that
+ * higher weekly every day. Live cents are the thing under test here,
+ * not a copied behaviour spec.
  *
  * `node test/test-child-benefit-amount.js`
  */
@@ -41,6 +45,10 @@ const HAND_HORIZON_DATES = [
 ];
 const HAND_WINDOW_TOTAL = 658.35;
 const HAND_HORIZON_TOTAL = 1097.25;
+const AMOUNT_DELTA = roundCent(AMOUNT - STALE);
+const WEEKLY_STEP = 5;
+const WEEKS_PER_MONTH = 365.25 / 12 / 7;
+const SCOREBOARD_DAY_90 = 90;
 
 function daysInMonth(y, m) {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -190,6 +198,117 @@ console.log('\n=== 5. ACCOUNT_FACTS standing income line matches the live amount
     'standing facts no longer publish ~$153.59 as the live monthly CCB amount');
   ok(/child benefit \*\*monthly\*\* \(~\$219\.45/.test(facts),
     'standing facts publish ~$219.45 as the live monthly CCB amount');
+}
+
+console.log('\n=== 6. weekly-cap and cash-path movement is the CCB identity, not a second planner ===');
+{
+  // Atlas Contract / Systems Review BLOCKING on
+  // 052334b990bbd5f08d3053aef89d6ceeadec6f09: figures-gate weeklyCap
+  // 225→275, weeklyCapMonthly +217.41, and 91-day ending cash −452.42
+  // were unpublished side-effects. This block independently reconciles
+  // those deltas. It does not change Forecast.recommend or freeze the
+  // absolute $225 / $275 levels (L-006).
+  const live = load('data.json');
+  const plan = live.plan;
+  const asOf = live.meta && live.meta.asOf;
+  const buffer = plan && plan.defaults && plan.defaults.targetBuffer;
+  ok(asOf === AS_OF && plan && plan.windowDays === WINDOW_DAYS && buffer === 500,
+    'live recommend path is the dated 2026-08-19 plan with $500 buffer');
+
+  function snapshotOpts() {
+    return {
+      scenario: plan.defaults.scenario,
+      incomeOverrides: {},
+      disabled: [],
+      extraDebtMonthly: plan.defaults.extraDebtMonthly || 0,
+      targetBuffer: buffer,
+      fundingSources: (plan.funding || {}).options,
+      extraFacilities: live.revolvingExtra,
+    };
+  }
+
+  function planWithCcb(amount) {
+    const copy = JSON.parse(JSON.stringify(plan));
+    const stream = (copy.income || []).find(s => s && s.id === STREAM_ID);
+    stream.amount = amount;
+    return copy;
+  }
+
+  const staleAdvice = F.recommend(planWithCcb(STALE), asOf, snapshotOpts());
+  const liveAdvice = F.recommend(planWithCcb(AMOUNT), asOf, snapshotOpts());
+  ok(staleAdvice.mode === 'normal' && liveAdvice.mode === 'normal',
+    'CCB restatement does not change recommend mode',
+    `${staleAdvice.mode} → ${liveAdvice.mode}`);
+  ok((staleAdvice.paydayAllocation && staleAdvice.paydayAllocation.extraDebt
+        && staleAdvice.paydayAllocation.extraDebt.allocated === 0)
+      && (liveAdvice.paydayAllocation && liveAdvice.paydayAllocation.extraDebt
+        && liveAdvice.paydayAllocation.extraDebt.allocated === 0),
+    'extra-debt allocation stays $0; it is not a second cash mover');
+
+  const bindDate = staleAdvice.sim && staleAdvice.sim.min && staleAdvice.sim.min.date;
+  const liveBindDate = liveAdvice.sim && liveAdvice.sim.min && liveAdvice.sim.min.date;
+  ok(bindDate === liveBindDate && bindDate >= HAND_WINDOW_DATES[0],
+    'cash-buffer bind date is unchanged and falls on or after the first CCB',
+    `${bindDate} / ${liveBindDate}`);
+  ok(staleAdvice.bindingIsReal === true && liveAdvice.bindingIsReal === true
+      && staleAdvice.step === WEEKLY_STEP && liveAdvice.step === WEEKLY_STEP,
+    'both answers are STEP-tight ($5); one step up breaches the buffer');
+
+  const bindDays = F.diffDays(asOf, bindDate) + 1;
+  const extraByBind = independentMonthlyDates(DAY, asOf, bindDate).length * AMOUNT_DELTA;
+  const unlockedWeekly = extraByBind * 7 / bindDays;
+  const independentWeeklyDelta = WEEKLY_STEP * Math.floor(unlockedWeekly / WEEKLY_STEP);
+  ok(bindDays === 9 && near(extraByBind, AMOUNT_DELTA) && near(unlockedWeekly, 51.2244444444, 1e-9),
+    'first CCB is the only extra dollar before Aug 27; 65.86 × 7 / 9 = 51.224…/week',
+    `${bindDays}d / extra ${extraByBind} / unlocked ${unlockedWeekly}`);
+  ok(independentWeeklyDelta === 50,
+    'STEP 5 floors that unlock to +$50/week, not +$55 (9 × 55 / 7 > 65.86)');
+
+  const engineWeeklyDelta = liveAdvice.weekly - staleAdvice.weekly;
+  ok(engineWeeklyDelta === independentWeeklyDelta,
+    'Forecast.recommend weekly delta equals the independent STEP-floored unlock',
+    `${staleAdvice.weekly} → ${liveAdvice.weekly} (Δ ${engineWeeklyDelta})`);
+
+  const independentMonthlyDelta = independentWeeklyDelta * WEEKS_PER_MONTH;
+  const engineMonthlyDelta = F.monthlyFromWeekly(liveAdvice.weekly)
+    - F.monthlyFromWeekly(staleAdvice.weekly);
+  ok(near(independentMonthlyDelta, 217.4107142857, 1e-9)
+      && near(engineMonthlyDelta, independentMonthlyDelta, 1e-9),
+    'weeklyCapMonthly delta is 50 × 365.25 / 12 / 7 = 217.4107…',
+    String(engineMonthlyDelta));
+
+  const leftoverByBind = extraByBind - bindDays * independentWeeklyDelta / 7;
+  const engineMinDelta = (liveAdvice.sim.min.balance - staleAdvice.sim.min.balance);
+  ok(near(leftoverByBind, 1.5742857143, 1e-9) && near(engineMinDelta, leftoverByBind),
+    'Aug 27 min-cash delta is leftover 65.86 − 9 × 50 / 7 = 1.574…',
+    String(engineMinDelta));
+
+  const extraInWindow = HAND_WINDOW_DATES.length * AMOUNT_DELTA;
+  const independentEndingDelta = extraInWindow
+    - WINDOW_DAYS * independentWeeklyDelta / 7;
+  const engineEndingDelta = liveAdvice.sim.ending - staleAdvice.sim.ending;
+  ok(near(extraInWindow, 197.58) && near(independentEndingDelta, -452.42)
+      && near(engineEndingDelta, independentEndingDelta),
+    '91-day ending-cash delta is 3 × 65.86 − 91 × 50 / 7 = −452.42',
+    String(engineEndingDelta));
+
+  const day90Date = F.addDays(asOf, SCOREBOARD_DAY_90 - 1);
+  ok(day90Date === '2026-11-16',
+    'scoreboard day 90 is as-of + 89 days = 2026-11-16 (i + 1 in projectDebts)');
+  const extraByDay90 = independentMonthlyDates(DAY, asOf, day90Date).length * AMOUNT_DELTA;
+  const independentDay90Delta = extraByDay90
+    - SCOREBOARD_DAY_90 * independentWeeklyDelta / 7;
+  const staleDay90 = (staleAdvice.sim.daily.find(p => p.date === day90Date) || {}).balance;
+  const liveDay90 = (liveAdvice.sim.daily.find(p => p.date === day90Date) || {}).balance;
+  ok(near(extraByDay90, 197.58) && near(independentDay90Delta, -445.2771428571, 1e-9)
+      && near(liveDay90 - staleDay90, independentDay90Delta),
+    'day-90 cash delta is 3 × 65.86 − 90 × 50 / 7 = −445.277…',
+    String(liveDay90 - staleDay90));
+
+  ok(near(liveAdvice.sim.totals.confirmedIncome - staleAdvice.sim.totals.confirmedIncome,
+      extraInWindow),
+    '91-day confirmed-income delta is only the three CCB extras',
+    String(liveAdvice.sim.totals.confirmedIncome - staleAdvice.sim.totals.confirmedIncome));
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
