@@ -262,15 +262,19 @@ function planningRoadWaterfallExpandable(title, component, dataKey, opts) {
 function planningRoadWaterfallInlineSection(title, component, dataKey, opts) {
   const asOutflow = !!(opts && opts.asOutflow);
   const lines = planningRoadPublishedLines(component);
+  const named = lines.length > 0;
   // Named lines already list each spend. A second row using the section title
   // (e.g. "Planned spending" −$700) looks like a double-count even though
   // Forecast subtracted once. Keep the aggregate only when there are no named lines.
-  const rows = lines.length
+  const lineRows = named
     ? lines.map((row, i) => planningRoadWaterfallLineRow(row, `${dataKey}-line-${i}`, asOutflow)).join('')
+    : '';
+  const totalRow = named
+    ? ''
     : planningRoadWaterfallTotalRow(title, component, `${dataKey}-total`, { asOutflow });
-  return `<div class="planning-road-wf-block" data-planning-road-wf="${dataKey}" data-planning-road-planned="inline">
+  return `<div class="planning-road-wf-block" data-planning-road-wf="${dataKey}" data-planning-road-planned="inline" data-planning-road-wf-lines="${named ? 'named' : 'total-only'}">
     <h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-${dataKey}" aria-hidden="true"></span> ${title}</h3>
-    <ul class="planning-road-wf-list">${rows}</ul>
+    <ul class="planning-road-wf-list">${lineRows}${totalRow}</ul>
   </div>`;
 }
 

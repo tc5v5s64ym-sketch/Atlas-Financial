@@ -96,8 +96,10 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
 {
   const html = read('public/planning.html');
   ok(/viewport-fit=cover/.test(html), 'planning.html keeps viewport-fit=cover for safe-area');
-  ok(/id="planning-road-ahead"/.test(html), 'road-ahead mount exists on planning.html');
+  ok(/id="planning-road-ahead"/.test(html), 'planning.html keeps road-ahead mount');
   ok(/sitenav-household/.test(html), 'planning reuses incumbent household bottom dock');
+  ok(/<script src="\/planning.js\?v=omit-planned-total">/.test(html),
+    'planning.html cache-busts planning.js so live Road Ahead cannot keep the pre-omit helper');
 
   const liveEl = page.render(live, periods);
   const road = liveEl['planning-road-ahead'].innerHTML;
@@ -949,7 +951,8 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && !/data-planning-road-wf-row="planned-spending-total"/.test(linedPlanned)
     && linedPlanned.includes(money2(250))
     && linedPlanned.includes(money2(150))
-    && !linedPlanned.includes(money2(400)),
+    && !linedPlanned.includes(money2(400))
+    && /data-planning-road-wf-lines="named"/.test(linedPlanned),
     'waterfall reprints named Stage2 lines inline and omits a same-label Planned spending total');
   ok(/Published commitment A/.test(linedCommit.breakdown)
     && /Published commitment B/.test(linedCommit.breakdown)
@@ -969,8 +972,49 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && /Dated commitments/.test(totalOnly.breakdown)
     && /data-planning-road-wf-row="planned-spending-total"/.test(totalOnlyPlanned)
     && /planning-road-wf-label">Planned spending</.test(totalOnlyPlanned)
-    && totalOnlyPlanned.includes('−' + money2(400)),
+    && totalOnlyPlanned.includes('−' + money2(400))
+    && /data-planning-road-wf-lines="total-only"/.test(totalOnlyPlanned),
     'absent Stage2 commitment lines keep Planned spending / Dated commitments total-only');
+
+  const smoke = JSON.parse(JSON.stringify(traj));
+  const smokeMonth = smoke.months.find(m => m.month === '2026-09') || smoke.months[0];
+  smokeMonth.stage2 = smokeMonth.stage2 || {};
+  smokeMonth.stage2.commitments = {
+    amount: 700,
+    status: 'estimated',
+    lines: [{
+      id: 'smoke-named-commit',
+      label: 'Burrards team fees',
+      date: '2026-09-15',
+      amount: 700,
+      status: 'estimated',
+    }],
+  };
+  const smokePlanned = wfBlock(
+    page.composeRoadTraj(smoke, 'month', smokeMonth.month, live.meta.asOf).stages,
+    'planned-spending');
+  ok(/Burrards team fees/.test(smokePlanned)
+    && smokePlanned.includes(longDate('2026-09-15'))
+    && smokePlanned.includes('−' + money2(700))
+    && /planning-road-wf-kicker[\s\S]*Planned spending/.test(smokePlanned)
+    && /data-planning-road-wf-lines="named"/.test(smokePlanned)
+    && !/planning-road-wf-label">Planned spending</.test(smokePlanned)
+    && !/data-planning-road-wf-row="planned-spending-total"/.test(smokePlanned),
+    'live-smoke pattern: named Burrards line is a wf row; same-label Planned spending total is not');
+
+  const janEmpty = JSON.parse(JSON.stringify(traj));
+  const janMonth = janEmpty.months.find(m => m.month === '2027-01') || janEmpty.months[0];
+  janMonth.stage2 = janMonth.stage2 || {};
+  janMonth.stage2.commitments = { amount: 0, status: 'calculated', lines: [] };
+  const janPlanned = wfBlock(
+    page.composeRoadTraj(janEmpty, 'month', janMonth.month, live.meta.asOf).stages,
+    'planned-spending');
+  ok(/planning-road-wf-label">Planned spending</.test(janPlanned)
+    && /data-planning-road-wf-row="planned-spending-total"/.test(janPlanned)
+    && /data-planning-road-wf-lines="total-only"/.test(janPlanned)
+    && janPlanned.includes(money2(0))
+    && !/Burrards team fees/.test(janPlanned),
+    'empty-lines January-style month keeps the Planned spending $0 aggregate');
 }
 
 console.log('\n=== 12. Uniform headers, expanders with published lines, Dale/Amanda reprint ===');
