@@ -5490,6 +5490,15 @@
     if (cat.plannedWeekly != null) {
       return roundCent(Number(cat.plannedWeekly) * CALENDAR_MONTH_DAYS / 7);
     }
+    // An explicit calendar-month owner target wins the month surface when a
+    // payday hold is also declared. Payday annualization (N × calendar-month
+    // days / 14) would reprint $978.35 from a $450 Seaspan hold instead of the
+    // owner-stated $900/month. Payday-only categories (fuel, eating out,
+    // guilt-free) still annualize; first-seaspan-of-month and
+    // every-other-seaspan stay $N per calendar month.
+    if (cat.plannedMonthly != null && cat.plannedPayday != null) {
+      return roundCent(Number(cat.plannedMonthly) || 0);
+    }
     if (cat.plannedPayday != null) {
       // Once-per-month payday assignment is $N per calendar month, not
       // $N annualized over 26 Seaspan cycles. every-other-seaspan is the

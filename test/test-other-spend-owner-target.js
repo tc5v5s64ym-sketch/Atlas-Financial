@@ -163,8 +163,9 @@ console.log('\n=== 2. Named grocery / fuel / eating-out / guilt-free amounts are
   const restaurants = byId(live.plan, 'restaurants');
   const dale = byId(live.plan, 'dale-guilt-free');
   const amanda = byId(live.plan, 'amanda-guilt-free');
-  ok(groceries && groceries.plannedWeekly === 450 && groceries.plannedMonthly == null,
-    'groceries stays plannedWeekly 450');
+  ok(groceries && groceries.plannedPayday === 450 && groceries.plannedMonthly === 900
+      && groceries.plannedWeekly == null,
+    'groceries stays plannedPayday 450 and plannedMonthly 900');
   ok(fuel && fuel.plannedPayday === 325 && fuel.plannedMonthly == null,
     'fuel stays plannedPayday 325');
   ok(restaurants && restaurants.plannedPayday === 200 && restaurants.plannedMonthly == null,
@@ -202,8 +203,8 @@ console.log('\n=== 4. ownerTargets lock includes Other spend $800/month ===');
   ok(/Other spend \$800\/month/.test(note) && /plannedMonthly 800/.test(note)
       && /other-spend/.test(note) && /2026-09-18/.test(note),
     'ownerTargets.note records the Other spend $800/month lock');
-  ok(/\$1,825\.00/.test(note) && /\$1,725\.00/.test(note),
-    'payday-cycle totals stay $1,825.00 / $1,725.00; $800/month is not converted into a payday hold');
+  ok(/\$1,375\.00/.test(note) && /\$1,275\.00/.test(note),
+    'payday-cycle totals stay $1,375.00 / $1,275.00; $800/month is not converted into a payday hold');
 }
 
 console.log('\n=== 5. Forecast Other spending confirmation row is not the planning home ===');

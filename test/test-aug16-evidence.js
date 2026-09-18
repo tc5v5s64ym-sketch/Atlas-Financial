@@ -88,11 +88,11 @@ console.log('\n=== 3. School & clubs is consistently ESSENTIAL ===');
     c.targetSource === 'owner-stated-2026-08-31'
     && ((c.plannedMonthly != null && c.plannedMonthly !== 0)
       || c.plannedWeekly != null || c.plannedPayday != null));
-  ok(targets.length === 6, 'six remaining 2026-08-31 owner targets (monthly, weekly, or payday)');
+  ok(targets.length === 5, 'five remaining 2026-08-31 owner targets (payday holds other than Groceries)');
   const otherSpend = plan.budget.categories.find(c => c.id === 'other-spend');
   ok(otherSpend && otherSpend.plannedMonthly === 800
       && otherSpend.targetSource === 'owner-stated-2026-09-18',
-    'Other spend $800/month is the later owner lock, not a seventh 2026-08-31 target');
+    'Other spend $800/month is the later owner lock, not a sixth 2026-08-31 target');
   ok(school.plannedMonthly == null, 'school still has no owner monthly target');
 }
 
@@ -377,8 +377,9 @@ console.log('\n=== 2026-08-31 owner budget targets ===');
   }
   {
     const g = plan.budget.categories.find(x => x.id === 'groceries');
-    ok(g && g.plannedWeekly === 450 && g.plannedMonthly == null,
-      'groceries plannedWeekly is 450, plannedMonthly is not 900');
+    ok(g && g.plannedPayday === 450 && g.plannedMonthly === 900
+        && g.plannedWeekly == null,
+      'groceries plannedPayday is 450 and plannedMonthly is 900');
   }
   {
     const p = plan.budget.categories.find(x => x.id === 'pets');

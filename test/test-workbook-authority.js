@@ -19,13 +19,15 @@ const ok = (cond, label, detail = '') => {
 };
 
 const OWNER_SOURCE = 'owner-stated-2026-08-31';
+const GROCERY_SOURCE = 'owner-stated-2026-09-18';
 const OWNER_PAYDAY_TARGETS = {
   fuel: 325,
   restaurants: 200,
   'dale-guilt-free': 150,
   'amanda-guilt-free': 150,
 };
-const GROCERY_WEEKLY = 450;
+const GROCERY_PAYDAY = 450;
+const GROCERY_MONTHLY = 900;
 const DOG_FOOD_PAYDAY = 100;
 const RETIRED_HOLD_IDS = ['health', 'sport', 'shopping', 'subscriptions'];
 
@@ -55,11 +57,12 @@ for (const [id, amount] of Object.entries(OWNER_PAYDAY_TARGETS)) {
 }
 {
   const g = byId('groceries');
-  ok(g && g.plannedWeekly === GROCERY_WEEKLY && g.plannedMonthly == null,
-    'groceries owner target is plannedWeekly 450, not plannedMonthly 900',
-    g ? `${g.plannedWeekly} / ${g.plannedMonthly}` : 'missing');
-  ok(g && g.targetSource === OWNER_SOURCE,
-    'groceries targetSource remains owner-stated-2026-08-31');
+  ok(g && g.plannedPayday === GROCERY_PAYDAY && g.plannedMonthly === GROCERY_MONTHLY
+      && g.plannedWeekly == null,
+    'groceries owner target is plannedPayday 450 and plannedMonthly 900, not weekly 450',
+    g ? `${g.plannedPayday} / ${g.plannedMonthly} / ${g.plannedWeekly}` : 'missing');
+  ok(g && g.targetSource === GROCERY_SOURCE,
+    'groceries targetSource is owner-stated-2026-09-18');
 }
 {
   const p = byId('pets');
@@ -121,9 +124,10 @@ for (const id of RETIRED_HOLD_IDS) {
 }
 
 console.log('\n=== historical / advisory workbook values cannot overwrite that policy ===');
-ok(byId('groceries').plannedWeekly === GROCERY_WEEKLY
+ok(byId('groceries').plannedPayday === GROCERY_PAYDAY
+  && byId('groceries').plannedMonthly === GROCERY_MONTHLY
   && byId('groceries').plannedMonthly !== HISTORICAL_WORKBOOK_MONTHLY.groceries,
-  'groceries is $450/week, not the historical workbook ~$1,200/month');
+  'groceries is $450/payday and $900/month, not the historical workbook ~$1,200/month');
 ok(byId('fuel').plannedPayday === OWNER_PAYDAY_TARGETS.fuel
   && byId('fuel').plannedMonthly !== HISTORICAL_WORKBOOK_MONTHLY.fuel,
   'fuel is $325/payday, not the historical workbook ~$400/month');
@@ -148,8 +152,8 @@ ok(/classified/.test(note) && /HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16/.test(note)
 ok(/Household currently has no planned Household Budget payday hold/.test(note)
     && /explicit \$0 monthly planning baseline/.test(note)
     && /2026-09-04/.test(note)
-    && /\$1,825\.00/.test(note)
-    && /\$1,725\.00/.test(note),
+    && /\$1,375\.00/.test(note)
+    && /\$1,275\.00/.test(note),
   'ownerTargets.note retires the Household $37.50 hold and records the remaining cycle totals');
 ok(/Other spend \$800\/month/.test(note)
     && /plannedMonthly 800/.test(note)
@@ -164,18 +168,18 @@ console.log('\n=== Forecast still reads the 2026-08-31 owner targets ===');
 const budget = F.budgetBreakdown(data.plan, periods, { paypalPerMonth: data.paypal.perMonth });
 const groceries = budget.categories.find(c => c.id === 'groceries');
 const fuel = budget.categories.find(c => c.id === 'fuel');
-const groceryMonthly = Math.round(450 * (365.25 / 12) / 7 * 100) / 100;
+const groceryMonthly = GROCERY_MONTHLY;
 const fuelMonthly = Math.round(325 * (365.25 / 12) / 14 * 100) / 100;
 const pets = budget.categories.find(c => c.id === 'pets');
 const petsSmeared = Math.round(100 * (365.25 / 12) / 14 * 100) / 100;
 ok(groceries && Math.abs(groceries.target - groceryMonthly) < 0.01
   && fuel && Math.abs(fuel.target - fuelMonthly) < 0.01 && fuel.target !== 650,
-  'engine grocery target is weekly 450 converted to calendar-month monthly; fuel is payday 325 annualized');
+  'engine grocery target is owner $900/month; fuel is payday 325 annualized');
 ok(pets && Math.abs(pets.target - 100) < 0.01 && Math.abs(pets.target - petsSmeared) > 1,
   'engine dog-food target is $100/month, not $100 annualized over 26 Seaspan cycles',
   pets ? String(pets.target) : 'missing');
 ok(Math.abs((groceries.planned + fuel.planned) - (groceryMonthly + fuelMonthly)) < 0.01,
-  'food+fuel requirement is grocery weekly-equivalent plus payday-annualized fuel');
+  'food+fuel requirement is grocery $900/month plus payday-annualized fuel');
 ok(Math.abs(325 * (365.25 / 14) - 12 * (325 * (365.25 / 12) / 14)) < 1e-9,
   'independent: fuel payday cycles and 12 calendar months are the same annual amount');
 

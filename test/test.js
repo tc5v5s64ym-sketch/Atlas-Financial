@@ -48,6 +48,7 @@ const suites = [
   ['payoff modeller', 'test-payoff.js'],
   ['household budget reconciliation', 'test-budget.js'],
   ['workbook evidence cannot overwrite owner policy', 'test-workbook-authority.js'],
+  ['Groceries payday $450 / monthly $900 owner restatement', 'test-groceries-payday-monthly.js'],
   ['Other spend $800/month owner target', 'test-other-spend-owner-target.js'],
   ['Other spend is not a Household Budget calendar hold', 'test-other-spend-calendar-hold.js'],
   ['spending classification reconciliation', 'test-classification.js'],
