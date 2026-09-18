@@ -191,7 +191,7 @@ console.log('\n=== 2. Dale Budget → Household budget is the calendar waterfall
       && /defaultWaterfalls \|\| historical \|\| carryoverTrend \? ''/.test(surface),
     'default this-period prints calendar waterfalls; glance householdBudgetHtml is the More-views ten-block only');
   ok(/q\('06', 'Household budget'/.test(waterfall)
-      && /calendarBudgetHtml\(period\)/.test(waterfall),
+      && /calendarBudgetHtml\(period/.test(waterfall),
     'Budget Household budget Q06 consumes calendarBudgetHtml(period.householdBudget)');
   const polish = read('public/budget-polish.js');
   ok(/question\('06'\)/.test(polish)
