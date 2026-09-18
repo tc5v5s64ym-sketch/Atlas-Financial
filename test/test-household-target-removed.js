@@ -369,13 +369,14 @@ console.log('\n=== live data.json no longer reserves Household $37.50 ===');
     .find(p => p && p.id === 'this-pay-period');
   const next = (rec.defaultView.calendarPeriods || [])
     .find(p => p && p.id === 'next-pay-period');
-  const otherSpendCycle = roundCent(800 * 14 / (365.25 / 12));
   ok(current && !budgetRow(current, 'household')
-      && near(current.budgetHold, roundCent(1725 + otherSpendCycle)),
-    'live This Pay Period omits Household; hold is $1,725.00 plus Other spend cycle hold (Aug 14 Dog food OFF)');
+      && !budgetRow(current, 'other-spend')
+      && near(current.budgetHold, 1725),
+    'live This Pay Period omits Household and planned Other spend; hold is $1,725.00 (Aug 14 Dog food OFF)');
   ok(next && !budgetRow(next, 'household')
-      && near(next.budgetHold, roundCent(1825 + otherSpendCycle)),
-    'live Next Pay Period omits Household; hold is $1,825.00 plus Other spend cycle hold (Aug 28 Dog food ON)');
+      && !budgetRow(next, 'other-spend')
+      && near(next.budgetHold, 1825),
+    'live Next Pay Period omits Household and planned Other spend; hold is $1,825.00 (Aug 28 Dog food ON)');
   const livePeriods = require('../public/periods.json');
   const liveBd = F.budgetBreakdown(liveData.plan, livePeriods, {
     paypalPerMonth: liveData.paypal ? liveData.paypal.perMonth : 0,

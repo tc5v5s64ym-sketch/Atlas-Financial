@@ -1,18 +1,16 @@
 'use strict';
-/* Other spend $800/month publishes a Planned/hold row on Household Budget.
+/* Other spend $800/month is a planning assumption, not a Budget calendar hold.
  *
- * Owner-stated 2026-09-18 plannedMonthly 800 lives on other-spend. After
- * #353 that owner target fed budgetBreakdown / trajectory but
- * CALENDAR_PERIOD_BUDGET_IDS omitted it, so Budget → Household budget
- * (calendar waterfall Q06) never printed Planned $800. This suite proves
- * the calendar allowlist now includes other-spend, the cycle Planned is
- * the independent 14-day scale of 800/month via incumbent
- * paydayCyclePlanned identity, and confirmation other-spending remains
- * a separate spent-only row when recon exists.
+ * Owner-stated 2026-09-18 plannedMonthly 800 lives on other-spend and still
+ * feeds budgetBreakdown / trajectory / Road Ahead. Owner policy the same
+ * morning: Budget calendar must not hold/reserve planned Other spend.
+ * CALENDAR_PERIOD_BUDGET_IDS therefore omits other-spend. Confirmation
+ * Other spending (other-spending) remains the unassigned-actuals row when
+ * recon exists.
  *
  * Independent of calendarHouseholdBudget / paydayCyclePlanned (L-002):
- * expected cycle hold is 800 × 14 / (365.25/12). Do not copy live cents
- * as the specification (L-006). Do not change the $800 amount.
+ * the excluded cycle amount is 800 × 14 / (365.25/12). Do not copy live
+ * cents as the specification (L-006). Do not change the $800 amount.
  *
  * `node test/test-other-spend-calendar-hold.js`
  */
@@ -159,7 +157,7 @@ function recommend(plan, txs) {
 
 const composer = loadComposer();
 ok(near(INDEPENDENT_CYCLE, 367.97),
-  'independent: $800/month × 14 / calendar-month days is $367.97 per cycle');
+  'independent: $800/month × 14 / calendar-month days is $367.97 per cycle (the excluded hold)');
 
 console.log('\n=== 1. Allowlist / labels / glance membership ===');
 {
@@ -170,15 +168,10 @@ console.log('\n=== 1. Allowlist / labels / glance membership ===');
   const glanceIds = src.slice(
     src.indexOf('const DEFAULT_VIEW_BUDGET_IDS = ['),
     src.indexOf('const CALENDAR_PERIOD_BUDGET_IDS = ['));
-  const labels = src.slice(
-    src.indexOf('const DEFAULT_VIEW_BUDGET_LABELS = {'),
-    src.indexOf('const DALE_GUILT_FREE_ID'));
-  ok(/'other-spend'/.test(calendarIds),
-    'CALENDAR_PERIOD_BUDGET_IDS includes other-spend');
+  ok(!/'other-spend'/.test(calendarIds),
+    'CALENDAR_PERIOD_BUDGET_IDS omits other-spend');
   ok(!/'other-spending'/.test(calendarIds),
     'CALENDAR_PERIOD_BUDGET_IDS does not include confirmation other-spending');
-  ok(/'other-spend': 'Other spend'/.test(labels),
-    'DEFAULT_VIEW_BUDGET_LABELS labels other-spend as Other spend');
   ok(!/'other-spend'/.test(glanceIds),
     'DEFAULT_VIEW_BUDGET_IDS kitchen-counter glance omits other-spend');
   ok(/paydayCyclePlanned\(cat, windowStart, plan\)/.test(src),
@@ -216,7 +209,7 @@ console.log('\n=== 3. Live JSON home is still plannedMonthly 800 with empty from
     'live other-spend is still $800/month with empty from: []');
 }
 
-console.log('\n=== 4. Calendar items include other-spend Planned from 800/mo ===');
+console.log('\n=== 4. Calendar items omit other-spend Planned / hold ===');
 {
   const advice = recommend(syntheticPlan(), [groceryTx()]);
   const active = period(advice.defaultView, 'this-pay-period');
@@ -225,37 +218,28 @@ console.log('\n=== 4. Calendar items include other-spend Planned from 800/mo ===
   const groc = budgetRow(active, 'groceries');
   ok(active && active.spendingCycle && active.spendingCycle.start === PAYDAY,
     'active cycle is the independent Aug 28 payday window');
-  ok(row && row.id === OTHER_ID && row.label === OTHER_LABEL
-      && near(row.monthly, OTHER_MONTHLY)
-      && near(row.planned, INDEPENDENT_CYCLE)
-      && near(row.hold, INDEPENDENT_CYCLE)
-      && near(row.spent, 0)
-      && near(row.remaining, INDEPENDENT_CYCLE)
-      && row.otherSpending !== true && row.needsConfirmation !== true,
-    'calendar Other spend Planned/hold is the independent $800/month cycle scale',
+  ok(!row,
+    'calendar Household Budget has no other-spend Planned/hold row',
     row ? JSON.stringify({
       planned: row.planned, hold: row.hold, spent: row.spent, monthly: row.monthly,
-    }) : 'missing');
+    }) : 'absent');
   ok(groc && near(groc.planned, 900) && near(groc.spent, 100),
     'Groceries still plans $900 and records the constructed $100 spent');
-  const nextRow = budgetRow(next, OTHER_ID);
-  ok(nextRow && near(nextRow.planned, INDEPENDENT_CYCLE)
-      && nextRow.spent == null && nextRow.projected === true,
-    'Next Pay Period still publishes Other spend Planned, projected, no invented spent');
+  ok(!budgetRow(next, OTHER_ID),
+    'Next Pay Period does not invent a projected Other spend Planned row');
   const glance = (advice.defaultView && advice.defaultView.householdBudget) || [];
   ok(!glance.some(r => r && r.id === OTHER_ID),
     'kitchen-counter glance still omits Other spend');
 }
 
-console.log('\n=== 5. Confirmation other-spending stays separate when recon exists ===');
+console.log('\n=== 5. Confirmation other-spending remains available when recon exists ===');
 {
   const advice = recommend(syntheticPlan(), [groceryTx(), giftTx()]);
   const active = period(advice.defaultView, 'this-pay-period');
   const planned = budgetRow(active, OTHER_ID);
   const confirm = (active.householdBudget || []).find(r => r && r.otherSpending);
-  ok(planned && planned.id === OTHER_ID && near(planned.planned, INDEPENDENT_CYCLE)
-      && near(planned.spent, 0) && !(planned.recon || []).some(t => t && t.id === 'tx-gift'),
-    'planned other-spend does not absorb the Gifts residual');
+  ok(!planned,
+    'planned other-spend is absent and therefore cannot absorb the Gifts residual');
   ok(confirm && confirm.id === CONFIRM_ID && confirm.label === 'Other spending'
       && confirm.note === 'Not yet assigned to a budget category'
       && confirm.planned == null && confirm.remaining == null
@@ -271,11 +255,9 @@ console.log('\n=== 5. Confirmation other-spending stays separate when recon exis
   }
   ok(new Set(reconIds).size === reconIds.length,
     'no transaction appears on two Household Budget rows');
-  ok(planned.id !== confirm.id,
-    'planned other-spend and confirmation other-spending are distinct ids');
 }
 
-console.log('\n=== 6. Adding the row moves Household Budget Total by the independent cycle hold ===');
+console.log('\n=== 6. The $800/month category does not move calendar budgetHold ===');
 {
   const withRow = recommend(syntheticPlan(), []);
   const withoutPlan = syntheticPlan();
@@ -284,14 +266,15 @@ console.log('\n=== 6. Adding the row moves Household Budget Total by the indepen
   const without = recommend(withoutPlan, []);
   const a = period(withRow.defaultView, 'this-pay-period');
   const b = period(without.defaultView, 'this-pay-period');
-  ok(a && b && !budgetRow(b, OTHER_ID) && budgetRow(a, OTHER_ID)
-      && near(a.budgetHold - b.budgetHold, INDEPENDENT_CYCLE)
-      && near(b.afterHouseholdBudget - a.afterHouseholdBudget, INDEPENDENT_CYCLE),
-    'budgetHold / leftover after Household Budget move by independently $367.97',
+  ok(a && b && !budgetRow(b, OTHER_ID) && !budgetRow(a, OTHER_ID)
+      && near(a.budgetHold - b.budgetHold, 0)
+      && near(b.afterHouseholdBudget - a.afterHouseholdBudget, 0)
+      && !near(a.budgetHold - b.budgetHold, INDEPENDENT_CYCLE),
+    'budgetHold / leftover after Household Budget ignore the independent $367.97 cycle scale',
     a && b ? `${a.budgetHold} vs ${b.budgetHold}` : 'missing');
 }
 
-console.log('\n=== 7. Page prints Planned on the calendar Other spend row ===');
+console.log('\n=== 7. Page prints confirmation Other spending, not planned Other spend ===');
 {
   const advice = recommend(syntheticPlan(), [giftTx()]);
   const active = period(advice.defaultView, 'this-pay-period');
@@ -302,39 +285,46 @@ console.log('\n=== 7. Page prints Planned on the calendar Other spend row ===');
   const confirmBlock = html.split(/data-budget-category="/).slice(1)
     .map(chunk => 'data-budget-category="' + chunk)
     .find(chunk => chunk.startsWith('data-budget-category="other-spending"'));
-  ok(block && /<h3 class="household-budget-name">Other spend<\/h3>/.test(block)
-      && block.includes(`>${composer.money2(INDEPENDENT_CYCLE)}<`)
-      && /<dt>Planned<\/dt>/.test(block)
-      && !/data-other-spending/.test(block),
-    'calendar HTML prints Other spend Planned, not the confirmation attribute',
-    block ? block.slice(0, 280) : 'missing');
+  ok(!block,
+    'calendar HTML does not print a planned Other spend row',
+    block ? block.slice(0, 280) : 'absent');
   ok(confirmBlock && /data-other-spending/.test(confirmBlock)
       && /<h3 class="household-budget-name">Other spending<\/h3>/.test(confirmBlock)
       && /Not yet assigned to a budget category/.test(confirmBlock)
       && !/<dt>Planned<\/dt>/.test(confirmBlock)
       && confirmBlock.includes(`>${composer.money2(GIFT)}<`),
-    'confirmation Other spending still prints spent-only beside it');
+    'confirmation Other spending still prints spent-only');
   const surfaceSrc = read('public/plan.js');
   ok(/function operatingSurfaceHtml/.test(surfaceSrc)
       && /calendarWaterfallsHtml/.test(surfaceSrc),
     'Budget operating surface still consumes the calendar waterfall HTML');
 }
 
-console.log('\n=== 8. Live calendar waterfall publishes Other spend Planned ===');
+console.log('\n=== 8. Live calendar waterfall omits Other spend Planned; planning 800 remains ===');
 {
   const rec = F.recommend(live.plan, live.meta.asOf, {
     debts: live.debts || [],
   });
   const current = period(rec.defaultView, 'this-pay-period');
   const row = budgetRow(current, OTHER_ID);
-  ok(row && row.label === OTHER_LABEL && near(row.planned, INDEPENDENT_CYCLE)
-      && near(row.monthly, OTHER_MONTHLY)
-      && row.otherSpending !== true,
-    'live This Pay Period Household Budget includes Other spend Planned from 800/mo',
-    row ? JSON.stringify({ planned: row.planned, monthly: row.monthly }) : 'missing');
+  ok(!row,
+    'live This Pay Period Household Budget has no Other spend Planned row',
+    row ? JSON.stringify({ planned: row.planned, monthly: row.monthly }) : 'absent');
+  ok(current && current.householdBudget
+      && !(current.householdBudget || []).some(r => r && r.id === OTHER_ID),
+    'live active calendar householdBudget has no row id other-spend');
   const glance = (rec.defaultView && rec.defaultView.householdBudget) || [];
   ok(!glance.some(r => r && r.id === OTHER_ID),
     'live kitchen-counter glance still omits Other spend');
+
+  const periods = require('../public/periods.json');
+  const bd = F.budgetBreakdown(live.plan, periods, {
+    paypalPerMonth: live.paypal && live.paypal.perMonth,
+  });
+  const bdRow = (bd.categories || []).find(c => c && c.id === OTHER_ID);
+  ok(bdRow && bdRow.source === 'owner-target'
+      && near(bdRow.target, OTHER_MONTHLY) && near(bdRow.planned, OTHER_MONTHLY),
+    'live budgetBreakdown still publishes other-spend planned remainder $800');
 }
 
 if (failures) {
