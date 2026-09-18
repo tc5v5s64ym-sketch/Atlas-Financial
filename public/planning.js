@@ -227,17 +227,14 @@ function planningRoadWaterfallExpandable(title, component, dataKey, opts) {
   const asOutflow = !!(opts && opts.asOutflow);
   const lines = planningRoadPublishedLines(component);
   const kicker = `<h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-${dataKey}" aria-hidden="true"></span> ${title}</h3>`;
-  if (!lines.length) {
-    return `<div class="planning-road-wf-block" data-planning-road-wf="${dataKey}">
-      ${kicker}
-      <ul class="planning-road-wf-list">${planningRoadWaterfallTotalRow(title, component, `${dataKey}-total`, { asOutflow })}</ul>
-    </div>`;
-  }
+  const body = lines.length
+    ? planningRoadWaterfallLinesList(component, dataKey, asOutflow)
+    : `<p class="planning-road-wf-empty" data-planning-road-wf-lines="unavailable">Forecast has not published these line items.</p>`;
   return `<div class="planning-road-wf-block" data-planning-road-wf="${dataKey}">
     ${kicker}
     <details class="planning-road-wf-expand" data-planning-road-wf-expand="${dataKey}">
-      <summary class="planning-road-wf-summary">${planningRoadWaterfallSummaryRow(title, component, `${dataKey}-total`, { asOutflow })}</summary>
-      ${planningRoadWaterfallLinesList(component, dataKey, asOutflow)}
+      <summary class="planning-road-wf-summary"><span class="planning-road-wf-chevron" aria-hidden="true"></span>${planningRoadWaterfallSummaryRow(title, component, `${dataKey}-total`, { asOutflow })}</summary>
+      ${body}
     </details>
   </div>`;
 }

@@ -123,12 +123,22 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
     && /data-planning-road-wf="planned-spending"/.test(road)
     && /data-planning-road-wf="final"/.test(road),
     'waterfall stack reprints income, bills, household budget, planned spending, and final result');
+  ok(/data-planning-road-wf="income"[\s\S]*planning-road-wf-kicker[\s\S]*Income/.test(road)
+    && /data-planning-road-wf="bills"[\s\S]*planning-road-wf-kicker[\s\S]*Bills/.test(road)
+    && /data-planning-road-wf="obligations"[\s\S]*planning-road-wf-kicker[\s\S]*Required debt payments/.test(road)
+    && /data-planning-road-wf="household-budget"[\s\S]*planning-road-wf-kicker[\s\S]*Household budget/.test(road)
+    && /data-planning-road-wf="planned-spending"[\s\S]*planning-road-wf-kicker[\s\S]*Planned spending/.test(road),
+    'every waterfall section carries the same kicker chrome — badge plus label');
+  ok(/data-planning-road-wf-expand="bills"/.test(road)
+    && /data-planning-road-wf-expand="household-budget"/.test(road)
+    && /data-planning-road-wf-expand="bills"[\s\S]*planning-road-wf-chevron/.test(road)
+    && /data-planning-road-wf-expand="household-budget"[\s\S]*planning-road-wf-chevron/.test(road),
+    'Bills and Household budget keep a tappable expander with chevron affordance');
   ok(/data-planning-road-planned="inline"/.test(road),
     'planned spending is a named inline block');
   const plannedChunk = road.split('data-planning-road-wf="planned-spending"')[1] || '';
   const plannedUntilNext = plannedChunk.split('data-planning-road-wf="')[0];
-  ok(!/<details[\s\S]*planned-spending/.test(road)
-    && !/<details/.test(plannedUntilNext),
+  ok(!/<details/.test(plannedUntilNext),
     'planned spending is not behind a dropdown/expander');
   ok(/data-planning-road-horizon="chips"/.test(road)
     && /planning-road-horizon-chip-dot-(surplus|gap|withheld|neutral)/.test(road),
@@ -248,7 +258,8 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
     'waterfall reprints Forecast stage1 result, planned-spending total, and final stage3');
   ok(/data-planning-road-planned="inline"/.test(stages)
     && /data-planning-road-wf="planned-spending"/.test(stages)
-    && !/<details[\s\S]*data-planning-road-wf="planned-spending"/.test(stages),
+    && !/<details/.test((stages.split('data-planning-road-wf="planned-spending"')[1] || '')
+      .split('data-planning-road-wf="')[0]),
     'planned spending is listed inline and not inside a details expander');
   ok(/data-planning-road-wf="extra-debt"/.test(stages)
     && stages.includes('−' + money2(row.stage3.extras.amount)),
@@ -391,6 +402,17 @@ console.log('\n=== 2. Responsive CSS — snap timeline, touch targets, vertical 
     'Frame chrome — stage card, delta pill, breakdown group heads, freshness pill — is styled');
   ok(/font-variant-numeric:\s*tabular-nums/.test(css),
     'money is set with tabular numerals');
+  ok(/\.planning-road-wf-income \.planning-road-wf-kicker \{[\s\S]*background:\s*var\(--road-surplus-tint\)/.test(css)
+    && /\[data-planning-road-wf="bills"\] \.planning-road-wf-kicker \{[\s\S]*background:\s*var\(--road-gap-tint\)/.test(css)
+    && /\[data-planning-road-wf="obligations"\] \.planning-road-wf-kicker \{[\s\S]*background:\s*var\(--road-est-tint\)/.test(css)
+    && /\[data-planning-road-wf="household-budget"\] \.planning-road-wf-kicker \{[\s\S]*background:\s*var\(--road-surplus-tint\)/.test(css)
+    && /\[data-planning-road-wf="planned-spending"\] \.planning-road-wf-kicker[\s\S]*background:\s*var\(--road-unav-tint\)/.test(css)
+    && /\[data-planning-road-wf="extra-debt"\] \.planning-road-wf-kicker[\s\S]*background:\s*var\(--road-unav-tint\)/.test(css),
+    'every waterfall section kicker uses a tinted header bar, matching Income/Bills');
+  ok(/\.planning-road-wf-chevron \{/.test(css)
+    && /\.planning-road-wf-expand\[open\] \.planning-road-wf-chevron \{/.test(css)
+    && /\.planning-road-wf-summary \{[\s\S]*min-height:\s*48px/.test(css),
+    'expander chevron and 48px summary tap target are styled');
 }
 
 console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory math ===');
@@ -755,6 +777,11 @@ console.log('\n=== 1g. Stage 2/3 break-even narrative — $0 running total is no
     stage3Note);
 }
 
+function wfBlock(html, key) {
+  return (html.split(`data-planning-road-wf="${key}"`)[1] || '')
+    .split('data-planning-road-wf="')[0];
+}
+
 console.log('\n=== 11. Waterfall contract — inline planned spend, no card strip, Forecast-only labels ===');
 {
   const { execSync } = require('child_process');
@@ -764,12 +791,33 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   ok(!String(forecastDiff).trim(), 'public/forecast.js has no working-tree or staged diff');
 
   const liveRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
-  const incomeBlock = (liveRoad.split('data-planning-road-wf="income"')[1] || '')
-    .split('data-planning-road-wf="')[0];
+  const incomeBlock = wfBlock(liveRoad, 'income');
   ok(!/\bDale\b/.test(incomeBlock) && !/\bAmanda\b/.test(incomeBlock),
     'income section does not invent salary names when Forecast published no income lines');
-  ok(!/atlas-card|card-strip|Card badge|data-card-badge/i.test(liveRoad),
+  ok(!/<details/.test(incomeBlock) && !/planning-road-wf-chevron/.test(incomeBlock),
+    'Income is not behind an expander; published lines stay always visible');
+  ok(!/atlas-card|card-strip|Card badge|data-card-badge|purple Card/i.test(liveRoad),
     'Road Ahead markup has no Budget card-strip markers');
+
+  const billsLive = wfBlock(liveRoad, 'bills');
+  const householdLive = wfBlock(liveRoad, 'household-budget');
+  ok(/data-planning-road-wf-expand="bills"/.test(billsLive)
+    && /planning-road-wf-chevron/.test(billsLive)
+    && /data-planning-road-wf-row="bills-total"/.test(billsLive),
+    'live Bills total stays visible in the collapsed expander summary');
+  ok(/data-planning-road-wf-expand="household-budget"/.test(householdLive)
+    && /planning-road-wf-chevron/.test(householdLive)
+    && /data-planning-road-wf-row="household-budget-total"/.test(householdLive),
+    'live Household budget total stays visible in the collapsed expander summary');
+  ok(/data-planning-road-wf-lines="unavailable"/.test(billsLive)
+    && /Forecast has not published these line items/.test(billsLive)
+    && !/Mortgage/.test(billsLive) && !/Car payment/.test(billsLive),
+    'Bills expander fail-closes when Forecast published no bill lines');
+  ok(/data-planning-road-wf-lines="unavailable"/.test(householdLive)
+    && /Forecast has not published these line items/.test(householdLive),
+    'Household budget expander fail-closes when Forecast published no budget lines');
+  ok(!/<details/.test(wfBlock(liveRoad, 'planned-spending')),
+    'planned spending stays listed inline, not behind an expander');
 
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
@@ -795,10 +843,89 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     ],
   };
   const linedRoad = page.composeRoadTraj(withLines, 'month', lined.month, live.meta.asOf);
-  ok(/Published stream A/.test(linedRoad.stages)
-    && /Published stream B/.test(linedRoad.stages)
-    && /planning-road-trust-confirmed">Confirmed</.test(linedRoad.stages),
-    'when Forecast publishes income line labels, the waterfall reprints those labels and trust chips');
+  const linedIncome = wfBlock(linedRoad.stages, 'income');
+  ok(/Published stream A/.test(linedIncome)
+    && /Published stream B/.test(linedIncome)
+    && /planning-road-trust-confirmed">Confirmed</.test(linedIncome)
+    && /Income total/.test(linedIncome)
+    && !/<details/.test(linedIncome),
+    'when Forecast publishes income line labels, those lines and the income total stay always visible');
+}
+
+console.log('\n=== 12. Uniform headers, expanders with published lines, Dale/Amanda reprint ===');
+{
+  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const withDetail = JSON.parse(JSON.stringify(traj));
+  const month = withDetail.months[0];
+  const incomeTotal = month.stage1.income.amount;
+  const billsTotal = month.stage1.bills.amount;
+  const householdTotal = month.stage1.householdBudget.amount;
+  month.stage1.income = {
+    amount: incomeTotal,
+    status: month.stage1.income.status,
+    lines: [
+      { label: 'Dale', amount: 6240, status: 'confirmed' },
+      { label: 'Amanda', amount: 4180, status: 'confirmed' },
+    ],
+  };
+  month.stage1.bills = {
+    amount: billsTotal,
+    status: month.stage1.bills.status,
+    lines: [
+      { label: 'Mortgage', amount: 2140, status: 'confirmed' },
+      { label: 'Car payment', amount: 600, status: 'confirmed' },
+    ],
+  };
+  month.stage1.householdBudget = {
+    amount: householdTotal,
+    status: month.stage1.householdBudget.status,
+    items: [
+      { label: 'Groceries', amount: 800, status: 'calculated' },
+      { label: 'Fuel', amount: 220, status: 'calculated' },
+    ],
+  };
+  const road = page.composeRoadTraj(withDetail, 'month', month.month, live.meta.asOf);
+  const income = wfBlock(road.stages, 'income');
+  const bills = wfBlock(road.stages, 'bills');
+  const household = wfBlock(road.stages, 'household-budget');
+  const planned = wfBlock(road.stages, 'planned-spending');
+
+  ok(/planning-road-wf-kicker/.test(income)
+    && /planning-road-wf-kicker/.test(bills)
+    && /planning-road-wf-kicker/.test(wfBlock(road.stages, 'obligations'))
+    && /planning-road-wf-kicker/.test(household)
+    && /planning-road-wf-kicker/.test(planned),
+    'Income, Bills, Required debt, Household budget, and Planned spending all have section kickers');
+
+  ok(/\bDale\b/.test(income) && /\bAmanda\b/.test(income)
+    && income.includes(page.ctx.planningRoadSignedMoney(6240))
+    && income.includes(page.ctx.planningRoadSignedMoney(4180))
+    && /Income total/.test(income)
+    && !/<details/.test(income),
+    'published Dale and Amanda salary lines reprint always-visible under Income, plus the income total');
+
+  ok(/<details class="planning-road-wf-expand" data-planning-road-wf-expand="bills"/.test(bills)
+    && /planning-road-wf-chevron/.test(bills)
+    && /data-planning-road-wf-row="bills-total"/.test(bills)
+    && /Mortgage/.test(bills) && /Car payment/.test(bills)
+    && bills.includes('−' + money2(2140)) && bills.includes('−' + money2(600))
+    && !/ open/.test(bills.match(/<details[^>]*>/)[0]),
+    'Bills expander lists Forecast-published lines, keeps the total in the collapsed summary, and starts closed');
+  ok(/<details class="planning-road-wf-expand" data-planning-road-wf-expand="household-budget"/.test(household)
+    && /planning-road-wf-chevron/.test(household)
+    && /data-planning-road-wf-row="household-budget-total"/.test(household)
+    && /Groceries/.test(household) && /Fuel/.test(household)
+    && household.includes('−' + money2(800)),
+    'Household budget expander lists Forecast-published items and keeps the total visible when collapsed');
+  ok(!/data-planning-road-wf-lines="unavailable"/.test(bills)
+    && !/data-planning-road-wf-lines="unavailable"/.test(household),
+    'published detail lines replace the fail-closed expander empty state');
+  ok(!/<details/.test(planned),
+    'planned spending remains an inline list when peer sections expand');
+  ok(!/atlas-card|card-strip|Card badge|purple Card/i.test(road.stages),
+    'detailed waterfall reprint still has no credit-card strip');
 }
 
 if (failures) {
