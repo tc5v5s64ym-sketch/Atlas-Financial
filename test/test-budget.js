@@ -258,7 +258,7 @@ console.log('\n=== owner targets are present, and honestly sourced ===');
 ok(plan.budget.ownerTargets.status === 'partial',
   'the budget records that owner targets are incorporated but incomplete',
   plan.budget.ownerTargets.status);
-ok(budget.ownerTargetCount === 7, 'seven categories carry an owner target, including Household $0', String(budget.ownerTargetCount));
+ok(budget.ownerTargetCount === 8, 'eight categories carry an owner target, including Household $0 and Other spend $800/month', String(budget.ownerTargetCount));
 for (const c of budget.categories) {
   const expected = c.target != null ? 'owner-target'
     : c.current != null ? 'current-regime'

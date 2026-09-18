@@ -106,6 +106,19 @@ for (const id of RETIRED_HOLD_IDS) {
   ok(h && !/2026-09-05/.test(h.why || ''),
     'household why does not advance that removal to the UTC date 2026-09-05');
 }
+{
+  const o = byId('other-spend');
+  ok(o && o.plannedMonthly === 800 && o.plannedPayday == null && o.plannedWeekly == null,
+    'other-spend owner target is plannedMonthly 800, not a payday or weekly cadence',
+    o ? `${o.plannedMonthly}/${o.plannedPayday}/${o.plannedWeekly}` : 'missing');
+  ok(o && o.ownerLine === 'Other spend' && o.targetSource === 'owner-stated-2026-09-18',
+    'other-spend names the 2026-09-18 owner instruction',
+    o ? `${o.ownerLine}/${o.targetSource}` : 'missing');
+  ok(o && o.label === 'Other spend',
+    'other-spend is the Other spend–labeled planning home, not uncategorised');
+  ok(byId('uncategorised') && byId('uncategorised').plannedMonthly == null,
+    'uncategorised stays the unmatched-merchant remainder, not the $800 planning home');
+}
 
 console.log('\n=== historical / advisory workbook values cannot overwrite that policy ===');
 ok(byId('groceries').plannedWeekly === GROCERY_WEEKLY
@@ -138,6 +151,12 @@ ok(/Household currently has no planned Household Budget payday hold/.test(note)
     && /\$1,825\.00/.test(note)
     && /\$1,725\.00/.test(note),
   'ownerTargets.note retires the Household $37.50 hold and records the remaining cycle totals');
+ok(/Other spend \$800\/month/.test(note)
+    && /plannedMonthly 800/.test(note)
+    && /other-spend/.test(note)
+    && /2026-09-18/.test(note)
+    && /not a payday hold/.test(note),
+  'ownerTargets.note includes the Other spend $800/month monthly lock');
 ok(!/Household \$37\.50;/.test(note) && !/2026-09-05/.test(note),
   'ownerTargets.note does not keep Household $37.50 as a current target or use the UTC date');
 

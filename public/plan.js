@@ -3354,11 +3354,19 @@ function renderPlan(d, periods, history) {
         : '') +
       capTotal;
     const owned = budget.ownerTargetCount;
+    const ownedNames = budget.categories
+      .filter(c => c.target != null)
+      .map(c => String(c.ownerLine || c.label || '').toLowerCase())
+      .filter(Boolean);
+    const ownedList = ownedNames.length === 0 ? ''
+      : ownedNames.length === 1 ? ownedNames[0]
+      : ownedNames.length === 2 ? `${ownedNames[0]} and ${ownedNames[1]}`
+      : `${ownedNames.slice(0, -1).join(', ')}, and ${ownedNames[ownedNames.length - 1]}`;
     $('cap-basis').innerHTML = capView.hasFeasibleCap
       ? `Solved from the forecast: the largest weekly spend that keeps every day at or above the ${money(sim.buffer)} ` +
-      `buffer. The split below it uses the <b>household's own budget targets</b> for ${owned} categories — ` +
-      `groceries, fuel, dining, personal, subscriptions, dog food, sports, household and medical — and ` +
-      `${budget.months} months of actual spending for the rest, with anything already dated on the calendar ` +
+      `buffer. The split below it uses the <b>household's own budget targets</b> for ${owned} categories` +
+      (ownedList ? ` — ${ownedList}` : '') +
+      ` — and ${budget.months} months of actual spending for the rest, with anything already dated on the calendar ` +
       `removed from its own category. <b>Food and fuel come out of this number first</b>: the household budgets ` +
       `${money(cap.groceriesMonthly)} and ${money(cap.fuelMonthly)} a month for them. ` +
       `The ${money(budget.sinkingMonthly)}/month of lacrosse fees is dated on the calendar and saved for separately, ` +
@@ -3712,8 +3720,9 @@ function renderPlan(d, periods, history) {
   // everything is the wrong instruction, so the essential rows are marked and
   // the discretionary ones carry the reduction.
   if (budget) {
-    const cats = budget.categories.filter(c => c.historical > 0 || c.dated > 0);
-    const max = Math.max(...cats.map(c => c.historical));
+    const cats = budget.categories.filter(c =>
+      c.historical > 0 || c.dated > 0 || c.target != null || c.planned > 0);
+    const max = Math.max(0, ...cats.map(c => c.historical));
     const chipFor = c =>
       c.class === 'essential' ? '<span class="chip">essential</span>'
       : c.class === 'reserve' ? '<span class="chip w">reserve</span>'
@@ -3724,7 +3733,7 @@ function renderPlan(d, periods, history) {
           ? ' <span class="chip v">owner budget</span>' : ''}${c.fullyDated
           ? ' <span class="chip v">on the calendar</span>' : ''}${c.sinking > 0
           ? ' <span class="chip w">sinking fund</span>' : ''}</span>
-        <span class="cat-bar"><span style="width:${(c.historical / max) * 100}%"></span></span>
+        <span class="cat-bar"><span style="width:${max > 0 ? (c.historical / max) * 100 : 0}%"></span></span>
         <span class="cat-amt">${c.class === 'reserve'
           ? '<span class="mutedtext">reserve</span>'
           : c.planned > 0 ? est(money(c.planned)) : '<span class="mutedtext">$0</span>'}</span>

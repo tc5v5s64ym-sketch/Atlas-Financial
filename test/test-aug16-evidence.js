@@ -85,9 +85,14 @@ console.log('\n=== 3. School & clubs is consistently ESSENTIAL ===');
   ok(/essential/i.test(statusOf('Q24') + questions),
     'canonical question records essential');
   const targets = plan.budget.categories.filter(c =>
-    (c.plannedMonthly != null && c.plannedMonthly !== 0)
-    || c.plannedWeekly != null || c.plannedPayday != null);
+    c.targetSource === 'owner-stated-2026-08-31'
+    && ((c.plannedMonthly != null && c.plannedMonthly !== 0)
+      || c.plannedWeekly != null || c.plannedPayday != null));
   ok(targets.length === 6, 'six remaining 2026-08-31 owner targets (monthly, weekly, or payday)');
+  const otherSpend = plan.budget.categories.find(c => c.id === 'other-spend');
+  ok(otherSpend && otherSpend.plannedMonthly === 800
+      && otherSpend.targetSource === 'owner-stated-2026-09-18',
+    'Other spend $800/month is the later owner lock, not a seventh 2026-08-31 target');
   ok(school.plannedMonthly == null, 'school still has no owner monthly target');
 }
 
