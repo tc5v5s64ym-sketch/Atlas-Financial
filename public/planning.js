@@ -176,6 +176,16 @@ function planningRoadPublishedLines(component) {
   return out;
 }
 
+function planningRoadPublishedLineDateHtml(row) {
+  if (!row || typeof row.date !== 'string' || !row.date) return '';
+  return `<small class="planning-road-line-date">${fmtDateFull(row.date)}</small>`;
+}
+
+function planningRoadLineIdAttr(row) {
+  if (!row || typeof row.id !== 'string' || !row.id) return '';
+  return ` data-planning-road-line-id="${row.id}"`;
+}
+
 function planningRoadWaterfallValueHtml(component, opts) {
   const asOutflow = !!(opts && opts.asOutflow);
   const signedResult = !!(opts && opts.signedResult);
@@ -200,8 +210,10 @@ function planningRoadWaterfallValueHtml(component, opts) {
 
 function planningRoadWaterfallLineRow(row, dataKey, asOutflow) {
   const label = row.label;
-  return `<li class="planning-road-wf-row" data-planning-road-wf-row="${dataKey}">
-    <span class="planning-road-wf-label">${label}</span>
+  const date = planningRoadPublishedLineDateHtml(row);
+  const idAttr = planningRoadLineIdAttr(row);
+  return `<li class="planning-road-wf-row" data-planning-road-wf-row="${dataKey}"${idAttr}>
+    <span class="planning-road-wf-label">${label}${date}</span>
     ${planningRoadWaterfallValueHtml(row, { asOutflow: !!asOutflow })}
   </li>`;
 }
@@ -957,28 +969,43 @@ function planningRoadAheadFundingStagesHtml(period, granularity) {
 
 function planningRoadBreakdownComponentRow(label, component, dataKey) {
   if (!component) return '';
+  const idAttr = planningRoadLineIdAttr(component);
+  const date = planningRoadPublishedLineDateHtml(component);
+  const labelHtml = `<span class="planning-road-breakdown-label">${label}${date}</span>`;
   if (component.status === 'unavailable') {
     const reason = component.reason
       || 'Atlas cannot see this amount yet. It is not counted as $0.';
-    return `<li class="planning-road-breakdown-row unavailable" data-planning-road-breakdown="${dataKey || label}">
-      <span class="planning-road-breakdown-label">${label}</span>
+    return `<li class="planning-road-breakdown-row unavailable" data-planning-road-breakdown="${dataKey || label}"${idAttr}>
+      ${labelHtml}
       <span class="planning-road-breakdown-value">${planningRoadAmountReprint(component)}</span>
       <small class="planning-trajectory-reason">${reason}</small>
     </li>`;
   }
   if (component.amount == null || !isFinite(Number(component.amount))) {
-    return `<li class="planning-road-breakdown-row unavailable" data-planning-road-breakdown="${dataKey || label}">
-      <span class="planning-road-breakdown-label">${label}</span>
+    return `<li class="planning-road-breakdown-row unavailable" data-planning-road-breakdown="${dataKey || label}"${idAttr}>
+      ${labelHtml}
       <span class="planning-road-breakdown-value">${planningRoadAmountReprint({ status: 'unavailable' })}</span>
     </li>`;
   }
   const chip = component.status ? planningRoadTrustChip(component.status) : '';
   const plannedNote = component.status === 'planned'
     ? '<span class="planning-road-breakdown-planned-note">Planned item — not counted as $0 when withheld.</span>' : '';
-  return `<li class="planning-road-breakdown-row" data-planning-road-breakdown="${dataKey || label}">
-    <span class="planning-road-breakdown-label">${label}</span>
+  return `<li class="planning-road-breakdown-row" data-planning-road-breakdown="${dataKey || label}"${idAttr}>
+    ${labelHtml}
     <span class="planning-road-breakdown-value"><b>${money2(component.amount)}</b>${chip}${plannedNote}</span>
   </li>`;
+}
+
+/** Reprint Forecast-published named lines, then the unchanged rollup.
+ *  No lines means the current aggregate-only row. This page does not split. */
+function planningRoadBreakdownPublishedRows(label, component, dataKey) {
+  const lines = planningRoadPublishedLines(component);
+  if (!lines.length) {
+    return [planningRoadBreakdownComponentRow(label, component, dataKey)];
+  }
+  return lines.map((row, i) =>
+    planningRoadBreakdownComponentRow(row.label, row, `${dataKey}-line-${i}`)
+  ).concat([planningRoadBreakdownComponentRow(label, component, `${dataKey}-total`)]);
 }
 
 function planningRoadBreakdownGroup(title, rows) {
@@ -1013,9 +1040,8 @@ function planningRoadAheadBreakdownSheetHtml(period, granularity) {
       s1.householdBudget
         ? planningRoadBreakdownComponentRow('Household budget', s1.householdBudget, 'household-budget') : '',
     ] : []),
-    planningRoadBreakdownGroup(plannedTitle, [
-      s2 ? planningRoadBreakdownComponentRow('Dated commitments', s2.commitments, 'commitments') : '',
-    ]),
+    planningRoadBreakdownGroup(plannedTitle,
+      s2 ? planningRoadBreakdownPublishedRows('Dated commitments', s2.commitments, 'commitments') : []),
     planningRoadBreakdownGroup('Debt strategy', [
       s3 && s3.extras
         ? planningRoadBreakdownComponentRow('Extra debt payments', s3.extras, 'extras') : '',
