@@ -14,6 +14,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const F = require('../public/forecast.js');
 const live = require('../data.json');
 const periods = require('../public/periods.json');
@@ -327,5 +328,151 @@ console.log('\n=== 8. Live trajectory Household Budget path includes the $800 mo
     'without the owner target, September does not publish an Other spend Household Budget line');
 }
 
-console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
-process.exit(failures === 0 ? 0 : 1);
+function bootPlanPage(payload, periodsOverride) {
+  const els = new Map();
+  const makeEl = id => {
+    const el = {
+      id, textContent: '', value: '', placeholder: '', checked: false, hidden: false,
+      className: '', style: {}, children: [], listeners: {}, attributes: {},
+      addEventListener(k, fn) { (this.listeners[k] = this.listeners[k] || []).push(fn); },
+      setAttribute(k, v) { this.attributes[k] = v; },
+      removeAttribute(k) { delete this.attributes[k]; },
+      appendChild(c) { this.children.push(c); return c; },
+      insertAdjacentHTML(_, h) { this.innerHTML = String(h); },
+      querySelectorAll: () => [],
+    };
+    let html = '';
+    Object.defineProperty(el, 'innerHTML',
+      { get: () => html, set(v) { html = String(v); el.children = []; } });
+    return el;
+  };
+  const get = id => { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); };
+  const sandbox = {
+    document: {
+      getElementById: get,
+      createElement: () => makeEl('created'),
+      createElementNS: () => makeEl('svg'),
+      querySelector: () => null, querySelectorAll: () => [],
+      documentElement: makeEl('html'), body: { scrollHeight: 0 },
+    },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    addEventListener() {}, matchMedia: () => ({ addEventListener() {} }),
+    getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    requestAnimationFrame() {}, innerWidth: 1200, innerHeight: 800, scrollY: 0, console,
+    fetch: url => Promise.resolve({
+      status: 200, ok: true,
+      json: () => (String(url).includes('periods') ? (periodsOverride || periods)
+        : String(url).includes('balance-history') ? null : payload),
+    }),
+  };
+  sandbox.window = sandbox; sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  for (const file of ['public/app.js', 'public/forecast.js', 'public/plan.js']) {
+    vm.runInContext(read(file), sandbox, { filename: file });
+  }
+  return { get };
+}
+const settle = () => new Promise(r => setTimeout(r, 0));
+const catRow = (html, label) => {
+  const rows = String(html || '').split(/<div class="cat-row">/).slice(1);
+  const row = rows.find(r => r.includes(label));
+  return row ? `<div class="cat-row">${row}` : '';
+};
+
+console.log('\n=== 9. Budget breakdown shows the target-only Other spend row ===');
+(async () => {
+  const planSrc = read('public/plan.js');
+  const filterIdx = planSrc.indexOf('const cats = budget.categories.filter');
+  const filterSrc = planSrc.slice(filterIdx, filterIdx + 220);
+  ok(/c\.target\s*!=\s*null/.test(filterSrc) && /c\.planned\s*>\s*0/.test(filterSrc),
+    'Budget category table includes owner-target and planned-only rows, not only historical/dated actuals');
+
+  const SYNTHETIC_MONTHLY = 250;
+  const SYNTHETIC_LABEL = 'Synthetic other';
+  const synthPlan = syntheticPlan();
+  synthPlan.budget.categories[0].label = SYNTHETIC_LABEL;
+  synthPlan.budget.categories[0].ownerLine = SYNTHETIC_LABEL;
+  synthPlan.budget.categories[0].plannedMonthly = SYNTHETIC_MONTHLY;
+  const synthPayload = {
+    meta: { asOf: START },
+    debts: [], revolvingExtra: [], paypal: null, helocHistory: [],
+    plan: Object.assign({
+      obligations: [], bills: [], commitments: [], actions: [],
+      defaults: { scenario: 'expected', extraDebtMonthly: 0, targetBuffer: 200 },
+    }, synthPlan),
+  };
+  const synthPage = bootPlanPage(synthPayload, periodsFixture());
+  await settle();
+  const synthCats = synthPage.get('budget-cats').innerHTML;
+  const synthRow = catRow(synthCats, SYNTHETIC_LABEL);
+  const synthBd = F.budgetBreakdown(synthPlan, periodsFixture(), { asOf: START });
+  const synthEngine = (synthBd.categories || []).find(c => c && c.id === OTHER_ID);
+  ok(synthEngine && near(synthEngine.historical, 0) && near(synthEngine.dated, 0)
+      && near(synthEngine.target, SYNTHETIC_MONTHLY) && near(synthEngine.planned, SYNTHETIC_MONTHLY),
+    'synthetic target-only row has no historical/dated actuals and planned 250');
+  ok(synthRow.includes(SYNTHETIC_LABEL) && /owner budget/.test(synthRow),
+    'synthetic Budget breakdown still prints the target-only row');
+  ok(synthRow.includes(`budgeted $${SYNTHETIC_MONTHLY}`)
+      && /cat-amt[\s\S]*\$250/.test(synthRow),
+    'synthetic row is reconcilable at independently budgeted $250',
+    synthRow.slice(0, 240));
+  ok(synthPage.get('cap-basis').innerHTML.toLowerCase().includes(SYNTHETIC_LABEL.toLowerCase()),
+    'explanatory target list includes the synthetic owner-target category');
+
+  const livePage = bootPlanPage(live, periods);
+  await settle();
+  const liveCats = livePage.get('budget-cats').innerHTML;
+  const liveRow = catRow(liveCats, OTHER_LABEL);
+  const liveBd = F.budgetBreakdown(live.plan, periods, { paypalPerMonth: live.paypal.perMonth });
+  const liveEngine = (liveBd.categories || []).find(c => c && c.id === OTHER_ID);
+  ok(liveEngine && near(liveEngine.target, OTHER_MONTHLY) && near(liveEngine.planned, OTHER_MONTHLY)
+      && near(liveEngine.historical, 0) && near(liveEngine.dated, 0),
+    'live Other spend remains target-only $800 with no historical/dated actuals');
+  ok(liveRow.includes(OTHER_LABEL) && /owner budget/.test(liveRow),
+    'live Budget breakdown prints Other spend');
+  ok(liveRow.includes(`budgeted $${OTHER_MONTHLY}`)
+      && /cat-amt[\s\S]*\$800/.test(liveRow),
+    'live Other spend row is reconcilable at independently budgeted $800');
+  ok(/essential rows, which are \$[\d,]+\/month/.test(livePage.get('budget-cats-note').textContent),
+    'Budget note still publishes the essential total the Other spend row can reconcile against');
+  ok(livePage.get('cap-basis').innerHTML.toLowerCase().includes('other spend'),
+    'explanatory target list includes Other spend');
+
+  console.log('\n=== 10. Derived essentials reporting is dated no earlier than the owner target ===');
+  {
+    const csv = read('docs/positions.csv').split(/\r?\n/).filter(Boolean).map(line => {
+      const out = []; let cur = '', q = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; continue; }
+        if (ch === ',' && !q) { out.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      out.push(cur); return out;
+    });
+    const csvRow = label => csv.find(c => c[2] === label) || [];
+    const ownerDates = cats(live.plan)
+      .map(c => (/owner-stated-(\d{4}-\d{2}-\d{2})/.exec(String(c.targetSource || '')) || [])[1])
+      .filter(Boolean)
+      .sort();
+    const latestOwner = ownerDates[ownerDates.length - 1] || '';
+    ok(latestOwner === '2026-09-18',
+      'independent latest owner-stated date on the live plan is 2026-09-18',
+      latestOwner);
+    ok(String(csvRow('Essential spending estimate')[19] || '') >= latestOwner,
+      'positions.csv essential-spending as_of is not earlier than the owner target',
+      String(csvRow('Essential spending estimate')[19] || ''));
+    ok(String(csvRow('Weeks of essentials covered')[19] || '') >= latestOwner,
+      'positions.csv weeks-of-essentials as_of is not earlier than the owner target',
+      String(csvRow('Weeks of essentials covered')[19] || ''));
+    ok(String(csvRow('Essential spending estimate')[20] || '').includes(`owner budget target ${latestOwner}`)
+        && String(csvRow('Weeks of essentials covered')[20] || '').includes(`owner budget target ${latestOwner}`),
+      'derived essentials notes name the Sep 18 owner target');
+  }
+
+  console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
+  process.exit(failures === 0 ? 0 : 1);
+})().catch(err => {
+  console.error(err);
+  process.exit(1);
+});

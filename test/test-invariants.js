@@ -319,6 +319,25 @@ ok(csvAsOf('Weeks of essentials covered') >= (periods.source && periods.source.c
   csvAsOf('Weeks of essentials covered'));
 ok(/historical actuals through 2026-08-24/.test(csvNote('Essential spending estimate')),
   'essential-spending notes the later historical-actuals input');
+{
+  const ownerTargetDates = (plan.budget.categories || [])
+    .map(c => (/owner-stated-(\d{4}-\d{2}-\d{2})/.exec(String(c && c.targetSource || '')) || [])[1])
+    .filter(Boolean)
+    .sort();
+  const latestOwnerTarget = ownerTargetDates[ownerTargetDates.length - 1] || '';
+  ok(latestOwnerTarget === '2026-09-18',
+    'independent latest owner-stated budget target is 2026-09-18',
+    latestOwnerTarget);
+  ok(csvAsOf('Essential spending estimate') >= latestOwnerTarget,
+    'essential-spending as-of is not earlier than the latest owner budget target',
+    `${csvAsOf('Essential spending estimate')} vs ${latestOwnerTarget}`);
+  ok(csvAsOf('Weeks of essentials covered') >= latestOwnerTarget,
+    'weeks-of-essentials as-of is not earlier than the latest owner budget target',
+    `${csvAsOf('Weeks of essentials covered')} vs ${latestOwnerTarget}`);
+  ok(new RegExp(`owner budget target ${latestOwnerTarget}`).test(csvNote('Essential spending estimate'))
+      && new RegExp(`owner budget target ${latestOwnerTarget}`).test(csvNote('Weeks of essentials covered')),
+    'derived essentials notes name the later owner-target input');
+}
 ok(/2026-08-19/.test(csvNote('Household net worth'))
   && /2026-08-29/.test(csvNote('Household net worth')),
   'household net-worth notes preserve both input dates');

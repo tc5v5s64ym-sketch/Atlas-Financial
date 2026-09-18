@@ -163,10 +163,17 @@ function regenerateComputedRows(data, csvText, opts) {
 
   if (essentialsMonthly != null) {
     const periodsAsOf = periods && (periods.source && periods.source.coverageThrough || periods.asOf) || '';
-    const essentialsAsOf = laterIsoDate(data.meta.asOf, periodsAsOf);
-    const mixedInputs = periodsAsOf && periodsAsOf !== data.meta.asOf
-      ? ` Financial-account opening ${data.meta.asOf}; historical actuals through ${periodsAsOf}.`
-      : '';
+    const ownerTargetAsOf = ((data.plan && data.plan.budget && data.plan.budget.categories) || [])
+      .reduce((latest, c) => {
+        const m = String(c && c.targetSource || '').match(/owner-stated-(\d{4}-\d{2}-\d{2})/);
+        return laterIsoDate(latest, m ? m[1] : '');
+      }, '');
+    const essentialsAsOf = laterIsoDate(laterIsoDate(data.meta.asOf, periodsAsOf), ownerTargetAsOf);
+    const mixedBits = [];
+    if (data.meta.asOf) mixedBits.push(`Financial-account opening ${data.meta.asOf}`);
+    if (periodsAsOf) mixedBits.push(`historical actuals through ${periodsAsOf}`);
+    if (ownerTargetAsOf) mixedBits.push(`owner budget target ${ownerTargetAsOf}`);
+    const mixedInputs = mixedBits.length ? ` ${mixedBits.join('; ')}.` : '';
     put('Essential spending estimate', W('LIQUIDITY', 'Essential spending estimate', 'Net', 'CAD',
       n2(essentialsMonthly), {
         asOf: essentialsAsOf,
