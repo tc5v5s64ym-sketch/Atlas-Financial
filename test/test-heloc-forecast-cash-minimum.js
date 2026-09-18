@@ -37,7 +37,12 @@ function syntheticPlan() {
     startingCash: {
       breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: 20000 }],
     },
-    income: [],
+    income: [
+      {
+        id: 'payroll', label: 'Payroll', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: 2000, confidence: 'confirmed',
+      },
+    ],
     obligations: [
       {
         id: 'mortgage', debtId: 'mortgage', effect: 'payment',
@@ -149,7 +154,7 @@ console.log('\n=== October Required debt includes HELOC cash; Bills do not ===')
 console.log('\n=== Budget bills list still prints HELOC cash once ===');
 {
   const plan = syntheticPlan();
-  const view = F.recommend(plan, '2026-09-10', {
+  const view = F.recommend(plan, '2026-09-20', {
     targetBuffer: 500,
     debts: [
       { id: 'mortgage', label: 'Mortgage', secured: true, balance: 1000, pending: 0, rate: 3.64, payment: 100 },
@@ -162,6 +167,12 @@ console.log('\n=== Budget bills list still prints HELOC cash once ===');
   ok(view && rows.length === 1 && rows[0].date === '2026-09-21' && near(rows[0].amount, CASH),
     'Budget payday bills list still shows the September HELOC cash once',
     rows.map(r => `${r.date}:${r.amount}`).join(','));
+  const acrossPeriods = ((view && view.calendarPeriods) || [])
+    .flatMap(p => p.bills || [])
+    .filter(r => r.id === 'heloc' || r.cashMinimum);
+  ok(acrossPeriods.length === 1,
+    'calendar period bills do not double-print HELOC cash after expandEvents emits it',
+    acrossPeriods.map(r => `${r.date}:${r.amount}`).join(','));
 }
 
 console.log('\n=== live October Required debt reconciles to encoded cashPayment ===');
