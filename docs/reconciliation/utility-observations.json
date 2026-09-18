@@ -47,11 +47,11 @@
       "utility": "bc-hydro",
       "label": "BC Hydro equal payment from next bill",
       "amount": 199,
-      "dueDate": "2026-10-09",
+      "dueDate": "2026-10-01",
       "observedAsOf": "2026-09-09",
       "canonical": { "collection": "bills", "id": "hydro-equal-payment" },
       "source": "docs/source_intake/BC_HYDRO_EQUAL_PAYMENT_2026-09-09.md",
-      "note": "Owner 2026-09-09 BC Hydro annual-adjustment notice: equal monthly payments become $199.00 on the next bill. Canonical firstDue is 2026-10-09 (day 9). Not a usage-based amount. Not the 1 September $237.45 once due."
+      "note": "Owner 2026-09-09 BC Hydro annual-adjustment notice: equal monthly payments become $199.00 on the next bill. Canonical firstDue is the estimated next-bill-month start 2026-10-01, not a confirmed payment day. Not a usage-based amount. Not the 1 September $237.45 once due."
     },
     {
       "observationId": "payday-hydro-paying-account",

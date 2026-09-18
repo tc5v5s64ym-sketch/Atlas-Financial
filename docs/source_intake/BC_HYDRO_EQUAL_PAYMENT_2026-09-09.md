@@ -41,6 +41,8 @@ BILL-HYD-005
 ## Canonical routing
 
 `BILL-HYD-005` is consumed as `plan.bills` id `hydro-equal-payment`:
-monthly $199, day 9 (smallest honest day in the ~9–11 notice range),
-`firstDue` 2026-10-09, `payingAccount` chequing-a / BILLS ACCOUNT,
-`confidence` confirmed. The Sep. 1 once row stays.
+monthly $199 (owner-confirmed amount and cadence), estimated
+`firstDue` 2026-10-01 (start of the next-bill month; payment day is
+unknown — the ~9–11th window is notice arrival, not a due date),
+`payingAccount` chequing-a / BILLS ACCOUNT, `confidence` estimated.
+The Sep. 1 once row stays.
