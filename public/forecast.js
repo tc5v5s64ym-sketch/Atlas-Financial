@@ -12134,6 +12134,99 @@
   // balancing bucket. Household Budget is not a separate calendar-month
   // smear and is not a residual of the cash close.
   // Fail closed when this month's income or cash walk is unavailable.
+  // Stage 1 income publishes attributable named lines from the same span
+  // income events already used for the rollup: Dale (Seaspan payroll
+  // identity) and Amanda (Tennis BC salary identity) when those sources
+  // contribute, plus remaining modelled income so sum(lines) equals the
+  // unchanged income.amount. Coaching/gravy is not a Dale or Amanda
+  // salary line. Stage arithmetic is otherwise unchanged.
+  function isCoachingOrGravyIncome(stream) {
+    if (!stream) return false;
+    return /coach|gravy/i.test(`${stream.id || ''} ${stream.label || ''}`);
+  }
+  function baselineTrajectoryIncomeLines(plan, events, incomeAmount) {
+    const incomeEvents = (events || []).filter(e => e && e.kind === 'income');
+    if (!incomeEvents.length) return [];
+    const dale = [];
+    const amanda = [];
+    const other = [];
+    for (const event of incomeEvents) {
+      const stream = incomeStreamFor(plan, event) || event;
+      if (isCoachingOrGravyIncome(stream) || isCoachingOrGravyIncome(event)) {
+        other.push(event);
+        continue;
+      }
+      if (isDalePayrollStream(stream) || isDalePayrollStream(event)) {
+        dale.push(event);
+        continue;
+      }
+      if (isAmandaSalaryStream(stream) || isAmandaSalaryStream(event)) {
+        amanda.push(event);
+        continue;
+      }
+      other.push(event);
+    }
+    function sumAmt(rows) {
+      return roundCent(rows.reduce((s, e) => s + (Number(e.amount) || 0), 0));
+    }
+    const lines = [];
+    if (dale.length) {
+      lines.push({
+        label: 'Dale — Seaspan payroll',
+        amount: sumAmt(dale),
+        status: trajectoryEventsStatus(dale),
+      });
+    }
+    if (amanda.length) {
+      lines.push({
+        label: 'Amanda — Tennis BC salary',
+        amount: sumAmt(amanda),
+        status: trajectoryEventsStatus(amanda),
+      });
+    }
+    const namedOther = [];
+    const coachingOther = [];
+    for (const event of other) {
+      const stream = incomeStreamFor(plan, event) || event;
+      if (isCoachingOrGravyIncome(stream) || isCoachingOrGravyIncome(event)) {
+        coachingOther.push(event);
+      } else {
+        namedOther.push(event);
+      }
+    }
+    const otherById = new Map();
+    for (const event of namedOther) {
+      const key = event.id || event.label || 'other';
+      if (!otherById.has(key)) otherById.set(key, []);
+      otherById.get(key).push(event);
+    }
+    const otherIds = Array.from(otherById.keys()).sort();
+    for (const id of otherIds) {
+      const rows = otherById.get(id);
+      const stream = incomeStreamFor(plan, rows[0]) || rows[0];
+      const label = (stream && stream.label) || rows[0].label || 'Other income';
+      lines.push({
+        label,
+        amount: sumAmt(rows),
+        status: trajectoryEventsStatus(rows),
+      });
+    }
+    if (coachingOther.length) {
+      lines.push({
+        label: 'Other income',
+        amount: sumAmt(coachingOther),
+        status: trajectoryEventsStatus(coachingOther),
+      });
+    }
+    if (!lines.length) return [];
+    const total = roundCent(lines.reduce((s, row) => s + row.amount, 0));
+    const target = roundCent(incomeAmount);
+    if (total !== target) {
+      const last = lines[lines.length - 1];
+      last.amount = roundCent(last.amount + (target - total));
+    }
+    return lines;
+  }
   function baselineTrajectoryWalkVariableDays(daily, span) {
     if (!span || !span.start || !span.end || !Array.isArray(daily)) return 0;
     let days = 0;
@@ -12214,6 +12307,12 @@
     function component(amount, status) {
       return { amount: roundCent(amount), status };
     }
+    function incomeComponent(amount, status) {
+      const row = component(amount, status);
+      const lines = baselineTrajectoryIncomeLines(input.plan, events, amount);
+      if (lines.length) row.lines = lines;
+      return row;
+    }
     function result(amount, status) {
       return { amount: roundCent(amount), status };
     }
@@ -12222,7 +12321,7 @@
         id: 'normal-life',
         label: 'Normal life',
         status: stage1Status,
-        income: component(incomeAmount, incomeStatus),
+        income: incomeComponent(incomeAmount, incomeStatus),
         bills: component(billsAmount, billsStatus),
         obligations: component(obligationsAmount, obligationsStatus),
         householdBudget: {
@@ -12373,6 +12472,7 @@
         : { status: 'unavailable', reason: closeMissingReason };
     }
     const funding = baselineTrajectoryMonthFunding({
+      plan,
       span,
       weeklyVariable: input.weeklyVariable,
       events: spanEvents,

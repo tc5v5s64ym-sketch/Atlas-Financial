@@ -790,8 +790,22 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
 
   const liveRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
   const incomeBlock = wfBlock(liveRoad, 'income');
-  ok(!/\bDale\b/.test(incomeBlock) && !/\bAmanda\b/.test(incomeBlock),
-    'income section does not invent salary names when Forecast published no income lines');
+  const liveTraj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
+  const liveMonth = (liveTraj.months || []).find(m => m && m.stage1 && m.stage1.income
+    && (m.stage1.income.status === 'calculated' || m.stage1.income.status === 'estimated'));
+  const liveIncomeLines = liveMonth && Array.isArray(liveMonth.stage1.income.lines)
+    ? liveMonth.stage1.income.lines : [];
+  if (liveIncomeLines.length) {
+    ok(liveIncomeLines.every(row => row && incomeBlock.includes(row.label)),
+      'Planning reprints Forecast-published stage1 income line labels and does not invent splits');
+    ok(/Income total/.test(incomeBlock),
+      'Planning reprints the Forecast income total beside published lines');
+  } else {
+    ok(!/\bDale\b/.test(incomeBlock) && !/\bAmanda\b/.test(incomeBlock),
+      'income section does not invent salary names when Forecast published no income lines');
+  }
   ok(!/<details/.test(incomeBlock) && !/planning-road-wf-chevron/.test(incomeBlock),
     'Income is not behind an expander; published lines stay always visible');
   ok(!/atlas-card|card-strip|Card badge|data-card-badge|purple Card/i.test(liveRoad),
@@ -817,9 +831,7 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   ok(!/<details/.test(wfBlock(liveRoad, 'planned-spending')),
     'planned spending stays listed inline, not behind an expander');
 
-  const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
-    periods, extraFacilities: live.revolvingExtra,
-  });
+  const traj = liveTraj;
   const withheld = JSON.parse(JSON.stringify(traj));
   const target = withheld.months[withheld.months.length - 1];
   target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this result.' };
