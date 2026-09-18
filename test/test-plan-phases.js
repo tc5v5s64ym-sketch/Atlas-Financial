@@ -292,8 +292,8 @@ ok(!!risk(live, 'amandaRequired') === !!liveTransfer.neededBy,
   'required vs optional follows whether a needed-by date exists');
 ok(risk(live, 'estimatedCommitments') && risk(live, 'estimatedCommitments').count >= 1,
   'live estimated commitments are named from the Plan rows');
-ok(risk(live, 'helocNoDraw') && same(risk(live, 'helocNoDraw').drawn, 0),
-  'live HELOC risk is no new borrowing — the gap is funded from Amanda');
+ok(!risk(live, 'helocNoDraw') && !risk(live, 'helocDrawn'),
+  'live HELOC risk is omitted — the cash-minimum walk does not cross and does not draw');
 ok((live.risks || []).filter(r => r.id === 'facilityCrossing')
     .map(r => r.debtId).join(',')
   === (liveDebt.crossings || []).filter(c => !c.alreadyOver && c.id !== 'heloc').map(c => c.id).join(','),

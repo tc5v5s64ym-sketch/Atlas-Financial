@@ -610,7 +610,10 @@
         if (o.nonCash) {
           const cashAmt = Number(o.cashPayment) || 0;
           if (!(cashAmt > 0)) return sum;
-          if (!perYear) { unmodelled.push(o.id); return sum; }
+          if (!perYear) {
+            unmodelled.push(o.id);
+            return sum;
+          }
           counted.push({ confidence: o.cashConfidence || o.confidence });
           return sum + cashAmt * perYear / 12;
         }
@@ -10062,7 +10065,8 @@
     const rows = (debts || []).map((d, index) => {
       const u = utilById.get(d.id) || null;
       const unknownPending = pendingUnknown(d);
-      const nextPayment = paymentFact(firstEvent(d.id, e => e.kind === 'obligation' && e.effect === 'payment'));
+      const nextPayment = paymentFact(firstEvent(d.id, e =>
+        e.kind === 'obligation' && e.effect === 'payment' && e.cashMinimum !== true));
       const capEvent = firstEvent(d.id, e => e.kind === 'noncash' && e.effect === 'capitalise');
       let nextCashMinimum = null;
       for (const o of obligations) {

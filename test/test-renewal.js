@@ -986,8 +986,10 @@ console.log('\n=== the published renewal, at the settings the page opens on ==='
     `${rate}% / ${years} years`);
   const keep = F.renewal(data.plan, data.debts, { rate, years, consolidate: false, basis: 'variable' });
   const fold = F.renewal(data.plan, data.debts, { rate, years, consolidate: true, basis: 'variable' });
-  ok(near(keep.today.householdCash, 3466.67, 0.005),
-    'today is the mortgage alone, $3,466.67 a month', money(keep.today.householdCash));
+  ok(near(keep.today.mortgageCash, 3466.67, 0.005)
+      && near(keep.today.helocCash, 814.18)
+      && near(keep.today.householdCash, 3466.67 + 814.18, 0.005),
+    'today is the mortgage plus the encoded HELOC cash minimum', money(keep.today.householdCash));
   ok(keep.direction === 'less' && keep.payment < keep.today.householdCash,
     'keeping them apart renews for less than today', money(keep.payment));
   ok(keep.helocOwed > 0,
@@ -995,8 +997,9 @@ console.log('\n=== the published renewal, at the settings the page opens on ==='
   ok(near(growMonthly(data.debts.find(x => x.id === 'heloc').balance, 4.9, 216),
     keep.helocOwed, 0.005),
   'which is what 216 successive monthly charges independently produce');
-  ok(Math.abs(walkLoan(keep.principal, monthlyVariable(rate), years * 12, keep.payment).balance) < 0.000001,
-    'the mortgage walk clears at that payment');
+  ok(Math.abs(walkLoan(keep.principal, monthlyVariable(rate), years * 12,
+    keep.payment - keep.today.helocCash).balance) < 0.000001,
+    'the mortgage walk clears at the mortgage portion of the keep-apart payment');
   ok(fold.direction === 'more' && fold.payment > keep.today.householdCash,
     'folding the HELOC in costs more than today', money(fold.payment));
   ok(keep.interest.total > fold.interest.total,
@@ -1010,7 +1013,7 @@ console.log('\n=== the published renewal, at the settings the page opens on ==='
   const keepFixed = F.renewal(data.plan, data.debts,
     { rate, years, consolidate: false, basis: 'fixed' });
   ok(Math.abs(walkLoan(keepFixed.principal, monthlyFixed(rate), years * 12,
-    keepFixed.payment).balance) < 0.000001,
+    keepFixed.payment - keepFixed.today.helocCash).balance) < 0.000001,
   'a fixed renewal on the real balance clears its own amortisation walk');
   ok(keepFixed.payment < keep.payment,
     'and costs less each month than the variable pricing the page used to apply',

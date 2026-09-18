@@ -511,7 +511,7 @@ function published(o = {}) {
   ok(same(card.shortBy, advice.gap.amount),
     'the HELOC card is short the whole gap, because headroom is not cash', money(card.shortBy));
   ok(!a.applies && (a.reason === 'sourceCannotCoverGap' || a.reason === 'alreadyFunded'
-      || a.reason === 'borrowing-not-automatic'),
+      || a.reason === 'borrowing-not-automatic' || a.reason === 'noCurrentCrossing'),
     'and the counterfactual does not price a draw beyond the facility', a.reason);
   ok(!a.alternateCrossing,
     'publishing no crossing date rather than one produced by an overdraw');
@@ -793,8 +793,8 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
           'at a gap the HELOC cannot cover, the funding card does not say it covers');
         ok(!/brings that crossing forward/.test(r),
           'and no sentence below it prices a draw the facility cannot supply');
-        ok(/The HELOC passes its own limit on/.test(r),
-          'while the HELOC risk itself is still published, with its real crossing');
+        ok(!/The HELOC passes its own limit on/.test(r),
+          'and the HELOC crossing risk is not published on this cash-minimum walk');
         finish();
       }, 0);
     }, 0);

@@ -107,6 +107,19 @@ function independentLedger(days) {
     scope(row.nonCash ? row.effect === 'capitalise' : row.effect === 'payment',
       `${row.id}: new debt effect`);
     add(row, row.nonCash ? 'noncash' : 'obligation', !row.nonCash);
+    const cashPayment = Number(row.cashPayment) || 0;
+    if (row.nonCash && cashPayment > 0) {
+      scope(Number.isInteger(row.cashDay) && row.cashDay > 0 && row.cashDay <= 31,
+        `${row.id}: capitalising cashPayment needs cashDay`);
+      add({
+        id: row.id,
+        frequency: row.frequency,
+        day: row.cashDay,
+        firstDue: row.cashFirstDue || null,
+        amount: cashPayment,
+        debtId: row.debtId,
+      }, 'obligation', true);
+    }
   }
   for (const row of plan.bills || []) {
     if (row.householdObligation === false) continue;

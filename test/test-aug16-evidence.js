@@ -326,8 +326,12 @@ console.log('\n=== 16–18. HELOC interest posting and cash payment stay distinc
   ok(debt && near(debt.cashPayment, 0) && debt.interestTreatment === 'capitalised',
     'cashPayment stays $0; interest is capitalised');
   const events = F.expandEvents(plan, asOf, windowEnd, {});
-  ok(!events.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
-    'no HELOC chequing outflow was invented');
+  ok(!events.some(e => e.id === 'heloc' && e.kind === 'obligation'
+      && e.date < (heloc.cashFirstDue || '2026-09-21')),
+    'no HELOC chequing outflow before cashFirstDue');
+  ok(events.some(e => e.id === 'heloc' && e.kind === 'obligation'
+      && e.date >= heloc.cashFirstDue && near(-e.amount, heloc.cashPayment)),
+    'from cashFirstDue the encoded cash minimum is one chequing obligation');
   ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-01'),
     'Aug. 1 PAD is not fabricated as a cash event');
   ok(/^ANSWERED\b/.test(statusOf('Q19')), 'Q19 is ANSWERED', statusOf('Q19'));

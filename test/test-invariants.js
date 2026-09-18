@@ -991,11 +991,11 @@ const dataStr = JSON.stringify(data);
 // The exact HELOC crossing day is Forecast.projectDebts. A stored calendar
 // day in the assumptions (30 September on this opening) drifted from the
 // walk (31 October) and was published beside it.
-const helocCrossingAssumption = (plan.assumptions || [])
-  .find(a => /HELOC passes its own limit/.test(a));
-ok(!!helocCrossingAssumption,
-  'the HELOC-in-window assumption remains, without a stored crossing day');
-ok(helocCrossingAssumption && !containsCalendarDay(helocCrossingAssumption),
+const helocWalkAssumption = (plan.assumptions || [])
+  .find(a => /encoded HELOC cash minimum from cashFirstDue/.test(a));
+ok(!!helocWalkAssumption,
+  'the HELOC cash-minimum-on-the-walk assumption remains, without a stored crossing day');
+ok(helocWalkAssumption && !containsCalendarDay(helocWalkAssumption),
   'plan assumptions do not store an exact HELOC crossing calendar day');
 ok(storedCrossingClaims({ nextDollar: plan.nextDollar }).length === 0,
   'nextDollar does not store an exact HELOC crossing calendar day');
