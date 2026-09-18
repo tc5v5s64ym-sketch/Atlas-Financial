@@ -174,8 +174,16 @@ ok(sport.target == null, 'children/sports is not an owner household-budget targe
   sport && String(sport.target));
 ok(near(sport.dated, fit.amount * 26 / 12), 'Fit4Less stays the dated sports bill', money(sport.dated));
 ok(sport.sinking > 0, 'the season fees are tracked as a sinking fund instead', money(sport.sinking));
-ok(near(sport.sinking, budget.sinkingMonthly),
-  'and they are the whole of it', money(budget.sinkingMonthly));
+{
+  // Dated sinking-fund point amounts smear across the 91-day window.
+  // Sport is no longer the whole of sinkingMonthly once travel/Christmas
+  // have owner cash dates. Hand-sum the newly dated non-sport amounts.
+  const monthsInWindow = (plan.windowDays || 91) / (365.25 / 12);
+  const HAND_NONSPORT_SINKING = 1200 + 1200 + 3500; // seattle-nov, seattle-dec, christmas-2026
+  ok(near(budget.sinkingMonthly, sport.sinking + HAND_NONSPORT_SINKING / monthsInWindow),
+    'sinkingMonthly is sport sinking plus independently dated travel/Christmas smears',
+    money(budget.sinkingMonthly));
+}
 
 // The bug this replaced: account fees were subtracted from a SPENDING average,
 // but bank fees are not in the spending series at all — they are their own lens.

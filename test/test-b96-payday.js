@@ -212,15 +212,24 @@ console.log('\n=== C. future financial gravity affects today; the payday window 
     `$${pulled.weekly} < $${base.advice.weekly}`);
   const xmas = clone(live);
   const xmasRow = (xmas.plan.commitments || []).find(c => c.id === 'christmas-2026');
-  const encBefore = base.advice.knowledge.encumbered;
+  ok(xmasRow && xmasRow.date === '2026-12-25' && near(xmasRow.amount, 3500),
+    'Christmas is the owner-dated $3,500 cash event on 2026-12-25');
+  const xmasBefore = F.expandEvents(live.plan, liveAsOf, '2026-12-31', {})
+    .filter(e => e.id === 'christmas-2026');
+  ok(xmasBefore.length === 1 && xmasBefore[0].date === '2026-12-25'
+      && near(xmasBefore[0].amount, -3500),
+    'unsettle Christmas still emits −$3,500 on 2026-12-25');
   xmasRow.settledOn = liveAsOf;
   const xmasAfter = F.recommend(xmas.plan, liveAsOf, recOpts());
-  ok(xmasAfter.knowledge.encumbered < encBefore
-    && near(encBefore - xmasAfter.knowledge.encumbered, 3500),
-    'settling Christmas releases that encumbered principal independently ($3,500)',
-    `${encBefore.toFixed(2)} → ${xmasAfter.knowledge.encumbered.toFixed(2)}`);
+  const xmasEventsAfter = F.expandEvents(xmas.plan, liveAsOf, '2026-12-31', {})
+    .filter(e => e.id === 'christmas-2026');
+  ok(xmasEventsAfter.length === 0,
+    'settling Christmas on as-of drops that dated cash event');
+  ok(near(xmasAfter.knowledge.encumbered, base.advice.knowledge.encumbered),
+    'a future dated Christmas cash event was not encumbered principal',
+    `${base.advice.knowledge.encumbered.toFixed(2)} → ${xmasAfter.knowledge.encumbered.toFixed(2)}`);
   ok(xmasAfter.weekly === base.advice.weekly,
-    'that released principal does not automatically become a higher weekly cap',
+    'settling that dated Christmas event does not automatically become a higher weekly cap',
     `$${xmasAfter.weekly}`);
   ok(pulledShort.weekly === pulled.weekly,
     'narrowing the visible window to 14 days does not restore the higher cap',
