@@ -63,14 +63,18 @@ console.log('\n=== HELOC interest stays nonCash; no duplicate August cash ===');
     'cashPayment stays $0; interest is capitalised');
   const events = F.expandEvents(plan, asOf, windowEnd, {});
   const helocEvents = events.filter(e => e.id === 'heloc');
-  ok(helocEvents.length > 0 && helocEvents.every(e => e.kind === 'noncash'),
-    'Forecast emits HELOC as noncash only');
-  ok(!events.some(e => near(Math.abs(e.amount), 814.18) && e.kind !== 'noncash'),
-    'no $814.18 August (or later) cash event exists');
+  ok(helocEvents.length > 0 && helocEvents.filter(e => e.kind === 'noncash').length > 0
+      && helocEvents.filter(e => e.kind === 'noncash').every(e => e.effect === 'capitalise'),
+    'Forecast still emits HELOC interest as noncash capitalise');
   ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-01'),
     'Aug. 1 PAD is not fabricated as a cash event');
   ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-21' && e.kind !== 'noncash'),
     'Aug. 21 is not a HELOC chequing outflow');
+  ok(!events.some(e => e.id === 'heloc' && e.date < heloc.cashFirstDue && e.kind === 'obligation'),
+    'no HELOC cash event before cashFirstDue');
+  const helocCash = events.filter(e => e.id === 'heloc' && e.kind === 'obligation');
+  ok(helocCash.length > 0 && helocCash.every(e => e.date >= heloc.cashFirstDue && near(-e.amount, 814.18)),
+    'from cashFirstDue, expandEvents emits the encoded cash minimum once per month');
 }
 
 console.log('\n=== Aug. 14 $1,100 is inside the opening and is not replayed ===');

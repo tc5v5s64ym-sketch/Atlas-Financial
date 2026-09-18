@@ -145,15 +145,15 @@ duplicate full $814.18 chequing outflow for the August interest posting
 (`nonCash` / `capitalise` on day 31). Q19 is **ANSWERED 2026-08-18**: the
 14 August $1,100 payment already inside the 2026-08-16 opening satisfies
 the $814.18 August minimum, so remaining August HELOC cash requirement is
-**$0 additional**. Owner 2026-08-30: the homepage bills list shows one planned
-BILLS ACCOUNT cash minimum from **2026-09-21**. The only proven amount is
-the $814.18 interest charge, so that same figure is the estimated cash
-minimum — not a second invented PAD amount. Interest-by-event math stays
-on the day-31 capitalise row; the bills list shows the cash payment once
-and does not count it with capitalised interest as two household cash
-obligations. The cash walk still does not deduct a second $814.18
-chequing outflow. That is not a claim that interest is free, and it does
-not state that an Aug. 1 PAD occurred.
+**$0 additional**. Owner 2026-09-18: Forecast emits the encoded cashPayment
+$814.18 on cashDay 21 from cashFirstDue **2026-09-21** as one chequing
+obligation (Required debt). The only proven standing amount is the $814.18
+interest charge, so that same figure is the estimated cash minimum — not a
+second invented PAD amount and not today's irregular Lunch Money extras.
+Interest-by-event math stays on the day-31 capitalise row; the cash walk
+deducts the cashPayment path once and does not count it with capitalised
+interest as two household cash obligations. That is not a claim that
+interest is free, and it does not state that an Aug. 1 PAD occurred.
 
 **Cash Back Visa 1st.** The $762.36 September over-limit minimum is
 retired. The 14 August $763 payment satisfied that once row. The
@@ -693,9 +693,10 @@ This file does not state that the Aug. 1 PAD occurred.
 This matters two ways. For **cash flow**, the ~$814/month interest posting
 is not an automatic chequing outflow and must not be modelled as a
 duplicate full minimum after confirmed payments have already satisfied
-it. The homepage bills list may show the planned BILLS ACCOUNT cash
-minimum once. For **debt**, capitalised interest is why the balance can
-rise with nothing repaying it.
+it. From 2026-09-21 Forecast deducts the planned BILLS ACCOUNT cash
+minimum once as Required debt. For **debt**, capitalised interest still
+grows the balance; the cash minimum is the coupled repayment of that
+planned amount.
 
 ### SAVINGS-DONT TOUCH *(…6478420)* — **a staging account, not savings**
 Balance $74.20. Despite the name, nothing is saved here. Money arrives from

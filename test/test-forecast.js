@@ -155,18 +155,24 @@ ok(near(expected.totals.estimatedIncome, wantEstimated, 0.05),
   '90-day estimated income is payroll only — Amanda salary is confirmed, not an estimated transfer',
   expected.totals.estimatedIncome.toFixed(2));
 const wantObl = streamTotal(plan.obligations, asOf, windowEnd, F.occurrences, { onceOutflowsBind: true });
-ok(near(expected.totals.obligations, wantObl), '90-day cash obligations', expected.totals.obligations.toFixed(2));
 const heloc = plan.obligations.find(o => o.id === 'heloc');
+const wantHelocCash = (F.capitalisingCashMinimumOccurrences(heloc, asOf, windowEnd) || [])
+  .reduce((s, occ) => s + Number(occ.amount || 0), 0);
+ok(near(expected.totals.obligations, wantObl + wantHelocCash), '90-day cash obligations include HELOC cash minimum',
+  expected.totals.obligations.toFixed(2));
 const wantNoncash = F.occurrences(heloc, asOf, windowEnd).length * heloc.amount;
 ok(near(expected.totals.noncash, wantNoncash), 'HELOC interest is tracked but not deducted',
   expected.totals.noncash.toFixed(2));
 {
-  // The non-cash charge must not move the balance.
+  // Capitalise still does not move cash. The encoded cashPayment does.
   const withHeloc = expected.ending;
-  const stripped = JSON.parse(JSON.stringify(plan));
-  stripped.obligations = stripped.obligations.filter(o => !o.nonCash);
-  const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer }).ending;
-  ok(near(withHeloc, without), 'removing the non-cash charge changes nothing', `${withHeloc.toFixed(2)} vs ${without.toFixed(2)}`);
+  const noCashMin = JSON.parse(JSON.stringify(plan));
+  const h = noCashMin.obligations.find(o => o.id === 'heloc');
+  h.cashPayment = 0;
+  const withoutCash = F.simulate(noCashMin, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer }).ending;
+  ok(near(withoutCash - withHeloc, wantHelocCash),
+    'HELOC cashPayment is deducted once; capitalise is not a second chequing hit',
+    `${withoutCash.toFixed(2)} − ${withHeloc.toFixed(2)} vs ${wantHelocCash.toFixed(2)}`);
 }
 // streamTotal independently nets a utility-account credit from the firstDue
 // occurrence (not household income). Later months stay at the declared amount.

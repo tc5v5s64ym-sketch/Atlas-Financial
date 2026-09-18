@@ -143,6 +143,7 @@ const suites = [
   ['amortising payoff stops later interest share', 'test-amortizing-payoff-horizon.js'],
   ['live recurring debt and cash horizon reconciliation', 'test-live-debt-horizon.js'],
   ['HELOC crossing-date authority', 'test-heloc-crossing-authority.js'],
+  ['HELOC Forecast Required-debt cash minimum', 'test-heloc-forecast-cash-minimum.js'],
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],
   ['evidence-use register routing', 'test-evidence-use-register.js'],

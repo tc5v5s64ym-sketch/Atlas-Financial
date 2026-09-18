@@ -565,8 +565,10 @@ const MUTATIONS = [
       .heloc.opening !== 105000 },
 
   { label: 'counting the capitalised charge as cash invents a bill nobody pays',
-    from: '      .filter(o => o.debtId === debtId && !o.nonCash)',
-    to: '      .filter(o => o.debtId === debtId)',
+    from: `        if (o.nonCash) {
+          const cashAmt = Number(o.cashPayment) || 0;`,
+    to: `        if (false && o.nonCash) {
+          const cashAmt = Number(o.cashPayment) || 0;`,
     differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' })
       .today.householdCash, 2166.6666666667, 1) },
 
@@ -816,7 +818,10 @@ function legacyAmortisedPayment(principal, annualPct, years) {
 }
 function legacy(r, years, consolidate) {
   const mortgageNow = mort0.payment * 26 / 12;
-  const helocCash = heloc0.cashPayment != null ? heloc0.cashPayment : heloc0.payment;
+  const helocObl0 = data.plan.obligations.find(o => o && o.debtId === 'heloc');
+  const helocCash = Number(helocObl0 && helocObl0.cashPayment) > 0
+    ? Number(helocObl0.cashPayment)
+    : (heloc0.cashPayment != null ? heloc0.cashPayment : heloc0.payment);
   const helocEconomic = heloc0.monthlyInterest != null ? heloc0.monthlyInterest : heloc0.payment;
   const helocCapitalised = heloc0.interestTreatment === 'capitalised';
   const baselineCash = mortgageNow + helocCash;

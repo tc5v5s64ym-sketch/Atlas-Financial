@@ -236,11 +236,11 @@ function standingReminders(asOf, register) {
 
   events.push(
     { uid: 'atlas-reminder-heloc-due-21@household',
-      summary: 'Reminder — HELOC contractual due date (TD-stated 21st; not a chequing outflow)',
+      summary: 'Reminder — HELOC contractual due date (TD-stated 21st)',
       start: '2026-08-21', rrule: MONTHLY(21),
       kind: 'reminder',
       sourceId: 'heloc-contractual-due',
-      description: 'TD Home Equity FlexLine contractual due date. Observed posting is month-end capitalisation into the HELOC balance (~$814), not a cash payment from chequing. The Plan bills list may show the planned BILLS ACCOUNT cash minimum once; that print is not a second expandEvents chequing outflow. Statements show a PAD around the 1st and that a manual payment at least equal to the minimum, made before the due date, satisfies that minimum rather than causing a second full cash collection. This reminder is a look-point only. Q19 ANSWERED 2026-08-18: the 14 August $1,100 already inside the 2026-08-16 opening satisfies the $814.18 August minimum, so remaining August HELOC cash requirement is $0 additional. Do not invent another $814.18 chequing outflow. Interest is not free. This reminder does not state that an Aug. 1 PAD occurred.' + src },
+      description: 'TD Home Equity FlexLine contractual due date. Observed posting of the interest charge is month-end capitalisation into the HELOC balance (~$814), not that charge leaving chequing. Owner 2026-09-18: expandEvents emits the encoded cashPayment on cashDay 21 from cashFirstDue 2026-09-21 as one chequing obligation (Forecast Required debt). Capitalise remains nonCash. Statements show a PAD around the 1st and that a manual payment at least equal to the minimum, made before the due date, satisfies that minimum rather than causing a second full cash collection. Q19 ANSWERED 2026-08-18: the 14 August $1,100 already inside the 2026-08-16 opening satisfies the $814.18 August minimum, so remaining August HELOC cash requirement is $0 additional. Do not invent another $814.18 August chequing outflow. Interest is not free. This reminder does not state that an Aug. 1 PAD occurred.' + src },
     { uid: 'atlas-reminder-property-tax@household',
       summary: 'Reminder — Maple Ridge property tax due', start: '2027-07-02', rrule: 'FREQ=YEARLY',
       kind: 'reminder',

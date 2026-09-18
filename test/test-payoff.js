@@ -469,8 +469,15 @@ ok(near(BIWEEKLY_MIN.minimum, 250 * 26 / 12) && near(BIWEEKLY_MIN.minimum, 541.6
   'a bi-weekly one is annualised at 26 payments, not read as monthly',
   money(BIWEEKLY_MIN.minimum));
 ok(NONCASH_MIN.minimum === 0 && NONCASH_MIN.minimumId === 'none',
-  'and a capitalised charge is no minimum at all — no cash leaves an account',
+  'and a capitalised charge with no cashPayment is no minimum at all',
   money(NONCASH_MIN.minimum));
+const NONCASH_WITH_CASH = debt({ balance: 10000, rate: 12 },
+  [{ id: 'o', debtId: 'x', frequency: 'monthly', amount: 250, nonCash: true,
+    cashPayment: 80, cashConfidence: 'estimated' }]);
+ok(near(NONCASH_WITH_CASH.minimum, 80) && NONCASH_WITH_CASH.minimumId === 'cash'
+  && NONCASH_WITH_CASH.minimumConfidence === 'estimated',
+  'a capitalising obligation with cashPayment is that cash, not the capitalise amount',
+  money(NONCASH_WITH_CASH.minimum));
 const ONE_OFF = debt({ balance: 10000, rate: 12 }, [
   { id: 'monthly-min', debtId: 'x', frequency: 'monthly', amount: 250 },
   { id: 'september-spike', debtId: 'x', frequency: 'once', date: '2026-09-01', amount: 900 },
@@ -480,8 +487,10 @@ ok(near(ONE_OFF.minimum, 250) && ONE_OFF.unmodelled.join() === 'september-spike'
   ONE_OFF.unmodelled.join());
 
 /* The three real debts whose minimum the old page got wrong. */
-ok(byId.heloc.minimum === 0 && byId.heloc.minimumId === 'none',
-  'the HELOC has no cash minimum — its $814.18 charge is capitalised, not paid');
+ok(near(byId.heloc.minimum, 814.18) && byId.heloc.minimumId === 'cash'
+  && byId.heloc.minimumConfidence === 'estimated',
+  'the HELOC cash minimum is the encoded cashPayment, not the capitalise row',
+  money(byId.heloc.minimum));
 ok(near(byId.mortgage.minimum, 1600 * 26 / 12) && near(byId.mortgage.minimum, 3466.6666666667, 1e-6),
   'the mortgage minimum is its bi-weekly payment annualised, not $1,600 read as monthly',
   money(byId.mortgage.minimum));
@@ -523,18 +532,24 @@ ok(ONE_OFF.minimumConfidence === 'estimated'
     { id: 'spike', debtId: 'x', frequency: 'once', date: '2026-09-01', amount: 900, confidence: 'estimated' },
   ]).minimumConfidence === 'confirmed',
 'an obligation that contributed nothing to the figure does not tag it');
-ok(NONCASH_MIN.minimumConfidence === null && byId.heloc.minimumConfidence === null,
+ok(NONCASH_MIN.minimumConfidence === null,
   'and where nothing contributed there is no figure to tag');
 // The real debt list, against `data.json`'s own declarations.
 ok(byId.mortgage.minimumConfidence === 'confirmed'
-  && ['triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']
+  && ['heloc', 'triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']
     .every(id => byId[id].minimumConfidence === 'estimated'),
-'five of the seven published minimums are estimated, and say so',
+'six of the seven published minimums are estimated, and say so',
 REAL.map(d => `${d.id}=${d.minimumConfidence}`).join(' '));
 // Each one agrees with the obligation it came from, rather than with a guess.
 for (const d of REAL) {
-  const counted = data.plan.obligations.filter(o => o.debtId === d.id && !o.nonCash
-    && (o.frequency === 'monthly' || o.frequency === 'biweekly'));
+  const counted = data.plan.obligations.filter(o => {
+    if (!o || o.debtId !== d.id) return false;
+    if (!(o.frequency === 'monthly' || o.frequency === 'biweekly')) return false;
+    if (o.nonCash) return (Number(o.cashPayment) || 0) > 0;
+    return true;
+  }).map(o => o.nonCash
+    ? { confidence: o.cashConfidence || o.confidence }
+    : o);
   ok(d.minimumConfidence === (counted.length
     ? (counted.every(o => o.confidence === 'confirmed') ? 'confirmed' : 'estimated')
     : null),
@@ -610,10 +625,12 @@ const MUTATIONS = [
     to: 'const openingBalance = debt => debt.balance;',
     differs: m => !near(realById(m).travelvisa.balance, 1243.44, 0.01) },
 
-  { label: 'counting a capitalised charge as the minimum invents a bill nobody pays',
-    from: '      .filter(o => o.debtId === debtId && !o.nonCash)',
-    to: '      .filter(o => o.debtId === debtId)',
-    differs: m => realById(m).heloc.minimum !== 0 },
+  { label: 'dropping cashPayment on a capitalising obligation hides the HELOC minimum',
+    from: `        if (o.nonCash) {
+          const cashAmt = Number(o.cashPayment) || 0;`,
+    to: `        if (o.nonCash) {
+          const cashAmt = 0;`,
+    differs: m => realById(m).heloc.minimum === 0 },
 
   { label: 'reading a bi-weekly minimum as monthly makes the mortgage look unpayable',
     from: '  const PAYMENTS_PER_YEAR = { biweekly: 26, monthly: 12 };',
@@ -802,10 +819,10 @@ const CHANGED = [
     was: () => oldPayoff(546026.58, 3.64, 1600).clears,
     now: () => F.payoffModel(byId.mortgage, byId.mortgage.minimum).clears,
     expect: [false, true] },
-  { id: 'heloc', what: 'is not modelled as paying $814.18 a month',
+  { id: 'heloc', what: 'cash minimum is the encoded cashPayment',
     was: () => Math.round(oldPayoff(201586.16, 4.9, 814.18).months),
     now: () => byId.heloc.minimum,
-    expect: [1459, 0] },
+    expect: [1459, 814.18] },
   { id: 'triangle', what: 'takes longer at its minimum',
     was: () => Number(oldPayoff(13497, 21.99, 253.57).months.toFixed(2)),
     now: () => Number(F.payoffModel(byId.triangle, byId.triangle.minimum).months.toFixed(2)),
@@ -829,8 +846,8 @@ const CHANGED = [
 ];
 for (const c of CHANGED) {
   const was = c.was(), now = c.now();
-  const pinnedNow = c.expect[1] === true || c.expect[1] === false || c.expect[1] === 0
-    || c.id === 'cashback';
+  const pinnedNow = c.expect[1] === true || c.expect[1] === false
+    || c.id === 'cashback' || c.id === 'heloc';
   if (pinnedNow) {
     ok(was === c.expect[0] && now === c.expect[1],
       `${c.id} ${c.what}`, `${was} → ${now}`);
@@ -951,8 +968,8 @@ ok([...minimumIds].every(id => typeof wording.minimum[id] === 'function')
   && Object.keys(wording.minimum).length === 2,
 'both minimum outcomes have wording');
 // The published page has to reach both of them, or one is untested prose.
-ok(REAL.some(d => d.minimumId === 'cash') && REAL.some(d => d.minimumId === 'none'),
-  'and the real debt list reaches both');
+ok(REAL.every(d => d.minimumId === 'cash') && NONCASH_MIN.minimumId === 'none',
+  'every live debt has a cash minimum, and a capitalise-only fixture still reaches none');
 
 console.log('\n=== 11. the panel the household actually reads ===');
 
@@ -1091,12 +1108,11 @@ setTimeout(() => {
   const helocIndex = REAL.findIndex(d => d.id === 'heloc');
   select.value = String(helocIndex);
   select.fire('change');
-  ok(/no minimum to compare against/.test(page.get('model-context').textContent),
-    'selecting the HELOC says it has no minimum, rather than showing one nobody pays');
-  ok(!/814/.test(page.get('model-context').textContent + page.get('payoff-out').innerHTML),
-    'and its $814.18 capitalised charge is nowhere in the panel as a payment');
-  ok(!page.get('pay-presets').children.some(c => /Minimum/.test(c.textContent)),
-    'nor is there a Minimum button to click');
+  ok(/The minimum is/.test(page.get('model-context').textContent)
+      && /814/.test(page.get('model-context').textContent),
+    'selecting the HELOC names the encoded cashPayment as the cash minimum');
+  ok(page.get('pay-presets').children.some(c => /Minimum/.test(c.textContent)),
+    'and the Minimum preset is reachable because there is a cash minimum');
 
   // Drop the slider to its floor and the panel has to say the balance grows.
   range.value = String(byId.heloc.bounds.min);
