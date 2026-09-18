@@ -168,24 +168,9 @@ ok(near(expected.totals.noncash, wantNoncash), 'HELOC interest is tracked but no
   const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer }).ending;
   ok(near(withHeloc, without), 'removing the non-cash charge changes nothing', `${withHeloc.toFixed(2)} vs ${without.toFixed(2)}`);
 }
-const wantBillsGross = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, { plan, onceOutflowsBind: true });
-// Utility-account credit is not household income. Independently net it from
-// the first scheduled bill occurrence when that firstDue is inside this
-// window; later occurrences remain at the declared bill amount.
-const heldElsewhereIds = new Set((plan.startingCash.heldElsewhere || []).map(r => r.id));
-const wantBillAccountCredits = (plan.bills || []).reduce((sum, bill) => {
-  if (bill.householdObligation === false || bill.needsDate) return sum;
-  if (F.isCardPaidBill(bill, plan)) return sum;
-  if (bill.payingAccount && heldElsewhereIds.has(bill.payingAccount)) return sum;
-  const raw = bill.utilityAccountCredit;
-  const credit = typeof raw === 'number' ? raw
-    : raw && typeof raw === 'object' ? Number(raw.amount) : 0;
-  const firstDueInWindow = typeof bill.firstDue === 'string'
-    && bill.firstDue >= asOf && bill.firstDue <= windowEnd;
-  if (!Number.isFinite(credit) || credit <= 0 || !firstDueInWindow) return sum;
-  return sum + Math.min(Number(bill.amount || 0), credit);
-}, 0);
-const wantBills = wantBillsGross - wantBillAccountCredits;
+// streamTotal independently nets a utility-account credit from the firstDue
+// occurrence (not household income). Later months stay at the declared amount.
+const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, { plan, onceOutflowsBind: true });
 ok(near(expected.totals.bills, wantBills), '90-day named bills net utility-account credit once', expected.totals.bills.toFixed(2));
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
 ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);

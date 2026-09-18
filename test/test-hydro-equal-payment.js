@@ -21,6 +21,7 @@ const path = require('path');
 const F = require('../public/forecast.js');
 const R = require('../scripts/reconcile.js');
 const O = require('../scripts/provider-observe.js');
+const { streamTotal, independentlyBillOccurrenceAmount } = require('./test-helpers');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -168,6 +169,18 @@ console.log('=== 1. independent October–December $199 dates ===');
   ok(near(independentTotal, 543.92) && near(independentTotal, roundCent(597 - CREDIT)),
     'independent 3 × $199.00 − $53.08 = $543.92',
     String(independentTotal));
+  const equalBill = fixturePlan().bills.find(b => b.id === EQUAL_ID);
+  ok(near(independentlyBillOccurrenceAmount(equalBill, FIRST_DUE), FIRST_CASH),
+    'independent helper nets only the firstDue occurrence to $145.92');
+  ok(near(independentlyBillOccurrenceAmount(equalBill, '2026-11-01'), EQUAL_AMT)
+      && near(independentlyBillOccurrenceAmount(equalBill, '2026-12-01'), EQUAL_AMT),
+    'independent helper leaves later months at full $199');
+  const reconstructed = streamTotal(fixturePlan().bills, '2026-09-01', HORIZON_END, F.occurrences, {
+    plan: fixturePlan(), onceOutflowsBind: true,
+  });
+  ok(near(reconstructed, roundCent(SEP_AMT + independentTotal)),
+    'streamTotal independently reconstructs $237.45 + $145.92 + 2×$199, not 3×$199',
+    String(reconstructed));
 }
 
 console.log('\n=== 2. synthetic expandEvents: Sep once preserved; first cash is netted ===');
@@ -317,6 +330,17 @@ console.log('\n=== 5. live expandEvents / trajectory October includes $199 Hydro
   ok(novLine && near(novLine.amount, EQUAL_AMT),
     'November trajectory bills include the full $199 equal payment',
     novLine ? `${novLine.label} ${novLine.amount}` : 'missing');
+  const asOf = live.meta.asOf;
+  const windowEnd = F.addDays(asOf, live.plan.windowDays - 1);
+  const wantBills = streamTotal(live.plan.bills, asOf, windowEnd, F.occurrences, {
+    plan: live.plan, onceOutflowsBind: true,
+  });
+  const sim = F.simulate(live.plan, asOf, {
+    scenario: 'expected', weeklyVariable: 0, targetBuffer: live.plan.defaults.targetBuffer,
+  });
+  ok(near(sim.totals.bills, wantBills),
+    'live 90-day named bills independently reconstruct the firstDue credit net',
+    sim.totals.bills.toFixed(2));
   const sepMonth = (traj.months || []).find(m => m.month === '2026-09');
   const sepEqualLine = ((sepMonth && sepMonth.stage1 && sepMonth.stage1.bills
     && sepMonth.stage1.bills.lines) || [])
@@ -368,6 +392,15 @@ console.log('\n=== 6. settlement identity: Sep. 4 still once; Oct. 1 settles the
   ok(oct1Hit && near(oct1Hit.observedAmount, FIRST_CASH) && oct1Hit.amountNotUsed === true
       && !oct1Hits.some(c => c && c.id === SEP_ID),
     'Oct. 1 Chequing A BC Hydro settles hydro-equal-payment, not the Sep. 1 once due');
+
+  const oct1Full = observeAt('2026-10-01', [{
+    id: 9502, account_id: 1001, date: '2026-10-01', amount: EQUAL_AMT,
+    is_pending: false, payee: 'BC Hydro', original_name: 'BC Hydro',
+  }]);
+  const oct1FullHits = oct1Full.representedEventCandidates || [];
+  ok(oct1FullHits.some(c => c && c.id === EQUAL_ID && c.date === FIRST_DUE && c.amountNotUsed === true)
+      && !oct1FullHits.some(c => c && c.id === SEP_ID),
+    'a $199 Oct. 1 debit still settles the series — amount is not identity');
 
   const packet = oct1.currentPeriodActuals;
   const hydroTx = (packet && packet.transactions || []).find(tx =>
