@@ -132,6 +132,14 @@ function planningRoadTrustChip(status) {
   return `<span class="planning-road-trust-chip ${row.cls}">${row.label}</span>`;
 }
 
+/** Waterfall and hero omit Estimated/Calculated chips and the "about" prefix.
+ *  Dale already knows those figures are estimated or calculated. Fail-closed
+ *  Unavailable still reprints. Confirmed/Planned stay when Forecast publishes them. */
+function planningRoadWaterfallTrustChip(status) {
+  if (!status || status === 'estimated' || status === 'calculated') return '';
+  return planningRoadTrustChip(status);
+}
+
 function planningRoadAmountReprint(result) {
   if (!result || result.status === 'unavailable') {
     return `<span class="planning-road-amount-unavailable" aria-label="Unavailable">—</span>${planningRoadTrustChip('unavailable')}`;
@@ -177,8 +185,7 @@ function planningRoadWaterfallValueHtml(component, opts) {
     return `<span class="planning-road-wf-amount">${planningRoadAmountReprint({ status: 'unavailable' })}</span>`;
   }
   const amount = Number(component.amount);
-  const chip = component.status ? planningRoadTrustChip(component.status) : '';
-  const about = component.status === 'estimated' ? '<span class="planning-road-wf-about">about </span>' : '';
+  const chip = planningRoadWaterfallTrustChip(component.status);
   let shown;
   if (signedResult) {
     shown = planningRoadSignedMoney(amount);
@@ -187,7 +194,7 @@ function planningRoadWaterfallValueHtml(component, opts) {
   } else {
     shown = planningRoadSignedMoney(amount);
   }
-  return `<span class="planning-road-wf-amount">${about}<b class="planning-road-amount-value">${shown}</b>${chip}</span>`;
+  return `<span class="planning-road-wf-amount"><b class="planning-road-amount-value">${shown}</b>${chip}</span>`;
 }
 
 function planningRoadWaterfallLineRow(row, dataKey, asOutflow) {
@@ -256,7 +263,7 @@ function planningRoadWaterfallResultRow(label, result, dataKey) {
   const phrase = planningRoadAheadResultPhrase(result);
   const amountHtml = result && result.status !== 'unavailable'
     && result.amount != null && isFinite(Number(result.amount))
-    ? `<b class="planning-road-amount-value">${planningRoadSignedMoney(result.amount)}</b>${result.status ? planningRoadTrustChip(result.status) : ''}`
+    ? `<b class="planning-road-amount-value">${planningRoadSignedMoney(result.amount)}</b>${planningRoadWaterfallTrustChip(result.status)}`
     : planningRoadAmountReprint({ status: 'unavailable' });
   return `<div class="planning-road-wf-result planning-road-wf-result-${phrase.cls}" data-planning-road-wf="${dataKey}" data-road-result-sign="${phrase.cls}">
     <span class="planning-road-wf-result-label">${label}</span>
@@ -1501,7 +1508,7 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
   const leadKind = phrase.cls === 'gap' ? 'period-shortfall'
     : phrase.cls === 'surplus' ? 'period-surplus'
     : 'period-even';
-  const chip = result.status ? planningRoadTrustChip(result.status) : '';
+  const chip = planningRoadWaterfallTrustChip(result.status);
   return {
     html: `<article class="planning-road-lead planning-road-lead-${phrase.cls} planning-road-hero-card" data-road-lead="${leadKind}" data-road-lead-period="${key || ''}" data-road-result-sign="${phrase.cls}">
       <div class="planning-road-hero-banner">
