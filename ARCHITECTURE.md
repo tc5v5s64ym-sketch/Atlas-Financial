@@ -844,7 +844,9 @@ extras around $1,000 are evidence of irregular overpayment, not the
 standing encoded amount. The Credit page still keeps `nextCapitalise` and
 `nextCashMinimum` as two facts from that same `capitalisingCashMinimumOccurrences`
 rule. The Plan bills list prints the cash minimum once, de-duped against
-the expandEvents cash event.
+the expandEvents cash event. Keep-separate `Forecast.renewal` applies that
+same `monthlyCashFor` cash minimum against the capitalising HELOC balance;
+unpaid compounding remains the path with no declared cash payment.
 
 **Current-state refresh uses Lunch Money as the normal feed; Forecast stays
 the engine.** Owner decision **2026-08-17**: Lunch Money is the household's

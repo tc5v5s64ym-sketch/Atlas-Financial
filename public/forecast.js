@@ -10193,6 +10193,11 @@
   //   HOW THE HELOC BEHAVES comes from the debt record, which
   //     `test-invariants.js` already names the canonical home for its interest
   //     treatment and for the split between economic cost and household cash.
+  //     Keep-separate applies the same `monthlyCashFor` cash minimum already
+  //     in household cash: it leaves chequing AND is a payment against the
+  //     capitalising balance. That is not a second schedule. Without a cash
+  //     minimum the horizon is unpaid compounding, identical to
+  //     opening × (1+r)^n.
   //
   // The old page code fell back to `heloc.payment` whenever `cashPayment` or
   // `monthlyInterest` was missing. That fallback is not carried over: treating
@@ -10271,18 +10276,39 @@
       // the default 18 years; compounding annually instead of monthly
       // understated it by a further $9,212.
       //
+      // The declared cash minimum is the same monthlyCashFor figure already in
+      // household cash: it leaves chequing AND is applied against this balance.
+      // Without a cash minimum the walk is unpaid compounding, identical to
+      // opening × (1+r)^n. Gross interest charged stays the cost; capitalised
+      // interest that cash does not cover remains on the balance.
+      //
       // The HELOC keeps its OWN convention. It is prime-linked and variable
       // whatever the mortgage renews into, so choosing a fixed renewal must not
       // silently reprice the facility that stays outside it.
-      helocOwed = capitalised
-        ? helocOpening * Math.pow(1 + RATE_BASIS.variable(heloc ? heloc.rate : 0),
-          PAYMENTS_PER_YEAR.monthly * years)
-        : helocOpening;
-      // Where the interest is PAID rather than capitalised the balance stands
-      // still, so the cost is simple interest on it for the whole horizon.
-      helocInterest = capitalised
-        ? helocOwed - helocOpening
-        : helocOpening * helocRate * years;
+      const helocMonthlyRate = RATE_BASIS.variable(heloc ? heloc.rate : 0);
+      const helocMonths = PAYMENTS_PER_YEAR.monthly * years;
+      if (capitalised) {
+        if (!(helocCash > 0)) {
+          helocOwed = helocOpening * Math.pow(1 + helocMonthlyRate, helocMonths);
+          helocInterest = helocOwed - helocOpening;
+        } else {
+          let owed = helocOpening;
+          let charged = 0;
+          for (let k = 0; k < helocMonths; k++) {
+            const charge = owed * helocMonthlyRate;
+            charged += charge;
+            owed += charge - helocCash;
+            if (owed < 0) owed = 0;
+          }
+          helocOwed = owed;
+          helocInterest = charged;
+        }
+      } else {
+        // Where the interest is PAID rather than capitalised the balance stands
+        // still, so the cost is simple interest on it for the whole horizon.
+        helocOwed = helocOpening;
+        helocInterest = helocOpening * helocRate * years;
+      }
     }
 
     const totalInterest = amortisingInterest + helocInterest;
@@ -10297,8 +10323,9 @@
       basis, rateMonthly,
       today: {
         // Which picture of "today" applies: a HELOC whose interest capitalises
-        // is not a bill, and saying so is the difference between a $3,466.67
-        // baseline and a $4,280.85 one that nobody pays.
+        // is not a bill for the interest charge itself. A declared cash
+        // minimum is household cash and is counted; inventing a bill from the
+        // capitalised charge is the $814 defect the split exists to prevent.
         id: capitalised ? 'capitalised' : 'paid',
         mortgageCash, helocCash, householdCash, helocEconomic, capitalised,
         // Cash obligations against these debts that have no monthly
