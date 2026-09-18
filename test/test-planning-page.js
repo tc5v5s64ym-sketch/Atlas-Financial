@@ -1220,7 +1220,8 @@ console.log('\n=== Page contract ===');
     'planning.html has no leftover Road Ahead drawer shells');
   ok(!LEFTOVER_ROAD_DRAWER.test(html),
     'planning.html static copy does not name the leftover drawers');
-  ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js">/.test(html), 'planning.html loads forecast.js before planning.js');
+  ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js\?v=omit-planned-total">/.test(html),
+    'planning.html loads forecast.js before a cache-busted planning.js so Road Ahead cannot keep a stale omit helper');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),
     'no example list is hardcoded in the page or script');
 }
@@ -1296,6 +1297,15 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
   const plannedBlock = html => (String(html || '')
     .split('data-planning-road-wf="planned-spending"')[1] || '')
     .split('data-planning-road-wf="')[0];
+  const planningSrc = stripComments(read('public/planning.js'));
+  const inlineSrc = planningSrc.slice(
+    planningSrc.indexOf('function planningRoadWaterfallInlineSection('),
+    planningSrc.indexOf('function planningRoadWaterfallResultRow('));
+  ok(/const named = lines\.length > 0/.test(inlineSrc)
+    && /const totalRow = named/.test(inlineSrc)
+    && /data-planning-road-wf-lines="\$\{named \? 'named' : 'total-only'\}"/.test(inlineSrc)
+    && !/\+ planningRoadWaterfallTotalRow\(title/.test(inlineSrc),
+    'inline waterfall helper omits the title total when named lines exist');
   const mockLines = [
     {
       id: 'pub-commit-a',
@@ -1335,7 +1345,8 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
     && !/data-planning-road-wf-row="planned-spending-total"/.test(plannedWf)
     && plannedWf.includes(money2(250))
     && plannedWf.includes(money2(150))
-    && !plannedWf.includes(money2(400)),
+    && !plannedWf.includes(money2(400))
+    && /data-planning-road-wf-lines="named"/.test(plannedWf),
     'waterfall reprints named Stage2 lines and omits a same-label Planned spending total');
   ok(/Published commitment A/.test(plannedSheet) && /Published commitment B/.test(plannedSheet)
     && /Dated commitments/.test(plannedSheet)
@@ -1368,7 +1379,8 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
     && !/data-planning-road-wf-row="planned-spending-line-/.test(noWf)
     && /data-planning-road-wf-row="planned-spending-total"/.test(noWf)
     && waterfallRowLabels(noWf).includes('Planned spending')
-    && noWf.includes(money2(noAmt)),
+    && noWf.includes(money2(noAmt))
+    && /data-planning-road-wf-lines="total-only"/.test(noWf),
     'waterfall Planned spending stays total-only when Stage2 commitments have no lines');
   ok(/Dated commitments/.test(noSheet) && !/Published commitment A/.test(noSheet)
     && !/data-planning-road-breakdown="commitments-line-/.test(noSheet)
@@ -1387,8 +1399,71 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
   ok(/data-planning-road-wf-row="planned-spending-total"/.test(emptyWf)
     && waterfallRowLabels(emptyWf).includes('Planned spending')
     && emptyWf.includes('−' + money2(700))
-    && !/Published commitment A/.test(emptyWf),
+    && !/Published commitment A/.test(emptyWf)
+    && /data-planning-road-wf-lines="total-only"/.test(emptyWf),
     'empty Stage2 commitment lines still show the Planned spending aggregate');
+
+  // Presentation fixture matching the live smoke card: one named Stage2 line
+  // plus a same-label Planned spending total must not both be waterfall rows.
+  // Amounts here reprint the published mock; they are not a Forecast spec.
+  const smokeTraj = JSON.parse(JSON.stringify(traj));
+  const smokeMonth = smokeTraj.months.find(m => m.month === '2026-09') || smokeTraj.months[0];
+  smokeMonth.stage2 = smokeMonth.stage2 || {};
+  smokeMonth.stage2.commitments = {
+    amount: 700,
+    status: 'estimated',
+    lines: [{
+      id: 'smoke-named-commit',
+      label: 'Burrards team fees',
+      date: '2026-09-15',
+      amount: 700,
+      status: 'estimated',
+    }],
+  };
+  const smokeRoad = page.composeRoadAheadTraj(
+    smokeTraj, 'month', smokeMonth.month, live.meta.asOf);
+  const smokeWf = plannedBlock(smokeRoad.stages);
+  const smokeLabels = waterfallRowLabels(smokeWf);
+  ok(smokeLabels.includes('Burrards team fees')
+    && smokeWf.includes(longDate('2026-09-15'))
+    && smokeWf.includes('−' + money2(700))
+    && /planning-road-wf-kicker[\s\S]*Planned spending/.test(smokeWf)
+    && /data-planning-road-wf-lines="named"/.test(smokeWf)
+    && !smokeLabels.includes('Planned spending')
+    && !/data-planning-road-wf-row="planned-spending-total"/.test(smokeWf)
+    && smokeLabels.filter(label => label === 'Planned spending').length === 0,
+    'named line plus same-label Planned spending total must not both appear as wf rows');
+
+  const itemsTraj = JSON.parse(JSON.stringify(traj));
+  itemsTraj.months[0].stage2.commitments = {
+    amount: 700,
+    status: 'estimated',
+    items: [{
+      label: 'Burrards team fees',
+      date: '2026-09-15',
+      amount: 700,
+      status: 'estimated',
+    }],
+  };
+  const itemsWf = plannedBlock(page.composeRoadAheadTraj(
+    itemsTraj, 'month', itemsTraj.months[0].month, live.meta.asOf).stages);
+  ok(waterfallRowLabels(itemsWf).includes('Burrards team fees')
+    && !waterfallRowLabels(itemsWf).includes('Planned spending')
+    && /data-planning-road-wf-lines="named"/.test(itemsWf),
+    'published items[] named lines also omit the same-label Planned spending total');
+
+  const zeroEmptyTraj = JSON.parse(JSON.stringify(traj));
+  const zeroMonth = zeroEmptyTraj.months.find(m => m.month === '2027-01') || zeroEmptyTraj.months[0];
+  zeroMonth.stage2 = zeroMonth.stage2 || {};
+  zeroMonth.stage2.commitments = { amount: 0, status: 'calculated', lines: [] };
+  const zeroWf = plannedBlock(page.composeRoadAheadTraj(
+    zeroEmptyTraj, 'month', zeroMonth.month, live.meta.asOf).stages);
+  ok(/data-planning-road-wf-row="planned-spending-total"/.test(zeroWf)
+    && waterfallRowLabels(zeroWf).includes('Planned spending')
+    && /data-planning-road-wf-lines="total-only"/.test(zeroWf)
+    && zeroWf.includes(money2(0))
+    && !/Burrards team fees/.test(zeroWf),
+    'empty-lines $0 month keeps the Planned spending aggregate and no named rows');
 
   if (Array.isArray(traj.payPeriods) && traj.payPeriods[0]) {
     const withPay = JSON.parse(JSON.stringify(traj));
@@ -1430,6 +1505,28 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
       'live December reprints Forecast-published commitment dates on both Road Ahead surfaces');
   } else {
     ok(true, 'live December Stage2 commitments published no named lines to reprint');
+  }
+
+  for (const liveMonth of traj.months || []) {
+    if (!liveMonth || !liveMonth.month) continue;
+    const liveNamed = page.ctx.planningRoadPublishedLines(
+      liveMonth.stage2 && liveMonth.stage2.commitments);
+    const liveBlock = plannedBlock(page.composeRoadAheadTraj(
+      traj, 'month', liveMonth.month, live.meta.asOf).stages);
+    const liveLabels = waterfallRowLabels(liveBlock);
+    if (liveNamed.length) {
+      ok(liveNamed.every(row => liveLabels.includes(row.label))
+        && !liveLabels.includes('Planned spending')
+        && !/data-planning-road-wf-row="planned-spending-total"/.test(liveBlock)
+        && /data-planning-road-wf-lines="named"/.test(liveBlock),
+        `${liveMonth.month} named Stage2 lines do not sit beside a Planned spending total row`);
+    } else {
+      ok(liveLabels.includes('Planned spending')
+        && /data-planning-road-wf-row="planned-spending-total"/.test(liveBlock)
+        && /data-planning-road-wf-lines="total-only"/.test(liveBlock)
+        && !/data-planning-road-wf-row="planned-spending-line-/.test(liveBlock),
+        `${liveMonth.month} with no named lines keeps the Planned spending aggregate`);
+    }
   }
 }
 
