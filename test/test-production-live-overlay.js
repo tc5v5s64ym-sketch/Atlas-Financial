@@ -334,13 +334,19 @@ function independentGroceryRemaining(plan, asOf) {
   });
   const groceries = ((plan.budget && plan.budget.categories) || [])
     .find(row => row && row.id === 'groceries');
+  const payday = groceries && groceries.plannedPayday != null
+    ? Number(groceries.plannedPayday) : null;
   const weekly = groceries && groceries.plannedWeekly != null
     ? Number(groceries.plannedWeekly) : null;
   const monthly = weekly != null
     ? round2(weekly * MONTH / 7)
     : Number(groceries && groceries.plannedMonthly);
   const needDays = Forecast.diffDays(actionProbe.periodStart, actionProbe.periodEnd) + 1;
-  const planned = round2(monthly * needDays / MONTH);
+  // Declared plannedPayday is already the Seaspan-cycle Planned figure.
+  // Do not smear plannedMonthly across remaining days (L-002).
+  const planned = payday != null
+    ? round2(payday)
+    : round2(monthly * needDays / MONTH);
   const committed = round2(GROCERY_POSTED + GROCERY_PENDING);
   return {
     planned,
@@ -730,7 +736,7 @@ function independentGroceryRemaining(plan, asOf) {
     const grocery = (action.categories || []).find(row => row.id === 'groceries');
     ok(grocery, 'Forecast publishes a groceries row from the live packet');
     ok(near(grocery.planned, expected.planned),
-      'grocery planned matches independent monthly × period-days arithmetic',
+      'grocery planned matches independent payday-cycle Planned (not monthly smear)',
       `${grocery.planned} vs ${expected.planned}`);
     ok(near(grocery.committed, expected.committed),
       'grocery committed is posted $40 + pending $15',

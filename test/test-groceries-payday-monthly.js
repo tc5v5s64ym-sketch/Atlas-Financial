@@ -227,6 +227,70 @@ console.log('\n=== 3. Seaspan This Pay Period 2026-09-11..2026-09-24 Planned is 
   ok(restaurants && near(restaurants.planned, 200), 'eating out payday Planned stays $200');
 }
 
+console.log('\n=== 4b. paydayAllocation / currentPeriodAction essentials groceries planned is $450, not ~$414 smear ===');
+{
+  const plan = syntheticPlan();
+  const smear14 = roundCent(GROCERY_MONTHLY * 14 / CALENDAR_MONTH_DAYS);
+  ok(smear14 > 413 && smear14 < 415 && !near(smear14, GROCERY_PAYDAY),
+    'independent: monthly $900 × 14 / (365.25/12) is ~$414, not $450',
+    String(smear14));
+
+  function groceryEssential(alloc) {
+    return ((alloc && alloc.essentials && alloc.essentials.items) || [])
+      .find(r => r && r.id === 'groceries') || null;
+  }
+  function groceryAction(action) {
+    return ((action && action.categories) || [])
+      .find(r => r && r.id === 'groceries') || null;
+  }
+
+  for (const asOf of [CYCLE_START, AS_OF]) {
+    const alloc = F.paydayAllocation(plan, asOf, { targetBuffer: 500, debts });
+    const groc = groceryEssential(alloc);
+    const rec = F.recommend(plan, asOf, { targetBuffer: 500, debts });
+    const recGroc = groceryEssential(rec.paydayAllocation);
+    const action = F.currentPeriodAction(plan, asOf, { targetBuffer: 500, debts });
+    const actGroc = groceryAction(action);
+    ok(groc && near(groc.planned, GROCERY_PAYDAY) && near(groc.required, GROCERY_PAYDAY),
+      `paydayAllocation essentials groceries planned/required is $450 asOf ${asOf}`,
+      groc ? `planned=${groc.planned} required=${groc.required}` : 'missing');
+    ok(groc && !near(groc.planned, smear14),
+      `paydayAllocation groceries is not the ~$414 monthly smear asOf ${asOf}`,
+      groc ? String(groc.planned) : 'missing');
+    ok(groc && near(groc.monthly, GROCERY_MONTHLY),
+      `paydayAllocation groceries monthly / ownerTargetMonthly stays $900 asOf ${asOf}`,
+      groc ? String(groc.monthly) : 'missing');
+    ok(recGroc && near(recGroc.planned, GROCERY_PAYDAY),
+      `recommend.paydayAllocation groceries planned is $450 asOf ${asOf}`,
+      recGroc ? String(recGroc.planned) : 'missing');
+    ok(actGroc && near(actGroc.planned, GROCERY_PAYDAY),
+      `currentPeriodAction groceries planned is $450 asOf ${asOf}`,
+      actGroc ? String(actGroc.planned) : 'missing');
+    ok(actGroc && !near(actGroc.planned, smear14),
+      `currentPeriodAction groceries is not the ~$414 monthly smear asOf ${asOf}`,
+      actGroc ? String(actGroc.planned) : 'missing');
+  }
+
+  const liveAlloc = F.paydayAllocation(live.plan, CYCLE_START, {
+    targetBuffer: 500, debts: live.debts || debts,
+  });
+  const liveGroc = groceryEssential(liveAlloc);
+  ok(liveGroc && near(liveGroc.planned, GROCERY_PAYDAY)
+      && near(liveGroc.monthly, GROCERY_MONTHLY),
+    'live paydayAllocation groceries planned is $450; monthly stays $900',
+    liveGroc ? `planned=${liveGroc.planned} monthly=${liveGroc.monthly}` : 'missing');
+  const liveFuel = ((liveAlloc.essentials && liveAlloc.essentials.items) || [])
+    .find(r => r && r.id === 'fuel');
+  const livePets = ((liveAlloc.essentials && liveAlloc.essentials.items) || [])
+    .find(r => r && r.id === 'pets');
+  ok(liveFuel && near(liveFuel.planned, 325),
+    'live fuel payday essential stays $325',
+    liveFuel ? String(liveFuel.planned) : 'missing');
+  ok(!livePets || near(livePets.planned, 0) || near(livePets.required, 0),
+    'live Sep 11 OFF-cycle pets essential is not a smear of $100',
+    livePets ? `planned=${livePets.planned}` : 'absent (OFF omit is also fine)');
+}
+
 console.log('\n=== 4. Month / owner monthly target is $900, not payday-annualized $978.35 ===');
 {
   const plan = syntheticPlan();
