@@ -349,7 +349,11 @@ monthly cadence are confirmed. The notice does not establish a payment or
 due day. Atlas reserves the series as `hydro-equal-payment` (monthly,
 estimated firstDue 2026-10-01 — start of the next-bill month after the
 1 September once due) planned from BILLS ACCOUNT. The ~9–11th window is
-when notices typically arrive, not a confirmed cash-calendar due. It is
+when notices typically arrive, not a confirmed cash-calendar due. The
+9 September 2026 notice also shows a **−$53.08 credit still on the Hydro
+account**. Forecast nets the **next** equal-payment cash hit to
+**$145.92** ($199 − $53.08); later months are full $199. That credit is
+a utility-account balance, not +$53.08 joint cash on 9 September. It is
 not a usage-based or metered amount. Next annual adjustment is September
 2027; that later amount is unknown until the notice. Earlier 2026 equal-payment steps ($207, then $234) are historical.
 It must not be carried inside the household variable budget either, and a utility account balance must not be scheduled as a cash
