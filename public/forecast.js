@@ -12325,7 +12325,10 @@
 
   // Group the same span events already used for a Stage 1 outflow
   // rollup (joint-cash non-card-paid bills, or required obligations)
-  // by id/label. Empty sets return [] so the caller omits `lines`.
+  // or a Stage 2 commitment rollup by id/label. Each line carries
+  // id / label / date / amount / status. Date is the shared event
+  // date when the group has one; mixed dates omit date rather than
+  // inventing a day. Empty sets return [] so the caller omits `lines`.
   function baselineTrajectoryEventLines(events, rollupAmount) {
     if (!events || !events.length) return [];
     const byId = new Map();
@@ -12338,11 +12341,18 @@
     const ids = Array.from(byId.keys()).sort();
     for (const id of ids) {
       const rows = byId.get(id);
-      lines.push({
+      const dates = [];
+      for (const event of rows) {
+        if (event && event.date && dates.indexOf(event.date) === -1) dates.push(event.date);
+      }
+      const line = {
+        id: rows[0].id || id,
         label: rows[0].label || id,
         amount: roundCent(rows.reduce((s, e) => s + (-Number(e.amount) || 0), 0)),
         status: trajectoryEventsStatus(rows),
-      });
+      };
+      if (dates.length === 1) line.date = dates[0];
+      lines.push(line);
     }
     return reconcileTrajectoryLineAmounts(lines, rollupAmount);
   }
@@ -12505,7 +12515,9 @@
         id: 'after-planned-spending',
         label: 'After planned spending',
         status: stage2Status,
-        commitments: component(commitmentsAmount, commitmentsStatus),
+        commitments: component(
+          commitmentsAmount, commitmentsStatus,
+          baselineTrajectoryEventLines(commitments, commitmentsAmount)),
         result: result(stage2Amount, stage2Status),
       },
       stage3: {
