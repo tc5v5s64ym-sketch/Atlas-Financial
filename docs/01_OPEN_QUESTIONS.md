@@ -261,7 +261,10 @@ There are no other specifically known tournaments. Tacoma is not on the
 current known list.
 
 Still unanswered, and only these:
-- exact due dates for the undated rows
+- exact due dates for rows whose `when` is not a single clear month-and-year:
+  `downstairs-couch` (Nov–Dec 2026), `exterior-painting` (Fall 2026),
+  `provincials` (timing TBD), `home-insurance` (around Feb, no year),
+  `vehicle-maintenance` (annual)
 - a point amount for Indio (`indio-tournament` is still a range)
 - Provincials location and date (`provincials` timing is TBD; the cost
   estimate lives on that row)

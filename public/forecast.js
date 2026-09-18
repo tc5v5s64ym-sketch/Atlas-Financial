@@ -742,9 +742,51 @@
   // The knowledge horizon is how far the master forecast knows. Named
   // ranges are views of that same walk. A short display window cannot
   // drop a later dated commitment, and a longer display cannot invent
-  // one. Undated rows still emit no cash event (B95); they participate
-  // in funding sequence and major-plan verdicts without a fabricated day.
+  // one. Rows with no cash date still emit no cash event (B95); they
+  // participate in funding sequence and major-plan verdicts without a
+  // fabricated day. Owner standing rule: a stored YYYY-MM-DD wins;
+  // otherwise a single clear Mon YYYY / by Mon YYYY `when` is the 15th.
   const KNOWLEDGE_MIN_DAYS = 365;
+
+  // One cash date for a plan.commitments row. Explicit valid `date` wins
+  // over day-15. A garbage `date` fails closed and does not fall through
+  // to `when`. Month-only `when` is the 15th only when the whole string
+  // is `Mon YYYY` or `by Mon YYYY` (full or abbreviated English month,
+  // including Sept). Spans, seasons, missing years, late/around/early
+  // wording, TBD, Christmas-as-month, and annual are not dates.
+  const COMMITMENT_MONTH_WHEN = /^(?:by\s+)?([a-z]+)\s+(\d{4})$/i;
+  const COMMITMENT_MONTH_NUM = {
+    january: 1, jan: 1,
+    february: 2, feb: 2,
+    march: 3, mar: 3,
+    april: 4, apr: 4,
+    may: 5,
+    june: 6, jun: 6,
+    july: 7, jul: 7,
+    august: 8, aug: 8,
+    september: 9, sept: 9, sep: 9,
+    october: 10, oct: 10,
+    november: 11, nov: 11,
+    december: 12, dec: 12,
+  };
+  function commitmentMonthDay15FromWhen(when) {
+    if (typeof when !== 'string') return null;
+    const match = COMMITMENT_MONTH_WHEN.exec(when.trim());
+    if (!match) return null;
+    const month = COMMITMENT_MONTH_NUM[match[1].toLowerCase()];
+    if (!month) return null;
+    const year = Number(match[2]);
+    if (!Number.isInteger(year) || year < 1000) return null;
+    return `${year}-${String(month).padStart(2, '0')}-15`;
+  }
+  function commitmentCashDate(c) {
+    if (!c) return null;
+    if (c.date != null && c.date !== '') {
+      return typeof c.date === 'string' && ISO_CALENDAR_DATE.test(c.date)
+        ? c.date : null;
+    }
+    return commitmentMonthDay15FromWhen(c.when);
+  }
 
   // Owner-stated point amount only. A range is not collapsed to its floor,
   // a midpoint, or any other stand-in. No point amount → no point need.
@@ -800,9 +842,10 @@
       if (commitmentSettledBy(c, asOf)) continue;
       // A dated range still has a deadline. Skipping it because it has no
       // point amount would let later income fund a cost that was due earlier.
-      if (!c.date || c.date < asOf) continue;
+      const cashDate = commitmentCashDate(c);
+      if (!cashDate || cashDate < asOf) continue;
       if (commitmentNeed(c) == null && !commitmentHasRange(c)) continue;
-      lastDated = Math.max(lastDated, diffDays(asOf, c.date) + 1);
+      lastDated = Math.max(lastDated, diffDays(asOf, cashDate) + 1);
     }
     // Knowledge does not follow the visible range. Every plan knows at
     // least twelve months, whether or not recurring streams exist.
@@ -1380,13 +1423,15 @@
       // relative to this start. This is not a date-wide skip: a sibling
       // on the same date still fires.
       if (commitmentSettledBy(c, start)) continue;
-      // Undated rows stay on the plan. They are not given a fabricated
-      // day and they do not become cash events.
-      if (!c.date || c.amount == null) continue;
+      // Rows with no cash date stay on the plan. They are not given a
+      // fabricated day and they do not become cash events. A clear
+      // month-only `when` is already a cash date via commitmentCashDate.
+      const cashDate = commitmentCashDate(c);
+      if (!cashDate || c.amount == null) continue;
       // Optional items are residual funding, not a protected cash outflow.
       if (commitmentFlexibility(c) === 'optional') continue;
-      if (c.date >= start && c.date <= end) {
-        events.push({ date: c.date, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
+      if (cashDate >= start && cashDate <= end) {
+        events.push({ date: cashDate, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
     }
     // Cash arriving from outside the plan — modelled gap-funding injections,
@@ -1679,7 +1724,9 @@
   // feasible simultaneously or not at all. Owner priority ranks residual
   // (optional) allocation after that: among optional items, explicit
   // owner priority wins over date. Undated rows sort after dated ones
-  // inside the protected band; no day is invented. No commitment id is special.
+  // inside the protected band. Clear month-only `when` already has a cash
+  // date via commitmentCashDate; spans, seasons, and TBD still invent no
+  // day. No commitment id is special.
   function fundingSequence(plan, asOf, opts) {
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
@@ -1694,9 +1741,9 @@
       rows.push({
         id: c.id,
         label: c.label,
-        date: c.date || null,
-        // Preserve approximate or unresolved timing as stated. Consumers must
-        // not turn "Nov 2026", "late Sep 2026", or "timing TBD" into a day.
+        date: commitmentCashDate(c),
+        // Preserve approximate or unresolved timing as stated. Cash dates
+        // come from commitmentCashDate, not from this display field.
         when: c.when || null,
         need,
         amountMin: range.amountMin,
@@ -8147,9 +8194,9 @@
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
       if (commitmentSettledBy(c, asOf)) continue;
-      // Undated or unpriced rows are on the master plan. They are not
-      // smeared across the 91-day window as if they had a due day.
-      if (!c.date || c.amount == null) continue;
+      // Rows with no cash date or unpriced rows are on the master plan.
+      // They are not smeared across the 91-day window as if they had a due day.
+      if (!commitmentCashDate(c) || c.amount == null) continue;
       const perMonth = c.amount / monthsInWindow;
       if (c.sinkingFund) {
         sinking.total += perMonth;
@@ -13585,7 +13632,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
