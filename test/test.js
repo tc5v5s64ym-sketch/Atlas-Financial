@@ -192,6 +192,7 @@ const suites = [
   ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
   ['Bell card-paid baseline gravity', 'test-bell-card-paid.js'],
   ['Bell dated mid-month planning', 'test-bell-dated-planning.js'],
+  ['Square One yearly card-paid home insurance', 'test-square-one-annual-bill.js'],
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],
   ['Q1 planning policy (2026-08-29 coaching gravy)', 'test-q1-planning-policy.js'],
   ['major future costs on the master plan', 'test-major-future-costs.js'],

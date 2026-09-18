@@ -54,7 +54,6 @@ const LEFT_UNDATED = {
   'downstairs-couch': 'Nov–Dec 2026',
   'exterior-painting': 'Fall 2026',
   'provincials': 'timing TBD',
-  'home-insurance': 'around Feb',
   'vehicle-maintenance': 'annual',
 };
 const HAND_DEC_CASH = [

@@ -557,22 +557,23 @@ it is a phone call worth making [ASK].
 > the wrong category.** Insurance over 18 months is **$2,014.19** ($111.90/month),
 > not $474.68; Household falls to $6,993.18.
 
-### Home — Square One, and it is not in any captured account
+### Home — Square One, card-paid annual (not a captured chequing withdrawal)
 
 | | |
 |---|---|
 | Insurer | **Square One**, policy **#5157890** |
 | Renews | **10 February, automatically** |
-| Premium | **$3,131.76**, paid 10 Feb 2026 — **the whole year in one payment**. Owner-confirmed 2026-08-27: planning amount is approximately **$3,000/year, not $6,000/year**. $6,000/year is property tax, not Square One. |
+| Last paid | **$3,131.76** on **2026-02-10** — **the whole year in one payment** (Square One emails: renewal + payment processed on a credit card) |
+| Next due | **2027-02-10** |
+| Forecast home | `plan.bills` id `square-one`: yearly, month 2, day 10, `firstDue` 2027-02-10, **card-paid** (`jointCash: false`). Not an undated `plan.commitments` row. Not a Household Budget `plannedMonthly`. |
+| Planning amount | Last verified **$3,131.76**. Next cash event is **estimated** — the premium rose about **+17%** the prior year. Owner-confirmed 2026-08-27: planning amount is approximately **$3,000/year, not $6,000/year**. $6,000/year is property tax, not Square One. |
 | History | $2,730.36 (Jan 2024) → $2,675.88 (Jan 2025) → $3,131.76 (Feb 2026), **about +17% in a year** |
+| Paying card | Still **unknown** (B69). Owner 2026-09-18: the 2026-02-10 payment processed on **a credit card**. Do not invent Travel Visa or another named `payingAccount`. |
+| Insured property | The household home. The street address is not restated here. |
 
-**Three things matter here.**
+**Three things still matter here.**
 
-**1. It appears in none of the six accounts or five cards.** February 2026 is
-inside every coverage window and the $3,131.76 is simply absent. Something
-outside the reviewed set pays it — the same shape as the $1,806.00 Fusion
-invoice [B67]. Two unexplained payments of this size are no longer a
-coincidence; see B64.
+**1. It appears in none of the six accounts or five cards as a captured chequing posting.** February 2026 is inside every coverage window and the $3,131.76 is simply absent from those ledgers. Owner 2026-09-18 emails establish that the 2026-02-10 payment processed on a credit card; which card is still B69. Something outside the reviewed chequing set paid it — the same shape as the $1,806.00 Fusion invoice [B67]. Two unexplained payments of this size are no longer a coincidence; see B64.
 
 **2. It has nearly lapsed before.** The January 2025 payment of $2,675.88 failed,
 the resubmission failed, and on 19 Jan 2025 Square One wrote *"your policy is

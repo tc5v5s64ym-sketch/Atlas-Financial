@@ -35,7 +35,6 @@ const NEW_IDS = [
   'exterior-painting',
   'indio-tournament',
   'provincials',
-  'home-insurance',
   'vehicle-maintenance',
 ];
 const POINT = {
@@ -45,7 +44,6 @@ const POINT = {
   'christmas-2026': 3500,
   'downstairs-couch': 1700,
   'provincials': 1000,
-  'home-insurance': 3131.76,
   'vehicle-maintenance': 2400,
 };
 const OWNER_EXPLICIT_DATES = {
@@ -60,7 +58,6 @@ const STILL_UNDATED = [
   'downstairs-couch',
   'exterior-painting',
   'provincials',
-  'home-insurance',
   'vehicle-maintenance',
 ];
 const RANGES = {
@@ -77,6 +74,10 @@ for (const id of NEW_IDS.concat(['warriors'])) {
 }
 ok(!(plan.bills || []).some(b => NEW_IDS.includes(b.id)),
   'none of the new costs is also a dated bill');
+ok(!(plan.commitments || []).some(c => c.id === 'home-insurance'),
+  'Square One is not a second plan.commitments home-insurance row');
+ok((plan.bills || []).some(b => b.id === 'square-one'),
+  'Square One lives on plan.bills, not as an undated commitment');
 ok(!rows.some(r => r.id === 'property-tax' || r.id === 'propertytax'),
   'property tax is not a second plan.commitments row');
 const property = (plan.budget.categories || []).find(c => c.id === 'propertytax');
@@ -211,9 +212,9 @@ ok(near(fusionRemainingOnly, 3300),
   'remaining instalments alone are $3,300, independent of owner-stated paid row',
   String(fusionRemainingOnly));
 const preexistingPoints = 0;
-const absorbedPoints = 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 3131.76 + 2400;
+const absorbedPoints = 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 2400;
 const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
-ok(near(absorbedPoints, 14831.76) && near(HAND_TOTAL, 19331.76),
+ok(near(absorbedPoints, 11700) && near(HAND_TOTAL, 16200),
   'hand total at Aug. 19 opening includes paid + remaining Fusion until settledOn');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',

@@ -258,10 +258,10 @@ pull stays out of git.
 
 **Known major future costs already have one Plan home** (`B95` / PR #82):
 unsettled `plan.commitments`. Amounts, timing, flexibility, and ranges
-live on those rows — do not copy them here. Annual irregulars already
-supported by Atlas evidence stay where they already live (home insurance and
-vehicle maintenance on `plan.commitments`; property tax as the existing
-reserve). Remaining unknowns are Q22. This is not a goals engine.
+live on those rows — do not copy them here. Vehicle maintenance stays on
+`plan.commitments`; property tax stays the existing reserve. Square One
+home insurance is the dated yearly card-paid `plan.bills` row, not an
+undated commitment. Remaining unknowns are Q22. This is not a goals engine.
 
 **Still outstanding / owner-blocked:** historical coaching P&L (Q1 stays OPEN
 — owner-stated 2026-08-29: no shop/resale/inventory business; no other income

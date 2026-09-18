@@ -453,10 +453,12 @@ to **$182.87/month — an extra $1,199 a year** — and nothing marks it as a
 decision. If BCAA is optional coverage on top of ICBC basic Autoplan, fine. If it
 should have ended when the ICBC policy began, one phone call recovers it.
 
-**B69 · Home insurance — $3,131.76 a year, from an unknown account** · *small*
+**B69 · Home insurance — $3,131.76 a year, paying card still unknown** · *small*
 Square One, policy #5157890, **auto-renews 10 February**, whole year in one
-payment. **It appears in none of the six accounts or five cards**, though
-February 2026 is inside every coverage window.
+payment. **Owner 2026-09-18:** the 2026-02-10 payment processed on a credit
+card. Forecast now publishes it as dated yearly card-paid `plan.bills`
+`square-one` (next **2027-02-10**). **Still open:** which card / account
+paid it — it appears in none of the six accounts or five captured cards.
 
 Two further things: the premium is up **~17% in a year** ($2,730.36 → $3,131.76),
 and the **January 2025 payment failed twice and the policy came within days of

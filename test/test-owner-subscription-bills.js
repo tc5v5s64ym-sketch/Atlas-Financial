@@ -124,11 +124,13 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
     'cancelled services are recorded without deleting history');
   ok(/Instacart and Uber are not recorded as moved/i.test(plan.billsNote),
     'Instacart and Uber are not claimed as moved off PayPal');
-  const home = (plan.commitments || []).find(c => c.id === 'home-insurance');
+  const home = (plan.bills || []).find(b => b.id === 'square-one');
   ok(home && near(home.amount, 3131.76) && !near(home.amount, 6000),
     'Square One planning stays the last verified ~$3,132, not $6,000');
   ok(/not \$6,000\/year/i.test(home.note || ''),
-    'home-insurance note records the owner $3,000-not-$6,000 correction');
+    'square-one note records the owner $3,000-not-$6,000 correction');
+  ok(!(plan.commitments || []).some(c => c.id === 'home-insurance'),
+    'undated home-insurance commitment is not a second Square One home');
 }
 
 console.log('\n=== hand-computed calendar dates through expandEvents ===');
