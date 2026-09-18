@@ -2713,6 +2713,22 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   background: var(--road-gap-tint);
   border-bottom: 1px solid var(--road-gap-edge);
 }
+.planning-road-wf-block[data-planning-road-wf="obligations"] .planning-road-wf-kicker {
+  color: var(--road-trust-estimated);
+  background: var(--road-est-tint);
+  border-bottom: 1px solid rgba(224, 161, 18, .28);
+}
+.planning-road-wf-block[data-planning-road-wf="household-budget"] .planning-road-wf-kicker {
+  color: var(--success-text);
+  background: var(--road-surplus-tint);
+  border-bottom: 1px solid var(--road-surplus-edge);
+}
+.planning-road-wf-block[data-planning-road-wf="planned-spending"] .planning-road-wf-kicker,
+.planning-road-wf-block[data-planning-road-wf="extra-debt"] .planning-road-wf-kicker {
+  color: var(--text-primary);
+  background: var(--road-unav-tint);
+  border-bottom: 1px solid var(--border);
+}
 .planning-road-wf-list,
 .planning-road-wf-lines {
   list-style: none;
@@ -2742,13 +2758,40 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-road-wf-income .planning-road-wf-amount b { color: var(--success-text); }
 .planning-road-wf-expand { margin: 0; }
 .planning-road-wf-summary {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
   cursor: pointer;
   list-style: none;
   padding: 0 16px;
 }
 .planning-road-wf-summary::-webkit-details-marker { display: none; }
+.planning-road-wf-summary .planning-road-wf-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 12px 0;
+}
+.planning-road-wf-chevron {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transform-origin: 50% 50%;
+  transition: transform .15s ease;
+}
+.planning-road-wf-expand[open] .planning-road-wf-chevron {
+  transform: rotate(225deg);
+}
 .planning-road-wf-expand .planning-road-wf-lines { padding-top: 0; }
+.planning-road-wf-empty {
+  margin: 0;
+  padding: 4px 16px 14px 2.35rem;
+  font-size: .82rem;
+  color: var(--text-secondary);
+}
 .planning-road-wf-result {
   display: flex;
   align-items: center;
@@ -2864,6 +2907,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .planning-road-breakdown-sheet[open] .planning-road-breakdown-summary-chevron {
     transform: none;
   }
+  .planning-road-wf-chevron { transition: none; }
 }
 
 /* ------------------------------------------------ phone-first overrides */
