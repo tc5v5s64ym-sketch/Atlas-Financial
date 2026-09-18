@@ -442,6 +442,15 @@ Historical Lunch Money postings from TENNIS INCOME are not rewritten.
 Settlement of the old amount does not cancel that future bill. The account
 balance is still not scheduled as a cash event.
 
+Owner 2026-09-09: BC Hydro annual-adjustment notice confirms the equal
+monthly payments plan. The current monthly was $234; **on the next bill
+the monthly amount becomes $199.00**. Atlas encodes that from the next
+bill forward as `hydro-equal-payment` ($199, monthly, day 9, firstDue
+2026-10-09) on BILLS ACCOUNT. The 1 September $237.45 `hydro-due-sep1`
+once due remains. This does not reopen the arrears question. Next annual
+adjustment is September 2027; that later amount is unknown until the
+notice.
+
 ### Q23. How do the three live-plan $500 Fusion instalments relate to the travel-team or season fee, now that camp and tryouts are paid? — ANSWERED 2026-08-16
 **Status:** ANSWERED · **Owner:** Dale + Amanda
 **Answer:** There are currently **NO pending Fusion instalments**. The three

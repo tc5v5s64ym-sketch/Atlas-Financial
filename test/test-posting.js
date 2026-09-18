@@ -406,8 +406,10 @@ console.log('\n=== L. live Fusion / Hydro / Amanda / weekly policy ===');
   ok(tryouts && near(tryouts.amount, 140) && tryouts.settledOn === AS_OF,
     'live Fusion tryouts are the $140 row with settledOn 2026-08-14');
   const hydro = (live.plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
-  ok(hydro.length === 1 && hydro[0].id === 'hydro-due-sep1',
-    'live Hydro canonical bills include only the 1 September dated due');
+  ok(hydro.some(b => b.id === 'hydro-due-sep1')
+      && hydro.some(b => b.id === 'hydro-equal-payment')
+      && hydro.length === 2,
+    'live Hydro canonical bills are the 1 September dated due and the equal-payment series');
   ok(!hydro.some(b => b.id === 'hydro-due-now'),
     'the 14 August Hydro due was not invented as still unpaid');
   const amanda15 = live.plan.income.find(s => s.id === 'amandaSalary15');

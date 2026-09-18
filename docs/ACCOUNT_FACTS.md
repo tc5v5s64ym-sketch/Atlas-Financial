@@ -342,8 +342,14 @@ household-obligation reporting. Owner 2026-08-30: future dated Hydro dues
 (including the 1 September $237.45 `hydro-due-sep1`) are planned from BILLS
 ACCOUNT (Chequing A) and reduce joint cash. Owner-confirmed 2026-08-16: the
 old questioned outstanding Hydro amount is **settled**. The 1 September
-$237.45 due remains. It must not be carried inside the household variable
-budget either, and a utility account balance must not be scheduled as a cash
+$237.45 due remains. Owner 2026-09-09 BC Hydro annual-adjustment notice:
+the household is on the equal monthly payments plan; the current monthly
+was $234 and **on the next bill becomes $199.00**. That $199 cash schedule
+is `hydro-equal-payment` (monthly, day 9, firstDue 2026-10-09) planned from
+BILLS ACCOUNT. It is not a usage-based or metered amount. Next annual
+adjustment is September 2027; that later amount is unknown until the
+notice. Earlier 2026 equal-payment steps ($207, then $234) are historical.
+It must not be carried inside the household variable budget either, and a utility account balance must not be scheduled as a cash
 event — only dated amounts due are cash requirements. See "What she pays
 directly" below for the historical TENNIS INCOME list.
 

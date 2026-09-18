@@ -168,7 +168,7 @@ function readCanonical(data, target) {
     return {
       found: true,
       value: Number(row.amount),
-      date: row.date || null,
+      date: row.date || row.firstDue || null,
       payingAccount: row.payingAccount || null,
       householdObligation: row.householdObligation !== false,
       locator,
