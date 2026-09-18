@@ -663,7 +663,8 @@ console.log('=== 13. Household Budget Total is Forecast budgetHold, not a page s
       && !/\.reduce\s*\(/.test(budgetFn[0])
       && !/row\.hold/.test(budgetFn[0])
       && !/row\.planned/.test(budgetFn[0])
-      && !/row\.spent/.test(budgetFn[0]),
+      && !/row\.spent\s*[+\-]/.test(budgetFn[0])
+      && /row\.spent\s*!=\s*null/.test(budgetFn[0]),
     'calendarBudgetHtml consumes period.budgetHold and does not sum category rows');
   const snapSrc = read('scripts/figures-snapshot.js');
   ok(/operating\.this\.householdBudgetTotal/.test(snapSrc)

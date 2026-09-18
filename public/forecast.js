@@ -5685,6 +5685,9 @@
   classifyCurrentPeriodTransaction.derivedFlags = derivedTransactionFlags;
   classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible =
     householdBudgetSupportingSpendEligible;
+  // Presentation reuse only. Overlay Spent disclosure calls this same
+  // helper so split-parent exclusion is not a second membership rule.
+  classifyCurrentPeriodTransaction.skipSplitParent = skipSplitParent;
 
   function reconIdentityField(value) {
     if (typeof value === 'number' && isFinite(value)) value = String(value);
