@@ -1109,8 +1109,12 @@
         ],
         "opening": {
             "asOf": "2026-08-19",
-            "representedEvents": [],
-            "note": "One cutover from the 2026-08-19 Lunch Money observation. Friday 14 August payroll, mortgage, Shaw, Fit4Less, BC Hydro $220, the $94.03 TD card minimum, and the $763 Cash Back payment are already inside the cash and debt snapshots; they fall before this as-of, so Forecast does not replay them. representedEvents is empty because no same-day 19 August scheduled item is inside the observation. Triangle posted $13,495.32 and MBNA posted $7,875.99 MATCH under owner-approved monthly statement cadence (evidence 2026-08-18); pending on both is proven $0.00. The 2026-08-16 Triangle screenshot ($13,197.00 + $15.62) and Lunch Money's older last-statement figure are not this posted opening. Amanda/TENNIS INCOME is not spendable. Q19 ANSWERED: remaining August HELOC cash requirement is $0 additional after the 14 August $1,100 already inside this opening."
+            "representedEvents": [
+                { "id": "tdcc", "date": "2026-09-17" },
+                { "id": "noble-garbage", "date": "2026-09-18" },
+                { "id": "heloc", "date": "2026-09-21" }
+            ],
+            "note": "One cutover from the 2026-08-19 Lunch Money observation. Friday 14 August payroll, mortgage, Shaw, Fit4Less, BC Hydro $220, the $94.03 TD card minimum, and the $763 Cash Back payment are already inside the cash and debt snapshots; they fall before this as-of, so Forecast does not replay them. No same-day 19 August scheduled item is inside that observation. Dale-gated 2026-09-18 posting evidence names three prepaid joint-cash settles relative to this start (not card-paid standing, not a payingAccount change): tdcc@2026-09-17 (BILLS TFR-TO C/C), noble-garbage@2026-09-18 (Noble Dispo on WEEKLY / chequing-b), heloc@2026-09-21 (BILLS HELOC cash minimum, IP470 transfer). Triangle posted $13,495.32 and MBNA posted $7,875.99 MATCH under owner-approved monthly statement cadence (evidence 2026-08-18); pending on both is proven $0.00. The 2026-08-16 Triangle screenshot ($13,197.00 + $15.62) and Lunch Money's older last-statement figure are not this posted opening. Amanda/TENNIS INCOME is not spendable. Q19 ANSWERED: remaining August HELOC cash requirement is $0 additional after the 14 August $1,100 already inside this opening."
         }
     },
     "settled": [

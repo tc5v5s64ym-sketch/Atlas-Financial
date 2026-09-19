@@ -7,6 +7,7 @@
 
 const F = require('../public/forecast.js');
 const data = require('../data.json');
+const { independentlyRepresentedPrepaidDebtAbsorbed } = require('./test-helpers');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -48,20 +49,25 @@ ok(near(tdccEnd.balance, tdcc.balance - tdccMark.paid + tdccMark.interest, 0.5),
   `${money(tdcc.balance)} − ${money(tdccMark.paid)} + ${money(tdccMark.interest)}`);
 
 console.log('\n=== cash and debt reconcile against one event stream ===');
-// Every cash obligation in the simulation must equal the payments recorded
-// against the debts. If they differ, money is leaving cash and going nowhere.
+// Cash obligations on the simulation plus represented prepaid debt payments
+// (omitted from cash, still applied on the debt walk) must equal payments
+// recorded against the debts. Cash-only represented bills are not in that
+// remainder.
 const cashObligations = advice.sim.totals.obligations;
 const paidToDebts = Object.values(proj.byId).reduce((s, x) => s + x.paid, 0);
-ok(near(cashObligations, paidToDebts, 0.5),
-  'cash paid out on obligations equals payments applied to debts',
-  `${money(cashObligations)} vs ${money(paidToDebts)}`);
+const representedPrepaidDebt = independentlyRepresentedPrepaidDebtAbsorbed(
+  plan, data.debts, asOf, runOpts);
+ok(near(cashObligations + representedPrepaidDebt, paidToDebts, 0.5),
+  'cash paid out on obligations plus represented prepaid debt payments equals payments applied to debts',
+  `${money(cashObligations)} + ${money(representedPrepaidDebt)} vs ${money(paidToDebts)}`);
 
 console.log('\n=== the capitalising charge grows the balance; cash minimum pays it down ===');
 const helocObl = plan.obligations.find(o => o.id === 'heloc');
 const helocEnd = end.debts.find(x => x.id === 'heloc');
 const charges = F.occurrences(helocObl, asOf, end.date).length;
 const helocStart = data.debts.find(x => x.id === 'heloc').balance;
-const helocCashHits = (F.capitalisingCashMinimumOccurrences(helocObl, asOf, end.date) || []);
+const helocCashHits = (F.capitalisingCashMinimumOccurrences(helocObl, asOf, end.date) || [])
+  .filter(occ => occ);
 const helocCashPaid = helocCashHits.reduce((s, occ) => s + Number(occ.amount || 0), 0);
 ok(near(helocEnd.balance, helocStart + charges * helocObl.amount - helocCashPaid, 0.5),
   'ending HELOC is opening plus capitalised interest minus cash minima',

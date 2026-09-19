@@ -125,7 +125,8 @@ console.log('\n=== C. fail-closed refusals stay refused ===');
   ok(preview.cardCapacityIsCash === 0, 'cardCapacityIsCash is independently 0');
   ok(report.writesCanonicalState === false, 'observer still does not write');
   const opening = liveData.plan.opening.representedEvents || [];
-  ok(opening.length === 0, 'live representedEvents stay empty');
+  ok((opening || []).length === 0,
+    'pinned historical opening representedEvents stay empty');
   ok(!preview.proposed.some(p => p.locator === 'cash:savings'),
     'stale savings is not in the proposed set');
   ok(!preview.proposed.some(p => p.locator === 'debts:triangle'),
@@ -177,7 +178,7 @@ console.log('\n=== E. approved bounded write changes only the expected field ===
     'Triangle same-day winner is not chosen');
   ok(after.meta.asOf === liveData.meta.asOf, 'opening as-of is not rewritten as a new cutover');
   ok((after.plan.opening.representedEvents || []).length === 0,
-    'historical payroll did not backfill representedEvents');
+    'historical payroll did not backfill representedEvents onto the pinned opening');
   ok(JSON.stringify(after.plan.nextDollar) === JSON.stringify(liveData.plan.nextDollar),
     'policy fields are untouched');
   ok(hashFile(LIVE_DATA) === liveHash, 'live data.json was not the apply target');

@@ -1296,13 +1296,22 @@
   // Early settlement of a still-upcoming joint-cash obligation or bill.
   // The scheduled date is after this Forecast start, and identity has
   // already named that exact occurrence. Commitments stay on settledOn.
-  // Recurring income is not prepaid this way.
+  // Recurring income is not prepaid this way. A capitalising obligation
+  // (nonCash interest) is not itself prepaid; its encoded cash minimum
+  // shares that same id and is a joint-cash occurrence on cashDay /
+  // cashFirstDue. The non-cash capitalise date is not this path.
   function prepaidJointCashOutflow(plan, id, date, start) {
     if (!plan || !id || !date || !start || date <= start) return false;
     const obligation = (plan.obligations || []).find(item => item && item.id === id
       && item.nonCash !== true && Number(item.amount) > 0);
     if (obligation) {
       return outflowDates(obligation, date, date).some(d => d === date);
+    }
+    const capitalising = (plan.obligations || []).find(item => item && item.id === id
+      && item.nonCash === true && Number(item.cashPayment) > 0);
+    if (capitalising) {
+      return capitalisingCashMinimumOccurrences(capitalising, date, date)
+        .some(occ => occ && occ.date === date);
     }
     const bill = (plan.bills || []).find(item => item && item.id === id
       && Number(item.amount) > 0);
@@ -8734,6 +8743,29 @@
   //
   // The projection assumes NO new card spending: the weekly cap is a cash
   // instruction, and these balances only fall if it is honoured in cash.
+  //
+  // Represented prepaid joint-cash obligation payments are omitted from the
+  // cash calendar so they are not reserved again. Opening debt on a dated
+  // start does not yet include that principal reduction, so this walk still
+  // applies the same scheduled payment. A live-advanced opening overlays
+  // posted debt, so those names stay omitted here. Cash-only represented
+  // bills never move a facility.
+  function expandEventsForDebtWalk(plan, start, end, opts) {
+    const represented = representedKeySet(plan, opts, start);
+    if (!represented.size || liveOpeningAdvanced(plan, start)) {
+      return expandEvents(plan, start, end, opts);
+    }
+    const kept = expandEvents(plan, start, end, Object.assign({}, opts, {
+      keepRepresented: true,
+    }));
+    return kept.filter(event => {
+      if (!event || !event.id || !event.date) return true;
+      if (!represented.has(event.id + '@' + event.date)) return true;
+      if (event.kind !== 'obligation' || event.effect === 'capitalise') return false;
+      return prepaidJointCashOutflow(plan, event.id, event.date, start);
+    });
+  }
+
   function projectDebts(plan, debts, asOf, opts) {
     opts = opts || {};
     const priority = debtPriority(plan, debts || []);
@@ -8753,7 +8785,7 @@
     const days = opts.debtHorizonDays != null ? opts.debtHorizonDays : (plan.windowDays || 91);
     const start = asOf;
     const end = addDays(asOf, days - 1);
-    const events = expandEvents(plan, start, end, opts);
+    const events = expandEventsForDebtWalk(plan, start, end, opts);
     const byId = {};
     const state = (debts || []).map(x => {
       // Carrying pending charges from the opening balance is what makes
@@ -8801,7 +8833,9 @@
     //
     // `simulate` has ALREADY taken the full amount out of cash by the time this
     // runs, so clamping a balance at zero here does not save the money — it
-    // deletes it. At $2,000/month against the Cash Back Visa, $6,340.00 left
+    // deletes it. Represented prepaid debt payments are the exception: cash
+    // omit means simulate did not take them, and this walk still applies the
+    // principal reduction on a dated opening. At $2,000/month against the Cash Back Visa, $6,340.00 left
     // the account and only $5,737.68 of card and interest existed to receive
     // it; the remaining $602.32 reduced nothing, and the forecast reported both
     // a lower cap and a lower ending balance for a household that had in fact

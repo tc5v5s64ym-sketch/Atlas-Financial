@@ -344,9 +344,13 @@ console.log('\n=== J. live 16 August opening does not invent representedEvents =
     posting,
   });
   const byId = id => liveResult.rows.find(r => r.observationId === id);
-  ok(live.plan.opening && (live.plan.opening.representedEvents || []).length === 0
-    && live.meta.asOf !== '2026-08-14',
-    'live representedEvents stay empty and as-of is not the 14 August payday');
+  const gated = new Set((live.plan.opening.representedEvents || [])
+    .map(row => row && `${row.id}@${row.date}`));
+  ok(live.plan.opening && gated.has('noble-garbage@2026-09-18')
+      && gated.has('heloc@2026-09-21') && gated.has('tdcc@2026-09-17')
+      && gated.size === 3
+      && live.meta.asOf !== '2026-08-14',
+    'live representedEvents are the Dale-gated prepaid settles and as-of is not the 14 August payday');
   ok(live.meta.asOf === live.plan.opening.asOf, 'live canonical as-of agrees with the opening');
   ok(byId('payday-payroll-posted') && byId('payday-payroll-posted').status === 'CHANGE',
     '14 August payroll posting vs empty representedEvents is CHANGE — asOf is not that date');

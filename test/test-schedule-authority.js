@@ -257,8 +257,9 @@ console.log('\n=== HELOC: capitalise stays noncash; cash minimum is Required deb
     helocNoncash.map(e => `${e.date}:${e.kind}`).join(', '));
   ok(helocNoncash.every(e => e.date === '2026-08-31' || e.date === '2026-09-30' || e.date === '2026-10-31'),
     'those charges land at month-end, matching the observed posting');
-  ok(helocCash.length === 2 && helocCash.every(e => e.effect === 'payment' && e.date >= heloc.cashFirstDue),
-    'and emits the encoded cash minimum from cashFirstDue',
+  ok(helocCash.length === 1 && helocCash.every(e => e.effect === 'payment' && e.date >= heloc.cashFirstDue)
+      && helocCash[0].date === '2026-10-21',
+    'emits the encoded cash minimum from cashFirstDue, omitting the represented September occurrence',
     helocCash.map(e => `${e.date}:${e.kind}`).join(', '));
   ok(!stream.some(e => e.id === 'heloc' && e.date === '2026-08-21'),
     'August 21 is still not a HELOC cash event');
@@ -269,8 +270,10 @@ console.log('\n=== HELOC: capitalise stays noncash; cash minimum is Required deb
   ok(out && !/HELOC interest/i.test(out.label || ''),
     'nextPaymentOut does not name the capitalise row');
   const built = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
-  ok(built.payments.some(p => p.sourceId === 'heloc' && p.start === '2026-09-21'),
-    'ICS carries the HELOC cash minimum from cashFirstDue as a payment');
+  ok(built.payments.some(p => p.sourceId === 'heloc' && p.start === '2026-10-21'),
+    'ICS carries the remaining HELOC cash minimum after omitting the represented September occurrence');
+  ok(!built.payments.some(p => p.sourceId === 'heloc' && p.start === '2026-09-21'),
+    'ICS omits the represented 2026-09-21 HELOC cash minimum');
   ok(!built.payments.some(p => p.sourceId === 'heloc' && p.start === '2026-08-21'),
     'ICS does not invent an August 21 HELOC payment');
   ok(built.reminders.some(r => r.sourceId === 'heloc' && /no cash leaves/i.test(r.summary)),

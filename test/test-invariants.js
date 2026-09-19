@@ -17,7 +17,8 @@ const {
   storedCrossingClaims,
 } = require('./test-heloc-crossing-guard');
 const data = require('../data.json');
-const { openingFloor, gapAtBuffer, fundingById } = require('./test-helpers');
+const { openingFloor, gapAtBuffer, fundingById, representedEventKeys,
+  independentlyRepresentedPrepaidDebtAbsorbed } = require('./test-helpers');
 const periods = require('../public/periods.json');
 
 let failures = 0;
@@ -147,6 +148,7 @@ const noCashMin = JSON.parse(JSON.stringify(plan));
 noCashMin.obligations.find(o => o.id === 'heloc').cashPayment = 0;
 const withoutCash = F.simulate(noCashMin, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
 const wantHelocCash = (F.capitalisingCashMinimumOccurrences(heloc, asOf, withHeloc.end) || [])
+  .filter(occ => occ && !representedEventKeys(plan).has('heloc@' + occ.date))
   .reduce((s, occ) => s + Number(occ.amount || 0), 0);
 ok(wantHelocCash > 0 && near(withoutCash.ending - withHeloc.ending, wantHelocCash),
   'encoded HELOC cashPayment moves cash once', `${money(withoutCash.ending)} vs ${money(withHeloc.ending)}`);
@@ -848,7 +850,12 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
       .filter(e => e.amount < 0 && (e.kind === 'extra' || e.kind === 'obligation'))
       .reduce((a, e) => a + Math.abs(e.amount), 0);
     const paidOn = data.debts.reduce((a, d) => a + pc.byId[d.id].paid, 0);
-    ok(near(pc.unabsorbed, cashOut - paidOn),
+    const prepaidDebt = independentlyRepresentedPrepaidDebtAbsorbed(
+      plan, data.debts, asOf, Object.assign({}, capped.simOptions, {
+        weeklyVariable: capped.weekly, extraFacilities: data.revolvingExtra,
+        extraDebtTarget: plan.nextDollar.target,
+      }));
+    ok(near(pc.unabsorbed, cashOut + prepaidDebt - paidOn),
       'and the reported unabsorbed figure is exactly the cash that reduced nothing',
       `${money(pc.unabsorbed)}`);
     ok(Math.abs(pc.unabsorbed) < 0.005,
@@ -875,9 +882,14 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
       .filter(e => e.amount < 0 && (e.kind === 'extra' || e.kind === 'obligation'))
       .reduce((a, e) => a + Math.abs(e.amount), 0);
     const landed = data.debts.reduce((a, d) => a + pr.byId[d.id].paid, 0);
-    ok(near(cashOut, landed),
+    const prepaidDebt = independentlyRepresentedPrepaidDebtAbsorbed(
+      plan, data.debts, asOf, Object.assign({}, adv.simOptions, {
+        weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra,
+        extraDebtTarget: plan.nextDollar.target,
+      }));
+    ok(near(cashOut + prepaidDebt, landed),
       `at ${money(extra)}/month, every dollar leaving cash for debt lands on one`,
-      `${money(cashOut)} out, ${money(landed)} landed`);
+      `${money(cashOut)} out + ${money(prepaidDebt)} prepaid, ${money(landed)} landed`);
     // Sub-cent, not exactly zero: subtracting a quarter-million dollars in
     // pieces leaves float residue (8.4e-11 here), which is arithmetic noise
     // rather than money. A cent is the smallest amount that could be one.

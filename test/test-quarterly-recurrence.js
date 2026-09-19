@@ -46,8 +46,8 @@ const HAND_AMOUNT = 95.85;
 const KNOWLEDGE_END = horizon.end;
 const VIEW_END = viewEnd;
 
-function nobleEvents(p, start, end) {
-  return F.expandEvents(p, start, end).filter(e => e.id === 'noble-garbage');
+function nobleEvents(p, start, end, opts) {
+  return F.expandEvents(p, start, end, opts).filter(e => e.id === 'noble-garbage');
 }
 
 console.log('=== live row is one quarterly schedule, not a once workaround ===');
@@ -81,7 +81,7 @@ console.log('\n=== hand-computed Noble forward cadence from the current opening 
     'master horizon reproduces the hand-computed 18ths',
     dates.join(', '));
 
-  const events = nobleEvents(plan, asOf, horizon.end);
+  const events = nobleEvents(plan, asOf, horizon.end, { keepRepresented: true });
   ok(events.length === HAND_FORWARD.length, 'one live event per hand-computed due',
     String(events.length));
   ok(events.every((e, i) => e.date === HAND_FORWARD[i] && near(-e.amount, HAND_AMOUNT)),
@@ -97,12 +97,17 @@ console.log('\n=== hand-computed Noble forward cadence from the current opening 
 
 console.log('\n=== view truncation does not shrink master knowledge ===');
 {
-  const view = nobleEvents(plan, asOf, viewEnd);
-  const master = nobleEvents(plan, asOf, horizon.end);
+  const view = nobleEvents(plan, asOf, viewEnd, { keepRepresented: true });
+  const master = nobleEvents(plan, asOf, horizon.end, { keepRepresented: true });
   ok(view.length === 1 && view[0].date === '2026-09-18',
     'the 91-day view shows only the in-range September due');
   ok(master.length === 4 && sameDates(master.map(e => e.date), HAND_FORWARD),
     'the master walk still knows Dec / Mar / Jun');
+  ok(nobleEvents(plan, asOf, viewEnd).length === 0,
+    'Dale-gated representedEvents omits the in-range September due from the cash walk');
+  ok(sameDates(nobleEvents(plan, asOf, horizon.end).map(e => e.date),
+    HAND_FORWARD.filter(d => d !== '2026-09-18')),
+    'the master cash walk keeps later dues after omitting the represented September occurrence');
 
   const recOpts = {
     scenario: plan.defaults.scenario, incomeOverrides: {}, disabled: [],
@@ -115,23 +120,22 @@ console.log('\n=== view truncation does not shrink master knowledge ===');
   const rec = F.recommend(plan, asOf, recOpts);
   ok(rec.knowledge.end === KNOWLEDGE_END && rec.simOptions.horizonDays === horizon.days,
     'recommend searches the ≥12-month knowledge horizon');
-  ok((rec.sim.events || []).filter(e => e.id === 'noble-garbage').length === 1
-    && rec.sim.events.some(e => e.id === 'noble-garbage' && e.date === '2026-09-18'),
-    'the displayed 91-day sim still shows only the in-range September due');
+  ok((rec.sim.events || []).filter(e => e.id === 'noble-garbage').length === 0,
+    'the displayed 91-day sim omits the represented September due');
   const masterSim = F.simulate(plan, asOf, Object.assign({}, rec.simOptions, {
     weeklyVariable: rec.weekly, horizonDays: horizon.days,
     viewDays: horizon.days, viewStart: asOf,
   }));
   ok(sameDates(masterSim.events.filter(e => e.id === 'noble-garbage').map(e => e.date),
-    HAND_FORWARD),
-    'the same recommend options, walked to the knowledge end, keep all four dues');
+    HAND_FORWARD.filter(d => d !== '2026-09-18')),
+    'the same recommend options, walked to the knowledge end, keep later dues and omit the represented September occurrence');
 
   const ics = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
   const icsNoble = ics.payments.filter(p => p.sourceId === 'noble-garbage')
     .map(p => p.start).sort();
   // ICS_HORIZON_END is 2027-05-01, so June 2027 is outside that export view.
-  ok(sameDates(icsNoble, ['2026-09-18', '2026-12-18', '2027-03-18']),
-    'ICS cash VEVENTs are the same expander, truncated to the ICS end',
+  ok(sameDates(icsNoble, ['2026-12-18', '2027-03-18']),
+    'ICS cash VEVENTs follow expandEvents, omitting the represented September due',
     icsNoble.join(', '));
   ok(!ics.payments.some(p => p.sourceId === 'noble-garbage' && p.start === '2027-06-18'),
     'the ICS view truncation does not delete June from the master plan');
@@ -146,8 +150,8 @@ console.log('\n=== old once workaround vs quarterly: event count ===');
   delete row.day;
   delete row.anchor;
   delete row.firstDue;
-  const onceCount = nobleEvents(oncePlan, asOf, horizon.end).length;
-  const liveCount = nobleEvents(plan, asOf, horizon.end).length;
+  const onceCount = nobleEvents(oncePlan, asOf, horizon.end, { keepRepresented: true }).length;
+  const liveCount = nobleEvents(plan, asOf, horizon.end, { keepRepresented: true }).length;
   ok(onceCount === 1, 'the retired once representation had one master event');
   ok(liveCount === 4, 'the quarterly row has four master events inside ≥12 months');
   ok(near((liveCount - onceCount) * HAND_AMOUNT, 287.55),
@@ -159,24 +163,24 @@ console.log('\n=== amount change on the canonical row reaches every schedule con
   const edited = clone(plan);
   const row = edited.bills.find(b => b.id === 'noble-garbage');
   row.amount = 111.11;
-  const events = nobleEvents(edited, asOf, horizon.end);
+  const events = nobleEvents(edited, asOf, horizon.end, { keepRepresented: true });
   ok(events.length === 4 && events.every(e => near(-e.amount, 111.11)),
     'expandEvents / simulate stream follows the new amount');
 
   const ics = icsMod.buildHouseholdCalendar(edited, asOf, icsEnd);
   const icsNoble = ics.payments.filter(p => p.sourceId === 'noble-garbage');
-  ok(icsNoble.length === 3 && icsNoble.every(p => near(p.amount, 111.11)),
-    'ICS payment VEVENTs follow the same Plan amount');
+  ok(icsNoble.length === 2 && icsNoble.every(p => near(p.amount, 111.11)),
+    'ICS payment VEVENTs follow the same Plan amount and omit the represented September due');
 
   const nextDue = F.nextDue(
-    F.expandEvents(edited, asOf, viewEnd).filter(e => e.id === 'noble-garbage'),
+    F.expandEvents(edited, asOf, viewEnd, { keepRepresented: true }).filter(e => e.id === 'noble-garbage'),
     asOf);
   ok(nextDue && nextDue.due === '2026-09-18' && near(nextDue.amount, 111.11),
     'nextDue reads the edited Noble occurrence from expandEvents',
     nextDue ? `${nextDue.due} $${nextDue.amount}` : 'none');
 
   const out = F.nextPaymentOut(
-    F.expandEvents(edited, asOf, viewEnd).filter(e => e.id === 'noble-garbage'),
+    F.expandEvents(edited, asOf, viewEnd, { keepRepresented: true }).filter(e => e.id === 'noble-garbage'),
     asOf);
   ok(out && out.date === '2026-09-18' && near(out.amount, 111.11),
     'nextPaymentOut sums the same edited stream',

@@ -162,9 +162,48 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
   return n;
 }
 
+function representedEventKeys(plan) {
+  return new Set(((plan && plan.opening && plan.opening.representedEvents) || [])
+    .filter(row => row && row.id && row.date)
+    .map(row => String(row.id) + '@' + String(row.date)));
+}
+
+// Represented prepaid debt payments omitted from cash but still applied on a
+// dated-opening projectDebts walk. Independent of expandEventsForDebtWalk:
+// the un-omitted walk's obligationAbsorbed for those prepaid names. A
+// live-advanced / already-cleared occurrence contributes 0 when the empty
+// walk has nothing left to land. Cash-only represented bills are not here.
+function independentlyRepresentedPrepaidDebtAbsorbed(plan, debts, asOf, opts) {
+  const empty = clone(plan);
+  if (empty.opening) {
+    empty.opening = Object.assign({}, empty.opening, { representedEvents: [] });
+  }
+  const emptyProj = F.projectDebts(empty, debts, asOf, opts || {});
+  const keys = representedEventKeys(plan);
+  const absorbed = emptyProj.obligationAbsorbed || {};
+  const end = emptyProj.end;
+  let sum = 0;
+  for (const o of plan.obligations || []) {
+    if (!o || !o.debtId) continue;
+    const occs = o.nonCash === true
+      ? (F.capitalisingCashMinimumOccurrences(o, asOf, end) || [])
+      : F.occurrences(o, asOf, end).map(date => ({ date, amount: o.amount }));
+    for (const occ of occs) {
+      if (!occ || !occ.date) continue;
+      if (!keys.has(o.id + '@' + occ.date)) continue;
+      if (!F.prepaidJointCashOutflow(plan, o.id, occ.date, asOf)) continue;
+      const landed = Number(absorbed[occ.date + ':' + o.id] || 0);
+      if (Number.isFinite(landed) && landed > 0) sum += landed;
+    }
+  }
+  return sum;
+}
+
 function streamTotal(items, asOf, end, occurrences, opts) {
   const skipNonCash = !opts || opts.skipNonCash !== false;
   const onceOutflowsBind = !!(opts && opts.onceOutflowsBind);
+  const represented = (opts && opts.omitRepresented)
+    ? representedEventKeys(opts.plan) : new Set();
   return (items || []).reduce((s, item) => {
     if (skipNonCash && item.nonCash) return s;
     if (item.needsDate) return s;
@@ -178,7 +217,11 @@ function streamTotal(items, asOf, end, occurrences, opts) {
     const dates = onceOutflowsBind && item.frequency === 'once'
       ? independentlyOnceOutflowDates(item, asOf, end)
       : occurrences(item, asOf, end);
-    return s + dates.reduce((n, d) => n + independentlyBillOccurrenceAmount(item, d), 0);
+    return s + dates.reduce((n, d) => {
+      const date = typeof d === 'string' ? d : (d && d.date);
+      if (date && represented.has(item.id + '@' + date)) return n;
+      return n + independentlyBillOccurrenceAmount(item, d);
+    }, 0);
   }, 0);
 }
 
@@ -212,5 +255,7 @@ module.exports = {
   independentlyBillOccurrenceAmount,
   fundingById,
   usableFunding,
+  representedEventKeys,
+  independentlyRepresentedPrepaidDebtAbsorbed,
   independentSpendableOpening,
 };

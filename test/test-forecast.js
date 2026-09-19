@@ -5,7 +5,7 @@ const F = require('../public/forecast.js');
 const data = require('../data.json');
 const {
   burrardDue, currentRegimeReservedDaily, cardPaidReservedTotal, cardPaidReservedOnDate,
-  openingFloor, gapAtBuffer, cashOnDate, streamTotal,
+  openingFloor, gapAtBuffer, cashOnDate, streamTotal, representedEventKeys,
 } = require('./test-helpers');
 
 let failures = 0;
@@ -154,9 +154,13 @@ const wantEstimated = paydays.length * payroll.amount;
 ok(near(expected.totals.estimatedIncome, wantEstimated, 0.05),
   '90-day estimated income is payroll only — Amanda salary is confirmed, not an estimated transfer',
   expected.totals.estimatedIncome.toFixed(2));
-const wantObl = streamTotal(plan.obligations, asOf, windowEnd, F.occurrences, { onceOutflowsBind: true });
+const represented = representedEventKeys(plan);
+const wantObl = streamTotal(plan.obligations, asOf, windowEnd, F.occurrences, {
+  onceOutflowsBind: true, plan, omitRepresented: true,
+});
 const heloc = plan.obligations.find(o => o.id === 'heloc');
 const wantHelocCash = (F.capitalisingCashMinimumOccurrences(heloc, asOf, windowEnd) || [])
+  .filter(occ => occ && !represented.has('heloc@' + occ.date))
   .reduce((s, occ) => s + Number(occ.amount || 0), 0);
 ok(near(expected.totals.obligations, wantObl + wantHelocCash), '90-day cash obligations include HELOC cash minimum',
   expected.totals.obligations.toFixed(2));
@@ -176,7 +180,9 @@ ok(near(expected.totals.noncash, wantNoncash), 'HELOC interest is tracked but no
 }
 // streamTotal independently nets a utility-account credit from the firstDue
 // occurrence (not household income). Later months stay at the declared amount.
-const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, { plan, onceOutflowsBind: true });
+const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, {
+  plan, onceOutflowsBind: true, omitRepresented: true,
+});
 ok(near(expected.totals.bills, wantBills), '90-day named bills net utility-account credit once', expected.totals.bills.toFixed(2));
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
 ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);

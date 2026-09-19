@@ -140,7 +140,7 @@ console.log('\n=== D. historical payroll candidates do not enter current-opening
     r.fact === 'posting' && r.eventId === 'payroll' && r.scheduledDate === PAYDAY),
     'reconciler does not receive a current CHANGE against representedEvents for that payroll');
   ok((data.plan.opening.representedEvents || []).length === 0,
-    'live representedEvents remains empty — nothing was backfilled');
+    'pinned historical opening representedEvents stay empty — nothing was backfilled');
 }
 
 console.log('\n=== E. a current-opening posting candidate still reconciles in place ===');

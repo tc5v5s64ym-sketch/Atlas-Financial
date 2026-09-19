@@ -34,7 +34,10 @@
  * canonical write. Scheduled joint-cash occurrences in
  * (historicalOpeningAsOf, liveAsOf] are accounted for before as-of
  * advances: posting/representation evidence names them on in-memory
- * representedEvents; unrepresented joint-cash outflows stay reserved
+ * representedEvents. Existing opening names that still qualify as
+ * in-window, carried-once, or prepaid for the new liveAsOf are merged
+ * into that list; identity rediscovery stays additive. Unrepresented
+ * joint-cash outflows stay reserved
  * via plan.opening.priorAsOf so Forecast does not drop them. Any once
  * joint-cash occurrence still carried as unresolved remains eligible
  * for identity-based settlement lookup even when its permitted posting
@@ -682,9 +685,17 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
     };
   }
   const existing = (next.plan.opening && next.plan.opening.representedEvents) || [];
-  const nextRepresented = advances
-    ? uniqueRepresented
-    : mergeRepresented(existing, uniqueRepresented);
+  // Advancing as-of used to replace the opening list with identity
+  // hits only. That dropped Dale-gated prepaid names the live packet
+  // had not rediscovered (tdcc chequing TFR-TO C/C is not identity).
+  // Keep existing names that still qualify for this liveAsOf; identity
+  // candidates remain additive. Non-qualifying historical names still
+  // drop.
+  const keptExisting = advances
+    ? existing.filter(row => representedCandidateAllowed(
+      row, historicalOpeningAsOf, liveAsOf, next.plan))
+    : existing;
+  const nextRepresented = mergeRepresented(keptExisting, uniqueRepresented);
   const representedKeys = new Set(nextRepresented.map(row =>
     String(row.id) + '@' + String(row.date)));
   const nextNotRelied = notReliedUpon.filter(row =>
