@@ -468,6 +468,86 @@ console.log('\n=== 9. live as-of advance keeps qualifying Dale-gated prepaid nam
     'live rediscovery does not rewrite the heloc obligation row');
 }
 
+console.log('\n=== 11. cash omit does not unwind HELOC/TDCC debt reduction; Noble is debt-neutral ===');
+{
+  const emptyPlan = clone(canonical.plan);
+  emptyPlan.opening = Object.assign({}, emptyPlan.opening, { representedEvents: [] });
+  const simOpts = { weeklyVariable: 0, horizonDays: 91, viewDays: 91 };
+  const debtOpts = { debtHorizonDays: 91 };
+  const simNamed = F.simulate(canonical.plan, OPENING, simOpts);
+  const simEmpty = F.simulate(emptyPlan, OPENING, simOpts);
+  const debtNamed = F.projectDebts(canonical.plan, canonical.debts, OPENING, debtOpts);
+  const debtEmpty = F.projectDebts(emptyPlan, canonical.debts, OPENING, debtOpts);
+  const last = (proj, id) => {
+    const mark = proj.marks[proj.marks.length - 1];
+    return ((mark && mark.debts) || []).find(d => d && d.id === id) || null;
+  };
+  const omittedCash = NOBLE_PLANNED + HELOC_PLANNED + TDCC_PLANNED;
+  ok(near(omittedCash, 1004.06)
+      && near(simNamed.ending - simEmpty.ending, omittedCash),
+    'dated-opening cash rises only by the three omitted outflows',
+    `${(simNamed.ending - simEmpty.ending).toFixed(2)} vs ${omittedCash.toFixed(2)}`);
+  ok(near(last(debtNamed, HELOC_ID).balance, last(debtEmpty, HELOC_ID).balance),
+    'HELOC ending principal still reflects the Sep 21 cash minimum');
+  ok(near(last(debtNamed, TDCC_ID).balance, last(debtEmpty, TDCC_ID).balance, 0.02),
+    'TDCC ending principal still reflects the Sep 17 minimum');
+  ok(near(debtNamed.marks[debtNamed.marks.length - 1].interestToDate,
+      debtEmpty.marks[debtEmpty.marks.length - 1].interestToDate, 0.02),
+    'interestOverWindow is not raised by omitting already-paid debt payments');
+  const nobleOnly = clone(emptyPlan);
+  nobleOnly.opening.representedEvents = [{ id: NOBLE_ID, date: NOBLE_DUE }];
+  const simNoble = F.simulate(nobleOnly, OPENING, simOpts);
+  const debtNoble = F.projectDebts(nobleOnly, canonical.debts, OPENING, debtOpts);
+  ok(near(simNoble.ending - simEmpty.ending, NOBLE_PLANNED),
+    'Noble omit is cash-only');
+  ok(near(last(debtNoble, HELOC_ID).balance, last(debtEmpty, HELOC_ID).balance)
+      && near(last(debtNoble, TDCC_ID).balance, last(debtEmpty, TDCC_ID).balance, 0.02),
+    'Noble omit does not move HELOC or TDCC');
+
+  const synthPlan = (represented, liveAdvanced) => ({
+    windowDays: 50,
+    opening: liveAdvanced
+      ? { asOf: '2026-09-19', priorAsOf: OPENING, representedEvents: represented }
+      : { asOf: OPENING, representedEvents: represented },
+    obligations: [{
+      id: 'heloc', debtId: 'heloc', nonCash: true, frequency: 'monthly', day: 31,
+      amount: 0, effect: 'capitalise', cashPayment: 80, cashDay: 21,
+      cashFirstDue: '2026-09-21', payingAccount: 'chequing-a',
+    }],
+    bills: [],
+    income: [],
+    commitments: [],
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 500, class: 'spendable' }] },
+    defaults: { targetBuffer: 0 },
+  });
+  const synthDebts = [{
+    id: 'heloc', label: 'HELOC', secured: true, balance: 1000, limit: 5000, rate: 0, pending: 0,
+  }];
+  const named = [{ id: 'heloc', date: '2026-09-21' }];
+  const sNamed = F.simulate(synthPlan(named, false), OPENING, {
+    weeklyVariable: 0, horizonDays: 50, viewDays: 50,
+  });
+  const sEmpty = F.simulate(synthPlan([], false), OPENING, {
+    weeklyVariable: 0, horizonDays: 50, viewDays: 50,
+  });
+  const dNamed = F.projectDebts(synthPlan(named, false), synthDebts, OPENING, {
+    debtHorizonDays: 50,
+  });
+  const dEmpty = F.projectDebts(synthPlan([], false), synthDebts, OPENING, {
+    debtHorizonDays: 50,
+  });
+  ok(near(sNamed.ending - sEmpty.ending, 80),
+    'synthetic 80-dollar HELOC cash min is omitted from cash once (L-006)');
+  ok(near(last(dNamed, 'heloc').balance, last(dEmpty, 'heloc').balance)
+      && near(last(dNamed, 'heloc').balance, 920),
+    'synthetic HELOC principal still falls by the 80-dollar cash min');
+  const liveNamed = F.projectDebts(synthPlan(named, true), synthDebts, '2026-09-19', {
+    debtHorizonDays: 20,
+  });
+  ok(near(last(liveNamed, 'heloc').balance, 1000),
+    'live-advanced opening does not apply the prepaid HELOC cash min again');
+}
+
 console.log('\n=== 10. pages do not special-case these merchants; canonical bytes stay put ===');
 {
   const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
