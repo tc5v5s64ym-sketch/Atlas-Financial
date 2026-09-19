@@ -501,6 +501,7 @@ console.log('\n=== 7. Incomplete current cash still fails closed ===');
 console.log('\n=== 8. Actual spending does not double-count ===');
 {
   const independentCash = 3000;
+  const independentChequing = 3000;
   const planned = 900;
   const committed = 350;
   const remaining = round2(planned - committed);
@@ -510,12 +511,12 @@ console.log('\n=== 8. Actual spending does not double-count ===');
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
     tweaks: Object.assign({
-      'chequing-a': independentCash, 'chequing-b': 0, savings: 0,
+      'chequing-a': independentChequing, 'chequing-b': 0, savings: 0,
     }, freshness('2026-08-31T17:55:00.000Z')),
   };
   const result = overlay(canonical, extra);
   ok(near(Forecast.startingCashAmount(result.data.plan), independentChequing),
-    'opening is the $3,000 observed-cash fixture');
+    'opening is the $3,000 chequing fixture; designated savings $0 stays an asset, not opening');
   const advice = Forecast.recommend(result.data.plan, '2026-08-31', {
     debts: result.data.debts,
     operatingPlan: result.data.liveOverlay.operatingPlan,
@@ -553,6 +554,7 @@ console.log('\n=== 8. Actual spending does not double-count ===');
 console.log('\n=== 9. Paid bill does not double-count ===');
 {
   const independentCash = 3000;
+  const independentChequing = 3000;
   const canonical = clone(liveData);
   canonical.plan = Object.assign({}, canonical.plan, {
     bills: (canonical.plan.bills || []).concat([{
@@ -704,7 +706,7 @@ console.log('\n=== 12. Assistant / operating-answer consume Forecast, no second 
   ok(operating.source === 'Forecast.recommend',
     'operating-answer names Forecast.recommend as source');
   ok(near(operating.moneyAvailable.value, advice.paydayAllocation.available)
-      && near(operating.asOf && Forecast.startingCashAmount(applied.data.plan), independentCash),
+      && near(operating.asOf && Forecast.startingCashAmount(applied.data.plan), independentChequing),
     'operating-answer copies the current Forecast leftover, not a second calc');
   const packet = Assistant.buildPacket({
     data: applied.data,
@@ -784,8 +786,8 @@ console.log('\n=== 13. Same-date refresh: opening already liveAsOf, inbound stil
   ok(near(advice.paydayAllocation.available, independentChequing),
     'Forecast available equals observed cash exactly');
   const p2 = activePeriod(advice);
-  ok(p2 && near(p2.currentBalance, independentCash),
-    'current balance equals observed cash exactly');
+  ok(p2 && near(p2.currentBalance, independentChequing),
+    'current balance equals observed chequing cash exactly');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'unproven same-date inbound contributes $0 additional cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
