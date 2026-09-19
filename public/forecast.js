@@ -435,6 +435,49 @@
       return s + (Number(b.value) || 0);
     }, 0);
   }
+  // Actual designated-reserve evidence is the incumbent `savings` /
+  // EMERGENCY SAVING breakdown row only. Held-elsewhere cash (TENNIS
+  // INCOME, SAVINGS-DONT TOUCH, Wise) is not this reserve. Planned
+  // contributions are intent, not funded. A household chequing opening
+  // that omits or cannot trust that row fails closed rather than
+  // inventing $0 funded. Synthetic fixtures without household chequing
+  // ids do not invent a designated reserve.
+  function designatedReserveEvidence(plan) {
+    const cash = (plan && plan.startingCash) || {};
+    const rows = Array.isArray(cash.breakdown) ? cash.breakdown : [];
+    const matches = rows.filter(row => row && row.id === DESIGNATED_RESERVE_ID);
+    if (matches.length > 1) {
+      return {
+        status: 'unavailable',
+        reason: 'Designated savings evidence is not uniquely identified on the opening breakdown.',
+      };
+    }
+    const hasHouseholdChequing = rows.some(
+      row => row && HOUSEHOLD_CHEQUING_IDS.indexOf(row.id) !== -1
+    );
+    if (!matches.length) {
+      if (hasHouseholdChequing) {
+        return {
+          status: 'unavailable',
+          reason: 'Designated savings evidence is missing from the opening breakdown.',
+        };
+      }
+      return { status: 'ready', amount: 0, present: false };
+    }
+    const raw = matches[0].value;
+    if (raw == null || raw === '' || typeof raw === 'boolean'
+        || (typeof raw === 'object') || !isFinite(Number(raw))) {
+      return {
+        status: 'unavailable',
+        reason: 'Designated savings evidence is untrusted.',
+      };
+    }
+    return {
+      status: 'ready',
+      amount: roundCent(Math.max(0, Number(raw))),
+      present: true,
+    };
+  }
   function extraFacilityUsed(facility, plan) {
     if (facility && facility.cash) {
       const row = cashAccount(plan, facility.cash);
@@ -1593,6 +1636,88 @@
   function additionalCashRequiredFromWalkMin(minBalance) {
     const n = Number(minBalance);
     return n < 0 ? -n : 0;
+  }
+
+  function additionalCashRequiredUnavailable(reason) {
+    const why = reason || 'Additional cash required is unavailable.';
+    const closed = { status: 'unavailable', reason: why, amount: null };
+    return {
+      amount: null,
+      status: 'unavailable',
+      reason: why,
+      fundingFloor: 0,
+      identity: 'max(0, 0 - simulate.min.balance)',
+      source: 'simulate',
+      periodStageDeficits: 'must-not-be-summed',
+      designatedReserveId: DESIGNATED_RESERVE_ID,
+      fundedByDesignatedSavings: Object.assign({
+        identity: 'min(amount, max(0, designated-savings-balance))',
+        source: 'startingCash.breakdown savings',
+        plannedContribution: 'not-used',
+      }, closed),
+      remainingAdditionalCashRequired: Object.assign({
+        identity: 'max(0, amount - fundedByDesignatedSavings)',
+      }, closed),
+    };
+  }
+
+  // Forecast-owned decomposition of the chequing-only walk shortfall:
+  // total required → backed by actual designated savings evidence →
+  // remaining need floored at $0. Does not spend the reserve on the
+  // ordinary walk (Case K). Does not treat planned contributions as
+  // funded. Does not release reserve into the deficit.
+  function additionalCashRequiredPacket(plan, minBalance) {
+    if (minBalance == null || !isFinite(Number(minBalance))) {
+      return additionalCashRequiredUnavailable(
+        'Forecast could not read the chequing-only walk minimum.'
+      );
+    }
+    const required = roundCent(additionalCashRequiredFromWalkMin(minBalance));
+    const reserve = designatedReserveEvidence(plan);
+    const base = {
+      amount: required,
+      status: 'calculated',
+      fundingFloor: 0,
+      identity: 'max(0, 0 - simulate.min.balance)',
+      source: 'simulate',
+      periodStageDeficits: 'must-not-be-summed',
+      designatedReserveId: DESIGNATED_RESERVE_ID,
+    };
+    if (!reserve || reserve.status !== 'ready' || !isFinite(Number(reserve.amount))) {
+      const why = (reserve && reserve.reason)
+        || 'Designated savings evidence is unavailable.';
+      return Object.assign({}, base, {
+        fundedByDesignatedSavings: {
+          amount: null,
+          status: 'unavailable',
+          reason: why,
+          identity: 'min(amount, max(0, designated-savings-balance))',
+          source: 'startingCash.breakdown savings',
+          plannedContribution: 'not-used',
+        },
+        remainingAdditionalCashRequired: {
+          amount: null,
+          status: 'unavailable',
+          reason: why,
+          identity: 'max(0, amount - fundedByDesignatedSavings)',
+        },
+      });
+    }
+    const funded = roundCent(Math.min(required, Number(reserve.amount)));
+    return Object.assign({}, base, {
+      fundedByDesignatedSavings: {
+        amount: funded,
+        status: 'calculated',
+        identity: 'min(amount, max(0, designated-savings-balance))',
+        source: 'startingCash.breakdown savings',
+        plannedContribution: 'not-used',
+      },
+      remainingAdditionalCashRequired: {
+        amount: roundCent(Math.max(0, required - funded)),
+        status: 'calculated',
+        identity: 'max(0, amount - fundedByDesignatedSavings)',
+      },
+    });
   }
 
   /* ------------------------------------------------------------- simulate */
@@ -10843,6 +10968,7 @@
       payPeriods: [],
       pressure: trajectoryPressureUnavailable(reason),
       debtDirection: trajectoryDebtDirectionUnavailable(reason),
+      additionalCashRequired: additionalCashRequiredUnavailable(reason),
     };
   }
 
@@ -12886,8 +13012,12 @@
   // counterfactuals. Scenario amounts, owner surplus-target policy, and payday
   // leftover are not Stage 3.
   // additionalCashRequired is the same walk's zero-floor shortfall
-  // (max(0, 0 − sim.min.balance)). Period stage deficits must not be
-  // summed to obtain it. Funding floor is $0, not targetBuffer.
+  // (max(0, 0 − sim.min.balance)) plus Forecast-owned designated-savings
+  // backing: fundedByDesignatedSavings is actual savings-row evidence,
+  // remainingAdditionalCashRequired is max(0, amount − funded). Period
+  // stage deficits must not be summed to obtain the total. Funding floor
+  // is $0, not targetBuffer. Planned contributions are not funded.
+  // Unavailable walk min or untrusted savings evidence fails closed.
   function baselineTrajectory(plan, debts, asOf, opts) {
     const ctx = prepareBaselineTrajectoryWalk(plan, debts, asOf, opts);
     if (!ctx || ctx.status !== 'ready') {
@@ -13099,14 +13229,7 @@
       payPeriods,
       pressure,
       debtDirection,
-      additionalCashRequired: {
-        amount: roundCent(additionalCashRequiredFromWalkMin(sim.min && sim.min.balance)),
-        status: 'calculated',
-        fundingFloor: 0,
-        identity: 'max(0, 0 - simulate.min.balance)',
-        source: 'simulate',
-        periodStageDeficits: 'must-not-be-summed',
-      },
+      additionalCashRequired: additionalCashRequiredPacket(plan, sim.min && sim.min.balance),
       provenance: {
         calculator: 'Forecast',
         primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts', 'daleEstimatedPayrollDeposits'],
@@ -13128,6 +13251,9 @@
         additionalCashRequired: 'simulate-zero-floor-walk-min',
         additionalCashRequiredFundingFloor: 0,
         additionalCashRequiredPeriodStageDeficits: 'must-not-be-summed',
+        additionalCashRequiredFundedBy: 'designated-savings-balance-evidence',
+        additionalCashRequiredPlannedContribution: 'not-used',
+        additionalCashRequiredRemaining: 'max(0, amount - fundedByDesignatedSavings)',
         payPeriodSeries: payPeriodSpans.length ? 'seaspan-spending-cycle' : 'unavailable',
         payPeriodFundingStages: 'walk-derived',
         incomeRegimesImplemented: regimeReady,
