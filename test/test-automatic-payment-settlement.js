@@ -26,6 +26,7 @@ const NAMED_SCHEDULE_TRUST_IDS = new Set([
   'youtube-premium',
   'spotify',
   'chatgpt-plus-dale',
+  'icloud-storage',
 ]);
 const EXPECTED = 282.87;
 let failures = 0;

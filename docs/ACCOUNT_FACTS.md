@@ -265,7 +265,10 @@ Spotify AB with standing schedule-trust on the existing Forecast due date
 on the existing Forecast due date (owner 2026-09-19; $28 CAD; owner 15th
 rails cited for trust; Forecast day stays 14 and is not moved); a Lunch Money
 OpenAI/ChatGPT payee is not required. ChatGPT Plus — Amanda stays a separate
-iOS $24.99 bill and is not that Dale identity. Instacart
+iOS $24.99 bill and is not that Dale identity. iCloud Storage remains
+Apple Services / PayPal class with standing schedule-trust on the existing
+Forecast due date (owner 2026-09-19; $13 on the 14th; due day not moved); a
+Lunch Money iCloud payee is not required. Instacart
 and Uber are **not** recorded as moved. Historical cleaned capture that
 missed a Netflix merchant does not omit the current Netflix bill.
 
@@ -275,7 +278,7 @@ missed a Netflix merchant does not omit the current Netflix bill.
 | Spotify | monthly, 17th | $26.87 | confirmed — PayPal Spotify AB schedule-trust; LM Spotify payee not required |
 | Google storage / 100 GB | monthly, around month-end | $3.13 | confirmed — Forecast uses last calendar day; moved off PayPal |
 | Ultimate Guitar | yearly, May 8 | $50 | confirmed |
-| iCloud Storage | monthly, 14th | $13 | confirmed |
+| iCloud Storage | monthly, 14th | $13 | confirmed — Apple Services / PayPal schedule-trust on existing Forecast due (owner 2026-09-19; due day not moved); LM iCloud payee not required |
 | YouTube Premium | monthly, 2nd | $17 | confirmed — moved off PayPal with the Google subscriptions |
 | ChatGPT Plus — Dale | monthly, 14th | $28 CAD planning amount | **estimated** amount; confirmed PayPal OpenAI OpCo, LLC schedule-trust on existing Forecast due (owner 2026-09-19; owner 15th rails cited for trust; due day not moved); LM OpenAI/ChatGPT payee not required |
 | ChatGPT Plus — Amanda | monthly, 14th | $24.99 | confirmed — iOS subscription; not Dale PayPal schedule-trust |

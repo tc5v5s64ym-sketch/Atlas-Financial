@@ -1,13 +1,14 @@
 'use strict';
 /* Standing bill-settlement identities: Fortis, Shaw, Netflix, and TD
  * fees are identity-plus-evidence each cycle; YouTube Premium, Spotify,
- * and ChatGPT Plus Dale are schedule-trust on the due date. Matching
- * confirmed-settled txs create representedActuals and mark PAID. Without
- * matching evidence Fortis, Shaw, Netflix, and TD stay still-due /
- * unverified. YouTube Premium, Spotify, and ChatGPT Plus Dale do not
- * require an isolated bank tx, Lunch Money OpenAI/ChatGPT or Spotify
- * payee, or Apple scrape. ChatGPT Plus Amanda is not the Dale identity.
- * Synthetic observe fixtures and independent arithmetic (L-002 / L-006).
+ * ChatGPT Plus Dale, and iCloud Storage are schedule-trust on the due
+ * date. Matching confirmed-settled txs create representedActuals and
+ * mark PAID. Without matching evidence Fortis, Shaw, Netflix, and TD
+ * stay still-due / unverified. YouTube Premium, Spotify, ChatGPT Plus
+ * Dale, and iCloud Storage do not require an isolated bank tx, Lunch
+ * Money OpenAI/ChatGPT, Spotify, or iCloud payee, or Apple scrape.
+ * ChatGPT Plus Amanda is not the Dale identity. Synthetic observe
+ * fixtures and independent arithmetic (L-002 / L-006).
  *
  * `node test/test-bill-settlement-identities.js`
  */
@@ -49,6 +50,9 @@ const CHATGPT_DUE = '2026-09-14';
 const CHATGPT_BEFORE = '2026-09-13';
 const CHATGPT_PLANNED = 28;
 const ICLOUD_ID = 'icloud-storage';
+const ICLOUD_DUE = '2026-09-14';
+const ICLOUD_BEFORE = '2026-09-13';
+const ICLOUD_PLANNED = 13;
 const FEE_ID = 'tdfees';
 const FEE_DUE = '2026-08-30';
 const FEE_LEG = 17.95;
@@ -198,6 +202,14 @@ function chatgptDaleRepresented(report, date) {
       && c.providerTransactionId == null);
 }
 
+function icloudRepresented(report, date) {
+  const due = date || ICLOUD_DUE;
+  return (report.representedEventCandidates || [])
+    .some(c => c && c.id === ICLOUD_ID && c.date === due
+      && c.identity === SCHEDULE_TRUST
+      && c.providerTransactionId == null);
+}
+
 function period(view, id) {
   return ((view && view.calendarPeriods) || []).find(p => p.id === id);
 }
@@ -337,13 +349,28 @@ console.log('\n=== 1. standing identities are encoded ===');
     'ChatGPT Plus Dale has no invented Lunch Money OpenAI/ChatGPT, PayPal, or Gmail payee rule');
   ok(!(identity.rules || []).some(r => r && r.eventId === CHATGPT_AMANDA_ID),
     'identity file has no chatgpt-plus-amanda schedule-trust or bank-payee rule');
-  ok(/named youtube-premium, named spotify, and named chatgpt-plus-dale/.test(identity.owns || '')
-      && /YouTube Premium, Spotify, and ChatGPT Plus Dale are the named schedule-trust exceptions/.test(identity.owns || '')
+  const icloud = (identity.rules || []).find(r => r && r.eventId === ICLOUD_ID);
+  ok(icloud && icloud.settlesWhen === SCHEDULE_TRUST
+      && !icloud.payeePattern
+      && !(icloud.payeePatterns || []).length
+      && !icloud.atlasAccountId
+      && !icloud.originalNamePattern,
+    'icloud-storage is schedule-trust-on-due with no bank-payee identity');
+  ok(!(identity.rules || []).some(r => r && r.eventId === ICLOUD_ID
+      && ((r.payeePatterns || []).length || r.payeePattern || r.originalNamePattern)),
+    'iCloud has no invented Lunch Money, exclusive Apple-only, or exclusive PayPal-merchant payee rule');
+  ok(/Apple Services \/ PayPal/.test(icloud.note || '')
+      && !/Order ID/i.test(icloud.note || '')
+      && !/exclusive Apple-only/i.test(icloud.note || ''),
+    'iCloud rail language mirrors YouTube Apple Services / PayPal and invents no Order ID');
+  ok(/named youtube-premium, named spotify, named chatgpt-plus-dale, and named icloud-storage/.test(identity.owns || '')
+      && /YouTube Premium, Spotify, ChatGPT Plus Dale, and iCloud Storage are the named schedule-trust exceptions/.test(identity.owns || '')
       && /Do not settle chatgpt-plus-amanda from the Dale rule/.test(identity.owns || '')
       && !/youtube-premium only/.test(identity.owns || '')
       && !/YouTube Premium is the only schedule-trust exception/.test(identity.owns || '')
-      && !/YouTube Premium and Spotify are the named schedule-trust exceptions/.test(identity.owns || ''),
-    'owns names youtube-premium, spotify, and chatgpt-plus-dale as the schedule-trust exceptions');
+      && !/YouTube Premium and Spotify are the named schedule-trust exceptions/.test(identity.owns || '')
+      && !/YouTube Premium, Spotify, and ChatGPT Plus Dale are the named schedule-trust exceptions/.test(identity.owns || ''),
+    'owns names youtube-premium, spotify, chatgpt-plus-dale, and icloud-storage as the schedule-trust exceptions');
   const shaw = (identity.rules || []).find(r => r && r.eventId === SHAW_ID);
   ok(shaw && shaw.atlasAccountId === 'chequing-a' && shaw.direction === 'debit'
       && shaw.postingDateRule === EARLY_RULE
@@ -373,6 +400,8 @@ console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube wai
     'Spotify is not schedule-trusted before the 17th');
   ok(!(empty.representedEventCandidates || []).some(c => c && c.id === CHATGPT_DALE_ID),
     'ChatGPT Plus Dale is not schedule-trusted before the 14th');
+  ok(!(empty.representedEventCandidates || []).some(c => c && c.id === ICLOUD_ID),
+    'iCloud Storage is not schedule-trusted before the 14th');
   ok(!(empty.representedEventCandidates || []).some(c => c && c.id === CHATGPT_AMANDA_ID),
     'ChatGPT Plus Amanda is not represented from the Dale schedule-trust rule');
   const beforeAdvice = recommendFromReport(empty, FORTIS_EARLY);
@@ -801,8 +830,11 @@ console.log('\n=== 5c. ChatGPT Plus Dale schedule-trust is paid on Forecast day 
     'Dale schedule-trust does not represent chatgpt-plus-amanda');
   ok(billUnpaid(recommendFromReport(emptyDue, CHATGPT_DUE), CHATGPT_AMANDA_ID, CHATGPT_DUE),
     'ChatGPT Plus Amanda stays still-due / PENDING without its own schedule-trust rule');
-  ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === ICLOUD_ID),
-    'empty due-date observe does not settle iCloud from the Dale ChatGPT rule');
+  const withoutIcloud = observeWith(identityWithout(identity, [ICLOUD_ID]), CHATGPT_DUE, []);
+  ok(!(withoutIcloud.representedEventCandidates || []).some(c => c && c.id === ICLOUD_ID),
+    'Dale ChatGPT rule does not invent iCloud settlement; iCloud needs its own named rule');
+  ok(chatgptDaleRepresented(withoutIcloud, CHATGPT_DUE),
+    'stripping iCloud still schedule-trusts ChatGPT Plus Dale on Sep 14');
   ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === SHAW_ID),
     'empty due-date observe does not settle Shaw; Shaw still needs BILLS evidence');
   ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
@@ -879,6 +911,119 @@ console.log('\n=== 5c. ChatGPT Plus Dale schedule-trust is paid on Forecast day 
     'Sep 17 observe still schedule-trusts the Sep 14 Dale ChatGPT occurrence only when the Dale rule exists');
 }
 
+console.log('\n=== 5d. iCloud Storage schedule-trust is paid on Forecast day 14 without an LM iCloud payee ===');
+{
+  ok(near(ICLOUD_PLANNED, 13),
+    'independent scheduled amount is $13; amount is not identity');
+  const liveIcloud = ((liveData().plan && liveData().plan.bills) || [])
+    .find(b => b && b.id === ICLOUD_ID);
+  ok(liveIcloud && liveIcloud.day === 14 && near(liveIcloud.amount, ICLOUD_PLANNED),
+    'live plan.bills icloud-storage.day stays 14; schedule-trust uses the existing Forecast day');
+  const identity = identityDoc();
+  const observeSrc = sourceText(fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'provider-observe.js'), 'utf8'));
+  ok(!/apple\.com|itunes|gmail|imap|scrape/i.test(observeSrc),
+    'provider-observe does not invent Apple scrape or Gmail fetch for iCloud');
+  const missing = observeWith(identityWithout(identity, [ICLOUD_ID]), ICLOUD_DUE, []);
+  ok(!(missing.representedEventCandidates || []).some(c => c && c.id === ICLOUD_ID),
+    'without the icloud-storage rule, due-date observe does not invent an iCloud settlement');
+  ok(billUnpaid(recommendFromReport(missing, ICLOUD_DUE), ICLOUD_ID, ICLOUD_DUE),
+    'without the icloud-storage rule the Sep 14 bill stays still-due / PENDING');
+  ok(chatgptDaleRepresented(missing, CHATGPT_DUE),
+    'stripping iCloud still schedule-trusts ChatGPT Plus Dale on Sep 14');
+  const before = observeWith(identity, ICLOUD_BEFORE, []);
+  ok(!icloudRepresented(before, ICLOUD_DUE)
+      && !(before.representedEventCandidates || []).some(c => c && c.id === ICLOUD_ID),
+    'iCloud Storage is not represented the day before it is due');
+  ok(billUnpaid(recommendFromReport(before, ICLOUD_BEFORE), ICLOUD_ID, ICLOUD_DUE),
+    'the day before the due date iCloud Storage remains still-due');
+  const emptyDue = observeWith(identity, ICLOUD_DUE, []);
+  const hit = (emptyDue.representedEventCandidates || [])
+    .find(c => c && c.id === ICLOUD_ID && c.date === ICLOUD_DUE);
+  ok(hit && hit.identity === SCHEDULE_TRUST
+      && hit.settlesWhen === SCHEDULE_TRUST
+      && hit.providerTransactionId == null
+      && near(hit.observedAmount, ICLOUD_PLANNED),
+    'on the due date iCloud Storage is represented from the schedule, not a bank tx');
+  ok(icloudRepresented(emptyDue, ICLOUD_DUE)
+      && chatgptDaleRepresented(emptyDue, CHATGPT_DUE),
+    'Sep 14 observe schedule-trusts iCloud and ChatGPT Plus Dale independently');
+  ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === CHATGPT_AMANDA_ID),
+    'iCloud schedule-trust does not represent chatgpt-plus-amanda');
+  ok(billUnpaid(recommendFromReport(emptyDue, ICLOUD_DUE), CHATGPT_AMANDA_ID, CHATGPT_DUE),
+    'ChatGPT Plus Amanda stays still-due / PENDING without its own schedule-trust rule');
+  ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'Spotify is not schedule-trusted on Sep 14; its due remains the 17th');
+  ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
+    'empty Sep 14 observe does not settle Netflix; Netflix still needs WEEKLY evidence');
+  ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === SHAW_ID),
+    'empty due-date observe does not settle Shaw; Shaw still needs BILLS evidence');
+  const youtubeDue = observeWith(identity, YOUTUBE_DUE, []);
+  ok((youtubeDue.representedEventCandidates || [])
+      .some(c => c && c.id === YOUTUBE_ID && c.date === YOUTUBE_DUE
+        && c.identity === SCHEDULE_TRUST && c.providerTransactionId == null),
+    'YouTube Premium schedule-trust on Sep 2 is unchanged');
+  ok(!(youtubeDue.representedEventCandidates || []).some(c => c && c.id === ICLOUD_ID),
+    'YouTube due-date observe does not schedule-trust iCloud before the 14th');
+  const row = ((emptyDue.currentPeriodActuals || {}).representedActuals || [])
+    .find(r => r && r.id === ICLOUD_ID && r.date === ICLOUD_DUE);
+  ok(row && near(row.actual, ICLOUD_PLANNED) && !row.transactionId,
+    'representedActuals names icloud-storage@Sep 14 without a transactionId');
+  const applePaypalNoise = observeWith(identity, ICLOUD_DUE, [{
+    id: 9704, account_id: 1001, date: ICLOUD_DUE, amount: ICLOUD_PLANNED,
+    is_pending: false, payee: 'PAYPAL', original_name: 'APPLE SERVICES',
+  }]);
+  const appleHit = (applePaypalNoise.representedEventCandidates || [])
+    .find(c => c && c.id === ICLOUD_ID && c.date === ICLOUD_DUE);
+  ok(appleHit && appleHit.identity === SCHEDULE_TRUST
+      && appleHit.providerTransactionId == null,
+    'a PayPal / Apple Services row is not used as iCloud identity');
+  ok(!(applePaypalNoise.representedEventCandidates || []).some(c =>
+      c && c.id === ICLOUD_ID && c.providerTransactionId != null),
+    'Apple Services / PayPal cadence is trusted without requiring an LM iCloud payee match');
+  const afterDue = observeWith(identity, '2026-09-15', []);
+  ok((afterDue.representedEventCandidates || [])
+      .some(c => c && c.id === ICLOUD_ID && c.date === ICLOUD_DUE
+        && c.identity === SCHEDULE_TRUST && c.providerTransactionId == null),
+    'on/after the due date schedule-trust still emits the Sep 14 iCloud settlement');
+  const advice = recommendFromReport(emptyDue, ICLOUD_DUE);
+  ok(billPaid(advice, ICLOUD_ID, ICLOUD_DUE),
+    'schedule-trust on the due date marks iCloud Storage PAID');
+  ok(billUnpaid(advice, NETFLIX_ID, NETFLIX_DUE)
+      || !actionBill(advice, NETFLIX_ID, NETFLIX_DUE),
+    'Netflix identity-plus-evidence is unchanged: empty Sep 14 observe does not mark Netflix PAID');
+
+  const remaining = adviceRow => {
+    const bills = (((adviceRow && adviceRow.currentPeriodAction) || {}).bills) || [];
+    return bills
+      .filter(row => row && row.settlement !== 'represented')
+      .reduce((sum, row) => sum + Math.abs(Number(row.remaining != null
+        ? row.remaining : row.planned) || 0), 0);
+  };
+  const beforeRemain = remaining(recommendFromReport(missing, ICLOUD_DUE));
+  const afterRemain = remaining(advice);
+  ok(near(roundCent(beforeRemain - afterRemain), ICLOUD_PLANNED),
+    'matching iCloud schedule-trust releases independently the planned $13',
+    `${beforeRemain} → ${afterRemain} vs ${ICLOUD_PLANNED}`);
+
+  const withIcloud = observeWith(identity, SPOTIFY_DUE, []);
+  const withoutIcloud = observeWith(identityWithout(identity, [ICLOUD_ID]), SPOTIFY_DUE, []);
+  const idsOn = (report, id) => (report.representedEventCandidates || [])
+    .filter(c => c && c.id === id)
+    .map(c => [c.id, c.date, c.identity, c.providerTransactionId].join('|'))
+    .sort()
+    .join(';');
+  ok(idsOn(withIcloud, SPOTIFY_ID) === idsOn(withoutIcloud, SPOTIFY_ID)
+      && idsOn(withIcloud, YOUTUBE_ID) === idsOn(withoutIcloud, YOUTUBE_ID)
+      && idsOn(withIcloud, CHATGPT_DALE_ID) === idsOn(withoutIcloud, CHATGPT_DALE_ID)
+      && idsOn(withIcloud, CHATGPT_AMANDA_ID) === idsOn(withoutIcloud, CHATGPT_AMANDA_ID)
+      && idsOn(withIcloud, NETFLIX_ID) === idsOn(withoutIcloud, NETFLIX_ID),
+    'adding icloud-storage does not change Spotify, YouTube, ChatGPT Plus Dale/Amanda, or Netflix settlement');
+  ok(icloudRepresented(withIcloud, ICLOUD_DUE)
+      && !icloudRepresented(withoutIcloud, ICLOUD_DUE),
+    'Sep 17 observe still schedule-trusts the Sep 14 iCloud occurrence only when the iCloud rule exists');
+}
+
 console.log('\n=== 6. independent remaining-bill deltas ===');
 {
   const identity = identityDoc();
@@ -912,7 +1057,8 @@ console.log('\n=== 7. pages do not special-case these merchants ===');
   ok(!/Fortisbc Energy|MONTHLY ACCOUNT FEE|YouTube Premium|SHAW CABLE TV BPY/.test(planSrc)
       && !/\bNetflix\b/.test(planSrc)
       && !/\bSpotify\b/.test(planSrc)
-      && !/ChatGPT Plus/.test(planSrc),
+      && !/ChatGPT Plus/.test(planSrc)
+      && !/\biCloud\b/.test(planSrc),
     'plan.js only prints; it does not special-case these identities');
 }
 
@@ -995,6 +1141,25 @@ console.log('\n=== 8. schedule-trust uses the financial as-of, never fetchedAt =
     'schedule-trust on the financial due date marks ChatGPT Plus Dale PAID');
   ok(!(chatgptDue.representedEventCandidates || []).some(c => c && c.id === CHATGPT_AMANDA_ID),
     'financial due-date observe still does not settle chatgpt-plus-amanda');
+
+  const icloudStale = readyObserve(identity, ICLOUD_BEFORE, '2026-09-18', []);
+  ok(O.householdFinancialDate({}, icloudStale.observations) === ICLOUD_BEFORE,
+    'provider cash evidence independently dates the iCloud financial as-of as Sep 13');
+  ok(!icloudRepresented(icloudStale, ICLOUD_DUE)
+      && !((icloudStale.currentPeriodActuals || {}).representedActuals || [])
+        .some(r => r && r.id === ICLOUD_ID),
+    'financial as-of before the 14th leaves iCloud unrepresented even if fetchedAt is later');
+  ok(billUnpaid(recommendFromReport(icloudStale, ICLOUD_BEFORE), ICLOUD_ID, ICLOUD_DUE),
+    'Budget still shows iCloud still-due when the financial date is Sep 13');
+  const icloudDue = readyObserve(identity, ICLOUD_DUE, '2026-09-18', []);
+  ok(O.householdFinancialDate({}, icloudDue.observations) === ICLOUD_DUE,
+    'provider cash evidence independently dates the iCloud financial as-of as Sep 14');
+  ok(icloudRepresented(icloudDue, ICLOUD_DUE)
+      && ((icloudDue.currentPeriodActuals || {}).representedActuals || [])
+        .some(r => r && r.id === ICLOUD_ID && r.date === ICLOUD_DUE && !r.transactionId),
+    'both observe surfaces settle iCloud when the financial date reaches the due date');
+  ok(billPaid(recommendFromReport(icloudDue, ICLOUD_DUE), ICLOUD_ID, ICLOUD_DUE),
+    'schedule-trust on the financial due date marks iCloud Storage PAID');
 }
 
 if (failures) {

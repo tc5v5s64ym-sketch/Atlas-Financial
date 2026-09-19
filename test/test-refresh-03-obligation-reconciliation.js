@@ -42,6 +42,7 @@ const NAMED_SCHEDULE_TRUST_IDS = new Set([
   'youtube-premium',
   'spotify',
   'chatgpt-plus-dale',
+  'icloud-storage',
 ]);
 function isScheduleTrustRow(row) {
   return !!(row && (row.postingDateRelation === SCHEDULE_TRUST
