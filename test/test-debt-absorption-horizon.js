@@ -161,9 +161,13 @@ console.log('\n=== mortgage cadence, partial payoff and final obligations ===');
 
 console.log('\n=== represented, prepaid and carried observation boundaries ===');
 {
+  // Dated opening: cash already excludes the prepaid May outflow ($1,100
+  // not $1,200). Opening debt does not yet include that principal
+  // reduction ($1,200). Cash omits May once; the coupled debt walk still
+  // applies it. Live-advanced openings overlay posted debt and omit here.
   const p = plan({ startingCash: { amount: 1100 }, obligations: [monthly()],
     opening: { asOf: START, representedEvents: [{ id: 'minimum', date: '2026-05-31' }] } });
-  const result = recommend(p, [debt(1100)]);
+  const result = recommend(p, [debt(1200)]);
   const full = zeroWalk(p, result);
   near(full.totals.obligations, 11 * 100, 'prepaid May occurrence is not deducted again');
   ok(!full.events.some(e => e.id === 'minimum' && e.date === '2026-05-31'),

@@ -7,7 +7,7 @@
 
 const F = require('../public/forecast.js');
 const data = require('../data.json');
-const { representedEventKeys } = require('./test-helpers');
+const { independentlyRepresentedPrepaidDebtAbsorbed } = require('./test-helpers');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -55,19 +55,8 @@ console.log('\n=== cash and debt reconcile against one event stream ===');
 // remainder.
 const cashObligations = advice.sim.totals.obligations;
 const paidToDebts = Object.values(proj.byId).reduce((s, x) => s + x.paid, 0);
-const representedPrepaidDebt = (plan.obligations || []).reduce((sum, o) => {
-  if (!o || !o.debtId) return sum;
-  if (o.nonCash === true) {
-    return sum + (F.capitalisingCashMinimumOccurrences(o, asOf, end.date) || [])
-      .filter(occ => occ && representedEventKeys(plan).has(o.id + '@' + occ.date)
-        && F.prepaidJointCashOutflow(plan, o.id, occ.date, asOf))
-      .reduce((s, occ) => s + Number(occ.amount || 0), 0);
-  }
-  return sum + F.occurrences(o, asOf, end.date)
-    .filter(d => representedEventKeys(plan).has(o.id + '@' + d)
-      && F.prepaidJointCashOutflow(plan, o.id, d, asOf))
-    .reduce((s) => s + Number(o.amount || 0), 0);
-}, 0);
+const representedPrepaidDebt = independentlyRepresentedPrepaidDebtAbsorbed(
+  plan, data.debts, asOf, runOpts);
 ok(near(cashObligations + representedPrepaidDebt, paidToDebts, 0.5),
   'cash paid out on obligations plus represented prepaid debt payments equals payments applied to debts',
   `${money(cashObligations)} + ${money(representedPrepaidDebt)} vs ${money(paidToDebts)}`);
