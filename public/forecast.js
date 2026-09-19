@@ -7090,13 +7090,17 @@
   // future-cost attribution from that same walk → extra debt (incumbent
   // cascade) → owner-marked optional residual.
   // Protected current cash is the leftover that cannot be removed today
-  // while protectedPlanCheck still holds. Extra debt and optional residual
-  // receive only that proven surplus. Required or bounded-flex undated
-  // items stay unresolved and hold leftover cash: they do not fabricate a
-  // contribution, and they do not release residual to extra debt or
-  // optional residual. Credit is not cash. Q20 is not resolved here: the
-  // model buffer is the existing feasibility floor, not a newly invented
-  // emergency-fund line.
+  // while protectedPlanCheck still holds. Owner 2026-09-18/19 Prepare
+  // Ahead is that keep-in-chequing hold (`protectedPath`): leftover that
+  // the already-modelled future trajectory still needs, so it is not
+  // genuine surplus for extra debt. It is not additionalCashRequired, not
+  // remaining ACR split across paydays, and not a transfer into designated
+  // Savings. Extra debt and optional residual receive only that proven
+  // surplus. Required or bounded-flex undated items stay unresolved and
+  // hold leftover cash: they do not fabricate a contribution, and they do
+  // not release residual to extra debt or optional residual. Credit is not
+  // cash. Q20 is not resolved here: the model buffer is the existing
+  // feasibility floor, not a newly invented emergency-fund line.
   function paydayAllocation(plan, asOf, opts) {
     opts = opts || {};
     const priority = debtPriority(plan, opts.debts || []);
@@ -7626,6 +7630,8 @@
         allocated: allocatedPath,
         until: liquidityUntil,
       },
+      // Prepare Ahead: keep-in-chequing leftover the master walk still
+      // needs. Not additionalCashRequired and not a Savings transfer.
       protectedPath: {
         wanted: roundCent(pathWanted),
         allocated: allocatedPath,
