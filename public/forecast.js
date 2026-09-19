@@ -3830,6 +3830,7 @@
     const represented = representedKeySet(plan, opts, asOf);
     const notRelied = notReliedUponKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
+    applyOverlayChildBenefitRepresentation(plan, opts, represented, observed);
     const events = expandEvents(plan, origin, periodLast,
       Object.assign({}, opts || {}, { keepRepresented: true }));
     const items = [];
@@ -5426,7 +5427,139 @@
     return 0;
   }
 
-  function representedIncomeTransactionIds(opts) {
+  // Canada Child Benefit posts to WEEKLY (chequing-b). Live overlay income
+  // rows have payee/merchant stripped, so Forecast cannot rely only on the
+  // CHILD TAX BEN / CCB blob. Amount + chequing-b + the Fri-before-Sun /
+  // same-day window around scheduled day 20 is the privacy-stripped match.
+  // Unique pairing only; two credits or a miss fail closed. Not a second
+  // income stream: the hit represents plan.income.childBenefit.
+  const CHILD_BENEFIT_STREAM_ID = 'childBenefit';
+  const CHILD_BENEFIT_ACCOUNT_ID = 'chequing-b';
+
+  function weekdayUtc(iso) {
+    if (!iso || !ISO_CALENDAR_DATE.test(String(iso))) return null;
+    return new Date(String(iso) + 'T00:00:00Z').getUTCDay();
+  }
+
+  function childBenefitPostingMatchesScheduled(postedDate, scheduledDate) {
+    if (!postedDate || !scheduledDate) return false;
+    if (postedDate === scheduledDate) return true;
+    const weekday = weekdayUtc(scheduledDate);
+    if (weekday === 0) return postedDate === addDays(scheduledDate, -2);
+    if (weekday === 6) return postedDate === addDays(scheduledDate, -1);
+    return false;
+  }
+
+  function sameOperatingPayPeriod(plan, a, b) {
+    const left = spendingCycle(plan, a);
+    const right = spendingCycle(plan, b);
+    if (left && right) return left.start === right.start;
+    return true;
+  }
+
+  function isChildBenefitCashAccount(tx) {
+    if (!tx) return false;
+    if (tx.accountRole === 'household-external' || tx.accountRole === 'unmapped') {
+      return false;
+    }
+    if (tx.accountRole && tx.accountRole !== 'household-cash') return false;
+    const id = String(tx.atlasAccountId || tx.account || '').trim();
+    if (id === CHILD_BENEFIT_ACCOUNT_ID) return true;
+    return isWeeklySpendingAccount(personalAccountText(tx));
+  }
+
+  function overlayChildBenefitMatches(plan, opts, alreadyRepresented) {
+    const stream = ((plan && plan.income) || [])
+      .find(s => s && s.id === CHILD_BENEFIT_STREAM_ID);
+    if (!stream) return [];
+    const scheduledAmt = roundCent(
+      Number(streamAmount(stream, opts)) || Number(stream.amount) || 0);
+    if (!(scheduledAmt > EPSILON)) return [];
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet || !Array.isArray(packet.transactions)) return [];
+    const representedOcc = new Set(alreadyRepresented || []);
+    const linkedTxIds = new Set();
+    const rows = Array.isArray(packet.representedActuals)
+      ? packet.representedActuals : [];
+    for (const row of rows) {
+      if (!row) continue;
+      if (row.id && row.date) representedOcc.add(String(row.id) + '@' + String(row.date));
+      if (row.transactionId != null) linkedTxIds.add(String(row.transactionId));
+    }
+    const opening = plan && plan.opening;
+    for (const item of (opening && opening.representedEvents) || []) {
+      if (item && item.id && item.date) {
+        representedOcc.add(String(item.id) + '@' + String(item.date));
+      }
+    }
+    const candidates = [];
+    for (const tx of packet.transactions) {
+      if (!tx || !tx.date || tx.pending === true || tx.id == null) continue;
+      if (linkedTxIds.has(String(tx.id))) continue;
+      if (skipSplitParent(tx, packet)) continue;
+      if (!isChildBenefitCashAccount(tx)) continue;
+      if (isInternalHouseholdTransfer(tx)) continue;
+      const inflow = txInflowAmount(tx);
+      if (!(inflow > EPSILON) || roundCent(inflow) !== scheduledAmt) continue;
+      candidates.push(tx);
+    }
+    if (!candidates.length) return [];
+    let start = packet.coverageStart || null;
+    let end = packet.coverageThrough || null;
+    for (const tx of candidates) {
+      if (!start || tx.date < start) start = tx.date;
+      if (!end || tx.date > end) end = tx.date;
+    }
+    if (!start || !end) return [];
+    const occStart = addDays(start, -2);
+    const occEnd = addDays(end, 2);
+    const dates = occurrences(stream, occStart, occEnd);
+    const occToTxs = new Map();
+    const txToOccs = new Map();
+    for (const date of dates) {
+      const key = CHILD_BENEFIT_STREAM_ID + '@' + date;
+      if (representedOcc.has(key)) continue;
+      for (const tx of candidates) {
+        if (!childBenefitPostingMatchesScheduled(tx.date, date)) continue;
+        if (!sameOperatingPayPeriod(plan, tx.date, date)) continue;
+        const list = occToTxs.get(date) || [];
+        list.push(tx);
+        occToTxs.set(date, list);
+        const tid = String(tx.id);
+        const occs = txToOccs.get(tid) || [];
+        occs.push(date);
+        txToOccs.set(tid, occs);
+      }
+    }
+    const pairs = [];
+    occToTxs.forEach((txsForOcc, date) => {
+      if (!txsForOcc || txsForOcc.length !== 1) return;
+      const tx = txsForOcc[0];
+      const occsForTx = txToOccs.get(String(tx.id)) || [];
+      if (occsForTx.length !== 1) return;
+      pairs.push({
+        date,
+        tx,
+        actual: roundCent(txInflowAmount(tx)),
+        postedOn: tx.date,
+      });
+    });
+    return pairs;
+  }
+
+  function applyOverlayChildBenefitRepresentation(plan, opts, represented, observed) {
+    const pairs = overlayChildBenefitMatches(plan, opts, represented);
+    for (const pair of pairs) {
+      const key = CHILD_BENEFIT_STREAM_ID + '@' + pair.date;
+      if (represented) represented.add(key);
+      if (observed && !observed.has(key)) {
+        observed.set(key, { actual: pair.actual, postedOn: pair.postedOn });
+      }
+    }
+    return pairs;
+  }
+
+  function representedIncomeTransactionIds(opts, plan) {
     const ids = new Set();
     const packet = currentPeriodActualsPacket(opts);
     const rows = packet && Array.isArray(packet.representedActuals)
@@ -5434,12 +5567,17 @@
     for (const row of rows) {
       if (row && row.transactionId != null) ids.add(String(row.transactionId));
     }
+    if (plan) {
+      for (const pair of overlayChildBenefitMatches(plan, opts)) {
+        if (pair.tx && pair.tx.id != null) ids.add(String(pair.tx.id));
+      }
+    }
     return ids;
   }
 
   function txMatchesScheduledIncome(tx, plan, opts) {
     if (!tx) return false;
-    const linked = representedIncomeTransactionIds(opts);
+    const linked = representedIncomeTransactionIds(opts, plan);
     if (tx.id != null && linked.has(String(tx.id))) return true;
     const blob = txTextBlob(tx);
     const account = personalAccountText(tx);
@@ -5516,6 +5654,7 @@
     const represented = representedKeySet(plan, opts, asOf);
     const notRelied = notReliedUponKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
+    applyOverlayChildBenefitRepresentation(plan, opts, represented, observed);
     const cashAsOf = cashSnapshotDate(plan, asOf);
     const settlementAsOf = settlementOpeningDate(plan, asOf);
     const events = expandEvents(plan, span.start, span.end,
@@ -5569,7 +5708,7 @@
     }
     const packet = currentPeriodActualsPacket(opts);
     const duplicateIds = pendingPostedDuplicateIdSet(packet);
-    const linkedIds = representedIncomeTransactionIds(opts);
+    const linkedIds = representedIncomeTransactionIds(opts, plan);
     const actualCandidates = [];
     if (packet && Array.isArray(packet.transactions)) {
       for (const tx of packet.transactions) {
