@@ -163,7 +163,7 @@ console.log('=== authority: protectedPath is Prepare Ahead; ACR is not ===');
       && /not additionalCashRequired/.test(src),
     'paydayAllocation source names Prepare Ahead as keep-in-chequing protectedPath, not ACR');
   ok(/function maxFeasiblePaydayRemoval\(/.test(src)
-      && /protectedPath: \{/.test(src)
+      && /protectedPath: protectedPathPacket\(/.test(src)
       && /function additionalCashRequiredFromWalkMin\(/.test(src),
     'Prepare Ahead stays on paydayAllocation.protectedPath; ACR stays the walk-min helper');
   ok(!/remainingAdditionalCashRequired\s*\/\s*/.test(src)
@@ -175,6 +175,11 @@ console.log('=== authority: protectedPath is Prepare Ahead; ACR is not ===');
   ok(/Prepare Ahead protection is `Forecast.paydayAllocation.protectedPath`/.test(architecture)
       && /transfer-to-Savings-to-fund-ACR remain out of scope/.test(architecture),
     'ACR packet still does not own spreading or Savings-to-fund-ACR');
+  ok(/published `protectedPath` packet is the household reprint contract/.test(architecture)
+      && /copy `allocated` when `status` is `calculated`/.test(architecture)
+      && /`designatedSavingsBacking` is `not-used`/.test(architecture)
+      && /fails closed/.test(architecture),
+    'ARCHITECTURE names the published protectedPath packet as the household reprint contract');
 }
 
 console.log('\n=== 1. future cash-pressure leftover is not extra-debt surplus ===');
@@ -354,6 +359,10 @@ console.log('\n=== 5. Case K: chequing→Savings is a pocket shuffle, not ACR fu
       && !near(allocAfter.protectedPath.allocated, transfer),
     'designated Savings evidence is not the Prepare Ahead protection amount',
     `path ${allocBefore.protectedPath.allocated} vs transfer ${transfer}`);
+  ok(allocBefore.protectedPath.designatedSavingsBacking === 'not-used'
+      && allocAfter.protectedPath.designatedSavingsBacking === 'not-used'
+      && allocAfter.protectedPath.status === 'calculated',
+    'published contract tags Savings backing not-used; protection is not the Savings pocket');
 }
 
 console.log('\n=== 6. non-designated holdings do not back protection or ACR ===');
@@ -387,6 +396,130 @@ console.log('\n=== 7. fail closed: no second planner, no Savings-funding identit
     'Forecast did not grow a second Prepare Ahead calculator beside paydayAllocation');
   ok(/Keep for future cash path/.test(src),
     'the published path line remains the keep-in-chequing future-path hold');
+  ok(/function protectedPathPacket\(/.test(src)
+      && /function protectedPathUnavailable\(/.test(src)
+      && /designatedSavingsBacking: 'not-used'/.test(src),
+    'protectedPath packet is Forecast-owned; Savings backing is the closed not-used token');
+}
+
+function assertPreparedAheadContract(path, extra) {
+  extra = extra || {};
+  ok(path && path.status === (extra.status || 'calculated'),
+    extra.label ? `${extra.label}: status` : 'protectedPath status is calculated',
+    path && path.status);
+  ok(path && path.identity
+      && /keep-in-chequing leftover after obligations and essentials/.test(path.identity)
+      && /protectedPlanCheck/.test(path.identity),
+    extra.label ? `${extra.label}: identity` : 'protectedPath identity is keep-in-chequing walk retention');
+  ok(path && path.source === 'Forecast.paydayAllocation'
+      && path.designatedSavingsBacking === 'not-used',
+    extra.label ? `${extra.label}: source and Savings backing` : 'source is paydayAllocation; Savings backing is not-used');
+}
+
+console.log('\n=== 8. household reprint copies allocated, not wanted, ACR, or Savings ===');
+{
+  const opening = 4000;
+  const bill = 1500;
+  const billDate = '2026-10-16';
+  const plan = cashPlan(opening, 0, {
+    bills: [onceBill('later', billDate, bill)],
+  });
+  const events = [{ date: billDate, amount: -bill }];
+  const leftover = opening;
+  const movable = independentMaxRemoval(
+    opening, AS_OF, plan.windowDays, events, 0, 0, leftover);
+  const protect = roundCent(leftover - movable);
+  const alloc = F.paydayAllocation(plan, AS_OF, allocOpts());
+  assertPreparedAheadContract(alloc.protectedPath, { label: 'ample leftover' });
+  ok(near(alloc.protectedPath.allocated, protect)
+      && near(alloc.protectedPath.allocated, leftover - alloc.protectedPath.movable),
+    'reprint amount is allocated = independent leftover minus max removal',
+    `allocated ${alloc.protectedPath.allocated} protect ${protect}`);
+  const acr = F.simulate(plan, AS_OF, { weeklyVariable: 0 }).additionalCashRequired;
+  ok(!near(alloc.protectedPath.allocated, acr),
+    'reprint is not additionalCashRequired',
+    `${alloc.protectedPath.allocated} vs ACR ${acr}`);
+}
+
+console.log('\n=== 9. scarce leftover reprints allocated, not wanted ===');
+{
+  const plan = cashPlan(100, 0);
+  const actuals = {
+    schema: 'atlas-current-period-actuals/v1',
+    observationAsOf: AS_OF,
+    coverageStart: AS_OF,
+    coverageThrough: AS_OF,
+    pendingCoverage: 'complete',
+    transactionCoverage: 'complete',
+    transactions: [{
+      id: 'pending-cash',
+      date: AS_OF,
+      amount: 250,
+      pending: true,
+      categoryLabel: 'Gifts',
+      accountRole: 'household-cash',
+      atlasAccountId: 'chequing-a',
+    }],
+  };
+  const alloc = F.paydayAllocation(plan, AS_OF, allocOpts({ currentPeriodActuals: actuals }));
+  assertPreparedAheadContract(alloc.protectedPath, { label: 'scarce leftover' });
+  ok(alloc.protectedPath.wanted > alloc.protectedPath.allocated + EPS,
+    'wanted exceeds allocated when leftover cannot cover the walk need',
+    `wanted ${alloc.protectedPath.wanted} allocated ${alloc.protectedPath.allocated}`);
+  ok(near(alloc.protectedPath.allocated, leftoverAfterOE(alloc)),
+    'household reprint is the cash actually retained, not wanted',
+    `allocated ${alloc.protectedPath.allocated} leftover ${leftoverAfterOE(alloc)}`);
+}
+
+console.log('\n=== 10. $0 protection stays calculated; movable surplus remains extra-debt eligible ===');
+{
+  const opening = 4000;
+  const plan = cashPlan(opening, 0);
+  const leftover = opening;
+  const movable = independentMaxRemoval(
+    opening, AS_OF, plan.windowDays, [], 0, 0, leftover);
+  const alloc = F.paydayAllocation(plan, AS_OF, allocOpts());
+  assertPreparedAheadContract(alloc.protectedPath, { label: 'no future pressure' });
+  ok(near(movable, leftover) && near(alloc.protectedPath.allocated, 0)
+      && alloc.protectedPath.status === 'calculated'
+      && alloc.protectedPath.allocated !== null,
+    'no required hold is calculated $0, not unavailable',
+    `allocated ${alloc.protectedPath.allocated} movable ${alloc.protectedPath.movable}`);
+  ok(near(alloc.protectedPath.movable, leftover)
+      && near(alloc.extraDebt.allocated, leftover),
+    'when protection is not required, leftover stays extra-debt eligible',
+    `extra ${alloc.extraDebt.allocated}`);
+}
+
+console.log('\n=== 11. recommend fail-closes protectedPath when the operating plan is unavailable ===');
+{
+  const plan = cashPlan(4000, 0, {
+    bills: [onceBill('later', '2026-10-16', 1500)],
+  });
+  const alloc = F.paydayAllocation(plan, AS_OF, allocOpts());
+  const ready = F.recommend(plan, AS_OF, allocOpts());
+  const withheld = F.recommend(plan, AS_OF, allocOpts({
+    operatingPlan: 'unavailable',
+    operatingPlanNote: 'Current plan unavailable. The dated opening is stale.',
+  }));
+  assertPreparedAheadContract(ready.paydayAllocation.protectedPath, { label: 'recommend ready' });
+  ok(ready.paydayAllocation.protectedPath.allocated != null
+      && Number.isFinite(Number(ready.paydayAllocation.protectedPath.allocated))
+      && ready.paydayAllocation.protectedPath.status === 'calculated',
+    'recommend publishes a calculated hold while the operating plan is current',
+    `recommend ${ready.paydayAllocation.protectedPath.allocated}`);
+  const path = withheld.paydayAllocation && withheld.paydayAllocation.protectedPath;
+  ok(withheld.operatingPlanUnavailable === true
+      && path && path.status === 'unavailable'
+      && path.allocated == null
+      && path.wanted == null
+      && path.movable == null
+      && path.designatedSavingsBacking === 'not-used'
+      && path.source === 'Forecast.paydayAllocation'
+      && /keep-in-chequing leftover after obligations and essentials/.test(path.identity),
+    'stale operating plan fails closed: status unavailable, amounts null, Savings still not-used');
+  ok(alloc.protectedPath.status === 'calculated' && alloc.protectedPath.allocated != null,
+    'direct paydayAllocation on that opening still publishes the calculated hold');
 }
 
 if (failures) {
