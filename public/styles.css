@@ -664,7 +664,7 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 .payday-qual.payday-total span:last-child { font-variant-numeric:tabular-nums; font-weight:600; color:var(--text-primary); white-space:nowrap; }
 .payday-total-strong { color:var(--text-primary); font-weight:600; }
 .payday-total-strong span:last-child { font-weight:700; }
-.payday-period-income > .payday-total { margin-top:10px; padding-top:8px; border-top:1px solid var(--axis); }
+.payday-period-income > .payday-totals { margin-top:10px; }
 
 /* Extra repayment: the card, its terms, and the extra amount as the answer. */
 .payday-first-card .operating-lead { font-size:1rem; font-weight:650; }

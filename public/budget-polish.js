@@ -146,15 +146,7 @@
 
     const paydayBalance = income && income.querySelector('[data-payday-balance]');
     if (paydayBalance) {
-      const summary = doc.createElement('div');
-      summary.className = 'atlas-period-summary';
-      summary.setAttribute('data-atlas-period-summary', 'true');
-      const payday = doc.createElement('div');
-      payday.className = 'atlas-summary-card atlas-payday-summary';
-      payday.setAttribute('data-atlas-payday-summary', 'true');
-      payday.appendChild(paydayBalance);
-      summary.appendChild(payday);
-      waterfall.appendChild(summary);
+      paydayBalance.classList.add('atlas-income-closing');
     }
 
     const incomeCard = sectionCard(doc, waterfall, 'atlas-income-card', [income]);
