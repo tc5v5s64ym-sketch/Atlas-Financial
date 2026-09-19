@@ -3,9 +3,10 @@
  * fees are identity-plus-evidence each cycle; YouTube Premium is
  * schedule-trust on the due date. Matching confirmed-settled txs create
  * representedActuals and mark PAID. Without matching evidence Fortis,
- * Shaw, Netflix, and TD stay still-due / unverified. YouTube does not
- * require an isolated bank tx or Apple scrape. Synthetic observe
- * fixtures and independent arithmetic (L-002 / L-006).
+ * Shaw, Netflix, and TD stay still-due / unverified. YouTube Premium and
+ * Spotify do not require an isolated bank tx, Lunch Money Spotify payee,
+ * or Apple scrape. Synthetic observe fixtures and independent arithmetic
+ * (L-002 / L-006).
  *
  * `node test/test-bill-settlement-identities.js`
  */
@@ -38,6 +39,9 @@ const NETFLIX_DUE = '2026-09-17';
 const NETFLIX_PLANNED = 26.87;
 const NETFLIX_OBSERVED = 26.87;
 const SPOTIFY_ID = 'spotify';
+const SPOTIFY_DUE = '2026-09-17';
+const SPOTIFY_BEFORE = '2026-09-16';
+const SPOTIFY_PLANNED = 26.87;
 const FEE_ID = 'tdfees';
 const FEE_DUE = '2026-08-30';
 const FEE_LEG = 17.95;
@@ -171,6 +175,14 @@ function youtubeReconciled(report) {
       && row.settlement === 'represented');
 }
 
+function spotifyRepresented(report, date) {
+  const due = date || SPOTIFY_DUE;
+  return (report.representedEventCandidates || [])
+    .some(c => c && c.id === SPOTIFY_ID && c.date === due
+      && c.identity === SCHEDULE_TRUST
+      && c.providerTransactionId == null);
+}
+
 function period(view, id) {
   return ((view && view.calendarPeriods) || []).find(p => p.id === id);
 }
@@ -288,6 +300,21 @@ console.log('\n=== 1. standing identities are encoded ===');
   ok(!(identity.rules || []).some(r => r && r.eventId === YOUTUBE_ID
       && ((r.payeePatterns || []).length || r.payeePattern || r.originalNamePattern)),
     'YouTube has no invented Apple, PayPal, or Gmail payee rule');
+  const spotify = (identity.rules || []).find(r => r && r.eventId === SPOTIFY_ID);
+  ok(spotify && spotify.settlesWhen === SCHEDULE_TRUST
+      && !spotify.payeePattern
+      && !(spotify.payeePatterns || []).length
+      && !spotify.atlasAccountId
+      && !spotify.originalNamePattern,
+    'spotify is schedule-trust-on-due with no bank-payee identity');
+  ok(!(identity.rules || []).some(r => r && r.eventId === SPOTIFY_ID
+      && ((r.payeePatterns || []).length || r.payeePattern || r.originalNamePattern)),
+    'Spotify has no invented Lunch Money, PayPal, or Gmail payee rule');
+  ok(/named youtube-premium and named spotify/.test(identity.owns || '')
+      && /YouTube Premium and Spotify are the named schedule-trust exceptions/.test(identity.owns || '')
+      && !/youtube-premium only/.test(identity.owns || '')
+      && !/YouTube Premium is the only schedule-trust exception/.test(identity.owns || ''),
+    'owns names youtube-premium and spotify as the schedule-trust exceptions');
   const shaw = (identity.rules || []).find(r => r && r.eventId === SHAW_ID);
   ok(shaw && shaw.atlasAccountId === 'chequing-a' && shaw.direction === 'debit'
       && shaw.postingDateRule === EARLY_RULE
@@ -301,8 +328,6 @@ console.log('\n=== 1. standing identities are encoded ===');
       && (netflix.payeePatterns || []).includes('Netflix')
       && !netflix.settlesWhen,
     'netflix identity is payee + Chequing B + debit + early-or-covers-due; amount is not identity');
-  ok(!(identity.rules || []).some(r => r && r.eventId === SPOTIFY_ID),
-    'this identity file does not invent a spotify settlement rule');
 }
 
 console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube waits for due date ===');
@@ -315,6 +340,8 @@ console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube wai
     'no MONTHLY ACCOUNT FEE legs do not represent tdfees');
   ok(!(empty.representedEventCandidates || []).some(c => c && c.id === YOUTUBE_ID),
     'YouTube is not schedule-trusted before the 2nd');
+  ok(!(empty.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'Spotify is not schedule-trusted before the 17th');
   const beforeAdvice = recommendFromReport(empty, FORTIS_EARLY);
   ok(billUnpaid(beforeAdvice, FORTIS_ID, FORTIS_DUE),
     'Fortis stays still-due / unverified without matching evidence');
@@ -453,6 +480,8 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
     .find(b => b && b.id === SPOTIFY_ID);
   ok(liveSpotify && liveSpotify.day === 17 && near(liveSpotify.amount, NETFLIX_PLANNED),
     'live plan.bills spotify is the same $26.87 / day-17 twin; it is a separate bill');
+  ok(liveSpotify.day === 17,
+    'this identity does not move data.json spotify.day');
   ok(near(NETFLIX_PLANNED, 26.87),
     'independent scheduled amount is $26.87, not identity');
   const identity = identityDoc();
@@ -470,16 +499,22 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
       && hit.atlasAccountId === 'chequing-b'
       && near(hit.observedAmount, NETFLIX_OBSERVED),
     'Sep 17 Netflix debit on chequing-b settles the Sep 17 netflix occurrence as same-day');
-  ok(!(report.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
-    'the Netflix debit does not represent spotify');
+  ok(!(report.representedEventCandidates || []).some(c =>
+      c && c.id === SPOTIFY_ID && c.providerTransactionId != null),
+    'the Netflix debit does not represent spotify as a bank-payee identity');
+  const spotifyTrust = (report.representedEventCandidates || [])
+    .find(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE);
+  ok(spotifyTrust && spotifyTrust.identity === SCHEDULE_TRUST
+      && spotifyTrust.providerTransactionId == null,
+    'on Sep 17 Spotify is independently schedule-trusted, not from the Netflix debit');
   const row = ((report.currentPeriodActuals || {}).representedActuals || [])
     .find(r => r && r.id === NETFLIX_ID && r.date === NETFLIX_DUE);
   ok(row && row.transactionId && near(row.actual, NETFLIX_OBSERVED)
       && row.postedOn === NETFLIX_DUE,
     'representedActuals carries the observed Netflix debit against netflix@Sep 17');
-  ok(!((report.currentPeriodActuals || {}).representedActuals || [])
-      .some(r => r && r.id === SPOTIFY_ID),
-    'representedActuals does not name spotify from the Netflix debit');
+  ok(((report.currentPeriodActuals || {}).representedActuals || [])
+      .some(r => r && r.id === SPOTIFY_ID && r.date === SPOTIFY_DUE && !r.transactionId),
+    'representedActuals names spotify from schedule-trust, not from the Netflix debit');
   const advice = recommendFromReport(report, NETFLIX_DUE);
   const bill = actionBill(advice, NETFLIX_ID, NETFLIX_DUE)
     || calendarBill(advice, NETFLIX_ID, NETFLIX_DUE);
@@ -487,8 +522,8 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
       && bill && near(bill.planned != null ? bill.planned : bill.amount, NETFLIX_PLANNED)
       && near(bill.actual != null ? bill.actual : 0, NETFLIX_OBSERVED),
     'matching Netflix evidence marks PAID at the observed amount; planned $26.87 stays');
-  ok(billUnpaid(advice, SPOTIFY_ID, NETFLIX_DUE),
-    'Spotify stays still-due / PENDING after the Netflix debit settles netflix');
+  ok(billPaid(advice, SPOTIFY_ID, SPOTIFY_DUE),
+    'on Sep 17 Spotify is PAID via schedule-trust while Netflix settles from its own debit');
   const wrongPayee = observeWith(identity, NETFLIX_DUE, [netflixTx({
     id: 9642, payee: 'UNKNOWN DEBIT', original_name: 'UNKNOWN DEBIT',
   })]);
@@ -497,8 +532,11 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
   const spotifyPayee = observeWith(identity, NETFLIX_DUE, [spotifyTx()]);
   ok(!(spotifyPayee.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
     'Spotify payee on chequing-b does not settle netflix');
-  ok(!(spotifyPayee.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
-    'Spotify payee does not invent a spotify settlement');
+  const spotifyPayeeHit = (spotifyPayee.representedEventCandidates || [])
+    .find(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE);
+  ok(spotifyPayeeHit && spotifyPayeeHit.identity === SCHEDULE_TRUST
+      && spotifyPayeeHit.providerTransactionId == null,
+    'a Lunch Money Spotify payee is not Spotify identity; settlement is schedule-trust');
   ok(billUnpaid(recommendFromReport(spotifyPayee, NETFLIX_DUE), NETFLIX_ID, NETFLIX_DUE),
     'a Spotify debit leaves Netflix still-due / PENDING');
   const wrongAccount = observeWith(identity, NETFLIX_DUE, [netflixTx({
@@ -602,6 +640,91 @@ console.log('\n=== 5. YouTube schedule-trust is paid on the due date without a b
     'the day before the due date YouTube remains still-due');
 }
 
+console.log('\n=== 5b. Spotify schedule-trust is paid on the due date without an LM Spotify payee ===');
+{
+  ok(near(SPOTIFY_PLANNED, 26.87) && near(SPOTIFY_PLANNED, NETFLIX_PLANNED),
+    'independent scheduled amount is $26.87; amount is not identity');
+  const liveSpotify = ((liveData().plan && liveData().plan.bills) || [])
+    .find(b => b && b.id === SPOTIFY_ID);
+  ok(liveSpotify && liveSpotify.day === 17 && near(liveSpotify.amount, SPOTIFY_PLANNED),
+    'live plan.bills spotify.day stays 17; schedule-trust uses the existing Forecast day');
+  const identity = identityDoc();
+  const observeSrc = sourceText(fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'provider-observe.js'), 'utf8'));
+  ok(!/apple\.com|itunes|gmail|imap|scrape/i.test(observeSrc),
+    'provider-observe does not invent Apple scrape or Gmail fetch for Spotify');
+  const missing = observeWith(identityWithout(identity, [SPOTIFY_ID]), SPOTIFY_DUE, []);
+  ok(!(missing.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'without the spotify rule, due-date observe does not invent a Spotify settlement');
+  ok(billUnpaid(recommendFromReport(missing, SPOTIFY_DUE), SPOTIFY_ID, SPOTIFY_DUE),
+    'without the spotify rule the Sep 17 bill stays still-due / PENDING');
+  const before = observeWith(identity, SPOTIFY_BEFORE, []);
+  ok(!spotifyRepresented(before, SPOTIFY_DUE)
+      && !(before.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'Spotify is not represented the day before it is due');
+  ok(billUnpaid(recommendFromReport(before, SPOTIFY_BEFORE), SPOTIFY_ID, SPOTIFY_DUE),
+    'the day before the due date Spotify remains still-due');
+  const earlyNetflix = observeWith(identity, SPOTIFY_BEFORE, [netflixTx({
+    id: 9644, date: SPOTIFY_BEFORE,
+  })]);
+  ok((earlyNetflix.representedEventCandidates || [])
+      .some(c => c && c.id === NETFLIX_ID && c.date === NETFLIX_DUE),
+    'Netflix identity-plus-evidence is unchanged: a Sep 16 WEEKLY debit can early-pay netflix');
+  ok(!(earlyNetflix.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'Netflix early-pay before the 17th does not schedule-trust Spotify');
+  ok(billUnpaid(recommendFromReport(earlyNetflix, SPOTIFY_BEFORE), SPOTIFY_ID, SPOTIFY_DUE),
+    'Spotify stays still-due on Sep 16 while Netflix may already be evidenced');
+  const emptyDue = observeWith(identity, SPOTIFY_DUE, []);
+  const hit = (emptyDue.representedEventCandidates || [])
+    .find(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE);
+  ok(hit && hit.identity === SCHEDULE_TRUST
+      && hit.settlesWhen === SCHEDULE_TRUST
+      && hit.providerTransactionId == null
+      && near(hit.observedAmount, SPOTIFY_PLANNED),
+    'on the due date Spotify is represented from the schedule, not a bank tx');
+  ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
+    'empty due-date observe does not settle Netflix; Netflix still needs WEEKLY evidence');
+  ok(billUnpaid(recommendFromReport(emptyDue, SPOTIFY_DUE), NETFLIX_ID, NETFLIX_DUE),
+    'Netflix stays still-due / unverified without matching evidence on Sep 17');
+  const row = ((emptyDue.currentPeriodActuals || {}).representedActuals || [])
+    .find(r => r && r.id === SPOTIFY_ID && r.date === SPOTIFY_DUE);
+  ok(row && near(row.actual, SPOTIFY_PLANNED) && !row.transactionId,
+    'representedActuals names spotify@Sep 17 without a transactionId');
+  const paypalNoise = observeWith(identity, SPOTIFY_DUE, [{
+    id: 9702, account_id: 1001, date: SPOTIFY_DUE, amount: SPOTIFY_PLANNED,
+    is_pending: false, payee: 'PAYPAL', original_name: 'SPOTIFY AB',
+  }]);
+  const paypalHit = (paypalNoise.representedEventCandidates || [])
+    .find(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE);
+  ok(paypalHit && paypalHit.identity === SCHEDULE_TRUST
+      && paypalHit.providerTransactionId == null,
+    'a PayPal / Spotify AB row is not used as Spotify identity');
+  ok(!(paypalNoise.representedEventCandidates || []).some(c =>
+      c && c.id === SPOTIFY_ID && c.providerTransactionId != null),
+    'PayPal cadence is trusted without requiring an LM Spotify payee match');
+  const afterDue = observeWith(identity, '2026-09-18', []);
+  ok((afterDue.representedEventCandidates || [])
+      .some(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE
+        && c.identity === SCHEDULE_TRUST && c.providerTransactionId == null),
+    'on/after the due date schedule-trust still emits the Sep 17 Spotify settlement');
+  const advice = recommendFromReport(emptyDue, SPOTIFY_DUE);
+  ok(billPaid(advice, SPOTIFY_ID, SPOTIFY_DUE),
+    'schedule-trust on the due date marks Spotify PAID');
+
+  const remaining = adviceRow => {
+    const bills = (((adviceRow && adviceRow.currentPeriodAction) || {}).bills) || [];
+    return bills
+      .filter(row => row && row.settlement !== 'represented')
+      .reduce((sum, row) => sum + Math.abs(Number(row.remaining != null
+        ? row.remaining : row.planned) || 0), 0);
+  };
+  const beforeRemain = remaining(recommendFromReport(missing, SPOTIFY_DUE));
+  const afterRemain = remaining(advice);
+  ok(near(roundCent(beforeRemain - afterRemain), SPOTIFY_PLANNED),
+    'matching Spotify schedule-trust releases independently the planned $26.87',
+    `${beforeRemain} → ${afterRemain} vs ${SPOTIFY_PLANNED}`);
+}
+
 console.log('\n=== 6. independent remaining-bill deltas ===');
 {
   const identity = identityDoc();
@@ -633,7 +756,8 @@ console.log('\n=== 7. pages do not special-case these merchants ===');
 {
   const planSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public', 'plan.js'), 'utf8'));
   ok(!/Fortisbc Energy|MONTHLY ACCOUNT FEE|YouTube Premium|SHAW CABLE TV BPY/.test(planSrc)
-      && !/\bNetflix\b/.test(planSrc),
+      && !/\bNetflix\b/.test(planSrc)
+      && !/\bSpotify\b/.test(planSrc),
     'plan.js only prints; it does not special-case these identities');
 }
 
@@ -674,6 +798,25 @@ console.log('\n=== 8. schedule-trust uses the financial as-of, never fetchedAt =
     'representedActuals names youtube-premium@Sep 2 from schedule-trust, not a bank tx');
   ok(billPaid(recommendFromReport(due, YOUTUBE_DUE), YOUTUBE_ID, YOUTUBE_DUE),
     'schedule-trust on the financial due date marks YouTube PAID');
+
+  const spotifyStale = readyObserve(identity, SPOTIFY_BEFORE, '2026-09-18', []);
+  ok(O.householdFinancialDate({}, spotifyStale.observations) === SPOTIFY_BEFORE,
+    'provider cash evidence independently dates the Spotify financial as-of as Sep 16');
+  ok(!spotifyRepresented(spotifyStale, SPOTIFY_DUE)
+      && !((spotifyStale.currentPeriodActuals || {}).representedActuals || [])
+        .some(r => r && r.id === SPOTIFY_ID),
+    'financial as-of before the 17th leaves Spotify unrepresented even if fetchedAt is later');
+  ok(billUnpaid(recommendFromReport(spotifyStale, SPOTIFY_BEFORE), SPOTIFY_ID, SPOTIFY_DUE),
+    'Budget still shows Spotify still-due when the financial date is Sep 16');
+  const spotifyDue = readyObserve(identity, SPOTIFY_DUE, '2026-09-18', []);
+  ok(O.householdFinancialDate({}, spotifyDue.observations) === SPOTIFY_DUE,
+    'provider cash evidence independently dates the Spotify financial as-of as Sep 17');
+  ok(spotifyRepresented(spotifyDue, SPOTIFY_DUE)
+      && ((spotifyDue.currentPeriodActuals || {}).representedActuals || [])
+        .some(r => r && r.id === SPOTIFY_ID && r.date === SPOTIFY_DUE && !r.transactionId),
+    'both observe surfaces settle Spotify when the financial date reaches the due date');
+  ok(billPaid(recommendFromReport(spotifyDue, SPOTIFY_DUE), SPOTIFY_ID, SPOTIFY_DUE),
+    'schedule-trust on the financial due date marks Spotify PAID');
 }
 
 if (failures) {
