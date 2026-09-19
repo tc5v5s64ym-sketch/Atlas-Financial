@@ -21,6 +21,7 @@ const IDS = [
   'icbc-aug15-outstanding',
   'resp-aug15-outstanding',
 ];
+const SCHEDULE_TRUST = 'schedule-trust-on-due';
 const EXPECTED = 282.87;
 let failures = 0;
 
@@ -75,6 +76,16 @@ function candidatesFor(transactions) {
   return observe(payload).representedEventCandidates || [];
 }
 
+function isScheduleTrust(candidate) {
+  return !!(candidate && (candidate.settlesWhen === SCHEDULE_TRUST
+    || candidate.identity === SCHEDULE_TRUST
+    || candidate.postingDateRelation === SCHEDULE_TRUST));
+}
+
+function bankPayeeCandidates(candidates) {
+  return (candidates || []).filter(candidate => !isScheduleTrust(candidate));
+}
+
 console.log('=== automatic-payment settlement success ===');
 const report = observe(fixture);
 const candidates = report.representedEventCandidates || [];
@@ -85,15 +96,21 @@ const afterReserve = relevantReserve(result.data.plan);
 ok(near(beforeReserve, EXPECTED),
   'the three unresolved occurrences reserve $282.87 before trusted posting evidence',
   String(beforeReserve));
-ok(candidates.length === 3 && IDS.every(id => candidates.some(candidate => candidate.id === id)),
+const bankHits = bankPayeeCandidates(candidates);
+ok(bankHits.length === 3 && IDS.every(id => bankHits.some(candidate => candidate.id === id)),
   'all three sanitized posted transactions identify their exact reserved occurrence',
-  candidates.map(candidate => candidate.id).join(', '));
-ok(candidates.every(candidate => candidate.date === '2026-08-16'
+  bankHits.map(candidate => candidate.id).join(', '));
+ok(bankHits.every(candidate => candidate.date === '2026-08-16'
     && candidate.postingDate === '2026-08-17'
     && candidate.postingDateRelation === 'weekend-next-business-day'
     && candidate.direction === 'debit'
     && candidate.amountNotUsed === true),
   'each identity uses debit direction and the bounded weekend-to-next-business-day relation');
+ok((candidates || []).filter(isScheduleTrust).every(candidate =>
+      candidate.providerTransactionId == null
+      && candidate.direction == null
+      && (candidate.id === 'spotify' || candidate.id === 'youtube-premium')),
+  'named schedule-trust exceptions are not bank-payee automatic-payment identities');
 ok(near(afterReserve, 0) && near(beforeReserve - afterReserve, EXPECTED),
   'the live Forecast releases exactly $282.87 and does not reserve the three obligations again',
   `${beforeReserve} -> ${afterReserve}`);
@@ -157,7 +174,12 @@ const amountOnly = candidatesFor([{
   is_pending: false,
   payee: 'Fixture amount-only debit',
 }]);
-ok(amountOnly.length === 0, 'amount and date alone never establish identity');
+ok(bankPayeeCandidates(amountOnly).length === 0,
+  'amount and date alone never establish identity');
+ok(amountOnly.filter(isScheduleTrust).every(candidate =>
+      candidate.providerTransactionId == null
+      && (candidate.id === 'spotify' || candidate.id === 'youtube-premium')),
+  'schedule-trust on a due date is not amount-and-date bank-payee identity');
 
 const changedAmount = candidatesFor([Object.assign({}, bcaa, { id: 8204, amount: 103 })]);
 ok(changedAmount.some(candidate => candidate.id === 'bcaa-aug15-outstanding'
