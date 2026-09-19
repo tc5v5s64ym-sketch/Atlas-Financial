@@ -474,6 +474,9 @@ const LIVE_B = 200;
 const LIVE_SAVINGS = 50;
 const LIVE_SUM = roundCent(LIVE_A + LIVE_B + LIVE_SAVINGS);
 const LIVE_CHEQUING = roundCent(LIVE_A + LIVE_B);
+const OVERLAY_DATED_CHEQUING = roundCent(600 + 300);
+const OVERLAY_MORNING = roundCent(OVERLAY_DATED_CHEQUING + CHILD);
+const OVERLAY_MORNING_WITH_GROCERY = roundCent(OVERLAY_DATED_CHEQUING + CHILD - GROCERY);
 
 function overlayCanonical() {
   return {
@@ -588,12 +591,12 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
     'complete-gap fixture still overlays mid-period live cash');
   ok(completeSnap && completeSnap.periodStart === PAYDAY
       && completeSnap.asOf === PAYDAY
-      && near(completeSnap.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeSnap.opening, OVERLAY_MORNING_WITH_GROCERY)
       && !near(completeSnap.opening, LIVE_SUM)
-      && !near(completeSnap.opening, INDEPENDENT_MORNING),
+      && !near(completeSnap.opening, OVERLAY_MORNING),
     'overlayLiveState retains the grocery-adjusted complete paydaySnapshot, not live cash or the no-grocery walk');
   ok(completeActive && completeActive.openingKnown === true
-      && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeActive.opening, OVERLAY_MORNING_WITH_GROCERY)
       && near(completeActive.available, PERIOD_INCOME)
       && near(completeActive.afterRemainingBills,
         PERIOD_INCOME - REMAINING_UNPAID)
@@ -756,12 +759,12 @@ console.log('\n=== 9. observer earns paydayGapComplete; overlay consumes the pro
     'complete observe→overlay path still overlays mid-period live cash');
   ok(completeSnap && completeSnap.periodStart === PAYDAY
       && completeSnap.asOf === PAYDAY
-      && near(completeSnap.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeSnap.opening, OVERLAY_MORNING_WITH_GROCERY)
       && !near(completeSnap.opening, LIVE_SUM)
-      && !near(completeSnap.opening, INDEPENDENT_MORNING),
+      && !near(completeSnap.opening, OVERLAY_MORNING),
     'produced complete packet retains the grocery-adjusted paydaySnapshot, not live cash');
   ok(completeActive && completeActive.openingKnown === true
-      && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeActive.opening, OVERLAY_MORNING_WITH_GROCERY)
       && near(completeActive.available, PERIOD_INCOME)
       && near(completeActive.afterRemainingBills,
         PERIOD_INCOME - REMAINING_UNPAID)

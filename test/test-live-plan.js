@@ -20,6 +20,7 @@ const Assistant = require('../scripts/assistant-packet.js');
 const Forecast = require('../public/forecast.js');
 const Chequing = require('../public/forecast-chequing.js');
 const { sourceText } = require('./test-source-text');
+const { independentSpendableOpening } = require('./test-helpers');
 
 const ROOT = path.join(__dirname, '..');
 const DATA = path.join(ROOT, 'data.json');
@@ -389,8 +390,11 @@ console.log('\n=== 4. available credit is never cash; transfers are not income =
   ok(result.refused.some(r => r.reason === 'credit-capacity-not-cash'),
     'available-credit / limit facts are refused as credit-capacity-not-cash');
   const spendable = O.spendableCashFromObservations(result.report.observations);
-  ok(near(spendable, cashBefore),
-    'observer spendable cash is the mapped cash accounts, not card availability');
+  const independentPostedCash = independentDatedCash(result.data.plan);
+  ok(near(spendable, independentPostedCash)
+      && !near(spendable, cashBefore)
+      && near(Forecast.startingCashAmount(result.data.plan), cashBefore),
+    'observer posted-cash evidence includes designated savings; Forecast opening stays chequing-only');
   filesUnchanged('credit and transfer');
 }
 
@@ -1372,7 +1376,7 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
   const SYNTHETIC_LIVE_B = -80.07;
   const SYNTHETIC_LIVE_SAVINGS = 1.33;
   const independentLeftover = Math.round(
-    (SYNTHETIC_LIVE_A + SYNTHETIC_LIVE_B + SYNTHETIC_LIVE_SAVINGS) * 100
+    (SYNTHETIC_LIVE_A + SYNTHETIC_LIVE_B) * 100
   ) / 100;
   const canonical = clone(liveData);
   const openingCash = Forecast.startingCashAmount(canonical.plan);
@@ -1475,7 +1479,7 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
     'posted cash overlays the complete live observation');
   const liveCash = Forecast.startingCashAmount(result.data.plan);
   ok(near(liveCash, independentLeftover),
-    'leftover cash is the independent live posted sum',
+    'leftover cash is the independent live chequing sum',
     String(liveCash));
   ok(!near(liveCash, openingCash),
     'leftover cash is not the dated opening');
@@ -1494,7 +1498,7 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
     targetBuffer: canonical.plan.defaults.targetBuffer,
   });
   ok(near(advice.paydayAllocation.available, independentLeftover),
-    'payday leftover copies live posted cash, not the dated opening');
+    'payday leftover copies live chequing cash, not the dated opening');
   const due = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayDue) || [];
   const paid = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayPaid) || {};
   ok(due.some(row => row.id === 'tdfees' && row.date === FEE_DAY_AS_OF),
@@ -1526,7 +1530,7 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
   ok((served.plan.opening.representedEvents || []).length > 0,
     'server representedEvents are not emptied');
   ok(near(Forecast.startingCashAmount(served.plan), independentLeftover),
-    'served leftover stays the live posted sum');
+    'served leftover stays the live chequing sum');
 
   const withUnknownIncome = clone(canonical);
   withUnknownIncome.plan = Object.assign({}, withUnknownIncome.plan, {
@@ -1549,7 +1553,7 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
       .some(row => row.id === 'same-day-unknown-income'),
     'synthetic same-day income is not labelled represented');
   ok(near(Forecast.startingCashAmount(unknownIncome.data.plan), independentLeftover),
-    'unresolved same-day income does not discard the live posted sum');
+    'unresolved same-day income does not discard the live chequing sum');
   filesUnchanged('unposted same-day bill overlay');
 }
 
@@ -1749,6 +1753,10 @@ function independentLaterIncome(plan, openingAsOf, through) {
 function independentDatedCash(plan) {
   const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
   return Math.round(rows.reduce((s, r) => s + (Number(r && r.value) || 0), 0) * 100) / 100;
+}
+
+function independentChequingCash(plan) {
+  return Math.round(independentSpendableOpening(plan) * 100) / 100;
 }
 
 function money2en(n) {
@@ -2022,19 +2030,21 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
     'Forecast does not publish opening-gap funding as a current claim while operatingPlan is unavailable');
 
   const datedCash = independentDatedCash(served.plan);
+  const datedChequing = independentChequingCash(served.plan);
   const laterIncome = independentLaterIncome(served.plan, openingAsOf, LIVE_FAILURE_AS_OF);
   const laterSum = Math.round(laterIncome.reduce((s, r) => s + r.amount, 0) * 100) / 100;
-  const mixedAvailable = Math.round((datedCash + laterSum) * 100) / 100;
-  ok(near(datedCash, independentDatedCash(canonical.plan)),
+  const mixedAvailable = Math.round((datedChequing + laterSum) * 100) / 100;
+  ok(near(datedCash, independentDatedCash(canonical.plan))
+      && near(datedChequing, independentChequingCash(canonical.plan)),
     'fail-closed overlay leaves dated opening cash untouched');
   ok(laterIncome.some(r => r.id === 'childBenefit' && r.date === '2026-08-20')
       && laterIncome.some(r => r.id === 'payroll' && r.date === '2026-08-28')
       && laterIncome.some(r => r.id === 'amandaSalaryMonthEnd' && r.date === '2026-08-31'),
     'independent calendar: child benefit Aug 20, Seaspan Aug 28, Amanda Aug 31 are after the dated opening');
-  ok(laterSum > 0 && mixedAvailable > datedCash && !near(mixedAvailable, datedCash),
+  ok(laterSum > 0 && mixedAvailable > datedChequing && !near(mixedAvailable, datedChequing),
     'dated cash plus those later paychecks is a different current-looking Available mix');
-  ok(near(active.currentBalance, datedCash) && active.openingKnown === true,
-    'active waterfall opening is the dated opening cash, not a later invented balance');
+  ok(near(active.currentBalance, datedChequing) && active.openingKnown === true,
+    'active waterfall opening is the dated chequing opening, not a later invented balance');
   ok(active.incomeAdded == null && active.available == null
       && (!active.income || active.income.length === 0),
     'Forecast does not add later-dated income as arriving or publish Available as dated cash plus arriving');
@@ -2044,8 +2054,8 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && active.budgetHold == null,
     'Forecast does not publish Household Budget planned dollars or leftover as the current waterfall');
   const observedNet = observedCashNet(served.liveOverlay && served.liveOverlay.observedCash);
-  ok(near(active.currentBalance, datedCash)
-      && (observedNet == null || near(observedNet, datedCash)
+  ok(near(active.currentBalance, datedChequing)
+      && (observedNet == null || near(observedNet, datedChequing)
         || !near(active.currentBalance, observedNet)),
     'Forecast does not mix live observedCash into the dated opening');
 
@@ -2077,7 +2087,7 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
   ok(!waterfallHtml.includes(money2en(mixedAvailable))
       && !waterfallHtml.includes(waterfall.money2(mixedAvailable)),
     'Available is not published as dated cash plus arriving Aug 20/28/31 paychecks');
-  ok(waterfallHtml.includes(waterfall.money2(datedCash)),
+  ok(waterfallHtml.includes(waterfall.money2(datedChequing)),
     'dated opening cash may still print as lookback Current Balance');
   ok(!/Spending cycle:/.test(waterfallHtml)
       && !/planned this period/.test(waterfallHtml)
@@ -2097,7 +2107,7 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && /data-current-operating="unavailable"/.test(surfaceHtml)
       && /Last trusted opening/.test(surfaceHtml)
       && /Dated balance — not current/.test(surfaceHtml)
-      && surfaceHtml.includes(surface.money2(datedCash)),
+      && surfaceHtml.includes(surface.money2(datedChequing)),
     'Plan operating surface fail-closes at the page with one dated/non-current opening');
   ok(!/Current Balance/.test(surfaceHtml)
       && !/data-calendar-waterfall/.test(surfaceHtml)
@@ -2558,7 +2568,8 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     (Forecast.startingCashAmount(canonical.plan) + OWNER_CONFIRMED_MONTH_END + SYNTHETIC_PAYROLL) * 100
   ) / 100;
   const datedCash = independentDatedCash(canonical.plan);
-  ok(!near(expectedCash, datedCash) && expectedCash > datedCash,
+  const datedChequing = independentChequingCash(canonical.plan);
+  ok(!near(expectedCash, datedChequing) && expectedCash > datedChequing,
     'live posted cash with identified deposits is not the dated opening');
 
   const extraFor = (transactions, cashAdd) => ({

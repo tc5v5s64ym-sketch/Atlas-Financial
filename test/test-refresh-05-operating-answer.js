@@ -19,6 +19,7 @@ const C = require('../scripts/canonical-refresh.js');
 const Live = require('../scripts/live-plan.js');
 const OA = require('../scripts/operating-answer.js');
 const Forecast = require('../public/forecast.js');
+const { independentSpendableOpening } = require('./test-helpers');
 
 const ROOT = path.join(__dirname, '..');
 const DATA = path.join(ROOT, 'data.json');
@@ -86,8 +87,7 @@ function setCash(data, id, value) {
   row.value = value;
 }
 function independentSpendable(plan) {
-  return ((plan && plan.startingCash && plan.startingCash.breakdown) || [])
-    .reduce((sum, row) => sum + (Number(row.value) || 0), 0);
+  return independentSpendableOpening(plan);
 }
 function completePendingCoverage() {
   return {
@@ -633,7 +633,7 @@ console.log('\n=== H. approved canonical apply projects Forecast on the written 
     'approved apply left savings unchanged');
   const expectedSpendable = independentSpendable(written.plan);
   ok(near(Forecast.startingCashAmount(written.plan), expectedSpendable),
-    'written starting cash independently matches the sum of cash rows');
+    'written starting cash independently matches household chequing');
   ok(near(
     Forecast.startingCashAmount(data.plan) - Forecast.startingCashAmount(written.plan),
     SYNTHETIC_CURRENT - SYNTHETIC_OBSERVED

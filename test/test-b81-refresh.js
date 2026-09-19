@@ -13,6 +13,7 @@ const { execFileSync } = require('child_process');
 const O = require('../scripts/provider-observe.js');
 const C = require('../scripts/canonical-refresh.js');
 const Forecast = require('../public/forecast.js');
+const { independentSpendableOpening } = require('./test-helpers');
 
 const ROOT = path.join(__dirname, '..');
 const LIVE_DATA = path.join(ROOT, 'data.json');
@@ -288,12 +289,10 @@ console.log('\n=== I. Forecast consumes the canonical write, not a parallel feed
   const after = JSON.parse(fs.readFileSync(dest, 'utf8'));
   const beforeCash = Forecast.startingCashAmount(liveData.plan);
   const afterCash = Forecast.startingCashAmount(after.plan);
-  const independentBefore = liveData.plan.startingCash.breakdown
-    .reduce((s, r) => s + Number(r.value), 0);
-  const independentAfter = after.plan.startingCash.breakdown
-    .reduce((s, r) => s + Number(r.value), 0);
-  ok(near(beforeCash, independentBefore), 'pre-write Forecast cash matches the breakdown sum');
-  ok(near(afterCash, independentAfter), 'post-write Forecast cash matches the new breakdown sum');
+  const independentBefore = independentSpendableOpening(liveData.plan);
+  const independentAfter = independentSpendableOpening(after.plan);
+  ok(near(beforeCash, independentBefore), 'pre-write Forecast cash matches household chequing');
+  ok(near(afterCash, independentAfter), 'post-write Forecast cash matches the new household chequing');
   ok(near(afterCash - beforeCash, -10),
     'Forecast moved −$10, the Chequing B correction, not a second feed');
   ok(!Object.prototype.hasOwnProperty.call(after.plan.startingCash, 'amount'),

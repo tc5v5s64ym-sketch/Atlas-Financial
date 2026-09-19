@@ -157,7 +157,8 @@ function regenerateComputedRows(data, csvText, opts) {
   put('Immediate liquidity total', W('LIQUIDITY', 'Immediate liquidity total', 'Net', 'CAD',
     n2(immediateLiquidity), {
       note: `Derived: SPENDABLE household cash ${n2(spendable)} plus revolving credit ${n2(util.totalAvailable)}. `
-        + `Spendable means Chequing A, Chequing B and Savings only — Amanda's pass-through account, the staging `
+        + `Spendable means Chequing A and Chequing B only — designated Savings / EMERGENCY SAVING stays as reserve `
+        + `evidence, not this spendable total. Amanda's pass-through account, the staging `
         + `account and the US holiday accounts are excluded, which is why this is far below the old figure that `
         + `summed all five TD accounts. Most of what is left is borrowed` }));
 

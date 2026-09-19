@@ -4,8 +4,10 @@
  * repeating the dated waterfall with eleven unavailable cards.
  *
  * Uses the incumbent dated opening on this main (data.json) plus the same
- * fail-closed overlay fixture path as test-live-plan.js. Independent cash
- * is the startingCash breakdown sum (L-002); live overlay cents are not
+ * fail-closed overlay fixture path as test-live-plan.js. Independent cash:
+ * the startingCash breakdown sum still includes designated savings as
+ * reserve evidence (L-002); Forecast dated currentBalance / printed last
+ * trusted opening is household chequing only. Live overlay cents are not
  * the specification (L-006). Forecast remains the calculation authority.
  *
  * `node test/test-plan-unavailable-surface.js`
@@ -172,6 +174,7 @@ const liveData = JSON.parse(fs.readFileSync(DATA, 'utf8'));
 const composer = loadComposer();
 const OPENING = String(liveData.plan.opening.asOf);
 const DATED_CASH = independentDatedCash(liveData.plan);
+const CHEQUING_CASH = independentChequing(liveData.plan);
 const BELL = independentBell(liveData.plan);
 const NOTE = 'Current plan unavailable. The dated opening is stale.';
 
@@ -182,6 +185,9 @@ console.log('=== 1. incumbent dated opening is still Aug 19 / $939.62 ===');
   ok(near(DATED_CASH, 939.62),
     'independent startingCash breakdown still sums to $939.62',
     String(DATED_CASH));
+  ok(near(CHEQUING_CASH, 939.04) && !near(CHEQUING_CASH, DATED_CASH),
+    'independent household chequing is $939.04; designated savings stays on the breakdown',
+    String(CHEQUING_CASH));
   ok(BELL && near(Number(BELL.amount), 121) && BELL.day === 15 && BELL.needsDate !== true,
     'independent Bell row is still $121, now dated on the 15th');
 }
@@ -197,8 +203,8 @@ console.log('\n=== 2. Forecast unavailable walk keeps the dated opening ===');
   });
   ok(advice.operatingPlanUnavailable === true && advice.defaultView.asOf === OPENING,
     'Forecast keeps the dated opening as-of; it does not invent a later as-of');
-  ok(near(Number(advice.defaultView.currentBalance), DATED_CASH),
-    'Forecast dated currentBalance is the independent opening cash');
+  ok(near(Number(advice.defaultView.currentBalance), CHEQUING_CASH),
+    'Forecast dated currentBalance is the independent chequing opening');
   ok(!(advice.defaultView.undatedBills || []).some(row => row && row.id === 'bell'),
     'Forecast no longer publishes Bell as an undated needsDate row');
 }
@@ -241,7 +247,7 @@ console.log('\n=== 3. real Plan rendering path: compact unavailable state ===');
     asOf: OPENING,
   });
 
-  ok(advice.defaultView.asOf === OPENING && near(Number(advice.defaultView.currentBalance), DATED_CASH),
+  ok(advice.defaultView.asOf === OPENING && near(Number(advice.defaultView.currentBalance), CHEQUING_CASH),
     'unavailable Forecast result retains the exact dated opening/as-of');
   ok(/data-unavailable-primary/.test(html)
       && /data-current-operating="unavailable"/.test(html)
@@ -257,9 +263,9 @@ console.log('\n=== 3. real Plan rendering path: compact unavailable state ===');
   ok(/data-last-trusted-opening/.test(html)
       && /Last trusted opening/.test(html)
       && /Dated balance — not current/.test(html)
-      && html.includes(composer.money2(DATED_CASH))
+      && html.includes(composer.money2(CHEQUING_CASH))
       && /August 19/.test(html),
-    'dated cash is explicitly dated/non-current and keeps the independent $939.62 / Aug 19');
+    'dated cash is explicitly dated/non-current and keeps the independent chequing opening / Aug 19');
   ok(!/data-calendar-waterfall/.test(html)
       && !/data-calendar-period-picker/.test(html)
       && !/>This payday</.test(html)
@@ -285,7 +291,8 @@ console.log('\n=== 3. real Plan rendering path: compact unavailable state ===');
     'refresh/observation timestamp cannot be mistaken for financial as-of');
   ok(!/needs confirmation/.test(html),
     'unavailable surface does not keep a stale Bell needs-confirmation row');
-  ok(html.includes(composer.money2(DATED_CASH))
+  ok(html.includes(composer.money2(CHEQUING_CASH))
+      && !html.includes(composer.money2(DATED_CASH))
       && !html.includes('August 31 opening')
       && advice.defaultView.asOf === '2026-08-19',
     'no later as-of is invented on the rendered page');
@@ -353,7 +360,7 @@ console.log('\n=== 5. trusted control keeps the normal This payday waterfall ===
       && !/data-unavailable-primary/.test(html)
       && !/data-last-trusted-opening/.test(html),
     'trusted operating plan still prints This payday / pay-period / waterfall experience');
-  ok(near(Number(trusted.defaultView.currentBalance), DATED_CASH),
+  ok(near(Number(trusted.defaultView.currentBalance), CHEQUING_CASH),
     'trusted control does not move current figures');
   const independentPostedChequing = independentChequing(liveData.plan);
   ok(html.includes(composer.money2(independentPostedChequing))
