@@ -7080,6 +7080,39 @@
     return roundCent(loC / 100);
   }
 
+  // Household reprint contract for Prepare Ahead. Amounts stay the
+  // incumbent protectedPath wanted / allocated / movable figures.
+  // allocated is the keep-in-chequing cash actually retained; wanted is
+  // the walk need and is not the reprint; movable is extra-debt
+  // eligibility after the hold. designatedSavingsBacking is not-used:
+  // actual Savings evidence is not this amount and does not fund it.
+  const PROTECTED_PATH_IDENTITY =
+    'keep-in-chequing leftover after obligations and essentials that cannot be removed while protectedPlanCheck holds';
+  function protectedPathUnavailable(reason) {
+    const why = reason || 'Prepare Ahead protection is unavailable.';
+    return {
+      wanted: null,
+      allocated: null,
+      movable: null,
+      status: 'unavailable',
+      reason: why,
+      identity: PROTECTED_PATH_IDENTITY,
+      source: 'Forecast.paydayAllocation',
+      designatedSavingsBacking: 'not-used',
+    };
+  }
+  function protectedPathPacket(wanted, allocated, movable) {
+    return {
+      wanted: roundCent(wanted),
+      allocated: roundCent(allocated),
+      movable: roundCent(movable),
+      status: 'calculated',
+      identity: PROTECTED_PATH_IDENTITY,
+      source: 'Forecast.paydayAllocation',
+      designatedSavingsBacking: 'not-used',
+    };
+  }
+
   /* ------------------------------------------- payday allocation waterfall */
   // What current household cash must do. Forecast remains the only planner.
   // Opening spendable cash is startingCashAmount (chequing-only when
@@ -7632,11 +7665,8 @@
       },
       // Prepare Ahead: keep-in-chequing leftover the master walk still
       // needs. Not additionalCashRequired and not a Savings transfer.
-      protectedPath: {
-        wanted: roundCent(pathWanted),
-        allocated: allocatedPath,
-        movable: roundCent(movable),
-      },
+      // Household reprint copies allocated when status is calculated.
+      protectedPath: protectedPathPacket(pathWanted, allocatedPath, movable),
       movable: roundCent(movable),
       futureCosts: futureAllocations.filter(r => r.id !== 'household-path'),
       extraDebt: {
@@ -7772,9 +7802,10 @@
   // When the live overlay marks the current operating plan unavailable, keep
   // the dated-opening walk (do not invent a later as-of) but withhold the
   // current/actionable claims: weekly spend permission, current-period action,
-  // extra-debt instruction, the active calendar leftover chain (later income
-  // as arriving, Available as dated cash plus that income, Household Budget /
-  // bills / extra-debt leftover as today's waterfall), and any later calendar
+  // extra-debt instruction, Prepare Ahead / protectedPath as a current-cash
+  // hold, the active calendar leftover chain (later income as arriving,
+  // Available as dated cash plus that income, Household Budget / bills /
+  // extra-debt leftover as today's waterfall), and any later calendar
   // half whose opening was lost because that current period was unavailable.
   // Dated-opening cash may remain as lookback. Do not mix live observedCash
   // into this walk.
@@ -7799,6 +7830,7 @@
         target: null,
         consequence: null,
       };
+      result.paydayAllocation.protectedPath = protectedPathUnavailable(note);
       result.paydayAllocation.spendPermission = null;
       result.paydayAllocation.weeklyCap = null;
     }
