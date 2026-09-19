@@ -4952,10 +4952,24 @@
     return !rowIsOnceItem(plan, event.id);
   }
 
+  // Calendar Paid reprints Forecast settlement already named on
+  // representedActuals even when representedKeySet drops the occurrence.
+  // representedKeySet is the cash-omit set: past-due same-period names
+  // fail prepaid (date <= asOf) and are omitted unless they also sit on
+  // asOf, the priorAsOf window, or a carried-once stub. Schedule-trust
+  // settles in currentPeriodActuals.representedActuals. Do not invent
+  // an amount; observedActual still reads the packet row.
+  function calendarOccurrenceRepresented(represented, observed, id, date) {
+    if (!id || !date) return false;
+    const key = id + '@' + date;
+    if (represented && represented.has(key)) return true;
+    return !!(observed && observed.has(key));
+  }
+
   function calendarBillRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, scheduleDate) {
     const amt = -event.amount;
     if (!(amt > EPSILON)) return null;
-    const paid = !!(event.id && represented.has(event.id + '@' + event.date));
+    const paid = calendarOccurrenceRepresented(represented, observed, event.id, event.date);
     const inside = recurringInsideOpening(plan, event, cashAsOf);
     const due = scheduleDate || event.date;
     let settlement;
@@ -5043,7 +5057,8 @@
       if (!due || due > span.end) continue;
       const overdueOnce = due < span.start
         && carriedOnceJointCashOutflow(plan, event.id, event.date, span.start);
-      const paid = !!(event.id && represented.has(event.id + '@' + event.date));
+      const paid = calendarOccurrenceRepresented(
+        represented, observed, event.id, event.date);
       // Passing payday does not drop an unresolved once cash obligation, and
       // does not rewrite its due date onto the new payday. Represented /
       // settled once rows disappear rather than remaining reserved.
