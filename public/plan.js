@@ -1010,13 +1010,16 @@ function paydayAllocationSheetHtml(alloc) {
   }
 
   // Prepare Ahead reprints Forecast.paydayAllocation.protectedPath.allocated
-  // only. wanted / movable are not household reprint. A withheld operating
-  // plan can leave a stale future-path line after protectedPath is
-  // unavailable — fail closed rather than reprint that line amount.
+  // only when status is calculated. wanted / movable are not household
+  // reprint. Unknown, missing, or unavailable status fail closed — including
+  // a leftover future-path line after withholdCurrentOperatingClaims.
   const path = alloc.protectedPath;
-  const pathUnavailable = !path || path.status === 'unavailable'
-    || path.allocated == null;
-  const pathAllocated = pathUnavailable ? null : path.allocated;
+  const pathCalculated = !!(path
+    && path.status === 'calculated'
+    && path.allocated != null
+    && Number.isFinite(Number(path.allocated)));
+  const pathUnavailable = !pathCalculated;
+  const pathAllocated = pathCalculated ? path.allocated : null;
   const pathHold = pathAllocated != null && Number(pathAllocated) > 0;
   const protectedLine = pathHold
     && alloc.lines.find(line => line && line.kind === 'future-path');

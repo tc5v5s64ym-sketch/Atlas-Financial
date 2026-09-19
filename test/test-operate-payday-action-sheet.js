@@ -83,7 +83,7 @@ console.log('\n=== allocation lines preserve Forecast order and amounts ===');
   for (const [index, line] of alloc.lines.entries()) {
     if (line && line.kind === 'future-path') {
       const path = alloc.protectedPath || {};
-      if (path.status === 'unavailable' || path.allocated == null || !(Number(path.allocated) > 0)) {
+      if (path.status !== 'calculated' || path.allocated == null || !(Number(path.allocated) > 0)) {
         ok(!html.includes(`data-allocation-key="${line.key}"`),
           'a withheld or zero future-path line is not printed as an actionable amount');
         continue;
@@ -108,7 +108,7 @@ console.log('\n=== allocation lines preserve Forecast order and amounts ===');
   const printed = alloc.lines.filter(line => {
     if (!(line && line.kind === 'future-path')) return true;
     const path = alloc.protectedPath || {};
-    return path.status !== 'unavailable' && Number(path.allocated) > 0;
+    return path.status === 'calculated' && Number(path.allocated) > 0;
   });
   ok((html.match(/data-allocation-key=/g) || []).length === printed.length,
     'the sheet adds no allocation line outside Forecast.paydayAllocation.lines');
@@ -171,7 +171,7 @@ console.log('\n=== trust, unresolved and unavailable states fail closed ===');
       { label: 'Unknown settlement', confidence: 'unknown' },
     ] },
     essentials: { fundingAttribution: 'complete' },
-    protectedPath: { allocated: 0 },
+    protectedPath: { status: 'calculated', allocated: 0 },
     futureCosts: [],
     extraDebt: { allocated: 0 },
     unresolved: [{ id: 'undated', label: 'Undated required cost',
@@ -236,7 +236,7 @@ console.log('\n=== estimated future-cost timing stays qualified ===');
     }],
     obligations: { items: [] },
     essentials: { fundingAttribution: 'complete' },
-    protectedPath: { allocated: 0 },
+    protectedPath: { status: 'calculated', allocated: 0 },
     futureCosts: [dated, zeroDated],
     extraDebt: { allocated: 0 },
     unresolved: [undated],
@@ -365,6 +365,25 @@ console.log('\n=== Prepare Ahead reprints protectedPath.allocated and fail-close
   ok(!withheld.includes(money(888.88)) && !withheld.includes(money(17.17)),
     'unavailable markup does not print wanted or movable');
 
+  const estimated = sheet.paydayAllocationSheetHtml(Object.assign({}, base, {
+    lines: [obligationLine, Object.assign({}, stalePathLine, { amount: 250.25 })],
+    protectedPath: calculatedPath(250.25, { status: 'estimated' }),
+  }));
+  const estimatedUntouched = estimated.match(/data-allocation-state="untouched"[\s\S]*?<\/div>/);
+  ok(!/data-allocation-key="future-path"/.test(estimated)
+      && !estimated.includes(money(250.25))
+      && /Unavailable; no future-path cash hold is instructed/.test(estimated)
+      && estimatedUntouched && /—/.test(estimatedUntouched[0]),
+    'non-calculated status with a numeric allocated does not print that amount');
+  const unknownStatus = sheet.paydayAllocationSheetHtml(Object.assign({}, base, {
+    lines: [obligationLine, stalePathLine],
+    protectedPath: { allocated: 999.99, wanted: 888.88, movable: 17.17 },
+  }));
+  ok(!/data-allocation-key="future-path"/.test(unknownStatus)
+      && !unknownStatus.includes(money(999.99))
+      && /Unavailable; no future-path cash hold is instructed/.test(unknownStatus),
+    'missing status with a numeric allocated fail-closes rather than publishing Prepare Ahead');
+
   ok(positive.includes(`data-allocation-available>${money(base.available)}`)
       && zero.includes(`data-allocation-available>${money(base.available)}`)
       && withheld.includes(`data-allocation-available>${money(base.available)}`)
@@ -439,9 +458,9 @@ console.log('\n=== the page remains a renderer, not a calculator ===');
   ok(fn && /alloc\.lines\.map/.test(fn[0]) && /alloc\.allocatedTotal/.test(fn[0])
     && /alloc\.remainder/.test(fn[0]) && /alloc\.available/.test(fn[0]),
   'the renderer consumes Forecast lines and reconciliation fields directly');
-  ok(fn && /protectedPath/.test(fn[0]) && /status === 'unavailable'/.test(fn[0])
+  ok(fn && /protectedPath/.test(fn[0]) && /status === 'calculated'/.test(fn[0])
       && /pathAllocated/.test(fn[0]),
-    'Prepare Ahead display reads protectedPath and fail-closes when unavailable');
+    'Prepare Ahead display reprints only when protectedPath.status is calculated');
   ok(fn && !/\.wanted/.test(fn[0]) && !/\.movable/.test(fn[0]),
     'the action sheet does not read protectedPath wanted or movable');
   ok(fn && !/pathAllocated\s*[+\-*/]|allocatedPath\s*[+\-*/]/.test(fn[0]),
