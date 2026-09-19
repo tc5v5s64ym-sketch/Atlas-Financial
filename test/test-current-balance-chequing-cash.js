@@ -324,12 +324,45 @@ console.log('\n=== 10. Authority stays in Forecast; pages do not subtract saving
     'paydayAllocation publishes that chequing cash as liveCurrentBalance');
   const htmlFn = grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml');
   ok(/view\.liveCurrentBalance|alloc\.liveCurrentBalance/.test(htmlFn)
-      && !/startingCashAmount/.test(htmlFn),
-    'plan.js falls back to Forecast liveCurrentBalance and does not use spendable-opening arithmetic');
+      && !/startingCashAmount/.test(htmlFn)
+      && !/Math\.max\(0,\s*b\)/.test(htmlFn),
+    'plan.js reprints Forecast liveCurrentBalance and does not compose A + max(0, B)');
   const household = read('public/household-view.js');
   ok(!/savings/.test(household) || !/Current Balance/.test(household)
       || !/startingCashAmount/.test(household),
     'household-view does not compute Current Balance');
+}
+
+console.log('\n=== 11. Positive and negative Chequing B keep one Forecast Current Balance ===');
+{
+  const surplusPlan = setCash(cashPlan(), 'chequing-b', 120.40);
+  const surplusExpected = independentChequing(surplusPlan);
+  const surplusPub = publishedCurrentBalance(surplusPlan);
+  ok(near(surplusExpected, roundCent(CHEQUING_A + 120.40)),
+    'independent surplus reconstruction is Chequing A + positive B');
+  ok(near(surplusPub.alloc, surplusExpected) && near(surplusPub.view, surplusExpected),
+    'Forecast Current Balance equals independent A+B when Chequing B is positive');
+  const surplusHtml = composer.liveCurrentBalanceHtml(
+    surplusPub.advice.defaultView, null, surplusPub.advice.paydayAllocation
+  );
+  ok(surplusHtml.includes(composer.money2(surplusExpected)),
+    'Budget Current Balance prints that Forecast surplus figure');
+
+  const overdraftPlan = setCash(cashPlan(), 'chequing-b', -75.10);
+  const overdraftExpected = independentChequing(overdraftPlan);
+  const excludingOverdraft = roundCent(CHEQUING_A + Math.max(0, -75.10));
+  const overdraftPub = publishedCurrentBalance(overdraftPlan);
+  ok(near(overdraftExpected, roundCent(CHEQUING_A - 75.10))
+      && !near(overdraftExpected, excludingOverdraft),
+    'independent overdraft reconstruction is A+B, not A + max(0, B)');
+  ok(near(overdraftPub.alloc, overdraftExpected) && near(overdraftPub.view, overdraftExpected),
+    'Forecast Current Balance includes a negative Chequing B register');
+  const overdraftHtml = composer.liveCurrentBalanceHtml(
+    overdraftPub.advice.defaultView, null, overdraftPub.advice.paydayAllocation
+  );
+  ok(overdraftHtml.includes(composer.money2(overdraftExpected))
+      && !overdraftHtml.includes(composer.money2(excludingOverdraft)),
+    'Budget Current Balance reprints Forecast A+B and does not print A-only');
 }
 
 if (failures) {

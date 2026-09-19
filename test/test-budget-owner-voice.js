@@ -1,10 +1,11 @@
 'use strict';
 /* Owner-voice Budget presentation: income labels, no rollover, Bills
- * planning chrome, and Current Balance display composition.
+ * planning chrome, and Forecast-owned Current Balance print.
  *
  * Forecast amounts, settlement, and walk math stay where they were. These
- * tests reconstruct the printed labels and the A + max(0, B) display from
- * fixtures (L-002 / L-006). They do not copy live household cents.
+ * tests reconstruct the printed labels and prove Current Balance reprints
+ * Forecast A+B for positive and negative Chequing B (L-002 / L-006). They
+ * do not copy live household cents.
  *
  * `node test/test-budget-owner-voice.js`
  */
@@ -167,61 +168,45 @@ console.log('\n=== 4. Bills planning chrome is not Forecast Paid ===');
     'bill rows keep Forecast still-due status and expose the ISO date');
 }
 
-console.log('\n=== 5. Current Balance display composition ===');
+console.log('\n=== 5. Current Balance reprints Forecast A+B ===');
 {
   const a = 800.25;
   const bSurplus = 120.40;
   const bOverdraft = -75.10;
   const savings = 40;
-  const independentAdd = roundCent(a + Math.max(0, bSurplus));
-  const independentIgnore = roundCent(a + Math.max(0, bOverdraft));
-  const walkWithOverdraft = roundCent(a + bOverdraft);
-  ok(near(independentAdd, 920.65),
-    'independent surplus composition is Chequing A + positive B',
-    String(independentAdd));
-  ok(near(independentIgnore, a) && !near(independentIgnore, walkWithOverdraft),
-    'independent overdraft composition is Chequing A only, not A+B');
+  const independentSurplus = roundCent(a + bSurplus);
+  const independentOverdraft = roundCent(a + bOverdraft);
+  const excludingOverdraft = roundCent(a + Math.max(0, bOverdraft));
+  ok(near(independentSurplus, 920.65),
+    'independent surplus Current Balance is Chequing A + positive B',
+    String(independentSurplus));
+  ok(near(independentOverdraft, 725.15)
+      && !near(independentOverdraft, excludingOverdraft)
+      && near(excludingOverdraft, a),
+    'independent overdraft Current Balance is A+B, not A-only',
+    String(independentOverdraft));
 
-  const planSurplus = {
-    startingCash: {
-      breakdown: [
-        { id: 'chequing-a', value: a, label: 'BILLS ACCOUNT' },
-        { id: 'chequing-b', value: bSurplus, label: 'WEEKLY SPENDING' },
-        { id: 'savings', value: savings, label: 'EMERGENCY SAVING' },
-      ],
-    },
-  };
-  const forecastSum = roundCent(a + bSurplus);
   const htmlSurplus = composer.liveCurrentBalanceHtml(
-    { liveCurrentBalance: forecastSum, asOf: '2026-09-11' },
+    { liveCurrentBalance: independentSurplus, asOf: '2026-09-11' },
     null,
-    { liveCurrentBalance: forecastSum },
-    planSurplus
+    { liveCurrentBalance: independentSurplus }
   );
-  ok(htmlSurplus.includes(composer.money2(independentAdd))
-      && !htmlSurplus.includes(composer.money2(roundCent(forecastSum + savings))),
-    'positive Chequing B surplus is added; savings stays out');
+  ok(htmlSurplus.includes(composer.money2(independentSurplus))
+      && /Current Balance/.test(htmlSurplus)
+      && !htmlSurplus.includes(composer.money2(roundCent(independentSurplus + savings))),
+    'positive Chequing B prints Forecast A+B; savings stays out');
 
-  const planOd = {
-    startingCash: {
-      breakdown: [
-        { id: 'chequing-a', value: a, label: 'BILLS ACCOUNT' },
-        { id: 'chequing-b', value: bOverdraft, label: 'WEEKLY SPENDING' },
-      ],
-    },
-  };
   const htmlOd = composer.liveCurrentBalanceHtml(
-    { liveCurrentBalance: walkWithOverdraft, asOf: '2026-09-11' },
+    { liveCurrentBalance: independentOverdraft, asOf: '2026-09-11' },
     null,
-    { liveCurrentBalance: walkWithOverdraft },
-    planOd
+    { liveCurrentBalance: independentOverdraft }
   );
-  ok(htmlOd.includes(composer.money2(independentIgnore))
-      && !htmlOd.includes(composer.money2(walkWithOverdraft)),
-    'negative Chequing B overdraft is ignored in the print, not subtracted');
+  ok(htmlOd.includes(composer.money2(independentOverdraft))
+      && !htmlOd.includes(composer.money2(excludingOverdraft)),
+    'negative Chequing B prints Forecast A+B, not A + max(0, B)');
 
   const observedHtml = composer.liveCurrentBalanceHtml(
-    { liveCurrentBalance: walkWithOverdraft, asOf: '2026-09-18' },
+    { liveCurrentBalance: independentOverdraft, asOf: '2026-09-18' },
     {
       applied: true,
       operatingPlan: 'live',
@@ -233,11 +218,11 @@ console.log('\n=== 5. Current Balance display composition ===');
         ],
       },
     },
-    { liveCurrentBalance: walkWithOverdraft },
-    planOd
+    { liveCurrentBalance: independentOverdraft }
   );
-  ok(observedHtml.includes(composer.money2(independentIgnore)),
-    'complete observedCash uses the same A + max(0, B) composition');
+  ok(observedHtml.includes(composer.money2(independentOverdraft))
+      && !observedHtml.includes(composer.money2(excludingOverdraft)),
+    'complete observedCash still reprints Forecast A+B Current Balance');
 
   const fallbackHtml = composer.liveCurrentBalanceHtml(
     { liveCurrentBalance: 501.11 },
@@ -245,7 +230,13 @@ console.log('\n=== 5. Current Balance display composition ===');
     { liveCurrentBalance: 501.11 }
   );
   ok(fallbackHtml.includes(composer.money2(501.11)),
-    'missing chequing rows fail closed to Forecast liveCurrentBalance');
+    'Current Balance still prints Forecast liveCurrentBalance when rows are absent');
+
+  const liveFn = grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml');
+  ok(/view\.liveCurrentBalance|alloc\.liveCurrentBalance/.test(liveFn)
+      && !/Math\.max\(0,\s*b\)/.test(liveFn)
+      && !/chequing-a \+ max/.test(liveFn),
+    'plan.js does not compose a second Current Balance from chequing rows');
 }
 
 if (failures) {

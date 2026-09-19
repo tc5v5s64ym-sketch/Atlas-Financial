@@ -357,11 +357,10 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
       && !/Assigned income/i.test(incomeFn),
     'plan.js renders Forecast available as Payday balance; it does not add opening + income');
   ok(/view\.liveCurrentBalance|alloc\.liveCurrentBalance/.test(liveFn)
-      && /chequing-a/.test(liveFn)
-      && /Math\.max\(0,\s*b\)/.test(liveFn)
+      && !/Math\.max\(0,\s*b\)/.test(liveFn)
       && !/\.opening\s*\+/.test(liveFn)
       && !/Assigned income/i.test(liveFn),
-    'live glance composes chequing-a + max(0, B) and falls back to Forecast liveCurrentBalance');
+    'live glance reprints Forecast liveCurrentBalance and does not compose A + max(0, B)');
 }
 
 console.log('\n=== 7. Payday-day live refresh prefers the recorded snapshot ===');

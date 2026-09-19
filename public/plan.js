@@ -1614,36 +1614,12 @@ function cashGlanceHtml(alloc, liveOverlay, cashNote) {
   </div>`;
 }
 
-function liveCurrentBalanceHtml(view, liveOverlay, alloc, plan) {
-  // Display composition only. Forecast postedHouseholdChequingCash /
-  // paydayAllocation.liveCurrentBalance remain Chequing A + Chequing B,
-  // including a negative Chequing B register. The printed Current Balance
-  // is chequing-a + max(0, chequing-b) from those same Forecast-owned rows.
-  const roundCent = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-  const rowValue = row => {
-    const value = row && Number(row.value);
-    return Number.isFinite(value) ? value : null;
-  };
-  const composeFromRows = rows => {
-    if (!Array.isArray(rows)) return null;
-    const a = rowValue(rows.find(row => row && row.id === 'chequing-a'));
-    const b = rowValue(rows.find(row => row && row.id === 'chequing-b'));
-    if (a == null || b == null) return null;
-    return roundCent(a + Math.max(0, b));
-  };
-  let composed = null;
-  const observed = liveOverlay && liveOverlay.observedCash;
-  if (observed && observed.complete === true) {
-    composed = composeFromRows(observed.accounts);
-  }
-  if (composed == null && plan && plan.startingCash) {
-    composed = composeFromRows(plan.startingCash.breakdown);
-  }
-  const amount = composed != null
-    ? composed
-    : (view && view.liveCurrentBalance != null
-      ? view.liveCurrentBalance
-      : (alloc && alloc.liveCurrentBalance != null ? alloc.liveCurrentBalance : null));
+function liveCurrentBalanceHtml(view, liveOverlay, alloc) {
+  // Actionable Current Balance is the Forecast-owned posted household
+  // chequing figure (A+B, including a negative Chequing B register).
+  const amount = view && view.liveCurrentBalance != null
+    ? view.liveCurrentBalance
+    : (alloc && alloc.liveCurrentBalance != null ? alloc.liveCurrentBalance : null);
   const liveAlloc = {
     available: amount,
     cashBasis: alloc && alloc.cashBasis,
@@ -2425,7 +2401,7 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
   const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
     ? ` data-household-as-of="${asOf}"` : '';
   return `<div class="calendar-waterfalls" data-calendar-waterfalls${asOfAttr}>
-    ${liveCurrentBalanceHtml(view, liveOverlay, alloc, plan)}
+    ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${calendarPickerHtml(view, pick, extraControls)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
     ${undatedBlock}
