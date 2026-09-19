@@ -1009,15 +1009,31 @@ function paydayAllocationSheetHtml(alloc) {
     </div>`;
   }
 
-  const lines = alloc.lines.map((line, index) => `
+  // Prepare Ahead reprints Forecast.paydayAllocation.protectedPath.allocated
+  // only. wanted / movable are not household reprint. A withheld operating
+  // plan can leave a stale future-path line after protectedPath is
+  // unavailable — fail closed rather than reprint that line amount.
+  const path = alloc.protectedPath;
+  const pathUnavailable = !path || path.status === 'unavailable'
+    || path.allocated == null;
+  const pathAllocated = pathUnavailable ? null : path.allocated;
+  const pathHold = pathAllocated != null && Number(pathAllocated) > 0;
+  const protectedLine = pathHold
+    && alloc.lines.find(line => line && line.kind === 'future-path');
+
+  const lines = alloc.lines.map((line, index) => {
+    if (line && line.kind === 'future-path' && !protectedLine) return '';
+    const amount = line && line.kind === 'future-path' ? pathAllocated : line.amount;
+    return `
     <div class="allocation-line" data-allocation-key="${line.key}" data-allocation-order="${index + 1}">
       <div class="allocation-step">${index + 1}</div>
       <div class="allocation-copy">
         <div class="allocation-label"><span class="allocation-action">${PAYDAY_ACTION_KIND[line.kind] || 'Allocate'}</span>${line.label}${line.date ? ` <span class="payday-when${line.confidence && line.confidence !== 'confirmed' ? ' est' : ''}">${fmtDate(line.date)}${line.confidence && line.confidence !== 'confirmed' ? ` · ${line.confidence}` : ''}</span>` : ''}</div>
         <div class="allocation-trust">${paydayAllocationTrustNote(line, alloc)}</div>
       </div>
-      <div class="allocation-value">${money2(line.amount)}</div>
-    </div>`).join('');
+      <div class="allocation-value">${money2(amount)}</div>
+    </div>`;
+  }).join('');
 
   const futureZero = (alloc.futureCosts || [])
     .filter(row => row && Number(row.allocated) === 0)
@@ -1030,12 +1046,11 @@ function paydayAllocationSheetHtml(alloc) {
     <li data-allocation-unresolved="${row.id}"><b>${row.label}</b> — unresolved; no payday allocation${row.confidence && row.confidence !== 'confirmed' ? ` · ${row.confidence}` : ''}.
       <span>${row.reason}</span></li>`).join('');
 
-  const protectedAmount = alloc.protectedPath && alloc.protectedPath.allocated != null
-    ? alloc.protectedPath.allocated : null;
-  const protectedLine = alloc.lines.find(line => line && line.kind === 'future-path');
   const protectedState = protectedLine ? '' : `<div class="allocation-state" data-allocation-state="untouched">
-    <span><b>Leave untouched for the future cash path</b><small>Forecast requires no separate future-path cash hold on this opening.</small></span>
-    <span>${protectedAmount != null ? money2(protectedAmount) : '—'}</span>
+    <span><b>Leave untouched for the future cash path</b><small>${pathUnavailable
+      ? 'Unavailable; no future-path cash hold is instructed.'
+      : 'Forecast requires no separate future-path cash hold on this opening.'}</small></span>
+    <span>${pathAllocated != null ? money2(pathAllocated) : '—'}</span>
   </div>`;
 
   const extraLine = alloc.lines.find(line => line && line.kind === 'extra-debt');
