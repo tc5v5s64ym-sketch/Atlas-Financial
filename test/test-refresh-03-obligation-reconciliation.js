@@ -37,6 +37,17 @@ const AUTO_IDS = [
   'icbc-aug15-outstanding',
   'resp-aug15-outstanding',
 ];
+const SCHEDULE_TRUST = 'schedule-trust-on-due';
+const NAMED_SCHEDULE_TRUST_IDS = new Set([
+  'youtube-premium',
+  'spotify',
+  'chatgpt-plus-dale',
+]);
+function isScheduleTrustRow(row) {
+  return !!(row && (row.postingDateRelation === SCHEDULE_TRUST
+    || row.settlesWhen === SCHEDULE_TRUST
+    || row.identity === SCHEDULE_TRUST));
+}
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -313,14 +324,21 @@ console.log('\n=== C. one occurrence consumes one transaction; no transaction se
   const payload = readyAutoPayPayload();
   const receipt = receiptOf(payload, pendingMap);
   const matrix = independentUnique(independentMatrix(payload, pendingMap, identity, data.plan));
-  const represented = (receipt.occurrences || []).filter(r => r.settlement === 'represented');
+  const represented = (receipt.occurrences || []).filter(r => r.settlement === 'represented'
+    && !isScheduleTrustRow(r));
   const fps = represented.map(r => r.evidenceFingerprint);
-  ok(fps.length === new Set(fps).size, 'represented evidence fingerprints are unique');
+  ok(fps.every(Boolean) && fps.length === new Set(fps).size,
+    'represented bank-payee evidence fingerprints are unique');
   ok(receipt.oneOccurrenceOneTransaction === true, 'receipt reports one-occurrence-one-transaction');
   ok(receipt.noTransactionConsumedTwice === true, 'receipt reports no transaction consumed twice');
   ok(matrix.doubleTx.size === 0, 'independent matrix has no double-consumed transaction');
   ok(represented.length === matrix.unique.filter(r => AUTO_IDS.indexOf(r.eventId) !== -1).length,
     'independent unique auto-pay matches equal represented auto-pay rows');
+  ok((receipt.occurrences || []).filter(isScheduleTrustRow).every(row =>
+      row.settlement === 'represented'
+      && !row.evidenceFingerprint
+      && NAMED_SCHEDULE_TRUST_IDS.has(row.id)),
+    'named schedule-trust exceptions are not bank-payee auto-pay identities');
 }
 
 console.log('\n=== D. cancelled CMAW dues are not a modeled occurrence ===');
