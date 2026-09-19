@@ -2021,13 +2021,56 @@ var planningScenarioActive = null;
 var planningScenarioDraftDebtId = '';
 var planningScenarioDraftAmount = '';
 var planningScenarioFormError = '';
+var planningScenarioDrawerOpen = false;
 
 function planningScenarioSetActive(input) {
   planningScenarioActive = input;
+  if (input) planningScenarioDrawerOpen = true;
+}
+
+function planningRoadAheadScenarioRequested() {
+  return !!(planningScenarioActive
+    && planningScenarioActive.debtId
+    && typeof planningScenarioActive.amount === 'number'
+    && Number.isFinite(planningScenarioActive.amount));
+}
+
+function planningRoadAheadScenarioHtml(d, periods) {
+  const controls = planningTrajectoryScenarioControlsHtml(
+    d && d.debts,
+    planningScenarioDraftDebtId,
+    planningScenarioDraftAmount,
+    planningScenarioFormError);
+  const requested = planningRoadAheadScenarioRequested();
+  const result = requested
+    ? planningTrajectoryScenario(d, periods, {
+        debtId: planningScenarioActive.debtId,
+        amount: planningScenarioActive.amount,
+      })
+    : null;
+  const compare = planningTrajectoryScenarioCompareHtml(result, requested);
+  const keepOpen = requested || !!planningScenarioFormError || planningScenarioDrawerOpen;
+  const openAttr = keepOpen ? ' open' : '';
+  return `<details class="planning-road-scenario-sheet"${openAttr} data-planning-road-secondary="scenario" data-trajectory-scenario-section="controls">
+    <summary>
+      <span class="planning-road-scenario-summary-label">Extra debt payment</span>
+      <span class="planning-road-scenario-summary-chevron" aria-hidden="true">›</span>
+    </summary>
+    <p class="lede planning-road-scenario-intro">${controls.intro}</p>
+    ${controls.controls}
+    <div class="planning-trajectory-scenario-result" data-trajectory-scenario-result="panel">${compare.panel}</div>
+    <p class="lede footnote planning-road-scenario-note" data-trajectory-scenario-note="footnote">${compare.note}</p>
+  </details>`;
 }
 
 function planningRoadScenarioWire(root, d, periods) {
   if (!root) return;
+  const drawer = root.querySelector('[data-trajectory-scenario-section="controls"]');
+  if (drawer) {
+    drawer.ontoggle = () => {
+      planningScenarioDrawerOpen = !!drawer.open;
+    };
+  }
   const form = root.querySelector('[data-trajectory-scenario-form="ready"]');
   if (form) {
     form.onsubmit = ev => {
@@ -2038,6 +2081,7 @@ function planningRoadScenarioWire(root, d, periods) {
       const parsed = planningScenarioParseAmount(amountEl ? amountEl.value : '');
       planningScenarioDraftDebtId = debtId;
       planningScenarioDraftAmount = amountEl ? amountEl.value : '';
+      planningScenarioDrawerOpen = true;
       if (!debtId) {
         planningScenarioFormError = 'Select a debt.';
         planningScenarioActive = null;
@@ -2062,6 +2106,7 @@ function planningRoadScenarioWire(root, d, periods) {
       planningScenarioDraftDebtId = '';
       planningScenarioDraftAmount = '';
       planningScenarioFormError = '';
+      planningScenarioDrawerOpen = true;
       renderPlanning(d, periods);
     };
   }
@@ -2323,8 +2368,10 @@ function renderPlanning(d, periods) {
       <div class="planning-road-breakdown-band" data-planning-road-primary="breakdown">
         ${roadHtml.breakdown}
       </div>
+      ${planningRoadAheadScenarioHtml(d, periods)}
     </div>`;
     planningRoadAheadWireSelection(roadRoot, d, periods);
+    planningRoadScenarioWire(roadRoot, d, periods);
     planningRoadAheadScrollSelectedTimeline(roadRoot, roadSelectedKey);
     planningRoadAheadFocusPeriodStory(roadRoot);
     planningRoadAheadFocusSelectedTab(roadRoot);

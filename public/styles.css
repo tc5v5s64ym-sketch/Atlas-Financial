@@ -1668,7 +1668,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-scenario-form {
   display: grid;
   gap: 12px;
-  margin: 12px 0;
+  margin: 12px 16px;
   max-width: 28rem;
 }
 .planning-trajectory-scenario-field {
@@ -1686,22 +1686,94 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-trajectory-scenario-clear {
   font: inherit;
   padding: 8px 14px;
+  min-height: 44px;
   border-radius: 6px;
   border: 1px solid var(--border, rgba(0,0,0,.15));
   background: var(--surface, #fff);
   cursor: pointer;
 }
-.planning-trajectory-scenario-compare { margin-top: 12px; }
+.planning-trajectory-scenario-compare { margin: 12px 16px 0; }
 .planning-trajectory-scenario-table th[scope="row"] { text-align: left; }
 .planning-trajectory-scenario-disclaimer { margin-top: 10px; }
+
+.planning-road-scenario-sheet {
+  margin: 0 0 16px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.planning-road-scenario-sheet > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  padding: 14px 16px;
+  font-weight: 650;
+  font-size: .97rem;
+  cursor: pointer;
+  list-style: none;
+}
+.planning-road-scenario-sheet > summary::-webkit-details-marker { display: none; }
+.planning-road-scenario-summary-chevron {
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.planning-road-scenario-sheet[open] .planning-road-scenario-summary-chevron {
+  transform: rotate(90deg);
+}
+.planning-road-scenario-intro {
+  margin: 0 16px 8px;
+  font-size: .8rem;
+  color: var(--text-secondary);
+}
+.planning-road-scenario-note {
+  margin: 8px 16px 16px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+.planning-road-whatif-preview {
+  margin: 8px 16px 16px;
+}
+.planning-road-whatif-preview-title {
+  margin: 0 0 8px;
+  font-size: .88rem;
+}
+.planning-road-whatif-preview-grid {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  background: var(--surface);
+}
+.planning-road-whatif-preview-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: .82rem;
+}
+.planning-road-whatif-preview-head {
+  font-weight: 650;
+  color: var(--text-secondary);
+  font-size: .75rem;
+}
+.planning-road-whatif-preview-hint { font-size: .82rem; margin: 0; }
 
 /* Planning — Road Ahead phone-native shell (presentation only)
  *
  * Implements the Fable frames: hero (Frame 01), horizon band, Month | Pay
  * period control, trajectory strip, numbered stage spine with narrative and
- * delta pills, projected-result bar (Frame 03), breakdown groups (Frame 06),
- * quarantined what-if (Frames 07–08). Nothing here decides a number: every
- * sign class is set from a Forecast figure by planning.js.
+ * delta pills, projected-result bar (Frame 03), breakdown groups (Frame 06).
+ * Extra-debt scenario is a secondary disclosure after the breakdown, not a
+ * primary hero. Nothing here decides a number: every sign class is set from
+ * a Forecast figure by planning.js.
  */
 .planning-road-shell {
   /* DESIGN §9 tints, scoped to Road Ahead so no other page palette moves.
