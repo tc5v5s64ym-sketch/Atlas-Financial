@@ -257,15 +257,17 @@ Forecast quarterly recurrence (`day` 18, `anchor` 2026-03-18, `firstDue`
 
 **Owner-confirmed recurring subscriptions** *(owner-confirmed 2026-08-27)*.
 These are current household bills on `plan.bills`. Specific paying account is
-not named. Netflix, Spotify, and the named Google subscriptions moved off
-PayPal onto the household debit/bills path. Instacart and Uber are **not**
-recorded as moved. Historical cleaned capture that missed a Netflix merchant
-does not omit the current Netflix bill.
+not named. Netflix and the named Google subscriptions moved off
+PayPal onto the household debit/bills path. Spotify remains PayPal merchant
+Spotify AB with standing schedule-trust on the existing Forecast due date
+(owner 2026-09-19); a Lunch Money Spotify payee is not required. Instacart
+and Uber are **not** recorded as moved. Historical cleaned capture that
+missed a Netflix merchant does not omit the current Netflix bill.
 
 | Bill | Cadence | Amount | Trust |
 |---|---|---|---|
 | Netflix | monthly, 17th | $26.87 | confirmed — moved off PayPal |
-| Spotify | monthly, 17th | $26.87 | confirmed — moved off PayPal |
+| Spotify | monthly, 17th | $26.87 | confirmed — PayPal Spotify AB schedule-trust; LM Spotify payee not required |
 | Google storage / 100 GB | monthly, around month-end | $3.13 | confirmed — Forecast uses last calendar day; moved off PayPal |
 | Ultimate Guitar | yearly, May 8 | $50 | confirmed |
 | iCloud Storage | monthly, 14th | $13 | confirmed |
