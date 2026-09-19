@@ -1,9 +1,10 @@
 'use strict';
 /* Owner 2026-09-19 Bell Mobility amounts on Forecast bill authority.
  *
- * September 2026 is the once row bell-sep15-2026 $265.65 due 2026-09-15.
+ * September 2026 is the once row bell-sep15-2026 $283.94 due 2026-09-15
+ * (owner 2026-09-19 catch-up / wife payment-mess total; supersedes $265.65).
  * Standing recurring bell is $160/month from firstDue 2026-10-15 so Sep
- * is not 265.65+160. Paying path stays travelvisa / jointCash false.
+ * is not 283.94+160. Paying path stays travelvisa / jointCash false.
  * No Lunch Money settle or representedEvents invent.
  *
  * Independent proof (L-002 / L-006): hand-listed 15ths from firstDue,
@@ -27,7 +28,7 @@ const load = file => JSON.parse(fs.readFileSync(path.join(__dirname, '..', file)
 
 const ONCE_ID = 'bell-sep15-2026';
 const STANDING_ID = 'bell';
-const ONCE_AMT = 265.65;
+const ONCE_AMT = 283.94;
 const STANDING_AMT = 160;
 const HISTORICAL = 121;
 const ONCE_DUE = '2026-09-15';
@@ -127,15 +128,16 @@ console.log('=== 1. independent Sep once vs Oct+ standing dates ===');
     expected.join(','));
   ok(expected.every(d => d >= FIRST_DUE) && !expected.includes(ONCE_DUE),
     'firstDue 2026-10-15 excludes a 15 September standing occurrence');
-  ok(near(ONCE_AMT, 265.65) && !near(ONCE_AMT, STANDING_AMT)
-      && !near(ONCE_AMT, HISTORICAL) && !near(ONCE_AMT, ONCE_AMT + STANDING_AMT),
-    'owner Sep total is $265.65, not $160, not $121, and not 265.65+160');
+  ok(near(ONCE_AMT, 283.94) && !near(ONCE_AMT, STANDING_AMT)
+      && !near(ONCE_AMT, HISTORICAL) && !near(ONCE_AMT, 265.65)
+      && !near(ONCE_AMT, ONCE_AMT + STANDING_AMT),
+    'owner Sep total is $283.94, not $160, not $121, not superseded $265.65, and not 283.94+160');
   ok(near(STANDING_AMT, 160) && !near(STANDING_AMT, HISTORICAL),
     'owner standing is $160, not the retired $121 reconstruction');
   const onceBill = fixturePlan().bills.find(b => b.id === ONCE_ID);
   const standingBill = fixturePlan().bills.find(b => b.id === STANDING_ID);
   ok(near(independentlyBillOccurrenceAmount(onceBill, ONCE_DUE), ONCE_AMT),
-    'independent helper keeps the Sep once at $265.65');
+    'independent helper keeps the Sep once at $283.94');
   ok(near(independentlyBillOccurrenceAmount(standingBill, FIRST_DUE), STANDING_AMT)
       && near(independentlyBillOccurrenceAmount(standingBill, '2026-11-15'), STANDING_AMT),
     'independent helper keeps Oct+ standing at $160');
@@ -152,10 +154,10 @@ console.log('\n=== 2. synthetic expandEvents: Sep is the once only ===');
   ok(once[0].date === ONCE_DUE && near(-once[0].amount, ONCE_AMT)
       && once[0].cardPaid === true && once[0].jointCash === false
       && once[0].payingAccount === PAYER && once[0].confidence === 'confirmed',
-    'that one September obligation is the $265.65 once on travelvisa');
+    'that one September obligation is the $283.94 once on travelvisa');
   ok(!near(Math.abs(once[0].amount), ONCE_AMT + STANDING_AMT)
       && !near(Math.abs(once[0].amount), STANDING_AMT),
-    'September is not 265.65+160 and not the standing $160');
+    'September is not 283.94+160 and not the standing $160');
 
   const later = bellEvents(F.expandEvents(plan, '2026-10-01', HORIZON_END, {}));
   const laterOnce = later.filter(e => e.id === ONCE_ID);
@@ -171,7 +173,7 @@ console.log('\n=== 2. synthetic expandEvents: Sep is the once only ===');
     'Oct+ standing events are $160 card-paid travelvisa, not chequing');
   ok(laterOnce.length === 1 && laterOnce[0].date === ONCE_DUE
       && near(-laterOnce[0].amount, ONCE_AMT),
-    'unpaid Sep once remains a single carried $265.65 event, not rewritten as $160');
+    'unpaid Sep once remains a single carried $283.94 event, not rewritten as $160');
   const engineSum = roundCent(laterStanding.reduce((s, e) => s + (-e.amount), 0));
   ok(near(engineSum, 480) && near(engineSum, STANDING_AMT * 3),
     'expandEvents standing total agrees with 3 × $160',
@@ -190,10 +192,10 @@ console.log('\n=== 3. recommend on a window covering Sep 15 ===');
     && r.date && r.date.startsWith('2026-09'));
   ok(sepBell.length >= 1 && sepBell.every(r => r.id === ONCE_ID
       && r.date === ONCE_DUE && near(r.amount, ONCE_AMT) && r.cardPaid === true),
-    'as-of 10 Sep prints September Bell as the $265.65 once, not standing $160');
+    'as-of 10 Sep prints September Bell as the $283.94 once, not standing $160');
   ok(!sepBell.some(r => r.id === STANDING_ID || near(r.amount, STANDING_AMT)
       || near(r.amount, ONCE_AMT + STANDING_AMT)),
-    'recommend does not also print $160 or 265.65+160 in September');
+    'recommend does not also print $160 or 283.94+160 in September');
   ok(sepBell.every(r => !/BILLS ACCOUNT/i.test(r.payerLabel || '')
       && r.payingAccount === PAYER),
     'printed September Bell stays travelvisa, not a BILLS invent');
@@ -205,7 +207,7 @@ console.log('\n=== 4. travelvisa path; still-due without invented settle ===');
   const reserved = F.expandEvents(plan, ONCE_DUE, '2026-09-30', {});
   const reservedHit = reserved.find(e => e.id === ONCE_ID && e.date === ONCE_DUE);
   ok(reservedHit && near(-reservedHit.amount, ONCE_AMT) && reservedHit.cardPaid === true,
-    'without settlement evidence the Sep once stays reserved at $265.65');
+    'without settlement evidence the Sep once stays reserved at $283.94');
   ok(!plan.bills.some(b => b.settledOn || (b.representedEvents && b.representedEvents.length)),
     'fixture does not invent settledOn or representedEvents on the Bell rows');
   const identity = load('docs/connectivity/transaction-identity.json');
@@ -227,7 +229,7 @@ console.log('\n=== 5. live plan encodes the owner amounts without a second plann
       && near(once.amount, ONCE_AMT) && once.payingAccount === PAYER
       && once.jointCash === false && once.confidence === 'confirmed'
       && once.budgetCategory === 'telecom',
-    'live bell-sep15-2026 is the confirmed $265.65 once on travelvisa / telecom');
+    'live bell-sep15-2026 is the confirmed $283.94 once on travelvisa / telecom');
   ok(standing && standing.frequency === 'monthly' && standing.day === DAY
       && standing.firstDue === FIRST_DUE && near(standing.amount, STANDING_AMT)
       && standing.payingAccount === PAYER && standing.jointCash === false
@@ -243,7 +245,7 @@ console.log('\n=== 5. live plan encodes the owner amounts without a second plann
   ok(/\$160\/month/.test(facts) && /\$265\.65/.test(facts)
       && /2026-09-15/.test(facts) && /2026-10-15/.test(facts)
       && /Travel Visa/.test(facts),
-    'ACCOUNT_FACTS records standing $160, Sep once $265.65, and the travelvisa path');
+    'ACCOUNT_FACTS records standing $160, Sep once $283.94, and the travelvisa path');
   ok(/\$104\.20 \+ \$16\.80 = \$121\.00/.test(facts)
       && /retired as the forward baseline/i.test(facts),
     'ACCOUNT_FACTS keeps $121 as historical context only');
@@ -260,10 +262,10 @@ console.log('\n=== 6. live expandEvents / recommend: no Sep double-count ===');
   ok(sep.length === 1 && sep[0].id === ONCE_ID && sep[0].date === ONCE_DUE
       && near(-sep[0].amount, ONCE_AMT) && sep[0].cardPaid === true
       && sep[0].jointCash === false && sep[0].payingAccount === PAYER,
-    'live September expands exactly one Bell obligation of $265.65');
+    'live September expands exactly one Bell obligation of $283.94');
   ok(!sep.some(e => e.id === STANDING_ID || near(-e.amount, STANDING_AMT)
       || near(-e.amount, ONCE_AMT + STANDING_AMT)),
-    'live September is not 265.65+160');
+    'live September is not 283.94+160');
   ok(standing.map(e => e.date).join(',') === expected.join(','),
     'live October–December standing dates match the independent hand list');
   ok(standing.every(e => near(-e.amount, STANDING_AMT) && e.cardPaid === true
@@ -279,7 +281,7 @@ console.log('\n=== 6. live expandEvents / recommend: no Sep double-count ===');
     && r.date && r.date.startsWith('2026-09'));
   ok(sepBell.length >= 1 && sepBell.every(r => r.id === ONCE_ID
       && near(r.amount, ONCE_AMT) && r.cardPaid === true),
-    'live as-of 10 Sep prints the $265.65 once in the owning payday window');
+    'live as-of 10 Sep prints the $283.94 once in the owning payday window');
   ok(!sepBell.some(r => r.id === STANDING_ID || near(r.amount, STANDING_AMT)),
     'live recommend does not also print standing $160 in September');
 

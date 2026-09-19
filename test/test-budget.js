@@ -102,7 +102,7 @@ const fortis = plan.bills.find(b => b.id === 'fortis');
 const bcaa = plan.bills.find(b => b.id === 'bcaa');
 const icbc = plan.bills.find(b => b.id === 'icbc');
 const fit = plan.bills.find(b => b.id === 'fit4less');
-const bellOnceMonthly = 265.65 / ((plan.windowDays || 91) / (365.25 / 12));
+const bellOnceMonthly = 283.94 / ((plan.windowDays || 91) / (365.25 / 12));
 ok(near(telecom.dated, shaw.amount + 160 + bellOnceMonthly),
   'Shaw plus standing $160 plus Sep once smear are the telecom dated total', money(telecom.dated));
 ok(near(telecom.current, 160 + bellOnceMonthly) && near(telecom.planned, 0) && near(telecom.reserved, 0),
@@ -145,8 +145,8 @@ ok((plan.bills || []).some(b => b.id === 'bell' && b.day === 15 && b.needsDate !
   'Bell is the dated card-paid planning row on the 15th');
 ok(F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90))
     .some(e => e.id === 'bell-sep15-2026' && e.date === '2026-09-15' && e.cardPaid === true
-      && e.jointCash === false && near(-e.amount, 265.65)),
-  'expandEvents emits September Bell as the $265.65 once on the 15th as card-paid reserved gravity');
+      && e.jointCash === false && near(-e.amount, 283.94)),
+  'expandEvents emits September Bell as the $283.94 once on the 15th as card-paid reserved gravity');
 ok(!F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90))
     .some(e => e.id === 'bell' && String(e.date || '').startsWith('2026-09')),
   'expandEvents does not also emit standing $160 in September');

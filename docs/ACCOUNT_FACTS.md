@@ -229,10 +229,11 @@ Current evidenced active services:
 - **Bell Mobility — standing** — owner 2026-09-19 **$160/month** on the
   **15th** (rounded from ~$159.03 current charges), card-paid Travel Visa.
   `plan.bills` `bell`, `firstDue` 2026-10-15. Not a joint-chequing bill.
-- **Bell Mobility — September 2026 once** — owner 2026-09-19 Amanda /
-  account 556880964 PDF: **$265.65** due **2026-09-15**, including
-  carryover. `plan.bills` `bell-sep15-2026`. Same Travel Visa path. Not
-  added on top of the standing $160 that month.
+- **Bell Mobility — September 2026 once** — owner 2026-09-19 (Dale,
+  direct): **$283.94** due **2026-09-15**, the catch-up / wife
+  payment-mess total. Supersedes the same-day **$265.65** PDF reading.
+  `plan.bills` `bell-sep15-2026`. Same Travel Visa path. Not added on
+  top of the standing $160 that month.
 - **Main Bell Mobility (historical June 2026 reconstruction)** — June
   2026 normal recurring baseline **$104.20/month** (card-paid). Includes
   the $15 watch line. Retired as the forward baseline.
@@ -243,9 +244,9 @@ Current evidenced active services:
 - **Telus** — **$0** forward.
 
 Forward Bell telecom is therefore **$160/month** from 2026-10-15, plus
-the September 2026 once **$265.65** due 2026-09-15, planned on the
+the September 2026 once **$283.94** due 2026-09-15, planned on the
 **15th** as card-paid Travel Visa reserved gravity. That is the one
-recurring Bell baseline plus the one September carryover total. It is
+recurring Bell baseline plus the one September catch-up total. It is
 not a dated joint-chequing / BILLS ACCOUNT withdrawal, not an undated
 `currentMonthly` smear, and not a second copy beside the later Travel
 Visa payment. The unusual August 17 due date is not the permanent
@@ -339,8 +340,9 @@ accumulated amount-due / arrears as the recurring baseline.
 Q18 stays open for whether the pending $250 posts and whether any residual
 main-account Bell cash still needs a dated joint-cash row after that
 posting. Owner 2026-09-19 standing **recurring cost** is **$160/month**
-from 2026-10-15; September 2026 is the once **$265.65** due 2026-09-15
-(Amanda / account 556880964 PDF, includes carryover). The June
+from 2026-10-15; September 2026 is the once **$283.94** due 2026-09-15
+(owner 2026-09-19 catch-up / wife payment-mess total; supersedes
+$265.65). The June
 **$104.20** reconstruction and the second-account **$16.80** remain
 historical; **$104.20 + $16.80 = $121.00** is retired as the forward
 baseline. Neither historical line is a Q18 cost question. Absence of the
