@@ -1929,10 +1929,16 @@ function calendarIncomeHtml(period) {
       </details>
     </div>`;
   }
+  // Closing total is Forecast period.available (Payday balance identity).
+  // Kept under the named/other income breakdown, parallel to bills:
+  // line items, then a closing total. Do not invent a second calculator
+  // field or relabel this as leftover-after-adding-income.
   const payday = period && period.available != null
-    ? `<p class="payday-qual payday-total payday-total-strong" data-payday-balance>
-        <span>Payday balance</span><span data-payday-balance-amount>${money2(period.available)}</span>
-      </p>`
+    ? `<div class="payday-totals">
+        <p class="payday-qual payday-total payday-total-strong" data-payday-balance>
+          <span>Payday balance</span><span data-payday-balance-amount>${money2(period.available)}</span>
+        </p>
+      </div>`
     : '';
   return `<div class="payday-period-income" data-calendar-income>
     <div class="operating-lines">${namedLines}${otherHtml}</div>
@@ -2401,8 +2407,8 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
   const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
     ? ` data-household-as-of="${asOf}"` : '';
   return `<div class="calendar-waterfalls" data-calendar-waterfalls${asOfAttr}>
-    ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${calendarPickerHtml(view, pick, extraControls)}
+    ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
     ${undatedBlock}
   </div>`;

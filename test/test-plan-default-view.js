@@ -313,6 +313,16 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
       && !/data-operating-prompt="Current Balance"/.test(html)
       && (!active.openingKnown || /data-operating-prompt="Opening balance"/.test(html)),
     'the default surface has live Current Balance plus the payday snapshot questions');
+  const pickerAt = html.indexOf('data-calendar-period-picker');
+  const liveAt = html.indexOf('data-live-current-balance');
+  ok(pickerAt >= 0 && liveAt > pickerAt,
+    'pay period selector prints before Current Balance');
+  const incomePromptAt = html.indexOf('data-operating-prompt="Income"');
+  const incomeLineAt = html.indexOf('data-period-income=');
+  const paydayAt = html.indexOf('data-payday-balance');
+  ok(incomePromptAt >= 0 && incomeLineAt > incomePromptAt && paydayAt > incomeLineAt
+      && paydayAt < html.indexOf('data-operating-prompt="Bills"'),
+    'Payday balance closing total sits under income lines, not above income');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(html),
     'the default surface stops at Balance after household budget');
   ok(/data-live-current-balance/.test(html) && /Current Balance/.test(glance)
