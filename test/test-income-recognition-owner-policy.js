@@ -201,7 +201,7 @@ console.log('\n=== 2. Sep 11 Seaspan payday morning: Dale relied-upon without an
   const page = loadComposer();
   const html = page.calendarIncomeHtml(period);
   ok(html.includes('data-period-income="payroll" data-income-status="relied-upon"')
-      && html.includes('relied upon'),
+      && /Dale salary/.test(html),
     'page prints Forecast Dale status as relied upon');
   ok(html.includes('data-period-income="amandaSalary15"')
       && !html.includes('data-period-income="amandaSalary15" data-income-status="relied-upon"')

@@ -287,8 +287,9 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
     html.indexOf('data-operating-question="03"'));
   const q4 = html.slice(html.indexOf('data-operating-question="04"'),
     html.indexOf('data-operating-question="05"'));
-  ok(/Payroll — Seaspan/.test(q2) && !/Payroll — Seaspan/.test(q4),
-    'Seaspan income sits in the income block, not as a bill row');
+  ok(/Dale salary/.test(q2) && !/Dale salary/.test(q4)
+      && !/Payroll — Seaspan/.test(q2),
+    'Dale salary sits in the income block, not as a bill row');
   ok(!/Canada child benefit/.test(q2) && !/Canada child benefit/.test(q4),
     'Aug 20 child benefit is previous payday cycle, not this Aug 28–Sep 10 income');
   ok(/Current Balance/.test(html) && !/Leftover cash/.test(html)

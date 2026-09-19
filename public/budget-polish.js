@@ -6,6 +6,9 @@
  * groups those existing DOM nodes into the approved phone-first visual
  * hierarchy and adds human-readable status badges. It does not call Forecast,
  * read canonical data, total money, infer settlement, or move an obligation.
+ *
+ * Bills green-on-date is Dale planning chrome: it does not claim Forecast
+ * Paid and does not write representedEvents.
  */
 
 (function init(factory) {
@@ -14,6 +17,7 @@
   if (typeof document !== 'undefined') api.boot(document);
 })(function buildApi() {
   const APPLIED = 'data-atlas-budget-ui';
+  const PLANNING_CLEAR_GRACE_DAYS = 3;
 
   function billStatePresentation(status) {
     const key = String(status == null ? '' : status).trim().toLowerCase();
@@ -22,6 +26,43 @@
     if (key === 'pending') return { label: 'PENDING', kind: 'pending' };
     if (key === 'needs confirmation') return { label: 'CHECK', kind: 'check' };
     return null;
+  }
+
+  function isoDaysApart(fromIso, toIso) {
+    const from = String(fromIso || '').split('-').map(Number);
+    const to = String(toIso || '').split('-').map(Number);
+    if (from.length < 3 || to.length < 3) return null;
+    if (!from[0] || !from[1] || !from[2] || !to[0] || !to[1] || !to[2]) return null;
+    const a = Date.UTC(from[0], from[1] - 1, from[2]);
+    const b = Date.UTC(to[0], to[1] - 1, to[2]);
+    return Math.round((b - a) / 86400000);
+  }
+
+  function planningBillChrome(status, dueDate, asOf) {
+    const paid = String(status == null ? '' : status).trim().toLowerCase() === 'paid';
+    if (paid) {
+      return { label: 'PAID', kind: 'paid', planning: false };
+    }
+    const base = billStatePresentation(status);
+    const due = String(dueDate == null ? '' : dueDate).trim();
+    const today = String(asOf == null ? '' : asOf).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      return base;
+    }
+    const daysPast = isoDaysApart(due, today);
+    if (daysPast == null || daysPast < 0) return base;
+    if (daysPast > PLANNING_CLEAR_GRACE_DAYS) {
+      return {
+        label: 'DOUBLE-CHECK',
+        kind: 'double-check',
+        planning: true,
+      };
+    }
+    return {
+      label: 'ON DATE',
+      kind: 'planning-cleared',
+      planning: true,
+    };
   }
 
   function cleanBillLabel(value, status) {
@@ -41,10 +82,25 @@
     return Array.from((node && node.children) || []);
   }
 
+  function householdAsOf(line) {
+    let node = line;
+    while (node) {
+      if (node.getAttribute) {
+        const value = node.getAttribute('data-household-as-of');
+        if (value) return value;
+      }
+      node = node.parentElement || node.parentNode;
+    }
+    const root = line && line.ownerDocument;
+    const host = root && root.querySelector && root.querySelector('[data-household-as-of]');
+    return host && host.getAttribute('data-household-as-of');
+  }
+
   function decorateBillLine(doc, line) {
     if (!line || line.hasAttribute('data-atlas-bill-row')) return false;
     const status = line.getAttribute('data-bill-status');
-    const meta = billStatePresentation(status);
+    const dueDate = line.getAttribute('data-bill-date');
+    const meta = planningBillChrome(status, dueDate, householdAsOf(line));
     if (!meta) return false;
     const children = directElementChildren(line);
     const label = children[0] || null;
@@ -56,9 +112,13 @@
     badge.className = `atlas-bill-state atlas-bill-state-${meta.kind}`;
     badge.setAttribute('data-atlas-bill-state', meta.kind);
     badge.textContent = meta.label;
+    if (meta.kind === 'double-check') {
+      badge.setAttribute('title', 'No settlement evidence yet — double-check with Dale');
+    }
     line.insertBefore(badge, amount);
     line.classList.add('atlas-bill-row', `atlas-bill-row-${meta.kind}`);
     line.setAttribute('data-atlas-bill-row', 'true');
+    line.setAttribute('data-atlas-bill-chrome', meta.kind);
     return true;
   }
 
@@ -78,7 +138,6 @@
     waterfall.setAttribute(APPLIED, 'true');
 
     const question = number => waterfall.querySelector(`[data-operating-question="${number}"]`);
-    const opening = question('01');
     const income = question('02');
     const bills = question('04');
     const afterBills = question('05');
@@ -86,23 +145,15 @@
     const afterBudget = question('07');
 
     const paydayBalance = income && income.querySelector('[data-payday-balance]');
-    if (opening || paydayBalance) {
+    if (paydayBalance) {
       const summary = doc.createElement('div');
       summary.className = 'atlas-period-summary';
       summary.setAttribute('data-atlas-period-summary', 'true');
-      if (opening) {
-        const prompt = opening.querySelector('.operating-prompt');
-        if (prompt) prompt.textContent = 'Rollover balance';
-        opening.classList.add('atlas-summary-card', 'atlas-rollover-summary');
-        summary.appendChild(opening);
-      }
-      if (paydayBalance) {
-        const payday = doc.createElement('div');
-        payday.className = 'atlas-summary-card atlas-payday-summary';
-        payday.setAttribute('data-atlas-payday-summary', 'true');
-        payday.appendChild(paydayBalance);
-        summary.appendChild(payday);
-      }
+      const payday = doc.createElement('div');
+      payday.className = 'atlas-summary-card atlas-payday-summary';
+      payday.setAttribute('data-atlas-payday-summary', 'true');
+      payday.appendChild(paydayBalance);
+      summary.appendChild(payday);
       waterfall.appendChild(summary);
     }
 
@@ -145,10 +196,12 @@
 
   return {
     billStatePresentation,
+    planningBillChrome,
     cleanBillLabel,
     decorateBillLine,
     decorateWaterfall,
     enhance,
     boot,
+    PLANNING_CLEAR_GRACE_DAYS,
   };
 });

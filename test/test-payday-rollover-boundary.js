@@ -307,7 +307,8 @@ console.log('\n=== 6. Plan prints Forecast opening; it does not add leftover as 
     'active period prints Forecast opening as Opening balance');
   ok(/Carried forward, not income/.test(html),
     'opening note says carried forward is not income');
-  ok(/Payroll — Seaspan/.test(html) && html.includes(composer.money2(SALARY)),
+  ok(/Dale salary/.test(html) && html.includes(composer.money2(SALARY))
+      && !/Payroll — Seaspan/.test(html),
     'salary prints in the income block from Forecast');
   ok(/Payday balance/.test(html) && html.includes(composer.money2(active.available)),
     'Payday balance remains Forecast period.available');

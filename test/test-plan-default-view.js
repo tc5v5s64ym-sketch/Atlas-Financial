@@ -356,8 +356,9 @@ console.log('\n=== 3. bills this pay period: paid stay listed, history stays off
     'paid bills print PAID rather than being hidden');
   ok(/TD account fees \(two accounts\) · Aug 30 · still due/.test(glance),
     'later-in-window bills stay still due');
-  ok(/Payroll — Seaspan/.test(glance) && !/Canada child benefit/.test(glance),
-    'Seaspan prints in the income block; Aug 20 child benefit is previous cycle');
+  ok(/Dale salary/.test(glance) && !/Canada child benefit/.test(glance)
+      && !/Payroll — Seaspan/.test(glance),
+    'Dale salary prints in the income block; Aug 20 child benefit is previous cycle');
   ok(!/Rogers/.test(glance) && !/CMAW/.test(glance),
     'glance does not invent bills');
   ok(glance.includes('−' + composer.money2(MORTGAGE)),
