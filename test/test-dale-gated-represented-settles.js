@@ -4,10 +4,13 @@
  *
  * RepresentedEvents on the dated opening plus Fit4Less-class identity
  * for live rediscovery of Noble Dispo (WEEKLY) and IP470 HELOC cash
- * (BILLS). tdcc stays Dale-gated only: chequing TFR-TO C/C is already
- * travel/cashback/tdcc card-side identity and must not invent Emerald.
- * Not card-paid standing. Synthetic observe fixtures (L-006); live
- * id+date membership is the owner-gated fact being encoded.
+ * (BILLS). Live as-of advance merges still-qualifying Dale-gated /
+ * existing opening names (in-window, carried-once, or prepaid) so
+ * Budget Bills stay Paid; identity rediscovery remains additive.
+ * tdcc has no chequing TFR-TO C/C identity: chequing TFR-TO C/C is
+ * already travel/cashback/tdcc card-side identity and must not invent
+ * Emerald. Not card-paid standing. Synthetic observe fixtures (L-006);
+ * live id+date membership is the owner-gated fact being encoded.
  *
  * `node test/test-dale-gated-represented-settles.js`
  */
@@ -173,8 +176,12 @@ function actionBill(plan, asOf, id, date, opts) {
 }
 
 function overlay(idDoc, txs) {
+  return overlayData(canonical, idDoc, txs);
+}
+
+function overlayData(data, idDoc, txs) {
   return Live.fromObservation({
-    data: canonical,
+    data,
     payload: payload(txs),
     accountMap: readyMap(),
     identity: idDoc,
@@ -295,13 +302,15 @@ console.log('\n=== 5. identities: Noble Dispo WEEKLY + IP470 BILLS; no tdcc cheq
       && heloc[0].postingDateRule === EARLY_RULE
       && !heloc[0].settlesWhen,
     'heloc identity is IP470 + BILLS + debit + early-or-covers-due; amount is not identity');
-  const guardSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'privacy-guard.js'), 'utf8');
-  const guardLit = /CONTENT_PATTERNS = "([^"]+)"/.exec(guardSrc);
-  const blocked = guardLit ? new RegExp(guardLit[1], 'i') : null;
-  ok(blocked && !blocked.test(JSON.stringify(heloc[0]))
-      && !blocked.test(identity.owns || '')
-      && !blocked.test(canonical.plan.opening.note || ''),
-    'HELOC identity and the opening note do not copy a privacy-guard blocked identifier');
+  ok(heloc[0].payeePattern === 'IP470'
+      && /privacy-blocked household identifier/.test(heloc[0].note || '')
+      && !/\d{6,}/.test(JSON.stringify({
+        payeePattern: heloc[0].payeePattern,
+        payeePatterns: heloc[0].payeePatterns,
+      })),
+    'HELOC identity uses documented payee token IP470, not a numeric destination account');
+  ok(!/\b\d{7}\b/.test(canonical.plan.opening.note || ''),
+    'opening note does not copy a 7-digit destination identifier');
   const tdccChequing = rulesFor(TDCC_ID)
     .filter(r => r.atlasAccountId === 'chequing-a' && r.direction === 'debit');
   ok(tdccChequing.length === 0,
@@ -316,7 +325,7 @@ console.log('\n=== 6. Noble Dispo actual leaves Other residual via represented-b
   ok(!(missing.representedEventCandidates || []).some(c => c && c.id === NOBLE_ID),
     'without the noble-garbage rule, Noble Dispo stays unmatched');
   const unmatchedTx = ((missing.currentPeriodActuals || {}).transactions || [])
-    .find(tx => tx && String(tx.id) === '42101');
+    .find(tx => tx && tx.date === NOBLE_DUE && near(tx.amount, NOBLE_OBS));
   const unmatchedCls = F.classifyCurrentPeriodTransaction(unmatchedTx, canonical.plan, {
     currentPeriodActuals: missing.currentPeriodActuals,
   });
@@ -388,31 +397,74 @@ console.log('\n=== 8. chequing TFR-TO C/C does not uniquely settle tdcc ===');
     'this fixture debit is not a card-side credit and does not settle travel/cashback either');
 }
 
-console.log('\n=== 9. live as-of advance drops Dale-gated names unless identity rediscovers ===');
+console.log('\n=== 9. live as-of advance keeps qualifying Dale-gated prepaid names; identity is additive ===');
 {
-  const stripped = overlay(identityWithout([NOBLE_ID, HELOC_ID]), []);
-  const dropped = (stripped.data.plan.opening && stripped.data.plan.opening.representedEvents) || [];
-  ok(stripped.data.plan.opening.asOf === LIVE_AS_OF
-      && stripped.data.plan.opening.priorAsOf === OPENING,
+  const preserved = overlay(identityWithout([NOBLE_ID, HELOC_ID]), []);
+  const kept = (preserved.data.plan.opening && preserved.data.plan.opening.representedEvents) || [];
+  ok(preserved.data.plan.opening.asOf === LIVE_AS_OF
+      && preserved.data.plan.opening.priorAsOf === OPENING,
     'fresh overlay advances as-of to 2026-09-18');
-  ok(!named(dropped, NOBLE_ID, NOBLE_DUE)
-      && !named(dropped, HELOC_ID, HELOC_DUE)
-      && !named(dropped, TDCC_ID, TDCC_DUE),
-    'without identity hits, live advance does not keep the Dale-gated prepaid names');
+  ok(named(kept, NOBLE_ID, NOBLE_DUE)
+      && named(kept, HELOC_ID, HELOC_DUE)
+      && named(kept, TDCC_ID, TDCC_DUE),
+    'qualifying Dale-gated prepaid names survive as-of advance without identity hits');
+  const stuffed = clone(canonical);
+  stuffed.plan.opening = Object.assign({}, stuffed.plan.opening, {
+    representedEvents: liveNamed().concat([{ id: 'payroll', date: '2026-08-14' }]),
+  });
+  const dropped = overlayData(stuffed, identityWithout([NOBLE_ID, HELOC_ID]), []);
+  const afterDrop = (dropped.data.plan.opening && dropped.data.plan.opening.representedEvents) || [];
+  ok(!named(afterDrop, 'payroll', '2026-08-14'),
+    'a pre-opening payroll name is not kept as generic historical backfill');
+  ok(named(afterDrop, TDCC_ID, TDCC_DUE),
+    'tdcc@2026-09-17 stays on the advanced opening from Dale-gated prepaid, not card-side credit');
+  const liveAction = F.currentPeriodAction(preserved.data.plan, LIVE_AS_OF, {
+    currentPeriodActuals: preserved.data.liveOverlay
+      && preserved.data.liveOverlay.currentPeriodActuals,
+  });
+  const liveBill = (id, date) => ((liveAction && liveAction.bills) || [])
+    .find(b => b && b.id === id && b.date === date) || null;
+  const liveNoble = liveBill(NOBLE_ID, NOBLE_DUE);
+  const liveHeloc = liveBill(HELOC_ID, HELOC_DUE);
+  const liveTdcc = liveBill(TDCC_ID, TDCC_DUE);
+  ok(liveNoble && liveNoble.settlement === 'represented' && near(liveNoble.remaining, 0),
+    'live Budget marks noble-garbage@2026-09-18 represented after overlay advance');
+  ok(liveHeloc && liveHeloc.settlement === 'represented' && near(liveHeloc.remaining, 0),
+    'live Budget marks heloc@2026-09-21 represented after overlay advance');
+  ok(liveTdcc && liveTdcc.settlement === 'represented' && near(liveTdcc.remaining, 0),
+    'live Budget marks tdcc@2026-09-17 represented after overlay advance without card-side credit');
+  ok(!(liveNoble && liveNoble.cardPaid) && !(liveHeloc && liveHeloc.cardPaid)
+      && !(liveTdcc && liveTdcc.cardPaid),
+    'live Budget does not invent cardPaid on these rows');
+
   const rediscovered = overlay(identity, [nobleTx(), helocTx()]);
   const next = (rediscovered.data.plan.opening
     && rediscovered.data.plan.opening.representedEvents) || [];
   ok(named(next, NOBLE_ID, NOBLE_DUE) && named(next, HELOC_ID, HELOC_DUE),
     'identity rediscovers noble-garbage@2026-09-18 and heloc@2026-09-21 on the live opening');
-  ok(!named(next, TDCC_ID, TDCC_DUE),
-    'tdcc is not rediscovered from chequing evidence; Dale-gated list alone does not survive advance');
-  const liveNoble = (canonical.plan.bills || []).find(b => b.id === NOBLE_ID);
-  const liveHeloc = (canonical.plan.obligations || []).find(o => o.id === HELOC_ID);
+  const actuals = ((rediscovered.report && rediscovered.report.currentPeriodActuals)
+    || (rediscovered.data.liveOverlay && rediscovered.data.liveOverlay.currentPeriodActuals)
+    || {}).representedActuals || [];
+  ok(actuals.some(r => r && r.id === NOBLE_ID && r.date === NOBLE_DUE)
+      && actuals.some(r => r && r.id === HELOC_ID && r.date === HELOC_DUE),
+    'identity txs populate representedActuals for noble-garbage and heloc');
+  ok(!actuals.some(r => r && r.id === TDCC_ID),
+    'chequing evidence does not invent tdcc representedActuals');
+  const chequingOnly = overlay(identity, [tdccChequingTx()]);
+  const chequingNamed = (chequingOnly.data.plan.opening
+    && chequingOnly.data.plan.opening.representedEvents) || [];
+  ok(named(chequingNamed, TDCC_ID, TDCC_DUE),
+    'Dale-gated tdcc@2026-09-17 remains after overlay with only chequing TFR-TO C/C');
+  ok(!(chequingOnly.report.representedEventCandidates || [])
+      .some(c => c && c.id === TDCC_ID),
+    'chequing TFR-TO C/C still does not identity-match tdcc');
+  const liveNobleRow = (canonical.plan.bills || []).find(b => b.id === NOBLE_ID);
+  const liveHelocRow = (canonical.plan.obligations || []).find(o => o.id === HELOC_ID);
   ok(JSON.stringify(rediscovered.data.plan.bills.find(b => b.id === NOBLE_ID))
-      === JSON.stringify(liveNoble),
+      === JSON.stringify(liveNobleRow),
     'live rediscovery does not rewrite the noble-garbage bill row');
   ok(JSON.stringify(rediscovered.data.plan.obligations.find(o => o.id === HELOC_ID))
-      === JSON.stringify(liveHeloc),
+      === JSON.stringify(liveHelocRow),
     'live rediscovery does not rewrite the heloc obligation row');
 }
 
