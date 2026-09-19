@@ -117,6 +117,7 @@ const suites = [
   ['BC Hydro Sep 4 Other-spending classification', 'test-bc-hydro-sep4-classification.js'],
   ['BC Hydro equal monthly payment $199 timing repair and account credit', 'test-hydro-equal-payment.js'],
   ['standing Fortis / Shaw / Netflix / TD / YouTube / Spotify / ChatGPT Plus Dale / iCloud settlement identities', 'test-bill-settlement-identities.js'],
+  ['calendar / Budget bills reprint representedActuals as Paid', 'test-calendar-represented-actuals-paid.js'],
   ['unresolved pending→posted household-spend treatment', 'test-unresolved-pending-posted-spend.js'],
   ['current-period Other-residual classification contract', 'test-current-period-other-residual-contract.js'],
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
