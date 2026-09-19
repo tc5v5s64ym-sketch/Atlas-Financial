@@ -166,13 +166,14 @@ ok(!(withBell.budget.categories || []).some(c => c.currentMonthly != null),
 const liveBell = (live.plan.bills || []).find(b => b.id === 'bell');
 const liveTelecom = (live.plan.budget.categories || []).find(c => c.id === 'telecom');
 ok(liveBell && liveBell.day === 15 && liveBell.needsDate !== true
-    && near(liveBell.amount, BELL) && liveBell.payingAccount === 'travelvisa'
-    && liveBell.jointCash === false,
-  'live Bell is dated on the 15th, card-paid Travel Visa, not needsDate');
+    && near(liveBell.amount, 160) && liveBell.firstDue === '2026-10-15'
+    && liveBell.payingAccount === 'travelvisa' && liveBell.jointCash === false,
+  'live Bell standing is dated on the 15th from Oct, card-paid Travel Visa, not needsDate');
 ok(liveTelecom && liveTelecom.currentMonthly == null,
   'live telecom no longer holds an undated currentMonthly reserve');
-ok(((live.plan.bills || []).filter(b => /bell|watch/i.test(`${b.id} ${b.label}`))).length === 1,
-  'live plan has exactly one Bell recurring row');
+ok(((live.plan.bills || []).filter(b => b.id === 'bell')).length === 1
+    && ((live.plan.bills || []).filter(b => b.id === 'bell-sep15-2026')).length === 1,
+  'live plan has one Bell recurring row and the September once row');
 
 console.log('\n=== 6–7. September Bell belongs to exactly one Seaspan payday window ===');
 const sepCycle = F.spendingCycle({
@@ -192,10 +193,11 @@ ok(sepCycle.start <= '2026-09-15' && '2026-09-15' <= sepCycle.end,
   'scheduled household planning date 15 is the ownership authority');
 
 const liveSep = F.expandEvents(live.plan, '2026-09-01', '2026-09-30', {})
-  .filter(e => e.id === 'bell');
-ok(liveSep.length === 1 && liveSep[0].date === '2026-09-15' && near(-liveSep[0].amount, BELL)
+  .filter(e => e.id === 'bell' || e.id === 'bell-sep15-2026');
+ok(liveSep.length === 1 && liveSep[0].id === 'bell-sep15-2026'
+    && liveSep[0].date === '2026-09-15' && near(-liveSep[0].amount, 265.65)
     && liveSep[0].cardPaid === true && liveSep[0].jointCash === false,
-  'September live Bell occurrence is $121 on 2026-09-15, card-paid');
+  'September live Bell occurrence is the $265.65 once on 2026-09-15, card-paid');
 ok(!liveSep.some(e => e.date === '2026-09-17'),
   'the unusual August 17 due date does not become the September day');
 
@@ -238,7 +240,8 @@ ok(occurrenceCount(withBell, AS_OF, HORIZON) === 12,
 
 const liveHorizon = F.knowledgeHorizon(live.plan, live.meta.asOf, {}).days;
 const liveZero = clone(live.plan);
-liveZero.bills = (liveZero.bills || []).filter(b => b.id !== 'bell');
+liveZero.bills = (liveZero.bills || []).filter(b =>
+  b.id !== 'bell' && b.id !== 'bell-sep15-2026');
 if (liveZero.budget && liveZero.budget.categories) {
   liveZero.budget.categories = liveZero.budget.categories.map(c =>
     c.id === 'telecom' ? Object.assign({}, c, { currentMonthly: 0 }) : c);
@@ -249,12 +252,13 @@ const liveOpts = {
 };
 const liveOn = F.simulate(live.plan, live.meta.asOf, liveOpts);
 const liveOff = F.simulate(liveZero, live.meta.asOf, liveOpts);
-const liveWant = BELL * occurrenceCount(live.plan, live.meta.asOf, liveHorizon);
+const liveStandingCount = occurrenceCount(live.plan, live.meta.asOf, liveHorizon);
+const liveWant = 265.65 + 160 * liveStandingCount;
 ok(near(liveOff.ending - liveOn.ending, liveWant),
-  'live plan: removing the dated Bell row lifts the knowledge walk by $121 per 15th',
+  'live plan: removing Bell once + standing lifts the knowledge walk by $265.65 + $160 per Oct+ 15th',
   money(liveOff.ending - liveOn.ending));
 ok(near(liveOn.totals.reserved - liveOff.totals.reserved, liveWant),
-  'live reserved delta is that same dated $121 total — no second $121 smear',
+  'live reserved delta is that same dated Bell total — no second smear',
   money(liveOn.totals.reserved - liveOff.totals.reserved));
 
 console.log('\n=== 11–13. Travel Visa settlement stays distinct; no double chequing hit ===');
@@ -434,24 +438,28 @@ console.log('\n=== 15–16. budget current-regime, payday print, determinism ===
 const bd = F.budgetBreakdown(live.plan, periods, { asOf: live.meta.asOf });
 const telecom = bd.categories.find(c => c.id === 'telecom');
 const shaw = (live.plan.bills || []).find(b => b.id === 'shaw');
-ok(telecom && telecom.source === 'current-regime' && near(telecom.current, BELL)
+const monthsInWindow = (live.plan.windowDays || 91) / (365.25 / 12);
+const onceMonthly = 265.65 / monthsInWindow;
+ok(telecom && telecom.source === 'current-regime' && near(telecom.current, 160 + onceMonthly)
     && near(telecom.reserved, 0) && near(telecom.planned, 0)
-    && near(telecom.dated, shaw.amount + BELL),
-  'live telecom dated is Shaw + Bell; reserved smear is gone; historical does not win',
+    && near(telecom.dated, shaw.amount + 160 + onceMonthly),
+  'live telecom dated is Shaw + standing $160 + Sep once smear; reserved smear is gone',
   telecom && `${money(telecom.dated)} dated / ${money(telecom.reserved)} reserved`);
-ok(telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, BELL))
+ok(telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, 160))
+    && telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, onceMonthly))
     && telecom.datedItems.some(i => /shaw/i.test(i.label) && near(i.amount, shaw.amount)),
-  'Shaw remains the chequing telecom bill; Bell is the dated card-paid item');
+  'Shaw remains the chequing telecom bill; Bell standing and Sep once are dated card-paid items');
 
 const sep10 = F.recommend(live.plan, '2026-09-10', {
   debts: live.debts, targetBuffer: 0, periods,
 });
 const sepBills = (sep10.defaultView.bills || []).concat(
   (sep10.defaultView.calendarPeriods || []).reduce((all, p) => all.concat(p.bills || []), []));
-const sepBellRows = sepBills.filter(r => r.id === 'bell');
-ok(sepBellRows.length >= 1 && sepBellRows.every(r => r.date === '2026-09-15'
-    && near(r.amount, BELL) && r.needsDate !== true && r.cardPaid === true),
-  'as-of 10 Sep prints September Bell on the 15th in the owning payday window');
+const sepBellRows = sepBills.filter(r => r.id === 'bell' || r.id === 'bell-sep15-2026');
+ok(sepBellRows.length >= 1 && sepBellRows.every(r => r.id === 'bell-sep15-2026'
+    && r.date === '2026-09-15' && near(r.amount, 265.65)
+    && r.needsDate !== true && r.cardPaid === true),
+  'as-of 10 Sep prints September Bell as the $265.65 once on the 15th in the owning payday window');
 ok(sepBellRows.every(r => !/BILLS ACCOUNT/i.test(r.payerLabel || '')),
   'printed Bell is not labelled as a BILLS ACCOUNT withdrawal');
 
@@ -478,8 +486,9 @@ ok(!near(mutDelta, want) && near(mutDelta, (BELL + WATCH_LINE_AGAIN) * occurrenc
 const facts = sourceText(fs.readFileSync(
   path.join(__dirname, '..', 'docs/ACCOUNT_FACTS.md'), 'utf8'));
 ok(/\$104\.20 \+ \$16\.80 = \$121\.00/.test(facts) && /15th/.test(facts)
-    && /card-paid Travel Visa reserved gravity/.test(facts),
-  'ACCOUNT_FACTS records the dated $121 baseline and the 15th planning day');
+    && /card-paid Travel Visa reserved gravity/.test(facts)
+    && /\$160\/month/.test(facts) && /\$265\.65/.test(facts),
+  'ACCOUNT_FACTS records standing $160, Sep once $265.65, and $121 as historical');
 ok(!/Forecast reserves that \$121\.00 as undated current-regime cash/.test(facts),
   'ACCOUNT_FACTS no longer describes Bell timing as an undated smear');
 

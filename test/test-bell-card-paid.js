@@ -221,9 +221,10 @@ const telecom = (live.plan.budget.categories || []).find(c => c.id === 'telecom'
 ok(telecom && telecom.currentMonthly == null && telecom.plannedMonthly == null,
   'live telecom no longer holds an undated currentMonthly reserve');
 ok((live.plan.bills || []).some(b => b.id === 'bell' && b.day === 15
-    && b.needsDate !== true && near(b.amount, BELL)
+    && b.needsDate !== true && near(b.amount, 160)
+    && b.firstDue === '2026-10-15'
     && b.payingAccount === 'travelvisa' && b.jointCash === false),
-  'live Bell is the dated $121 card-paid planning row on the 15th');
+  'live Bell is the dated $160 card-paid planning row on the 15th from October');
 ok(!(live.plan.bills || []).some(b => /telus|watch/i.test(`${b.id} ${b.label}`) && b.id !== 'bell'),
   'live plan.bills has no Telus or invented watch row');
 const travel = (live.plan.obligations || []).find(o => o.id === 'travel');
@@ -251,12 +252,12 @@ const liveOff = F.simulate(liveZero, liveAsOf, liveOpts);
 const liveWatch = F.simulate(liveMut, liveAsOf, liveOpts);
 const liveCount = F.expandEvents(live.plan, liveAsOf, F.addDays(liveAsOf, liveHorizon - 1), {})
   .filter(e => e.id === 'bell').length;
-const liveIndependent = BELL * liveCount;
+const liveIndependent = 160 * liveCount;
 ok(near(liveOff.ending - liveBell.ending, liveIndependent),
-  'live plan: removing dated Bell lifts the knowledge-horizon walk by $121 per 15th',
+  'live plan: removing dated standing Bell lifts the knowledge-horizon walk by $160 per Oct+ 15th',
   money(liveOff.ending - liveBell.ending));
 ok(!near(liveOff.ending - liveWatch.ending, liveIndependent),
-  'live plan: adding the $15 watch line again is not the $121 identity');
+  'live plan: adding the $15 watch line again is not the standing $160 identity');
 
 console.log('\n=== partial-week slice reserved uses retained days, not a full week ===');
 {
