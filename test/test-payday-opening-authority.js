@@ -9,8 +9,10 @@
  * must change the opening or withhold it.
  *
  * Independent reconstruction when the gap packet is complete:
- *   dated opening + every household-cash movement in the gap
+ *   dated chequing-only opening + every chequing-pool movement in the gap
  *     = frozen payday opening
+ *   A designated-savings credit/debit or internal-transfer savings leg
+ *   does not change that reconstructed spendable opening.
  *   Dale + Amanda + recognized Other Income = Payday balance
  * Opening cash is not a term in the allocation waterfall.
  *
@@ -836,6 +838,148 @@ console.log('\n=== 9. observer earns paydayGapComplete; overlay consumes the pro
       && !(missingPending.data.plan.opening
         && missingPending.data.plan.opening.paydaySnapshot),
     'missing pending coverage does not earn the attestation');
+}
+
+console.log('\n=== 10. Designated savings in the gap does not change spendable payday opening ===');
+{
+  const SAVINGS_IN = 200;
+  const TRANSFER = 40;
+  const independentAfterTransfer = roundCent(OVERLAY_MORNING_WITH_GROCERY - TRANSFER);
+  const ifSavingsSpent = roundCent(OVERLAY_MORNING_WITH_GROCERY + SAVINGS_IN);
+  const chequingGap = [
+    { date: '2026-08-20', amount: CHILD, accountRole: 'household-cash', atlasAccountId: 'chequing-a' },
+    { date: '2026-08-25', amount: -GROCERY, accountRole: 'household-cash', atlasAccountId: 'chequing-a' },
+  ];
+  const plan = overlayCanonical().plan;
+  const chequingOnly = F.establishPaydaySnapshot(plan, PAYDAY, {
+    paydayGapCash: completeGapCash(chequingGap),
+  });
+  const withSavingsCredit = F.establishPaydaySnapshot(plan, PAYDAY, {
+    paydayGapCash: completeGapCash(chequingGap.concat([{
+      date: '2026-08-22', amount: SAVINGS_IN, accountRole: 'household-cash',
+      atlasAccountId: 'savings',
+    }])),
+  });
+  const withTransfer = F.establishPaydaySnapshot(plan, PAYDAY, {
+    paydayGapCash: completeGapCash(chequingGap.concat([
+      {
+        date: '2026-08-22', amount: -TRANSFER, accountRole: 'household-cash',
+        atlasAccountId: 'chequing-a',
+      },
+      {
+        date: '2026-08-22', amount: TRANSFER, accountRole: 'household-cash',
+        atlasAccountId: 'savings',
+      },
+    ])),
+  });
+  ok(chequingOnly && near(chequingOnly.opening, OVERLAY_MORNING_WITH_GROCERY),
+    'independent chequing-only reconstruction is dated chequing + child − grocery');
+  ok(withSavingsCredit && near(withSavingsCredit.opening, OVERLAY_MORNING_WITH_GROCERY)
+      && !near(withSavingsCredit.opening, ifSavingsSpent),
+    'a designated-savings credit in a complete gap does not change the spendable payday opening');
+  ok(withTransfer && near(withTransfer.opening, independentAfterTransfer)
+      && !near(withTransfer.opening, OVERLAY_MORNING_WITH_GROCERY)
+      && !near(withTransfer.opening, OVERLAY_MORNING_WITH_GROCERY + TRANSFER),
+    'a chequing→savings transfer reduces the opening by the chequing leg only; the savings leg does not cancel it');
+
+  const liveSrc = read('scripts/live-plan.js');
+  ok(/atlasAccountId/.test(liveSrc)
+      && /movement\.atlasAccountId/.test(liveSrc),
+    'paydayGapCashFromReport preserves account identity for Forecast');
+
+  const completeTxs = [
+    { date: '2026-08-20', amount: -CHILD, accountRole: 'household-cash', atlasAccountId: 'chequing-a', pending: false },
+    { date: '2026-08-25', amount: GROCERY, accountRole: 'household-cash', atlasAccountId: 'chequing-a', pending: false },
+  ];
+  const savingsCreditTx = {
+    date: '2026-08-22', amount: -SAVINGS_IN, accountRole: 'household-cash',
+    atlasAccountId: 'savings', pending: false,
+  };
+  const transferTxs = [
+    {
+      date: '2026-08-22', amount: TRANSFER, accountRole: 'household-cash',
+      atlasAccountId: 'chequing-a', pending: false,
+    },
+    {
+      date: '2026-08-22', amount: -TRANSFER, accountRole: 'household-cash',
+      atlasAccountId: 'savings', pending: false,
+    },
+  ];
+  const savingsOverlay = Live.overlayLiveState({
+    data: overlayCanonical(),
+    report: overlayReport({
+      transactions: completeTxs.concat([savingsCreditTx]),
+      paydayGapComplete: true,
+    }),
+  });
+  const savingsSnap = savingsOverlay.data.plan.opening
+    && savingsOverlay.data.plan.opening.paydaySnapshot;
+  const savingsPacket = Live.paydayGapCashFromReport(
+    overlayReport({
+      transactions: completeTxs.concat([savingsCreditTx]),
+      paydayGapComplete: true,
+    }),
+    overlayCanonical().plan,
+    PAYDAY
+  );
+  ok(savingsSnap && near(savingsSnap.opening, OVERLAY_MORNING_WITH_GROCERY)
+      && !near(savingsSnap.opening, ifSavingsSpent),
+    'live overlay complete-gap snapshot ignores a designated-savings credit');
+  ok(savingsPacket && savingsPacket.complete === true
+      && savingsPacket.movements.some(m => m && m.atlasAccountId === 'savings'
+        && near(m.amount, SAVINGS_IN))
+      && savingsPacket.movements.some(m => m && m.atlasAccountId === 'chequing-a'
+        && near(m.amount, -GROCERY)),
+    'the gap packet still carries the savings movement as evidence; Forecast does not spend it');
+
+  const transferOverlay = Live.overlayLiveState({
+    data: overlayCanonical(),
+    report: overlayReport({
+      transactions: completeTxs.concat(transferTxs),
+      paydayGapComplete: true,
+    }),
+  });
+  const transferSnap = transferOverlay.data.plan.opening
+    && transferOverlay.data.plan.opening.paydaySnapshot;
+  ok(transferSnap && near(transferSnap.opening, independentAfterTransfer)
+      && !near(transferSnap.opening, OVERLAY_MORNING_WITH_GROCERY),
+    'live overlay applies the chequing transfer leg and ignores the savings leg');
+
+  const observeSavings = observeThenOverlay(observePayload({
+    transactions: observeGapTransactions().concat([{
+      id: 510, account_id: 1003, date: '2026-08-22', amount: -SAVINGS_IN,
+      is_pending: false, payee: 'SYNTHETIC SAVINGS CREDIT',
+    }]),
+  }));
+  const observeSavingsSnap = observeSavings.data.plan.opening
+    && observeSavings.data.plan.opening.paydaySnapshot;
+  ok(observeSavings.report.currentPeriodActuals
+      && observeSavings.report.currentPeriodActuals.paydayGapComplete === true
+      && observeSavingsSnap
+      && near(observeSavingsSnap.opening, OVERLAY_MORNING_WITH_GROCERY)
+      && !near(observeSavingsSnap.opening, ifSavingsSpent),
+    'observe→overlay still earns completeness; a savings credit does not move the spendable opening');
+
+  const observeTransfer = observeThenOverlay(observePayload({
+    transactions: observeGapTransactions().concat([
+      {
+        id: 511, account_id: 1001, date: '2026-08-22', amount: TRANSFER,
+        is_pending: false, payee: 'TFR-TO SAVINGS',
+      },
+      {
+        id: 512, account_id: 1003, date: '2026-08-22', amount: -TRANSFER,
+        is_pending: false, payee: 'TFR-FR CHEQUING',
+      },
+    ]),
+  }));
+  const observeTransferSnap = observeTransfer.data.plan.opening
+    && observeTransfer.data.plan.opening.paydaySnapshot;
+  ok(observeTransfer.report.currentPeriodActuals
+      && observeTransfer.report.currentPeriodActuals.paydayGapComplete === true
+      && observeTransferSnap
+      && near(observeTransferSnap.opening, independentAfterTransfer)
+      && !near(observeTransferSnap.opening, OVERLAY_MORNING_WITH_GROCERY),
+    'observe→overlay still applies a chequing transfer outflow; the savings credit leg does not cancel it');
 }
 
 if (failures) {

@@ -21,7 +21,9 @@ rewriting historical openings or snapshots. When that overlay advances
 past a Seaspan payday, the clone retains `plan.opening.paydaySnapshot`
 from `Forecast.establishPaydaySnapshot` on the pre-overlay dated plan
 only when that figure is a recorded snapshot or a completeness-proven
-household-cash walk of the opening-to-payday gap. live-plan derives
+walk of the opening-to-payday gap on the chequing-only spendable pool
+(designated savings movements do not change that reconstructed opening).
+live-plan derives
 that walk's `paydayGapCash` packet from the incumbent sanitized
 `currentPeriodActuals` evidence. `scripts/provider-observe.js` earns
 `paydayGapComplete` only when the fetch-complete posted window covers
