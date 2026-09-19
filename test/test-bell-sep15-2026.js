@@ -63,7 +63,14 @@ function fixturePlan() {
       amount: OPENING,
       breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: OPENING }],
     },
-    income: [],
+    income: [{
+      id: 'payroll',
+      label: 'Payroll — Seaspan',
+      frequency: 'biweekly',
+      anchor: '2026-08-14',
+      amount: 4000,
+      confidence: 'confirmed',
+    }],
     obligations: [],
     bills: [
       {
@@ -238,7 +245,7 @@ console.log('\n=== 5. live plan encodes the owner amounts without a second plann
       && /Travel Visa/.test(facts),
     'ACCOUNT_FACTS records standing $160, Sep once $265.65, and the travelvisa path');
   ok(/\$104\.20 \+ \$16\.80 = \$121\.00/.test(facts)
-      && /retired as the forward baseline/.test(facts),
+      && /retired as the forward baseline/i.test(facts),
     'ACCOUNT_FACTS keeps $121 as historical context only');
 }
 
