@@ -22,6 +22,11 @@ const IDS = [
   'resp-aug15-outstanding',
 ];
 const SCHEDULE_TRUST = 'schedule-trust-on-due';
+const NAMED_SCHEDULE_TRUST_IDS = new Set([
+  'youtube-premium',
+  'spotify',
+  'chatgpt-plus-dale',
+]);
 const EXPECTED = 282.87;
 let failures = 0;
 
@@ -82,6 +87,10 @@ function isScheduleTrust(candidate) {
     || candidate.postingDateRelation === SCHEDULE_TRUST));
 }
 
+function isNamedScheduleTrustId(candidate) {
+  return !!(candidate && NAMED_SCHEDULE_TRUST_IDS.has(candidate.id));
+}
+
 function bankPayeeCandidates(candidates) {
   return (candidates || []).filter(candidate => !isScheduleTrust(candidate));
 }
@@ -109,7 +118,7 @@ ok(bankHits.every(candidate => candidate.date === '2026-08-16'
 ok((candidates || []).filter(isScheduleTrust).every(candidate =>
       candidate.providerTransactionId == null
       && candidate.direction == null
-      && (candidate.id === 'spotify' || candidate.id === 'youtube-premium')),
+      && isNamedScheduleTrustId(candidate)),
   'named schedule-trust exceptions are not bank-payee automatic-payment identities');
 ok(near(afterReserve, 0) && near(beforeReserve - afterReserve, EXPECTED),
   'the live Forecast releases exactly $282.87 and does not reserve the three obligations again',
@@ -178,7 +187,7 @@ ok(bankPayeeCandidates(amountOnly).length === 0,
   'amount and date alone never establish identity');
 ok(amountOnly.filter(isScheduleTrust).every(candidate =>
       candidate.providerTransactionId == null
-      && (candidate.id === 'spotify' || candidate.id === 'youtube-premium')),
+      && isNamedScheduleTrustId(candidate)),
   'schedule-trust on a due date is not amount-and-date bank-payee identity');
 
 const changedAmount = candidatesFor([Object.assign({}, bcaa, { id: 8204, amount: 103 })]);
