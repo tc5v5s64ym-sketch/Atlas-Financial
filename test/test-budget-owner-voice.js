@@ -114,8 +114,11 @@ console.log('\n=== 2. Rollover is gone from Budget polish ===');
   ok(/display:\s*none/.test(polishCss)
       && /data-operating-question="01"/.test(polishCss),
     'Budget CSS hides the waterfall opening / rollover question');
-  ok(/atlas-payday-summary/.test(polishCss) && /atlas-current-balance-card/.test(polishCss),
-    'payday balance and current balance keep dedicated hierarchy');
+  ok(/atlas-income-card \[data-payday-balance\]/.test(polishCss)
+      && /atlas-current-balance-card/.test(polishCss)
+      && !/atlas-period-summary/.test(polishSrc)
+      && !/atlas-payday-summary/.test(polishSrc),
+    'payday balance stays the income-card closing total; current balance keeps its own card');
 }
 
 console.log('\n=== 3. Paycheck chrome: no strikethrough, no arriving green ===');

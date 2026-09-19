@@ -323,10 +323,13 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
         ],
       },
     }, advice.paydayAllocation);
+  const pickerStart = html.indexOf('data-calendar-period-picker');
   const liveStart = html.indexOf('data-live-current-balance');
   const cardStart = html.indexOf('data-calendar-waterfall="this-pay-period"');
   const liveBlock = liveStart >= 0 ? html.slice(liveStart, cardStart) : '';
   const card = cardStart >= 0 ? html.slice(cardStart) : '';
+  ok(pickerStart >= 0 && pickerStart < liveStart,
+    'pay period selector prints before live Current Balance');
   ok(liveStart >= 0 && cardStart > liveStart,
     'live Current Balance is rendered before the payday snapshot card');
   ok(/Current Balance/.test(liveBlock) && /as of September 4/.test(liveBlock)
@@ -343,6 +346,11 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
       && /data-operating-prompt="Bills"/.test(card)
       && /data-operating-prompt="Household budget"/.test(card),
     'payday card still prints income, Payday balance, bills, and budget');
+  const cardIncomeLine = card.indexOf('data-period-income');
+  const cardPayday = card.indexOf('data-payday-balance');
+  ok(cardIncomeLine >= 0 && cardPayday > cardIncomeLine
+      && cardPayday < card.indexOf('data-operating-prompt="Bills"'),
+    'Payday balance remains under income lines inside the payday card');
   const next = period(advice.defaultView, 'next-pay-period');
   const nextHtml = composer.calendarWaterfallHtml(next, null, advice.paydayAllocation);
   ok(/data-operating-prompt="Opening balance"/.test(nextHtml)
