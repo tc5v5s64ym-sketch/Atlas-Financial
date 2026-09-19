@@ -204,7 +204,7 @@ Ultd Shr 2GB **$15.00** + GST **$0.75** + BC PST **$1.05** =
 **$16.80/month**. That is the second-account recurring baseline. Do not use
 that account's accumulated amount-due / arrears as the run rate. Forward
 dated Bell telecom standing is therefore owner 2026-09-19 **$160/month**
-from 2026-10-15, with September 2026 as the once **$265.65** due
+from 2026-10-15, with September 2026 as the once **$283.94** due
 2026-09-15. The August 2026 reconstruction **$104.20 + $16.80 =
 $121.00/month** is historical only. Planned around the 15th as card-paid
 reserved gravity (not a chequing withdrawal). Timing of the standing

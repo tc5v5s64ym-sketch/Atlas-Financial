@@ -117,9 +117,9 @@ console.log('\n=== Bell $15 watch line is not a second invented bill ===');
         && b.firstDue === '2026-10-15'
         && b.payingAccount === 'travelvisa' && b.jointCash === false)
       && (plan.bills || []).some(b => b.id === 'bell-sep15-2026'
-        && b.frequency === 'once' && near(b.amount, 265.65))
+        && b.frequency === 'once' && near(b.amount, 283.94))
       && !(plan.bills || []).some(b => /watch/i.test(b.id + b.label)),
-    'Bell is dated $160 card-paid from October plus the Sep $265.65 once; no invented watch cash bill');
+    'Bell is dated $160 card-paid from October plus the Sep $283.94 once; no invented watch cash bill');
   ok(/^OPEN\b/.test(statusOf('Q18')),
     'Q18 stays OPEN for pending Bell posting residual',
     statusOf('Q18'));
