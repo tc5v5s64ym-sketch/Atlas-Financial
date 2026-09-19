@@ -809,10 +809,13 @@ console.log('\n=== 5c. ChatGPT Plus Dale schedule-trust is paid on Forecast day 
     'empty Sep 14 observe does not settle Netflix; Netflix still needs WEEKLY evidence');
   ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
     'Spotify is not schedule-trusted on Sep 14; its due remains the 17th');
-  ok((emptyDue.representedEventCandidates || [])
+  const youtubeDue = observeWith(identity, YOUTUBE_DUE, []);
+  ok((youtubeDue.representedEventCandidates || [])
       .some(c => c && c.id === YOUTUBE_ID && c.date === YOUTUBE_DUE
         && c.identity === SCHEDULE_TRUST && c.providerTransactionId == null),
-    'YouTube Premium schedule-trust is unchanged on Sep 14');
+    'YouTube Premium schedule-trust on Sep 2 is unchanged');
+  ok(!(youtubeDue.representedEventCandidates || []).some(c => c && c.id === CHATGPT_DALE_ID),
+    'YouTube due-date observe does not schedule-trust ChatGPT Plus Dale before the 14th');
   const row = ((emptyDue.currentPeriodActuals || {}).representedActuals || [])
     .find(r => r && r.id === CHATGPT_DALE_ID && r.date === CHATGPT_DUE);
   ok(row && near(row.actual, CHATGPT_PLANNED) && !row.transactionId,
