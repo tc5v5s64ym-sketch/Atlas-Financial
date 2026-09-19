@@ -164,20 +164,25 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
     'planning.html static copy follows DESIGN glossary');
   const leftoverDrawer = /Pressure signals on this (month|pay period)|What-if: extra payment|Known future costs Atlas is protecting|Monthly cash and debt \(detailed\)|Three-stage funding \(expanded picker\)|All pressure signals in this projection|Debt direction across the projection/;
   ok(!leftoverDrawer.test(htmlStatic) && !leftoverDrawer.test(road),
-    'the seven leftover Road Ahead drawers/what-if are absent from static markup and live render');
+    'the seven leftover Road Ahead drawers/what-if titles are absent from static markup and live render');
   const horizonAt = road.indexOf('data-planning-road-primary="horizon"');
   const stripAt = road.indexOf('data-planning-road-primary="strip"');
   const waterfallAt = road.indexOf('data-planning-road-primary="waterfall"');
   const leadAt = road.indexOf('data-planning-road-primary="lead"');
   const breakdownAt = road.indexOf('data-planning-road-primary="breakdown"');
+  const scenarioAt = road.indexOf('data-planning-road-secondary="scenario"');
   ok(horizonAt >= 0 && stripAt > horizonAt && waterfallAt > stripAt && leadAt > waterfallAt
     && breakdownAt > leadAt,
     'phone order is horizon chips → period title/slice → surplus/deficit hero → waterfall → breakdown');
+  ok(scenarioAt > breakdownAt,
+    'extra-debt scenario disclosure follows the breakdown, not the primary hero');
   ok(!/data-planning-road-primary="whatif"/.test(road)
-    && !/data-trajectory-scenario-section="controls"/.test(road)
     && !/planning-road-whatif-quarantine/.test(road)
     && !/planning-road-pressure-detail/.test(road),
-    'primary stack has no what-if quarantine and no in-flow pressure drawer');
+    'primary stack has no leftover what-if quarantine and no in-flow pressure drawer');
+  ok(/data-trajectory-scenario-section="controls"/.test(road)
+    && /data-planning-road-secondary="scenario"/.test(road),
+    'extra-debt scenario remounts as a secondary disclosure');
   ok(!/sustainable|on track|safe to spend|key takeaway|what can you do/i.test(road),
     'road-ahead shell renders no forbidden verdict copy');
   ok(!/baseline walk|published horizon|legacy layout|full table/i.test(road),
@@ -225,9 +230,11 @@ console.log('\n=== 1b. Identity, freshness, hero, horizon chips, slice control =
     && /planning-road-breakdown-group-title">Bills &amp; required costs|planning-road-breakdown-group-title">Bills & required costs/.test(road),
     'breakdown is a named sheet row with grouped line items');
   ok(!/This is a preview, not a change/.test(road)
-    && !/What-if: extra payment/.test(road)
-    && !/planning-road-whatif-preview-head/.test(road),
-    'leftover what-if banner, title, and Plan/Preview grid are absent');
+    && !/What-if: extra payment/.test(road),
+    'leftover what-if banner and primary title stay absent');
+  ok(/planning-road-whatif-preview-head/.test(road)
+    && /data-trajectory-scenario="idle"/.test(road),
+    'idle extra-debt disclosure keeps the Plan/Preview grid as — not $0');
   ok(/aria-label="[A-Z][a-z]+ \d{4} — Projected (surplus|funding gap|result)/.test(road)
     || /aria-label="\d+ [A-Z][a-z]+ \d{4}[^"]*— Projected/.test(road),
     'chip accessible name is the whole period plus the Forecast result phrase');

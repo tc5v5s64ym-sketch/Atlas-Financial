@@ -103,7 +103,11 @@ function loadPage(script) {
       ctx.planningScenarioDraftDebtId = '';
       ctx.planningScenarioDraftAmount = '';
       ctx.planningScenarioFormError = '';
+      ctx.planningScenarioDrawerOpen = true;
       return pageApi.render(data, p);
+    },
+    composeScenarioSection(data, p) {
+      return ctx.planningRoadAheadScenarioHtml(data, p || null);
     },
   };
   return pageApi;
@@ -1091,12 +1095,48 @@ console.log('\n=== 23. Pay period road-ahead lead fails closed when payPeriods[]
   }
 }
 
+function scenarioWireHarness(debtId, amount) {
+  const debtEl = { value: debtId };
+  const amountEl = { value: amount };
+  const form = {
+    onsubmit: null,
+    querySelector(sel) {
+      if (String(sel).includes('debt')) return debtEl;
+      if (String(sel).includes('amount')) return amountEl;
+      return null;
+    },
+  };
+  const clearBtn = { onclick: null };
+  const drawer = { ontoggle: null, open: false };
+  const root = {
+    querySelector(sel) {
+      const s = String(sel);
+      if (s.includes('data-trajectory-scenario-form')) return form;
+      if (s.includes('data-trajectory-scenario-action="clear"')) return clearBtn;
+      if (s.includes('data-trajectory-scenario-section')) return drawer;
+      return null;
+    },
+  };
+  return { root, form, clearBtn, drawer };
+}
+
+function roadPrimaryHtml(html) {
+  return String(html || '').split('<details class="planning-road-scenario-sheet"')[0];
+}
+
 console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajectoryScenario on Planning ===');
 {
   const src = stripComments(read('public/planning.js'));
   ok(/function planningTrajectoryScenario\(/.test(src)
     && /Forecast\.baselineTrajectoryScenario\(/.test(src),
     'planning.js calls Forecast.baselineTrajectoryScenario through one helper');
+  ok(/return Forecast\.baselineTrajectoryScenario\(/.test(src)
+    && (src.match(/return Forecast\.baselineTrajectoryScenario\(/g) || []).length === 1,
+    'planning.js has exactly one Forecast.baselineTrajectoryScenario call site');
+  ok(/function planningRoadAheadScenarioHtml\(/.test(src)
+    && /planningRoadScenarioWire\(/.test(src)
+    && /planningRoadAheadScenarioHtml\(d, periods\)/.test(src),
+    'renderPlanning remounts the incumbent scenario disclosure and wires it');
   ok(/planningTrajectoryScenarioCompareHtml\(/.test(src)
     && /result\.delta/.test(src)
     && /result\.baseline/.test(src)
@@ -1105,11 +1145,23 @@ console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajecto
   ok(!/delta\.debt\.ending\s*[-+*/]/.test(src)
     && !/delta\.cash\.ending\s*[-+*/]/.test(src),
     'planning.js does not recompute scenario deltas in the browser');
+  const scenarioBlock = src.split('function planningTrajectoryScenario(')[1]
+    .split('function planningPageHtml')[0];
+  ok(!/paydayAllocation|additionalCashRequired|budgetBreakdown|hypotheticalExtraPayment/.test(scenarioBlock),
+    'scenario helpers do not call payday, ACR, budget, or the recommend-weekly hypothetical');
   ok(!/recommend\(|safe-to-spend|affordability|RYG|min-cash|should pay|recommended/i.test(
     src.split('function planningTrajectoryScenarioCompareHtml')[1].split('function planningTrajectoryScenarioControlsHtml')[0]),
     'scenario panel copy carries no recommendation or policy-threshold wording');
   ok(!/writeFile|fetch\(|localStorage|sessionStorage/.test(src),
     'scenario UI does not persist or fetch household evidence');
+  const renderSrc = src.split('function renderPlanning')[1].split('App.register')[0];
+  ok(!/planningAdvice\(|paydayAllocation|additionalCashRequired/.test(renderSrc),
+    'renderPlanning does not touch Prepare Ahead, payday allocation, or ACR');
+  ok(/data-planning-road-secondary="scenario"/.test(src)
+    && !/data-planning-road-primary="whatif"/.test(src)
+    && !/planning-road-whatif-quarantine/.test(src)
+    && !/What-if: extra payment/.test(src),
+    'scenario mounts as secondary disclosure, not the leftover primary what-if quarantine');
 
   const eligible = (live.debts || []).filter(d => page.ctx.planningScenarioEligibleDebt(d));
   ok(eligible.length > 0, 'live opening has at least one scenario-eligible debt');
@@ -1130,8 +1182,45 @@ console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajecto
     periods,
     extraFacilities: live.revolvingExtra,
   });
+  const trajBaseline = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra,
+  });
   ok(forecastA.status === 'ready' && forecastB.status === 'ready',
     'live Forecast scenario API is ready for two explicit amounts');
+  if (forecastA.baseline && forecastA.baseline.cash && trajBaseline.months.length) {
+    const last = trajBaseline.months[trajBaseline.months.length - 1];
+    if (forecastA.baseline.cash.ending != null && last.cash && last.cash.amount != null
+      && forecastA.baseline.cash.asOf === last.end) {
+      ok(Math.abs(Number(forecastA.baseline.cash.ending) - Number(last.cash.amount)) < 0.005,
+        'scenario baseline cash ending independently matches baselineTrajectory last published close');
+    }
+  }
+
+  page.ctx.planningScenarioSetActive(null);
+  page.ctx.planningScenarioDraftDebtId = '';
+  page.ctx.planningScenarioDraftAmount = '';
+  page.ctx.planningScenarioFormError = '';
+  page.ctx.planningScenarioDrawerOpen = false;
+  const idleRender = page.render(live, periods);
+  const roadIdle = idleRender['planning-road-ahead'].innerHTML;
+  ok(/data-planning-road-secondary="scenario"/.test(roadIdle)
+    && /data-trajectory-scenario-section="controls"/.test(roadIdle)
+    && /data-trajectory-scenario-form="ready"/.test(roadIdle),
+    'idle Road Ahead mounts the extra-debt disclosure with explicit debt and amount controls');
+  ok(/data-trajectory-scenario="idle"/.test(roadIdle)
+    && !/data-trajectory-scenario="ready"/.test(roadIdle)
+    && !/data-trajectory-scenario="unavailable"/.test(roadIdle),
+    'idle disclosure reprints the baseline-only preview, not Forecast-unavailable');
+  ok(!/What-if: extra payment/.test(roadIdle)
+    && !/data-planning-road-primary="whatif"/.test(roadIdle)
+    && !/planning-road-whatif-quarantine/.test(roadIdle)
+    && !/This is a preview, not a change/.test(roadIdle),
+    'idle mount is not the leftover primary what-if quarantine');
+  const composedRoad = page.composeRoadAhead(live, periods);
+  ok(!/data-trajectory-scenario-section="controls"/.test(
+    composedRoad.lead + composedRoad.stages + composedRoad.breakdown + composedRoad.selected),
+    'planningRoadAheadHtml stays baseline-only; scenario is not inside the trajectory composer');
+
   const composedA = page.composeScenario(live, periods, pick.id, amountA);
   ok(/data-trajectory-scenario="ready"/.test(composedA.panel),
     'composed scenario panel is ready when Forecast is ready');
@@ -1153,43 +1242,108 @@ console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajecto
     ok(composedA.panel.includes(money2(forecastA.delta.debt.ending)),
       'named debt ending delta is copied from Forecast.delta');
   }
+  if (forecastA.delta && forecastA.delta.debt && forecastA.delta.debt.interest != null) {
+    ok(composedA.panel.includes(money2(forecastA.delta.debt.interest)),
+      'named debt interest delta is copied from Forecast.delta');
+  }
   ok(forecastA.writesCanonicalState === false && forecastA.actionPermission === 'not-granted',
     'Forecast scenario does not grant writes or action permission');
+
   const planBefore = JSON.stringify(live.plan);
   const debtsBefore = JSON.stringify(live.debts);
+  const paydayBefore = JSON.stringify(F.paydayAllocation(live.plan, live.meta.asOf, {
+    debts: live.debts,
+    extraFacilities: live.revolvingExtra,
+    periods,
+  }));
+  const budgetBefore = JSON.stringify(F.budgetBreakdown(live.plan, periods, { asOf: live.meta.asOf }));
+  const idlePrimary = roadPrimaryHtml(roadIdle);
   const renderedA = page.applyScenarioAndRender(live, periods, pick.id, amountA);
   ok(JSON.stringify(live.plan) === planBefore && JSON.stringify(live.debts) === debtsBefore,
     'applying a scenario does not mutate plan or debts');
+  ok(JSON.stringify(F.paydayAllocation(live.plan, live.meta.asOf, {
+    debts: live.debts,
+    extraFacilities: live.revolvingExtra,
+    periods,
+  })) === paydayBefore,
+    'applying a scenario does not change Forecast.paydayAllocation');
+  ok(JSON.stringify(F.budgetBreakdown(live.plan, periods, { asOf: live.meta.asOf })) === budgetBefore,
+    'applying a scenario does not change Forecast.budgetBreakdown');
   const roadA = renderedA['planning-road-ahead'].innerHTML;
-  ok(!/What-if: extra payment/.test(roadA)
-    && !/data-planning-road-primary="whatif"/.test(roadA)
+  ok(/data-trajectory-scenario="ready"/.test(roadA)
+    && /data-planning-road-secondary="scenario"/.test(roadA)
+    && /data-trajectory-scenario-section="controls"/.test(roadA),
+    'road-ahead region renders an active scenario inside the secondary disclosure');
+  ok(!/data-planning-road-primary="whatif"/.test(roadA)
     && !/planning-road-whatif-quarantine/.test(roadA)
-    && !/data-trajectory-scenario-section="controls"/.test(roadA),
-    'road-ahead primary render does not mount the leftover what-if drawer');
-  const trajBaseline = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
-    periods, extraFacilities: live.revolvingExtra,
-  });
+    && !/What-if: extra payment/.test(roadA),
+    'active scenario is not the leftover primary what-if quarantine');
   const roadBaselineStage3 = trajBaseline.months[0].stage3.result.amount;
   ok(roadA.includes(money2(roadBaselineStage3)),
     'road-ahead timeline still shows baseline Forecast stage3, not scenario stage3');
+  ok(roadPrimaryHtml(roadA) === idlePrimary,
+    'Road Ahead baseline primary markup is unchanged while a scenario is shown');
+  if (forecastA.scenario && forecastA.scenario.cash && forecastA.scenario.cash.ending != null) {
+    ok(roadA.includes(money2(forecastA.scenario.cash.ending)),
+      'live Road Ahead reprints scenario cash from Forecast.baselineTrajectoryScenario');
+  }
+  if (forecastA.delta && forecastA.delta.cash && forecastA.delta.cash.ending != null) {
+    ok(roadA.includes(money2(forecastA.delta.cash.ending)),
+      'live Road Ahead reprints Forecast.delta cash, not a page-side subtraction');
+  }
+
   const composedB = page.composeScenario(live, periods, pick.id, amountB);
   if (forecastA.scenario.debt.ending !== forecastB.scenario.debt.ending) {
     ok(composedB.panel.includes(money2(forecastB.scenario.debt.ending))
       && !composedB.panel.includes(money2(forecastA.scenario.debt.ending)),
       'changing the explicit amount changes rendered Forecast scenario output');
   }
-  const cleared = page.clearScenarioAndRender(live, periods);
-  const roadCleared = cleared['planning-road-ahead'].innerHTML;
-  ok(!/What-if: extra payment/.test(roadCleared)
-    && !/data-planning-road-primary="whatif"/.test(roadCleared),
-    'clearing leftover scenario state still leaves what-if off the primary render');
 
-  const idleRender = page.render(live, periods);
-  const roadIdle = idleRender['planning-road-ahead'].innerHTML;
-  ok(!/What-if: extra payment/.test(roadIdle)
-    && !/data-planning-road-primary="whatif"/.test(roadIdle)
-    && !/planning-road-whatif-quarantine/.test(roadIdle),
-    'initial load does not mount the leftover what-if drawer');
+  const missingDebt = scenarioWireHarness('', '100.00');
+  page.ctx.planningRoadScenarioWire(missingDebt.root, live, periods);
+  missingDebt.form.onsubmit({ preventDefault() {} });
+  ok(page.ctx.planningScenarioActive === null
+    && page.ctx.planningScenarioFormError === 'Select a debt.',
+    'Show scenario without a debt does not call a scenario and does not infer one');
+  const missingDebtRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-scenario="form-error"/.test(missingDebtRoad)
+    && /data-trajectory-scenario="idle"/.test(missingDebtRoad)
+    && !/data-trajectory-scenario="unavailable"/.test(missingDebtRoad),
+    'missing debt is a form error with idle preview, not Forecast-unavailable');
+
+  const zeroAmt = scenarioWireHarness(pick.id, '0');
+  page.ctx.planningRoadScenarioWire(zeroAmt.root, live, periods);
+  zeroAmt.form.onsubmit({ preventDefault() {} });
+  ok(page.ctx.planningScenarioActive === null
+    && /greater than zero/.test(page.ctx.planningScenarioFormError),
+    'zero amount is rejected before Forecast and does not infer a substitute');
+  const zeroRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-scenario="form-error"/.test(zeroRoad)
+    && /data-trajectory-scenario="idle"/.test(zeroRoad)
+    && !/data-trajectory-scenario="unavailable"/.test(zeroRoad),
+    'invalid amount keeps the idle preview, not Forecast-unavailable');
+
+  const wired = scenarioWireHarness(pick.id, '100.00');
+  page.ctx.planningRoadScenarioWire(wired.root, live, periods);
+  wired.form.onsubmit({ preventDefault() {} });
+  ok(page.ctx.planningScenarioActive
+    && page.ctx.planningScenarioActive.debtId === pick.id
+    && page.ctx.planningScenarioActive.amount === 100,
+    'Show scenario requires the explicit eligible debt and whole-cent amount');
+  const wiredRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-scenario="ready"/.test(wiredRoad),
+    'wired Show scenario reprints Forecast scenario output');
+  wired.clearBtn.onclick();
+  const cleared = page.render(live, periods);
+  const roadCleared = cleared['planning-road-ahead'].innerHTML;
+  ok(/data-trajectory-scenario="idle"/.test(roadCleared)
+    && !/data-trajectory-scenario="ready"/.test(roadCleared)
+    && !/data-trajectory-scenario="unavailable"/.test(roadCleared),
+    'Reset restores baseline-only idle, not Forecast-unavailable');
+  ok(/data-trajectory-scenario-form="ready"/.test(roadCleared),
+    'controls remain after clear');
+  ok(roadPrimaryHtml(roadCleared) === idlePrimary,
+    'Clear leaves Road Ahead baseline primary markup unchanged');
 
   const idleComposed = page.composeScenario(live, periods, null, null);
   ok(/data-trajectory-scenario="idle"/.test(idleComposed.panel),
@@ -1197,10 +1351,13 @@ console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajecto
 
   const bad = page.composeScenario(live, periods, pick.id, 0);
   ok(/data-trajectory-scenario="unavailable"/.test(bad.panel),
-    'zero amount fails closed through Forecast');
+    'zero amount fails closed through Forecast when the page asks anyway');
   const missing = page.composeScenario({ plan: null, debts: [], meta: { asOf: live.meta.asOf }, revolvingExtra: null }, periods, pick.id, 50);
   ok(/data-trajectory-scenario="unavailable"/.test(missing.panel),
     'missing plan fails closed on scenario compare');
+  const ineligible = page.composeScenario(live, periods, 'not-an-eligible-debt', 50);
+  ok(/data-trajectory-scenario="unavailable"/.test(ineligible.panel),
+    'ineligible debt fails closed through Forecast');
 }
 
 console.log('\n=== Page contract ===');
@@ -1237,13 +1394,16 @@ console.log('\n=== Leftover Road Ahead drawers are absent from primary markup/re
   const composed = page.composeRoadAhead(live, periods);
   const primary = html + road + composed.lead + composed.stages + composed.breakdown + composed.selected;
   ok(!LEFTOVER_ROAD_DRAWER.test(primary),
-    'the seven leftover drawers/what-if are absent from Road Ahead primary markup and render');
+    'the seven leftover drawers/what-if titles are absent from Road Ahead primary markup and render');
   ok(!/planning-road-pressure-detail/.test(primary)
     && !/data-road-period-pressure=/.test(primary),
     'in-flow month/pay-period pressure drawer is gone from the waterfall');
   ok(!/planning-road-whatif-quarantine/.test(primary)
     && !/data-planning-road-primary="whatif"/.test(primary),
     'purple what-if quarantine is gone from the primary stack');
+  ok(/data-planning-road-secondary="scenario"/.test(road)
+    && /data-trajectory-scenario-section="controls"/.test(road),
+    'extra-debt scenario remounts as a secondary disclosure after the waterfall');
   ok(REMOVED_SHELL_IDS.every(id => !liveEl[id]),
     'renderPlanning does not fill leftover drawer ids');
   ok(/data-planning-road-waterfall="ready"/.test(road)
