@@ -1121,7 +1121,7 @@ function scenarioWireHarness(debtId, amount) {
 }
 
 function roadPrimaryHtml(html) {
-  return String(html || '').split('data-planning-road-secondary="scenario"')[0];
+  return String(html || '').split('<details class="planning-road-scenario-sheet"')[0];
 }
 
 console.log('\n=== 24. Extra debt payment scenario — Forecast.baselineTrajectoryScenario on Planning ===');
