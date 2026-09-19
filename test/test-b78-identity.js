@@ -139,11 +139,8 @@ console.log('\n=== D. historical payroll candidates do not enter current-opening
   ok(!(report.reconciliation.rows || []).some(r =>
     r.fact === 'posting' && r.eventId === 'payroll' && r.scheduledDate === PAYDAY),
     'reconciler does not receive a current CHANGE against representedEvents for that payroll');
-  const gated = new Set((data.plan.opening.representedEvents || [])
-    .map(row => row && `${row.id}@${row.date}`));
-  ok(gated.has('noble-garbage@2026-09-18') && gated.has('heloc@2026-09-21')
-      && gated.has('tdcc@2026-09-17') && gated.size === 3,
-    'live representedEvents remain the Dale-gated prepaid settles — nothing was backfilled');
+  ok((data.plan.opening.representedEvents || []).length === 0,
+    'pinned historical opening representedEvents stay empty — nothing was backfilled');
 }
 
 console.log('\n=== E. a current-opening posting candidate still reconciles in place ===');

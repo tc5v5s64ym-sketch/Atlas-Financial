@@ -125,10 +125,8 @@ console.log('\n=== C. fail-closed refusals stay refused ===');
   ok(preview.cardCapacityIsCash === 0, 'cardCapacityIsCash is independently 0');
   ok(report.writesCanonicalState === false, 'observer still does not write');
   const opening = liveData.plan.opening.representedEvents || [];
-  const gated = new Set(opening.map(row => row && `${row.id}@${row.date}`));
-  ok(gated.has('noble-garbage@2026-09-18') && gated.has('heloc@2026-09-21')
-      && gated.has('tdcc@2026-09-17') && gated.size === 3,
-    'live representedEvents stay the Dale-gated prepaid settles');
+  ok((opening || []).length === 0,
+    'pinned historical opening representedEvents stay empty');
   ok(!preview.proposed.some(p => p.locator === 'cash:savings'),
     'stale savings is not in the proposed set');
   ok(!preview.proposed.some(p => p.locator === 'debts:triangle'),
@@ -179,11 +177,8 @@ console.log('\n=== E. approved bounded write changes only the expected field ===
   ok(near(after.debts.find(d => d.id === 'triangle').balance, 13197),
     'Triangle same-day winner is not chosen');
   ok(after.meta.asOf === liveData.meta.asOf, 'opening as-of is not rewritten as a new cutover');
-  const afterGated = new Set((after.plan.opening.representedEvents || [])
-    .map(row => row && `${row.id}@${row.date}`));
-  ok(afterGated.has('noble-garbage@2026-09-18') && afterGated.has('heloc@2026-09-21')
-      && afterGated.has('tdcc@2026-09-17') && afterGated.size === 3,
-    'historical payroll did not backfill or wipe Dale-gated representedEvents');
+  ok((after.plan.opening.representedEvents || []).length === 0,
+    'historical payroll did not backfill representedEvents onto the pinned opening');
   ok(JSON.stringify(after.plan.nextDollar) === JSON.stringify(liveData.plan.nextDollar),
     'policy fields are untouched');
   ok(hashFile(LIVE_DATA) === liveHash, 'live data.json was not the apply target');

@@ -336,7 +336,7 @@ console.log('\n=== 5. live expandEvents / trajectory October includes $199 Hydro
   const asOf = live.meta.asOf;
   const windowEnd = F.addDays(asOf, live.plan.windowDays - 1);
   const wantBills = streamTotal(live.plan.bills, asOf, windowEnd, F.occurrences, {
-    plan: live.plan, onceOutflowsBind: true,
+    plan: live.plan, onceOutflowsBind: true, omitRepresented: true,
   });
   const sim = F.simulate(live.plan, asOf, {
     scenario: 'expected', weeklyVariable: 0, targetBuffer: live.plan.defaults.targetBuffer,

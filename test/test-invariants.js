@@ -17,7 +17,7 @@ const {
   storedCrossingClaims,
 } = require('./test-heloc-crossing-guard');
 const data = require('../data.json');
-const { openingFloor, gapAtBuffer, fundingById } = require('./test-helpers');
+const { openingFloor, gapAtBuffer, fundingById, representedEventKeys } = require('./test-helpers');
 const periods = require('../public/periods.json');
 
 let failures = 0;
@@ -147,6 +147,7 @@ const noCashMin = JSON.parse(JSON.stringify(plan));
 noCashMin.obligations.find(o => o.id === 'heloc').cashPayment = 0;
 const withoutCash = F.simulate(noCashMin, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
 const wantHelocCash = (F.capitalisingCashMinimumOccurrences(heloc, asOf, withHeloc.end) || [])
+  .filter(occ => occ && !representedEventKeys(plan).has('heloc@' + occ.date))
   .reduce((s, occ) => s + Number(occ.amount || 0), 0);
 ok(wantHelocCash > 0 && near(withoutCash.ending - withHeloc.ending, wantHelocCash),
   'encoded HELOC cashPayment moves cash once', `${money(withoutCash.ending)} vs ${money(withHeloc.ending)}`);

@@ -7,6 +7,7 @@
 
 const F = require('../public/forecast.js');
 const data = require('../data.json');
+const { representedEventKeys } = require('./test-helpers');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -61,7 +62,8 @@ const helocObl = plan.obligations.find(o => o.id === 'heloc');
 const helocEnd = end.debts.find(x => x.id === 'heloc');
 const charges = F.occurrences(helocObl, asOf, end.date).length;
 const helocStart = data.debts.find(x => x.id === 'heloc').balance;
-const helocCashHits = (F.capitalisingCashMinimumOccurrences(helocObl, asOf, end.date) || []);
+const helocCashHits = (F.capitalisingCashMinimumOccurrences(helocObl, asOf, end.date) || [])
+  .filter(occ => occ && !representedEventKeys(plan).has('heloc@' + occ.date));
 const helocCashPaid = helocCashHits.reduce((s, occ) => s + Number(occ.amount || 0), 0);
 ok(near(helocEnd.balance, helocStart + charges * helocObl.amount - helocCashPaid, 0.5),
   'ending HELOC is opening plus capitalised interest minus cash minima',

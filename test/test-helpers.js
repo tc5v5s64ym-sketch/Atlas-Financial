@@ -162,9 +162,17 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
   return n;
 }
 
+function representedEventKeys(plan) {
+  return new Set(((plan && plan.opening && plan.opening.representedEvents) || [])
+    .filter(row => row && row.id && row.date)
+    .map(row => String(row.id) + '@' + String(row.date)));
+}
+
 function streamTotal(items, asOf, end, occurrences, opts) {
   const skipNonCash = !opts || opts.skipNonCash !== false;
   const onceOutflowsBind = !!(opts && opts.onceOutflowsBind);
+  const represented = (opts && opts.omitRepresented)
+    ? representedEventKeys(opts.plan) : new Set();
   return (items || []).reduce((s, item) => {
     if (skipNonCash && item.nonCash) return s;
     if (item.needsDate) return s;
@@ -178,7 +186,11 @@ function streamTotal(items, asOf, end, occurrences, opts) {
     const dates = onceOutflowsBind && item.frequency === 'once'
       ? independentlyOnceOutflowDates(item, asOf, end)
       : occurrences(item, asOf, end);
-    return s + dates.reduce((n, d) => n + independentlyBillOccurrenceAmount(item, d), 0);
+    return s + dates.reduce((n, d) => {
+      const date = typeof d === 'string' ? d : (d && d.date);
+      if (date && represented.has(item.id + '@' + date)) return n;
+      return n + independentlyBillOccurrenceAmount(item, d);
+    }, 0);
   }, 0);
 }
 
@@ -212,5 +224,6 @@ module.exports = {
   independentlyBillOccurrenceAmount,
   fundingById,
   usableFunding,
+  representedEventKeys,
   independentSpendableOpening,
 };
