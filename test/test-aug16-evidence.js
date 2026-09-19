@@ -179,11 +179,13 @@ console.log('\n=== 6. Noble quarterly garbage without duplicating history ===');
     && noble.anchor === '2026-03-18' && noble.budgetCategory === 'household'
     && noble.date == null,
     'Noble is the quarterly $95.85 household bill, firstDue 2026-09-18');
-  const events = F.expandEvents(plan, asOf, windowEnd, {});
+  const events = F.expandEvents(plan, asOf, windowEnd, { keepRepresented: true });
   const nobleEvents = events.filter(e => e.id === 'noble-garbage');
   ok(nobleEvents.length === 1 && nobleEvents[0].date === '2026-09-18'
     && near(nobleEvents[0].amount, -95.85),
     'exactly one Noble cash event in the 91-day window');
+  ok(!F.expandEvents(plan, asOf, windowEnd, {}).some(e => e.id === 'noble-garbage'),
+    'Dale-gated representedEvents omits that September due from the cash walk');
   ok(!events.some(e => e.id === 'noble-garbage' && e.date === '2026-03-18'),
     'March 18 history is not duplicated as a future event');
   ok(!events.some(e => e.id === 'noble-garbage' && e.date === '2026-06-18'),

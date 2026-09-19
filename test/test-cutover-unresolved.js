@@ -302,9 +302,12 @@ console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds 
 {
   ok(live.meta.asOf === live.plan.opening.asOf,
     'canonical opening as-of agrees — this test does not move it');
+  const gated = new Set((live.plan.opening.representedEvents || [])
+    .map(row => row && `${row.id}@${row.date}`));
   ok(Array.isArray(live.plan.opening.representedEvents)
-    && live.plan.opening.representedEvents.length === 0,
-    'live representedEvents stay empty');
+    && gated.has('noble-garbage@2026-09-18') && gated.has('heloc@2026-09-21')
+    && gated.has('tdcc@2026-09-17') && gated.size === 3,
+    'live representedEvents are the Dale-gated prepaid settles');
   const unknownPosting = posting.observations.filter(o => o.unknown === true);
   ok(unknownPosting.length >= 4,
     'posting observations still record at least four UNKNOWN items');

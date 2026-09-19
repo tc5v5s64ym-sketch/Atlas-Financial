@@ -30,9 +30,15 @@ const start = data.meta.asOf;
 const opening = plan.opening || {};
 scope(opening.asOf === start && !opening.priorAsOf,
   'this suite proves the canonical opening, not an observation overlay');
-scope(!(opening.representedEvents || []).length
+const representedKeys = new Set((opening.representedEvents || [])
+  .filter(row => row && row.id && row.date)
+  .map(row => `${row.id}@${row.date}`));
+scope(representedKeys.has('noble-garbage@2026-09-18')
+  && representedKeys.has('heloc@2026-09-21')
+  && representedKeys.has('tdcc@2026-09-17')
+  && representedKeys.size === 3
   && !(opening.notReliedUponEvents || []).length,
-  'new opening representation evidence must be reconciled independently');
+  'Dale-gated prepaid representedEvents must be reconciled independently');
 scope((plan.defaults.extraDebtMonthly || 0) === 0,
   'extra-debt payments require an independent absorption ledger');
 
@@ -96,6 +102,7 @@ function independentLedger(days) {
   const add = (row, kind, carryOnce) => {
     scope(Number.isFinite(row.amount) && row.amount >= 0, `${row.id}: nonnumeric amount`);
     for (const date of datesFor(row, days, carryOnce)) {
+      if (representedKeys.has(`${row.id}@${date}`)) continue;
       rows.push({ id: row.id, date, kind, amount: row.amount, debtId: row.debtId });
     }
   };
@@ -147,6 +154,7 @@ function independentLedger(days) {
       }
     }
     for (const date of dates) {
+      if (representedKeys.has(`${row.id}@${date}`)) continue;
       const amount = date === row.firstDue && credit > 0
         ? Math.max(0, row.amount - credit)
         : row.amount;

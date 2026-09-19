@@ -1296,13 +1296,22 @@
   // Early settlement of a still-upcoming joint-cash obligation or bill.
   // The scheduled date is after this Forecast start, and identity has
   // already named that exact occurrence. Commitments stay on settledOn.
-  // Recurring income is not prepaid this way.
+  // Recurring income is not prepaid this way. A capitalising obligation
+  // (nonCash interest) is not itself prepaid; its encoded cash minimum
+  // shares that same id and is a joint-cash occurrence on cashDay /
+  // cashFirstDue. The non-cash capitalise date is not this path.
   function prepaidJointCashOutflow(plan, id, date, start) {
     if (!plan || !id || !date || !start || date <= start) return false;
     const obligation = (plan.obligations || []).find(item => item && item.id === id
       && item.nonCash !== true && Number(item.amount) > 0);
     if (obligation) {
       return outflowDates(obligation, date, date).some(d => d === date);
+    }
+    const capitalising = (plan.obligations || []).find(item => item && item.id === id
+      && item.nonCash === true && Number(item.cashPayment) > 0);
+    if (capitalising) {
+      return capitalisingCashMinimumOccurrences(capitalising, date, date)
+        .some(occ => occ && occ.date === date);
     }
     const bill = (plan.bills || []).find(item => item && item.id === id
       && Number(item.amount) > 0);
