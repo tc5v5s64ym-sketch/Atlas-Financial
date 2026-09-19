@@ -398,20 +398,19 @@
     const rows = (cash.breakdown || []).concat(cash.heldElsewhere || []);
     return rows.find(r => r.id === id) || null;
   }
-  function startingCashAmount(plan) {
-    const cash = (plan && plan.startingCash) || {};
-    const rows = cash.breakdown || [];
-    if (rows.length) return rows.reduce((s, b) => s + (Number(b.value) || 0), 0);
-    return Number(cash.amount) || 0;
-  }
   // Live Current Balance is posted household chequing cash only. These are
   // the same Chequing A / BILLS ACCOUNT and Chequing B / WEEKLY SPENDING
-  // identities Forecast.chequingAvailability already names. Savings,
-  // TENNIS INCOME, and every other cash-type row stay out. startingCashAmount
-  // remains the Forecast spendable pool (breakdown sum, including savings)
-  // for cash walks and payday allocation. Synthetic fixtures may still pass
+  // identities Forecast.chequingAvailability already names. TENNIS INCOME
+  // and every other non-chequing cash-type row stay out of Current Balance.
+  // Owner 2026-09-18: Forecast walk and paydayAllocation spendable opening
+  // (`startingCashAmount`) is that same chequing-only pool. Designated
+  // reserve is the incumbent `savings` / EMERGENCY SAVING row only — it
+  // stays on the breakdown as household asset / reserve evidence and is
+  // not ordinary spendable opening. Case K: the walk must not silently
+  // spend that reserve. Synthetic fixtures may still pass
   // startingCash.amount with no cash id.
   const HOUSEHOLD_CHEQUING_IDS = ['chequing-a', 'chequing-b'];
+  const DESIGNATED_RESERVE_ID = 'savings';
   function postedHouseholdChequingCash(plan) {
     const cash = (plan && plan.startingCash) || {};
     const rows = cash.breakdown || [];
@@ -422,6 +421,19 @@
       }, 0);
     }
     return Number(cash.amount) || 0;
+  }
+  function startingCashAmount(plan) {
+    const cash = (plan && plan.startingCash) || {};
+    const rows = cash.breakdown || [];
+    if (!rows.length) return Number(cash.amount) || 0;
+    const hasHouseholdChequing = rows.some(
+      b => b && HOUSEHOLD_CHEQUING_IDS.indexOf(b.id) !== -1
+    );
+    if (hasHouseholdChequing) return postedHouseholdChequingCash(plan);
+    return rows.reduce((s, b) => {
+      if (!b || b.id === DESIGNATED_RESERVE_ID) return s;
+      return s + (Number(b.value) || 0);
+    }, 0);
   }
   function extraFacilityUsed(facility, plan) {
     if (facility && facility.cash) {
@@ -1093,7 +1105,8 @@
     const ending = daily[daily.length - 1].balance;
     return Object.assign({}, full, {
       start, end, daily, weeks, events, totals, min, ending,
-      shortfall: min.balance < 0 ? -min.balance : 0,
+      shortfall: additionalCashRequiredFromWalkMin(min.balance),
+      additionalCashRequired: additionalCashRequiredFromWalkMin(min.balance),
       breachesBuffer: min.balance < buffer,
       endingSurplus: ending - buffer,
       extraDebtCapacity: Math.max(0, ending - buffer),
@@ -1159,7 +1172,8 @@
     });
     return Object.assign({}, full, {
       start: asOf, end, daily, weeks, events, totals, min, ending,
-      shortfall: min.balance < 0 ? -min.balance : 0,
+      shortfall: additionalCashRequiredFromWalkMin(min.balance),
+      additionalCashRequired: additionalCashRequiredFromWalkMin(min.balance),
       breachesBuffer: min.balance < buffer,
       endingSurplus: ending - buffer,
       extraDebtCapacity: Math.max(0, ending - buffer),
@@ -1570,6 +1584,17 @@
     return out;
   }
 
+  // Additional cash needed to keep this walk's measured trajectory at or
+  // above $0. Owner 2026-09-18 funding floor is $0 — not targetBuffer, and
+  // not a new emergency buffer. Equivalent to the incumbent zero-floor
+  // simulate.shortfall. Period month/pay-period stage*.result deficits must
+  // never be summed to derive this requirement: intervening surplus on the
+  // carry-forward walk already nets them.
+  function additionalCashRequiredFromWalkMin(minBalance) {
+    const n = Number(minBalance);
+    return n < 0 ? -n : 0;
+  }
+
   /* ------------------------------------------------------------- simulate */
   // opts adds:
   //   weeklyVariable — spread evenly across the 7 days of each week
@@ -1580,6 +1605,8 @@
   //                    days before it are an acknowledged squeeze being solved
   //                    separately; holding the buffer through them is not the
   //                    test the recommendation is answering.
+  // Opening cash is startingCashAmount: chequing-only when household
+  // chequing identities exist. Designated savings is not spent here.
   function simulate(plan, asOf, opts) {
     opts = opts || {};
     const days = walkDays(plan, asOf, opts);
@@ -1735,7 +1762,8 @@
     const full = {
       start, end, daily, weeks, events, totals,
       min, ending: balance, buffer,
-      shortfall: min.balance < 0 ? -min.balance : 0,
+      shortfall: additionalCashRequiredFromWalkMin(min.balance),
+      additionalCashRequired: additionalCashRequiredFromWalkMin(min.balance),
       breachesBuffer: min.balance < buffer,
       endingSurplus: balance - buffer,
       // Room for extra repayment, measured at the end of the window — cash
@@ -6894,6 +6922,9 @@
 
   /* ------------------------------------------- payday allocation waterfall */
   // What current household cash must do. Forecast remains the only planner.
+  // Opening spendable cash is startingCashAmount (chequing-only when
+  // household chequing identities exist). Designated savings is reserve
+  // evidence, not this payday's ordinary spendable opening.
   // Waterfall: required obligations → essential household hold → protected
   // future-path cash from the incumbent master walk → required dated
   // future-cost attribution from that same walk → extra debt (incumbent
@@ -12819,6 +12850,9 @@
   // baselineTrajectoryScenario, not hypotheticalExtraPayment and not
   // counterfactuals. Scenario amounts, owner surplus-target policy, and payday
   // leftover are not Stage 3.
+  // additionalCashRequired is the same walk's zero-floor shortfall
+  // (max(0, 0 − sim.min.balance)). Period stage deficits must not be
+  // summed to obtain it. Funding floor is $0, not targetBuffer.
   function baselineTrajectory(plan, debts, asOf, opts) {
     const ctx = prepareBaselineTrajectoryWalk(plan, debts, asOf, opts);
     if (!ctx || ctx.status !== 'ready') {
@@ -13030,6 +13064,14 @@
       payPeriods,
       pressure,
       debtDirection,
+      additionalCashRequired: {
+        amount: roundCent(additionalCashRequiredFromWalkMin(sim.min && sim.min.balance)),
+        status: 'calculated',
+        fundingFloor: 0,
+        identity: 'max(0, 0 - simulate.min.balance)',
+        source: 'simulate',
+        periodStageDeficits: 'must-not-be-summed',
+      },
       provenance: {
         calculator: 'Forecast',
         primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts', 'daleEstimatedPayrollDeposits'],
@@ -13048,6 +13090,9 @@
         fundingStage3: 'plan.defaults.extraDebtMonthly',
         fundingStage3Scenario: 'not-used',
         fundingStage3NextDollar: 'not-used',
+        additionalCashRequired: 'simulate-zero-floor-walk-min',
+        additionalCashRequiredFundingFloor: 0,
+        additionalCashRequiredPeriodStageDeficits: 'must-not-be-summed',
         payPeriodSeries: payPeriodSpans.length ? 'seaspan-spending-cycle' : 'unavailable',
         payPeriodFundingStages: 'walk-derived',
         incomeRegimesImplemented: regimeReady,

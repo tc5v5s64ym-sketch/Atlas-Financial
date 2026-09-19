@@ -165,9 +165,11 @@ console.log('\n=== 2. Savings is excluded from Current Balance ===');
   const spendable = independentSpendable(plan);
   const pub = publishedCurrentBalance(plan);
   ok(near(spendable, INDEPENDENT_SPENDABLE) && !near(spendable, expected),
-    'independent spendable pool still includes savings and is not Current Balance');
-  ok(near(F.startingCashAmount(plan), spendable),
-    'Forecast spendable pool (startingCashAmount) still includes savings');
+    'independent breakdown still includes savings and is not Current Balance');
+  ok(near(F.startingCashAmount(plan), expected),
+    'Forecast spendable opening (startingCashAmount) is chequing-only');
+  ok(near(F.startingCashAmount(plan), expected) && !near(F.startingCashAmount(plan), spendable),
+    'designated savings is not ordinary Forecast spendable opening');
   ok(near(pub.alloc, expected) && !near(pub.alloc, spendable),
     'Current Balance is not chequing + savings');
   const html = composer.liveCurrentBalanceHtml(pub.advice.defaultView, null, pub.advice.paydayAllocation);
@@ -196,7 +198,9 @@ console.log('\n=== 4. Increasing savings alone does not change Current Balance =
   const after = publishedCurrentBalance(bumped);
   const expected = independentChequing(bumped);
   ok(near(independentSpendable(bumped), independentSpendable(base) + 100),
-    'savings +$100 raises the Forecast spendable pool by $100');
+    'savings +$100 raises the breakdown total by $100');
+  ok(near(F.startingCashAmount(bumped), F.startingCashAmount(base)),
+    'savings +$100 does not change Forecast spendable opening');
   ok(near(after.alloc, before.alloc) && near(after.view, before.view)
       && near(after.alloc, expected),
     'Current Balance is unchanged when only savings moves',

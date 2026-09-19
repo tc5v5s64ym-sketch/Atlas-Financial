@@ -213,16 +213,23 @@ ok(near(expected.totals.reserved, reservedOverWindow) && near(expected.totals.va
     'cards and overdraft remain marked unusable even when their room changed');
 }
 
-// Starting cash is the household spending accounts only — her account excluded.
-const spendableSum = plan.startingCash.breakdown.reduce((s, b) => s + b.value, 0);
-ok(near(F.startingCashAmount(plan), spendableSum),
-  'forecast opening cash is the independently summed spendable accounts',
+// Starting cash is household chequing only — designated savings stays on
+// the breakdown as reserve evidence and is not ordinary spendable opening.
+const chequingSum = plan.startingCash.breakdown
+  .filter(b => b && (b.id === 'chequing-a' || b.id === 'chequing-b'))
+  .reduce((s, b) => s + b.value, 0);
+const breakdownSum = plan.startingCash.breakdown.reduce((s, b) => s + b.value, 0);
+const savingsRow = plan.startingCash.breakdown.find(b => b && b.id === 'savings');
+ok(near(F.startingCashAmount(plan), chequingSum),
+  'forecast opening cash is the independently summed household chequing accounts',
   F.startingCashAmount(plan).toFixed(2));
+ok(savingsRow && !near(breakdownSum, chequingSum),
+  'designated savings remains on the breakdown and is not in the spendable opening');
 const openingNet = expected.events
   .filter(e => e.date <= asOf && e.kind !== 'noncash' && e.jointCash !== false)
   .reduce((s, e) => s + e.amount, 0);
 ok(near(expected.daily[0].balance,
-  spendableSum + openingNet - currentRegimeReservedDaily(plan)
+  chequingSum + openingNet - currentRegimeReservedDaily(plan)
     - cardPaidReservedOnDate(plan, asOf, F.occurrences)),
   'day-0 close is opening cash plus joint-cash events that bind at this opening, minus reserved current-regime cash that day',
   expected.daily[0].balance.toFixed(2));

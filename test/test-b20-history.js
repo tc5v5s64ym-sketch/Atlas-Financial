@@ -327,9 +327,10 @@ console.log('\n=== 6–7. data.json remains current-state authority; history is 
     'live data.json HELOC remains a finite canonical opening',
     liveHeloc && String(liveHeloc.balance));
   const independentLiveCash = (live.plan.startingCash.breakdown || [])
+    .filter(b => b && (b.id === 'chequing-a' || b.id === 'chequing-b'))
     .reduce((s, b) => s + Number(b.value || 0), 0);
   ok(near(F.startingCashAmount(live.plan), independentLiveCash),
-    'Forecast still opens from data.json spendable cash, not from snapshots');
+    'Forecast still opens from data.json chequing cash, not from snapshots');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 

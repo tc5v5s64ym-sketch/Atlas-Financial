@@ -257,8 +257,8 @@ console.log('\n=== 1. August 30 control: live cash plus unposted same-day bill =
   };
   const result = overlay(canonical, extra);
   ok(result.data.liveOverlay.applied === true, 'Aug 30 overlay applies');
-  ok(near(Forecast.startingCashAmount(result.data.plan), independentCash),
-    'Forecast opening equals the independent observed-cash sum');
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentChequing),
+    'Forecast opening equals the independent chequing-only observed-cash sum');
   const advice = recommend(result.data, '2026-08-30');
   const fees = ((advice.currentPeriodAction && advice.currentPeriodAction.bills) || [])
     .find(row => row && row.id === 'tdfees' && row.date === '2026-08-30')
@@ -267,7 +267,7 @@ console.log('\n=== 1. August 30 control: live cash plus unposted same-day bill =
   ok(fees && fees.settlement !== 'represented' && near(fees.remaining, scheduledFees),
     'unposted same-day TD fees remain due once');
   ok(advice.paydayAllocation
-      && near(advice.paydayAllocation.available, independentCash),
+      && near(advice.paydayAllocation.available, independentChequing),
     'unposted bill does not invalidate or re-deduct current cash at the opening');
 }
 
@@ -299,7 +299,7 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
     'salary is represented exactly once on the opening');
   ok(!notRelied(result.data.plan, 'amandaSalaryMonthEnd', '2026-08-31'),
     'proven salary is not also not-relied-upon');
-  ok(near(Forecast.startingCashAmount(result.data.plan), independentCash),
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentChequing),
     'opening equals independent observed-cash sum');
   const advice = recommend(result.data, '2026-08-31');
   const p2 = activePeriod(advice);
@@ -358,7 +358,7 @@ console.log('\n=== 3. August 31 no transfer yet — core unresolved inbound ==='
   ok(result.data.liveOverlay.applied === true
       && result.data.liveOverlay.operatingPlan === Live.OPERATING_PLAN_LIVE,
     'complete current cash still becomes a live operating plan');
-  ok(near(Forecast.startingCashAmount(result.data.plan), independentCash),
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentChequing),
     'current live cash is the Forecast opening');
   ok(!represented(result.data.plan, 'amandaSalaryMonthEnd', '2026-08-31'),
     'salary is not labelled represented');
@@ -366,7 +366,7 @@ console.log('\n=== 3. August 31 no transfer yet — core unresolved inbound ==='
   ok(unresolved && unresolved.reason === 'same-day-inbound-unproven',
     'salary is explicitly not-relied-upon');
   const advice = recommend(result.data, '2026-08-31');
-  ok(near(advice.paydayAllocation.available, independentCash),
+  ok(near(advice.paydayAllocation.available, independentChequing),
     'Amanda salary contributes $0 additional available cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
   ok(row && row.notReliedUpon === true && row.settlement === 'not-relied-upon'
@@ -407,7 +407,7 @@ console.log('\n=== 4. Ambiguous TENNIS INCOME counterparts ===');
       && unresolved.candidateCount >= 2,
     'ambiguity is surfaced on notReliedUponEvents');
   const advice = recommend(result.data, '2026-08-31');
-  ok(near(advice.paydayAllocation.available, independentCash),
+  ok(near(advice.paydayAllocation.available, independentChequing),
     'ambiguous salary contributes $0');
 }
 
@@ -438,7 +438,7 @@ console.log('\n=== 5. Wrong source: WEEKLY SPENDING → BILLS is not salary ==='
   ok(notRelied(result.data.plan, 'amandaSalaryMonthEnd', '2026-08-31'),
     'wrong-source salary stays unresolved');
   const advice = recommend(result.data, '2026-08-31');
-  ok(near(advice.paydayAllocation.available, independentCash),
+  ok(near(advice.paydayAllocation.available, independentChequing),
     'wrong-source transfer contributes $0 additional income');
 }
 
@@ -469,7 +469,7 @@ console.log('\n=== 6. Wrong amount TENNIS INCOME → BILLS ===');
   ok(notRelied(result.data.plan, 'amandaSalaryMonthEnd', '2026-08-31'),
     'wrong-amount salary stays unresolved');
   const advice = recommend(result.data, '2026-08-31');
-  ok(near(advice.paydayAllocation.available, independentCash),
+  ok(near(advice.paydayAllocation.available, independentChequing),
     'wrong-amount pair contributes $0 additional income');
 }
 
@@ -501,6 +501,7 @@ console.log('\n=== 7. Incomplete current cash still fails closed ===');
 console.log('\n=== 8. Actual spending does not double-count ===');
 {
   const independentCash = 3000;
+  const independentChequing = 3000;
   const planned = 900;
   const committed = 350;
   const remaining = round2(planned - committed);
@@ -510,12 +511,12 @@ console.log('\n=== 8. Actual spending does not double-count ===');
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
     tweaks: Object.assign({
-      'chequing-a': independentCash, 'chequing-b': 0, savings: 0,
+      'chequing-a': independentChequing, 'chequing-b': 0, savings: 0,
     }, freshness('2026-08-31T17:55:00.000Z')),
   };
   const result = overlay(canonical, extra);
-  ok(near(Forecast.startingCashAmount(result.data.plan), independentCash),
-    'opening is the $3,000 observed-cash fixture');
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentChequing),
+    'opening is the $3,000 chequing fixture; designated savings $0 stays an asset, not opening');
   const advice = Forecast.recommend(result.data.plan, '2026-08-31', {
     debts: result.data.debts,
     operatingPlan: result.data.liveOverlay.operatingPlan,
@@ -553,6 +554,7 @@ console.log('\n=== 8. Actual spending does not double-count ===');
 console.log('\n=== 9. Paid bill does not double-count ===');
 {
   const independentCash = 3000;
+  const independentChequing = 3000;
   const canonical = clone(liveData);
   canonical.plan = Object.assign({}, canonical.plan, {
     bills: (canonical.plan.bills || []).concat([{
@@ -588,7 +590,7 @@ console.log('\n=== 9. Paid bill does not double-count ===');
   ok(near(p2.remainingBills, remainingWithoutPaid),
     'waterfall remaining bills omit the already-paid $100');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash)
-      && near(advice.paydayAllocation.available, independentCash),
+      && near(advice.paydayAllocation.available, independentChequing),
     'live Current Balance and paydayAllocation.available stay observed cash, not cash minus the paid bill again');
 }
 
@@ -704,7 +706,7 @@ console.log('\n=== 12. Assistant / operating-answer consume Forecast, no second 
   ok(operating.source === 'Forecast.recommend',
     'operating-answer names Forecast.recommend as source');
   ok(near(operating.moneyAvailable.value, advice.paydayAllocation.available)
-      && near(operating.asOf && Forecast.startingCashAmount(applied.data.plan), independentCash),
+      && near(operating.asOf && Forecast.startingCashAmount(applied.data.plan), independentChequing),
     'operating-answer copies the current Forecast leftover, not a second calc');
   const packet = Assistant.buildPacket({
     data: applied.data,
@@ -767,7 +769,7 @@ console.log('\n=== 13. Same-date refresh: opening already liveAsOf, inbound stil
   ok(String(result.historicalOpeningAsOf) === '2026-08-31'
       && String(result.data.plan.opening.asOf) === '2026-08-31',
     'as-of does not advance on a same-date refresh');
-  ok(near(Forecast.startingCashAmount(result.data.plan), independentCash),
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentChequing),
     'Forecast opening equals the later same-day observed-cash sum');
   ok(!represented(result.data.plan, 'amandaSalaryMonthEnd', '2026-08-31'),
     'unproven same-date inbound is not labelled represented');
@@ -781,11 +783,11 @@ console.log('\n=== 13. Same-date refresh: opening already liveAsOf, inbound stil
   ok([...notReliedKeys].every(key => !representedKeys.has(key)),
     'represented and not-relied-upon stay mutually exclusive');
   const advice = recommend(result.data, '2026-08-31');
-  ok(near(advice.paydayAllocation.available, independentCash),
+  ok(near(advice.paydayAllocation.available, independentChequing),
     'Forecast available equals observed cash exactly');
   const p2 = activePeriod(advice);
-  ok(p2 && near(p2.currentBalance, independentCash),
-    'current balance equals observed cash exactly');
+  ok(p2 && near(p2.currentBalance, independentChequing),
+    'current balance equals observed chequing cash exactly');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'unproven same-date inbound contributes $0 additional cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');

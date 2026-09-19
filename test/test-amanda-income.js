@@ -636,7 +636,7 @@ console.log('\n=== 7. live Tennis BC salary Forecast behaviour ===');
     .find(r => r.id === AMANDA);
   ok(held && held.class === 'operational' && near(held.value, CANONICAL_HELD),
     'live DEBT&PAYMENTS is still operational $2,691.85, not spendable');
-  ok(near(F.startingCashAmount(live.plan), 629.27 + 309.77 + 0.58),
+  ok(near(F.startingCashAmount(live.plan), 629.27 + 309.77),
     'Amanda operating-account balance is excluded from spendable starting cash');
 }
 

@@ -87,6 +87,7 @@ const heldIds = new Set((plan.startingCash.heldElsewhere || []).map(row => row.i
 const debtIds = new Set(data.debts.map(row => row.id));
 const startingCash = plan.startingCash.breakdown.reduce((sum, row) => {
   scope(Number.isFinite(row.value), `${row.id}: unknown opening cash`);
+  if (row.id !== 'chequing-a' && row.id !== 'chequing-b') return sum;
   return sum + row.value;
 }, 0);
 

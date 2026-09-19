@@ -1,7 +1,9 @@
 'use strict';
 /* Opening-gap recovery must not convert debt capacity into cash.
  *
- * The 2026-08-21 live acceptance run had spendable $747.81, a $104.89
+ * The 2026-08-21 live acceptance run had household cash $747.81 including
+ * $0.58 designated savings. Forecast spendable opening is chequing-only
+ * $747.23. Buffer gap $104.89, Amanda $0, and HELOC headroom $2,167.84.
  * buffer gap, Amanda $0, and HELOC headroom $2,167.84. Forecast auto-drew
  * the HELOC and published a borrowing-enabled weekly cap. B70 already
  * says remaining headroom must never increase safe-to-spend.
@@ -19,7 +21,8 @@ const ok = (cond, label, detail = '') => {
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 
 const AS_OF = '2026-08-21';
-const CASH = 747.81;
+const CASH = 747.23;
+const BREAKDOWN_TOTAL = 747.81;
 const BUFFER = 500;
 const GAP = 104.89;
 const FLOOR = BUFFER - GAP;
@@ -85,8 +88,13 @@ function recommend(data, extraOpts) {
 console.log('=== independent fixture matches the live-equivalent gap ===');
 {
   const data = fixture();
-  const spend = data.plan.startingCash.breakdown.reduce((s, b) => s + b.value, 0);
-  ok(near(spend, CASH), 'opening cash is independently $747.81', String(spend));
+  const spend = data.plan.startingCash.breakdown
+    .filter(b => b && (b.id === 'chequing-a' || b.id === 'chequing-b'))
+    .reduce((s, b) => s + b.value, 0);
+  const breakdown = data.plan.startingCash.breakdown.reduce((s, b) => s + b.value, 0);
+  ok(near(spend, CASH), 'opening cash is independently $747.23 chequing-only', String(spend));
+  ok(near(breakdown, BREAKDOWN_TOTAL),
+    'designated savings remains on the breakdown ($747.81 total)', String(breakdown));
   ok(near(HELOC_ROOM, 2167.84), 'HELOC headroom is independently $2,167.84', String(HELOC_ROOM));
   const zero = F.simulate(data.plan, AS_OF, { weeklyVariable: 0, targetBuffer: BUFFER });
   ok(near(zero.min.balance, FLOOR) && zero.min.date === '2026-08-27',

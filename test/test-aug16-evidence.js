@@ -32,9 +32,11 @@ const windowEnd = F.addDays(asOf, (plan.windowDays || 91) - 1);
 const tennis = (plan.startingCash.heldElsewhere || []).find(h => h.id === 'amanda-debt-payments');
 const spendable = F.startingCashAmount(plan);
 const independentSpendable = (plan.startingCash.breakdown || [])
+  .filter(r => r && (r.id === 'chequing-a' || r.id === 'chequing-b'))
   .reduce((s, r) => s + Number(r.value || 0), 0);
 const aug16Spendable = F.startingCashAmount(aug16.plan);
 const aug16Independent = (aug16.plan.startingCash.breakdown || [])
+  .filter(r => r && (r.id === 'chequing-a' || r.id === 'chequing-b'))
   .reduce((s, r) => s + Number(r.value || 0), 0);
 
 function statusOf(id) {
@@ -52,9 +54,9 @@ console.log('=== 1. TENNIS INCOME does not inflate household starting cash ===')
   ok(tennis.class === 'operational' && near(tennis.value, 2691.85),
     'held-elsewhere operational balance is unchanged', money(tennis.value));
   ok(near(spendable, independentSpendable),
-    'live starting cash is the three spendable rows only', money(spendable));
-  ok(near(aug16Spendable, aug16Independent) && near(aug16Spendable, 2252.76),
-    'pinned 2026-08-16 opening spendable remains independently $2,252.76', money(aug16Spendable));
+    'live starting cash is household chequing only', money(spendable));
+  ok(near(aug16Spendable, aug16Independent) && near(aug16Spendable, 2252.18),
+    'pinned 2026-08-16 opening chequing spendable remains independently $2,252.18', money(aug16Spendable));
   ok(Math.abs(spendable - (independentSpendable + tennis.value)) > 1,
     'adding TENNIS INCOME would inflate opening cash — and is not done');
 }

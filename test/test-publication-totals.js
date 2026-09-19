@@ -426,9 +426,10 @@ ok(sameCents(live.totalDebt, liveWithoutReward.totalDebt)
 
 const spendable = F.startingCashAmount(data.plan);
 const spendableHand = (data.plan.startingCash.breakdown || [])
+  .filter(b => b && (b.id === 'chequing-a' || b.id === 'chequing-b'))
   .reduce((s, b) => s + (Number(b.value) || 0), 0);
 ok(sameCents(spendable, spendableHand),
-  'spendable cash is still the household cash-register sum, independently of assets');
+  'spendable cash is independently summed household chequing, independently of assets');
 ok(!(data.plan.startingCash.breakdown || []).concat(data.plan.startingCash.heldElsewhere || [])
   .some(b => /cash back dollars/i.test(String(b.label || b.id || ''))),
   'Cash Back Dollars is not a cash-register identity');

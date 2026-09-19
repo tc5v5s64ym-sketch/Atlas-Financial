@@ -365,7 +365,7 @@ console.log('\n=== 1. successful approved opening produces one coherent state ==
   pkt.payload.accounts = matchingPostedAccounts(pkt.data, '2026-08-18').map(row => (
     row.id === 4102 ? Object.assign({}, row, { balance: 190 }) : row
   ));
-  const independentCash = 1000 + 190 + 50;
+  const independentCash = 1000 + 190;
   const { preview } = previewAt(pkt.data, pkt.payload, { accountMap: pkt.map, cutoverAsOf: '2026-08-18' });
   const dir = tempDir();
   const ws = workspace(dir, pkt.data);
@@ -380,7 +380,7 @@ console.log('\n=== 1. successful approved opening produces one coherent state ==
     'canonical as-of advanced to the approved opening date');
   ok(near(cashOf(after, 'chequing-b').value, 190), 'approved Chequing B 190 is canonical');
   ok(near(Forecast.startingCashAmount(after.plan), independentCash),
-    'Forecast cash independently equals 1000+190+50');
+    'Forecast cash independently equals 1000+190');
   ok(household(posText, 'Chequing A').as_of === '2026-08-18'
     && household(posText, 'Chequing B').as_of === '2026-08-18'
     && household(posText, 'Savings').as_of === '2026-08-18'

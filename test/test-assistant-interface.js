@@ -73,8 +73,16 @@ function filesUnchanged(label) {
 }
 
 function independentSpendable(plan) {
-  return ((plan && plan.startingCash && plan.startingCash.breakdown) || [])
-    .reduce((sum, row) => sum + (Number(row.value) || 0), 0);
+  const rows = ((plan && plan.startingCash && plan.startingCash.breakdown) || []);
+  if (!rows.length) return Number(plan && plan.startingCash && plan.startingCash.amount) || 0;
+  const chequing = rows.filter(row => row && (row.id === 'chequing-a' || row.id === 'chequing-b'));
+  if (chequing.length) {
+    return chequing.reduce((sum, row) => sum + (Number(row.value) || 0), 0);
+  }
+  return rows.reduce((sum, row) => {
+    if (!row || row.id === 'savings') return sum;
+    return sum + (Number(row.value) || 0);
+  }, 0);
 }
 
 function syntheticObligationData(planPatch) {
