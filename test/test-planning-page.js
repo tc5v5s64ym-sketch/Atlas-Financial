@@ -574,10 +574,13 @@ console.log('\n=== 16. Trajectory pressure reprints Forecast.baselineTrajectory.
       ok(pressureHtml.includes(money2(driver.amount)),
         `live: driver amount ${money2(driver.amount)} is copied`);
     }
-    const itemRe = new RegExp(
-      `<li class="planning-trajectory-pressure-item"[^>]*data-trajectory-pressure-index="${idx}"[^>]*>[\\s\\S]*?</li>`);
-    const itemMatch = itemRe.exec(pressureHtml);
-    const itemHtml = itemMatch ? itemMatch[0] : '';
+    const startMarker = `data-trajectory-pressure-index="${idx}"`;
+    const start = pressureHtml.indexOf(startMarker);
+    const nextMarker = `data-trajectory-pressure-index="${idx + 1}"`;
+    const next = pressureHtml.indexOf(nextMarker, start + 1);
+    const itemHtml = start >= 0
+      ? pressureHtml.slice(start, next > start ? next : pressureHtml.length)
+      : '';
     const driverOrder = [...itemHtml.matchAll(/data-trajectory-attribution-driver-class="([^"]+)"/g)].map(m => m[1]);
     const forecastOrder = readyWithDrivers.attribution.drivers.map(d => d.class);
     ok(driverOrder.join(',') === forecastOrder.join(','),

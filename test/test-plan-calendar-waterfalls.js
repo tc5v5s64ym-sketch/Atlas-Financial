@@ -187,7 +187,7 @@ const HOLD_IDS = [
   'dale-guilt-free', 'amanda-guilt-free',
 ];
 const CYCLE_PLANNED = {
-  groceries: 900,
+  groceries: 450,
   fuel: 325,
   household: 37.50,
   pets: 100,
@@ -195,7 +195,7 @@ const CYCLE_PLANNED = {
   'dale-guilt-free': 150,
   'amanda-guilt-free': 150,
 };
-const CYCLE_PLANNED_TOTAL = 1862.50;
+const CYCLE_PLANNED_TOTAL = 1412.50;
 const SEASPAN_ANCHOR = '2026-08-14';
 const MONTH_SHORT = [
   '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -360,7 +360,7 @@ function syntheticPlan(asOf) {
     ],
     budget: {
       categories: [
-        { id: 'groceries', label: 'Groceries', class: 'essential', plannedWeekly: 450, plannedMonthly: null, ownerLine: 'Groceries' },
+        { id: 'groceries', label: 'Groceries', class: 'essential', plannedPayday: 450, plannedMonthly: 900, ownerLine: 'Groceries' },
         { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel', 'Fuel & transport'], plannedPayday: 325, plannedMonthly: null, ownerLine: 'Fuel' },
         { id: 'household', label: 'Household', class: 'essential', plannedPayday: 37.5, plannedMonthly: null, ownerLine: 'Household' },
         { id: 'pets', label: 'Pets', class: 'essential', plannedPayday: 100, plannedMonthly: null, ownerLine: 'Dog food' },
@@ -674,11 +674,12 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
 
 console.log('\n=== 10. Household Budget uses the Seaspan payday cycle, not bill-calendar dates ===');
 {
-  const handSum = roundCent(900 + 325 + 37.50 + 100 + 200 + 150 + 150);
-  ok(near(handSum, 1862.50) && near(handSum, CYCLE_PLANNED_TOTAL)
-      && near(450 * 2, 900)
+  const handSum = roundCent(450 + 325 + 37.50 + 100 + 200 + 150 + 150);
+  ok(near(handSum, 1412.50) && near(handSum, CYCLE_PLANNED_TOTAL)
+      && near(CYCLE_PLANNED.groceries, 450)
+      && !near(CYCLE_PLANNED.groceries, 900)
       && near(Object.values(CYCLE_PLANNED).reduce((s, n) => roundCent(s + n), 0), CYCLE_PLANNED_TOTAL),
-    'independent: 14-day grocery plan is $900; cycle total is $1,862.50');
+    'independent: 14-day grocery plan is $450; cycle total is $1,412.50');
 
   const asOf = '2026-08-30';
   const cycle = paydayCycleWindow(asOf);
@@ -725,11 +726,12 @@ console.log('\n=== 10. Household Budget uses the Seaspan payday cycle, not bill-
       row && `${row.planned} / spent ${row.spent}`);
   }
   const groc = budgetRow(p1, 'groceries');
-  ok(groc && near(groc.planned, 900) && near(groc.plannedWeekly, 450)
-      && !near(groc.planned, 964.29) && !near(groc.planned, 1028.57),
-    '14-day grocery plan is $900, not calendar-day proration');
+  ok(groc && near(groc.planned, 450) && groc.plannedWeekly == null
+      && near(groc.plannedPayday, 450) && near(groc.monthly, 900)
+      && !near(groc.planned, 900) && !near(groc.planned, 964.29) && !near(groc.planned, 1028.57),
+    '14-day grocery plan is $450, not weekly×2 $900 and not calendar-day proration');
   ok(near(p1.budgetHold, CYCLE_PLANNED_TOTAL),
-    'active hold is the unused $1,862.50 cycle reserve',
+    'active hold is the unused $1,412.50 cycle reserve',
     String(p1.budgetHold));
   ok(near(p1.opening, F.startingCashAmount(plan)),
     'payday opening stays cutover starting cash');
@@ -919,9 +921,9 @@ console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays
   ok(/picked\.alreadyHeld/.test(src) && /unresolvedCycle/.test(src),
     'alreadyHeld skip-hold and unresolved-cycle fail-closed are separate branches');
 
-  const independentHold = roundCent(450 * 2 + 325 + 37.50 + 100 + 200 + 150 + 150);
-  ok(near(independentHold, CYCLE_PLANNED_TOTAL) && near(independentHold, 1862.50),
-    'independent payday-cycle reserve is $1,862.50');
+  const independentHold = roundCent(450 + 325 + 37.50 + 100 + 200 + 150 + 150);
+  ok(near(independentHold, CYCLE_PLANNED_TOTAL) && near(independentHold, 1412.50),
+    'independent payday-cycle reserve is $1,412.50');
 
   const leakTxs = [
     { date: '2026-08-16', amount: 200, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
@@ -1004,18 +1006,18 @@ console.log('\n=== 13. overspend remaining is negative; leftover takes the overs
   });
   const p2 = period(advice.defaultView, 'this-pay-period');
   const groc = budgetRow(p2, 'groceries');
-  ok(groc && groc.remaining < 0 && near(groc.remaining, roundCent(900 - 2000))
-      && near(groc.overspend, 1100) && near(groc.hold, 2000),
-    'grocery remaining is negative as overspend disclosure; hold is max(900, 2000) = $2,000');
-  ok(near(p2.budgetHold, roundCent(CYCLE_PLANNED_TOTAL - 900 + 2000))
+  ok(groc && groc.remaining < 0 && near(groc.remaining, roundCent(CYCLE_PLANNED.groceries - 2000))
+      && near(groc.overspend, roundCent(2000 - CYCLE_PLANNED.groceries)) && near(groc.hold, 2000),
+    'grocery remaining is negative as overspend disclosure; hold is max(450, 2000) = $2,000');
+  ok(near(p2.budgetHold, roundCent(CYCLE_PLANNED_TOTAL - CYCLE_PLANNED.groceries + 2000))
       && p2.budgetHold >= 0,
     'period hold keeps unused other-category reserves and adds grocery overspend',
     String(p2.budgetHold));
   ok(near(p2.opening, F.startingCashAmount(plan)),
     'payday opening is still cutover starting cash after overspend');
   ok(near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - p2.budgetHold))
-      && near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - (CYCLE_PLANNED_TOTAL + 1100)))
-      && !near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - (CYCLE_PLANNED_TOTAL - 900))),
+      && near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - (CYCLE_PLANNED_TOTAL + (2000 - CYCLE_PLANNED.groceries))))
+      && !near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - (CYCLE_PLANNED_TOTAL - CYCLE_PLANNED.groceries))),
     'leftover subtracts the grocery overshoot once via effective hold');
 }
 
@@ -1216,7 +1218,7 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
     'Canadian Tire and unconfirmed 7-Eleven sit on unassigned Other spending, deducted at actual',
     confirm && String(confirm.spent));
   ok(near(p2.budgetHold, roundCent(
-    Math.max(900, 0) + Math.max(325, 55) + Math.max(37.50, 0)
+    Math.max(CYCLE_PLANNED.groceries, 0) + Math.max(325, 55) + Math.max(37.50, 0)
     + Math.max(100, 39) + Math.max(200, 60) + 150 + 150
     + (78.38 + 96.30 + 40)
   )),
@@ -1255,13 +1257,13 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
   });
   ok(/Aug 28–Sep 10/.test(html) && !/Spending cycle:/.test(html),
     'page prints Aug 28–Sep 10 without repeating Spending cycle:');
-  ok(/\$450(?:\.00)?\/week/.test(html)
-      && /<dt>Planned<\/dt>/.test(html)
+  ok(/<dt>Planned<\/dt>/.test(html)
       && /<dt>Remaining<\/dt>/.test(html)
       && /household-budget-metrics/.test(html)
+      && !/\$450(?:\.00)?\/week/.test(html)
       && !/planned this period/.test(html)
       && !/spent this period/.test(html),
-    'page prints grocery $450/week and structured Planned / Remaining');
+    'page prints structured Planned / Remaining and does not print grocery $450/week');
   ok(/Dale guilt-free spending/.test(html) && /Amanda guilt-free spending/.test(html),
     'page always prints both guilt-free rows');
 }

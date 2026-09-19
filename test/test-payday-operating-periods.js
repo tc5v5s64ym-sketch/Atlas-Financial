@@ -124,7 +124,7 @@ function septemberPlan() {
     budget: {
       weeklyVariable: 0,
       categories: [
-        { id: 'groceries', label: 'Groceries', class: 'essential', plannedWeekly: 450 },
+        { id: 'groceries', label: 'Groceries', class: 'essential', plannedPayday: 450, plannedMonthly: 900 },
         { id: 'fuel', label: 'Fuel', class: 'essential', plannedPayday: 325 },
       ],
     },
@@ -339,10 +339,10 @@ console.log('\n=== 6. Current-period actuals stay inside the payday window ===')
   const active = period(advice.defaultView, 'this-pay-period');
   const groceries = (active.householdBudget || []).find(r => r.id === 'groceries');
   const independentSpent = 350 + 25;
-  const independentPlanned = 900;
+  const independentPlanned = 450;
   const independentRemaining = roundCent(independentPlanned - independentSpent);
   ok(groceries && near(groceries.planned, independentPlanned),
-    'Groceries planned is the incumbent $900 Seaspan-cycle target');
+    'Groceries planned is the incumbent $450 Seaspan-cycle target');
   ok(groceries && near(groceries.spent, independentSpent),
     'only Aug 28–asOf grocery txs reduce remaining',
     groceries && `spent=${groceries.spent}`);

@@ -71,7 +71,7 @@ function independentDogFoodPlanned(anchor, start) {
 }
 
 const REMAINING_EVERY_CYCLE = {
-  groceries: 900,
+  groceries: 450,
   fuel: 325,
   restaurants: 200,
   'dale-guilt-free': 150,
@@ -84,10 +84,10 @@ const WITHOUT_DOG = EVERY_CYCLE;
 const OLD_WITH_DOG = roundCent(WITH_DOG + REMOVED_HOUSEHOLD);
 const OLD_WITHOUT_DOG = roundCent(WITHOUT_DOG + REMOVED_HOUSEHOLD);
 
-ok(near(EVERY_CYCLE, 1725) && near(WITH_DOG, 1825) && near(WITHOUT_DOG, 1725),
-  'independent component sum: $1,825.00 with monthly Dog food, $1,725.00 without');
-ok(near(OLD_WITH_DOG, 1862.50) && near(OLD_WITHOUT_DOG, 1762.50),
-  'independent prior totals with Household $37.50 were $1,862.50 / $1,762.50');
+ok(near(EVERY_CYCLE, 1275) && near(WITH_DOG, 1375) && near(WITHOUT_DOG, 1275),
+  'independent component sum: $1,375.00 with monthly Dog food, $1,275.00 without');
+ok(near(OLD_WITH_DOG, 1412.50) && near(OLD_WITHOUT_DOG, 1312.50),
+  'independent prior totals with Household $37.50 were $1,412.50 / $1,312.50');
 ok(near(OLD_WITH_DOG - WITH_DOG, 37.5) && near(OLD_WITHOUT_DOG - WITHOUT_DOG, 37.5),
   'exact source delta is $37.50 on every affected payday cycle');
 
@@ -100,7 +100,7 @@ function budgetCats(opts) {
   opts = opts || {};
   const cats = [
     { id: 'groceries', label: 'Groceries', class: 'essential',
-      plannedWeekly: 450, plannedMonthly: null, ownerLine: 'Groceries' },
+      plannedPayday: 450, plannedMonthly: 900, ownerLine: 'Groceries' },
     { id: 'fuel', label: 'Fuel', class: 'essential',
       plannedPayday: 325, plannedMonthly: null, ownerLine: 'Fuel' },
     { id: 'household', label: 'Household supplies & utilities', class: 'essential',
@@ -196,9 +196,9 @@ console.log('\n=== 1–2. first and later Seaspan starts omit Household and keep
   ok(later && near(budgetRow(later, 'pets').planned, 0),
     'CASE 4: later-in-month Dog food remains $0');
   ok(first && near(first.budgetHold, WITH_DOG),
-    'CASE 1: first-of-month hold is independently $1,825.00');
+    'CASE 1: first-of-month hold is independently $1,375.00');
   ok(later && near(later.budgetHold, WITHOUT_DOG),
-    'CASE 2: later-in-month hold is independently $1,725.00');
+    'CASE 2: later-in-month hold is independently $1,275.00');
   ok(firstOld && laterOld
       && near(firstOld.budgetHold - first.budgetHold, 37.5)
       && near(laterOld.budgetHold - later.budgetHold, 37.5),
@@ -211,8 +211,8 @@ console.log('\n=== 5. other authorized targets unchanged ===');
   const later = periodOn(recommendOn(noHold, '2026-09-25'), '2026-09-25');
   const firstMap = plannedById(first);
   const laterMap = plannedById(later);
-  ok(near(firstMap.groceries, 900) && near(laterMap.groceries, 900),
-    'Groceries stays $900 both cycles');
+  ok(near(firstMap.groceries, 450) && near(laterMap.groceries, 450),
+    'Groceries stays $450 both cycles');
   ok(near(firstMap.fuel, 325) && near(laterMap.fuel, 325),
     'Fuel stays $325 both cycles');
   ok(near(firstMap.restaurants, 200) && near(laterMap.restaurants, 200),
@@ -268,9 +268,9 @@ console.log('\n=== 7. This / Next / future operating periods use the same rule =
   ok(next && next.start === '2026-09-25',
     'Next Pay Period starts on the later September Seaspan payday');
   ok(current && !budgetRow(current, 'household') && near(current.budgetHold, WITH_DOG),
-    'This Pay Period has no Household hold and totals $1,825.00');
+    'This Pay Period has no Household hold and totals $1,375.00');
   ok(next && !budgetRow(next, 'household') && near(next.budgetHold, WITHOUT_DOG),
-    'Next Pay Period has no Household hold and totals $1,725.00');
+    'Next Pay Period has no Household hold and totals $1,275.00');
   const october = periodOn(advice, '2026-10-09')
     || (advice.weekViews || []).find(w => w.periodStart === '2026-10-09');
   const octAdvice = recommendOn(noHold, '2026-10-09');
@@ -371,12 +371,12 @@ console.log('\n=== live data.json no longer reserves Household $37.50 ===');
     .find(p => p && p.id === 'next-pay-period');
   ok(current && !budgetRow(current, 'household')
       && !budgetRow(current, 'other-spend')
-      && near(current.budgetHold, 1725),
-    'live This Pay Period omits Household and planned Other spend; hold is $1,725.00 (Aug 14 Dog food OFF)');
+      && near(current.budgetHold, 1275),
+    'live This Pay Period omits Household and planned Other spend; hold is $1,275.00 (Aug 14 Dog food OFF)');
   ok(next && !budgetRow(next, 'household')
       && !budgetRow(next, 'other-spend')
-      && near(next.budgetHold, 1825),
-    'live Next Pay Period omits Household and planned Other spend; hold is $1,825.00 (Aug 28 Dog food ON)');
+      && near(next.budgetHold, 1375),
+    'live Next Pay Period omits Household and planned Other spend; hold is $1,375.00 (Aug 28 Dog food ON)');
   const livePeriods = require('../public/periods.json');
   const liveBd = F.budgetBreakdown(liveData.plan, livePeriods, {
     paypalPerMonth: liveData.paypal ? liveData.paypal.perMonth : 0,

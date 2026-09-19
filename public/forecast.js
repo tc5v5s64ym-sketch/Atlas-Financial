@@ -5490,6 +5490,15 @@
     if (cat.plannedWeekly != null) {
       return roundCent(Number(cat.plannedWeekly) * CALENDAR_MONTH_DAYS / 7);
     }
+    // An explicit calendar-month owner target wins the month surface when a
+    // payday hold is also declared. Payday annualization (N × calendar-month
+    // days / 14) would reprint $978.35 from a $450 Seaspan hold instead of the
+    // owner-stated $900/month. Payday-only categories (fuel, eating out,
+    // guilt-free) still annualize; first-seaspan-of-month and
+    // every-other-seaspan stay $N per calendar month.
+    if (cat.plannedMonthly != null && cat.plannedPayday != null) {
+      return roundCent(Number(cat.plannedMonthly) || 0);
+    }
     if (cat.plannedPayday != null) {
       // Once-per-month payday assignment is $N per calendar month, not
       // $N annualized over 26 Seaspan cycles. every-other-seaspan is the
@@ -5550,6 +5559,27 @@
     if (!isEveryOtherSeaspanCadence(cat)) return null;
     const planned = paydayCyclePlanned(cat, cycleStart, plan);
     return planned == null ? 0 : roundCent(planned);
+  }
+
+  // Authoritative payday-cycle essential hold: cadence first (pets ON/OFF),
+  // then paydayCyclePlanned when the category declares plannedPayday
+  // (groceries $450), else remaining-days smear of the monthly equivalent.
+  // plannedWeekly / plannedMonthly-only keep the smear so incomplete-coverage
+  // remaining-days and monthly-only fixtures are not rewritten.
+  function essentialPeriodPlanned(plan, cat, monthly, cycleStart, periodScale) {
+    const cadencePlanned = essentialCadencePeriodPlanned(plan, cat, cycleStart);
+    if (cadencePlanned != null) return cadencePlanned;
+    if (cat && cat.plannedPayday != null) {
+      const cyclePlanned = paydayCyclePlanned(cat, cycleStart, plan);
+      if (cyclePlanned != null) return roundCent(cyclePlanned);
+    }
+    return roundCent((Number(monthly) || 0) * periodScale);
+  }
+
+  function essentialPeriodUsesCyclePlanned(plan, cat, cycleStart) {
+    if (essentialCadencePeriodPlanned(plan, cat, cycleStart) != null) return true;
+    if (!(cat && cat.plannedPayday != null)) return false;
+    return paydayCyclePlanned(cat, cycleStart, plan) != null;
   }
 
   function calendarHalfThrough(asOf, end) {
@@ -6583,10 +6613,10 @@
       if (!row || !row.id || seenCat.has(row.id)) return;
       seenCat.add(row.id);
       const cat = ((plan.budget && plan.budget.categories) || []).find(c => c && c.id === row.id) || row;
-      const cadencePlanned = essentialCadencePeriodPlanned(plan, cat, cycleStart);
-      const planned = cadencePlanned != null
-        ? cadencePlanned
-        : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS);
+      const periodScale = needDays / CALENDAR_MONTH_DAYS;
+      const usesCyclePlanned = essentialPeriodUsesCyclePlanned(plan, cat, cycleStart);
+      const planned = essentialPeriodPlanned(
+        plan, cat, monthly, cycleStart, periodScale);
       const act = categoryCommittedActual(actuals.byId.get(row.id), coverage.remainingClaim);
       const remaining = useActuals ? roundCent(planned - act.committed) : null;
       if (!(planned > EPSILON) && !(act.posted > EPSILON) && !(act.pending > EPSILON)
@@ -6595,7 +6625,7 @@
         id: row.id,
         label: row.label,
         class: row.class || null,
-        planned: cadencePlanned != null || useActuals || planned > EPSILON
+        planned: usesCyclePlanned || useActuals || planned > EPSILON
           ? planned
           : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS),
         posted: useActuals ? act.posted : null,
@@ -6934,17 +6964,17 @@
       if (cat && cat.id) budgetCatById.set(cat.id, cat);
     }
     const periodPlannedForEssential = row => {
-      const cadencePlanned = essentialCadencePeriodPlanned(
-        plan, budgetCatById.get(row && row.id), cycleStart);
-      if (cadencePlanned != null) return cadencePlanned;
-      return roundCent((Number(row && row.monthly) || 0) * periodScale);
+      const cat = budgetCatById.get(row && row.id);
+      return essentialPeriodPlanned(
+        plan, cat, row && row.monthly, cycleStart, periodScale);
     };
     let essentialsWantedFull = essentialMonthly * periodScale;
     for (const row of essentialNeed.items) {
-      const cadencePlanned = essentialCadencePeriodPlanned(
-        plan, budgetCatById.get(row && row.id), cycleStart);
-      if (cadencePlanned == null) continue;
-      essentialsWantedFull += cadencePlanned - ((Number(row.monthly) || 0) * periodScale);
+      const cat = budgetCatById.get(row && row.id);
+      if (!essentialPeriodUsesCyclePlanned(plan, cat, cycleStart)) continue;
+      const cyclePlanned = essentialPeriodPlanned(
+        plan, cat, row && row.monthly, cycleStart, periodScale);
+      essentialsWantedFull += cyclePlanned - ((Number(row.monthly) || 0) * periodScale);
     }
     essentialsWantedFull = roundCent(essentialsWantedFull);
 
@@ -7062,7 +7092,7 @@
         let last = null;
         for (let i = essentialItems.length - 1; i >= 0; i--) {
           const cat = budgetCatById.get(essentialItems[i].id);
-          if (essentialCadencePeriodPlanned(plan, cat, cycleStart) == null) {
+          if (!essentialPeriodUsesCyclePlanned(plan, cat, cycleStart)) {
             last = essentialItems[i];
             break;
           }
