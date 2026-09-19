@@ -401,7 +401,8 @@ console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ==
 {
   const live = require('../data.json');
   const listed = [
-    'mortgage', 'fortis', 'hydro-due-sep1', 'hydro-equal-payment', 'shaw', 'bell', 'bcaa', 'icbc',
+    'mortgage', 'fortis', 'hydro-due-sep1', 'hydro-equal-payment', 'shaw', 'bell',
+    'bell-sep15-2026', 'bcaa', 'icbc',
     'resp', 'fit4less', 'tdfees', 'noble-garbage', 'affirm-final', 'netflix',
     'spotify', 'google-storage-100gb', 'icloud-storage', 'youtube-premium',
     'ultimate-guitar', 'chatgpt-plus-dale', 'chatgpt-plus-amanda', 'heloc',
@@ -413,6 +414,12 @@ console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ==
     if (id === 'bell') {
       ok(row && row.payingAccount === 'travelvisa' && row.jointCash === false && row.day === 15,
         'bell future payingAccount is Travel Visa card-paid on the 15th');
+      continue;
+    }
+    if (id === 'bell-sep15-2026') {
+      ok(row && row.payingAccount === 'travelvisa' && row.jointCash === false
+          && row.frequency === 'once' && row.date === '2026-09-15',
+        'bell-sep15-2026 payingAccount is Travel Visa card-paid on 2026-09-15');
       continue;
     }
     ok(row && row.payingAccount === 'chequing-a',
