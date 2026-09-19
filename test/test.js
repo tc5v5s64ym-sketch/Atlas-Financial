@@ -122,6 +122,7 @@ const suites = [
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
   ['owner income-recognition policy 2026-09-11', 'test-income-recognition-owner-policy.js'],
   ['Canada Child Benefit amount $219.45', 'test-child-benefit-amount.js'],
+  ['Canada Child Benefit privacy-stripped overlay match', 'test-child-benefit-overlay-match.js'],
   ['Other Income payday waterfall', 'test-other-income.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Sep 10 to Sep 11 payday rollover boundary', 'test-payday-rollover-boundary.js'],
