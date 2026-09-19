@@ -245,11 +245,12 @@ console.log('\n=== B. independent Forecast identity and spendable cash ===');
   }));
   const breakdown = packet.forecast.cashBreakdown;
   const handSum = breakdown.reduce((sum, row) => sum + Number(row.value), 0);
-  ok(Math.abs(handSum - (observedA + cashValue(canonical, 'chequing-b') + cashValue(canonical, 'savings'))) < 0.005,
-    'hand sum of posted cash rows matches the overlaid chequing-a change');
-  ok(Math.abs(packet.forecast.independentSpendable - handSum) < 0.005
-    && Math.abs(packet.forecast.startingCash - handSum) < 0.005,
-    'independent spendable equals Forecast.startingCashAmount');
+  const chequingSum = observedA + cashValue(canonical, 'chequing-b');
+  ok(Math.abs(handSum - (chequingSum + cashValue(canonical, 'savings'))) < 0.005,
+    'hand sum of posted cash rows matches the overlaid chequing-a change plus designated savings');
+  ok(Math.abs(packet.forecast.independentSpendable - chequingSum) < 0.005
+    && Math.abs(packet.forecast.startingCash - chequingSum) < 0.005,
+    'independent spendable equals Forecast.startingCashAmount chequing-only opening');
   ok(packet.forecast.projectorCopiesForecast === true
     && packet.forecast.operatingAnswer.moneyAvailable.value === advice.paydayAllocation.available
     && packet.forecast.operatingAnswer.currentSpendingPermission.weekly === advice.weekly,

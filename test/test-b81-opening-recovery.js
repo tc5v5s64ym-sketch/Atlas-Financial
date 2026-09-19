@@ -436,7 +436,7 @@ console.log('=== 1. exact surviving-opening recovery succeeds ===');
   ok(snap.asOf === '2026-08-19' && snap.schema === S.SCHEMA
     && snap.currentStateAuthority === 'data.json',
     'snapshot uses incumbent snapshot semantics');
-  const independentCash = 1000 + 190 + 50;
+  const independentCash = 1000 + 190;
   ok(near(Forecast.startingCashAmount(pkt.data.plan), independentCash)
     && near(Forecast.startingCashAmount(JSON.parse(fs.readFileSync(ws.dataPath, 'utf8')).plan), independentCash),
     'Forecast still consumes the unchanged surviving opening cash');

@@ -136,13 +136,15 @@ console.log('\n=== TENNIS INCOME stays out of spendable starting cash ===');
 {
   const breakdown = plan.startingCash.breakdown || [];
   const held = plan.startingCash.heldElsewhere || [];
-  const spendable = breakdown.reduce((s, b) => s + Number(b.value || 0), 0);
+  const spendable = breakdown
+    .filter(r => r && (r.id === 'chequing-a' || r.id === 'chequing-b'))
+    .reduce((s, b) => s + Number(b.value || 0), 0);
   ok(!breakdown.some(r => r.id === 'amanda-debt-payments'),
     'TENNIS INCOME is not in the spendable breakdown');
   ok(held.some(r => r.id === 'amanda-debt-payments'),
     'TENNIS INCOME remains held-elsewhere');
   ok(near(F.startingCashAmount(plan), spendable),
-    'Forecast opening cash is the independently summed spendable accounts',
+    'Forecast opening cash is the independently summed household chequing accounts',
     money(F.startingCashAmount(plan)));
 }
 

@@ -553,8 +553,7 @@ console.log('\n=== 4. clean exact-date MATCH opening can be proposed ===');
 
 console.log('\n=== 5. clean posted CHANGE participates in the opening ===');
 {
-  const independentCash = Math.round((1000 + 190 + 50) * 100) / 100;
-  ok(near(independentCash, 1240), 'independent spendable cash after CHANGE is 1000 + 190 + 50 = 1240');
+  const independentCash = 1000 + 190;
   const pkt = postedChangePacket();
   const { preview } = previewAt(pkt.data, pkt.payload, { accountMap: pkt.map, cutoverAsOf: '2026-08-18' });
   const posted = preview.openingCutover.proposedOpening.posted.find(row => row.locator === 'cash:chequing-b');
@@ -566,7 +565,7 @@ console.log('\n=== 5. clean posted CHANGE participates in the opening ===');
   ok(applied.code === 0, 'exact opening approval writes the posted CHANGE', applied.stderr.trim());
   ok(near(cashOf(after, 'chequing-b').value, 190), 'Chequing B is 190 after opening write');
   ok(near(Forecast.startingCashAmount(after.plan), independentCash),
-    'Forecast cash independently equals 1240');
+    'Forecast cash independently equals chequing-only 1190');
   ok(hashFile(dest) !== hashFile(writeJson(dir, 'before.json', pkt.data)),
     'successful opening changes the temp file');
 }
@@ -920,9 +919,9 @@ console.log('\n=== 22. failure leaves target bytes identical ===');
 
 console.log('\n=== 23–24. successful opening is Forecast-consumable; live data.json untouched ===');
 {
-  const independentCash = 1000 + 190 + 50;
+  const independentCash = 1000 + 190;
   const independentUsed = Math.round((800 + 342.65) * 100) / 100;
-  ok(near(independentCash, 1240), 'independent full-synthetic cash is 1240');
+  ok(near(independentCash, 1190), 'independent chequing-only cash is 1190');
   ok(near(independentUsed, 1142.65), 'independent Travel Visa used is 800 + 342.65');
   const pkt = fullSyntheticPacket();
   const { preview } = previewAt(pkt.data, pkt.payload, {
@@ -952,7 +951,7 @@ console.log('\n=== 23–24. successful opening is Forecast-consumable; live data
     && printed.snapshotFollows === C.SNAPSHOT_COMMAND && printed.snapshotAsOf === pkt.requested,
     'apply result records the snapshot as part of the opening using incumbent snapshot semantics');
   ok(near(Forecast.startingCashAmount(after.plan), independentCash),
-    'Forecast cash independently equals 1240 after the opening');
+    'Forecast cash independently equals 1190 after the opening');
   const rec = Forecast.recommend(after.plan, pkt.requested, {});
   ok(rec && rec.weekly != null, 'Forecast.recommend consumes the new opening');
   const projected = Forecast.projectDebts(after.plan, after.debts, pkt.requested, {});

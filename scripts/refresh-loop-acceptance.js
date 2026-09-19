@@ -97,7 +97,10 @@ function cashBreakdown(plan) {
 }
 
 function independentSpendable(plan) {
-  return cashBreakdown(plan).reduce((sum, row) => sum + (Number(row.value) || 0), 0);
+  return cashBreakdown(plan).reduce((sum, row) => {
+    if (!row || row.id === 'savings') return sum;
+    return sum + (Number(row.value) || 0);
+  }, 0);
 }
 
 function compactOverlays(overlay) {

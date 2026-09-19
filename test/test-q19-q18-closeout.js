@@ -46,8 +46,8 @@ console.log('=== published opening does not move ===');
   const cash = F.startingCashAmount(aug16Pinned.plan);
   ok(heloc && near(heloc.balance, 200486.16),
     'pinned HELOC balance remains $200,486.16', money(heloc && heloc.balance));
-  ok(near(cash, 2252.76),
-    'pinned spendable cash remains $2,252.76', money(cash));
+  ok(near(cash, 2252.18),
+    'pinned Forecast spendable opening remains chequing-only $2,252.18', money(cash));
   ok(data.meta.asOf === data.plan.opening.asOf,
     'live meta.asOf still agrees with plan.opening.asOf');
 }

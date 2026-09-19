@@ -37,10 +37,18 @@ const liveFunding = () => F.resolveFundingSources(
 console.log('=== cash classification ===');
 const cash = plan.startingCash;
 const CLASSES = ['spendable', 'operational', 'staging', 'other-liquid', 'restricted'];
-const spendableSum = cash.breakdown.reduce((s, b) => s + b.value, 0);
-ok(near(spendableSum, F.startingCashAmount(plan)),
-  'spendable household cash equals its component accounts',
-  `${money(spendableSum)} = ${money(F.startingCashAmount(plan))}`);
+const chequingIds = ['chequing-a', 'chequing-b'];
+const chequingSum = cash.breakdown
+  .filter(b => chequingIds.includes(b.id))
+  .reduce((s, b) => s + b.value, 0);
+const breakdownSum = cash.breakdown.reduce((s, b) => s + b.value, 0);
+const designatedSavings = cash.breakdown.find(b => b.id === 'savings');
+ok(near(chequingSum, F.startingCashAmount(plan)),
+  'Forecast spendable opening equals independently summed household chequing',
+  `${money(chequingSum)} = ${money(F.startingCashAmount(plan))}`);
+ok(designatedSavings && !near(breakdownSum, chequingSum),
+  'designated savings remains on the breakdown as reserve evidence and is not spendable opening',
+  designatedSavings ? money(designatedSavings.value) : 'missing');
 ok(!Object.prototype.hasOwnProperty.call(cash, 'amount'),
   'the opening total is not stored beside the spendable accounts');
 ok(cash.breakdown.every(b => b.class === 'spendable'),

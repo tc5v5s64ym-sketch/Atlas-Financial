@@ -57,6 +57,7 @@ console.log('=== available resources are independently grounded ===');
 {
   const alloc = currentAllocation();
   const opening = (data.plan.startingCash.breakdown || [])
+    .filter(row => row && (row.id === 'chequing-a' || row.id === 'chequing-b'))
     .reduce((sum, row) => sum + Number(row.value || 0), 0);
   let sameDayIncome = 0;
   for (const row of data.plan.income || []) {

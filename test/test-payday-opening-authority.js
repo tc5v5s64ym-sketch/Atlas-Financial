@@ -473,6 +473,7 @@ const LIVE_A = 400;
 const LIVE_B = 200;
 const LIVE_SAVINGS = 50;
 const LIVE_SUM = roundCent(LIVE_A + LIVE_B + LIVE_SAVINGS);
+const LIVE_CHEQUING = roundCent(LIVE_A + LIVE_B);
 
 function overlayCanonical() {
   return {
@@ -583,7 +584,7 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
     completeAdvice.defaultView, 'this-pay-period', complete.data.liveOverlay,
     completeAdvice.paydayAllocation);
   ok(complete.data.liveOverlay && complete.data.liveOverlay.applied === true
-      && near(F.startingCashAmount(complete.data.plan), LIVE_SUM),
+      && near(F.startingCashAmount(complete.data.plan), LIVE_CHEQUING),
     'complete-gap fixture still overlays mid-period live cash');
   ok(completeSnap && completeSnap.periodStart === PAYDAY
       && completeSnap.asOf === PAYDAY
@@ -629,7 +630,7 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
     incompleteAdvice.defaultView, 'this-pay-period', incomplete.data.liveOverlay,
     incompleteAdvice.paydayAllocation);
   ok(incomplete.data.liveOverlay && incomplete.data.liveOverlay.applied === true
-      && near(F.startingCashAmount(incomplete.data.plan), LIVE_SUM),
+      && near(F.startingCashAmount(incomplete.data.plan), LIVE_CHEQUING),
     'incomplete-gap fixture still overlays mid-period live cash');
   ok(!incompleteSnap, 'truncated transaction window does not retain a paydaySnapshot');
   ok(incompleteActive && incompleteActive.openingKnown !== true
@@ -751,7 +752,7 @@ console.log('\n=== 9. observer earns paydayGapComplete; overlay consumes the pro
       && O.currentPeriodActualsLooksSanitized(completePacket),
     'observe earns paydayGapComplete on a fetch-complete window covering the gap');
   ok(complete.data.liveOverlay && complete.data.liveOverlay.applied === true
-      && near(F.startingCashAmount(complete.data.plan), LIVE_SUM),
+      && near(F.startingCashAmount(complete.data.plan), LIVE_CHEQUING),
     'complete observe→overlay path still overlays mid-period live cash');
   ok(completeSnap && completeSnap.periodStart === PAYDAY
       && completeSnap.asOf === PAYDAY

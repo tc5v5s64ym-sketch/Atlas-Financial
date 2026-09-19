@@ -39,7 +39,9 @@ const BUFFER = live.plan.defaults.targetBuffer;
 const AMANDA = 'amanda-debt-payments';
 
 function independentSpendable(plan) {
-  return (plan.startingCash.breakdown || []).reduce((s, b) => s + Number(b.value || 0), 0);
+  return (plan.startingCash.breakdown || [])
+    .filter(b => b && (b.id === 'chequing-a' || b.id === 'chequing-b'))
+    .reduce((s, b) => s + Number(b.value || 0), 0);
 }
 function liveOpts() {
   return {
@@ -88,8 +90,9 @@ console.log('=== A. pinned 2026-08-16 cutover; spendable cash is independently $
   ok(s && near(s.value, 0.58), 'Savings is the mapped $0.58', money(s && s.value));
   const independent = 1320.13 + 932.05 + 0.58;
   const pinnedOpening = independentSpendable(aug16Pinned.plan);
-  ok(near(independent, 2252.76) && near(pinnedOpening, independent),
-    'independent spendable sum is $2,252.76', money(pinnedOpening));
+  ok(near(independent, 2252.76), 'mapped cash-register total remains $2,252.76', money(independent));
+  ok(near(pinnedOpening, 1320.13 + 932.05),
+    'independent Forecast spendable opening is chequing-only $2,252.18', money(pinnedOpening));
   ok(near(F.startingCashAmount(aug16Pinned.plan), pinnedOpening),
     'Forecast opening cash is that spendable sum only');
   ok(live.meta.asOf === live.plan.opening.asOf,

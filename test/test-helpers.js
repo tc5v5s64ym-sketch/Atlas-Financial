@@ -53,13 +53,37 @@ function cardPaidReservedOnDate(plan, date, occurrences) {
 }
 
 function openingFloor(plan, asOf) {
-  const cash = F.startingCashAmount(plan);
+  const cash = independentSpendableOpening(plan);
   if (!asOf) return cash - burrardDue(plan);
   const openingOut = (F.expandEvents(plan, asOf, asOf, {}) || [])
     .filter(e => e.date <= asOf && e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false)
     .reduce((s, e) => s + e.amount, 0);
   return cash + openingOut - currentRegimeReservedDaily(plan)
     - cardPaidReservedOnDate(plan, asOf, F.occurrences);
+}
+
+// Owner 2026-09-18: Forecast spendable opening is household chequing only.
+// Designated `savings` / EMERGENCY SAVING stays on the breakdown as reserve
+// evidence and is not ordinary spendable. Independent of
+// Forecast.startingCashAmount.
+function independentSpendableOpening(plan) {
+  const cash = (plan && plan.startingCash) || {};
+  const rows = cash.breakdown || [];
+  if (!rows.length) return Number(cash.amount) || 0;
+  let chequing = 0;
+  let hasChequing = false;
+  let rest = 0;
+  for (const row of rows) {
+    if (!row) continue;
+    const n = Number(row.value) || 0;
+    if (row.id === 'chequing-a' || row.id === 'chequing-b') {
+      hasChequing = true;
+      chequing += n;
+    } else if (row.id !== 'savings') {
+      rest += n;
+    }
+  }
+  return hasChequing ? chequing : rest;
 }
 
 function gapAtBuffer(plan, buffer, asOf) {
@@ -188,4 +212,5 @@ module.exports = {
   independentlyBillOccurrenceAmount,
   fundingById,
   usableFunding,
+  independentSpendableOpening,
 };

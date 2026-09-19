@@ -551,8 +551,7 @@ console.log('\n=== 9. unknown same-day income is not counted and does not discar
   const canonical = clone(liveData);
   const independentCash = Math.round((
     Number(cashValue(canonical, 'chequing-a')) +
-    Number(cashValue(canonical, 'chequing-b')) +
-    Number(cashValue(canonical, 'savings'))
+    Number(cashValue(canonical, 'chequing-b'))
   ) * 100) / 100;
   const result = overlay(canonical, {
     fetchedAt: UNKNOWN_SAME_DAY_AT,
@@ -2729,8 +2728,7 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
       label + ' observer still does not represent the month-end salary');
     const expectedCash = Math.round((
       Number(extra.tweaks['chequing-a']) +
-      Number(cashValue(canonical, 'chequing-b')) +
-      Number(cashValue(canonical, 'savings'))
+      Number(cashValue(canonical, 'chequing-b'))
     ) * 100) / 100;
     ok(near(Forecast.startingCashAmount(result.data.plan), expectedCash),
       label + ' opening is the observed household-cash sum');

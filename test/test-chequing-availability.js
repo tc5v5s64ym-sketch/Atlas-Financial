@@ -137,8 +137,8 @@ console.log('\n=== owner-confirmed current chequing identity ===');
   ok(!close(summary.available, expected.available + 202654)
       && !close(summary.available, expected.available + 20000),
     'HELOC and credit-card capacity do not enter available-in-chequing');
-  ok(close(Forecast.startingCashAmount(plan), openingA + openingB + OWNER_SAVINGS),
-    'Forecast cash-only pool stays the dated opening and is not forced equal to available-in-chequing',
+  ok(close(Forecast.startingCashAmount(plan), openingA + openingB),
+    'Forecast cash-only opening is household chequing and is not forced equal to available-in-chequing',
     String(Forecast.startingCashAmount(plan)));
 }
 

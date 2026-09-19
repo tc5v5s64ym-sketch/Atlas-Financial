@@ -33,7 +33,7 @@ const AS_OF = '2026-08-16';
 const NEXT_PAY = '2026-08-28';
 const JAN = '2027-01-15';
 const BUFFER = live.plan.defaults.targetBuffer;
-const WANT_CASH = 1320.13 + 932.05 + 0.58;
+const WANT_CASH = 1320.13 + 932.05;
 const RESERVED_AUG16 = 82.96 + 99.91 + 100 + 25;
 const TENNIS = 2691.85;
 
@@ -51,7 +51,9 @@ function recOpts(extra) {
 }
 
 function independentSpendable(plan) {
-  return (plan.startingCash.breakdown || []).reduce((s, b) => s + Number(b.value || 0), 0);
+  return (plan.startingCash.breakdown || [])
+    .filter(b => b && (b.id === 'chequing-a' || b.id === 'chequing-b'))
+    .reduce((s, b) => s + Number(b.value || 0), 0);
 }
 
 function jointCashThrough(plan, start, end) {
@@ -163,7 +165,7 @@ console.log('=== A. current opening cash identity, independently ===');
   ok(near(F.startingCashAmount(live.plan), hand),
     'Forecast.startingCashAmount equals the independent spendable sum');
   ok(aug16Pinned.meta.asOf === AS_OF && near(independentSpendable(aug16Pinned.plan), WANT_CASH),
-    'pinned 2026-08-16 opening spendable remains independently $2,252.76');
+    'pinned 2026-08-16 opening chequing spendable remains independently $2,252.18');
   const tennis = (live.plan.startingCash.heldElsewhere || [])
     .find(h => h.id === 'amanda-debt-payments');
   ok(tennis && near(tennis.value, TENNIS),

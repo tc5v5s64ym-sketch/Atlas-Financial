@@ -137,6 +137,7 @@ function currentAdvice() {
 
 function independentAvailable(plan, asOf) {
   const opening = (plan.startingCash.breakdown || [])
+    .filter(row => row && (row.id === 'chequing-a' || row.id === 'chequing-b'))
     .reduce((sum, row) => sum + Number(row.value || 0), 0);
   let sameDayIncome = 0;
   for (const row of plan.income || []) {

@@ -29,6 +29,7 @@ const suites = [
   ['incumbent privacy guard (B77)', 'test-privacy-guard.js'],
   ['source line-ending independence', 'test-line-endings.js'],
   ['forecast engine + opening-gap regression', 'test-forecast.js'],
+  ['walk-derived additionalCashRequired (chequing-only zero floor)', 'test-additional-cash-required.js'],
   ['opening-gap recovery does not auto-borrow', 'test-opening-gap-no-auto-borrow.js'],
   ['quarterly recurrence (every 3 months)', 'test-quarterly-recurrence.js'],
   ['owner-confirmed subscription bills', 'test-owner-subscription-bills.js'],
