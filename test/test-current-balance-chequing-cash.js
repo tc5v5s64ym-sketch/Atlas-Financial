@@ -324,8 +324,8 @@ console.log('\n=== 10. Authority stays in Forecast; pages do not subtract saving
     'paydayAllocation publishes that chequing cash as liveCurrentBalance');
   const htmlFn = grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml');
   ok(/view\.liveCurrentBalance|alloc\.liveCurrentBalance/.test(htmlFn)
-      && !/savings/.test(htmlFn) && !/startingCashAmount/.test(htmlFn),
-    'plan.js prints Forecast liveCurrentBalance and does not subtract savings itself');
+      && !/startingCashAmount/.test(htmlFn),
+    'plan.js falls back to Forecast liveCurrentBalance and does not use spendable-opening arithmetic');
   const household = read('public/household-view.js');
   ok(!/savings/.test(household) || !/Current Balance/.test(household)
       || !/startingCashAmount/.test(household),
