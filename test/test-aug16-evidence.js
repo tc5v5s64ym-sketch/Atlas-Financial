@@ -306,9 +306,10 @@ console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees rema
 console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not double-counted ===');
 {
   ok((plan.bills || []).some(b => b.id === 'bell' && b.day === 15
-      && b.needsDate !== true && near(b.amount, 121)
+      && b.needsDate !== true && near(b.amount, 160)
+      && b.firstDue === '2026-10-15'
       && b.payingAccount === 'travelvisa' && b.jointCash === false),
-    'Bell is dated $121 card-paid on the 15th, not a joint-cash bill');
+    'Bell is dated $160 card-paid on the 15th from October, not a joint-cash bill');
   ok(!(plan.bills || []).some(b => near(b.amount, 356.62)
       || near(b.amount, 104.20) || near(b.amount, 16.80)),
     'neither $356.62, $104.20, nor $16.80 is a separate cash bill');

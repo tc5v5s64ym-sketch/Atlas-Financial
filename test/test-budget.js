@@ -102,9 +102,11 @@ const fortis = plan.bills.find(b => b.id === 'fortis');
 const bcaa = plan.bills.find(b => b.id === 'bcaa');
 const icbc = plan.bills.find(b => b.id === 'icbc');
 const fit = plan.bills.find(b => b.id === 'fit4less');
-ok(near(telecom.dated, shaw.amount + 121), 'Shaw plus dated Bell are the telecom dated total', money(telecom.dated));
-ok(near(telecom.current, 121) && near(telecom.planned, 0) && near(telecom.reserved, 0),
-  'dated Bell is current-regime $121 in dated, not an undated reserved smear', money(telecom.dated));
+const bellOnceMonthly = 283.94 / ((plan.windowDays || 91) / (365.25 / 12));
+ok(near(telecom.dated, shaw.amount + 160 + bellOnceMonthly),
+  'Shaw plus standing $160 plus Sep once smear are the telecom dated total', money(telecom.dated));
+ok(near(telecom.current, 160 + bellOnceMonthly) && near(telecom.planned, 0) && near(telecom.reserved, 0),
+  'dated Bell standing + Sep once are current-regime in dated, not an undated reserved smear', money(telecom.dated));
 
 console.log('\n=== closed Telus is $0 forward; remainder is current-regime Bell ===');
 // Independent of Forecast.budgetBreakdown: category totals in generated
@@ -127,23 +129,27 @@ ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
 ok(near(telecom.historical, independentYtdAvg),
   'budgetBreakdown still reports the independent YTD historical average',
   money(independentYtdAvg));
-ok(near(telecom.current, 121) && near(telecom.planned, 0) && near(telecom.reserved, 0)
-    && near(telecom.dated, shaw.amount + 121),
-  'forward Bell is the dated $121 card-paid item beside Shaw; no undated smear',
+ok(near(telecom.current, 160 + bellOnceMonthly) && near(telecom.planned, 0) && near(telecom.reserved, 0)
+    && near(telecom.dated, shaw.amount + 160 + bellOnceMonthly),
+  'forward Bell is dated standing $160 plus the Sep once smear beside Shaw; no undated smear',
   money(telecom.dated));
-ok(telecom.datedItems.length === 2
+ok(telecom.datedItems.length === 3
   && telecom.datedItems.some(i => i.label === 'Shaw internet' && near(i.amount, shaw.amount))
-  && telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, 121)),
-  'Shaw and dated Bell are the two telecom dated items');
+  && telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, 160))
+  && telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, bellOnceMonthly)),
+  'Shaw, standing Bell, and the September once smear are the telecom dated items');
 ok(!(plan.bills || []).some(b => /telus/i.test(String(b.id) + ' ' + String(b.label))),
   'no Telus plan.bills row — current Telus recurrence is $0');
 ok((plan.bills || []).some(b => b.id === 'bell' && b.day === 15 && b.needsDate !== true
     && b.payingAccount === 'travelvisa' && b.jointCash === false),
   'Bell is the dated card-paid planning row on the 15th');
 ok(F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90))
-    .some(e => e.id === 'bell' && e.date === '2026-09-15' && e.cardPaid === true
-      && e.jointCash === false && near(-e.amount, 121)),
-  'expandEvents emits September Bell on the 15th as card-paid reserved gravity');
+    .some(e => e.id === 'bell-sep15-2026' && e.date === '2026-09-15' && e.cardPaid === true
+      && e.jointCash === false && near(-e.amount, 283.94)),
+  'expandEvents emits September Bell as the $283.94 once on the 15th as card-paid reserved gravity');
+ok(!F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90))
+    .some(e => e.id === 'bell' && String(e.date || '').startsWith('2026-09')),
+  'expandEvents does not also emit standing $160 in September');
 ok(telecom.target == null && telecom.source === 'current-regime',
   'telecom remainder is current-regime, not owner-target or historical-actual');
 ok(lastTelecom.total - shaw.amount > independentHistoricalRemainder,

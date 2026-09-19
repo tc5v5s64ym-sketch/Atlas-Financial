@@ -188,8 +188,9 @@ console.log('=== 1. incumbent dated opening is still Aug 19 / $939.62 ===');
   ok(near(CHEQUING_CASH, 939.04) && !near(CHEQUING_CASH, DATED_CASH),
     'independent household chequing is $939.04; designated savings stays on the breakdown',
     String(CHEQUING_CASH));
-  ok(BELL && near(Number(BELL.amount), 121) && BELL.day === 15 && BELL.needsDate !== true,
-    'independent Bell row is still $121, now dated on the 15th');
+  ok(BELL && near(Number(BELL.amount), 160) && BELL.day === 15 && BELL.needsDate !== true
+      && BELL.firstDue === '2026-10-15',
+    'independent Bell row is standing $160, dated on the 15th from October');
 }
 
 console.log('\n=== 2. Forecast unavailable walk keeps the dated opening ===');
