@@ -1751,6 +1751,7 @@ console.log('\n=== 18. unavailable current period fail-closes the dependent next
       && !/Still arriving/.test(unHtml)
       && !/data-income-status="arriving"/.test(unHtml)
       && !/Payroll — Seaspan/.test(unHtml)
+      && !/Dale salary/.test(unHtml)
       && !/Amanda salary month-end/.test(unHtml)
       && !/Netflix/.test(unHtml)
       && !/planned this period/.test(unHtml)
@@ -1783,9 +1784,10 @@ console.log('\n=== 18. unavailable current period fail-closes the dependent next
     recommended: trusted.weekly,
     planCalendarShow: 'next-pay-period',
   });
-  ok(/Payroll — Seaspan/.test(liveHtml)
-      && /Amanda salary 15th/.test(liveHtml)
-      && !/Amanda salary month-end/.test(liveHtml)
+  ok(/Dale salary/.test(liveHtml)
+      && /data-period-income="amanda15"/.test(liveHtml)
+      && !/data-period-income="amandaEnd"/.test(liveHtml)
+      && !/Payroll — Seaspan/.test(liveHtml)
       && /Netflix/.test(liveHtml)
       && /<dt>Planned<\/dt>/.test(liveHtml)
       && /household-budget-metrics/.test(liveHtml)

@@ -55,7 +55,8 @@
   margin-right: 4px;
 }
 
-/* Rollover + Payday Balance are supporting facts, not replacements for Income. */
+/* Payday Balance is the supporting fact beside Current Balance. Opening /
+ * rollover is not shown on the Budget surface. */
 .atlas-period-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -71,41 +72,6 @@
   border-radius: 18px;
   background: var(--surface-1);
   box-shadow: var(--atlas-card-shadow);
-}
-.atlas-rollover-summary {
-  background: color-mix(in srgb, var(--text-secondary) 5%, var(--surface-1));
-}
-.atlas-rollover-summary .operating-number {
-  display: none;
-}
-.atlas-rollover-summary .operating-prompt {
-  margin: 0 0 7px;
-  padding: 0;
-  border: 0;
-  color: var(--text-secondary);
-  font-size: .75rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  line-height: 1.25;
-  text-transform: uppercase;
-}
-.atlas-rollover-summary .operating-answer {
-  margin: 0;
-}
-.atlas-rollover-summary .payday-cash .operating-amount,
-.atlas-rollover-summary .operating-amount {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 1.65rem;
-  font-weight: 750;
-  letter-spacing: -.025em;
-  line-height: 1.08;
-}
-.atlas-rollover-summary .operating-note {
-  margin: 6px 0 0;
-  color: var(--text-secondary);
-  font-size: .76rem;
-  line-height: 1.35;
 }
 .atlas-payday-summary {
   display: flex;
@@ -214,6 +180,17 @@
   margin: 0;
 }
 
+/* Paycheck rows: no Amanda strikethrough, no arriving green highlight. */
+.atlas-budget-ui-ready .atlas-income-card .operating-line[data-income-status="not-relied-upon"] span:last-child,
+.atlas-budget-ui-ready .atlas-income-card .operating-line[data-income-status="arriving"] span:last-child,
+.atlas-budget-ui-ready .atlas-income-card .operating-line[data-income-status="received"] span:last-child,
+.atlas-budget-ui-ready .atlas-income-card .operating-line[data-income-status="already in balance"] span:last-child,
+.atlas-budget-ui-ready .atlas-income-card .operating-line[data-income-status="relied-upon"] span:last-child {
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 /* Bills */
 .atlas-bills-card {
   --atlas-section-icon: var(--nav-icon-bills);
@@ -261,10 +238,18 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.atlas-budget-ui-ready [data-calendar-waterfall] > [data-operating-question="01"] {
+  display: none;
+}
 .atlas-bills-card .atlas-bill-row-paid {
   border-color: var(--atlas-green-border);
   border-left-color: var(--good);
   background: var(--atlas-green-soft);
+}
+.atlas-bills-card .atlas-bill-row-planning-cleared {
+  border-color: color-mix(in srgb, var(--good) 18%, var(--border));
+  border-left-color: color-mix(in srgb, var(--good) 70%, var(--axis));
+  background: color-mix(in srgb, var(--good) 7%, var(--surface-1));
 }
 .atlas-bills-card .atlas-bill-row-to-pay {
   border-color: var(--atlas-red-border);
@@ -276,7 +261,8 @@
   border-left-color: color-mix(in srgb, var(--critical) 70%, var(--axis));
   background: var(--atlas-red-soft);
 }
-.atlas-bills-card .atlas-bill-row-check {
+.atlas-bills-card .atlas-bill-row-check,
+.atlas-bills-card .atlas-bill-row-double-check {
   border-color: color-mix(in srgb, var(--warning) 28%, var(--border));
   border-left-color: var(--warning);
   background: var(--atlas-amber-soft);
@@ -311,12 +297,18 @@
   font-size: .68rem;
   font-weight: 900;
 }
+.atlas-bill-state-planning-cleared {
+  color: var(--success-text);
+  background: color-mix(in srgb, var(--good) 10%, var(--surface-1));
+  letter-spacing: .03em;
+}
 .atlas-bill-state-to-pay,
 .atlas-bill-state-pending {
   color: var(--critical);
   background: color-mix(in srgb, var(--critical) 12%, var(--surface-1));
 }
-.atlas-bill-state-check {
+.atlas-bill-state-check,
+.atlas-bill-state-double-check {
   color: color-mix(in srgb, var(--warning) 78%, var(--text-primary));
   background: color-mix(in srgb, var(--warning) 12%, var(--surface-1));
 }
@@ -400,8 +392,6 @@
     padding: 13px 14px;
     border-radius: 16px;
   }
-  .atlas-rollover-summary .payday-cash .operating-amount,
-  .atlas-rollover-summary .operating-amount,
   .atlas-payday-summary [data-payday-balance] span:last-child {
     font-size: clamp(1.28rem, 6.4vw, 1.6rem);
   }

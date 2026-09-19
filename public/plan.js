@@ -1615,6 +1615,8 @@ function cashGlanceHtml(alloc, liveOverlay, cashNote) {
 }
 
 function liveCurrentBalanceHtml(view, liveOverlay, alloc) {
+  // Actionable Current Balance is the Forecast-owned posted household
+  // chequing figure (A+B, including a negative Chequing B register).
   const amount = view && view.liveCurrentBalance != null
     ? view.liveCurrentBalance
     : (alloc && alloc.liveCurrentBalance != null ? alloc.liveCurrentBalance : null);
@@ -1805,7 +1807,9 @@ function periodBillLine(row) {
     : 'still due';
   const amount = glanceSignedMoney(glanceMoney(row, kind));
   const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
-  return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}">
+  const dateAttr = row.date && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
+    ? ` data-bill-date="${row.date}"` : '';
+  return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}"${dateAttr}>
     <span>${glanceLineLabel(row, status)}</span><span>${amount != null ? about + amount : '—'}</span>
   </div>`;
 }
@@ -1846,16 +1850,30 @@ function calendarIncomeHtml(period) {
       : row.status === 'unknown' ? 'unknown'
       : row.alreadyInCash ? 'already in balance' : 'arriving';
     const amount = glanceSignedMoney(glanceMoney(row, 'in'));
-    const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
-    const note = notRelied ? 'not relied upon'
-      : row.status === 'relied-upon' ? 'relied upon'
-      : row.alreadyInCash && row.status !== 'received' ? 'already in balance'
-      : status;
+    const cls = row && row.incomeClass;
+    const id = String(row && row.id || '');
+    const labelText = String(row && row.label || '');
+    const daleSalary = cls === 'dale'
+      || id === 'payroll'
+      || /seaspan|c-?span/i.test(`${id} ${labelText}`);
+    const amandaSalary = cls === 'amanda'
+      || /amandaSalary|amanda-salary/i.test(id)
+      || /amanda salary/i.test(labelText);
+    // Budget income display only: Forecast labels and settlement stay on
+    // the row; the printed name drops Seaspan / Tennis BC / not-relied copy.
+    const displayName = daleSalary ? 'Dale salary'
+      : amandaSalary ? 'Amanda salary'
+      : glanceLineLabel(row, notRelied ? 'not relied upon'
+        : row.status === 'relied-upon' ? 'relied upon'
+        : row.alreadyInCash && row.status !== 'received' ? 'already in balance'
+        : status);
+    const about = !daleSalary && row.confidence === 'estimated' && amount != null
+      ? 'about ' : '';
     const statusAttr = notRelied ? 'not-relied-upon'
       : row.status === 'relied-upon' ? 'relied-upon'
       : status;
     return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}"${extra}>
-      <span>${glanceLineLabel(row, note)}</span><span>${amount != null ? about + amount : '—'}</span>
+      <span>${displayName}</span><span>${amount != null ? about + amount : '—'}</span>
     </div>`;
   };
   const namedLines = named.map(row => line(row)).join('');
@@ -2379,7 +2397,10 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
         <p class="operating-note">Not included in either period's remaining bills.</p>
       </div>`
     : '';
-  return `<div class="calendar-waterfalls" data-calendar-waterfalls>
+  const asOf = (view && view.asOf) || (alloc && alloc.asOf) || '';
+  const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
+    ? ` data-household-as-of="${asOf}"` : '';
+  return `<div class="calendar-waterfalls" data-calendar-waterfalls${asOfAttr}>
     ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${calendarPickerHtml(view, pick, extraControls)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
