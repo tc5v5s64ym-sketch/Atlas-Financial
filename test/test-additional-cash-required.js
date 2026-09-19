@@ -52,6 +52,23 @@ function independentReserve(plan) {
   return roundCent(Number(row && row.value) || 0);
 }
 
+// Independent of Forecast.additionalCashRequiredPacket: remaining need is
+// max(0, required − min(required, max(0, designated-savings evidence))).
+function independentBacked(required, reserve) {
+  const req = roundCent(required);
+  const fundable = roundCent(Math.max(0, Number(reserve) || 0));
+  const funded = roundCent(Math.min(req, fundable));
+  return {
+    funded,
+    remaining: roundCent(Math.max(0, req - funded)),
+  };
+}
+
+function trajAcr(plan) {
+  const traj = F.baselineTrajectory(plan, [], AS_OF, { periods: periodsStub() });
+  return { traj, acr: traj && traj.additionalCashRequired };
+}
+
 // Independent of Forecast.simulate: dated cash events, income-first within
 // a day, then a constant reserved daily smear and weeklyVariable / 7.
 function independentWalkMin(opening, start, days, events, weeklyVariable, reservedDaily) {
@@ -156,6 +173,13 @@ console.log('=== authority: walk min at $0, never Σ period stage deficits ===')
   ok(/DESIGNATED_RESERVE_ID = 'savings'/.test(src)
       && /HOUSEHOLD_CHEQUING_IDS/.test(src),
     'designated reserve is incumbent savings; spendable opening aligns with household chequing ids');
+  ok(/function designatedReserveEvidence\(plan\)/.test(src)
+      && /function additionalCashRequiredPacket\(plan, minBalance\)/.test(src),
+    'Forecast owns designated-reserve evidence and the ACR funded/remaining packet');
+  ok(/plannedContribution: 'not-used'/.test(src),
+    'planned reserve contributions are not treated as funded');
+  ok(/additionalCashRequired: additionalCashRequiredPacket\(plan, sim\.min && sim\.min\.balance\)/.test(src),
+    'baselineTrajectory publishes the funded/remaining packet from the same walk min');
 }
 
 console.log('\n=== 1. one future deficit ===');
@@ -357,6 +381,203 @@ console.log('\n=== amount-only fixtures are unchanged ===');
   ok(near(F.startingCashAmount(plan), 500)
       && near(F.postedHouseholdChequingCash(plan), 500),
     'amount-only synthetic openings still equal the declared amount');
+}
+
+console.log('\n=== designated-savings backing of additionalCashRequired ===');
+{
+  function prove(label, chequing, savings, bill, extra) {
+    const plan = cashPlan(chequing, savings, Object.assign({
+      bills: bill ? [onceBill('hole', '2026-01-20', bill)] : [],
+    }, extra || {}));
+    const events = bill ? [{ date: '2026-01-20', amount: -bill }] : [];
+    const independent = independentWalkMin(
+      independentChequing(plan), AS_OF, plan.windowDays, events, 0, 0);
+    const backed = independentBacked(independent.additionalCashRequired, savings);
+    const sim = F.simulate(plan, AS_OF, { weeklyVariable: 0 });
+    const { traj, acr } = trajAcr(plan);
+    ok(typeof sim.additionalCashRequired === 'number'
+        && near(sim.additionalCashRequired, independent.additionalCashRequired)
+        && near(sim.shortfall, independent.additionalCashRequired),
+      `${label}: simulate additionalCashRequired stays the chequing-only total`,
+      String(sim.additionalCashRequired));
+    ok(traj.status === 'ready' && acr && acr.status === 'calculated'
+        && near(acr.amount, independent.additionalCashRequired)
+        && acr.fundingFloor === 0,
+      `${label}: trajectory amount equals independent zero-floor walk min`,
+      acr && String(acr.amount));
+    ok(acr.fundedByDesignatedSavings && acr.fundedByDesignatedSavings.status === 'calculated'
+        && near(acr.fundedByDesignatedSavings.amount, backed.funded)
+        && acr.fundedByDesignatedSavings.plannedContribution === 'not-used',
+      `${label}: fundedByDesignatedSavings equals min(required, actual savings)`,
+      acr.fundedByDesignatedSavings && String(acr.fundedByDesignatedSavings.amount));
+    ok(acr.remainingAdditionalCashRequired
+        && acr.remainingAdditionalCashRequired.status === 'calculated'
+        && near(acr.remainingAdditionalCashRequired.amount, backed.remaining)
+        && acr.remainingAdditionalCashRequired.amount >= -0.005,
+      `${label}: remainingAdditionalCashRequired is max(0, required − funded)`,
+      acr.remainingAdditionalCashRequired
+        && String(acr.remainingAdditionalCashRequired.amount));
+    return { plan, sim, acr, independent, backed };
+  }
+
+  prove('zero required / zero savings', 200, 0, 50);
+  prove('requirement with zero savings', 100, 0, 150);
+  prove('partially backed', 100, 20, 150);
+  prove('exactly backed', 100, 50, 150);
+  const over = prove('savings greater than requirement', 100, 80, 150);
+  ok(near(over.acr.remainingAdditionalCashRequired.amount, 0)
+      && over.acr.remainingAdditionalCashRequired.amount >= 0
+      && near(over.acr.fundedByDesignatedSavings.amount, over.independent.additionalCashRequired)
+      && over.acr.fundedByDesignatedSavings.amount + 0.005 < 80,
+    'excess designated savings is not remaining credit and does not over-fund past required');
+}
+
+console.log('\n=== changing designated savings moves funded/remaining, not chequing-only ACR ===');
+{
+  const low = cashPlan(100, 10, { bills: [onceBill('hole', '2026-01-20', 150)] });
+  const high = cashPlan(100, 40, { bills: [onceBill('hole', '2026-01-20', 150)] });
+  const events = [{ date: '2026-01-20', amount: -150 }];
+  const required = independentWalkMin(
+    independentChequing(low), AS_OF, low.windowDays, events, 0, 0).additionalCashRequired;
+  ok(near(required, 50), 'independent required cash is $50 from $100 − $150');
+  const simLow = F.simulate(low, AS_OF, { weeklyVariable: 0 }).additionalCashRequired;
+  const simHigh = F.simulate(high, AS_OF, { weeklyVariable: 0 }).additionalCashRequired;
+  ok(near(simLow, required) && near(simHigh, required),
+    'raising designated savings does not change simulate additionalCashRequired');
+  const acrLow = trajAcr(low).acr;
+  const acrHigh = trajAcr(high).acr;
+  const backedLow = independentBacked(required, 10);
+  const backedHigh = independentBacked(required, 40);
+  ok(near(acrLow.amount, required) && near(acrHigh.amount, required),
+    'trajectory amount stays the chequing-only total when savings changes');
+  ok(near(acrLow.fundedByDesignatedSavings.amount, backedLow.funded)
+      && near(acrHigh.fundedByDesignatedSavings.amount, backedHigh.funded)
+      && acrHigh.fundedByDesignatedSavings.amount > acrLow.fundedByDesignatedSavings.amount + 0.005,
+    'higher designated savings raises fundedByDesignatedSavings',
+    `${acrLow.fundedByDesignatedSavings.amount} → ${acrHigh.fundedByDesignatedSavings.amount}`);
+  ok(near(acrLow.remainingAdditionalCashRequired.amount, backedLow.remaining)
+      && near(acrHigh.remainingAdditionalCashRequired.amount, backedHigh.remaining)
+      && acrLow.remainingAdditionalCashRequired.amount > acrHigh.remainingAdditionalCashRequired.amount + 0.005,
+    'higher designated savings lowers remainingAdditionalCashRequired',
+    `${acrLow.remainingAdditionalCashRequired.amount} → ${acrHigh.remainingAdditionalCashRequired.amount}`);
+}
+
+console.log('\n=== non-designated cash does not fund this reserve ===');
+{
+  const plan = cashPlan(100, 10, {
+    bills: [onceBill('hole', '2026-01-20', 150)],
+  });
+  plan.startingCash.heldElsewhere = [
+    { id: 'amanda-debt-payments', label: 'TENNIS INCOME', value: 2691.85, class: 'operational' },
+    { id: 'savings-dont-touch', label: 'SAVINGS-DONT TOUCH', value: 74.2, class: 'staging' },
+    { id: 'wise', label: 'Wise', value: 205.92, class: 'other-liquid' },
+  ];
+  const events = [{ date: '2026-01-20', amount: -150 }];
+  const required = independentWalkMin(
+    independentChequing(plan), AS_OF, plan.windowDays, events, 0, 0).additionalCashRequired;
+  ok(near(required, 50), 'independent required cash stays $50 on the chequing-only walk');
+  const acr = trajAcr(plan).acr;
+  const backed = independentBacked(required, 10);
+  ok(near(acr.amount, 50)
+      && near(acr.fundedByDesignatedSavings.amount, backed.funded)
+      && near(acr.remainingAdditionalCashRequired.amount, backed.remaining)
+      && !near(acr.fundedByDesignatedSavings.amount, 10 + 2691.85 + 74.2 + 205.92),
+    'TENNIS INCOME, SAVINGS-DONT TOUCH, and Wise do not fund designated-reserve backing',
+    String(acr.fundedByDesignatedSavings.amount));
+  const extraChequing = cashPlan(100, 10, { bills: [onceBill('hole', '2026-01-20', 150)] });
+  extraChequing.startingCash.breakdown.find(row => row.id === 'chequing-b').value = 400;
+  extraChequing.startingCash.heldElsewhere = plan.startingCash.heldElsewhere;
+  const extraRequired = independentWalkMin(
+    independentChequing(extraChequing), AS_OF, extraChequing.windowDays, events, 0, 0);
+  ok(near(independentChequing(extraChequing), 500)
+      && near(extraRequired.additionalCashRequired, 0)
+      && near(trajAcr(extraChequing).acr.fundedByDesignatedSavings.amount, 0),
+    'extra chequing reduces the chequing-only requirement; it does not become reserve funding');
+}
+
+console.log('\n=== planned contribution intent is not funded ===');
+{
+  const plan = cashPlan(100, 10, {
+    bills: [onceBill('hole', '2026-01-20', 150)],
+    income: [onceIncome('planned-savings-contribution', '2026-02-01', 5000)],
+  });
+  const events = [
+    { date: '2026-01-20', amount: -150 },
+    { date: '2026-02-01', amount: 5000 },
+  ];
+  const independent = independentWalkMin(
+    independentChequing(plan), AS_OF, plan.windowDays, events, 0, 0);
+  const acr = trajAcr(plan).acr;
+  const backed = independentBacked(independent.additionalCashRequired, 10);
+  ok(near(acr.amount, independent.additionalCashRequired),
+    'planned contribution events still only affect the chequing walk total');
+  ok(near(acr.fundedByDesignatedSavings.amount, backed.funded)
+      && near(acr.fundedByDesignatedSavings.amount, 10)
+      && !near(acr.fundedByDesignatedSavings.amount, 10 + 5000),
+    'funded uses actual designated savings $10, not the planned $5,000 contribution');
+}
+
+console.log('\n=== Case K: savings still outside the ordinary Forecast walk ===');
+{
+  const plan = cashPlan(80, 5000, { bills: [onceBill('hole', '2026-01-10', 100)] });
+  const sim = F.simulate(plan, AS_OF, { weeklyVariable: 0 });
+  const ifSpent = independentWalkMin(
+    independentBreakdownSum(plan), AS_OF, plan.windowDays,
+    [{ date: '2026-01-10', amount: -100 }], 0, 0);
+  ok(near(sim.daily[0].balance, 80) && !near(sim.daily[0].balance, 5080),
+    'opening walk balance is chequing-only $80, not chequing plus designated savings');
+  ok(near(ifSpent.additionalCashRequired, 0) && near(sim.additionalCashRequired, 20),
+    'silently spending designated savings would zero ACR; Forecast still requires $20');
+  const acr = trajAcr(plan).acr;
+  ok(near(acr.amount, 20)
+      && near(acr.fundedByDesignatedSavings.amount, 20)
+      && near(acr.remainingAdditionalCashRequired.amount, 0),
+    'Case K: savings backs the published remaining need without rescuing the walk total');
+}
+
+console.log('\n=== unavailable / untrusted inputs fail closed, not $0 funded ===');
+{
+  const missing = cashPlan(100, 10, { bills: [onceBill('hole', '2026-01-20', 150)] });
+  missing.startingCash.breakdown = missing.startingCash.breakdown.filter(
+    row => row.id !== DESIGNATED_RESERVE_ID);
+  const missingAcr = trajAcr(missing).acr;
+  ok(missingAcr && missingAcr.status === 'calculated' && near(missingAcr.amount, 50)
+      && missingAcr.fundedByDesignatedSavings
+      && missingAcr.fundedByDesignatedSavings.status === 'unavailable'
+      && missingAcr.fundedByDesignatedSavings.amount == null
+      && missingAcr.remainingAdditionalCashRequired.status === 'unavailable'
+      && missingAcr.remainingAdditionalCashRequired.amount == null,
+    'missing designated savings on a household chequing opening fails funded/remaining closed');
+
+  const untrusted = cashPlan(100, 10, { bills: [onceBill('hole', '2026-01-20', 150)] });
+  untrusted.startingCash.breakdown.find(row => row.id === DESIGNATED_RESERVE_ID).value = null;
+  const untrustedAcr = trajAcr(untrusted).acr;
+  ok(untrustedAcr && near(untrustedAcr.amount, 50)
+      && untrustedAcr.fundedByDesignatedSavings.status === 'unavailable'
+      && untrustedAcr.fundedByDesignatedSavings.amount == null
+      && untrustedAcr.remainingAdditionalCashRequired.status === 'unavailable'
+      && untrustedAcr.remainingAdditionalCashRequired.amount == null,
+    'null designated savings value fails funded/remaining closed, not $0 funded');
+
+  const nanPlan = cashPlan(100, 10, { bills: [onceBill('hole', '2026-01-20', 150)] });
+  nanPlan.startingCash.breakdown.find(row => row.id === DESIGNATED_RESERVE_ID).value = Number.NaN;
+  const nanAcr = trajAcr(nanPlan).acr;
+  ok(nanAcr.fundedByDesignatedSavings.status === 'unavailable'
+      && nanAcr.fundedByDesignatedSavings.amount == null
+      && nanAcr.remainingAdditionalCashRequired.amount == null,
+    'NaN designated savings fails closed rather than publishing funded $0');
+
+  const closed = F.baselineTrajectory(null, [], AS_OF, { periods: periodsStub() });
+  ok(closed && closed.status === 'unavailable'
+      && closed.additionalCashRequired
+      && closed.additionalCashRequired.status === 'unavailable'
+      && closed.additionalCashRequired.amount == null
+      && closed.additionalCashRequired.fundedByDesignatedSavings.amount == null
+      && closed.additionalCashRequired.remainingAdditionalCashRequired.amount == null,
+    'unavailable trajectory fails the whole ACR packet closed, not $0 / funded');
+
+  ok(/minBalance == null \|\| !isFinite\(Number\(minBalance\)\)/.test(src),
+    'unreadable walk min fails the ACR packet closed rather than coercing to $0');
 }
 
 if (failures) {
