@@ -58,13 +58,14 @@ console.log('\n=== approved hierarchy and app navigation are present ===');
 {
   const html = read('public/index.html');
   const css = read('public/budget-polish.css');
+  const polishJs = read('public/budget-polish.js');
   const shared = read('public/styles.css');
   ok(/budget-polish\.css/.test(html) && /budget-polish\.js/.test(html),
     'Budget page loads the approved visual layer');
   ok(/atlas-current-balance-card/.test(css)
-    && /atlas-period-summary/.test(css)
-    && /atlas-payday-summary/.test(css),
-    'Current Balance and payday summary have dedicated hierarchy');
+    && /atlas-income-card \[data-payday-balance\]/.test(css)
+    && /atlas-income-closing/.test(css),
+    'Current Balance and income closing total have dedicated hierarchy');
   ok(/atlas-income-card/.test(css)
     && /atlas-bills-card/.test(css)
     && /atlas-household-budget-card/.test(css),
@@ -74,8 +75,12 @@ console.log('\n=== approved hierarchy and app navigation are present ===');
     && /atlas-bill-row-planning-cleared/.test(css)
     && /atlas-bill-row-double-check/.test(css),
     'paid, to-pay, planning-cleared, and double-check bill rows have separate visual states');
-  ok(/\.atlas-period-summary\s*>\s*:only-child\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/s.test(css),
-    'a lone Payday summary fills the row instead of leaving a false empty card');
+  ok(!/atlas-period-summary/.test(polishJs) && !/atlas-payday-summary/.test(polishJs)
+      && !/atlas-period-summary/.test(css),
+    'polish no longer lifts Payday balance into a top-glance summary');
+  ok(/atlas-income-closing/.test(polishJs)
+      && /classList\.add\('atlas-income-closing'\)/.test(polishJs),
+    'polish marks Payday balance as the income-card closing total in place');
   ok(/--atlas-purple:\s*color-mix\([^;]*var\(--text-primary\)[^;]*\);/.test(css),
     'Bills accent adapts against the current theme text token instead of using a dark-only low-contrast fixed purple');
   ok(/--nav-icon-budget/.test(shared)

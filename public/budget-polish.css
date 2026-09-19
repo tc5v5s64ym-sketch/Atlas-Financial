@@ -18,7 +18,7 @@
   --atlas-card-shadow: 0 1px 2px rgba(21,21,19,.04), 0 8px 24px rgba(21,21,19,.045);
 }
 
-/* Current Balance is the one live number above the pay-period snapshot. */
+/* Current Balance sits under the pay-period selector, above the snapshot. */
 .atlas-budget-ui-ready .atlas-current-balance-card {
   margin: 0 0 2px;
   padding: 18px 20px 17px;
@@ -55,55 +55,8 @@
   margin-right: 4px;
 }
 
-/* Payday Balance is the supporting fact beside Current Balance. Opening /
- * rollover is not shown on the Budget surface. */
-.atlas-period-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.atlas-period-summary > :only-child {
-  grid-column: 1 / -1;
-}
-.atlas-summary-card {
-  min-width: 0;
-  padding: 15px 16px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--surface-1);
-  box-shadow: var(--atlas-card-shadow);
-}
-.atlas-payday-summary {
-  display: flex;
-  align-items: stretch;
-  background: var(--atlas-green-soft);
-  border-color: var(--atlas-green-border);
-}
-.atlas-payday-summary [data-payday-balance] {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  gap: 5px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.atlas-payday-summary [data-payday-balance] span:first-child {
-  color: var(--text-secondary);
-  font-size: .75rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-.atlas-payday-summary [data-payday-balance] span:last-child {
-  color: var(--text-primary);
-  font-size: 1.65rem;
-  font-weight: 750;
-  letter-spacing: -.025em;
-  line-height: 1.08;
-}
+/* Payday balance stays the income-card closing total, parallel to
+ * Balance after bills. Opening / rollover is not shown on Budget. */
 
 /* Shared section-card anatomy. */
 .atlas-budget-section {
@@ -178,6 +131,36 @@
 }
 .atlas-income-card [data-other-income] {
   margin: 0;
+}
+.atlas-income-card .payday-totals {
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+}
+.atlas-income-card [data-payday-balance],
+.atlas-income-card .atlas-income-closing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--grid);
+  background: color-mix(in srgb, var(--s1) 5%, var(--surface-1));
+}
+.atlas-income-card [data-payday-balance] span:first-child {
+  color: var(--text-primary);
+  font-size: .84rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.atlas-income-card [data-payday-balance] span:last-child {
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Paycheck rows: no Amanda strikethrough, no arriving green highlight. */
@@ -385,16 +368,6 @@
     padding: 16px 17px;
     border-radius: 18px;
   }
-  .atlas-period-summary {
-    gap: 9px;
-  }
-  .atlas-summary-card {
-    padding: 13px 14px;
-    border-radius: 16px;
-  }
-  .atlas-payday-summary [data-payday-balance] span:last-child {
-    font-size: clamp(1.28rem, 6.4vw, 1.6rem);
-  }
   .atlas-budget-section {
     border-radius: 18px;
   }
@@ -423,10 +396,7 @@
     padding-left: 14px;
     padding-right: 14px;
   }
-}
-
-@media (max-width: 350px) {
-  .atlas-period-summary {
-    grid-template-columns: 1fr;
+  .atlas-income-card [data-payday-balance] span:last-child {
+    font-size: 1.12rem;
   }
 }

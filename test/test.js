@@ -70,6 +70,7 @@ const suites = [
   ['payday operating-surface acceptance (AF-OPERATE-07)', 'test-operate-payday-acceptance.js'],
   ['payday operating sheet six glance answers', 'test-payday-operating-sheet.js'],
   ['Plan default view layout', 'test-plan-default-view.js'],
+  ['This payday printout layout order', 'test-this-payday-layout-order.js'],
   ['household nav and Plan waterfall boundary', 'test-household-nav-plan-boundary.js'],
   ['household nav mobile presentation', 'test-household-nav-presentation.js'],
   ['Talk to Atlas household surface', 'test-talk-page.js'],
