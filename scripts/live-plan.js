@@ -723,7 +723,10 @@ function recordedPaydaySnapshot(snap, periodStart) {
 // currentPeriodActuals amounts stay Lunch Money signed (positive debit /
 // outflow, negative credit / inflow). Forecast paydayGapCash movements
 // are household-cash signed (in +, out −), so each posted household-cash
-// debit is negated here. A current-period window being paginated-complete
+// debit is negated here. Account identity is preserved so Forecast can
+// restrict the reconstructed spendable opening to the chequing-only pool;
+// designated savings remains household-cash evidence, not ordinary spendable.
+// A current-period window being paginated-complete
 // is not gap completeness: that packet's claim is the current payday
 // period, not "unscheduled pre-payday spend was zero." complete:true
 // requires the observer-earned paydayGapComplete attestation plus a
@@ -787,11 +790,14 @@ function paydayGapCashFromReport(report, canonicalPlan, paydayDate) {
       amountsTrusted = false;
       break;
     }
-    movements.push({
+    const atlasAccountId = tx.atlasAccountId || tx.account || tx.accountId || null;
+    const movement = {
       date: String(tx.date),
       amount: Math.round((-debit) * 100) / 100,
       accountRole: 'household-cash',
-    });
+    };
+    if (atlasAccountId) movement.atlasAccountId = String(atlasAccountId);
+    movements.push(movement);
   }
   const gapAttested = packet.paydayGapComplete === true;
   return {
@@ -1265,6 +1271,7 @@ const api = {
   sanitizeLiveFailureReason,
   proposeOverlay,
   overlayLiveState,
+  paydayGapCashFromReport,
   collectObservedCash,
   fromObservation,
   forecastFrom,

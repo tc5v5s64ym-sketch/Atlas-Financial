@@ -4598,10 +4598,43 @@
     return true;
   }
 
-  // Trusted dated opening plus every household-cash movement in the gap,
-  // only when that interval is completeness-proven. Not live cash walked
-  // backward, not weekly-variable spend, not reserved-daily drain, and
-  // not scheduled income/outflows with unscheduled spending assumed zero.
+  function gapMovementAccountId(mov) {
+    if (!mov) return '';
+    if (mov.atlasAccountId != null && String(mov.atlasAccountId) !== '') {
+      return String(mov.atlasAccountId);
+    }
+    if (mov.accountId != null && String(mov.accountId) !== '') {
+      return String(mov.accountId);
+    }
+    if (mov.account != null && String(mov.account) !== '') {
+      return String(mov.account);
+    }
+    return '';
+  }
+
+  // Spendable reconstruction is chequing-only when household chequing
+  // identities exist. Designated savings / EMERGENCY SAVING stays reserve
+  // evidence: a savings credit, debit, or internal-transfer leg must not
+  // change the reconstructed payday-morning opening. Completeness of the
+  // household-cash gap is a separate fail-closed question.
+  function gapMovementAffectsSpendableOpening(mov, plan) {
+    if (!gapMovementAffectsJointCash(mov)) return false;
+    const id = gapMovementAccountId(mov);
+    if (id === DESIGNATED_RESERVE_ID) return false;
+    if (!id) return true;
+    const rows = ((plan && plan.startingCash && plan.startingCash.breakdown) || []);
+    const hasChequing = rows.some(
+      b => b && HOUSEHOLD_CHEQUING_IDS.indexOf(b.id) !== -1
+    );
+    if (hasChequing) return HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1;
+    return true;
+  }
+
+  // Trusted dated opening plus every spendable (chequing-pool) movement in
+  // the gap, only when that interval is completeness-proven. Not live cash
+  // walked backward, not weekly-variable spend, not reserved-daily drain,
+  // not designated-savings rescue, and not scheduled income/outflows with
+  // unscheduled spending assumed zero.
   function completeCashAtMorning(plan, morningDate, opts) {
     if (!plan || !morningDate) return null;
     const openingAsOf = plan.opening && plan.opening.asOf;
@@ -4618,7 +4651,7 @@
           || String(mov.date) >= String(morningDate)) {
         continue;
       }
-      if (!gapMovementAffectsJointCash(mov)) continue;
+      if (!gapMovementAffectsSpendableOpening(mov, plan)) continue;
       const amt = Number(mov.amount);
       if (!Number.isFinite(amt)) return null;
       balance = roundCent(balance + amt);
@@ -4631,7 +4664,9 @@
   // whose starting cash still belongs to that opening (not a
   // live-advanced mid-period overlay) may walk to that payday morning
   // only when the gap is complete enough to reconcile every
-  // household-cash movement that can change that balance. Live
+  // chequing-pool spendable movement that can change that balance.
+  // Designated savings movements in the gap do not rescue or reduce
+  // the reconstructed opening. Live
   // mid-period cash never substitutes. Null when completeness cannot
   // be proven.
   function establishPaydaySnapshot(plan, paydayDate, opts) {
