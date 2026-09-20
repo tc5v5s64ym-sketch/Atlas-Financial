@@ -17,6 +17,55 @@ const fmtDateLong = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA
 // With the year: for a due date or horizon that may sit in the next calendar year.
 const fmtDateFull = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'long', year: 'numeric' });
 
+// Household YYYY-MM-DD only. A UTC timestamp prefix is not a household date
+// (ACCOUNT_FACTS / Forecast.financialDate). Never invent one from fetch time.
+function chipIsoDate(value) {
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+// Overlay spending evidence date from the actuals packet. Prefer coverage
+// through the posted window, else the packet observation household date.
+// Never fetchedAt, and never overlay observedAsOf (that is the balance /
+// opening observation date, not spending coverage).
+function liveSpendingEvidenceDate(overlay) {
+  if (!overlay || typeof overlay !== 'object') return null;
+  const actuals = overlay.currentPeriodActuals;
+  return chipIsoDate(actuals && actuals.coverageThrough)
+    || chipIsoDate(actuals && actuals.observationAsOf);
+}
+
+// Shared #asof chip. Distinguishes Forecast as-of, periods.json historical
+// spending, and live overlay spending evidence. Presentation of published
+// dates only — not a spending calculator.
+function formatSiteAsOfChip(data, periods) {
+  const asOf = data && data.meta && chipIsoDate(data.meta.asOf);
+  let text = 'As at ' + (asOf ? fmtDateLong(asOf) : '');
+  const historyAsOf = periods && chipIsoDate(periods.asOf);
+  if (historyAsOf && historyAsOf !== asOf) {
+    text += ' · historical spending through ' + fmtDateLong(historyAsOf);
+  }
+  const overlay = data && data.liveOverlay;
+  if (overlay && overlay.applied) {
+    const liveSpend = liveSpendingEvidenceDate(overlay);
+    const observed = chipIsoDate(overlay.observedAsOf);
+    if (liveSpend) {
+      text += ' · live spending through ' + fmtDateLong(liveSpend);
+    } else if (observed && observed !== asOf) {
+      text += ' · live balances observed ' + fmtDateLong(observed);
+    } else {
+      text += ' · live Lunch Money overlay';
+    }
+  } else if (overlay && overlay.applied === false) {
+    const opening = chipIsoDate(overlay.historicalOpeningAsOf) || asOf;
+    text += opening
+      ? ' · live overlay not applied · using the ' + fmtDateLong(opening) + ' opening'
+      : ' · live overlay not applied';
+  }
+  return text;
+}
+
 /* ------------------------------------------------------------------ tooltip */
 const tip = $('tip');
 function showTip(e, html) {
@@ -329,25 +378,7 @@ const App = (() => {
       DATA = d; PERIODS = p || null; HISTORY = h || null;
       const asof = $('asof');
       if (asof) {
-        let text = 'As at ' + fmtDateLong(d.meta.asOf);
-        if (PERIODS && PERIODS.asOf && PERIODS.asOf !== d.meta.asOf) {
-          text += ' · spending history as at ' + fmtDateLong(PERIODS.asOf);
-        }
-        const overlay = d.liveOverlay;
-        if (overlay && overlay.applied) {
-          const observed = overlay.observedAsOf && overlay.observedAsOf !== d.meta.asOf
-            ? fmtDateLong(overlay.observedAsOf)
-            : null;
-          text += observed
-            ? ' · live balances observed ' + observed
-            : ' · live Lunch Money overlay';
-        } else if (overlay && overlay.applied === false) {
-          const opening = overlay.historicalOpeningAsOf || d.meta.asOf;
-          text += opening
-            ? ' · live overlay not applied · using the ' + fmtDateLong(opening) + ' opening'
-            : ' · live overlay not applied';
-        }
-        asof.textContent = text;
+        asof.textContent = formatSiteAsOfChip(d, PERIODS);
       }
       for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
       rerender();
