@@ -143,6 +143,8 @@
     const afterBills = question('05');
     const budget = question('06');
     const afterBudget = question('07');
+    const explanation = waterfall.querySelector('.operating-cash-explanation')
+      || waterfall.querySelector('[data-operating-cash-explanation]');
 
     const paydayBalance = income && income.querySelector('[data-payday-balance]');
     if (paydayBalance) {
@@ -151,7 +153,14 @@
 
     const incomeCard = sectionCard(doc, waterfall, 'atlas-income-card', [income]);
     const billsCard = sectionCard(doc, waterfall, 'atlas-bills-card', [bills, afterBills]);
-    sectionCard(doc, waterfall, 'atlas-household-budget-card', [budget, afterBudget]);
+    // plan.js injects the explanation immediately after Q07. appendChild
+    // would otherwise leave that sibling behind, so it reprints under
+    // Current Balance before the re-appended Income/Bills/Household cards.
+    sectionCard(doc, waterfall, 'atlas-household-budget-card', [
+      budget,
+      afterBudget,
+      afterBudget ? explanation : null,
+    ]);
 
     if (incomeCard) incomeCard.setAttribute('data-atlas-section', 'income');
     if (billsCard) {

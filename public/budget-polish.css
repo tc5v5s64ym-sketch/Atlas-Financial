@@ -335,6 +335,9 @@
   font-weight: 750;
   white-space: nowrap;
 }
+.atlas-household-budget-card > .operating-cash-explanation {
+  padding: 0 18px 16px;
+}
 
 /* Household Budget */
 .atlas-household-budget-card {
@@ -393,6 +396,10 @@
   }
   .atlas-bills-card > [data-operating-question="05"],
   .atlas-household-budget-card > [data-operating-question="07"] {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .atlas-household-budget-card > .operating-cash-explanation {
     padding-left: 14px;
     padding-right: 14px;
   }

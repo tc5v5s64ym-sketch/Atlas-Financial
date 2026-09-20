@@ -130,6 +130,7 @@ const suites = [
   ['Other Income payday waterfall', 'test-other-income.js'],
   ['proven household-internal cash movement', 'test-household-internal-movement.js'],
   ['leftover vs Current Balance operating-cash explanation', 'test-leftover-operating-cash-explanation.js'],
+  ['operating-cash explanation after Q07 after budget polish', 'test-operating-cash-explanation-placement.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Sep 10 to Sep 11 payday rollover boundary', 'test-payday-rollover-boundary.js'],
   ['Plan payday waterfall balance date and post-payday identity', 'test-plan-payday-waterfall-balance.js'],
