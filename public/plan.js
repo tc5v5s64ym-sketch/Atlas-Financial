@@ -1803,11 +1803,15 @@ function operatingCashExplanationHtml(explanation) {
     .replace(/"/g, '\u0026quot;');
   const leftoverKnown = explanation.leftover != null && isFinite(Number(explanation.leftover));
   const cashKnown = explanation.operatingCash != null && isFinite(Number(explanation.operatingCash));
+  const billsKnown = explanation.billsCash != null && isFinite(Number(explanation.billsCash));
   const leftoverAmount = leftoverKnown
     ? `<span class="operating-amount">${esc(money2(explanation.leftover))}</span> `
     : '';
   const cashAmount = cashKnown
     ? `<span class="operating-amount">${esc(money2(explanation.operatingCash))}</span> `
+    : '';
+  const billsAmount = billsKnown
+    ? `<span class="operating-amount">${esc(money2(explanation.billsCash))}</span> `
     : '';
   const leftoverNote = explanation.leftoverNote
     ? `<p class="operating-note" data-leftover-identity>${leftoverAmount}${esc(explanation.leftoverNote)}</p>`
@@ -1815,16 +1819,22 @@ function operatingCashExplanationHtml(explanation) {
   const cashNote = explanation.operatingCashNote
     ? `<p class="operating-note" data-operating-cash-identity>${cashAmount}${esc(explanation.operatingCashNote)}</p>`
     : '';
+  const billsNote = explanation.billsCashNote
+    ? `<p class="operating-note" data-bills-cash-identity>${billsAmount}${esc(explanation.billsCashNote)}</p>`
+    : '';
   const movements = Array.isArray(explanation.movements) ? explanation.movements : [];
   const items = movements.map(m => {
     if (!m || !m.operatingCashEffect) return '';
     const path = m.sourceLabel && m.destinationLabel
       ? `${esc(m.sourceLabel)} → ${esc(m.destinationLabel)}. `
       : '';
+    const billsLocation = m.billsLocationEffectNote ? `${esc(m.billsLocationEffectNote)} ` : '';
     const note = m.operatingCashEffectNote ? esc(m.operatingCashEffectNote) : '';
     const amount = m.amount != null && isFinite(Number(m.amount))
       ? ` data-operating-cash-movement-amount="${esc(m.amount)}"` : '';
-    return `<li data-operating-cash-movement="${esc(m.operatingCashEffect)}"${amount}>${path}${note}</li>`;
+    const billsAttr = m.billsLocationEffect
+      ? ` data-bills-location-effect="${esc(m.billsLocationEffect)}"` : '';
+    return `<li data-operating-cash-movement="${esc(m.operatingCashEffect)}"${amount}${billsAttr}>${path}${billsLocation}${note}</li>`;
   }).join('');
   const list = items
     ? `<ul class="operating-cash-movements" data-operating-cash-movements>${items}</ul>`
@@ -1833,8 +1843,13 @@ function operatingCashExplanationHtml(explanation) {
     ? ` data-leftover="${esc(explanation.leftover)}"` : '';
   const cashAttr = cashKnown
     ? ` data-operating-cash="${esc(explanation.operatingCash)}"` : '';
-  return `<div class="operating-cash-explanation" data-operating-cash-explanation data-same-contract="false"${leftoverAttr}${cashAttr}>
+  const billsAttr = billsKnown
+    ? ` data-bills-cash="${esc(explanation.billsCash)}"` : '';
+  const leftoverVsBills = explanation.leftoverSameAsBillsCash === false
+    ? ' data-leftover-same-as-bills-cash="false"' : '';
+  return `<div class="operating-cash-explanation" data-operating-cash-explanation data-same-contract="false"${leftoverAttr}${cashAttr}${billsAttr}${leftoverVsBills}>
     ${cashNote}
+    ${billsNote}
     ${leftoverNote}
     ${list}
   </div>`;

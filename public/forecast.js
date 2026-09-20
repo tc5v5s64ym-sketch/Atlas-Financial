@@ -6509,6 +6509,29 @@
     return null;
   }
 
+  // Posted BILLS ACCOUNT cash is the incumbent chequing-a breakdown
+  // row. Not leftover, not Current Balance, and not a second balance
+  // engine. Missing or non-finite evidence fails closed.
+  function postedBillsAccountCash(plan) {
+    const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.id !== BILLS_ACCOUNT_ID) continue;
+      const value = Number(row.value);
+      return Number.isFinite(value) ? roundCent(value) : null;
+    }
+    return null;
+  }
+
+  function billsLocationEffectForMovement(movement) {
+    if (!movement) return null;
+    const srcBills = movement.sourceAccountId === BILLS_ACCOUNT_ID;
+    const dstBills = movement.destinationAccountId === BILLS_ACCOUNT_ID;
+    if (srcBills && !dstBills) return 'leaves-bills';
+    if (dstBills && !srcBills) return 'enters-bills';
+    return null;
+  }
+
   const OPERATING_CASH_EFFECT_NOTES = {
     'stays-in-operating-cash':
       'Still in Current Balance. Not leftover income or leftover spending.',
@@ -6516,6 +6539,13 @@
       'Left Current Balance into designated savings. Not leftover spending. Household cash is conserved.',
     'enters-operating-cash':
       'Entered Current Balance from designated savings. Not leftover income. Household cash is conserved.',
+  };
+
+  const BILLS_LOCATION_EFFECT_NOTES = {
+    'leaves-bills':
+      'Left BILLS ACCOUNT. Does not change leftover.',
+    'enters-bills':
+      'Entered BILLS ACCOUNT. Not leftover income. Does not change leftover.',
   };
 
   // Explanation window is the active payday through the financial
@@ -6551,6 +6581,7 @@
     const leftover = period.afterHouseholdBudget;
     const operatingCash = liveCurrentBalance != null && isFinite(Number(liveCurrentBalance))
       ? roundCent(liveCurrentBalance) : null;
+    const billsCash = postedBillsAccountCash(plan);
     const movements = [];
     const window = operatingCashExplanationWindow(period, asOf);
     const published = householdInternalMovements(plan, opts);
@@ -6559,6 +6590,7 @@
       if (!window || !movementInOperatingCashWindow(m, window)) continue;
       const effect = operatingCashEffectForMovement(m);
       if (!effect) continue;
+      const billsEffect = billsLocationEffectForMovement(m);
       const sourceLabel = householdCashLocationLabel(plan, m.sourceAccountId);
       const destinationLabel = householdCashLocationLabel(plan, m.destinationAccountId);
       movements.push({
@@ -6574,6 +6606,8 @@
         householdAssetDelta: m.householdAssetDelta,
         operatingCashEffect: effect,
         operatingCashEffectNote: OPERATING_CASH_EFFECT_NOTES[effect],
+        billsLocationEffect: billsEffect,
+        billsLocationEffectNote: billsEffect ? BILLS_LOCATION_EFFECT_NOTES[billsEffect] : null,
       });
     }
     return {
@@ -6585,7 +6619,12 @@
       operatingCashIdentity: 'posted-household-chequing',
       operatingCashLabel: 'Current Balance',
       operatingCashNote: 'Posted BILLS ACCOUNT plus WEEKLY SPENDING. Not leftover.',
+      billsCash,
+      billsCashIdentity: 'posted-bills-account',
+      billsCashLabel: 'BILLS ACCOUNT',
+      billsCashNote: 'Posted cash currently in BILLS ACCOUNT. Not leftover, and not Current Balance.',
       sameContract: false,
+      leftoverSameAsBillsCash: false,
       movements,
     };
   }
