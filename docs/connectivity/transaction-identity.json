@@ -337,7 +337,7 @@
     {
       "eventId": "chatgpt-plus-amanda",
       "settlesWhen": "schedule-trust-on-due",
-      "note": "Owner 2026-09-20: standing schedule-trust paid on the existing Forecast due date for the confirmed iOS $24.99 subscription. Trust the named iOS cadence. Do not require a Lunch Money ChatGPT or Apple payee. Do not require monthly Dale proof. Do not invent Apple scrape, Gmail fetch, a card-paid identity, or an exclusive Apple-only versus exclusive PayPal-only rail. Do not settle this bill from chatgpt-plus-dale (separate PayPal OpenAI $28 bill). Do not move chatgpt-plus-amanda.day (incumbent Forecast due day 14 is already correct). On or after the scheduled due date, identity/settlement emits representedActuals from the schedule itself. Before the due date the bill stays still-due."
+      "note": "Owner 2026-09-20: standing schedule-trust paid on the existing Forecast due date for the confirmed iOS $24.99 subscription. Trust the named iOS cadence. Do not require a Lunch Money ChatGPT or Apple payee. Do not require monthly Dale proof. Do not invent Apple scrape, Gmail fetch, a card-paid identity, or a merchant-exclusive rail. Do not settle this bill from chatgpt-plus-dale (separate PayPal OpenAI $28 bill). Do not move chatgpt-plus-amanda.day (incumbent Forecast due day 14 is already correct). On or after the scheduled due date, identity/settlement emits representedActuals from the schedule itself. Before the due date the bill stays still-due."
     },
     {
       "eventId": "icloud-storage",
