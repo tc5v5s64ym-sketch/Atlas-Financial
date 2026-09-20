@@ -2300,7 +2300,7 @@ function unmatchedHouseholdCash(report, opts, consumedTxIds) {
       cardPaymentIdentity: flags.cardPaymentIdentity,
       cardFinanceChargeIdentity: flags.cardFinanceChargeIdentity,
     }, plan);
-    if (cls.kind === 'transfer' || cls.kind === 'card-payment'
+    if (cls.kind === 'transfer' || cls.kind === 'internal-movement' || cls.kind === 'card-payment'
       || cls.kind === 'business' || cls.kind === 'external'
       || cls.kind === 'interest') continue;
     if (cls.kind === 'income') continue;
@@ -3414,6 +3414,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       internalTransferIdentity: flags.internalTransferIdentity,
       externalCashDeposit: flags.externalCashDeposit,
       cashWithdrawalIdentity: flags.cashWithdrawalIdentity,
+      tfrReference: flags.tfrReference || null,
+      tfrDirection: flags.tfrDirection || null,
       personalOwner,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),

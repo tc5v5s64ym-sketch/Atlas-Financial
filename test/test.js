@@ -126,6 +126,7 @@ const suites = [
   ['Canada Child Benefit amount $219.45', 'test-child-benefit-amount.js'],
   ['Canada Child Benefit privacy-stripped overlay match', 'test-child-benefit-overlay-match.js'],
   ['Other Income payday waterfall', 'test-other-income.js'],
+  ['proven household-internal cash movement', 'test-household-internal-movement.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Sep 10 to Sep 11 payday rollover boundary', 'test-payday-rollover-boundary.js'],
   ['Plan payday waterfall balance date and post-payday identity', 'test-plan-payday-waterfall-balance.js'],
