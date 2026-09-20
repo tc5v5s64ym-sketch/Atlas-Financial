@@ -8,6 +8,8 @@
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-opening <openingApprovalId>
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts --apply --approve-recovery <recoveryApprovalId>
+ *   node scripts/canonical-refresh.js --fixture <file> --preserve-payday-observation
+ *   node scripts/canonical-refresh.js --fixture <file> --preserve-payday-observation --apply --approve-payday-observation <paydayObservationApprovalId>
  *
  * Default is a non-writing preview. --apply --approve updates only the
  * posted cash/debt fields listed in that preview. previewId cannot
@@ -56,6 +58,21 @@
  * the opening, never POSTs Lunch Money, and cannot be authorized by
  * previewId, cutoverApprovalId, or openingApprovalId.
  *
+ * --preserve-payday-observation without --apply is a read-only proposal
+ * for canonical chequing-a payday-boundary posted cash. It does not
+ * advance the opening, rewrite startingCash, or write snapshots.
+ * Forecast.paydayBoundaryAccountObservation remains the evidence
+ * authority; this writer stores that fail-closed packet on
+ * plan.opening.paydayAccountObservations so a later overlay day can
+ * still read it. Temporal claim stays posted-balance-observed-on-
+ * household-date. This is not a T4 opening cutover, not payday-morning
+ * opening, not a previous-observation store, and not the BILLS walk.
+ * --apply --approve-payday-observation writes only that packet when the
+ * approval matches. previewId, cutoverApprovalId, openingApprovalId, and
+ * recoveryApprovalId cannot authorize it. Combining it with
+ * --cutover-as-of is refused. A recorded packet for a different payday
+ * is protected and is not overwritten.
+ *
  * Never writes without --apply and an exact matching approval.
  * Never POST/PUT/PATCH/DELETE Lunch Money. Never stores a token.
  * Unattended production writes are not this command.
@@ -81,6 +98,9 @@ const SCHEMA = 'atlas-canonical-refresh-preview/v1';
 const CUTOVER_PENDING_SCHEMA = 'atlas-cutover-pending-approval/v1';
 const OPENING_CUTOVER_SCHEMA = 'atlas-opening-cutover-approval/v1';
 const ARTIFACT_RECOVERY_SCHEMA = 'atlas-opening-artifact-recovery-approval/v1';
+const PAYDAY_OBSERVATION_SCHEMA = 'atlas-payday-account-observation-approval/v1';
+const PAYDAY_BOUNDARY_TEMPORAL_CLAIM = 'posted-balance-observed-on-household-date';
+const PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID = 'chequing-a';
 const SNAPSHOT_COMMAND = 'node scripts/snapshot-balances.js';
 const EPSILON = 0.005;
 const PENDING_ZERO_PROOF = 'is_pending-unbounded';
@@ -123,6 +143,8 @@ function parseArgs(argv) {
     approveCutover: null,
     approveOpening: null,
     approveRecovery: null,
+    preservePaydayObservation: false,
+    approvePaydayObservation: null,
     recoverOpeningArtifacts: false,
     identity: DEFAULT_IDENTITY,
     cutoverAsOf: null,
@@ -142,6 +164,8 @@ function parseArgs(argv) {
     else if (a === '--approve-cutover') out.approveCutover = argv[++i];
     else if (a === '--approve-opening') out.approveOpening = argv[++i];
     else if (a === '--approve-recovery') out.approveRecovery = argv[++i];
+    else if (a === '--preserve-payday-observation') out.preservePaydayObservation = true;
+    else if (a === '--approve-payday-observation') out.approvePaydayObservation = argv[++i];
     else if (a === '--recover-opening-artifacts') out.recoverOpeningArtifacts = true;
     else if (a === '--identity') out.identity = argv[++i];
     else if (a === '--cutover-as-of') out.cutoverAsOf = argv[++i];
@@ -720,6 +744,165 @@ function requiredPostedLocators(data) {
 
 function postedRowsForLocator(report, locator) {
   return reconRows(report).filter(row => row && row.canonicalTarget === locator && isPostedFact(row));
+}
+
+function trustworthyPostedRow(row) {
+  return !!(row
+    && row.unknown !== true
+    && row.status !== 'CONFLICT'
+    && row.status !== 'MISSING'
+    && row.evidenceValue != null
+    && isFinite(row.evidenceValue));
+}
+
+function paydayObservedCashFromReport(report, paydayDate) {
+  const accounts = [];
+  if (!report || !paydayDate) {
+    return { complete: false, asOf: paydayDate || null, accounts };
+  }
+  for (const id of POSTED_CASH) {
+    const rows = postedRowsForLocator(report, `cash:${id}`);
+    const fresh = rows.find(row =>
+      trustworthyPostedRow(row) && dateOnly(row.evidenceDate || row.observedAsOf) === paydayDate);
+    if (!fresh) continue;
+    accounts.push({
+      id,
+      value: round2(fresh.evidenceValue),
+      evidenceDate: dateOnly(fresh.evidenceDate || fresh.observedAsOf),
+    });
+  }
+  return {
+    complete: accounts.some(row => row.id === 'chequing-a')
+      && accounts.some(row => row.id === 'chequing-b'),
+    asOf: paydayDate,
+    accounts,
+  };
+}
+
+function recordedPaydayObservationPacket(plan) {
+  return plan && plan.opening && plan.opening.paydayAccountObservations
+    ? plan.opening.paydayAccountObservations
+    : null;
+}
+
+function paydayObservationFingerprint(proposal) {
+  const packet = proposal && proposal.packet;
+  const row = packet && Array.isArray(packet.accounts) ? packet.accounts[0] : null;
+  return {
+    schema: PAYDAY_OBSERVATION_SCHEMA,
+    paydayDate: packet && packet.periodStart || null,
+    asOf: packet && packet.asOf || null,
+    currentOpeningAsOf: proposal && proposal.currentOpeningAsOf || null,
+    accountId: row && row.id || null,
+    value: row && row.value != null ? round2(row.value) : null,
+    evidenceDate: row && row.evidenceDate || null,
+    temporalClaim: row && row.temporalClaim || null,
+    source: row && row.source || null,
+  };
+}
+
+function paydayObservationApprovalIdFrom(proposal) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify(paydayObservationFingerprint(proposal)))
+    .digest('hex');
+}
+
+function paydayObservationUnavailable(reason, extra) {
+  return Object.assign({
+    schema: PAYDAY_OBSERVATION_SCHEMA,
+    writesCanonicalState: false,
+    paydayObservationWriteSupported: false,
+    paydayObservationApprovalId: null,
+    reason: reason || 'unavailable',
+    packet: null,
+    currentOpeningAsOf: extra && extra.currentOpeningAsOf || null,
+    paydayDate: extra && extra.paydayDate || null,
+  }, extra || {});
+}
+
+function buildPaydayAccountObservationProposal(data, report) {
+  const currentOpeningAsOf = data && data.plan && data.plan.opening && data.plan.opening.asOf
+    ? String(data.plan.opening.asOf)
+    : null;
+  const billsRows = postedRowsForLocator(report, `cash:${PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID}`)
+    .filter(trustworthyPostedRow);
+  const paydayDates = [];
+  for (const row of billsRows) {
+    const day = dateOnly(row.evidenceDate || row.observedAsOf);
+    if (!day) continue;
+    const cycle = Forecast.spendingCycle(data && data.plan, day);
+    if (cycle && cycle.start && String(cycle.start) === String(day)
+      && paydayDates.indexOf(day) === -1) {
+      paydayDates.push(day);
+    }
+  }
+  if (!billsRows.length) {
+    return paydayObservationUnavailable('chequing-a-evidence-missing', { currentOpeningAsOf });
+  }
+  if (paydayDates.length !== 1) {
+    return paydayObservationUnavailable(
+      paydayDates.length ? 'conflicting-payday-evidence' : 'evidence-date-not-seaspan-payday',
+      { currentOpeningAsOf, paydayDate: paydayDates[0] || dateOnly(billsRows[0].evidenceDate || billsRows[0].observedAsOf) }
+    );
+  }
+  const paydayDate = paydayDates[0];
+  const observedCash = paydayObservedCashFromReport(report, paydayDate);
+  const obs = Forecast.paydayBoundaryAccountObservation(
+    data && data.plan,
+    PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID,
+    paydayDate,
+    { observedCash }
+  );
+  if (!obs) {
+    return paydayObservationUnavailable('payday-boundary-observation-unavailable', {
+      currentOpeningAsOf,
+      paydayDate,
+    });
+  }
+  if (String(obs.accountId) !== PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID
+    || obs.temporalClaim !== PAYDAY_BOUNDARY_TEMPORAL_CLAIM
+    || obs.isPaydayMorningOpening === true
+    || obs.isPooledChequing === true
+    || !Number.isFinite(Number(obs.value))) {
+    return paydayObservationUnavailable('payday-boundary-observation-untrusted', {
+      currentOpeningAsOf,
+      paydayDate,
+    });
+  }
+  const existing = recordedPaydayObservationPacket(data && data.plan);
+  if (existing && existing.periodStart && String(existing.periodStart) !== String(paydayDate)) {
+    return paydayObservationUnavailable('existing-payday-observation-protected', {
+      currentOpeningAsOf,
+      paydayDate,
+      existingPeriodStart: String(existing.periodStart),
+    });
+  }
+  const packet = {
+    periodStart: String(paydayDate),
+    asOf: String(paydayDate),
+    accounts: [{
+      id: PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID,
+      value: round2(obs.value),
+      evidenceDate: String(obs.evidenceDate),
+      temporalClaim: PAYDAY_BOUNDARY_TEMPORAL_CLAIM,
+      source: obs.source || 'provider-observation',
+    }],
+  };
+  const proposal = {
+    schema: PAYDAY_OBSERVATION_SCHEMA,
+    writesCanonicalState: false,
+    paydayObservationWriteSupported: true,
+    reason: null,
+    packet,
+    currentOpeningAsOf,
+    paydayDate: String(paydayDate),
+    temporalClaim: PAYDAY_BOUNDARY_TEMPORAL_CLAIM,
+    isPaydayMorningOpening: false,
+    isPooledChequing: false,
+    note: 'Proposal only. Owner approval writes plan.opening.paydayAccountObservations for canonical chequing-a. Opening as-of, startingCash, leftover, Current Balance, and Prepare Ahead are not this write.',
+  };
+  proposal.paydayObservationApprovalId = paydayObservationApprovalIdFrom(proposal);
+  return proposal;
 }
 
 function pickDatedRow(rows, requestedAsOf, opts) {
@@ -1998,6 +2181,9 @@ function previewFrom(input, opts) {
       attachOpeningArtifactRecovery(preview.openingCutover, input.data, report, opts);
     }
   }
+  if (opts && opts.preservePaydayObservation) {
+    preview.paydayAccountObservation = buildPaydayAccountObservationProposal(input.data, report);
+  }
   preview.identityProofSanitized = identityProofLooksSanitized(preview);
   if (!preview.identityProofSanitized) fail('Preview is not sanitized.');
   if (Object.prototype.hasOwnProperty.call(preview, 'operatingAnswer')
@@ -2478,6 +2664,85 @@ function validateOpeningApplied(before, after, preview) {
   if (!used || !Array.isArray(used.rows)) fail('Forecast cannot consume the applied debt pending state.');
 }
 
+function validatePaydayObservationApplied(before, after, proposal) {
+  if (!after || !after.plan || !after.plan.opening) {
+    fail('Applied document is missing plan.opening.');
+  }
+  const beforeOpening = before && before.plan && before.plan.opening && before.plan.opening.asOf;
+  const afterOpening = after.plan.opening.asOf;
+  if (String(beforeOpening || '') !== String(afterOpening || '')) {
+    fail('Payday observation persist must not advance plan.opening.asOf.');
+  }
+  const beforeMeta = before && before.meta && before.meta.asOf;
+  const afterMeta = after.meta && after.meta.asOf;
+  if (String(beforeMeta || '') !== String(afterMeta || '')) {
+    fail('Payday observation persist must not advance meta.asOf.');
+  }
+  const beforeNums = collectNumericState(before);
+  const afterNums = collectNumericState(after);
+  for (const locator of Object.keys(beforeNums)) {
+    if (!near(beforeNums[locator], afterNums[locator])) {
+      fail(`Payday observation persist changed ${locator}.`);
+    }
+  }
+  if (before.plan.nextDollar && after.plan.nextDollar
+    && JSON.stringify(after.plan.nextDollar) !== JSON.stringify(before.plan.nextDollar)) {
+    fail('Payday observation persist must not rewrite plan.nextDollar.');
+  }
+  const packet = after.plan.opening.paydayAccountObservations;
+  const expected = proposal && proposal.packet;
+  if (!packet || !expected) fail('Payday observation packet was not written.');
+  if (String(packet.periodStart) !== String(expected.periodStart)
+    || String(packet.asOf) !== String(expected.asOf)) {
+    fail('Payday observation packet dates do not match the approved proposal.');
+  }
+  const row = Array.isArray(packet.accounts) ? packet.accounts[0] : null;
+  const want = Array.isArray(expected.accounts) ? expected.accounts[0] : null;
+  if (!row || !want || String(row.id) !== PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID) {
+    fail('Payday observation persist must write canonical chequing-a only.');
+  }
+  if (!near(row.value, want.value)
+    || String(row.evidenceDate) !== String(want.evidenceDate)
+    || String(row.temporalClaim) !== PAYDAY_BOUNDARY_TEMPORAL_CLAIM) {
+    fail('Payday observation persist did not write the approved chequing-a packet.');
+  }
+  const cash = Forecast.startingCashAmount(after.plan);
+  if (!isFinite(cash)) fail('Forecast cannot consume the surviving starting cash.');
+}
+
+function applyPaydayObservationPreview(data, preview, destPath) {
+  const proposal = preview && preview.paydayAccountObservation;
+  if (!proposal || proposal.schema !== PAYDAY_OBSERVATION_SCHEMA) {
+    fail('Payday observation schema is not the earned persist preview.');
+  }
+  if (!proposal.paydayObservationWriteSupported || !proposal.paydayObservationApprovalId) {
+    fail('No payday observation proposal exists to approve. Canonical state was not written.');
+  }
+  if (!proposal.packet) fail('Payday observation proposal is missing its packet.');
+  const next = clone(data);
+  if (!next.plan) fail('Canonical data is missing plan.');
+  next.plan.opening = Object.assign({}, next.plan.opening || {}, {
+    paydayAccountObservations: {
+      periodStart: String(proposal.packet.periodStart),
+      asOf: String(proposal.packet.asOf),
+      accounts: [{
+        id: PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID,
+        value: round2(proposal.packet.accounts[0].value),
+        evidenceDate: String(proposal.packet.accounts[0].evidenceDate),
+        temporalClaim: PAYDAY_BOUNDARY_TEMPORAL_CLAIM,
+        source: proposal.packet.accounts[0].source || 'provider-observation',
+      }],
+    },
+  });
+  validatePaydayObservationApplied(data, next, proposal);
+  const encoded = encodeData(next);
+  JSON.parse(encoded);
+  replaceFileAtomically(destPath, encoded);
+  const written = loadJson(destPath);
+  validatePaydayObservationApplied(data, written, proposal);
+  return written;
+}
+
 function applyOpeningPreview(data, preview, destPath, opts) {
   const cutover = preview && preview.openingCutover;
   if (!preview || preview.schema !== SCHEMA) fail('Preview schema is not the earned refresh preview.');
@@ -2607,20 +2872,50 @@ async function run(argv) {
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-opening <openingApprovalId> --data <file>\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts --apply --approve-recovery <recoveryApprovalId> --data <file>\n'
+      + '       node scripts/canonical-refresh.js --fixture <file> --preserve-payday-observation\n'
+      + '       node scripts/canonical-refresh.js --fixture <file> --preserve-payday-observation --apply --approve-payday-observation <paydayObservationApprovalId> --data <file>\n'
       + 'Default is a non-writing preview. --apply --approve writes posted fields only.\n'
       + 'The preview consumes the trusted obligation-reconciliation receipt when present.\n'
       + 'Unresolved, owner-fact, and unsupported rows cannot write.\n'
       + '--cutover-as-of without an opening, pending, or recovery approval is read-only.\n'
-      + 'previewId cannot authorize pending or an opening. cutoverApprovalId cannot authorize an opening.\n'
+      + '--preserve-payday-observation without --apply is read-only. It writes only plan.opening.paydayAccountObservations after --approve-payday-observation.\n'
+      + 'previewId cannot authorize pending, an opening, recovery, or a payday observation persist.\n'
       + 'An approved opening also writes same-date Household positions and snapshots/<date>.json.\n'
       + 'Recovery reconstructs missing same-date positions and snapshot only. It never writes data.json.\n'
     );
     return 0;
   }
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented.');
-  const approvalCount = [args.approve, args.approveCutover, args.approveOpening, args.approveRecovery].filter(Boolean).length;
+  const approvalCount = [
+    args.approve,
+    args.approveCutover,
+    args.approveOpening,
+    args.approveRecovery,
+    args.approvePaydayObservation,
+  ].filter(Boolean).length;
   if (approvalCount > 1) {
-    fail('Posted, pending, opening, and recovery approvals cannot be combined. Canonical state was not written.');
+    fail('Posted, pending, opening, recovery, and payday-observation approvals cannot be combined. Canonical state was not written.');
+  }
+  if (args.approvePaydayObservation && !args.preservePaydayObservation) {
+    fail('--approve-payday-observation requires --preserve-payday-observation. Canonical state was not written.');
+  }
+  if (args.preservePaydayObservation && args.cutoverAsOf) {
+    fail('--preserve-payday-observation cannot combine with --cutover-as-of. Canonical state was not written.');
+  }
+  if (args.preservePaydayObservation && args.approve) {
+    fail('Posted previewId cannot authorize a payday observation persist. Canonical state was not written.');
+  }
+  if (args.preservePaydayObservation && args.approveCutover) {
+    fail('Pending cutoverApprovalId cannot authorize a payday observation persist. Canonical state was not written.');
+  }
+  if (args.preservePaydayObservation && args.approveOpening) {
+    fail('Opening approval cannot authorize a payday observation persist. Canonical state was not written.');
+  }
+  if (args.preservePaydayObservation && args.approveRecovery) {
+    fail('Recovery approval cannot authorize a payday observation persist. Canonical state was not written.');
+  }
+  if (args.preservePaydayObservation && args.apply && !args.approvePaydayObservation) {
+    fail('--preserve-payday-observation is read-only without --approve-payday-observation. Canonical state was not written.');
   }
   if (args.approveRecovery && !args.recoverOpeningArtifacts) {
     fail('--approve-recovery requires --recover-opening-artifacts. Canonical state was not written.');
@@ -2652,8 +2947,8 @@ async function run(argv) {
   if (args.cutoverAsOf && !isIsoDate(args.cutoverAsOf)) {
     fail('--cutover-as-of must be an explicit YYYY-MM-DD date. Do not infer it from fetchedAt.');
   }
-  if (args.apply && !args.approve && !args.approveCutover && !args.approveOpening && !args.approveRecovery) {
-    fail('No approval = no canonical write. Pass --approve <previewId>, --approve-cutover <cutoverApprovalId>, --approve-opening <openingApprovalId>, or --approve-recovery <recoveryApprovalId>.');
+  if (args.apply && !args.approve && !args.approveCutover && !args.approveOpening && !args.approveRecovery && !args.approvePaydayObservation) {
+    fail('No approval = no canonical write. Pass --approve <previewId>, --approve-cutover <cutoverApprovalId>, --approve-opening <openingApprovalId>, --approve-recovery <recoveryApprovalId>, or --approve-payday-observation <paydayObservationApprovalId>.');
   }
   const needsArtifactPaths = args.recoverOpeningArtifacts
     || (args.apply && args.approveOpening);
@@ -2673,11 +2968,12 @@ async function run(argv) {
   if (args.live) O.assertLiveMap(accountMap);
   const { preview } = previewFrom(
     observeInput(args, data, payload, accountMap),
-    args.cutoverAsOf ? {
+    (args.cutoverAsOf || args.preservePaydayObservation) ? {
       cutoverAsOf: args.cutoverAsOf,
+      preservePaydayObservation: args.preservePaydayObservation === true,
       balanceMap: openingArtifactPaths
         ? loadJson(openingArtifactPaths.balanceMapPath)
-        : loadOpeningBalanceMap(args),
+        : (args.cutoverAsOf ? loadOpeningBalanceMap(args) : null),
       recoverOpeningArtifacts: args.recoverOpeningArtifacts === true,
       positionsPath: openingArtifactPaths ? openingArtifactPaths.positionsPath : null,
       snapshotDir: openingArtifactPaths ? openingArtifactPaths.snapshotDir : null,
@@ -2841,6 +3137,67 @@ async function run(argv) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
   }
+  if (args.approvePaydayObservation) {
+    const proposal = preview.paydayAccountObservation;
+    if (!proposal || !proposal.paydayObservationApprovalId) {
+      fail('No payday observation proposal exists to approve. Canonical state was not written.');
+    }
+    if (String(args.approvePaydayObservation) === String(preview.previewId)) {
+      fail('Posted previewId cannot authorize a payday observation persist. Canonical state was not written.');
+    }
+    const cutover = preview.openingCutover;
+    if (cutover && cutover.cutoverApprovalId
+      && String(args.approvePaydayObservation) === String(cutover.cutoverApprovalId)) {
+      fail('Pending cutoverApprovalId cannot authorize a payday observation persist. Canonical state was not written.');
+    }
+    if (cutover && cutover.openingApprovalId
+      && String(args.approvePaydayObservation) === String(cutover.openingApprovalId)) {
+      fail('Opening approval cannot authorize a payday observation persist. Canonical state was not written.');
+    }
+    const recovery = cutover && cutover.artifactRecovery;
+    if (recovery && recovery.recoveryApprovalId
+      && String(args.approvePaydayObservation) === String(recovery.recoveryApprovalId)) {
+      fail('Recovery approval cannot authorize a payday observation persist. Canonical state was not written.');
+    }
+    if (String(args.approvePaydayObservation) !== String(proposal.paydayObservationApprovalId)) {
+      fail('Payday observation approval does not match the recomputed proposal. Canonical state was not written.');
+    }
+    if (String(paydayObservationApprovalIdFrom(proposal)) !== String(proposal.paydayObservationApprovalId)) {
+      fail('Payday observation approval does not match the recomputed fingerprint. Canonical state was not written.');
+    }
+    applyPaydayObservationPreview(data, preview, args.data);
+    const afterBytes = fs.readFileSync(args.data);
+    const written = loadJson(args.data);
+    const result = {
+      schema: PAYDAY_OBSERVATION_SCHEMA,
+      writesCanonicalState: true,
+      canonicalWriteAuthorized: true,
+      writesOpening: false,
+      writesPositions: false,
+      writesSnapshot: false,
+      paydayObservationWriteSupported: true,
+      unattended: false,
+      productionWrite: false,
+      previewId: preview.previewId,
+      paydayObservationApprovalId: proposal.paydayObservationApprovalId,
+      paydayDate: proposal.paydayDate,
+      currentOpeningAsOf: proposal.currentOpeningAsOf,
+      applied: {
+        paydayAccountObservations: proposal.packet,
+      },
+      snapshotFollows: SNAPSHOT_COMMAND,
+      snapshotRequired: false,
+      snapshotWritten: false,
+      byteChange: afterBytes.compare(originalBytes) !== 0,
+      note: 'Bounded owner-approved payday-boundary observation persist. plan.opening.paydayAccountObservations recorded canonical chequing-a posted-balance-observed-on-household-date. Opening as-of, startingCash, positions, and snapshots were not rewritten. Posted previewId, pending cutoverApprovalId, openingApprovalId, and recoveryApprovalId did not authorize this write. Forecast.recommend on the written document is the operating answer.',
+    };
+    attachOperatingAnswer(result, written, data, {
+      trustedState: 'canonical-dated-opening',
+    });
+    if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
   if (String(args.approve) !== String(preview.previewId)) {
     fail('Approval does not match the recomputed preview. Canonical state was not written.');
   }
@@ -2870,6 +3227,9 @@ const api = {
   CUTOVER_PENDING_SCHEMA,
   OPENING_CUTOVER_SCHEMA,
   ARTIFACT_RECOVERY_SCHEMA,
+  PAYDAY_OBSERVATION_SCHEMA,
+  PAYDAY_BOUNDARY_TEMPORAL_CLAIM,
+  PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID,
   DEFAULT_DATA,
   SNAPSHOT_COMMAND,
   DEFAULT_POSITIONS,
@@ -2909,6 +3269,10 @@ const api = {
   applyPendingPreview,
   applyOpeningPreview,
   applyRecoveryPreview,
+  applyPaydayObservationPreview,
+  buildPaydayAccountObservationProposal,
+  paydayObservationApprovalIdFrom,
+  paydayObservationFingerprint,
   attachOpeningArtifactRecovery,
   recoveryApprovalIdFrom,
   recoveryFingerprint,
