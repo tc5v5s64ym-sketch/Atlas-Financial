@@ -286,8 +286,11 @@ Spotify AB with standing schedule-trust on the existing Forecast due date
 — Dale remains PayPal merchant OpenAI OpCo, LLC with standing schedule-trust
 on the existing Forecast due date (owner 2026-09-19; $28 CAD; owner 15th
 rails cited for trust; Forecast day stays 14 and is not moved); a Lunch Money
-OpenAI/ChatGPT payee is not required. ChatGPT Plus — Amanda stays a separate
-iOS $24.99 bill and is not that Dale identity. iCloud Storage remains
+OpenAI/ChatGPT payee is not required. ChatGPT Plus — Amanda remains a
+separate confirmed iOS $24.99 subscription with standing schedule-trust on
+the existing Forecast due date (owner 2026-09-20; due day not moved); a Lunch
+Money ChatGPT or Apple payee is not required, and it is not Dale's PayPal
+OpenAI identity. iCloud Storage remains
 Apple Services / PayPal class with standing schedule-trust on the existing
 Forecast due date (owner 2026-09-19; $13 on the 14th; due day not moved); a
 Lunch Money iCloud payee is not required. Instacart
@@ -303,7 +306,7 @@ missed a Netflix merchant does not omit the current Netflix bill.
 | iCloud Storage | monthly, 14th | $13 | confirmed — Apple Services / PayPal schedule-trust on existing Forecast due (owner 2026-09-19; due day not moved); LM iCloud payee not required |
 | YouTube Premium | monthly, 2nd | $17 | confirmed — moved off PayPal with the Google subscriptions |
 | ChatGPT Plus — Dale | monthly, 14th | $28 CAD planning amount | **estimated** amount; confirmed PayPal OpenAI OpCo, LLC schedule-trust on existing Forecast due (owner 2026-09-19; owner 15th rails cited for trust; due day not moved); LM OpenAI/ChatGPT payee not required |
-| ChatGPT Plus — Amanda | monthly, 14th | $24.99 | confirmed — iOS subscription; not Dale PayPal schedule-trust |
+| ChatGPT Plus — Amanda | monthly, 14th | $24.99 | confirmed — iOS $24.99 schedule-trust on existing Forecast due (owner 2026-09-20; due day not moved); LM ChatGPT/Apple payee not required; not Dale PayPal OpenAI identity |
 
 **Cancelled / not renewing** *(owner-confirmed 2026-08-27)*. No forward
 `plan.bills` recurrence. Historical transactions stay in history.
@@ -2242,8 +2245,9 @@ estimated $28/month CAD planning amount on the 14th. Owner 2026-09-19:
 that Dale bill settles via PayPal merchant OpenAI OpCo, LLC with standing
 schedule-trust on the existing Forecast due date (day 14 stays; owner 15th
 rails are cited for trust and are not a due-day move). Amanda's iOS ChatGPT
-Plus is the confirmed $24.99/month charge on the 14th and is not the Dale
-PayPal identity.
+Plus is the confirmed $24.99/month charge on the 14th with standing
+schedule-trust on that existing Forecast due date (owner 2026-09-20; due day
+not moved) and is not the Dale PayPal OpenAI identity.
 
 **Flexiti — CLOSED** *(owner-confirmed 2026-08-31)*.
 Flexiti is closed. Nothing remaining to pay. No remaining balance. No remaining
