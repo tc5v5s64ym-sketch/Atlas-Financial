@@ -1794,6 +1794,52 @@ function runningLeftoverHtml(amount) {
   </div>`;
 }
 
+function operatingCashExplanationHtml(explanation) {
+  if (!explanation || explanation.sameContract === true) return '';
+  const esc = v => String(v == null ? '' : v)
+    .replace(/&/g, '\u0026amp;')
+    .replace(/</g, '\u0026lt;')
+    .replace(/>/g, '\u0026gt;')
+    .replace(/"/g, '\u0026quot;');
+  const leftoverKnown = explanation.leftover != null && isFinite(Number(explanation.leftover));
+  const cashKnown = explanation.operatingCash != null && isFinite(Number(explanation.operatingCash));
+  const leftoverAmount = leftoverKnown
+    ? `<span class="operating-amount">${esc(money2(explanation.leftover))}</span> `
+    : '';
+  const cashAmount = cashKnown
+    ? `<span class="operating-amount">${esc(money2(explanation.operatingCash))}</span> `
+    : '';
+  const leftoverNote = explanation.leftoverNote
+    ? `<p class="operating-note" data-leftover-identity>${leftoverAmount}${esc(explanation.leftoverNote)}</p>`
+    : '';
+  const cashNote = explanation.operatingCashNote
+    ? `<p class="operating-note" data-operating-cash-identity>${cashAmount}${esc(explanation.operatingCashNote)}</p>`
+    : '';
+  const movements = Array.isArray(explanation.movements) ? explanation.movements : [];
+  const items = movements.map(m => {
+    if (!m || !m.operatingCashEffect) return '';
+    const path = m.sourceLabel && m.destinationLabel
+      ? `${esc(m.sourceLabel)} → ${esc(m.destinationLabel)}. `
+      : '';
+    const note = m.operatingCashEffectNote ? esc(m.operatingCashEffectNote) : '';
+    const amount = m.amount != null && isFinite(Number(m.amount))
+      ? ` data-operating-cash-movement-amount="${esc(m.amount)}"` : '';
+    return `<li data-operating-cash-movement="${esc(m.operatingCashEffect)}"${amount}>${path}${note}</li>`;
+  }).join('');
+  const list = items
+    ? `<ul class="operating-cash-movements" data-operating-cash-movements>${items}</ul>`
+    : '';
+  const leftoverAttr = leftoverKnown
+    ? ` data-leftover="${esc(explanation.leftover)}"` : '';
+  const cashAttr = cashKnown
+    ? ` data-operating-cash="${esc(explanation.operatingCash)}"` : '';
+  return `<div class="operating-cash-explanation" data-operating-cash-explanation data-same-contract="false"${leftoverAttr}${cashAttr}>
+    ${cashNote}
+    ${leftoverNote}
+    ${list}
+  </div>`;
+}
+
 function periodBillLine(row) {
   const kind = row.glanceKind || (row.status === 'in' ? 'in'
     : (row.status === 'PAID' ? 'paid'
@@ -2276,6 +2322,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan))}
     ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget), 'balance')}
+    ${period.role === 'active' && !planUnavailable && period.operatingCashExplanation
+      && typeof operatingCashExplanationHtml === 'function'
+      ? operatingCashExplanationHtml(period.operatingCashExplanation) : ''}
   </section>`;
 }
 
