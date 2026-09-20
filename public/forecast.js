@@ -6475,6 +6475,121 @@
     }, 0));
   }
 
+  // Operating-cash explanation for the active payday printout. Leftover
+  // after household budget is payday-income remainder; Current Balance
+  // is posted household chequing. They are different contracts. Proven
+  // household-internal movements explain location of cash without
+  // becoming leftover income or leftover spending. Not a leftover
+  // rewrite, not a savings-purpose assignment, not a second cash engine.
+  function isOperatingCashAccount(id) {
+    return HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1;
+  }
+
+  function householdCashLocationLabel(plan, id) {
+    const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (row && row.id === id && row.label) return String(row.label);
+    }
+    if (id === 'chequing-a') return 'BILLS ACCOUNT';
+    if (id === 'chequing-b') return 'WEEKLY SPENDING';
+    if (id === DESIGNATED_RESERVE_ID) return 'designated savings';
+    return null;
+  }
+
+  function operatingCashEffectForMovement(movement) {
+    if (!movement) return null;
+    const srcOp = isOperatingCashAccount(movement.sourceAccountId);
+    const dstOp = isOperatingCashAccount(movement.destinationAccountId);
+    const srcSav = movement.sourceAccountId === DESIGNATED_RESERVE_ID;
+    const dstSav = movement.destinationAccountId === DESIGNATED_RESERVE_ID;
+    if (srcOp && dstOp) return 'stays-in-operating-cash';
+    if (srcOp && dstSav) return 'leaves-operating-cash';
+    if (srcSav && dstOp) return 'enters-operating-cash';
+    return null;
+  }
+
+  const OPERATING_CASH_EFFECT_NOTES = {
+    'stays-in-operating-cash':
+      'Still in Current Balance. Not leftover income or leftover spending.',
+    'leaves-operating-cash':
+      'Left Current Balance into designated savings. Not leftover spending. Household cash is conserved.',
+    'enters-operating-cash':
+      'Entered Current Balance from designated savings. Not leftover income. Household cash is conserved.',
+  };
+
+  // Explanation window is the active payday through the financial
+  // as-of, or period end when that is earlier. currentPeriodActuals
+  // may start before this payday; pairing still sees those legs.
+  // This packet must not attribute an earlier transfer to this payday.
+  function operatingCashExplanationWindow(period, asOf) {
+    const start = period && financialDate(period.start);
+    if (!start) return null;
+    const periodEnd = period && financialDate(period.end);
+    const asOfDay = financialDate(asOf);
+    if (!periodEnd && !asOfDay) return null;
+    let through = periodEnd || asOfDay;
+    if (periodEnd && asOfDay && asOfDay < periodEnd) through = asOfDay;
+    return { start, through };
+  }
+
+  function movementInOperatingCashWindow(movement, window) {
+    if (!movement || !window) return false;
+    const sourceDate = financialDate(movement.sourceDate);
+    const destinationDate = financialDate(movement.destinationDate);
+    if (!sourceDate || !destinationDate) return false;
+    if (sourceDate < window.start || sourceDate > window.through) return false;
+    if (destinationDate < window.start || destinationDate > window.through) return false;
+    return true;
+  }
+
+  function operatingCashExplanation(plan, period, liveCurrentBalance, opts, asOf) {
+    if (!period || period.role !== 'active' || period.operatingPlanUnavailable === true) {
+      return null;
+    }
+    if (opts && opts.operatingPlan === 'unavailable') return null;
+    const leftover = period.afterHouseholdBudget;
+    const operatingCash = liveCurrentBalance != null && isFinite(Number(liveCurrentBalance))
+      ? roundCent(liveCurrentBalance) : null;
+    const movements = [];
+    const window = operatingCashExplanationWindow(period, asOf);
+    const published = householdInternalMovements(plan, opts);
+    for (let i = 0; i < published.length; i++) {
+      const m = published[i];
+      if (!window || !movementInOperatingCashWindow(m, window)) continue;
+      const effect = operatingCashEffectForMovement(m);
+      if (!effect) continue;
+      const sourceLabel = householdCashLocationLabel(plan, m.sourceAccountId);
+      const destinationLabel = householdCashLocationLabel(plan, m.destinationAccountId);
+      movements.push({
+        amount: m.amount,
+        date: m.date,
+        sourceAccountId: m.sourceAccountId,
+        destinationAccountId: m.destinationAccountId,
+        sourceLabel,
+        destinationLabel,
+        tfrReference: m.tfrReference,
+        householdIncome: m.householdIncome,
+        householdConsumption: m.householdConsumption,
+        householdAssetDelta: m.householdAssetDelta,
+        operatingCashEffect: effect,
+        operatingCashEffectNote: OPERATING_CASH_EFFECT_NOTES[effect],
+      });
+    }
+    return {
+      leftover: leftover != null && isFinite(Number(leftover)) ? roundCent(leftover) : null,
+      leftoverIdentity: 'payday-income-remainder',
+      leftoverLabel: 'Balance after household budget',
+      leftoverNote: 'Leftover of this payday\'s income after bills and the Household Budget hold. Not cash in the operating accounts.',
+      operatingCash,
+      operatingCashIdentity: 'posted-household-chequing',
+      operatingCashLabel: 'Current Balance',
+      operatingCashNote: 'Posted BILLS ACCOUNT plus WEEKLY SPENDING. Not leftover.',
+      sameContract: false,
+      movements,
+    };
+  }
+
   // Two payday-cycle waterfalls: this Seaspan payday through the day
   // before the next, then the next payday through the day before the
   // following one. Leftover is this printout's chain: it does not replace
@@ -6755,9 +6870,15 @@
       });
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;
+    if (active && active.role === 'active') {
+      active.operatingCashExplanation = operatingCashExplanation(
+        plan, active, liveCurrentBalance, calendarOpts, asOf);
+    }
     return {
       calendarPeriods: periods,
       activeCalendarPeriodId: active ? active.id : null,
+      operatingCashExplanation: active && active.operatingCashExplanation
+        ? active.operatingCashExplanation : null,
     };
   }
   function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
@@ -6821,6 +6942,7 @@
       undatedBills: calendar.undatedBills,
       calendarPeriods: waterfalls.calendarPeriods,
       activeCalendarPeriodId: waterfalls.activeCalendarPeriodId,
+      operatingCashExplanation: waterfalls.operatingCashExplanation || null,
       householdBudget: householdBudgetGlance(plan, alloc),
       budgetDigest: householdBudgetDigest(
         plan, asOf, periodStart, cycleEnd, opts),
@@ -8140,6 +8262,13 @@
       result.paydayAllocation.protectedPath = protectedPathUnavailable(note);
       result.paydayAllocation.spendPermission = null;
       result.paydayAllocation.weeklyCap = null;
+    }
+    if (result.defaultView) {
+      result.defaultView.operatingCashExplanation = null;
+      const periods = result.defaultView.calendarPeriods || [];
+      for (let i = 0; i < periods.length; i++) {
+        if (periods[i]) periods[i].operatingCashExplanation = null;
+      }
     }
     return result;
   }
