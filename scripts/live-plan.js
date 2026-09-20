@@ -886,6 +886,8 @@ function stampPaydayAccountObservation(next, obs, payday) {
 // when the observation household date, or the pre-overlay canonical opening
 // as-of, is the current Seaspan payday. Not a payday-morning opening, not
 // pooled A+B, not a previous-observation store, and not a canonical write.
+// A canonical plan.opening.paydayAccountObservations row, when already
+// recorded by the earned persist write, is kept on the overlay clone.
 function retainPaydayAccountObservations(next, canonicalPlan, liveAsOf, report) {
   if (!next || !next.plan || !canonicalPlan || !liveAsOf) return;
   const cycle = Forecast.spendingCycle(canonicalPlan, liveAsOf);

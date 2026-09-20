@@ -132,6 +132,7 @@ const suites = [
   ['leftover vs Current Balance operating-cash explanation', 'test-leftover-operating-cash-explanation.js'],
   ['leftover vs BILLS ACCOUNT cash explanation', 'test-leftover-bills-cash-explanation.js'],
   ['payday-boundary chequing-a posted cash observation', 'test-payday-boundary-bills-observation.js'],
+  ['payday-boundary chequing-a observation persist', 'test-payday-boundary-observation-persist.js'],
   ['posted chequing-a movement evidence set', 'test-chequing-a-posted-movements.js'],
   ['operating-cash explanation after Q07 after budget polish', 'test-operating-cash-explanation-placement.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
