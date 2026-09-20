@@ -3077,18 +3077,21 @@
   // sole classifier. Other spending is only the final fail-closed residual
   // after incumbent known rules:
   //   1. account / scope (household-external, unmapped)
-  //   2. non-consumption (income, refund, transfer, card/debt payment,
+  //   2. proven household-internal cash movement (unique TD TFR pair
+  //      between household cash locations) — one economic movement,
+  //      not income and not consumption
+  //   3. non-consumption (income, refund, transfer, card/debt payment,
   //      issuer revolving finance charge, represented bill)
-  //   3. Lunch Money Dale / Amanda category (owner 2026-09-08): the
+  //   4. Lunch Money Dale / Amanda category (owner 2026-09-08): the
   //      ingested category name assigns the corresponding guilt-free
   //      owner-target row. Fresh categoryLabel wins over incidental
   //      tag / note / personalOwner mapping.
-  //   4. owner-confirmed merchant / financial identity (CAN TIRE MC,
+  //   5. owner-confirmed merchant / financial identity (CAN TIRE MC,
   //      Cursor, Fuel, Dog food, confirmed groceries)
-  //   5. owner account+merchant identity (Amazon + travelvisa → Amanda)
-  //   6. trusted incumbent budget-category mapping
-  //   7. contradiction / ambiguity fail-closed
-  //   8. needsConfirmation / Other
+  //   6. owner account+merchant identity (Amazon + travelvisa → Amanda)
+  //   7. trusted incumbent budget-category mapping
+  //   8. contradiction / ambiguity fail-closed
+  //   9. needsConfirmation / Other
   // Surrey Meat is Dog food, never Groceries. The incumbent
   // plan.budget.excluded / Business boundary stays ahead of the confirmed
   // grocery merchant override: Walmart, Meridian Farm, and Iron Butcher
@@ -3123,6 +3126,28 @@
       return {
         kind: 'unmapped', categoryId: null, householdSpending: true,
         reason: 'unmapped-account',
+      };
+    }
+    const proven = provenInternalMovementForTx(tx, opts || {});
+    if (proven && proven.movement) {
+      const movement = proven.movement;
+      return {
+        kind: 'internal-movement',
+        categoryId: null,
+        householdSpending: false,
+        reason: 'proven-household-internal-movement',
+        includeReason: 'proven-household-internal-movement',
+        atlasRow: null,
+        internalMovement: true,
+        sourceAccountId: movement.sourceAccountId,
+        destinationAccountId: movement.destinationAccountId,
+        counterpartTransactionId: proven.role === 'source'
+          ? movement.destinationTransactionId
+          : movement.sourceTransactionId,
+        tfrReference: movement.tfrReference,
+        direction: proven.role,
+        amount: movement.amount,
+        date: movement.date,
       };
     }
     if (tx.isIncome === true) {
@@ -3633,7 +3658,9 @@
       }
       const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
       const state = transactionPendingState(tx);
-      if (cls.kind === 'transfer') { out.excluded.transfers = roundCent(out.excluded.transfers + amt); continue; }
+      if (cls.kind === 'transfer' || cls.kind === 'internal-movement') {
+        out.excluded.transfers = roundCent(out.excluded.transfers + amt); continue;
+      }
       if (cls.kind === 'card-payment') { out.excluded.cardPayments = roundCent(out.excluded.cardPayments + amt); continue; }
       if (cls.kind === 'income') { out.excluded.income = roundCent(out.excluded.income + amt); continue; }
       if (cls.kind === 'business') { out.excluded.business = roundCent(out.excluded.business + amt); continue; }
@@ -3749,7 +3776,8 @@
   // membership authority.
   function householdBudgetSupportingSpendEligible(cls) {
     if (!cls) return false;
-    if (cls.kind === 'transfer' || cls.kind === 'card-payment' || cls.kind === 'income'
+    if (cls.kind === 'transfer' || cls.kind === 'internal-movement'
+      || cls.kind === 'card-payment' || cls.kind === 'income'
       || cls.kind === 'business' || cls.kind === 'external' || cls.kind === 'bill'
       || cls.kind === 'refund' || cls.kind === 'interest' || cls.kind === 'unmapped') {
       return false;
@@ -5372,20 +5400,130 @@
   // TD ledger types, not merchant guesses. Internal TFR-(TO|FR) pairs on the
   // five-character reference ACCOUNT_FACTS already records; ATM DEP is a cash
   // deposit into the posted account, not a TFR leg. Overlay sanitizer stamps
-  // these as flags before stripping merchant text.
-  const TD_INTERNAL_TRANSFER_RE = /\b[A-Z]{2}\d{3}\s+TFR-(TO|FR)\b/i;
+  // these as flags before stripping merchant text. Proven household-internal
+  // movement is a higher bar than TFR identity: unique opposite TO/FR legs
+  // of the same reference, matching amount, both household cash locations.
+  const TD_INTERNAL_TRANSFER_RE = /\b([A-Z]{2}\d{3})\s+TFR-(TO|FR)\b/i;
   const TD_ATM_DEPOSIT_RE = /\bATM\s*DEP\b/i;
   const TD_CASH_WITHDRAWAL_RE = /\bATM\s*W\/D\b|\bCASH\s+WITHDRA/i;
+  const internalMovementIndexCache = new WeakMap();
 
   function txTypeIdentityBlob(tx) {
     if (!tx) return '';
     return [txMerchantExact(tx), txTextBlob(tx)].filter(Boolean).join(' ');
   }
 
+  function parseTdInternalTransferIdentity(tx) {
+    if (!tx) return null;
+    const stampedRef = tx.tfrReference != null
+      ? String(tx.tfrReference).trim().toUpperCase() : '';
+    const stampedDir = tx.tfrDirection != null
+      ? String(tx.tfrDirection).trim().toUpperCase() : '';
+    if (/^[A-Z]{2}\d{3}$/.test(stampedRef)
+        && (stampedDir === 'TO' || stampedDir === 'FR')) {
+      return { tfrReference: stampedRef, tfrDirection: stampedDir };
+    }
+    const match = TD_INTERNAL_TRANSFER_RE.exec(txTypeIdentityBlob(tx));
+    if (!match) return null;
+    return {
+      tfrReference: match[1].toUpperCase(),
+      tfrDirection: match[2].toUpperCase(),
+    };
+  }
+
   function isInternalTransferIdentity(tx) {
     if (!tx) return false;
     if (tx.internalTransferIdentity === true) return true;
-    return TD_INTERNAL_TRANSFER_RE.test(txTypeIdentityBlob(tx));
+    return !!parseTdInternalTransferIdentity(tx);
+  }
+
+  function householdCashLocationId(tx) {
+    if (!tx) return null;
+    if (tx.accountRole === 'household-external' || tx.accountRole === 'unmapped') {
+      return null;
+    }
+    if (tx.accountRole && tx.accountRole !== 'household-cash') return null;
+    const id = String(tx.atlasAccountId || tx.accountId || tx.account || '').trim();
+    if (HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1) return id;
+    if (id === DESIGNATED_RESERVE_ID) return id;
+    return null;
+  }
+
+  function pairHouseholdInternalMovements(transactions) {
+    const groups = new Map();
+    for (const tx of transactions || []) {
+      if (!tx || tx.pending === true) continue;
+      if (tx.id == null || tx.id === '') continue;
+      const loc = householdCashLocationId(tx);
+      if (!loc) continue;
+      const parsed = parseTdInternalTransferIdentity(tx);
+      if (!parsed) continue;
+      const amt = Number(tx.amount);
+      if (!isFinite(amt) || amt === 0) continue;
+      if (parsed.tfrDirection === 'TO' && !(amt > EPSILON)) continue;
+      if (parsed.tfrDirection === 'FR' && !(amt < -EPSILON)) continue;
+      const list = groups.get(parsed.tfrReference) || [];
+      list.push({ tx, loc, parsed, amt });
+      groups.set(parsed.tfrReference, list);
+    }
+    const movements = [];
+    const byTxId = new Map();
+    groups.forEach((legs, tfrReference) => {
+      if (!legs || legs.length !== 2) return;
+      const left = legs[0];
+      const right = legs[1];
+      if (left.parsed.tfrDirection === right.parsed.tfrDirection) return;
+      if (left.loc === right.loc) return;
+      if (roundCent(Math.abs(left.amt)) !== roundCent(Math.abs(right.amt))) return;
+      if (String(left.tx.id) === String(right.tx.id)) return;
+      const source = left.parsed.tfrDirection === 'TO' ? left : right;
+      const dest = left.parsed.tfrDirection === 'FR' ? left : right;
+      if (source === dest) return;
+      const amount = roundCent(Math.abs(source.amt));
+      const movement = {
+        amount,
+        date: source.tx.date || dest.tx.date || null,
+        sourceDate: source.tx.date || null,
+        destinationDate: dest.tx.date || null,
+        sourceAccountId: source.loc,
+        destinationAccountId: dest.loc,
+        sourceTransactionId: String(source.tx.id),
+        destinationTransactionId: String(dest.tx.id),
+        tfrReference,
+        householdIncome: 0,
+        householdConsumption: 0,
+        householdAssetDelta: 0,
+        provenance: {
+          evidence: 'td-tfr-reference-pair',
+          calculator: 'Forecast',
+          source: 'Forecast.householdInternalMovements',
+        },
+      };
+      movements.push(movement);
+      byTxId.set(String(source.tx.id), { movement, role: 'source' });
+      byTxId.set(String(dest.tx.id), { movement, role: 'destination' });
+    });
+    return { movements, byTxId };
+  }
+
+  function householdInternalMovementIndex(opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : null;
+    if (!txs) return { movements: [], byTxId: new Map() };
+    const cached = internalMovementIndexCache.get(txs);
+    if (cached) return cached;
+    const index = pairHouseholdInternalMovements(txs);
+    internalMovementIndexCache.set(txs, index);
+    return index;
+  }
+
+  function householdInternalMovements(plan, opts) {
+    return householdInternalMovementIndex(opts).movements.slice();
+  }
+
+  function provenInternalMovementForTx(tx, opts) {
+    if (!tx || tx.id == null || tx.id === '') return null;
+    return householdInternalMovementIndex(opts).byTxId.get(String(tx.id)) || null;
   }
 
   function isCashWithdrawalIdentity(tx) {
@@ -5618,7 +5756,7 @@
     const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
     if (cls.kind === 'card-payment' || cls.kind === 'bill'
         || cls.kind === 'external' || cls.kind === 'unmapped' || cls.kind === 'business'
-        || cls.kind === 'interest') {
+        || cls.kind === 'interest' || cls.kind === 'internal-movement') {
       return false;
     }
     if (cls.kind === 'transfer' && !isExternalCashDepositIdentity(tx)) return false;
@@ -6030,6 +6168,8 @@
       internalTransferIdentity: false,
       externalCashDeposit: false,
       cashWithdrawalIdentity: false,
+      tfrReference: null,
+      tfrDirection: null,
       personalOwner: null,
     };
     if (!tx) return empty;
@@ -6037,6 +6177,7 @@
     const amazonMerchant = isAmazonMerchant(tx);
     const confirmedGrocery = isConfirmedGroceryMerchant(tx);
     const amandaAmazonTravelVisa = amazonMerchant && isTravelVisaAccount(tx);
+    const parsedTfr = parseTdInternalTransferIdentity(tx);
     const internalTransferIdentity = isInternalTransferIdentity(tx);
     const cashWithdrawalIdentity = isCashWithdrawalIdentity(tx);
     const externalCashDeposit = isExternalCashDepositIdentity(tx);
@@ -6058,6 +6199,8 @@
       internalTransferIdentity,
       externalCashDeposit,
       cashWithdrawalIdentity,
+      tfrReference: parsedTfr ? parsedTfr.tfrReference : null,
+      tfrDirection: parsedTfr ? parsedTfr.tfrDirection : null,
       personalOwner: daleGuiltFreeMerchant ? 'dale'
         : (amandaAmazonTravelVisa ? 'amanda' : personalSpendOwner(tx)),
     };
@@ -7064,6 +7207,7 @@
       remainingClaim: coverage.remainingClaim,
       categoryRemainingClaim: categoryRemainingClaimFrom(
         coverage.remainingClaim, actuals.unclassified),
+      internalMovements: householdInternalMovements(plan, opts),
     };
   }
 
@@ -14179,7 +14323,7 @@
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
-    classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
+    classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
