@@ -6518,7 +6518,32 @@
       'Entered Current Balance from designated savings. Not leftover income. Household cash is conserved.',
   };
 
-  function operatingCashExplanation(plan, period, liveCurrentBalance, opts) {
+  // Explanation window is the active payday through the financial
+  // as-of, or period end when that is earlier. currentPeriodActuals
+  // may start before this payday; pairing still sees those legs.
+  // This packet must not attribute an earlier transfer to this payday.
+  function operatingCashExplanationWindow(period, asOf) {
+    const start = period && financialDate(period.start);
+    if (!start) return null;
+    const periodEnd = period && financialDate(period.end);
+    const asOfDay = financialDate(asOf);
+    if (!periodEnd && !asOfDay) return null;
+    let through = periodEnd || asOfDay;
+    if (periodEnd && asOfDay && asOfDay < periodEnd) through = asOfDay;
+    return { start, through };
+  }
+
+  function movementInOperatingCashWindow(movement, window) {
+    if (!movement || !window) return false;
+    const sourceDate = financialDate(movement.sourceDate);
+    const destinationDate = financialDate(movement.destinationDate);
+    if (!sourceDate || !destinationDate) return false;
+    if (sourceDate < window.start || sourceDate > window.through) return false;
+    if (destinationDate < window.start || destinationDate > window.through) return false;
+    return true;
+  }
+
+  function operatingCashExplanation(plan, period, liveCurrentBalance, opts, asOf) {
     if (!period || period.role !== 'active' || period.operatingPlanUnavailable === true) {
       return null;
     }
@@ -6527,9 +6552,11 @@
     const operatingCash = liveCurrentBalance != null && isFinite(Number(liveCurrentBalance))
       ? roundCent(liveCurrentBalance) : null;
     const movements = [];
+    const window = operatingCashExplanationWindow(period, asOf);
     const published = householdInternalMovements(plan, opts);
     for (let i = 0; i < published.length; i++) {
       const m = published[i];
+      if (!window || !movementInOperatingCashWindow(m, window)) continue;
       const effect = operatingCashEffectForMovement(m);
       if (!effect) continue;
       const sourceLabel = householdCashLocationLabel(plan, m.sourceAccountId);
@@ -6845,7 +6872,7 @@
     const active = periods.find(p => p.role === 'active') || periods[0] || null;
     if (active && active.role === 'active') {
       active.operatingCashExplanation = operatingCashExplanation(
-        plan, active, liveCurrentBalance, calendarOpts);
+        plan, active, liveCurrentBalance, calendarOpts, asOf);
     }
     return {
       calendarPeriods: periods,

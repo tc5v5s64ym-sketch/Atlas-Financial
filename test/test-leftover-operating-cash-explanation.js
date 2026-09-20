@@ -130,7 +130,7 @@ function tfrLeg(opts) {
   const amount = dir === 'TO' ? opts.amount : -opts.amount;
   return {
     id: opts.id,
-    date: opts.date || PAYDAY,
+    date: Object.prototype.hasOwnProperty.call(opts, 'date') ? opts.date : PAYDAY,
     amount,
     pending: opts.pending === true,
     categoryLabel: opts.categoryLabel || 'Payment, Transfer',
@@ -428,7 +428,122 @@ console.log('=== C. Unpaired transfers and unavailable plans fail closed ===');
     'unavailable operating plan withholds the leftover vs cash explanation');
 }
 
-console.log('=== D. Page reprints Forecast identities and does not compute a gap ===');
+function independentAddDays(iso, n) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+function independentSeaspanPaydayOnOrBefore(asOf) {
+  let payday = '2026-08-14';
+  while (independentAddDays(payday, 14) <= asOf) {
+    payday = independentAddDays(payday, 14);
+  }
+  return payday;
+}
+
+function independentExplanationWindow(asOf) {
+  const start = independentSeaspanPaydayOnOrBefore(asOf);
+  const next = independentAddDays(start, 14);
+  const end = independentAddDays(next, -1);
+  const through = asOf < end ? asOf : end;
+  return { start, end, through };
+}
+
+function independentMovementInWindow(pair, txs, window) {
+  if (!pair || !window) return false;
+  const source = (txs || []).find(tx => tx && String(tx.id) === pair.sourceTransactionId);
+  const dest = (txs || []).find(tx => tx && String(tx.id) === pair.destinationTransactionId);
+  const sourceDate = source && source.date;
+  const destDate = dest && dest.date;
+  if (!sourceDate || !destDate) return false;
+  return sourceDate >= window.start && sourceDate <= window.through
+    && destDate >= window.start && destDate <= window.through;
+}
+
+console.log('=== D. Prior-period and undated pairs do not explain this payday ===');
+{
+  const PRIOR = '2026-09-06';
+  const AFTER_AS_OF = '2026-09-15';
+  const window = independentExplanationWindow(PAYDAY);
+  const txs = [
+    tfrLeg({
+      id: 'tx-prior-out', dir: 'TO', amount: BILLS_TO_SAVINGS, date: PRIOR,
+      atlasAccountId: 'chequing-a', payee: 'AB101 TFR-TO SAVE01',
+    }),
+    tfrLeg({
+      id: 'tx-prior-in', dir: 'FR', amount: BILLS_TO_SAVINGS, date: PRIOR,
+      atlasAccountId: 'savings', payee: 'AB101 TFR-FR BILLSA',
+    }),
+    tfrLeg({
+      id: 'tx-in-period-out', dir: 'TO', amount: BILLS_TO_WEEKLY, date: PAYDAY,
+      atlasAccountId: 'chequing-a', payee: 'CD202 TFR-TO WEEKLY',
+    }),
+    tfrLeg({
+      id: 'tx-in-period-in', dir: 'FR', amount: BILLS_TO_WEEKLY, date: PAYDAY,
+      atlasAccountId: 'chequing-b', payee: 'CD202 TFR-FR BILLSA',
+    }),
+    tfrLeg({
+      id: 'tx-after-asof-out', dir: 'TO', amount: SAVINGS_TO_BILLS, date: AFTER_AS_OF,
+      atlasAccountId: 'savings', payee: 'EF303 TFR-TO BILLSA',
+    }),
+    tfrLeg({
+      id: 'tx-after-asof-in', dir: 'FR', amount: SAVINGS_TO_BILLS, date: AFTER_AS_OF,
+      atlasAccountId: 'chequing-a', payee: 'EF303 TFR-FR SAVE01',
+    }),
+    tfrLeg({
+      id: 'tx-undated-out', dir: 'TO', amount: UNPAIRED, date: null,
+      atlasAccountId: 'chequing-a', payee: 'GH404 TFR-TO SAVE01',
+    }),
+    tfrLeg({
+      id: 'tx-undated-in', dir: 'FR', amount: UNPAIRED, date: null,
+      atlasAccountId: 'savings', payee: 'GH404 TFR-FR BILLSA',
+    }),
+  ];
+  const independent = independentPairs(txs);
+  const independentKept = independent.filter(pair => independentMovementInWindow(pair, txs, window));
+  const plan = paydayPlan();
+  const packetForWindow = {
+    schema: 'atlas-current-period-actuals/v1',
+    observationAsOf: PAYDAY,
+    coverageStart: PRIOR,
+    coverageThrough: AFTER_AS_OF,
+    pendingCoverage: 'complete',
+    transactions: txs,
+    representedActuals: [],
+  };
+  const advice = F.recommend(plan, PAYDAY, {
+    targetBuffer: 0,
+    debts: [{
+      id: 'heloc', label: 'HELOC', secured: true, structure: 'Revolving',
+      balance: 10000, rate: 5.45, payment: 50, pending: 0,
+    }],
+    currentPeriodActuals: packetForWindow,
+  });
+  const expl = advice.defaultView && advice.defaultView.operatingCashExplanation;
+  const paired = F.householdInternalMovements(plan, {
+    currentPeriodActuals: packetForWindow,
+  });
+  ok(window.start === PAYDAY && window.through === PAYDAY && window.end === '2026-09-24',
+    'independent window is this payday through as-of, not the later period end');
+  ok(independent.length === 4 && independentKept.length === 1
+      && independentKept[0].tfrReference === 'CD202'
+      && near(independentKept[0].amount, BILLS_TO_WEEKLY),
+    'independent reconstruction keeps only the in-period pair');
+  ok(paired.some(m => m && m.tfrReference === 'AB101')
+      && paired.some(m => m && m.tfrReference === 'CD202')
+      && paired.some(m => m && m.tfrReference === 'EF303'),
+    'pairing primitive still sees prior-period and after-as-of pairs');
+  ok(expl && expl.movements.length === 1
+      && expl.movements[0].tfrReference === 'CD202'
+      && expl.movements[0].date === PAYDAY
+      && expl.movements[0].operatingCashEffect === 'stays-in-operating-cash'
+      && !expl.movements.some(m => m.tfrReference === 'AB101')
+      && !expl.movements.some(m => m.tfrReference === 'EF303')
+      && !expl.movements.some(m => m.tfrReference === 'GH404'),
+    'explanation retains the in-period pair and excludes prior-period, after-as-of, and undated pairs');
+}
+
+console.log('=== E. Page reprints Forecast identities and does not compute a gap ===');
 {
   const plan = paydayPlan();
   const txs = [
