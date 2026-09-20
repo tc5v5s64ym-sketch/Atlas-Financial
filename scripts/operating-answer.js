@@ -98,6 +98,7 @@ function recommendOpts(data, opts) {
     revolvingExtra: data && data.revolvingExtra,
     periods: loadPeriods(),
     currentPeriodActuals: actualsFrom(data, opts),
+    observedCash: overlay && overlay.observedCash || null,
     targetBuffer,
     operatingPlan: overlay && overlay.operatingPlan,
     operatingPlanNote: overlay && overlay.operatingPlanNote,
