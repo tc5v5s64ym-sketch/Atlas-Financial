@@ -132,44 +132,127 @@
     return card;
   }
 
-  function decorateWaterfall(doc, waterfall) {
-    if (!waterfall || waterfall.hasAttribute(APPLIED)) return false;
-    if (waterfall.getAttribute('data-operating-plan') === 'unavailable') return false;
-    waterfall.setAttribute(APPLIED, 'true');
-
-    const question = number => waterfall.querySelector(`[data-operating-question="${number}"]`);
-    const income = question('02');
-    const bills = question('04');
-    const afterBills = question('05');
-    const budget = question('06');
-    const afterBudget = question('07');
-    const explanation = waterfall.querySelector('.operating-cash-explanation')
-      || waterfall.querySelector('[data-operating-cash-explanation]');
-
-    const paydayBalance = income && income.querySelector('[data-payday-balance]');
-    if (paydayBalance) {
-      paydayBalance.classList.add('atlas-income-closing');
+  function isOperatingCashExplanation(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (typeof node.hasAttribute === 'function'
+        && node.hasAttribute('data-operating-cash-explanation')) {
+      return true;
     }
-
-    const incomeCard = sectionCard(doc, waterfall, 'atlas-income-card', [income]);
-    const billsCard = sectionCard(doc, waterfall, 'atlas-bills-card', [bills, afterBills]);
-    // plan.js injects the explanation immediately after Q07. appendChild
-    // would otherwise leave that sibling behind, so it reprints under
-    // Current Balance before the re-appended Income/Bills/Household cards.
-    sectionCard(doc, waterfall, 'atlas-household-budget-card', [
-      budget,
-      afterBudget,
-      afterBudget ? explanation : null,
-    ]);
-
-    if (incomeCard) incomeCard.setAttribute('data-atlas-section', 'income');
-    if (billsCard) {
-      billsCard.setAttribute('data-atlas-section', 'bills');
-      billsCard.querySelectorAll('[data-bill-status]').forEach(line => decorateBillLine(doc, line));
+    if (node.classList && typeof node.classList.contains === 'function'
+        && node.classList.contains('operating-cash-explanation')) {
+      return true;
     }
-    const budgetCard = waterfall.querySelector('.atlas-household-budget-card');
-    if (budgetCard) budgetCard.setAttribute('data-atlas-section', 'household-budget');
+    const cls = typeof node.getAttribute === 'function'
+      ? String(node.getAttribute('class') || '')
+      : String(node.className || '');
+    return /(^|\s)operating-cash-explanation(\s|$)/.test(cls);
+  }
+
+  // querySelector can miss a late or ejected node. Walk elements so the
+  // live enhance path still finds the plan.js reprint.
+  function findOperatingCashExplanation(waterfall) {
+    const scan = root => {
+      const kids = directElementChildren(root);
+      for (let i = 0; i < kids.length; i++) {
+        if (isOperatingCashExplanation(kids[i])) return kids[i];
+      }
+      for (let i = 0; i < kids.length; i++) {
+        const nested = scan(kids[i]);
+        if (nested) return nested;
+      }
+      return null;
+    };
+    const inside = scan(waterfall)
+      || (waterfall && waterfall.querySelector
+        && (waterfall.querySelector('.operating-cash-explanation')
+          || waterfall.querySelector('[data-operating-cash-explanation]')));
+    if (inside) return inside;
+    const parent = waterfall && (waterfall.parentElement || waterfall.parentNode);
+    if (!parent || parent === waterfall) return null;
+    const siblings = directElementChildren(parent);
+    for (let i = 0; i < siblings.length; i++) {
+      if (isOperatingCashExplanation(siblings[i])) return siblings[i];
+    }
+    return null;
+  }
+
+  function insertAfter(parent, node, ref) {
+    if (!parent || !node || !ref) return false;
+    const next = ref.nextSibling;
+    if (next === node) return false;
+    if (next && typeof parent.insertBefore === 'function') {
+      parent.insertBefore(node, next);
+      return true;
+    }
+    parent.appendChild(node);
     return true;
+  }
+
+  // Card grouping is one-shot (APPLIED). Placement is not: live boot can
+  // mark APPLIED before plan.js has injected the explanation, or a later
+  // enhance pass can leave it as an orphan next to Current Balance.
+  function placeOperatingCashExplanation(waterfall) {
+    const afterBudget = waterfall && waterfall.querySelector
+      && waterfall.querySelector('[data-operating-question="07"]');
+    const budgetCard = waterfall && waterfall.querySelector
+      && waterfall.querySelector('.atlas-household-budget-card');
+    if (!afterBudget || !budgetCard) return false;
+    const explanation = findOperatingCashExplanation(waterfall);
+    if (!explanation) return false;
+    const kids = directElementChildren(budgetCard);
+    const q07At = kids.indexOf(afterBudget);
+    if (explanation.parentNode === budgetCard && q07At >= 0 && kids[q07At + 1] === explanation) {
+      return false;
+    }
+    if (afterBudget.parentNode !== budgetCard) budgetCard.appendChild(afterBudget);
+    insertAfter(budgetCard, explanation, afterBudget);
+    return true;
+  }
+
+  function decorateWaterfall(doc, waterfall) {
+    if (!waterfall) return false;
+    if (waterfall.getAttribute('data-operating-plan') === 'unavailable') return false;
+
+    let grouped = false;
+    if (!waterfall.hasAttribute(APPLIED)) {
+      waterfall.setAttribute(APPLIED, 'true');
+      grouped = true;
+
+      const question = number => waterfall.querySelector(`[data-operating-question="${number}"]`);
+      const income = question('02');
+      const bills = question('04');
+      const afterBills = question('05');
+      const budget = question('06');
+      const afterBudget = question('07');
+      const explanation = findOperatingCashExplanation(waterfall);
+
+      const paydayBalance = income && income.querySelector('[data-payday-balance]');
+      if (paydayBalance) {
+        paydayBalance.classList.add('atlas-income-closing');
+      }
+
+      const incomeCard = sectionCard(doc, waterfall, 'atlas-income-card', [income]);
+      const billsCard = sectionCard(doc, waterfall, 'atlas-bills-card', [bills, afterBills]);
+      // plan.js injects the explanation immediately after Q07. appendChild
+      // would otherwise leave that sibling behind, so it reprints under
+      // Current Balance before the re-appended Income/Bills/Household cards.
+      sectionCard(doc, waterfall, 'atlas-household-budget-card', [
+        budget,
+        afterBudget,
+        afterBudget ? explanation : null,
+      ]);
+
+      if (incomeCard) incomeCard.setAttribute('data-atlas-section', 'income');
+      if (billsCard) {
+        billsCard.setAttribute('data-atlas-section', 'bills');
+        billsCard.querySelectorAll('[data-bill-status]').forEach(line => decorateBillLine(doc, line));
+      }
+      const budgetCard = waterfall.querySelector('.atlas-household-budget-card');
+      if (budgetCard) budgetCard.setAttribute('data-atlas-section', 'household-budget');
+    }
+
+    const placed = placeOperatingCashExplanation(waterfall);
+    return grouped || placed;
   }
 
   function enhance(doc) {
