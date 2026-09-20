@@ -4703,6 +4703,99 @@
     };
   }
 
+  // Observed posted balance for one canonical household-cash account whose
+  // provider evidence household date equals a Seaspan payday. This is not
+  // payday-morning opening, not pooled A+B, not leftover, and not Current
+  // Balance. Display names are labels only. Missing evidence fails closed
+  // rather than $0. A later live overlay does not relabel a same-day
+  // observation as a pre-transaction opening.
+  const PAYDAY_BOUNDARY_TEMPORAL_CLAIM = 'posted-balance-observed-on-household-date';
+  const PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID = 'chequing-a';
+
+  function paydayBoundaryObservationRow(accountId, value, paydayDate, source) {
+    if (!accountId || !paydayDate) return null;
+    if (!finiteRecordedOpening(value)) return null;
+    return {
+      accountId: String(accountId),
+      value: roundCent(value),
+      evidenceDate: String(paydayDate),
+      paydayDate: String(paydayDate),
+      temporalClaim: PAYDAY_BOUNDARY_TEMPORAL_CLAIM,
+      isPaydayMorningOpening: false,
+      isPooledChequing: false,
+      source: source || null,
+    };
+  }
+
+  function recordedPaydayAccountObservation(plan, accountId, paydayDate, opts) {
+    if (!accountId || !paydayDate) return null;
+    const packet = (opts && opts.paydayAccountObservations)
+      || (plan && plan.opening && plan.opening.paydayAccountObservations)
+      || null;
+    if (!packet) return null;
+    if (String(packet.periodStart) !== String(paydayDate)) return null;
+    if (String(packet.asOf) !== String(paydayDate)) return null;
+    const rows = Array.isArray(packet.accounts) ? packet.accounts : [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || String(row.id) !== String(accountId)) continue;
+      const evidenceDate = financialDate(row.evidenceDate);
+      if (evidenceDate !== String(paydayDate)) return null;
+      if (row.temporalClaim
+        && String(row.temporalClaim) !== PAYDAY_BOUNDARY_TEMPORAL_CLAIM) {
+        return null;
+      }
+      const built = paydayBoundaryObservationRow(
+        accountId, row.value, paydayDate, row.source || 'recorded');
+      return built;
+    }
+    return null;
+  }
+
+  function observedCashPaydayAccountObservation(accountId, paydayDate, opts) {
+    const packet = opts && opts.observedCash;
+    if (!packet || !accountId || !paydayDate) return null;
+    const packetAsOf = financialDate(packet.asOf);
+    if (packetAsOf && packetAsOf !== String(paydayDate)) return null;
+    const rows = Array.isArray(packet.accounts) ? packet.accounts : [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || String(row.id) !== String(accountId)) continue;
+      const evidenceDate = financialDate(row.evidenceDate);
+      if (evidenceDate !== String(paydayDate)) return null;
+      return paydayBoundaryObservationRow(
+        accountId, row.value, paydayDate, 'provider-observation');
+    }
+    return null;
+  }
+
+  function canonicalPaydayAccountObservation(plan, accountId, paydayDate) {
+    if (!plan || !accountId || !paydayDate) return null;
+    const opening = plan.opening;
+    if (!opening || String(opening.asOf) !== String(paydayDate)) return null;
+    if (liveOpeningAdvanced(plan, paydayDate)) return null;
+    const row = cashAccount(plan, accountId);
+    if (!row) return null;
+    return paydayBoundaryObservationRow(
+      accountId, row.value, paydayDate, 'canonical-opening');
+  }
+
+  function paydayBoundaryAccountObservation(plan, accountId, paydayDate, opts) {
+    const id = accountId == null || String(accountId).trim() === ''
+      ? PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID
+      : String(accountId).trim();
+    const recorded = recordedPaydayAccountObservation(plan, id, paydayDate, opts);
+    if (recorded) return recorded;
+    const observed = observedCashPaydayAccountObservation(id, paydayDate, opts);
+    if (observed) return observed;
+    return canonicalPaydayAccountObservation(plan, id, paydayDate);
+  }
+
+  function paydayBoundaryBillsObservation(plan, paydayDate, opts) {
+    return paydayBoundaryAccountObservation(
+      plan, PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID, paydayDate, opts);
+  }
+
   // Income already inside the payday-opening cash, not income already
   // inside today's live bank balance. Received-vs-live is settlement
   // status; it must not erase a pay-period income row from the snapshot.
@@ -6912,12 +7005,16 @@
     if (active && active.role === 'active') {
       active.operatingCashExplanation = operatingCashExplanation(
         plan, active, liveCurrentBalance, calendarOpts, asOf);
+      active.paydayBoundaryBillsObservation = paydayBoundaryBillsObservation(
+        plan, active.start, calendarOpts);
     }
     return {
       calendarPeriods: periods,
       activeCalendarPeriodId: active ? active.id : null,
       operatingCashExplanation: active && active.operatingCashExplanation
         ? active.operatingCashExplanation : null,
+      paydayBoundaryBillsObservation: active && active.paydayBoundaryBillsObservation
+        ? active.paydayBoundaryBillsObservation : null,
     };
   }
   function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
@@ -6982,6 +7079,7 @@
       calendarPeriods: waterfalls.calendarPeriods,
       activeCalendarPeriodId: waterfalls.activeCalendarPeriodId,
       operatingCashExplanation: waterfalls.operatingCashExplanation || null,
+      paydayBoundaryBillsObservation: waterfalls.paydayBoundaryBillsObservation || null,
       householdBudget: householdBudgetGlance(plan, alloc),
       budgetDigest: householdBudgetDigest(
         plan, asOf, periodStart, cycleEnd, opts),
@@ -14524,7 +14622,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,

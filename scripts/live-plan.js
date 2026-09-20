@@ -6,7 +6,12 @@
  * trusted overlay advances past a Seaspan payday, the in-memory opening
  * retains paydaySnapshot from Forecast.establishPaydaySnapshot on the
  * pre-overlay dated plan only when that figure is a recorded snapshot
- * or a completeness-proven household-cash walk. The walk evidence is
+ * or a completeness-proven household-cash walk. When the observation
+ * household date is that payday, or the canonical opening as-of is that
+ * payday, live-plan also retains Forecast.paydayBoundaryAccountObservation
+ * for canonical chequing-a. That packet is posted-balance-observed-on-
+ * household-date, not payday-morning opening, not pooled A+B, and not a
+ * canonical write. The walk evidence is
  * the incumbent sanitized currentPeriodActuals packet, passed as
  * paydayGapCash. provider-observe earns paydayGapComplete from
  * opening-to-payday household-cash coverage; a paginated-complete
@@ -857,6 +862,52 @@ function retainPaydaySnapshot(next, canonicalPlan, liveAsOf, report) {
   });
 }
 
+function stampPaydayAccountObservation(next, obs, payday) {
+  if (!next || !next.plan || !obs || !payday) return;
+  if (String(obs.accountId) !== 'chequing-a') return;
+  if (obs.temporalClaim !== 'posted-balance-observed-on-household-date') return;
+  if (obs.isPaydayMorningOpening === true || obs.isPooledChequing === true) return;
+  next.plan.opening = Object.assign({}, next.plan.opening || {}, {
+    paydayAccountObservations: {
+      periodStart: String(payday),
+      asOf: String(payday),
+      accounts: [{
+        id: 'chequing-a',
+        value: obs.value,
+        evidenceDate: obs.evidenceDate,
+        temporalClaim: obs.temporalClaim,
+        source: obs.source,
+      }],
+    },
+  });
+}
+
+// Retain account-specific posted-balance evidence for canonical chequing-a
+// when the observation household date, or the pre-overlay canonical opening
+// as-of, is the current Seaspan payday. Not a payday-morning opening, not
+// pooled A+B, not a previous-observation store, and not a canonical write.
+function retainPaydayAccountObservations(next, canonicalPlan, liveAsOf, report) {
+  if (!next || !next.plan || !canonicalPlan || !liveAsOf) return;
+  const cycle = Forecast.spendingCycle(canonicalPlan, liveAsOf);
+  if (!cycle || !cycle.start) return;
+  const payday = cycle.start;
+  const recorded = next.plan.opening && next.plan.opening.paydayAccountObservations;
+  if (recorded) {
+    const existing = Forecast.paydayBoundaryAccountObservation(
+      next.plan, 'chequing-a', payday);
+    if (existing) {
+      stampPaydayAccountObservation(next, existing, payday);
+      return;
+    }
+  }
+  const obs = Forecast.paydayBoundaryAccountObservation(
+    canonicalPlan, 'chequing-a', payday, {
+      observedCash: collectObservedCash(report, liveAsOf),
+    });
+  if (!obs) return;
+  stampPaydayAccountObservation(next, obs, payday);
+}
+
 function collectObservedCash(report, liveAsOf) {
   const accounts = [];
   if (!report || !liveAsOf) {
@@ -950,6 +1001,7 @@ function overlayLiveState(input) {
   const next = clone(data);
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
   retainPaydaySnapshot(next, data.plan, cutover.liveAsOf || liveAsOf, report);
+  retainPaydayAccountObservations(next, data.plan, cutover.liveAsOf || liveAsOf, report);
   for (const change of proposed) {
     if (change.field === 'pending') applyPendingOverlay(next, change);
     else applyPostedOverlay(next, change);
@@ -1093,6 +1145,9 @@ function failedOverlay(canonical, reason, extra) {
     canonical,
     report: extra && extra.report,
   });
+  if (report) {
+    retainPaydayAccountObservations(next, canonical.plan, liveAsOf, report);
+  }
   return next;
 }
 
