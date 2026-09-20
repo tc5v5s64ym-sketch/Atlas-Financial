@@ -44,6 +44,9 @@ const SNAPSHOT_DIR = path.join(ROOT, 'snapshots');
 const PAYDAY = '2026-08-28';
 const PAYDAY_AT = '2026-08-28T18:00:00.000Z';
 const PAYDAY_CASH_AT = '2026-08-28T17:55:00.000Z';
+const EARLIER_PAYDAY = '2026-08-14';
+const EARLIER_PAYDAY_AT = '2026-08-14T18:00:00.000Z';
+const EARLIER_PAYDAY_CASH_AT = '2026-08-14T17:55:00.000Z';
 const NEXT_DAY = '2026-08-29';
 const NEXT_DAY_AT = '2026-08-29T18:00:00.000Z';
 const NEXT_DAY_CASH_AT = '2026-08-29T17:55:00.000Z';
@@ -547,8 +550,129 @@ console.log('=== F. Page does not calculate persist; Forecast remains authority 
     'plan.js does not persist or reprint paydayAccountObservations');
   ok(/PAYDAY_OBSERVATION_SCHEMA = 'atlas-payday-account-observation-approval\/v1'/.test(refreshSrc)
       && /--preserve-payday-observation/.test(refreshSrc)
-      && /existing-payday-observation-protected/.test(refreshSrc),
-    'canonical-refresh owns the bounded persist approval');
+      && /existing-payday-observation-protected/.test(refreshSrc)
+      && /paydayEvidenceIsCanonicalNewer/.test(refreshSrc)
+      && /Payday observation evidence predates the current canonical opening/.test(refreshSrc),
+    'canonical-refresh owns the bounded persist approval and older-than-opening fail-closed');
+}
+
+console.log('=== G. Earlier-payday / canonical-newer evidence cannot mint an approval or write ===');
+{
+  const data = syntheticCanonical();
+  ok(String(data.plan.opening.asOf) === '2026-08-19',
+    'fixture canonical opening remains 2026-08-19');
+  const earlierPayload = paydayPayload(data, {
+    fetchedAt: EARLIER_PAYDAY_AT,
+    tweaks: {
+      'chequing-a': LIVE_BILLS,
+      'chequing-b': LIVE_WEEKLY,
+      savings: LIVE_SAVINGS,
+      cashAt: EARLIER_PAYDAY_CASH_AT,
+    },
+  });
+  const earlierRun = C.previewFrom({
+    provider: 'lunchmoney',
+    payload: earlierPayload,
+    accountMap,
+    data,
+    identity,
+    fetchedAt: earlierPayload.fetchedAt,
+  }, { preservePaydayObservation: true });
+  const earlierProposal = earlierRun.preview.paydayAccountObservation;
+  const billsRow = ((earlierRun.report.reconciliation && earlierRun.report.reconciliation.rows) || [])
+    .find(row => row && row.canonicalTarget === 'cash:chequing-a');
+  ok(billsRow && billsRow.dateRelation === 'canonical-newer'
+      && String(billsRow.evidenceDate) === EARLIER_PAYDAY,
+    'reconciler marks earlier-payday chequing-a as canonical-newer');
+  ok(earlierProposal
+      && earlierProposal.paydayObservationWriteSupported === false
+      && earlierProposal.paydayObservationApprovalId == null
+      && earlierProposal.packet == null
+      && earlierProposal.reason === 'stale-not-current',
+    'canonical-newer payday evidence cannot mint an approval ID');
+
+  const dir = tempDir();
+  const dataPath = writeJson(dir, 'data.json', data);
+  const fixturePath = writeJson(dir, 'fixture.json', earlierPayload);
+  const beforeHash = hashFile(dataPath);
+  const applied = runCli([
+    '--fixture', fixturePath,
+    '--map', MAP,
+    '--identity', IDENTITY,
+    '--data', dataPath,
+    '--preserve-payday-observation',
+    '--apply',
+    '--approve-payday-observation',
+    'deadbeef',
+  ]);
+  ok(applied.code !== 0
+      && /No payday observation proposal exists to approve/.test(applied.stderr),
+    'canonical-newer evidence cannot write even with a caller-supplied approval token');
+  const afterCli = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+  ok(hashFile(dataPath) === beforeHash && !afterCli.plan.opening.paydayAccountObservations,
+    'canonical document was not written from earlier-payday evidence');
+
+  const forgedPath = writeJson(dir, 'forged-data.json', data);
+  const forgedBefore = hashFile(forgedPath);
+  let applyThrew = false;
+  let applyMessage = '';
+  try {
+    C.applyPaydayObservationPreview(data, {
+      paydayAccountObservation: {
+        schema: 'atlas-payday-account-observation-approval/v1',
+        writesCanonicalState: false,
+        paydayObservationWriteSupported: true,
+        paydayObservationApprovalId: 'forged-earlier-payday',
+        packet: {
+          periodStart: EARLIER_PAYDAY,
+          asOf: EARLIER_PAYDAY,
+          accounts: [{
+            id: 'chequing-a',
+            value: LIVE_BILLS,
+            evidenceDate: EARLIER_PAYDAY,
+            temporalClaim: TEMPORAL,
+            source: 'provider-observation',
+          }],
+        },
+        currentOpeningAsOf: data.plan.opening.asOf,
+        paydayDate: EARLIER_PAYDAY,
+      },
+    }, forgedPath);
+  } catch (err) {
+    applyThrew = true;
+    applyMessage = String(err && err.message || err);
+  }
+  ok(applyThrew
+      && /predates the current canonical opening/.test(applyMessage),
+    'apply fail-closes a forged earlier-payday packet');
+  ok(hashFile(forgedPath) === forgedBefore,
+    'forged earlier-payday apply did not write');
+
+  const advanced = syntheticCanonical();
+  advanced.meta.asOf = NEXT_DAY;
+  advanced.plan.opening.asOf = NEXT_DAY;
+  const afterPaydayRun = previewPayday(advanced, {
+    fetchedAt: PAYDAY_AT,
+    tweaks: {
+      'chequing-a': LIVE_BILLS,
+      'chequing-b': LIVE_WEEKLY,
+      savings: LIVE_SAVINGS,
+      cashAt: PAYDAY_CASH_AT,
+    },
+  });
+  const afterPayday = afterPaydayRun.preview.paydayAccountObservation;
+  const advancedRow = ((afterPaydayRun.report.reconciliation
+    && afterPaydayRun.report.reconciliation.rows) || [])
+    .find(row => row && row.canonicalTarget === 'cash:chequing-a');
+  ok(advancedRow && advancedRow.dateRelation === 'canonical-newer',
+    'payday evidence against an advanced opening is canonical-newer');
+  ok(afterPayday
+      && afterPayday.paydayObservationWriteSupported === false
+      && afterPayday.paydayObservationApprovalId == null
+      && afterPayday.packet == null
+      && afterPayday.reason === 'stale-not-current',
+    'payday evidence that predates an advanced opening cannot mint an approval ID');
+  filesUnchanged('earlier-payday / canonical-newer reject');
 }
 
 if (failures) {

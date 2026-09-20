@@ -71,7 +71,12 @@
  * approval matches. previewId, cutoverApprovalId, openingApprovalId, and
  * recoveryApprovalId cannot authorize it. Combining it with
  * --cutover-as-of is refused. A recorded packet for a different payday
- * is protected and is not overwritten.
+ * is protected and is not overwritten. Evidence whose household payday
+ * predates plan.opening.asOf is refused: the incumbent reconciler marks
+ * that row canonical-newer (stale-not-current), and the persist proposal
+ * and apply paths fail closed on that relation and on the household-date
+ * guard. Historical provider evidence cannot mint
+ * paydayObservationApprovalId or write.
  *
  * Never writes without --apply and an exact matching approval.
  * Never POST/PUT/PATCH/DELETE Lunch Money. Never stores a token.
@@ -755,7 +760,26 @@ function trustworthyPostedRow(row) {
     && isFinite(row.evidenceValue));
 }
 
-function paydayObservedCashFromReport(report, paydayDate) {
+function paydayEvidenceHouseholdDate(row) {
+  return dateOnly(row && (row.evidenceDate || row.observedAsOf));
+}
+
+function paydayEvidenceIsCanonicalNewer(row) {
+  return !!(row && row.dateRelation === 'canonical-newer');
+}
+
+function paydayEvidencePredatesCanonicalOpening(row, currentOpeningAsOf) {
+  const day = paydayEvidenceHouseholdDate(row);
+  return !!(currentOpeningAsOf && day && String(day) < String(currentOpeningAsOf));
+}
+
+function currentPaydayPostedRow(row, currentOpeningAsOf) {
+  return trustworthyPostedRow(row)
+    && !paydayEvidenceIsCanonicalNewer(row)
+    && !paydayEvidencePredatesCanonicalOpening(row, currentOpeningAsOf);
+}
+
+function paydayObservedCashFromReport(report, paydayDate, currentOpeningAsOf) {
   const accounts = [];
   if (!report || !paydayDate) {
     return { complete: false, asOf: paydayDate || null, accounts };
@@ -763,12 +787,13 @@ function paydayObservedCashFromReport(report, paydayDate) {
   for (const id of POSTED_CASH) {
     const rows = postedRowsForLocator(report, `cash:${id}`);
     const fresh = rows.find(row =>
-      trustworthyPostedRow(row) && dateOnly(row.evidenceDate || row.observedAsOf) === paydayDate);
+      currentPaydayPostedRow(row, currentOpeningAsOf)
+      && paydayEvidenceHouseholdDate(row) === paydayDate);
     if (!fresh) continue;
     accounts.push({
       id,
       value: round2(fresh.evidenceValue),
-      evidenceDate: dateOnly(fresh.evidenceDate || fresh.observedAsOf),
+      evidenceDate: paydayEvidenceHouseholdDate(fresh),
     });
   }
   return {
@@ -820,15 +845,39 @@ function paydayObservationUnavailable(reason, extra) {
   }, extra || {});
 }
 
+function paydayObservationPredatesOpening(proposal, openingAsOf) {
+  if (!openingAsOf) return true;
+  const opening = String(openingAsOf);
+  const days = [];
+  if (proposal && proposal.paydayDate) days.push(dateOnly(proposal.paydayDate));
+  const packet = proposal && proposal.packet;
+  if (packet) {
+    days.push(dateOnly(packet.periodStart), dateOnly(packet.asOf));
+    const row = Array.isArray(packet.accounts) ? packet.accounts[0] : null;
+    if (row) days.push(dateOnly(row.evidenceDate));
+  }
+  return days.some(day => day && String(day) < opening);
+}
+
 function buildPaydayAccountObservationProposal(data, report) {
   const currentOpeningAsOf = data && data.plan && data.plan.opening && data.plan.opening.asOf
     ? String(data.plan.opening.asOf)
     : null;
   const billsRows = postedRowsForLocator(report, `cash:${PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID}`)
     .filter(trustworthyPostedRow);
+  if (!billsRows.length) {
+    return paydayObservationUnavailable('chequing-a-evidence-missing', { currentOpeningAsOf });
+  }
+  const currentRows = billsRows.filter(row => currentPaydayPostedRow(row, currentOpeningAsOf));
+  if (!currentRows.length) {
+    return paydayObservationUnavailable('stale-not-current', {
+      currentOpeningAsOf,
+      paydayDate: paydayEvidenceHouseholdDate(billsRows[0]),
+    });
+  }
   const paydayDates = [];
-  for (const row of billsRows) {
-    const day = dateOnly(row.evidenceDate || row.observedAsOf);
+  for (const row of currentRows) {
+    const day = paydayEvidenceHouseholdDate(row);
     if (!day) continue;
     const cycle = Forecast.spendingCycle(data && data.plan, day);
     if (cycle && cycle.start && String(cycle.start) === String(day)
@@ -836,17 +885,20 @@ function buildPaydayAccountObservationProposal(data, report) {
       paydayDates.push(day);
     }
   }
-  if (!billsRows.length) {
-    return paydayObservationUnavailable('chequing-a-evidence-missing', { currentOpeningAsOf });
-  }
   if (paydayDates.length !== 1) {
     return paydayObservationUnavailable(
       paydayDates.length ? 'conflicting-payday-evidence' : 'evidence-date-not-seaspan-payday',
-      { currentOpeningAsOf, paydayDate: paydayDates[0] || dateOnly(billsRows[0].evidenceDate || billsRows[0].observedAsOf) }
+      { currentOpeningAsOf, paydayDate: paydayDates[0] || paydayEvidenceHouseholdDate(currentRows[0]) }
     );
   }
   const paydayDate = paydayDates[0];
-  const observedCash = paydayObservedCashFromReport(report, paydayDate);
+  if (currentOpeningAsOf && String(paydayDate) < String(currentOpeningAsOf)) {
+    return paydayObservationUnavailable('stale-not-current', {
+      currentOpeningAsOf,
+      paydayDate,
+    });
+  }
+  const observedCash = paydayObservedCashFromReport(report, paydayDate, currentOpeningAsOf);
   const obs = Forecast.paydayBoundaryAccountObservation(
     data && data.plan,
     PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID,
@@ -2673,6 +2725,14 @@ function validatePaydayObservationApplied(before, after, proposal) {
   if (String(beforeOpening || '') !== String(afterOpening || '')) {
     fail('Payday observation persist must not advance plan.opening.asOf.');
   }
+  if (paydayObservationPredatesOpening(proposal, afterOpening)
+    || paydayObservationPredatesOpening({
+      paydayDate: after.plan.opening.paydayAccountObservations
+        && after.plan.opening.paydayAccountObservations.periodStart,
+      packet: after.plan.opening.paydayAccountObservations,
+    }, afterOpening)) {
+    fail('Payday observation evidence predates the current canonical opening. Canonical state was not written.');
+  }
   const beforeMeta = before && before.meta && before.meta.asOf;
   const afterMeta = after.meta && after.meta.asOf;
   if (String(beforeMeta || '') !== String(afterMeta || '')) {
@@ -2719,6 +2779,10 @@ function applyPaydayObservationPreview(data, preview, destPath) {
     fail('No payday observation proposal exists to approve. Canonical state was not written.');
   }
   if (!proposal.packet) fail('Payday observation proposal is missing its packet.');
+  const openingAsOf = data && data.plan && data.plan.opening && data.plan.opening.asOf;
+  if (paydayObservationPredatesOpening(proposal, openingAsOf)) {
+    fail('Payday observation evidence predates the current canonical opening. Canonical state was not written.');
+  }
   const next = clone(data);
   if (!next.plan) fail('Canonical data is missing plan.');
   next.plan.opening = Object.assign({}, next.plan.opening || {}, {
