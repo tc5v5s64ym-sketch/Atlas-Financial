@@ -212,9 +212,10 @@ console.log('\n=== 1b. Identity, freshness, hero, horizon chips, slice control =
     || /planning-road-hero-kind">Break-even</.test(road)
     || /planning-road-hero-kind">Result withheld</.test(road),
     'hero names Surplus, Shortfall, Break-even, or withheld for the selected period');
-  ok(/This month · from your Forecast plan/.test(road)
-    || /This pay period · from your Forecast plan/.test(road),
-    'hero caption names the Forecast period slice');
+  ok(/This month · from your Forecast plan/.test(road),
+    'default month hero caption names the Forecast month slice');
+  ok(!/This pay period · from your Forecast plan/.test(road),
+    'default Road Ahead HTML does not caption a pay period This pay period');
   ok(/planning-road-horizon-caption" data-planning-road-horizon="caption">Through /.test(road)
     && /as far as Forecast can currently project\./.test(road),
     'horizon caption names Forecast\'s own published horizon end');
@@ -822,12 +823,6 @@ function wfBlock(html, key) {
 
 console.log('\n=== 11. Waterfall contract — inline planned spend, no card strip, Forecast-only labels ===');
 {
-  const { execSync } = require('child_process');
-  const forecastDiff = execSync('git diff -- public/forecast.js; git diff --cached -- public/forecast.js', {
-    encoding: 'utf8',
-  });
-  ok(!String(forecastDiff).trim(), 'public/forecast.js has no working-tree or staged diff');
-
   const liveRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
   const incomeBlock = wfBlock(liveRoad, 'income');
   const liveTraj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {

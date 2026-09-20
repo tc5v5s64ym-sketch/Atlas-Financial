@@ -97,6 +97,7 @@ const suites = [
   ['Forecast stage1 bills / obligations / householdBudget named lines', 'test-baseline-trajectory-stage1-component-lines.js'],
   ['Forecast stage2 commitment named lines', 'test-baseline-trajectory-stage2-commitment-lines.js'],
   ['Forecast baseline trajectory pay-period series (B105l)', 'test-baseline-trajectory-pay-period-series.js'],
+  ['Forecast residual pay-period identity vs Budget This Pay Period', 'test-pay-period-residual-identity.js'],
   ['Forecast baseline trajectory additional-debt-payment scenario (O4)', 'test-baseline-trajectory-scenario.js'],
   ['Dale/Seaspan estimated payroll regime (independent stubs)', 'test-dale-payroll-regime.js'],
   ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
