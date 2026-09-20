@@ -4796,6 +4796,180 @@
       plan, PAYDAY_BOUNDARY_BILLS_ACCOUNT_ID, paydayDate, opts);
   }
 
+  // Posted movements that affected one canonical household-cash account
+  // during a caller-supplied evidence window. This slice captures
+  // chequing-a only. Identity is the canonical id, never a display name.
+  // Source is incumbent currentPeriodActuals posted transactions — not
+  // the bill schedule, not representedActuals as a second ledger, and
+  // not a balancing plug. Pending is not posted. Missing coverage fails
+  // closed rather than claiming completeness. Unknown purpose stays
+  // UNKNOWN. Not leftover, not Current Balance, not Prepare Ahead, and
+  // not the BILLS dollar-for-dollar walk.
+  const POSTED_ACCOUNT_MOVEMENTS_ACCOUNT_ID = 'chequing-a';
+  const POSTED_ACCOUNT_MOVEMENTS_CLAIM = 'posted-window-complete';
+
+  function postedAccountMovementWindow(window) {
+    if (!window) return null;
+    const start = financialDate(window.start || window.from || window.coverageStart);
+    const through = financialDate(window.through || window.end || window.coverageThrough);
+    if (!start || !through || String(through) < String(start)) return null;
+    return { start, through };
+  }
+
+  function postedAccountMovementsIncomplete(accountId, window, reason) {
+    return {
+      accountId: String(accountId),
+      windowStart: window && window.start || null,
+      windowThrough: window && window.through || null,
+      complete: false,
+      completenessClaim: null,
+      reason: reason || 'unavailable',
+      movements: [],
+      provenance: {
+        calculator: 'Forecast',
+        source: 'Forecast.postedAccountMovements',
+        evidence: 'currentPeriodActuals.posted-transactions',
+      },
+    };
+  }
+
+  function movementEconomicClassification(cls) {
+    if (!cls) return { classification: 'UNKNOWN', categoryId: null };
+    if (cls.kind === 'internal-movement') {
+      return { classification: 'internal-transfer', categoryId: null };
+    }
+    if (cls.needsConfirmation || cls.kind === 'unclassified' || cls.kind === 'unmapped') {
+      return { classification: 'UNKNOWN', categoryId: null };
+    }
+    if (cls.kind === 'income') return { classification: 'income', categoryId: null };
+    if (cls.kind === 'refund') return { classification: 'refund', categoryId: null };
+    if (cls.kind === 'bill') {
+      return { classification: 'bill', categoryId: cls.categoryId || null };
+    }
+    if (cls.kind === 'spend') {
+      const cat = cls.categoryId || null;
+      if (!cat || cat === 'uncategorised') {
+        return { classification: 'UNKNOWN', categoryId: null };
+      }
+      return { classification: 'spend', categoryId: cat };
+    }
+    if (cls.kind === 'card-payment') {
+      return { classification: 'card-payment', categoryId: null };
+    }
+    if (cls.kind === 'interest') return { classification: 'interest', categoryId: null };
+    return { classification: 'UNKNOWN', categoryId: null };
+  }
+
+  function postedAccountMovements(plan, accountId, window, opts) {
+    const id = accountId == null || String(accountId).trim() === ''
+      ? POSTED_ACCOUNT_MOVEMENTS_ACCOUNT_ID
+      : String(accountId).trim();
+    const bounds = postedAccountMovementWindow(window);
+    if (!bounds) return null;
+    if (id !== POSTED_ACCOUNT_MOVEMENTS_ACCOUNT_ID) {
+      return postedAccountMovementsIncomplete(id, bounds, 'account-not-in-scope');
+    }
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet || !Array.isArray(packet.transactions)) {
+      return postedAccountMovementsIncomplete(id, bounds, 'missing-actuals');
+    }
+    if (!packet.coverageStart || !packet.coverageThrough) {
+      return postedAccountMovementsIncomplete(id, bounds, 'coverage-incomplete');
+    }
+    if (String(packet.coverageStart) > String(bounds.start)
+      || String(packet.coverageThrough) < String(bounds.through)) {
+      return postedAccountMovementsIncomplete(id, bounds, 'coverage-incomplete');
+    }
+    const coverage = lookbackActualsCoverageState(bounds.start, bounds.through, opts);
+    if (!coverage || coverage.status !== 'current') {
+      return postedAccountMovementsIncomplete(id, bounds,
+        (coverage && coverage.reason) || 'coverage-incomplete');
+    }
+    const txs = packet.transactions;
+    const classifyOpts = Object.assign({}, opts || {}, {
+      packet,
+      currentPeriodActuals: packet,
+    });
+    const seen = new Set();
+    const movements = [];
+    for (const tx of txs) {
+      if (!tx || !tx.date) continue;
+      if (String(tx.date) < bounds.start || String(tx.date) > bounds.through) continue;
+      // Pending is not posted. Forecast settlement treatment
+      // (presumed-settled-for-current-forecast) must not masquerade here.
+      if (tx.pending === true) continue;
+      if (skipSplitParent(tx, packet)) continue;
+      const loc = householdCashLocationId(tx);
+      if (loc !== id) continue;
+      const debit = Number(tx.amount);
+      if (!Number.isFinite(debit)) {
+        return postedAccountMovementsIncomplete(id, bounds, 'amount-untrusted');
+      }
+      if (debit === 0) continue;
+      if (tx.id == null || tx.id === '') {
+        return postedAccountMovementsIncomplete(id, bounds, 'identity-missing');
+      }
+      const txId = String(tx.id);
+      if (seen.has(txId)) {
+        return postedAccountMovementsIncomplete(id, bounds, 'duplicate-identity');
+      }
+      seen.add(txId);
+      const amount = roundCent(-debit);
+      const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
+      const econ = movementEconomicClassification(cls);
+      const proven = provenInternalMovementForTx(tx, classifyOpts);
+      const counterpartAccountId = proven && proven.movement
+        ? (proven.role === 'source'
+          ? proven.movement.destinationAccountId
+          : proven.movement.sourceAccountId)
+        : null;
+      const counterpartTransactionId = proven && proven.movement
+        ? (proven.role === 'source'
+          ? proven.movement.destinationTransactionId
+          : proven.movement.sourceTransactionId)
+        : null;
+      movements.push({
+        id: txId,
+        accountId: id,
+        date: String(tx.date),
+        amount,
+        direction: amount > 0 ? 'inflow' : 'outflow',
+        evidenceState: 'posted',
+        pending: false,
+        internalTransfer: !!(proven && proven.movement),
+        counterpartAccountId,
+        counterpartTransactionId,
+        tfrReference: proven && proven.movement ? proven.movement.tfrReference : null,
+        householdIncome: proven && proven.movement ? 0 : null,
+        householdConsumption: proven && proven.movement ? 0 : null,
+        classification: econ.classification,
+        categoryId: econ.categoryId,
+        representedBill: txMatchesRepresentedBill(tx, classifyOpts),
+      });
+    }
+    movements.sort((a, b) => {
+      if (a.date < b.date) return -1;
+      if (a.date > b.date) return 1;
+      if (a.id < b.id) return -1;
+      if (a.id > b.id) return 1;
+      return 0;
+    });
+    return {
+      accountId: id,
+      windowStart: bounds.start,
+      windowThrough: bounds.through,
+      complete: true,
+      completenessClaim: POSTED_ACCOUNT_MOVEMENTS_CLAIM,
+      reason: null,
+      movements,
+      provenance: {
+        calculator: 'Forecast',
+        source: 'Forecast.postedAccountMovements',
+        evidence: 'currentPeriodActuals.posted-transactions',
+      },
+    };
+  }
+
   // Income already inside the payday-opening cash, not income already
   // inside today's live bank balance. Received-vs-live is settlement
   // status; it must not erase a pay-period income row from the snapshot.
@@ -7007,6 +7181,10 @@
         plan, active, liveCurrentBalance, calendarOpts, asOf);
       active.paydayBoundaryBillsObservation = paydayBoundaryBillsObservation(
         plan, active.start, calendarOpts);
+      active.postedBillsAccountMovements = postedAccountMovements(
+        plan, BILLS_ACCOUNT_ID,
+        operatingCashExplanationWindow(active, asOf),
+        calendarOpts);
     }
     return {
       calendarPeriods: periods,
@@ -7015,6 +7193,8 @@
         ? active.operatingCashExplanation : null,
       paydayBoundaryBillsObservation: active && active.paydayBoundaryBillsObservation
         ? active.paydayBoundaryBillsObservation : null,
+      postedBillsAccountMovements: active && active.postedBillsAccountMovements
+        ? active.postedBillsAccountMovements : null,
     };
   }
   function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
@@ -7080,6 +7260,7 @@
       activeCalendarPeriodId: waterfalls.activeCalendarPeriodId,
       operatingCashExplanation: waterfalls.operatingCashExplanation || null,
       paydayBoundaryBillsObservation: waterfalls.paydayBoundaryBillsObservation || null,
+      postedBillsAccountMovements: waterfalls.postedBillsAccountMovements || null,
       householdBudget: householdBudgetGlance(plan, alloc),
       budgetDigest: householdBudgetDigest(
         plan, asOf, periodStart, cycleEnd, opts),
@@ -14622,7 +14803,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
