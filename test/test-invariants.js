@@ -1482,7 +1482,9 @@ ok(periods.source.complete === true && periods.source.basis === 'lunchmoney-clea
   ok(!/"providerAccountId"/i.test(coverageJson),
     'per-account coverage does not publish provider account ids');
 }
-ok(/PERIODS\.asOf/.test(read('public/app.js')),
+ok(/function formatSiteAsOfChip/.test(read('public/app.js'))
+    && /historical spending through/.test(read('public/app.js'))
+    && /liveSpendingEvidenceDate/.test(read('public/app.js')),
   'Deep Dive header publishes the history source as-of separately when it differs from the plan');
 ok(plan.budget.ownerTargets && plan.budget.ownerTargets.status,
   'the budget records whether an owner target exists',
