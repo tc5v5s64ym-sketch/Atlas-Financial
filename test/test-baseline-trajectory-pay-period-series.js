@@ -413,7 +413,9 @@ console.log('\n=== 3. Month series unchanged; clipped first period is not a 14-d
   const traj = ask(plan, debts);
   const july = traj.months.find(m => m.month === JUL);
   const expectedJuly = independentSpan(plan, debts, july);
-  ok(july && !july.payday && !july.calendar && !july.nextPayday,
+  ok(july && !july.payday && !july.calendar && !july.nextPayday
+    && !july.windowKind && !july.displayIdentity && !july.cycleStart
+    && !july.cycleEnd && !july.cycleRangeLabel,
     'month rows did not grow pay-period identity fields');
   ok(stageReady(july.stage1) && near(july.stage1.result.amount, expectedJuly.stage1)
     && july.stage1.householdBudget.walkDays === 31
@@ -424,7 +426,11 @@ console.log('\n=== 3. Month series unchanged; clipped first period is not a 14-d
   const first = traj.payPeriods[0];
   const expectedFirst = independentPayPeriods(plan, traj.horizon.start, traj.horizon.end)[0];
   ok(first && first.payday === '2026-06-12' && first.start === START
-    && first.end === '2026-06-25' && expectedFirst.start === START,
+    && first.end === '2026-06-25' && expectedFirst.start === START
+    && first.windowKind === 'as-of-residual'
+    && first.displayIdentity === 'Remaining through next payday'
+    && first.cycleStart === '2026-06-12' && first.cycleEnd === '2026-06-25'
+    && first.cycleRangeLabel === 'Jun 12–Jun 25',
     'first pay-period is clipped to as-of the same way June is clipped to month-start');
   const expected = independentSpan(plan, debts, first);
   ok(expected.walkDays === 11 && first.stage1.householdBudget.walkDays === 11,
@@ -440,7 +446,9 @@ console.log('\n=== 3. Month series unchanged; clipped first period is not a 14-d
 
   const interior = traj.payPeriods.find(p => p.payday === '2026-06-26');
   ok(interior && interior.start === '2026-06-26' && interior.end === '2026-07-09'
-    && interior.stage1.householdBudget.walkDays === 14,
+    && interior.stage1.householdBudget.walkDays === 14
+    && interior.windowKind === 'full-cycle'
+    && interior.displayIdentity === 'Pay period',
     'an interior Seaspan window keeps 14 walk-applied days');
 }
 

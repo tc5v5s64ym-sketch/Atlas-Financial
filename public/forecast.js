@@ -11294,6 +11294,28 @@
   // window. Amanda salary does not start or end a window. Fail closed
   // to [] when the incumbent Seaspan payroll stream / biweekly anchor
   // cannot be established.
+  //
+  // A span that starts after its payday is the as-of residual of that
+  // Seaspan cycle — remaining through next payday — not Budget's full
+  // This Pay Period. start/end/rangeLabel stay the clipped walk window
+  // so stage math is unchanged. cycleStart/cycleEnd/cycleRangeLabel name
+  // the full payday-to-payday cycle. displayIdentity is never
+  // "This Pay Period".
+  function seaspanPayPeriodIdentity(payday, cycleEnd, spanStart, spanEnd) {
+    const cycleRangeLabel = formatSpendingCycleRange(payday, cycleEnd);
+    let windowKind = 'full-cycle';
+    if (spanStart > payday) windowKind = 'as-of-residual';
+    else if (spanEnd < cycleEnd) windowKind = 'horizon-clipped';
+    return {
+      cycleStart: payday,
+      cycleEnd,
+      cycleRangeLabel,
+      windowKind,
+      displayIdentity: windowKind === 'as-of-residual'
+        ? 'Remaining through next payday'
+        : 'Pay period',
+    };
+  }
   function seaspanPayPeriodsIntersecting(plan, start, end) {
     const from = financialDate(start);
     const to = financialDate(end);
@@ -11312,6 +11334,7 @@
       const spanStart = payday < from ? from : payday;
       const spanEnd = cycleEnd > to ? to : cycleEnd;
       if (spanStart > spanEnd) continue;
+      const identity = seaspanPayPeriodIdentity(payday, cycleEnd, spanStart, spanEnd);
       periods.push({
         payday,
         nextPayday,
@@ -11319,6 +11342,11 @@
         end: spanEnd,
         days: diffDays(spanStart, spanEnd) + 1,
         rangeLabel: formatSpendingCycleRange(spanStart, spanEnd),
+        cycleStart: identity.cycleStart,
+        cycleEnd: identity.cycleEnd,
+        cycleRangeLabel: identity.cycleRangeLabel,
+        windowKind: identity.windowKind,
+        displayIdentity: identity.displayIdentity,
       });
     }
     return periods;
@@ -13376,7 +13404,9 @@
   // funding helpers and trust rules: Month and Pay Period are two views
   // of one baselineTrajectory walk. Pay-period spans are incumbent
   // spendingCycle windows clipped to the knowledge horizon, not calendar
-  // halves and not a second cash engine. Caller-supplied additional-debt-payment
+  // halves and not a second cash engine. A first period whose start is
+  // after payday is remaining through next payday, not Budget's This
+  // Pay Period; start/end stay the clipped walk window. Caller-supplied additional-debt-payment
   // scenario consequence against this same walk is
   // baselineTrajectoryScenario, not hypotheticalExtraPayment and not
   // counterfactuals. Scenario amounts, owner surplus-target policy, and payday
@@ -13514,6 +13544,11 @@
         start: span.start,
         end: span.end,
         rangeLabel: span.rangeLabel,
+        cycleStart: span.cycleStart,
+        cycleEnd: span.cycleEnd,
+        cycleRangeLabel: span.cycleRangeLabel,
+        windowKind: span.windowKind,
+        displayIdentity: span.displayIdentity,
         calendar: 'seaspan-spending-cycle',
         spend: {
           weeklyVariable: weekly,

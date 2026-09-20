@@ -734,14 +734,26 @@ function planningRoadPeriodNoun(granularity) {
   return granularity === 'pay-period' ? 'pay period' : 'month';
 }
 
+function planningRoadPayPeriodIsResidual(period) {
+  return !!(period && period.windowKind === 'as-of-residual');
+}
+
+function planningRoadPayPeriodIdentity(period) {
+  return (period && period.displayIdentity) || 'Pay period';
+}
+
 /** DESIGN §4 "what's included" line — the household wording for the inputs
  *  Forecast already folded into this stage. */
-function planningRoadStageIncludes(stageNum, granularity, monthName) {
+function planningRoadStageIncludes(stageNum, granularity, monthName, period) {
   if (stageNum === 1) {
     return 'Income minus bills, required debt payments and your household budget';
   }
   if (stageNum === 2) {
-    const when = monthName || ('this ' + planningRoadPeriodNoun(granularity));
+    const when = monthName
+      ? monthName
+      : (planningRoadPayPeriodIsResidual(period)
+        ? 'the remainder through next payday'
+        : ('this ' + planningRoadPeriodNoun(granularity)));
     return `Adds the dated spending you have planned for ${when}`;
   }
   return 'Adds the extra debt payment in your current plan';
@@ -750,8 +762,10 @@ function planningRoadStageIncludes(stageNum, granularity, monthName) {
 /** Frame 03 plain-language note. Every branch is chosen from the sign of a
  *  figure Forecast published and reprints that figure; nothing is derived. */
 function planningRoadStageNarrative(period, stageNum, granularity, monthName) {
-  const noun = planningRoadPeriodNoun(granularity);
-  const subject = monthName ? `${monthName}'s` : `this ${noun}'s`;
+  const residual = planningRoadPayPeriodIsResidual(period);
+  const noun = residual ? 'remainder through next payday' : planningRoadPeriodNoun(granularity);
+  const subject = monthName ? `${monthName}'s` : (residual ? 'This remainder through next payday\'s' : `this ${noun}'s`);
+  const coveredWhere = residual ? 'through next payday' : `this ${noun}`;
   const s1 = planningRoadFigure(period.stage1 && period.stage1.result);
   const s2 = planningRoadFigure(period.stage2 && period.stage2.result);
   const s3 = planningRoadFigure(period.stage3 && period.stage3.result);
@@ -760,7 +774,7 @@ function planningRoadStageNarrative(period, stageNum, granularity, monthName) {
       return `Forecast has not published a normal-life result for this ${noun}. It is not counted as $0.`;
     }
     if (s1 > 0) {
-      return `Your regular household costs are covered this ${noun}, with ${money2(s1)} left over.`;
+      return `Your regular household costs are covered ${coveredWhere}, with ${money2(s1)} left over.`;
     }
     if (s1 === 0) {
       return `Your regular household costs use exactly the income Forecast projects for this ${noun}.`;
@@ -911,7 +925,7 @@ function planningTrajectoryFundingStageHtml(stage, stageNum, stageOpts) {
     const granularity = (stageOpts && stageOpts.granularity) || 'month';
     const monthName = (stageOpts && stageOpts.monthName) || null;
     const period = stageOpts && stageOpts.period;
-    const includes = planningRoadStageIncludes(stageNum, granularity, monthName);
+    const includes = planningRoadStageIncludes(stageNum, granularity, monthName, period);
     const narrative = period
       ? planningRoadStageNarrative(period, stageNum, granularity, monthName) : '';
     const pill = planningRoadStageDeltaPill(stage, stageNum);
@@ -961,9 +975,11 @@ function planningRoadAheadFundingStagesHtml(period, granularity) {
   if (granularity === 'pay-period') {
     const key = period.payday || period.id;
     if (!key) return '';
+    const kind = period.windowKind || '';
+    const identity = planningRoadPayPeriodIdentity(period);
     // The pay-period header already names the span; repeating it above the
     // spine reads as two different labels for one period.
-    return `<div class="planning-trajectory-funding-period" data-trajectory-funding-granularity="pay-period" data-trajectory-funding-pay-period="${key}">
+    return `<div class="planning-trajectory-funding-period" data-trajectory-funding-granularity="pay-period" data-trajectory-funding-pay-period="${key}"${kind ? ` data-road-pay-period-window-kind="${kind}"` : ''} data-road-pay-period-display-identity="${identity}">
     ${stages}
   </div>`;
   }
@@ -1068,10 +1084,17 @@ function planningRoadAheadBreakdownSheetHtml(period, granularity) {
   }
   const summary = monthParts
     ? `Full ${monthParts.long} breakdown`
-    : 'Full period breakdown';
+    : (planningRoadPayPeriodIsResidual(period)
+      ? 'Full remaining-through-next-payday breakdown'
+      : 'Full pay-period breakdown');
+  const countedFor = monthParts
+    ? 'this period'
+    : (planningRoadPayPeriodIsResidual(period)
+      ? 'remaining through next payday'
+      : 'this pay period');
   return `<details class="planning-road-breakdown-sheet" data-planning-road-breakdown="sheet">
     <summary><span class="planning-road-breakdown-summary-label">${summary}</span><span class="planning-road-breakdown-summary-chevron" aria-hidden="true">›</span></summary>
-    <p class="lede planning-road-breakdown-intro">Everything counted for this period, copied from Forecast. Unavailable figures show — and are not counted as $0.</p>
+    <p class="lede planning-road-breakdown-intro">Everything counted for ${countedFor}, copied from Forecast. Unavailable figures show — and are not counted as $0.</p>
     ${groups}
   </details>`;
 }
@@ -1089,12 +1112,16 @@ function planningTrajectoryFundingPeriodPanelHtml(period, granularity) {
   if (granularity === 'pay-period') {
     const key = period.payday || period.id;
     if (!key) return '';
+    const identity = planningRoadPayPeriodIdentity(period);
     const range = period.rangeLabel
       || (period.start && period.end ? `${fmtDateFull(period.start)} – ${fmtDateFull(period.end)}` : '');
     const rangeNote = range
-      ? `<small class="planning-trajectory-period-dates">${range}</small>` : '';
-    return `<div class="planning-trajectory-funding-period" data-trajectory-funding-granularity="pay-period" data-trajectory-funding-pay-period="${key}">
+      ? `<small class="planning-trajectory-period-dates">${identity} · ${range}</small>` : '';
+    const identityNote = planningRoadAheadPayPeriodIdentityNoteHtml(period);
+    const kind = period.windowKind || '';
+    return `<div class="planning-trajectory-funding-period" data-trajectory-funding-granularity="pay-period" data-trajectory-funding-pay-period="${key}"${kind ? ` data-road-pay-period-window-kind="${kind}"` : ''} data-road-pay-period-display-identity="${identity}">
     ${rangeNote}
+    ${identityNote}
     <div class="planning-trajectory-funding-stages">
       ${planningTrajectoryFundingStageHtml(period.stage1, 1)}
       ${planningTrajectoryFundingStageHtml(period.stage2, 2)}
@@ -1168,9 +1195,14 @@ function planningRoadAheadPeriodYear(period, granularity) {
 function planningRoadAheadChipLabel(period, granularity) {
   if (!period) return '';
   if (granularity === 'pay-period') {
-    if (period.start && period.end) return `${fmtDate(period.start)} – ${fmtDate(period.end)}`;
-    const payday = period.payday || period.id || '';
-    return payday.length >= 10 ? fmtDate(payday) : payday;
+    let dates = '';
+    if (period.start && period.end) dates = `${fmtDate(period.start)} – ${fmtDate(period.end)}`;
+    else {
+      const payday = period.payday || period.id || '';
+      dates = payday.length >= 10 ? fmtDate(payday) : payday;
+    }
+    if (planningRoadPayPeriodIsResidual(period) && dates) return `${dates} remaining`;
+    return dates;
   }
   const parts = planningRoadAheadMonthParts(period.month);
   if (!parts) return period.month || '';
@@ -1185,11 +1217,18 @@ function planningRoadAheadChipYear(period, granularity) {
 function planningRoadAheadChipAccessibleLabel(period, granularity) {
   if (!period) return '';
   if (granularity === 'pay-period') {
+    const identity = planningRoadPayPeriodIdentity(period);
+    let dates = '';
     if (period.start && period.end) {
-      return `${fmtDateFull(period.start)} to ${fmtDateFull(period.end)}`;
+      dates = `${fmtDateFull(period.start)} to ${fmtDateFull(period.end)}`;
+    } else {
+      const payday = period.payday || period.id || '';
+      dates = payday.length >= 10 ? fmtDateFull(payday) : payday;
     }
-    const payday = period.payday || period.id || '';
-    return payday.length >= 10 ? fmtDateFull(payday) : payday;
+    if (planningRoadPayPeriodIsResidual(period) && period.cycleRangeLabel) {
+      return `${identity}, ${dates}, remainder of the Seaspan cycle ${period.cycleRangeLabel}`;
+    }
+    return dates ? `${identity}, ${dates}` : identity;
   }
   const parts = planningRoadAheadMonthParts(period.month);
   return parts ? `${parts.long} ${parts.year}` : (period.month || '');
@@ -1198,11 +1237,10 @@ function planningRoadAheadChipAccessibleLabel(period, granularity) {
 function planningRoadAheadPeriodDisplayLabel(period, granularity) {
   if (!period) return '';
   if (granularity === 'pay-period') {
+    const identity = planningRoadPayPeriodIdentity(period);
     const range = period.rangeLabel
       || (period.start && period.end ? `${fmtDateFull(period.start)} – ${fmtDateFull(period.end)}` : '');
-    if (range) return range;
-    const payday = period.payday || period.id || '';
-    return payday.length >= 10 ? fmtDateFull(payday) : payday;
+    return range ? `${identity} · ${range}` : identity;
   }
   const parts = planningRoadAheadMonthParts(period.month);
   return parts ? `${parts.long} ${parts.year}` : (period.month || '');
@@ -1454,10 +1492,12 @@ function planningRoadAheadHeroHead(eyebrow, label, relative, kind) {
 /** Frame 01 hero attribution. Which stage turned the period negative is read
  *  from the signs Forecast published for stage1 / stage2 / stage3. */
 function planningRoadAheadHeroAttribution(period, granularity) {
-  const noun = planningRoadPeriodNoun(granularity);
+  const residual = planningRoadPayPeriodIsResidual(period);
+  const noun = residual ? 'remainder through next payday' : planningRoadPeriodNoun(granularity);
   const parts = granularity === 'pay-period'
     ? null : planningRoadAheadMonthParts(period.month);
-  const subject = parts ? `${parts.long}'s` : `This ${noun}'s`;
+  const subject = parts ? `${parts.long}'s` : (residual ? 'This remainder through next payday\'s' : `This ${noun}'s`);
+  const thatWhere = residual ? 'through next payday' : `that ${noun}`;
   const s1 = planningRoadFigure(period.stage1 && period.stage1.result);
   const s2 = planningRoadFigure(period.stage2 && period.stage2.result);
   const extras = planningRoadFigure(period.stage3 && period.stage3.extras);
@@ -1470,11 +1510,11 @@ function planningRoadAheadHeroAttribution(period, granularity) {
   }
   if (s2 < 0) {
     return hasExtra
-      ? `Your regular household costs are covered that ${noun}. ${subject} planned spending and the extra debt payment create this gap.`
-      : `Your regular household costs are covered that ${noun}. ${subject} planned spending creates this gap.`;
+      ? `Your regular household costs are covered ${thatWhere}. ${subject} planned spending and the extra debt payment create this gap.`
+      : `Your regular household costs are covered ${thatWhere}. ${subject} planned spending creates this gap.`;
   }
   if (hasExtra) {
-    return `Your regular household costs and planned spending are covered that ${noun}. The extra debt payment creates this gap.`;
+    return `Your regular household costs and planned spending are covered ${thatWhere}. The extra debt payment creates this gap.`;
   }
   return `Forecast published this result without naming a stage that creates the gap.`;
 }
@@ -1519,8 +1559,12 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
   }
   const key = planningRoadAheadPeriodKey(period, granularity);
   const result = planningRoadAheadStage3Result(period);
-  const noun = planningRoadPeriodNoun(granularity);
-  const caption = `This ${noun} · from your Forecast plan`;
+  const noun = planningRoadPayPeriodIsResidual(period)
+    ? 'remainder through next payday'
+    : planningRoadPeriodNoun(granularity);
+  const caption = granularity === 'pay-period'
+    ? `${planningRoadPayPeriodIdentity(period)} · from your Forecast plan`
+    : `This ${noun} · from your Forecast plan`;
   if (!result) {
     return {
       html: `<article class="planning-road-lead planning-road-lead-unavailable planning-road-hero-card" data-road-lead="period-unavailable" data-road-lead-period="${key || ''}">
@@ -1573,7 +1617,7 @@ function planningRoadAheadTimelineHtml(traj, granularity, selectedKey) {
     const year = planningRoadAheadChipYear(period, granularity);
     const fullLabel = planningRoadAheadChipAccessibleLabel(period, granularity)
       || shortLabel || key || '';
-    return `<li class="planning-road-timeline-item${selected ? ' is-selected' : ''} planning-road-timeline-item-${phrase.cls}" data-road-timeline-period="${key || ''}" data-road-timeline-sign="${phrase.cls}">
+    return `<li class="planning-road-timeline-item${selected ? ' is-selected' : ''} planning-road-timeline-item-${phrase.cls}" data-road-timeline-period="${key || ''}" data-road-timeline-sign="${phrase.cls}"${granularity === 'pay-period' && period.windowKind ? ` data-road-pay-period-window-kind="${period.windowKind}"` : ''}>
       <button type="button" class="planning-road-timeline-btn" data-road-select-period="${key || ''}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${fullLabel} — ${phrase.label}">
         <span class="planning-road-timeline-label">${shortLabel}</span>
         <span class="planning-road-timeline-year">${year}</span>
@@ -1609,7 +1653,11 @@ function planningRoadAheadSelectedHeaderHtml(traj, granularity, selectedKey) {
   if (!period) return '';
   const label = planningRoadAheadPeriodDisplayLabel(period, granularity);
   const picker = planningRoadAheadSegmentedHtml(granularity);
-  return `<header class="planning-road-selected-head">
+  const kind = granularity === 'pay-period' ? (period.windowKind || '') : '';
+  const identity = granularity === 'pay-period' ? planningRoadPayPeriodIdentity(period) : '';
+  const kindAttr = kind ? ` data-road-pay-period-window-kind="${kind}"` : '';
+  const identityAttr = identity ? ` data-road-pay-period-display-identity="${identity}"` : '';
+  return `<header class="planning-road-selected-head"${kindAttr}${identityAttr}>
       <h2 class="planning-road-selected-title" id="planning-road-period-title" tabindex="-1">${label}</h2>
       ${picker}
     </header>`;
@@ -1650,8 +1698,12 @@ function planningRoadAheadSelectedHtml(traj, granularity, selectedKey, asOf) {
   const period = periods.find(p => planningRoadAheadPeriodKey(p, granularity) === selectedKey)
     || periods[0];
   const key = period ? planningRoadAheadPeriodKey(period, granularity) : '';
+  const identityNote = granularity === 'pay-period'
+    ? planningRoadAheadPayPeriodIdentityNoteHtml(period)
+    : '';
   return `<article class="planning-road-selected" data-road-selected-period="${key || ''}">
     ${header}
+    ${identityNote}
     ${stages}
     ${breakdown}
   </article>`;
@@ -1661,7 +1713,16 @@ function planningRoadAheadSelectedHtml(traj, granularity, selectedKey, asOf) {
  * The copy says so on the surface where the split appears. */
 function planningRoadAheadViewNoteHtml(granularity) {
   if (granularity !== 'pay-period') return '';
-  return `<p class="planning-road-view-note" data-road-view-note="pay-period"><b>Same projection, split by your pay dates.</b> Each block runs from one pay day to the next, so a month's result is spread across the pay periods that fall inside it.</p>`;
+  return `<p class="planning-road-view-note" data-road-view-note="pay-period"><b>Same projection, split by your pay dates.</b> When this Forecast date is already inside a Seaspan cycle, the first block is remaining through next payday — not Budget’s This Pay Period. Later blocks run from one payday to the next.</p>`;
+}
+
+function planningRoadAheadPayPeriodIdentityNoteHtml(period) {
+  if (!planningRoadPayPeriodIsResidual(period)) return '';
+  const cycle = period.cycleRangeLabel || '';
+  const cycleBit = cycle
+    ? `Remainder of the Seaspan cycle ${cycle}. `
+    : 'Remainder of the current Seaspan cycle. ';
+  return `<p class="planning-road-view-note" data-road-pay-period-identity="as-of-residual">${cycleBit}Not Budget’s This Pay Period. An unpaid bill dated earlier in this Seaspan cycle can still appear here if Forecast is still carrying it. That does not make these dates the full This Pay Period.</p>`;
 }
 
 function planningRoadAheadHtml(traj, granularity, selectedKey, asOf) {
@@ -1724,12 +1785,14 @@ function planningTrajectoryFundingHtml(traj, granularity, selectedKey) {
     }
     const selected = payPeriods.find(p => (p.payday || p.id) === selectedKey) || payPeriods[0];
     const selectedId = selected.payday || selected.id;
-    const lede = 'Compare Normal life, After planned spending, and After debt strategy for one Seaspan pay period — the same three stages Forecast publishes for this opening. Pick a pay period below.';
+    const lede = 'Compare Normal life, After planned spending, and After debt strategy for one Seaspan pay period — the same three stages Forecast publishes for this opening. A first block that starts after payday is remaining through next payday, not Budget’s This Pay Period. Pick a pay period below.';
     const picker = `${granularitySwitch}<label class="planning-trajectory-funding-picker"><span class="planning-trajectory-funding-picker-label">Trajectory pay period</span> `
       + `<select class="planning-trajectory-funding-select" data-trajectory-funding-picker="select" aria-label="Trajectory pay period for three-stage funding">`
       + payPeriods.map(p => {
         const id = p.payday || p.id;
-        const label = p.rangeLabel ? `${id} · ${p.rangeLabel}` : id;
+        const identity = planningRoadPayPeriodIdentity(p);
+        const range = p.rangeLabel || '';
+        const label = range ? `${identity} · ${range}` : `${identity} · ${id}`;
         return `<option value="${id}"${id === selectedId ? ' selected' : ''}>${label}</option>`;
       }).join('')
       + '</select></label>';

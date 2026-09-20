@@ -81,6 +81,16 @@ Sep 15 Amanda belong to the next period (Sep 11–Sep 24). January 2027
 payday period Jan 1–14 contains Seaspan Jan 1 and neither Jan 15
 paycheck; Jan 15–28 contains Seaspan Jan 15 and Amanda Jan 15.
 
+Forecast Road Ahead pay-period chips are a view of that same Seaspan
+calendar, clipped to the Forecast date the way months are clipped.
+When that Forecast date is already inside a cycle, the first chip is
+**remaining through next payday** — not Budget's full This Pay Period.
+Walk dates stay the remaining window. The full cycle dates stay This
+Pay Period on Budget. An unpaid bill dated earlier in the cycle can
+still appear on the remaining window if Forecast is still carrying it
+at that Forecast date; that does not make the remaining dates the
+full This Pay Period.
+
 Owner-stated 2026-08-29:
 
 - There is **no other income** besides those known salaries and seasonal
