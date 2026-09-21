@@ -244,6 +244,14 @@ Current evidenced active services:
   payment-mess total. Supersedes the same-day **$265.65** PDF reading.
   `plan.bills` `bell-sep15-2026`. Same Travel Visa path. Not added on
   top of the standing $160 that month.
+- **Bell Mobility — Travel Visa settlement identity** — a mapped Travel
+  Visa debit whose payee is Bell Mobility / BELLMOBILITY settles
+  `bell-sep15-2026` or standing `bell` by payee + Travel Visa + debit +
+  early-or-covers-due. Amount is not identity. Matching confirmed-settled
+  evidence creates `representedActuals` and marks PAID; without matching
+  evidence the bill stays still-due. A BILLS / WEEKLY debit is not this
+  identity. This does not close Q18's historical pending $250 / residual
+  cash question.
 - **Main Bell Mobility (historical June 2026 reconstruction)** — June
   2026 normal recurring baseline **$104.20/month** (card-paid). Includes
   the $15 watch line. Retired as the forward baseline.
