@@ -1,13 +1,15 @@
 'use strict';
-/* Current Balance is posted household chequing cash only (L-002 / L-006).
+/* Current Balance is posted planning-hub cash only (L-002 / L-006).
  *
- * Independent reconstruction sums Chequing A / BILLS ACCOUNT and Chequing B
- * / WEEKLY SPENDING from the plan rows. Savings, TENNIS INCOME, overdraft,
- * and every other cash-type account stay out. Forecast.postedHouseholdChequingCash
- * is not the specification.
+ * Independent reconstruction reads Chequing A / BILLS ACCOUNT from the
+ * plan rows. Chequing B / WEEKLY SPENDING, Savings, TENNIS INCOME,
+ * overdraft, and every other cash-type account stay out.
+ * Forecast.postedHouseholdChequingCash remains the walk / spendable
+ * opening pool (A+B) and is not this headline.
  *
  * `node test/test-current-balance-chequing-cash.js`
  */
+
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -102,6 +104,14 @@ function cashPlan(overrides) {
   }, overrides || {});
 }
 
+function independentHub(plan) {
+  const rows = ((plan.startingCash && plan.startingCash.breakdown) || []);
+  const matches = rows.filter(item => item && item.id === 'chequing-a');
+  if (matches.length !== 1) return null;
+  const value = Number(matches[0].value);
+  return Number.isFinite(value) ? roundCent(value) : null;
+}
+
 function independentChequing(plan) {
   const rows = ((plan.startingCash && plan.startingCash.breakdown) || []);
   return roundCent(rows.reduce((sum, item) => {
@@ -109,6 +119,7 @@ function independentChequing(plan) {
     return sum + (Number(item.value) || 0);
   }, 0));
 }
+
 
 function independentSpendable(plan) {
   const rows = ((plan.startingCash && plan.startingCash.breakdown) || []);
@@ -144,50 +155,53 @@ const livePlanSrc = read('scripts/live-plan.js');
 const planSrc = read('public/plan.js');
 const forecastSrc = read('public/forecast.js');
 
-console.log('=== 1. Household chequing is included in Current Balance ===');
+console.log('=== 1. Planning hub is Current Balance ===');
 {
   const plan = cashPlan();
-  const expected = independentChequing(plan);
-  ok(near(expected, INDEPENDENT_CHEQUING),
-    'independent Chequing A + Chequing B is $939.04', String(expected));
+  const expected = independentHub(plan);
+  ok(near(expected, CHEQUING_A),
+    'independent hub cash is Chequing A / BILLS ACCOUNT', String(expected));
   const pub = publishedCurrentBalance(plan);
   ok(near(pub.alloc, expected) && near(pub.view, expected),
-    'published Current Balance independently equals household chequing cash',
+    'published Current Balance independently equals hub cash',
     `${pub.alloc} / ${pub.view} vs ${expected}`);
   ok(pub.period && near(pub.period.liveCurrentBalance, expected),
-    'active calendar period live Current Balance is the same chequing cash');
+    'active calendar period live Current Balance is the same hub cash');
+  ok(!near(pub.alloc, independentChequing(plan)),
+    'Current Balance is not pooled Chequing A + Chequing B');
 }
+
 
 console.log('\n=== 2. Savings is excluded from Current Balance ===');
 {
   const plan = cashPlan();
-  const expected = independentChequing(plan);
+  const expected = independentHub(plan);
   const spendable = independentSpendable(plan);
   const pub = publishedCurrentBalance(plan);
   ok(near(spendable, INDEPENDENT_SPENDABLE) && !near(spendable, expected),
     'independent breakdown still includes savings and is not Current Balance');
-  ok(near(F.startingCashAmount(plan), expected),
-    'Forecast spendable opening (startingCashAmount) is chequing-only');
-  ok(near(F.startingCashAmount(plan), expected) && !near(F.startingCashAmount(plan), spendable),
+  ok(near(F.startingCashAmount(plan), independentChequing(plan)),
+    'Forecast spendable opening (startingCashAmount) is still chequing-only A+B');
+  ok(near(F.startingCashAmount(plan), independentChequing(plan)) && !near(F.startingCashAmount(plan), spendable),
     'designated savings is not ordinary Forecast spendable opening');
   ok(near(pub.alloc, expected) && !near(pub.alloc, spendable),
     'Current Balance is not chequing + savings');
   const html = composer.liveCurrentBalanceHtml(pub.advice.defaultView, null, pub.advice.paydayAllocation);
   ok(html.includes(composer.money2(expected)) && !html.includes(composer.money2(spendable)),
-    'homepage Current Balance prints chequing cash, not the savings-inclusive pool');
+    'homepage Current Balance prints hub cash, not the savings-inclusive pool');
 }
 
 console.log('\n=== 3. TENNIS INCOME is excluded from Current Balance ===');
 {
   const plan = cashPlan();
-  const expected = independentChequing(plan);
+  const expected = independentHub(plan);
   const withTennis = roundCent(expected + TENNIS);
   const pub = publishedCurrentBalance(plan);
   ok(!near(pub.alloc, withTennis) && near(pub.alloc, expected),
     'TENNIS INCOME is not added into Current Balance');
   const html = composer.liveCurrentBalanceHtml(pub.advice.defaultView, null, pub.advice.paydayAllocation);
   ok(!html.includes(composer.money2(withTennis)),
-    'homepage Current Balance does not print chequing + tennis');
+    'homepage Current Balance does not print hub + tennis');
 }
 
 console.log('\n=== 4. Increasing savings alone does not change Current Balance ===');
@@ -196,7 +210,7 @@ console.log('\n=== 4. Increasing savings alone does not change Current Balance =
   const before = publishedCurrentBalance(base);
   const bumped = setCash(base, 'savings', SAVINGS + 100);
   const after = publishedCurrentBalance(bumped);
-  const expected = independentChequing(bumped);
+  const expected = independentHub(bumped);
   ok(near(independentSpendable(bumped), independentSpendable(base) + 100),
     'savings +$100 raises the breakdown total by $100');
   ok(near(F.startingCashAmount(bumped), F.startingCashAmount(base)),
@@ -213,20 +227,20 @@ console.log('\n=== 5. Increasing TENNIS INCOME alone does not change Current Bal
   const before = publishedCurrentBalance(base);
   const bumped = setCash(base, 'amanda-debt-payments', TENNIS + 250);
   const after = publishedCurrentBalance(bumped);
-  ok(near(independentChequing(bumped), independentChequing(base)),
-    'independent chequing cash ignores the tennis-account bump');
+  ok(near(independentHub(bumped), independentHub(base)),
+    'independent hub cash ignores the tennis-account bump');
   ok(near(after.alloc, before.alloc) && near(after.view, before.view),
     'Current Balance is unchanged when only TENNIS INCOME moves');
 }
 
-console.log('\n=== 6. Increasing household chequing/BILLS changes Current Balance by the same amount ===');
+console.log('\n=== 6. Increasing BILLS changes Current Balance; Weekly does not ===');
 {
   const base = cashPlan();
   const before = publishedCurrentBalance(base);
   const billsBumped = setCash(base, 'chequing-a', CHEQUING_A + 85.15);
   const billsAfter = publishedCurrentBalance(billsBumped);
-  const billsExpected = independentChequing(billsBumped);
-  ok(near(billsExpected, roundCent(INDEPENDENT_CHEQUING + 85.15)),
+  const billsExpected = independentHub(billsBumped);
+  ok(near(billsExpected, roundCent(CHEQUING_A + 85.15)),
     'independent BILLS bump is +$85.15 on Chequing A');
   ok(near(billsAfter.alloc, roundCent(before.alloc + 85.15))
       && near(billsAfter.view, roundCent(before.view + 85.15))
@@ -235,9 +249,10 @@ console.log('\n=== 6. Increasing household chequing/BILLS changes Current Balanc
 
   const weeklyBumped = setCash(base, 'chequing-b', CHEQUING_B + 12.40);
   const weeklyAfter = publishedCurrentBalance(weeklyBumped);
-  ok(near(weeklyAfter.alloc, roundCent(before.alloc + 12.40))
-      && near(weeklyAfter.alloc, independentChequing(weeklyBumped)),
-    'Current Balance also follows Chequing B / WEEKLY SPENDING by the same amount');
+  ok(near(weeklyAfter.alloc, before.alloc)
+      && near(weeklyAfter.alloc, independentHub(weeklyBumped))
+      && !near(weeklyAfter.alloc, independentChequing(weeklyBumped)),
+    'Current Balance does not follow Chequing B / WEEKLY SPENDING');
 }
 
 console.log('\n=== 7. Forecast treatment of Amanda\'s future salary remains unchanged ===');
@@ -251,9 +266,10 @@ console.log('\n=== 7. Forecast treatment of Amanda\'s future salary remains unch
   ok(eom.length === 1 && eom[0].date === '2026-09-30' && near(eom[0].amount, AMANDA_EOM),
     'Amanda month-end Tennis BC salary remains Forecast income on 2026-09-30');
   const pub = publishedCurrentBalance(plan, '2026-09-01');
-  ok(near(pub.alloc, independentChequing(plan)),
+  ok(near(pub.alloc, independentHub(plan)),
     'future salary does not enter Current Balance before it posts into BILLS');
 }
+
 
 console.log('\n=== 8. Account freshness / Lunch Money timestamp behavior remains unchanged ===');
 {
@@ -308,7 +324,7 @@ console.log('\n=== 9. Current Balance is not every Lunch Money cash-type account
       ],
     },
   });
-  const expected = independentChequing(plan);
+  const expected = independentHub(plan);
   const pub = publishedCurrentBalance(plan);
   const everyPositive = roundCent(CHEQUING_A + CHEQUING_B + SAVINGS + 205.92 + TENNIS + 74.20);
   ok(near(pub.alloc, expected) && !near(pub.alloc, everyPositive),
@@ -317,11 +333,11 @@ console.log('\n=== 9. Current Balance is not every Lunch Money cash-type account
 
 console.log('\n=== 10. Authority stays in Forecast; pages do not subtract savings ===');
 {
-  ok(/function postedHouseholdChequingCash\(plan\)/.test(forecastSrc),
-    'Forecast owns posted household chequing cash');
-  ok(/liveCurrentBalance: roundCent\(liveCurrentBalance\)/.test(forecastSrc)
-      && /postedHouseholdChequingCash\(plan\)/.test(forecastSrc),
-    'paydayAllocation publishes that chequing cash as liveCurrentBalance');
+  ok(/function postedBillsAccountCash\(plan\)/.test(forecastSrc),
+    'Forecast owns posted planning-hub cash');
+  ok(/liveCurrentBalance: liveCurrentBalance != null \? roundCent\(liveCurrentBalance\) : null/.test(forecastSrc)
+      && /postedBillsAccountCash\(plan\)/.test(forecastSrc),
+    'paydayAllocation publishes hub cash as liveCurrentBalance and fails closed');
   const htmlFn = grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml');
   ok(/view\.liveCurrentBalance|alloc\.liveCurrentBalance/.test(htmlFn)
       && !/startingCashAmount/.test(htmlFn)
@@ -333,36 +349,36 @@ console.log('\n=== 10. Authority stays in Forecast; pages do not subtract saving
     'household-view does not compute Current Balance');
 }
 
-console.log('\n=== 11. Positive and negative Chequing B keep one Forecast Current Balance ===');
+console.log('\n=== 11. Weekly surplus or overdraft does not change hub Current Balance ===');
 {
   const surplusPlan = setCash(cashPlan(), 'chequing-b', 120.40);
-  const surplusExpected = independentChequing(surplusPlan);
+  const surplusExpected = independentHub(surplusPlan);
   const surplusPub = publishedCurrentBalance(surplusPlan);
-  ok(near(surplusExpected, roundCent(CHEQUING_A + 120.40)),
-    'independent surplus reconstruction is Chequing A + positive B');
+  ok(near(surplusExpected, CHEQUING_A),
+    'independent hub reconstruction ignores positive Weekly');
   ok(near(surplusPub.alloc, surplusExpected) && near(surplusPub.view, surplusExpected),
-    'Forecast Current Balance equals independent A+B when Chequing B is positive');
+    'Forecast Current Balance stays hub cash when Chequing B is positive');
   const surplusHtml = composer.liveCurrentBalanceHtml(
     surplusPub.advice.defaultView, null, surplusPub.advice.paydayAllocation
   );
   ok(surplusHtml.includes(composer.money2(surplusExpected)),
-    'Budget Current Balance prints that Forecast surplus figure');
+    'Budget Current Balance prints the hub figure');
 
   const overdraftPlan = setCash(cashPlan(), 'chequing-b', -75.10);
-  const overdraftExpected = independentChequing(overdraftPlan);
-  const excludingOverdraft = roundCent(CHEQUING_A + Math.max(0, -75.10));
+  const overdraftExpected = independentHub(overdraftPlan);
+  const pooledOverdraft = independentChequing(overdraftPlan);
   const overdraftPub = publishedCurrentBalance(overdraftPlan);
-  ok(near(overdraftExpected, roundCent(CHEQUING_A - 75.10))
-      && !near(overdraftExpected, excludingOverdraft),
-    'independent overdraft reconstruction is A+B, not A + max(0, B)');
+  ok(near(overdraftExpected, CHEQUING_A)
+      && !near(overdraftExpected, pooledOverdraft),
+    'independent hub reconstruction ignores a negative Weekly register');
   ok(near(overdraftPub.alloc, overdraftExpected) && near(overdraftPub.view, overdraftExpected),
-    'Forecast Current Balance includes a negative Chequing B register');
+    'Forecast Current Balance does not include a negative Chequing B register');
   const overdraftHtml = composer.liveCurrentBalanceHtml(
     overdraftPub.advice.defaultView, null, overdraftPub.advice.paydayAllocation
   );
   ok(overdraftHtml.includes(composer.money2(overdraftExpected))
-      && !overdraftHtml.includes(composer.money2(excludingOverdraft)),
-    'Budget Current Balance reprints Forecast A+B and does not print A-only');
+      && !overdraftHtml.includes(composer.money2(pooledOverdraft)),
+    'Budget Current Balance reprints hub cash and does not print pooled A+B');
 }
 
 if (failures) {

@@ -262,9 +262,10 @@ console.log('\n=== 4. Bills and Household Budget stay downstream ===');
   const afterPayday = roundCent(DALE + AMANDA);
   ok(near(active.remainingBills, BILL),
     'the Netflix bill is remaining in This Pay Period');
-  ok(near(active.afterBills, roundCent(active.opening + active.incomeAdded - BILL))
-      && near(active.afterRemainingBills, active.afterBills),
-    'Balance after bills subtracts the assigned period bill after payday');
+  ok(near(active.afterBills, roundCent(active.incomeTotal - BILL))
+      && near(active.afterRemainingBills, active.afterBills)
+      && !near(active.afterBills, roundCent(active.opening + active.incomeAdded - BILL)),
+    'Balance after bills is displayed income minus assigned period bills, not opening plus income minus bills');
   ok(active.budgetHold != null && active.budgetHold > 0,
     'Household Budget still publishes a hold');
   ok(near(active.afterHouseholdBudget, roundCent(active.afterBills - active.budgetHold)),
@@ -314,9 +315,14 @@ console.log('\n=== 5. Household-facing label and render-only page ===');
   ok(!/Current balance as of/.test(nextHtml)
       && /Projected opening\. Not today's balance/.test(nextHtml),
     'next-period opening is not labelled as a provider-observed current balance');
+  const cashLeftover = roundCent(
+    (Number(active.opening) || 0) + (Number(active.incomeAdded) || 0)
+    - (Number(active.periodBillLoad) || 0) - (Number(active.budgetHold) || 0));
   ok(next && next.projected === true && next.role === 'future'
-      && near(next.opening, active.projectedEnding),
-    'next-period future opening remains the previous projected ending');
+      && near(next.opening, cashLeftover)
+      && (active.projectedEnding == null || !near(next.opening, active.projectedEnding)
+        || near(cashLeftover, active.projectedEnding)),
+    'next-period future opening remains the previous cash leftover, not Balance After Deductions');
 }
 
 console.log('\n=== 6. Fail-closed date and dated opening stay honest ===');

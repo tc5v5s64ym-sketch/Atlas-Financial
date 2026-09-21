@@ -291,22 +291,22 @@ console.log('\n=== 5. Snapshot leftover stays distinct from posted salary ===');
     'posted salary remains a distinct income row');
   ok(!near(active.opening, roundCent(CARRY + SALARY)),
     'opening is not leftover plus salary');
-  ok(near(advice.paydayAllocation.liveCurrentBalance, roundCent(CARRY + SALARY)),
-    'live Current Balance can hold leftover plus posted salary without rewriting opening');
+  ok(near(advice.paydayAllocation.liveCurrentBalance, roundCent(CARRY + SALARY))
+      && near(advice.defaultView.liveCurrentBalance, roundCent(CARRY + SALARY)),
+    'live Current Balance is hub chequing-a leftover plus posted salary, not a rewritten opening');
 }
 
-console.log('\n=== 6. Plan prints Forecast opening; it does not add leftover as income ===');
+console.log('\n=== 6. Active household print hides Opening; it does not add leftover as income ===');
 {
   const plan = rolloverPlan(SEP11, CARRY);
   const advice = F.recommend(plan, SEP11, { targetBuffer: 500, debts });
   const active = period(advice.defaultView, 'this-pay-period');
   const composer = loadComposer();
   const html = composer.calendarWaterfallHtml(active, null, advice.paydayAllocation);
-  ok(/data-operating-prompt="Opening balance"/.test(html)
-      && html.includes(composer.money2(CARRY)),
-    'active period prints Forecast opening as Opening balance');
-  ok(/Carried forward, not income/.test(html),
-    'opening note says carried forward is not income');
+  ok(!/data-operating-prompt="Opening balance"/.test(html),
+    'active waterfall hides Opening balance');
+  ok(!/Carried forward, not income/.test(html),
+    'carried-forward note is not required on the active household print');
   ok(/Dale salary/.test(html) && html.includes(composer.money2(SALARY))
       && !/Payroll — Seaspan/.test(html),
     'salary prints in the income block from Forecast');

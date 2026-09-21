@@ -202,27 +202,32 @@ function projectCurrentPeriodBills(items) {
   return out;
 }
 
-// Current-pay-period Predicted Ending Balance. Copies the active calendar
-// waterfall leftover. Talk leftover reprints this Forecast identity; it
-// does not reconstruct one from paydayAllocation.runningLeftover.
+// Current-pay-period Balance After Deductions. Copies the active calendar
+// waterfall remainder (income − bills − Household Budget). Talk leftover
+// reprints this Forecast identity; it does not reconstruct one from
+// paydayAllocation.runningLeftover. Packet path stays
+// forecast.predictedEndingBalance for Talk allowlist continuity.
 function projectPredictedEndingBalance(advice) {
   const periods = advice && advice.defaultView && advice.defaultView.calendarPeriods;
   const active = Array.isArray(periods)
     ? periods.find(row => row && row.role === 'active')
     : null;
-  const amount = active && active.afterHouseholdBudget;
+  const amount = active && (active.balanceAfterDeductions != null
+    ? active.balanceAfterDeductions
+    : active.afterHouseholdBudget);
   if (amount == null || !Number.isFinite(Number(amount))) {
-    return unavailable('predicted-ending-balance-unavailable');
+    return unavailable('balance-after-deductions-unavailable');
   }
   return {
     status: 'ok',
     source: 'Forecast.calendarPeriodWaterfalls',
-    identity: 'predicted-ending-balance',
+    identity: 'balance-after-deductions',
     amount: money(amount),
     periodStart: active.start || null,
     periodEnd: active.end || null,
   };
 }
+
 
 // Smallest operating-picture projection: copy Forecast leftover stages plus
 // the leftover-consuming allocated amounts Talk reprints. Talk does not

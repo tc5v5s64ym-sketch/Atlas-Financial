@@ -3,7 +3,8 @@
  * routable Bills / Subscriptions / Credit / Forecast / Plan spend pages on the incumbent
  * header (content proved in test-bills-page.js, test-subscriptions-page.js,
  * test-credit-page.js, test-planning-page.js and test-plan-spend-page.js), and a Plan waterfall that
- * ends at Predicted Ending Balance. Talk remains routable off the dock.
+ * ends at Balance After Deductions. Talk remains routable off the dock.
+
  *
  * Presentation only. Forecast still computes the extra-debt / big-purchase
  * chain and the projected ending; this suite proves those fields survive and
@@ -56,7 +57,8 @@ const KEPT_ROWS = [
   'Bills',
   'Balance after bills',
   'Household budget',
-  'Predicted Ending Balance',
+  'Balance After Deductions',
+
 ];
 
 function siteNav(html) {
@@ -275,7 +277,7 @@ console.log('\n=== 3. Modellers, Deep Dive, Records leave the household nav but 
   }
 }
 
-console.log('\n=== 4 + 5. Plan waterfall keeps Predicted Ending Balance and stops there ===');
+console.log('\n=== 4 + 5. Plan waterfall keeps Balance After Deductions and stops there ===');
 {
   const advice = currentAdvice();
   const composer = loadComposer();
@@ -295,19 +297,16 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Predicted Ending Balance and stop
     ok(at > previous, `${prompt} is printed, in order`);
     previous = at;
   }
-  ok(/data-operating-question="07"[^>]*data-operating-prompt="Predicted Ending Balance"/.test(html),
-    'Q07 is Predicted Ending Balance');
+  ok(/data-operating-question="07"[^>]*data-operating-prompt="Balance After Deductions"/.test(html),
+    'Q07 is Balance After Deductions');
   ok(html.includes(composer.money2(active.afterHouseholdBudget)),
     'Q07 prints the Forecast afterHouseholdBudget figure');
   const questions = [...html.matchAll(/data-operating-question="(\d+)"/g)].map(m => m[1]);
-  const expectedQs = active && active.openingKnown
-    ? ['01', '02', '04', '05', '06', '07']
-    : ['02', '04', '05', '06', '07'];
+  const expectedQs = ['02', '04', '05', '06', '07'];
   ok(questions.join(',') === expectedQs.join(',') && !questions.includes('03'),
-    active && active.openingKnown
-      ? 'the active snapshot prints known opening as Q01 then 02 and 04–07'
-      : 'the active snapshot has five questions, numbered 02 and 04–07',
+    'the active snapshot has five questions, numbered 02 and 04–07',
     questions.join(','));
+
   for (const prompt of REMOVED_ROWS) {
     ok(!html.includes(prompt), `${prompt} is not on the Plan`);
   }
@@ -327,12 +326,12 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Predicted Ending Balance and stop
   const futureSection = (both.match(/data-calendar-role="future"[\s\S]*?<\/section>/) || [''])[0];
   const activeQs = activeSection.match(/data-operating-question=/g) || [];
   const futureQs = futureSection.match(/data-operating-question=/g) || [];
-  const expectedActiveCount = active && active.openingKnown ? 6 : 5;
+  const expectedActiveCount = 5;
   ok(sections === (advice.defaultView.calendarPeriods || []).length,
     'Show both renders every calendar period',
     `${sections} vs ${(advice.defaultView.calendarPeriods || []).length}`);
   ok(activeQs.length === expectedActiveCount,
-    'Show both active snapshot question count follows known opening',
+    'Show both active snapshot question count is five without opening',
     String(activeQs.length));
   ok(futureQs.length === 6,
     'Show both future snapshot includes opening as the sixth question',
@@ -341,10 +340,11 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Predicted Ending Balance and stop
     'Show both still prints live Current Balance outside the snapshots');
   ok(!/data-operating-prompt="Current Balance"/.test(activeSection),
     'active snapshot does not print live Current Balance as Q01');
-  ok(!active.openingKnown || /data-operating-prompt="Opening balance"/.test(activeSection),
-    'active snapshot prints Opening balance when that opening is known');
+  ok(!/data-operating-prompt="Opening balance"/.test(activeSection),
+    'active snapshot does not print payday-boundary opening');
   ok(/data-operating-prompt="Opening balance"/.test(futureSection),
     'future snapshot prints Opening balance');
+
   ok(!REMOVED_ROWS.some(prompt => both.includes(prompt)),
     'Show both still omits extra-debt and ending rows');
   const planSrc = read('public/plan.js');
@@ -360,7 +360,8 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Predicted Ending Balance and stop
       && !/stays unfunded/.test(html)
       && !/data-refresh-attention/.test(html)
       && !/class="operating-limit warn"/.test(html),
-    'the default Plan does not render the advisory block after Predicted Ending Balance');
+    'the default Plan does not render the advisory block after Balance After Deductions');
+
   ok(!/There is no feasible weekly cap/.test(composer.calendarWaterfallHtml(active, data.liveOverlay, advice.paydayAllocation)),
     'calendarWaterfallHtml itself emits no weekly-cap advisory');
   const infeasibleAdvice = JSON.parse(JSON.stringify(advice));
@@ -382,7 +383,8 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Predicted Ending Balance and stop
   const infeasibleHtml = composer.operatingSurfaceHtml({
     advice: infeasibleAdvice, weekly: 0, recommended: 0,
   });
-  ok(/data-operating-prompt="Predicted Ending Balance"/.test(infeasibleHtml)
+  ok(/data-operating-prompt="Balance After Deductions"/.test(infeasibleHtml)
+
       && !/data-operating-warnings/.test(infeasibleHtml)
       && !/There is no feasible weekly cap/.test(infeasibleHtml)
       && !/Synthetic protected cost/.test(infeasibleHtml)
@@ -413,26 +415,34 @@ console.log('\n=== 6. Forecast still computes the chain past the household-budge
   ok(active && active.extraDebt && typeof active.extraDebt.allocated === 'number'
       && Array.isArray(active.bigPurchases) && active.firstCard,
     'the active period still carries extraDebt, firstCard, and bigPurchases');
-  if (active.paydayBoundaryOpening === true && active.afterHouseholdBudget != null) {
+  if (active.afterHouseholdBudget != null) {
     const purchasesTaken = (active.bigPurchases || [])
       .reduce((s, r) => s + (Number(r.allocation) || 0), 0);
     const independentAfterDebt = Math.round((active.afterHouseholdBudget - active.extraDebt.allocated) * 100) / 100;
     const independentEnding = Math.round((independentAfterDebt - purchasesTaken) * 100) / 100;
     ok(typeof active.afterDebtRepayment === 'number'
         && typeof active.projectedEnding === 'number',
-      'payday-boundary leftover still publishes afterDebtRepayment and projectedEnding');
+      'Balance After Deductions still publishes afterDebtRepayment and projectedEnding');
     ok(near(active.afterDebtRepayment, independentAfterDebt),
       'afterDebtRepayment = afterHouseholdBudget − extraDebt.allocated (independent arithmetic)');
     ok(near(active.projectedEnding, independentEnding),
       'projectedEnding = afterDebtRepayment − Σ big-purchase allocation (independent arithmetic)');
-    ok(next && next.openingKnown && near(next.opening, active.projectedEnding),
-      'the next pay period still opens from the unprinted projected ending');
+    const cashLeftover = active.paydayBoundaryOpening === true
+      && active.opening != null && active.incomeAdded != null
+      && active.periodBillLoad != null && active.budgetHold != null
+      ? Math.round((Number(active.opening) + Number(active.incomeAdded)
+        - Number(active.periodBillLoad) - Number(active.budgetHold)) * 100) / 100
+      : null;
+    if (cashLeftover != null) {
+      ok(next && next.openingKnown && near(next.opening, cashLeftover),
+        'the next pay period opens from cash leftover, not from Balance After Deductions');
+    } else {
+      ok(!next || next.opening == null || next.openingSource !== 'carry-forward'
+          || !near(next.opening, active.projectedEnding),
+        'next period does not inherit Balance After Deductions as its opening');
+    }
   } else {
-    ok(active.afterHouseholdBudget == null && active.afterDebtRepayment == null
-        && active.projectedEnding == null,
-      'without a payday-boundary opening the leftover chain past household budget is withheld');
-    ok(!next || next.opening == null || next.openingSource !== 'carry-forward',
-      'next period does not inherit a withheld PEB leftover as its opening');
+    ok(false, 'Balance After Deductions publishes without a payday-boundary opening');
   }
   ok(alloc && alloc.extraDebt && typeof alloc.extraDebt.allocated === 'number'
       && alloc.runningLeftover && typeof alloc.runningLeftover.afterDebtRepayment === 'number'

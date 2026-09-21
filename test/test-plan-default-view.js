@@ -294,25 +294,26 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     || advice.defaultView.calendarPeriods[0];
   const prompts = [
     'Current Balance',
-    ...(active && active.openingKnown ? ['Opening balance'] : []),
     'Income',
     'Bills',
     'Balance after bills',
     'Household budget',
-    'Predicted Ending Balance',
+    'Balance After Deductions',
   ];
+
   let previous = -1;
   for (const prompt of prompts) {
     const at = glance.indexOf(prompt);
     ok(at > previous, `${prompt} appears on the default view in order`);
     previous = at;
   }
-  const snapshotQs = active && active.openingKnown ? 6 : 5;
+  const snapshotQs = 5;
   ok(/data-live-current-balance/.test(html)
       && (html.match(/data-operating-question=/g) || []).length === snapshotQs
       && !/data-operating-prompt="Current Balance"/.test(html)
-      && (!active.openingKnown || /data-operating-prompt="Opening balance"/.test(html)),
+      && !/data-operating-prompt="Opening balance"/.test(html),
     'the default surface has live Current Balance plus the payday snapshot questions');
+
   const pickerAt = html.indexOf('data-calendar-period-picker');
   const liveAt = html.indexOf('data-live-current-balance');
   ok(pickerAt >= 0 && liveAt > pickerAt,
@@ -324,7 +325,8 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
       && paydayAt < html.indexOf('data-operating-prompt="Bills"'),
     'Payday balance closing total sits under income lines, not above income');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(html),
-    'the default surface stops at Predicted Ending Balance');
+    'the default surface stops at Balance After Deductions');
+
   ok(/data-live-current-balance/.test(html) && /Current Balance/.test(glance)
       && !/leftover cash/i.test(glance)
       && !/current cash flow/i.test(glance),

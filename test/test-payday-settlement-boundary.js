@@ -106,9 +106,10 @@ ok(near(unverified.incomeAdded, PAYROLL + PAST_SALARY + FUTURE_SALARY)
     && near(unverified.available, unverified.incomeTotal),
   'Payday balance is represented $2,000 + unproven $700 + future $800; PEB incomeAdded still includes the unproven period salary; opening cash is not added');
 ok(near(unverified.afterBills, roundCent(
-      (Number(unverified.opening) || 0) + (Number(unverified.incomeAdded) || 0) - LOAD))
-    && near(unverified.afterHouseholdBudget, roundCent(unverified.afterBills - BUDGET)),
-  'after bills and after budget chain from payday opening + incomeAdded');
+      (Number(unverified.incomeTotal) || 0) - LOAD))
+    && near(unverified.afterHouseholdBudget, roundCent(unverified.afterBills - BUDGET))
+    && near(unverified.afterHouseholdBudget, PROVEN_AFTER_BUDGET),
+  'after bills and after budget are incomeTotal − periodBillLoad − hold');
 const future = income(unverified, 'future-salary');
 ok(future && future.status === 'arriving' && future.settlement === 'upcoming'
     && future.alreadyInCash === false && near(future.remaining, FUTURE_SALARY),
@@ -146,9 +147,10 @@ ok(near(represented.paidBills, LOAD) && near(represented.remainingBills, 0)
   'all bills paid: disclosure changes, the frozen $100 bill load remains once');
 ok(near(represented.available, PROVEN_AVAILABLE)
     && near(represented.afterHouseholdBudget, roundCent(
-      (Number(represented.opening) || 0) + (Number(represented.incomeAdded) || 0)
-      - represented.periodBillLoad - BUDGET)),
-  'salary proof changes settlement disclosure; Payday balance already included the $700');
+      (Number(represented.incomeTotal) || 0)
+      - represented.periodBillLoad - BUDGET))
+    && near(represented.afterHouseholdBudget, PROVEN_AFTER_BUDGET),
+  'salary proof leftover is incomeTotal − periodBillLoad − BUDGET; Payday balance already included the $700');
 
 console.log('\n=== Original dated opening remains a valid historical boundary ===');
 const historical = fixture();
@@ -198,7 +200,7 @@ ok(billsHtml.includes(`<span>Remaining bills to pay</span><span>${page.money2(LO
   'page prints independently expected remaining bills $100');
 ok(page.runningLeftoverHtml(unverified.afterHouseholdBudget).includes(
     page.money2(unverified.afterHouseholdBudget)),
-  'page prints independently expected after-budget leftover from Predicted Ending Balance');
+  'page prints independently expected leftover from Balance After Deductions');
 ok(page.calendarIncomeHtml(represented).includes('data-period-income="past-salary" data-income-status="received"')
     && page.calendarPeriodBillsHtml(represented).includes('data-period-bill="bill-a" data-bill-status="PAID"'),
   'page still prints received and PAID when exact evidence exists');

@@ -526,7 +526,7 @@ console.log('\n=== 4. Look-like intent is server-owned; leftover deixis stays #3
       && direct.paths[0] === FIELD_PATHS.currentBalance
       && direct.paths[direct.paths.length - 1] === FIELD_PATHS.afterBigPurchases
       && direct.paths[direct.paths.length - 1] !== LEFTOVER_PATH,
-    'look-like reads Forecast paydayAllocation stage paths, not Predicted Ending Balance');
+    'look-like reads Forecast paydayAllocation stage paths, not Balance After Deductions');
 
   ok(TalkSession.resolveFollowup({
     question: 'How does this payday look?',
@@ -607,9 +607,9 @@ console.log('\n=== 4. Look-like intent is server-owned; leftover deixis stays #3
     claims: staleClaims,
   }, stalePacket);
   ok(staleClaims[0] && near(staleClaims[0].value, 12.34)
-      && stalePresented.answer === 'Predicted ending balance for this pay period is $12.34.'
+      && stalePresented.answer === 'Balance after deductions for this pay period is $12.34.'
       && stalePresented.answer.indexOf('350') === -1,
-    'leftover follow-up re-reads Forecast Predicted Ending Balance, not look-like prose');
+    'leftover follow-up re-reads Forecast Balance After Deductions, not look-like prose');
 }
 
 console.log('\n=== 5. Adversarial Forecast fixtures: extra debt, future costs, zeros, unavailable ===');
@@ -798,11 +798,11 @@ async function runHttpProof() {
     const pebMoney = pebKnown ? TalkPresentation.formatCurrency(peb.amount) : null;
     ok(that.status === 200
         && (pebKnown
-          ? thatBody.answer === `Predicted ending balance for this pay period is ${pebMoney}.`
+          ? thatBody.answer === `Balance after deductions for this pay period is ${pebMoney}.`
           : (thatBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
-            || /Predicted ending balance is unavailable/.test(thatBody.answer)))
+            || /Balance after deductions is unavailable/.test(thatBody.answer)))
         && mock.captured.length === 0,
-      'look-like earns leftover deixis that reprints Forecast Predicted Ending Balance');
+      'look-like earns leftover deixis that reprints Forecast Balance After Deductions');
 
     const isolated = await askJson(base, sessionB.cookie, 'What does that leave us with?');
     const isolatedBody = await isolated.json();

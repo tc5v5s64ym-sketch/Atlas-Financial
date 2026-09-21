@@ -3,9 +3,11 @@
  *
  * Independent reconstruction:
  *   Dale + Amanda + recognized Other Income = Payday balance
- *   prior period ending carry-forward = next period opening
- * Live Current Balance is a separate fact and must not mutate the snapshot.
- * Opening cash is not a term in the allocation waterfall.
+ *   prior period cash leftover (opening + incomeAdded − bills − hold,
+ *   payday-boundary known) = next period opening
+ * Live Current Balance is posted hub chequing-a and must not mutate the
+ * snapshot. Opening cash is not a term in the allocation waterfall.
+ * Active household waterfall hides Q01 Opening.
  *
  * `node test/test-payday-snapshot-live-balance.js`
  */
@@ -78,7 +80,8 @@ const AFTER_PAYDAY = PERIOD_INCOME;
 const LIVE_LATER = 2300;
 const PERIOD1_BILL = 5600;
 const PERIOD2_INCOME = 6000;
-const PERIOD1_END = roundCent(PERIOD2_INCOME - PERIOD1_BILL);
+const PERIOD1_BAD = roundCent(PERIOD2_INCOME - PERIOD1_BILL);
+const PERIOD1_CASH_LEFTOVER = roundCent(OPENING + PERIOD2_INCOME - PERIOD1_BILL);
 const PERIOD2_AFTER = PERIOD2_INCOME;
 const BUFFER = 500;
 
@@ -89,10 +92,17 @@ const debts = [
   },
 ];
 
+function hubCash(amount) {
+  return {
+    amount,
+    breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: amount }],
+  };
+}
+
 function basePlan(overrides) {
   return Object.assign({
     defaults: { targetBuffer: BUFFER },
-    startingCash: { amount: OPENING },
+    startingCash: hubCash(OPENING),
     nextDollar: {
       policy: 'true-surplus-highest-interest',
       provenance: 'owner-stated',
@@ -152,7 +162,7 @@ console.log('=== 1. Live balance changes mid-period do not mutate the snapshot =
     'independent Dale + Amanda equals Payday balance');
 
   const laterPlan = basePlan({
-    startingCash: { amount: LIVE_LATER },
+    startingCash: hubCash(LIVE_LATER),
     opening: {
       asOf: MID,
       priorAsOf: PAYDAY,
@@ -193,7 +203,8 @@ console.log('\n=== 2. Non-zero carry-forward becomes the next opening ===');
   const p1 = period(advice.defaultView, 'this-pay-period');
   const p2 = period(advice.defaultView, 'next-pay-period');
   const independentP1After = PERIOD2_INCOME;
-  const independentP1End = roundCent(OPENING + independentP1After - PERIOD1_BILL);
+  const independentP1CashLeftover = PERIOD1_CASH_LEFTOVER;
+  const independentP1Bad = PERIOD1_BAD;
   const independentP2After = PERIOD2_INCOME;
   ok(p1 && p2 && p1.role === 'active' && p2.role === 'future',
     'Period 1 is active and Period 2 is future');
@@ -201,12 +212,13 @@ console.log('\n=== 2. Non-zero carry-forward becomes the next opening ===');
     'Period 1 Payday balance independently equals period income');
   ok(near(p1.budgetHold, 0) && near(p1.remainingBills, PERIOD1_BILL),
     'Period 1 has no household-budget hold and one known outflow');
-  ok(near(p1.projectedEnding, independentP1End)
-      && near(p1.afterBigPurchases, independentP1End),
-    'independent Period 1 ending carry-forward is $1,400');
-  ok(p2.openingKnown && near(p2.opening, independentP1End)
-      && near(p2.opening, p1.projectedEnding),
-    'Period 2 opening independently equals Period 1 ending carry-forward');
+  ok(near(p1.afterHouseholdBudget, independentP1Bad)
+      && near(p1.projectedEnding, independentP1Bad)
+      && near(p1.afterBigPurchases, independentP1Bad),
+    'independent Period 1 projectedEnding follows BAD, not cash leftover');
+  ok(p2.openingKnown && near(p2.opening, independentP1CashLeftover)
+      && !near(p2.opening, p1.projectedEnding),
+    'Period 2 opening independently equals Period 1 cash leftover, not BAD projectedEnding');
   ok(near(p2.available, independentP2After)
       && near(p2.available, p2.incomeTotal),
     'Period 2 Payday balance independently equals that period\'s income');
@@ -226,7 +238,7 @@ console.log('\n=== 3. First period uses the real opening; otherwise fail closed 
     'payday-morning opening is not the $500 buffer');
 
   const liveMid = basePlan({
-    startingCash: { amount: LIVE_LATER },
+    startingCash: hubCash(LIVE_LATER),
     opening: { asOf: MID, priorAsOf: PAYDAY, representedEvents: [] },
   });
   const closed = recommend(liveMid, MID);
@@ -262,7 +274,7 @@ console.log('\n=== 4. $500 buffer stays a safety floor and does not enter payday
       && !near(activeBuf.available, independentAfter - BUFFER),
     'payday opening and Payday balance do not subtract or substitute $500');
   const leftoverAfterBudget = roundCent(
-    (Number(activeBuf.opening) || 0) + (Number(activeBuf.incomeAdded) || 0) - 5400
+    (Number(activeBuf.incomeTotal) || independentAfter) - 5400
     - (Number(activeBuf.budgetHold) || 0));
   const independentRoom = roundCent(Math.max(0, leftoverAfterBudget - BUFFER));
   const zeroRoom = roundCent(Math.max(0, leftoverAfterBudget));
@@ -282,7 +294,7 @@ console.log('\n=== 4. $500 buffer stays a safety floor and does not enter payday
 console.log('\n=== 5. Received income is not double-counted against live cash ===');
 {
   const laterPlan = basePlan({
-    startingCash: { amount: LIVE_LATER },
+    startingCash: hubCash(LIVE_LATER),
     opening: {
       asOf: MID,
       priorAsOf: '2026-08-19',
@@ -341,12 +353,12 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
     'live Current Balance is rendered before the payday snapshot card');
   ok(/Current Balance/.test(liveBlock) && /as of September 4/.test(liveBlock)
       && liveBlock.includes(composer.money2(OPENING)),
-    'live glance prints Current Balance and the provider observation date');
+    'live glance prints Current Balance from the hub and the provider observation date');
   ok(!/data-operating-prompt="Current Balance"/.test(card)
       && !/data-operating-prompt="Current balance as of/.test(card)
-      && /data-operating-prompt="Opening balance"/.test(card)
-      && /data-operating-question="01"/.test(card),
-    'active payday card Q01 is Forecast opening, not live Current Balance');
+      && !/data-operating-prompt="Opening balance"/.test(card)
+      && !/data-operating-question="01"/.test(card),
+    'active payday card hides Q01 Opening; live Current Balance is the hub glance, not the card');
   ok(/data-operating-prompt="Income"/.test(card)
       && /Payday balance/.test(card)
       && !/data-operating-prompt="Balance after payday"/.test(card)
@@ -383,7 +395,7 @@ console.log('\n=== 7. Payday-day live refresh prefers the recorded snapshot ==='
   const sameDayLive = 2750;
   const priorOpeningDate = '2026-08-19';
   const withSnap = basePlan({
-    startingCash: { amount: sameDayLive },
+    startingCash: hubCash(sameDayLive),
     opening: {
       asOf: PAYDAY,
       priorAsOf: priorOpeningDate,
@@ -407,7 +419,7 @@ console.log('\n=== 7. Payday-day live refresh prefers the recorded snapshot ==='
     'live-advanced payday cash is not labelled payday-morning');
 
   const noSnap = basePlan({
-    startingCash: { amount: sameDayLive },
+    startingCash: hubCash(sameDayLive),
     opening: {
       asOf: PAYDAY,
       priorAsOf: priorOpeningDate,
@@ -436,7 +448,7 @@ console.log('\n=== 8. Null or empty snapshot openings fail closed ===');
   ];
   for (const [label, opening] of cases) {
     const plan = basePlan({
-      startingCash: { amount: laterLive },
+      startingCash: hubCash(laterLive),
       opening: {
         asOf: MID,
         priorAsOf: PAYDAY,
@@ -456,7 +468,7 @@ console.log('\n=== 8. Null or empty snapshot openings fail closed ===');
   }
 
   const zeroSnap = basePlan({
-    startingCash: { amount: laterLive },
+    startingCash: hubCash(laterLive),
     opening: {
       asOf: MID,
       priorAsOf: PAYDAY,
@@ -475,7 +487,7 @@ console.log('\n=== 8. Null or empty snapshot openings fail closed ===');
 console.log('\n=== 9. Income footer does not call received snapshot income still arriving ===');
 {
   const laterPlan = basePlan({
-    startingCash: { amount: LIVE_LATER },
+    startingCash: hubCash(LIVE_LATER),
     opening: {
       asOf: MID,
       priorAsOf: '2026-08-19',
@@ -502,7 +514,7 @@ console.log('\n=== 10. Live representedEvents do not drop snapshot income ===');
 {
   const sameDayLive = 2750;
   const plan = basePlan({
-    startingCash: { amount: sameDayLive },
+    startingCash: hubCash(sameDayLive),
     opening: {
       asOf: PAYDAY,
       priorAsOf: '2026-08-19',

@@ -162,27 +162,28 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     || advice.defaultView.calendarPeriods[0];
   const prompts = [
     'Current Balance',
-    ...(active && active.openingKnown ? ['Opening balance'] : []),
     'Income',
     'Bills',
     'Balance after bills',
     'Household budget',
-    'Predicted Ending Balance',
+    'Balance After Deductions',
   ];
+
   let previous = -1;
   for (const prompt of prompts) {
     const at = rendered.indexOf(prompt);
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
-  const snapshotQs = active && active.openingKnown ? 6 : 5;
+  const snapshotQs = 5;
   ok(/data-live-current-balance/.test(rendered)
       && (rendered.match(/data-operating-question=/g) || []).length === snapshotQs
       && !/data-operating-prompt="Current Balance"/.test(rendered)
-      && (!active.openingKnown || /data-operating-prompt="Opening balance"/.test(rendered)),
+      && !/data-operating-prompt="Opening balance"/.test(rendered),
     'the default surface prints live Current Balance outside the payday snapshot');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(rendered),
-    'the default surface stops at Predicted Ending Balance');
+    'the default surface stops at Balance After Deductions');
+
 }
 
 console.log('\n=== every displayed financial answer traces to incumbents ===');
@@ -199,20 +200,22 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
       if (!row || (row.id !== 'chequing-a' && row.id !== 'chequing-b')) return sum;
       return sum + Number(row.value || 0);
     }, 0);
-  const independentChequing = (plan.startingCash.breakdown || [])
+  const independentHub = (plan.startingCash.breakdown || [])
     .reduce((sum, row) => {
-      if (!row || (row.id !== 'chequing-a' && row.id !== 'chequing-b')) return sum;
+      if (!row || row.id !== 'chequing-a') return sum;
       return sum + Number(row.value || 0);
     }, 0);
+
   ok(near(advice.paydayAllocation.available, independentCash),
     'incumbent payday available reconciles to the independent chequing opening plus same-day income');
-  ok(rendered.includes(composer.money2(independentChequing)),
-    'the displayed Current Balance is independently household chequing cash');
+  ok(rendered.includes(composer.money2(independentHub)),
+    'the displayed Current Balance is independently the planning-hub cash');
   ok(/Household budget/.test(rendered) && /Current Balance/.test(rendered)
-      && /Predicted Ending Balance/.test(rendered)
+      && /Balance After Deductions/.test(rendered)
       && !/Extra credit-card repayment/.test(rendered)
       && !/Projected ending balance/.test(rendered),
-    'the default waterfall publishes the operating plan steps through Predicted Ending Balance');
+    'the default waterfall publishes the operating plan steps through Balance After Deductions');
+
   ok(!rendered.includes(`$${advice.weekly.toLocaleString('en-CA')} / week`),
     'the weekly-cap diagnostic is not on the default operating surface');
   ok(!/See how payday is reserved/.test(rendered)

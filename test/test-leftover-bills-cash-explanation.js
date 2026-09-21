@@ -1,14 +1,13 @@
 'use strict';
 /* Payday leftover vs posted BILLS ACCOUNT cash explanation.
  *
- * Leftover after household budget is Predicted Ending Balance
- * (payday opening + incomeAdded − period bill load − Household Budget
- * hold). Current Balance is posted household chequing (BILLS + WEEKLY).
- * BILLS cash is the incumbent posted chequing-a breakdown row. They are
- * three different contracts. Proven household-internal movements may describe a
+ * Leftover after household budget is Balance After Deductions
+ * (income − bills − Household Budget hold). Current Balance is posted
+ * planning-hub cash (canonical chequing-a / BILLS ACCOUNT). BILLS cash
+ * is the same hub row. Proven household-internal movements may describe a
  * BILLS-location effect without becoming leftover income, leftover
  * spending, or a BILLS cash walk. Forecast owns the packet; the page
- * reprints it.
+ * helper reprints it as a diagnostic.
  *
  * Independent reconstruction does not call the producing helper (L-002).
  * Synthetic amounts only (L-006).
@@ -223,17 +222,14 @@ function independentIncomeTotal(plan) {
 }
 
 function independentLeftover(plan, period) {
-  const opening = period && period.opening != null
-    ? Number(period.opening)
-    : independentOperatingCash(plan);
-  const income = period && period.incomeAdded != null
-    ? Number(period.incomeAdded)
+  const income = period && period.incomeTotal != null
+    ? Number(period.incomeTotal)
     : independentIncomeTotal(plan);
   const bills = period && period.periodBillLoad != null
     ? Number(period.periodBillLoad) : 0;
   const hold = period && period.budgetHold != null
     ? Number(period.budgetHold) : 0;
-  return roundCent(opening + income - bills - hold);
+  return roundCent(income - bills - hold);
 }
 
 function independentOperatingEffect(sourceAccountId, destinationAccountId) {
@@ -278,6 +274,7 @@ function forbiddenGapKeys(obj) {
   return packetKeys(obj).filter(k =>
     /gap|difference|missing|adjustment|plug|remainder/i.test(k)
     && k !== 'predicted-ending-balance'
+    && k !== 'balance-after-deductions'
     && k !== 'leftoverIdentity');
 }
 
@@ -358,23 +355,26 @@ console.log('=== A. Leftover, Current Balance, and BILLS cash are different cont
       && !near(independentBills, independentLeft)
       && !near(independentBills, SAVINGS)
       && !near(independentBills, TENNIS),
-    'independent BILLS cash is posted chequing-a, not leftover, Current Balance, savings, or Tennis');
-  ok(near(independentCash, BILLS + WEEKLY) && near(independentIncome, DALE + AMANDA),
-    'independent Current Balance is BILLS + WEEKLY; independent income is Dale + Amanda');
+    'independent BILLS cash is posted chequing-a, not leftover, A+B, savings, or Tennis');
+  ok(near(independentCash, BILLS + WEEKLY) && near(independentIncome, DALE + AMANDA)
+      && !near(independentBills, independentCash),
+    'independent A+B is BILLS + WEEKLY (not Current Balance); independent income is Dale + Amanda');
   ok(active && near(active.afterHouseholdBudget, independentLeft)
-      && near(active.liveCurrentBalance, independentCash),
-    'leftover identity remains independently opening + incomeAdded − bills − hold; Current Balance is unchanged');
+      && near(active.liveCurrentBalance, independentBills)
+      && !near(active.liveCurrentBalance, independentCash),
+    'leftover is independently income − bills − hold; Current Balance is hub chequing-a, not A+B');
   ok(expl && expl.sameContract === false
       && expl.leftoverSameAsBillsCash === false
-      && expl.leftoverIdentity === 'predicted-ending-balance'
-      && expl.operatingCashIdentity === 'posted-household-chequing'
+      && expl.leftoverIdentity === 'balance-after-deductions'
+      && expl.operatingCashIdentity === 'posted-planning-hub'
       && expl.billsCashIdentity === 'posted-bills-account',
-    'Forecast names leftover, Current Balance, and BILLS cash as different contracts');
+    'Forecast names leftover, Current Balance, and BILLS cash as leftover vs hub contracts');
   ok(near(expl.leftover, independentLeft)
-      && near(expl.operatingCash, independentCash)
+      && near(expl.operatingCash, independentBills)
       && near(expl.billsCash, independentBills)
-      && near(expl.billsCash, BILLS),
-    'packet leftover, Current Balance, and BILLS cash copy existing identities');
+      && near(expl.billsCash, BILLS)
+      && !near(expl.operatingCash, independentCash),
+    'packet leftover is income-led; Current Balance and BILLS cash copy the hub row');
   ok(forbiddenGapKeys(expl).length === 0
       && !('gap' in expl) && !('difference' in expl) && !('missing' in expl)
       && !('fetchedAt' in expl) && !('purpose' in expl)
@@ -436,10 +436,11 @@ console.log('=== B. Proven BILLS-location effects; leftover and wealth unchanged
         && /leftover/i.test(move.billsLocationEffectNote),
       `Forecast ${row.name} carries independently classified BILLS-location effect`);
     ok(near(expl.leftover, emptyLeft)
-        && near(expl.operatingCash, emptyCash)
+        && near(expl.operatingCash, emptyBills)
         && near(expl.billsCash, emptyBills)
+        && !near(expl.operatingCash, emptyCash)
         && expl.leftoverSameAsBillsCash === false,
-      `${row.name} does not rewrite leftover, Current Balance, or BILLS cash`);
+      `${row.name} does not rewrite leftover, hub Current Balance, or BILLS cash`);
   }
 }
 
@@ -480,6 +481,13 @@ console.log('=== D. Page reprints Forecast BILLS identities and does not subtrac
   const independentLeft = independentLeftover(plan, period(advice.defaultView, 'this-pay-period'));
   const independentCash = independentOperatingCash(plan);
   const independentBills = independentBillsCash(plan);
+  ok(!near(independentLeft, independentBills)
+      && near(independentBills, BILLS)
+      && !near(independentLeft, BILLS)
+      && near(expl.operatingCash, independentBills)
+      && near(expl.billsCash, independentBills)
+      && !near(expl.operatingCash, independentCash),
+    'leftover (income-led Dale+Amanda minus hold) differs from hub cash 700; Current Balance and BILLS cash are the same hub row');
   ok(html && /data-operating-cash-explanation/.test(html)
       && /data-same-contract="false"/.test(html)
       && /data-leftover-same-as-bills-cash="false"/.test(html)
@@ -487,7 +495,6 @@ console.log('=== D. Page reprints Forecast BILLS identities and does not subtrac
       && html.includes(`data-operating-cash="${expl.operatingCash}"`)
       && html.includes(`data-bills-cash="${expl.billsCash}"`)
       && html.includes(composer.money2(independentLeft))
-      && html.includes(composer.money2(independentCash))
       && html.includes(composer.money2(independentBills))
       && html.includes(expl.leftoverNote)
       && html.includes(expl.operatingCashNote)
@@ -495,7 +502,7 @@ console.log('=== D. Page reprints Forecast BILLS identities and does not subtrac
       && /data-bills-location-effect="leaves-bills"/.test(html)
       && html.includes(expl.movements[0].billsLocationEffectNote)
       && html.includes(expl.movements[0].operatingCashEffectNote),
-    'page reprints leftover, Current Balance, BILLS cash, and BILLS-location notes');
+    'page reprints leftover and hub/BILLS cash; helper may print the same hub money2 twice');
   const htmlFn = grab(planSrc, /^function operatingCashExplanationHtml\([\s\S]*?\n\}$/m,
     'operatingCashExplanationHtml');
   ok(!/explanation\.leftover\s*-/.test(htmlFn)
@@ -504,6 +511,8 @@ console.log('=== D. Page reprints Forecast BILLS identities and does not subtrac
       && !/TFR-/.test(htmlFn) && !/householdInternalMovements/.test(htmlFn),
     'page helper does not subtract leftover from BILLS or pair transfers');
   ok(/billsCashIdentity: 'posted-bills-account'/.test(forecastSrc)
+      && /leftoverIdentity: 'balance-after-deductions'/.test(forecastSrc)
+      && /operatingCashIdentity: 'posted-planning-hub'/.test(forecastSrc)
       && /leftoverSameAsBillsCash: false/.test(forecastSrc)
       && /function billsLocationEffectForMovement\(/.test(forecastSrc)
       && /function postedBillsAccountCash\(/.test(forecastSrc),

@@ -146,7 +146,16 @@ if (thisPeriod) {
   put('operating.this.incomeAdded', thisPeriod.incomeAdded);
   put('operating.this.otherIncome', thisPeriod.otherIncome && thisPeriod.otherIncome.amount);
   put('operating.this.incomeTotal', thisPeriod.incomeTotal);
-  put('operating.this.projectedEnding', thisPeriod.projectedEnding);
+  // Plan Q07 remainder is Balance After Deductions (income − bills −
+  // Household Budget). Forecast.projectedEnding is afterBigPurchases —
+  // target-buffer leftover after extra-debt / Road Ahead allocation —
+  // and is not the household-facing remainder.
+  const thisRemainder = thisPeriod.predictedEndingBalance != null
+    ? thisPeriod.predictedEndingBalance
+    : (thisPeriod.balanceAfterDeductions != null
+      ? thisPeriod.balanceAfterDeductions
+      : thisPeriod.afterHouseholdBudget);
+  put('operating.this.projectedEnding', thisRemainder);
   // Household Budget Total on the Plan is Forecast budgetHold.
   put('operating.this.householdBudgetTotal', thisPeriod.budgetHold);
 }

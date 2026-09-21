@@ -242,12 +242,16 @@ console.log('\n=== 3. Next period receives the moved salaries once ===');
   const independentIncome = roundCent(SEASPAN_AMT + AMANDA_15_AMT + CHILD_BENEFIT_AMT);
   ok(near(next.incomeAdded, independentIncome),
     'next incomeAdded independently equals Sep 11 + Sep 15 + Sep 20');
-  ok(active.openingSource === 'cutover-opening' && active.predictedEndingBalance == null
-      && active.projectedEnding == null,
-    'mid-period cutover withholds PEB; next period does not inherit a leftover opening');
+  ok(active.openingSource === 'cutover-opening'
+      && active.paydayBoundaryOpening !== true
+      && active.predictedEndingBalance != null
+      && near(active.predictedEndingBalance, roundCent(
+        active.incomeTotal - active.periodBillLoad - active.budgetHold)),
+    'mid-period cutover still publishes income-led BAD; leftover is not cutover cash');
   ok(next.opening == null || next.openingSource === 'cutover-walk'
-      || next.openingSource === 'carry-forward',
-    'next opening is walk/carry, not a PEB leftover from mid-period cutover cash');
+      || next.openingSource === 'carry-forward'
+      || (active.paydayBoundaryOpening !== true && next.openingSource !== 'carry-forward'),
+    'next opening is walk/carry, not a BAD remainder from mid-period cutover cash');
   ok(near(next.available, next.incomeTotal)
       && near(next.available, independentIncome),
     'next Payday balance independently equals next-cycle income, not carryover plus income');
@@ -389,10 +393,13 @@ console.log('\n=== 7. Active leftover identity and represented zeros ===');
   }, 0);
   ok(near(active.periodBillLoad, independentLoad),
     'assigned period load excludes bills already inside the dated opening');
-  ok(active.openingSource === 'cutover-opening' && active.afterBills == null
-      && active.afterHouseholdBudget == null && active.predictedEndingBalance == null
-      && active.projectedEnding == null,
-    'mid-period cutover withholds PEB leftover rather than treating cutover cash as payday morning');
+  ok(active.openingSource === 'cutover-opening'
+      && active.afterBills != null
+      && near(active.afterBills, roundCent(active.incomeTotal - active.periodBillLoad))
+      && active.afterHouseholdBudget != null
+      && near(active.afterHouseholdBudget, roundCent(active.afterBills - active.budgetHold))
+      && near(active.predictedEndingBalance, active.afterHouseholdBudget),
+    'mid-period cutover publishes income-led BAD rather than treating cutover cash as payday morning');
   const received = (active.income || []).filter(r => r.alreadyInCash === true
     || r.status === 'received' || r.settlement === 'represented');
   ok(received.every(r => near(r.remaining, 0)),
@@ -459,9 +466,13 @@ console.log('\n=== 8. Unpaid once cash before periodStart stays reserved after p
     'Current Balance is unchanged; the once row is not reconstructed cash');
   ok(near(unpaidActive.periodBillLoad, roundCent(controlActive.periodBillLoad + ONCE_AMT)),
     'unpaid overdue once is still in the assigned period load');
-  ok(unpaidActive.afterBills == null && controlActive.afterBills == null
-      && !near(unpaidActive.periodBillLoad, controlActive.periodBillLoad),
-    'PEB leftover is withheld on mid-period cutover; dropping the overdue once would still shrink the assigned load');
+  ok(unpaidActive.afterBills != null && controlActive.afterBills != null
+      && near(unpaidActive.afterBills, roundCent(
+        unpaidActive.incomeTotal - unpaidActive.periodBillLoad))
+      && !near(unpaidActive.periodBillLoad, controlActive.periodBillLoad)
+      && near(unpaidActive.afterBills, roundCent(
+        controlActive.afterBills - ONCE_AMT)),
+    'income-led afterBills publishes on mid-period cutover; dropping the overdue once shrinks the assigned load');
 
   const settled = F.recommend(unpaid, ROLLOVER, {
     targetBuffer: 500, debts,

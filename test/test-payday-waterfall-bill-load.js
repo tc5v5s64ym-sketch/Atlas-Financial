@@ -7,9 +7,10 @@
  * are not already inside that opening. Remaining is settlement status.
  *
  * Independent expected leftover:
- *   afterBills = payday opening + incomeAdded − (Bill A + Bill B)
- * Settlement must not raise that leftover. Remaining $0 must not
- * subtract $0 from the frozen snapshot.
+ *   afterBills = PAYDAY_BALANCE − LOAD (0 − 1500 = −1500)
+ * Frozen payday opening stays a snapshot fact but is not a term in
+ * afterBills. Settlement must not raise that leftover. Remaining $0
+ * must not subtract $0 from the frozen snapshot.
  *
  * `node test/test-payday-waterfall-bill-load.js`
  */
@@ -83,7 +84,7 @@ const BILL_A = 1000;
 const BILL_B = 500;
 const LOAD = roundCent(BILL_A + BILL_B);
 const PAYDAY_BALANCE = 0;
-const AFTER_BILLS = roundCent(FROZEN + PAYDAY_BALANCE - LOAD);
+const AFTER_BILLS = roundCent(PAYDAY_BALANCE - LOAD);
 const WRONG_REMAINING_ONLY = roundCent(FROZEN + PAYDAY_BALANCE - BILL_B);
 const BUDGET_HOLD = 200;
 const LIVE_CASH = 4123.45;
@@ -311,9 +312,9 @@ console.log('\n=== 5. Card-paid reserved bill is not deducted twice ===');
   ok(near(stateA.periodBillLoad, independent) && near(stateB.periodBillLoad, independent),
     'card-paid bill + card minimum + cash bill are each counted once');
   ok(near(stateA.afterBills, stateB.afterBills)
-      && near(stateA.afterBills, roundCent(FROZEN + PAYDAY_BALANCE - independent)),
-    'marking Bell PAID does not change Predicted Ending Balance bills step or add a third hit');
-  ok(!near(stateB.afterBills, roundCent(FROZEN + PAYDAY_BALANCE - independent - CARD_BILL)),
+      && near(stateA.afterBills, roundCent(PAYDAY_BALANCE - independent)),
+    'marking Bell PAID does not change the bills step or add a third hit');
+  ok(!near(stateB.afterBills, roundCent(PAYDAY_BALANCE - independent - CARD_BILL)),
     'settlement does not deduct Bell a second time');
 }
 
@@ -358,8 +359,13 @@ console.log('\n=== 6. Paid-before-opening stays inside mid-period cutover cash =
     'the earlier settlement stays listed as PAID');
   ok(near(active.periodBillLoad, BILL_B),
     'paid-before-opening is not deducted again from the period bill load');
-  ok(active.afterBills == null && active.predictedEndingBalance == null,
+  ok(active.paydayBoundaryOpening !== true,
     'mid-period cutover cash is not treated as the payday-boundary leftover opening');
+  ok(near(active.afterBills, roundCent((active.incomeTotal || 0) - active.periodBillLoad))
+      && active.predictedEndingBalance != null
+      && near(active.predictedEndingBalance, roundCent(
+        active.afterBills - (Number(active.budgetHold) || 0))),
+    'BAD still publishes (income-led); cash leftover / payday-boundary leftover may still be withheld');
   ok(!near(roundCent(active.opening + (active.incomeAdded || 0) - LOAD),
       roundCent(active.opening + (active.incomeAdded || 0) - BILL_B)),
     'blind total-bills subtraction would double-count the already-cleared $1,000');
@@ -418,9 +424,9 @@ console.log('\n=== 8. Remaining is not added after the full load ===');
 {
   const advice = recommend(frozenPlan(null, [{ id: 'bill-a', date: '2026-09-01' }]));
   const active = period(advice.defaultView, 'this-pay-period');
-  const double = roundCent(active.opening + (active.incomeAdded || 0)
+  const double = roundCent((active.incomeTotal || 0)
     - active.periodBillLoad - active.remainingBills);
-  ok(near(active.afterBills, roundCent(active.opening + (active.incomeAdded || 0) - active.periodBillLoad)),
+  ok(near(active.afterBills, roundCent((active.incomeTotal || 0) - active.periodBillLoad)),
     'after bills subtracts the load once');
   ok(!near(active.afterBills, double),
     'remaining is not a second deduction after the full load');

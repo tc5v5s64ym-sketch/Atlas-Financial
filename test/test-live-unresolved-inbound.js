@@ -245,6 +245,7 @@ console.log('\n=== 1. August 30 control: live cash plus unposted same-day bill =
   const S = 0.58;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   ok(near(independentCash, 2287.54), 'independent Aug 30 cash is $2,287.54');
   const canonical = clone(liveData);
   const scheduledFees = Number((canonical.plan.bills || [])
@@ -278,6 +279,7 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   const S = 7.19;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -305,9 +307,9 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   const p2 = activePeriod(advice);
   ok(p2 && p2.role === 'active' && p2.start === '2026-08-28' && p2.end === '2026-09-10',
     'This Pay Period is active on Aug 31');
-  ok(near(advice.defaultView.liveCurrentBalance, independentChequing)
-      && near(advice.paydayAllocation.liveCurrentBalance, independentChequing),
-    'live Current Balance is posted household chequing cash, not savings-inclusive spendable');
+  ok(near(advice.defaultView.liveCurrentBalance, independentHub)
+      && near(advice.paydayAllocation.liveCurrentBalance, independentHub),
+    'live Current Balance is posted hub (chequing-a / BILLS ACCOUNT), not pooled A+B');
   const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
   const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
   const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
@@ -344,6 +346,7 @@ console.log('\n=== 3. August 31 no transfer yet — core unresolved inbound ==='
   const S = 7.19;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -384,6 +387,7 @@ console.log('\n=== 4. Ambiguous TENNIS INCOME counterparts ===');
   const S = 1.5;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -418,6 +422,7 @@ console.log('\n=== 5. Wrong source: WEEKLY SPENDING → BILLS is not salary ==='
   const S = 2.22;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -449,6 +454,7 @@ console.log('\n=== 6. Wrong amount TENNIS INCOME → BILLS ===');
   const S = 3.03;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -502,6 +508,7 @@ console.log('\n=== 8. Actual spending does not double-count ===');
 {
   const independentCash = 3000;
   const independentChequing = 3000;
+  const independentHub = 3000;
   const planned = 900;
   const committed = 350;
   const remaining = round2(planned - committed);
@@ -544,8 +551,8 @@ console.log('\n=== 8. Actual spending does not double-count ===');
     'incomplete gap withholds the payday opening rather than starting it from a scheduled-only walk or live cash');
   ok(p2.available != null && near(p2.available, p2.incomeTotal),
     'Payday balance still publishes the period income identity');
-  ok(near(advice.defaultView.liveCurrentBalance, independentCash),
-    'live Current Balance stays the observed-cash fixture');
+  ok(near(advice.defaultView.liveCurrentBalance, independentHub),
+    'live Current Balance stays the posted hub (chequing-a / BILLS ACCOUNT)');
   ok(!near(remaining, planned) && near(groceries.hold, planned)
       && !near(groceries.hold, planned + committed),
     'Household Budget still reserves the full $900 plan, not remaining $550 and not plan + actual');
@@ -555,6 +562,7 @@ console.log('\n=== 9. Paid bill does not double-count ===');
 {
   const independentCash = 3000;
   const independentChequing = 3000;
+  const independentHub = 3000;
   const canonical = clone(liveData);
   canonical.plan = Object.assign({}, canonical.plan, {
     bills: (canonical.plan.bills || []).concat([{
@@ -589,9 +597,9 @@ console.log('\n=== 9. Paid bill does not double-count ===');
     .reduce((s, r) => s + Math.abs(Number(r.remaining != null ? r.remaining : r.amount) || 0), 0));
   ok(near(p2.remainingBills, remainingWithoutPaid),
     'waterfall remaining bills omit the already-paid $100');
-  ok(near(advice.defaultView.liveCurrentBalance, independentCash)
+  ok(near(advice.defaultView.liveCurrentBalance, independentHub)
       && near(advice.paydayAllocation.available, independentChequing),
-    'live Current Balance and paydayAllocation.available stay observed cash, not cash minus the paid bill again');
+    'live Current Balance stays posted hub (chequing-a); paydayAllocation.available stays observed A+B, not cash minus the paid bill again');
 }
 
 console.log('\n=== 10. Active two-period calendar waterfall ===');
@@ -601,6 +609,7 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   const S = 7.19;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   const canonical = clone(liveData);
   isolateGroceries(canonical.plan);
   const extra = {
@@ -633,8 +642,8 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(nextP && nextP.start === '2026-09-11' && nextP.end === '2026-09-24',
     'Next Pay Period is Sep 11–Sep 24');
   ok(thisP.operatingPlanUnavailable !== true, 'active waterfall is not unavailable');
-  ok(near(advice.defaultView.liveCurrentBalance, independentChequing),
-    'live Current Balance is posted household chequing cash');
+  ok(near(advice.defaultView.liveCurrentBalance, independentHub),
+    'live Current Balance is posted hub (chequing-a / BILLS ACCOUNT)');
   const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
   const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
   const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
@@ -665,8 +674,17 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
-  ok(thisP.afterHouseholdBudget == null && thisP.predictedEndingBalance == null,
-    'Predicted Ending Balance fails closed when the payday opening is withheld');
+  const independentBad = thisP.incomeTotal != null && thisP.periodBillLoad != null
+      && thisP.budgetHold != null
+    ? round2(thisP.incomeTotal - thisP.periodBillLoad - thisP.budgetHold)
+    : null;
+  ok(independentBad != null
+      && thisP.afterHouseholdBudget != null
+      && thisP.predictedEndingBalance != null
+      && near(thisP.afterHouseholdBudget, independentBad)
+      && near(thisP.predictedEndingBalance, independentBad)
+      && thisP.predictedEndingBalanceIdentity === 'balance-after-deductions',
+    'Predicted Ending Balance publishes as incomeTotal − periodBillLoad − hold without payday opening');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');
@@ -695,6 +713,7 @@ console.log('\n=== 12. Assistant / operating-answer consume Forecast, no second 
   const S = 3.33;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   const applied = overlay(clone(liveData), {
     fetchedAt: '2026-08-31T18:00:00.000Z',
     tweaks: Object.assign({
@@ -742,6 +761,7 @@ console.log('\n=== 13. Same-date refresh: opening already liveAsOf, inbound stil
   const S = 4.01;
   const independentCash = round2(A + B + S);
   const independentChequing = round2(A + B);
+  const independentHub = A;
   ok(near(independentCash, 1904), 'independent same-date cash is $1,904.00');
   const canonical = clone(liveData);
   canonical.meta = Object.assign({}, canonical.meta, { asOf: '2026-08-31' });

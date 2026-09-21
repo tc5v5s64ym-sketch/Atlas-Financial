@@ -155,6 +155,13 @@ function independentChequing(plan) {
   }, 0);
 }
 
+function independentHub(plan) {
+  const rows = (plan.startingCash.breakdown || []).filter(row => row && row.id === 'chequing-a');
+  if (rows.length !== 1) return null;
+  const value = Number(rows[0].value);
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 function section(html, id) {
   const match = new RegExp(`<section id="${id}"[\\s\\S]*?<\\/section>`).exec(html);
   return match ? match[0] : '';
@@ -256,6 +263,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   });
   const independentCash = independentAvailable(plan, asOf);
   const independentPostedChequing = independentChequing(plan);
+  const independentPostedHub = independentHub(plan);
   const creditHeadroom = (data.revolvingExtra || []).reduce((sum, row) => {
     const limit = Number(row && row.limit);
     return sum + (isFinite(limit) ? limit : 0);
@@ -289,11 +297,13 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     'available cash independently equals spendable opening plus same-day income');
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
     'available credit is not treated as household cash');
-  ok(live.includes(composer.money2(independentPostedChequing))
+  ok(independentPostedHub != null
+    && live.includes(composer.money2(independentPostedHub))
     && /Current Balance/.test(live)
+    && !live.includes(composer.money2(independentPostedChequing))
     && !/live Lunch Money overlay/.test(live)
     && !/Available in chequing/.test(live),
-  'live Current Balance publishes independent household chequing cash, not credit, not an available-in-chequing headline, and not live overlay');
+  'live Current Balance publishes independent hub (chequing-a) cash, not pooled A+B, not credit, not an available-in-chequing headline, and not live overlay');
   ok(near(lineSum, alloc.allocatedTotal)
     && near(lineSum + Number(alloc.remainder), alloc.available),
   'independent allocation-line sum plus remainder equals available resources');
@@ -409,9 +419,10 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
     'a payday-mode result stops at the household-budget boundary and does not dump the allocation sheet onto the default Plan');
   ok(/Current Balance/.test(html) && /Household budget/.test(html)
     && />Bills</.test(html)
-    && /Predicted Ending Balance/.test(html)
+    && /Balance After Deductions/.test(html)
+    && !/Predicted Ending Balance/.test(html)
     && !/Extra credit-card repayment/.test(html),
-  'payday mode still answers Current Balance, bills, budget, and Predicted Ending Balance');
+  'payday mode still answers Current Balance, bills, budget, and Balance After Deductions');
 }
 
 console.log('\n=== live overlay cannot be authorized from committed git state ===');

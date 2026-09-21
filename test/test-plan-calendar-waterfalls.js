@@ -33,6 +33,13 @@ function independentChequing(plan) {
   }, 0) * 100) / 100;
 }
 
+function independentHub(plan) {
+  const rows = ((plan && plan.startingCash && plan.startingCash.breakdown) || []);
+  const row = rows.find(item => item && item.id === 'chequing-a');
+  const value = row != null ? Number(row.value) : NaN;
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 function grab(src, re, label) {
   const match = re.exec(src);
   if (!match) throw new Error('missing ' + label);
@@ -146,6 +153,12 @@ function budgetRow(p, id) {
 }
 function roundCent(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+function cashLeftover(p) {
+  if (!p || paydayBoundaryPeriod(p) !== true) return null;
+  return roundCent(
+    (Number(p.opening) || 0) + (Number(p.incomeAdded) || 0)
+    - (Number(p.periodBillLoad) || 0) - (Number(p.budgetHold) || 0));
 }
 function withoutSeaspan(plan) {
   const copy = JSON.parse(JSON.stringify(plan));
@@ -430,7 +443,7 @@ function defaultGlance(html) {
   return out;
 }
 
-console.log('=== 1. Period 1 projected ending flows into Period 2 opening ===');
+console.log('=== 1. Period 1 cash leftover flows into Period 2 opening ===');
 {
   const plan = syntheticPlan('2026-08-14');
   const advice = F.recommend(plan, '2026-08-14', { targetBuffer: 500, debts });
@@ -442,11 +455,19 @@ console.log('=== 1. Period 1 projected ending flows into Period 2 opening ===');
   ok(p1.openingKnown && paydayBoundaryPeriod(p1)
       && near(p1.opening, F.startingCashAmount(plan)),
     'Period 1 opens from payday-morning starting cash');
-  ok(p2.openingKnown && near(p2.opening, p1.projectedEnding),
-    'Period 2 opening equals Period 1 projected ending',
-    p2 && p1 && `${p2.opening} vs ${p1.projectedEnding}`);
+  const p1CashLeftover = cashLeftover(p1);
+  ok(p2.openingKnown && near(p2.opening, p1CashLeftover),
+    'Period 2 opening equals Period 1 cash leftover when payday-boundary is known',
+    p2 && p1 && `${p2.opening} vs leftover ${p1CashLeftover}`);
+  ok(p1.projectedEnding != null
+      && near(p1.projectedEnding, p1.afterBigPurchases)
+      && (p1.afterHouseholdBudget == null
+        || !near(p2.opening, p1.projectedEnding)
+        || near(p1CashLeftover, p1.projectedEnding)),
+    'projectedEnding follows BAD and may differ from cash leftover opening',
+    p1 && p2 && `${p1.projectedEnding} vs leftover ${p1CashLeftover}`);
   ok(!near(p2.opening, advice.paydayAllocation.available)
-      || near(p1.projectedEnding, advice.paydayAllocation.available),
+      || near(p1CashLeftover, advice.paydayAllocation.available),
     'Period 2 does not reuse today\'s current balance as its own opening');
   const p2Income = incomeOf(p2).reduce((s, r) => s + (Number(r.amount) || 0), 0);
   ok(p2.available != null && near(p2.available, p2.incomeTotal)
@@ -477,9 +498,12 @@ console.log('\n=== 2. Paid bills are not deducted twice ===');
   ok(p1.openingKnown && p1.openingSource === 'cutover-opening'
       && near(p1.periodBillLoad, independentRemaining),
     'Netflix paid before this mid-period cutover is not deducted again from period bill load');
-  ok(paydayBoundaryPeriod(p1) !== true && p1.afterBills == null
-      && p1.predictedEndingBalance == null,
-    'mid-period cutover cash is not treated as the payday-boundary leftover opening');
+  ok(paydayBoundaryPeriod(p1) !== true
+      && p1.afterBills != null
+      && near(p1.afterBills, roundCent((Number(p1.incomeTotal) || 0) - (Number(p1.periodBillLoad) || 0)))
+      && p1.predictedEndingBalance != null
+      && p1.projectedEnding != null,
+    'mid-period cutover cash is not the payday-boundary leftover opening; BAD / PEB / projected ending still publish');
 }
 
 console.log('\n=== 3. Income never lands in remaining-bills ===');
@@ -562,12 +586,13 @@ console.log('\n=== 6. Current cash identity; no BILLS-minus-spend rewrite ===');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'as-of Aug 30: This Pay Period is live, Next is future');
   ok(near(p1.opening, F.startingCashAmount(plan))
-      && near(advice.defaultView.liveCurrentBalance, independentChequing(plan)),
-    'cutover This Pay Period opening is starting cash; live Current Balance is posted chequing cash',
+      && near(advice.defaultView.liveCurrentBalance, independentHub(plan)),
+    'cutover This Pay Period opening is starting cash; live Current Balance is posted hub chequing-a',
     p1 && `${p1.opening} vs ${F.startingCashAmount(plan)}`);
   ok(p1.openingSource === 'cutover-opening' && paydayBoundaryPeriod(p1) !== true
-      && p1.predictedEndingBalance == null && p1.projectedEnding == null,
-    'Aug 30 mid-period cutover is Q01 cash; PEB and projected ending are withheld');
+      && p1.predictedEndingBalance != null && p1.projectedEnding != null
+      && p1.afterHouseholdBudget != null,
+    'Aug 30 mid-period cutover is Q01 cash, not leftover; BAD / PEB / projected ending still publish');
   ok(p2.projected && (p2.opening == null
       || !near(p2.opening, advice.defaultView.liveCurrentBalance)),
     'Next Pay Period does not reuse today\'s current balance as its own opening');
@@ -634,8 +659,9 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
   const p2 = period(view, 'next-pay-period');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'live Aug 30: This Pay Period live, Next future');
-  ok(near(advice.defaultView.liveCurrentBalance, independentChequing(live.plan)),
-    'live Current Balance is posted household chequing cash');
+  ok(near(advice.defaultView.liveCurrentBalance, independentHub(live.plan))
+      && !near(independentHub(live.plan), independentChequing(live.plan)),
+    'live Current Balance is posted hub chequing-a, not Chequing A + Chequing B');
   const datedAsOf = live.plan.opening && live.plan.opening.asOf;
   const child = (live.plan.income || []).find(s => s && s.id === 'childBenefit');
   const travel = (live.plan.obligations || []).find(o => o && o.id === 'travel');
@@ -809,8 +835,9 @@ console.log('\n=== 11. Aug 28–30 live actuals are $0; bills/income/transfers e
     'Aug 16–30 audit totals are not the Aug 28 cycle spent');
   ok(near(p2.opening, F.startingCashAmount(plan))
       && p2.openingSource === 'cutover-opening' && paydayBoundaryPeriod(p2) !== true
-      && p2.afterHouseholdBudget == null,
-    'Aug 30 mid-period cutover is Q01 cash; PEB leftover is withheld rather than subtracting hold from cutover cash');
+      && p2.afterHouseholdBudget != null
+      && p2.predictedEndingBalance != null,
+    'Aug 30 mid-period cutover is Q01 cash, not leftover; BAD publishes rather than subtracting hold from cutover cash');
   ok(near(p2.budgetHold, CYCLE_PLANNED_TOTAL),
     'with $0 spent, hold is the full $1,862.50 reserve');
 }
@@ -966,9 +993,9 @@ console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays
     'resolved Aug 28 baseline holds $1,412.50 planned plus $80 Other spending',
     baseActive && `${baseActive.budgetHold} extra ${baseActive.extraDebt && baseActive.extraDebt.allocated}`);
   ok(paydayBoundaryPeriod(baseActive) !== true
-      && baseActive.predictedEndingBalance == null
-      && !(Number(baseActive.extraDebt && baseActive.extraDebt.allocated) > 0),
-    'mid-period cutover withholds PEB leftover room; extra-debt from that leftover is not invented');
+      && baseActive.afterHouseholdBudget != null
+      && baseActive.predictedEndingBalance != null,
+    'mid-period cutover is not payday-boundary leftover; BAD still publishes and extra may follow that room');
 
   function assertFailClosed(plan, label, opts) {
     const advice = F.recommend(plan, asOf, Object.assign({
@@ -1039,9 +1066,9 @@ console.log('\n=== 13. overspend remaining is negative; leftover takes the overs
     String(p2.budgetHold));
   ok(near(p2.opening, F.startingCashAmount(plan)),
     'payday opening is still cutover starting cash after overspend');
-  ok(paydayBoundaryPeriod(p2) !== true && p2.afterHouseholdBudget == null
-      && p2.predictedEndingBalance == null,
-    'mid-period cutover withholds PEB; grocery overshoot stays in the hold once, not a leftover subtraction from cutover cash');
+  ok(paydayBoundaryPeriod(p2) !== true && p2.afterHouseholdBudget != null
+      && p2.predictedEndingBalance != null,
+    'mid-period cutover is not payday-boundary leftover; BAD still publishes. Grocery overshoot stays in the hold once, not a leftover subtraction from cutover cash');
 }
 
 console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence inside the cycle ===');
@@ -1419,9 +1446,10 @@ console.log('\n=== 15. weekend posting keeps 15 August bills in Period 1, paid =
   ok(p1.openingKnown && p1.openingSource === 'cutover-opening'
       && !near(p1.periodBillLoad, roundCent((Number(p1.periodBillLoad) || 0) + three)),
     'Aug 20 cutover cash already includes the three paid 15 August bills; they are not in period bill load');
-  ok(paydayBoundaryPeriod(p1) !== true && p1.afterBills == null
+  ok(paydayBoundaryPeriod(p1) !== true && p1.afterBills != null
+      && near(p1.afterBills, roundCent((Number(p1.incomeTotal) || 0) - (Number(p1.periodBillLoad) || 0)))
       && !near(reconstructed, ifDeductedAgain),
-    'mid-period cutover leftover is withheld; the already-cleared bills are not deducted again as PEB math');
+    'mid-period cutover leftover is income-led BAD, not withheld; the already-cleared bills are not deducted again as cash leftover math');
   const live = require('../data.json');
   const liveView = F.recommend(live.plan, '2026-08-20', {
     targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
@@ -1532,18 +1560,13 @@ console.log('\n=== 17. bills block totals: this period vs remaining to pay ===')
       ok(near(p.periodBillLoad, independentLoad),
         `${p.label} period bill load independently equals assigned rows that count`,
         `${p.periodBillLoad} vs ${independentLoad}`);
-      if (paydayBoundaryPeriod(p)) {
-        ok(near(p.afterBills, roundCent(
-          (Number(p.opening) || 0) + (Number(p.incomeAdded) || 0) - independentLoad)),
-          `${p.label} after bills is payday-boundary opening + incomeAdded minus the assigned period load`);
-        if (!near(independentLoad, independentRemaining)) {
-          ok(!near(p.afterBills, roundCent(
-            (Number(p.opening) || 0) + (Number(p.incomeAdded) || 0) - p.remainingBills)),
-            `${p.label} leftover is not remaining-only once paid-after-opening bills exist`);
-        }
-      } else {
-        ok(p.afterBills == null,
-          `${p.label} after bills fails closed when payday-boundary opening is not proven`);
+      ok(near(p.afterBills, roundCent(
+        (Number(p.incomeTotal) || 0) - independentLoad)),
+        `${p.label} after bills independently equals incomeTotal minus the assigned period load`);
+      if (!near(independentLoad, independentRemaining)) {
+        ok(!near(p.afterBills, roundCent(
+          (Number(p.incomeTotal) || 0) - p.remainingBills)),
+          `${p.label} leftover is not remaining-only once paid-after-opening bills exist`);
       }
     }
   }
