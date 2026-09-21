@@ -120,6 +120,7 @@ const suites = [
   ['Lunch Money Dale/Amanda guilt-free category assignment', 'test-lunchmoney-dale-amanda-guilt-free.js'],
   ['BC Hydro Sep 4 Other-spending classification', 'test-bc-hydro-sep4-classification.js'],
   ['Bell Mobility Travel Visa Other-spending classification', 'test-bell-travelvisa-classification.js'],
+  ['Bell Sep 15 2026 same-account BILLS split settlement', 'test-bell-same-account-split.js'],
   ['BC Hydro equal monthly payment $199 timing repair and account credit', 'test-hydro-equal-payment.js'],
   ['standing Fortis / Shaw / Netflix / TD / YouTube / Spotify / ChatGPT Plus Dale / ChatGPT Plus Amanda / iCloud settlement identities', 'test-bill-settlement-identities.js'],
   ['calendar / Budget bills reprint representedActuals as Paid', 'test-calendar-represented-actuals-paid.js'],

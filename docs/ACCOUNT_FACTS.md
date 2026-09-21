@@ -242,16 +242,26 @@ Current evidenced active services:
 - **Bell Mobility — September 2026 once** — owner 2026-09-19 (Dale,
   direct): **$283.94** due **2026-09-15**, the catch-up / wife
   payment-mess total. Supersedes the same-day **$265.65** PDF reading.
-  `plan.bills` `bell-sep15-2026`. Same Travel Visa path. Not added on
-  top of the standing $160 that month.
-- **Bell Mobility — Travel Visa settlement identity** — a mapped Travel
-  Visa debit whose payee is Bell Mobility / BELLMOBILITY settles
-  `bell-sep15-2026` or standing `bell` by payee + Travel Visa + debit +
-  early-or-covers-due. Amount is not identity. Matching confirmed-settled
-  evidence creates `representedActuals` and marks PAID; without matching
-  evidence the bill stays still-due. A BILLS / WEEKLY debit is not this
-  identity. This does not close Q18's historical pending $250 / residual
-  cash question.
+  `plan.bills` `bell-sep15-2026`. Planned on the Travel Visa path. Not
+  added on top of the standing $160 that month.
+- **Bell Mobility — September 2026 settlement identity** — owner-directed
+  2026-09-21 live Bills audit. Two posted Bell Mobility / BELLMOBILITY
+  debits on canonical chequing-a (BILLS ACCOUNT), same household posting
+  date, debit, early-or-due, settle `bell-sep15-2026` once. The rule
+  opts into same-account split legs (`sameAccountSplitLegs`). Identity
+  is payee + chequing-a + debit + that date relation + exactly two
+  distinct provider transaction ids. Amount is not identity and the sum
+  is not identity. One leg does not settle. A Travel Visa debit is not
+  this once identity. Matching confirmed-settled evidence creates
+  `representedActuals` and marks PAID; without that pair the bill stays
+  still-due.
+- **Bell Mobility — standing Travel Visa settlement identity** — a mapped
+  Travel Visa debit whose payee is Bell Mobility / BELLMOBILITY settles
+  standing `bell` from 2026-10-15 by payee + Travel Visa + debit +
+  early-or-covers-due. Amount is not identity. A BILLS / WEEKLY debit is
+  not the standing identity. A posting that still covers
+  `bell-sep15-2026` is that once due, not this series. This does not
+  close Q18's historical pending $250 / residual cash question.
 - **Main Bell Mobility (historical June 2026 reconstruction)** — June
   2026 normal recurring baseline **$104.20/month** (card-paid). Includes
   the $15 watch line. Retired as the forward baseline.
@@ -264,9 +274,11 @@ Current evidenced active services:
 Forward Bell telecom is therefore **$160/month** from 2026-10-15, plus
 the September 2026 once **$283.94** due 2026-09-15, planned on the
 **15th** as card-paid Travel Visa reserved gravity. That is the one
-recurring Bell baseline plus the one September catch-up total. It is
-not a dated joint-chequing / BILLS ACCOUNT withdrawal, not an undated
-`currentMonthly` smear, and not a second copy beside the later Travel
+recurring Bell baseline plus the one September catch-up total. The
+plan does not also reserve a joint-chequing withdrawal for that once
+row. Posted September settlement is the two-leg chequing-a identity
+above, not a second planned bill. The planned once row is not an undated
+`currentMonthly` smear and not a second copy beside the later Travel
 Visa payment. The unusual August 17 due date is not the permanent
 cadence. Roaming, usage, late fees, and catch-up payments of $250.00 /
 $69.15 are not the recurring amount. The August 2026 reconstruction
