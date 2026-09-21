@@ -410,21 +410,30 @@ console.log('\n=== 6. Forecast still computes the chain past the household-budge
   const periodsOut = advice.defaultView.calendarPeriods || [];
   const active = periodsOut.find(p => p.role === 'active');
   const next = periodsOut.find(p => p.role === 'future');
-  ok(active && typeof active.afterDebtRepayment === 'number'
-      && typeof active.projectedEnding === 'number'
-      && active.extraDebt && typeof active.extraDebt.allocated === 'number'
+  ok(active && active.extraDebt && typeof active.extraDebt.allocated === 'number'
       && Array.isArray(active.bigPurchases) && active.firstCard,
-    'the active period still carries extraDebt, firstCard, bigPurchases, afterDebtRepayment, projectedEnding');
-  const purchasesTaken = (active.bigPurchases || [])
-    .reduce((s, r) => s + (Number(r.allocation) || 0), 0);
-  const independentAfterDebt = Math.round((active.afterHouseholdBudget - active.extraDebt.allocated) * 100) / 100;
-  const independentEnding = Math.round((independentAfterDebt - purchasesTaken) * 100) / 100;
-  ok(near(active.afterDebtRepayment, independentAfterDebt),
-    'afterDebtRepayment = afterHouseholdBudget − extraDebt.allocated (independent arithmetic)');
-  ok(near(active.projectedEnding, independentEnding),
-    'projectedEnding = afterDebtRepayment − Σ big-purchase allocation (independent arithmetic)');
-  ok(next && next.openingKnown && near(next.opening, active.projectedEnding),
-    'the next pay period still opens from the unprinted projected ending');
+    'the active period still carries extraDebt, firstCard, and bigPurchases');
+  if (active.paydayBoundaryOpening === true && active.afterHouseholdBudget != null) {
+    const purchasesTaken = (active.bigPurchases || [])
+      .reduce((s, r) => s + (Number(r.allocation) || 0), 0);
+    const independentAfterDebt = Math.round((active.afterHouseholdBudget - active.extraDebt.allocated) * 100) / 100;
+    const independentEnding = Math.round((independentAfterDebt - purchasesTaken) * 100) / 100;
+    ok(typeof active.afterDebtRepayment === 'number'
+        && typeof active.projectedEnding === 'number',
+      'payday-boundary leftover still publishes afterDebtRepayment and projectedEnding');
+    ok(near(active.afterDebtRepayment, independentAfterDebt),
+      'afterDebtRepayment = afterHouseholdBudget − extraDebt.allocated (independent arithmetic)');
+    ok(near(active.projectedEnding, independentEnding),
+      'projectedEnding = afterDebtRepayment − Σ big-purchase allocation (independent arithmetic)');
+    ok(next && next.openingKnown && near(next.opening, active.projectedEnding),
+      'the next pay period still opens from the unprinted projected ending');
+  } else {
+    ok(active.afterHouseholdBudget == null && active.afterDebtRepayment == null
+        && active.projectedEnding == null,
+      'without a payday-boundary opening the leftover chain past household budget is withheld');
+    ok(!next || next.opening == null || next.openingSource !== 'carry-forward',
+      'next period does not inherit a withheld PEB leftover as its opening');
+  }
   ok(alloc && alloc.extraDebt && typeof alloc.extraDebt.allocated === 'number'
       && alloc.runningLeftover && typeof alloc.runningLeftover.afterDebtRepayment === 'number'
       && typeof alloc.runningLeftover.afterBigPurchases === 'number',

@@ -242,8 +242,12 @@ console.log('\n=== 3. Next period receives the moved salaries once ===');
   const independentIncome = roundCent(SEASPAN_AMT + AMANDA_15_AMT + CHILD_BENEFIT_AMT);
   ok(near(next.incomeAdded, independentIncome),
     'next incomeAdded independently equals Sep 11 + Sep 15 + Sep 20');
-  ok(near(next.opening, active.projectedEnding),
-    'next opening is the previous projected ending (carryover), not payday + ending');
+  ok(active.openingSource === 'cutover-opening' && active.predictedEndingBalance == null
+      && active.projectedEnding == null,
+    'mid-period cutover withholds PEB; next period does not inherit a leftover opening');
+  ok(next.opening == null || next.openingSource === 'cutover-walk'
+      || next.openingSource === 'carry-forward',
+    'next opening is walk/carry, not a PEB leftover from mid-period cutover cash');
   ok(near(next.available, next.incomeTotal)
       && near(next.available, independentIncome),
     'next Payday balance independently equals next-cycle income, not carryover plus income');
@@ -383,22 +387,12 @@ console.log('\n=== 7. Active leftover identity and represented zeros ===');
       : Math.abs(Number(r.amount) || 0);
     return s + assigned;
   }, 0);
-  const independentAfterBills = active.openingKnown
-    ? roundCent((Number(active.opening) || 0) + (Number(active.incomeAdded) || 0) - independentLoad)
-    : null;
-  ok(independentAfterBills != null
-      && near(active.afterBills, independentAfterBills)
-      && near(active.afterRemainingBills, independentAfterBills),
-    'after bills = payday opening + incomeAdded − assigned period load, not remaining-only');
-  const independentAfterBudget = roundCent(active.afterBills - active.budgetHold);
-  ok(near(active.afterHouseholdBudget, independentAfterBudget),
-    'after household budget = after bills − effective Household Budget hold');
-  const extra = active.extraDebt && Number(active.extraDebt.allocated) || 0;
-  const purchases = (active.bigPurchases || []).reduce(
-    (s, r) => s + (Number(r.allocation) || 0), 0);
-  const independentEnding = roundCent(active.afterHouseholdBudget - extra - purchases);
-  ok(near(active.projectedEnding, independentEnding),
-    'projected ending independently equals the downstream chain');
+  ok(near(active.periodBillLoad, independentLoad),
+    'assigned period load excludes bills already inside the dated opening');
+  ok(active.openingSource === 'cutover-opening' && active.afterBills == null
+      && active.afterHouseholdBudget == null && active.predictedEndingBalance == null
+      && active.projectedEnding == null,
+    'mid-period cutover withholds PEB leftover rather than treating cutover cash as payday morning');
   const received = (active.income || []).filter(r => r.alreadyInCash === true
     || r.status === 'received' || r.settlement === 'represented');
   ok(received.every(r => near(r.remaining, 0)),
@@ -463,13 +457,11 @@ console.log('\n=== 8. Unpaid once cash before periodStart stays reserved after p
     'remaining bills independently rise by the unpaid once amount');
   ok(near(unpaidActive.available, controlActive.available),
     'Current Balance is unchanged; the once row is not reconstructed cash');
-  ok(near(unpaidActive.periodBillLoad, roundCent(controlActive.periodBillLoad + ONCE_AMT))
-      && near(unpaidActive.afterBills, roundCent(
-        (Number(unpaidActive.opening) || 0) + (Number(unpaidActive.incomeAdded) || 0)
-        - unpaidActive.periodBillLoad)),
+  ok(near(unpaidActive.periodBillLoad, roundCent(controlActive.periodBillLoad + ONCE_AMT)),
     'unpaid overdue once is still in the assigned period load');
-  ok(!near(unpaidActive.afterRemainingBills, controlActive.afterRemainingBills),
-    'dropping the overdue once would overstate surplus after bills');
+  ok(unpaidActive.afterBills == null && controlActive.afterBills == null
+      && !near(unpaidActive.periodBillLoad, controlActive.periodBillLoad),
+    'PEB leftover is withheld on mid-period cutover; dropping the overdue once would still shrink the assigned load');
 
   const settled = F.recommend(unpaid, ROLLOVER, {
     targetBuffer: 500, debts,

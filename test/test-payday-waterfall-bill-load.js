@@ -356,10 +356,12 @@ console.log('\n=== 6. Paid-before-opening stays inside mid-period cutover cash =
     'mid-period dated opening is posted cash on as-of');
   ok(paid && paid.status === 'PAID' && near(active.remainingBills, BILL_B),
     'the earlier settlement stays listed as PAID');
-  ok(near(active.periodBillLoad, BILL_B)
-      && near(active.afterBills, roundCent(active.opening + (active.incomeAdded || 0) - BILL_B)),
-    'paid-before-opening is not deducted again from the payday-boundary leftover');
-  ok(!near(active.afterBills, roundCent(active.opening + (active.incomeAdded || 0) - LOAD)),
+  ok(near(active.periodBillLoad, BILL_B),
+    'paid-before-opening is not deducted again from the period bill load');
+  ok(active.afterBills == null && active.predictedEndingBalance == null,
+    'mid-period cutover cash is not treated as the payday-boundary leftover opening');
+  ok(!near(roundCent(active.opening + (active.incomeAdded || 0) - LOAD),
+      roundCent(active.opening + (active.incomeAdded || 0) - BILL_B)),
     'blind total-bills subtraction would double-count the already-cleared $1,000');
 }
 

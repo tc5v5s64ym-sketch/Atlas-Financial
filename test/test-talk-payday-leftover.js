@@ -366,8 +366,8 @@ console.log('\n=== 3. Talk-published leftover equals that Forecast leftover ==='
         && presented.answer === `Predicted ending balance for this pay period is ${expectedMoney}.`,
       'Talk leftover sentence reprints independently formatted Forecast PEB');
   } else {
-    ok(presented.trust === 'unavailable'
-        && /Predicted ending balance is unavailable/.test(presented.answer),
+    ok(presented.answer === TalkPresentation.UNAVAILABLE_ANSWER
+        || /Predicted ending balance is unavailable/.test(presented.answer),
       'Talk leftover is unavailable when Forecast PEB is withheld');
   }
   if (expectedPeb != null) {
@@ -382,9 +382,9 @@ console.log('\n=== 3. Talk-published leftover equals that Forecast leftover ==='
         && (presented.citations || []).some(row => row.source === 'Forecast')
         && (presented.citations || []).some(row => row.href === '/' && row.label === 'Budget'),
       'leftover provenance and Budget citation survive');
+    ok(presented.action && presented.action.href === '/',
+      'leftover keeps the existing Budget surface action');
   }
-  ok(presented.action && presented.action.href === '/',
-    'leftover keeps the existing Budget surface action');
 }
 
 console.log('\n=== 4. Referent binding: this payday now; that leftover only when earned ===');
@@ -585,16 +585,18 @@ async function runHttpProof() {
     ok(first.status === 200
         && (expectedMoney
           ? firstBody.answer === `Predicted ending balance for this pay period is ${expectedMoney}.`
-          : /Predicted ending balance is unavailable/.test(firstBody.answer))
+          : (firstBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
+            || /Predicted ending balance is unavailable/.test(firstBody.answer)))
         && mock.captured.length === 0,
       'this-payday leftover reprints Forecast PEB and does not call Gemini',
       firstBody && firstBody.answer);
-    ok(firstBody.cards
-        && firstBody.cards.items.some(item => item.body === firstBody.answer)
-        && (expectedMoney
-          ? JSON.stringify(firstBody.summary || {}).indexOf(expectedMoney) !== -1
-          : true)
-        && (firstBody.citations || []).some(row => row.source === 'Forecast'),
+    ok(expectedMoney
+        ? (firstBody.cards
+          && firstBody.cards.items.some(item => item.body === firstBody.answer)
+          && JSON.stringify(firstBody.summary || {}).indexOf(expectedMoney) !== -1
+          && (firstBody.citations || []).some(row => row.source === 'Forecast'))
+        : (firstBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
+          || /Predicted ending balance is unavailable/.test(firstBody.answer)),
       'HTTP leftover cards, summary, and citations keep the Forecast leftover');
 
     const that = await askJson(base, sessionA.cookie, 'What does that leave us with?');

@@ -5203,6 +5203,27 @@
     return { opening: null, openingKnown: false, openingAsOf: null, source: null };
   }
 
+  // Predicted Ending Balance may use only a genuine payday-boundary
+  // opening. A mid-period cutover-opening is Q01 dated cash: it already
+  // reflects pre-cutover household spending, and Household Budget hold
+  // has no already-in-opening exclusion, so treating that cash as the
+  // payday opening would deduct the same spending twice. Income and
+  // paid bills already exclude amounts inside the opening. Fail closed
+  // rather than invent a remaining-budget or prorated-hold rule.
+  function isPaydayBoundaryOpening(source, openingAsOf, windowStart) {
+    if (!source || openingAsOf == null || !windowStart) return false;
+    if (source === 'snapshot'
+      || source === 'payday-morning'
+      || source === 'cutover-walk'
+      || source === 'carry-forward') {
+      return true;
+    }
+    if (source === 'cutover-opening') {
+      return String(openingAsOf) === String(windowStart);
+    }
+    return false;
+  }
+
   // Spendable cash at a payday morning. This is the completed period's
   // payday carryover — cash carried into the next period — when a recorded
   // snapshot, payday-morning cash, or completeness-proven walk names it.
@@ -6924,14 +6945,17 @@
   //   + income not already inside that opening (actual when observed)
   //   − assigned bills not already inside that opening
   //   − Household Budget hold
-  // Fail closed when the opening is unknown. Do not invent one, and do
-  // not publish an income-led remainder as this answer. Opening comes
-  // from a recorded paydaySnapshot first, else payday-morning cash only
-  // when as-of is that payday and live overlay has not already advanced,
-  // else a non-live cutover opening, else a completeness-proven
-  // household-cash walk (`Forecast.establishPaydaySnapshot`) — never
-  // today's live posted cash, and never a scheduled-only reconstruction
-  // that assumes unscheduled gap spending was zero. incomeAdded remains
+  // Fail closed when that payday-boundary opening is unknown. Do not
+  // invent one, do not treat a mid-period cutover-opening as payday
+  // morning, and do not publish an income-led remainder as this answer.
+  // Opening comes from a recorded paydaySnapshot first, else
+  // payday-morning cash only when as-of is that payday and live overlay
+  // has not already advanced, else a completeness-proven household-cash
+  // walk (`Forecast.establishPaydaySnapshot`) — never today's live
+  // posted cash, never a mid-period cutover-opening, and never a
+  // scheduled-only reconstruction that assumes unscheduled gap spending
+  // was zero. A cutover-opening is payday-boundary only when its as-of
+  // is the period start. incomeAdded remains
   // the settlement-qualified increment and is not the published Payday
   // balance. The Bills step subtracts the authoritative period bill load
   // assigned against that frozen snapshot, including subsequently PAID
@@ -7048,6 +7072,8 @@
       const openingKnown = snapshot.openingKnown === true;
       const openingAsOf = snapshot.openingAsOf || null;
       const openingSource = snapshot.source || null;
+      const paydayBoundaryOpening = openingKnown
+        && isPaydayBoundaryOpening(openingSource, openingAsOf, window.start);
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
@@ -7084,8 +7110,9 @@
       const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
       // Predicted Ending Balance starts from the payday-boundary opening
       // plus income not already inside it. Fail closed when that opening
-      // is unknown rather than publishing an income-led remainder.
-      const afterBills = !planUnavailable && openingKnown
+      // is unknown or is only a mid-period cutover, rather than
+      // publishing an income-led remainder or double-counting hold.
+      const afterBills = !planUnavailable && paydayBoundaryOpening
         && incomeAdded != null && periodBillLoad != null
         ? roundCent((Number(opening) || 0) + incomeAdded - periodBillLoad)
         : null;
@@ -7147,6 +7174,7 @@
         projected,
         lookback,
         openingKnown,
+        paydayBoundaryOpening,
         opening,
         openingAsOf,
         openingSource,
@@ -7196,11 +7224,13 @@
               || 'Current plan unavailable. The dated opening is stale.')
             : (!openingKnown
               ? 'Payday opening is not recorded for this period. Live Current Balance is not this payday\'s opening.'
-              : (projected
-                ? 'Projected opening. Not today\'s balance.'
-                : (role === 'active'
-                  ? 'Opening this pay period. Carried forward, not income.'
-                  : null)))),
+              : (!paydayBoundaryOpening
+                ? 'This dated opening is mid-period cutover cash, not this payday\'s opening. The period-end leftover is withheld.'
+                : (projected
+                  ? 'Projected opening. Not today\'s balance.'
+                  : (role === 'active'
+                    ? 'Opening this pay period. Carried forward, not income.'
+                    : null))))),
       });
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;

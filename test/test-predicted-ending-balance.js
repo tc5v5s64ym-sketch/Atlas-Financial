@@ -484,6 +484,72 @@ console.log('\n=== M. Missing payday-boundary opening fails closed ===');
     'PEB is withheld rather than inventing an income-led remainder');
 }
 
+console.log('\n=== O. Mid-period cutover cash does not double-count pre-cutover spend ===');
+{
+  // Named household facts, independent of Forecast leftover terms.
+  // Payday-morning cash is known to the test and is not given to Forecast
+  // as a snapshot. The dated opening is mid-period cash after $100 of
+  // the $900 grocery target has already left the accounts.
+  const PAYDAY_MORNING_CASH = 1000;
+  const GROCERY_TARGET = 900;
+  const PRE_CUTOVER_GROCERY = 100;
+  const CUTOVER_CASH = PAYDAY_MORNING_CASH - PRE_CUTOVER_GROCERY;
+  const independentPaydayRemainder = PAYDAY_MORNING_CASH - GROCERY_TARGET;
+  const doubleCountTrap = CUTOVER_CASH - GROCERY_TARGET;
+  ok(near(CUTOVER_CASH, 900) && near(independentPaydayRemainder, 100)
+      && near(doubleCountTrap, 0) && !near(independentPaydayRemainder, doubleCountTrap),
+    'independent facts: payday remainder $100; cutover minus full hold is $0');
+  const plan = {
+    defaults: { targetBuffer: 0 },
+    windowDays: 14,
+    startingCash: {
+      amount: CUTOVER_CASH,
+      breakdown: [
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: CUTOVER_CASH },
+      ],
+    },
+    opening: { asOf: AS_OF },
+    nextDollar: { policy: 'true-surplus-highest-interest', provenance: 'owner-stated' },
+    income: [
+      {
+        id: 'payroll', label: 'Seaspan', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: 0, confidence: 'confirmed',
+      },
+    ],
+    bills: [],
+    obligations: [],
+    commitments: [],
+    budget: {
+      categories: [
+        {
+          id: 'groceries', label: 'Groceries', class: 'essential',
+          from: ['Groceries'], plannedWeekly: 450, ownerLine: 'Groceries',
+        },
+      ],
+    },
+  };
+  const row = activeOf(recommend(plan, []));
+  ok(row && row.start === PAYDAY && row.openingKnown === true
+      && row.openingSource === 'cutover-opening' && near(row.opening, CUTOVER_CASH)
+      && row.paydayBoundaryOpening !== true,
+    'Q01 still publishes the mid-period cutover; it is not a payday-boundary opening');
+  ok(near(row.budgetHold, GROCERY_TARGET),
+    'Household Budget hold remains the full-period grocery target');
+  ok(row.afterBills == null && row.afterHouseholdBudget == null
+      && row.predictedEndingBalance == null,
+    'Forecast withholds PEB rather than treating cutover cash as payday morning');
+  ok(row.predictedEndingBalance == null
+      && row.predictedEndingBalance !== doubleCountTrap,
+    'Forecast does not publish the $0 double-count of the already-reflected $100');
+  ok(row.predictedEndingBalance == null
+      && row.predictedEndingBalance !== independentPaydayRemainder,
+    'Forecast does not invent a remaining-budget remainder from unrecorded payday cash');
+  const echo = independentPeb(
+    row.opening, row.incomeAdded || 0, row.periodBillLoad || 0, row.budgetHold);
+  ok(near(echo, doubleCountTrap) && row.predictedEndingBalance == null,
+    'opening + incomeAdded − bills − hold on cutover cash is the $0 trap, not the published PEB');
+}
+
 console.log('\n=== N. No unexplained balancing adjustment ===');
 {
   const src = read('public/forecast.js');
@@ -526,23 +592,29 @@ console.log('\n=== Live reconstruction: PEB follows named facts, never hardcoded
   const row = activeOf(advice);
   if (!row) {
     ok(false, 'live This Pay Period exists');
-  } else if (row.openingKnown === true && row.incomeAdded != null
+  } else if (row.paydayBoundaryOpening === true && row.incomeAdded != null
       && row.periodBillLoad != null && row.budgetHold != null) {
     const reconstructed = independentPeb(
       row.opening, row.incomeAdded, row.periodBillLoad, row.budgetHold);
     ok(near(row.afterHouseholdBudget, reconstructed)
         && near(row.predictedEndingBalance, reconstructed),
-      'live PEB equals opening + incomeAdded − bills − hold (no hardcoded cents)');
+      'live PEB equals payday-boundary opening + incomeAdded − bills − hold');
     const incomeLed = roundCent(row.incomeTotal - row.periodBillLoad - row.budgetHold);
     if (Math.abs(row.opening) > 0.005) {
       ok(!near(row.afterHouseholdBudget, incomeLed),
         'live PEB is not the superseded income-led Q07 when opening is nonzero');
     }
   } else {
-    ok(row.afterHouseholdBudget == null && row.predictedEndingBalance == null,
+    ok(row.afterHouseholdBudget == null && row.predictedEndingBalance == null
+        && row.paydayBoundaryOpening !== true,
       'live PEB fails closed when payday-boundary opening is not proven');
     ok(row.available != null || row.operatingPlanUnavailable === true,
       'income identity or unavailable operating plan remains explicit');
+    if (row.openingKnown === true && row.openingSource === 'cutover-opening'
+        && row.openingAsOf && row.start && row.openingAsOf !== row.start) {
+      ok(row.predictedEndingBalance == null && row.afterHouseholdBudget == null,
+        'live mid-period cutover is not published as payday-boundary leftover');
+    }
   }
 }
 
