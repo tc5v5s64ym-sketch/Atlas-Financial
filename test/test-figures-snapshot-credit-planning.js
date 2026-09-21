@@ -441,10 +441,13 @@ console.log('\n=== 4. Existing Plan snapshot coverage remains intact ===');
   ok(missing.length === 0, 'every Plan key from current main is still present',
     missing.join(', '));
   const incumbentKeys = PLAN_KEYS_ON_MAIN.filter(k =>
-    Object.prototype.hasOwnProperty.call(mainSnap, k));
+    Object.prototype.hasOwnProperty.call(mainSnap, k)
+    && k !== 'operating.this.projectedEnding');
   const moved = incumbentKeys.filter(k => !same(liveSnap[k], mainSnap[k]));
   ok(moved.length === 0, 'Plan-key values that existed on main still match main\'s snapshot script',
     moved.map(k => `${k}:${mainSnap[k]}→${liveSnap[k]}`).join(', '));
+  ok(Object.prototype.hasOwnProperty.call(liveSnap, 'operating.this.projectedEnding'),
+    'operating.this.projectedEnding remains the stable remainder key');
   const extraPlan = Object.keys(liveSnap).filter(k => PLAN_PREFIX.test(k) && !PLAN_KEYS_ON_MAIN.includes(k));
   ok(extraPlan.length === 0, 'no extra Plan-prefix keys were introduced', extraPlan.join(', '));
 }
@@ -524,6 +527,88 @@ console.log('\n=== 4c. Other Income and Total income are snapshotted from Foreca
       && /nextPeriod\.incomeTotal/.test(operatingSrc)
       && !/\.reduce\s*\(/.test(operatingSrc),
     'snapshot copies Forecast otherIncome.amount / incomeTotal; it does not sum the rows');
+}
+
+console.log('\n=== 4d. This-period remainder key is Balance After Deductions, not after-purchase leftover ===');
+{
+  const INCOME = 6652.30;
+  const BILLS = 3413.07;
+  const HOLD = 2287.17;
+  const independentBad = round(INCOME - BILLS - HOLD);
+  const fx = {
+    meta: { asOf: '2026-09-18' },
+    revolvingExtra: [],
+    debts: [],
+    plan: {
+      defaults: { scenario: 'expected', targetBuffer: 500, extraDebtMonthly: 0 },
+      windowDays: 14,
+      startingCash: {
+        breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: 593.29 }],
+      },
+      opening: {
+        asOf: '2026-09-18',
+        priorAsOf: '2026-09-11',
+        paydaySnapshot: { periodStart: '2026-09-11', asOf: '2026-09-11', opening: 310.47 },
+      },
+      income: [
+        {
+          id: 'payroll', label: 'Dale income', frequency: 'biweekly',
+          anchor: '2026-08-14', amount: 4274.98, confidence: 'confirmed',
+        },
+        {
+          id: 'amandaPayday', label: 'Amanda income', frequency: 'once',
+          date: '2026-09-11', amount: 2168.85, confidence: 'confirmed',
+        },
+        {
+          id: 'childBenefit', label: 'Canada Child Benefit', frequency: 'once',
+          date: '2026-09-20', amount: 208.47, confidence: 'confirmed',
+        },
+      ],
+      bills: [{
+        id: 'synthetic-bills', label: 'Assigned period bills',
+        frequency: 'once', date: '2026-09-12', amount: BILLS, confidence: 'confirmed',
+      }],
+      obligations: [],
+      commitments: [{
+        id: 'road-ahead', label: 'Road Ahead purchase',
+        amount: 8000, when: 'later', confidence: 'estimated',
+      }],
+      budget: {
+        categories: [{
+          id: 'groceries', label: 'Groceries', class: 'essential',
+          from: ['Groceries'], plannedPayday: HOLD, ownerLine: 'Groceries',
+        }],
+      },
+    },
+  };
+  const snap = buildFiguresSnapshot(fx, null);
+  const advice = snapshotRecommend(fx);
+  const thisPeriod = ((advice.defaultView && advice.defaultView.calendarPeriods) || [])
+    .find(p => p && p.id === 'this-pay-period')
+    || ((advice.defaultView && advice.defaultView.calendarPeriods) || [])
+      .find(p => p && p.role === 'active');
+  ok(thisPeriod && same(thisPeriod.incomeTotal, INCOME)
+      && same(thisPeriod.periodBillLoad, BILLS)
+      && same(thisPeriod.budgetHold, HOLD),
+    'synthetic period terms are the independent income / bills / hold amounts');
+  ok(same(independentBad, 952.06),
+    'independent reconstruction is Income − Bills − Household Budget');
+  ok(thisPeriod && same(thisPeriod.afterHouseholdBudget, independentBad)
+      && same(thisPeriod.predictedEndingBalance, independentBad),
+    'Forecast Balance After Deductions equals the independent reconstruction');
+  ok(thisPeriod && same(thisPeriod.projectedEnding, 500)
+      && same(thisPeriod.afterBigPurchases, 500)
+      && !same(thisPeriod.projectedEnding, independentBad),
+    'Forecast projectedEnding is the $500 after-purchase buffer leftover, not BAD');
+  ok(same(snap['operating.this.projectedEnding'], independentBad)
+      && !same(snap['operating.this.projectedEnding'], thisPeriod.projectedEnding),
+    'snapshot this-period remainder publishes independent BAD, not afterBigPurchases');
+  const operatingSrc = snapSrc.split('const operating =')[1]
+    && snapSrc.split('const operating =')[1].split('const T =')[0];
+  ok(operatingSrc && /predictedEndingBalance/.test(operatingSrc)
+      && /afterHouseholdBudget/.test(operatingSrc)
+      && !/put\('operating\.this\.projectedEnding',\s*thisPeriod\.projectedEnding\)/.test(operatingSrc),
+    'snapshot copies this-period BAD fields; it does not copy projectedEnding');
 }
 
 console.log('\n=== 5. Output is deterministic ===');
