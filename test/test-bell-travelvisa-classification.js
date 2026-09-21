@@ -254,7 +254,8 @@ console.log('\n=== 3. A Travel Visa Bell debit does not settle September; standi
 {
   const identity = identityDoc();
   const onceRule = (identity.rules || []).find(r => r && r.eventId === SEP_ID);
-  const recRule = (identity.rules || []).find(r => r && r.eventId === REC_ID);
+  const recRule = (identity.rules || []).find(r => r && r.eventId === REC_ID
+    && r.atlasAccountId === 'travelvisa');
   ok(onceRule && onceRule.atlasAccountId === 'chequing-a' && onceRule.direction === 'debit'
       && (onceRule.payeePatterns || []).includes('Bell Mobility')
       && (onceRule.payeePatterns || []).includes('BELLMOBILITY')
@@ -266,7 +267,7 @@ console.log('\n=== 3. A Travel Visa Bell debit does not settle September; standi
       && recRule.postingDateRule === EARLY_RULE
       && !recRule.settlesWhen
       && !recRule.sameAccountSplitLegs,
-    'standing Bell identity stays payee + Travel Visa + debit; amount is not identity');
+    'standing Bell Travel Visa identity stays payee + Travel Visa + debit; amount is not identity');
   const report = observeWith(identity, SEP_AS_OF, sepTxs());
   const hits = report.representedEventCandidates || [];
   ok(!hits.some(c => c && c.id === SEP_ID),

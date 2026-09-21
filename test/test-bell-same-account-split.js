@@ -255,7 +255,8 @@ console.log('\n=== rule is explicit and TD fees do not opt in ===');
 {
   const identity = identityDoc();
   const once = (identity.rules || []).find(r => r && r.eventId === SEP_ID);
-  const standing = (identity.rules || []).find(r => r && r.eventId === 'bell');
+  const standingVisa = (identity.rules || []).find(r => r && r.eventId === 'bell'
+    && r.atlasAccountId === 'travelvisa');
   const fees = (identity.rules || []).filter(r => r && r.eventId === FEE_ID);
   ok(once && once.atlasAccountId === 'chequing-a' && once.direction === 'debit'
       && once.postingDateRule === 'covers-early-or-due-on-or-before-posting'
@@ -264,9 +265,8 @@ console.log('\n=== rule is explicit and TD fees do not opt in ===');
       && (once.payeePatterns || []).includes('Bell Mobility')
       && (once.payeePatterns || []).includes('BELLMOBILITY'),
     'bell-sep15-2026 opts into same-account two-leg settlement on chequing-a');
-  ok(standing && standing.atlasAccountId === 'travelvisa' && !standing.settlesWhen
-      && standing.sameAccountSplitLegs !== true,
-    'standing bell stays a Travel Visa debit and does not opt into same-account splits');
+  ok(standingVisa && !standingVisa.settlesWhen && standingVisa.sameAccountSplitLegs !== true,
+    'the Travel Visa standing rule stays a single debit and does not itself opt into same-account splits');
   ok(fees.length === 2 && fees.every(r => r.settlesWhen === 'two-leg-sum'
       && r.sameAccountSplitLegs !== true)
       && fees.some(r => r.atlasAccountId === 'chequing-a')

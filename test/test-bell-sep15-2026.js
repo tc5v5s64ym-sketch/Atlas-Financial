@@ -213,7 +213,8 @@ console.log('\n=== 4. travelvisa path; still-due without invented settle ===');
     'fixture does not invent settledOn or representedEvents on the Bell rows');
   const identity = load('docs/connectivity/transaction-identity.json');
   const onceRule = (identity.rules || []).find(r => r && r.eventId === ONCE_ID);
-  const standingRule = (identity.rules || []).find(r => r && r.eventId === STANDING_ID);
+  const standingRule = (identity.rules || []).find(r => r && r.eventId === STANDING_ID
+    && r.atlasAccountId === PAYER);
   ok(onceRule && standingRule
       && onceRule.atlasAccountId === 'chequing-a'
       && onceRule.direction === 'debit'
@@ -224,7 +225,7 @@ console.log('\n=== 4. travelvisa path; still-due without invented settle ===');
       && standingRule.direction === 'debit'
       && !standingRule.settlesWhen
       && !standingRule.sameAccountSplitLegs,
-    'September settlement is the explicit chequing-a split; standing stays Travel Visa and neither invents schedule-trust');
+    'September settlement is the explicit chequing-a split; the Travel Visa standing rule remains a single debit and neither invents schedule-trust');
   ok(near(ONCE_AMT, 283.94) && near(STANDING_AMT, 160),
     'amount-encoding literals stay $283.94 once and $160 standing');
   const sim = F.simulate(plan, '2026-09-10', { weeklyVariable: 0, horizonDays: 40 });
