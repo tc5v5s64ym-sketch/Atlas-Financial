@@ -324,8 +324,13 @@ console.log('\n=== 4. Represented pre-payday outflow is not a completeness subst
       && near(active.afterRemainingBills, roundCent(
         active.opening + (active.incomeAdded || 0) - active.periodBillLoad)),
     'Payday balance is period income; PEB uses the snapshot opening and does not re-deduct the represented pre-payday bill');
-  ok(active.income.every(row => row.notReliedUpon === true),
-    'pre-payday bill settlement does not prove later payroll or salary receipt');
+  const daleUnproven = incomeRow(active, 'payroll');
+  const amandaUnproven = incomeRow(active, 'amandaPayday');
+  ok(daleUnproven && daleUnproven.settlement === 'relied-upon'
+      && daleUnproven.notReliedUpon !== true,
+    'Dale stays relied-upon after payday from owner policy, not from the pre-payday bill');
+  ok(amandaUnproven && amandaUnproven.notReliedUpon === true,
+    'pre-payday bill settlement does not prove Amanda receipt');
 }
 
 console.log('\n=== 5. Live-advanced cash without a walkable dated opening still fails closed ===');
@@ -612,8 +617,11 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
       && near(completeActive.afterHouseholdBudget, roundCent(
         completeActive.afterRemainingBills - completeActive.budgetHold)),
     'live This Payday PEB uses the retained payday opening, not live mid-period cash');
-  ok(completeActive.income.every(row => row.notReliedUpon === true),
-    'complete pre-payday cash coverage does not prove later payroll or salary receipt');
+  ok(completeActive.income.every(row => row.id !== 'amandaPayday' || row.notReliedUpon === true),
+    'complete pre-payday cash coverage does not prove later Amanda receipt');
+  const completeDale = incomeRow(completeActive, 'payroll');
+  ok(completeDale && completeDale.settlement === 'relied-upon',
+    'Dale remains relied-upon after payday from owner policy, not from gap coverage');
   ok(completeHtml.includes(composer.money2(completeActive.available))
       && completeHtml.includes(composer.money2(completeActive.afterRemainingBills))
       && completeHtml.includes(composer.money2(completeActive.afterHouseholdBudget))
@@ -781,8 +789,11 @@ console.log('\n=== 9. observer earns paydayGapComplete; overlay consumes the pro
       && near(completeActive.afterHouseholdBudget, roundCent(
         completeActive.afterRemainingBills - completeActive.budgetHold)),
     'observe→overlay PEB uses the produced payday opening, not live mid-period cash');
-  ok(completeActive.income.every(row => row.notReliedUpon === true),
-    'observed gap movements do not manufacture later income settlement');
+  ok(completeActive.income.every(row => row.id !== 'amandaPayday' || row.notReliedUpon === true),
+    'observed gap movements do not manufacture later Amanda settlement');
+  const observedDale = incomeRow(completeActive, 'payroll');
+  ok(observedDale && observedDale.settlement === 'relied-upon',
+    'Dale remains relied-upon after payday from owner policy, not from observed gap movements');
 
   const truncated = observeThenOverlay(observePayload({
     window: {

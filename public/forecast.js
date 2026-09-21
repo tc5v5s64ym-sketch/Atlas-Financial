@@ -4972,11 +4972,11 @@
 
   // Income already inside the payday-opening cash, not income already
   // inside today's live bank balance. Received-vs-live is settlement
-  // status; it must not erase a pay-period income row from the snapshot.
-  // A recorded paydaySnapshot's opening is that frozen morning figure.
-  // Live overlay representedEvents prove settlement against today's
-  // cash and must not treat snapshot-period income as already inside
-  // that recorded opening.
+  // status; it must not erase a pay-period income row from the
+  // payday-boundary income term. A recorded paydaySnapshot's opening
+  // is that frozen morning figure. Live overlay representedEvents
+  // prove settlement against today's cash and must not treat
+  // snapshot-period income as already inside that recorded opening.
   function incomeAlreadyInPaydayOpening(row, openingAsOf, plan, opts, openingSource) {
     if (!row || !openingAsOf) return false;
     if (row.notReliedUpon === true || row.settlement === 'not-relied-upon') return false;
@@ -4993,16 +4993,27 @@
     return false;
   }
 
-  // Living-prediction income term: use the observed actual when Forecast
-  // already has one, otherwise the planned/recognized amount. Not-relied-upon
-  // rows contribute nothing. This is not a second income engine.
+  // Living-prediction income term: household-income dollars belonging to
+  // the period and not already inside the payday-boundary opening.
+  // Observed `actual` is the incumbent representedActuals / Lunch Money
+  // signed observation (credit negative, debit positive). PEB needs
+  // inflow magnitude — the same abs treatment householdMovement and
+  // historical settlement already use — not that ledger sign.
+  // not-relied-upon is live-cash settlement status. It does not drop
+  // period income from Predicted Ending Balance.
+  function householdIncomeAmount(value) {
+    const n = Number(value);
+    if (!isFinite(n) || n === 0) return 0;
+    return roundCent(Math.abs(n));
+  }
+
   function calendarIncomeContribution(row) {
     if (!row) return 0;
-    if (row.notReliedUpon === true || row.settlement === 'not-relied-upon') return 0;
     if (row.actual != null && isFinite(Number(row.actual))) {
-      return Number(row.actual);
+      return householdIncomeAmount(row.actual);
     }
-    return Number(row.amount) || 0;
+    return householdIncomeAmount(row.amount)
+      || householdIncomeAmount(row.planned);
   }
 
   // Explicit complete household-cash evidence for (openingAsOf, morningDate).
@@ -5056,9 +5067,9 @@
 
   // Spendable reconstruction is chequing-only when household chequing
   // identities exist. Designated savings / EMERGENCY SAVING stays reserve
-  // evidence: a savings credit, debit, or internal-transfer leg must not
-  // change the reconstructed payday-morning opening. Completeness of the
-  // household-cash gap is a separate fail-closed question.
+  // evidence: a savings credit, debit, or internal-transfer savings leg
+  // must not change the reconstructed payday-morning opening. Completeness
+  // of the household-cash gap is a separate fail-closed question.
   function gapMovementAffectsSpendableOpening(mov, plan) {
     if (!gapMovementAffectsJointCash(mov)) return false;
     const id = gapMovementAccountId(mov);
@@ -5072,11 +5083,19 @@
     return true;
   }
 
+  function gapMovementIdentified(mov) {
+    return gapMovementAccountId(mov) !== '';
+  }
+
   // Trusted dated opening plus every spendable (chequing-pool) movement in
   // the gap, only when that interval is completeness-proven. Not live cash
   // walked backward, not weekly-variable spend, not reserved-daily drain,
-  // not designated-savings rescue, and not scheduled income/outflows with
-  // unscheduled spending assumed zero.
+  // not designated-savings rescue, not a transfer-history total mistaken
+  // for a stock, and not scheduled income/outflows with unscheduled
+  // spending assumed zero. Unidentified household-cash movements mixed
+  // with identified chequing ids fail closed rather than being treated
+  // as spendable opening (a transaction total is not a payday-morning
+  // stock).
   function completeCashAtMorning(plan, morningDate, opts) {
     if (!plan || !morningDate) return null;
     const openingAsOf = plan.opening && plan.opening.asOf;
@@ -5086,13 +5105,27 @@
     if (openingAsOf === morningDate) return roundCent(openingCash);
     if (!paydayGapCashComplete(plan, morningDate, opts)) return null;
     const packet = paydayGapCashPacket(opts);
-    let balance = roundCent(openingCash);
+    const inGap = [];
     for (const mov of packet.movements) {
       if (!mov || !mov.date) continue;
       if (String(mov.date) <= String(openingAsOf)
           || String(mov.date) >= String(morningDate)) {
         continue;
       }
+      if (!gapMovementAffectsJointCash(mov)) continue;
+      inGap.push(mov);
+    }
+    const rows = ((plan.startingCash && plan.startingCash.breakdown) || []);
+    const hasChequing = rows.some(
+      b => b && HOUSEHOLD_CHEQUING_IDS.indexOf(b.id) !== -1
+    );
+    if (hasChequing) {
+      const anyIdentified = inGap.some(gapMovementIdentified);
+      const anyUnidentified = inGap.some(mov => !gapMovementIdentified(mov));
+      if (anyIdentified && anyUnidentified) return null;
+    }
+    let balance = roundCent(openingCash);
+    for (const mov of inGap) {
       if (!gapMovementAffectsSpendableOpening(mov, plan)) continue;
       const amt = Number(mov.amount);
       if (!Number.isFinite(amt)) return null;
@@ -5571,16 +5604,17 @@
   }
 
   // Owner policy 2026-09-11: Dale Seaspan salary is relied upon for
-  // planning at 00:00 America/Vancouver on that Seaspan payday. asOf is
-  // the household financial date (already converted, or an instant that
-  // financialDate maps). This is not represented settlement and does not
-  // invent a Lunch Money deposit. Amanda salary is never recognized here.
+  // planning at 00:00 America/Vancouver on that Seaspan payday, and
+  // remains relied upon after that payday. asOf is the household
+  // financial date (already converted, or an instant that financialDate
+  // maps). This is not represented settlement and does not invent a
+  // Lunch Money deposit. Amanda salary is never recognized here.
   function isDaleSeaspanPaydayRecognition(plan, event, asOf) {
     const day = financialDate(asOf);
-    if (!event || !day || event.date !== day) return false;
+    if (!event || !day || !event.date || event.date > day) return false;
     if (incomeClassForEvent(plan, event) !== 'dale') return false;
-    const cycle = spendingCycle(plan, day);
-    return !!(cycle && cycle.start === day);
+    const cycle = spendingCycle(plan, event.date);
+    return !!(cycle && cycle.start === event.date);
   }
 
   function calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, notRelied, opts) {
@@ -5589,7 +5623,19 @@
     const key = event.id + '@' + event.date;
     const incomeClass = incomeClassForEvent(plan, event);
     const paid = !!(event.id && represented.has(key));
-    const dalePaydayRecognized = !paid && isDaleSeaspanPaydayRecognition(plan, event, asOf);
+    const inside = recurringInsideOpening(plan, event, cashAsOf);
+    const stream = ((plan && plan.income) || []).find(s => s && s.id === event.id);
+    const otherOnce = incomeClass === 'other'
+      && (!stream || stream.frequency === 'once');
+    const datePassed = !!(event.date && cashAsOf && event.date < cashAsOf);
+    const received = paid || inside || (datePassed && !otherOnce);
+    // Dale recognition is the LM-lag exception. It does not rewrite a
+    // salary that is already inside the dated opening / cash snapshot
+    // (represented, inside-opening, or date-passed). After payday that
+    // already-in-cash path stays received; persist-after-payday only
+    // keeps an unpaid Dale row relied-upon instead of not-relied-upon.
+    const dalePaydayRecognized = !paid && !received
+      && isDaleSeaspanPaydayRecognition(plan, event, asOf);
     // Advancing live cash past an unproven inbound must not turn it into
     // received income in the payday snapshot. Preserve the incumbent
     // not-relied-upon treatment; future salary remains ordinary income.
@@ -5645,12 +5691,6 @@
         otherIncome: false,
       }, event);
     }
-    const inside = recurringInsideOpening(plan, event, cashAsOf);
-    const stream = ((plan && plan.income) || []).find(s => s && s.id === event.id);
-    const otherOnce = incomeClass === 'other'
-      && (!stream || stream.frequency === 'once');
-    const datePassed = !!(event.date && cashAsOf && event.date < cashAsOf);
-    const received = paid || inside || (datePassed && !otherOnce);
     return applyIncomeClass(plan, {
       id: event.id,
       label: event.label,
@@ -6768,6 +6808,37 @@
     }, 0));
   }
 
+  // Named Predicted Ending Balance identity. Every term is inspectable.
+  // closes is a boolean check, not a plug that forces equality.
+  function composePredictedEndingBalanceTerms(
+    paydayBoundaryPosition, periodIncome, assignedBills, householdBudgetHold, predictedEndingBalance
+  ) {
+    if (paydayBoundaryPosition == null || periodIncome == null
+        || assignedBills == null || householdBudgetHold == null
+        || predictedEndingBalance == null) {
+      return null;
+    }
+    if (![paydayBoundaryPosition, periodIncome, assignedBills,
+      householdBudgetHold, predictedEndingBalance].every(v => isFinite(Number(v)))) {
+      return null;
+    }
+    const position = roundCent(paydayBoundaryPosition);
+    const income = roundCent(periodIncome);
+    const bills = roundCent(assignedBills);
+    const hold = roundCent(householdBudgetHold);
+    const peb = roundCent(predictedEndingBalance);
+    const reconstructed = roundCent(position + income - bills - hold);
+    return {
+      paydayBoundaryPosition: position,
+      periodIncome: income,
+      assignedBills: bills,
+      householdBudgetHold: hold,
+      predictedEndingBalance: peb,
+      identity: 'predicted-ending-balance',
+      closes: Math.abs(reconstructed - peb) <= 0.005,
+    };
+  }
+
   function periodPaidBillDisclosure(bills) {
     return roundCent((bills || []).reduce((sum, row) => {
       if (!row || row.needsDate || !rowIsSettledBill(row)) return sum;
@@ -6952,18 +7023,23 @@
   // payday-morning cash only when as-of is that payday and live overlay
   // has not already advanced, else a completeness-proven household-cash
   // walk (`Forecast.establishPaydaySnapshot`) — never today's live
-  // posted cash, never a mid-period cutover-opening, and never a
-  // scheduled-only reconstruction that assumes unscheduled gap spending
-  // was zero. A cutover-opening is payday-boundary only when its as-of
-  // is the period start. incomeAdded remains
-  // the settlement-qualified increment and is not the published Payday
-  // balance. The Bills step subtracts the authoritative period bill load
-  // assigned against that frozen snapshot, including subsequently PAID
-  // rows that are not already inside the opening. Paid/remaining is
-  // settlement disclosure. Household Budget uses the same spendingCycle
-  // window. Owner 2026-09-04: that hold is Σ max(planned, actual) for
-  // planned categories plus Other Spending actual. Remaining-only
-  // leftover and planned-plus-actual are both wrong.
+  // posted cash, never a mid-period cutover-opening, never a
+  // transfer-history total, never chequing-a posted-balance-observed-
+  // on-household-date, and never a scheduled-only reconstruction that
+  // assumes unscheduled gap spending was zero. A cutover-opening is
+  // payday-boundary only when its as-of is the period start. The
+  // payday-boundary opening is posted Chequing A (BILLS) plus Chequing B
+  // (WEEKLY), including a negative Weekly carry. incomeAdded is the
+  // period income not already inside that opening, including a salary
+  // that remains not-relied-upon for live-cash settlement, and is not
+  // the published Payday balance. The Bills step subtracts the
+  // authoritative period bill load assigned against that frozen
+  // snapshot, including subsequently PAID rows that are not already
+  // inside the opening. Paid/remaining is settlement disclosure.
+  // Household Budget uses the same spendingCycle window. Owner
+  // 2026-09-04: that hold is Σ max(planned, actual) for planned
+  // categories plus Other Spending actual. Remaining-only leftover and
+  // planned-plus-actual are both wrong.
   // paydayAllocation.runningLeftover remains the current-cash allocation
   // chain (what current cash must do). It is not this Predicted Ending
   // Balance. Live Current Balance stays posted household chequing.
@@ -7081,7 +7157,8 @@
           row.remaining = 0;
         }
         if (planUnavailable) continue;
-        if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) continue;
+        // not-relied-upon is live-cash settlement. It must not drop
+        // period income from the payday-boundary income term.
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += calendarIncomeContribution(row);
@@ -7119,6 +7196,13 @@
       const afterRemainingBills = afterBills;
       const afterHouseholdBudget = afterBills != null
         ? roundCent(afterBills - budget.hold) : null;
+      const predictedEndingBalanceTerms = composePredictedEndingBalanceTerms(
+        paydayBoundaryOpening ? opening : null,
+        incomeAdded,
+        periodBillLoad,
+        planUnavailable ? null : budget.hold,
+        afterHouseholdBudget
+      );
       let extraAllocated = 0;
       let extraDebt;
       if (planUnavailable) {
@@ -7208,6 +7292,7 @@
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'predicted-ending-balance' : null,
+        predictedEndingBalanceTerms,
         extraDebt,
         firstCard: cards.firstCard,
         otherCards: cards.otherCards,
@@ -7317,6 +7402,8 @@
       predictedEndingBalance: activePeriod ? activePeriod.afterHouseholdBudget : null,
       predictedEndingBalanceIdentity: activePeriod && activePeriod.afterHouseholdBudget != null
         ? 'predicted-ending-balance' : null,
+      predictedEndingBalanceTerms: activePeriod
+        ? activePeriod.predictedEndingBalanceTerms || null : null,
       bills: calendar.bills,
       billSections: calendar.billSections,
       undatedBills: calendar.undatedBills,

@@ -101,10 +101,10 @@ ok(past && past.settlement === 'not-relied-upon' && past.status === 'unresolved'
 ok(near(unverified.paidBills, 0) && near(unverified.remainingBills, LOAD),
   'no payment proof: paid $0, remaining $40 + $60 = $100');
 ok(near(unverified.periodBillLoad, LOAD), 'frozen snapshot retains the $100 bill load');
-ok(near(unverified.incomeAdded, PAYROLL + FUTURE_SALARY)
+ok(near(unverified.incomeAdded, PAYROLL + PAST_SALARY + FUTURE_SALARY)
     && near(unverified.available, PROVEN_AVAILABLE)
     && near(unverified.available, unverified.incomeTotal),
-  'Payday balance is represented $2,000 + unproven $700 + future $800; opening cash is not added');
+  'Payday balance is represented $2,000 + unproven $700 + future $800; PEB incomeAdded still includes the unproven period salary; opening cash is not added');
 ok(near(unverified.afterBills, roundCent(
       (Number(unverified.opening) || 0) + (Number(unverified.incomeAdded) || 0) - LOAD))
     && near(unverified.afterHouseholdBudget, roundCent(unverified.afterBills - BUDGET)),
