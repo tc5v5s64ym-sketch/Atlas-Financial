@@ -108,9 +108,9 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
   ok(/future planned payingAccount for dated bills, dated subscriptions, card minimums, and HELOC cash minimum is BILLS ACCOUNT/i
     .test(plan.billsNote),
     'bill note records the owner BILLS ACCOUNT paying-account remap');
-  ok(/Dated Bell Mobility standing \$160\.00\/month from firstDue 2026-10-15 is card-paid Travel Visa reserved gravity/i
+  ok(/Dated Bell Mobility standing \$160\.00\/month from firstDue 2026-10-15 is a BILLS ACCOUNT \(Chequing A\) joint-cash withdrawal/i
     .test(plan.billsNote),
-    'bill note records dated card-paid standing Bell, not a BILLS ACCOUNT withdrawal');
+    'bill note records standing Bell as a BILLS ACCOUNT withdrawal');
   ok(/Historical Lunch Money postings are not rewritten/i.test(plan.billsNote),
     'bill note does not rewrite historical Lunch Money postings');
   for (const id of CANCELLED) {

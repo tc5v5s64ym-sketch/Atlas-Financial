@@ -105,8 +105,8 @@ const fit = plan.bills.find(b => b.id === 'fit4less');
 const bellOnceMonthly = 283.94 / ((plan.windowDays || 91) / (365.25 / 12));
 ok(near(telecom.dated, shaw.amount + 160 + bellOnceMonthly),
   'Shaw plus standing $160 plus Sep once smear are the telecom dated total', money(telecom.dated));
-ok(near(telecom.current, 160 + bellOnceMonthly) && near(telecom.planned, 0) && near(telecom.reserved, 0),
-  'dated Bell standing + Sep once are current-regime in dated, not an undated reserved smear', money(telecom.dated));
+ok(near(telecom.current, bellOnceMonthly) && near(telecom.planned, 0) && near(telecom.reserved, 0),
+  'the September once is the remaining card-paid telecom current; standing Bell is dated joint cash', money(telecom.current));
 
 console.log('\n=== closed Telus is $0 forward; remainder is current-regime Bell ===');
 // Independent of Forecast.budgetBreakdown: category totals in generated
@@ -129,7 +129,7 @@ ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
 ok(near(telecom.historical, independentYtdAvg),
   'budgetBreakdown still reports the independent YTD historical average',
   money(independentYtdAvg));
-ok(near(telecom.current, 160 + bellOnceMonthly) && near(telecom.planned, 0) && near(telecom.reserved, 0)
+ok(near(telecom.current, bellOnceMonthly) && near(telecom.planned, 0) && near(telecom.reserved, 0)
     && near(telecom.dated, shaw.amount + 160 + bellOnceMonthly),
   'forward Bell is dated standing $160 plus the Sep once smear beside Shaw; no undated smear',
   money(telecom.dated));
@@ -141,8 +141,8 @@ ok(telecom.datedItems.length === 3
 ok(!(plan.bills || []).some(b => /telus/i.test(String(b.id) + ' ' + String(b.label))),
   'no Telus plan.bills row — current Telus recurrence is $0');
 ok((plan.bills || []).some(b => b.id === 'bell' && b.day === 15 && b.needsDate !== true
-    && b.payingAccount === 'travelvisa' && b.jointCash === false),
-  'Bell is the dated card-paid planning row on the 15th');
+    && b.payingAccount === 'chequing-a' && b.jointCash !== false),
+  'Bell is the dated BILLS ACCOUNT planning row on the 15th');
 ok(F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90))
     .some(e => e.id === 'bell-sep15-2026' && e.date === '2026-09-15' && e.cardPaid === true
       && e.jointCash === false && near(-e.amount, 283.94)),

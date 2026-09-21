@@ -320,8 +320,8 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
   ok(!hydroNow && !events16.some(e => e.id === 'hydro-due-now' || near(e.amount, -213.79)),
     'the $213.79 / $220 Hydro debit is not scheduled again');
   ok((live.plan.bills || []).some(b => b.id === 'bell' && b.day === 15
-      && b.needsDate !== true && b.payingAccount === 'travelvisa' && b.jointCash === false),
-    'Bell exists as the dated card-paid planning row on the 15th');
+      && b.needsDate !== true && b.payingAccount === 'chequing-a' && b.jointCash !== false),
+    'Bell exists as the dated BILLS ACCOUNT planning row on the 15th');
   const pinnedUtil = F.utilisation(aug16Pinned.debts, aug16Pinned.revolvingExtra, aug16Pinned.plan);
   const pinnedCash = pinnedUtil.rows.find(r => r.id === 'cashback');
   ok(pinnedUtil.rows.every(r => r.available == null || r.available >= 0),
