@@ -1,16 +1,17 @@
 'use strict';
-/* Current-pay-period Predicted Ending Balance — owner 2026-09-21.
+/* Current-pay-period Balance After Deductions — owner 2026-09-21.
  *
- * Supersedes the 2026-09-09 income-led leftover. One Forecast identity:
+ * Supersedes the pooled Predicted Ending Balance leftover
+ * (opening + incomeAdded − bills − hold). Household remaining is:
  *
- *   payday-boundary opening
- *   + income not already inside that opening
- *     (household-inflow magnitude when an actual exists; planned otherwise)
- *   − assigned bills not already inside that opening
+ *   displayed period income (incomeTotal / available)
+ *   − assigned bills (periodBillLoad)
  *   − Household Budget hold
- *   = Predicted Ending Balance
+ *   = Balance After Deductions
+ *   identity 'balance-after-deductions'
  *
  * Payday balance remains the income identity and is not this answer.
+ * The payday-boundary opening is recorded cash and is not a BAD term.
  * paydayAllocation.runningLeftover remains the current-cash allocation
  * chain and is not this answer. Long-horizon baselineTrajectory is
  * untouched. Independent arithmetic (L-002 / L-006). No live cents as
@@ -210,55 +211,55 @@ function activeOf(advice) {
   return period(advice && advice.defaultView, 'this-pay-period');
 }
 
-function independentPeb(opening, incomeAdded, bills, hold) {
-  return roundCent(opening + incomeAdded - bills - hold);
+function independentBad(income, bills, hold) {
+  return roundCent(income - bills - hold);
 }
 
 const composer = loadComposer();
 
-console.log('=== A. Day-1 prediction reserves the full planned Household Budget ===');
+console.log('=== A. Day-1 leftover is the income-led remainder ===');
 {
   const plan = fixturePlan();
   const advice = recommend(plan, []);
   const row = activeOf(advice);
-  const incomeAdded = DALE + AMANDA + CHILD;
+  const income = DALE + AMANDA + CHILD;
   const hold = GROCERY_PLAN;
-  const expected = independentPeb(OPENING, incomeAdded, BILL, hold);
-  const incomeLed = roundCent(incomeAdded - BILL - hold);
+  const expected = independentBad(income, BILL, hold);
   ok(row && row.openingKnown === true && near(row.opening, OPENING),
     'payday-boundary opening is the recorded snapshot');
-  ok(near(row.available, incomeAdded),
+  ok(near(row.available, income),
     'Payday balance stays the income identity');
   ok(near(row.budgetHold, hold),
     'Day-1 Household Budget hold is the full grocery plan');
   ok(near(row.afterHouseholdBudget, expected)
-      && near(row.predictedEndingBalance, expected),
-    'PEB = opening + income − bills − full plan hold',
+      && near(row.predictedEndingBalance, expected)
+      && near(row.balanceAfterDeductions, expected),
+    'BAD = displayed income − bills − full plan hold',
     `${row && row.afterHouseholdBudget} vs ${expected}`);
-  ok(!near(row.afterHouseholdBudget, incomeLed),
-    'PEB is not the superseded income-led remainder');
+  ok(!near(row.afterHouseholdBudget, roundCent(OPENING + income - BILL - hold)),
+    'opening is recorded but is not a BAD term');
 }
 
-console.log('\n=== B. Spending below plan does not increase PEB ===');
+console.log('\n=== B. Spending below plan does not increase leftover ===');
 {
   const none = activeOf(recommend(fixturePlan(), []));
   const under = activeOf(recommend(fixturePlan(), [groceryTx(100)]));
   ok(near(under.budgetHold, GROCERY_PLAN)
       && near(under.afterHouseholdBudget, none.afterHouseholdBudget),
-    'under-plan groceries keep the $900 hold; PEB does not rise');
+    'under-plan groceries keep the $900 hold; BAD does not rise');
 }
 
-console.log('\n=== C. Spending above plan reduces PEB by the overage ===');
+console.log('\n=== C. Spending above plan reduces leftover by the overage ===');
 {
   const atPlan = activeOf(recommend(fixturePlan(), [groceryTx(900)]));
   const over = activeOf(recommend(fixturePlan(), [groceryTx(1050)]));
   ok(near(atPlan.budgetHold, 900) && near(over.budgetHold, 1050),
     'at-plan hold stays $900; overspend hold is $1,050');
   ok(near(atPlan.afterHouseholdBudget - over.afterHouseholdBudget, 150),
-    'PEB falls exactly $150 for the grocery overage');
+    'BAD falls exactly $150 for the grocery overage');
 }
 
-console.log('\n=== D. Other Spending reduces PEB dollar-for-dollar ===');
+console.log('\n=== D. Other Spending reduces leftover dollar-for-dollar ===');
 {
   const base = activeOf(recommend(fixturePlan(), [groceryTx(100)]));
   const withOther = activeOf(recommend(fixturePlan(), [
@@ -267,7 +268,7 @@ console.log('\n=== D. Other Spending reduces PEB dollar-for-dollar ===');
   ]));
   ok(near(withOther.budgetHold - base.budgetHold, 75)
       && near(base.afterHouseholdBudget - withOther.afterHouseholdBudget, 75),
-    'Other Spending $75 reduces PEB by $75 and does not touch the grocery reserve');
+    'Other Spending $75 reduces BAD by $75 and does not touch the grocery reserve');
 }
 
 console.log('\n=== E/F. Cross-account card spend counts once; later payment does not ===');
@@ -306,13 +307,13 @@ console.log('\n=== E/F. Cross-account card spend counts once; later payment does
   }));
   ok(near(cardOnly.budgetHold, GROCERY_PLAN)
       && near(cardOnly.afterHouseholdBudget, none.afterHouseholdBudget),
-    'Travel Visa grocery $200 under plan does not change PEB (hold stays plan)');
+    'Travel Visa grocery $200 under plan does not change BAD (hold stays plan)');
   ok(near(afterPay.afterHouseholdBudget, cardOnly.afterHouseholdBudget)
       && near(afterPay.budgetHold, cardOnly.budgetHold),
     'later Bills → Travel Visa payment does not deduct the $200 again');
 }
 
-console.log('\n=== G. Bills → Weekly does not change household PEB ===');
+console.log('\n=== G. Bills → Weekly does not change household leftover ===');
 {
   const tfrTo = {
     id: 'tfr-to', date: PAYDAY, amount: 120, pending: false,
@@ -355,28 +356,29 @@ console.log('\n=== H. Bills → Savings does not destroy household money ===');
   const moved = activeOf(recommend(fixturePlan(), [tfrTo, tfrFr]));
   const expl = moved.operatingCashExplanation;
   ok(near(moved.afterHouseholdBudget, none.afterHouseholdBudget),
-    'Bills → Savings does not reduce Predicted Ending Balance');
-  ok(expl && expl.leftoverIdentity === 'predicted-ending-balance'
+    'Bills → Savings does not reduce Balance After Deductions');
+  ok(expl && expl.leftoverIdentity === 'balance-after-deductions'
       && expl.sameContract === false
       && /Savings/.test(expl.leftoverNote),
-    'reconciliation names PEB and keeps leftover ≠ cash; Savings stays household money');
+    'reconciliation names BAD and keeps leftover ≠ cash; Savings stays household money');
   ok(expl && expl.sameContract === false && !('gap' in expl) && !('plug' in expl),
     'Savings location stays an explanation fact; no leftover plug is introduced');
 }
 
-console.log('\n=== I. Positive and negative payday-boundary positions ===');
+console.log('\n=== I. Positive and negative payday-boundary positions do not change BAD ===');
 {
   const pos = activeOf(recommend(fixturePlan({ openingAmount: 250 }), []));
   const neg = activeOf(recommend(fixturePlan({ openingAmount: -180 }), []));
-  const incomeAdded = DALE + AMANDA + CHILD;
-  ok(near(pos.afterHouseholdBudget,
-      independentPeb(250, incomeAdded, BILL, GROCERY_PLAN)),
-    'positive opening is added, not manufactured as income');
-  ok(near(neg.afterHouseholdBudget,
-      independentPeb(-180, incomeAdded, BILL, GROCERY_PLAN)),
-    'negative Weekly/operating opening reduces PEB and is not a fake purchase');
+  const income = DALE + AMANDA + CHILD;
+  const expected = independentBad(income, BILL, GROCERY_PLAN);
+  ok(near(pos.opening, 250) && near(neg.opening, -180),
+    'payday-boundary opening still publishes, including a negative Weekly/operating position');
+  ok(near(pos.afterHouseholdBudget, expected)
+      && near(neg.afterHouseholdBudget, expected)
+      && near(pos.afterHouseholdBudget, neg.afterHouseholdBudget),
+    'positive and negative openings do not change BAD; same income-led remainder');
   ok(neg.budgetHold === pos.budgetHold,
-    'negative opening does not invent Household Budget spending');
+    'negative Weekly is not Household Budget spending');
 }
 
 console.log('\n=== J. Actual income variance updates the living prediction ===');
@@ -402,29 +404,34 @@ console.log('\n=== J. Actual income variance updates the living prediction ===')
       representedActuals: [{ id: 'payroll', date: PAYDAY, actual: actualDale }],
     },
   }));
-  ok(near(varied.afterHouseholdBudget - modeled.afterHouseholdBudget, actualDale - DALE),
-    'observed Dale actual $2,140 vs modeled $2,000 moves PEB by the $140 variance',
-    `${varied && varied.afterHouseholdBudget} vs ${modeled && modeled.afterHouseholdBudget}`);
+  ok(near(varied.afterHouseholdBudget, independentBad(
+      varied.incomeTotal, varied.periodBillLoad, varied.budgetHold))
+      && near(modeled.afterHouseholdBudget, independentBad(
+        modeled.incomeTotal, modeled.periodBillLoad, modeled.budgetHold)),
+    'BAD follows displayed income − bills − hold; represented actual does not invent a fourth leftover engine');
+  ok(near(varied.available, varied.incomeTotal)
+      && near(modeled.available, modeled.incomeTotal),
+    'Payday balance stays the displayed income term for both modeled and actual Dale');
 }
 
-console.log('\n=== K. Budget/Plan and Talk reprint the same Forecast PEB ===');
+console.log('\n=== K. Budget/Plan and Talk reprint the same Forecast leftover ===');
 {
   const plan = fixturePlan();
   const advice = recommend(plan, [groceryTx(100), otherTx(40)]);
   const row = activeOf(advice);
   const html = composer.calendarWaterfallHtml(row, null, advice.paydayAllocation, plan);
-  ok(/data-operating-prompt="Predicted Ending Balance"/.test(html)
+  ok(/data-operating-prompt="Balance After Deductions"/.test(html)
       && html.includes(composer.money2(row.afterHouseholdBudget)),
-    'Budget Q07 reprints Forecast Predicted Ending Balance');
+    'Budget Q07 reprints Forecast Balance After Deductions');
   ok(near(advice.defaultView.predictedEndingBalance, row.afterHouseholdBudget)
-      && advice.defaultView.predictedEndingBalanceIdentity === 'predicted-ending-balance',
-    'recommend.defaultView.predictedEndingBalance equals the calendar leftover');
+      && advice.defaultView.predictedEndingBalanceIdentity === 'balance-after-deductions',
+    'recommend.defaultView leftover identity is balance-after-deductions');
   const packet = {
     forecast: {
       predictedEndingBalance: {
         status: 'ok',
         source: 'Forecast.calendarPeriodWaterfalls',
-        identity: 'predicted-ending-balance',
+        identity: 'balance-after-deductions',
         amount: row.afterHouseholdBudget,
       },
     },
@@ -435,13 +442,14 @@ console.log('\n=== K. Budget/Plan and Talk reprint the same Forecast PEB ===');
     packet
   );
   ok(TalkSession.LEFTOVER_PATH === 'forecast.predictedEndingBalance.amount',
-    'Talk leftover path is the Forecast PEB field');
+    'Talk leftover path remains forecast.predictedEndingBalance.amount');
   ok(presented && presented.answer
+      && /Balance after deductions for this pay period is/.test(presented.answer)
       && presented.answer.indexOf(TalkPresentation.formatCurrency(row.afterHouseholdBudget)) >= 0,
-    'Talk leftover reprints the same Forecast PEB amount');
+    'Talk leftover reprints the same Forecast BAD amount via TalkPresentation');
   ok(!near(row.afterHouseholdBudget, advice.paydayAllocation.runningLeftover.afterHouseholdBudget)
       || near(row.afterHouseholdBudget, advice.paydayAllocation.runningLeftover.afterHouseholdBudget),
-    'paydayAllocation leftover may differ; PEB does not copy it as a third engine');
+    'paydayAllocation leftover may differ; BAD does not copy it as a third engine');
 }
 
 console.log('\n=== L. Long-horizon baselineTrajectory remains intact ===');
@@ -461,16 +469,16 @@ console.log('\n=== L. Long-horizon baselineTrajectory remains intact ===');
     baselineThrew = true;
   }
   ok(!baselineThrew,
-    'baselineTrajectory does not throw after the current-pay-period PEB restore');
+    'baselineTrajectory does not throw after the current-pay-period leftover restore');
   ok(!baseline || !baseline.predictedEndingBalance,
     'long-horizon trajectory does not own Predicted Ending Balance');
   const advice = F.recommend(plan, asOf, opts);
   ok(advice && advice.defaultView && advice.defaultView.predictedEndingBalance != null
       && advice.paydayAllocation && advice.paydayAllocation.runningLeftover,
-    'current-pay-period PEB and paydayAllocation coexist; trajectory is separate');
+    'current-pay-period leftover and paydayAllocation coexist; trajectory is separate');
 }
 
-console.log('\n=== M. Missing payday-boundary opening fails closed ===');
+console.log('\n=== M. Missing payday-boundary opening still publishes BAD ===');
 {
   const plan = fixturePlan({
     opening: { asOf: AS_OF, priorAsOf: PAYDAY, representedEvents: [] },
@@ -480,9 +488,11 @@ console.log('\n=== M. Missing payday-boundary opening fails closed ===');
     'no snapshot and a live-advanced mid-period opening fail closed');
   ok(row.available != null && near(row.available, row.incomeTotal),
     'Payday balance still publishes the income identity');
-  ok(row.afterHouseholdBudget == null && row.predictedEndingBalance == null
-      && row.afterBills == null,
-    'PEB is withheld rather than inventing an income-led remainder');
+  const expected = independentBad(row.incomeTotal, row.periodBillLoad, row.budgetHold);
+  ok(row.afterHouseholdBudget != null && near(row.afterHouseholdBudget, expected)
+      && near(row.predictedEndingBalance, expected)
+      && near(row.afterBills, roundCent(row.incomeTotal - row.periodBillLoad)),
+    'BAD publishes without payday-boundary opening as income − bills − hold');
 }
 
 console.log('\n=== O. Mid-period cutover cash does not double-count pre-cutover spend ===');
@@ -536,19 +546,17 @@ console.log('\n=== O. Mid-period cutover cash does not double-count pre-cutover 
     'Q01 still publishes the mid-period cutover; it is not a payday-boundary opening');
   ok(near(row.budgetHold, GROCERY_TARGET),
     'Household Budget hold remains the full-period grocery target');
-  ok(row.afterBills == null && row.afterHouseholdBudget == null
-      && row.predictedEndingBalance == null,
-    'Forecast withholds PEB rather than treating cutover cash as payday morning');
-  ok(row.predictedEndingBalance == null
-      && row.predictedEndingBalance !== doubleCountTrap,
-    'Forecast does not publish the $0 double-count of the already-reflected $100');
-  ok(row.predictedEndingBalance == null
-      && row.predictedEndingBalance !== independentPaydayRemainder,
-    'Forecast does not invent a remaining-budget remainder from unrecorded payday cash');
-  const echo = independentPeb(
-    row.opening, row.incomeAdded || 0, row.periodBillLoad || 0, row.budgetHold);
-  ok(near(echo, doubleCountTrap) && row.predictedEndingBalance == null,
-    'opening + incomeAdded − bills − hold on cutover cash is the $0 trap, not the published PEB');
+  const expectedBad = independentBad(row.incomeTotal || 0, row.periodBillLoad || 0, row.budgetHold);
+  ok(near(expectedBad, -900) && near(row.afterHouseholdBudget, expectedBad)
+      && near(row.predictedEndingBalance, expectedBad),
+    'BAD publishes as income − bills − hold; income 0 bills 0 hold 900 → −$900');
+  ok(!near(row.predictedEndingBalance, doubleCountTrap),
+    'BAD is not the $0 cutover-minus-hold trap');
+  ok(!near(row.predictedEndingBalance, independentPaydayRemainder),
+    'BAD does not invent a payday-morning remainder from unrecorded payday cash');
+  ok(near(row.opening, CUTOVER_CASH)
+      && !near(row.predictedEndingBalance, roundCent(row.opening - row.budgetHold)),
+    'household BAD does not use cutover cash; cash leftover from cutover may stay internal');
 }
 
 console.log('\n=== N. No unexplained balancing adjustment ===');
@@ -558,33 +566,33 @@ console.log('\n=== N. No unexplained balancing adjustment ===');
     'Forecast does not introduce a leftover balancing plug');
   const row = activeOf(recommend(fixturePlan(), [groceryTx(100)]));
   const expl = row.operatingCashExplanation;
-  const reconstructed = independentPeb(
-    row.opening, row.incomeAdded, row.periodBillLoad, row.budgetHold);
+  const reconstructed = independentBad(
+    row.incomeTotal, row.periodBillLoad, row.budgetHold);
   ok(near(row.afterHouseholdBudget, reconstructed),
-    'PEB equals the named-facts reconstruction with no residual plug');
+    'BAD equals the named-facts reconstruction with no residual plug');
   ok(expl && expl.sameContract === false
       && expl.leftoverSameAsBillsCash === false
-      && expl.leftoverIdentity === 'predicted-ending-balance',
-    'explanation keeps PEB, Current Balance, and BILLS cash as different contracts');
+      && expl.leftoverIdentity === 'balance-after-deductions',
+    'explanation keeps BAD, Current Balance, and BILLS cash as different contracts');
 }
 
-console.log('\n=== Sep 11–24 acceptance: restored identity uses opening and stays fluid ===');
+console.log('\n=== Sep 11–24 acceptance: BAD is income-led and stays fluid ===');
 {
   const plan = fixturePlan();
   const day1 = activeOf(recommend(plan, []));
   const later = activeOf(recommend(plan, [groceryTx(100), otherTx(80)]));
-  const expectedDay1 = independentPeb(
-    OPENING, DALE + AMANDA + CHILD, BILL, GROCERY_PLAN);
+  const expectedDay1 = independentBad(
+    DALE + AMANDA + CHILD, BILL, GROCERY_PLAN);
   ok(day1.start === PAYDAY && day1.end === '2026-09-24',
     'fixture is the Sep 11–24 Seaspan window');
   ok(near(day1.afterHouseholdBudget, expectedDay1)
-      && !near(day1.afterHouseholdBudget, expectedDay1 - OPENING),
-    'Sep 11–24 PEB includes the payday-boundary opening');
+      && !near(day1.afterHouseholdBudget, roundCent(expectedDay1 + OPENING)),
+    'Sep 11–24 BAD does not include the payday-boundary opening');
   ok(near(day1.afterHouseholdBudget - later.afterHouseholdBudget, 80),
     'later Other Spending updates the living prediction dollar-for-dollar');
 }
 
-console.log('\n=== Live reconstruction: PEB follows named facts, never hardcoded Q07 ===');
+console.log('\n=== Live reconstruction: leftover follows named income facts, never hardcoded Q07 ===');
 {
   const live = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data.json'), 'utf8'));
   const asOf = (live.plan && live.plan.opening && live.plan.opening.asOf)
@@ -593,36 +601,23 @@ console.log('\n=== Live reconstruction: PEB follows named facts, never hardcoded
   const row = activeOf(advice);
   if (!row) {
     ok(false, 'live This Pay Period exists');
-  } else if (row.paydayBoundaryOpening === true && row.incomeAdded != null
-      && row.periodBillLoad != null && row.budgetHold != null) {
-    const reconstructed = independentPeb(
-      row.opening, row.incomeAdded, row.periodBillLoad, row.budgetHold);
+  } else if (row.incomeTotal != null && row.periodBillLoad != null
+      && row.budgetHold != null) {
+    const reconstructed = independentBad(
+      row.incomeTotal, row.periodBillLoad, row.budgetHold);
     ok(near(row.afterHouseholdBudget, reconstructed)
         && near(row.predictedEndingBalance, reconstructed),
-      'live PEB equals payday-boundary opening + incomeAdded − bills − hold');
-    const incomeLed = roundCent(row.incomeTotal - row.periodBillLoad - row.budgetHold);
-    if (Math.abs(row.opening) > 0.005) {
-      ok(!near(row.afterHouseholdBudget, incomeLed),
-        'live PEB is not the superseded income-led Q07 when opening is nonzero');
-    }
+      'live BAD equals incomeTotal − periodBillLoad − hold even without proven payday-boundary opening');
   } else {
-    ok(row.afterHouseholdBudget == null && row.predictedEndingBalance == null
-        && row.paydayBoundaryOpening !== true,
-      'live PEB fails closed when payday-boundary opening is not proven');
     ok(row.available != null || row.operatingPlanUnavailable === true,
       'income identity or unavailable operating plan remains explicit');
-    if (row.openingKnown === true && row.openingSource === 'cutover-opening'
-        && row.openingAsOf && row.start && row.openingAsOf !== row.start) {
-      ok(row.predictedEndingBalance == null && row.afterHouseholdBudget == null,
-        'live mid-period cutover is not published as payday-boundary leftover');
-    }
   }
 }
 
 console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recur ===');
 {
   // Named reconstruction of the 2026-09-21 live defect. These cents are
-  // the broken equation, not a specification of a desired household PEB
+  // the broken equation, not a specification of a desired household leftover
   // (L-006). Independent arithmetic, then a Forecast fixture with the
   // same structural facts.
   const PROD_OPENING = 310.47;
@@ -637,7 +632,7 @@ console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recu
   const BROKEN_PEB = roundCent(BROKEN_AFTER_BILLS - PROD_HOLD);
   ok(near(BROKEN_INCOME, -4055.53) && near(BROKEN_AFTER_BILLS, -7158.13)
       && near(BROKEN_PEB, -9445.3),
-    'independent reconstruction of the published broken equation');
+    'independent reconstruction of the published broken equation must not recur');
 
   const plan = fixturePlan({
     openingAmount: PROD_OPENING,
@@ -702,32 +697,41 @@ console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recu
       ],
     },
   }));
-  const correctIncome = roundCent(DALE_INFLOW + AMANDA_PLANNED + CHILD_AMT);
-  const correctAfterBills = roundCent(PROD_OPENING + correctIncome - PROD_BILLS);
-  const correctPeb = independentPeb(PROD_OPENING, correctIncome, PROD_BILLS, PROD_HOLD);
+  const displayedIncome = roundCent(4264 + AMANDA_PLANNED + CHILD_AMT);
+  const absActualIncome = roundCent(DALE_INFLOW + AMANDA_PLANNED + CHILD_AMT);
+  const correctAfterBills = roundCent(displayedIncome - PROD_BILLS);
+  const correctBad = independentBad(displayedIncome, PROD_BILLS, PROD_HOLD);
   ok(row && near(row.opening, PROD_OPENING) && row.openingSource === 'snapshot'
       && row.paydayBoundaryOpening === true,
     'payday-boundary opening stays the Sep 11 snapshot, not live cash');
   ok(!near(row.opening, 190.24) && !near(row.opening, 593.29),
     'today\'s Current Balance / Bills-only cash is not the payday-boundary opening');
-  ok(near(row.incomeAdded, correctIncome),
-    'Lunch Money signed Dale actual becomes inflow; unconfirmed Amanda still belongs to the period',
-    `${row && row.incomeAdded} vs ${correctIncome}`);
+  ok(near(row.incomeTotal, displayedIncome) && near(row.available, displayedIncome)
+      && !near(row.incomeTotal, absActualIncome),
+    'displayed income is Payday balance (planned Dale + Amanda + Child), not a silent abs-actual rewrite',
+    `${row && row.incomeTotal} vs ${displayedIncome}`);
+  ok(row.incomeAdded != null && row.incomeAdded > 0
+      && !near(row.incomeAdded, BROKEN_INCOME),
+    'Lunch Money signed Dale actual is not converted into negative period income',
+    `${row && row.incomeAdded} vs ${BROKEN_INCOME}`);
   ok(near(row.afterBills, correctAfterBills) && !near(row.afterBills, BROKEN_AFTER_BILLS),
     'Balance after bills is not the production −$7,158.13');
-  ok(near(row.afterHouseholdBudget, correctPeb) && !near(row.afterHouseholdBudget, BROKEN_PEB),
-    'PEB is not the production −$9,445.30');
+  ok(near(row.afterHouseholdBudget, correctBad) && !near(row.afterHouseholdBudget, BROKEN_PEB),
+    'BAD is not the production −$9,445.30');
+  ok(!near(row.afterHouseholdBudget, 593.29) && !near(row.predictedEndingBalance, 593.29),
+    'leftover is not the hub Current Balance 593.29');
   ok(row.predictedEndingBalanceTerms
+      && row.predictedEndingBalanceTerms.identity === 'balance-after-deductions'
       && row.predictedEndingBalanceTerms.closes === true
-      && near(row.predictedEndingBalanceTerms.paydayBoundaryPosition, PROD_OPENING)
-      && near(row.predictedEndingBalanceTerms.periodIncome, correctIncome)
+      && near(row.predictedEndingBalanceTerms.periodIncome, displayedIncome)
       && near(row.predictedEndingBalanceTerms.assignedBills, PROD_BILLS)
       && near(row.predictedEndingBalanceTerms.householdBudgetHold, PROD_HOLD)
-      && near(row.predictedEndingBalanceTerms.predictedEndingBalance, correctPeb),
-    'Forecast publishes the closed PEB identity with no plug');
+      && near(row.predictedEndingBalanceTerms.balanceAfterDeductions, correctBad)
+      && row.predictedEndingBalanceTerms.paydayBoundaryPosition == null,
+    'Forecast publishes the closed BAD identity; paydayBoundaryPosition is not a term');
 }
 
-console.log('\n=== P. Live-advanced unproven period income still increments PEB ===');
+console.log('\n=== P. Live-advanced unproven period income still increments leftover ===');
 {
   // Structural reconstruction of the Sep 11–24 production failure:
   // overlay advanced past payday, salaries still on Payday balance, but
@@ -790,12 +794,10 @@ console.log('\n=== P. Live-advanced unproven period income still increments PEB 
     ],
   });
   const row = activeOf(recommend(plan, [], { asOf: '2026-09-21' }));
-  const expectedAfterBills = roundCent(POOLED + PERIOD_INCOME - PERIOD_BILLS);
-  const expectedPeb = independentPeb(POOLED, PERIOD_INCOME, PERIOD_BILLS, GROCERY_HOLD);
-  const incomeWipedTrap = independentPeb(POOLED, 0, PERIOD_BILLS, GROCERY_HOLD);
-  const transferNetTrap = independentPeb(TRANSFER_NET, 0, PERIOD_BILLS, GROCERY_HOLD);
-  const liveCashTrap = independentPeb(LIVE_POOLED, PERIOD_INCOME, PERIOD_BILLS, GROCERY_HOLD);
-  const billsOnlyTrap = independentPeb(CHEQUING_A_POSTED, PERIOD_INCOME, PERIOD_BILLS, GROCERY_HOLD);
+  const expectedAfterBills = roundCent(PERIOD_INCOME - PERIOD_BILLS);
+  const expectedBad = independentBad(PERIOD_INCOME, PERIOD_BILLS, GROCERY_HOLD);
+  const incomeWipedTrap = independentBad(0, PERIOD_BILLS, GROCERY_HOLD);
+  const pooledOpeningTrap = roundCent(POOLED + PERIOD_INCOME - PERIOD_BILLS - GROCERY_HOLD);
   ok(row && near(row.opening, POOLED) && row.openingSource === 'snapshot'
       && row.paydayBoundaryOpening === true,
     'payday-boundary opening is pooled Bills + Weekly, including negative Weekly carry');
@@ -805,21 +807,23 @@ console.log('\n=== P. Live-advanced unproven period income still increments PEB 
     'live-advanced unproven period income still increments incomeAdded',
     `${row && row.incomeAdded} vs ${PERIOD_INCOME}`);
   ok(near(row.afterBills, expectedAfterBills)
-      && near(row.predictedEndingBalance, expectedPeb),
-    'PEB = pooled opening + period income − bills − hold',
-    `${row && row.predictedEndingBalance} vs ${expectedPeb}`);
+      && near(row.predictedEndingBalance, expectedBad),
+    'BAD = period income − bills − hold, not pooled opening + income',
+    `${row && row.predictedEndingBalance} vs ${expectedBad}`);
+  ok(!near(row.predictedEndingBalance, pooledOpeningTrap),
+    'pooled opening is cash opening, not a BAD term');
   ok(!near(row.afterBills, roundCent(POOLED - PERIOD_BILLS))
       && !near(row.predictedEndingBalance, incomeWipedTrap),
-    'elapsed-unproven settlement does not wipe period income from PEB');
+    'elapsed-unproven settlement does not wipe period income from leftover');
   ok(!near(row.opening, TRANSFER_NET)
-      && !near(row.predictedEndingBalance, transferNetTrap),
-    'a Bills transfer-history net is not the payday-boundary opening');
+      && !near(row.predictedEndingBalance, TRANSFER_NET),
+    'a Bills transfer-history net is not the payday-boundary opening and is not leftover');
   ok(!near(row.opening, LIVE_POOLED)
-      && !near(row.predictedEndingBalance, liveCashTrap),
-    'today\'s live Current Balance is not substituted for payday-boundary opening');
+      && !near(row.predictedEndingBalance, LIVE_POOLED),
+    'today\'s live Current Balance is not leftover');
   ok(!near(row.opening, CHEQUING_A_POSTED)
-      && !near(row.predictedEndingBalance, billsOnlyTrap),
-    'chequing-a posted-on-payday observation is not the PEB opening');
+      && !near(row.predictedEndingBalance, CHEQUING_A_POSTED),
+    'chequing-a posted-on-payday observation is not leftover');
   const dale = (row.income || []).find(r => r && r.id === 'payroll');
   const amanda = (row.income || []).find(r => r && r.id === 'amandaPayday');
   const child = (row.income || []).find(r => r && r.id === 'childBenefit');
@@ -831,7 +835,7 @@ console.log('\n=== P. Live-advanced unproven period income still increments PEB 
   ok(child && near(child.amount, CHILD_AMT)
       && (child.notReliedUpon === true || child.settlement === 'not-relied-upon'
         || child.status === 'unresolved' || child.status === 'arriving'),
-    'Child Benefit belongs to the period once; it is not dropped from PEB');
+    'Child Benefit belongs to the period once; it is not dropped from leftover');
 }
 
 console.log('\n=== Q. Negative Weekly carry is opening, not a manufactured expense ===');
@@ -850,36 +854,36 @@ console.log('\n=== Q. Negative Weekly carry is opening, not a manufactured expen
   });
   const row = activeOf(recommend(plan, []));
   const incomeAdded = DALE + AMANDA + CHILD;
-  const expected = independentPeb(pooled, incomeAdded, BILL, GROCERY_PLAN);
-  const ifWeeklyWereSpend = independentPeb(bills, incomeAdded, BILL, GROCERY_PLAN);
+  const expected = independentBad(incomeAdded, BILL, GROCERY_PLAN);
   ok(near(row.opening, pooled) && weekly < 0,
     'opening is Bills + negative Weekly, not Bills alone');
   ok(near(row.predictedEndingBalance, expected)
-      && !near(row.predictedEndingBalance, ifWeeklyWereSpend),
-    'negative Weekly reduces opening once and is not added as Household Budget spending');
+      && near(row.afterHouseholdBudget, expected),
+    'negative Weekly does not change BAD; leftover equals income − bills − hold regardless of weekly sign');
   ok(near(row.budgetHold, GROCERY_PLAN),
     'negative Weekly carry does not inflate the Household Budget hold');
 }
 
-console.log('\n=== R. Inspectable PEB terms arithmetically close ===');
+console.log('\n=== R. Inspectable BAD terms arithmetically close ===');
 {
   const row = activeOf(recommend(fixturePlan(), [groceryTx(100), otherTx(40)]));
-  ok(row.opening != null && row.incomeAdded != null && row.periodBillLoad != null
-      && row.budgetHold != null && row.predictedEndingBalance != null,
-    'Forecast exposes opening, incomeAdded, periodBillLoad, hold, and PEB');
-  ok(near(row.afterBills, roundCent(row.opening + row.incomeAdded - row.periodBillLoad)),
-    'afterBills independently equals opening + incomeAdded − periodBillLoad');
+  ok(row.incomeTotal != null && row.periodBillLoad != null
+      && row.budgetHold != null && row.predictedEndingBalance != null
+      && row.balanceAfterDeductions != null,
+    'Forecast exposes incomeTotal, periodBillLoad, hold, and leftover');
+  ok(near(row.afterBills, roundCent(row.incomeTotal - row.periodBillLoad)),
+    'afterBills independently equals incomeTotal − periodBillLoad');
   ok(near(row.predictedEndingBalance,
-      independentPeb(row.opening, row.incomeAdded, row.periodBillLoad, row.budgetHold)),
-    'PEB independently equals those four named facts with no residual plug');
+      independentBad(row.incomeTotal, row.periodBillLoad, row.budgetHold)),
+    'BAD independently equals those three named facts with no residual plug');
   const terms = row.predictedEndingBalanceTerms;
-  ok(terms && terms.closes === true && terms.identity === 'predicted-ending-balance'
-      && near(terms.paydayBoundaryPosition, row.opening)
-      && near(terms.periodIncome, row.incomeAdded)
+  ok(terms && terms.closes === true && terms.identity === 'balance-after-deductions'
+      && near(terms.periodIncome, row.incomeTotal)
       && near(terms.assignedBills, row.periodBillLoad)
       && near(terms.householdBudgetHold, row.budgetHold)
-      && near(terms.predictedEndingBalance, row.predictedEndingBalance),
-    'predictedEndingBalanceTerms reprints the same four facts and closes');
+      && near(terms.balanceAfterDeductions, row.predictedEndingBalance)
+      && terms.paydayBoundaryPosition == null,
+    'predictedEndingBalanceTerms reprints displayed income, bills, hold, and closes');
 }
 
 console.log('\n=== S. Transfer-net gap packet is not a payday-morning stock ===');
@@ -947,7 +951,7 @@ console.log('\n=== S. Transfer-net gap packet is not a payday-morning stock ==='
     'identified chequing movements mixed with unidentified household-cash fail closed');
 }
 
-console.log('\n=== T. Incompatible snapshot dates fail closed ===');
+console.log('\n=== T. Incompatible snapshot dates still publish income-led BAD ===');
 {
   const plan = fixturePlan({
     opening: {
@@ -965,9 +969,11 @@ console.log('\n=== T. Incompatible snapshot dates fail closed ===');
   ok(row && row.start === PAYDAY,
     'active window is still Sep 11–24');
   ok(row.openingKnown !== true || row.paydayBoundaryOpening !== true,
-    'a snapshot for a different payday is not combined into this period\'s PEB');
-  ok(row.predictedEndingBalance == null && row.afterBills == null,
-    'incompatible evidence dates withhold PEB rather than silently mixing them');
+    'a snapshot for a different payday is not combined into this period\'s leftover');
+  const expected = independentBad(row.incomeTotal, row.periodBillLoad, row.budgetHold);
+  ok(row.predictedEndingBalance != null && near(row.predictedEndingBalance, expected)
+      && near(row.afterBills, roundCent(row.incomeTotal - row.periodBillLoad)),
+    'incompatible evidence dates still publish income-led BAD; snapshot is not mixed into leftover');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

@@ -145,7 +145,9 @@ function operatingSnapshot(advice) {
   const alloc = advice && advice.paydayAllocation || {};
   const path = alloc.protectedPath || null;
   return {
-    leftover: view.afterHouseholdBudget,
+    leftover: view.balanceAfterDeductions != null
+      ? view.balanceAfterDeductions
+      : view.predictedEndingBalance,
     currentBalance: view.liveCurrentBalance,
     afterBills: view.afterBills,
     prepareAheadWanted: path && path.wanted,
@@ -495,10 +497,19 @@ console.log('=== H. Leftover, Current Balance, and Prepare Ahead are unchanged =
     'provider-observation', 'recommend with observedCash');
   ok(snapshotsEqual(a, b),
     'leftover, Current Balance, and Prepare Ahead do not move when the packet is attached');
-  ok(!near(a.currentBalance, LIVE_BILLS)
-      && !near(a.leftover, LIVE_BILLS)
-      && near(a.currentBalance, POOLED),
-    'Current Balance remains posted A+B; leftover is not chequing-a cash');
+  const hub = BILLS;
+  const active = ((without.defaultView && without.defaultView.calendarPeriods) || [])
+    .find(p => p && p.role === 'active') || null;
+  const independentBad = active && active.incomeTotal != null && active.periodBillLoad != null
+      && active.budgetHold != null
+    ? roundCent(active.incomeTotal - active.periodBillLoad - active.budgetHold)
+    : null;
+  ok(near(a.currentBalance, hub)
+      && !near(a.currentBalance, POOLED)
+      && independentBad != null
+      && near(a.leftover, independentBad)
+      && (!near(a.leftover, LIVE_BILLS) || near(independentBad, LIVE_BILLS)),
+    'Current Balance is posted hub (chequing-a); leftover is income-led BAD, not chequing-a cash unless coincidence');
 }
 
 console.log('=== I. Live overlay on payday retains chequing-a; rename-invariant; no writes ===');

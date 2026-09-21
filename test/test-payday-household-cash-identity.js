@@ -99,8 +99,11 @@ function check(name, cash, transactions, hold, calendarLeft, mixed = false, pend
   assert.equal(rec.paydayAllocation.essentials.wanted, hold, name + ': recommend integration');
   const period = rec.defaultView.calendarPeriods.find(r => r.id === 'this-pay-period');
   assert.equal(period.available, 2000, name + ': Payday balance is period income');
-  assert.equal(period.afterHouseholdBudget, 3000 + 2000 - period.budgetHold,
-    name + ': PEB includes frozen opening minus Household Budget hold');
+  assert.equal(period.afterHouseholdBudget,
+    2000 - (Number(period.periodBillLoad) || 0) - period.budgetHold,
+    name + ': Balance After Deductions is income minus bills minus Household Budget hold');
+  assert.notEqual(period.afterHouseholdBudget, 3000 + 2000 - period.budgetHold,
+    name + ': Balance After Deductions does not add the frozen payday-snapshot opening');
   console.log('PASS ' + name);
   return a;
 }

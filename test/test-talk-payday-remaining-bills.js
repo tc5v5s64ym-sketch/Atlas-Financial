@@ -878,11 +878,11 @@ async function runHttpProof() {
       : null;
     ok(leftover.status === 200
         && (pebKnown
-          ? leftoverBody.answer === `Predicted ending balance for this pay period is ${leftoverMoney}.`
+          ? leftoverBody.answer === `Balance after deductions for this pay period is ${leftoverMoney}.`
           : (leftoverBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
-            || /Predicted ending balance is unavailable/.test(leftoverBody.answer)))
+            || /Balance after deductions is unavailable/.test(leftoverBody.answer)))
         && mock.captured.length === 0,
-      '#309 leftover exact ask still reprints Forecast Predicted Ending Balance');
+      '#309 leftover exact ask still reprints Forecast Balance After Deductions');
 
     const isolated = await askJson(base, sessionB.cookie, 'What about that one?');
     const isolatedBody = await isolated.json();

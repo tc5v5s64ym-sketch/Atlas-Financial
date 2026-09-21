@@ -1615,8 +1615,10 @@ function cashGlanceHtml(alloc, liveOverlay, cashNote) {
 }
 
 function liveCurrentBalanceHtml(view, liveOverlay, alloc) {
-  // Actionable Current Balance is the Forecast-owned posted household
-  // chequing figure (A+B, including a negative Chequing B register).
+  // Actionable Current Balance is the Forecast-owned posted planning-hub
+  // figure (canonical chequing-a / BILLS ACCOUNT only). Weekly, Savings,
+  // and pooled A+B stay out. The page reprints Forecast; it does not sum.
+
   const amount = view && view.liveCurrentBalance != null
     ? view.liveCurrentBalance
     : (alloc && alloc.liveCurrentBalance != null ? alloc.liveCurrentBalance : null);
@@ -2285,17 +2287,23 @@ function extraRepaymentHtml(period) {
   </div>`;
 }
 
-// The Plan print stops at Predicted Ending Balance (Q07). That figure is
-// Forecast period.afterHouseholdBudget / predictedEndingBalance — the
-// living current-pay-period remaining-household-money identity. Payday
-// balance is the Income-block total from Forecast period.available.
+// The Plan print stops at Balance After Deductions (Q07). That figure is
+// Forecast period.balanceAfterDeductions / afterHouseholdBudget —
+// displayed period income − assigned bills − Household Budget hold.
+// Payday balance is the Income-block total from Forecast period.available.
 // Forecast still computes the extra-debt / big-purchase chain and the
-// projected ending on each period (the next period opens from it); those
-// rows are not part of the household Plan surface.
+// cash projected ending on each period (the next period opens from cash,
+// not from Balance After Deductions); those rows are not part of the
+// household Plan surface.
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
-  const showSnapshotOpening = period.openingKnown === true || period.role !== 'active';
+  // Active period: Current Balance at the top is the hub. Opening is not
+  // a Balance After Deductions term, so it is not printed on this
+  // household waterfall. Next / lookback periods still show their cash
+  // opening.
+  const showSnapshotOpening = period.role !== 'active';
+
   // Every opening branch below already prints period.cashNote once (as the
   // glance note or as the lead), so it is not appended a second time.
   const projectedNote = period.projected
@@ -2338,11 +2346,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan))}
-    ${q('07', 'Predicted Ending Balance', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget), 'balance')}
-    ${period.role === 'active' && !planUnavailable && period.operatingCashExplanation
-      && typeof operatingCashExplanationHtml === 'function'
-      ? operatingCashExplanationHtml(period.operatingCashExplanation) : ''}
+    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget), 'balance')}
   </section>`;
+
 }
 
 function paydayCarryoverHtml(period) {
@@ -2900,7 +2906,8 @@ function operatingSurfaceHtml(ctx) {
     ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases), 'ending')}
     ${budgetDigestHtml(view.budgetDigest)}`;
 
-  // The usable Plan print stops at Predicted Ending Balance. Forecast
+  // The usable Plan print stops at Balance After Deductions. Forecast
+
   // still computes infeasible / unfunded / remaining-claim / paydayAllocation.risks
   // and weeklyCapView still composes that copy for folded diagnostics. The
   // large refresh-trust card remains on the fail-closed unavailable surface.

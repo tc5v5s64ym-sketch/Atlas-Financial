@@ -1,5 +1,5 @@
 'use strict';
-/* Talk payday leftover reprints Forecast Predicted Ending Balance.
+/* Talk payday leftover reprints Forecast Balance After Deductions.
  *
  * Independent proof: Talk-published leftover equals Forecast leftover for
  * the same fixture. Talk does not calculate leftover. History is
@@ -227,11 +227,11 @@ function leftoverPacket(amount, extras) {
     },
     forecast: {
       predictedEndingBalance: extras.unavailable
-        ? { status: 'unavailable', reason: 'predicted-ending-balance-unavailable' }
+        ? { status: 'unavailable', reason: 'balance-after-deductions-unavailable' }
         : {
           status: 'ok',
           source: 'Forecast.calendarPeriodWaterfalls',
-          identity: 'predicted-ending-balance',
+          identity: 'balance-after-deductions',
           amount,
         },
       paydayAllocation: extras.unavailable
@@ -270,7 +270,7 @@ function leftoverTurn(amount) {
   return {
     kind: 'explained',
     question: 'What does this payday leave us with?',
-    presented: `Predicted ending balance for this pay period is ${TalkPresentation.formatCurrency(amount)}.`,
+    presented: `Balance after deductions for this pay period is ${TalkPresentation.formatCurrency(amount)}.`,
     referentPaths: [LEFTOVER_PATH],
   };
 }
@@ -286,7 +286,7 @@ console.log('=== 1. Authority path stays Forecast leftover; no Talk/browser arit
   ok(/projectPredictedEndingBalance/.test(packetSrc)
       && /predictedEndingBalance/.test(packetSrc)
       && /Forecast\.calendarPeriodWaterfalls/.test(packetSrc),
-    'assistant packet projects Forecast Predicted Ending Balance');
+    'assistant packet projects Forecast Balance After Deductions');
   ok(!/require\(['"][^'"]*forecast/i.test(sessionSrc),
     'talk-session.js does not import Forecast');
   ok(/payday-leftover/.test(sessionSrc)
@@ -294,9 +294,9 @@ console.log('=== 1. Authority path stays Forecast leftover; no Talk/browser arit
       && /what does that leave us with/.test(sessionSrc),
     'session leftover deixis extends PATH_RULE / last-presented binding');
   ok(/forecast\.predictedEndingBalance\.amount/.test(presentationSrc)
-      && /Predicted ending balance for this pay period is/.test(presentationSrc)
-      && /Predicted ending balance is unavailable/.test(presentationSrc),
-    'PATH_RULE reprints Predicted Ending Balance and fails closed when it is missing');
+      && /Balance after deductions for this pay period is/.test(presentationSrc)
+      && /Balance after deductions is unavailable/.test(presentationSrc),
+    'PATH_RULE reprints Balance After Deductions and fails closed when it is missing');
   ok(/intent":"payday-leftover/.test(geminiSrc)
       && /never a leftover amount/.test(geminiSrc)
       && /Gemini extracts leftover intent or referent only/.test(geminiSrc),
@@ -341,10 +341,10 @@ const packetPeb = packet.forecast && packet.forecast.predictedEndingBalance;
     ok(packetPeb && packetPeb.status === 'ok'
         && packetPeb.source === 'Forecast.calendarPeriodWaterfalls'
         && near(packetPeb.amount, forecastPeb),
-      'packet Predicted Ending Balance equals the calendar leftover');
+      'packet Balance After Deductions equals the calendar leftover');
   } else {
     ok(packetPeb && packetPeb.status === 'unavailable',
-      'packet Predicted Ending Balance is unavailable when Forecast withholds it');
+      'packet Balance After Deductions is unavailable when Forecast withholds it');
   }
 }
 
@@ -363,12 +363,12 @@ console.log('\n=== 3. Talk-published leftover equals that Forecast leftover ==='
   if (expectedPeb != null) {
     ok(claims.length === 1
         && near(claims[0].value, expectedPeb)
-        && presented.answer === `Predicted ending balance for this pay period is ${expectedMoney}.`,
-      'Talk leftover sentence reprints independently formatted Forecast PEB');
+        && presented.answer === `Balance after deductions for this pay period is ${expectedMoney}.`,
+      'Talk leftover sentence reprints independently formatted Forecast Balance After Deductions');
   } else {
     ok(presented.answer === TalkPresentation.UNAVAILABLE_ANSWER
-        || /Predicted ending balance is unavailable/.test(presented.answer),
-      'Talk leftover is unavailable when Forecast PEB is withheld');
+        || /Balance after deductions is unavailable/.test(presented.answer),
+      'Talk leftover is unavailable when Forecast Balance After Deductions is withheld');
   }
   if (expectedPeb != null) {
     ok(presented.cards
@@ -485,7 +485,7 @@ console.log('\n=== 5. Unavailable leftover is not zero; Gemini cannot invent lef
     status: 'explained',
     claims: [{ path: LEFTOVER_PATH, value: null }],
   }, leftoverPacket(null, { unavailable: false }));
-  ok(missing.answer === 'Predicted ending balance is unavailable.'
+  ok(missing.answer === 'Balance after deductions is unavailable.'
       && missing.trust === 'unavailable'
       && !/\$0/.test(JSON.stringify(missing))
       && !/0\.00/.test(JSON.stringify(missing)),
@@ -495,7 +495,7 @@ console.log('\n=== 5. Unavailable leftover is not zero; Gemini cannot invent lef
     status: 'explained',
     claims: [{ path: LEFTOVER_PATH, value: 0 }],
   }, leftoverPacket(0));
-  ok(zero.answer === 'Predicted ending balance for this pay period is $0.00.'
+  ok(zero.answer === 'Balance after deductions for this pay period is $0.00.'
       && zero.trust === 'calculated',
     'a genuine Forecast leftover of $0 stays $0');
 
@@ -584,11 +584,11 @@ async function runHttpProof() {
     const firstBody = await first.json();
     ok(first.status === 200
         && (expectedMoney
-          ? firstBody.answer === `Predicted ending balance for this pay period is ${expectedMoney}.`
+          ? firstBody.answer === `Balance after deductions for this pay period is ${expectedMoney}.`
           : (firstBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
-            || /Predicted ending balance is unavailable/.test(firstBody.answer)))
+            || /Balance after deductions is unavailable/.test(firstBody.answer)))
         && mock.captured.length === 0,
-      'this-payday leftover reprints Forecast PEB and does not call Gemini',
+      'this-payday leftover reprints Forecast Balance After Deductions and does not call Gemini',
       firstBody && firstBody.answer);
     ok(expectedMoney
         ? (firstBody.cards
@@ -596,7 +596,7 @@ async function runHttpProof() {
           && JSON.stringify(firstBody.summary || {}).indexOf(expectedMoney) !== -1
           && (firstBody.citations || []).some(row => row.source === 'Forecast'))
         : (firstBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
-          || /Predicted ending balance is unavailable/.test(firstBody.answer)),
+          || /Balance after deductions is unavailable/.test(firstBody.answer)),
       'HTTP leftover cards, summary, and citations keep the Forecast leftover');
 
     const that = await askJson(base, sessionA.cookie, 'What does that leave us with?');

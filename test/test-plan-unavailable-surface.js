@@ -131,6 +131,14 @@ function independentChequing(plan) {
   }, 0) * 100) / 100;
 }
 
+function independentHub(plan) {
+  const rows = ((plan && plan.startingCash && plan.startingCash.breakdown) || [])
+    .filter(r => r && r.id === 'chequing-a');
+  if (rows.length !== 1) return null;
+  const value = Number(rows[0].value);
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 function independentBell(plan) {
   return ((plan && plan.bills) || []).find(row => row && row.id === 'bell') || null;
 }
@@ -175,6 +183,7 @@ const composer = loadComposer();
 const OPENING = String(liveData.plan.opening.asOf);
 const DATED_CASH = independentDatedCash(liveData.plan);
 const CHEQUING_CASH = independentChequing(liveData.plan);
+const HUB_CASH = independentHub(liveData.plan);
 const BELL = independentBell(liveData.plan);
 const NOTE = 'Current plan unavailable. The dated opening is stale.';
 
@@ -363,11 +372,14 @@ console.log('\n=== 5. trusted control keeps the normal This payday waterfall ===
     'trusted operating plan still prints This payday / pay-period / waterfall experience');
   ok(near(Number(trusted.defaultView.currentBalance), CHEQUING_CASH),
     'trusted control does not move current figures');
-  const independentPostedChequing = independentChequing(liveData.plan);
-  ok(html.includes(composer.money2(independentPostedChequing))
+  const liveAmount = /data-live-current-balance-amount>([^<]+)/.exec(html);
+  ok(HUB_CASH != null
+      && liveAmount
+      && liveAmount[1] === composer.money2(HUB_CASH)
       && /Current Balance/.test(html)
-      && !near(independentPostedChequing, DATED_CASH),
-    'trusted waterfall prints independent household chequing cash as Current Balance, not the savings-inclusive dated opening');
+      && !near(HUB_CASH, CHEQUING_CASH)
+      && !near(HUB_CASH, DATED_CASH),
+    'trusted waterfall prints independent hub (chequing-a) cash as Current Balance, not pooled A+B and not the savings-inclusive dated opening');
 }
 
 console.log('\n=== 6. page remains a renderer; Forecast is unchanged ===');

@@ -2446,6 +2446,7 @@ console.log('\n=== 16. Issuer revolving finance charges are debt/interest cost o
   const CHEQUING_A = 8000;
   const CHEQUING_B = 200;
   const INDEPENDENT_CB = roundCent(CHEQUING_A + CHEQUING_B);
+  const INDEPENDENT_HUB = CHEQUING_A;
   const CASHBACK_BAL = 4800;
   const CASHBACK_LIMIT = 5000;
   const CASHBACK_ANNUAL_INTEREST = 1200;
@@ -2589,8 +2590,8 @@ console.log('\n=== 16. Issuer revolving finance charges are debt/interest cost o
   const cbBefore = F.postedHouseholdChequingCash(plan);
   const liveCb = advice.paydayAllocation && advice.paydayAllocation.liveCurrentBalance;
   const viewCb = advice.defaultView && advice.defaultView.liveCurrentBalance;
-  ok(near(cbBefore, INDEPENDENT_CB) && near(liveCb, INDEPENDENT_CB) && near(viewCb, INDEPENDENT_CB),
-    'Current Balance stays Chequing A+B only and is unchanged by the interest post',
+  ok(near(cbBefore, INDEPENDENT_CB) && near(liveCb, INDEPENDENT_HUB) && near(viewCb, INDEPENDENT_HUB),
+    'Current Balance is hub only and unchanged by the interest post',
     String(liveCb));
 
   const util = F.utilisation(caseDebts);

@@ -381,8 +381,9 @@ const PATH_RULES = [
     trust: leftoverTrust,
     present(value) {
       return moneySentence({
-        available: money => `Predicted ending balance for this pay period is ${money}.`,
-        unavailable: 'Predicted ending balance is unavailable.',
+        available: money => `Balance after deductions for this pay period is ${money}.`,
+        unavailable: 'Balance after deductions is unavailable.',
+
       }, value);
     },
   },

@@ -29,16 +29,17 @@
  * "what does that leave us with?") resolve only against ephemeral
  * structured refs from a prior verified presentation — allowlisted
  * packet paths and published result keys, never conversation prose.
- * Payday leftover is Forecast Predicted Ending Balance
+ * Payday leftover is Forecast Balance After Deductions
  * (`forecast.predictedEndingBalance.amount`, the active calendar
- * waterfall afterHouseholdBudget). "What does this payday leave us
- * with?" reads that identity. paydayAllocation.runningLeftover remains
- * the current-cash allocation picture, not this leftover. "What does
- * this payday look like?" reprints those allocation stages plus
+ * waterfall income − bills − Household Budget). "What does this payday
+ * leave us with?" reads that identity. paydayAllocation.runningLeftover
+ * remains the current-cash allocation picture, not this leftover. "What
+ * does this payday look like?" reprints those allocation stages plus
  * leftover-consuming allocated amounts. "What does that leave us
  * with?" binds only when leftover was already earned, including from
  * that look-like presentation. Remaining payday bills reprint Forecast-owned
  * currentPeriodAction.bills. Settlement is Forecast-owned
+
  * (represented | upcoming | unverified). Talk does not date-filter
  * that list, invent a paid list, or treat unverified as unpaid.
  * Ambiguous deixis is unavailable. After exactly one earned two-option
@@ -288,7 +289,8 @@ function bindReferentKeysFromPaths(paths) {
     keys.push('card');
   }
   // A payday look-like presentation still earns leftover deixis. The
-  // leftover follow-up then reads Predicted Ending Balance, not the
+  // leftover follow-up then reads Balance After Deductions, not the
+
   // paydayAllocation closing stage.
   if (seen['payday-picture'] && !seen['payday-leftover']) {
     seen['payday-leftover'] = true;

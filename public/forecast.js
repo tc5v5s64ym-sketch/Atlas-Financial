@@ -398,17 +398,22 @@
     const rows = (cash.breakdown || []).concat(cash.heldElsewhere || []);
     return rows.find(r => r.id === id) || null;
   }
-  // Live Current Balance is posted household chequing cash only. These are
-  // the same Chequing A / BILLS ACCOUNT and Chequing B / WEEKLY SPENDING
-  // identities Forecast.chequingAvailability already names. TENNIS INCOME
-  // and every other non-chequing cash-type row stay out of Current Balance.
+  // Live Current Balance on the payday operating sheet is posted cash in
+  // the planning hub only: canonical `chequing-a` / BILLS ACCOUNT.
+  // Chequing B / WEEKLY SPENDING, designated savings, TENNIS INCOME, and
+  // every other cash-type row stay out of that headline. Owner 2026-09-21:
+  // that hub is the current-pay-period planning account; other accounts
+  // are allocation destinations and deduction evidence, not Current
+  // Balance. Fail closed when the hub row is missing or untrusted — do
+  // not substitute Weekly, a pooled A+B sum, or startingCash.amount.
   // Owner 2026-09-18: Forecast walk and paydayAllocation spendable opening
-  // (`startingCashAmount`) is that same chequing-only pool. Designated
-  // reserve is the incumbent `savings` / EMERGENCY SAVING row only — it
-  // stays on the breakdown as household asset / reserve evidence and is
-  // not ordinary spendable opening. Case K: the walk must not silently
-  // spend that reserve. Synthetic fixtures may still pass
+  // (`startingCashAmount`) is still the chequing-only pool (A+B).
+  // Designated reserve is the incumbent `savings` / EMERGENCY SAVING row
+  // only — it stays on the breakdown as household asset / reserve
+  // evidence and is not ordinary spendable opening. Case K: the walk must
+  // not silently spend that reserve. Synthetic fixtures may still pass
   // startingCash.amount with no cash id.
+
   const HOUSEHOLD_CHEQUING_IDS = ['chequing-a', 'chequing-b'];
   const DESIGNATED_RESERVE_ID = 'savings';
   function postedHouseholdChequingCash(plan) {
@@ -5000,7 +5005,9 @@
   // inflow magnitude — the same abs treatment householdMovement and
   // historical settlement already use — not that ledger sign.
   // not-relied-upon is live-cash settlement status. It does not drop
-  // period income from Predicted Ending Balance.
+  // period income from the displayed Payday balance / Balance After
+  // Deductions income term.
+
   function householdIncomeAmount(value) {
     const n = Number(value);
     if (!isFinite(n) || n === 0) return 0;
@@ -5162,9 +5169,10 @@
   }
 
   // Payday-snapshot opening. Distinct from live Current Balance
-  // (postedHouseholdChequingCash / paydayAllocation.liveCurrentBalance).
-  // Fail closed rather than invent a historical payday-morning cash Atlas
-  // never recorded.
+  // (postedBillsAccountCash / paydayAllocation.liveCurrentBalance, hub
+  // chequing-a only). Fail closed rather than invent a historical
+  // payday-morning cash Atlas never recorded.
+
   function resolvePaydayPeriodOpening(plan, asOf, window, opts, previousEnding, sim) {
     const role = window && window.role;
     if (role === 'future') {
@@ -5236,13 +5244,15 @@
     return { opening: null, openingKnown: false, openingAsOf: null, source: null };
   }
 
-  // Predicted Ending Balance may use only a genuine payday-boundary
-  // opening. A mid-period cutover-opening is Q01 dated cash: it already
+  // The cash leftover that opens the next period may use only a genuine
+  // payday-boundary opening. Balance After Deductions does not require
+  // that opening. A mid-period cutover-opening is dated cash: it already
   // reflects pre-cutover household spending, and Household Budget hold
   // has no already-in-opening exclusion, so treating that cash as the
   // payday opening would deduct the same spending twice. Income and
   // paid bills already exclude amounts inside the opening. Fail closed
   // rather than invent a remaining-budget or prorated-hold rule.
+
   function isPaydayBoundaryOpening(source, openingAsOf, windowStart) {
     if (!source || openingAsOf == null || !windowStart) return false;
     if (source === 'snapshot'
@@ -6808,8 +6818,38 @@
     }, 0));
   }
 
-  // Named Predicted Ending Balance identity. Every term is inspectable.
+  // Named Balance After Deductions identity. Every term is inspectable.
   // closes is a boolean check, not a plug that forces equality.
+  // Owner 2026-09-21: household remaining is income − bills − Household
+  // Budget. The payday-boundary opening is not a term. Predicted Ending
+  // Balance as a pooled remaining-household-money identity is superseded
+  // on this surface.
+  function composeBalanceAfterDeductionsTerms(
+    periodIncome, assignedBills, householdBudgetHold, balanceAfterDeductions
+  ) {
+    if (periodIncome == null || assignedBills == null
+        || householdBudgetHold == null || balanceAfterDeductions == null) {
+      return null;
+    }
+    if (![periodIncome, assignedBills, householdBudgetHold,
+      balanceAfterDeductions].every(v => isFinite(Number(v)))) {
+      return null;
+    }
+    const income = roundCent(periodIncome);
+    const bills = roundCent(assignedBills);
+    const hold = roundCent(householdBudgetHold);
+    const remainder = roundCent(balanceAfterDeductions);
+    const reconstructed = roundCent(income - bills - hold);
+    return {
+      periodIncome: income,
+      assignedBills: bills,
+      householdBudgetHold: hold,
+      balanceAfterDeductions: remainder,
+      identity: 'balance-after-deductions',
+      closes: Math.abs(reconstructed - remainder) <= 0.005,
+    };
+  }
+
   function composePredictedEndingBalanceTerms(
     paydayBoundaryPosition, periodIncome, assignedBills, householdBudgetHold, predictedEndingBalance
   ) {
@@ -6839,6 +6879,7 @@
     };
   }
 
+
   function periodPaidBillDisclosure(bills) {
     return roundCent((bills || []).reduce((sum, row) => {
       if (!row || row.needsDate || !rowIsSettledBill(row)) return sum;
@@ -6846,14 +6887,15 @@
     }, 0));
   }
 
-  // Operating-cash explanation for the active payday printout. Predicted
-  // Ending Balance is the living current-pay-period remaining-household-money
-  // identity. Current Balance is posted household chequing. They are
-  // different contracts. Proven household-internal movements explain
-  // location of cash — including Bills → Savings — without becoming
-  // leftover income, leftover spending, or a balancing plug. Not a
-  // leftover rewrite, not a savings-purpose assignment, not a second
-  // cash engine.
+  // Operating-cash explanation for diagnostics, Talk, and tests.
+  // Household remaining is Balance After Deductions (income − bills −
+  // Household Budget). Current Balance is posted planning-hub cash
+  // (canonical chequing-a / BILLS ACCOUNT). They are different
+  // contracts. Proven household-internal movements explain location of
+  // cash — including Bills → Savings — without becoming leftover income,
+  // leftover spending, or a balancing plug. Not a leftover rewrite, not
+  // a savings-purpose assignment, not a second cash engine. The household
+  // Plan print does not show this packet.
   function isOperatingCashAccount(id) {
     return HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1;
   }
@@ -6883,18 +6925,17 @@
   }
 
   // Posted BILLS ACCOUNT cash is the incumbent chequing-a breakdown
-  // row. Not leftover, not Current Balance, and not a second balance
-  // engine. Missing or non-finite evidence fails closed.
+  // row — the current-pay-period planning hub. Missing or non-finite
+  // evidence fails closed. This is Current Balance. It is not leftover,
+  // not pooled A+B, and not a second balance engine.
   function postedBillsAccountCash(plan) {
     const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row || row.id !== BILLS_ACCOUNT_ID) continue;
-      const value = Number(row.value);
-      return Number.isFinite(value) ? roundCent(value) : null;
-    }
-    return null;
+    const matches = rows.filter(row => row && row.id === BILLS_ACCOUNT_ID);
+    if (matches.length !== 1) return null;
+    const value = Number(matches[0].value);
+    return Number.isFinite(value) ? roundCent(value) : null;
   }
+
 
   function billsLocationEffectForMovement(movement) {
     if (!movement) return null;
@@ -6955,6 +6996,7 @@
     const operatingCash = liveCurrentBalance != null && isFinite(Number(liveCurrentBalance))
       ? roundCent(liveCurrentBalance) : null;
     const billsCash = postedBillsAccountCash(plan);
+
     const movements = [];
     const window = operatingCashExplanationWindow(period, asOf);
     const published = householdInternalMovements(plan, opts);
@@ -6985,17 +7027,17 @@
     }
     return {
       leftover: leftover != null && isFinite(Number(leftover)) ? roundCent(leftover) : null,
-      leftoverIdentity: 'predicted-ending-balance',
-      leftoverLabel: 'Predicted Ending Balance',
-      leftoverNote: 'Living prediction of household money remaining at the end of this pay period after the payday-boundary position, expected income, assigned bills, and the Household Budget hold. Not posted cash in the operating accounts. Money moved to Savings is still household money.',
+      leftoverIdentity: 'balance-after-deductions',
+      leftoverLabel: 'Balance After Deductions',
+      leftoverNote: 'Amount remaining from this pay period\'s Income after assigned bills and the Household Budget hold. Not posted cash in BILLS ACCOUNT or WEEKLY SPENDING. Money moved to Savings is still household money.',
       operatingCash,
-      operatingCashIdentity: 'posted-household-chequing',
+      operatingCashIdentity: 'posted-planning-hub',
       operatingCashLabel: 'Current Balance',
-      operatingCashNote: 'Posted BILLS ACCOUNT plus WEEKLY SPENDING. Not Predicted Ending Balance.',
+      operatingCashNote: 'Posted BILLS ACCOUNT (planning hub) only. Not Weekly, not Savings, not Balance After Deductions.',
       billsCash,
       billsCashIdentity: 'posted-bills-account',
       billsCashLabel: 'BILLS ACCOUNT',
-      billsCashNote: 'Posted cash currently in BILLS ACCOUNT. Not Predicted Ending Balance, and not Current Balance.',
+      billsCashNote: 'Posted cash currently in BILLS ACCOUNT. Same contract as Current Balance.',
       sameContract: false,
       leftoverSameAsBillsCash: false,
       movements,
@@ -7003,49 +7045,52 @@
   }
 
   // Two payday-cycle waterfalls: this Seaspan payday through the day
+
   // before the next, then the next payday through the day before the
   // following one.
   // Payday balance (`available` / `incomeTotal`) stays the pay-period
   // planning income identity (Dale + Amanda + recognized Other Income).
   // Received-vs-live and not-relied-upon are settlement status: they do
   // not drop an income row from Payday balance.
-  // Predicted Ending Balance is a different, Forecast-authoritative
-  // current-pay-period identity (owner 2026-09-21, superseding the
-  // 2026-09-09 income-led leftover):
-  //   payday-boundary opening
-  //   + income not already inside that opening (actual when observed)
-  //   − assigned bills not already inside that opening
+  // Owner 2026-09-21: the household-facing remaining is Balance After
+  // Deductions, an income-led planning remainder:
+  //   displayed period income
+  //   − assigned period bills
   //   − Household Budget hold
-  // Fail closed when that payday-boundary opening is unknown. Do not
-  // invent one, do not treat a mid-period cutover-opening as payday
-  // morning, and do not publish an income-led remainder as this answer.
-  // Opening comes from a recorded paydaySnapshot first, else
-  // payday-morning cash only when as-of is that payday and live overlay
-  // has not already advanced, else a completeness-proven household-cash
-  // walk (`Forecast.establishPaydaySnapshot`) — never today's live
-  // posted cash, never a mid-period cutover-opening, never a
-  // transfer-history total, never chequing-a posted-balance-observed-
-  // on-household-date, and never a scheduled-only reconstruction that
-  // assumes unscheduled gap spending was zero. A cutover-opening is
-  // payday-boundary only when its as-of is the period start. The
-  // payday-boundary opening is posted Chequing A (BILLS) plus Chequing B
-  // (WEEKLY), including a negative Weekly carry. incomeAdded is the
-  // period income not already inside that opening, including a salary
-  // that remains not-relied-upon for live-cash settlement, and is not
-  // the published Payday balance. The Bills step subtracts the
-  // authoritative period bill load assigned against that frozen
-  // snapshot, including subsequently PAID rows that are not already
-  // inside the opening. Paid/remaining is settlement disclosure.
-  // Household Budget uses the same spendingCycle window. Owner
-  // 2026-09-04: that hold is Σ max(planned, actual) for planned
-  // categories plus Other Spending actual. Remaining-only leftover and
-  // planned-plus-actual are both wrong.
+  // The payday-boundary opening is not a term. Current Balance is posted
+  // chequing-a / BILLS ACCOUNT only. Cross-account spending still feeds
+  // Household Budget. Fail closed when income or assigned bills are
+  // unavailable; do not require a payday-boundary opening to publish
+  // this remainder, and do not substitute pooled A+B cash.
   // paydayAllocation.runningLeftover remains the current-cash allocation
-  // chain (what current cash must do). It is not this Predicted Ending
-  // Balance. Live Current Balance stays posted household chequing.
-  // The next period opens from this period's projected ending, or from
-  // the walk's start-of-day cash on that payday when this period has no
-  // recorded opening.
+  // chain (what current cash must do). It is not Balance After Deductions.
+  // The next period opens from this period's cash projected ending
+  // (payday-boundary leftover when that opening is known), or from the
+  // walk's start-of-day cash on that payday — never from Balance After
+  // Deductions, which is not a cash stock.
+
+  // Opening for the cash walk / next-period Q01 comes from a recorded
+  // paydaySnapshot first, else payday-morning cash only when as-of is
+  // that payday and live overlay has not already advanced, else a
+  // completeness-proven household-cash walk
+  // (`Forecast.establishPaydaySnapshot`) — never today's live posted
+  // cash, never a mid-period cutover-opening, never a transfer-history
+  // total, never chequing-a posted-balance-observed-on-household-date,
+  // and never a scheduled-only reconstruction that assumes unscheduled
+  // gap spending was zero. A cutover-opening is payday-boundary only
+  // when its as-of is the period start. The payday-boundary opening is
+  // posted Chequing A (BILLS) plus Chequing B (WEEKLY), including a
+  // negative Weekly carry. That cash opening is not Current Balance and
+  // is not a Balance After Deductions term. incomeAdded is the period
+  // income not already inside that opening and is not the published
+  // Payday balance. The Bills step subtracts the authoritative period
+  // bill load assigned against that frozen snapshot, including
+  // subsequently PAID rows that are not already inside the opening.
+  // Paid/remaining is settlement disclosure. Household Budget uses the
+  // same spendingCycle window. Owner 2026-09-04: that hold is
+  // Σ max(planned, actual) for planned categories plus Other Spending
+  // actual. Remaining-only leftover and planned-plus-actual are both
+  // wrong.
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -7055,7 +7100,7 @@
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
     const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
       ? roundCent(alloc.liveCurrentBalance)
-      : roundCent(postedHouseholdChequingCash(plan));
+      : postedBillsAccountCash(plan);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
     const priority = debtPriority(plan, debts || []);
@@ -7185,24 +7230,30 @@
         ? null
         : periodWaterfallBillLoad(bills, openingAsOf, openingSource);
       const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
-      // Predicted Ending Balance starts from the payday-boundary opening
-      // plus income not already inside it. Fail closed when that opening
-      // is unknown or is only a mid-period cutover, rather than
-      // publishing an income-led remainder or double-counting hold.
-      const afterBills = !planUnavailable && paydayBoundaryOpening
-        && incomeAdded != null && periodBillLoad != null
-        ? roundCent((Number(opening) || 0) + incomeAdded - periodBillLoad)
+      // Balance After Deductions is the household remaining:
+      // displayed period income − assigned bills − Household Budget.
+      // It does not require a payday-boundary opening. Cash leftover
+      // (opening + incomeAdded − bills − hold) stays internal so the
+      // next period can open from cash, not from this remainder.
+      const afterBills = !planUnavailable && incomeTotal != null && periodBillLoad != null
+        ? roundCent(incomeTotal - periodBillLoad)
         : null;
       const afterRemainingBills = afterBills;
       const afterHouseholdBudget = afterBills != null
         ? roundCent(afterBills - budget.hold) : null;
-      const predictedEndingBalanceTerms = composePredictedEndingBalanceTerms(
-        paydayBoundaryOpening ? opening : null,
-        incomeAdded,
+      const balanceAfterDeductions = afterHouseholdBudget;
+      const predictedEndingBalanceTerms = composeBalanceAfterDeductionsTerms(
+        incomeTotal,
         periodBillLoad,
         planUnavailable ? null : budget.hold,
-        afterHouseholdBudget
+        balanceAfterDeductions
       );
+      const cashAfterBills = !planUnavailable && paydayBoundaryOpening
+        && incomeAdded != null && periodBillLoad != null
+        ? roundCent((Number(opening) || 0) + incomeAdded - periodBillLoad)
+        : null;
+      const cashAfterHouseholdBudget = cashAfterBills != null
+        ? roundCent(cashAfterBills - budget.hold) : null;
       let extraAllocated = 0;
       let extraDebt;
       if (planUnavailable) {
@@ -7244,7 +7295,7 @@
         previousEnding = null;
         unavailableOpeningLost = true;
       } else if (role === 'active' || (role === 'future' && openingKnown)) {
-        previousEnding = afterBigPurchases;
+        previousEnding = cashAfterHouseholdBudget;
       } else {
         previousEnding = null;
       }
@@ -7289,10 +7340,12 @@
             || 'Current plan unavailable. The dated opening is stale.')
           : null,
         afterHouseholdBudget,
+        balanceAfterDeductions,
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
-          ? 'predicted-ending-balance' : null,
+          ? 'balance-after-deductions' : null,
         predictedEndingBalanceTerms,
+
         extraDebt,
         firstCard: cards.firstCard,
         otherCards: cards.otherCards,
@@ -7310,7 +7363,7 @@
             : (!openingKnown
               ? 'Payday opening is not recorded for this period. Live Current Balance is not this payday\'s opening.'
               : (!paydayBoundaryOpening
-                ? 'This dated opening is mid-period cutover cash, not this payday\'s opening. The period-end leftover is withheld.'
+                ? 'This dated opening is mid-period cutover cash, not this payday\'s opening. Current Balance is the planning hub, not this opening.'
                 : (projected
                   ? 'Projected opening. Not today\'s balance.'
                   : (role === 'active'
@@ -7380,7 +7433,7 @@
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
     const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
       ? roundCent(alloc.liveCurrentBalance)
-      : roundCent(postedHouseholdChequingCash(plan));
+      : postedBillsAccountCash(plan);
     const activePeriod = (waterfalls.calendarPeriods || []).find(
       p => p && p.role === 'active'
     ) || null;
@@ -7401,9 +7454,11 @@
       afterBigPurchases: leftover.afterBigPurchases,
       predictedEndingBalance: activePeriod ? activePeriod.afterHouseholdBudget : null,
       predictedEndingBalanceIdentity: activePeriod && activePeriod.afterHouseholdBudget != null
-        ? 'predicted-ending-balance' : null,
+        ? 'balance-after-deductions' : null,
       predictedEndingBalanceTerms: activePeriod
         ? activePeriod.predictedEndingBalanceTerms || null : null,
+      balanceAfterDeductions: activePeriod ? activePeriod.afterHouseholdBudget : null,
+
       bills: calendar.bills,
       billSections: calendar.billSections,
       undatedBills: calendar.undatedBills,
@@ -8050,7 +8105,8 @@
     }));
 
     const opening = startingCashAmount(plan);
-    const liveCurrentBalance = postedHouseholdChequingCash(plan);
+    const liveCurrentBalance = postedBillsAccountCash(plan);
+
     const todayEvents = expandEvents(plan, asOf, asOf, opts);
     let todayIncome = 0;
     for (const e of todayEvents) {
@@ -8508,7 +8564,7 @@
       periodDays,
       available,
       opening,
-      liveCurrentBalance: roundCent(liveCurrentBalance),
+      liveCurrentBalance: liveCurrentBalance != null ? roundCent(liveCurrentBalance) : null,
       todayIncome: roundCent(todayIncome),
       buffer,
       cashBasis: {

@@ -91,7 +91,7 @@ const INSTRUCTION = [
   '{"intent":"payday-leftover"}',
   'If and only if that leftover ask is a deictic follow-up about an already-shown payday leftover ("what does that leave us with?"), reply with exactly:',
   '{"intent":"payday-leftover","referentKey":"last-presented"}',
-  'Do not return leftover, amount, equals, runningLeftover, afterBigPurchases, leftoverAmount, predictedEndingBalance, or any leftover figure. The server reads Forecast Predicted Ending Balance from this request\'s packet. Gemini extracts leftover intent or referent only.',
+  'Do not return leftover, amount, equals, runningLeftover, afterBigPurchases, leftoverAmount, predictedEndingBalance, balanceAfterDeductions, or any leftover figure. The server reads Forecast Balance After Deductions from this request\'s packet. Gemini extracts leftover intent or referent only.',
   '',
   'If and only if the household question asks what this payday looks like, reply with exactly:',
   '{"intent":"payday-picture"}',

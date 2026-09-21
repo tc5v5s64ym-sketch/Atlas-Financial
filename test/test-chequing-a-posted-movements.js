@@ -334,7 +334,9 @@ function operatingSnapshot(advice) {
   const alloc = advice && advice.paydayAllocation || {};
   const path = alloc.protectedPath || null;
   return {
-    leftover: view.afterHouseholdBudget,
+    leftover: view.balanceAfterDeductions != null
+      ? view.balanceAfterDeductions
+      : view.predictedEndingBalance,
     currentBalance: view.liveCurrentBalance,
     afterBills: view.afterBills,
     prepareAheadWanted: path && path.wanted,
@@ -637,10 +639,10 @@ console.log('=== H. Leftover, Current Balance, and Prepare Ahead are unchanged =
     'recommend attaches the Forecast-owned chequing-a movement packet');
   ok(snapshotsEqual(a, b),
     'leftover, Current Balance, and Prepare Ahead do not move when the packet is attached');
-  ok(!near(a.currentBalance, BILLS_OPENING)
-      && !near(a.leftover, BILLS_OPENING)
-      && near(a.currentBalance, POOLED),
-    'Current Balance remains posted A+B; leftover is not chequing-a cash');
+  ok(near(a.currentBalance, BILLS_OPENING)
+      && !near(a.currentBalance, POOLED)
+      && !near(a.leftover, BILLS_OPENING),
+    'Current Balance is posted hub chequing-a; leftover is not chequing-a cash');
 }
 
 console.log('=== I. Page does not calculate the movement set ===');

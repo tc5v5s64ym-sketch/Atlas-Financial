@@ -1,11 +1,15 @@
 'use strict';
-/* Live Budget/Plan payday sheet: after budget-polish enhance/decorateWaterfall,
- * `.operating-cash-explanation` / `[data-operating-cash-explanation]` must sit
- * immediately after Q07 inside the household-budget card.
+/* Household payday sheet: calendarWaterfallsHtml must NOT print
+ * `.operating-cash-explanation` / `[data-operating-cash-explanation]`
+ * under Q07, even when period.operatingCashExplanation is present.
+ *
+ * Synthetic polish tests that construct the node themselves still prove
+ * Q07-then-explanation grouping when the node exists. Missing explanation
+ * does not break polish.
  *
  * Independent of Forecast. Uses `plan.js` `calendarWaterfallsHtml` markup
  * (the bytes the household page emits), then the live polish path
- * (`boot` → MutationObserver → `enhance`), not a reconstructed stub alone.
+ * (`boot` → MutationObserver → `enhance`) to prove absence.
  *
  * `node test/test-operating-cash-explanation-placement.js`
  */
@@ -476,14 +480,15 @@ console.log('\n=== Missing explanation does not break polish ===');
     'household-budget card still closes at Q07 when there is nothing to reprint');
 }
 
-console.log('\n=== plan.js markup through the live boot/enhance path ===');
+console.log('\n=== plan.js markup does not print the explanation under Q07 ===');
 {
   const html = planPaydaySheetHtml(true);
-  ok(/data-operating-cash-explanation/.test(html)
-      && /class="operating-cash-explanation"/.test(html)
-      && html.indexOf('data-operating-question="07"')
-        < html.indexOf('data-operating-cash-explanation'),
-    'plan.js still emits the explanation after Q07 in source HTML');
+  ok(!/data-operating-cash-explanation/.test(html)
+      && !/class="operating-cash-explanation"/.test(html)
+      && !/operating-cash-explanation/.test(html),
+    'calendarWaterfallsHtml does not contain the explanation even when period.operatingCashExplanation is present');
+  ok(/data-operating-question="07"/.test(html),
+    'plan.js still emits Q07 on the household waterfall');
 
   withMutationObserver(observers => {
     const doc = createDocument();
@@ -505,11 +510,17 @@ console.log('\n=== plan.js markup through the live boot/enhance path ===');
     const waterfall = body.querySelector('[data-calendar-waterfall="this-pay-period"]');
     ok(waterfall && waterfall.hasAttribute('data-atlas-budget-ui'),
       'observer enhance groups the plan.js waterfall');
-    assertLiveOrder(body, 'plan.js HTML after live enhance');
-    const expl = body.querySelector('[data-operating-cash-explanation]');
-    ok(expl && /Posted BILLS ACCOUNT plus WEEKLY SPENDING/.test(textOf(expl))
-        && /Not cash in the operating accounts/.test(textOf(expl)),
-      'plan.js cash-identity copy is the node polish moved, not a replacement');
+    const expl = body.querySelector('[data-operating-cash-explanation]')
+      || body.querySelector('.operating-cash-explanation');
+    const q07 = waterfall.querySelector('[data-operating-question="07"]');
+    const budgetCard = waterfall.querySelector('.atlas-household-budget-card');
+    ok(q07 && !expl,
+      'household UI does not print the explanation under Q07');
+    ok(budgetCard
+        && budgetCard.querySelector('[data-operating-question="07"]')
+        && !budgetCard.querySelector('.operating-cash-explanation')
+        && !budgetCard.querySelector('[data-operating-cash-explanation]'),
+      'household-budget card still closes at Q07; explanation is absent');
   });
 }
 
@@ -556,22 +567,22 @@ console.log('\n=== APPLIED before the explanation exists (live timing failure) =
   });
 }
 
-console.log('\n=== MutationObserver orphan between Current Balance and the waterfall ===');
+console.log('\n=== MutationObserver has no plan.js explanation to orphan ===');
 {
   const doc = createDocument();
   const body = mountPaydayBody(doc, planPaydaySheetHtml(true));
   ok(UI.enhance(doc) === true, 'first enhance groups the complete plan.js snapshot');
   const waterfall = body.querySelector('[data-calendar-waterfall="this-pay-period"]');
-  const expl = body.querySelector('[data-operating-cash-explanation]');
-  const waterfalls = body.querySelector('[data-calendar-waterfalls]');
-  waterfalls.insertBefore(expl, waterfall);
-  const current = body.querySelector('[data-live-current-balance]');
-  ok(expl.parentNode === waterfalls
-      && current && nextElementSibling(current) === expl,
-    'orphaned explanation sits under Current Balance before the snapshot cards');
-
-  ok(UI.enhance(doc) === true, 'later enhance recovers the orphaned sibling');
-  assertLiveOrder(body, 'orphaned sibling after enhance');
+  const expl = body.querySelector('[data-operating-cash-explanation]')
+    || body.querySelector('.operating-cash-explanation');
+  ok(waterfall && !expl,
+    'complete plan.js snapshot has no explanation node to orphan under Current Balance');
+  const q07 = waterfall.querySelector('[data-operating-question="07"]');
+  const budgetCard = waterfall.querySelector('.atlas-household-budget-card');
+  ok(q07 && budgetCard && q07.parentNode === budgetCard,
+    'Q07 still lives in the household-budget card');
+  ok(q07 && !nextElementSibling(q07),
+    'Q07 is the last household-budget question; no explanation sibling');
 }
 
 console.log('\n=== Selector: class-only and data-attribute-only nodes both move ===');
