@@ -307,7 +307,7 @@ console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');
     advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
   });
   ok(!question(zeroHtml, '08') && !/data-payday-first-card/.test(zeroHtml),
-    'the default Plan prints no extra-repayment row after Balance after household budget');
+    'the default Plan prints no extra-repayment row after Predicted Ending Balance');
   ok(!/Pay extra/.test(zeroHtml) && !/Put \$40/.test(zeroHtml),
     'a named target is not a pay instruction when allocated is $0');
 

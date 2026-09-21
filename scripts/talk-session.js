@@ -29,13 +29,15 @@
  * "what does that leave us with?") resolve only against ephemeral
  * structured refs from a prior verified presentation — allowlisted
  * packet paths and published result keys, never conversation prose.
- * Payday leftover is Forecast.paydayAllocation.runningLeftover from
- * this request's packet. "What does this payday leave us with?" reads
- * that leftover now. "What does this payday look like?" reprints the
- * Forecast leftover stages plus leftover-consuming allocated amounts
- * from that same object. "What does that leave us with?" binds only
- * when leftover was already earned, including from that look-like
- * presentation. Remaining payday bills reprint Forecast-owned
+ * Payday leftover is Forecast Predicted Ending Balance
+ * (`forecast.predictedEndingBalance.amount`, the active calendar
+ * waterfall afterHouseholdBudget). "What does this payday leave us
+ * with?" reads that identity. paydayAllocation.runningLeftover remains
+ * the current-cash allocation picture, not this leftover. "What does
+ * this payday look like?" reprints those allocation stages plus
+ * leftover-consuming allocated amounts. "What does that leave us
+ * with?" binds only when leftover was already earned, including from
+ * that look-like presentation. Remaining payday bills reprint Forecast-owned
  * currentPeriodAction.bills. Settlement is Forecast-owned
  * (represented | upcoming | unverified). Talk does not date-filter
  * that list, invent a paid list, or treat unverified as unpaid.
@@ -119,7 +121,7 @@ const FOLLOWUP_KEY_PATHS = Object.freeze({
     'current.debts.monthlyInterest',
   ]),
   'payday-leftover': Object.freeze([
-    'forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+    'forecast.predictedEndingBalance.amount',
   ]),
   'payday-picture': Object.freeze([
     'forecast.paydayAllocation.runningLeftover.currentBalance',
@@ -133,7 +135,7 @@ const FOLLOWUP_KEY_PATHS = Object.freeze({
   ]),
 });
 const LEFTOVER_INTENT = 'payday-leftover';
-const LEFTOVER_PATH = 'forecast.paydayAllocation.runningLeftover.afterBigPurchases';
+const LEFTOVER_PATH = 'forecast.predictedEndingBalance.amount';
 const PAYDAY_PICTURE_INTENT = 'payday-picture';
 const PAYDAY_PICTURE_PATHS = FOLLOWUP_KEY_PATHS['payday-picture'];
 const LEFTOVER_EXTRACT_KEYS = Object.freeze({
@@ -284,6 +286,13 @@ function bindReferentKeysFromPaths(paths) {
   if (facilityIndexes.length === 1 && !seen.card) {
     seen.card = true;
     keys.push('card');
+  }
+  // A payday look-like presentation still earns leftover deixis. The
+  // leftover follow-up then reads Predicted Ending Balance, not the
+  // paydayAllocation closing stage.
+  if (seen['payday-picture'] && !seen['payday-leftover']) {
+    seen['payday-leftover'] = true;
+    keys.push('payday-leftover');
   }
   return { keys, facilityIndexes };
 }

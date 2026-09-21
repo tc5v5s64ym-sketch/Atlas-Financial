@@ -871,13 +871,18 @@ async function runHttpProof() {
 
     const leftover = await askJson(base, sessionA.cookie, 'What does this payday leave us with?');
     const leftoverBody = await leftover.json();
-    const leftoverMoney = TalkPresentation.formatCurrency(
-      advice.paydayAllocation.runningLeftover.afterBigPurchases
-    );
+    const peb = packet.forecast && packet.forecast.predictedEndingBalance;
+    const pebKnown = peb && peb.status === 'ok' && Number.isFinite(Number(peb.amount));
+    const leftoverMoney = pebKnown
+      ? TalkPresentation.formatCurrency(peb.amount)
+      : null;
     ok(leftover.status === 200
-        && leftoverBody.answer === `This payday leaves us with ${leftoverMoney}.`
+        && (pebKnown
+          ? leftoverBody.answer === `Predicted ending balance for this pay period is ${leftoverMoney}.`
+          : (leftoverBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
+            || /Predicted ending balance is unavailable/.test(leftoverBody.answer)))
         && mock.captured.length === 0,
-      '#309 leftover exact ask still reprints Forecast leftover on the same session');
+      '#309 leftover exact ask still reprints Forecast Predicted Ending Balance');
 
     const isolated = await askJson(base, sessionB.cookie, 'What about that one?');
     const isolatedBody = await isolated.json();

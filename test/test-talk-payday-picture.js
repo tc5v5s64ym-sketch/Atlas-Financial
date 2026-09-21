@@ -292,6 +292,15 @@ function picturePacket(fields, extras) {
       freshness: { confidence: extras.freshness || 'canonical-opening' },
     },
     forecast: {
+      predictedEndingBalance: extras.pebUnavailable
+        ? { status: 'unavailable', reason: 'predicted-ending-balance-unavailable' }
+        : {
+          status: 'ok',
+          source: 'Forecast.calendarPeriodWaterfalls',
+          amount: extras.predictedEndingBalance != null
+            ? extras.predictedEndingBalance
+            : fields.afterBigPurchases,
+        },
       paydayAllocation: extras.unavailable
         ? { status: 'unavailable', reason: 'payday-leftover-unavailable' }
         : {
@@ -515,8 +524,9 @@ console.log('\n=== 4. Look-like intent is server-owned; leftover deixis stays #3
       && direct.paths.length === PICTURE_PATHS.length
       && direct.paths.every((path, i) => path === PICTURE_PATHS[i])
       && direct.paths[0] === FIELD_PATHS.currentBalance
-      && direct.paths[direct.paths.length - 1] === LEFTOVER_PATH,
-    'look-like reads Forecast stage paths in leftover-then-allocation order without a prior turn');
+      && direct.paths[direct.paths.length - 1] === FIELD_PATHS.afterBigPurchases
+      && direct.paths[direct.paths.length - 1] !== LEFTOVER_PATH,
+    'look-like reads Forecast paydayAllocation stage paths, not Predicted Ending Balance');
 
   ok(TalkSession.resolveFollowup({
     question: 'How does this payday look?',
@@ -574,14 +584,14 @@ console.log('\n=== 4. Look-like intent is server-owned; leftover deixis stays #3
       extraDebtAllocated: 0,
       afterDebtRepayment: 12,
       afterBigPurchases: 12.34,
-    }),
+    }, { predictedEndingBalance: 12.34 }),
   });
   ok(that.status === 'resolved-reference'
       && that.referentKey === 'payday-leftover'
       && that.paths.length === 1
       && that.paths[0] === LEFTOVER_PATH,
     'earned leftover deixis stays leftover-only and does not broaden to the picture');
-  const staleClaims = TalkWhy.publishablePaths(that.paths, picturePacket({
+  const stalePacket = picturePacket({
     currentBalance: 12,
     obligationsAllocated: 0,
     afterBills: 12,
@@ -590,24 +600,16 @@ console.log('\n=== 4. Look-like intent is server-owned; leftover deixis stays #3
     extraDebtAllocated: 0,
     afterDebtRepayment: 12,
     afterBigPurchases: 12.34,
-  }));
+  }, { predictedEndingBalance: 12.34 });
+  const staleClaims = TalkWhy.publishablePaths(that.paths, stalePacket);
   const stalePresented = TalkPresentation.presentVerifiedClaims({
     status: 'explained',
     claims: staleClaims,
-  }, picturePacket({
-    currentBalance: 12,
-    obligationsAllocated: 0,
-    afterBills: 12,
-    essentialsAllocated: 0,
-    afterHouseholdBudget: 12,
-    extraDebtAllocated: 0,
-    afterDebtRepayment: 12,
-    afterBigPurchases: 12.34,
-  }));
-  ok(near(staleClaims[0].value, 12.34)
-      && stalePresented.answer === 'This payday leaves us with $12.34.'
+  }, stalePacket);
+  ok(staleClaims[0] && near(staleClaims[0].value, 12.34)
+      && stalePresented.answer === 'Predicted ending balance for this pay period is $12.34.'
       && stalePresented.answer.indexOf('350') === -1,
-    'leftover follow-up re-reads the current packet leftover, not look-like prose');
+    'leftover follow-up re-reads Forecast Predicted Ending Balance, not look-like prose');
 }
 
 console.log('\n=== 5. Adversarial Forecast fixtures: extra debt, future costs, zeros, unavailable ===');
@@ -733,7 +735,7 @@ console.log('\n=== 5. Adversarial Forecast fixtures: extra debt, future costs, z
     afterBigPurchases: 4,
   }));
   ok(fromIntent.status === 'resolved-reference'
-      && near(intentClaims.find(row => row.path === LEFTOVER_PATH).value, 4)
+      && near(intentClaims.find(row => row.path === FIELD_PATHS.afterBigPurchases).value, 4)
       && intentClaims.every(row => Number.isFinite(Number(row.value))),
     'payday-picture intent still reads amounts from the packet, not from Gemini');
 
@@ -791,10 +793,16 @@ async function runHttpProof() {
 
     const that = await askJson(base, sessionA.cookie, 'What does that leave us with?');
     const thatBody = await that.json();
+    const peb = packet.forecast && packet.forecast.predictedEndingBalance;
+    const pebKnown = peb && peb.status === 'ok' && Number.isFinite(Number(peb.amount));
+    const pebMoney = pebKnown ? TalkPresentation.formatCurrency(peb.amount) : null;
     ok(that.status === 200
-        && thatBody.answer === `This payday leaves us with ${leftoverMoney}.`
+        && (pebKnown
+          ? thatBody.answer === `Predicted ending balance for this pay period is ${pebMoney}.`
+          : (thatBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
+            || /Predicted ending balance is unavailable/.test(thatBody.answer)))
         && mock.captured.length === 0,
-      'look-like earns #309 leftover deixis and still does not call Gemini');
+      'look-like earns leftover deixis that reprints Forecast Predicted Ending Balance');
 
     const isolated = await askJson(base, sessionB.cookie, 'What does that leave us with?');
     const isolatedBody = await isolated.json();

@@ -1,17 +1,18 @@
 'use strict';
 /* Owner-directed payday waterfall contract, 2026-09-09.
  *
- * The operating allocation waterfall is a planning identity, not a replay of
- * today's chequing balance or a settlement claim:
+ * Payday balance remains the pay-period income identity:
  *
  *   Dale salary + Amanda salary + recognized Other Income = Payday balance
  *
- * Current Balance remains a separate live cash fact. A salary may remain
- * visibly unproven/not-relied-upon for settlement while still belonging to
- * the pay-period planning total. Other Income is fluid: every additional
- * recognized dollar must move Payday balance and every downstream waterfall
- * balance by exactly one dollar. Forecast owns all arithmetic; plan.js only
- * renders Forecast output.
+ * Owner 2026-09-21: Predicted Ending Balance is a different identity —
+ * payday-boundary opening + income not already inside that opening −
+ * assigned bills − Household Budget hold. Current Balance remains a
+ * separate live cash fact. A salary may remain visibly
+ * unproven/not-relied-upon for settlement while still belonging to
+ * Payday balance. Other Income is fluid through Payday balance and
+ * through Predicted Ending Balance. Forecast owns all arithmetic;
+ * plan.js only renders Forecast output.
  *
  * This is synthetic independent arithmetic. No household cents are used as a
  * behaviour oracle.
@@ -158,10 +159,12 @@ console.log('\n=== 2. Bills and Household Budget are downstream of Payday balanc
 {
   const row = active(recommend(OTHER));
   const expectedPayday = roundCent(DALE + AMANDA + OTHER);
-  ok(near(row.afterBills, roundCent(expectedPayday - row.periodBillLoad)),
-    'Balance after bills = Payday balance − period bill load');
+  ok(near(row.afterBills, roundCent(OPENING + row.incomeAdded - row.periodBillLoad)),
+    'Balance after bills = opening + incomeAdded − period bill load');
   ok(near(row.afterHouseholdBudget, roundCent(row.afterBills - row.budgetHold)),
-    'Balance after household budget = Balance after bills − Household Budget');
+    'Predicted Ending Balance = Balance after bills − Household Budget');
+  ok(!near(row.afterHouseholdBudget, roundCent(expectedPayday - row.periodBillLoad - row.budgetHold)),
+    'Predicted Ending Balance is not the superseded income-led remainder');
 }
 
 console.log('\n=== 3. Other Income is fluid through the whole waterfall ===');
@@ -195,8 +198,8 @@ console.log('\n=== 4. Plan presents one simple income equation and renders Forec
   ok(!/Balance after payday/i.test(waterfallFn),
     'waterfall does not publish a second competing Balance after payday row');
   ok(/Balance after bills/i.test(waterfallFn)
-      && /Balance after household budget/i.test(waterfallFn),
-    'downstream waterfall balances remain visible');
+      && /Predicted Ending Balance/i.test(waterfallFn),
+    'downstream waterfall balances remain visible, ending at Predicted Ending Balance');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

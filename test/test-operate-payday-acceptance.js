@@ -409,9 +409,9 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
     'a payday-mode result stops at the household-budget boundary and does not dump the allocation sheet onto the default Plan');
   ok(/Current Balance/.test(html) && /Household budget/.test(html)
     && />Bills</.test(html)
-    && /Balance after household budget/.test(html)
+    && /Predicted Ending Balance/.test(html)
     && !/Extra credit-card repayment/.test(html),
-  'payday mode still answers Current Balance, bills, budget, and balance after household budget');
+  'payday mode still answers Current Balance, bills, budget, and Predicted Ending Balance');
 }
 
 console.log('\n=== live overlay cannot be authorized from committed git state ===');

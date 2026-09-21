@@ -202,6 +202,28 @@ function projectCurrentPeriodBills(items) {
   return out;
 }
 
+// Current-pay-period Predicted Ending Balance. Copies the active calendar
+// waterfall leftover. Talk leftover reprints this Forecast identity; it
+// does not reconstruct one from paydayAllocation.runningLeftover.
+function projectPredictedEndingBalance(advice) {
+  const periods = advice && advice.defaultView && advice.defaultView.calendarPeriods;
+  const active = Array.isArray(periods)
+    ? periods.find(row => row && row.role === 'active')
+    : null;
+  const amount = active && active.afterHouseholdBudget;
+  if (amount == null || !Number.isFinite(Number(amount))) {
+    return unavailable('predicted-ending-balance-unavailable');
+  }
+  return {
+    status: 'ok',
+    source: 'Forecast.calendarPeriodWaterfalls',
+    identity: 'predicted-ending-balance',
+    amount: money(amount),
+    periodStart: active.start || null,
+    periodEnd: active.end || null,
+  };
+}
+
 // Smallest operating-picture projection: copy Forecast leftover stages plus
 // the leftover-consuming allocated amounts Talk reprints. Talk does not
 // reconstruct a stage by subtracting. This is not a payday calculator.
@@ -620,6 +642,7 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
       currentPeriodAction: unavailable(reason),
       budgetCap: unavailable(reason),
       paydayAllocation: unavailable(reason),
+      predictedEndingBalance: unavailable(reason),
     };
   }
   const horizon = advice.knowledge || Forecast.knowledgeHorizon(data.plan, asOf);
@@ -719,6 +742,7 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
       }
       : unavailable('current-period-action-unavailable'),
     paydayAllocation: projectPaydayAllocation(advice),
+    predictedEndingBalance: projectPredictedEndingBalance(advice),
     budgetCap: budget && budget.cap
       ? {
         status: 'ok',

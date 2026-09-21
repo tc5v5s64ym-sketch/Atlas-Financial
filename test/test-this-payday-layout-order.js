@@ -174,7 +174,7 @@ function stubWaterfall() {
   q('04', 'Bills', []);
   q('05', 'Balance after bills', []);
   q('06', 'Household budget', []);
-  q('07', 'Balance after household budget', []);
+  q('07', 'Predicted Ending Balance', []);
   return { doc, waterfall };
 }
 

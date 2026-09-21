@@ -665,8 +665,8 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
-  ok(thisP.afterHouseholdBudget != null,
-    'income-led leftover after household budget can publish when opening is withheld');
+  ok(thisP.afterHouseholdBudget == null && thisP.predictedEndingBalance == null,
+    'Predicted Ending Balance fails closed when the payday opening is withheld');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');
