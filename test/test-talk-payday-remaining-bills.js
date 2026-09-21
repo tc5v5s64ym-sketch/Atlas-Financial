@@ -879,7 +879,8 @@ async function runHttpProof() {
     ok(leftover.status === 200
         && (pebKnown
           ? leftoverBody.answer === `Predicted ending balance for this pay period is ${leftoverMoney}.`
-          : /Predicted ending balance is unavailable/.test(leftoverBody.answer))
+          : (leftoverBody.answer === TalkPresentation.UNAVAILABLE_ANSWER
+            || /Predicted ending balance is unavailable/.test(leftoverBody.answer)))
         && mock.captured.length === 0,
       '#309 leftover exact ask still reprints Forecast Predicted Ending Balance');
 

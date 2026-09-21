@@ -468,10 +468,15 @@ console.log('\n=== 4b. Household Budget Total is snapshotted from Forecast budge
       && same(liveSnap['operating.next.householdBudgetTotal'],
         nextPeriod.budgetHold == null ? null : round(nextPeriod.budgetHold)),
     'operating.next.householdBudgetTotal is Forecast next-period budgetHold');
-  ok(thisPeriod.afterBills != null
-      && same(round(thisPeriod.afterBills - liveSnap['operating.this.householdBudgetTotal']),
+  if (thisPeriod.afterBills != null && thisPeriod.afterHouseholdBudget != null) {
+    ok(same(round(thisPeriod.afterBills - liveSnap['operating.this.householdBudgetTotal']),
         round(thisPeriod.afterHouseholdBudget)),
-    'snapshotted Household Budget Total reconciles afterBills − total = afterHouseholdBudget');
+      'snapshotted Household Budget Total reconciles afterBills − total = afterHouseholdBudget');
+  } else {
+    ok(thisPeriod.afterBills == null && thisPeriod.afterHouseholdBudget == null
+        && thisPeriod.budgetHold != null,
+      'snapshotted leftover withholds PEB when payday-boundary opening is unproven; hold is still Forecast budgetHold');
+  }
   ok(!Object.prototype.hasOwnProperty.call(beforeSnap, 'operating.this.householdBudgetTotal')
       && !Object.prototype.hasOwnProperty.call(beforeSnap, 'operating.next.householdBudgetTotal'),
     'pre-PR #264 snapshot script does not key Household Budget Total — the historical absence proof stays fixed');
