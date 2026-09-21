@@ -4,7 +4,8 @@
  * Supersedes the 2026-09-09 income-led leftover. One Forecast identity:
  *
  *   payday-boundary opening
- *   + income not already inside that opening (actual when observed)
+ *   + income not already inside that opening
+ *     (household-inflow magnitude when an actual exists; planned otherwise)
  *   − assigned bills not already inside that opening
  *   − Household Budget hold
  *   = Predicted Ending Balance
@@ -616,6 +617,357 @@ console.log('\n=== Live reconstruction: PEB follows named facts, never hardcoded
         'live mid-period cutover is not published as payday-boundary leftover');
     }
   }
+}
+
+console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recur ===');
+{
+  // Named reconstruction of the 2026-09-21 live defect. These cents are
+  // the broken equation, not a specification of a desired household PEB
+  // (L-006). Independent arithmetic, then a Forecast fixture with the
+  // same structural facts.
+  const PROD_OPENING = 310.47;
+  const DALE_LM_SIGNED = -4274.98;
+  const DALE_INFLOW = 4274.98;
+  const AMANDA_PLANNED = 2168.85;
+  const CHILD_AMT = 219.45;
+  const PROD_BILLS = 3413.07;
+  const PROD_HOLD = 2287.17;
+  const BROKEN_INCOME = roundCent(DALE_LM_SIGNED + CHILD_AMT);
+  const BROKEN_AFTER_BILLS = roundCent(PROD_OPENING + BROKEN_INCOME - PROD_BILLS);
+  const BROKEN_PEB = roundCent(BROKEN_AFTER_BILLS - PROD_HOLD);
+  ok(near(BROKEN_INCOME, -4055.53) && near(BROKEN_AFTER_BILLS, -7158.13)
+      && near(BROKEN_PEB, -9445.3),
+    'independent reconstruction of the published broken equation');
+
+  const plan = fixturePlan({
+    openingAmount: PROD_OPENING,
+    startingCash: {
+      amount: 190.24,
+      breakdown: [
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: 593.29 },
+        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: -403.05 },
+        { id: 'savings', label: 'EMERGENCY SAVING', value: 772.58 },
+      ],
+    },
+    opening: {
+      asOf: '2026-09-21',
+      priorAsOf: '2026-08-19',
+      representedEvents: [
+        { id: 'payroll', date: PAYDAY },
+        { id: 'childBenefit', date: '2026-09-20' },
+      ],
+      notReliedUponEvents: [
+        { id: 'amandaSalary15', date: '2026-09-15', reason: 'unconfirmed-transfer' },
+      ],
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: PROD_OPENING },
+    },
+    income: [
+      {
+        id: 'payroll', label: 'Dale income', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: 4264, confidence: 'confirmed',
+      },
+      {
+        id: 'amandaSalary15', label: 'Amanda income', frequency: 'once',
+        date: '2026-09-15', amount: AMANDA_PLANNED, confidence: 'confirmed',
+      },
+      {
+        id: 'childBenefit', label: 'Canada Child Benefit', frequency: 'once',
+        date: '2026-09-20', amount: CHILD_AMT, confidence: 'confirmed',
+      },
+    ],
+    bills: [
+      {
+        id: 'period-bills', label: 'Assigned period bills', frequency: 'once',
+        date: '2026-09-12', amount: PROD_BILLS, confidence: 'confirmed',
+      },
+    ],
+    categories: [],
+  });
+  const row = activeOf(recommend(plan, [otherTx(PROD_HOLD)], {
+    asOf: '2026-09-21',
+    representedEvents: [
+      { id: 'payroll', date: PAYDAY },
+      { id: 'childBenefit', date: '2026-09-20' },
+    ],
+    notReliedUponEvents: [
+      { id: 'amandaSalary15', date: '2026-09-15', reason: 'unconfirmed-transfer' },
+    ],
+    actualsExtra: {
+      observationAsOf: '2026-09-21',
+      coverageStart: PAYDAY,
+      coverageThrough: '2026-09-21',
+      representedActuals: [
+        { id: 'payroll', date: PAYDAY, actual: DALE_LM_SIGNED, postedOn: PAYDAY },
+        { id: 'childBenefit', date: '2026-09-20', actual: CHILD_AMT, postedOn: '2026-09-20' },
+      ],
+    },
+  }));
+  const correctIncome = roundCent(DALE_INFLOW + AMANDA_PLANNED + CHILD_AMT);
+  const correctAfterBills = roundCent(PROD_OPENING + correctIncome - PROD_BILLS);
+  const correctPeb = independentPeb(PROD_OPENING, correctIncome, PROD_BILLS, PROD_HOLD);
+  ok(row && near(row.opening, PROD_OPENING) && row.openingSource === 'snapshot'
+      && row.paydayBoundaryOpening === true,
+    'payday-boundary opening stays the Sep 11 snapshot, not live cash');
+  ok(!near(row.opening, 190.24) && !near(row.opening, 593.29),
+    'today\'s Current Balance / Bills-only cash is not the payday-boundary opening');
+  ok(near(row.incomeAdded, correctIncome),
+    'Lunch Money signed Dale actual becomes inflow; unconfirmed Amanda still belongs to the period',
+    `${row && row.incomeAdded} vs ${correctIncome}`);
+  ok(near(row.afterBills, correctAfterBills) && !near(row.afterBills, BROKEN_AFTER_BILLS),
+    'Balance after bills is not the production −$7,158.13');
+  ok(near(row.afterHouseholdBudget, correctPeb) && !near(row.afterHouseholdBudget, BROKEN_PEB),
+    'PEB is not the production −$9,445.30');
+  ok(row.predictedEndingBalanceTerms
+      && row.predictedEndingBalanceTerms.closes === true
+      && near(row.predictedEndingBalanceTerms.paydayBoundaryPosition, PROD_OPENING)
+      && near(row.predictedEndingBalanceTerms.periodIncome, correctIncome)
+      && near(row.predictedEndingBalanceTerms.assignedBills, PROD_BILLS)
+      && near(row.predictedEndingBalanceTerms.householdBudgetHold, PROD_HOLD)
+      && near(row.predictedEndingBalanceTerms.predictedEndingBalance, correctPeb),
+    'Forecast publishes the closed PEB identity with no plug');
+}
+
+console.log('\n=== P. Live-advanced unproven period income still increments PEB ===');
+{
+  // Structural reconstruction of the Sep 11–24 production failure:
+  // overlay advanced past payday, salaries still on Payday balance, but
+  // incomeAdded was wiped to $0 and a transfer-net was treated as opening.
+  // Synthetic amounts (L-006). Independent arithmetic, not live cents.
+  const BILLS_MORNING = 800;
+  const WEEKLY_MORNING = -200;
+  const POOLED = roundCent(BILLS_MORNING + WEEKLY_MORNING);
+  const TRANSFER_NET = -3600;
+  const LIVE_BILLS = 500;
+  const LIVE_WEEKLY = -310;
+  const LIVE_POOLED = roundCent(LIVE_BILLS + LIVE_WEEKLY);
+  const CHEQUING_A_POSTED = 2310;
+  const DALE_AMT = 2000;
+  const AMANDA_AMT = 1500;
+  const CHILD_AMT = 200;
+  const PERIOD_INCOME = roundCent(DALE_AMT + AMANDA_AMT + CHILD_AMT);
+  const PERIOD_BILLS = 400;
+  const GROCERY_HOLD = 900;
+  const plan = fixturePlan({
+    openingAmount: POOLED,
+    startingCash: {
+      amount: LIVE_POOLED,
+      breakdown: [
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: LIVE_BILLS },
+        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: LIVE_WEEKLY },
+        { id: 'savings', label: 'EMERGENCY SAVING', value: 100 },
+      ],
+    },
+    opening: {
+      asOf: '2026-09-21',
+      priorAsOf: '2026-08-19',
+      representedEvents: [],
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: POOLED },
+      paydayAccountObservations: {
+        periodStart: PAYDAY,
+        asOf: PAYDAY,
+        accounts: [{
+          id: 'chequing-a',
+          value: CHEQUING_A_POSTED,
+          evidenceDate: PAYDAY,
+          temporalClaim: 'posted-balance-observed-on-household-date',
+          source: 'synthetic',
+        }],
+      },
+    },
+    income: [
+      {
+        id: 'payroll', label: 'Dale income', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: DALE_AMT, confidence: 'confirmed',
+      },
+      {
+        id: 'amandaPayday', label: 'Amanda income', frequency: 'once',
+        date: PAYDAY, amount: AMANDA_AMT, confidence: 'confirmed',
+      },
+      {
+        id: 'childBenefit', label: 'Canada Child Benefit', frequency: 'once',
+        date: '2026-09-20', amount: CHILD_AMT, confidence: 'confirmed',
+      },
+    ],
+  });
+  const row = activeOf(recommend(plan, [], { asOf: '2026-09-21' }));
+  const expectedAfterBills = roundCent(POOLED + PERIOD_INCOME - PERIOD_BILLS);
+  const expectedPeb = independentPeb(POOLED, PERIOD_INCOME, PERIOD_BILLS, GROCERY_HOLD);
+  const incomeWipedTrap = independentPeb(POOLED, 0, PERIOD_BILLS, GROCERY_HOLD);
+  const transferNetTrap = independentPeb(TRANSFER_NET, 0, PERIOD_BILLS, GROCERY_HOLD);
+  const liveCashTrap = independentPeb(LIVE_POOLED, PERIOD_INCOME, PERIOD_BILLS, GROCERY_HOLD);
+  const billsOnlyTrap = independentPeb(CHEQUING_A_POSTED, PERIOD_INCOME, PERIOD_BILLS, GROCERY_HOLD);
+  ok(row && near(row.opening, POOLED) && row.openingSource === 'snapshot'
+      && row.paydayBoundaryOpening === true,
+    'payday-boundary opening is pooled Bills + Weekly, including negative Weekly carry');
+  ok(near(row.incomeTotal, PERIOD_INCOME) && near(row.available, PERIOD_INCOME),
+    'Payday balance still shows Dale + Amanda + Child Benefit');
+  ok(near(row.incomeAdded, PERIOD_INCOME),
+    'live-advanced unproven period income still increments incomeAdded',
+    `${row && row.incomeAdded} vs ${PERIOD_INCOME}`);
+  ok(near(row.afterBills, expectedAfterBills)
+      && near(row.predictedEndingBalance, expectedPeb),
+    'PEB = pooled opening + period income − bills − hold',
+    `${row && row.predictedEndingBalance} vs ${expectedPeb}`);
+  ok(!near(row.afterBills, roundCent(POOLED - PERIOD_BILLS))
+      && !near(row.predictedEndingBalance, incomeWipedTrap),
+    'elapsed-unproven settlement does not wipe period income from PEB');
+  ok(!near(row.opening, TRANSFER_NET)
+      && !near(row.predictedEndingBalance, transferNetTrap),
+    'a Bills transfer-history net is not the payday-boundary opening');
+  ok(!near(row.opening, LIVE_POOLED)
+      && !near(row.predictedEndingBalance, liveCashTrap),
+    'today\'s live Current Balance is not substituted for payday-boundary opening');
+  ok(!near(row.opening, CHEQUING_A_POSTED)
+      && !near(row.predictedEndingBalance, billsOnlyTrap),
+    'chequing-a posted-on-payday observation is not the PEB opening');
+  const dale = (row.income || []).find(r => r && r.id === 'payroll');
+  const amanda = (row.income || []).find(r => r && r.id === 'amandaPayday');
+  const child = (row.income || []).find(r => r && r.id === 'childBenefit');
+  ok(dale && dale.settlement === 'relied-upon' && dale.alreadyInCash !== true,
+    'Dale remains relied-upon after payday; not treated as already inside live cash');
+  ok(amanda && (amanda.notReliedUpon === true || amanda.settlement === 'not-relied-upon')
+      && near(amanda.amount, AMANDA_AMT),
+    'Amanda settlement can stay unproven without erasing her from incomeAdded');
+  ok(child && near(child.amount, CHILD_AMT)
+      && (child.notReliedUpon === true || child.settlement === 'not-relied-upon'
+        || child.status === 'unresolved' || child.status === 'arriving'),
+    'Child Benefit belongs to the period once; it is not dropped from PEB');
+}
+
+console.log('\n=== Q. Negative Weekly carry is opening, not a manufactured expense ===');
+{
+  const bills = 500;
+  const weekly = -175;
+  const pooled = roundCent(bills + weekly);
+  const plan = fixturePlan({
+    openingAmount: pooled,
+    startingCash: {
+      breakdown: [
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: 900 },
+        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: 334.56 },
+      ],
+    },
+  });
+  const row = activeOf(recommend(plan, []));
+  const incomeAdded = DALE + AMANDA + CHILD;
+  const expected = independentPeb(pooled, incomeAdded, BILL, GROCERY_PLAN);
+  const ifWeeklyWereSpend = independentPeb(bills, incomeAdded, BILL, GROCERY_PLAN);
+  ok(near(row.opening, pooled) && weekly < 0,
+    'opening is Bills + negative Weekly, not Bills alone');
+  ok(near(row.predictedEndingBalance, expected)
+      && !near(row.predictedEndingBalance, ifWeeklyWereSpend),
+    'negative Weekly reduces opening once and is not added as Household Budget spending');
+  ok(near(row.budgetHold, GROCERY_PLAN),
+    'negative Weekly carry does not inflate the Household Budget hold');
+}
+
+console.log('\n=== R. Inspectable PEB terms arithmetically close ===');
+{
+  const row = activeOf(recommend(fixturePlan(), [groceryTx(100), otherTx(40)]));
+  ok(row.opening != null && row.incomeAdded != null && row.periodBillLoad != null
+      && row.budgetHold != null && row.predictedEndingBalance != null,
+    'Forecast exposes opening, incomeAdded, periodBillLoad, hold, and PEB');
+  ok(near(row.afterBills, roundCent(row.opening + row.incomeAdded - row.periodBillLoad)),
+    'afterBills independently equals opening + incomeAdded − periodBillLoad');
+  ok(near(row.predictedEndingBalance,
+      independentPeb(row.opening, row.incomeAdded, row.periodBillLoad, row.budgetHold)),
+    'PEB independently equals those four named facts with no residual plug');
+  const terms = row.predictedEndingBalanceTerms;
+  ok(terms && terms.closes === true && terms.identity === 'predicted-ending-balance'
+      && near(terms.paydayBoundaryPosition, row.opening)
+      && near(terms.periodIncome, row.incomeAdded)
+      && near(terms.assignedBills, row.periodBillLoad)
+      && near(terms.householdBudgetHold, row.budgetHold)
+      && near(terms.predictedEndingBalance, row.predictedEndingBalance),
+    'predictedEndingBalanceTerms reprints the same four facts and closes');
+}
+
+console.log('\n=== S. Transfer-net gap packet is not a payday-morning stock ===');
+{
+  const dated = '2026-08-19';
+  const billsOpen = 629.27;
+  const weeklyOpen = 309.77;
+  const pooledOpen = roundCent(billsOpen + weeklyOpen);
+  const grocery = 80;
+  const transferOut = -350;
+  const transferIn = 350;
+  const plan = {
+    defaults: { targetBuffer: 0 },
+    windowDays: 14,
+    startingCash: {
+      breakdown: [
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: billsOpen },
+        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: weeklyOpen },
+        { id: 'savings', label: 'EMERGENCY SAVING', value: 0.58 },
+      ],
+    },
+    opening: { asOf: dated, representedEvents: [] },
+    nextDollar: { policy: 'true-surplus-highest-interest', provenance: 'owner-stated' },
+    income: [
+      {
+        id: 'payroll', label: 'Dale income', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: DALE, confidence: 'confirmed',
+      },
+    ],
+    bills: [],
+    obligations: [],
+    commitments: [],
+    budget: { categories: [] },
+  };
+  const complete = {
+    complete: true,
+    coverageStart: '2026-08-20',
+    coverageThrough: '2026-09-10',
+    movements: [
+      { date: '2026-08-25', amount: -grocery, accountRole: 'household-cash', atlasAccountId: 'chequing-a' },
+      { date: '2026-09-08', amount: transferOut, accountRole: 'household-cash', atlasAccountId: 'chequing-a' },
+      { date: '2026-09-08', amount: transferIn, accountRole: 'household-cash', atlasAccountId: 'chequing-b' },
+    ],
+  };
+  const snap = F.establishPaydaySnapshot(plan, PAYDAY, { paydayGapCash: complete });
+  const expectedMorning = roundCent(pooledOpen - grocery);
+  const transferNetAsOpening = roundCent(transferOut);
+  ok(snap && near(snap.opening, expectedMorning),
+    'complete walk is pooled A+B plus gap spendable flows; Bills→Weekly nets to zero');
+  ok(snap && !near(snap.opening, transferNetAsOpening)
+      && !near(snap.opening, roundCent(billsOpen + transferOut - grocery)),
+    'Bills transfer-out without Weekly is not the reconstructed opening');
+
+  const mixed = {
+    complete: true,
+    coverageStart: '2026-08-20',
+    coverageThrough: '2026-09-10',
+    movements: [
+      { date: '2026-08-25', amount: -grocery, accountRole: 'household-cash', atlasAccountId: 'chequing-a' },
+      { date: '2026-09-01', amount: -500, accountRole: 'household-cash' },
+    ],
+  };
+  const withheld = F.establishPaydaySnapshot(plan, PAYDAY, { paydayGapCash: mixed });
+  ok(withheld == null,
+    'identified chequing movements mixed with unidentified household-cash fail closed');
+}
+
+console.log('\n=== T. Incompatible snapshot dates fail closed ===');
+{
+  const plan = fixturePlan({
+    opening: {
+      asOf: AS_OF,
+      priorAsOf: PAYDAY,
+      representedEvents: [],
+      paydaySnapshot: {
+        periodStart: '2026-08-28',
+        asOf: '2026-08-28',
+        opening: OPENING,
+      },
+    },
+  });
+  const row = activeOf(recommend(plan, []));
+  ok(row && row.start === PAYDAY,
+    'active window is still Sep 11–24');
+  ok(row.openingKnown !== true || row.paydayBoundaryOpening !== true,
+    'a snapshot for a different payday is not combined into this period\'s PEB');
+  ok(row.predictedEndingBalance == null && row.afterBills == null,
+    'incompatible evidence dates withhold PEB rather than silently mixing them');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

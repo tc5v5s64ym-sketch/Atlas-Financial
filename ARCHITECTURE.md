@@ -381,7 +381,17 @@ not put that bill's cash back into Payday balance. Owner 2026-09-21
 supersedes the 2026-09-09 income-led leftover: Predicted Ending Balance
 is the living current-pay-period remaining-household-money identity,
 `opening + income not already inside that opening − assigned bills not
-already inside that opening − Household Budget hold`. It fails closed
+already inside that opening − Household Budget hold`. Period income
+uses the observed household-inflow magnitude when an actual exists
+(Lunch Money signed credits are not subtracted) and the planned amount
+otherwise. Live-cash not-relied-upon settlement does not drop that
+income term. Those four terms are published on
+`predictedEndingBalanceTerms` and must arithmetically close; there is
+no balancing plug. The
+payday-boundary opening is posted Chequing A (BILLS ACCOUNT) plus
+Chequing B (WEEKLY SPENDING), including a negative Weekly carry; it is
+not chequing-a posted-balance-observed-on-household-date, not a
+transfer-history total, and not today's live Current Balance. It fails closed
 when the payday-boundary opening is unknown or is only a mid-period
 cutover-opening. A mid-period dated opening is Q01 current cash, not
 that payday-boundary term; Forecast does not invent a remaining-budget
