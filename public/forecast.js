@@ -3776,6 +3776,18 @@
     'dale-guilt-free', 'amanda-guilt-free',
   ];
 
+  // Explicit Lunch Money category Uncategorised matches the incumbent
+  // remainder category as spend. That assignment is not a trusted named
+  // Household Budget row. The payday sheet counts it once in Other
+  // Spending, the same residual blank and needsConfirmation rows already
+  // use. Named non-calendar categories stay out.
+  function isUncategorisedRemainderSpend(cls) {
+    if (!cls || cls.kind !== 'spend') return false;
+    if (cls.needsConfirmation) return false;
+    const catId = cls.atlasRow || cls.categoryId;
+    return catId === 'uncategorised';
+  }
+
   // Incumbent Household Budget supporting-row predicate. calendarHouseholdBudget
   // and the overlay sanitizer share this so merchant identity is not a second
   // membership authority.
@@ -3788,6 +3800,7 @@
       return false;
     }
     if (cls.needsConfirmation || cls.kind === 'unclassified') return true;
+    if (isUncategorisedRemainderSpend(cls)) return true;
     const catId = cls.atlasRow || cls.categoryId;
     return !!(catId && CALENDAR_PERIOD_BUDGET_IDS.indexOf(catId) >= 0);
   }
@@ -6634,7 +6647,8 @@
         if (!householdBudgetSupportingSpendEligible(cls)) continue;
         const isDuplicate = tx.id != null && duplicateIds.has(String(tx.id));
         const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate });
-        if (cls.needsConfirmation || cls.kind === 'unclassified') {
+        if (cls.needsConfirmation || cls.kind === 'unclassified'
+            || isUncategorisedRemainderSpend(cls)) {
           confirmationRecon.push(row);
           confirmationSpent = roundCent(
             confirmationSpent + confirmedHouseholdAmount(tx, duplicateIds)
@@ -6699,9 +6713,10 @@
         pendingRecon,
       });
     }
-    // Incumbent needsConfirmation / unclassified residual. This is
-    // unassigned current-cycle household spend, not a total of every
-    // dollar outside the planned category rows (named non-calendar
+    // Incumbent needsConfirmation / unclassified residual, plus an
+    // eligible debit whose Lunch Money category is exactly Uncategorised.
+    // This is unassigned current-cycle household spend, not a total of
+    // every dollar outside the planned category rows (named non-calendar
     // ids such as health/sport stay omitted). No planned reserve.
     // Owner 2026-09-04: its current-period actual is deducted once.
     // Classifier reasons stay on recon.includeReason.

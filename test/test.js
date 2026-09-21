@@ -111,6 +111,7 @@ const suites = [
   ['Dog food every-other-Seaspan payday cadence', 'test-dog-food-monthly-cadence.js'],
   ['Household planned target removed', 'test-household-target-removed.js'],
   ['Household Budget Other spending residual', 'test-household-budget-other-spending.js'],
+  ['Uncategorised debit enters Other Spending once', 'test-uncategorised-other-spending.js'],
   ['Household Budget Spent transaction drill-down', 'test-household-budget-spent-drilldown.js'],
   ['Household Budget overlay Spent drill-down when recon withheld', 'test-household-budget-overlay-spent-drilldown.js'],
   ['header freshness source identity (history vs live overlay spending)', 'test-header-freshness-source-identity.js'],
