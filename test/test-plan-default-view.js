@@ -299,7 +299,7 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     'Bills',
     'Balance after bills',
     'Household budget',
-    'Balance after household budget',
+    'Predicted Ending Balance',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -324,7 +324,7 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
       && paydayAt < html.indexOf('data-operating-prompt="Bills"'),
     'Payday balance closing total sits under income lines, not above income');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(html),
-    'the default surface stops at Balance after household budget');
+    'the default surface stops at Predicted Ending Balance');
   ok(/data-live-current-balance/.test(html) && /Current Balance/.test(glance)
       && !/leftover cash/i.test(glance)
       && !/current cash flow/i.test(glance),

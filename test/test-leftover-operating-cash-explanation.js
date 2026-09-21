@@ -1,12 +1,13 @@
 'use strict';
 /* Payday leftover vs Current Balance explanation.
  *
- * Leftover after household budget is payday-income remainder
- * (income − period bill load − Household Budget hold). Current Balance
- * is posted household chequing (BILLS ACCOUNT + WEEKLY SPENDING).
- * They are different contracts. Proven household-internal movements
- * explain cash location without becoming leftover income or leftover
- * spending. Forecast owns the packet; the page reprints it.
+ * Predicted Ending Balance is the living current-pay-period leftover
+ * (opening + income not already inside that opening − period bill load
+ * − Household Budget hold). Current Balance is posted household
+ * chequing (BILLS ACCOUNT + WEEKLY SPENDING). They are different
+ * contracts. Proven household-internal movements explain cash location
+ * without becoming leftover income or leftover spending. Forecast owns
+ * the packet; the page reprints it.
  *
  * Independent reconstruction does not call the producing helper (L-002).
  * Synthetic amounts only (L-006).
@@ -218,12 +219,17 @@ function independentIncomeTotal(plan) {
 }
 
 function independentLeftover(plan, period) {
-  const income = independentIncomeTotal(plan);
+  const opening = period && period.opening != null
+    ? Number(period.opening)
+    : independentOperatingCash(plan);
+  const income = period && period.incomeAdded != null
+    ? Number(period.incomeAdded)
+    : independentIncomeTotal(plan);
   const bills = period && period.periodBillLoad != null
     ? Number(period.periodBillLoad) : 0;
   const hold = period && period.budgetHold != null
     ? Number(period.budgetHold) : 0;
-  return roundCent(income - bills - hold);
+  return roundCent(opening + income - bills - hold);
 }
 
 function independentEffect(sourceAccountId, destinationAccountId) {
@@ -279,11 +285,11 @@ console.log('=== A. Leftover and Current Balance are different contracts ===');
   ok(active && near(active.incomeTotal, independentIncome)
       && near(active.periodBillLoad, 0)
       && near(active.afterHouseholdBudget, independentLeft),
-    'leftover identity is independently income − bills − Household Budget hold');
+    'leftover identity is independently opening + incomeAdded − bills − Household Budget hold');
   ok(!near(independentLeft, independentCash),
     'independent leftover is not independent Current Balance');
   ok(expl && expl.sameContract === false
-      && expl.leftoverIdentity === 'payday-income-remainder'
+      && expl.leftoverIdentity === 'predicted-ending-balance'
       && expl.operatingCashIdentity === 'posted-household-chequing',
     'Forecast names leftover and Current Balance as different contracts');
   ok(near(expl.leftover, independentLeft)
@@ -391,7 +397,7 @@ console.log('=== B. Internal movements explain location; leftover is unchanged =
   ok(mixedExpl && mixedExpl.movements.length === 1
       && mixedExpl.movements[0].operatingCashEffect === 'stays-in-operating-cash'
       && near(mixedExpl.leftover, emptyLeft),
-    'grocery does not become an operating-cash movement and leftover stays the income remainder');
+    'grocery does not become an operating-cash movement and leftover stays Predicted Ending Balance');
 }
 
 console.log('=== C. Unpaired transfers and unavailable plans fail closed ===');
@@ -577,10 +583,10 @@ console.log('=== E. Page reprints Forecast identities and does not compute a gap
     'operatingCashExplanationHtml');
   const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m,
     'calendarWaterfallHtml');
-  ok(/Balance after household budget/.test(waterfallFn)
+  ok(/Predicted Ending Balance/.test(waterfallFn)
       && /operatingCashExplanationHtml\(period\.operatingCashExplanation\)/.test(waterfallFn)
       && waterfallFn.indexOf('operatingCashExplanationHtml')
-        > waterfallFn.indexOf('Balance after household budget')
+        > waterfallFn.indexOf('Predicted Ending Balance')
       && !/data-operating-question="08"/.test(waterfallFn)
       && !/projectedEnding|afterDebtRepayment/.test(waterfallFn)
       && !/'08'|'09'|'10'|'11'/.test(waterfallFn),
@@ -589,7 +595,7 @@ console.log('=== E. Page reprints Forecast identities and does not compute a gap
       && !/explanation\.operatingCash\s*-/.test(htmlFn)
       && !/TFR-/.test(htmlFn) && !/householdInternalMovements/.test(htmlFn),
     'page helper does not subtract leftover from cash or pair transfers');
-  ok(/leftoverIdentity: 'payday-income-remainder'/.test(forecastSrc)
+  ok(/leftoverIdentity: 'predicted-ending-balance'/.test(forecastSrc)
       && /operatingCashIdentity: 'posted-household-chequing'/.test(forecastSrc)
       && /sameContract: false/.test(forecastSrc)
       && /function operatingCashExplanation\(/.test(forecastSrc),

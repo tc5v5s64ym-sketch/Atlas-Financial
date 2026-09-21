@@ -461,7 +461,10 @@ console.log('\n=== 2. Paid bills are not deducted twice ===');
   ok(near(p1.remainingBills, independentRemaining),
     'remaining-bills equals the unpaid rows only',
     `${p1.remainingBills} vs ${independentRemaining}`);
-  ok(p1.available != null && near(p1.afterBills, p1.available - p1.remainingBills)
+  ok(p1.openingKnown
+      && near(p1.periodBillLoad, independentRemaining)
+      && near(p1.afterBills, roundCent(
+        (Number(p1.opening) || 0) + (Number(p1.incomeAdded) || 0) - independentRemaining))
       && near(p1.afterRemainingBills, p1.afterBills),
     'Netflix paid before this mid-period cutover is not deducted again; leftover subtracts unpaid rows once');
 }
@@ -1390,9 +1393,11 @@ console.log('\n=== 15. weekend posting keeps 15 August bills in Period 1, paid =
     'BCAA / ICBC / RESP are absent from Period 2 remaining bills to pay');
   ok(p1.role === 'active' && near(p1.opening, F.startingCashAmount(plan)),
     'This Pay Period opens from cutover starting cash');
-  const ifDeductedAgain = roundCent(p1.available - p1.remainingBills - three);
-  ok(p1.afterBills != null
-      && near(p1.afterBills, p1.available - p1.remainingBills)
+  const reconstructed = roundCent(
+    (Number(p1.opening) || 0) + (Number(p1.incomeAdded) || 0) - p1.periodBillLoad);
+  const ifDeductedAgain = roundCent(reconstructed - three);
+  ok(p1.openingKnown && p1.afterBills != null
+      && near(p1.afterBills, reconstructed)
       && !near(p1.afterBills, ifDeductedAgain),
     'Aug 20 cutover cash already includes the three paid 15 August bills; they are not deducted again');
   const live = require('../data.json');
@@ -1505,11 +1510,18 @@ console.log('\n=== 17. bills block totals: this period vs remaining to pay ===')
       ok(near(p.periodBillLoad, independentLoad),
         `${p.label} period bill load independently equals assigned rows that count`,
         `${p.periodBillLoad} vs ${independentLoad}`);
-      ok(near(p.afterBills, roundCent(p.available - independentLoad)),
-        `${p.label} after bills is available minus the assigned period load`);
-      if (!near(independentLoad, independentRemaining)) {
-        ok(!near(p.afterBills, roundCent(p.available - p.remainingBills)),
-          `${p.label} leftover is not remaining-only once paid-after-opening bills exist`);
+      if (p.openingKnown) {
+        ok(near(p.afterBills, roundCent(
+          (Number(p.opening) || 0) + (Number(p.incomeAdded) || 0) - independentLoad)),
+          `${p.label} after bills is opening + incomeAdded minus the assigned period load`);
+        if (!near(independentLoad, independentRemaining)) {
+          ok(!near(p.afterBills, roundCent(
+            (Number(p.opening) || 0) + (Number(p.incomeAdded) || 0) - p.remainingBills)),
+            `${p.label} leftover is not remaining-only once paid-after-opening bills exist`);
+        }
+      } else {
+        ok(p.afterBills == null,
+          `${p.label} after bills fails closed when payday opening is unknown`);
       }
     }
   }

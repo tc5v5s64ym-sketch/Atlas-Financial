@@ -167,7 +167,7 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     'Bills',
     'Balance after bills',
     'Household budget',
-    'Balance after household budget',
+    'Predicted Ending Balance',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -182,7 +182,7 @@ console.log('\n=== seven ordered payday-sheet questions ===');
       && (!active.openingKnown || /data-operating-prompt="Opening balance"/.test(rendered)),
     'the default surface prints live Current Balance outside the payday snapshot');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(rendered),
-    'the default surface stops at Balance after household budget');
+    'the default surface stops at Predicted Ending Balance');
 }
 
 console.log('\n=== every displayed financial answer traces to incumbents ===');
@@ -209,10 +209,10 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
   ok(rendered.includes(composer.money2(independentChequing)),
     'the displayed Current Balance is independently household chequing cash');
   ok(/Household budget/.test(rendered) && /Current Balance/.test(rendered)
-      && /Balance after household budget/.test(rendered)
+      && /Predicted Ending Balance/.test(rendered)
       && !/Extra credit-card repayment/.test(rendered)
       && !/Projected ending balance/.test(rendered),
-    'the default waterfall publishes the operating plan steps through Balance after household budget');
+    'the default waterfall publishes the operating plan steps through Predicted Ending Balance');
   ok(!rendered.includes(`$${advice.weekly.toLocaleString('en-CA')} / week`),
     'the weekly-cap diagnostic is not on the default operating surface');
   ok(!/See how payday is reserved/.test(rendered)

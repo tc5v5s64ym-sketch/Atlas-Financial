@@ -383,10 +383,13 @@ console.log('\n=== 7. Active leftover identity and represented zeros ===');
       : Math.abs(Number(r.amount) || 0);
     return s + assigned;
   }, 0);
-  const independentAfterBills = roundCent(active.available - independentLoad);
-  ok(near(active.afterBills, independentAfterBills)
+  const independentAfterBills = active.openingKnown
+    ? roundCent((Number(active.opening) || 0) + (Number(active.incomeAdded) || 0) - independentLoad)
+    : null;
+  ok(independentAfterBills != null
+      && near(active.afterBills, independentAfterBills)
       && near(active.afterRemainingBills, independentAfterBills),
-    'after bills = available − assigned period load, not remaining-only');
+    'after bills = payday opening + incomeAdded − assigned period load, not remaining-only');
   const independentAfterBudget = roundCent(active.afterBills - active.budgetHold);
   ok(near(active.afterHouseholdBudget, independentAfterBudget),
     'after household budget = after bills − effective Household Budget hold');
@@ -460,8 +463,10 @@ console.log('\n=== 8. Unpaid once cash before periodStart stays reserved after p
     'remaining bills independently rise by the unpaid once amount');
   ok(near(unpaidActive.available, controlActive.available),
     'Current Balance is unchanged; the once row is not reconstructed cash');
-  ok(near(unpaidActive.afterBills,
-      roundCent(unpaidActive.available - unpaidActive.remainingBills)),
+  ok(near(unpaidActive.periodBillLoad, roundCent(controlActive.periodBillLoad + ONCE_AMT))
+      && near(unpaidActive.afterBills, roundCent(
+        (Number(unpaidActive.opening) || 0) + (Number(unpaidActive.incomeAdded) || 0)
+        - unpaidActive.periodBillLoad)),
     'unpaid overdue once is still in the assigned period load');
   ok(!near(unpaidActive.afterRemainingBills, controlActive.afterRemainingBills),
     'dropping the overdue once would overstate surplus after bills');

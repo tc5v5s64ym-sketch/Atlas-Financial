@@ -3,7 +3,7 @@
  * routable Bills / Subscriptions / Credit / Forecast / Plan spend pages on the incumbent
  * header (content proved in test-bills-page.js, test-subscriptions-page.js,
  * test-credit-page.js, test-planning-page.js and test-plan-spend-page.js), and a Plan waterfall that
- * ends at Balance after household budget. Talk remains routable off the dock.
+ * ends at Predicted Ending Balance. Talk remains routable off the dock.
  *
  * Presentation only. Forecast still computes the extra-debt / big-purchase
  * chain and the projected ending; this suite proves those fields survive and
@@ -56,7 +56,7 @@ const KEPT_ROWS = [
   'Bills',
   'Balance after bills',
   'Household budget',
-  'Balance after household budget',
+  'Predicted Ending Balance',
 ];
 
 function siteNav(html) {
@@ -275,7 +275,7 @@ console.log('\n=== 3. Modellers, Deep Dive, Records leave the household nav but 
   }
 }
 
-console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget and stops there ===');
+console.log('\n=== 4 + 5. Plan waterfall keeps Predicted Ending Balance and stops there ===');
 {
   const advice = currentAdvice();
   const composer = loadComposer();
@@ -295,8 +295,8 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
     ok(at > previous, `${prompt} is printed, in order`);
     previous = at;
   }
-  ok(/data-operating-question="07"[^>]*data-operating-prompt="Balance after household budget"/.test(html),
-    'Q07 is Balance after household budget');
+  ok(/data-operating-question="07"[^>]*data-operating-prompt="Predicted Ending Balance"/.test(html),
+    'Q07 is Predicted Ending Balance');
   ok(html.includes(composer.money2(active.afterHouseholdBudget)),
     'Q07 prints the Forecast afterHouseholdBudget figure');
   const questions = [...html.matchAll(/data-operating-question="(\d+)"/g)].map(m => m[1]);
@@ -360,7 +360,7 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
       && !/stays unfunded/.test(html)
       && !/data-refresh-attention/.test(html)
       && !/class="operating-limit warn"/.test(html),
-    'the default Plan does not render the advisory block after Balance after household budget');
+    'the default Plan does not render the advisory block after Predicted Ending Balance');
   ok(!/There is no feasible weekly cap/.test(composer.calendarWaterfallHtml(active, data.liveOverlay, advice.paydayAllocation)),
     'calendarWaterfallHtml itself emits no weekly-cap advisory');
   const infeasibleAdvice = JSON.parse(JSON.stringify(advice));
@@ -382,7 +382,7 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   const infeasibleHtml = composer.operatingSurfaceHtml({
     advice: infeasibleAdvice, weekly: 0, recommended: 0,
   });
-  ok(/data-operating-prompt="Balance after household budget"/.test(infeasibleHtml)
+  ok(/data-operating-prompt="Predicted Ending Balance"/.test(infeasibleHtml)
       && !/data-operating-warnings/.test(infeasibleHtml)
       && !/There is no feasible weekly cap/.test(infeasibleHtml)
       && !/Synthetic protected cost/.test(infeasibleHtml)

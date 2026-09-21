@@ -163,10 +163,11 @@ function remainingClaimTrust(packet) {
 }
 
 function leftoverTrust(packet) {
-  return paydayAllocationMoneyTrust(
-    packet,
-    'forecast.paydayAllocation.runningLeftover.afterBigPurchases'
-  );
+  const status = packetGet(packet, 'forecast.predictedEndingBalance.status');
+  if (status === 'unavailable') return 'unavailable';
+  const value = packetGet(packet, 'forecast.predictedEndingBalance.amount');
+  if (value == null || !Number.isFinite(Number(value))) return 'unavailable';
+  return 'calculated';
 }
 
 function paydayAllocationMoneyTrust(packet, path) {
@@ -374,10 +375,25 @@ const PATH_RULES = [
     },
   },
   {
-    path: 'forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+    path: 'forecast.predictedEndingBalance.amount',
     source: 'Forecast',
     action: 'budget',
     trust: leftoverTrust,
+    present(value) {
+      return moneySentence({
+        available: money => `Predicted ending balance for this pay period is ${money}.`,
+        unavailable: 'Predicted ending balance is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+    source: 'Forecast',
+    action: 'budget',
+    trust: packet => paydayAllocationMoneyTrust(
+      packet,
+      'forecast.paydayAllocation.runningLeftover.afterBigPurchases'
+    ),
     present(value) {
       return moneySentence({
         available: money => `This payday leaves us with ${money}.`,

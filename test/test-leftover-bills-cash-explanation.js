@@ -1,11 +1,11 @@
 'use strict';
 /* Payday leftover vs posted BILLS ACCOUNT cash explanation.
  *
- * Leftover after household budget is payday-income remainder
- * (income − period bill load − Household Budget hold). Current Balance
- * is posted household chequing (BILLS + WEEKLY). BILLS cash is the
- * incumbent posted chequing-a breakdown row. They are three different
- * contracts. Proven household-internal movements may describe a
+ * Leftover after household budget is Predicted Ending Balance
+ * (payday opening + incomeAdded − period bill load − Household Budget
+ * hold). Current Balance is posted household chequing (BILLS + WEEKLY).
+ * BILLS cash is the incumbent posted chequing-a breakdown row. They are
+ * three different contracts. Proven household-internal movements may describe a
  * BILLS-location effect without becoming leftover income, leftover
  * spending, or a BILLS cash walk. Forecast owns the packet; the page
  * reprints it.
@@ -223,12 +223,17 @@ function independentIncomeTotal(plan) {
 }
 
 function independentLeftover(plan, period) {
-  const income = independentIncomeTotal(plan);
+  const opening = period && period.opening != null
+    ? Number(period.opening)
+    : independentOperatingCash(plan);
+  const income = period && period.incomeAdded != null
+    ? Number(period.incomeAdded)
+    : independentIncomeTotal(plan);
   const bills = period && period.periodBillLoad != null
     ? Number(period.periodBillLoad) : 0;
   const hold = period && period.budgetHold != null
     ? Number(period.budgetHold) : 0;
-  return roundCent(income - bills - hold);
+  return roundCent(opening + income - bills - hold);
 }
 
 function independentOperatingEffect(sourceAccountId, destinationAccountId) {
@@ -272,7 +277,7 @@ function packetKeys(obj) {
 function forbiddenGapKeys(obj) {
   return packetKeys(obj).filter(k =>
     /gap|difference|missing|adjustment|plug|remainder/i.test(k)
-    && k !== 'payday-income-remainder'
+    && k !== 'predicted-ending-balance'
     && k !== 'leftoverIdentity');
 }
 
@@ -358,10 +363,10 @@ console.log('=== A. Leftover, Current Balance, and BILLS cash are different cont
     'independent Current Balance is BILLS + WEEKLY; independent income is Dale + Amanda');
   ok(active && near(active.afterHouseholdBudget, independentLeft)
       && near(active.liveCurrentBalance, independentCash),
-    'leftover identity remains independently income − bills − hold; Current Balance is unchanged');
+    'leftover identity remains independently opening + incomeAdded − bills − hold; Current Balance is unchanged');
   ok(expl && expl.sameContract === false
       && expl.leftoverSameAsBillsCash === false
-      && expl.leftoverIdentity === 'payday-income-remainder'
+      && expl.leftoverIdentity === 'predicted-ending-balance'
       && expl.operatingCashIdentity === 'posted-household-chequing'
       && expl.billsCashIdentity === 'posted-bills-account',
     'Forecast names leftover, Current Balance, and BILLS cash as different contracts');

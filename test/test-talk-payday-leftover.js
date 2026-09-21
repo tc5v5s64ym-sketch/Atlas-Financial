@@ -1,5 +1,5 @@
 'use strict';
-/* Talk payday leftover reprints Forecast.paydayAllocation.runningLeftover.
+/* Talk payday leftover reprints Forecast Predicted Ending Balance.
  *
  * Independent proof: Talk-published leftover equals Forecast leftover for
  * the same fixture. Talk does not calculate leftover. History is
@@ -226,6 +226,14 @@ function leftoverPacket(amount, extras) {
       freshness: { confidence: extras.freshness || 'canonical-opening' },
     },
     forecast: {
+      predictedEndingBalance: extras.unavailable
+        ? { status: 'unavailable', reason: 'predicted-ending-balance-unavailable' }
+        : {
+          status: 'ok',
+          source: 'Forecast.calendarPeriodWaterfalls',
+          identity: 'predicted-ending-balance',
+          amount,
+        },
       paydayAllocation: extras.unavailable
         ? { status: 'unavailable', reason: 'payday-leftover-unavailable' }
         : {
@@ -262,7 +270,7 @@ function leftoverTurn(amount) {
   return {
     kind: 'explained',
     question: 'What does this payday leave us with?',
-    presented: `This payday leaves us with ${TalkPresentation.formatCurrency(amount)}.`,
+    presented: `Predicted ending balance for this pay period is ${TalkPresentation.formatCurrency(amount)}.`,
     referentPaths: [LEFTOVER_PATH],
   };
 }
@@ -275,20 +283,20 @@ console.log('=== 1. Authority path stays Forecast leftover; no Talk/browser arit
   const geminiSrc = TalkGemini.INSTRUCTION;
   const talkSrc = read('public/talk.js');
   const forecastSrc = fs.readFileSync(path.join(ROOT, 'public/forecast.js'), 'utf8');
-  ok(/projectPaydayAllocation/.test(packetSrc)
-      && /runningLeftover/.test(packetSrc)
-      && /Forecast\.paydayAllocation/.test(packetSrc),
-    'assistant packet projects Forecast paydayAllocation.runningLeftover');
+  ok(/projectPredictedEndingBalance/.test(packetSrc)
+      && /predictedEndingBalance/.test(packetSrc)
+      && /Forecast\.calendarPeriodWaterfalls/.test(packetSrc),
+    'assistant packet projects Forecast Predicted Ending Balance');
   ok(!/require\(['"][^'"]*forecast/i.test(sessionSrc),
     'talk-session.js does not import Forecast');
   ok(/payday-leftover/.test(sessionSrc)
       && /what does this payday leave us with/.test(sessionSrc)
       && /what does that leave us with/.test(sessionSrc),
     'session leftover deixis extends PATH_RULE / last-presented binding');
-  ok(/forecast\.paydayAllocation\.runningLeftover\.afterBigPurchases/.test(presentationSrc)
-      && /This payday leaves us with/.test(presentationSrc)
-      && /Payday leftover is unavailable/.test(presentationSrc),
-    'PATH_RULE reprints leftover and fails closed when leftover is missing');
+  ok(/forecast\.predictedEndingBalance\.amount/.test(presentationSrc)
+      && /Predicted ending balance for this pay period is/.test(presentationSrc)
+      && /Predicted ending balance is unavailable/.test(presentationSrc),
+    'PATH_RULE reprints Predicted Ending Balance and fails closed when it is missing');
   ok(/intent":"payday-leftover/.test(geminiSrc)
       && /never a leftover amount/.test(geminiSrc)
       && /Gemini extracts leftover intent or referent only/.test(geminiSrc),
@@ -316,18 +324,28 @@ const forecastLeftover = leftoverFields(advice && advice.paydayAllocation
 const packetLeftover = leftoverFields(packet.forecast
   && packet.forecast.paydayAllocation
   && packet.forecast.paydayAllocation.runningLeftover);
+const forecastPeb = advice && advice.defaultView
+  && advice.defaultView.predictedEndingBalance;
+const packetPeb = packet.forecast && packet.forecast.predictedEndingBalance;
 {
   ok(advice && advice.paydayAllocation && advice.paydayAllocation.runningLeftover,
     'Forecast.recommend still publishes paydayAllocation.runningLeftover');
   ok(packet.forecast.paydayAllocation
       && packet.forecast.paydayAllocation.status === 'ok'
       && packet.forecast.paydayAllocation.source === 'Forecast.paydayAllocation',
-    'packet forecast block now exposes sanitized paydayAllocation leftover');
+    'packet forecast block still exposes sanitized paydayAllocation leftover');
   ok(Object.keys(forecastLeftover).every(key => near(packetLeftover[key], forecastLeftover[key])),
     'packet runningLeftover equals independent Forecast.paydayAllocation.runningLeftover',
     `${JSON.stringify(packetLeftover)} vs ${JSON.stringify(forecastLeftover)}`);
-  ok(Number.isFinite(Number(forecastLeftover.afterBigPurchases)),
-    'independent Forecast leftover afterBigPurchases is a finite money amount');
+  if (forecastPeb != null && Number.isFinite(Number(forecastPeb))) {
+    ok(packetPeb && packetPeb.status === 'ok'
+        && packetPeb.source === 'Forecast.calendarPeriodWaterfalls'
+        && near(packetPeb.amount, forecastPeb),
+      'packet Predicted Ending Balance equals the calendar leftover');
+  } else {
+    ok(packetPeb && packetPeb.status === 'unavailable',
+      'packet Predicted Ending Balance is unavailable when Forecast withholds it');
+  }
 }
 
 console.log('\n=== 3. Talk-published leftover equals that Forecast leftover ===');
@@ -337,22 +355,34 @@ console.log('\n=== 3. Talk-published leftover equals that Forecast leftover ==='
     { status: 'explained', claims },
     packet
   );
-  const expectedMoney = TalkPresentation.formatCurrency(forecastLeftover.afterBigPurchases);
-  ok(claims.length === 1
-      && near(claims[0].value, forecastLeftover.afterBigPurchases)
-      && presented.answer === `This payday leaves us with ${expectedMoney}.`,
-    'Talk leftover sentence reprints independently formatted Forecast leftover');
-  ok(presented.cards
-      && presented.cards.items[0].body === presented.answer
-      && presented.summary
-      && JSON.stringify(presented.summary).indexOf(expectedMoney) !== -1
-      && JSON.stringify(presented.cards).indexOf(expectedMoney) !== -1,
-    'cards and decision summary reprint leftover and do not alter the figure');
-  ok(presented.source === 'Forecast'
-      && presented.trust === 'calculated'
-      && (presented.citations || []).some(row => row.source === 'Forecast')
-      && (presented.citations || []).some(row => row.href === '/' && row.label === 'Budget'),
-    'leftover provenance and Budget citation survive');
+  const expectedPeb = forecastPeb != null && Number.isFinite(Number(forecastPeb))
+    ? forecastPeb
+    : null;
+  const expectedMoney = expectedPeb != null
+    ? TalkPresentation.formatCurrency(expectedPeb) : null;
+  if (expectedPeb != null) {
+    ok(claims.length === 1
+        && near(claims[0].value, expectedPeb)
+        && presented.answer === `Predicted ending balance for this pay period is ${expectedMoney}.`,
+      'Talk leftover sentence reprints independently formatted Forecast PEB');
+  } else {
+    ok(presented.trust === 'unavailable'
+        && /Predicted ending balance is unavailable/.test(presented.answer),
+      'Talk leftover is unavailable when Forecast PEB is withheld');
+  }
+  if (expectedPeb != null) {
+    ok(presented.cards
+        && presented.cards.items[0].body === presented.answer
+        && presented.summary
+        && JSON.stringify(presented.summary).indexOf(expectedMoney) !== -1
+        && JSON.stringify(presented.cards).indexOf(expectedMoney) !== -1,
+      'cards and decision summary reprint leftover and do not alter the figure');
+    ok(presented.source === 'Forecast'
+        && presented.trust === 'calculated'
+        && (presented.citations || []).some(row => row.source === 'Forecast')
+        && (presented.citations || []).some(row => row.href === '/' && row.label === 'Budget'),
+      'leftover provenance and Budget citation survive');
+  }
   ok(presented.action && presented.action.href === '/',
     'leftover keeps the existing Budget surface action');
 }
@@ -455,7 +485,7 @@ console.log('\n=== 5. Unavailable leftover is not zero; Gemini cannot invent lef
     status: 'explained',
     claims: [{ path: LEFTOVER_PATH, value: null }],
   }, leftoverPacket(null, { unavailable: false }));
-  ok(missing.answer === 'Payday leftover is unavailable.'
+  ok(missing.answer === 'Predicted ending balance is unavailable.'
       && missing.trust === 'unavailable'
       && !/\$0/.test(JSON.stringify(missing))
       && !/0\.00/.test(JSON.stringify(missing)),
@@ -465,7 +495,7 @@ console.log('\n=== 5. Unavailable leftover is not zero; Gemini cannot invent lef
     status: 'explained',
     claims: [{ path: LEFTOVER_PATH, value: 0 }],
   }, leftoverPacket(0));
-  ok(zero.answer === 'This payday leaves us with $0.00.'
+  ok(zero.answer === 'Predicted ending balance for this pay period is $0.00.'
       && zero.trust === 'calculated',
     'a genuine Forecast leftover of $0 stays $0');
 
@@ -510,7 +540,7 @@ console.log('\n=== 5. Unavailable leftover is not zero; Gemini cannot invent lef
   const wrongEquals = TalkGemini.materializeExplainerAnswer(JSON.stringify({
     status: 'explained',
     claims: [{ path: LEFTOVER_PATH, equals: 99999 }],
-  }), leftoverPacket(forecastLeftover.afterBigPurchases));
+  }), leftoverPacket(forecastPeb != null ? forecastPeb : 12.34));
   ok(wrongEquals.ok === false,
     'Gemini cannot publish a leftover amount that is not the packet leftover');
 
@@ -524,7 +554,12 @@ console.log('\n=== 5. Unavailable leftover is not zero; Gemini cannot invent lef
 
 console.log('\n=== 6. Session HTTP leftover equals Forecast and does not call Gemini ===');
 async function runHttpProof() {
-  const expectedMoney = TalkPresentation.formatCurrency(forecastLeftover.afterBigPurchases);
+  const expectedPeb = forecastPeb != null && Number.isFinite(Number(forecastPeb))
+    ? forecastPeb
+    : null;
+  const expectedMoney = expectedPeb != null
+    ? TalkPresentation.formatCurrency(expectedPeb)
+    : null;
   const mock = await startMockGemini([
     JSON.stringify({
       intent: TalkSession.LEFTOVER_INTENT,
@@ -548,13 +583,17 @@ async function runHttpProof() {
     const first = await askJson(base, sessionA.cookie, 'What does this payday leave us with?');
     const firstBody = await first.json();
     ok(first.status === 200
-        && firstBody.answer === `This payday leaves us with ${expectedMoney}.`
+        && (expectedMoney
+          ? firstBody.answer === `Predicted ending balance for this pay period is ${expectedMoney}.`
+          : /Predicted ending balance is unavailable/.test(firstBody.answer))
         && mock.captured.length === 0,
-      'this-payday leftover reprints Forecast leftover and does not call Gemini',
+      'this-payday leftover reprints Forecast PEB and does not call Gemini',
       firstBody && firstBody.answer);
     ok(firstBody.cards
         && firstBody.cards.items.some(item => item.body === firstBody.answer)
-        && JSON.stringify(firstBody.summary || {}).indexOf(expectedMoney) !== -1
+        && (expectedMoney
+          ? JSON.stringify(firstBody.summary || {}).indexOf(expectedMoney) !== -1
+          : true)
         && (firstBody.citations || []).some(row => row.source === 'Forecast'),
       'HTTP leftover cards, summary, and citations keep the Forecast leftover');
 

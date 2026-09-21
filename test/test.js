@@ -144,6 +144,7 @@ const suites = [
   ['payday waterfall bill load vs remaining-only leftover', 'test-payday-waterfall-bill-load.js'],
   ['payday settlement survives live opening advancement', 'test-payday-settlement-boundary.js'],
   ['payday Household Budget max(planned, actual) contract', 'test-household-budget-waterfall-contract.js'],
+  ['current-pay-period Predicted Ending Balance (owner 2026-09-21)', 'test-predicted-ending-balance.js'],
   ['Plan unavailable operating state', 'test-plan-unavailable-surface.js'],
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
   ['Plan completed historical pay periods', 'test-historical-pay-periods.js'],

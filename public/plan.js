@@ -2285,11 +2285,13 @@ function extraRepaymentHtml(period) {
   </div>`;
 }
 
-// The Plan print stops at Balance after household budget. Payday balance is
-// the Income-block total from Forecast period.available. Forecast still
-// computes the extra-debt / big-purchase chain and the projected ending on
-// each period (the next period opens from it); those rows are not part of the
-// household Plan surface.
+// The Plan print stops at Predicted Ending Balance (Q07). That figure is
+// Forecast period.afterHouseholdBudget / predictedEndingBalance — the
+// living current-pay-period remaining-household-money identity. Payday
+// balance is the Income-block total from Forecast period.available.
+// Forecast still computes the extra-debt / big-purchase chain and the
+// projected ending on each period (the next period opens from it); those
+// rows are not part of the household Plan surface.
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
@@ -2336,7 +2338,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan))}
-    ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget), 'balance')}
+    ${q('07', 'Predicted Ending Balance', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget), 'balance')}
     ${period.role === 'active' && !planUnavailable && period.operatingCashExplanation
       && typeof operatingCashExplanationHtml === 'function'
       ? operatingCashExplanationHtml(period.operatingCashExplanation) : ''}
@@ -2898,7 +2900,7 @@ function operatingSurfaceHtml(ctx) {
     ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases), 'ending')}
     ${budgetDigestHtml(view.budgetDigest)}`;
 
-  // The usable Plan print stops at Balance after household budget. Forecast
+  // The usable Plan print stops at Predicted Ending Balance. Forecast
   // still computes infeasible / unfunded / remaining-claim / paydayAllocation.risks
   // and weeklyCapView still composes that copy for folded diagnostics. The
   // large refresh-trust card remains on the fail-closed unavailable surface.
