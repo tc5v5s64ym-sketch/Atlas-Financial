@@ -2029,12 +2029,11 @@ function representedEventHitGroups(input) {
   for (const [key, hits] of eventHits) {
     const twoLegHits = hits.filter(hit => hit && hit.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM);
     const otherHits = hits.filter(hit => !hit || hit.settlesWhen !== SETTLES_WHEN_TWO_LEG_SUM);
-    // A pure shape keeps the incumbent decision. Standing bell can carry
-    // a Travel Visa debit, one chequing-a debit, and a chequing-a two-leg
-    // pair. Those shapes are judged separately. An accepted pair already
-    // owns its transaction ids, so the same ids seen by the single-debit
-    // rule are not a second payment. A different transaction still
-    // competes. Two accepted shapes for one occurrence stay unresolved.
+    // A pure shape keeps the incumbent decision. Standing bell is the
+    // occurrence that can carry both a Travel Visa debit and a chequing-a
+    // two-leg pair. Those shapes are judged separately. A subset that is
+    // not an accepted pair does not veto the other shape. Two accepted
+    // shapes for one occurrence stay unresolved.
     if (!twoLegHits.length || !otherHits.length) {
       const classified = classifyOccurrenceHits(key, hits);
       if (classified.unique) unique.push(classified.unique);
@@ -2042,16 +2041,7 @@ function representedEventHitGroups(input) {
       continue;
     }
     const twoClass = classifyOccurrenceHits(key, twoLegHits);
-    let competingOther = otherHits;
-    if (twoClass.unique) {
-      const consumed = new Set((twoClass.unique.providerTransactionIds
-        || [twoClass.unique.providerTransactionId])
-        .filter(id => id != null && id !== '')
-        .map(String));
-      competingOther = otherHits.filter(hit =>
-        !consumed.has(String(hit && hit.providerTransactionId)));
-    }
-    const otherClass = classifyOccurrenceHits(key, competingOther);
+    const otherClass = classifyOccurrenceHits(key, otherHits);
     if (twoClass.unique && otherClass.unique) {
       ambiguous.push({
         key,

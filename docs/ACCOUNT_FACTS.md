@@ -263,31 +263,28 @@ Current evidenced active services:
   settles standing `bell` from 2026-10-15 by payee + Travel Visa + debit +
   early-or-covers-due. Amount is not identity. This rule is the Travel
   Visa debit only. It is not the planned paying account. A posting that
-  still covers `bell-sep15-2026` is that once due, not this series. A
-  chequing-a Bell debit that covers the same occurrence stays unresolved
-  together with this debit. This does not close Q18's historical pending
+  still covers `bell-sep15-2026` is that once due, not this series. One
+  BILLS leg, or any BILLS subset that is not an accepted pair, does not
+  block this debit. An accepted BILLS pair and this debit for the same
+  occurrence stay unresolved. This does not close Q18's historical pending
   $250 / residual cash question.
-- **Bell Mobility — standing BILLS autopay** — owner 2026-09-21. One
-  posted Bell Mobility / BELLMOBILITY debit on canonical chequing-a,
-  debit, early-or-due, settles one standing `bell` occurrence from
-  2026-10-15. Amount is not identity. The planned **$160** stays the
-  scheduled amount. This rule does not opt into same-account split legs.
 - **Bell Mobility — standing BILLS two-leg settlement identity** — the
   same proven shape as the September once: exactly two posted Bell
   Mobility / BELLMOBILITY debits on canonical chequing-a, the same
   household posting date, debit, early-or-due, settle one standing
   `bell` occurrence from 2026-10-15. The standing rule opts into
   same-account split legs. Amount is not identity and the sum is not
-  identity; the planned **$160** stays the scheduled amount. This rule
-  does not settle one leg, three legs, a duplicate id, a mixed merchant,
-  a different account, or two posting dates. Those same two transaction
-  ids are not a second settlement under the single-debit rule. The
-  September once is not reused, and one payment's transaction ids cannot
-  settle both September and a standing occurrence. The Travel Visa
-  single-debit rule remains. An accepted chequing shape and a Travel Visa
-  debit for the same standing occurrence stay unresolved. Planned paying
-  account is BILLS ACCOUNT. This does not change the $160 amount, the
-  15th cadence, or `firstDue` 2026-10-15, and it does not close Q18.
+  identity; the planned **$160** stays the scheduled amount. One posted
+  BILLS Bell debit, including one posted plus one pending leg, does not
+  settle. Three legs, a duplicate id, a mixed merchant, a different
+  account, or two posting dates do not settle. The September once is not
+  reused, and one payment's transaction ids cannot settle both September
+  and a standing occurrence. The Travel Visa single-debit rule remains.
+  A BILLS subset that is not an accepted pair does not block that debit.
+  An accepted BILLS pair and a Travel Visa debit for the same standing
+  occurrence stay unresolved. Planned paying account is BILLS ACCOUNT.
+  This does not change the $160 amount, the 15th cadence, or
+  `firstDue` 2026-10-15, and it does not close Q18.
 - **Main Bell Mobility (historical June 2026 reconstruction)** — June
   2026 normal recurring baseline **$104.20/month** (card-paid). Includes
   the $15 watch line. Retired as the forward baseline.

@@ -1,11 +1,11 @@
 'use strict';
-/* Standing Bell from 2026-10-15 is planned from BILLS ACCOUNT. One posted
- * chequing-a Bell Mobility debit settles one standing occurrence, and two
- * same-day chequing-a debits still settle as one pair. Amount is not
+/* Standing Bell from 2026-10-15 is planned from BILLS ACCOUNT. The proven
+ * BILLS two-leg settlement shape still settles one standing occurrence.
+ * One posted chequing-a Bell Mobility debit does not. Amount is not
  * identity. The September once keeps its own grace and cannot be reused.
- * One payment's transaction ids cannot settle both occurrences. A Travel
- * Visa debit still settles only when it is the only accepted shape.
- * Synthetic fixtures and independent arithmetic (L-002 / L-006).
+ * One payment's transaction ids cannot settle both occurrences. The
+ * Travel Visa single-debit rule remains. Synthetic fixtures and
+ * independent arithmetic (L-002 / L-006).
  *
  * `node test/test-bell-standing-bills-split.js`
  */
@@ -206,18 +206,13 @@ console.log('\n=== both standing identities are explicit ===');
     && r.settlesWhen === 'two-leg-sum');
   const single = rules.find(r => r.atlasAccountId === 'chequing-a' && !r.settlesWhen);
   const once = (identity.rules || []).find(r => r && r.eventId === SEP_ID);
-  ok(rules.length === 3 && visa && bills && single && once,
-    'standing bell has Travel Visa, one chequing-a debit, and the two-leg rule; September stays its own rule');
+  ok(rules.length === 2 && visa && bills && !single && once,
+    'standing bell has the Travel Visa rule and one chequing-a two-leg rule; September stays its own rule');
   ok(visa && visa.direction === 'debit' && visa.postingDateRule === EARLY_RULE
       && !visa.settlesWhen && visa.sameAccountSplitLegs !== true
       && (visa.payeePatterns || []).includes('Bell Mobility')
       && (visa.payeePatterns || []).includes('BELLMOBILITY'),
     'Travel Visa standing rule remains a single debit; amount is not on that rule');
-  ok(single && single.direction === 'debit' && single.postingDateRule === EARLY_RULE
-      && single.sameAccountSplitLegs !== true
-      && (single.payeePatterns || []).includes('Bell Mobility')
-      && (single.payeePatterns || []).includes('BELLMOBILITY'),
-    'standing chequing-a autopay rule is one debit; amount is not on that rule');
   ok(bills && bills.direction === 'debit' && bills.postingDateRule === EARLY_RULE
       && bills.settlesWhen === 'two-leg-sum' && bills.sameAccountSplitLegs === true
       && (bills.payeePatterns || []).includes('Bell Mobility')
@@ -340,32 +335,21 @@ console.log('\n=== fail closed ===');
 {
   const identity = identityDoc();
   const one = observeWith(identity, OCT_AS_OF, [bellTx(87001, LEG_A), otherTx()]);
-  const oneHit = standingHit(one);
-  ok(oneHit && oneHit.atlasAccountId === 'chequing-a' && oneHit.amountNotUsed === true
-      && oneHit.sameAccountSplitLegs !== true
-      && oneHit.identity !== 'two-leg-payee+account+date'
-      && near(oneHit.observedAmount, LEG_A)
-      && !near(oneHit.observedAmount, PLANNED)
-      && txIds(oneHit).join(',') === '87001'
-      && !septemberHit(one),
-    '1. one posted BILLS Bell debit settles standing bell at the observed leg, not $160');
+  ok(!standingHit(one) && !septemberHit(one),
+    '1. one posted BILLS Bell debit does not settle standing bell or September');
   const oneAdvice = recommendFromReport(one, OCT_AS_OF);
   const oneActive = period(oneAdvice.defaultView, 'this-pay-period');
   const oneOther = otherRow(oneActive);
   const oneBell = actionBill(oneAdvice, REC_ID) || billRow(oneActive, REC_ID);
-  ok(oneBell && (oneBell.status === 'PAID' || oneBell.settlement === 'represented')
+  ok(oneBell && oneBell.status !== 'PAID' && oneBell.settlement !== 'represented'
       && near(oneBell.planned != null ? oneBell.planned : oneBell.amount, PLANNED)
-      && near(oneBell.actual, LEG_A) && near(oneBell.remaining, 0),
-    'one autopay debit keeps planned $160, remaining $0, actual the observed leg');
-  ok(oneOther && near(oneOther.spent, OTHER_TX)
-      && !((oneOther.recon) || []).some(tx => /bell/i.test(String(tx.displayedPayee || tx.originalMerchant || ''))),
-    'the represented autopay debit leaves Other Spending; Dollarama remains');
-  const pairOnly = JSON.parse(JSON.stringify(identity));
-  pairOnly.rules = (pairOnly.rules || []).filter(rule => !(rule
-    && rule.eventId === REC_ID && rule.atlasAccountId === 'chequing-a' && !rule.settlesWhen));
-  const oneWithoutSingle = observeWith(pairOnly, OCT_AS_OF, [bellTx(87001, LEG_A)]);
-  ok(!standingHit(oneWithoutSingle),
-    'without the single-debit rule, one BILLS leg still does not settle');
+      && (oneBell.remaining == null || near(oneBell.remaining, PLANNED)),
+    'one posted BILLS Bell debit leaves standing bell due at the planned $160');
+  const oneBellRecon = ((oneOther && oneOther.recon) || []).filter(tx =>
+    tx && /bell/i.test(String(tx.displayedPayee || tx.originalMerchant || '')));
+  ok(oneBellRecon.length === 1 && near(Number(oneBellRecon[0].amount), LEG_A)
+      && oneOther && near(oneOther.spent, roundCent(LEG_A + OTHER_TX)),
+    'the unmatched first BILLS Bell leg stays in Other Spending with Dollarama');
 
   const three = observeWith(identity, OCT_AS_OF, [
     bellTx(87011, 10), bellTx(87012, 20), bellTx(87013, 30),
@@ -382,10 +366,8 @@ console.log('\n=== fail closed ===');
     bellTx(87031, LEG_A),
     bellTx(87032, LEG_B, { payee: 'Dollarama', original_name: 'Dollarama' }),
   ]);
-  const mixedHit = standingHit(mixed);
-  ok(mixedHit && txIds(mixedHit).join(',') === '87031'
-      && near(mixedHit.observedAmount, LEG_A) && !septemberHit(mixed),
-    '4. one Bell debit settles; the unrelated merchant does not join it');
+  ok(!standingHit(mixed) && !septemberHit(mixed),
+    '4. one Bell debit plus an unrelated merchant does not settle');
 
   const wrongAccount = observeWith(identity, OCT_AS_OF, [
     bellTx(87041, LEG_A, { account_id: 1002 }),
@@ -438,10 +420,8 @@ console.log('\n=== fail closed ===');
     bellTx(87091, LEG_A),
     bellTx(87092, LEG_B, { is_pending: true }),
   ]);
-  const pendingHit = standingHit(pending);
-  ok(pendingHit && txIds(pendingHit).join(',') === '87091'
-      && near(pendingHit.observedAmount, LEG_A),
-    'a pending leg is not posted settlement evidence; the posted leg still settles');
+  ok(!standingHit(pending) && !septemberHit(pending),
+    'a pending leg is not posted settlement evidence; one posted plus one pending does not settle');
 }
 
 console.log('\n=== Travel Visa standing behavior remains ===');
@@ -465,8 +445,12 @@ console.log('\n=== Travel Visa standing behavior remains ===');
     },
     bellTx(9721, LEG_A),
   ]);
-  ok(!standingHit(withStrayLeg) && !septemberHit(withStrayLeg),
-    'one BILLS autopay debit and a Travel Visa debit for the same occurrence settle neither');
+  const strayHit = standingHit(withStrayLeg);
+  ok(strayHit && strayHit.atlasAccountId === 'travelvisa'
+      && near(strayHit.observedAmount, VISA_TX)
+      && txIds(strayHit).join(',') === '9711'
+      && !septemberHit(withStrayLeg),
+    'one BILLS leg does not block or join the Travel Visa debit');
   const bothShapes = observeWith(identity, OCT_AS_OF, [
     {
       id: 9711, account_id: TRAVEL_PROVIDER_ID, date: OCT_AS_OF, amount: VISA_TX,
