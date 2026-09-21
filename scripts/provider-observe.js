@@ -1852,6 +1852,9 @@ function combineTwoLegHits(hits) {
     || String(a.providerTransactionId).localeCompare(String(b.providerTransactionId)));
   const sum = ordered.reduce((total, hit) => total + Number(hit.observedAmount), 0);
   const last = ordered[ordered.length - 1];
+  const accounts = new Set(ordered.map(hit => hit.atlasAccountId).filter(Boolean));
+  const sameAccountSplit = ordered.every(hit => hit && hit.sameAccountSplitLegs === true)
+    && accounts.size === 1;
   return {
     id: ordered[0].id,
     date: ordered[0].date,
@@ -1868,7 +1871,27 @@ function combineTwoLegHits(hits) {
     atlasAccountId: ordered[0].atlasAccountId,
     atlasAccountIds: ordered.map(hit => hit.atlasAccountId),
     settlesWhen: SETTLES_WHEN_TWO_LEG_SUM,
+    sameAccountSplitLegs: sameAccountSplit,
   };
+}
+
+// Incumbent two-leg-sum is two distinct transactions on two distinct
+// accounts (TD monthly account fees). A same-account pair settles only
+// when every leg opted in on the rule (sameAccountSplitLegs === true),
+// the pair shares one canonical account, and both posted on the same
+// household date. Amount is not consulted. Anything else fails closed.
+function twoLegSumAccepted(hits) {
+  if (!hits || hits.length !== 2) return false;
+  if (!hits.every(hit => hit && hit.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM)) return false;
+  const accounts = new Set(hits.map(hit => hit.atlasAccountId).filter(Boolean));
+  const txIds = new Set(hits.map(hit => hit.providerTransactionId)
+    .filter(id => id != null && id !== '').map(String));
+  if (txIds.size !== 2 || accounts.size < 1) return false;
+  if (accounts.size === 2) return true;
+  if (accounts.size !== 1) return false;
+  if (!hits.every(hit => hit.sameAccountSplitLegs === true)) return false;
+  const postingDates = new Set(hits.map(hit => hit.postingDate).filter(Boolean));
+  return postingDates.size === 1;
 }
 
 function representedEventHitGroups(input) {
@@ -1937,6 +1960,7 @@ function representedEventHitGroups(input) {
           observedAmount: amount,
           atlasAccountId: mapping.canonical.id,
           settlesWhen: rule.settlesWhen || null,
+          sameAccountSplitLegs: rule.sameAccountSplitLegs === true,
         });
         eventHits.set(key, list);
       }
@@ -1951,10 +1975,7 @@ function representedEventHitGroups(input) {
   const ambiguous = [];
   for (const [key, hits] of eventHits) {
     if (hits.length && hits.every(hit => hit && hit.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM)) {
-      const accounts = new Set(hits.map(hit => hit.atlasAccountId).filter(Boolean));
-      const txIds = new Set(hits.map(hit => hit.providerTransactionId)
-        .filter(id => id != null).map(String));
-      if (hits.length === 2 && accounts.size === 2 && txIds.size === 2) {
+      if (twoLegSumAccepted(hits)) {
         unique.push(combineTwoLegHits(hits));
       } else if (hits.length > 2) {
         ambiguous.push({
@@ -1969,6 +1990,9 @@ function representedEventHitGroups(input) {
       continue;
     }
     if (hits.length === 1) {
+      // An explicit same-account split opt-in is never a one-leg settlement,
+      // including when settlesWhen was omitted on that rule.
+      if (hits[0] && hits[0].sameAccountSplitLegs === true) continue;
       unique.push(hits[0]);
       continue;
     }

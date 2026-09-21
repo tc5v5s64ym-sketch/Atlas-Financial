@@ -475,7 +475,7 @@
                 "budgetCategory": "telecom",
                 "payingAccount": "travelvisa",
                 "jointCash": false,
-                "note": "Owner 2026-09-19 (Dale, direct): September catch-up / wife payment-mess total due $283.94 on 2026-09-15. Supersedes the same-day $265.65 PDF reading. September 2026 only — the standing recurring row is bell at $160/month from firstDue 2026-10-15 so this once is not double-counted. Card-paid Travel Visa reserved gravity: jointCash false, not a BILLS ACCOUNT / chequing withdrawal. Still due until Money payment evidence names this occurrence; do not invent Lunch Money settle or representedEvents here."
+                "note": "Owner 2026-09-19 (Dale, direct): September catch-up / wife payment-mess total due $283.94 on 2026-09-15. Supersedes the same-day $265.65 PDF reading. September 2026 only — the standing recurring row is bell at $160/month from firstDue 2026-10-15 so this once is not double-counted. Card-paid Travel Visa reserved gravity: jointCash false, so the plan does not also reserve a BILLS ACCOUNT withdrawal. Owner-directed 2026-09-21: posted settlement of this once occurrence is the explicit two-leg Bell Mobility identity on chequing-a; amount is not identity. Do not invent representedEvents on this row."
             },
             {
                 "id": "bell",

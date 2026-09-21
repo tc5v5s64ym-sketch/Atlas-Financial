@@ -1,10 +1,10 @@
 'use strict';
-/* Live Plan residual: a posted Travel Visa Bell Mobility debit is the
- * incumbent bell-sep15-2026 (September) or bell (recurring from
- * 2026-10-15) actual, not Other spending. Identity is the existing
- * bill-settlement mechanism (payee + Travel Visa + debit +
- * early-or-covers-due). Amount is not identity. Forecast remains the
- * classifier. Synthetic observe fixtures and independent arithmetic
+/* Standing Bell from 2026-10-15: a posted Travel Visa Bell Mobility
+ * debit is that series' actual, not Other spending. September
+ * bell-sep15-2026 is not this Travel Visa path — its settlement is the
+ * explicit chequing-a same-account split. A Travel Visa debit does not
+ * settle the September once. Amount is not identity. Forecast remains
+ * the classifier. Synthetic observe fixtures and independent arithmetic
  * (L-002 / L-006).
  *
  * `node test/test-bell-travelvisa-classification.js`
@@ -250,52 +250,45 @@ console.log('\n=== 2. BEFORE-DEFECT PATH: missing identity leaves $283.94 in Oth
     'bell-sep15-2026 stays still-due at the planned $283.94 when unmatched');
 }
 
-console.log('\n=== 3. CLASSIFICATION: observe identity links the $283.94 as the Sep Bell bill ===');
+console.log('\n=== 3. A Travel Visa Bell debit does not settle September; standing stays Travel Visa ===');
 {
   const identity = identityDoc();
   const onceRule = (identity.rules || []).find(r => r && r.eventId === SEP_ID);
   const recRule = (identity.rules || []).find(r => r && r.eventId === REC_ID);
-  ok(onceRule && onceRule.atlasAccountId === 'travelvisa' && onceRule.direction === 'debit'
+  ok(onceRule && onceRule.atlasAccountId === 'chequing-a' && onceRule.direction === 'debit'
       && (onceRule.payeePatterns || []).includes('Bell Mobility')
       && (onceRule.payeePatterns || []).includes('BELLMOBILITY')
       && onceRule.postingDateRule === EARLY_RULE
-      && !onceRule.settlesWhen,
-    'Sep Bell identity is payee + Travel Visa + debit + early-or-covers-due; amount is not identity');
+      && onceRule.settlesWhen === 'two-leg-sum'
+      && onceRule.sameAccountSplitLegs === true,
+    'Sep Bell identity is the explicit chequing-a same-account split; amount is not identity');
   ok(recRule && recRule.atlasAccountId === 'travelvisa' && recRule.direction === 'debit'
       && recRule.postingDateRule === EARLY_RULE
-      && !recRule.settlesWhen,
-    'standing Bell identity is the same Travel Visa debit class; amount is not identity');
+      && !recRule.settlesWhen
+      && !recRule.sameAccountSplitLegs,
+    'standing Bell identity stays payee + Travel Visa + debit; amount is not identity');
   const report = observeWith(identity, SEP_AS_OF, sepTxs());
   const hits = report.representedEventCandidates || [];
-  const hit = hits.find(c => c && c.id === SEP_ID && c.date === SEP_DUE);
-  ok(hit && hit.amountNotUsed === true && hit.direction === 'debit'
-      && hit.atlasAccountId === 'travelvisa'
-      && hit.postingDate === SEP_AS_OF
-      && near(hit.observedAmount, SEP_TX)
-      && hits.filter(c => c && c.id === SEP_ID).length === 1
-      && !hits.some(c => c && c.id === REC_ID),
-    'unique Bell Mobility debit on Travel Visa settles the 15 September occurrence at the observed $283.94');
+  ok(!hits.some(c => c && c.id === SEP_ID),
+    'one Travel Visa Bell Mobility debit does not settle bell-sep15-2026');
   const packet = report.currentPeriodActuals;
   ok(packet && O.currentPeriodActualsLooksSanitized(packet),
     'current-period packet remains sanitized');
-  const billRow = (packet.representedActuals || []).find(r => r.id === SEP_ID);
-  ok(billRow && billRow.transactionId && near(billRow.actual, SEP_TX)
-      && billRow.date === SEP_DUE && billRow.postedOn === SEP_AS_OF,
-    'representedActuals carries the observed $283.94 against bell-sep15-2026');
-  const bellTx = (packet.transactions || []).find(tx =>
-    tx && tx.id === billRow.transactionId);
-  ok(bellTx && bellTx.representedBill === true && bellTx.pending !== true
-      && bellTx.accountRole === 'revolving-credit',
-    'the linked posted revolving-credit row is flagged representedBill');
+  ok(!(packet.representedActuals || []).some(r => r && r.id === SEP_ID),
+    'representedActuals does not carry the Travel Visa debit against September Bell');
+  const bellTx = (packet.transactions || []).find(tx => Number(tx.amount) === SEP_TX);
+  ok(bellTx && bellTx.representedBill !== true && bellTx.pending !== true
+      && bellTx.accountRole === 'revolving-credit'
+      && bellTx.atlasAccountId === 'travelvisa',
+    'the posted Travel Visa row stays unlinked to the September bill');
   const cls = F.classifyCurrentPeriodTransaction(bellTx, liveData().plan, {
     currentPeriodActuals: packet,
   });
-  ok(cls.kind === 'bill' && cls.householdSpending === false
-      && cls.reason === 'represented-bill',
-    'Forecast classifies the observe-linked row as the represented Bell bill');
+  ok(cls.kind !== 'bill' && cls.reason !== 'represented-bill',
+    'Forecast does not classify the Travel Visa debit as the represented September bill');
 }
 
-console.log('\n=== 4. OTHER SPENDING DELTA is independently $283.94 ===');
+console.log('\n=== 4. A Travel Visa Bell debit stays in Other spending ===');
 {
   const before = recommendFromReport(
     observeWith(identityWithoutBell(identityDoc()), SEP_AS_OF, sepTxs()), SEP_AS_OF);
@@ -304,14 +297,14 @@ console.log('\n=== 4. OTHER SPENDING DELTA is independently $283.94 ===');
   const afterOther = otherRow(period(after.defaultView, 'this-pay-period'));
   const beforeSpent = beforeOther ? Number(beforeOther.spent) : 0;
   const afterSpent = afterOther ? Number(afterOther.spent) : 0;
-  ok(near(beforeSpent - afterSpent, SEP_TX),
-    'Other spending falls by independently $283.94 versus the unclassified twin',
+  ok(near(beforeSpent - afterSpent, 0) && near(afterSpent, SEP_OBSERVED_HOUSEHOLD),
+    'Other spending does not fall when the only Bell evidence is one Travel Visa debit',
     `${beforeSpent} → ${afterSpent}`);
-  ok(afterOther && !reconHasBell(afterOther, SEP_TX) && near(afterOther.spent, OTHER_TX),
-    'the classified $283.94 leaves Other spending');
+  ok(afterOther && reconHasBell(afterOther, SEP_TX),
+    'the Travel Visa $283.94 remains in Other spending');
 }
 
-console.log('\n=== 5. BILL / ACTUAL VISIBILITY and planned amount stay distinct ===');
+console.log('\n=== 5. September stays still-due; planned amount is not rewritten ===');
 {
   const data = liveData();
   const planned = Number(bellBill(data, SEP_ID).amount);
@@ -321,21 +314,10 @@ console.log('\n=== 5. BILL / ACTUAL VISIBILITY and planned amount stay distinct 
   const action = actionBill(advice, SEP_ID);
   const calendar = calendarBill(active, SEP_ID);
   const bill = action || calendar;
-  ok(bill && (bill.settlement === 'represented' || bill.status === 'PAID')
+  ok(bill && bill.settlement !== 'represented' && bill.status !== 'PAID'
       && near(bill.planned != null ? bill.planned : bill.amount, planned)
-      && near(bill.actual != null ? bill.actual : bill.movement, SEP_TX)
-      && (bill.remaining == null || near(bill.remaining, 0)),
-    'Plan-path bill disclosure shows the observed $283.94 against the planned $283.94',
-    JSON.stringify({
-      action: action && {
-        settlement: action.settlement, planned: action.planned,
-        actual: action.actual, remaining: action.remaining,
-      },
-      calendar: calendar && {
-        status: calendar.status, amount: calendar.amount,
-        actual: calendar.actual, remaining: calendar.remaining,
-      },
-    }));
+      && (bill.remaining == null || near(bill.remaining, planned)),
+    'a Travel Visa debit leaves September Bell still-due at the planned $283.94');
   ok(near(planned, SEP_PLANNED),
     'classification does not rewrite the planned bell-sep15-2026 amount');
   const bellBills = (data.plan.bills || []).filter(b =>
@@ -344,7 +326,7 @@ console.log('\n=== 5. BILL / ACTUAL VISIBILITY and planned amount stay distinct 
     'observe + Forecast keep the Sep once and the standing series');
 }
 
-console.log('\n=== 6. EXACTLY ONCE: $283.94 is not Other spending and a second spend ===');
+console.log('\n=== 6. The Travel Visa debit is spending, not a September settlement ===');
 {
   const report = observeWith(identityDoc(), SEP_AS_OF, sepTxs());
   const advice = recommendFromReport(report, SEP_AS_OF);
@@ -352,39 +334,28 @@ console.log('\n=== 6. EXACTLY ONCE: $283.94 is not Other spending and a second s
   const other = otherRow(active);
   const categorized = budgetSpent(active);
   const otherSpent = other ? Number(other.spent) : 0;
-  const packet = report.currentPeriodActuals;
   const action = actionBill(advice, SEP_ID);
-  const excludedBills = Number((advice.currentPeriodAction
-    && advice.currentPeriodAction.excluded
-    && advice.currentPeriodAction.excluded.bills) || 0);
-  const billActual = action && action.actual != null
-    ? Number(action.actual)
-    : Number(((packet.representedActuals || []).find(r => r.id === SEP_ID) || {}).actual);
-  ok(!reconHasBell(other, SEP_TX),
-    'the $283.94 is not in Other spending after the identity hit');
+  ok(reconHasBell(other, SEP_TX),
+    'the Travel Visa $283.94 stays in Other spending');
   ok(!(active.householdBudget || []).some(row => !row.otherSpending && reconHasBell(row, SEP_TX)),
-    'the $283.94 is not also in a named Household Budget category');
-  ok(near(billActual, SEP_TX),
-    'the $283.94 appears once as bell-sep15-2026 actual settlement evidence');
-  ok(near(excludedBills, SEP_TX),
-    'sumCategoryActuals excluded.bills is independently the observed $283.94');
+    'the Travel Visa debit is not moved into a named Household Budget category');
+  ok(!action || action.settlement !== 'represented',
+    'September Bell is not represented from the Travel Visa debit');
   const householdResidual = roundCent(categorized + otherSpent);
-  ok(near(householdResidual, OTHER_TX),
-    'categorized + Other spending is the unrelated residual only');
-  ok(near(roundCent(householdResidual + billActual), SEP_OBSERVED_HOUSEHOLD),
-    'categorized + Other + Bell actual = independently summed household spend',
-    `${householdResidual} + ${billActual} vs ${SEP_OBSERVED_HOUSEHOLD}`);
+  ok(near(householdResidual, SEP_OBSERVED_HOUSEHOLD),
+    'categorized + Other spending still holds the Travel Visa debit and the residual',
+    String(householdResidual));
 }
 
 console.log('\n=== 7. OTHER TRANSACTIONS UNCHANGED ===');
 {
   const after = recommendFromReport(observeWith(identityDoc(), SEP_AS_OF, sepTxs()), SEP_AS_OF);
   const other = otherRow(period(after.defaultView, 'this-pay-period'));
-  ok(other && near(other.spent, OTHER_TX)
+  ok(other && near(other.spent, SEP_OBSERVED_HOUSEHOLD)
       && (other.recon || []).some(tx =>
         tx && Number(tx.amount) === OTHER_TX
         && /dollarama/i.test(String(tx.displayedPayee || tx.originalMerchant || ''))),
-    'unrelated Dollarama remains in Other spending');
+    'unrelated Dollarama remains in Other spending beside the unsettled Travel Visa debit');
 }
 
 console.log('\n=== 8. amount / account / payee are not guessed; once is not reused ===');
@@ -402,23 +373,21 @@ console.log('\n=== 8. amount / account / payee are not guessed; once is not reus
     is_pending: false, payee: 'Bell Mobility', original_name: 'Bell Mobility',
   }]);
   ok(!(wrongAccount.representedEventCandidates || []).some(c => c.id === SEP_ID || c.id === REC_ID),
-    'same Bell Mobility debit on Chequing A does not settle the Travel Visa bill');
+    'one Bell Mobility debit on Chequing A does not settle September');
 
   const chequingB = observeWith(identity, SEP_AS_OF, [{
     id: 9705, account_id: 1002, date: SEP_AS_OF, amount: SEP_TX,
     is_pending: false, payee: 'Bell Mobility', original_name: 'Bell Mobility',
   }]);
   ok(!(chequingB.representedEventCandidates || []).some(c => c.id === SEP_ID || c.id === REC_ID),
-    'same Bell Mobility debit on Chequing B does not settle the Travel Visa bill');
+    'one Bell Mobility debit on Chequing B does not settle September');
 
   const early = observeWith(identity, '2026-09-14', [{
     id: 9706, account_id: TRAVEL_PROVIDER_ID, date: '2026-09-10', amount: 240.11,
     is_pending: false, payee: 'Bell Mobility', original_name: 'BELLMOBILITY',
   }]);
-  const earlyHit = (early.representedEventCandidates || [])
-    .find(c => c && c.id === SEP_ID);
-  ok(earlyHit && near(earlyHit.observedAmount, 240.11) && earlyHit.amountNotUsed === true,
-    'an early Travel Visa Bell Mobility debit still matches; observed amount is kept');
+  ok(!(early.representedEventCandidates || []).some(c => c && c.id === SEP_ID),
+    'an early Travel Visa Bell Mobility debit does not settle September');
 
   const later = observeWith(identity, '2026-09-30', [{
     id: 9801, account_id: TRAVEL_PROVIDER_ID, date: '2026-09-30', amount: SEP_TX,
