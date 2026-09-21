@@ -4998,9 +4998,9 @@
   // Observed `actual` is the incumbent representedActuals / Lunch Money
   // signed observation (credit negative). PEB needs inflow magnitude —
   // the same abs treatment historical settlement already uses — not that
-  // ledger sign. Not-relied-upon is settlement status, not deletion from
-  // the period-income term: planned amount stays until an actual exists.
-  // This is not a second income engine.
+  // ledger sign. Not-relied-upon remains settlement status: it stays on
+  // Payday balance and contributes nothing to PEB until relied-upon or
+  // represented. This is not a second income engine.
   function householdIncomeAmount(value) {
     const n = Number(value);
     if (!isFinite(n) || n === 0) return 0;
@@ -5009,6 +5009,9 @@
 
   function calendarIncomeContribution(row) {
     if (!row) return 0;
+    if (row.notReliedUpon === true || row.settlement === 'not-relied-upon') {
+      return 0;
+    }
     if (row.actual != null && isFinite(Number(row.actual))) {
       return householdIncomeAmount(row.actual);
     }
@@ -7128,8 +7131,7 @@
           row.remaining = 0;
         }
         if (planUnavailable) continue;
-        // Not-relied-upon remains visible settlement status. It does not
-        // erase period income from the living prediction.
+        if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) continue;
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += calendarIncomeContribution(row);

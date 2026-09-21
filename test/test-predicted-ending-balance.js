@@ -691,14 +691,14 @@ console.log('\n=== A. Production Sep 11–24 signed-actual regression cannot rec
       ],
     },
   }));
-  const correctIncome = roundCent(DALE_INFLOW + AMANDA_PLANNED + CHILD_AMT);
+  const correctIncome = roundCent(DALE_INFLOW + CHILD_AMT);
   const correctAfterBills = roundCent(PROD_OPENING + correctIncome - PROD_BILLS);
   const correctPeb = roundCent(correctAfterBills - PROD_HOLD);
   ok(row && near(row.opening, PROD_OPENING) && row.openingSource === 'snapshot'
       && row.paydayBoundaryOpening === true,
     'payday-boundary opening stays the Sep 11 snapshot, not live cash');
   ok(near(row.incomeAdded, correctIncome),
-    'Lunch Money signed Dale actual becomes household inflow; Amanda planned stays',
+    'Lunch Money signed Dale actual becomes household inflow; unconfirmed Amanda stays out of PEB income',
     `${row && row.incomeAdded} vs ${correctIncome}`);
   ok(near(row.afterBills, correctAfterBills) && !near(row.afterBills, BROKEN_AFTER_BILLS),
     'Balance after bills is not the production −$7,158.13');

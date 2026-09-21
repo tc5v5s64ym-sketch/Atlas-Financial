@@ -384,8 +384,8 @@ is the living current-pay-period remaining-household-money identity,
 already inside that opening − Household Budget hold`. Period income
 uses the observed household-inflow magnitude when an actual exists
 (Lunch Money signed credits are not subtracted) and the planned amount
-otherwise, including income that remains not-relied-upon for
-settlement. Those four terms are published on
+otherwise. Not-relied-upon settlement stays on Payday balance and does
+not enter this income term. Those four terms are published on
 `predictedEndingBalanceTerms` and must arithmetically close; there is
 no balancing plug. It fails closed
 when the payday-boundary opening is unknown or is only a mid-period
