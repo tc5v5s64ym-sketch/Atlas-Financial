@@ -214,7 +214,8 @@ function projectPredictedEndingBalance(advice) {
   if (amount == null || !Number.isFinite(Number(amount))) {
     return unavailable('predicted-ending-balance-unavailable');
   }
-  return {
+  const terms = active.predictedEndingBalanceTerms;
+  const out = {
     status: 'ok',
     source: 'Forecast.calendarPeriodWaterfalls',
     identity: 'predicted-ending-balance',
@@ -222,6 +223,17 @@ function projectPredictedEndingBalance(advice) {
     periodStart: active.start || null,
     periodEnd: active.end || null,
   };
+  if (terms && terms.closes === true) {
+    out.terms = {
+      paydayBoundaryPosition: money(terms.paydayBoundaryPosition),
+      periodIncome: money(terms.periodIncome),
+      assignedBills: money(terms.assignedBills),
+      householdBudgetHold: money(terms.householdBudgetHold),
+      predictedEndingBalance: money(terms.predictedEndingBalance),
+      closes: true,
+    };
+  }
+  return out;
 }
 
 // Smallest operating-picture projection: copy Forecast leftover stages plus

@@ -618,5 +618,296 @@ console.log('\n=== Live reconstruction: PEB follows named facts, never hardcoded
   }
 }
 
+console.log('\n=== A. Production Sep 11–24 signed-actual regression cannot recur ===');
+{
+  // Named reconstruction of the 2026-09-21 live defect. These cents are
+  // the broken equation, not a specification of a desired household PEB.
+  const PROD_OPENING = 310.47;
+  const DALE_LM_SIGNED = -4274.98;
+  const DALE_INFLOW = 4274.98;
+  const AMANDA_PLANNED = 2168.85;
+  const CHILD_AMT = 219.45;
+  const PROD_BILLS = 3413.07;
+  const PROD_HOLD = 2287.17;
+  const BROKEN_INCOME = roundCent(DALE_LM_SIGNED + CHILD_AMT);
+  const BROKEN_AFTER_BILLS = roundCent(PROD_OPENING + BROKEN_INCOME - PROD_BILLS);
+  const BROKEN_PEB = roundCent(BROKEN_AFTER_BILLS - PROD_HOLD);
+  ok(near(BROKEN_INCOME, -4055.53) && near(BROKEN_AFTER_BILLS, -7158.13)
+      && near(BROKEN_PEB, -9445.3),
+    'independent reconstruction of the published broken equation');
+
+  const plan = fixturePlan({
+    openingAmount: PROD_OPENING,
+    opening: {
+      asOf: '2026-09-21',
+      priorAsOf: '2026-08-19',
+      representedEvents: [
+        { id: 'payroll', date: PAYDAY },
+        { id: 'childBenefit', date: '2026-09-20' },
+      ],
+      notReliedUponEvents: [
+        { id: 'amandaSalary15', date: '2026-09-15', reason: 'unconfirmed-transfer' },
+      ],
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: PROD_OPENING },
+    },
+    income: [
+      {
+        id: 'payroll', label: 'Dale income', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: 4264, confidence: 'confirmed',
+      },
+      {
+        id: 'amandaSalary15', label: 'Amanda income', frequency: 'once',
+        date: '2026-09-15', amount: AMANDA_PLANNED, confidence: 'confirmed',
+      },
+      {
+        id: 'childBenefit', label: 'Canada Child Benefit', frequency: 'once',
+        date: '2026-09-20', amount: CHILD_AMT, confidence: 'confirmed',
+      },
+    ],
+    bills: [
+      {
+        id: 'period-bills', label: 'Assigned period bills', frequency: 'once',
+        date: '2026-09-12', amount: PROD_BILLS, confidence: 'confirmed',
+      },
+    ],
+    categories: [],
+  });
+  const row = activeOf(recommend(plan, [otherTx(PROD_HOLD)], {
+    asOf: '2026-09-21',
+    representedEvents: [
+      { id: 'payroll', date: PAYDAY },
+      { id: 'childBenefit', date: '2026-09-20' },
+    ],
+    notReliedUponEvents: [
+      { id: 'amandaSalary15', date: '2026-09-15', reason: 'unconfirmed-transfer' },
+    ],
+    actualsExtra: {
+      observationAsOf: '2026-09-21',
+      coverageStart: PAYDAY,
+      coverageThrough: '2026-09-21',
+      representedActuals: [
+        { id: 'payroll', date: PAYDAY, actual: DALE_LM_SIGNED, postedOn: PAYDAY },
+        { id: 'childBenefit', date: '2026-09-20', actual: CHILD_AMT, postedOn: '2026-09-20' },
+      ],
+    },
+  }));
+  const correctIncome = roundCent(DALE_INFLOW + AMANDA_PLANNED + CHILD_AMT);
+  const correctAfterBills = roundCent(PROD_OPENING + correctIncome - PROD_BILLS);
+  const correctPeb = roundCent(correctAfterBills - PROD_HOLD);
+  ok(row && near(row.opening, PROD_OPENING) && row.openingSource === 'snapshot'
+      && row.paydayBoundaryOpening === true,
+    'payday-boundary opening stays the Sep 11 snapshot, not live cash');
+  ok(near(row.incomeAdded, correctIncome),
+    'Lunch Money signed Dale actual becomes household inflow; Amanda planned stays',
+    `${row && row.incomeAdded} vs ${correctIncome}`);
+  ok(near(row.afterBills, correctAfterBills) && !near(row.afterBills, BROKEN_AFTER_BILLS),
+    'Balance after bills is not the production −$7,158.13');
+  ok(near(row.afterHouseholdBudget, correctPeb) && !near(row.afterHouseholdBudget, BROKEN_PEB),
+    'PEB is not the production −$9,445.30');
+  ok(row.predictedEndingBalanceTerms
+      && row.predictedEndingBalanceTerms.closes === true
+      && near(row.predictedEndingBalanceTerms.paydayBoundaryPosition, PROD_OPENING)
+      && near(row.predictedEndingBalanceTerms.periodIncome, correctIncome)
+      && near(row.predictedEndingBalanceTerms.assignedBills, PROD_BILLS)
+      && near(row.predictedEndingBalanceTerms.householdBudgetHold, PROD_HOLD)
+      && near(row.predictedEndingBalanceTerms.predictedEndingBalance, correctPeb),
+    'Forecast publishes the closed PEB identity with no plug');
+}
+
+console.log('\n=== B. Every PEB term is inspectable and arithmetically closes ===');
+{
+  const row = activeOf(recommend(fixturePlan(), [groceryTx(100)]));
+  const terms = row && row.predictedEndingBalanceTerms;
+  const reconstructed = terms
+    ? independentPeb(
+      terms.paydayBoundaryPosition, terms.periodIncome,
+      terms.assignedBills, terms.householdBudgetHold)
+    : null;
+  ok(terms && terms.closes === true && terms.identity === 'predicted-ending-balance',
+    'terms packet declares the PEB identity and closes');
+  ok(terms && near(reconstructed, terms.predictedEndingBalance)
+      && near(reconstructed, row.afterHouseholdBudget),
+    'payday-boundary + period income − bills − hold = PEB with no residual');
+}
+
+console.log('\n=== C. Realistic payday-boundary Bills + Weekly position ===');
+{
+  const BILLS_PAYDAY = 757.06;
+  const WEEKLY_PAYDAY = -446.59;
+  const POSITION = roundCent(BILLS_PAYDAY + WEEKLY_PAYDAY);
+  const plan = fixturePlan({
+    openingAmount: POSITION,
+    startingCash: {
+      amount: 190.24,
+      breakdown: [
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: 593.29 },
+        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: -403.05 },
+        { id: 'savings', label: 'EMERGENCY SAVING', value: 772.58 },
+      ],
+    },
+  });
+  const row = activeOf(recommend(plan, []));
+  const income = DALE + AMANDA + CHILD;
+  ok(near(POSITION, 310.47),
+    'independent Bills + Weekly payday-boundary is the snapshot position');
+  ok(near(row.opening, POSITION) && row.openingSource === 'snapshot',
+    'PEB opening is the composed Bills + Weekly payday position');
+  ok(!near(row.opening, 190.24) && !near(row.opening, 593.29 - 403.05),
+    'live Current Balance / live A+B is not the payday-boundary opening');
+  ok(near(row.afterHouseholdBudget, independentPeb(POSITION, income, BILL, GROCERY_PLAN)),
+    'composed payday position enters the identity exactly once');
+}
+
+console.log('\n=== D. Negative Weekly carry is position, not manufactured spending ===');
+{
+  const BILLS_OK = 400;
+  const WEEKLY_NEG = -180;
+  const POSITION = roundCent(BILLS_OK + WEEKLY_NEG);
+  const none = activeOf(recommend(fixturePlan({ openingAmount: POSITION }), []));
+  const spent = activeOf(recommend(fixturePlan({ openingAmount: POSITION }), [groceryTx(50)]));
+  ok(near(none.opening, POSITION) && none.budgetHold === GROCERY_PLAN
+      && spent.budgetHold === GROCERY_PLAN,
+    'negative Weekly carry does not invent Household Budget spending');
+  ok(near(none.afterHouseholdBudget,
+      independentPeb(POSITION, DALE + AMANDA + CHILD, BILL, GROCERY_PLAN)),
+    'negative carry reduces the starting position exactly once');
+}
+
+console.log('\n=== E. Payday Bills sweep/reset is not a giant negative opening ===');
+{
+  const SWEPT_BILLS = 0;
+  const WEEKLY_CARRY = -200;
+  const POSITION = roundCent(SWEPT_BILLS + WEEKLY_CARRY);
+  const PERIOD_BILLS = 3000;
+  const plan = fixturePlan({
+    openingAmount: POSITION,
+    bills: [
+      {
+        id: 'mortgage', label: 'Mortgage', frequency: 'once',
+        date: '2026-09-12', amount: PERIOD_BILLS, confidence: 'confirmed',
+      },
+    ],
+  });
+  const row = activeOf(recommend(plan, []));
+  ok(near(row.opening, POSITION) && !near(row.opening, -PERIOD_BILLS),
+    'swept Bills payday position is Weekly carry, not minus the new bill load');
+  ok(near(row.periodBillLoad, PERIOD_BILLS)
+      && near(row.afterBills, roundCent(POSITION + row.incomeAdded - PERIOD_BILLS)),
+    'assigned bills are deducted once after the swept opening');
+}
+
+console.log('\n=== F. Child Benefit entering Weekly is represented exactly once ===');
+{
+  const CHILD_LM = -219.45;
+  const midOpening = {
+    asOf: '2026-09-21',
+    priorAsOf: '2026-08-19',
+    representedEvents: [{ id: 'childBenefit', date: '2026-09-20' }],
+    paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: OPENING },
+  };
+  const daleOnly = [
+    {
+      id: 'payroll', label: 'Dale income', frequency: 'biweekly',
+      anchor: '2026-08-14', amount: DALE, confidence: 'confirmed',
+    },
+  ];
+  const withChildIncome = daleOnly.concat([
+    {
+      id: 'childBenefit', label: 'Canada Child Benefit', frequency: 'once',
+      date: '2026-09-20', amount: CHILD, confidence: 'confirmed',
+    },
+  ]);
+  const without = activeOf(recommend(fixturePlan({
+    opening: midOpening,
+    income: daleOnly,
+  }), [], {
+    asOf: '2026-09-21',
+    actualsExtra: { observationAsOf: '2026-09-21', coverageThrough: '2026-09-21' },
+  }));
+  const withChild = activeOf(recommend(fixturePlan({
+    opening: midOpening,
+    income: withChildIncome,
+    representedEvents: [{ id: 'childBenefit', date: '2026-09-20' }],
+  }), [], {
+    asOf: '2026-09-21',
+    representedEvents: [{ id: 'childBenefit', date: '2026-09-20' }],
+    actualsExtra: {
+      observationAsOf: '2026-09-21',
+      coverageThrough: '2026-09-21',
+      representedActuals: [
+        { id: 'childBenefit', date: '2026-09-20', actual: CHILD_LM, postedOn: '2026-09-20' },
+      ],
+    },
+  }));
+  ok(near(withChild.incomeAdded - without.incomeAdded, CHILD),
+    'Child Benefit adds exactly the $219.45 inflow once',
+    `${withChild && withChild.incomeAdded} vs ${without && without.incomeAdded}`);
+  ok(near(withChild.opening, without.opening) && near(withChild.opening, OPENING),
+    'Child Benefit is not also folded into the payday-boundary opening');
+}
+
+console.log('\n=== M. Live Current Balance is not substituted for payday-boundary ===');
+{
+  const plan = fixturePlan({
+    startingCash: {
+      amount: LIVE_CASH,
+      breakdown: [
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: 900 },
+        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: 334.56 },
+      ],
+    },
+  });
+  const row = activeOf(recommend(plan, []));
+  ok(near(row.liveCurrentBalance, LIVE_CASH) && near(row.opening, OPENING)
+      && !near(row.opening, LIVE_CASH),
+    'Q01 / PEB opening stays the snapshot; live Current Balance stays the glance');
+}
+
+console.log('\n=== N. Incompatible evidence dates fail closed ===');
+{
+  const mismatched = fixturePlan({
+    opening: {
+      asOf: AS_OF,
+      priorAsOf: PAYDAY,
+      paydaySnapshot: { periodStart: PAYDAY, asOf: AS_OF, opening: OPENING },
+    },
+  });
+  const row = activeOf(recommend(mismatched, []));
+  ok(row && row.paydayBoundaryOpening !== true
+      && row.afterHouseholdBudget == null && row.predictedEndingBalance == null
+      && row.predictedEndingBalanceTerms == null,
+    'snapshot as-of mid-period is not combined with the Sep 11 window');
+
+  const liveOnly = fixturePlan({
+    opening: { asOf: AS_OF, priorAsOf: PAYDAY, representedEvents: [] },
+  });
+  const liveRow = activeOf(recommend(liveOnly, []));
+  ok(liveRow.afterHouseholdBudget == null
+      && !near(liveRow.opening, LIVE_CASH),
+    'later live cash is not used as a silent payday-boundary opening');
+}
+
+console.log('\n=== O/P reprint and long-horizon (strengthened) ===');
+{
+  const plan = fixturePlan();
+  const advice = recommend(plan, [groceryTx(100)]);
+  const row = activeOf(advice);
+  const html = composer.calendarWaterfallHtml(row, null, advice.paydayAllocation, plan);
+  ok(html.includes(composer.money2(row.afterHouseholdBudget))
+      && /data-peb-terms-closes="true"/.test(html)
+      && html.includes(composer.money2(row.predictedEndingBalanceTerms.periodIncome)),
+    'Budget reprints the Forecast PEB amount and the closed identity terms');
+  ok(advice.defaultView.predictedEndingBalanceTerms
+      && advice.defaultView.predictedEndingBalanceTerms.closes === true
+      && near(advice.defaultView.predictedEndingBalance, row.afterHouseholdBudget),
+    'defaultView reprints the same Forecast PEB and terms');
+  ok(!F.baselineTrajectory(plan, [], AS_OF, {
+    targetBuffer: 0,
+    debts: [],
+    currentPeriodActuals: actuals([]),
+  }).predictedEndingBalance,
+    'long-horizon trajectory still does not own Predicted Ending Balance');
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exitCode = failures ? 1 : 0;

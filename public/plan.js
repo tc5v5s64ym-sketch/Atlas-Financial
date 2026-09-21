@@ -2313,6 +2313,24 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       <div class="operating-answer">${answer}</div>
     </div>`;
   const unavailable = planUnavailable ? calendarCurrentUnavailableHtml(period) : null;
+  // Forecast-owned PEB identity reprint. Presentation only: copy the
+  // already-closed terms. Do not add opening + income here.
+  const termsHtml = (() => {
+    const terms = period.predictedEndingBalanceTerms;
+    if (!terms || terms.closes !== true) return '';
+    if (terms.paydayBoundaryPosition == null || terms.periodIncome == null
+        || terms.assignedBills == null || terms.householdBudgetHold == null
+        || terms.predictedEndingBalance == null) {
+      return '';
+    }
+    return `<p class="operating-note" data-peb-terms data-peb-terms-closes="true">
+      Payday-boundary position ${money2(terms.paydayBoundaryPosition)}
+      + period income ${money2(terms.periodIncome)}
+      − assigned bills ${money2(terms.assignedBills)}
+      − Household Budget ${money2(terms.householdBudgetHold)}
+      = Predicted Ending Balance ${money2(terms.predictedEndingBalance)}.
+    </p>`;
+  })();
   let opening = '';
   if (showSnapshotOpening) {
     if (period.openingKnown) {
@@ -2338,7 +2356,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan))}
-    ${q('07', 'Predicted Ending Balance', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget), 'balance')}
+    ${q('07', 'Predicted Ending Balance', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget) + termsHtml, 'balance')}
     ${period.role === 'active' && !planUnavailable && period.operatingCashExplanation
       && typeof operatingCashExplanationHtml === 'function'
       ? operatingCashExplanationHtml(period.operatingCashExplanation) : ''}

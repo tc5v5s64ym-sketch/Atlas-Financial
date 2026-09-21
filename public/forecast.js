@@ -4993,16 +4993,26 @@
     return false;
   }
 
-  // Living-prediction income term: use the observed actual when Forecast
-  // already has one, otherwise the planned/recognized amount. Not-relied-upon
-  // rows contribute nothing. This is not a second income engine.
+  // Living-prediction income term: household-income dollars belonging to
+  // the period and not already inside the payday-boundary opening.
+  // Observed `actual` is the incumbent representedActuals / Lunch Money
+  // signed observation (credit negative). PEB needs inflow magnitude —
+  // the same abs treatment historical settlement already uses — not that
+  // ledger sign. Not-relied-upon is settlement status, not deletion from
+  // the period-income term: planned amount stays until an actual exists.
+  // This is not a second income engine.
+  function householdIncomeAmount(value) {
+    const n = Number(value);
+    if (!isFinite(n) || n === 0) return 0;
+    return roundCent(Math.abs(n));
+  }
+
   function calendarIncomeContribution(row) {
     if (!row) return 0;
-    if (row.notReliedUpon === true || row.settlement === 'not-relied-upon') return 0;
     if (row.actual != null && isFinite(Number(row.actual))) {
-      return Number(row.actual);
+      return householdIncomeAmount(row.actual);
     }
-    return Number(row.amount) || 0;
+    return Number(row.amount) || Number(row.planned) || 0;
   }
 
   // Explicit complete household-cash evidence for (openingAsOf, morningDate).
@@ -5212,14 +5222,16 @@
   // rather than invent a remaining-budget or prorated-hold rule.
   function isPaydayBoundaryOpening(source, openingAsOf, windowStart) {
     if (!source || openingAsOf == null || !windowStart) return false;
+    // Incompatible evidence dates fail closed. A later live observation
+    // date is not this payday's opening, and a mid-period cutover as-of
+    // is not a payday-boundary date.
+    if (String(openingAsOf) !== String(windowStart)) return false;
     if (source === 'snapshot'
       || source === 'payday-morning'
       || source === 'cutover-walk'
-      || source === 'carry-forward') {
+      || source === 'carry-forward'
+      || source === 'cutover-opening') {
       return true;
-    }
-    if (source === 'cutover-opening') {
-      return String(openingAsOf) === String(windowStart);
     }
     return false;
   }
@@ -6768,6 +6780,37 @@
     }, 0));
   }
 
+  // Named Predicted Ending Balance identity. Every term is inspectable.
+  // closes is a boolean check, not a plug that forces equality.
+  function composePredictedEndingBalanceTerms(
+    paydayBoundaryPosition, periodIncome, assignedBills, householdBudgetHold, predictedEndingBalance
+  ) {
+    if (paydayBoundaryPosition == null || periodIncome == null
+        || assignedBills == null || householdBudgetHold == null
+        || predictedEndingBalance == null) {
+      return null;
+    }
+    if (![paydayBoundaryPosition, periodIncome, assignedBills,
+      householdBudgetHold, predictedEndingBalance].every(v => isFinite(Number(v)))) {
+      return null;
+    }
+    const position = roundCent(paydayBoundaryPosition);
+    const income = roundCent(periodIncome);
+    const bills = roundCent(assignedBills);
+    const hold = roundCent(householdBudgetHold);
+    const peb = roundCent(predictedEndingBalance);
+    const reconstructed = roundCent(position + income - bills - hold);
+    return {
+      paydayBoundaryPosition: position,
+      periodIncome: income,
+      assignedBills: bills,
+      householdBudgetHold: hold,
+      predictedEndingBalance: peb,
+      identity: 'predicted-ending-balance',
+      closes: Math.abs(reconstructed - peb) <= 0.005,
+    };
+  }
+
   function periodPaidBillDisclosure(bills) {
     return roundCent((bills || []).reduce((sum, row) => {
       if (!row || row.needsDate || !rowIsSettledBill(row)) return sum;
@@ -6941,13 +6984,17 @@
   // Predicted Ending Balance is a different, Forecast-authoritative
   // current-pay-period identity (owner 2026-09-21, superseding the
   // 2026-09-09 income-led leftover):
-  //   payday-boundary opening
-  //   + income not already inside that opening (actual when observed)
+  //   payday-boundary household position
+  //   + period income not already inside that opening
+  //     (observed inflow magnitude when an actual exists; planned otherwise)
   //   − assigned bills not already inside that opening
   //   − Household Budget hold
+  // Those four terms are published on predictedEndingBalanceTerms and
+  // must arithmetically close. There is no balancing plug.
   // Fail closed when that payday-boundary opening is unknown. Do not
   // invent one, do not treat a mid-period cutover-opening as payday
-  // morning, and do not publish an income-led remainder as this answer.
+  // morning, do not substitute today's live Current Balance, and do not
+  // publish an income-led remainder as this answer.
   // Opening comes from a recorded paydaySnapshot first, else
   // payday-morning cash only when as-of is that payday and live overlay
   // has not already advanced, else a completeness-proven household-cash
@@ -7081,7 +7128,8 @@
           row.remaining = 0;
         }
         if (planUnavailable) continue;
-        if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) continue;
+        // Not-relied-upon remains visible settlement status. It does not
+        // erase period income from the living prediction.
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += calendarIncomeContribution(row);
@@ -7119,6 +7167,13 @@
       const afterRemainingBills = afterBills;
       const afterHouseholdBudget = afterBills != null
         ? roundCent(afterBills - budget.hold) : null;
+      const predictedEndingBalanceTerms = composePredictedEndingBalanceTerms(
+        paydayBoundaryOpening ? opening : null,
+        incomeAdded,
+        periodBillLoad,
+        planUnavailable ? null : budget.hold,
+        afterHouseholdBudget
+      );
       let extraAllocated = 0;
       let extraDebt;
       if (planUnavailable) {
@@ -7208,6 +7263,7 @@
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'predicted-ending-balance' : null,
+        predictedEndingBalanceTerms,
         extraDebt,
         firstCard: cards.firstCard,
         otherCards: cards.otherCards,
@@ -7317,6 +7373,8 @@
       predictedEndingBalance: activePeriod ? activePeriod.afterHouseholdBudget : null,
       predictedEndingBalanceIdentity: activePeriod && activePeriod.afterHouseholdBudget != null
         ? 'predicted-ending-balance' : null,
+      predictedEndingBalanceTerms: activePeriod
+        ? activePeriod.predictedEndingBalanceTerms || null : null,
       bills: calendar.bills,
       billSections: calendar.billSections,
       undatedBills: calendar.undatedBills,
