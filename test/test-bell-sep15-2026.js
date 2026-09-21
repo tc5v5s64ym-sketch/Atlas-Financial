@@ -5,7 +5,8 @@
  * (owner 2026-09-19 catch-up / wife payment-mess total; supersedes $265.65).
  * Standing recurring bell is $160/month from firstDue 2026-10-15 so Sep
  * is not 283.94+160. Paying path stays travelvisa / jointCash false.
- * No Lunch Money settle or representedEvents invent.
+ * Amount encoding does not invent settledOn / representedEvents on the
+ * bill rows. Travel Visa settlement identity is a separate outcome.
  *
  * Independent proof (L-002 / L-006): hand-listed 15ths from firstDue,
  * owner amounts as literals, not a second expandEvents call as the spec.
@@ -211,8 +212,15 @@ console.log('\n=== 4. travelvisa path; still-due without invented settle ===');
   ok(!plan.bills.some(b => b.settledOn || (b.representedEvents && b.representedEvents.length)),
     'fixture does not invent settledOn or representedEvents on the Bell rows');
   const identity = load('docs/connectivity/transaction-identity.json');
-  ok(!(identity.rules || []).some(r => r && (r.eventId === ONCE_ID || r.eventId === STANDING_ID)),
-    'this outcome does not invent a Lunch Money Bell settle identity');
+  const onceRule = (identity.rules || []).find(r => r && r.eventId === ONCE_ID);
+  const standingRule = (identity.rules || []).find(r => r && r.eventId === STANDING_ID);
+  ok(onceRule && standingRule
+      && onceRule.atlasAccountId === PAYER && standingRule.atlasAccountId === PAYER
+      && onceRule.direction === 'debit' && standingRule.direction === 'debit'
+      && !onceRule.settlesWhen && !standingRule.settlesWhen,
+    'Travel Visa Bell identity, when present, does not rewrite planned amounts or invent schedule-trust');
+  ok(near(ONCE_AMT, 283.94) && near(STANDING_AMT, 160),
+    'amount-encoding literals stay $283.94 once and $160 standing');
   const sim = F.simulate(plan, '2026-09-10', { weeklyVariable: 0, horizonDays: 40 });
   ok(near(sim.totals.bills, 0) && near(sim.totals.reserved, ONCE_AMT + STANDING_AMT),
     'card-paid Bell is reserved gravity, not a chequing / BILLS withdrawal',
