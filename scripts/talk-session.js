@@ -287,6 +287,13 @@ function bindReferentKeysFromPaths(paths) {
     seen.card = true;
     keys.push('card');
   }
+  // A payday look-like presentation still earns leftover deixis. The
+  // leftover follow-up then reads Predicted Ending Balance, not the
+  // paydayAllocation closing stage.
+  if (seen['payday-picture'] && !seen['payday-leftover']) {
+    seen['payday-leftover'] = true;
+    keys.push('payday-leftover');
+  }
   return { keys, facilityIndexes };
 }
 

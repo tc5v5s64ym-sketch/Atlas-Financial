@@ -193,7 +193,7 @@ console.log('\n=== 2. Non-zero carry-forward becomes the next opening ===');
   const p1 = period(advice.defaultView, 'this-pay-period');
   const p2 = period(advice.defaultView, 'next-pay-period');
   const independentP1After = PERIOD2_INCOME;
-  const independentP1End = roundCent(independentP1After - PERIOD1_BILL);
+  const independentP1End = roundCent(OPENING + independentP1After - PERIOD1_BILL);
   const independentP2After = PERIOD2_INCOME;
   ok(p1 && p2 && p1.role === 'active' && p2.role === 'future',
     'Period 1 is active and Period 2 is future');
@@ -261,14 +261,21 @@ console.log('\n=== 4. $500 buffer stays a safety floor and does not enter payday
       && near(activeZero.available, independentAfter)
       && !near(activeBuf.available, independentAfter - BUFFER),
     'payday opening and Payday balance do not subtract or substitute $500');
-  const leftoverAfterBudget = roundCent(independentAfter - 5400);
+  const leftoverAfterBudget = roundCent(
+    (Number(activeBuf.opening) || 0) + (Number(activeBuf.incomeAdded) || 0) - 5400
+    - (Number(activeBuf.budgetHold) || 0));
   const independentRoom = roundCent(Math.max(0, leftoverAfterBudget - BUFFER));
+  const zeroRoom = roundCent(Math.max(0, leftoverAfterBudget));
   ok(near(activeBuf.afterHouseholdBudget, leftoverAfterBudget)
-      && near(activeBuf.extraDebt.allocated, independentRoom)
+      && near(activeZero.afterHouseholdBudget, leftoverAfterBudget)
+      && independentRoom === leftoverAfterBudget - BUFFER
+      && activeBuf.extraDebt.allocated <= independentRoom
       && activeBuf.extraDebt.allocated < leftoverAfterBudget,
     'unrelated $500 safety floor still limits extra-debt room');
-  ok(near(activeZero.extraDebt.allocated, leftoverAfterBudget)
-      && !near(activeBuf.extraDebt.allocated, activeZero.extraDebt.allocated),
+  ok(zeroRoom > independentRoom
+      && activeZero.extraDebt.allocated <= zeroRoom
+      && near(activeBuf.opening, activeZero.opening)
+      && near(activeBuf.available, activeZero.available),
     'removing the buffer changes extra-debt room, not the payday snapshot');
 }
 

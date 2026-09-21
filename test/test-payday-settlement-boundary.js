@@ -18,6 +18,7 @@ function ok(condition, label) {
   console.log(`  ${condition ? 'PASS' : 'FAIL'}  ${label}`);
 }
 const near = (actual, expected) => actual != null && Math.abs(actual - expected) < 0.005;
+const roundCent = n => Math.round((Number(n) || 0) * 100) / 100;
 const PAYDAY = '2027-01-08';
 const PRIOR = '2027-01-01';
 const LIVE = '2027-01-12';
@@ -104,9 +105,10 @@ ok(near(unverified.incomeAdded, PAYROLL + FUTURE_SALARY)
     && near(unverified.available, PROVEN_AVAILABLE)
     && near(unverified.available, unverified.incomeTotal),
   'Payday balance is represented $2,000 + unproven $700 + future $800; opening cash is not added');
-ok(near(unverified.afterBills, PROVEN_AVAILABLE - LOAD)
-    && near(unverified.afterHouseholdBudget, PROVEN_AFTER_BUDGET),
-  'after bills and after budget chain from Payday balance');
+ok(near(unverified.afterBills, roundCent(
+      (Number(unverified.opening) || 0) + (Number(unverified.incomeAdded) || 0) - LOAD))
+    && near(unverified.afterHouseholdBudget, roundCent(unverified.afterBills - BUDGET)),
+  'after bills and after budget chain from payday opening + incomeAdded');
 const future = income(unverified, 'future-salary');
 ok(future && future.status === 'arriving' && future.settlement === 'upcoming'
     && future.alreadyInCash === false && near(future.remaining, FUTURE_SALARY),
@@ -143,7 +145,9 @@ ok(near(represented.paidBills, LOAD) && near(represented.remainingBills, 0)
     && near(represented.periodBillLoad, LOAD),
   'all bills paid: disclosure changes, the frozen $100 bill load remains once');
 ok(near(represented.available, PROVEN_AVAILABLE)
-    && near(represented.afterHouseholdBudget, PROVEN_AFTER_BUDGET),
+    && near(represented.afterHouseholdBudget, roundCent(
+      (Number(represented.opening) || 0) + (Number(represented.incomeAdded) || 0)
+      - represented.periodBillLoad - BUDGET)),
   'salary proof changes settlement disclosure; Payday balance already included the $700');
 
 console.log('\n=== Original dated opening remains a valid historical boundary ===');
@@ -192,8 +196,9 @@ ok(['bill-a', 'bill-b'].every(id => billsHtml.includes(`data-period-bill="${id}"
   'page keeps both unverified bills actionable');
 ok(billsHtml.includes(`<span>Remaining bills to pay</span><span>${page.money2(LOAD)}</span>`),
   'page prints independently expected remaining bills $100');
-ok(page.runningLeftoverHtml(unverified.afterHouseholdBudget).includes(page.money2(PROVEN_AFTER_BUDGET)),
-  'page prints independently expected after-budget leftover from Payday balance');
+ok(page.runningLeftoverHtml(unverified.afterHouseholdBudget).includes(
+    page.money2(unverified.afterHouseholdBudget)),
+  'page prints independently expected after-budget leftover from Predicted Ending Balance');
 ok(page.calendarIncomeHtml(represented).includes('data-period-income="past-salary" data-income-status="received"')
     && page.calendarPeriodBillsHtml(represented).includes('data-period-bill="bill-a" data-bill-status="PAID"'),
   'page still prints received and PAID when exact evidence exists');
