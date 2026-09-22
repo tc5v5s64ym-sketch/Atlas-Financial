@@ -13657,7 +13657,10 @@
       plan, current.start, currentSpend.byCategory);
     const fullPeriodEstimate = roundCent(actualToDate + remainingExpected);
     const payPeriodAmount = roundCent((completedSpend.total + fullPeriodEstimate) / 2);
-    const weeklyVariable = roundCent(payPeriodAmount / 2);
+    // The 14-day amount is the published figure. Keep the weekly walk
+    // rate exact so a full Seaspan cycle applies payPeriodAmount, not a
+    // second-rounded weekly * 2 that can drift by one cent.
+    const weeklyVariable = payPeriodAmount / 2;
     return {
       status: 'ready',
       fallback: null,

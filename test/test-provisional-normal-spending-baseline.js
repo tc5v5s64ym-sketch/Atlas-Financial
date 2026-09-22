@@ -433,6 +433,52 @@ console.log('\n=== incomplete coverage falls back, never to $0 ===');
     'an unmapped account withholds the recent baseline instead of publishing $0');
 }
 
+console.log('\n=== odd-cent 14-day identity ===');
+{
+  // Independent hand totals on the same membership as the main ledger.
+  // One extra posted completed grocery of $0.02 makes the published
+  // 14-day baseline an odd-cent amount. The second weekly rounding
+  // (roundCent(baseline / 2) * 2) is the defect; a full Seaspan cycle
+  // must apply the published baseline, not that drifted weekly * 2.
+  const ODD_COMPLETED = 215.02;
+  const ODD_CURRENT_FULL = 480;
+  const ODD_BASELINE = roundCent((ODD_COMPLETED + ODD_CURRENT_FULL) / 2);
+  const DOUBLE_ROUNDED_APPLY = roundCent(roundCent(ODD_BASELINE / 2) * 2);
+  const ODD_STAGE1 = roundCent(1000 - 80 - 0 - ODD_BASELINE);
+  ok(ODD_COMPLETED === 215.02 && ODD_CURRENT_FULL === 480,
+    'hand odd-cent inputs are 215.02 completed and 480 current-full');
+  ok(ODD_BASELINE === 347.51, 'hand two-period combination is 347.51', String(ODD_BASELINE));
+  ok(DOUBLE_ROUNDED_APPLY === 347.52 && DOUBLE_ROUNDED_APPLY !== ODD_BASELINE,
+    'hand proof: a second weekly rounding would apply 347.52, not 347.51');
+  ok(ODD_STAGE1 === 572.49, 'hand Stage 1 is 1000 − 80 − 347.51 = 572.49', String(ODD_STAGE1));
+
+  const plan = planFixture();
+  const packet = packetFrom(LEDGER.concat([{
+    id: 'g-odd', date: '2026-09-01', amount: 0.02, count: 'completed',
+    note: 'odd-cent posted groceries',
+  }]));
+  const traj = ask(plan, packet);
+  const ns = traj.normalSpending;
+  ok(ns && ns.status === 'ready' && ns.completedPeriod
+      && ns.completedPeriod.amount === ODD_COMPLETED
+      && ns.currentPeriod && ns.currentPeriod.fullPeriodEstimate === ODD_CURRENT_FULL
+      && ns.payPeriodAmount === ODD_BASELINE,
+    'published baseline is the odd-cent hand mean 347.51',
+    ns && String(ns.payPeriodAmount));
+  const next = payPeriodByPayday(traj, '2026-09-25');
+  ok(next && next.stage1 && next.stage1.householdBudget
+      && next.stage1.householdBudget.walkDays === 14
+      && next.stage1.householdBudget.amount === ODD_BASELINE
+      && next.stage1.householdBudget.amount !== DOUBLE_ROUNDED_APPLY,
+    'a full Seaspan cycle applies exactly the published 347.51, not 347.52',
+    next && next.stage1 && String(next.stage1.householdBudget.amount));
+  ok(next.stage1.result && next.stage1.result.amount === ODD_STAGE1
+      && next.stage2.result.amount === ODD_STAGE1
+      && next.stage3.result.amount === ODD_STAGE1,
+    'Stage 1 on that cycle is income − bills − the published 347.51',
+    next && next.stage1 && String(next.stage1.result.amount));
+}
+
 console.log('\n=== posted-only current coverage does not treat pending as complete ===');
 {
   const plan = planFixture();
