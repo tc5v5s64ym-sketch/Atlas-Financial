@@ -118,6 +118,7 @@ const suites = [
   ['header freshness source identity (history vs live overlay spending)', 'test-header-freshness-source-identity.js'],
   ['Household Budget Spent possible-replacement drill-down', 'test-household-budget-spent-possible-replacement-drilldown.js'],
   ['current-period Household Budget classification', 'test-current-period-household-budget-classification.js'],
+  ['cancelled-service unexpected charge', 'test-cancelled-service-unexpected-charge.js'],
   ['Lunch Money Dale/Amanda guilt-free category assignment', 'test-lunchmoney-dale-amanda-guilt-free.js'],
   ['BC Hydro Sep 4 Other-spending classification', 'test-bc-hydro-sep4-classification.js'],
   ['Bell Mobility Travel Visa Other-spending classification', 'test-bell-travelvisa-classification.js'],

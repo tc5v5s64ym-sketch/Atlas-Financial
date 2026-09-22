@@ -360,9 +360,19 @@ missed a Netflix merchant does not omit the current Netflix bill.
 | Service | Forward plan |
 |---|---|
 | Canva | cancelled |
-| Mailchimp | cancelled |
+| Mailchimp | cancelled — reconfirmed 2026-09-21; later posted charges are unexpected, not planned bills |
+| Calendly | cancelled — owner-confirmed 2026-09-21 |
+| AICHATAPP | cancelled — owner-confirmed 2026-09-21; distinct from both ChatGPT Plus bills |
+| Pixieset | cancelled — owner-confirmed 2026-09-21 |
 | Guitar Tabs monthly | cancelled — distinct from Ultimate Guitar yearly $50 on May 8 |
 | GitHub annual | will not renew |
+
+The 2026-09-21 confirmation date is the fail-closed runtime boundary for these
+four newly confirmed services because no earlier exact cancellation date was
+provided. Charges dated on or before it remain historical evidence and receive
+no retroactive warning. A later eligible posted debit is household spending
+once and is disclosed on the incumbent Other Spending reconciliation as an
+unexpected cancelled-service charge. This does not recreate a `plan.bills` row.
 
 **Instacart** transactions are **Groceries**, not restaurants or a delivery
 category. **PayPal is a payment rail**, not itself a merchant or spending
