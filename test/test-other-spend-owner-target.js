@@ -163,9 +163,10 @@ console.log('\n=== 2. Named grocery / fuel / eating-out / guilt-free amounts are
   const restaurants = byId(live.plan, 'restaurants');
   const dale = byId(live.plan, 'dale-guilt-free');
   const amanda = byId(live.plan, 'amanda-guilt-free');
-  ok(groceries && groceries.plannedPayday === 450 && groceries.plannedMonthly === 900
-      && groceries.plannedWeekly == null,
-    'groceries stays plannedPayday 450 and plannedMonthly 900');
+  ok(groceries && groceries.plannedPayday === 900 && groceries.plannedMonthly == null
+      && groceries.plannedWeekly == null
+      && groceries.targetSource === 'owner-stated-2026-09-22',
+    'groceries is plannedPayday 900 with no stored monthly target');
   ok(fuel && fuel.plannedPayday === 325 && fuel.plannedMonthly == null,
     'fuel stays plannedPayday 325');
   ok(restaurants && restaurants.plannedPayday === 200 && restaurants.plannedMonthly == null,
@@ -203,8 +204,9 @@ console.log('\n=== 4. ownerTargets lock includes Other spend $800/month ===');
   ok(/Other spend \$800\/month/.test(note) && /plannedMonthly 800/.test(note)
       && /other-spend/.test(note) && /2026-09-18/.test(note),
     'ownerTargets.note records the Other spend $800/month lock');
-  ok(/\$1,375\.00/.test(note) && /\$1,275\.00/.test(note),
-    'payday-cycle totals stay $1,375.00 / $1,275.00; $800/month is not converted into a payday hold');
+  ok(/\$1,825\.00/.test(note) && /\$1,725\.00/.test(note)
+      && !/\$1,375\.00/.test(note) && !/\$1,275\.00/.test(note),
+    'payday-cycle totals are $1,825.00 / $1,725.00; $800/month is not converted into a payday hold');
 }
 
 console.log('\n=== 5. Forecast Other spending confirmation row is not the planning home ===');
@@ -460,8 +462,8 @@ console.log('\n=== 9. Budget breakdown shows the target-only Other spend row ===
       .filter(Boolean)
       .sort();
     const latestOwner = ownerDates[ownerDates.length - 1] || '';
-    ok(latestOwner === '2026-09-18',
-      'independent latest owner-stated date on the live plan is 2026-09-18',
+    ok(latestOwner === '2026-09-22',
+      'independent latest owner-stated date on the live plan is the 2026-09-22 groceries instruction',
       latestOwner);
     ok(String(csvRow('Essential spending estimate')[19] || '') >= latestOwner,
       'positions.csv essential-spending as_of is not earlier than the owner target',
@@ -471,7 +473,7 @@ console.log('\n=== 9. Budget breakdown shows the target-only Other spend row ===
       String(csvRow('Weeks of essentials covered')[19] || ''));
     ok(String(csvRow('Essential spending estimate')[20] || '').includes(`owner budget target ${latestOwner}`)
         && String(csvRow('Weeks of essentials covered')[20] || '').includes(`owner budget target ${latestOwner}`),
-      'derived essentials notes name the Sep 18 owner target');
+      'derived essentials notes name the latest owner-target date');
   }
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

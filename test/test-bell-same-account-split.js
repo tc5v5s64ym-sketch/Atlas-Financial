@@ -41,8 +41,11 @@ const AFFIRM = 32.53;
 const PLANNED_BELL = 283.94;
 const PRIME_ID = 'amazon-prime';
 const PRIME = 11.19;
-const PLANNED_HOLD = roundCent(450 + 325 + 200 + 150 + 150);
-const AUDITED_HOLD_BEFORE = 2287.17;
+const GROCERY_PAYDAY = 900;
+const PRIOR_GROCERY_PAYDAY = 450;
+const GROCERY_RESERVE_DELTA = GROCERY_PAYDAY - PRIOR_GROCERY_PAYDAY;
+const PLANNED_HOLD = roundCent(GROCERY_PAYDAY + 325 + 200 + 150 + 150);
+const AUDITED_HOLD_BEFORE = roundCent(2287.17 + GROCERY_RESERVE_DELTA);
 const UNRELATED = roundCent(AUDITED_HOLD_BEFORE - PLANNED_HOLD - LEG_SUM);
 const DALE = 4264;
 const AMANDA = 2168.85;
@@ -239,11 +242,12 @@ console.log('\n=== independent Sep 11–24 reconstruction, before any settlement
     'prior remaining $316.47 plus Prime $11.19; Bell and Prime leave Affirm');
   ok(near(INCOME, 6652.30),
     'period income is Dale 4264 + Amanda 2168.85 + child 219.45', String(INCOME));
-  ok(near(PLANNED_HOLD, 1275) && near(UNRELATED, 728.23),
-    'audited hold 2287.17 is the $1,275 payday targets plus $728.23 other plus the Bell legs');
-  ok(near(BAD_BEFORE_FULL, roundCent(952.06 - PRIME)),
-    'prior $952.06 falls by the Prime bill', String(BAD_BEFORE_FULL));
-  ok(near(BAD_AFTER, roundCent(1236 - PRIME))
+  ok(near(PLANNED_HOLD, 1725) && near(UNRELATED, 728.23),
+    'audited hold is the $1,725 payday targets plus $728.23 other plus the Bell legs');
+  ok(near(BAD_BEFORE_FULL, roundCent(952.06 - PRIME - GROCERY_RESERVE_DELTA)),
+    'prior $952.06 falls by the Prime bill and by the $450 groceries reserve increase',
+    String(BAD_BEFORE_FULL));
+  ok(near(BAD_AFTER, roundCent(1236 - PRIME - GROCERY_RESERVE_DELTA))
       && near(roundCent(BAD_BEFORE_FULL + LEG_SUM), BAD_AFTER),
     'settling Bell still raises BAD by the legs; Prime stays in the load',
     String(BAD_AFTER));

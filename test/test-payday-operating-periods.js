@@ -350,7 +350,7 @@ console.log('\n=== 6. Current-period actuals stay inside the payday window ===')
   const independentPlanned = 450;
   const independentRemaining = roundCent(independentPlanned - independentSpent);
   ok(groceries && near(groceries.planned, independentPlanned),
-    'Groceries planned is the incumbent $450 Seaspan-cycle target');
+    'fixture Groceries planned is the declared Seaspan-cycle target on this plan');
   ok(groceries && near(groceries.spent, independentSpent),
     'only Aug 28–asOf grocery txs reduce remaining',
     groceries && `spent=${groceries.spent}`);
