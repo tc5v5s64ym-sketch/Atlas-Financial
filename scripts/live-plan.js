@@ -43,7 +43,10 @@
  * in-window, carried-once, or prepaid for the new liveAsOf are merged
  * into that list; identity rediscovery stays additive. Unrepresented
  * joint-cash outflows stay reserved
- * via plan.opening.priorAsOf so Forecast does not drop them. Any once
+ * via plan.opening.priorAsOf so Forecast does not drop them.
+ * Unrepresented recurring card-paid reserved bills use that same
+ * priorAsOf carry boundary as reserved gravity; they do not become
+ * joint-cash withdrawals. Any once
  * joint-cash occurrence still carried as unresolved remains eligible
  * for identity-based settlement lookup even when its permitted posting
  * date has aged out of the ordinary 14-day current-state transaction

@@ -14,6 +14,7 @@ const path = require('path');
 const { sourceText } = require('./test-source-text');
 const F = require('../public/forecast.js');
 const O = require('../scripts/provider-observe.js');
+const Live = require('../scripts/live-plan.js');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -32,6 +33,7 @@ const AS_OF = '2026-08-19';
 const VIEW_END = '2026-11-17';
 const DUE = '2026-09-19';
 const NEXT = '2026-10-19';
+const LIVE_AFTER = '2026-09-22';
 const HAND_DATES = [DUE, NEXT];
 const HAND_RESERVE = roundCent(AMOUNT + AMOUNT);
 const AMANDA_SHOPPING = roundCent(SHOPPING + OTHER_PRIME_LIKE);
@@ -62,6 +64,131 @@ function fixtureMap() {
     },
   ]);
   return map;
+}
+
+function liveAccountMap() {
+  return load('docs/connectivity/fixtures/b81-account-map.json');
+}
+
+function cashValue(data, id) {
+  const rows = ((data.plan && data.plan.startingCash && data.plan.startingCash.breakdown) || []);
+  const row = rows.find(r => r && r.id === id);
+  return row ? Number(row.value) : null;
+}
+
+function debtRow(data, id) {
+  return ((data.debts || []).find(d => d && d.id === id)) || null;
+}
+
+function liveOverlayAccounts(data, asOf) {
+  const observed = asOf + 'T17:55:00.000Z';
+  const card = id => {
+    const row = debtRow(data, id);
+    return {
+      balance: row && row.balance != null ? Number(row.balance) : 0,
+      credit_limit: row && row.limit != null ? Number(row.limit) : undefined,
+    };
+  };
+  return [
+    {
+      id: 3001, name: 'BILLS ACCOUNT', type: 'cash', subtype: 'checking',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: cashValue(data, 'chequing-a'), updated_at: observed,
+    },
+    {
+      id: 3002, name: 'WEEKLY SPENDING', type: 'cash', subtype: 'checking',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: cashValue(data, 'chequing-b'), updated_at: observed,
+    },
+    {
+      id: 3003, name: 'EMERGENCY SAVING', type: 'cash', subtype: 'savings',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: cashValue(data, 'savings'), updated_at: observed,
+    },
+    {
+      id: 3004, name: 'PERSONAL CREDIT CARD', type: 'credit', subtype: 'credit_card',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: card('tdcc').balance, credit_limit: card('tdcc').credit_limit,
+      updated_at: observed,
+    },
+    {
+      id: 3005, name: 'TD CASH BACK VISA* CARD', type: 'credit', subtype: 'credit_card',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: card('cashback').balance, credit_limit: card('cashback').credit_limit,
+      updated_at: observed,
+    },
+    {
+      id: 3006, name: 'TRAVEL VISA', type: 'credit', subtype: 'credit_card',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: card('travelvisa').balance, credit_limit: card('travelvisa').credit_limit,
+      updated_at: observed,
+    },
+    {
+      id: 3007, name: 'LINE OF CREDIT - HOME EQUITY', type: 'loan', subtype: 'line_of_credit',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: card('heloc').balance, updated_at: observed,
+    },
+    {
+      id: 3008, name: 'MORTGAGE', type: 'loan', subtype: 'mortgage',
+      institution_name: 'TD Canada Trust', currency: 'cad',
+      balance: card('mortgage').balance, updated_at: observed,
+    },
+    {
+      id: 3010, name: 'TRIANGLE MASTERCARD', type: 'credit', subtype: 'credit_card',
+      institution_name: 'Canadian Tire Bank', currency: 'cad',
+      balance: card('triangle').balance, credit_limit: card('triangle').credit_limit,
+      updated_at: observed,
+    },
+  ];
+}
+
+function liveOverlay(asOf, txs) {
+  const data = liveData();
+  return Live.fromObservation({
+    data,
+    accountMap: liveAccountMap(),
+    identity: identityDoc(),
+    payload: {
+      provider: 'lunchmoney',
+      fetchedAt: asOf + 'T18:00:00.000Z',
+      source: 'Synthetic Amazon Prime live-cutover fixture. Not a live institution pull.',
+      pendingCoverage: {
+        complete: true,
+        basis: O.PENDING_COVERAGE_BASIS,
+        hasMore: false,
+        truncated: false,
+      },
+      transactionWindow: {
+        startDate: AS_OF,
+        endDate: asOf,
+        complete: true,
+        hasMore: false,
+        truncated: false,
+      },
+      accounts: liveOverlayAccounts(data, asOf),
+      categories: [
+        { id: 11, name: 'Shopping', is_income: false, exclude_from_totals: false },
+      ],
+      transactions: txs || [],
+    },
+  });
+}
+
+function liveTx(id, date, amount, payee, extra) {
+  return tx(id, date, amount, payee, 3006, extra);
+}
+
+function oneDayReservedDelta(planWith, planWithout, start) {
+  const opts = { weeklyVariable: 0, viewDays: 1, horizonDays: 1, targetBuffer: 0 };
+  const withRow = F.simulate(planWith, start, opts);
+  const withoutRow = F.simulate(planWithout, start, opts);
+  return roundCent((withRow.totals.reserved || 0) - (withoutRow.totals.reserved || 0));
+}
+
+function planWithoutPrime(plan) {
+  const next = JSON.parse(JSON.stringify(plan));
+  next.bills = (next.bills || []).filter(b => b && b.id !== ID);
+  return next;
 }
 
 function payload(asOf, txs) {
@@ -354,6 +481,79 @@ console.log('\n=== represented membership is not also guilt-free or Other ===');
     .filter(e => e && e.id === ID && e.jointCash !== false && !e.cardPaid);
   ok(joint.length === 0,
     'representing the card charge does not also deduct a joint-cash bill');
+}
+
+console.log('\n=== unmatched membership stays reserved across a live cutover ===');
+{
+  ok(AS_OF < DUE && DUE < LIVE_AFTER && LIVE_AFTER < NEXT,
+    'hand dates: opening 19 Aug, membership 19 Sep, live 22 Sep, next 19 Oct');
+  ok(roundCent(AMOUNT) === 11.19, 'one unmatched membership occurrence is independently $11.19');
+
+  const unmatched = liveOverlay(LIVE_AFTER, [
+    liveTx(9401, DUE, SHOPPING, 'Amazon'),
+    liveTx(9402, DUE, OTHER_PRIME_LIKE, 'Amazon Prime'),
+    liveTx(9403, DUE, AMOUNT, 'Amazon Prime Video'),
+  ]);
+  ok(unmatched.data && unmatched.data.liveOverlay && unmatched.data.liveOverlay.applied === true,
+    'freshness-qualified live overlay applies');
+  const livePlan = unmatched.data.plan;
+  ok(livePlan.opening && livePlan.opening.asOf === LIVE_AFTER
+      && livePlan.opening.priorAsOf === AS_OF,
+    'live opening advances past 19 Sep and records priorAsOf 19 Aug',
+    JSON.stringify(livePlan.opening && {
+      asOf: livePlan.opening.asOf,
+      priorAsOf: livePlan.opening.priorAsOf,
+    }));
+  ok(!(livePlan.opening.representedEvents || []).some(e => e && e.id === ID && e.date === DUE),
+    'shopping, $24.63, and Prime Video do not represent the membership');
+
+  const liveEvents = F.expandEvents(livePlan, LIVE_AFTER, NEXT)
+    .filter(e => e && e.id === ID);
+  const dueEvents = liveEvents.filter(e => e.date === DUE);
+  ok(dueEvents.length === 1 && dueEvents[0].cardPaid === true
+      && dueEvents[0].jointCash === false && near(-dueEvents[0].amount, AMOUNT)
+      && dueEvents[0].carriedUnresolved === true,
+    'exactly one unmatched $11.19 19 Sep occurrence stays due after the live cutover',
+    liveEvents.map(e => `${e.date}:${e.amount}:card=${e.cardPaid}`).join(','));
+  ok(liveEvents.some(e => e.date === NEXT && near(-e.amount, AMOUNT)),
+    '19 Oct remains the next scheduled occurrence');
+
+  const reserved = oneDayReservedDelta(livePlan, planWithoutPrime(livePlan), LIVE_AFTER);
+  ok(near(reserved, AMOUNT),
+    '1-day reserved gravity on 22 Sep is independently the unmatched $11.19',
+    `Δreserved=${reserved}`);
+
+  const noPrior = JSON.parse(JSON.stringify(livePlan));
+  delete noPrior.opening.priorAsOf;
+  const dropped = F.expandEvents(noPrior, LIVE_AFTER, LIVE_AFTER)
+    .filter(e => e && e.id === ID && e.date === DUE);
+  ok(dropped.length === 0,
+    'without priorAsOf the 19 Sep occurrence disappears — the live-cutover bug');
+  ok(near(oneDayReservedDelta(noPrior, planWithoutPrime(noPrior), LIVE_AFTER), 0),
+    'without priorAsOf the unmatched $11.19 is not reserved');
+
+  const settled = liveOverlay(LIVE_AFTER, [
+    liveTx(9411, DUE, AMOUNT, 'Amazon Prime'),
+    liveTx(9412, DUE, SHOPPING, 'Amazon'),
+    liveTx(9413, DUE, OTHER_PRIME_LIKE, 'Amazon Prime'),
+  ]);
+  const settledPlan = settled.data.plan;
+  ok((settledPlan.opening.representedEvents || []).some(e => e && e.id === ID && e.date === DUE),
+    'a matching $11.19 Amazon Prime Travel Visa debit is represented once');
+  const settledDue = F.expandEvents(settledPlan, LIVE_AFTER, NEXT)
+    .filter(e => e && e.id === ID && e.date === DUE);
+  ok(settledDue.length === 0,
+    'the represented matching debit removes the 19 Sep occurrence once');
+  ok(near(oneDayReservedDelta(settledPlan, planWithoutPrime(settledPlan), LIVE_AFTER), 0),
+    'represented membership is not reserved again on the live opening');
+  const alias = liveOverlay(LIVE_AFTER, [
+    liveTx(9421, DUE, AMOUNT, 'Amazon.ca Prime'),
+  ]);
+  ok((alias.data.plan.opening.representedEvents || [])
+      .some(e => e && e.id === ID && e.date === DUE)
+    && !F.expandEvents(alias.data.plan, LIVE_AFTER, LIVE_AFTER)
+      .some(e => e && e.id === ID && e.date === DUE),
+    'Amazon.ca Prime at $11.19 also settles the carried 19 Sep occurrence once');
 }
 
 if (failures) {
