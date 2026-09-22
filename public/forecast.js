@@ -1335,6 +1335,12 @@
   // calendar and not a rewritten due date.
   function cashWalkDate(event, start) {
     if (event && start && event.date < start && isJointCashOutflow(event)) return start;
+    // Recurring card-paid reserved gravity uses the same priorAsOf carry
+    // boundary as joint-cash. The carry helper tags those events so a
+    // once card-paid row that already stays on expandEvents via
+    // onceOutflowDates keeps its existing application rule.
+    if (event && start && event.date < start && event.cardPaid === true
+      && event.carriedUnresolved === true) return start;
     return event && event.date;
   }
 
@@ -1343,9 +1349,11 @@
   // Recurring bills/obligations and dated commitments in
   // (plan.opening.priorAsOf, start) are not in that helper; emit them
   // here so cashWalkDate still reserves unrepresented joint-cash
-  // outflows at this opening. Represented names are omitted. Income is
-  // not invented. Nested expandEvents does not re-enter: inner start
-  // is not opening.asOf.
+  // outflows at this opening. Unrepresented recurring card-paid
+  // reserved bills in the same interval stay reserved gravity; they
+  // do not become joint-cash withdrawals. Represented names are
+  // omitted. Income is not invented. Nested expandEvents does not
+  // re-enter: inner start is not opening.asOf.
   //
   // That inner start is the lookback origin, so commitmentSettledBy
   // there uses the earlier cutoff rather than this Forecast opening.
@@ -1366,7 +1374,9 @@
     const inner = expandEvents(plan, from, to, opts);
     const extra = [];
     for (const event of inner) {
-      if (!isJointCashOutflow(event)) continue;
+      const cardPaidReserved = event && event.cardPaid === true
+        && event.amount < 0 && event.kind !== 'noncash';
+      if (!isJointCashOutflow(event) && !cardPaidReserved) continue;
       if (event.date < from || event.date > to) continue;
       if (event.kind === 'commitment') {
         const row = (plan.commitments || []).find(c => c && c.id === event.id);
@@ -1375,7 +1385,9 @@
       const key = event.id + '@' + event.date;
       if (represented.has(key)) continue;
       if (already && already.has(key)) continue;
-      extra.push(event);
+      extra.push(cardPaidReserved
+        ? Object.assign({}, event, { carriedUnresolved: true })
+        : event);
     }
     return extra;
   }

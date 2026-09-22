@@ -815,14 +815,14 @@
       "id": "CARD-003",
       "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
       "disposition": "EXCLUDED",
-      "exclusion_reason": "Amazon shopping on Travel Visa is repeating spending, not a subscription. Prime-like $11.19 day-19 hits are a flag only. MBNA Amazon is not Amanda by default. Not routed into plan.bills.",
-      "no_review_reason": "Standing Amazon + Travel Visa classification already lives in ACCOUNT_FACTS. This pack must not promote Prime or shopping cadence to a bill."
+      "exclusion_reason": "Amazon shopping on Travel Visa is repeating spending, not a subscription. MBNA Amazon is not Amanda by default. The separate $24.63 Prime-like charge is not the membership. Shopping and that $24.63 stay off plan.bills. The repeated $11.19 membership evidence is CARD-011.",
+      "no_review_reason": "Standing Amazon + Travel Visa classification already lives in ACCOUNT_FACTS. This shopping id must not promote shopping cadence to a bill."
     },
     {
       "id": "CARD-004",
       "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
       "disposition": "EXCLUDED",
-      "exclusion_reason": "Mailchimp, AICHATAPP, Calendly, Prime-like, and card INTEREST CHARGE hits are unplanned card candidates. AICHATAPP overlap vs ChatGPT Plus is not enough to call already planned. Interest is revolving-card interest, not a new bill.",
+      "exclusion_reason": "Mailchimp, AICHATAPP, Calendly, and card INTEREST CHARGE hits are unplanned card candidates. AICHATAPP overlap vs ChatGPT Plus is not enough to call already planned. Interest is revolving-card interest, not a new bill. The $11.19 Prime membership is CARD-011, not this id.",
       "no_review_reason": "Owner 2026-09-03: do not add plan.bills. Mailchimp already stays off subscriptions in plan.billsNote."
     },
     {
@@ -869,6 +869,15 @@
       "routed_to": {
         "path": "data.json",
         "json_pointer": "/plan/bills"
+      }
+    },
+    {
+      "id": "CARD-011",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills/22"
       }
     }
   ]

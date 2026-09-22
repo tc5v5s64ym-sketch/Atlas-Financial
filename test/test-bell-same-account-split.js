@@ -39,6 +39,8 @@ const LEG_B = 18.29;
 const LEG_SUM = roundCent(LEG_A + LEG_B);
 const AFFIRM = 32.53;
 const PLANNED_BELL = 283.94;
+const PRIME_ID = 'amazon-prime';
+const PRIME = 11.19;
 const PLANNED_HOLD = roundCent(450 + 325 + 200 + 150 + 150);
 const AUDITED_HOLD_BEFORE = 2287.17;
 const UNRELATED = roundCent(AUDITED_HOLD_BEFORE - PLANNED_HOLD - LEG_SUM);
@@ -46,8 +48,8 @@ const DALE = 4264;
 const AMANDA = 2168.85;
 const CHILD = 219.45;
 const INCOME = roundCent(DALE + AMANDA + CHILD);
-const REMAINING_BEFORE = roundCent(PLANNED_BELL + AFFIRM);
-const REMAINING_AFTER = AFFIRM;
+const REMAINING_BEFORE = roundCent(PLANNED_BELL + AFFIRM + PRIME);
+const REMAINING_AFTER = roundCent(AFFIRM + PRIME);
 const LOAD_PARTS = [
   ['fit4less', 'bills', 'amount', 11.54],
   ['mortgage', 'obligations', 'amount', 1600],
@@ -63,6 +65,7 @@ const LOAD_PARTS = [
   ['spotify', 'bills', 'amount', 26.87],
   ['tdcc', 'obligations', 'amount', 94.03],
   ['noble-garbage', 'bills', 'amount', 95.85],
+  [PRIME_ID, 'bills', 'amount', PRIME],
   [AFFIRM_ID, 'bills', 'amount', AFFIRM],
   ['heloc', 'obligations', 'cashPayment', 814.18],
 ];
@@ -225,21 +228,25 @@ console.log('\n=== independent Sep 11–24 reconstruction, before any settlement
   const plan = liveData().plan;
   ok(LOAD_PARTS.every(row => near(planField(plan, row[1], row[0], row[2]), row[3])),
     'each period-load part is the plan field, not a Forecast result');
-  ok(near(PERIOD_BILL_LOAD, 3413.07),
-    'hand sum of those plan fields is $3,413.07', String(PERIOD_BILL_LOAD));
+  ok(near(PERIOD_BILL_LOAD, roundCent(3413.07 + PRIME)),
+    'hand sum is the prior $3,413.07 Sep 11–24 load plus Amazon Prime $11.19',
+    String(PERIOD_BILL_LOAD));
   ok(near(LEG_SUM, PLANNED_BELL) && near(LEG_A + LEG_B, 283.94),
     'fixture legs sum to $283.94; that sum is evidence, not an identity key',
     String(LEG_SUM));
-  ok(near(REMAINING_BEFORE, 316.47) && near(roundCent(316.47 - PLANNED_BELL), AFFIRM),
-    '316.47 − 283.94 = 32.53 Affirm');
+  ok(near(REMAINING_BEFORE, roundCent(316.47 + PRIME))
+      && near(roundCent(REMAINING_BEFORE - PLANNED_BELL - PRIME), AFFIRM),
+    'prior remaining $316.47 plus Prime $11.19; Bell and Prime leave Affirm');
   ok(near(INCOME, 6652.30),
     'period income is Dale 4264 + Amanda 2168.85 + child 219.45', String(INCOME));
   ok(near(PLANNED_HOLD, 1275) && near(UNRELATED, 728.23),
     'audited hold 2287.17 is the $1,275 payday targets plus $728.23 other plus the Bell legs');
-  ok(near(BAD_BEFORE_FULL, 952.06),
-    '952.06 = 6652.30 − 3413.07 − 2287.17', String(BAD_BEFORE_FULL));
-  ok(near(BAD_AFTER, 1236) && near(roundCent(BAD_BEFORE_FULL + LEG_SUM), 1236),
-    '952.06 + 283.94 = 1,236.00', String(BAD_AFTER));
+  ok(near(BAD_BEFORE_FULL, roundCent(952.06 - PRIME)),
+    'prior $952.06 falls by the Prime bill', String(BAD_BEFORE_FULL));
+  ok(near(BAD_AFTER, roundCent(1236 - PRIME))
+      && near(roundCent(BAD_BEFORE_FULL + LEG_SUM), BAD_AFTER),
+    'settling Bell still raises BAD by the legs; Prime stays in the load',
+    String(BAD_AFTER));
   const pets = ((plan.budget && plan.budget.categories) || [])
     .find(c => c && c.id === 'pets');
   ok(pets && pets.paydayCadence === 'every-other-seaspan'
@@ -294,9 +301,13 @@ console.log('\n=== BEFORE: without the split opt-in the two BILLS legs do not se
   ok(affirm && affirm.status !== 'PAID' && near(affirm.remaining, AFFIRM),
     'Affirm remains the other unsettled bill');
   ok(active && near(active.remainingBills, REMAINING_BEFORE),
-    'remaining bills stay $316.47', String(active && active.remainingBills));
+    'remaining bills stay Bell + Affirm + Prime',
+    String(active && active.remainingBills));
+  const primeBefore = billRow(active, PRIME_ID);
+  ok(primeBefore && primeBefore.status !== 'PAID' && near(primeBefore.remaining, PRIME),
+    'Amazon Prime stays $11.19 remaining before Bell settlement');
   ok(active && near(active.periodBillLoad, PERIOD_BILL_LOAD),
-    'period bill load is $3,413.07 before settlement',
+    'period bill load includes Amazon Prime before settlement',
     String(active && active.periodBillLoad));
   const bellRecon = ((other && other.recon) || []).filter(tx =>
     tx && /bell/i.test(String(tx.displayedPayee || tx.originalMerchant || '')));
@@ -307,7 +318,7 @@ console.log('\n=== BEFORE: without the split opt-in the two BILLS legs do not se
     'Household Budget hold includes the duplicate Bell spending',
     String(active && active.budgetHold));
   ok(active && near(active.balanceAfterDeductions, BAD_BEFORE_FULL),
-    'Balance After Deductions is $952.06',
+    'Balance After Deductions subtracts the Prime bill',
     String(active && active.balanceAfterDeductions));
 }
 
@@ -349,9 +360,13 @@ console.log('\n=== AFTER: the explicit split settles Bell once ===');
   ok(affirm && affirm.status !== 'PAID' && near(affirm.remaining, AFFIRM),
     'Affirm remains $32.53 and is not settled by the Bell legs');
   ok(active && near(active.remainingBills, REMAINING_AFTER),
-    'remaining bills is $32.53', String(active && active.remainingBills));
+    'remaining bills is Affirm + Prime', String(active && active.remainingBills));
+  const prime = billRow(active, PRIME_ID);
+  ok(prime && prime.status !== 'PAID' && near(prime.remaining, PRIME),
+    'Amazon Prime stays $11.19 remaining and is not settled by the Bell legs');
   ok(active && near(active.periodBillLoad, PERIOD_BILL_LOAD),
-    'period bill load stays $3,413.07', String(active && active.periodBillLoad));
+    'period bill load stays the hand sum, including Prime',
+    String(active && active.periodBillLoad));
   ok(other && !((other.recon) || []).some(tx => linked.has(tx.id))
       && near(other.spent, UNRELATED),
     'neither Bell source transaction remains in Other Spending');
@@ -369,7 +384,7 @@ console.log('\n=== AFTER: the explicit split settles Bell once ===');
     String(active && active.budgetHold));
   ok(active && near(active.balanceAfterDeductions, BAD_AFTER)
       && near(roundCent(active.balanceAfterDeductions - BAD_BEFORE_FULL), LEG_SUM),
-    'Balance After Deductions rises exactly $283.94 to $1,236.00',
+    'Balance After Deductions rises exactly $283.94 when Bell settles',
     String(active && active.balanceAfterDeductions));
 }
 

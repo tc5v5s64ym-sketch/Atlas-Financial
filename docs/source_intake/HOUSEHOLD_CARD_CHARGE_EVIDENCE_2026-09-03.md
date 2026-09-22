@@ -21,6 +21,7 @@ CARD-007
 CARD-008
 CARD-009
 CARD-010
+CARD-011
 ```
 
 ## Coverage — do not pretend 18–24 months
@@ -71,11 +72,12 @@ sections). This pack does not rewrite it and does not generalize it.
 - **Travel Visa:** 36 shopping charges, bursty 2026-04-04 → 2026-09-03.
   Amanda guilt-free. **Not a subscription.** Repeating Amazon shopping
   is not a bill.
-- **Prime-like FLAG ONLY, not a planned bill:** merchant text
-  `Amazon Prime` / `Amazon.ca Prime`, **$11.19** on day 19 in June, July,
-  and August 2026, plus $11.19 on 2026-02-17 and 2026-03-17, and $24.63
-  on 2026-02-17. Prime is not automatically a bill. Not currently on
-  `plan.bills`. Do not add it from this flag.
+- **$24.63 Prime-like charge on 2026-02-17:** not the membership. Not a
+  bill. Stays outside `plan.bills` `amazon-prime`.
+- **Repeated $11.19 membership:** Travel Visa `Amazon Prime` /
+  `Amazon.ca Prime` on day 19 in June, July, and August 2026, plus
+  $11.19 on 2026-02-17 and 2026-03-17. That membership evidence is
+  declared as `CARD-011`. It is not this shopping id.
 - **MBNA:** one charge 2026-07-13 −$34.71 `amzn mktp ca*…`. Amazon on
   MBNA is not automatically Amanda. No cadence. Not a bill.
 - **Cash Back / Personal / Triangle:** no Amazon in this range.
@@ -93,7 +95,7 @@ owner confirmation before any later one-outcome promotion PR.
 | MAILCHIMP | Travel Visa | 5 | 31.73, 32.33, 33.20, 32.81, 32.53 | monthly day 3, 2026-05-03 → 2026-09-03 | Already off subscriptions in `plan.billsNote`. Card evidence does not promote it. |
 | AICHATAPP+18888287054 | Travel Visa | 4 | 44.99 × 4 | monthly day 2, 2026-06-02 → 2026-09-02 | Overlaps ChatGPT Plus **in topic only**. Different amount and day. **Not enough to call already planned.** Do not treat as `chatgpt-plus-dale` or `chatgpt-plus-amanda`. |
 | CALENDLY | Travel Visa | 4 | 19.09, 19.61, 19.37, 19.17 | monthly day 2, 2026-06-02 → 2026-09-02 | Not currently planned. |
-| Amazon Prime / Amazon.ca Prime $11.19 day 19 | Travel Visa | 3 | 11.19 × 3 (Jun/Jul/Aug) | see `CARD-003` | Flag only. Not a planned bill. |
+| Amazon Prime / Amazon.ca Prime $11.19 day 19 | Travel Visa | 3 | 11.19 × 3 (Jun/Jul/Aug) | see `CARD-011` | Membership evidence is `CARD-011`. This id does not consume it. |
 | INTEREST CHARGE -PURCHASE | Personal Credit Card (`tdcc`) | 7 | ~36–42 | monthly ~day 23 | Revolving interest, not a new `plan.bills` row. Forecast already models card interest on the debt. |
 | INTEREST CHARGE -PURCHASE | Cash Back Visa (`cashback`) | 6 | 60–159 | monthly ~day 7–8 | Same: interest on the card, not a bill. |
 
@@ -175,12 +177,32 @@ settlement/route evidence, not a proven recurring amount); Telus
 CLOSED; Affirm one remaining $32.53 due 2026-09-21; CMAW $25/month
 cancelled.
 
+## Amazon Prime membership — routed from this pack's $11.19 evidence
+`CARD-011`
+
+Owner 2026-09-22: the repeated Travel Visa `Amazon Prime` /
+`Amazon.ca Prime` **$11.19** charges are the confirmed membership.
+Routed to live `plan.bills` `amazon-prime`. This id is that membership
+evidence only.
+
+Observed in this pack: **$11.19** on day 19 in June, July, and August
+2026, plus $11.19 on 2026-02-17 and 2026-03-17. The February and March
+17th hits do not move the due day. The 19 August charge is not reserved
+again on the 2026-08-19 opening.
+
+Not this id: ordinary Amazon shopping, the separate **$24.63**
+Prime-like charge on 2026-02-17, MBNA Amazon, Mailchimp, AICHATAPP,
+Calendly, Phoenix, Shopify, or card interest. Those stay on `CARD-003`,
+`CARD-004`, `CARD-002`, and `CARD-005` as excluded.
+
 ## What this package does not do
 
 - Create or edit `plan.bills`.
 - Write Lunch Money, recategorize, or add merchant rules.
-- Promote Mailchimp, Calendly, AICHATAPP, Amazon Prime, Phoenix,
-  Shopify, annual fees, or card interest to Forecast bills.
+- Promote Mailchimp, Calendly, AICHATAPP, Phoenix,
+  Shopify, annual fees, or card interest to Forecast bills. The $11.19
+  membership is `CARD-011`, routed after the owner 2026-09-22
+  instruction. This pack's remaining CARD ids stay excluded.
 - Treat AICHATAPP $44.99 on day 2 as ChatGPT Plus.
 - Treat two Phoenix hits as a monthly $179 bill.
 - Claim 18–24 months of card history.

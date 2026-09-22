@@ -307,6 +307,8 @@ console.log('\n=== dated subtraction uses yearly amount/12, not $50/month ===');
   ok(subs && near(subs.dated, independentDated),
     'subscriptions dated total is the owner bills, yearly as amount/12',
     String(subs && subs.dated));
+  ok(!(subs.datedItems || []).some(item => /amazon prime/i.test(item.label || '')),
+    'Amazon Prime membership is not a subscriptions-category smear');
   ok(subs.datedItems.some(item => item.label === 'Ultimate Guitar'
       && near(item.amount, 50 / 12)),
     'Ultimate Guitar dated subtraction is $50/12, not $50');

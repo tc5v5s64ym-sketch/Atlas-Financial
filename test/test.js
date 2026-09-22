@@ -33,6 +33,7 @@ const suites = [
   ['opening-gap recovery does not auto-borrow', 'test-opening-gap-no-auto-borrow.js'],
   ['quarterly recurrence (every 3 months)', 'test-quarterly-recurrence.js'],
   ['owner-confirmed subscription bills', 'test-owner-subscription-bills.js'],
+  ['Amazon Prime membership subscription', 'test-amazon-prime-membership.js'],
   ['income dependency deadline', 'test-income-deadline.js'],
   ['next due obligation', 'test-next-due.js'],
   ['next payment out', 'test-next-payment-out.js'],
