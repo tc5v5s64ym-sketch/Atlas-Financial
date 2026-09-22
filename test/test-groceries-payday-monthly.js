@@ -474,6 +474,26 @@ console.log('\n=== 7. Month and trajectory consume the payday authority, not a s
     'live month grocery target is the same annualized payday authority',
     liveG ? String(liveG.target) : 'missing');
 
+  // Independent of figures-snapshot.js: published weekly essentials are
+  // requiredMonthly / (365.25/12/7). The positions.csv weeks-covered note
+  // uses monthly × 12/52 and is not budget.requiredPerWeek.
+  const liveFuel = (liveBd.categories || []).find(c => c.id === 'fuel');
+  const independentRequiredWeekly = roundCent(liveBd.requiredMonthly / WEEKS_PER_MONTH);
+  const foodFuelMonthly = roundCent((liveG && liveG.planned || 0) + (liveFuel && liveFuel.planned || 0));
+  const independentFoodFuelWeekly = roundCent(foodFuelMonthly / WEEKS_PER_MONTH);
+  const positionsWeeklySmear = roundCent(liveBd.requiredMonthly * 12 / 52);
+  ok(near(liveBd.requiredMonthly, 4859.94),
+    'live required monthly is the published $4,859.94',
+    String(liveBd.requiredMonthly));
+  ok(near(independentRequiredWeekly, 1117.69)
+      && !near(positionsWeeklySmear, independentRequiredWeekly)
+      && near(positionsWeeklySmear, 1121.52),
+    'published weekly essentials are $1,117.69, not the 12/52 smear $1,121.52',
+    `${independentRequiredWeekly} smear=${positionsWeeklySmear}`);
+  ok(near(foodFuelMonthly, 2663.28) && near(independentFoodFuelWeekly, 612.50),
+    'published food-and-fuel weekly is $612.50 from the same calendar conversion',
+    `${foodFuelMonthly} → ${independentFoodFuelWeekly}`);
+
   const monthOnly = {
     windowDays: 91,
     startingCash: { amount: 8000 },
