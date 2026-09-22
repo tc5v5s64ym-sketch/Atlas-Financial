@@ -167,8 +167,10 @@ const liveBell = (live.plan.bills || []).find(b => b.id === 'bell');
 const liveTelecom = (live.plan.budget.categories || []).find(c => c.id === 'telecom');
 ok(liveBell && liveBell.day === 15 && liveBell.needsDate !== true
     && near(liveBell.amount, 160) && liveBell.firstDue === '2026-10-15'
-    && liveBell.payingAccount === 'travelvisa' && liveBell.jointCash === false,
-  'live Bell standing is dated on the 15th from Oct, card-paid Travel Visa, not needsDate');
+    && liveBell.payingAccount === 'chequing-a' && liveBell.jointCash !== false
+    && F.billAffectsJointCash(liveBell, live.plan) === true
+    && F.isCardPaidBill(liveBell, live.plan) === false,
+  'live Bell standing is dated on the 15th from Oct as a BILLS ACCOUNT withdrawal, not needsDate');
 ok(liveTelecom && liveTelecom.currentMonthly == null,
   'live telecom no longer holds an undated currentMonthly reserve');
 ok(((live.plan.bills || []).filter(b => b.id === 'bell')).length === 1
@@ -257,8 +259,11 @@ const liveWant = 283.94 + 160 * liveStandingCount;
 ok(near(liveOff.ending - liveOn.ending, liveWant),
   'live plan: removing Bell once + standing lifts the knowledge walk by $283.94 + $160 per Oct+ 15th',
   money(liveOff.ending - liveOn.ending));
-ok(near(liveOn.totals.reserved - liveOff.totals.reserved, liveWant),
-  'live reserved delta is that same dated Bell total — no second smear',
+ok(near(liveOn.totals.bills - liveOff.totals.bills, 160 * liveStandingCount),
+  'live standing Bell lands in joint-cash bills, $160 per Oct+ 15th',
+  money(liveOn.totals.bills - liveOff.totals.bills));
+ok(near(liveOn.totals.reserved - liveOff.totals.reserved, 283.94),
+  'live reserved delta is the September once only',
   money(liveOn.totals.reserved - liveOff.totals.reserved));
 
 console.log('\n=== 11–13. Travel Visa settlement stays distinct; no double chequing hit ===');
@@ -440,11 +445,11 @@ const telecom = bd.categories.find(c => c.id === 'telecom');
 const shaw = (live.plan.bills || []).find(b => b.id === 'shaw');
 const monthsInWindow = (live.plan.windowDays || 91) / (365.25 / 12);
 const onceMonthly = 283.94 / monthsInWindow;
-ok(telecom && telecom.source === 'current-regime' && near(telecom.current, 160 + onceMonthly)
+ok(telecom && telecom.source === 'current-regime' && near(telecom.current, onceMonthly)
     && near(telecom.reserved, 0) && near(telecom.planned, 0)
     && near(telecom.dated, shaw.amount + 160 + onceMonthly),
-  'live telecom dated is Shaw + standing $160 + Sep once smear; reserved smear is gone',
-  telecom && `${money(telecom.dated)} dated / ${money(telecom.reserved)} reserved`);
+  'live telecom dated is Shaw + standing $160 + Sep once smear; standing is not a reserved smear',
+  telecom && `${money(telecom.dated)} dated / ${money(telecom.current)} current`);
 ok(telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, 160))
     && telecom.datedItems.some(i => /bell/i.test(i.label) && near(i.amount, onceMonthly))
     && telecom.datedItems.some(i => /shaw/i.test(i.label) && near(i.amount, shaw.amount)),
@@ -486,9 +491,10 @@ ok(!near(mutDelta, want) && near(mutDelta, (BELL + WATCH_LINE_AGAIN) * occurrenc
 const facts = sourceText(fs.readFileSync(
   path.join(__dirname, '..', 'docs/ACCOUNT_FACTS.md'), 'utf8'));
 ok(/\$104\.20 \+ \$16\.80 = \$121\.00/.test(facts) && /15th/.test(facts)
+    && /BILLS ACCOUNT joint-cash withdrawal/.test(facts)
     && /card-paid Travel Visa reserved gravity/.test(facts)
     && /\$160\/month/.test(facts) && /\$265\.65/.test(facts),
-  'ACCOUNT_FACTS records standing $160, Sep once $283.94, and $121 as historical');
+  'ACCOUNT_FACTS records standing $160 on BILLS ACCOUNT, the Sep once, and $121 as historical');
 ok(!/Forecast reserves that \$121\.00 as undated current-regime cash/.test(facts),
   'ACCOUNT_FACTS no longer describes Bell timing as an undated smear');
 

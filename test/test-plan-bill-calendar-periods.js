@@ -393,8 +393,8 @@ console.log('\n=== 6. Bell has no invented date; historical LM txs are not rewri
   ok(!/fs\.writeFileSync/.test(liveSrc),
     'live-plan.js does not write data.json');
   ok((live.plan.bills || []).some(b => b.id === 'bell' && b.day === 15
-      && b.payingAccount === 'travelvisa' && b.jointCash === false),
-    'live Bell row is dated card-paid on the 15th');
+      && b.payingAccount === 'chequing-a' && b.jointCash !== false),
+    'live Bell row is dated on the 15th from BILLS ACCOUNT');
 }
 
 console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ===');
@@ -412,8 +412,8 @@ console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ==
     const row = (live.plan.bills || []).find(b => b.id === id)
       || (live.plan.obligations || []).find(o => o.id === id);
     if (id === 'bell') {
-      ok(row && row.payingAccount === 'travelvisa' && row.jointCash === false && row.day === 15,
-        'bell future payingAccount is Travel Visa card-paid on the 15th');
+      ok(row && row.payingAccount === 'chequing-a' && row.jointCash !== false && row.day === 15,
+        'bell future payingAccount is BILLS ACCOUNT on the 15th');
       continue;
     }
     if (id === 'bell-sep15-2026') {

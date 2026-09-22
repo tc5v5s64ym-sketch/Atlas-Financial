@@ -1894,6 +1894,59 @@ function twoLegSumAccepted(hits) {
   return postingDates.size === 1;
 }
 
+// One occurrence's hits, already limited to a single settlement shape.
+// Two-leg-sum accepts only an incumbent pair. One same-account split
+// leg is never a settlement. Anything else with several hits is ambiguous
+// unless every hit is an amount-at-least coverage of that same occurrence.
+function classifyOccurrenceHits(key, hits) {
+  const empty = { unique: null, ambiguous: null };
+  if (!hits || !hits.length) return empty;
+  if (hits.every(hit => hit && hit.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM)) {
+    if (twoLegSumAccepted(hits)) return { unique: combineTwoLegHits(hits), ambiguous: null };
+    if (hits.length > 2) {
+      return {
+        unique: null,
+        ambiguous: {
+          key,
+          id: hits[0] && hits[0].id,
+          date: hits[0] && hits[0].date,
+          hits,
+          reason: 'multiple-compatible-candidates',
+          candidateCount: hits.length,
+        },
+      };
+    }
+    return empty;
+  }
+  if (hits.length === 1) {
+    // An explicit same-account split opt-in is never a one-leg settlement,
+    // including when settlesWhen was omitted on that rule.
+    if (hits[0] && hits[0].sameAccountSplitLegs === true) return empty;
+    return { unique: hits[0], ambiguous: null };
+  }
+  const sameOccurrence = hits.every(hit => hit && hit.id === hits[0].id
+    && hit.date === hits[0].date);
+  const amountAtLeast = hits.every(hit => hit
+    && hit.settlesWhen === SETTLES_WHEN_AMOUNT_AT_LEAST);
+  if (sameOccurrence && amountAtLeast) {
+    const ordered = hits.slice().sort((a, b) =>
+      String(a.postingDate).localeCompare(String(b.postingDate))
+      || String(a.providerTransactionId).localeCompare(String(b.providerTransactionId)));
+    return { unique: ordered[0], ambiguous: null };
+  }
+  return {
+    unique: null,
+    ambiguous: {
+      key,
+      id: hits[0] && hits[0].id,
+      date: hits[0] && hits[0].date,
+      hits,
+      reason: 'multiple-compatible-candidates',
+      candidateCount: hits.length,
+    },
+  };
+}
+
 function representedEventHitGroups(input) {
   const empty = { unique: [], ambiguous: [] };
   if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
@@ -1974,47 +2027,42 @@ function representedEventHitGroups(input) {
   const unique = [];
   const ambiguous = [];
   for (const [key, hits] of eventHits) {
-    if (hits.length && hits.every(hit => hit && hit.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM)) {
-      if (twoLegSumAccepted(hits)) {
-        unique.push(combineTwoLegHits(hits));
-      } else if (hits.length > 2) {
-        ambiguous.push({
-          key,
-          id: hits[0] && hits[0].id,
-          date: hits[0] && hits[0].date,
-          hits,
-          reason: 'multiple-compatible-candidates',
-          candidateCount: hits.length,
-        });
-      }
+    const twoLegHits = hits.filter(hit => hit && hit.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM);
+    const otherHits = hits.filter(hit => !hit || hit.settlesWhen !== SETTLES_WHEN_TWO_LEG_SUM);
+    // A pure shape keeps the incumbent decision. Standing bell is the
+    // occurrence that can carry both a Travel Visa debit and a chequing-a
+    // two-leg pair. Those shapes are judged separately. A subset that is
+    // not an accepted pair does not veto the other shape. Two accepted
+    // shapes for one occurrence stay unresolved.
+    if (!twoLegHits.length || !otherHits.length) {
+      const classified = classifyOccurrenceHits(key, hits);
+      if (classified.unique) unique.push(classified.unique);
+      else if (classified.ambiguous) ambiguous.push(classified.ambiguous);
       continue;
     }
-    if (hits.length === 1) {
-      // An explicit same-account split opt-in is never a one-leg settlement,
-      // including when settlesWhen was omitted on that rule.
-      if (hits[0] && hits[0].sameAccountSplitLegs === true) continue;
-      unique.push(hits[0]);
+    const twoClass = classifyOccurrenceHits(key, twoLegHits);
+    const otherClass = classifyOccurrenceHits(key, otherHits);
+    if (twoClass.unique && otherClass.unique) {
+      ambiguous.push({
+        key,
+        id: hits[0] && hits[0].id,
+        date: hits[0] && hits[0].date,
+        hits,
+        reason: 'multiple-compatible-candidates',
+        candidateCount: hits.length,
+      });
       continue;
     }
-    const sameOccurrence = hits.every(hit => hit && hit.id === hits[0].id
-      && hit.date === hits[0].date);
-    const amountAtLeast = hits.every(hit => hit
-      && hit.settlesWhen === SETTLES_WHEN_AMOUNT_AT_LEAST);
-    if (sameOccurrence && amountAtLeast) {
-      const ordered = hits.slice().sort((a, b) =>
-        String(a.postingDate).localeCompare(String(b.postingDate))
-        || String(a.providerTransactionId).localeCompare(String(b.providerTransactionId)));
-      unique.push(ordered[0]);
+    if (twoClass.unique) {
+      unique.push(twoClass.unique);
       continue;
     }
-    ambiguous.push({
-      key,
-      id: hits[0] && hits[0].id,
-      date: hits[0] && hits[0].date,
-      hits,
-      reason: 'multiple-compatible-candidates',
-      candidateCount: hits.length,
-    });
+    if (otherClass.unique) {
+      unique.push(otherClass.unique);
+      continue;
+    }
+    if (twoClass.ambiguous) ambiguous.push(twoClass.ambiguous);
+    else if (otherClass.ambiguous) ambiguous.push(otherClass.ambiguous);
   }
   const byTx = new Map();
   for (const hit of unique) {

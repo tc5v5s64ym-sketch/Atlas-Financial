@@ -237,8 +237,11 @@ Current evidenced active services:
 - **Shaw internet** — **$78.40/month**, dated on the calendar, paid from
   BILLS ACCOUNT (joint chequing).
 - **Bell Mobility — standing** — owner 2026-09-19 **$160/month** on the
-  **15th** (rounded from ~$159.03 current charges), card-paid Travel Visa.
-  `plan.bills` `bell`, `firstDue` 2026-10-15. Not a joint-chequing bill.
+  **15th** (rounded from ~$159.03 current charges). `plan.bills` `bell`,
+  `firstDue` 2026-10-15. Owner 2026-09-21: autopay is set, and the planned
+  paying account is BILLS ACCOUNT (Chequing A, `chequing-a`). That is a
+  joint-cash withdrawal. The institution account number is not restated
+  here.
 - **Bell Mobility — September 2026 once** — owner 2026-09-19 (Dale,
   direct): **$283.94** due **2026-09-15**, the catch-up / wife
   payment-mess total. Supersedes the same-day **$265.65** PDF reading.
@@ -256,12 +259,32 @@ Current evidenced active services:
   `representedActuals` and marks PAID; without that pair the bill stays
   still-due.
 - **Bell Mobility — standing Travel Visa settlement identity** — a mapped
-  Travel Visa debit whose payee is Bell Mobility / BELLMOBILITY settles
-  standing `bell` from 2026-10-15 by payee + Travel Visa + debit +
-  early-or-covers-due. Amount is not identity. A BILLS / WEEKLY debit is
-  not the standing identity. A posting that still covers
-  `bell-sep15-2026` is that once due, not this series. This does not
-  close Q18's historical pending $250 / residual cash question.
+  Travel Visa debit whose payee is Bell Mobility / BELLMOBILITY still
+  settles standing `bell` from 2026-10-15 by payee + Travel Visa + debit +
+  early-or-covers-due. Amount is not identity. This rule is the Travel
+  Visa debit only. It is not the planned paying account. A posting that
+  still covers `bell-sep15-2026` is that once due, not this series. One
+  BILLS leg, or any BILLS subset that is not an accepted pair, does not
+  block this debit. An accepted BILLS pair and this debit for the same
+  occurrence stay unresolved. This does not close Q18's historical pending
+  $250 / residual cash question.
+- **Bell Mobility — standing BILLS two-leg settlement identity** — the
+  same proven shape as the September once: exactly two posted Bell
+  Mobility / BELLMOBILITY debits on canonical chequing-a, the same
+  household posting date, debit, early-or-due, settle one standing
+  `bell` occurrence from 2026-10-15. The standing rule opts into
+  same-account split legs. Amount is not identity and the sum is not
+  identity; the planned **$160** stays the scheduled amount. One posted
+  BILLS Bell debit, including one posted plus one pending leg, does not
+  settle. Three legs, a duplicate id, a mixed merchant, a different
+  account, or two posting dates do not settle. The September once is not
+  reused, and one payment's transaction ids cannot settle both September
+  and a standing occurrence. The Travel Visa single-debit rule remains.
+  A BILLS subset that is not an accepted pair does not block that debit.
+  An accepted BILLS pair and a Travel Visa debit for the same standing
+  occurrence stay unresolved. Planned paying account is BILLS ACCOUNT.
+  This does not change the $160 amount, the 15th cadence, or
+  `firstDue` 2026-10-15, and it does not close Q18.
 - **Main Bell Mobility (historical June 2026 reconstruction)** — June
   2026 normal recurring baseline **$104.20/month** (card-paid). Includes
   the $15 watch line. Retired as the forward baseline.
@@ -272,11 +295,11 @@ Current evidenced active services:
 - **Telus** — **$0** forward.
 
 Forward Bell telecom is therefore **$160/month** from 2026-10-15, plus
-the September 2026 once **$283.94** due 2026-09-15, planned on the
-**15th** as card-paid Travel Visa reserved gravity. That is the one
-recurring Bell baseline plus the one September catch-up total. The
-plan does not also reserve a joint-chequing withdrawal for that once
-row. Posted September settlement is the two-leg chequing-a identity
+the September 2026 once **$283.94** due 2026-09-15. The standing series
+is a BILLS ACCOUNT joint-cash withdrawal. The September once stays
+card-paid Travel Visa reserved gravity. That is the one recurring Bell
+baseline plus the one September catch-up total. The plan does not also
+reserve a joint-chequing withdrawal for that once row. Posted September settlement is the two-leg chequing-a identity
 above, not a second planned bill. The planned once row is not an undated
 `currentMonthly` smear and not a second copy beside the later Travel
 Visa payment. The unusual August 17 due date is not the permanent

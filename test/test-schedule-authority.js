@@ -106,8 +106,14 @@ console.log('\n=== ICS payments bijection with expandEvents ===');
     'Hydro Sept. 1 is an ICS payment from BILLS ACCOUNT');
   ok(!built.reminders.some(r => r.sourceId === 'hydro-due-sep1'),
     'Hydro Sept. 1 is no longer an external-cash reminder');
-  ok(built.payments.filter(p => p.sourceId === 'bell').every(p => /card-paid reserve/.test(p.summary)),
-    'Bell ICS payments are labelled card-paid reserves, not ordinary chequing outflows');
+  const standingBellIcs = built.payments.filter(p => p.sourceId === 'bell');
+  const sepBellIcs = built.payments.filter(p => p.sourceId === 'bell-sep15-2026');
+  ok(standingBellIcs.length > 0
+      && standingBellIcs.every(p => !/card-paid reserve/.test(p.summary)),
+    'standing Bell ICS payments are ordinary chequing outflows, not card-paid reserves');
+  ok(sepBellIcs.length === 1
+      && sepBellIcs.every(p => /card-paid reserve/.test(p.summary)),
+    'September once ICS payment remains a card-paid reserve');
 }
 
 console.log('\n=== reminder separation ===');

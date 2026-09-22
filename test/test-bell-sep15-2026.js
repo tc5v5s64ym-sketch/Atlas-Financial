@@ -4,7 +4,8 @@
  * September 2026 is the once row bell-sep15-2026 $283.94 due 2026-09-15
  * (owner 2026-09-19 catch-up / wife payment-mess total; supersedes $265.65).
  * Standing recurring bell is $160/month from firstDue 2026-10-15 so Sep
- * is not 283.94+160. Paying path stays travelvisa / jointCash false.
+ * is not 283.94+160. The September once stays travelvisa / jointCash false.
+ * Standing Bell from October is a BILLS ACCOUNT joint-cash withdrawal.
  * Amount encoding does not invent settledOn / representedEvents on the
  * bill rows. Travel Visa settlement identity is a separate outcome.
  *
@@ -95,8 +96,7 @@ function fixturePlan() {
         amount: STANDING_AMT,
         confidence: 'confirmed',
         budgetCategory: 'telecom',
-        payingAccount: PAYER,
-        jointCash: false,
+        payingAccount: 'chequing-a',
       },
     ],
     commitments: [],
@@ -169,9 +169,9 @@ console.log('\n=== 2. synthetic expandEvents: Sep is the once only ===');
     'October–December standing dates match the independent hand list',
     laterStanding.map(e => e.date).join(','));
   ok(laterStanding.length === 3 && laterStanding.every(e =>
-      near(-e.amount, STANDING_AMT) && e.cardPaid === true
-      && e.jointCash === false && e.payingAccount === PAYER),
-    'Oct+ standing events are $160 card-paid travelvisa, not chequing');
+      near(-e.amount, STANDING_AMT) && e.cardPaid !== true
+      && e.jointCash !== false && e.payingAccount === 'chequing-a'),
+    'Oct+ standing events are $160 joint-cash withdrawals from BILLS ACCOUNT');
   ok(laterOnce.length === 1 && laterOnce[0].date === ONCE_DUE
       && near(-laterOnce[0].amount, ONCE_AMT),
     'unpaid Sep once remains a single carried $283.94 event, not rewritten as $160');
@@ -213,7 +213,8 @@ console.log('\n=== 4. travelvisa path; still-due without invented settle ===');
     'fixture does not invent settledOn or representedEvents on the Bell rows');
   const identity = load('docs/connectivity/transaction-identity.json');
   const onceRule = (identity.rules || []).find(r => r && r.eventId === ONCE_ID);
-  const standingRule = (identity.rules || []).find(r => r && r.eventId === STANDING_ID);
+  const standingRule = (identity.rules || []).find(r => r && r.eventId === STANDING_ID
+    && r.atlasAccountId === PAYER);
   ok(onceRule && standingRule
       && onceRule.atlasAccountId === 'chequing-a'
       && onceRule.direction === 'debit'
@@ -224,12 +225,12 @@ console.log('\n=== 4. travelvisa path; still-due without invented settle ===');
       && standingRule.direction === 'debit'
       && !standingRule.settlesWhen
       && !standingRule.sameAccountSplitLegs,
-    'September settlement is the explicit chequing-a split; standing stays Travel Visa and neither invents schedule-trust');
+    'September settlement is the explicit chequing-a split; the Travel Visa standing rule remains a single debit and neither invents schedule-trust');
   ok(near(ONCE_AMT, 283.94) && near(STANDING_AMT, 160),
     'amount-encoding literals stay $283.94 once and $160 standing');
   const sim = F.simulate(plan, '2026-09-10', { weeklyVariable: 0, horizonDays: 40 });
-  ok(near(sim.totals.bills, 0) && near(sim.totals.reserved, ONCE_AMT + STANDING_AMT),
-    'card-paid Bell is reserved gravity, not a chequing / BILLS withdrawal',
+  ok(near(sim.totals.bills, STANDING_AMT) && near(sim.totals.reserved, ONCE_AMT),
+    'standing Bell withdraws from joint cash; the September once stays reserved',
     `${sim.totals.reserved} reserved / ${sim.totals.bills} bills`);
 }
 
@@ -246,9 +247,9 @@ console.log('\n=== 5. live plan encodes the owner amounts without a second plann
     'live bell-sep15-2026 is the confirmed $283.94 once on travelvisa / telecom');
   ok(standing && standing.frequency === 'monthly' && standing.day === DAY
       && standing.firstDue === FIRST_DUE && near(standing.amount, STANDING_AMT)
-      && standing.payingAccount === PAYER && standing.jointCash === false
+      && standing.payingAccount === 'chequing-a' && standing.jointCash !== false
       && standing.confidence === 'confirmed' && standing.budgetCategory === 'telecom',
-    'live bell is confirmed $160 monthly from 2026-10-15 on travelvisa');
+    'live bell is confirmed $160 monthly from 2026-10-15 on BILLS ACCOUNT');
   ok(!rows.some(b => b.id !== ONCE_ID && b.id !== STANDING_ID),
     'live Bell bills are exactly the Sep once and the standing series',
     rows.map(b => b.id).join(','));
@@ -282,9 +283,9 @@ console.log('\n=== 6. live expandEvents / recommend: no Sep double-count ===');
     'live September is not 283.94+160');
   ok(standing.map(e => e.date).join(',') === expected.join(','),
     'live October–December standing dates match the independent hand list');
-  ok(standing.every(e => near(-e.amount, STANDING_AMT) && e.cardPaid === true
-      && e.jointCash === false && e.payingAccount === PAYER),
-    'live Oct+ standing is $160 on travelvisa');
+  ok(standing.every(e => near(-e.amount, STANDING_AMT) && e.cardPaid !== true
+      && e.jointCash !== false && e.payingAccount === 'chequing-a'),
+    'live Oct+ standing is $160 from BILLS ACCOUNT');
 
   const rec = F.recommend(live.plan, '2026-09-10', {
     debts: live.debts, targetBuffer: 0, periods: load('public/periods.json'),
@@ -305,11 +306,10 @@ console.log('\n=== 6. live expandEvents / recommend: no Sep double-count ===');
   const sim = F.simulate(live.plan, asOf, {
     scenario: 'expected', weeklyVariable: 0, targetBuffer: live.plan.defaults.targetBuffer,
   });
-  const wantBell = independentlyBillOccurrenceAmount(
-    live.plan.bills.find(b => b.id === ONCE_ID), ONCE_DUE)
-    + independentMonthlyDates(DAY, asOf, windowEnd, FIRST_DUE).length * STANDING_AMT;
-  ok(near(independent, wantBell) || independent >= ONCE_AMT,
-    'independent card-paid reserved reconstruction includes the Sep once and Oct+ $160');
+  const standingBill = live.plan.bills.find(b => b.id === STANDING_ID);
+  ok(F.billAffectsJointCash(standingBill, live.plan) === true
+      && F.isCardPaidBill(standingBill, live.plan) === false,
+    'live standing Bell is joint cash and is outside the card-paid reserved total');
   ok(near(sim.totals.reserved, independent)
       || Math.abs(sim.totals.reserved - independent) < 0.02,
     'live reserved ledger agrees with the independent card-paid reconstruction',

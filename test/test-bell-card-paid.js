@@ -223,8 +223,10 @@ ok(telecom && telecom.currentMonthly == null && telecom.plannedMonthly == null,
 ok((live.plan.bills || []).some(b => b.id === 'bell' && b.day === 15
     && b.needsDate !== true && near(b.amount, 160)
     && b.firstDue === '2026-10-15'
-    && b.payingAccount === 'travelvisa' && b.jointCash === false),
-  'live Bell is the dated $160 card-paid planning row on the 15th from October');
+    && b.payingAccount === 'chequing-a' && b.jointCash !== false
+    && F.billAffectsJointCash(b, live.plan) === true
+    && F.isCardPaidBill(b, live.plan) === false),
+  'live Bell is the dated $160 BILLS ACCOUNT withdrawal on the 15th from October');
 ok(!(live.plan.bills || []).some(b => /telus|watch/i.test(`${b.id} ${b.label}`) && b.id !== 'bell'),
   'live plan.bills has no Telus or invented watch row');
 const travel = (live.plan.obligations || []).find(o => o.id === 'travel');
