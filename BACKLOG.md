@@ -298,7 +298,7 @@ Inferred personal from its transactions, not verified.
 
 Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. First slice earned: `GET /assistant/current` via `scripts/assistant-packet.js`, dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Owner decision 2026-08-29 authorises the OAuth infrastructure specifically required for ChatGPT. Current slice: `POST /assistant/mcp` exposes that same packet as exactly one read-only MCP tool (`get_atlas_current`) behind OAuth issuer/JWKS, exact-resource, expiry, and `atlas.current.read` validation. Atlas is only the resource server; the external authorization server owns login, consent, PKCE, client registration, token issue, and refresh. Browser, static-assistant, and OAuth credentials remain separate. Not a ChatGPT financial planner, not a second Forecast, not a transaction store, and no writes. Deployment-provider configuration and ChatGPT installation are owner-operated configuration of this boundary, not another Atlas financial capability.
 
-**B98 · Lookahead ten-block still prints debt and big-purchase rows** · **READY** · *Plan presentation only; found 2026-09-03*
+**B98 · Lookahead ten-block still prints debt and big-purchase rows** · **DONE 2026-09-22** · *Plan presentation only; found 2026-09-03; PR #404*
 
 The household Plan waterfall now ends at Balance after household budget (owner
 instruction 2026-09-03). The week / next-period lookahead ten-block behind
