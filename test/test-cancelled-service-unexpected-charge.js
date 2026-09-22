@@ -253,7 +253,50 @@ console.log('\n=== 5. provider sanitizer preserves the incumbent path and remain
     'provider sanitization makes no plan or Lunch Money write');
 }
 
-console.log('\n=== 6. cancelled services remain absent from plan.bills ===');
+console.log('\n=== 6. Business exclusion wins before cancelled-service identity ===');
+{
+  const plan = planFixture();
+  const businessTx = tx('tx-mailchimp-business', 'MAILCHIMP *M123', 31.73, {
+    categoryLabel: 'Business',
+  });
+  const cls = F.classifyCurrentPeriodTransaction(businessTx, plan);
+  ok(cls.kind === 'business' && cls.reason === 'excluded'
+      && cls.householdSpending === false && cls.unexpectedStatus == null,
+    'Business/excluded Mailchimp stays excluded and is not a cancelled-service charge');
+  const other = otherRow(advise(plan, [businessTx]));
+  ok(!other || near(other.spent, 0),
+    'Business/excluded cancelled-service merchant does not enter Other Spending',
+    JSON.stringify(other && { spent: other.spent, hold: other.hold }));
+}
+
+console.log('\n=== 7. raw pending never receives cancelled-service status ===');
+{
+  const plan = planFixture();
+  const pendingPresumed = tx('tx-ai-pending-presumed', 'AICHATAPP+18888287054', 44.99, {
+    pending: true,
+    pendingTreatment: 'presumed-settled-for-current-forecast',
+  });
+  const clsPresumed = F.classifyCurrentPeriodTransaction(pendingPresumed, plan);
+  ok(pendingPresumed.pending === true
+      && clsPresumed.unexpectedStatus == null,
+    'raw pending with presumed-settled treatment is not a cancelled-service charge');
+  const pendingConfirmed = tx('tx-ai-pending-confirmed', 'CALENDLY', 19.17, {
+    pending: true,
+    pendingTreatment: 'confirmed-settled',
+  });
+  const clsConfirmed = F.classifyCurrentPeriodTransaction(pendingConfirmed, plan);
+  ok(clsConfirmed.unexpectedStatus == null,
+    'raw pending with confirmed-settled treatment is not a cancelled-service charge');
+  const posted = tx('tx-ai-posted-only', 'AICHATAPP+18888287054', 44.99, {
+    pending: false,
+    pendingTreatment: 'confirmed-settled',
+  });
+  const clsPosted = F.classifyCurrentPeriodTransaction(posted, plan);
+  ok(clsPosted.unexpectedStatus === 'cancelled-service-charge',
+    'genuinely posted eligible debit still receives cancelled-service status');
+}
+
+console.log('\n=== 8. cancelled services remain absent from plan.bills ===');
 {
   const forbidden = new Set(merchantCases.map(([id]) => id));
   const hits = (data.plan.bills || []).filter(row => {

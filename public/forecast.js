@@ -3078,7 +3078,9 @@
   }
 
   function cancelledServiceForTransaction(tx, plan) {
-    if (!tx || transactionPendingState(tx) !== 'posted') return null;
+    // Posted-debit contract only: raw provider pending rows never qualify,
+    // even when Forecast's derived pendingTreatment would treat them as settled.
+    if (!tx || tx.pending === true) return null;
     const txDate = String(tx.date || '');
     if (!ISO_CALENDAR_DATE.test(txDate)) return null;
     const merchant = normalizeMerchantKey(txMerchantExact(tx));
@@ -3246,6 +3248,15 @@
     if (TRANSFER_CATEGORY_LABELS.has(label)
       || (tx.excludeFromTotals === true && TRANSFER_CATEGORY_LABELS.has(label))) {
       return { kind: 'transfer', categoryId: null, householdSpending: false, reason: 'transfer-label' };
+    }
+    // Incumbent plan.budget.excluded / Business wins before cancelled-service
+    // merchant identity: a Business row is not household Other Spending.
+    const excludedEarly = ((plan && plan.budget && plan.budget.excluded) || []);
+    for (const row of excludedEarly) {
+      const from = normalizeCategoryLabel(row && (row.from || row.label));
+      if (from && from === label) {
+        return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+      }
     }
     const cancelledService = cancelledServiceForTransaction(tx, plan);
     if (cancelledService) return cancelledServiceChargeResult(cancelledService);
