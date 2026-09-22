@@ -2,7 +2,8 @@
 /* Planned vs spent digest: Forecast owns spent (classified actuals in the
  * selected span) and planned (owner-target hold for that span). The default
  * page prints planned · spent · remaining inside each calendar waterfall.
- * Lookahead / week views still print spent $X of $Y after the ten-block.
+ * Lookahead / week views still print spent $X of $Y after the household-budget
+ * waterfall boundary.
  * Incomplete actuals and a stale spending-history as-of are kitchen-counter
  * words. No leftover guess, no remaining-cap as spent or as the period plan.
  *
@@ -389,11 +390,11 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
   });
   const nextGlance = defaultGlance(nextHtml);
   const expected = `spent ${composer.money2(eating.spent)} of ${composer.money2(eating.planned)}`;
-  ok((nextHtml.match(/data-operating-question=/g) || []).length === 10,
-    'lookahead still uses the ten-block');
-  const q10 = nextGlance.indexOf('Balance after big purchase allocation');
-  ok(q10 >= 0 && nextGlance.indexOf('Spent against the budget') > q10,
-    'lookahead digest still prints after the ten-block');
+  ok((nextHtml.match(/data-operating-question=/g) || []).length === 5,
+    'lookahead stops at Balance after household budget (five snapshot questions)');
+  const q5 = nextGlance.indexOf('Balance after household budget');
+  ok(q5 >= 0 && nextGlance.indexOf('Spent against the budget') > q5,
+    'lookahead digest still prints after the household-budget boundary');
   ok(nextGlance.includes(expected)
       || /spent /.test(nextGlance),
     'lookahead digest still prints spent of planned');

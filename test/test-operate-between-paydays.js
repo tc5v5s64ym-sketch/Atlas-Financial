@@ -233,9 +233,10 @@ console.log('\n=== the homepage selects the daily renderer without changing payd
     && /question\('02', billsHeading/.test(src)
     && /question\('03', 'Balance after bills'/.test(src)
     && /question\('04', 'Household budget'/.test(src)
-    && /question\('10', 'Balance after big purchase allocation'/.test(src)
+    && /question\('05', 'Balance after household budget'/.test(src)
+    && !/question\('06', 'Credit card to pay off first'/.test(src)
     && /unavailableOperatingSurfaceHtml/.test(src),
-    'fail-closed trust HTML remains on the unavailable surface; ten-block fallback still exists');
+    'fail-closed trust HTML remains on the unavailable surface; lookahead waterfall stops at household budget');
 }
 
 console.log('\n=== the page remains a renderer, not a calculator ===');

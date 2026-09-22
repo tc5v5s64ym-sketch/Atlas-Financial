@@ -2896,17 +2896,16 @@ function operatingSurfaceHtml(ctx) {
   const carryoverTrend = carryLook
     ? `${picker}<div class="plan-sheet" data-payday-carryover-trend-sheet>${paydayCarryoverTrendHtml(advice.paydayCarryoverTrend)}</div>`
     : '';
+  // Week / next-period lookahead stops at Balance after household budget,
+  // matching the household Plan waterfall. Forecast still publishes the
+  // extra-debt / big-purchase chain on the view; those rows are not printed
+  // on lookahead spans. Budget digest stays after the boundary.
   const tenBlock = defaultWaterfalls || historical || carryoverTrend ? '' : `
     ${question('01', 'Current Balance', cash, 'opening')}
     ${question('02', billsHeading, bills)}
     ${question('03', 'Balance after bills', runningLeftoverHtml(view.afterBills), 'balance')}
     ${question('04', 'Household budget', householdBudgetHtml(view))}
-    ${question('05', 'Balance after household budget', runningLeftoverHtml(view.afterHouseholdBudget), 'balance')}
-    ${question('06', 'Credit card to pay off first', firstCardHtml(view))}
-    ${question('07', 'Other credit cards', otherCardsHtml(view))}
-    ${question('08', 'Balance after debt repayment', runningLeftoverHtml(view.afterDebtRepayment), 'balance')}
-    ${question('09', 'Big purchases on the horizon', bigPurchasesHtml(view))}
-    ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases), 'ending')}
+    ${question('05', 'Balance after household budget', runningLeftoverHtml(view.afterHouseholdBudget), 'ending')}
     ${budgetDigestHtml(view.budgetDigest)}`;
 
   // The usable Plan print stops at Balance After Deductions. Forecast
