@@ -21,7 +21,8 @@ const money = n => '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 const plan = data.plan;
 const asOf = data.meta.asOf;
 const WEEKS_PER_MONTH = 365.25 / 12 / 7;
-const groceryOwnerMonthly = 900;
+const groceryPayday = 900;
+const groceryOwnerMonthly = Math.round(groceryPayday * (365.25 / 12) / 14 * 100) / 100;
 const fuelPaydayMonthly = Math.round(325 * (365.25 / 12) / 14 * 100) / 100;
 const budget = F.budgetBreakdown(plan, periods, { paypalPerMonth: data.paypal.perMonth });
 
@@ -69,12 +70,12 @@ ok(groceries.planned > 0 && fuel.planned > 0,
   'both carry a positive requirement into the cap',
   `${money(groceries.planned)} + ${money(fuel.planned)}`);
 const foodFuel = groceries.planned + fuel.planned;
-ok(near(foodFuel, groceryOwnerMonthly + fuelPaydayMonthly), 'groceries $900/month + payday-annualized fuel', money(foodFuel));
+ok(near(foodFuel, groceryOwnerMonthly + fuelPaydayMonthly), 'payday-annualized groceries $900 + payday-annualized fuel', money(foodFuel));
 ok(groceries.target != null && near(fuel.target, fuelPaydayMonthly) && fuel.target !== 650,
   'and both are the household\'s own figures, not averages',
   `groceries ${money(groceries.target)}, fuel ${money(fuel.target)}`);
 ok(near(groceries.target, groceryOwnerMonthly),
-  'grocery owner target is the $900/month owner restatement, not a calendar-half split',
+  'grocery owner target annualizes plannedPayday $900, not a stored $900/month',
   `${money(groceries.target)} vs ${money(groceryOwnerMonthly)}`);
 ok(typeof groceries.historical === 'number' && groceries.historical > 0,
   'grocery historical remains inspectable beside the monthly target',
