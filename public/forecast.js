@@ -3077,6 +3077,46 @@
     };
   }
 
+  function cancelledServiceForTransaction(tx, plan) {
+    // Posted-debit contract only: raw provider pending rows never qualify,
+    // even when Forecast's derived pendingTreatment would treat them as settled.
+    if (!tx || tx.pending === true) return null;
+    const txDate = String(tx.date || '');
+    if (!ISO_CALENDAR_DATE.test(txDate)) return null;
+    const merchant = normalizeMerchantKey(txMerchantExact(tx));
+    if (!merchant) return null;
+    for (const service of (plan && plan.cancelledServices) || []) {
+      if (!service || !service.id || !service.label) continue;
+      const boundary = String(service.confirmedCancelledAsOf || '');
+      // The confirmation date is an intentionally conservative lower bound,
+      // not an inferred cancellation date. Same-day and earlier charges stay
+      // historical because transaction dates have no time-of-day ordering.
+      if (!ISO_CALENDAR_DATE.test(boundary) || txDate <= boundary) continue;
+      const keys = Array.isArray(service.merchantKeys) ? service.merchantKeys : [];
+      const matched = keys.some(value => {
+        const key = normalizeMerchantKey(value);
+        return key && (merchant === key || merchant.startsWith(key + ' '));
+      });
+      if (matched) return service;
+    }
+    return null;
+  }
+
+  function cancelledServiceChargeResult(service) {
+    return {
+      kind: 'unclassified',
+      categoryId: 'uncategorised',
+      householdSpending: true,
+      reason: 'cancelled-service-charge',
+      needsConfirmation: true,
+      includeReason: 'cancelled-service-charge',
+      atlasRow: null,
+      unexpectedStatus: 'cancelled-service-charge',
+      cancelledServiceId: service.id,
+      cancelledServiceLabel: service.label,
+    };
+  }
+
   function spendResult(categoryId, includeReason) {
     return {
       kind: 'spend',
@@ -3209,6 +3249,17 @@
       || (tx.excludeFromTotals === true && TRANSFER_CATEGORY_LABELS.has(label))) {
       return { kind: 'transfer', categoryId: null, householdSpending: false, reason: 'transfer-label' };
     }
+    // Incumbent plan.budget.excluded / Business wins before cancelled-service
+    // merchant identity: a Business row is not household Other Spending.
+    const excludedEarly = ((plan && plan.budget && plan.budget.excluded) || []);
+    for (const row of excludedEarly) {
+      const from = normalizeCategoryLabel(row && (row.from || row.label));
+      if (from && from === label) {
+        return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+      }
+    }
+    const cancelledService = cancelledServiceForTransaction(tx, plan);
+    if (cancelledService) return cancelledServiceChargeResult(cancelledService);
     if (txMatchesRepresentedBill(tx, opts || {})) {
       return {
         kind: 'bill', categoryId: null, householdSpending: false,
@@ -6612,6 +6663,9 @@
         : ((cls && (cls.includeReason || cls.reason)) || null),
       pending,
       pendingPostedDuplicate: duplicate,
+      unexpectedStatus: (cls && cls.unexpectedStatus) || null,
+      cancelledServiceId: (cls && cls.cancelledServiceId) || null,
+      cancelledServiceLabel: (cls && cls.cancelledServiceLabel) || null,
     };
   }
 

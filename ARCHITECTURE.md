@@ -984,6 +984,18 @@ writer after a successful as-of cutover and is not a second current-state
 authority. That snapshot write does not change Forecast inputs. Unattended
 production writes from Lunch Money are **not** authorised.
 
+**`plan.cancelledServices` is the owner-confirmed cancelled-service identity
+list as of 2026-09-21.** It is not a bill roster and creates no Forecast event.
+`Forecast.classifyCurrentPeriodTransaction` is still the sole transaction
+classifier: only an eligible posted debit dated after a service's recorded
+confirmation boundary enters the incumbent Other Spending actual once and
+carries `unexpectedStatus: cancelled-service-charge` through Forecast recon to
+the existing Plan transaction drill-down. Pending rows, same-day or earlier
+history, unlisted merchants, and active subscriptions do not inherit the
+status. Provider observation remains read-only and keeps its generic
+pending-to-posted identity rules; the page renders the Forecast status and does
+not classify or alert independently.
+
 **`plan.nextDollar` is owner-stated as of 2026-08-24.** After required payments,
 essential spending, incumbent liquidity protection, and required or known future
 costs are protected, true surplus goes to extra debt before optional future costs
