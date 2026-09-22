@@ -66,12 +66,15 @@ console.log('\n=== Phoenix two hits stay unproven and unplanned ===');
     'this pack does not open a Phoenix purpose question');
 }
 
-console.log('\n=== Amazon and Prime are not bills ===');
+console.log('\n=== Amazon shopping stays off plan.bills; membership is CARD-011 ===');
 {
   ok(/36 shopping charges/.test(intake) && /Not a subscription/i.test(intake),
     'Travel Visa Amazon shopping is recorded as not a subscription');
-  ok(/Prime-like FLAG ONLY/i.test(intake) && /\$11\.19/.test(intake),
-    'Prime-like $11.19 day-19 flag is recorded');
+  ok(/CARD-011/.test(intake) && /\$11\.19/.test(intake)
+      && /Routed to live `plan\.bills` `amazon-prime`/.test(intake),
+    'Prime membership $11.19 evidence is declared as CARD-011 and routed');
+  ok(/\$24\.63/.test(intake) && /not the membership/i.test(intake),
+    'the separate $24.63 charge stays outside the membership');
   ok(/not automatically Amanda/i.test(intake) && /2026-07-13/.test(intake),
     'MBNA Amazon is not Amanda by default');
 }
@@ -146,17 +149,26 @@ console.log('\n=== register routes the declared CARD ids ===');
   const ids = [
     'CARD-001', 'CARD-002', 'CARD-003', 'CARD-004', 'CARD-005',
     'CARD-006', 'CARD-007', 'CARD-008', 'CARD-009', 'CARD-010',
+    'CARD-011',
   ];
   ok(ids.every(id => intake.includes(id)),
-    'intake evidence-ids fence lists CARD-001 through CARD-010');
+    'intake evidence-ids fence lists CARD-001 through CARD-011');
   for (const id of ids) {
     const row = registerRow(id);
     ok(!!row, `${id} has a register row`);
   }
   ok(registerRow('CARD-002').disposition === 'EXCLUDED',
     'Phoenix is EXCLUDED from plan.bills');
-  ok(registerRow('CARD-004').disposition === 'EXCLUDED',
-    'unplanned candidates are EXCLUDED from plan.bills');
+  ok(registerRow('CARD-003').disposition === 'EXCLUDED'
+      && /shopping/i.test(registerRow('CARD-003').exclusion_reason)
+      && /CARD-011/.test(registerRow('CARD-003').exclusion_reason),
+    'Amazon shopping stays EXCLUDED; membership is CARD-011');
+  ok(registerRow('CARD-004').disposition === 'EXCLUDED'
+      && /Mailchimp/.test(registerRow('CARD-004').exclusion_reason)
+      && /AICHATAPP/.test(registerRow('CARD-004').exclusion_reason)
+      && /Calendly/.test(registerRow('CARD-004').exclusion_reason)
+      && /CARD-011/.test(registerRow('CARD-004').exclusion_reason),
+    'Mailchimp, AICHATAPP, and Calendly stay EXCLUDED');
   ok(registerRow('CARD-006').disposition === 'CONSUMED'
     && registerRow('CARD-006').routed_to
     && /Bell Mobility/.test(registerRow('CARD-006').routed_to.heading),
@@ -164,6 +176,21 @@ console.log('\n=== register routes the declared CARD ids ===');
   ok(registerRow('CARD-010').disposition === 'CONSUMED'
     && registerRow('CARD-010').routed_to.json_pointer === '/plan/bills',
     'already-planned roster routes to live plan.bills');
+  const primeRoute = registerRow('CARD-011');
+  const primePointer = primeRoute && primeRoute.routed_to && primeRoute.routed_to.json_pointer;
+  let routedBill = null;
+  if (primePointer && primePointer.startsWith('/')) {
+    routedBill = primePointer.slice(1).split('/').reduce((cur, part) => (
+      cur == null || !Object.prototype.hasOwnProperty.call(cur, part) ? null : cur[part]
+    ), data);
+  }
+  ok(primeRoute && primeRoute.disposition === 'CONSUMED'
+      && primeRoute.routed_to && primeRoute.routed_to.path === 'data.json'
+      && routedBill && routedBill.id === 'amazon-prime'
+      && routedBill.amount === 11.19
+      && routedBill.day === 19
+      && routedBill.payingAccount === 'travelvisa',
+    'CARD-011 is CONSUMED onto plan.bills amazon-prime');
 }
 
 if (failures) {
