@@ -291,9 +291,19 @@ const helperDays = O.postedHistoryDaysForCarriedSettlement({
   plan: historicalOpening.plan,
   identity: syntheticIdentity,
 });
-ok(helperDays === 16,
-  'carried settlement lookup asks for the independently computed 16-day span',
-  String(helperDays));
+const helperCurrent = Forecast.spendingCycle(historicalOpening.plan, LIVE_AS_OF);
+const helperPrevious = Forecast.spendingCycle(
+  historicalOpening.plan, Forecast.addDays(helperCurrent.start, -1));
+const helperEarliest = helperPrevious && helperPrevious.start < SCHEDULED
+  ? helperPrevious.start : SCHEDULED;
+let helperSpan = 14;
+while (O.lunchMoneyTransactionsUrl(NOW, helperSpan).startDate > helperEarliest
+    && helperSpan < 120) {
+  helperSpan += 1;
+}
+ok(helperDays === helperSpan && helperSpan > 16,
+  'carried settlement lookup reaches the earlier of the Aug 16 bill and the previous Seaspan cycle',
+  String(helperDays) + ' vs ' + helperSpan);
 const helperWithDebts = O.postedHistoryDaysForCarriedSettlement({
   now: NOW,
   plan: historicalOpening.plan,
@@ -311,8 +321,9 @@ ok(O.lunchMoneyTransactionsUrl(NOW, liveDays).startDate === '2026-08-06'
     && O.lunchMoneyTransactionsUrl(NOW, liveDays).startDate <= POSTED,
   'cycle-aware live fetch still includes the 17 August PAD posting');
 const helperUrl = O.lunchMoneyTransactionsUrl(NOW, helperDays);
-ok(helperUrl.startDate === SCHEDULED && helperUrl.startDate <= POSTED,
-  'repaired observation path still considers the 17 August posting');
+ok(helperUrl.startDate <= SCHEDULED && helperUrl.startDate <= POSTED
+    && helperUrl.startDate <= helperPrevious.start,
+  'repaired observation path still considers the 17 August posting and the previous Seaspan start');
 
 const futureOnly = clone(historicalOpening);
 futureOnly.plan.bills = (futureOnly.plan.bills || [])
@@ -324,12 +335,38 @@ futureOnly.plan.bills = (futureOnly.plan.bills || [])
     amount: 10,
     payingAccount: 'chequing-a',
   }]);
+const futureCurrent = Forecast.spendingCycle(futureOnly.plan, LIVE_AS_OF);
+const futurePrevious = Forecast.spendingCycle(
+  futureOnly.plan, Forecast.addDays(futureCurrent.start, -1));
+ok(futurePrevious && futurePrevious.start === '2026-08-14',
+  'on 1 Sep the previous Seaspan cycle starts 14 Aug',
+  futurePrevious && futurePrevious.start);
+let futureSpan = 14;
+while (O.lunchMoneyTransactionsUrl(NOW, futureSpan).startDate > futurePrevious.start
+    && futureSpan < 120) {
+  futureSpan += 1;
+}
+ok(futureSpan > 14
+    && O.lunchMoneyTransactionsUrl(NOW, futureSpan).startDate <= '2026-08-14'
+    && O.lunchMoneyTransactionsUrl(NOW, futureSpan - 1).startDate > '2026-08-14',
+  'the previous Seaspan start is outside the ordinary 14-day window and inside the next span',
+  String(futureSpan));
 ok(O.postedHistoryDaysForCarriedSettlement({
     now: NOW,
     plan: futureOnly.plan,
     identity: syntheticIdentity,
+  }) === futureSpan,
+  'nothing old is carried, and the read-only window still reaches the previous Seaspan cycle',
+  String(futureSpan));
+const noPayroll = clone(futureOnly);
+noPayroll.plan.income = (noPayroll.plan.income || [])
+  .filter(row => !(row && (row.id === 'payroll' || /seaspan/i.test(row.label || ''))));
+ok(O.postedHistoryDaysForCarriedSettlement({
+    now: NOW,
+    plan: noPayroll.plan,
+    identity: syntheticIdentity,
   }) === 14,
-  'ordinary 14-day current-state fetch is preserved when nothing old is carried');
+  'ordinary 14-day current-state fetch remains when no Seaspan cycle and nothing old is carried');
 
 const ancient = clone(historicalOpening);
 ancient.plan.bills = (ancient.plan.bills || [])
@@ -483,9 +520,19 @@ const productionDays = O.postedHistoryDaysForCarriedSettlement({
   plan: canonical.plan,
   identity,
 });
-ok(productionDays === 16,
-  'production Aug 15 once bills also extend the 1 Sep lookup to 16 days when close days are not attached',
-  String(productionDays));
+const productionCurrent = Forecast.spendingCycle(canonical.plan, LIVE_AS_OF);
+const productionPrevious = Forecast.spendingCycle(
+  canonical.plan, Forecast.addDays(productionCurrent.start, -1));
+let productionSpan = 14;
+const productionEarliest = productionPrevious && productionPrevious.start < '2026-08-16'
+  ? productionPrevious.start : '2026-08-16';
+while (O.lunchMoneyTransactionsUrl(NOW, productionSpan).startDate > productionEarliest
+    && productionSpan < 120) {
+  productionSpan += 1;
+}
+ok(productionDays === productionSpan && productionSpan >= 16,
+  'production lookup reaches the earlier of the Aug 15 once-bill posting and the previous Seaspan cycle',
+  String(productionDays) + ' vs ' + productionSpan);
 const productionWithDebts = O.postedHistoryDaysForCarriedSettlement({
   now: NOW,
   plan: canonical.plan,

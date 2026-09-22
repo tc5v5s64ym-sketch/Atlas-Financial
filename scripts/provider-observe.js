@@ -14,10 +14,11 @@
  * non-household accounts use atlasRole household-external. Synthetic
  * fixture mappings cannot authorize a live canonical mapping. Historical
  * represented-event candidates are not current-opening corrections.
- * A live current-state posted window stays 14 days unless Forecast still
- * carries an unresolved once joint-cash occurrence whose permitted posting
- * date is older; then the same GET extends back to that date, capped at
- * 120 days, as settlement lookup only. Pending coverage is unchanged.
+ * A live current-state posted window stays 14 days unless that same GET
+ * must reach either an unresolved once joint-cash posting date or the
+ * previous Seaspan cycle start. The extension is capped at 120 days.
+ * It is settlement lookup plus the two-cycle Road Ahead window, not a
+ * historical store. Pending coverage is unchanged.
  * Account timestamps stay distinct: balance_as_of, updated_at,
  * date_last_fetched. Posted-balance evidence prefers balance_as_of.
  */
@@ -2237,12 +2238,13 @@ function carriedOnceJointCashOccurrences(plan, asOf) {
   return out;
 }
 
-// Ordinary current-state posted history stays 14 days. When Forecast still
-// carries an unresolved once joint-cash occurrence whose permitted posting
-// date is older than that window, extend the same GET /transactions start
-// just far enough to cover that date, capped at the incumbent 120-day
-// reconcile horizon. This is settlement lookup for currently carried
-// occurrences, not a second observer and not generic historical backfill.
+// Ordinary current-state posted history stays 14 days. Extend the same
+// GET /transactions start, capped at the incumbent 120-day reconcile
+// horizon, only far enough to cover either of:
+// - an unresolved once joint-cash occurrence whose permitted posting date
+//   is older than that window (settlement lookup, not a second observer);
+// - the previous Seaspan payday-to-payday start, so Road Ahead can see
+//   one completed cycle plus the current cycle. Not a historical store.
 function cycleSettlementOccurrences(plan, asOf, identity) {
   const out = carriedOnceJointCashOccurrences(plan, asOf);
   const seen = new Set(out.map(row => String(row.id) + '@' + String(row.date)));
@@ -2267,6 +2269,17 @@ function cycleSettlementOccurrences(plan, asOf, identity) {
   return out;
 }
 
+function previousSeaspanCycleStart(plan, asOf) {
+  if (!plan || !asOf || typeof Forecast.spendingCycle !== 'function') return null;
+  const current = Forecast.spendingCycle(plan, asOf);
+  if (!current || !current.start) return null;
+  const priorDay = Forecast.addDays(current.start, -1);
+  if (!priorDay) return null;
+  const prior = Forecast.spendingCycle(plan, priorDay);
+  if (!prior || !prior.start || prior.start >= current.start) return null;
+  return prior.start;
+}
+
 function postedHistoryDaysForCarriedSettlement(opts) {
   const now = opts && opts.now;
   const ordinary = CURRENT_STATE_HISTORY_DAYS;
@@ -2282,6 +2295,10 @@ function postedHistoryDaysForCarriedSettlement(opts) {
     const postingDate = earliestEligiblePostingDate(occurrence, opts && opts.identity, plan);
     if (!postingDate || postingDate >= ordinaryStart) continue;
     if (!earliest || postingDate < earliest) earliest = postingDate;
+  }
+  const priorCycleStart = previousSeaspanCycleStart(plan, asOf);
+  if (priorCycleStart && priorCycleStart < ordinaryStart) {
+    if (!earliest || priorCycleStart < earliest) earliest = priorCycleStart;
   }
   if (!earliest) return ordinary;
   let span = calendarDaysBetween(earliest, asOf);

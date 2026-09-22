@@ -13470,9 +13470,229 @@
     };
   }
 
-  // Shared planned-HB + knowledgeHorizon + Dale estimated payroll walk
-  // used by baselineTrajectory and baselineTrajectoryScenario. Not a
-  // second engine and not exported. Fail closed: unavailable, not $0.
+  // Road Ahead normal-spending input only. Owner Household Budget
+  // targets stay on the plan. Income, bills, obligations, and dated
+  // commitments stay on expandEvents. This is not a second planner,
+  // not a historical store, and not an established household average.
+  const PROVISIONAL_NORMAL_SPENDING_PHRASE =
+    'Normal spending estimate based on 2 pay periods — 1 completed actual + current-period estimate.';
+  const PROVISIONAL_NORMAL_SPENDING_RULE =
+    'provisional pay-period normal spending = (completed posted actual + current full-period estimate) / 2';
+
+  function normalSpendingCoverageUsable(state) {
+    return !!(state && (state.remainingClaim === 'precise'
+      || state.remainingClaim === 'posted-only'));
+  }
+
+  function representedCommitmentTransaction(tx, plan, packet) {
+    if (!tx || tx.id == null) return false;
+    const id = String(tx.id);
+    const commitmentIds = new Set();
+    for (const row of (plan && plan.commitments) || []) {
+      if (row && row.id) commitmentIds.add(row.id);
+    }
+    if (!commitmentIds.size) return false;
+    const rows = packet && Array.isArray(packet.representedActuals)
+      ? packet.representedActuals : [];
+    for (const row of rows) {
+      if (!row || !commitmentIds.has(row.id)) continue;
+      if (row.transactionId != null && String(row.transactionId) === id) return true;
+      if (Array.isArray(row.transactionIds)
+        && row.transactionIds.some(value => value != null && String(value) === id)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Eligible normal household consumption for one Seaspan window.
+  // Membership is classifyCurrentPeriodTransaction plus the incumbent
+  // Household Budget supporting-spend predicate, so unassigned Other
+  // Spending counts and the owner other-spend target is not a substitute
+  // for it. Posted-only drops pending. Current-period pending counts only
+  // when pending coverage is precise, and a pending→posted twin counts once.
+  function eligibleNormalSpendInWindow(plan, packet, start, end, mode) {
+    const classifyOpts = {
+      packet,
+      currentPeriodActuals: packet,
+    };
+    const duplicateIds = pendingPostedDuplicateIdSet(packet);
+    const countPending = mode === 'current-precise';
+    const byCategory = new Map();
+    let total = 0;
+    const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
+    for (const tx of txs) {
+      if (!tx || !tx.date || tx.date < start || tx.date > end) continue;
+      if (skipSplitParent(tx, packet)) continue;
+      if (representedCommitmentTransaction(tx, plan, packet)) continue;
+      const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
+      if (!householdBudgetSupportingSpendEligible(cls)) continue;
+      const state = transactionPendingState(tx);
+      if (state !== 'posted') {
+        if (!countPending) continue;
+        if (isPossibleReplacementPending(tx, duplicateIds)) continue;
+      }
+      const amt = Number(tx.amount);
+      if (!isFinite(amt) || !(amt > EPSILON)) continue;
+      const catId = cls.atlasRow || cls.categoryId;
+      const named = !!(catId
+        && CALENDAR_PERIOD_BUDGET_IDS.indexOf(catId) >= 0
+        && !cls.needsConfirmation
+        && cls.kind !== 'unclassified'
+        && !isUncategorisedRemainderSpend(cls));
+      if (named) {
+        byCategory.set(catId, roundCent((byCategory.get(catId) || 0) + amt));
+      }
+      total = roundCent(total + amt);
+    }
+    return { byCategory, total };
+  }
+
+  function currentPeriodRemainingReserve(plan, cycleStart, byCategory) {
+    let remaining = 0;
+    for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
+      if (!cat || !cat.id) continue;
+      if (CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) < 0) continue;
+      const planned = paydayCyclePlanned(cat, cycleStart, plan);
+      if (planned == null || !isFinite(planned)) continue;
+      const spent = byCategory && byCategory.get(cat.id) || 0;
+      remaining = roundCent(remaining + Math.max(0, planned - spent));
+    }
+    return remaining;
+  }
+
+  function unavailableNormalSpending(reason, completedPeriod, currentPeriod) {
+    return {
+      status: 'unavailable',
+      fallback: 'planned-household-budget',
+      reason,
+      phrase: null,
+      rule: PROVISIONAL_NORMAL_SPENDING_RULE,
+      payPeriodAmount: null,
+      weeklyVariable: null,
+      trust: 'unavailable',
+      establishedHouseholdAverage: false,
+      completedPeriod: completedPeriod || null,
+      currentPeriod: currentPeriod || null,
+    };
+  }
+
+  function periodWindow(cycle, role) {
+    if (!cycle) return null;
+    return {
+      role,
+      start: cycle.start,
+      end: cycle.end,
+      rangeLabel: cycle.rangeLabel || formatSpendingCycleRange(cycle.start, cycle.end),
+    };
+  }
+
+  // Two-period provisional baseline for the Road Ahead walk.
+  // Input A is posted actuals on the previous Seaspan cycle.
+  // Input B is this cycle's eligible actual-to-date plus the unspent
+  // incumbent payday reserve (max(planned, spent) − spent). Not a
+  // partial-period extrapolation and not the owner other-spend target.
+  // Incomplete coverage returns unavailable with no amount, never $0.
+  function provisionalRecentNormalSpending(plan, asOf, opts) {
+    const day = financialDate(asOf);
+    const current = day && spendingCycle(plan, day);
+    const previousList = day ? completedPayPeriodWindows(plan, day, 1) : [];
+    const previous = previousList && previousList[0];
+    const completedWindow = periodWindow(previous, 'completed-actual');
+    const currentWindow = periodWindow(current, 'current-full-period-estimate');
+    if (!day || !current || !current.start || !previous || !previous.start) {
+      return unavailableNormalSpending(
+        'Recent pay-period normal spending is unavailable because Forecast could not name the current and previous Seaspan pay periods. Road Ahead is using the planned Household Budget trajectory. Not $0.',
+        completedWindow,
+        currentWindow);
+    }
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet || !Array.isArray(packet.transactions)) {
+      return unavailableNormalSpending(
+        'Recent pay-period normal spending is unavailable because no transaction actuals were supplied. Road Ahead is using the planned Household Budget trajectory. Not $0.',
+        completedWindow,
+        currentWindow);
+    }
+    const completedCoverage = lookbackActualsCoverageState(previous.start, previous.end, opts);
+    if (!normalSpendingCoverageUsable(completedCoverage)) {
+      return unavailableNormalSpending(
+        'Recent pay-period normal spending is unavailable because transaction coverage does not establish the completed Seaspan pay period '
+        + (completedWindow.rangeLabel || '')
+        + '. Partial history is not treated as that completed period. Road Ahead is using the planned Household Budget trajectory. Not $0.',
+        Object.assign({}, completedWindow, {
+          status: 'unavailable',
+          amount: null,
+          evidence: 'posted-actual',
+          trust: 'unavailable',
+          provisional: false,
+          reason: completedCoverage && completedCoverage.reason,
+        }),
+        currentWindow);
+    }
+    const currentCoverage = actualsCoverageState(day, current.start, opts);
+    if (!normalSpendingCoverageUsable(currentCoverage)) {
+      return unavailableNormalSpending(
+        'Recent pay-period normal spending is unavailable because transaction coverage does not establish the current Seaspan pay period '
+        + (currentWindow.rangeLabel || '')
+        + '. Road Ahead is using the planned Household Budget trajectory. Not $0.',
+        Object.assign({}, completedWindow, { status: 'ready' }),
+        Object.assign({}, currentWindow, {
+          status: 'unavailable',
+          trust: 'unavailable',
+          provisional: true,
+          completedHistoricalPeriod: false,
+          fullPeriodEstimate: null,
+          reason: currentCoverage && currentCoverage.reason,
+        }));
+    }
+    const completedSpend = eligibleNormalSpendInWindow(
+      plan, packet, previous.start, previous.end, 'posted-only');
+    const currentMode = currentCoverage.remainingClaim === 'precise'
+      ? 'current-precise' : 'posted-only';
+    const through = day < current.end ? day : current.end;
+    const currentSpend = eligibleNormalSpendInWindow(
+      plan, packet, current.start, through, currentMode);
+    const actualToDate = currentSpend.total;
+    const remainingExpected = currentPeriodRemainingReserve(
+      plan, current.start, currentSpend.byCategory);
+    const fullPeriodEstimate = roundCent(actualToDate + remainingExpected);
+    const payPeriodAmount = roundCent((completedSpend.total + fullPeriodEstimate) / 2);
+    const weeklyVariable = roundCent(payPeriodAmount / 2);
+    return {
+      status: 'ready',
+      fallback: null,
+      reason: null,
+      phrase: PROVISIONAL_NORMAL_SPENDING_PHRASE,
+      rule: PROVISIONAL_NORMAL_SPENDING_RULE,
+      payPeriodAmount,
+      weeklyVariable,
+      trust: 'estimated',
+      establishedHouseholdAverage: false,
+      completedPeriod: Object.assign({}, completedWindow, {
+        status: 'ready',
+        amount: completedSpend.total,
+        evidence: 'posted-actual',
+        trust: 'calculated',
+        provisional: false,
+      }),
+      currentPeriod: Object.assign({}, currentWindow, {
+        status: 'estimated',
+        actualToDate,
+        remainingExpected,
+        fullPeriodEstimate,
+        evidence: 'actual-to-date-plus-remaining-reserve',
+        trust: 'estimated',
+        provisional: true,
+        completedHistoricalPeriod: false,
+      }),
+    };
+  }
+
+  // Shared walk used by baselineTrajectory and baselineTrajectoryScenario.
+  // Normal spending is the provisional two-period baseline when both
+  // Seaspan windows are covered; otherwise the incumbent planned
+  // Household Budget weeklyVariable. Not a second engine and not
+  // exported. Fail closed: unavailable, not $0.
   function prepareBaselineTrajectoryWalk(plan, debts, asOf, opts) {
     opts = opts || {};
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
@@ -13481,7 +13701,11 @@
     const day = financialDate(asOf);
     if (!day) return { status: 'unavailable', reason: 'A dated plan baseline is required.' };
     const periods = opts.periods;
-    const weekly = plannedWeeklyVariable(plan, periods, Object.assign({}, opts, { asOf: day }));
+    const normalSpending = provisionalRecentNormalSpending(plan, day, opts);
+    const plannedWeekly = plannedWeeklyVariable(plan, periods, Object.assign({}, opts, { asOf: day }));
+    const weekly = normalSpending && normalSpending.status === 'ready'
+      ? normalSpending.weeklyVariable
+      : plannedWeekly;
     if (weekly == null || !isFinite(weekly) || weekly < 0) {
       return { status: 'unavailable', reason: 'A planned Household Budget breakdown is required.' };
     }
@@ -13580,6 +13804,7 @@
       opts,
       day,
       weekly,
+      normalSpending,
       horizon,
       walkOpts,
       debtWalk,
@@ -13790,6 +14015,13 @@
   function baselineTrajectoryHouseholdBudgetLines(input, walkDays, householdBudgetAmount) {
     const target = roundCent(householdBudgetAmount);
     if (!(walkDays > 0)) return [];
+    if (input.normalSpending && input.normalSpending.status === 'ready') {
+      return [{
+        label: 'Normal spending estimate',
+        amount: target,
+        status: 'estimated',
+      }];
+    }
     const bd = budgetBreakdown(input.plan, input.periods, input.breakdownOpts || {});
     const contributing = [];
     if (bd && Array.isArray(bd.categories)) {
@@ -13890,7 +14122,8 @@
     const obligationsStatus = trajectoryEventsStatus(obligations);
     const commitmentsStatus = trajectoryEventsStatus(commitments);
     const extrasStatus = 'calculated';
-    const householdBudgetStatus = 'calculated';
+    const householdBudgetStatus = input.householdBudgetStatus === 'estimated'
+      ? 'estimated' : 'calculated';
     const stage1Status = trajectoryWeakerStatus(
       incomeStatus, billsStatus, obligationsStatus, householdBudgetStatus);
     const stage1Amount = roundCent(
@@ -14089,6 +14322,8 @@
       spanNoun: input.spanNoun,
       periods: input.periods,
       breakdownOpts: input.breakdownOpts,
+      normalSpending: input.normalSpending,
+      householdBudgetStatus: input.householdBudgetStatus,
     });
     return {
       income,
@@ -14100,8 +14335,10 @@
   }
 
   // Read-only baseline cash+debt trajectory over the incumbent
-  // knowledgeHorizon. Composes budgetBreakdown planned weeklyVariable,
-  // simulate, projectDebts, and trajectory-local estimated Dale/Seaspan
+  // knowledgeHorizon. Normal spending is the provisional recent
+  // pay-period baseline when both Seaspan windows are covered, otherwise
+  // budgetBreakdown planned weeklyVariable. Composes simulate,
+  // projectDebts, and trajectory-local estimated Dale/Seaspan
   // payroll from 2027-01-01 through the owner-authorized year in
   // plan.payrollPlanningAssumptions. Does not search Forecast.recommend,
   // does not extend the horizon, and does not change default expandEvents /
@@ -14175,6 +14412,14 @@
       return isDalePayrollStream(incomeStreamFor(plan, event));
     }
 
+    const normalSpending = ctx.normalSpending;
+    const recentBaseline = !!(normalSpending && normalSpending.status === 'ready');
+    const spendPublication = {
+      weeklyVariable: weekly,
+      status: recentBaseline ? 'estimated' : 'calculated',
+      source: recentBaseline ? 'provisional-recent-pay-period' : 'budgetBreakdown.planned',
+      historicalActuals: recentBaseline ? 'recent-two-period-baseline' : 'excluded',
+    };
     const byDate = new Map(sim.daily.map(row => [row.date, row]));
     const spanPictureInput = {
       plan,
@@ -14188,6 +14433,8 @@
       unavailableAfter,
       periods: opts.periods,
       breakdownOpts: Object.assign({}, opts, { asOf: day }),
+      normalSpending,
+      householdBudgetStatus: spendPublication.status,
     };
     const months = calendarMonthsIntersecting(horizon.start, horizon.end);
     const series = months.map(span => {
@@ -14195,7 +14442,9 @@
       const picture = baselineTrajectorySpanPicture(Object.assign({}, spanPictureInput, {
         span,
         close,
-        householdBudgetIdentity: 'simulate weeklyVariable applied days in month',
+        householdBudgetIdentity: recentBaseline
+          ? 'simulate provisional recent pay-period normal spending applied days in month'
+          : 'simulate weeklyVariable applied days in month',
         spanNoun: 'month',
         closeMissingReason: 'Forecast could not read month-end cash.',
       }));
@@ -14247,12 +14496,7 @@
         month: span.month,
         start: span.start,
         end: span.end,
-        spend: {
-          weeklyVariable: weekly,
-          status: 'calculated',
-          source: 'budgetBreakdown.planned',
-          historicalActuals: 'excluded',
-        },
+        spend: Object.assign({}, spendPublication),
         debt: debtPicture,
         income: picture.income,
         cash: picture.cash,
@@ -14268,7 +14512,9 @@
       const picture = baselineTrajectorySpanPicture(Object.assign({}, spanPictureInput, {
         span,
         close,
-        householdBudgetIdentity: 'simulate weeklyVariable applied days in pay-period',
+        householdBudgetIdentity: recentBaseline
+          ? 'simulate provisional recent pay-period normal spending applied days in pay-period'
+          : 'simulate weeklyVariable applied days in pay-period',
         spanNoun: 'pay period',
         closeMissingReason: 'Forecast could not read pay-period-end cash.',
       }));
@@ -14285,12 +14531,7 @@
         windowKind: span.windowKind,
         displayIdentity: span.displayIdentity,
         calendar: 'seaspan-spending-cycle',
-        spend: {
-          weeklyVariable: weekly,
-          status: 'calculated',
-          source: 'budgetBreakdown.planned',
-          historicalActuals: 'excluded',
-        },
+        spend: Object.assign({}, spendPublication),
         income: picture.income,
         cash: picture.cash,
         stage1: picture.stage1,
@@ -14327,10 +14568,11 @@
       horizon: { start: horizon.start, end: horizon.end, days: horizon.days },
       weeklyVariable: {
         amount: weekly,
-        status: 'calculated',
-        source: 'budgetBreakdown.planned',
-        historicalActuals: 'excluded',
+        status: spendPublication.status,
+        source: spendPublication.source,
+        historicalActuals: spendPublication.historicalActuals,
       },
+      normalSpending,
       incomeRegimes: [
         {
           id: 'current-modelled-dale-net',
@@ -14372,9 +14614,11 @@
       additionalCashRequired: additionalCashRequiredPacket(plan, sim.min && sim.min.balance),
       provenance: {
         calculator: 'Forecast',
-        primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts', 'daleEstimatedPayrollDeposits'],
-        cashBaseline: 'budgetBreakdown-planned-weekly',
-        historicalActuals: 'excluded',
+        primitives: ['knowledgeHorizon', 'budgetBreakdown', 'simulate', 'projectDebts', 'daleEstimatedPayrollDeposits', 'classifyCurrentPeriodTransaction', 'spendingCycle'],
+        cashBaseline: recentBaseline
+          ? 'provisional-recent-pay-period'
+          : 'budgetBreakdown-planned-weekly',
+        historicalActuals: recentBaseline ? 'recent-two-period-baseline' : 'excluded',
         recommendWeeklyCap: 'not-used',
         knowledgeHorizon: 'incumbent-unmodified',
         pressure: 'walk-derived',
@@ -14424,6 +14668,7 @@
     disabled: true,
     representedEvents: true,
     paypalPerMonth: true,
+    currentPeriodActuals: true,
   };
 
   function trajectoryScenarioUnavailable(reason) {
@@ -14550,6 +14795,7 @@
       disabled: input.disabled,
       representedEvents: input.representedEvents,
       paypalPerMonth: input.paypalPerMonth,
+      currentPeriodActuals: input.currentPeriodActuals,
     };
     const ctx = prepareBaselineTrajectoryWalk(plan, debts, asOf, walkInput);
     if (!ctx || ctx.status !== 'ready') {
@@ -14656,9 +14902,12 @@
       horizon: { start: horizon.start, end: horizon.end, days: horizon.days },
       weeklyVariable: {
         amount: ctx.weekly,
-        status: 'calculated',
-        source: 'budgetBreakdown.planned',
-        historicalActuals: 'excluded',
+        status: ctx.normalSpending && ctx.normalSpending.status === 'ready'
+          ? 'estimated' : 'calculated',
+        source: ctx.normalSpending && ctx.normalSpending.status === 'ready'
+          ? 'provisional-recent-pay-period' : 'budgetBreakdown.planned',
+        historicalActuals: ctx.normalSpending && ctx.normalSpending.status === 'ready'
+          ? 'recent-two-period-baseline' : 'excluded',
       },
       debt: baselineDebt,
     };
@@ -14716,8 +14965,11 @@
         calculator: 'Forecast',
         primitives: ['prepareBaselineTrajectoryWalk', 'simulate', 'projectDebts'],
         composedFrom: 'baselineTrajectory-walk',
-        cashBaseline: 'budgetBreakdown-planned-weekly',
-        historicalActuals: 'excluded',
+        cashBaseline: ctx.normalSpending && ctx.normalSpending.status === 'ready'
+          ? 'provisional-recent-pay-period'
+          : 'budgetBreakdown-planned-weekly',
+        historicalActuals: ctx.normalSpending && ctx.normalSpending.status === 'ready'
+          ? 'recent-two-period-baseline' : 'excluded',
         recommendWeeklyCap: 'not-used',
         knowledgeHorizon: 'incumbent-unmodified',
         inputNature: 'additional-debt-payment',
