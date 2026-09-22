@@ -1726,7 +1726,10 @@ function planningRoadAheadPayPeriodIdentityNoteHtml(period) {
 }
 
 function planningRoadAheadHtml(traj, granularity, selectedKey, asOf) {
-  const intro = 'Expected income, bills, household budget, and planned spending — copied from Forecast for one month or pay period. This page does not calculate them.';
+  const copied = planningNormalSpendingNote(traj);
+  const intro = 'Expected income, bills, household budget, and planned spending — copied from Forecast for one month or pay period.'
+    + (copied ? ' ' + copied : '')
+    + ' This page does not calculate them.';
   const lead = planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey);
   const selected = planningRoadAheadSelectedHtml(traj, granularity, selectedKey, asOf);
   return {
@@ -1857,8 +1860,18 @@ function planningTrajectoryDebtHtml(debt) {
     ${planningTrajectoryChip(debt.status)}${asOf}`;
 }
 
+function planningNormalSpendingNote(traj) {
+  const ns = traj && traj.normalSpending;
+  if (ns && ns.status === 'ready' && ns.phrase) return ns.phrase;
+  if (ns && ns.status === 'unavailable' && ns.reason) return ns.reason;
+  return '';
+}
+
 function planningTrajectoryHtml(traj) {
-  const note = 'Monthly cash and debt are Forecast.baselineTrajectory only — planned weekly variable, not historical actuals and not the payday weekly cap. This page copies status, amounts, and notes; it does not walk cash or debt itself.';
+  const copied = planningNormalSpendingNote(traj);
+  const note = copied
+    ? 'Monthly cash and debt are Forecast.baselineTrajectory only. ' + copied + ' This page copies status, amounts, and notes; it does not walk cash or debt itself.'
+    : 'Monthly cash and debt are Forecast.baselineTrajectory only — planned weekly variable, not historical actuals and not the payday weekly cap. This page copies status, amounts, and notes; it does not walk cash or debt itself.';
   if (!traj || traj.status !== 'ready' || !Array.isArray(traj.months) || !traj.months.length) {
     const reason = (traj && traj.reason) || 'Baseline trajectory unavailable.';
     return {
@@ -1898,9 +1911,12 @@ function planningTrajectoryHtml(traj) {
 }
 
 function planningTrajectory(d, periods) {
+  const overlay = d.liveOverlay;
+  const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
   return Forecast.baselineTrajectory(d.plan, d.debts, d.meta.asOf, {
     periods: periods || null,
     extraFacilities: d.revolvingExtra,
+    currentPeriodActuals: actuals,
   });
 }
 
@@ -1935,8 +1951,11 @@ function planningScenarioParseAmount(raw) {
 }
 
 function planningTrajectoryScenario(d, periods, input) {
+  const overlay = d.liveOverlay;
+  const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
   const base = {
     periods: periods || null,
+    currentPeriodActuals: actuals,
     extraFacilities: d.revolvingExtra,
     nature: 'additional-debt-payment',
   };

@@ -400,6 +400,12 @@ if (trajectory.status === 'ready') {
   if (trajectory.weeklyVariable && trajectory.weeklyVariable.amount != null) {
     put('planning.trajectory.weeklyVariable', trajectory.weeklyVariable.amount);
   }
+  if (trajectory.weeklyVariable && trajectory.weeklyVariable.source) {
+    put('planning.trajectory.weeklyVariable.source', trajectory.weeklyVariable.source);
+  }
+  if (trajectory.normalSpending && trajectory.normalSpending.status) {
+    put('planning.trajectory.normalSpending.status', trajectory.normalSpending.status);
+  }
   for (const month of trajectory.months || []) {
     if (!month || !month.month) continue;
     const p = `planning.trajectory.${month.month}`;

@@ -321,9 +321,12 @@ function projectBaselineTrajectory(data, periods) {
   if (!plan || !asOf) {
     return unavailable('baseline-trajectory-unavailable');
   }
+  const overlay = data && data.liveOverlay;
+  const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
   const trajectory = Forecast.baselineTrajectory(plan, data.debts, asOf, {
     periods: periods || null,
     extraFacilities: data.revolvingExtra,
+    currentPeriodActuals: actuals,
   });
   if (!trajectory || trajectory.status !== 'ready') {
     const reason = clipPacketText(trajectory && trajectory.reason, 500)
@@ -358,6 +361,15 @@ function projectBaselineTrajectory(data, periods) {
       : null,
     weeklyVariable: trajectory.weeklyVariable && trajectory.weeklyVariable.amount != null
       ? money(trajectory.weeklyVariable.amount)
+      : null,
+    normalSpending: trajectory.normalSpending && trajectory.normalSpending.status
+      ? {
+        status: clipPacketText(trajectory.normalSpending.status, 40),
+        phrase: clipPacketText(trajectory.normalSpending.phrase, 240),
+        reason: clipPacketText(trajectory.normalSpending.reason, 500),
+        trust: clipPacketText(trajectory.normalSpending.trust, 40),
+        fallback: clipPacketText(trajectory.normalSpending.fallback, 80),
+      }
       : null,
     incomeRegimes: regimes.length ? regimes : null,
     months,
