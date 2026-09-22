@@ -278,6 +278,8 @@ function projectBaselineTrajectoryCash(cash) {
   const row = { status: cash.status || 'unavailable' };
   if (cash.amount != null) row.amount = money(cash.amount);
   if (cash.asOf) row.asOf = clipPacketText(cash.asOf, 40);
+  if (cash.identity) row.identity = clipPacketText(cash.identity, 80);
+  if (cash.roadAheadFunding === false) row.roadAheadFunding = false;
   const reason = clipPacketText(cash.reason, 500);
   if (reason) row.reason = reason;
   return row;
@@ -369,6 +371,14 @@ function projectBaselineTrajectory(data, periods) {
         reason: clipPacketText(trajectory.normalSpending.reason, 500),
         trust: clipPacketText(trajectory.normalSpending.trust, 40),
         fallback: clipPacketText(trajectory.normalSpending.fallback, 80),
+      }
+      : null,
+    roadAheadSurplusDeficit: trajectory.roadAheadSurplusDeficit
+      ? {
+        identity: clipPacketText(trajectory.roadAheadSurplusDeficit.identity, 80),
+        priorPeriodSurplus: clipPacketText(trajectory.roadAheadSurplusDeficit.priorPeriodSurplus, 40),
+        source: clipPacketText(trajectory.roadAheadSurplusDeficit.source, 40),
+        cumulativeCash: clipPacketText(trajectory.roadAheadSurplusDeficit.cumulativeCash, 40),
       }
       : null,
     incomeRegimes: regimes.length ? regimes : null,
