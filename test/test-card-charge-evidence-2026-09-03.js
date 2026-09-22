@@ -93,11 +93,21 @@ console.log('\n=== unplanned card candidates are evidence only ===');
 
 console.log('\n=== plan.bills was not extended from this discovery ===');
 {
-  const forbidden = /phoenix|calendly|aichat|amazon.?prime|shopify/i;
+  const forbidden = /phoenix|calendly|aichat|shopify/i;
   const hits = bills.filter(b => forbidden.test(`${b.id} ${b.label}`));
   ok(hits.length === 0,
     'no forbidden merchant became a plan.bills id or label',
     hits.map(b => b.id).join(','));
+  const primeRows = bills.filter(b => b && b.id === 'amazon-prime');
+  ok(primeRows.length === 1
+      && primeRows[0].amount === 11.19
+      && primeRows[0].day === 19
+      && primeRows[0].firstDue === '2026-09-19'
+      && primeRows[0].payingAccount === 'travelvisa'
+      && primeRows[0].jointCash === false,
+    'owner 2026-09-22 promoted only the $11.19 Travel Visa Prime membership');
+  ok(!bills.some(b => b && b.id !== 'amazon-prime' && /prime/i.test(`${b.id} ${b.label}`)),
+    'no second Prime row was added from shopping or the $24.63 charge');
   ok(!bills.some(b => /mailchimp/i.test(b.id + ' ' + b.label)),
     'Mailchimp is not a plan.bills row');
   ok(/Canva, Mailchimp, Guitar Tabs monthly, and GitHub annual have no forward recurrence/.test(data.plan.billsNote),

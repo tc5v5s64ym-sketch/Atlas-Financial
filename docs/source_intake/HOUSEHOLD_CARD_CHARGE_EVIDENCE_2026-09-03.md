@@ -74,8 +74,10 @@ sections). This pack does not rewrite it and does not generalize it.
 - **Prime-like FLAG ONLY, not a planned bill:** merchant text
   `Amazon Prime` / `Amazon.ca Prime`, **$11.19** on day 19 in June, July,
   and August 2026, plus $11.19 on 2026-02-17 and 2026-03-17, and $24.63
-  on 2026-02-17. Prime is not automatically a bill. Not currently on
-  `plan.bills`. Do not add it from this flag.
+  on 2026-02-17. Prime is not automatically a bill. This pack did not add
+  it. Owner 2026-09-22 later promoted only the repeated $11.19 Travel Visa
+  membership to `plan.bills` `amazon-prime`. The $24.63 charge and ordinary
+  Amazon shopping stay outside that row.
 - **MBNA:** one charge 2026-07-13 −$34.71 `amzn mktp ca*…`. Amazon on
   MBNA is not automatically Amanda. No cadence. Not a bill.
 - **Cash Back / Personal / Triangle:** no Amazon in this range.
@@ -93,7 +95,7 @@ owner confirmation before any later one-outcome promotion PR.
 | MAILCHIMP | Travel Visa | 5 | 31.73, 32.33, 33.20, 32.81, 32.53 | monthly day 3, 2026-05-03 → 2026-09-03 | Already off subscriptions in `plan.billsNote`. Card evidence does not promote it. |
 | AICHATAPP+18888287054 | Travel Visa | 4 | 44.99 × 4 | monthly day 2, 2026-06-02 → 2026-09-02 | Overlaps ChatGPT Plus **in topic only**. Different amount and day. **Not enough to call already planned.** Do not treat as `chatgpt-plus-dale` or `chatgpt-plus-amanda`. |
 | CALENDLY | Travel Visa | 4 | 19.09, 19.61, 19.37, 19.17 | monthly day 2, 2026-06-02 → 2026-09-02 | Not currently planned. |
-| Amazon Prime / Amazon.ca Prime $11.19 day 19 | Travel Visa | 3 | 11.19 × 3 (Jun/Jul/Aug) | see `CARD-003` | Flag only. Not a planned bill. |
+| Amazon Prime / Amazon.ca Prime $11.19 day 19 | Travel Visa | 3 | 11.19 × 3 (Jun/Jul/Aug) | see `CARD-003` | Flag only in this pack. Owner 2026-09-22 later promoted only the $11.19 membership. |
 | INTEREST CHARGE -PURCHASE | Personal Credit Card (`tdcc`) | 7 | ~36–42 | monthly ~day 23 | Revolving interest, not a new `plan.bills` row. Forecast already models card interest on the debt. |
 | INTEREST CHARGE -PURCHASE | Cash Back Visa (`cashback`) | 6 | 60–159 | monthly ~day 7–8 | Same: interest on the card, not a bill. |
 
@@ -179,8 +181,10 @@ cancelled.
 
 - Create or edit `plan.bills`.
 - Write Lunch Money, recategorize, or add merchant rules.
-- Promote Mailchimp, Calendly, AICHATAPP, Amazon Prime, Phoenix,
-  Shopify, annual fees, or card interest to Forecast bills.
+- Promote Mailchimp, Calendly, AICHATAPP, Phoenix,
+  Shopify, annual fees, or card interest to Forecast bills. This pack
+  also did not promote Amazon Prime. Owner 2026-09-22 later promoted only
+  the repeated $11.19 membership; this file is not that promotion.
 - Treat AICHATAPP $44.99 on day 2 as ChatGPT Plus.
 - Treat two Phoenix hits as a monthly $179 bill.
 - Claim 18–24 months of card history.

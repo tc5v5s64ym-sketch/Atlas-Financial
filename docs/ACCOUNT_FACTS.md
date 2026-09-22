@@ -320,9 +320,11 @@ observed cadence phase. Canonical `plan.bills` row `noble-garbage` is the
 Forecast quarterly recurrence (`day` 18, `anchor` 2026-03-18, `firstDue`
 2026-09-18). Do not infer the paying card from a Visa 0870 mask.
 
-**Owner-confirmed recurring subscriptions** *(owner-confirmed 2026-08-27)*.
-These are current household bills on `plan.bills`. Specific paying account is
-not named. Netflix and the named Google subscriptions moved off
+**Owner-confirmed recurring subscriptions** *(owner-confirmed 2026-08-27,
+plus Amazon Prime membership owner 2026-09-22)*.
+These are current household bills on `plan.bills`. For the 2026-08-27 rows,
+specific paying account is not named. Amazon Prime membership is the later
+card-paid Travel Visa row; it is not one of those unnamed-account rows. Netflix and the named Google subscriptions moved off
 PayPal onto the household debit/bills path. Spotify remains PayPal merchant
 Spotify AB with standing schedule-trust on the existing Forecast due date
 (owner 2026-09-19); a Lunch Money Spotify payee is not required. ChatGPT Plus
@@ -350,6 +352,7 @@ missed a Netflix merchant does not omit the current Netflix bill.
 | YouTube Premium | monthly, 2nd | $17 | confirmed — moved off PayPal with the Google subscriptions |
 | ChatGPT Plus — Dale | monthly, 14th | $28 CAD planning amount | **estimated** amount; confirmed PayPal OpenAI OpCo, LLC schedule-trust on existing Forecast due (owner 2026-09-19; owner 15th rails cited for trust; due day not moved); LM OpenAI/ChatGPT payee not required |
 | ChatGPT Plus — Amanda | monthly, 14th | $24.99 | confirmed — iOS $24.99 schedule-trust on existing Forecast due (owner 2026-09-20; due day not moved); LM ChatGPT/Apple payee not required; not Dale PayPal OpenAI identity |
+| Amazon Prime membership | monthly, 19th, firstDue 2026-09-19 | $11.19 | confirmed — owner 2026-09-22; repeated Travel Visa `Amazon Prime` / `Amazon.ca Prime` $11.19; card-paid, not schedule-trust; $24.63 is not this row |
 
 **Cancelled / not renewing** *(owner-confirmed 2026-08-27)*. No forward
 `plan.bills` recurrence. Historical transactions stay in history.
@@ -944,9 +947,21 @@ reclassify these 9 August Amazon charges.
 **Standing current-period rule (owner-stated 2026-09-03).** An established
 Amazon purchase on canonical Atlas account `travelvisa` is Amanda guilt-free
 spending. Both identities are required. This is not all Amazon, not all Travel
-Visa purchases, not Amazon on MBNA, not Amazon Prime as a recurring bill, and
+Visa purchases, not Amazon on MBNA, not the Amazon Prime membership row, and
 not all online purchases. Historical 9 August charges remain dated evidence
 and are not rewritten by this going-forward classification rule.
+
+**Amazon Prime membership** *(owner 2026-09-22).* Active household
+subscription. `plan.bills` `amazon-prime` is the one row: **$11.19** monthly
+on the **19th**, `firstDue` 2026-09-19, card-paid Travel Visa, `jointCash`
+false. The amount and day are the repeated posted Travel Visa charges
+`Amazon Prime` / `Amazon.ca Prime` at $11.19 (2026-02-17, 2026-03-17, and
+day 19 in June, July, and August 2026). The separate **$24.63** Prime-like
+charge on 2026-02-17 is not this membership. Ordinary Amazon shopping stays
+the guilt-free rule above and is not this bill. Settlement is the
+represented-event identity (exact membership alias, Travel Visa, debit,
+same day, exact scheduled amount as a guard). Not schedule-trust. The
+19 August charge is not reserved again on the 2026-08-19 opening.
 
 Other figures verified from the account on 2026-08-09: last statement balance
 **$801.10** (7 Jul – 5 Aug), last payment **$100.00 on 7 Aug 2026**.

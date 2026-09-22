@@ -243,7 +243,7 @@ console.log('\n=== 8. frequent irregular Amazon shopping is not monthly ===');
     'Amazon shopping is not labelled an unplanned bill');
 }
 
-console.log('\n=== 9. Prime-like sequence may be a candidate and is not a bill ===');
+console.log('\n=== 9. MBNA Prime-like sequence is not the Travel Visa membership ===');
 {
   const beforeBills = JSON.stringify(householdData.plan.bills);
   const charges = [
@@ -255,14 +255,19 @@ console.log('\n=== 9. Prime-like sequence may be a candidate and is not a bill =
   const row = findCandidate(report, 'AMAZONPRIME', 'mbna');
   ok(row && row.amazonPrimeLike && row.cadence === 'monthly',
     'Prime-like monthly sequence is detected', row && `${row.cadence} ${row.amazonPrimeLike}`);
-  ok(row && row.atlasStatus === 'candidate-unplanned',
-    'Prime-like sequence is a candidate, not auto-planned');
-  ok(!(householdData.plan.bills || []).some(b => /prime/i.test(b.id + b.label)),
-    'incumbent plan.bills still has no Amazon Prime bill');
+  ok(row && row.atlasStatus === 'merchant-overlaps-planned-bill'
+      && (row.overlappingBills || []).some(b => b.id === 'amazon-prime')
+      && !(row.matchedBills || []).some(b => b.id === 'amazon-prime'),
+    'MBNA $14.99 overlaps the membership text and is not known-planned',
+    row && `${row.atlasStatus} overlap=${(row.overlappingBills || []).map(b => b.id).join(',')}`);
+  const primeRows = (householdData.plan.bills || []).filter(b => b && b.id === 'amazon-prime');
+  ok(primeRows.length === 1 && primeRows[0].payingAccount === 'travelvisa'
+      && primeRows[0].amount === 11.19,
+    'the live membership stays the one Travel Visa $11.19 row');
   ok(JSON.stringify(householdData.plan.bills) === beforeBills,
     'audit did not mutate plan.bills');
   const text = Audit.formatReport(report);
-  ok(/not promoted/i.test(text), 'report says Prime is not promoted to a bill');
+  ok(/not promoted/i.test(text), 'report says the audit did not promote a bill');
 }
 
 function identityWithCardNetflix() {

@@ -815,14 +815,14 @@
       "id": "CARD-003",
       "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
       "disposition": "EXCLUDED",
-      "exclusion_reason": "Amazon shopping on Travel Visa is repeating spending, not a subscription. Prime-like $11.19 day-19 hits are a flag only. MBNA Amazon is not Amanda by default. Not routed into plan.bills.",
-      "no_review_reason": "Standing Amazon + Travel Visa classification already lives in ACCOUNT_FACTS. This pack must not promote Prime or shopping cadence to a bill."
+      "exclusion_reason": "Amazon shopping on Travel Visa is repeating spending, not a subscription. MBNA Amazon is not Amanda by default. Shopping in this id stays off plan.bills. Owner 2026-09-22 promoted only the repeated $11.19 Travel Visa Prime membership onto plan.bills amazon-prime; that routing is the bill row, not this shopping id.",
+      "no_review_reason": "Standing Amazon + Travel Visa classification already lives in ACCOUNT_FACTS. This pack must not promote shopping cadence to a bill. The later Prime membership promotion is the owner instruction recorded on plan.bills amazon-prime."
     },
     {
       "id": "CARD-004",
       "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
       "disposition": "EXCLUDED",
-      "exclusion_reason": "Mailchimp, AICHATAPP, Calendly, Prime-like, and card INTEREST CHARGE hits are unplanned card candidates. AICHATAPP overlap vs ChatGPT Plus is not enough to call already planned. Interest is revolving-card interest, not a new bill.",
+      "exclusion_reason": "Mailchimp, AICHATAPP, Calendly, and card INTEREST CHARGE hits are unplanned card candidates. AICHATAPP overlap vs ChatGPT Plus is not enough to call already planned. Interest is revolving-card interest, not a new bill. The Prime-like $11.19 membership was later owner-promoted as plan.bills amazon-prime; this id does not promote Mailchimp, AICHATAPP, or Calendly.",
       "no_review_reason": "Owner 2026-09-03: do not add plan.bills. Mailchimp already stays off subscriptions in plan.billsNote."
     },
     {
