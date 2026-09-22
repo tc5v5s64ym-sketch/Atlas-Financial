@@ -382,9 +382,10 @@ console.log('\n=== 2026-08-31 owner budget targets ===');
   }
   {
     const g = plan.budget.categories.find(x => x.id === 'groceries');
-    ok(g && g.plannedPayday === 450 && g.plannedMonthly === 900
-        && g.plannedWeekly == null,
-      'groceries plannedPayday is 450 and plannedMonthly is 900');
+    ok(g && g.plannedPayday === 900 && g.plannedMonthly == null
+        && g.plannedWeekly == null
+        && g.targetSource === 'owner-stated-2026-09-22',
+      'groceries plannedPayday is 900 per Seaspan pay period; plannedMonthly is not a second target');
   }
   {
     const p = plan.budget.categories.find(x => x.id === 'pets');

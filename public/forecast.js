@@ -6406,11 +6406,11 @@
       return roundCent(Number(cat.plannedWeekly) * CALENDAR_MONTH_DAYS / 7);
     }
     // An explicit calendar-month owner target wins the month surface when a
-    // payday hold is also declared. Payday annualization (N × calendar-month
-    // days / 14) would reprint $978.35 from a $450 Seaspan hold instead of the
-    // owner-stated $900/month. Payday-only categories (fuel, eating out,
-    // guilt-free) still annualize; first-seaspan-of-month and
-    // every-other-seaspan stay $N per calendar month.
+    // payday hold is also declared. Payday-only categories (plannedMonthly
+    // null, including groceries after the 2026-09-22 payday restatement)
+    // annualize plannedPayday. first-seaspan-of-month and every-other-seaspan
+    // stay $N per calendar month. Do not store a second derived monthly figure
+    // beside plannedPayday.
     if (cat.plannedMonthly != null && cat.plannedPayday != null) {
       return roundCent(Number(cat.plannedMonthly) || 0);
     }
@@ -6478,7 +6478,7 @@
 
   // Authoritative payday-cycle essential hold: cadence first (pets ON/OFF),
   // then paydayCyclePlanned when the category declares plannedPayday
-  // (groceries $450), else remaining-days smear of the monthly equivalent.
+  // (a declared plannedPayday), else remaining-days smear of the monthly equivalent.
   // plannedWeekly / plannedMonthly-only keep the smear so incomplete-coverage
   // remaining-days and monthly-only fixtures are not rewritten.
   function essentialPeriodPlanned(plan, cat, monthly, cycleStart, periodScale) {
