@@ -414,24 +414,20 @@ console.log('\n=== 5. first card is revolving extra; HELOC stays off the card li
   });
   ok(!/data-payday-first-card/.test(html) && !/data-card-id=/.test(html),
     'the default Plan waterfall prints no card rows after the household-budget boundary');
-  // The card glance still renders where a lookahead view prints it, so the
-  // card-list rules stay proved through a real render path.
   const nextHtml = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'next-period', planView: advice.nextPeriodView,
   });
   const nextGlance = defaultGlance(nextHtml);
-  ok(/Synthetic high card/.test(nextGlance) && /Synthetic other card/.test(nextGlance),
-    'card labels print on the next-period lookahead view');
-  const firstCard = nextGlance.slice(nextGlance.indexOf('Credit card to pay off first'));
-  const otherCards = firstCard.slice(firstCard.indexOf('Other credit cards'));
-  ok(/data-card-id="cashback"/.test(firstCard) || /data-first-card="cashback"/.test(firstCard),
-    'the first-card row names the priority revolving card');
-  ok(!otherCards.includes('data-card-id="cashback"'),
-    'the priority card is not listed again under other cards');
-  ok(!/HELOC/.test(firstCard.slice(0, firstCard.indexOf('Balance after debt repayment')))
-      && !/>Mortgage</.test(otherCards),
-    'HELOC and mortgage are not listed as credit cards');
+  ok(!/Credit card to pay off first/.test(nextGlance)
+      && !/Other credit cards/.test(nextGlance)
+      && !/Balance after debt repayment/.test(nextGlance)
+      && !/Big purchases on the horizon/.test(nextGlance)
+      && !/Balance after big purchase allocation/.test(nextGlance),
+    'next-period lookahead does not print debt or big-purchase waterfall rows');
+  ok(nextGlance.indexOf('Balance after household budget') >= 0
+      && nextGlance.indexOf('Household budget') < nextGlance.indexOf('Balance after household budget'),
+    'next-period lookahead still prints through Balance after household budget');
 }
 
 console.log('\n=== 6. big purchases print Forecast cost and $0 saved; page does not subtract ===');

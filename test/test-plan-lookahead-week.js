@@ -337,6 +337,23 @@ console.log('\n=== 3. next-period bills are that span only; no invented payees =
   const banned = bannedOnGlance(html);
   ok(!banned, 'lookahead glance has no Forecast field names or settlement code words',
     banned && banned[0]);
+  const lookaheadPrompts = [
+    'Current Balance',
+    'Bills this pay period',
+    'Balance after bills',
+    'Household budget',
+    'Balance after household budget',
+  ];
+  let prev = -1;
+  for (const label of lookaheadPrompts) {
+    const at = glance.indexOf(label);
+    ok(at > prev, `next-period lookahead prints ${label} in waterfall order`);
+    prev = at;
+  }
+  ok((html.match(/data-operating-question=/g) || []).length === 5,
+    'next-period lookahead has five snapshot questions, not debt or big-purchase rows');
+  ok(!/Credit card to pay off first|Other credit cards|Balance after debt repayment|Big purchases on the horizon|Balance after big purchase allocation/.test(glance),
+    'next-period lookahead omits debt-repayment and big-purchase waterfall rows');
 }
 
 console.log('\n=== 4. week views come from the Forecast walk; picker asks for that week ===');
@@ -366,8 +383,12 @@ console.log('\n=== 4. week views come from the Forecast walk; picker asks for th
     planLook: 'week:' + paydayWeek.periodStart, planView: paydayWeek,
   });
   const glance = defaultGlance(weekHtml);
-  ok(/Bills this week/.test(glance) && /Extra this week/.test(glance),
+  ok(/Bills this week/.test(glance) && !/Bills this pay period/.test(glance),
     'the week printout uses week language, not pay-period language');
+  ok(!/Credit card to pay off first|Balance after big purchase allocation/.test(glance),
+    'week lookahead omits debt-repayment and big-purchase waterfall rows');
+  ok((weekHtml.match(/data-operating-question=/g) || []).length === 5,
+    'week lookahead stops at Balance after household budget');
   ok(/Payroll — Seaspan/.test(glance) && !/Rogers/.test(glance),
     'the week printout shows Forecast bills for that week, not invented payees');
   const planSrc = read('public/plan.js');
