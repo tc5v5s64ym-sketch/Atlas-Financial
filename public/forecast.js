@@ -13858,6 +13858,9 @@
   // commitments, and planned-debt flows are not Stage 3 and not a
   // balancing bucket. Household Budget is not a separate calendar-month
   // smear and is not a residual of the cash close.
+  // Each stage result is this span's own funding. Prior-period surplus
+  // and the cumulative walk close are not added. A later deficit stays
+  // visible when an earlier span was in surplus.
   // Fail closed when this month's income or cash walk is unavailable.
   // Stage 1 income publishes attributable named lines from the same span
   // income events already used for the rollup: Dale (Seaspan payroll
@@ -14146,8 +14149,27 @@
       if (lines.length) row.lines = lines;
       return row;
     }
-    function result(amount, status) {
-      return { amount: roundCent(amount), status };
+    // Standalone period funding. Prior-period surplus and the cumulative
+    // walk close are not operands. A positive result is surplus this
+    // period can set aside; a negative result is funding this period
+    // needs before it arrives.
+    function standalonePeriodResult(amount, status) {
+      return {
+        amount: roundCent(amount),
+        status,
+        identity: 'standalone-period-surplus-deficit',
+        priorPeriodSurplus: 'excluded',
+      };
+    }
+    function standalonePeriodPhrase(amount) {
+      const n = roundCent(amount);
+      if (n > 0) {
+        return 'This period can set aside this surplus for future needs. Earlier surplus is not included.';
+      }
+      if (n < 0) {
+        return 'This period needs this amount saved before it arrives. Earlier surplus is not applied.';
+      }
+      return 'This period funds itself exactly. Earlier surplus is not included.';
     }
     const householdBudget = {
       amount: householdBudgetAmount,
@@ -14171,7 +14193,7 @@
           obligationsAmount, obligationsStatus,
           baselineTrajectoryEventLines(obligations, obligationsAmount)),
         householdBudget,
-        result: result(stage1Amount, stage1Status),
+        result: standalonePeriodResult(stage1Amount, stage1Status),
       },
       stage2: {
         id: 'after-planned-spending',
@@ -14180,7 +14202,7 @@
         commitments: component(
           commitmentsAmount, commitmentsStatus,
           baselineTrajectoryEventLines(commitments, commitmentsAmount)),
-        result: result(stage2Amount, stage2Status),
+        result: standalonePeriodResult(stage2Amount, stage2Status),
       },
       stage3: {
         id: 'after-debt-strategy',
@@ -14191,7 +14213,9 @@
           status: extrasStatus,
           source: 'plan.defaults.extraDebtMonthly',
         },
-        result: result(stage3Amount, stage3Status),
+        result: Object.assign(standalonePeriodResult(stage3Amount, stage3Status), {
+          phrase: standalonePeriodPhrase(stage3Amount),
+        }),
       },
     };
   }
@@ -14306,11 +14330,24 @@
       };
     } else if (daleEstimatedThroughSpanEnd) {
       cash = close
-        ? { status: 'estimated', amount: roundCent(close.balance), asOf: close.date, trust: 'estimated' }
+        ? {
+            status: 'estimated',
+            amount: roundCent(close.balance),
+            asOf: close.date,
+            trust: 'estimated',
+            identity: 'cumulative-walk-close',
+            roadAheadFunding: false,
+          }
         : { status: 'unavailable', reason: closeMissingReason };
     } else {
       cash = close
-        ? { status: 'calculated', amount: roundCent(close.balance), asOf: close.date }
+        ? {
+            status: 'calculated',
+            amount: roundCent(close.balance),
+            asOf: close.date,
+            identity: 'cumulative-walk-close',
+            roadAheadFunding: false,
+          }
         : { status: 'unavailable', reason: closeMissingReason };
     }
     const funding = baselineTrajectoryMonthFunding({
@@ -14386,6 +14423,12 @@
   // baselineTrajectoryScenario, not hypotheticalExtraPayment and not
   // counterfactuals. Scenario amounts, owner surplus-target policy, and payday
   // leftover are not Stage 3.
+  // Each published stage result is the standalone period identity
+  // standalone-period-surplus-deficit (priorPeriodSurplus excluded).
+  // It does not add the prior month or pay period surplus, and it is
+  // not the cumulative walk close on cash. roadAheadSurplusDeficit
+  // names that contract; stage3.result is the household Road Ahead
+  // funding result. cash stays the cumulative walk close for internals.
   // additionalCashRequired is the same walk's zero-floor shortfall
   // (max(0, 0 − sim.min.balance)) plus Forecast-owned designated-savings
   // backing: fundedByDesignatedSavings is actual savings-row evidence,
@@ -14576,6 +14619,12 @@
         historicalActuals: spendPublication.historicalActuals,
       },
       normalSpending,
+      roadAheadSurplusDeficit: {
+        identity: 'standalone-period-surplus-deficit',
+        priorPeriodSurplus: 'excluded',
+        source: 'stage3.result',
+        cumulativeCash: 'not-this-result',
+      },
       incomeRegimes: [
         {
           id: 'current-modelled-dale-net',

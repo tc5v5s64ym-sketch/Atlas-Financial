@@ -406,6 +406,13 @@ if (trajectory.status === 'ready') {
   if (trajectory.normalSpending && trajectory.normalSpending.status) {
     put('planning.trajectory.normalSpending.status', trajectory.normalSpending.status);
   }
+  const roadIdentity = trajectory.roadAheadSurplusDeficit || {};
+  if (roadIdentity.identity) {
+    put('planning.trajectory.roadAheadSurplusDeficit.identity', roadIdentity.identity);
+  }
+  if (roadIdentity.priorPeriodSurplus) {
+    put('planning.trajectory.roadAheadSurplusDeficit.priorPeriodSurplus', roadIdentity.priorPeriodSurplus);
+  }
   for (const month of trajectory.months || []) {
     if (!month || !month.month) continue;
     const p = `planning.trajectory.${month.month}`;

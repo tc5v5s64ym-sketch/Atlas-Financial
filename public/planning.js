@@ -334,6 +334,7 @@ function planningRoadAheadWaterfallHtml(period, granularity) {
     : finalPhrase.cls === 'surplus' ? 'Final surplus'
     : 'Final result';
   const finalRow = planningRoadWaterfallResultRow(finalLabel, s3.result, 'final');
+  const standaloneNote = planningRoadStandalonePhraseHtml(s3.result);
   const key = planningRoadAheadPeriodKey(period, granularity) || '';
   return `<div class="planning-road-waterfall" data-planning-road-waterfall="ready" data-road-waterfall-period="${key}" data-road-waterfall-granularity="${granularity || 'month'}">
     ${incomeBlock}
@@ -345,7 +346,16 @@ function planningRoadAheadWaterfallHtml(period, granularity) {
     ${extrasBlock}
     ${finalRow}
     <p class="planning-road-wf-footnote">From your Forecast plan · this ${noun}.</p>
+    ${standaloneNote}
   </div>`;
+}
+
+/** Reprint Forecast's standalone-period phrase. The page does not write it. */
+function planningRoadStandalonePhraseHtml(result) {
+  if (!result || result.identity !== 'standalone-period-surplus-deficit') return '';
+  if (result.priorPeriodSurplus !== 'excluded') return '';
+  if (typeof result.phrase !== 'string' || !result.phrase) return '';
+  return `<p class="planning-road-hero-narrative" data-road-standalone-phrase="forecast" data-road-surplus-deficit-identity="${result.identity}" data-road-prior-surplus="${result.priorPeriodSurplus}">${result.phrase}</p>`;
 }
 
 function planningTrajectoryIncomeHtml(income) {
@@ -1586,6 +1596,7 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
     : phrase.cls === 'surplus' ? 'period-surplus'
     : 'period-even';
   const chip = planningRoadWaterfallTrustChip(result.status);
+  const standaloneNote = planningRoadStandalonePhraseHtml(result);
   return {
     html: `<article class="planning-road-lead planning-road-lead-${phrase.cls} planning-road-hero-card" data-road-lead="${leadKind}" data-road-lead-period="${key || ''}" data-road-result-sign="${phrase.cls}">
       <div class="planning-road-hero-banner">
@@ -1593,6 +1604,7 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
         <p class="planning-road-lead-amount" data-road-lead-amount="${result.amount}"><b>${planningRoadSignedMoney(amount)}</b>${chip}</p>
       </div>
       <p class="planning-road-hero-narrative">${caption}</p>
+      ${standaloneNote}
     </article>`,
     focusKey: key,
   };
