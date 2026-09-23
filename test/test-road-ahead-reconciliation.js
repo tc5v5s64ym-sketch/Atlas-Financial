@@ -88,6 +88,12 @@ function assertPartition(t, ledger, anchor, { incomeThrough = '9999-12-31', budg
           : rows.some(e => e.status === 'estimated') ? 'estimated' : 'calculated';
         eq(actual.status, status, `${p.start} ${k}: weakest constituent trust`);
         if (actual.lines) eq(sum(actual.lines.map(l => cents(l.amount))), expected[k], `${k} lines close in cents`);
+        if (k === 'budget' && actual.lines) {
+          for (const line of actual.lines) {
+            if (line.label === 'Normal spending estimate') continue;
+            eq(line.amount >= 0, true, `${p.start} ${line.label}: positive targets stay non-negative`);
+          }
+        }
         if (['bills', 'obligations', 'commitments'].includes(k)) {
           const ids = [...new Set(rows.map(e => e.id))].sort();
           eq((actual.lines || []).map(l => l.id).sort(), ids, `${k} exact named membership`);
@@ -204,6 +210,67 @@ function ask(p, ds = debt, extra = {}) {
   eq(sum(t.months.map(p => cents(p.stage1.householdBudget.amount))), total, 'Month conserves integer daily spending');
   eq(sum(t.payPeriods.map(p => cents(p.stage1.householdBudget.amount))), total, 'Pay Period conserves integer daily spending');
   assertPartition(t, syntheticLedger(p, t.horizon.end, 20004), '2026-01-30');
+}
+
+function categoryThroughDays(fortnightCents, days, weightCents) {
+  const W = sum(weightCents);
+  const seats = weightCents.map(() => 0);
+  if (!(days > 0) || !(W > 0)) return seats;
+  let remainder = 7;
+  for (let d = 0; d < days; d++) {
+    remainder += fortnightCents;
+    const pennies = Math.floor(remainder / 14);
+    remainder %= 14;
+    if (pennies <= 0) continue;
+    let given = 0;
+    const parts = weightCents.map((w, i) => {
+      const num = pennies * w;
+      const floor = Math.floor(num / W);
+      seats[i] += floor;
+      given += floor;
+      return { i, rem: num % W };
+    });
+    parts.sort((a, b) => b.rem - a.rem || a.i - b.i);
+    for (let k = 0; k < pennies - given; k++) seats[parts[k].i] += 1;
+  }
+  return seats;
+}
+
+// Small positive tail: last-line residual at each boundary published -0.01
+// in August 2026 for $2000 + $0.01. Daily weighted splits stay non-negative
+// and conserve the same component total in both partitions.
+{
+  const p = fixture();
+  p.budget.categories = [
+    { id: 'big', label: 'Big', class: 'essential', from: ['X'], plannedMonthly: 2000 },
+    { id: 'tiny', label: 'Tiny tail', class: 'essential', from: ['Y'], plannedMonthly: 0.01 },
+  ];
+  p.bills = []; p.obligations = []; p.commitments = []; p.defaults.extraDebtMonthly = 0;
+  p.income = [{ ...p.income[0], amount: 5000 }];
+  const t = ask(p, []);
+  const weeklyCents = Math.round(200001 * 336 / 1461);
+  eq(cents(t.weeklyVariable.amount), weeklyCents, 'tiny-tail weekly independently annualized');
+  const ledger = syntheticLedger(p, t.horizon.end, weeklyCents * 2);
+  assertPartition(t, ledger, '2026-01-30');
+  const weights = [200000, 1];
+  const labels = ['Big', 'Tiny tail'];
+  for (const series of [t.months, t.payPeriods]) {
+    for (const period of series) {
+      if (period.stage1.status === 'unavailable') continue;
+      const prior = ledger.filter(e => e.kind === 'budget' && e.apply < period.start).length;
+      const walk = ledger.filter(e =>
+        e.kind === 'budget' && e.apply >= period.start && e.apply <= period.end).length;
+      const expected = categoryThroughDays(weeklyCents * 2, prior + walk, weights)
+        .map((n, i) => n - categoryThroughDays(weeklyCents * 2, prior, weights)[i]);
+      const lines = period.stage1.householdBudget.lines || [];
+      eq(lines.map(l => l.label), labels, `${period.start}: named tail membership`);
+      eq(lines.map(l => cents(l.amount)), expected, `${period.start}: independent monotonic category cents`);
+      eq(expected.every(n => n >= 0), true, `${period.start}: independent tail split stays non-negative`);
+    }
+  }
+  const aug = t.months.find(m => m.month === '2026-08');
+  eq(aug && aug.stage1.householdBudget.lines.find(l => l.label === 'Tiny tail').amount >= 0, true,
+    'August tiny tail is not the former -0.01 last-line residual');
 }
 
 // Payday, preceding day, month end, partial first month/cycle, leap day.

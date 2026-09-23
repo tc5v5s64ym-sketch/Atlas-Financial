@@ -222,6 +222,10 @@ function independentSpanComponents(plan, debts, span) {
   });
   const walkDays = independentWalkDays(
     walk.horizon.start, walk.horizon.end, span.start, span.end);
+  const priorWalkDays = span.start > walk.horizon.start
+    ? independentWalkDays(
+      walk.horizon.start, walk.horizon.end, walk.horizon.start, addDays(span.start, -1))
+    : 0;
   const bills = events.filter(e =>
     e.kind === 'bill' && e.jointCash !== false && !e.cardPaid);
   const obligations = events.filter(e => e.kind === 'obligation');
@@ -230,19 +234,40 @@ function independentSpanComponents(plan, debts, span) {
   const cats = (bd.categories || []).filter(c =>
     c && c.class !== 'reserve' && c.source !== 'historical-actual'
     && isFinite(Number(c.planned)) && Number(c.planned) > 0);
-  const householdBudget = roundCent(walk.weekly * walkDays / 7);
-  const budgetLines = cats.map(c => ({
+  const categoryThroughDays = (weekly, days, weightCents) => {
+    const W = weightCents.reduce((s, w) => s + w, 0);
+    const seats = weightCents.map(() => 0);
+    if (!(days > 0) || !(W > 0)) return seats;
+    let remainder = 7;
+    const fortnightCents = Math.round(weekly * 200);
+    for (let d = 0; d < days; d++) {
+      remainder += fortnightCents;
+      const pennies = Math.floor(remainder / 14);
+      remainder %= 14;
+      if (pennies <= 0) continue;
+      let given = 0;
+      const parts = weightCents.map((w, i) => {
+        const num = pennies * w;
+        const floor = Math.floor(num / W);
+        seats[i] += floor;
+        given += floor;
+        return { i, rem: num % W };
+      });
+      parts.sort((a, b) => b.rem - a.rem || a.i - b.i);
+      for (let k = 0; k < pennies - given; k++) seats[parts[k].i] += 1;
+    }
+    return seats;
+  };
+  const weightCents = cats.map(c => Math.round(Number(c.planned) * 100));
+  const after = categoryThroughDays(walk.weekly, priorWalkDays + walkDays, weightCents);
+  const before = categoryThroughDays(walk.weekly, priorWalkDays, weightCents);
+  const householdBudget = (after.reduce((s, n) => s + n, 0)
+    - before.reduce((s, n) => s + n, 0)) / 100;
+  const budgetLines = cats.map((c, i) => ({
     label: c.label || c.id,
-    amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * walkDays / 7),
+    amount: (after[i] - before[i]) / 100,
     status: 'calculated',
   }));
-  if (budgetLines.length) {
-    const total = roundCent(budgetLines.reduce((s, row) => s + row.amount, 0));
-    if (total !== householdBudget) {
-      const last = budgetLines[budgetLines.length - 1];
-      last.amount = roundCent(last.amount + (householdBudget - total));
-    }
-  }
   return {
     weekly: walk.weekly,
     walkDays,
@@ -594,20 +619,42 @@ console.log('\n=== 10. Live household September reconciles by event id and plann
     && isFinite(Number(c.planned)) && Number(c.planned) > 0);
   const walkDays = sep.stage1.householdBudget.walkDays;
   const priorDays = (Date.parse(sep.start) - Date.parse(asOf)) / 86400000;
-  // Independently attribute both cumulative spending boundaries, then
-  // subtract. Resetting rounding at September creates partition drift.
-  const atBoundary = days => {
-    const rows = cats.map(c => ({ label: c.label || c.id,
-      amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * days / 7) }));
-    const total = roundCent(rows.reduce((s, row) => s + row.amount, 0));
-    if (rows.length) rows[rows.length - 1].amount = roundCent(
-      rows[rows.length - 1].amount + roundCent(weekly * days / 7) - total);
-    return rows;
+  // Independently split both cumulative spending-penny totals by owner
+  // weight. Last-line residual at each boundary can publish a negative
+  // tail even when every owner target is positive.
+  const categoryThroughDays = days => {
+    const weightCents = cats.map(c => Math.round(Number(c.planned) * 100));
+    const W = weightCents.reduce((s, w) => s + w, 0);
+    const seats = weightCents.map(() => 0);
+    if (!(days > 0) || !(W > 0)) return seats;
+    let remainder = 7;
+    const fortnightCents = Math.round(weekly * 200);
+    for (let d = 0; d < days; d++) {
+      remainder += fortnightCents;
+      const pennies = Math.floor(remainder / 14);
+      remainder %= 14;
+      if (pennies <= 0) continue;
+      let given = 0;
+      const parts = weightCents.map((w, i) => {
+        const num = pennies * w;
+        const floor = Math.floor(num / W);
+        seats[i] += floor;
+        given += floor;
+        return { i, rem: num % W };
+      });
+      parts.sort((a, b) => b.rem - a.rem || a.i - b.i);
+      for (let k = 0; k < pennies - given; k++) seats[parts[k].i] += 1;
+    }
+    return seats;
   };
-  const before = atBoundary(priorDays), after = atBoundary(priorDays + walkDays);
-  const expectedBudget = after.map((r, i) => ({ label: r.label, amount: roundCent(r.amount - before[i].amount) }));
-  const budgetTotal = roundCent(roundCent(weekly * (priorDays + walkDays) / 7)
-    - roundCent(weekly * priorDays / 7));
+  const after = categoryThroughDays(priorDays + walkDays);
+  const before = categoryThroughDays(priorDays);
+  const expectedBudget = cats.map((c, i) => ({
+    label: c.label || c.id,
+    amount: (after[i] - before[i]) / 100,
+  }));
+  const budgetTotal = (after.reduce((s, n) => s + n, 0)
+    - before.reduce((s, n) => s + n, 0)) / 100;
   const publishedBudget = sep.stage1.householdBudget.lines || [];
   ok(cats.length > 1 && publishedBudget.length === expectedBudget.length,
     'live September householdBudget.lines are present for contributing categories');

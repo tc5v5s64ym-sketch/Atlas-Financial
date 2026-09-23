@@ -13875,12 +13875,12 @@
   // publishes attributable lines from plan.budget.categories that feed
   // planned weeklyVariable (budgetBreakdown owner-target /
   // current-regime planned remainder, not historical actuals): each
-  // contributing category is smeared as planned / WEEKS_PER_MONTH ×
-  // walkDays / 7. A single Household budget smear line is published
-  // only when the walk-applied total is non-zero and no contributing
-  // category can be named. Empty sets omit lines. sum(lines) equals
-  // the unchanged component amount. Stage arithmetic is otherwise
-  // unchanged.
+  // contributing category receives a monotonic share of the same
+  // walk-boundary spending pennies. A single Household budget smear
+  // line is published only when the walk-applied total is non-zero
+  // and no contributing category can be named. Empty sets omit lines.
+  // sum(lines) equals the unchanged component amount. Stage arithmetic
+  // is otherwise unchanged.
   function isCoachingOrGravyIncome(stream) {
     if (!stream) return false;
     return /coach|gravy/i.test(`${stream.id || ''} ${stream.label || ''}`);
@@ -14042,20 +14042,21 @@
     }
     const lines = [];
     if (contributing.length) {
-      // Attribute at the same two walk boundaries as the component. Rounding
-      // each category afresh inside each display span would still move pennies
-      // between categories when Month is replaced by Pay Period.
-      const through = days => reconcileTrajectoryLineAmounts(contributing.map(c => ({
+      // Split each walk day's pennies by owner-target weight. Last-line
+      // residual at each boundary is not monotonic: a small positive tail
+      // can publish a negative span amount.
+      const weights = contributing.map(c => Math.round(Number(c.planned) * 100));
+      const after = trajectoryCategoryCentsThroughDays(
+        weights, input.weeklyVariable, priorWalkDays + walkDays);
+      const before = trajectoryCategoryCentsThroughDays(
+        weights, input.weeklyVariable, priorWalkDays);
+      for (let i = 0; i < contributing.length; i++) {
+        const c = contributing[i];
+        lines.push({
           label: c.label || c.id || 'Household budget',
-          amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * days / 7),
+          amount: (after[i] - before[i]) / 100,
           status: 'calculated',
-        })), trajectoryVariableThrough(input.weeklyVariable, days));
-      const before = through(priorWalkDays);
-      const after = through(priorWalkDays + walkDays);
-      for (let i = 0; i < after.length; i++) {
-        lines.push(Object.assign({}, after[i], {
-          amount: roundCent(after[i].amount - before[i].amount),
-        }));
+        });
       }
     } else if (target !== 0) {
       lines.push({
@@ -14075,6 +14076,39 @@
   // attribution only: neither opening cash nor prior surplus is an operand.
   function trajectoryVariableThrough(weekly, days) {
     return Math.floor((Math.round(weekly * 200) * days + 7) / 14) / 100;
+  }
+
+  // Cumulative category pennies after `days` of the same daily stream
+  // that funds trajectoryVariableThrough. Each day's pennies are split
+  // by largest remainder of owner-target weight, so a later day never
+  // takes a penny back and a positive tail cannot go negative.
+  function trajectoryCategoryCentsThroughDays(weights, weekly, days) {
+    const n = weights.length;
+    const seats = new Array(n).fill(0);
+    if (!(days > 0) || !n) return seats;
+    const totalWeight = weights.reduce((s, w) => s + w, 0);
+    if (!(totalWeight > 0)) return seats;
+    const fortnightCents = Math.round(weekly * 200);
+    let remainder = 7;
+    for (let d = 0; d < days; d++) {
+      remainder += fortnightCents;
+      const pennies = Math.floor(remainder / 14);
+      remainder %= 14;
+      if (pennies <= 0) continue;
+      let given = 0;
+      const parts = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const num = pennies * weights[i];
+        const floor = Math.floor(num / totalWeight);
+        seats[i] += floor;
+        given += floor;
+        parts[i] = { i, rem: num % totalWeight };
+      }
+      parts.sort((a, b) => b.rem - a.rem || a.i - b.i);
+      const leftover = pennies - given;
+      for (let k = 0; k < leftover; k++) seats[parts[k].i] += 1;
+    }
+    return seats;
   }
 
   function baselineTrajectoryWalkVariableDays(daily, span) {

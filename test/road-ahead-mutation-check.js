@@ -13,6 +13,20 @@ const cases = [
   ['promote estimated trust', 'const billsStatus = trajectoryEventsStatus(bills);', "const billsStatus = 'calculated';"],
   ['substitute cumulative cash', 'standalonePeriodResult(stage3Amount, stage3Status)', 'standalonePeriodResult(cash.amount, stage3Status)'],
   ['round fractional debt after grouping', 'amount: e.amount < 0 ? -roundCent(-e.amount) : roundCent(e.amount),', 'amount: e.amount,'],
+  ['last-category residual at each boundary',
+    /const weights = contributing\.map\(c => Math\.round\(Number\(c\.planned\) \* 100\)\);[\s\S]*?amount: \(after\[i\] - before\[i\]\) \/ 100,\n          status: 'calculated',\n        \}\);\n      \}/,
+    `const through = days => reconcileTrajectoryLineAmounts(contributing.map(c => ({
+          label: c.label || c.id || 'Household budget',
+          amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * days / 7),
+          status: 'calculated',
+        })), trajectoryVariableThrough(input.weeklyVariable, days));
+      const before = through(priorWalkDays);
+      const after = through(priorWalkDays + walkDays);
+      for (let i = 0; i < after.length; i++) {
+        lines.push(Object.assign({}, after[i], {
+          amount: roundCent(after[i].amount - before[i].amount),
+        }));
+      }`],
 ];
 for (const [name, pattern, replacement] of cases) {
   const changed = original.replace(pattern, replacement);

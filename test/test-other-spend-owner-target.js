@@ -325,9 +325,40 @@ console.log('\n=== 8. Live trajectory Household Budget path includes the $800 mo
       && sep.stage1.status !== 'unavailable',
     'live September Stage 1 householdBudget is published');
   const walkDays = sep.stage1.householdBudget.walkDays;
-  const expectedOtherLine = roundCent((OTHER_MONTHLY / WEEKS_PER_MONTH) * walkDays / 7);
+  const priorDays = (Date.parse(sep.start) - Date.parse(asOf)) / 86400000;
+  const cats = (liveBd.categories || []).filter(c =>
+    c && c.class !== 'reserve' && c.source !== 'historical-actual'
+    && isFinite(Number(c.planned)) && Number(c.planned) > 0);
+  const weights = cats.map(c => Math.round(Number(c.planned) * 100));
+  const totalWeight = weights.reduce((s, w) => s + w, 0);
+  const fortnightCents = Math.round(traj.weeklyVariable.amount * 200);
+  const through = days => {
+    const seats = weights.map(() => 0);
+    if (!(days > 0) || !(totalWeight > 0)) return seats;
+    let remainder = 7;
+    for (let d = 0; d < days; d++) {
+      remainder += fortnightCents;
+      const pennies = Math.floor(remainder / 14);
+      remainder %= 14;
+      if (pennies <= 0) continue;
+      let given = 0;
+      const parts = weights.map((w, i) => {
+        const num = pennies * w;
+        const floor = Math.floor(num / totalWeight);
+        seats[i] += floor;
+        given += floor;
+        return { i, rem: num % totalWeight };
+      });
+      parts.sort((a, b) => b.rem - a.rem || a.i - b.i);
+      for (let k = 0; k < pennies - given; k++) seats[parts[k].i] += 1;
+    }
+    return seats;
+  };
+  const otherIndex = cats.findIndex(c => c.id === OTHER_ID);
+  const expectedOtherLine = (through(priorDays + walkDays)[otherIndex]
+    - through(priorDays)[otherIndex]) / 100;
   const otherLine = lineByLabel(sep.stage1.householdBudget.lines, OTHER_LABEL);
-  ok(otherLine && near(otherLine.amount, expectedOtherLine, 0.01) && otherLine.status === 'calculated',
+  ok(otherLine && near(otherLine.amount, expectedOtherLine) && otherLine.status === 'calculated',
     'live September householdBudget lines include Other spend from independently smeared $800/month',
     otherLine ? `${otherLine.amount} vs ${expectedOtherLine}` : 'missing');
   const withoutLines = sepWithout && sepWithout.stage1 && sepWithout.stage1.householdBudget

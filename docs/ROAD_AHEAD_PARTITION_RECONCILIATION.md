@@ -32,9 +32,9 @@ on where the display cut the walk.
 
 Normal spending now uses differences between cent-rounded spending at two
 boundaries of the existing walk. Integer fortnight cents preserve the recent
-baseline's half-cent weekly rate. The named planned-budget categories use those
-same boundaries, including the existing last-line attribution of rounding, so
-switching views cannot move cents between categories either.
+baseline's half-cent weekly rate. The named planned-budget categories receive each walk day's pennies in
+owner-target proportion, so a small positive tail cannot publish a negative
+amount and switching views cannot move cents between categories either.
 
 Each dated event is published in cents before grouping it into a span. This
 includes payments capped by debt absorption that contain fractional accrued
@@ -80,11 +80,12 @@ classification, simulation or debt helpers:
   later deficit survives a larger earlier surplus.
 
 `node test/road-ahead-mutation-check.js` compiles isolated in-memory mutations
-without editing Forecast or household data. All seven must produce assertion
+without editing Forecast or household data. All eight must produce assertion
 failures: old span rounding, omitted bills, doubled required debt, shifted
-application dates, promoted bill trust, cumulative cash replacing stage 3, and
-fractional debt rounded only after grouping. This is optional proof tooling,
-not a new governance gate or runtime authority.
+application dates, promoted bill trust, cumulative cash replacing stage 3,
+fractional debt rounded only after grouping, and last-category residual at
+each boundary. This is optional proof tooling, not a new governance gate or
+runtime authority.
 
 ## Deterministic committed-household result
 
