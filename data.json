@@ -670,24 +670,24 @@
             {
                 "id": "seattle-nov",
                 "date": "2026-11-15",
-                "label": "Seattle tournament #1",
-                "amount": 1200,
+                "label": "Seattle November 2026",
+                "amount": 1500,
                 "when": "Nov 2026",
                 "budgetCategory": "travel",
-                "confidence": "estimated",
+                "confidence": "confirmed",
                 "sinkingFund": true,
-                "note": "Owner estimate $1,200, Nov 2026. Tournament dates are not a payment due date. Owner month-only dating policy: cash date 2026-11-15 (15th of the clear month). Tacoma is not on the current known list."
+                "note": "Owner-confirmed planning amount $1,500, Nov 2026 (owner 2026-09-23; supersedes the prior $1,200 estimate). Tournament dates are not a payment due date. Owner month-only dating policy: cash date 2026-11-15 (15th of the clear month). Tacoma is not on the current known list."
             },
             {
                 "id": "seattle-dec",
                 "date": "2026-12-09",
-                "label": "Seattle tournament #2",
-                "amount": 1200,
+                "label": "Seattle December 2026",
+                "amount": 1500,
                 "when": "Dec 2026",
                 "budgetCategory": "travel",
-                "confidence": "estimated",
+                "confidence": "confirmed",
                 "sinkingFund": true,
-                "note": "Owner estimate $1,200, Dec 2026. Owner assigned cash date 2026-12-09 (Seattle tournament is Dec 9), not the month-only 15th. Distinct from Seattle #1."
+                "note": "Owner-confirmed planning amount $1,500, Dec 2026 (owner 2026-09-23; supersedes the prior $1,200 estimate). Owner assigned cash date 2026-12-09 (Seattle tournament is Dec 9), not the month-only 15th. Distinct from Seattle November."
             },
             {
                 "id": "christmas-2026",
@@ -701,61 +701,26 @@
                 "note": "Owner estimate $3,500 by Christmas 2026. Owner assigned cash date 2026-12-25 (Christmas is Dec 25), not a month-only 15th. Amanda's 10 August interview $5,000–$6,000/year remains interview evidence, not this row."
             },
             {
-                "id": "downstairs-couch",
-                "label": "Downstairs couch",
-                "amount": 1700,
-                "when": "Nov–Dec 2026",
-                "budgetCategory": null,
-                "confidence": "estimated",
-                "adjustable": true,
-                "sinkingFund": true,
-                "note": "Owner estimate ~$1,700, Nov–Dec 2026, flexible. Timing can move. No day is invented."
-            },
-            {
-                "id": "exterior-painting",
-                "label": "Exterior painting",
-                "amount": null,
-                "amountMin": 700,
-                "amountMax": 1200,
-                "when": "Fall 2026",
-                "budgetCategory": null,
-                "confidence": "estimated",
-                "adjustable": true,
-                "sinkingFund": true,
-                "note": "Owner estimate $700–$1,200, Fall 2026, flexible. Range only — no midpoint is invented and no day is invented."
-            },
-            {
-                "id": "indio-tournament",
-                "date": "2027-01-15",
-                "label": "Indio tournament",
-                "amount": null,
-                "amountMin": 5260,
-                "amountMax": 5460,
-                "when": "Jan 2027",
-                "budgetCategory": "travel",
-                "confidence": "estimated",
-                "sinkingFund": true,
-                "note": "Owner estimate $5,260–$5,460, Jan 2027. Range only — no midpoint is invented. Owner month-only dating policy: cash date 2027-01-15 (15th of the clear month)."
-            },
-            {
                 "id": "provincials",
                 "label": "Provincials",
-                "amount": 1000,
+                "amount": 1500,
                 "when": "timing TBD",
                 "budgetCategory": "sport",
-                "confidence": "estimated",
+                "confidence": "confirmed",
                 "sinkingFund": true,
-                "note": "Owner estimate $1,000. Timing, location, and a due date are unknown. No date is invented."
+                "note": "Owner-confirmed planning amount $1,500 (owner 2026-09-23; supersedes the prior $1,000 estimate). Timing, location, and a due date are still unknown. No date, month, payday, or funding period is invented. Fail-closed for dated Forecast allocation."
             },
             {
-                "id": "vehicle-maintenance",
-                "label": "Vehicle maintenance",
-                "amount": 2400,
-                "when": "annual",
-                "budgetCategory": null,
-                "confidence": "estimated",
+                "id": "san-diego",
+                "date": "2027-01-15",
+                "label": "San Diego",
+                "amount": 3000,
+                "when": "Jan 2027",
+                "tripWindow": "Jan 7–11, 2027",
+                "budgetCategory": "travel",
+                "confidence": "confirmed",
                 "sinkingFund": true,
-                "note": "Owner estimate ~$2,400/year. No known repair is currently due. Not a monthly owner budget target and not a dated cash event."
+                "note": "Owner 2026-09-23: San Diego, California trip / tournament. Trip dates January 7–11, 2027. Owner-confirmed planning amount $3,000. Supersedes the retired Indio tournament (the prior January range and its January 15 planning row). Named planned commitment, separate from normal household spending. Trip dates are not a payment due date. Forecast admits one cash-application date per commitment so Month and Seaspan Pay Period Road Ahead can count this amount once. Incumbent rule: a clear month with no separate payment day is the 15th of that month. January 2027 is that clear month, so the cash date is 2027-01-15. The trip window is not parsed into a day, and January 7, January 11, and a midpoint are not cash dates. Not a second $3,000."
             }
         ],
         "groups": [
@@ -764,6 +729,12 @@
                 "label": "Burrard registrations",
                 "atomic": true,
                 "note": "Both children's Burrards registrations are owner-confirmed PAID (2026-08-16). The pair was atomic on the original due day; it is retained as settled history. Upcoming team fees are the separate estimated plan row burrards-team-fees, not these registrations."
+            },
+            {
+                "id": "fusion-household",
+                "label": "Fusion Lacrosse",
+                "planSpendSummary": true,
+                "note": "Plan Spend reprints unsettled fusion-household instalments as one card. Forecast cash events stay the dated rows. The paid row stays settled history and is not added again. Not atomic and not a second cash event."
             }
         ],
         "funding": {
@@ -1214,7 +1185,7 @@
     "commitments": {
         "heading": "Known major costs on the master plan",
         "note": "Rendered from plan.commitments. Dated rows also appear on the Plan calendar; undated rows are known to the plan without a fabricated day. Ranges are not collapsed to a midpoint. ON TRACK / AT RISK / FUNDING GAP is not computed here — that waits on B94 and applies to major future plans, not to ordinary budget categories.",
-        "totalNote": "The printed total is the sum of point estimates on unsettled plan.commitments. Open ranges (painting, Indio) are listed and excluded from that single total. Institution-verified headline cash and debt tiles are separate."
+        "totalNote": "The printed total is the sum of point estimates on unsettled plan.commitments. A range with no point amount is excluded from that single total. Owner 2026-09-23 retired downstairs couch, exterior painting, and vehicle maintenance from active future planning, and retired Indio in favour of san-diego. Those retired rows are not hidden commitments. Institution-verified headline cash and debt tiles are separate."
     },
     "debts": [
         {

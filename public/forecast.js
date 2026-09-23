@@ -1933,9 +1933,21 @@
   // inside the protected band. Clear month-only `when` already has a cash
   // date via commitmentCashDate; spans, seasons, and TBD still invent no
   // day. No commitment id is special.
+  function commitmentGroupMeta(plan) {
+    const labels = new Map();
+    const summary = new Set();
+    for (const g of (plan && plan.groups) || []) {
+      if (!g || !g.id) continue;
+      if (typeof g.label === 'string' && g.label) labels.set(g.id, g.label);
+      if (g.planSpendSummary === true) summary.add(g.id);
+    }
+    return { labels, summary };
+  }
+
   function fundingSequence(plan, asOf, opts) {
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
+    const groupMeta = commitmentGroupMeta(plan);
     const rows = [];
     (plan.commitments || []).forEach((c, index) => {
       if (disabled.has(c.id)) return;
@@ -1944,6 +1956,7 @@
       const range = commitmentRange(c);
       if (need == null && range.amountMin == null && range.amountMax == null) return;
       const bounds = commitmentBounds(c);
+      const groupId = typeof c.group === 'string' && c.group ? c.group : null;
       rows.push({
         id: c.id,
         label: c.label,
@@ -1951,6 +1964,11 @@
         // Preserve approximate or unresolved timing as stated. Cash dates
         // come from commitmentCashDate, not from this display field.
         when: c.when || null,
+        tripWindow: typeof c.tripWindow === 'string' && c.tripWindow.trim()
+          ? c.tripWindow.trim() : null,
+        group: groupId,
+        groupLabel: groupId ? (groupMeta.labels.get(groupId) || null) : null,
+        planSpendSummary: !!(groupId && groupMeta.summary.has(groupId)),
         need,
         amountMin: range.amountMin,
         amountMax: range.amountMax,
@@ -2299,6 +2317,10 @@
         date: item.date,
         scheduledDate: item.date,
         when: item.when,
+        tripWindow: item.tripWindow || null,
+        group: item.group || null,
+        groupLabel: item.groupLabel || null,
+        planSpendSummary: item.planSpendSummary === true,
         need: item.need,
         amountMin: item.amountMin,
         amountMax: item.amountMax,
@@ -2316,6 +2338,71 @@
         deferred: !!(item.adjustable && verdict !== 'ON TRACK'),
       };
     });
+  }
+
+  // Plan Spend display cards. A planSpendSummary group becomes one card
+  // whose scheduleRemaining is the sum of those members' published need
+  // values. Members stay on majorPlans. This does not emit cash events
+  // and is not an input to simulate or recommend.
+  function planSpendScheduleRemaining(members) {
+    let cents = 0;
+    for (const row of members) {
+      if (!row || row.need == null || !isFinite(Number(row.need))) return null;
+      cents += Math.round(Number(row.need) * 100);
+    }
+    return cents / 100;
+  }
+  function samePublishedValue(members, key) {
+    if (!members.length) return null;
+    const first = members[0][key];
+    return members.every(row => row[key] === first) ? first : null;
+  }
+  function summarizePlanSpendGroup(members) {
+    const first = members[0];
+    return {
+      kind: 'summary',
+      id: first.group,
+      label: first.groupLabel || first.label,
+      group: first.group,
+      members: members.map(row => ({
+        id: row.id,
+        label: row.label,
+        date: row.date || null,
+        when: row.when || null,
+        need: row.need,
+        remaining: row.remaining,
+        verdict: row.verdict,
+        confidence: row.confidence,
+        flexibility: row.flexibility,
+      })),
+      scheduleRemaining: planSpendScheduleRemaining(members),
+      scheduleRemainingIdentity: 'sum of Forecast.majorPlans.need for this display group',
+      verdict: samePublishedValue(members, 'verdict'),
+      confidence: samePublishedValue(members, 'confidence'),
+      flexibility: samePublishedValue(members, 'flexibility'),
+      date: null,
+      when: null,
+      tripWindow: null,
+      need: null,
+    };
+  }
+  function planSpendCards(plans) {
+    const rows = Array.isArray(plans) ? plans : [];
+    const cards = [];
+    const seen = new Set();
+    for (const row of rows) {
+      if (!row || row.id == null || seen.has(row.id)) continue;
+      if (row.planSpendSummary === true && row.group) {
+        const members = rows.filter(item => item
+          && item.planSpendSummary === true && item.group === row.group);
+        for (const member of members) seen.add(member.id);
+        cards.push(summarizePlanSpendGroup(members));
+        continue;
+      }
+      seen.add(row.id);
+      cards.push(Object.assign({ kind: 'row' }, row));
+    }
+    return cards;
   }
 
   function facilityCapacity(facility, opts) {
@@ -15456,7 +15543,7 @@
   }
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements,
-    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
+    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,

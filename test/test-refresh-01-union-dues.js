@@ -205,9 +205,22 @@ function commitmentKey(row) {
     delete copy.date;
     delete copy.note;
   }
+  if (OWNER_2026_09_23_AMOUNT.has(copy.id)) {
+    delete copy.amount;
+    delete copy.confidence;
+    delete copy.label;
+    delete copy.note;
+  }
   return JSON.stringify(copy);
 }
 const SUPERSEDED_COMMITMENT_IDS = new Set(['fusion-season', 'warriors', 'home-insurance']);
+const OWNER_2026_09_23_RETIRED = new Set([
+  'downstairs-couch',
+  'exterior-painting',
+  'vehicle-maintenance',
+  'indio-tournament',
+]);
+const OWNER_2026_09_23_AMOUNT = new Set(['seattle-nov', 'seattle-dec', 'provincials']);
 const OWNER_DATED_COMMITMENT_IDS = new Set([
   'burrards-team-fees',
   'seattle-nov',
@@ -215,8 +228,12 @@ const OWNER_DATED_COMMITMENT_IDS = new Set([
   'christmas-2026',
   'indio-tournament',
 ]);
+ok(Array.from(OWNER_2026_09_23_RETIRED).every(id =>
+  !(plan.commitments || []).some(row => row.id === id)),
+  '2026-09-23 retired commitments are absent from the live plan');
 ok((before.plan.commitments || [])
-  .filter(row => !SUPERSEDED_COMMITMENT_IDS.has(row.id))
+  .filter(row => !SUPERSEDED_COMMITMENT_IDS.has(row.id)
+    && !OWNER_2026_09_23_RETIRED.has(row.id))
   .every((row) => {
     const afterRow = (plan.commitments || []).find(c => c.id === row.id);
     return afterRow && commitmentKey(row) === commitmentKey(afterRow);

@@ -702,8 +702,8 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
   ok(sepHeloc.length === 1 && sepHeloc[0].date === '2026-09-21',
     'next HELOC cash min is 2026-09-21 in Period 2');
   const seattle = (p2.bigPurchases || []).filter(r => /seattle/i.test(r.id + r.label));
-  ok(seattle.every(r => near(r.cost, 1200)),
-    'Seattle tournament amounts are the $1,200 plan.commitments facts');
+  ok(seattle.every(r => near(r.cost, 1500)),
+    'any Seattle big purchase in this period is the owner-confirmed $1,500');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });

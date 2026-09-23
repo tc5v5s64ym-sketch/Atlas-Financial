@@ -31,20 +31,22 @@ const NEW_IDS = [
   'seattle-nov',
   'seattle-dec',
   'christmas-2026',
+  'provincials',
+  'san-diego',
+];
+const RETIRED_IDS = [
   'downstairs-couch',
   'exterior-painting',
-  'indio-tournament',
-  'provincials',
   'vehicle-maintenance',
+  'indio-tournament',
 ];
 const POINT = {
   'burrards-team-fees': 700,
-  'seattle-nov': 1200,
-  'seattle-dec': 1200,
+  'seattle-nov': 1500,
+  'seattle-dec': 1500,
   'christmas-2026': 3500,
-  'downstairs-couch': 1700,
-  'provincials': 1000,
-  'vehicle-maintenance': 2400,
+  'provincials': 1500,
+  'san-diego': 3000,
 };
 const OWNER_EXPLICIT_DATES = {
   'seattle-dec': '2026-12-09',
@@ -53,18 +55,13 @@ const OWNER_EXPLICIT_DATES = {
 const OWNER_DAY15_DATES = {
   'burrards-team-fees': '2026-09-15',
   'seattle-nov': '2026-11-15',
+  'san-diego': '2027-01-15',
 };
 const STILL_UNDATED = [
-  'downstairs-couch',
-  'exterior-painting',
   'provincials',
-  'vehicle-maintenance',
 ];
-const RANGES = {
-  'exterior-painting': [700, 1200],
-  'indio-tournament': [5260, 5460],
-};
-const FLEXIBLE = ['downstairs-couch', 'exterior-painting'];
+const RANGES = {};
+const FLEXIBLE = [];
 const PREEXISTING = ['burrard1', 'burrard2', 'fusioncamp', 'tryouts', 'warriors'];
 
 console.log('=== each known major cost has one plan home ===');
@@ -87,11 +84,13 @@ ok(property && property.class === 'reserve'
   'property tax stays the reserve category, with the owner range and the Jul 2026 actual');
 
 console.log('\n=== owner estimates are on the rows, not invented midpoints ===');
+const OWNER_CONFIRMED = new Set(['seattle-nov', 'seattle-dec', 'provincials', 'san-diego']);
 for (const [id, amount] of Object.entries(POINT)) {
   const row = byId[id];
-  ok(row && near(row.amount, amount) && row.confidence === 'estimated',
-    `${id} is the owner estimate $${amount}`,
-    row ? String(row.amount) : 'missing');
+  const confidence = OWNER_CONFIRMED.has(id) ? 'confirmed' : 'estimated';
+  ok(row && near(row.amount, amount) && row.confidence === confidence,
+    `${id} is the owner ${confidence} amount $${amount}`,
+    row ? `${row.amount} ${row.confidence}` : 'missing');
 }
 for (const [id, date] of Object.entries(OWNER_EXPLICIT_DATES)) {
   ok(byId[id] && byId[id].date === date,
@@ -111,8 +110,12 @@ for (const [id, [lo, hi]] of Object.entries(RANGES)) {
   ok(row && row.amount == null && near(row.amountMin, lo) && near(row.amountMax, hi),
     `${id} keeps the range $${lo}–$${hi} and invents no midpoint`);
 }
-ok(byId['indio-tournament'] && byId['indio-tournament'].date === '2027-01-15',
-  'indio-tournament is dated 2027-01-15 and still has no point amount');
+for (const id of RETIRED_IDS) {
+  ok(!byId[id], `${id} is retired from active plan.commitments`);
+}
+ok(byId['san-diego'] && byId['san-diego'].tripWindow === 'Jan 7–11, 2027'
+    && byId['san-diego'].amountMin == null,
+  'san-diego is a $3,000 point with the owner trip window and no range');
 for (const id of FLEXIBLE) {
   ok(byId[id] && byId[id].adjustable === true, `${id} is marked flexible`);
 }
@@ -145,8 +148,8 @@ ok(events.some(e => e.id === 'burrards-team-fees' && e.date === '2026-09-15'
     && near(e.amount, -700)),
   '91-day expandEvents includes Burrards team fees on the owner 15th');
 ok(events.some(e => e.id === 'seattle-nov' && e.date === '2026-11-15'
-    && near(e.amount, -1200)),
-  '91-day expandEvents includes Seattle #1 on the owner 15th');
+    && near(e.amount, -1500)),
+  '91-day expandEvents includes Seattle November on the owner 15th');
 ok(events.some(e => e.id === 'warriors' && e.date === '2026-09-23'
     && near(e.amount, -895)),
   '91-day expandEvents reserves Warriors once at -$895 because settledOn is after this opening');
@@ -158,13 +161,16 @@ const later = F.expandEvents(plan, asOf, '2027-12-31', {});
 ok(!later.some(e => STILL_UNDATED.includes(e.id)),
   'a longer expander walk still invents no day for unclear-month rows');
 ok(later.some(e => e.id === 'seattle-dec' && e.date === '2026-12-09'
-    && near(e.amount, -1200)),
+    && near(e.amount, -1500)),
   'longer walk includes seattle-dec on the owner Dec 9 date');
 ok(later.some(e => e.id === 'christmas-2026' && e.date === '2026-12-25'
     && near(e.amount, -3500)),
   'longer walk includes christmas-2026 on the owner Dec 25 date');
-ok(!later.some(e => e.id === 'indio-tournament'),
-  'dated Indio range still emits no cash midpoint');
+ok(!later.some(e => RETIRED_IDS.includes(e.id)),
+  'retired commitments emit no cash event on the longer walk');
+ok(later.filter(e => e.id === 'san-diego').length === 1
+    && later.some(e => e.id === 'san-diego' && e.date === '2027-01-15' && near(e.amount, -3000)),
+  'san-diego emits exactly once, on 2027-01-15, at −3000');
 
 console.log('\n=== undated rows encumber the master walk without becoming cash ===');
 const recOpts = {
@@ -215,16 +221,18 @@ ok(near(fusionRemainingOnly, 3300),
   'remaining instalments alone are $3,300, independent of owner-stated paid row',
   String(fusionRemainingOnly));
 const preexistingPoints = 895;
-const absorbedPoints = 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 2400;
+const absorbedPoints = 700 + 1500 + 1500 + 3500 + 1500 + 3000;
 const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
 ok(near(absorbedPoints, 11700) && near(HAND_TOTAL, 17095),
   'hand total at Aug. 19 opening includes Warriors $895 plus paid + remaining Fusion until each settledOn');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',
   String(pub.commitmentsTotal));
-ok(!pub.commitmentItems.some(i => i.id === 'exterior-painting' && i.amount != null)
-  && !pub.commitmentItems.some(i => i.id === 'indio-tournament' && i.amount != null),
-  'open ranges contribute no point amount to the total');
+ok(RETIRED_IDS.every(id => !pub.commitmentItems.some(i => i.id === id)),
+  'retired commitments contribute nothing to publicationTotals');
+ok(!pub.commitmentItems.some(i => i.amountMin != null && i.amount == null
+    && RETIRED_IDS.includes(i.id)),
+  'no retired range is published as a live commitment');
 
 console.log('\n=== ON TRACK / AT RISK / FUNDING GAP is not invented here ===');
 ok(!NEW_IDS.some(id => /ON TRACK|AT RISK|FUNDING GAP/.test(JSON.stringify(byId[id]))),

@@ -1678,9 +1678,12 @@ console.log('\n=== live opening: Q19, buffer, cards, undated rows ===');
   ok(near(advice.knowledge.freeCash,
     advice.knowledge.ending - advice.buffer - advice.knowledge.encumbered),
     'live free cash is ending − buffer − encumbered, not leftover after buffer alone');
-  const indio = (live.plan.commitments || []).find(c => c.id === 'indio-tournament');
-  ok(indio && F.commitmentNeed(indio) == null && indio.amountMin === 5260 && indio.amountMax === 5460,
-    'the live Indio range is not collapsed to a point need');
+  ok(!(live.plan.commitments || []).some(c => c.id === 'indio-tournament'),
+    'Indio is not an active live commitment');
+  const sanDiego = (live.plan.commitments || []).find(c => c.id === 'san-diego');
+  ok(sanDiego && F.commitmentNeed(sanDiego) === 3000 && sanDiego.amountMin == null
+      && sanDiego.date === '2027-01-15' && sanDiego.tripWindow === 'Jan 7–11, 2027',
+    'San Diego is a $3,000 point on the clear-month cash date, with the trip window separate');
   ok(!/emergency reserve/i.test(read('public/forecast.js')),
     'the engine does not relabel the $500 buffer as an emergency reserve');
 
