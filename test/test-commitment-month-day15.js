@@ -95,7 +95,7 @@ for (const [id, expected] of Object.entries(OWNER_DAY15)) {
 for (const id of RETIRED) {
   ok(!byId[id], `${id} is not an active commitment`);
 }
-ok(byId['san-diego'] && byId['san-diego'].tripWindow === 'Jan 7–11, 2027'
+ok(byId['san-diego'] && byId['san-diego'].tripWindow === 'Jan 8–9, 2027'
     && byId['san-diego'].amountMin == null,
   'san-diego keeps the owner trip window and is a point amount');
 ok(byId.provincials && near(byId.provincials.amount, 1500) && byId.provincials.date == null,
@@ -126,6 +126,7 @@ const failClosed = [
   'Nov–Dec 2026', 'Fall 2026', 'timing TBD', 'around Feb', 'annual',
   'by Christmas 2026', 'late Sep 2026', 'early Nov 2026', 'Nov to Dec 2026',
   'Jan 7–11, 2027',
+  'Jan 8–9, 2027',
 ];
 for (const when of failClosed) {
   ok(independentMonth15(when) == null && F.commitmentCashDate({ when }) == null,

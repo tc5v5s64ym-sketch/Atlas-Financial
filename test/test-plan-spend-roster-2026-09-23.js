@@ -96,7 +96,7 @@ const FUSION_REMAINING_TOTAL = 1200 + 1200 + 900;
 const FUSION_PAID = { id: 'fusion-household-paid', date: '2026-09-10', amount: 1200 };
 const OPENING = '2026-08-19';
 const AFTER_FUSION_PAID = '2026-09-11';
-const TRIP_WINDOW = 'Jan 7\u201311, 2027';
+const TRIP_WINDOW = 'Jan 8\u20139, 2027';
 
 const rows = data.plan.commitments || [];
 const byId = Object.fromEntries(rows.map(r => [r.id, r]));
@@ -146,7 +146,7 @@ ok(byId['san-diego'] && byId['san-diego'].amount === 3000
 ok(independentMonth15('Jan 2027') === '2027-01-15'
     && independentMonth15(TRIP_WINDOW) == null,
   'January 2027 is the 15th; the trip window is not a cash date');
-ok(byId['san-diego'].date !== '2027-01-07' && byId['san-diego'].date !== '2027-01-11',
+ok(byId['san-diego'].date !== '2027-01-08' && byId['san-diego'].date !== '2027-01-09',
   'San Diego cash date is not a trip-window endpoint');
 for (const hand of FUSION_REMAINING) {
   const row = byId[hand.id];
@@ -190,8 +190,8 @@ function oneCash(id, date, amount) {
 oneCash('seattle-nov', '2026-11-15', -1500);
 oneCash('seattle-dec', '2026-12-09', -1500);
 oneCash('san-diego', '2027-01-15', -3000);
-ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-07' || e.date === '2027-01-11')),
-  'San Diego does not also emit on January 7 or January 11');
+ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-08' || e.date === '2027-01-09')),
+  'San Diego does not also emit on January 8 or January 9');
 ok(!nowEvents.some(e => e.id === 'provincials'), 'Provincials emits no Forecast cash date');
 for (const hand of FUSION_REMAINING) {
   oneCash(hand.id, hand.date, -hand.amount);
@@ -364,12 +364,12 @@ const sanArticles = settledHtml.match(/data-plan-spend-id="san-diego"/g) || [];
 ok(sanArticles.length === 1, 'the page renders exactly one San Diego card');
 const sanGlance = sanHtml.split('<details')[0];
 ok(sanGlance.includes('>San Diego<') && sanGlance.includes(money2(3000)) && sanGlance.includes(TRIP_WINDOW),
-  'San Diego glance is the name, $3,000.00, and Jan 7–11, 2027');
+  'San Diego glance is the name, $3,000.00, and Jan 8–9, 2027');
 ok((sanGlance.match(/\$3,000\.00/g) || []).length === 1, 'the glance shows $3,000 once');
 ok(/data-plan-spend-cash-date/.test(sanHtml) && sanHtml.includes(longDate('2027-01-15'))
     && !sanGlance.includes(longDate('2027-01-15')),
   'the Forecast cash date sits in the disclosure, not in place of the trip window');
-ok(!/2027-01-07|2027-01-11|January 7, 2027|January 11, 2027/.test(sanHtml),
+ok(!/2027-01-08|2027-01-09|January 8, 2027|January 9, 2027/.test(sanHtml),
   'the card does not invent a trip-window payment day');
 const provHtml = article(settledHtml, 'provincials');
 ok(provHtml.includes(money2(1500)) && /timing TBD/.test(provHtml) && /DATE TBD/.test(provHtml),
@@ -391,9 +391,9 @@ const period = independentPeriodContaining(anchor, '2027-01-15');
 ok(period && period.payday <= '2027-01-15' && '2027-01-15' <= period.cycleEnd,
   'independent biweekly walk places 2027-01-15 in one Seaspan cycle',
   period && `${period.payday} through ${period.cycleEnd}`);
-const windowPeriod = independentPeriodContaining(anchor, '2027-01-07');
+const windowPeriod = independentPeriodContaining(anchor, '2027-01-08');
 ok(windowPeriod && (windowPeriod.payday !== period.payday),
-  'January 7 is a different Seaspan cycle from the cash date, so the window is not the payment period',
+  'January 8 is a different Seaspan cycle from the cash date, so the window is not the payment period',
   windowPeriod && `${windowPeriod.payday} through ${windowPeriod.cycleEnd}`);
 const traj = F.baselineTrajectory(data.plan, data.debts, OPENING, { periods });
 ok(traj.status === 'ready', 'baseline trajectory is ready', traj.reason || traj.status);

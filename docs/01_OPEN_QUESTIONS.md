@@ -267,7 +267,7 @@ Owner 2026-09-23 removed these from active future planning. They are not
 hidden rows and they do not encumber Forecast: `downstairs-couch`,
 `exterior-painting`, `vehicle-maintenance`. `indio-tournament` is retired
 and replaced by `san-diego` (San Diego, California; trip window January
-7–11, 2027). The cash date on that row follows the incumbent clear-month
+8–9, 2027). The cash date on that row follows the incumbent clear-month
 15th rule and is documented on the row. Do not restore Indio beside it.
 
 There are no other specifically known tournaments. Tacoma is not on the
