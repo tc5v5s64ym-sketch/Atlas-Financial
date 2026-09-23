@@ -487,5 +487,69 @@ ok(/@media \(max-width:380px\)/.test(css) && /"status status"/.test(css),
 ok(/<details class="plan-spend-more">/.test(settledHtml),
   'secondary facts are behind a disclosure');
 
+console.log('\n=== grouped card publishes the most severe member verdict ===');
+function worstMemberVerdict(verdicts) {
+  const rank = v => (v === 'FUNDING GAP' ? 3 : v === 'ON TRACK' ? 1 : (v == null || v === '') ? 0 : 2);
+  let worst = null;
+  let worstRank = 0;
+  for (const verdict of verdicts) {
+    const next = rank(verdict);
+    if (next > worstRank) {
+      worst = verdict;
+      worstRank = next;
+    }
+  }
+  return worst;
+}
+const mixedFusionMembers = [
+  { id: 'fusion-household-oct', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'Fusion October', need: 1200, date: '2026-10-31', verdict: 'FUNDING GAP', remaining: 1200, confidence: 'confirmed', flexibility: 'required' },
+  { id: 'fusion-household-nov', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'Fusion November', need: 1200, date: '2026-11-30', verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed', flexibility: 'required' },
+  { id: 'fusion-household-dec', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'Fusion December', need: 900, date: '2026-12-31', verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed', flexibility: 'required' },
+];
+const mixedCard = F.planSpendCards(mixedFusionMembers).find(c => c.kind === 'summary' && c.id === 'fusion-household');
+const mixedVerdicts = mixedFusionMembers.map(m => m.verdict);
+ok(worstMemberVerdict(mixedVerdicts) === 'FUNDING GAP',
+  'independent severity rank of FUNDING GAP + ON TRACK + ON TRACK is FUNDING GAP');
+ok(mixedCard && mixedCard.verdict === worstMemberVerdict(mixedVerdicts)
+    && mixedCard.verdict === 'FUNDING GAP',
+  'Forecast.planSpendCards publishes that worst member verdict, not null');
+ok(mixedCard.members.map(m => m.verdict).join(',') === mixedVerdicts.join(','),
+  'member verdicts stay the published majorPlans values');
+const mixedHtml = render(mixedFusionMembers);
+const mixedArticle = article(mixedHtml, 'fusion-household');
+const mixedGlance = mixedArticle.split('<details')[0];
+ok(/data-plan-spend-card="summary"/.test(mixedArticle) && /data-plan-spend-verdict="FUNDING GAP"/.test(mixedGlance),
+  'the grouped Fusion card glance carries FUNDING GAP');
+ok(/class="[^"]*\bfunding-gap\b/.test(mixedArticle.split('>')[0])
+    && /<span class="chip c">FUNDING GAP<\/span>/.test(mixedGlance),
+  'funding-gap styling and the gap chip are on the glance, without opening Details');
+ok(F.planSpendCards([
+  { id: 'a', group: 'g', planSpendSummary: true, label: 'A', need: 1, verdict: 'AT RISK' },
+  { id: 'b', group: 'g', planSpendSummary: true, label: 'B', need: 1, verdict: 'ON TRACK' },
+])[0].verdict === 'AT RISK',
+  'AT RISK beats ON TRACK on a grouped card');
+ok(F.planSpendCards([
+  { id: 'a', group: 'g', planSpendSummary: true, label: 'A', need: 1, verdict: 'FUNDING GAP' },
+  { id: 'b', group: 'g', planSpendSummary: true, label: 'B', need: 1, verdict: 'AT RISK' },
+])[0].verdict === 'FUNDING GAP',
+  'FUNDING GAP beats AT RISK on a grouped card');
+
+const midNovember = '2026-11-15';
+const midNovPlans = plansAt(midNovember);
+const midNovMembers = midNovPlans.filter(p => p.group === 'fusion-household');
+const midNovCard = fusionCard(midNovPlans);
+const midNovWorst = worstMemberVerdict(midNovMembers.map(m => m.verdict));
+ok(midNovMembers.some(m => m.id === 'fusion-household-oct' && m.verdict === 'FUNDING GAP')
+    && midNovMembers.some(m => m.verdict === 'ON TRACK'),
+  'on 2026-11-15 Forecast still publishes a FUNDING GAP October Fusion row beside later ON TRACK instalments');
+ok(midNovCard && midNovCard.verdict === midNovWorst && midNovCard.verdict === 'FUNDING GAP',
+  'the 2026-11-15 Fusion summary reprints that FUNDING GAP instead of collapsing mixed members to null');
+const midNovHtml = render(midNovPlans);
+const midNovGlance = article(midNovHtml, 'fusion-household').split('<details')[0];
+ok(/data-plan-spend-verdict="FUNDING GAP"/.test(midNovGlance)
+    && /<span class="chip c">FUNDING GAP<\/span>/.test(midNovGlance)
+    && /class="[^"]*\bfunding-gap\b/.test(article(midNovHtml, 'fusion-household').split('>')[0]),
+  'the 2026-11-15 grouped Fusion glance shows FUNDING GAP without opening Details');
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

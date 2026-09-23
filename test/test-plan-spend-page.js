@@ -365,8 +365,33 @@ console.log('\n=== 6. Summary cards reprint Forecast.planSpendCards; compact dis
   const glance = card.split('<details')[0];
   ok(glance.includes(money2(independent)) && !glance.includes(money2(1200)) && !glance.includes(money2(900)),
     'member amounts stay behind the disclosure; the glance shows the summary once');
+  ok(summary && summary.verdict === 'ON TRACK'
+      && /data-plan-spend-verdict="ON TRACK"/.test(glance)
+      && /class="[^"]*\bon-track\b/.test(card.split('>')[0]),
+    'same-verdict members still publish ON TRACK on the grouped glance');
   ok(/<details class="plan-spend-more">/.test(card) && /class="plan-spend-glance"/.test(card),
     'summary card uses the compact glance plus a disclosure');
+  const mixedMembers = [
+    { id: 'fusion-oct', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'October', need: 1200, date: '2026-10-31', verdict: 'FUNDING GAP', remaining: 1200, confidence: 'confirmed', flexibility: 'required' },
+    { id: 'fusion-nov', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'November', need: 1200, date: '2026-11-30', verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed', flexibility: 'required' },
+    { id: 'fusion-dec', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'December', need: 900, date: '2026-12-31', verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed', flexibility: 'required' },
+  ];
+  const mixedCards = F.planSpendCards(mixedMembers);
+  const mixedSummary = mixedCards.find(c => c.kind === 'summary');
+  const mixedHtml = page.compose({
+    majorPlans: mixedMembers,
+    paydayAllocation: {},
+    knowledge: { encumbered: 1 },
+  }, null).list;
+  const mixedCard = row(mixedHtml, 'fusion-household');
+  const mixedGlance = mixedCard ? mixedCard.split('<details')[0] : '';
+  ok(mixedSummary && mixedSummary.verdict === 'FUNDING GAP'
+      && mixedSummary.members.map(m => m.verdict).join(',') === 'FUNDING GAP,ON TRACK,ON TRACK',
+    'Forecast.planSpendCards publishes the FUNDING GAP member verdict on a mixed group');
+  ok(/data-plan-spend-verdict="FUNDING GAP"/.test(mixedGlance)
+      && /class="[^"]*\bfunding-gap\b/.test((mixedCard || '').split('>')[0])
+      && /<span class="chip c">FUNDING GAP<\/span>/.test(mixedGlance),
+    'mixed FUNDING GAP + ON TRACK shows the gap chip and card styling on the glance, without opening Details');
   const css = read('public/styles.css');
   ok(/\.plan-spend-list \.plan-spend-card \{\s*padding:7px 10px;/.test(css)
       && /grid-template-columns:minmax\(0,1fr\) auto;/.test(css)

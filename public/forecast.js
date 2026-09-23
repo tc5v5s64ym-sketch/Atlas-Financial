@@ -2343,7 +2343,9 @@
   // Plan Spend display cards. A planSpendSummary group becomes one card
   // whose scheduleRemaining is the sum of those members' published need
   // values. Members stay on majorPlans. This does not emit cash events
-  // and is not an input to simulate or recommend.
+  // and is not an input to simulate or recommend. The summary verdict is
+  // the most severe already-published member verdict — FUNDING GAP, then
+  // any other warning, then ON TRACK — not a new feasibility decision.
   function planSpendScheduleRemaining(members) {
     let cents = 0;
     for (const row of members) {
@@ -2356,6 +2358,25 @@
     if (!members.length) return null;
     const first = members[0][key];
     return members.every(row => row[key] === first) ? first : null;
+  }
+  function planSpendVerdictRank(verdict) {
+    if (verdict === 'FUNDING GAP') return 3;
+    if (verdict === 'ON TRACK') return 1;
+    if (verdict == null || verdict === '') return 0;
+    return 2;
+  }
+  function worstPublishedVerdict(members) {
+    let worst = null;
+    let worstRank = 0;
+    for (const row of members || []) {
+      const verdict = row && row.verdict;
+      const rank = planSpendVerdictRank(verdict);
+      if (rank > worstRank) {
+        worst = verdict;
+        worstRank = rank;
+      }
+    }
+    return worst;
   }
   function summarizePlanSpendGroup(members) {
     const first = members[0];
@@ -2377,7 +2398,7 @@
       })),
       scheduleRemaining: planSpendScheduleRemaining(members),
       scheduleRemainingIdentity: 'sum of Forecast.majorPlans.need for this display group',
-      verdict: samePublishedValue(members, 'verdict'),
+      verdict: worstPublishedVerdict(members),
       confidence: samePublishedValue(members, 'confidence'),
       flexibility: samePublishedValue(members, 'flexibility'),
       date: null,
