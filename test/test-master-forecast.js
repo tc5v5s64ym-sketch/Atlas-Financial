@@ -1682,7 +1682,7 @@ console.log('\n=== live opening: Q19, buffer, cards, undated rows ===');
     'Indio is not an active live commitment');
   const sanDiego = (live.plan.commitments || []).find(c => c.id === 'san-diego');
   ok(sanDiego && F.commitmentNeed(sanDiego) === 3000 && sanDiego.amountMin == null
-      && sanDiego.date === '2027-01-15' && sanDiego.tripWindow === 'Jan 7–11, 2027',
+      && sanDiego.date === '2027-01-15' && sanDiego.tripWindow === 'Jan 8–9, 2027',
     'San Diego is a $3,000 point on the clear-month cash date, with the trip window separate');
   ok(!/emergency reserve/i.test(read('public/forecast.js')),
     'the engine does not relabel the $500 buffer as an emergency reserve');

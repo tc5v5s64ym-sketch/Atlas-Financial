@@ -113,7 +113,7 @@ for (const [id, [lo, hi]] of Object.entries(RANGES)) {
 for (const id of RETIRED_IDS) {
   ok(!byId[id], `${id} is retired from active plan.commitments`);
 }
-ok(byId['san-diego'] && byId['san-diego'].tripWindow === 'Jan 7–11, 2027'
+ok(byId['san-diego'] && byId['san-diego'].tripWindow === 'Jan 8–9, 2027'
     && byId['san-diego'].amountMin == null,
   'san-diego is a $3,000 point with the owner trip window and no range');
 for (const id of FLEXIBLE) {

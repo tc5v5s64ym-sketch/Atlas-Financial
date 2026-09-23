@@ -717,11 +717,11 @@
                 "label": "San Diego",
                 "amount": 3000,
                 "when": "Jan 2027",
-                "tripWindow": "Jan 7–11, 2027",
+                "tripWindow": "Jan 8–9, 2027",
                 "budgetCategory": "travel",
                 "confidence": "confirmed",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-23: San Diego, California trip / tournament. Trip dates January 7–11, 2027. Owner-confirmed planning amount $3,000. Supersedes the retired Indio tournament (the prior January range and its January 15 planning row). Named planned commitment, separate from normal household spending. Trip dates are not a payment due date. Forecast admits one cash-application date per commitment so Month and Seaspan Pay Period Road Ahead can count this amount once. Incumbent rule: a clear month with no separate payment day is the 15th of that month. January 2027 is that clear month, so the cash date is 2027-01-15. The trip window is not parsed into a day, and January 7, January 11, and a midpoint are not cash dates. Not a second $3,000."
+                "note": "Owner 2026-09-23: San Diego, California trip / tournament. Trip dates January 8–9, 2027. Owner-confirmed planning amount $3,000. Supersedes the retired Indio tournament (the prior January range and its January 15 planning row). Named planned commitment, separate from normal household spending. Trip dates are not a payment due date. Forecast admits one cash-application date per commitment so Month and Seaspan Pay Period Road Ahead can count this amount once. Incumbent rule: a clear month with no separate payment day is the 15th of that month. January 2027 is that clear month, so the cash date is 2027-01-15. The trip window is not parsed into a day, and January 8, January 9, and a midpoint are not cash dates. Not a second $3,000."
             }
         ],
         "groups": [
