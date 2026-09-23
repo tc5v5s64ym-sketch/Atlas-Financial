@@ -603,12 +603,13 @@
                 "id": "warriors",
                 "date": "2026-09-23",
                 "label": "Logan Warriors Elite Academy U13",
-                "amount": null,
-                "amountMin": 895,
+                "amount": 895,
+                "frequency": "once",
                 "budgetCategory": "sport",
-                "confidence": "estimated",
+                "confidence": "confirmed",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-16: due 23 September 2026; $895 plus tax (owner due date wins over form-by 25 Sep noon). Tax dollars are not verified from PDF — no GST amount is invented; floor is pre-tax $895. Registration form deadline email and PDF fee exist; no LM ~$895 payment posted yet (LM Warriors keyword: Vancouver Warriors −$40 on 2026-08-11 only). Not verified settlement."
+                "settledOn": "2026-09-21",
+                "note": "Owner 2026-09-23: Logan Warriors Elite Academy U13 cost is exactly $895.00 and is fully paid. Settlement evidence is one posted Vancouver Warriors debit of $895.00 dated 2026-09-21 on Travel Visa. settledOn is that posting date. The scheduled due stays 2026-09-23. Amanda moved existing household cash from two savings accounts onto the Travel Visa and the registration was paid that way. Those transfers are movements of existing household cash, not income, and they are not a second copy of this $895. No exact split between prior-period surplus and current-period surplus was supplied, so none is recorded. The 2026-08-11 Vancouver Warriors $40 charge is not this settlement. frequency once is the incumbent settlement window for that one due, not a new recurrence. This is not a rule that every Vancouver Warriors charge is this commitment."
             },
             {
                 "id": "fusion-household-paid",

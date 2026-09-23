@@ -228,6 +228,7 @@ const suites = [
   ['major future costs on the master plan', 'test-major-future-costs.js'],
   ['commitment month-only day-15 dating', 'test-commitment-month-day15.js'],
   ['Fusion household + Warriors U13 plan commitments', 'test-fusion-warriors-plan-commitments.js'],
+  ['Warriors U13 $895 settlement identity', 'test-warriors-u13-settlement.js'],
   ['master forecast engine (B94 / AF-PLAN-01)', 'test-master-forecast.js'],
   ['end-to-end payday proof (B96 / AF-PLAN-02)', 'test-b96-payday.js'],
   ['payday allocation waterfall', 'test-payday-allocation.js'],

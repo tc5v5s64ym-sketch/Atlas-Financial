@@ -117,8 +117,9 @@ for (const id of FLEXIBLE) {
   ok(byId[id] && byId[id].adjustable === true, `${id} is marked flexible`);
 }
 ok(byId.warriors && byId.warriors.date === '2026-09-23'
-  && byId.warriors.amount == null && near(byId.warriors.amountMin, 895),
-  'Warriors is Logan U13 due 23 Sep with $895 pre-tax floor (+ tax not invented)');
+  && near(byId.warriors.amount, 895) && byId.warriors.amountMin == null
+  && byId.warriors.settledOn === '2026-09-21',
+  'Warriors is Logan U13 due 23 Sep at exact $895, settled 21 Sep');
 ok(byId['fusion-household-paid'] && near(byId['fusion-household-paid'].amount, 1200)
   && byId['fusion-household-paid'].settledOn === '2026-09-10',
   'Fusion paid is settled on 2026-09-10 Interac evidence date');
@@ -146,11 +147,13 @@ ok(events.some(e => e.id === 'burrards-team-fees' && e.date === '2026-09-15'
 ok(events.some(e => e.id === 'seattle-nov' && e.date === '2026-11-15'
     && near(e.amount, -1200)),
   '91-day expandEvents includes Seattle #1 on the owner 15th');
-ok(!events.some(e => e.id === 'warriors'),
-  'Warriors + tax row emits no invented cash event');
+ok(events.some(e => e.id === 'warriors' && e.date === '2026-09-23'
+    && near(e.amount, -895)),
+  '91-day expandEvents reserves Warriors once at -$895 because settledOn is after this opening');
 const seq = F.fundingSequence(plan, asOf, {});
-ok(seq.some(c => c.id === 'warriors' && c.date === '2026-09-23'),
-  'Warriors stays in fundingSequence on 23 September');
+ok(seq.some(c => c.id === 'warriors' && c.date === '2026-09-23' && near(c.need, 895)
+    && c.amountMin == null),
+  'Warriors stays a $895 point in fundingSequence on the 19 Aug opening');
 const later = F.expandEvents(plan, asOf, '2027-12-31', {});
 ok(!later.some(e => STILL_UNDATED.includes(e.id)),
   'a longer expander walk still invents no day for unclear-month rows');
@@ -211,11 +214,11 @@ const fusionRemainingOnly = ['fusion-household-oct', 'fusion-household-nov', 'fu
 ok(near(fusionRemainingOnly, 3300),
   'remaining instalments alone are $3,300, independent of owner-stated paid row',
   String(fusionRemainingOnly));
-const preexistingPoints = 0;
+const preexistingPoints = 895;
 const absorbedPoints = 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 2400;
 const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
-ok(near(absorbedPoints, 11700) && near(HAND_TOTAL, 16200),
-  'hand total at Aug. 19 opening includes paid + remaining Fusion until settledOn');
+ok(near(absorbedPoints, 11700) && near(HAND_TOTAL, 17095),
+  'hand total at Aug. 19 opening includes Warriors $895 plus paid + remaining Fusion until each settledOn');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',
   String(pub.commitmentsTotal));
