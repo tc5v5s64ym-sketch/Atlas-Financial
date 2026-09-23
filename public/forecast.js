@@ -14018,7 +14018,7 @@
   // plan.budget.categories that feed planned weeklyVariable. Do not
   // invent categories. Historical-actual and reserve rows are excluded
   // by the incumbent plannedWeeklyVariable identity.
-  function baselineTrajectoryHouseholdBudgetLines(input, walkDays, householdBudgetAmount) {
+  function baselineTrajectoryHouseholdBudgetLines(input, walkDays, householdBudgetAmount, priorWalkDays) {
     const target = roundCent(householdBudgetAmount);
     if (!(walkDays > 0)) return [];
     if (input.normalSpending && input.normalSpending.status === 'ready') {
@@ -14042,12 +14042,20 @@
     }
     const lines = [];
     if (contributing.length) {
-      for (const c of contributing) {
-        lines.push({
+      // Attribute at the same two walk boundaries as the component. Rounding
+      // each category afresh inside each display span would still move pennies
+      // between categories when Month is replaced by Pay Period.
+      const through = days => reconcileTrajectoryLineAmounts(contributing.map(c => ({
           label: c.label || c.id || 'Household budget',
-          amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * walkDays / 7),
+          amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * days / 7),
           status: 'calculated',
-        });
+        })), trajectoryVariableThrough(input.weeklyVariable, days));
+      const before = through(priorWalkDays);
+      const after = through(priorWalkDays + walkDays);
+      for (let i = 0; i < after.length; i++) {
+        lines.push(Object.assign({}, after[i], {
+          amount: roundCent(after[i].amount - before[i].amount),
+        }));
       }
     } else if (target !== 0) {
       lines.push({
@@ -14058,6 +14066,15 @@
     }
     if (!lines.length) return [];
     return reconcileTrajectoryLineAmounts(lines, target);
+  }
+
+  // One cent allocation along the existing normal-spending walk, independent
+  // of the display partition. Its weekly input is either whole-cent planned
+  // weekly spending or exactly half a whole-cent recent 14-day baseline.
+  // Integer fortnight cents avoid binary half-cent ties. This is spending
+  // attribution only: neither opening cash nor prior surplus is an operand.
+  function trajectoryVariableThrough(weekly, days) {
+    return Math.floor((Math.round(weekly * 200) * days + 7) / 14) / 100;
   }
 
   function baselineTrajectoryWalkVariableDays(daily, span) {
@@ -14103,6 +14120,7 @@
         'The baseline walk days for this ' + spanNoun + ' are unavailable. Not $0.');
     }
     const walkDays = baselineTrajectoryWalkVariableDays(walkDaily, span);
+    const priorWalkDays = walkDaily.filter(row => row && row.date < span.start).length;
     if (!(walkDays > 0)) {
       return trajectoryFundingUnavailable(
         'The baseline walk did not apply Household Budget days in this '
@@ -14123,7 +14141,9 @@
     const obligationsAmount = sumOut(obligations);
     const commitmentsAmount = sumOut(commitments);
     const extrasAmount = sumOut(extras);
-    const householdBudgetAmount = roundCent(weekly * walkDays / 7);
+    const householdBudgetAmount = roundCent(
+      trajectoryVariableThrough(weekly, priorWalkDays + walkDays)
+      - trajectoryVariableThrough(weekly, priorWalkDays));
     const billsStatus = trajectoryEventsStatus(bills);
     const obligationsStatus = trajectoryEventsStatus(obligations);
     const commitmentsStatus = trajectoryEventsStatus(commitments);
@@ -14179,7 +14199,7 @@
       identity: householdBudgetIdentity,
     };
     const householdBudgetLines = baselineTrajectoryHouseholdBudgetLines(
-      input, walkDays, householdBudgetAmount);
+      input, walkDays, householdBudgetAmount, priorWalkDays);
     if (householdBudgetLines.length) householdBudget.lines = householdBudgetLines;
     return {
       stage1: {
@@ -14247,7 +14267,13 @@
       if (!e || !span) return false;
       const apply = cashWalkDate(e, walkStart);
       return apply >= span.start && apply <= span.end;
-    });
+    }).map(e => Object.assign({}, e, {
+      // Absorbed debt payments may contain fractional accrued interest.
+      // Publish each dated amount in cents before grouping it: rounding a
+      // month's sum but a pay period's smaller sum can create a penny that
+      // belongs to no payment. Keep the coupled walk's precision unchanged.
+      amount: e.amount < 0 ? -roundCent(-e.amount) : roundCent(e.amount),
+    }));
     const incomeEvents = spanEvents.filter(e => e.kind === 'income');
     const dale2027Events = incomeEvents.filter(e =>
       isDalePayrollOrBonusIncome(e)

@@ -100,6 +100,7 @@ const suites = [
   ['Forecast baseline trajectory pay-period series (B105l)', 'test-baseline-trajectory-pay-period-series.js'],
   ['Forecast provisional recent pay-period normal spending', 'test-provisional-normal-spending-baseline.js'],
   ['Road Ahead standalone period surplus/deficit', 'test-standalone-road-ahead-surplus.js'],
+  ['Road Ahead independent Month / Pay Period financial reconciliation', 'test-road-ahead-reconciliation.js'],
   ['Forecast residual pay-period identity vs Budget This Pay Period', 'test-pay-period-residual-identity.js'],
   ['Forecast baseline trajectory additional-debt-payment scenario (O4)', 'test-baseline-trajectory-scenario.js'],
   ['Dale/Seaspan estimated payroll regime (independent stubs)', 'test-dale-payroll-regime.js'],

@@ -270,7 +270,9 @@ console.log('\n=== 7. Synthetic trajectory Household Budget path is 800/month ==
       && july.stage1.status !== 'unavailable',
     'July Stage 1 householdBudget is published');
   const walkDays = july.stage1.householdBudget.walkDays;
-  const expectedSmear = roundCent(INDEPENDENT_WEEKLY * walkDays / 7);
+  const priorDays = (Date.parse(july.start) - Date.parse(START)) / 86400000;
+  const expectedSmear = roundCent(roundCent(INDEPENDENT_WEEKLY * (priorDays + walkDays) / 7)
+    - roundCent(INDEPENDENT_WEEKLY * priorDays / 7));
   ok(near(july.stage1.householdBudget.amount, expectedSmear),
     'Stage 1 householdBudget amount is the independent 800-month smear',
     `${july.stage1.householdBudget.amount} vs ${expectedSmear}`);

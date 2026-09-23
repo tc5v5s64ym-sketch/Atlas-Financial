@@ -593,18 +593,21 @@ console.log('\n=== 10. Live household September reconciles by event id and plann
     c && c.class !== 'reserve' && c.source !== 'historical-actual'
     && isFinite(Number(c.planned)) && Number(c.planned) > 0);
   const walkDays = sep.stage1.householdBudget.walkDays;
-  const expectedBudget = cats.map(c => ({
-    label: c.label || c.id,
-    amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * walkDays / 7),
-  }));
-  const budgetTotal = roundCent(weekly * walkDays / 7);
-  if (expectedBudget.length) {
-    const total = roundCent(expectedBudget.reduce((s, row) => s + row.amount, 0));
-    if (total !== budgetTotal) {
-      const last = expectedBudget[expectedBudget.length - 1];
-      last.amount = roundCent(last.amount + (budgetTotal - total));
-    }
-  }
+  const priorDays = (Date.parse(sep.start) - Date.parse(asOf)) / 86400000;
+  // Independently attribute both cumulative spending boundaries, then
+  // subtract. Resetting rounding at September creates partition drift.
+  const atBoundary = days => {
+    const rows = cats.map(c => ({ label: c.label || c.id,
+      amount: roundCent((Number(c.planned) / WEEKS_PER_MONTH) * days / 7) }));
+    const total = roundCent(rows.reduce((s, row) => s + row.amount, 0));
+    if (rows.length) rows[rows.length - 1].amount = roundCent(
+      rows[rows.length - 1].amount + roundCent(weekly * days / 7) - total);
+    return rows;
+  };
+  const before = atBoundary(priorDays), after = atBoundary(priorDays + walkDays);
+  const expectedBudget = after.map((r, i) => ({ label: r.label, amount: roundCent(r.amount - before[i].amount) }));
+  const budgetTotal = roundCent(roundCent(weekly * (priorDays + walkDays) / 7)
+    - roundCent(weekly * priorDays / 7));
   const publishedBudget = sep.stage1.householdBudget.lines || [];
   ok(cats.length > 1 && publishedBudget.length === expectedBudget.length,
     'live September householdBudget.lines are present for contributing categories');
