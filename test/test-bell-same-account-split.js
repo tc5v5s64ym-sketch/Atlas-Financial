@@ -93,7 +93,7 @@ const ALREADY = [
   { id: 'icbc', date: '2026-09-15' },
   { id: 'resp', date: '2026-09-15' },
   { id: 'netflix', date: '2026-09-17' },
-  { id: 'spotify', date: '2026-09-17' },
+  { id: 'spotify', date: '2026-09-23' },
 ];
 
 function liveData() {

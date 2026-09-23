@@ -43,7 +43,7 @@ const viewEnd = F.addDays(asOf, (plan.windowDays || 91) - 1);
 
 const OWNER = {
   netflix: { id: 'netflix', amount: 26.87, day: 17, frequency: 'monthly' },
-  spotify: { id: 'spotify', amount: 26.87, day: 17, frequency: 'monthly' },
+  spotify: { id: 'spotify', amount: 26.87, day: 23, frequency: 'monthly', firstDue: '2026-09-23' },
   'google-storage-100gb': { id: 'google-storage-100gb', amount: 3.13, day: 31, frequency: 'monthly' },
   'ultimate-guitar': { id: 'ultimate-guitar', amount: 50, month: 5, day: 8, frequency: 'yearly' },
   'icloud-storage': { id: 'icloud-storage', amount: 13, day: 14, frequency: 'monthly' },
@@ -93,6 +93,7 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
     ok(row && row.frequency === spec.frequency && row.day === spec.day
       && near(row.amount, spec.amount)
       && (spec.month == null || row.month === spec.month)
+      && (spec.firstDue == null || row.firstDue === spec.firstDue)
       && row.budgetCategory === 'subscriptions'
       && row.payingAccount === 'chequing-a',
       `${spec.id} keeps owner cadence, subscriptions category, and BILLS ACCOUNT payer`);
@@ -145,8 +146,10 @@ console.log('\n=== hand-computed calendar dates through expandEvents ===');
   ok(billEvents('netflix', asOf, viewEnd).every(e => near(-e.amount, 26.87) && e.kind === 'bill'),
     'each Netflix cash event is −$26.87');
   const spotify = billEvents('spotify', asOf, viewEnd).map(e => e.date);
-  ok(sameDates(spotify, NETFLIX_91),
-    'Spotify expands on the same 17ths as Netflix', spotify.join(', '));
+  ok(sameDates(spotify, ['2026-09-23', '2026-10-23']),
+    'Spotify expands on the 23rd from firstDue 2026-09-23', spotify.join(', '));
+  ok(!spotify.includes('2026-09-17') && !billEvents('spotify', '2026-08-19', '2026-08-31').length,
+    'moving 17 to 23 does not keep a September 17 occurrence or invent August 23');
   const google = billEvents('google-storage-100gb', asOf, viewEnd).map(e => e.date);
   ok(sameDates(google, ['2026-08-31', '2026-09-30', '2026-10-31']),
     'Google storage uses last calendar day', google.join(', '));
@@ -248,11 +251,13 @@ console.log('\n=== mid-month 14th–17th cluster follows incumbent Seaspan payda
   const netflix = (on15.obligations.items || [])
     .find(row => row.id === 'netflix' && row.date === '2026-09-17');
   const spotify = (on15.obligations.items || [])
-    .find(row => row.id === 'spotify' && row.date === '2026-09-17');
+    .find(row => row.id === 'spotify' && row.date === '2026-09-23');
   ok(netflix && near(netflix.amount, 26.87),
     'Netflix 17 Sep remains reserved in the 11 Sep Seaspan window on 15 Sep');
   ok(spotify && near(spotify.amount, 26.87),
-    'Spotify 17 Sep remains reserved in the 11 Sep Seaspan window on 15 Sep');
+    'Spotify 23 Sep remains reserved in the 11 Sep Seaspan window on 15 Sep');
+  ok(!(on15.obligations.items || []).some(row => row.id === 'spotify' && row.date === '2026-09-17'),
+    'Spotify is not also reserved on 17 Sep');
   ok(!(on15.obligations.items || []).some(row =>
     Object.prototype.hasOwnProperty.call(CLUSTER_14, row.id) && row.date === '2026-09-14'),
     'the 14 Sep bills are already past as-of on 15 Sep and are not re-listed as upcoming');

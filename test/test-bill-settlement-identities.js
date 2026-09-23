@@ -42,8 +42,8 @@ const NETFLIX_DUE = '2026-09-17';
 const NETFLIX_PLANNED = 26.87;
 const NETFLIX_OBSERVED = 26.87;
 const SPOTIFY_ID = 'spotify';
-const SPOTIFY_DUE = '2026-09-17';
-const SPOTIFY_BEFORE = '2026-09-16';
+const SPOTIFY_DUE = '2026-09-23';
+const SPOTIFY_BEFORE = '2026-09-22';
 const SPOTIFY_PLANNED = 26.87;
 const CHATGPT_DALE_ID = 'chatgpt-plus-dale';
 const CHATGPT_AMANDA_ID = 'chatgpt-plus-amanda';
@@ -422,7 +422,7 @@ console.log('\n=== 2. WITHOUT EVIDENCE Fortis and TD stay still-due; YouTube wai
   ok(!(empty.representedEventCandidates || []).some(c => c && c.id === YOUTUBE_ID),
     'YouTube is not schedule-trusted before the 2nd');
   ok(!(empty.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
-    'Spotify is not schedule-trusted before the 17th');
+    'Spotify is not schedule-trusted before the 23rd');
   ok(!(empty.representedEventCandidates || []).some(c => c && c.id === CHATGPT_DALE_ID),
     'ChatGPT Plus Dale is not schedule-trusted before the 14th');
   ok(!(empty.representedEventCandidates || []).some(c => c && c.id === ICLOUD_ID),
@@ -565,10 +565,11 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
     'live plan.bills netflix is $26.87 on the 17th; payingAccount stays chequing-a');
   const liveSpotify = ((liveData().plan && liveData().plan.bills) || [])
     .find(b => b && b.id === SPOTIFY_ID);
-  ok(liveSpotify && liveSpotify.day === 17 && near(liveSpotify.amount, NETFLIX_PLANNED),
-    'live plan.bills spotify is the same $26.87 / day-17 twin; it is a separate bill');
-  ok(liveSpotify.day === 17,
-    'this identity does not move data.json spotify.day');
+  ok(liveSpotify && liveSpotify.day === 23 && liveSpotify.firstDue === '2026-09-23'
+      && near(liveSpotify.amount, NETFLIX_PLANNED),
+    'live plan.bills spotify is $26.87 on the 23rd from firstDue 2026-09-23; it is a separate bill from Netflix');
+  ok(liveSpotify.day !== 17,
+    'owner 2026-09-23 moved data.json spotify.day off the 17th');
   ok(near(NETFLIX_PLANNED, 26.87),
     'independent scheduled amount is $26.87, not identity');
   const identity = identityDoc();
@@ -586,22 +587,16 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
       && hit.atlasAccountId === 'chequing-b'
       && near(hit.observedAmount, NETFLIX_OBSERVED),
     'Sep 17 Netflix debit on chequing-b settles the Sep 17 netflix occurrence as same-day');
-  ok(!(report.representedEventCandidates || []).some(c =>
-      c && c.id === SPOTIFY_ID && c.providerTransactionId != null),
-    'the Netflix debit does not represent spotify as a bank-payee identity');
-  const spotifyTrust = (report.representedEventCandidates || [])
-    .find(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE);
-  ok(spotifyTrust && spotifyTrust.identity === SCHEDULE_TRUST
-      && spotifyTrust.providerTransactionId == null,
-    'on Sep 17 Spotify is independently schedule-trusted, not from the Netflix debit');
+  ok(!(report.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'on Sep 17 Spotify is not yet due, and the Netflix debit does not represent it');
   const row = ((report.currentPeriodActuals || {}).representedActuals || [])
     .find(r => r && r.id === NETFLIX_ID && r.date === NETFLIX_DUE);
   ok(row && row.transactionId && near(row.actual, NETFLIX_OBSERVED)
       && row.postedOn === NETFLIX_DUE,
     'representedActuals carries the observed Netflix debit against netflix@Sep 17');
-  ok(((report.currentPeriodActuals || {}).representedActuals || [])
-      .some(r => r && r.id === SPOTIFY_ID && r.date === SPOTIFY_DUE && !r.transactionId),
-    'representedActuals names spotify from schedule-trust, not from the Netflix debit');
+  ok(!((report.currentPeriodActuals || {}).representedActuals || [])
+      .some(r => r && r.id === SPOTIFY_ID),
+    'Sep 17 representedActuals do not name Spotify; the 23rd has not arrived');
   const advice = recommendFromReport(report, NETFLIX_DUE);
   const bill = actionBill(advice, NETFLIX_ID, NETFLIX_DUE)
     || calendarBill(advice, NETFLIX_ID, NETFLIX_DUE);
@@ -609,8 +604,8 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
       && bill && near(bill.planned != null ? bill.planned : bill.amount, NETFLIX_PLANNED)
       && near(bill.actual != null ? bill.actual : 0, NETFLIX_OBSERVED),
     'matching Netflix evidence marks PAID at the observed amount; planned $26.87 stays');
-  ok(billPaid(advice, SPOTIFY_ID, SPOTIFY_DUE),
-    'on Sep 17 Spotify is PAID via schedule-trust while Netflix settles from its own debit');
+  ok(billUnpaid(advice, SPOTIFY_ID, SPOTIFY_DUE),
+    'on Sep 17 Spotify@23 Sep is still due while Netflix settles from its own debit');
   const wrongPayee = observeWith(identity, NETFLIX_DUE, [netflixTx({
     id: 9642, payee: 'UNKNOWN DEBIT', original_name: 'UNKNOWN DEBIT',
   })]);
@@ -619,11 +614,8 @@ console.log('\n=== 3c. Netflix same-day WEEKLY debit creates representedActuals 
   const spotifyPayee = observeWith(identity, NETFLIX_DUE, [spotifyTx()]);
   ok(!(spotifyPayee.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
     'Spotify payee on chequing-b does not settle netflix');
-  const spotifyPayeeHit = (spotifyPayee.representedEventCandidates || [])
-    .find(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE);
-  ok(spotifyPayeeHit && spotifyPayeeHit.identity === SCHEDULE_TRUST
-      && spotifyPayeeHit.providerTransactionId == null,
-    'a Lunch Money Spotify payee is not Spotify identity; settlement is schedule-trust');
+  ok(!(spotifyPayee.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
+    'a Lunch Money Spotify payee on Sep 17 is not Spotify identity and does not trust the 23rd early');
   ok(billUnpaid(recommendFromReport(spotifyPayee, NETFLIX_DUE), NETFLIX_ID, NETFLIX_DUE),
     'a Spotify debit leaves Netflix still-due / PENDING');
   const wrongAccount = observeWith(identity, NETFLIX_DUE, [netflixTx({
@@ -733,8 +725,9 @@ console.log('\n=== 5b. Spotify schedule-trust is paid on the due date without an
     'independent scheduled amount is $26.87; amount is not identity');
   const liveSpotify = ((liveData().plan && liveData().plan.bills) || [])
     .find(b => b && b.id === SPOTIFY_ID);
-  ok(liveSpotify && liveSpotify.day === 17 && near(liveSpotify.amount, SPOTIFY_PLANNED),
-    'live plan.bills spotify.day stays 17; schedule-trust uses the existing Forecast day');
+  ok(liveSpotify && liveSpotify.day === 23 && liveSpotify.firstDue === '2026-09-23'
+      && near(liveSpotify.amount, SPOTIFY_PLANNED),
+    'live plan.bills spotify.day is 23 from firstDue 2026-09-23; schedule-trust uses that Forecast day');
   const identity = identityDoc();
   const observeSrc = sourceText(fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'provider-observe.js'), 'utf8'));
@@ -744,22 +737,22 @@ console.log('\n=== 5b. Spotify schedule-trust is paid on the due date without an
   ok(!(missing.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
     'without the spotify rule, due-date observe does not invent a Spotify settlement');
   ok(billUnpaid(recommendFromReport(missing, SPOTIFY_DUE), SPOTIFY_ID, SPOTIFY_DUE),
-    'without the spotify rule the Sep 17 bill stays still-due / PENDING');
+    'without the spotify rule the Sep 23 bill stays still-due / PENDING');
   const before = observeWith(identity, SPOTIFY_BEFORE, []);
   ok(!spotifyRepresented(before, SPOTIFY_DUE)
       && !(before.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
     'Spotify is not represented the day before it is due');
   ok(billUnpaid(recommendFromReport(before, SPOTIFY_BEFORE), SPOTIFY_ID, SPOTIFY_DUE),
     'the day before the due date Spotify remains still-due');
-  const earlyNetflix = observeWith(identity, SPOTIFY_BEFORE, [netflixTx({
-    id: 9644, date: SPOTIFY_BEFORE,
+  const earlyNetflix = observeWith(identity, '2026-09-16', [netflixTx({
+    id: 9644, date: '2026-09-16',
   })]);
   ok((earlyNetflix.representedEventCandidates || [])
       .some(c => c && c.id === NETFLIX_ID && c.date === NETFLIX_DUE),
     'Netflix identity-plus-evidence is unchanged: a Sep 16 WEEKLY debit can early-pay netflix');
   ok(!(earlyNetflix.representedEventCandidates || []).some(c => c && c.id === SPOTIFY_ID),
-    'Netflix early-pay before the 17th does not schedule-trust Spotify');
-  ok(billUnpaid(recommendFromReport(earlyNetflix, SPOTIFY_BEFORE), SPOTIFY_ID, SPOTIFY_DUE),
+    'Netflix early-pay on Sep 16 does not schedule-trust Spotify');
+  ok(billUnpaid(recommendFromReport(earlyNetflix, '2026-09-16'), SPOTIFY_ID, SPOTIFY_DUE),
     'Spotify stays still-due on Sep 16 while Netflix may already be evidenced');
   const emptyDue = observeWith(identity, SPOTIFY_DUE, []);
   const hit = (emptyDue.representedEventCandidates || [])
@@ -772,11 +765,11 @@ console.log('\n=== 5b. Spotify schedule-trust is paid on the due date without an
   ok(!(emptyDue.representedEventCandidates || []).some(c => c && c.id === NETFLIX_ID),
     'empty due-date observe does not settle Netflix; Netflix still needs WEEKLY evidence');
   ok(billUnpaid(recommendFromReport(emptyDue, SPOTIFY_DUE), NETFLIX_ID, NETFLIX_DUE),
-    'Netflix stays still-due / unverified without matching evidence on Sep 17');
+    'Netflix stays still-due / unverified without matching evidence when Spotify comes due');
   const row = ((emptyDue.currentPeriodActuals || {}).representedActuals || [])
     .find(r => r && r.id === SPOTIFY_ID && r.date === SPOTIFY_DUE);
   ok(row && near(row.actual, SPOTIFY_PLANNED) && !row.transactionId,
-    'representedActuals names spotify@Sep 17 without a transactionId');
+    'representedActuals names spotify@Sep 23 without a transactionId');
   const paypalNoise = observeWith(identity, SPOTIFY_DUE, [{
     id: 9702, account_id: 1001, date: SPOTIFY_DUE, amount: SPOTIFY_PLANNED,
     is_pending: false, payee: 'PAYPAL', original_name: 'SPOTIFY AB',
@@ -789,11 +782,11 @@ console.log('\n=== 5b. Spotify schedule-trust is paid on the due date without an
   ok(!(paypalNoise.representedEventCandidates || []).some(c =>
       c && c.id === SPOTIFY_ID && c.providerTransactionId != null),
     'PayPal cadence is trusted without requiring an LM Spotify payee match');
-  const afterDue = observeWith(identity, '2026-09-18', []);
+  const afterDue = observeWith(identity, '2026-09-24', []);
   ok((afterDue.representedEventCandidates || [])
       .some(c => c && c.id === SPOTIFY_ID && c.date === SPOTIFY_DUE
         && c.identity === SCHEDULE_TRUST && c.providerTransactionId == null),
-    'on/after the due date schedule-trust still emits the Sep 17 Spotify settlement');
+    'on/after the due date schedule-trust still emits the Sep 23 Spotify settlement');
   const advice = recommendFromReport(emptyDue, SPOTIFY_DUE);
   ok(billPaid(advice, SPOTIFY_ID, SPOTIFY_DUE),
     'schedule-trust on the due date marks Spotify PAID');
@@ -1267,18 +1260,18 @@ console.log('\n=== 8. schedule-trust uses the financial as-of, never fetchedAt =
   ok(billPaid(recommendFromReport(due, YOUTUBE_DUE), YOUTUBE_ID, YOUTUBE_DUE),
     'schedule-trust on the financial due date marks YouTube PAID');
 
-  const spotifyStale = readyObserve(identity, SPOTIFY_BEFORE, '2026-09-18', []);
+  const spotifyStale = readyObserve(identity, SPOTIFY_BEFORE, '2026-09-24', []);
   ok(O.householdFinancialDate({}, spotifyStale.observations) === SPOTIFY_BEFORE,
-    'provider cash evidence independently dates the Spotify financial as-of as Sep 16');
+    'provider cash evidence independently dates the Spotify financial as-of as Sep 22');
   ok(!spotifyRepresented(spotifyStale, SPOTIFY_DUE)
       && !((spotifyStale.currentPeriodActuals || {}).representedActuals || [])
         .some(r => r && r.id === SPOTIFY_ID),
-    'financial as-of before the 17th leaves Spotify unrepresented even if fetchedAt is later');
+    'financial as-of before the 23rd leaves Spotify unrepresented even if fetchedAt is later');
   ok(billUnpaid(recommendFromReport(spotifyStale, SPOTIFY_BEFORE), SPOTIFY_ID, SPOTIFY_DUE),
-    'Budget still shows Spotify still-due when the financial date is Sep 16');
-  const spotifyDue = readyObserve(identity, SPOTIFY_DUE, '2026-09-18', []);
+    'Budget still shows Spotify still-due when the financial date is Sep 22');
+  const spotifyDue = readyObserve(identity, SPOTIFY_DUE, '2026-09-24', []);
   ok(O.householdFinancialDate({}, spotifyDue.observations) === SPOTIFY_DUE,
-    'provider cash evidence independently dates the Spotify financial as-of as Sep 17');
+    'provider cash evidence independently dates the Spotify financial as-of as Sep 23');
   ok(spotifyRepresented(spotifyDue, SPOTIFY_DUE)
       && ((spotifyDue.currentPeriodActuals || {}).representedActuals || [])
         .some(r => r && r.id === SPOTIFY_ID && r.date === SPOTIFY_DUE && !r.transactionId),
