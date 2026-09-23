@@ -146,8 +146,17 @@ console.log('\n=== 2. Unsettled plans render; settled commitments are absent ===
   const settled = live.plan.commitments.filter(c => F.commitmentSettledBy(c, live.meta.asOf));
   ok(settled.length > 0 && settled.every(c => !row(liveHtml, c.id) && !liveHtml.includes(c.label)),
     `live: ${settled.length} settled commitments are absent`);
+  const liveAdvice = adviceFrom(live, periods);
+  const liveCards = F.planSpendCards(liveAdvice.majorPlans);
+  const summaryMembers = new Set(liveCards.filter(c => c.kind === 'summary')
+    .flatMap(c => (c.members || []).map(m => m.id)));
   const unsettled = live.plan.commitments.filter(c => !F.commitmentSettledBy(c, live.meta.asOf));
-  ok(unsettled.every(c => !!row(liveHtml, c.id)), `live: all ${unsettled.length} unsettled commitments render`);
+  ok(unsettled.every(c => summaryMembers.has(c.id) || !!row(liveHtml, c.id)),
+    `live: every unsettled commitment is a card or a summary member`);
+  ok(liveCards.filter(c => c.kind === 'summary').every(c => {
+    const card = row(liveHtml, c.id);
+    return card && c.members.every(m => !row(liveHtml, m.id));
+  }), 'live summary groups render one card and not one card per member');
 }
 
 console.log('\n=== 3. Points, ranges, approximate timing, and Forecast remaining reprint ===');
@@ -245,16 +254,25 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
 
   const liveHtml = pageList(live, periods).list;
   const liveAdvice = adviceFrom(live, periods);
-  const liveDated = liveAdvice.majorPlans.filter(p => p.date);
+  const liveCards = F.planSpendCards(liveAdvice.majorPlans);
+  const summaryMembers = new Set(liveCards.filter(c => c.kind === 'summary')
+    .flatMap(c => (c.members || []).map(m => m.id)));
+  const liveDated = liveAdvice.majorPlans.filter(p => p.date && !p.tripWindow && !summaryMembers.has(p.id));
   ok(liveDated.length > 0 && liveDated.every(p => {
     const r = row(liveHtml, p.id);
     return r && /data-plan-spend-timing="dated"/.test(r) && timingSpan(r) === longDate(p.date);
   }), `live: ${liveDated.length} Forecast-dated rows print fmtDateFull(date)`);
-  const liveApprox = liveAdvice.majorPlans.filter(p => !p.date && p.when);
+  const liveApprox = liveAdvice.majorPlans.filter(p => !p.date && p.when && !summaryMembers.has(p.id));
   ok(liveApprox.length > 0 && liveApprox.every(p => {
     const r = row(liveHtml, p.id);
     return r && /data-plan-spend-timing="approximate"/.test(r) && timingSpan(r) === p.when;
   }), `live: ${liveApprox.length} when-only rows print when verbatim`);
+  const trip = liveAdvice.majorPlans.find(p => p.tripWindow);
+  ok(trip && timingSpan(row(liveHtml, trip.id)) === trip.tripWindow
+      && /data-plan-spend-timing="trip-window"/.test(row(liveHtml, trip.id))
+      && /data-plan-spend-cash-date/.test(row(liveHtml, trip.id))
+      && row(liveHtml, trip.id).includes(longDate(trip.date)),
+    'a Forecast trip window is the glance timing and the cash date stays in the disclosure');
 }
 
 console.log('\n=== 4. Fail-closed empty / unavailable; no invented saved balance ===');
@@ -300,6 +318,8 @@ console.log('\n=== 5. Page contract and dock chrome ===');
   const mounts = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
   ok(mounts.has('plan-spend-lede') && mounts.has('plan-spend-list') && mounts.has('plan-spend-note'),
     'plan-spend.html mounts lede, list and note');
+  ok(/id="plan-spend-list"[^>]*class="[^"]*\bplan-spend-list\b/.test(html),
+    'the list mount carries plan-spend-list so the compact card rules apply');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/plan-spend.js">/.test(html),
     'plan-spend.html loads forecast.js before plan-spend.js');
   ok(!/Fusion|Berard|Indio|Seattle|Christmas|couch|painting/i.test(stripComments(read('public/plan-spend.js')) + html),
@@ -312,6 +332,71 @@ console.log('\n=== 5. Page contract and dock chrome ===');
   ok(JSON.stringify(links) === JSON.stringify(['Budget', 'Forecast', 'Bills', 'Subscriptions', 'Credit', 'Plan spend']),
     'Plan spend dock is Budget | Forecast | Bills | Subscriptions | Credit | Plan spend');
   ok(!/Talk/.test(nav ? nav[1] : ''), 'Talk is not on the Plan spend dock');
+}
+
+console.log('\n=== 6. Summary cards reprint Forecast.planSpendCards; compact disclosure ===');
+{
+  const grouped = page.compose({
+    majorPlans: [
+      { id: 'a', group: 'g', groupLabel: 'Grouped cost', planSpendSummary: true, label: 'Part A', need: 1200, date: '2026-10-31', verdict: 'ON TRACK', remaining: 0, confidence: 'estimated', flexibility: 'required' },
+      { id: 'b', group: 'g', groupLabel: 'Grouped cost', planSpendSummary: true, label: 'Part B', need: 900, date: '2026-12-31', verdict: 'ON TRACK', remaining: 0, confidence: 'estimated', flexibility: 'required' },
+      { id: 'c', label: 'Solo', need: 10, when: 'timing TBD', verdict: 'FUNDING GAP', remaining: 10, confidence: 'estimated', flexibility: 'required' },
+    ],
+    paydayAllocation: {},
+    knowledge: { encumbered: 1 },
+  }, null).list;
+  const cards = F.planSpendCards([
+    { id: 'a', group: 'g', groupLabel: 'Grouped cost', planSpendSummary: true, label: 'Part A', need: 1200, date: '2026-10-31', verdict: 'ON TRACK', remaining: 0, confidence: 'estimated', flexibility: 'required' },
+    { id: 'b', group: 'g', groupLabel: 'Grouped cost', planSpendSummary: true, label: 'Part B', need: 900, date: '2026-12-31', verdict: 'ON TRACK', remaining: 0, confidence: 'estimated', flexibility: 'required' },
+    { id: 'c', label: 'Solo', need: 10, when: 'timing TBD', verdict: 'FUNDING GAP', remaining: 10, confidence: 'estimated', flexibility: 'required' },
+  ]);
+  const summary = cards.find(c => c.kind === 'summary');
+  const independent = 1200 + 900;
+  ok(summary && summary.scheduleRemaining === independent,
+    'Forecast.planSpendCards schedule remaining is the independent sum of published needs',
+    summary && String(summary.scheduleRemaining));
+  ok(!!row(grouped, 'g') && !row(grouped, 'a') && !row(grouped, 'b') && !!row(grouped, 'c'),
+    'the page prints one summary card plus the ungrouped row');
+  const card = row(grouped, 'g');
+  ok(card && card.includes(money2(independent)) && card.includes('data-plan-spend-member="a"')
+      && card.includes('data-plan-spend-member="b"') && card.includes(money2(1200))
+      && card.includes(money2(900)),
+    'the summary reprints the Forecast sum and each member amount');
+  const glance = card.split('<details')[0];
+  ok(glance.includes(money2(independent)) && !glance.includes(money2(1200)) && !glance.includes(money2(900)),
+    'member amounts stay behind the disclosure; the glance shows the summary once');
+  ok(summary && summary.verdict === 'ON TRACK'
+      && /data-plan-spend-verdict="ON TRACK"/.test(glance)
+      && /class="[^"]*\bon-track\b/.test(card.split('>')[0]),
+    'same-verdict members still publish ON TRACK on the grouped glance');
+  ok(/<details class="plan-spend-more">/.test(card) && /class="plan-spend-glance"/.test(card),
+    'summary card uses the compact glance plus a disclosure');
+  const mixedMembers = [
+    { id: 'fusion-oct', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'October', need: 1200, date: '2026-10-31', verdict: 'FUNDING GAP', remaining: 1200, confidence: 'confirmed', flexibility: 'required' },
+    { id: 'fusion-nov', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'November', need: 1200, date: '2026-11-30', verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed', flexibility: 'required' },
+    { id: 'fusion-dec', group: 'fusion-household', groupLabel: 'Fusion Lacrosse', planSpendSummary: true, label: 'December', need: 900, date: '2026-12-31', verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed', flexibility: 'required' },
+  ];
+  const mixedCards = F.planSpendCards(mixedMembers);
+  const mixedSummary = mixedCards.find(c => c.kind === 'summary');
+  const mixedHtml = page.compose({
+    majorPlans: mixedMembers,
+    paydayAllocation: {},
+    knowledge: { encumbered: 1 },
+  }, null).list;
+  const mixedCard = row(mixedHtml, 'fusion-household');
+  const mixedGlance = mixedCard ? mixedCard.split('<details')[0] : '';
+  ok(mixedSummary && mixedSummary.verdict === 'FUNDING GAP'
+      && mixedSummary.members.map(m => m.verdict).join(',') === 'FUNDING GAP,ON TRACK,ON TRACK',
+    'Forecast.planSpendCards publishes the FUNDING GAP member verdict on a mixed group');
+  ok(/data-plan-spend-verdict="FUNDING GAP"/.test(mixedGlance)
+      && /class="[^"]*\bfunding-gap\b/.test((mixedCard || '').split('>')[0])
+      && /<span class="chip c">FUNDING GAP<\/span>/.test(mixedGlance),
+    'mixed FUNDING GAP + ON TRACK shows the gap chip and card styling on the glance, without opening Details');
+  const css = read('public/styles.css');
+  ok(/\.plan-spend-list \.plan-spend-card \{\s*padding:7px 10px;/.test(css)
+      && /grid-template-columns:minmax\(0,1fr\) auto;/.test(css)
+      && /@media \(max-width:380px\)/.test(css),
+    'plan spend cards use tight padding and a shrinking name column on narrow widths');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

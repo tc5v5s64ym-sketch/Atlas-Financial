@@ -451,11 +451,9 @@
     {
       "id": "HH-014",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "CONSUMED",
-      "routed_to": {
-        "path": "data.json",
-        "json_pointer": "/plan/commitments/15"
-      }
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Owner 2026-09-23 retired vehicle maintenance from active future planning. The interview estimate is historical and is not a live plan.commitments row.",
+      "no_review_reason": "The owner retirement stands. Do not restore the commitment."
     },
     {
       "id": "HH-015",
@@ -502,20 +500,16 @@
     {
       "id": "HH-021",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "CONSUMED",
-      "routed_to": {
-        "path": "data.json",
-        "json_pointer": "/plan/commitments/11"
-      }
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Owner 2026-09-23 retired exterior painting from active future planning. The interview estimate is historical and is not a live plan.commitments row.",
+      "no_review_reason": "The owner retirement stands. Do not restore the commitment."
     },
     {
       "id": "HH-022",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "CONSUMED",
-      "routed_to": {
-        "path": "data.json",
-        "json_pointer": "/plan/commitments/10"
-      }
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Owner 2026-09-23 retired the downstairs couch from active future planning. The interview estimate is historical and is not a live plan.commitments row.",
+      "no_review_reason": "The owner retirement stands. Do not restore the commitment."
     },
     {
       "id": "HH-023",
@@ -555,11 +549,9 @@
     {
       "id": "TRAVEL-002",
       "source": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
-      "disposition": "CONSUMED",
-      "routed_to": {
-        "path": "data.json",
-        "json_pointer": "/plan/commitments/12"
-      }
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Owner 2026-09-23 retired the Indio tournament. It is not an active January commitment. The replacement is the separate owner-confirmed San Diego commitment, not this Indio estimate.",
+      "no_review_reason": "The owner retirement stands. Do not restore Indio beside San Diego."
     },
     {
       "id": "TRAVEL-003",

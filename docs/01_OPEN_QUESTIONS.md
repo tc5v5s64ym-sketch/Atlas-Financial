@@ -252,28 +252,35 @@ amount. It must not be double-counted.
 ### Q22. What are the remaining unknown tournament costs, and what are Provincials date/location/cost?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know (2026-08-16, estimates absorbed onto `plan.commitments` by
-`B95`; Square One restated 2026-09-18 onto `plan.bills`):** the known major
-future costs already have **one Plan home**. This question does not restate
-their amounts, timing, or flexibility. Read the canonical rows:
-`burrards-team-fees`, `warriors`, `seattle-nov`, `seattle-dec`,
-`christmas-2026`, `downstairs-couch`, `exterior-painting`,
-`indio-tournament`, `provincials`. Vehicle maintenance stays on
-`plan.commitments`. Property tax stays the existing reserve. Square One
-home insurance is no longer an undated commitment: it is the dated yearly
-card-paid `plan.bills` row `square-one` (10 February, `firstDue`
-2027-02-10). Do not copy those values here.
+`B95`; Square One restated 2026-09-18 onto `plan.bills`; owner 2026-09-23
+retired three household projects and replaced the January tournament):**
+the known major future costs already have **one Plan home**. This question
+does not restate their amounts, timing, or flexibility. Read the canonical
+rows: `burrards-team-fees`, `warriors`, `seattle-nov`, `seattle-dec`,
+`christmas-2026`, `provincials`, `san-diego`, and the dated
+`fusion-household-*` instalments. Property tax stays the existing reserve.
+Square One home insurance is no longer an undated commitment: it is the
+dated yearly card-paid `plan.bills` row `square-one` (10 February,
+`firstDue` 2027-02-10). Do not copy those values here.
+
+Owner 2026-09-23 removed these from active future planning. They are not
+hidden rows and they do not encumber Forecast: `downstairs-couch`,
+`exterior-painting`, `vehicle-maintenance`. `indio-tournament` is retired
+and replaced by `san-diego` (San Diego, California; trip window January
+7–11, 2027). The cash date on that row follows the incumbent clear-month
+15th rule and is documented on the row. Do not restore Indio beside it.
 
 There are no other specifically known tournaments. Tacoma is not on the
 current known list.
 
-Still unanswered, and only these:
-- exact due dates for rows whose `when` is not a single clear month-and-year:
-  `downstairs-couch` (Nov–Dec 2026), `exterior-painting` (Fall 2026),
-  `provincials` (timing TBD),
-  `vehicle-maintenance` (annual)
-- a point amount for Indio (`indio-tournament` is still a range)
-- Provincials location and date (`provincials` timing is TBD; the cost
-  estimate lives on that row)
+Still unanswered, and only this:
+- Provincials location and date (`provincials` timing is TBD; the
+  owner-confirmed planning amount lives on that row; no date is invented)
+
+Closed by the 2026-09-23 instruction:
+- exact due dates for downstairs couch, exterior painting, and vehicle
+  maintenance — those are no longer active commitments
+- a point amount for Indio — Indio is not an active commitment
 
 ON TRACK / AT RISK / FUNDING GAP waits on `B94` and applies to these
 **major future plans**, not to individual transactions or budget
