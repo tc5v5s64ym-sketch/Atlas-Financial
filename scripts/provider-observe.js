@@ -1028,6 +1028,7 @@ const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
 const SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT = 'exact-scheduled-amount';
 const SETTLES_WHEN_TWO_LEG_SUM = 'two-leg-sum';
 const SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE = 'schedule-trust-on-due';
+const INHERITED_PENDING_AUTHORIZATION = 'inherited-pending-authorization';
 const COVER_DUE_LOOKBACK_DAYS = 62;
 // covers-due-on-or-before-posting is a recurring "latest due" relation.
 // A once occurrence is not a series: reuse after this grace would attach a
@@ -2088,7 +2089,10 @@ function uniqueProviderReplacementLinks(transactions, opts) {
 // Carry a unique incumbent identity hit from a dropped pending row onto
 // the posted survivor. Not a second matcher. Two-leg and same-account
 // split legs stay posted-only. Disagreeing occurrences fail closed later
-// as one transaction consumed twice.
+// as one transaction consumed twice. Identity and scheduled date stay
+// the pending hit. Posting provenance is the posted survivor's date;
+// the inherited relation is not a claim that the posted row itself
+// was same-day.
 function stampPendingReplacementHits(preTransactions, collapsedTransactions, input) {
   const links = uniqueProviderReplacementLinks(preTransactions, input);
   const kept = new Set(collapsedTransactions || []);
@@ -2114,12 +2118,19 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
       && hit.sameAccountSplitLegs !== true
       && isBillOrObligationEvent(input.plan, hit.id));
     if (hits.length !== 1) continue;
+    const postedDate = parseIsoDate(link.posted.date);
+    if (!postedDate) continue;
     const postedAmount = lunchMoneyDebitAmount(link.posted.amount);
+    const samePostedDate = hits[0].date === postedDate;
     survivors[0].pendingReplacementHit = Object.assign({}, hits[0], {
       providerTransactionId: postedId,
       providerAccountId: link.posted.providerAccountId,
       observedAmount: postedAmount != null ? postedAmount : hits[0].observedAmount,
       inheritedPendingReplacement: true,
+      postingDate: postedDate,
+      postingDateRelation: samePostedDate
+        ? (hits[0].postingDateRelation || 'same-day')
+        : INHERITED_PENDING_AUTHORIZATION,
     });
   }
 }

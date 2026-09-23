@@ -22,6 +22,7 @@ const MAP_PATH = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'provider-a
 
 const NOBLE = 'noble-garbage';
 const DUE = '2026-09-18';
+const POSTED_ON = '2026-09-19';
 const NEXT_DUE = '2026-12-18';
 const PLANNED = 95.85;
 const PENDING_AMT = 90.11;
@@ -262,7 +263,7 @@ function postedReplacement(linkKind) {
   });
   const posted = tx(linkKind === 'same-id' ? 777 : 52002, {
     is_pending: false,
-    date: '2026-09-19',
+    date: POSTED_ON,
     amount: POSTED_AMT,
     payee: 'POS DEBIT',
     original_name: 'NOBLE DISPOSAL',
@@ -288,15 +289,17 @@ function postedReplacement(linkKind) {
     row && (near(row.amount, POSTED_AMT) || near(row.amount, PENDING_AMT))
     && row.id !== txByAmount(packet, CORNER_AMT)[0]?.id);
   ok(hits.length === 1 && hits[0].date === DUE
-      && hits[0].postingDate === DUE
-      && hits[0].postingDateRelation === 'same-day'
+      && hits[0].postingDate === POSTED_ON
+      && hits[0].postingDateRelation === 'inherited-pending-authorization'
+      && hits[0].postingDateRelation !== 'same-day'
       && near(hits[0].observedAmount, POSTED_AMT)
       && hits[0].inheritedPendingReplacement === true,
-    `${linkKind}: one inherited candidate, observed amount is the posted $95.85`,
-    hits.map(hit => `${hit.date}:${hit.observedAmount}:${hit.postingDate}`).join(','));
-  ok(actuals.length === 1 && actuals[0].date === DUE && near(actuals[0].actual, POSTED_AMT)
+    `${linkKind}: one inherited candidate, 18 Sep identity, posted provenance 19 Sep`,
+    hits.map(hit => `${hit.date}:${hit.observedAmount}:${hit.postingDate}:${hit.postingDateRelation}`).join(','));
+  ok(actuals.length === 1 && actuals[0].date === DUE && actuals[0].postedOn === POSTED_ON
+      && near(actuals[0].actual, POSTED_AMT)
       && !actuals.some(row => row && row.date === NEXT_DUE),
-    `${linkKind}: exactly one representedActual, not a second occurrence`);
+    `${linkKind}: exactly one representedActual for 18 Sep, published postedOn is 19 Sep`);
   ok(nobleTxs.length === 1 && nobleTxs[0].pending !== true
       && nobleTxs[0].representedBill === true && near(nobleTxs[0].amount, POSTED_AMT),
     `${linkKind}: the posted replacement is the only Noble outflow and stays in the packet`,
@@ -309,9 +312,10 @@ function postedReplacement(linkKind) {
   ok(named, `${linkKind}: live overlay names the occurrence from the posted survivor, not the static Dale gate`);
   const bill = actionBill(live);
   ok(bill && bill.settlement === 'represented' && near(bill.remaining, 0)
-      && near(bill.planned, PLANNED),
-    `${linkKind}: the bill remains paid once`,
-    bill && `${bill.settlement}:${bill.remaining}:${bill.planned}`);
+      && near(bill.planned, PLANNED)
+      && bill.evidenceDate === POSTED_ON,
+    `${linkKind}: the bill remains paid once and Forecast consumes posted date 19 Sep`,
+    bill && `${bill.settlement}:${bill.remaining}:${bill.planned}:${bill.evidenceDate}`);
   const reserved = F.expandEvents(live.data.plan, OPENING, '2026-09-22', {
     representedEvents: (live.data.plan.opening && live.data.plan.opening.representedEvents) || [],
   }).filter(event => event && event.id === NOBLE && event.date === DUE);
@@ -328,7 +332,7 @@ function postedReplacement(linkKind) {
     `spent=${budget.spent}`);
   const control = liveFrom(withoutNobleGate(canonical), [
     tx(53001, {
-      date: '2026-09-19', amount: POSTED_AMT, payee: 'POS DEBIT',
+      date: POSTED_ON, amount: POSTED_AMT, payee: 'POS DEBIT',
       original_name: 'NOBLE DISPOSAL',
     }),
     tx(53002, {
@@ -372,7 +376,7 @@ console.log('\n=== C. fail closed: no merchant/amount collapse, wrong account, w
       plaid_metadata: { transaction_id: 'plaid-noble-pending' },
     }),
     tx(55002, {
-      account_id: 1001, date: '2026-09-19', amount: POSTED_AMT,
+      account_id: 1001, date: POSTED_ON, amount: POSTED_AMT,
       payee: 'POS DEBIT', original_name: 'NOBLE DISPOSAL',
       plaid_metadata: {
         transaction_id: 'plaid-noble-posted',
