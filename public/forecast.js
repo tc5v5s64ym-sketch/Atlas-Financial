@@ -3063,14 +3063,82 @@
     return owner;
   }
 
+  function amountCents(value) {
+    const n = Number(value);
+    if (!isFinite(n)) return null;
+    return Math.round(n * 100);
+  }
+
+  function canonicalAccountKey(tx) {
+    if (!tx) return '';
+    for (const value of [tx.atlasAccountId, tx.accountId, tx.account]) {
+      if (value == null || value === '') continue;
+      return String(value).trim().toLowerCase().replace(/[\s_-]+/g, '');
+    }
+    return '';
+  }
+
+  function ownerMerchantKey(tx) {
+    const named = txMerchantExact(tx);
+    if (named) return normalizeMerchantKey(named);
+    return normalizeMerchantKey(tx && (tx.originalName || tx.original_name || tx.payee));
+  }
+
+  // Owner 2026-09-23: two exact transactions are Fuel. Not every 7-Eleven,
+  // not every $20, and not every $75. A provider-directed posted replacement
+  // of the pending row keeps ownerConfirmedFuel; amount or date drift is
+  // not itself identity.
+  function isOwnerConfirmedFuelTransaction(tx) {
+    if (!tx || tx.ownerConfirmedFuel === true) return tx && tx.ownerConfirmedFuel === true;
+    const key = ownerMerchantKey(tx);
+    if (key !== '7 ELEVEN') return false;
+    const cents = amountCents(tx.amount);
+    const account = canonicalAccountKey(tx);
+    if (tx.date === '2026-09-20' && cents === 2000 && account === 'travelvisa') return true;
+    return tx.date === '2026-09-22' && cents === 7500 && account === 'chequingb';
+  }
+
+  // Owner 2026-09-23: this one PAYPAL MSP debit is the September Spotify
+  // occurrence. The merchant string is a payment rail, not a Spotify alias.
+  function isOwnerConfirmedSpotifyTransaction(tx) {
+    if (!tx) return false;
+    if (tx.ownerConfirmedSpotify === true) return true;
+    if (tx.date !== '2026-09-22') return false;
+    if (ownerMerchantKey(tx) !== 'PAYPAL MSP') return false;
+    if (amountCents(tx.amount) !== 2687) return false;
+    return canonicalAccountKey(tx) === 'chequinga';
+  }
+
+  // Owner 2026-09-23: the already-observed 21 Sep Noble Dispo debit is the
+  // noble-garbage occurrence that the 18 Sep pending form already settled.
+  // Not every Noble merchant, and not a later Noble charge.
+  function isOwnerConfirmedNobleOccurrence(tx) {
+    if (!tx) return false;
+    if (tx.ownerConfirmedNobleOccurrence === true) return true;
+    if (tx.date !== '2026-09-21') return false;
+    if (amountCents(tx.amount) !== 9585) return false;
+    if (canonicalAccountKey(tx) !== 'chequingb') return false;
+    const key = ownerMerchantKey(tx);
+    return key === 'NOBLE DISPO' || key === 'NOBLE DISPO V';
+  }
+
+  function ownerConfirmedBillResult(reason) {
+    return {
+      kind: 'bill', categoryId: null, householdSpending: false,
+      reason, includeReason: reason,
+    };
+  }
+
   // Owner-confirmed Fuel identity. Exact merchant key PITT MEADOWS CE /
   // PITTMEADOWSCE only (Dale 2026-09-02; the same identity the historical
-  // chequing library carries as Fuel & transport). Not a generic Pitt
-  // Meadows rule: PITT MEADOWS AR and other Pitt Meadows merchants do not
-  // inherit it. Provider bill/subscription labels do not divert it.
-  // Incumbent plan.budget.excluded / Business still wins.
+  // chequing library carries as Fuel & transport), plus the two exact
+  // 7-Eleven transactions above. Not a generic Pitt Meadows rule: PITT
+  // MEADOWS AR and other Pitt Meadows merchants do not inherit it.
+  // Provider bill/subscription labels do not divert it. Incumbent
+  // plan.budget.excluded / Business still wins.
   function isConfirmedFuelMerchant(tx) {
-    if (tx && tx.confirmedFuel === true) return true;
+    if (tx && (tx.confirmedFuel === true || tx.ownerConfirmedFuel === true)) return true;
+    if (isOwnerConfirmedFuelTransaction(tx)) return true;
     const key = normalizeMerchantKey(txMerchantExact(tx));
     if (!key) return false;
     return key === 'PITT MEADOWS CE' || key === 'PITTMEADOWSCE'
@@ -3274,7 +3342,8 @@
   // is not Dale, never a Prime bill, and never Amanda merely because the
   // card is MBNA. Eating out is Restaurants + Fast Food + Food Delivery.
   // Ordinary Canadian Tire retail is not Household. 7-Eleven is not
-  // confirmed Fuel without tx-level fuel evidence. Uncertain txs go to
+  // confirmed Fuel without tx-level fuel evidence, except the two exact
+  // owner-confirmed September 2026 transactions. Uncertain txs go to
   // confirmation, not a named household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
@@ -3373,6 +3442,12 @@
         kind: 'bill', categoryId: null, householdSpending: false,
         reason: 'represented-bill', includeReason: 'represented-bill',
       };
+    }
+    if (isOwnerConfirmedSpotifyTransaction(tx)) {
+      return ownerConfirmedBillResult('owner-confirmed-spotify');
+    }
+    if (isOwnerConfirmedNobleOccurrence(tx)) {
+      return ownerConfirmedBillResult('owner-confirmed-noble-occurrence');
     }
     // Owner 2026-09-08: Lunch Money category Dale / Amanda assigns the
     // corresponding guilt-free row. Fresh ingested categoryLabel wins over
@@ -6740,6 +6815,9 @@
     };
   }
 
+  classifyCurrentPeriodTransaction.ownerConfirmedFuel = isOwnerConfirmedFuelTransaction;
+  classifyCurrentPeriodTransaction.ownerConfirmedSpotify = isOwnerConfirmedSpotifyTransaction;
+  classifyCurrentPeriodTransaction.ownerConfirmedNoble = isOwnerConfirmedNobleOccurrence;
   classifyCurrentPeriodTransaction.derivedFlags = derivedTransactionFlags;
   classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible =
     householdBudgetSupportingSpendEligible;

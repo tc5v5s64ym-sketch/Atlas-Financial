@@ -243,6 +243,7 @@ const suites = [
   ['TD / Cash Back / Travel Visa PAYMENT - THANK YOU card-minimum identity', 'test-payment-thank-you-card-minimum.js'],
   ['Dale-gated Noble / HELOC / TDCC represented settles', 'test-dale-gated-represented-settles.js'],
   ['Noble pending→posted identity survives replacement', 'test-noble-pending-posted-identity.js'],
+  ['owner-confirmed September fuel, Spotify, and Noble rows', 'test-owner-confirmed-september-spend.js'],
   ['final Affirm payment owner correction', 'test-affirm-final.js'],
   ['retire cancelled CMAW union-dues recurrence (AF-REFRESH-01)', 'test-refresh-01-union-dues.js'],
   ['on-demand observation receipt (AF-REFRESH-02)', 'test-refresh-02-observation-receipt.js'],

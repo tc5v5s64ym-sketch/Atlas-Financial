@@ -1814,6 +1814,24 @@ function observationReceipt(report, opts) {
   };
 }
 
+function transactionWithMappedAccount(tx, accountMap) {
+  if (!tx) return tx;
+  if (tx.atlasAccountId || tx.account) return tx;
+  const mapping = mappingFor(accountMap, tx.providerAccountId);
+  const id = mapping && mapping.canonical && mapping.canonical.id;
+  if (!id) return tx;
+  return Object.assign({}, tx, { atlasAccountId: id, account: id });
+}
+
+function soleOwnerConfirmedSpotifyTransaction(transactions, accountMap) {
+  const matches = (transactions || []).filter(tx =>
+    tx && tx.pending !== true
+    && Forecast.classifyCurrentPeriodTransaction.ownerConfirmedSpotify(
+      transactionWithMappedAccount(tx, accountMap)
+    ));
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function scheduleTrustCandidates(input) {
   const asOf = parseIsoDate(input && input.asOf);
   if (!asOf || !input || !input.plan) return [];
@@ -2113,6 +2131,11 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
     if (postedId == null || postedId === '') continue;
     const survivors = byPostedId.get(String(postedId)) || [];
     if (survivors.length !== 1) continue;
+    if (Forecast.classifyCurrentPeriodTransaction.ownerConfirmedFuel(
+      transactionWithMappedAccount(link.pending, input.accountMap)
+    )) {
+      survivors[0].ownerConfirmedFuel = true;
+    }
     const hits = collectIdentityHits(link.pending, input, rules).filter(hit =>
       hit && hit.settlesWhen !== SETTLES_WHEN_TWO_LEG_SUM
       && hit.sameAccountSplitLegs !== true
@@ -2217,9 +2240,16 @@ function representedEventHitGroups(input) {
     list.push(inherited);
     eventHits.set(key, list);
   }
+  const spotifyEvidence = soleOwnerConfirmedSpotifyTransaction(
+    input.transactions, input.accountMap
+  );
   for (const hit of scheduleTrustCandidates(input)) {
     const key = hit.id + '@' + hit.date;
     if (eventHits.has(key)) continue;
+    if (spotifyEvidence && hit.id === 'spotify' && hit.date === '2026-09-23') {
+      hit.providerTransactionId = spotifyEvidence.providerTransactionId;
+      hit.postingDate = spotifyEvidence.date || hit.postingDate;
+    }
     eventHits.set(key, [hit]);
   }
   const unique = [];
@@ -3715,9 +3745,15 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       atlasAccountId,
       account: atlasAccountId,
       accountId: atlasAccountId,
+      date: tx.date,
+      amount,
+      ownerConfirmedFuel: tx.ownerConfirmedFuel === true,
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
+    const ownerFuel = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedFuel(derivedInput) === true;
+    const ownerSpotify = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedSpotify(derivedInput) === true;
+    const ownerNoble = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedNoble(derivedInput) === true;
     // Dale 2026-09-02: Cursor merchant is Dale. Stamp before overlay strip
     // so an Amanda tag cannot reassign it after payee/tags are removed.
     // Dale 2026-09-03: Amazon + travelvisa is Amanda. Stamp before strip so
@@ -3753,7 +3789,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       merchantKnown: flags.merchantKnown,
       fuelEvidence: flags.fuelEvidence,
       confirmedGrocery: flags.confirmedGrocery,
-      confirmedFuel: flags.confirmedFuel,
+      confirmedFuel: flags.confirmedFuel || ownerFuel,
+      ownerConfirmedFuel: ownerFuel,
+      ownerConfirmedSpotify: ownerSpotify,
+      ownerConfirmedNobleOccurrence: ownerNoble,
       daleGuiltFreeMerchant: flags.daleGuiltFreeMerchant,
       amazonMerchant: flags.amazonMerchant,
       cardPaymentIdentity: flags.cardPaymentIdentity,

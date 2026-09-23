@@ -325,9 +325,11 @@ plus Amazon Prime membership owner 2026-09-22)*.
 These are current household bills on `plan.bills`. For the 2026-08-27 rows,
 specific paying account is not named. Amazon Prime membership is the later
 card-paid Travel Visa row; it is not one of those unnamed-account rows. Netflix and the named Google subscriptions moved off
-PayPal onto the household debit/bills path. Spotify remains PayPal merchant
-Spotify AB with standing schedule-trust on the existing Forecast due date
-(owner 2026-09-19); a Lunch Money Spotify payee is not required. ChatGPT Plus
+PayPal onto the household debit/bills path. Spotify remains $26.87 monthly
+with standing schedule-trust on Forecast day 23 (owner 2026-09-23, superseding
+the 17th; firstDue 2026-09-23). The 2026-09-22 PAYPAL MSP $26.87 debit on
+BILLS is that September occurrence. PAYPAL MSP is not a Spotify alias. A
+Lunch Money Spotify payee is not required. ChatGPT Plus
 — Dale remains PayPal merchant OpenAI OpCo, LLC with standing schedule-trust
 on the existing Forecast due date (owner 2026-09-19; $28 CAD; owner 15th
 rails cited for trust; Forecast day stays 14 and is not moved); a Lunch Money
@@ -345,7 +347,7 @@ missed a Netflix merchant does not omit the current Netflix bill.
 | Bill | Cadence | Amount | Trust |
 |---|---|---|---|
 | Netflix | monthly, 17th | $26.87 | confirmed — moved off PayPal |
-| Spotify | monthly, 17th | $26.87 | confirmed — PayPal Spotify AB schedule-trust; LM Spotify payee not required |
+| Spotify | monthly, 23rd, firstDue 2026-09-23 | $26.87 | confirmed — schedule-trust on day 23 (owner 2026-09-23, supersedes the 17th); the 2026-09-22 PAYPAL MSP $26.87 debit is that September occurrence; PAYPAL MSP is not an alias; LM Spotify payee not required |
 | Google storage / 100 GB | monthly, around month-end | $3.13 | confirmed — Forecast uses last calendar day; moved off PayPal |
 | Ultimate Guitar | yearly, May 8 | $50 | confirmed |
 | iCloud Storage | monthly, 14th | $13 | confirmed — Apple Services / PayPal schedule-trust on existing Forecast due (owner 2026-09-19; due day not moved); LM iCloud payee not required |
