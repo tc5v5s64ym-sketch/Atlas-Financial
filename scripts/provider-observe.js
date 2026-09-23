@@ -1028,6 +1028,7 @@ const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
 const SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT = 'exact-scheduled-amount';
 const SETTLES_WHEN_TWO_LEG_SUM = 'two-leg-sum';
 const SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE = 'schedule-trust-on-due';
+const INHERITED_PENDING_AUTHORIZATION = 'inherited-pending-authorization';
 const COVER_DUE_LOOKBACK_DAYS = 62;
 // covers-due-on-or-before-posting is a recurring "latest due" relation.
 // A once occurrence is not a series: reuse after this grace would attach a
@@ -1977,6 +1978,163 @@ function classifyOccurrenceHits(key, hits) {
   };
 }
 
+function isBillOrObligationEvent(plan, eventId) {
+  if (!plan || !eventId) return false;
+  return [].concat(plan.bills || [], plan.obligations || [])
+    .some(row => row && row.id === eventId);
+}
+
+function collectIdentityHits(tx, input, rules) {
+  if (!tx || tx.contradictoryEvidence === true) return [];
+  const mapDoc = input && input.accountMap;
+  const mapping = mappingFor(mapDoc, tx.providerAccountId);
+  if (!mapping || !mapping.canonical || !mapping.canonical.id) return [];
+  const amount = lunchMoneyDebitAmount(tx.amount);
+  const hits = [];
+  for (const rule of rules || []) {
+    if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
+    if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
+    if (rule.direction === 'credit' && !(amount < 0)) continue;
+    if (rule.direction === 'debit' && !(amount > 0)) continue;
+    for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
+      const scheduled = scheduledOccurrence(input.plan, rule.eventId, scheduledDate);
+      if (scheduled.length !== 1) continue;
+      const relation = postingDateRelation(scheduledDate, tx.date, rule);
+      if (!relation) continue;
+      if (rule.settlesWhen === SETTLES_WHEN_AMOUNT_AT_LEAST) {
+        const need = Math.abs(Number(scheduled[0].amount));
+        if (!(Math.abs(amount) + IDENTITY_AMOUNT_EPSILON >= need)) continue;
+      }
+      if (rule.settlesWhen === SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT) {
+        const need = Math.abs(Number(scheduled[0].amount));
+        if (!(isFinite(need) && isFinite(amount)
+          && Math.abs(Math.abs(amount) - need) <= IDENTITY_AMOUNT_EPSILON)) {
+          continue;
+        }
+      }
+      if (rule.transactionKind === 'transfer') {
+        const counterpartCount = countTransferCounterparts(tx, rule, input, amount);
+        if (counterpartCount !== 1) continue;
+      }
+      hits.push({
+        id: rule.eventId,
+        date: scheduledDate,
+        postingDate: tx.date,
+        postingDateRelation: relation,
+        direction: rule.direction || null,
+        providerTransactionId: tx.providerTransactionId,
+        providerAccountId: tx.providerAccountId,
+        payee: tx.payee,
+        identity: ruleIdentityLabel(rule),
+        amountNotUsed: true,
+        observedAmount: amount,
+        atlasAccountId: mapping.canonical.id,
+        settlesWhen: rule.settlesWhen || null,
+        sameAccountSplitLegs: rule.sameAccountSplitLegs === true,
+      });
+    }
+  }
+  return hits;
+}
+
+// Provider-native 1:1 pending→posted replacement. Same Lunch Money id, or
+// the incumbent directed Plaid link plus the same canonical account.
+// Merchant, date, and amount are not this link. Ambiguous mates are not
+// a link. This does not collapse rows; collapse stays the incumbent path.
+function uniqueProviderReplacementLinks(transactions, opts) {
+  const list = (transactions || []).filter(tx => tx && tx.date);
+  const links = [];
+  const usedPending = new Set();
+  const usedPosted = new Set();
+  const byId = new Map();
+  for (const tx of list) {
+    const id = tx && tx.providerTransactionId;
+    if (id == null || id === '') continue;
+    const bucket = byId.get(String(id)) || [];
+    bucket.push(tx);
+    byId.set(String(id), bucket);
+  }
+  for (const bucket of byId.values()) {
+    const pending = bucket.filter(tx => tx.pending === true);
+    const posted = bucket.filter(tx => tx.pending !== true);
+    if (pending.length !== 1 || posted.length !== 1) continue;
+    if (!sameSettlementAccount(pending[0], posted[0], opts)) continue;
+    links.push({ pending: pending[0], posted: posted[0] });
+    usedPending.add(pending[0]);
+    usedPosted.add(posted[0]);
+  }
+  const pendingLeft = list.filter(tx => tx.pending === true && !usedPending.has(tx));
+  const postedLeft = list.filter(tx => tx.pending !== true && !usedPosted.has(tx));
+  const pairs = [];
+  for (const pend of pendingLeft) {
+    for (const post of postedLeft) {
+      if (!directedPlaidSettlementMate(post, pend)) continue;
+      if (!sameSettlementAccount(pend, post, opts)) continue;
+      pairs.push({ pending: pend, posted: post });
+    }
+  }
+  for (const pend of pendingLeft) {
+    const mates = [];
+    for (const pair of pairs) {
+      if (pair.pending === pend && !mates.includes(pair.posted)) mates.push(pair.posted);
+    }
+    if (mates.length !== 1) continue;
+    const post = mates[0];
+    if (pairs.some(pair => pair.posted === post && pair.pending !== pend)) continue;
+    links.push({ pending: pend, posted: post });
+  }
+  return links;
+}
+
+// Carry a unique incumbent identity hit from a dropped pending row onto
+// the posted survivor. Not a second matcher. Two-leg and same-account
+// split legs stay posted-only. Disagreeing occurrences fail closed later
+// as one transaction consumed twice. Identity and scheduled date stay
+// the pending hit. Posting provenance is the posted survivor's date;
+// the inherited relation is not a claim that the posted row itself
+// was same-day.
+function stampPendingReplacementHits(preTransactions, collapsedTransactions, input) {
+  const links = uniqueProviderReplacementLinks(preTransactions, input);
+  const kept = new Set(collapsedTransactions || []);
+  const byPostedId = new Map();
+  for (const tx of collapsedTransactions || []) {
+    if (!tx || tx.pending === true || tx.providerTransactionId == null || tx.providerTransactionId === '') {
+      continue;
+    }
+    const id = String(tx.providerTransactionId);
+    const list = byPostedId.get(id) || [];
+    list.push(tx);
+    byPostedId.set(id, list);
+  }
+  const rules = (input.identityRules || []).filter(ruleHasIdentity);
+  for (const link of links) {
+    if (!link || kept.has(link.pending)) continue;
+    const postedId = link.posted && link.posted.providerTransactionId;
+    if (postedId == null || postedId === '') continue;
+    const survivors = byPostedId.get(String(postedId)) || [];
+    if (survivors.length !== 1) continue;
+    const hits = collectIdentityHits(link.pending, input, rules).filter(hit =>
+      hit && hit.settlesWhen !== SETTLES_WHEN_TWO_LEG_SUM
+      && hit.sameAccountSplitLegs !== true
+      && isBillOrObligationEvent(input.plan, hit.id));
+    if (hits.length !== 1) continue;
+    const postedDate = parseIsoDate(link.posted.date);
+    if (!postedDate) continue;
+    const postedAmount = lunchMoneyDebitAmount(link.posted.amount);
+    const samePostedDate = hits[0].date === postedDate;
+    survivors[0].pendingReplacementHit = Object.assign({}, hits[0], {
+      providerTransactionId: postedId,
+      providerAccountId: link.posted.providerAccountId,
+      observedAmount: postedAmount != null ? postedAmount : hits[0].observedAmount,
+      inheritedPendingReplacement: true,
+      postingDate: postedDate,
+      postingDateRelation: samePostedDate
+        ? (hits[0].postingDateRelation || 'same-day')
+        : INHERITED_PENDING_AUTHORIZATION,
+    });
+  }
+}
+
 function representedEventHitGroups(input) {
   const empty = { unique: [], ambiguous: [] };
   if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
@@ -2047,6 +2205,17 @@ function representedEventHitGroups(input) {
         eventHits.set(key, list);
       }
     }
+  }
+  for (const tx of input.transactions || []) {
+    const inherited = tx && tx.pendingReplacementHit;
+    if (!inherited || !inherited.id || !inherited.date || tx.pending === true) continue;
+    const key = inherited.id + '@' + inherited.date;
+    const list = eventHits.get(key) || [];
+    if (list.some(hit => String(hit.providerTransactionId) === String(inherited.providerTransactionId))) {
+      continue;
+    }
+    list.push(inherited);
+    eventHits.set(key, list);
   }
   for (const hit of scheduleTrustCandidates(input)) {
     const key = hit.id + '@' + hit.date;
@@ -2919,6 +3088,12 @@ function observe(input) {
   const planForIdentity = Object.assign({}, (input.data && input.data.plan) || {}, {
     debts: (input.data && input.data.debts) || [],
   });
+  stampPendingReplacementHits(normalized.transactions, collapsed.transactions, {
+    accountMap: mapDoc,
+    plan: planForIdentity,
+    identityRules,
+    transactions: normalized.transactions,
+  });
   const scheduleTrustAsOf = householdFinancialDate(input, observations);
   const hitGroups = representedEventHitGroups({
     transactions: collapsed.transactions,
@@ -2975,9 +3150,16 @@ function observe(input) {
   assembled.currentPeriodActuals = sanitizedCurrentPeriodActuals(assembled, {
     accountMap: mapDoc,
     plan: input.data && input.data.plan,
+    planForIdentity,
+    identityRules,
     billPaymentPayees,
     asOf: dateOnly(normalized.fetchedAt),
   });
+  for (const tx of collapsed.transactions || []) {
+    if (tx && Object.prototype.hasOwnProperty.call(tx, 'pendingReplacementHit')) {
+      delete tx.pendingReplacementHit;
+    }
+  }
   return assembled;
 }
 
@@ -3418,6 +3600,57 @@ function flagUnresolvedPendingPostedDuplicates(transactions, asOf, opts) {
   }
 }
 
+function pendingOnlyBillActuals(collapsed, opts, representedActuals, existingLocalId) {
+  const window = opts && opts.transactionWindow;
+  if (window && window.complete === false) return [];
+  const rules = ((opts && opts.identityRules) || []).filter(ruleHasIdentity);
+  if (!rules.length) return [];
+  const plan = (opts && (opts.planForIdentity || opts.plan)) || null;
+  const mapDoc = opts && opts.accountMap;
+  const taken = new Set((representedActuals || [])
+    .filter(row => row && row.id && row.date)
+    .map(row => row.id + '@' + row.date));
+  const groups = new Map();
+  for (const tx of collapsed || []) {
+    if (!tx || tx.pending !== true || tx.contradictoryEvidence === true) continue;
+    if (tx.pendingPostedDuplicate === true || tx.pendingPostedAmbiguous === true) continue;
+    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
+    if (atlasAccountRole(mapping) !== 'household-cash') continue;
+    const hits = collectIdentityHits(tx, {
+      accountMap: mapDoc,
+      plan,
+      identityRules: rules,
+      transactions: collapsed,
+    }, rules).filter(hit => hit
+      && !hit.settlesWhen
+      && hit.sameAccountSplitLegs !== true
+      && isBillOrObligationEvent(plan, hit.id));
+    if (hits.length !== 1) continue;
+    const key = hits[0].id + '@' + hits[0].date;
+    if (taken.has(key)) continue;
+    const localId = existingLocalId(hits[0].providerTransactionId);
+    if (!localId) continue;
+    const list = groups.get(key) || [];
+    list.push({ hit: hits[0], localId });
+    groups.set(key, list);
+  }
+  const rows = [];
+  for (const list of groups.values()) {
+    if (list.length !== 1) continue;
+    const hit = list[0].hit;
+    const amt = Number(hit.observedAmount);
+    if (!isFinite(amt)) continue;
+    rows.push({
+      id: hit.id,
+      date: hit.date,
+      actual: Math.round(amt * 100) / 100,
+      postedOn: hit.postingDate || hit.date,
+      transactionId: list[0].localId,
+    });
+  }
+  return rows;
+}
+
 function sanitizedCurrentPeriodActuals(report, opts) {
   opts = opts || {};
   const asOf = dateOnly(opts.asOf || (report && report.fetchedAt));
@@ -3563,6 +3796,16 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       for (const localId of localIds) linkedLocalIds.add(localId);
     }
     representedActuals.push(row);
+  }
+  for (const row of pendingOnlyBillActuals(collapsed, {
+    transactionWindow: window,
+    identityRules: opts.identityRules,
+    planForIdentity: opts.planForIdentity,
+    plan: opts.plan,
+    accountMap: mapDoc,
+  }, representedActuals, existingLocalId)) {
+    representedActuals.push(row);
+    if (row.transactionId) linkedLocalIds.add(row.transactionId);
   }
   for (const tx of txs) {
     if (tx && linkedLocalIds.has(tx.id)) tx.representedBill = true;
