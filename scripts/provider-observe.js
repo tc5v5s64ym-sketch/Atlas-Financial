@@ -1380,6 +1380,35 @@ function scheduledEventsOnRange(plan, from, to) {
     .filter(e => e && e.kind !== 'noncash' && e.date >= from && e.date <= to);
 }
 
+// expandEvents hides a commitment once settledOn is on or before the
+// one-day window start, so a due-date lookup cannot see an already-settled
+// occurrence. Identity still has to name that occurrence. Cash settlement
+// stays on settledOn; this is not a second cash event.
+function settledCommitmentSchedule(plan, eventId, date) {
+  const row = ((plan && plan.commitments) || []).find(c => c && c.id === eventId);
+  if (!row || !Forecast.commitmentSettledBy(row, date)) return [];
+  if (row.flexibility === 'optional' || row.optional === true) return [];
+  const cashDate = Forecast.commitmentCashDate(row);
+  const amount = Number(row.amount);
+  if (cashDate !== date || !isFinite(amount)) return [];
+  return [{
+    date: cashDate,
+    amount: -amount,
+    kind: 'commitment',
+    label: row.label,
+    id: row.id,
+    confidence: row.confidence,
+  }];
+}
+
+function scheduledOccurrence(plan, eventId, date) {
+  const expanded = scheduledEventsOn(plan, date)
+    .filter(e => e && e.id === eventId && e.date === date);
+  if (expanded.length === 1) return expanded;
+  const settled = settledCommitmentSchedule(plan, eventId, date);
+  return settled.length === 1 ? settled : expanded;
+}
+
 function openingAsOfFromData(data) {
   const opening = data && data.plan && data.plan.opening;
   return opening && opening.asOf ? String(opening.asOf) : null;
@@ -1967,8 +1996,7 @@ function representedEventHitGroups(input) {
       if (rule.direction === 'credit' && !(amount < 0)) continue;
       if (rule.direction === 'debit' && !(amount > 0)) continue;
       for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
-        const scheduled = scheduledEventsOn(input.plan, scheduledDate)
-          .filter(e => e.id === rule.eventId && e.date === scheduledDate);
+        const scheduled = scheduledOccurrence(input.plan, rule.eventId, scheduledDate);
         if (scheduled.length !== 1) continue;
         const relation = postingDateRelation(scheduledDate, tx.date, rule);
         if (!relation) continue;
@@ -2599,8 +2627,7 @@ function reconciliationReceipt(report, opts) {
     if (!inPaydayPeriod(candidate.date)) continue;
     const key = candidate.id + '@' + candidate.date;
     if (listedKeys.has(key)) continue;
-    const scheduled = scheduledEventsOn(plan, candidate.date)
-      .filter(e => e && e.id === candidate.id);
+    const scheduled = scheduledOccurrence(plan, candidate.id, candidate.date);
     if (scheduled.length !== 1) continue;
     const kind = scheduled[0].kind;
     if (kind !== 'obligation' && kind !== 'bill' && kind !== 'commitment') continue;
@@ -2642,8 +2669,7 @@ function reconciliationReceipt(report, opts) {
       if (!target || !target.id || !target.date || !inPaydayPeriod(target.date)) continue;
       const key = target.id + '@' + target.date;
       if (listedKeys.has(key)) continue;
-      const scheduled = scheduledEventsOn(plan, target.date)
-        .filter(e => e && e.id === target.id);
+      const scheduled = scheduledOccurrence(plan, target.id, target.date);
       if (scheduled.length !== 1) continue;
       const kind = scheduled[0].kind;
       if (kind !== 'obligation' && kind !== 'bill' && kind !== 'commitment') continue;
@@ -2674,8 +2700,7 @@ function reconciliationReceipt(report, opts) {
     const key = candidate.id + '@' + candidate.date;
     const listed = listedKeys.has(key);
     if (inPaydayPeriod(candidate.date) && !listed) {
-      const scheduled = scheduledEventsOn(plan, candidate.date)
-        .filter(e => e && e.id === candidate.id);
+      const scheduled = scheduledOccurrence(plan, candidate.id, candidate.date);
       const kind = scheduled[0] && scheduled[0].kind;
       if (kind === 'obligation' || kind === 'bill' || kind === 'commitment') continue;
     }

@@ -57,9 +57,19 @@ ok(near(fusionAfter, REMAINING),
 ok(!pubAfter.commitmentItems.some(i => i.id === 'fusion-household-paid'),
   'paid Fusion row drops from publication after settledOn');
 
-console.log('\n=== Warriors unchanged ===');
-ok(byId.warriors.date === '2026-09-23' && near(byId.warriors.amountMin, 895),
-  'Warriors due 23 Sep, $895 pre-tax floor');
+console.log('\n=== Warriors exact $895 settled on the Travel Visa posting ===');
+ok(byId.warriors.date === '2026-09-23' && near(byId.warriors.amount, 895)
+  && byId.warriors.amountMin == null && byId.warriors.settledOn === '2026-09-21',
+  'Warriors due 23 Sep is an exact $895 settled on 21 Sep');
+const pubWarriorsOpen = F.publicationTotals(data);
+ok(pubWarriorsOpen.commitmentItems.some(i => i.id === 'warriors' && near(i.amount, 895)
+    && i.amountMin == null),
+  'the 19 Aug opening still publishes the unpaid-relative $895 point');
+const pubWarriorsSettled = F.publicationTotals(Object.assign({}, data, {
+  meta: Object.assign({}, data.meta, { asOf: '2026-09-23' }),
+}));
+ok(!pubWarriorsSettled.commitmentItems.some(i => i.id === 'warriors'),
+  'after settledOn, publication no longer encumbers Warriors');
 
 if (failures) {
   console.error(`\n${failures} check(s) failed`);
