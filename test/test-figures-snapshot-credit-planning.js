@@ -653,10 +653,11 @@ console.log('\n=== live household surfaces are covered ===');
   ok(planIds.every(id => Object.prototype.hasOwnProperty.call(snap, `planning.${id}.remaining`)),
     'live majorPlans each have a remaining key');
   const ranges = (advice.majorPlans || []).filter(r => r.need == null && r.amountMin != null && r.amountMax != null);
-  ok(ranges.length > 0 && ranges.every(r =>
+  ok(ranges.length === 0, 'live majorPlans has no range after the 2026-09-23 retirements');
+  ok(ranges.every(r =>
     same(snap[`planning.${r.id}.amountMin`], round(r.amountMin))
     && same(snap[`planning.${r.id}.amountMax`], round(r.amountMax))),
-    `live ranges (${ranges.map(r => r.id).join(', ')}) keep min/max`);
+    `live ranges (${ranges.map(r => r.id).join(', ') || 'none'}) keep min/max`);
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

@@ -256,7 +256,8 @@ console.log('\n=== 5–8. Points stay points, ranges stay ranges, approximate st
     extraFacilities: live.revolvingExtra, periods,
   });
   const liveRanges = liveAdvice.majorPlans.filter(p => p.need == null && p.amountMin != null && p.amountMax != null);
-  ok(liveRanges.length > 0 && liveRanges.every(p => {
+  ok(liveRanges.length === 0, 'live plan has no range commitments after the 2026-09-23 retirements');
+  ok(liveRanges.every(p => {
     const r = row(liveHtml, p.id);
     return r && r.includes(`${money2(p.amountMin)}–${money2(p.amountMax)}`)
       && !r.includes(money2((p.amountMin + p.amountMax) / 2));
