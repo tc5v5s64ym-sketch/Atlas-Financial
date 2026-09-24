@@ -109,6 +109,7 @@ const suites = [
   ['Plan spend page — Forecast.majorPlans reprinted', 'test-plan-spend-page.js'],
   ['Plan spend roster 2026-09-23 — retired costs, Fusion card, San Diego once', 'test-plan-spend-roster-2026-09-23.js'],
   ['Planning Road Ahead phone-native presentation', 'test-planning-road-mobile-presentation.js'],
+  ['Planning Road Ahead before / planned / after decision story', 'test-planning-road-decision-story.js'],
   ['Bills page — Forecast.householdBills rendered', 'test-bills-page.js'],
   ['Subscriptions page — Forecast.householdSubscriptions rendered', 'test-subscriptions-page.js'],
   ['Plan calendar bill sections', 'test-plan-bill-calendar-periods.js'],

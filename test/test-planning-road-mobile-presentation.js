@@ -98,8 +98,8 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   ok(/viewport-fit=cover/.test(html), 'planning.html keeps viewport-fit=cover for safe-area');
   ok(/id="planning-road-ahead"/.test(html), 'planning.html keeps road-ahead mount');
   ok(/sitenav-household/.test(html), 'planning reuses incumbent household bottom dock');
-  ok(/<script src="\/planning.js\?v=omit-planned-total">/.test(html),
-    'planning.html cache-busts planning.js so live Road Ahead cannot keep the pre-omit helper');
+  ok(/<script src="\/planning.js\?v=road-decision-story">/.test(html),
+    'planning.html cache-busts planning.js so live Road Ahead cannot keep the pre-decision-story helper');
 
   const liveEl = page.render(live, periods);
   const road = liveEl['planning-road-ahead'].innerHTML;
@@ -249,12 +249,20 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
   const month = base.months.find(m => m.month === '2026-12') ? '2026-12' : base.months[2].month;
   const { traj, row } = gapTrajectory(base, month);
   const road = page.composeRoadTraj(traj, 'month', month, live.meta.asOf);
+  const signedBefore = page.ctx.planningRoadSignedMoney(row.stage1.result.amount);
+  const signedAfter = page.ctx.planningRoadSignedMoney(row.stage2.result.amount);
   const signedFinal = page.ctx.planningRoadSignedMoney(row.stage3.result.amount);
 
   ok(/data-road-lead="period-shortfall"/.test(road.lead)
-    && road.lead.includes(signedFinal)
-    && /planning-road-hero-kind">Shortfall</.test(road.lead),
-    'selecting a negative stage3 month leads with that Forecast shortfall');
+    && road.lead.includes(signedBefore)
+    && road.lead.includes('−' + money2(row.stage2.commitments.amount))
+    && road.lead.includes(signedAfter)
+    && /planning-road-hero-kind">Shortfall</.test(road.lead)
+    && /data-planning-road-decision-step="before"/.test(road.lead)
+    && /data-planning-road-decision-step="planned"/.test(road.lead)
+    && /data-planning-road-decision-step="after"/.test(road.lead)
+    && !road.lead.includes(signedFinal),
+    'selecting a negative stage2 month leads with before, planned spending, and after — not stage3');
   ok(/This month · from your Forecast plan/.test(road.lead),
     'shortfall hero caption stays on the selected month slice');
   ok(!/NEXT FUNDING GAP|NEXT PRESSURE|See what's behind/.test(road.lead),
@@ -284,8 +292,8 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
     && /Final shortfall/.test(stages),
     'final row is named shortfall and carries the Forecast sign');
 
-  const surplusMonth = base.months.find(m => m.stage3 && m.stage3.result
-    && isFinite(m.stage3.result.amount) && m.stage3.result.amount > 0);
+  const surplusMonth = base.months.find(m => m.stage2 && m.stage2.result
+    && isFinite(m.stage2.result.amount) && m.stage2.result.amount > 0);
   if (surplusMonth) {
     const surplus = page.composeRoadTraj(base, 'month', surplusMonth.month, live.meta.asOf);
     ok(/data-road-lead="period-surplus"/.test(surplus.lead)
@@ -297,6 +305,7 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
   const withheldMonth = JSON.parse(JSON.stringify(base));
   const target = withheldMonth.months[1];
   target.stage2.commitments = { status: 'unavailable', reason: 'Forecast withheld this component.' };
+  target.stage2.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
   target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
   const withheld = page.composeRoadTraj(withheldMonth, 'month', target.month, live.meta.asOf);
   const plannedBlock = (withheld.stages.split('data-planning-road-wf="planned-spending"')[1] || '')
@@ -306,8 +315,10 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
     && !/\$0\.00/.test(plannedBlock),
     'a withheld planned-spending total stays an em-dash, not $0');
   ok(/data-road-lead="period-unavailable"/.test(withheld.lead)
-    && /not counted as \$0/.test(withheld.lead),
-    'a withheld period result fails closed on the hero and is not counted as $0');
+    && /data-planning-road-decision-step="after"/.test(withheld.lead)
+    && /not counted as \$0/.test(withheld.lead)
+    && /data-planning-road-secondary="debt-strategy"/.test(withheld.stages),
+    'a withheld stage2 result fails closed on the primary story and stage3 stays secondary');
 }
 
 console.log('\n=== 1d. Trust badges cover every figure the stage card reprints ===');
@@ -445,12 +456,14 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
   });
   const month = traj.months[0];
   const road = page.composeRoad(live, periods, 'month', month.month, live.meta.asOf);
-  const signed = page.ctx.planningRoadSignedMoney(month.stage3.result.amount);
+  const signed = page.ctx.planningRoadSignedMoney(month.stage2.result.amount);
   ok(new RegExp(`data-road-timeline-period="${month.month}"[\\s\\S]*data-road-timeline-sign="(surplus|gap|neutral|withheld)"`).test(road.timeline)
     || road.timeline.includes(`data-road-timeline-period="${month.month}"`),
     'horizon chip for the first month is present with a Forecast-derived sign');
-  ok(road.lead.includes(signed) && /data-road-lead="period-/.test(road.lead),
-    'hero reprints Forecast stage3 for the selected month');
+  ok(road.lead.includes(signed)
+    && road.lead.includes(page.ctx.planningRoadSignedMoney(month.stage1.result.amount))
+    && /data-road-lead="period-/.test(road.lead),
+    'hero reprints Forecast stage1 and stage2 for the selected month');
   ok(road.selected.includes(money2(month.stage3.result.amount)),
     'selected-period panel still copies the same Forecast stage3 amount');
   const shell = page.render(live, periods)['planning-road-ahead'].innerHTML;
@@ -750,9 +763,12 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
     'Pay period hero reprints that pay period\'s Forecast result, not a pressure month');
   ok(!/NEXT PRESSURE|NEXT FUNDING GAP/.test(payLead),
     'Pay period hero is not the pressure-first maze');
-  if (payResult && payResult.amount != null && isFinite(Number(payResult.amount))) {
-    ok(payLead.includes(page.ctx.planningRoadSignedMoney(payResult.amount)),
-      'Pay period hero amount equals Forecast stage3 for the selected pay period');
+  const payAfter = payPeriod && payPeriod.stage2 && payPeriod.stage2.result;
+  if (payAfter && payAfter.amount != null && isFinite(Number(payAfter.amount))) {
+    ok(payLead.includes(page.ctx.planningRoadSignedMoney(payAfter.amount))
+      && /data-planning-road-decision-step="before"/.test(payLead)
+      && /data-planning-road-decision-step="after"/.test(payLead),
+      'Pay period hero reprints Forecast stage2 for the selected pay period');
   }
   ok(!new RegExp(`data-road-select-period="${selectedKey}"`).test(payLead),
     'hero has no period-select CTA that would jump the waterfall');
@@ -764,8 +780,8 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
   const asOfRow = (pressureTraj.months || []).find(m => m.month === asOfMonth)
     || (pressureTraj.months || [])[0];
   ok(/data-road-lead="period-/.test(monthLead)
-    && asOfRow && monthLead.includes(page.ctx.planningRoadSignedMoney(asOfRow.stage3.result.amount)),
-    'Month view hero reprints the selected month Forecast stage3, not the pressure month CTA');
+    && asOfRow && monthLead.includes(page.ctx.planningRoadSignedMoney(asOfRow.stage2.result.amount)),
+    'Month view hero reprints the selected month Forecast stage2, not the pressure month CTA');
 
   const dated = JSON.parse(JSON.stringify(pressureTraj));
   const datedPay = (dated.payPeriods || []).find(p => p.start && p.end && p.start.slice(0, 7) === signalMonth)
@@ -775,7 +791,7 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
   const otherPay = (dated.payPeriods || []).find(p => (p.payday || p.id) !== (datedPay.payday || datedPay.id));
   const datedLead = page.composeRoadTraj(
     dated, 'pay-period', otherPay ? (otherPay.payday || otherPay.id) : selectedKey, asOf).lead;
-  const otherResult = otherPay && otherPay.stage3 && otherPay.stage3.result;
+  const otherResult = otherPay && otherPay.stage2 && otherPay.stage2.result;
   ok(/data-road-lead="period-/.test(datedLead),
     'a pressure signal does not replace the selected pay-period waterfall hero');
   if (otherResult && otherResult.amount != null && isFinite(Number(otherResult.amount))) {

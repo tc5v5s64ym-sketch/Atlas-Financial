@@ -290,6 +290,101 @@ function planningRoadWaterfallResultRow(label, result, dataKey) {
   </div>`;
 }
 
+/** Sign words already used on Road Ahead. Forecast publishes the amount;
+ *  this only maps a negative figure to Shortfall, matching the existing
+ *  funding-gap chrome. It does not invent a Deficit phrase contract. */
+function planningRoadDecisionKind(result) {
+  if (!result || result.status === 'unavailable'
+    || result.amount == null || !isFinite(Number(result.amount))) {
+    return { word: 'Result withheld', cls: 'withheld', lead: 'period-unavailable' };
+  }
+  const amount = Number(result.amount);
+  if (amount < 0) return { word: 'Shortfall', cls: 'gap', lead: 'period-shortfall' };
+  if (amount > 0) return { word: 'Surplus', cls: 'surplus', lead: 'period-surplus' };
+  return { word: 'Break-even', cls: 'neutral', lead: 'period-even' };
+}
+
+function planningRoadDecisionAmountHtml(result, mode) {
+  if (!result || result.status === 'unavailable'
+    || result.amount == null || !isFinite(Number(result.amount))) {
+    return planningRoadAmountReprint({ status: 'unavailable' });
+  }
+  const amount = Number(result.amount);
+  const shown = mode === 'outflow'
+    ? (amount === 0 ? money2(0) : '−' + money2(amount))
+    : planningRoadSignedMoney(amount);
+  const chip = planningRoadWaterfallTrustChip(result.status);
+  return `<b class="planning-road-amount-value">${shown}</b>${chip}`;
+}
+
+function planningRoadDecisionLinesHtml(component) {
+  const lines = planningRoadPublishedLines(component);
+  if (!lines.length) return '';
+  return `<ul class="planning-road-decision-lines" data-planning-road-decision-lines="named">${
+    lines.map((row, i) => {
+      const date = planningRoadPublishedLineDateHtml(row);
+      const idAttr = planningRoadLineIdAttr(row);
+      return `<li class="planning-road-decision-line" data-planning-road-decision-line="${i}"${idAttr}><span class="planning-road-decision-line-label">${row.label}${date}</span><span class="planning-road-decision-line-amount">${planningRoadDecisionAmountHtml(row, 'outflow')}</span></li>`;
+    }).join('')
+  }</ul>`;
+}
+
+/** Primary selected-period story. Reprints Forecast stage1.result,
+ *  stage2.commitments (amount + published lines only), and stage2.result.
+ *  No stage arithmetic on this page. */
+function planningRoadAheadDecisionHtml(period, granularity) {
+  const s1 = (period && period.stage1) || {};
+  const s2 = (period && period.stage2) || {};
+  const beforeKind = planningRoadDecisionKind(s1.result);
+  const afterKind = planningRoadDecisionKind(s2.result);
+  const beforeLabel = beforeKind.lead === 'period-unavailable'
+    ? 'Before planned spending'
+    : `${beforeKind.word} before planned spending`;
+  const afterLabel = afterKind.lead === 'period-unavailable'
+    ? 'After planned spending'
+    : `${afterKind.word} after planned spending`;
+  const lines = planningRoadPublishedLines(s2.commitments);
+  const noun = planningRoadPayPeriodIsResidual(period)
+    ? 'remainder through next payday'
+    : planningRoadPeriodNoun(granularity);
+  const caption = granularity === 'pay-period'
+    ? `${planningRoadPayPeriodIdentity(period)} · from your Forecast plan`
+    : `This ${noun} · from your Forecast plan`;
+  const withheldNote = afterKind.lead === 'period-unavailable'
+    ? ` Forecast has not published a result after planned spending for this ${noun}. It is not counted as $0.`
+    : '';
+  const afterAmount = afterKind.lead === 'period-unavailable'
+    ? ''
+    : ` data-road-lead-amount="${Number(s2.result.amount)}"`;
+  return `<ol class="planning-road-decision" data-planning-road-decision="primary" data-planning-road-decision-granularity="${granularity || 'month'}">
+    <li class="planning-road-decision-step planning-road-decision-${beforeKind.cls}" data-planning-road-decision-step="before" data-road-result-sign="${beforeKind.cls}">
+      <span class="planning-road-decision-label">${beforeLabel}</span>
+      <span class="planning-road-decision-amount">${planningRoadDecisionAmountHtml(s1.result, 'signed')}</span>
+    </li>
+    <li class="planning-road-decision-step" data-planning-road-decision-step="planned" data-planning-road-planned-lines="${lines.length ? 'named' : 'total-only'}">
+      <span class="planning-road-decision-label">Planned spending</span>
+      <span class="planning-road-decision-amount" data-planning-road-planned-amount="rollup">${planningRoadDecisionAmountHtml(s2.commitments, 'outflow')}</span>
+      ${planningRoadDecisionLinesHtml(s2.commitments)}
+    </li>
+    <li class="planning-road-decision-step planning-road-decision-${afterKind.cls}" data-planning-road-decision-step="after" data-road-result-sign="${afterKind.cls}"${afterAmount}>
+      <p class="planning-road-hero-kind">${afterKind.word}</p>
+      <span class="planning-road-decision-label">${afterLabel}</span>
+      <span class="planning-road-decision-amount">${planningRoadDecisionAmountHtml(s2.result, 'signed')}</span>
+    </li>
+  </ol>
+  <p class="planning-road-hero-narrative">${caption}.${withheldNote ? ' ' + withheldNote.trim() : ''}</p>
+  ${planningRoadStandaloneIdentityHtml(s2.result)}`;
+}
+
+/** Reprint Forecast's standalone identity. The phrase is included only when
+ *  Forecast published one on this result. */
+function planningRoadStandaloneIdentityHtml(result) {
+  if (!result || result.identity !== 'standalone-period-surplus-deficit') return '';
+  if (result.priorPeriodSurplus !== 'excluded') return '';
+  const phrase = typeof result.phrase === 'string' ? result.phrase : '';
+  return `<p class="planning-road-hero-narrative" data-road-standalone-phrase="${phrase ? 'forecast' : 'identity-only'}" data-road-surplus-deficit-identity="${result.identity}" data-road-prior-surplus="${result.priorPeriodSurplus}">${phrase}</p>`;
+}
+
 function planningRoadAheadWaterfallHtml(period, granularity) {
   if (!period) {
     return '<p class="lede" data-planning-road-waterfall="empty">Forecast published no funding lines for this period.</p>';
@@ -335,6 +430,14 @@ function planningRoadAheadWaterfallHtml(period, granularity) {
     : 'Final result';
   const finalRow = planningRoadWaterfallResultRow(finalLabel, s3.result, 'final');
   const standaloneNote = planningRoadStandalonePhraseHtml(s3.result);
+  const debtStrategy = `<div class="planning-road-debt-strategy" data-planning-road-wf="debt-strategy" data-planning-road-secondary="debt-strategy">
+    <details>
+    <summary>After debt strategy</summary>
+    ${extrasBlock}
+    ${finalRow}
+    ${standaloneNote}
+    </details>
+  </div>`;
   const key = planningRoadAheadPeriodKey(period, granularity) || '';
   return `<div class="planning-road-waterfall" data-planning-road-waterfall="ready" data-road-waterfall-period="${key}" data-road-waterfall-granularity="${granularity || 'month'}">
     ${incomeBlock}
@@ -343,10 +446,8 @@ function planningRoadAheadWaterfallHtml(period, granularity) {
     ${budgetBlock}
     ${afterObligations}
     ${plannedBlock}
-    ${extrasBlock}
-    ${finalRow}
     <p class="planning-road-wf-footnote">From your Forecast plan · this ${noun}.</p>
-    ${standaloneNote}
+    ${debtStrategy}
   </div>`;
 }
 
@@ -1568,43 +1669,10 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
     };
   }
   const key = planningRoadAheadPeriodKey(period, granularity);
-  const result = planningRoadAheadStage3Result(period);
-  const noun = planningRoadPayPeriodIsResidual(period)
-    ? 'remainder through next payday'
-    : planningRoadPeriodNoun(granularity);
-  const caption = granularity === 'pay-period'
-    ? `${planningRoadPayPeriodIdentity(period)} · from your Forecast plan`
-    : `This ${noun} · from your Forecast plan`;
-  if (!result) {
-    return {
-      html: `<article class="planning-road-lead planning-road-lead-unavailable planning-road-hero-card" data-road-lead="period-unavailable" data-road-lead-period="${key || ''}">
-        <div class="planning-road-hero-banner">
-          <p class="planning-road-hero-kind">Result withheld</p>
-          <p class="planning-road-lead-amount" data-road-lead-amount="unavailable">${planningRoadAmountReprint({ status: 'unavailable' })}</p>
-        </div>
-        <p class="planning-road-hero-narrative">${caption}. Forecast has not published a projected result for this ${noun}. It is not counted as $0.</p>
-      </article>`,
-      focusKey: key,
-    };
-  }
-  const amount = Number(result.amount);
-  const phrase = planningRoadAheadResultPhrase(result);
-  const kind = phrase.cls === 'gap' ? 'Shortfall'
-    : phrase.cls === 'surplus' ? 'Surplus'
-    : 'Break-even';
-  const leadKind = phrase.cls === 'gap' ? 'period-shortfall'
-    : phrase.cls === 'surplus' ? 'period-surplus'
-    : 'period-even';
-  const chip = planningRoadWaterfallTrustChip(result.status);
-  const standaloneNote = planningRoadStandalonePhraseHtml(result);
+  const afterKind = planningRoadDecisionKind(period.stage2 && period.stage2.result);
   return {
-    html: `<article class="planning-road-lead planning-road-lead-${phrase.cls} planning-road-hero-card" data-road-lead="${leadKind}" data-road-lead-period="${key || ''}" data-road-result-sign="${phrase.cls}">
-      <div class="planning-road-hero-banner">
-        <p class="planning-road-hero-kind">${kind}</p>
-        <p class="planning-road-lead-amount" data-road-lead-amount="${result.amount}"><b>${planningRoadSignedMoney(amount)}</b>${chip}</p>
-      </div>
-      <p class="planning-road-hero-narrative">${caption}</p>
-      ${standaloneNote}
+    html: `<article class="planning-road-lead planning-road-lead-${afterKind.cls} planning-road-hero-card" data-road-lead="${afterKind.lead}" data-road-lead-period="${key || ''}" data-road-result-sign="${afterKind.cls}">
+      ${planningRoadAheadDecisionHtml(period, granularity)}
     </article>`,
     focusKey: key,
   };

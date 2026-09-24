@@ -382,11 +382,14 @@ console.log('\n=== 5. Road Ahead reprints stage3, not cumulative cash ===');
   ok(!road.lead.includes(signedCarried) && !road.lead.includes(cashText)
     && !road.stages.includes(signedCarried) && !road.stages.includes(cashText),
     'lead and waterfall do not show the +700 cumulative close');
-  ok(road.lead.includes(PHRASE_DEFICIT) && road.stages.includes(PHRASE_DEFICIT)
+  ok(!road.lead.includes(PHRASE_DEFICIT)
+    && road.stages.includes(PHRASE_DEFICIT)
     && /data-road-surplus-deficit-identity="standalone-period-surplus-deficit"/.test(road.lead)
+    && /data-road-prior-surplus="excluded"/.test(road.lead)
+    && /data-planning-road-secondary="debt-strategy"/.test(road.stages)
     && /data-road-prior-surplus="excluded"/.test(road.stages)
     && road.stages.includes('Christmas'),
-    'the page reprints Forecast’s standalone phrase and the named Christmas line');
+    'primary story reprints stage2 identity; stage3 phrase and Christmas stay on the page, debt strategy secondary');
   ok(/data-road-timeline-period="2026-10-16"/.test(road.timeline)
     && !/data-road-lead-amount="700"/.test(road.lead)
     && /data-road-lead-amount="-800"/.test(road.lead),
