@@ -3,7 +3,9 @@
  * card-paid plan.bills row, so February Forecast publishes ~$3,131.76 on
  * 10 February 2027 as reserved gravity — not a joint-cash Bills expander
  * line, not a Household Budget plannedMonthly, and not an undated
- * commitment.
+ * commitment. Plan Spend reprints that same row once via majorPlans /
+ * planSpendCards. Road Ahead February 2027 Month and the Seaspan pay
+ * period containing 2027-02-10 count it once in Stage 2 planned spending.
  *
  * Next 10 February after the 2026-08-19 opening is hand-computed from the
  * calendar, not taken from Forecast.occurrences. The $3,131.76 figure is
@@ -215,6 +217,112 @@ console.log('\n=== Bills roster next date is 2027-02-10; not a subscription ==='
   const subs = F.householdSubscriptions(plan, asOf);
   ok(!(subs.subscriptions || []).some(s => s.id === 'square-one'),
     'Square One is a household bill, not a subscription');
+}
+
+console.log('\n=== Plan Spend reprints one Square One card; Road Ahead counts it once ===');
+{
+  function utcAdd(iso, days) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+  }
+  function independentPaydays(anchor, start, end) {
+    let t = anchor;
+    while (t > start) t = utcAdd(t, -14);
+    const out = [];
+    while (t <= end) {
+      if (t >= utcAdd(start, -14)) out.push(t);
+      t = utcAdd(t, 14);
+    }
+    return out;
+  }
+  function independentPeriodContaining(anchor, date) {
+    const paydays = independentPaydays(anchor, utcAdd(date, -28), utcAdd(date, 28));
+    for (let i = 0; i < paydays.length; i++) {
+      const payday = paydays[i];
+      const next = paydays[i + 1] || utcAdd(payday, 14);
+      const cycleEnd = utcAdd(next, -1);
+      if (payday <= date && date <= cycleEnd) return { payday, nextPayday: next, cycleEnd };
+    }
+    return null;
+  }
+
+  const fx = syntheticPlan();
+  const fxPlans = F.majorPlans(fx, AS_OF, { weeklyVariable: 0 });
+  const fxSq = fxPlans.filter(p => p.id === 'square-one');
+  ok(fxSq.length === 1 && fxSq[0].date === NEXT_DUE && near(fxSq[0].need, PREMIUM)
+      && fxSq[0].flexibility === 'required' && fxSq[0].confidence === 'estimated',
+    'synthetic majorPlans publishes one Square One cash-event row on 2027-02-10',
+    fxSq[0] ? `${fxSq[0].date} need=${fxSq[0].need}` : 'missing');
+  ok(F.planSpendCards(fxPlans).filter(c => c.id === 'square-one').length === 1,
+    'synthetic planSpendCards reprints that one Square One card');
+  ok(fxPlans.filter(p => /home insurance|square one/i.test(`${p.id} ${p.label}`)).length === 1,
+    'synthetic Plan Spend has no home-insurance duplicate beside Square One');
+
+  const recOpts = {
+    debts: live.debts,
+    periods,
+    fundingSources: plan.funding && plan.funding.options,
+  };
+  const livePlans = F.majorPlans(plan, asOf, recOpts);
+  const liveSq = livePlans.filter(p => p.id === 'square-one');
+  ok(liveSq.length === 1 && liveSq[0].date === NEXT_DUE && near(liveSq[0].need, PREMIUM)
+      && liveSq[0].label === 'Square One home insurance',
+    'live majorPlans publishes one Square One card at $3,131.76 on 2027-02-10',
+    liveSq[0] ? `${liveSq[0].date} ${liveSq[0].need}` : 'missing');
+  const liveCards = F.planSpendCards(livePlans).filter(c => c.id === 'square-one'
+    || /square one/i.test(c.label || ''));
+  ok(liveCards.length === 1 && liveCards[0].kind === 'row' && near(liveCards[0].need, PREMIUM)
+      && liveCards[0].date === NEXT_DUE,
+    'live planSpendCards reprints exactly one Square One row card');
+  ok(!livePlans.some(p => p.id === 'amazon-prime' || p.id === 'ultimate-guitar'
+      || p.id === 'bell-sep15-2026'),
+    'monthly card-paid bills and yearly joint-cash subscriptions stay off Plan Spend');
+  ok(!(plan.commitments || []).some(c => c.id === 'square-one'
+      || /square one|home insurance/i.test(`${c.id} ${c.label}`)),
+    'no plan.commitments Square One / home-insurance duplicate');
+
+  const traj = F.baselineTrajectory(plan, live.debts, asOf, { periods });
+  const feb = (traj && traj.months || []).find(m => m.month === '2027-02');
+  const withoutPlan = clone(plan);
+  withoutPlan.bills = (withoutPlan.bills || []).filter(b => b.id !== 'square-one');
+  const trajWithout = F.baselineTrajectory(withoutPlan, live.debts, asOf, { periods });
+  const febWithout = (trajWithout && trajWithout.months || []).find(m => m.month === '2027-02');
+  const febLines = ((feb && feb.stage2 && feb.stage2.commitments && feb.stage2.commitments.lines) || []);
+  const sqLines = febLines.filter(l => l.id === 'square-one' || /square one/i.test(l.label || ''));
+  ok(feb && feb.stage2 && feb.stage2.commitments,
+    'February 2027 Road Ahead Month publishes stage2 planned spending');
+  ok(sqLines.length === 1 && sqLines[0].date === NEXT_DUE && near(sqLines[0].amount, PREMIUM),
+    'February 2027 stage2 lists Square One once on 2027-02-10',
+    sqLines[0] ? `${sqLines[0].date} ${sqLines[0].amount}` : 'missing');
+  ok(febWithout && near(feb.stage2.commitments.amount - febWithout.stage2.commitments.amount, PREMIUM)
+      && near(febWithout.stage2.result.amount - feb.stage2.result.amount, PREMIUM),
+    'removing Square One moves February stage2 result by independently $3,131.76 once',
+    `Δcommitments=${(feb.stage2.commitments.amount - febWithout.stage2.commitments.amount).toFixed(2)}`);
+  ok(near(feb.stage1.bills.amount, febWithout.stage1.bills.amount),
+    'February stage1.bills still excludes card-paid Square One — counted in stage2, not twice');
+
+  const SEASPAN_ANCHOR = '2026-08-14';
+  const periodWanted = independentPeriodContaining(SEASPAN_ANCHOR, NEXT_DUE);
+  ok(periodWanted && periodWanted.payday <= NEXT_DUE && NEXT_DUE <= periodWanted.cycleEnd,
+    'hand 14-day Seaspan walk from 2026-08-14 places 2027-02-10 in one pay period',
+    periodWanted ? `${periodWanted.payday}–${periodWanted.cycleEnd}` : 'missing');
+  const pay = (traj && traj.payPeriods || []).find(p =>
+    p && p.start <= NEXT_DUE && NEXT_DUE <= p.end);
+  ok(pay && periodWanted && pay.payday === periodWanted.payday,
+    'Road Ahead pay period containing 2027-02-10 matches the hand Seaspan window',
+    pay ? `${pay.payday} ${pay.start}–${pay.end}` : 'missing');
+  const payLines = ((pay && pay.stage2 && pay.stage2.commitments && pay.stage2.commitments.lines) || []);
+  const paySq = payLines.filter(l => l.id === 'square-one' || /square one/i.test(l.label || ''));
+  const payWithout = (trajWithout && trajWithout.payPeriods || []).find(p =>
+    p && p.start <= NEXT_DUE && NEXT_DUE <= p.end);
+  ok(paySq.length === 1 && paySq[0].date === NEXT_DUE && near(paySq[0].amount, PREMIUM),
+    'that pay period lists Square One once',
+    paySq[0] ? `${paySq[0].date} ${paySq[0].amount}` : 'missing');
+  ok(payWithout && near(pay.stage2.commitments.amount - payWithout.stage2.commitments.amount, PREMIUM)
+      && near(payWithout.stage2.result.amount - pay.stage2.result.amount, PREMIUM),
+    'removing Square One moves that pay-period stage2 result by $3,131.76 once');
 }
 
 console.log('\n=== ACCOUNT_FACTS records the standing terms ===');

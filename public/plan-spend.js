@@ -1,5 +1,6 @@
 'use strict';
-/* Plan spend — isolated list of Forecast-published commitments.
+/* Plan spend — isolated list of Forecast-published planned spending
+ * (commitments and yearly card-paid bills such as Square One).
  *
  * Every row is a Forecast.majorPlans result on the master plan, reached
  * through the same Forecast.recommend call the Plan page, Forecast page
