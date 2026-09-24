@@ -72,7 +72,8 @@ function planSpendFundingHero(schedule) {
     }).join(' · ')}</p></div>` : '';
   return `<section class="plan-spend-funding" aria-label="Payday funding action">
     <div class="plan-spend-action" data-plan-spend-next-payday="${next.payday}">
-      <span class="kicker">Next Seaspan payday</span><h2>${fmtDateFull(next.payday)}</h2>
+      <span class="kicker">Next Seaspan payday in this forecast</span><h2>${fmtDateFull(next.payday)}</h2>
+      <small>Projected from the ${fmtDateFull(schedule.asOf)} opening</small>
       <strong class="plan-spend-action-amount">Set aside: ${money2(next.contribution)}</strong>
       ${planSpendActionLines(next.allocations)}
       <dl class="plan-spend-action-totals"><div><dt>Protected when set aside</dt><dd>${money2(next.protectedAfterPayday)}</dd></div>

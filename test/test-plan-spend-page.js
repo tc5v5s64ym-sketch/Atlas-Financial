@@ -263,6 +263,8 @@ ok(page.lede.includes('Set aside: $' + schedule.paydays[0].contribution.toLocale
   && page.lede.includes('data-plan-spend-next-payday'),
   'first screen prints the next payday action');
 ok(page.lede.includes('Show payday funding plan'), 'following paydays are one disclosure away');
+ok(/Projected from the [^<]*2026 opening/.test(page.lede),
+  'the payday action exposes its dated Forecast opening');
 ok(page.list.includes('data-plan-spend-id="fusion-household"')
   && !page.list.includes('data-plan-spend-id="fusion-household-oct"'),
   'Fusion is one card while instalments remain separate events');
