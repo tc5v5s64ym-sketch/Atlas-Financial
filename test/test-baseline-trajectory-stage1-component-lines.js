@@ -619,9 +619,6 @@ console.log('\n=== 10. Live household September reconciles by event id and plann
     && isFinite(Number(c.planned)) && Number(c.planned) > 0);
   const walkDays = sep.stage1.householdBudget.walkDays;
   const priorDays = (Date.parse(sep.start) - Date.parse(asOf)) / 86400000;
-  // Independently split both cumulative spending-penny totals by owner
-  // weight. Last-line residual at each boundary can publish a negative
-  // tail even when every owner target is positive.
   const categoryThroughDays = days => {
     const weightCents = cats.map(c => Math.round(Number(c.planned) * 100));
     const W = weightCents.reduce((s, w) => s + w, 0);
@@ -650,19 +647,29 @@ console.log('\n=== 10. Live household September reconciles by event id and plann
   const after = categoryThroughDays(priorDays + walkDays);
   const before = categoryThroughDays(priorDays);
   const expectedBudget = cats.map((c, i) => ({
-    label: c.label || c.id,
+    label: c.ownerLine || c.label || c.id,
     amount: (after[i] - before[i]) / 100,
+    cadence: c.paydayCadence || null,
   }));
   const budgetTotal = (after.reduce((s, n) => s + n, 0)
     - before.reduce((s, n) => s + n, 0)) / 100;
   const publishedBudget = sep.stage1.householdBudget.lines || [];
-  ok(cats.length > 1 && publishedBudget.length === expectedBudget.length,
-    'live September householdBudget.lines are present for contributing categories');
+  const residual = lineByLabel(publishedBudget, 'Normal spending estimate');
+  ok(cats.length > 1, 'live September has more than one contributing budget category');
+  let cadenceGap = 0;
   for (const row of expectedBudget) {
+    if (row.cadence === 'every-other-seaspan') {
+      const published = lineByLabel(publishedBudget, row.label);
+      cadenceGap = roundCent(cadenceGap + row.amount - (published ? published.amount : 0));
+      continue;
+    }
     const published = lineByLabel(publishedBudget, row.label);
     ok(published && near(published.amount, row.amount) && published.status === 'calculated',
       `live budget ${row.label} matches independent planned remainder smear`);
   }
+  ok(near(residual ? residual.amount : 0, cadenceGap),
+    'OFF-cycle every-other cents are the residual, not another category',
+    residual ? `${residual.amount} vs ${cadenceGap}` : String(cadenceGap));
   ok(near(lineSum(publishedBudget), sep.stage1.householdBudget.amount)
     && near(sep.stage1.householdBudget.amount, budgetTotal),
     'live September sum(householdBudget.lines) equals the walk-applied rollup');

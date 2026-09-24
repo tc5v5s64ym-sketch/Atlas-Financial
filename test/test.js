@@ -96,6 +96,7 @@ const suites = [
   ['Forecast baseline trajectory three-stage funding decomposition', 'test-baseline-trajectory-funding-stages.js'],
   ['Forecast stage1 income named Dale/Amanda lines', 'test-baseline-trajectory-income-lines.js'],
   ['Forecast stage1 bills / obligations / householdBudget named lines', 'test-baseline-trajectory-stage1-component-lines.js'],
+  ['Forecast Road Ahead Household Budget category lines', 'test-household-budget-trajectory-lines.js'],
   ['Forecast stage2 commitment named lines', 'test-baseline-trajectory-stage2-commitment-lines.js'],
   ['Forecast baseline trajectory pay-period series (B105l)', 'test-baseline-trajectory-pay-period-series.js'],
   ['Forecast provisional recent pay-period normal spending', 'test-provisional-normal-spending-baseline.js'],
