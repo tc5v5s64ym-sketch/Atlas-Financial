@@ -102,6 +102,7 @@ const suites = [
   ['Forecast provisional recent pay-period normal spending', 'test-provisional-normal-spending-baseline.js'],
   ['Road Ahead standalone period surplus/deficit', 'test-standalone-road-ahead-surplus.js'],
   ['Road Ahead independent Month / Pay Period financial reconciliation', 'test-road-ahead-reconciliation.js'],
+  ['Road Ahead Month surplus by Seaspan pay-period close', 'test-road-ahead-month-close.js'],
   ['Forecast residual pay-period identity vs Budget This Pay Period', 'test-pay-period-residual-identity.js'],
   ['Forecast baseline trajectory additional-debt-payment scenario (O4)', 'test-baseline-trajectory-scenario.js'],
   ['Dale/Seaspan estimated payroll regime (independent stubs)', 'test-dale-payroll-regime.js'],

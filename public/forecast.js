@@ -15182,6 +15182,260 @@
     };
   }
 
+  // Household Road Ahead Month funding. Cash, debt, pressure, and the
+  // pay-period series stay on the calendar walk. This replaces only the
+  // month stage card: surplus becomes available in the month the Seaspan
+  // cycle closes, and a dated requirement cannot use a close that is
+  // still in the future. Horizon-clipped cycles have not closed.
+  function payPeriodSurplusCloseDate(period) {
+    if (!period || period.windowKind === 'horizon-clipped') return null;
+    const close = period.cycleEnd || period.end;
+    if (!close) return null;
+    if (period.end && period.end < close) return null;
+    return close;
+  }
+
+  function trajectoryMonthOf(iso) {
+    return iso && iso.length >= 7 ? iso.slice(0, 7) : null;
+  }
+
+  function trajectorySumCents(amounts) {
+    return roundCent(amounts.reduce((sum, amount) => sum + (Number(amount) || 0), 0));
+  }
+
+  function trajectoryMergeFundingLines(groups) {
+    const byKey = new Map();
+    for (const group of groups) {
+      for (const line of (group && group.lines) || []) {
+        const key = (line.id || '') + '\n' + (line.label || '');
+        if (!byKey.has(key)) {
+          byKey.set(key, {
+            id: line.id,
+            label: line.label,
+            amount: 0,
+            status: line.status || 'calculated',
+            dates: [],
+          });
+        }
+        const row = byKey.get(key);
+        row.amount = roundCent(row.amount + (Number(line.amount) || 0));
+        row.status = trajectoryWeakerStatus(row.status, line.status || 'calculated');
+        if (line.date && row.dates.indexOf(line.date) === -1) row.dates.push(line.date);
+      }
+    }
+    return Array.from(byKey.values()).sort((a, b) =>
+      String(a.id || a.label).localeCompare(String(b.id || b.label))).map(row => {
+      const line = {
+        label: row.label,
+        amount: row.amount,
+        status: row.status,
+      };
+      if (row.id) line.id = row.id;
+      if (row.dates.length === 1) line.date = row.dates[0];
+      return line;
+    });
+  }
+
+  function trajectoryMergedComponent(parts, noun) {
+    if (!parts.length) {
+      return { amount: 0, status: 'calculated' };
+    }
+    if (parts.some(part => !part || part.status === 'unavailable' || part.amount == null
+        || !isFinite(Number(part.amount)))) {
+      return {
+        status: 'unavailable',
+        reason: 'A Seaspan pay period closing in this ' + noun
+          + ' has unavailable funding. Not $0.',
+      };
+    }
+    const row = {
+      amount: trajectorySumCents(parts.map(part => part.amount)),
+      status: trajectoryWeakerStatus.apply(null, parts.map(part => part.status)),
+    };
+    const lines = trajectoryMergeFundingLines(parts);
+    if (lines.length) row.lines = lines;
+    return row;
+  }
+
+  function trajectoryAvailableResult(amount, status) {
+    return {
+      amount: roundCent(amount),
+      status,
+      identity: 'pay-period-close-available-surplus',
+      priorPeriodSurplus: 'excluded',
+      futurePeriodSurplus: 'excluded',
+    };
+  }
+
+  // Dated planned spending stays on its own date. Surplus from a pay
+  // period is usable only on and after that period's close. Later
+  // surplus is not borrowed backward. The published stage result remains
+  // stage1 − these requirements so the card reconciles; each line records
+  // the shortfall that existed on its date.
+  function trajectoryTimeCommitments(stage1Amount, commitments, closes) {
+    const lines = (commitments.lines || []).map(line => Object.assign({}, line));
+    const dated = lines.filter(line => line.date).sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    const undated = lines.filter(line => !line.date);
+    let available = 0;
+    let closeIndex = 0;
+    const orderedCloses = closes.slice().sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    function releaseThrough(date) {
+      while (closeIndex < orderedCloses.length && orderedCloses[closeIndex].date <= date) {
+        available = roundCent(available + orderedCloses[closeIndex].amount);
+        closeIndex += 1;
+      }
+    }
+    for (const line of dated) {
+      releaseThrough(line.date);
+      const need = roundCent(Math.abs(Number(line.amount) || 0));
+      const covered = roundCent(Math.min(Math.max(available, 0), need));
+      line.coveredByClosedSurplus = covered;
+      line.shortfall = roundCent(need - covered);
+      available = roundCent(available - covered);
+    }
+    for (const line of undated) {
+      const need = roundCent(Math.abs(Number(line.amount) || 0));
+      line.coveredByClosedSurplus = 0;
+      line.shortfall = need;
+    }
+    // Surplus that closes after the last dated requirement stays
+    // available. It does not repay an earlier shortfall.
+    while (closeIndex < orderedCloses.length) {
+      available = roundCent(available + orderedCloses[closeIndex].amount);
+      closeIndex += 1;
+    }
+    const shortfall = trajectorySumCents(lines.map(line => line.shortfall || 0));
+    if (lines.length) commitments.lines = lines;
+    commitments.unfundedOnDate = shortfall;
+    commitments.surplusAfterRequirements = available;
+    return trajectoryAvailableResult(
+      roundCent(Number(stage1Amount) - Number(commitments.amount || 0)),
+      commitments.status || 'calculated');
+  }
+
+  function applyRoadAheadMonthCloseFunding(months, payPeriods, events, walkStart, plan) {
+    const completed = [];
+    for (const period of payPeriods || []) {
+      const close = payPeriodSurplusCloseDate(period);
+      if (!close || !period.stage1 || period.stage1.status === 'unavailable') {
+        if (close && period.stage1 && period.stage1.status === 'unavailable') {
+          completed.push({ period, close, unavailable: true });
+        }
+        continue;
+      }
+      completed.push({ period, close, unavailable: false });
+    }
+    const planned = (events || []).filter(event =>
+      event && (event.kind === 'commitment'
+        || isYearlyCardPaidBillEvent(event, plan)
+        || isDatedReservePlanningEvent(event)));
+    for (const month of months || []) {
+      const closing = completed.filter(row => trajectoryMonthOf(row.close) === month.month);
+      if (closing.some(row => row.unavailable)) {
+        const blocked = closing.find(row => row.unavailable);
+        const unavailable = trajectoryFundingUnavailable(
+          (blocked.period.stage1 && blocked.period.stage1.reason)
+          || 'A Seaspan pay period closing in this month has unavailable funding. Not $0.');
+        month.stage1 = unavailable.stage1;
+        month.stage2 = unavailable.stage2;
+        month.stage3 = unavailable.stage3;
+        month.roadAheadMonthFunding = 'pay-period-close';
+        continue;
+      }
+      const periods = closing.map(row => row.period);
+      const income = trajectoryMergedComponent(periods.map(p => p.stage1.income), 'month');
+      const bills = trajectoryMergedComponent(periods.map(p => p.stage1.bills), 'month');
+      const obligations = trajectoryMergedComponent(periods.map(p => p.stage1.obligations), 'month');
+      const budgets = periods.map(p => p.stage1.householdBudget);
+      const householdBudget = trajectoryMergedComponent(budgets, 'month');
+      if (budgets.length && budgets[0].weeklyVariable != null) {
+        householdBudget.weeklyVariable = budgets[0].weeklyVariable;
+      }
+      householdBudget.walkDays = budgets.reduce((sum, row) => sum + (Number(row.walkDays) || 0), 0);
+      householdBudget.identity = 'seaspan pay periods closing in month';
+      const blocked = [income, bills, obligations, householdBudget].find(row => row.status === 'unavailable');
+      if (blocked) {
+        const unavailable = trajectoryFundingUnavailable(blocked.reason);
+        month.stage1 = unavailable.stage1;
+        month.stage2 = unavailable.stage2;
+        month.stage3 = unavailable.stage3;
+        month.roadAheadMonthFunding = 'pay-period-close';
+        continue;
+      }
+      const stage1Amount = trajectorySumCents(periods.map(p => p.stage1.result.amount));
+      const stage1Status = periods.length
+        ? trajectoryWeakerStatus.apply(null, periods.map(p => p.stage1.result.status))
+        : 'calculated';
+      const monthEvents = planned.filter(event => {
+        const apply = cashWalkDate(event, walkStart);
+        return apply && trajectoryMonthOf(apply) === month.month;
+      }).map(event => Object.assign({}, event, {
+        amount: event.amount < 0 ? -roundCent(-event.amount) : roundCent(event.amount),
+      }));
+      const commitmentsAmount = roundCent(monthEvents.reduce((sum, event) =>
+        sum + (-Number(event.amount) || 0), 0));
+      const commitmentsStatus = trajectoryEventsStatus(monthEvents);
+      const commitments = {
+        amount: commitmentsAmount,
+        status: commitmentsStatus,
+      };
+      const commitmentLines = baselineTrajectoryEventLines(monthEvents, commitmentsAmount);
+      if (commitmentLines.length) commitments.lines = commitmentLines;
+      const closes = closing.filter(row => !row.unavailable).map(row => ({
+        date: row.close,
+        amount: roundCent(row.period.stage1.result.amount),
+      }));
+      const stage2Result = trajectoryTimeCommitments(stage1Amount, commitments, closes);
+      stage2Result.status = trajectoryWeakerStatus(stage1Status, commitmentsStatus);
+      const extrasParts = periods.map(p => p.stage3 && p.stage3.extras).filter(Boolean);
+      const extras = trajectoryMergedComponent(extrasParts, 'month');
+      extras.source = 'plan.defaults.extraDebtMonthly';
+      const stage3Amount = extras.status === 'unavailable'
+        ? null
+        : roundCent(stage2Result.amount - (Number(extras.amount) || 0));
+      month.stage1 = {
+        id: 'normal-life',
+        label: 'Normal life',
+        status: stage1Status,
+        income,
+        bills,
+        obligations,
+        householdBudget,
+        result: trajectoryAvailableResult(stage1Amount, stage1Status),
+        source: 'seaspan-pay-periods-closing-in-month',
+      };
+      month.stage2 = {
+        id: 'after-planned-spending',
+        label: 'After planned spending',
+        status: stage2Result.status,
+        commitments,
+        result: stage2Result,
+      };
+      month.stage3 = extras.status === 'unavailable'
+        ? Object.assign({ id: 'after-debt-strategy', label: 'After debt strategy' }, {
+          status: 'unavailable',
+          reason: extras.reason,
+        })
+        : {
+          id: 'after-debt-strategy',
+          label: 'After debt strategy',
+          status: trajectoryWeakerStatus(stage2Result.status, extras.status),
+          extras,
+          result: trajectoryAvailableResult(
+            stage3Amount,
+            trajectoryWeakerStatus(stage2Result.status, extras.status)),
+        };
+      month.roadAheadMonthFunding = 'pay-period-close';
+      month.closingPayPeriods = periods.map(p => ({
+        payday: p.payday,
+        close: payPeriodSurplusCloseDate(p),
+        stage1: p.stage1.result.amount,
+      }));
+    }
+  }
+
   // Read-only baseline cash+debt trajectory over the incumbent
   // knowledgeHorizon. Normal spending is the provisional recent
   // pay-period baseline when both Seaspan windows are covered, otherwise
@@ -15212,14 +15466,14 @@
   // first published month-end at which a modelled balance is $0.
   // Planned weeklyVariable does not invent future card borrowing.
   // Available credit is not cash. Unpublished debt months contribute
-  // no invented direction. Each published calendar month also carries a
-  // three-stage selected-period funding decomposition from that same
-  // walk: Stage 1 normal life, Stage 2 after planned spending, Stage 3
-  // after debt strategy from plan.defaults.extraDebtMonthly / absorbed
-  // kind:'extra' only. Household Budget is the weeklyVariable already
-  // applied by incumbent simulate on the walk days in that month, not a
-  // separate calendar-month smear. Fail closed when that month's income
-  // or cash walk is unavailable. The same walk also publishes a Seaspan
+  // no invented direction. Each published calendar month keeps cash,
+  // debt, and pressure on that window. Its Road Ahead stages sum the
+  // Seaspan pay periods whose cycle closes in the month. Stage 1 is
+  // their standalone normal-life surplus. Stage 2 subtracts dated
+  // planned spending, which cannot use a close that is still in the
+  // future. Stage 3 subtracts those periods' extra-debt amounts. A
+  // closing period with unavailable funding fails the month closed.
+  // The same walk also publishes a Seaspan
   // payday-to-payday series (`payPeriods`) with the same three-stage
   // funding helpers and trust rules: Month and Pay Period are two views
   // of one baselineTrajectory walk. Pay-period spans are incumbent
@@ -15394,6 +15648,8 @@
       };
     });
 
+    applyRoadAheadMonthCloseFunding(series, payPeriods, events, day, plan);
+
     const pressure = baselineTrajectoryPressure({
       walkStart: day,
       openingCash: startingCashAmount(plan),
@@ -15432,6 +15688,8 @@
         priorPeriodSurplus: 'excluded',
         source: 'stage3.result',
         cumulativeCash: 'not-this-result',
+        monthFunding: 'pay-period-close-available-surplus',
+        monthFuturePeriodSurplus: 'excluded',
       },
       incomeRegimes: [
         {
@@ -15500,6 +15758,9 @@
         additionalCashRequiredRemaining: 'max(0, amount - fundedByDesignatedSavings)',
         payPeriodSeries: payPeriodSpans.length ? 'seaspan-spending-cycle' : 'unavailable',
         payPeriodFundingStages: 'walk-derived',
+        monthFunding: 'seaspan-pay-period-close',
+        monthFundingCalendarTrajectory: 'retained-on-cash-debt-pressure',
+        monthFundingFutureSurplus: 'excluded-until-pay-period-closes',
         incomeRegimesImplemented: regimeReady,
         incomeRegimesNamedFailClosed: !regimeReady,
         incomeRegimesDollarModel: regimeReady,

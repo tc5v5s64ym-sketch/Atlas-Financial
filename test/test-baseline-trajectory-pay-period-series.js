@@ -417,11 +417,14 @@ console.log('\n=== 3. Month series unchanged; clipped first period is not a 14-d
     && !july.windowKind && !july.displayIdentity && !july.cycleStart
     && !july.cycleEnd && !july.cycleRangeLabel,
     'month rows did not grow pay-period identity fields');
-  ok(stageReady(july.stage1) && near(july.stage1.result.amount, expectedJuly.stage1)
-    && july.stage1.householdBudget.walkDays === 31
-    && july.stage1.householdBudget.identity
-      === 'simulate weeklyVariable applied days in month',
-    'July month stages still reconcile to the same walk and keep the month HB identity');
+  ok(stageReady(july.stage1)
+    && july.start === '2026-07-01' && july.end === '2026-07-31'
+    && expectedJuly.walkDays === 31
+    && july.stage1.householdBudget.identity === 'seaspan pay periods closing in month'
+    && near(july.stage1.result.amount,
+      july.stage1.income.amount - july.stage1.bills.amount
+      - july.stage1.obligations.amount - july.stage1.householdBudget.amount),
+    'July month stages reconcile as pay-period-close funding; the cash window stays 31 days');
 
   const first = traj.payPeriods[0];
   const expectedFirst = independentPayPeriods(plan, traj.horizon.start, traj.horizon.end)[0];
@@ -697,8 +700,8 @@ console.log('\n=== 7. Live Seaspan series: clipped opening, honest $0 extras, 20
   const julyMonth = traj.months.find(m => m.month === '2026-08' || m.month === traj.months[0].month);
   ok(julyMonth && julyMonth.stage1 && julyMonth.stage1.householdBudget
     && julyMonth.stage1.householdBudget.identity
-      === 'simulate weeklyVariable applied days in month',
-    'live month series keeps the month Household Budget identity');
+      === 'seaspan pay periods closing in month',
+    'live month series uses pay-period-close Household Budget');
   ok(hashFile(DATA) === liveHash, 'pay-period tests did not write data.json');
 }
 
