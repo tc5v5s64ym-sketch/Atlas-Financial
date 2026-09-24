@@ -355,14 +355,28 @@ console.log('\n=== provisional baseline feeds one walk ===');
     'Month and Pay Period publish the same walk weekly');
 
   const next = payPeriodByPayday(traj, '2026-09-25');
+  const blendSum = roundCent((ns.categories || []).reduce((s, row) => s + row.amount, 0));
+  const blend = id => (ns.categories || []).find(row => row && row.id === id);
+  ok(ns.categories && blendSum === PAY_PERIOD_BASELINE
+      && blend('groceries') && blend('groceries').amount === 220
+      && blend('fuel') && blend('fuel').amount === 35
+      && blend('pets') && blend('pets').amount === 50
+      && blend('household') && blend('household').amount === 7.5
+      && blend('other-spending') && blend('other-spending').amount === 35
+      && !ns.categories.some(row => row.id === 'other-spend' || row.id === 'travel' || row.id === 'propertytax'),
+    'the baseline names the same category cents that sum to the 14-day amount',
+    ns.categories && ns.categories.map(row => row.id + ':' + row.amount).join(', '));
+  const nextLines = next && next.stage1 && next.stage1.householdBudget.lines || [];
+  const nextLineSum = roundCent(nextLines.reduce((s, row) => s + row.amount, 0));
   ok(next && next.stage1 && next.stage1.householdBudget
       && next.stage1.householdBudget.walkDays === 14
       && near(next.stage1.householdBudget.amount, PAY_PERIOD_BASELINE)
       && next.stage1.householdBudget.status === 'estimated'
-      && next.stage1.householdBudget.lines
-      && next.stage1.householdBudget.lines.length === 1
-      && next.stage1.householdBudget.lines[0].label === 'Normal spending estimate',
-    'a future 14-day pay period applies the baseline once',
+      && nextLines.length > 1
+      && nextLineSum === next.stage1.householdBudget.amount
+      && !nextLines.some(row => row.label === 'Normal spending estimate')
+      && nextLines.every(row => row.status === 'estimated'),
+    'a future 14-day pay period applies the baseline once, split by those categories',
     next && next.stage1 && String(next.stage1.householdBudget.amount));
   const stage1 = roundCent(1000 - 80 - 0 - PAY_PERIOD_BASELINE);
   ok(next.stage1.income && near(next.stage1.income.amount, 1000)

@@ -14199,6 +14199,52 @@
     };
   }
 
+  // Same two windows as the provisional baseline, split by the category
+  // cents already inside that blend. Named rows are classified Household
+  // Budget categories. Eligible spend that is in the total and not in a
+  // named category is the incumbent Other spending residual. Owner-target
+  // amounts are not added on top. Returns null when the split does not
+  // equal the published 14-day amount — the caller keeps one estimate line.
+  function normalSpendingCategoryAttribution(plan, completedSpend, currentSpend, cycleStart, payPeriodAmount) {
+    const completedMap = completedSpend && completedSpend.byCategory;
+    const currentMap = currentSpend && currentSpend.byCategory;
+    if (!completedMap || !currentMap) return null;
+    const rows = [];
+    let named = 0;
+    for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
+      if (!cat || !cat.id || cat.class === 'reserve') continue;
+      const completed = roundCent(completedMap.get(cat.id) || 0);
+      const spent = roundCent(currentMap.get(cat.id) || 0);
+      let remaining = 0;
+      if (CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) >= 0) {
+        const planned = paydayCyclePlanned(cat, cycleStart, plan);
+        if (planned != null && isFinite(planned)) {
+          remaining = roundCent(Math.max(0, planned - spent));
+        }
+      }
+      const amount = roundCent((completed + roundCent(spent + remaining)) / 2);
+      if (!(amount > 0)) continue;
+      named = roundCent(named + amount);
+      rows.push({
+        id: cat.id,
+        label: cat.ownerLine || cat.label || DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.id,
+        amount,
+      });
+    }
+    const unassigned = roundCent(payPeriodAmount - named);
+    if (unassigned < 0) return null;
+    if (unassigned > 0) {
+      rows.push({
+        id: OTHER_SPENDING_ID,
+        label: 'Other spending',
+        amount: unassigned,
+      });
+      named = roundCent(named + unassigned);
+    }
+    if (!rows.length || named !== roundCent(payPeriodAmount)) return null;
+    return rows;
+  }
+
   // Two-period provisional baseline for the Road Ahead walk.
   // Input A is posted actuals on the previous Seaspan cycle.
   // Input B is this cycle's eligible actual-to-date plus the unspent
@@ -14273,6 +14319,8 @@
     // rate exact so a full Seaspan cycle applies payPeriodAmount, not a
     // second-rounded weekly * 2 that can drift by one cent.
     const weeklyVariable = payPeriodAmount / 2;
+    const categories = normalSpendingCategoryAttribution(
+      plan, completedSpend, currentSpend, current.start, payPeriodAmount);
     return {
       status: 'ready',
       fallback: null,
@@ -14283,6 +14331,7 @@
       weeklyVariable,
       trust: 'estimated',
       establishedHouseholdAverage: false,
+      categories,
       completedPeriod: Object.assign({}, completedWindow, {
         status: 'ready',
         amount: completedSpend.total,
@@ -14490,9 +14539,13 @@
   // planned weeklyVariable (budgetBreakdown owner-target /
   // current-regime planned remainder, not historical actuals): each
   // contributing category receives a monotonic share of the same
-  // walk-boundary spending pennies. A single Household budget smear
-  // line is published only when the walk-applied total is non-zero
-  // and no contributing category can be named. Empty sets omit lines.
+  // walk-boundary spending pennies. every-other-seaspan weight is zero
+  // on OFF-cycle days. A ready provisional baseline publishes the
+  // category cents already inside that 14-day blend when they sum to
+  // it, and otherwise one Normal spending estimate line. A single
+  // Household budget smear line is published only when the walk-applied
+  // total is non-zero and no contributing category can be named. Empty
+  // sets omit lines.
   // sum(lines) equals the unchanged component amount. Stage arithmetic
   // is otherwise unchanged.
   function isCoachingOrGravyIncome(stream) {
@@ -14629,19 +14682,59 @@
     return reconcileTrajectoryLineAmounts(lines, rollupAmount);
   }
 
-  // Attribute the walk-applied Household Budget smear across the same
-  // plan.budget.categories that feed planned weeklyVariable. Do not
-  // invent categories. Historical-actual and reserve rows are excluded
-  // by the incumbent plannedWeeklyVariable identity.
+  function dateInEveryOtherOnCycle(plan, iso, cat) {
+    const cycle = spendingCycle(plan, iso);
+    if (!cycle || !cycle.start) return false;
+    return isEveryOtherSeaspanOnPayday(plan, cycle.start, cat);
+  }
+
+  function trajectoryBudgetLineLabel(cat) {
+    if (!cat) return 'Household budget';
+    return cat.ownerLine || cat.label || DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.id || 'Household budget';
+  }
+
+  // Attribute the walk-applied Household Budget smear. Planned rows use
+  // the same budgetBreakdown categories as planned weeklyVariable.
+  // every-other-seaspan weight is zero on days whose Seaspan cycle is OFF,
+  // so that row is absent from an OFF pay period and is not renamed onto
+  // another category on an ON day. A provisional normal-spending baseline
+  // is attributed only when its own category cents already sum to the
+  // published 14-day amount. Otherwise one estimate line is kept.
   function baselineTrajectoryHouseholdBudgetLines(input, walkDays, householdBudgetAmount, priorWalkDays) {
     const target = roundCent(householdBudgetAmount);
     if (!(walkDays > 0)) return [];
-    if (input.normalSpending && input.normalSpending.status === 'ready') {
-      return [{
-        label: 'Normal spending estimate',
-        amount: target,
-        status: 'estimated',
-      }];
+    const normal = input.normalSpending;
+    if (normal && normal.status === 'ready') {
+      const categories = Array.isArray(normal.categories) ? normal.categories : null;
+      const named = categories
+        ? roundCent(categories.reduce((s, row) => s + (Number(row.amount) || 0), 0))
+        : null;
+      if (!categories || !categories.length || named !== roundCent(normal.payPeriodAmount)) {
+        return [{
+          label: 'Normal spending estimate',
+          amount: target,
+          status: 'estimated',
+        }];
+      }
+      const weights = categories.map(row => Math.round(Number(row.amount) * 100));
+      const after = trajectoryCategoryCentsThroughDays(
+        weights, input.weeklyVariable, priorWalkDays + walkDays);
+      const before = trajectoryCategoryCentsThroughDays(
+        weights, input.weeklyVariable, priorWalkDays);
+      const lines = [];
+      for (let i = 0; i < categories.length; i++) {
+        const amount = (after[i] - before[i]) / 100;
+        if (!amount) continue;
+        const row = categories[i];
+        lines.push({
+          id: row.id,
+          label: row.label,
+          amount,
+          status: 'estimated',
+        });
+      }
+      if (!lines.length) return [];
+      return reconcileTrajectoryLineAmounts(lines, target);
     }
     const bd = budgetBreakdown(input.plan, input.periods, input.breakdownOpts || {});
     const contributing = [];
@@ -14657,19 +14750,30 @@
     }
     const lines = [];
     if (contributing.length) {
-      // Split each walk day's pennies by owner-target weight. Last-line
-      // residual at each boundary is not monotonic: a small positive tail
-      // can publish a negative span amount.
       const weights = contributing.map(c => Math.round(Number(c.planned) * 100));
+      const dates = (Array.isArray(input.walkDaily) ? input.walkDaily : [])
+        .map(row => row && row.date);
+      const weightAtDay = (dayIndex) => {
+        const date = dates[dayIndex];
+        return contributing.map((c, i) => {
+          if (isEveryOtherSeaspanCadence(c) && !dateInEveryOtherOnCycle(input.plan, date, c)) {
+            return 0;
+          }
+          return weights[i];
+        });
+      };
       const after = trajectoryCategoryCentsThroughDays(
-        weights, input.weeklyVariable, priorWalkDays + walkDays);
+        weights, input.weeklyVariable, priorWalkDays + walkDays, weightAtDay);
       const before = trajectoryCategoryCentsThroughDays(
-        weights, input.weeklyVariable, priorWalkDays);
+        weights, input.weeklyVariable, priorWalkDays, weightAtDay);
       for (let i = 0; i < contributing.length; i++) {
+        const amount = (after[i] - before[i]) / 100;
         const c = contributing[i];
+        if (!amount && isEveryOtherSeaspanCadence(c)) continue;
         lines.push({
-          label: c.label || c.id || 'Household budget',
-          amount: (after[i] - before[i]) / 100,
+          id: c.id,
+          label: trajectoryBudgetLineLabel(c),
+          amount,
           status: 'calculated',
         });
       }
@@ -14697,23 +14801,23 @@
   // that funds trajectoryVariableThrough. Each day's pennies are split
   // by largest remainder of owner-target weight, so a later day never
   // takes a penny back and a positive tail cannot go negative.
-  function trajectoryCategoryCentsThroughDays(weights, weekly, days) {
+  function trajectoryCategoryCentsThroughDays(weights, weekly, days, weightAtDay) {
     const n = weights.length;
     const seats = new Array(n).fill(0);
     if (!(days > 0) || !n) return seats;
-    const totalWeight = weights.reduce((s, w) => s + w, 0);
-    if (!(totalWeight > 0)) return seats;
     const fortnightCents = Math.round(weekly * 200);
     let remainder = 7;
     for (let d = 0; d < days; d++) {
+      const dayWeights = weightAtDay ? weightAtDay(d) : weights;
+      const totalWeight = dayWeights.reduce((s, w) => s + (Number(w) || 0), 0);
       remainder += fortnightCents;
       const pennies = Math.floor(remainder / 14);
       remainder %= 14;
-      if (pennies <= 0) continue;
+      if (pennies <= 0 || !(totalWeight > 0)) continue;
       let given = 0;
       const parts = new Array(n);
       for (let i = 0; i < n; i++) {
-        const num = pennies * weights[i];
+        const num = pennies * (Number(dayWeights[i]) || 0);
         const floor = Math.floor(num / totalWeight);
         seats[i] += floor;
         given += floor;
