@@ -1589,24 +1589,26 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:10px; }
 .planning-meta > span:first-child { margin-right:auto; color:var(--text-secondary); font-size:.82rem; }
 
-/* Plan Spend glance: name, amount, timing, status. Secondary facts sit
-   in the disclosure. Narrow widths shrink the name instead of overflowing. */
-.plan-spend-list.planning-list { gap:6px; margin-top:8px; }
+/* Plan Spend: the collapsed card carries the household decision. */
+.plan-spend-list.planning-list { gap:10px; margin-top:12px; }
 .plan-spend-list .plan-spend-card {
-  padding:7px 10px;
+  padding:14px 16px;
 }
 .plan-spend-glance {
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
   grid-template-areas:
     "name amount"
-    "when status";
-  column-gap:8px;
-  row-gap:1px;
-  align-items:baseline;
+    "when when"
+    "status status"
+    "explanation explanation"
+    "facts facts";
+  column-gap:14px;
+  row-gap:8px;
+  align-items:start;
 }
 .plan-spend-glance h2 {
-  grid-area:name; margin:0; font-size:.92rem; line-height:1.2; letter-spacing:-0.01em;
+  grid-area:name; margin:0; font-size:1.08rem; line-height:1.25; letter-spacing:-0.01em;
   overflow-wrap:anywhere;
 }
 .plan-spend-glance [data-plan-spend-fact="requirement"],
@@ -1615,42 +1617,56 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 }
 .plan-spend-glance [data-plan-spend-fact="requirement"] b,
 .plan-spend-glance [data-plan-spend-fact="schedule-remaining"] b {
-  display:block; font-size:.95rem; line-height:1.2; font-variant-numeric:tabular-nums;
+  display:block; font-size:1.14rem; line-height:1.2; font-variant-numeric:tabular-nums;
   overflow-wrap:anywhere;
 }
 .plan-spend-glance [data-plan-spend-fact="requirement"] small,
 .plan-spend-glance [data-plan-spend-fact="schedule-remaining"] small {
-  display:block; margin-top:0; color:var(--muted); font-size:.62rem; line-height:1.15;
+  display:block; margin-top:2px; color:var(--muted); font-size:.72rem; line-height:1.15;
   text-transform:lowercase;
 }
 .plan-spend-glance [data-plan-spend-when] {
-  grid-area:when; color:var(--text-secondary); font-size:.75rem; line-height:1.25;
+  grid-area:when; color:var(--text-secondary); font-size:.85rem; line-height:1.3;
   overflow-wrap:anywhere;
 }
 .plan-spend-status {
-  grid-area:status; justify-self:end; display:flex; flex-wrap:wrap; gap:3px;
-  justify-content:flex-end; max-width:100%;
+  grid-area:status; display:flex; flex-wrap:wrap; gap:6px; align-items:center;
 }
-.plan-spend-card .chip { font-size:.6rem; padding:0 5px; line-height:1.35; }
-.plan-spend-more { margin-top:4px; font-size:.75rem; color:var(--text-secondary); }
-.plan-spend-more summary { cursor:pointer; color:var(--muted); font-size:.72rem; }
+.plan-spend-card .chip { font-size:.68rem; padding:2px 7px; line-height:1.4; }
+.plan-spend-explanation { grid-area:explanation; margin:0; font-size:.88rem; line-height:1.4; }
+.plan-spend-facts { grid-area:facts; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 18px; margin:2px 0 0; }
+.plan-spend-facts > div, .plan-spend-member-period > div { min-width:0; }
+.plan-spend-facts dt, .plan-spend-member-period dt { color:var(--text-secondary); font-size:.73rem; line-height:1.3; }
+.plan-spend-facts dd, .plan-spend-member-period dd { margin:2px 0 0; font-size:.85rem; font-weight:650; line-height:1.3; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.plan-spend-facts [data-plan-spend-fact="due-period"] { grid-column:1 / -1; border-top:1px solid var(--border-subtle, var(--border)); padding-top:8px; }
+.plan-spend-more { margin-top:10px; font-size:.83rem; color:var(--text-secondary); }
+.plan-spend-more summary { cursor:pointer; color:var(--link, var(--text)); font-size:.83rem; font-weight:650; }
 .plan-spend-more summary:focus-visible { outline:2px solid var(--focus, currentColor); outline-offset:2px; }
-.plan-spend-detail-line { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0 0; }
-.plan-spend-schedule { list-style:none; margin:6px 0 0; padding:0; }
+.plan-spend-path p { margin:8px 0 0; line-height:1.45; }
+.plan-spend-path-gap { color:var(--serious); font-weight:650; }
+.plan-spend-schedule { list-style:none; margin:10px 0 0; padding:0; }
 .plan-spend-schedule li {
-  display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline;
-  padding:3px 0; border-top:1px solid var(--border-subtle, var(--border));
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; align-items:baseline;
+  padding:9px 0; border-top:1px solid var(--border-subtle, var(--border));
 }
 .plan-spend-schedule li b { font-variant-numeric:tabular-nums; }
+.plan-spend-schedule li time, .plan-spend-schedule li .chip, .plan-spend-member-period { grid-column:1 / -1; }
+.plan-spend-schedule li time { color:var(--text-secondary); }
+.plan-spend-member-period { margin:3px 0 0; }
 @media (max-width:380px) {
   .plan-spend-glance {
     grid-template-areas:
-      "name amount"
+      "name name"
+      "amount amount"
       "when when"
-      "status status";
-    row-gap:2px;
+      "status status"
+      "explanation explanation"
+      "facts facts";
+    row-gap:7px;
   }
-  .plan-spend-status { justify-self:start; }
+  .plan-spend-glance [data-plan-spend-fact="requirement"],
+  .plan-spend-glance [data-plan-spend-fact="schedule-remaining"] { text-align:left; }
+  .plan-spend-facts { grid-template-columns:1fr; }
 }
 .planning-trajectory { margin:12px 0 0; }
 .planning-trajectory-table td { vertical-align:top; }

@@ -2352,7 +2352,7 @@
     const uncertaintyMargin = leftover - enc.ceiling;
     const baseJoint = atLeast(leftover, enc.floor);
     const uncertaintyJoint = atLeast(leftover, enc.ceiling);
-    let residualPool = leftover - enc.floor;
+      let residualPool = leftover - enc.floor;
 
     return seq.map(item => {
       const floor = item.bounds ? item.bounds.floor : 0;
@@ -2363,6 +2363,10 @@
       let remaining = 0;
       let verdict = 'FUNDING GAP';
       let encumbered = 0;
+      // Overdue protected rows share one as-of shortfall. The number is
+      // already the joint pool; this names that identity so a page cannot
+      // read it as this row's private gap. No per-plan split is computed.
+      let remainingIdentity = null;
 
       if (item.flexibility === 'optional') {
         const take = Math.max(0, Math.min(residualPool, floor));
@@ -2395,6 +2399,7 @@
           margin = baseMargin;
           remaining = Math.max(0, -baseMargin);
         }
+        remainingIdentity = 'joint-protected-overdue-shortfall';
       } else if (isCashEventItem(item) && item.date >= asOf) {
         const dayMargin = datedMargin(rec, item.date, rec.buffer);
         funded = datedCommitmentFunded(rec, item.date, rec.buffer);
@@ -2469,6 +2474,7 @@
         encumbered,
         margin,
         remaining,
+        remainingIdentity,
         fundingMargin,
         // Flexible items may yield. Non-flexible dates are never rewritten.
         deferred: !!(item.adjustable && verdict !== 'ON TRACK'),
@@ -2528,6 +2534,7 @@
         when: row.when || null,
         need: row.need,
         remaining: row.remaining,
+        remainingIdentity: row.remainingIdentity || null,
         verdict: row.verdict,
         confidence: row.confidence,
         flexibility: row.flexibility,
@@ -2560,6 +2567,57 @@
       cards.push(Object.assign({ kind: 'row' }, row));
     }
     return cards;
+  }
+
+  // A Plan Spend explanation is a link between two existing Forecast
+  // publications, not a savings planner. A majorPlans verdict proves joint
+  // feasibility, not cash already saved for this item. paydayAllocation can
+  // hold cash this payday, but it does not publish a serial contribution path
+  // or a plan-specific saved balance. Keep both amounts unknown until an
+  // authority actually establishes them. A due-period result is shown only
+  // when a Road Ahead period's Stage 2 lines contain this exact cash
+  // event (id + original date). A carried unresolved cost keeps that
+  // date and is applied inside the clipped residual; the historical
+  // date need not fall inside the display span. The period that
+  // contains the line wins. The published figure is that period's
+  // Stage 2 after-planned-spending result, not Stage 3 after extra
+  // debt. No second walk or date rule is applied.
+  function planSpendPeriodContainsEvent(period, row) {
+    const lines = period && period.stage2 && period.stage2.commitments
+      && period.stage2.commitments.lines;
+    if (!row || !row.id || !row.date || !Array.isArray(lines)) return false;
+    return lines.some(line => line && line.id === row.id && line.date === row.date);
+  }
+  function planSpendFundingPaths(plans, trajectory) {
+    const periods = trajectory && trajectory.status === 'ready'
+      && Array.isArray(trajectory.payPeriods) ? trajectory.payPeriods : [];
+    return (Array.isArray(plans) ? plans : []).map(row => {
+      const containing = row && row.date
+        ? periods.filter(p => planSpendPeriodContainsEvent(p, row)) : [];
+      const inSpan = containing.filter(p => p && p.start <= row.date && row.date <= p.end);
+      const period = (inSpan.length ? inSpan : containing)[0] || null;
+      const result = period && period.stage2 && period.stage2.result;
+      const duePeriod = result && result.identity === 'standalone-period-surplus-deficit'
+        && result.status !== 'unavailable' && Number.isFinite(result.amount)
+        ? {
+            start: period.start,
+            end: period.end,
+            amount: result.amount,
+            status: result.status,
+            identity: result.identity,
+            source: 'stage2.result',
+            stageId: 'after-planned-spending',
+            kind: result.amount < 0 ? 'shortfall' : result.amount > 0 ? 'surplus' : 'balanced',
+          }
+        : null;
+      return {
+        id: row.id,
+        allocation: 'unallocated',
+        setAsideNow: null,
+        futureCashFlowNeeded: null,
+        duePeriod,
+      };
+    });
   }
 
   function facilityCapacity(facility, opts) {
@@ -15791,7 +15849,7 @@
   }
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements,
-    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, plannedDebt, debtPriority, paydayAllocation,
+    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendFundingPaths, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
