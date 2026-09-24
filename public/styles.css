@@ -1590,6 +1590,23 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .planning-meta > span:first-child { margin-right:auto; color:var(--text-secondary); font-size:.82rem; }
 
 /* Plan Spend: the collapsed card carries the household decision. */
+.plan-spend-funding { margin:16px 0 22px; }
+.plan-spend-action { padding:20px; border:1px solid var(--border); border-radius:16px; background:var(--surface, var(--card)); }
+.plan-spend-action h2 { margin:5px 0 12px; font-size:1.45rem; }
+.plan-spend-action-amount { display:block; font-size:clamp(1.65rem,5vw,2.3rem); line-height:1.15; font-variant-numeric:tabular-nums; }
+.plan-spend-action-lines { list-style:none; margin:14px 0; padding:0; }
+.plan-spend-action-lines li { display:flex; justify-content:space-between; gap:12px; padding:5px 0; }
+.plan-spend-action-lines b { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.plan-spend-action-totals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:18px 0 0; padding-top:14px; border-top:1px solid var(--border); }
+.plan-spend-action-totals dt { color:var(--text-secondary); font-size:.78rem; }
+.plan-spend-action-totals dd { margin:4px 0 0; font-weight:700; font-variant-numeric:tabular-nums; }
+.plan-spend-payday-plan { margin-top:14px; }
+.plan-spend-payday-plan summary { cursor:pointer; font-weight:700; }
+.plan-spend-payday-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:10px; margin-top:14px; }
+.plan-spend-payday { padding:12px; border:1px solid var(--border); border-radius:10px; }
+.plan-spend-payday h3 { margin:0 0 6px; font-size:1rem; }
+.plan-spend-payday p { margin:8px 0 0; font-size:.83rem; color:var(--text-secondary); }
+.plan-spend-glance > p { grid-column:1 / -1; margin:0; font-size:.83rem; color:var(--text-secondary); }
 .plan-spend-list.planning-list { gap:10px; margin-top:12px; }
 .plan-spend-list .plan-spend-card {
   padding:14px 16px;
