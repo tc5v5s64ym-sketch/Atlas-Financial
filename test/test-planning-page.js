@@ -1030,19 +1030,22 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
   });
   const pickMonth = traj.months[0];
   const road = page.composeRoadAhead(live, periods, 'month', pickMonth.month, live.meta.asOf);
-  ok(road.lead.includes(page.ctx.planningRoadSignedMoney
-    ? page.ctx.planningRoadSignedMoney(pickMonth.stage3.result.amount)
-    : money2(pickMonth.stage3.result.amount))
-    || road.lead.includes(money2(pickMonth.stage3.result.amount)),
-    'hero copies Forecast stage3 result for the selected month');
+  ok(road.lead.includes(page.ctx.planningRoadSignedMoney(pickMonth.stage1.result.amount))
+    && road.lead.includes(page.ctx.planningRoadSignedMoney(pickMonth.stage2.result.amount))
+    && /data-planning-road-decision-step="before"/.test(road.lead)
+    && /data-planning-road-decision-step="planned"/.test(road.lead)
+    && /data-planning-road-decision-step="after"/.test(road.lead),
+    'hero reprints Forecast stage1, planned spending, and stage2 for the selected month');
   ok(road.selected.includes(money2(pickMonth.stage3.result.amount)),
-    'selected period panel copies the same Forecast stage3 result');
-  const gapMonth = traj.months.find(m => m.stage3 && m.stage3.result
-    && isFinite(m.stage3.result.amount) && m.stage3.result.amount < 0);
+    'selected period panel still copies Forecast stage3 in the secondary debt disclosure');
+  const gapMonth = traj.months.find(m => m.stage2 && m.stage2.result
+    && isFinite(m.stage2.result.amount) && m.stage2.result.amount < 0);
   if (gapMonth) {
     const gapRoad = page.composeRoadAhead(live, periods, 'month', gapMonth.month, live.meta.asOf);
-    ok(/data-road-lead="period-shortfall"/.test(gapRoad.lead) && gapRoad.lead.includes(money2(gapMonth.stage3.result.amount)),
-      'when Forecast publishes a negative stage3, selecting that month leads with that shortfall');
+    ok(/data-road-lead="period-shortfall"/.test(gapRoad.lead)
+      && gapRoad.lead.includes(page.ctx.planningRoadSignedMoney(gapMonth.stage2.result.amount))
+      && /Shortfall after planned spending/.test(gapRoad.lead),
+      'when Forecast publishes a negative stage2, selecting that month leads with that shortfall');
   } else {
     ok(/data-road-lead="period-surplus"|data-road-lead="period-even"|data-road-lead="period-unavailable"/.test(road.lead),
       'without a negative stage3 on live data, lead reprints the selected month Forecast result — not an invented gap');
@@ -1381,8 +1384,8 @@ console.log('\n=== Page contract ===');
     'planning.html has no leftover Road Ahead drawer shells');
   ok(!LEFTOVER_ROAD_DRAWER.test(html),
     'planning.html static copy does not name the leftover drawers');
-  ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js\?v=omit-planned-total">/.test(html),
-    'planning.html loads forecast.js before a cache-busted planning.js so Road Ahead cannot keep a stale omit helper');
+  ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js\?v=road-decision-story">/.test(html),
+    'planning.html loads forecast.js before a cache-busted planning.js so Road Ahead cannot keep a stale decision-story helper');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),
     'no example list is hardcoded in the page or script');
 }
