@@ -909,7 +909,10 @@
                         "Property tax"
                     ],
                     "plannedMonthly": null,
-                    "why": "An annual lump, historically paid partly from the HELOC and partly by Amanda. No instalment falls inside this window, so it must NOT be inside the weekly cap — but it is a real cost and is shown as a reserve so a surplus is not mistaken for free money. Owner estimate $5,600–$6,000/year; last captured payment $5,639.67 on 2 Jul 2026 (ACCOUNT_FACTS). The range is not collapsed to a midpoint and is not copied onto plan.commitments — this reserve is the one home."
+                    "plannedAmount": 6000,
+                    "planningDate": "2027-07-01",
+                    "confidence": "estimated",
+                    "why": "An annual lump, historically paid partly from the HELOC and partly by Amanda. It is not inside the weekly cap. Owner 2027 planning figure is exactly $6,000 on the household planning/funding date 2027-07-01. That date is the household planning date, not a claim that 1 July is the municipal statutory due date. The earlier $5,600–$6,000 range no longer drives the future figure. Last captured payment $5,639.67 on 2 Jul 2026 (ACCOUNT_FACTS) stays historical. This reserve is the one home — not copied onto plan.commitments."
                 },
                 {
                     "id": "tax",

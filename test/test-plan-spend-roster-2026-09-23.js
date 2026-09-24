@@ -572,9 +572,10 @@ const expectedLineDeltas = [
   '2026-12|linden-birthday|2026-12-09|null->500',
   '2026-12|seattle-dec|2026-12-09|1200->1500',
   '2027-01|san-diego|2027-01-15|null->3000',
+  '2027-07|propertytax|2027-07-01|null->6000',
 ];
 ok(JSON.stringify(lineDeltas) === JSON.stringify(expectedLineDeltas),
-  'month Road Ahead commitment lines change only for the two Seattle amounts, San Diego, and Linden birthday',
+  'month Road Ahead commitment lines change only for Seattle, San Diego, Linden birthday, and the property-tax reserve',
   lineDeltas.join(' ; ') || 'none');
 
 console.log('\n=== compact card rules apply on the Plan Spend list ===');

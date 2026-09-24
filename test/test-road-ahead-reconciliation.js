@@ -536,6 +536,20 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
       ledger.push(event(r, date, 'commitments', start));
     }
   }
+  // Dated reserve planning lumps are one cash outflow on planningDate.
+  // They join Stage 2 planned spending. They are not a plan.commitments row
+  // and not a monthly budget smear. The amount and date are read from the
+  // reserve category, not from Forecast.expandEvents.
+  for (const row of (p.budget && p.budget.categories) || []) {
+    if (!row || row.class !== 'reserve' || !row.id) continue;
+    if (commitmentIds.has(row.id)) continue;
+    if ((p.bills || []).some(b => b && b.id === row.id)) continue;
+    const amount = Number(row.plannedAmount);
+    const date = row.planningDate;
+    if (!(amount > 0) || typeof date !== 'string') continue;
+    if (date < start || date > t.horizon.end) continue;
+    ledger.push(event(row, date, 'commitments', start, amount));
+  }
   assertPartition(t, ledger, p.income.find(r => r.id === 'payroll').anchor, { incomeThrough: '2026-12-31' });
   const summary = {};
   for (const k of Object.keys(paths)) summary[k] = sum(t.months.map(p => cents(component(p, k).amount))) / 100;
