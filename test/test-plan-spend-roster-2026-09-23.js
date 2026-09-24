@@ -345,6 +345,16 @@ const prov = settledPlans.find(p => p.id === 'provincials');
 ok(prov && prov.need === 1500 && prov.date == null && prov.when === 'timing TBD',
   'Provincials published need is $1,500 with timing still unresolved');
 ok(!settledPlans.some(p => RETIRED.includes(p.id)), 'majorPlans omits every retired id');
+const squareCards = F.planSpendCards(settledPlans).filter(c => c.id === 'square-one');
+ok(squareCards.length === 1 && squareCards[0].kind === 'row'
+    && squareCards[0].need === 3131.76 && squareCards[0].date === '2027-02-10'
+    && squareCards[0].label === 'Square One home insurance',
+  'Plan Spend has one Square One row card of Forecast need $3,131.76 on 2027-02-10');
+ok(!(data.plan.commitments || []).some(c => c.id === 'square-one'
+    || /square one|home insurance/i.test(`${c.id} ${c.label}`)),
+  'Square One is not a plan.commitments duplicate');
+ok(!settledPlans.some(p => p.id === 'amazon-prime' || p.id === 'ultimate-guitar'),
+  'monthly card-paid Amazon Prime and yearly joint-cash Ultimate Guitar stay off Plan Spend');
 
 console.log('\n=== rendered Plan Spend HTML reprints those cards and does not add a second amount ===');
 function loadPage() {
@@ -409,6 +419,14 @@ ok(lindenGlance.includes('>Linden birthday<') && lindenGlance.includes(money2(50
     && lindenGlance.includes(longDate('2026-12-09')),
   'Linden birthday glance is the name, $500.00, and 9 December 2026');
 ok((lindenGlance.match(/\$500\.00/g) || []).length === 1, 'the glance shows $500 once');
+const squareHtml = article(settledHtml, 'square-one');
+const squareArticles = settledHtml.match(/data-plan-spend-id="square-one"/g) || [];
+ok(squareArticles.length === 1, 'the page renders exactly one Square One card');
+const squareGlance = squareHtml.split('<details')[0];
+ok(squareGlance.includes('Square One home insurance') && squareGlance.includes(money2(3131.76))
+    && squareGlance.includes(longDate('2027-02-10')),
+  'Square One glance is the name, $3,131.76, and 10 February 2027');
+ok((squareGlance.match(/\$3,131\.76/g) || []).length === 1, 'the glance shows $3,131.76 once');
 const seattleDecHtml = article(settledHtml, 'seattle-dec');
 ok((settledHtml.match(/data-plan-spend-id="seattle-dec"/g) || []).length === 1
     && seattleDecHtml.includes(money2(1500)) && seattleDecHtml.includes(longDate('2026-12-09')),
@@ -491,6 +509,27 @@ ok(lindenPayHits[0].payday === lindenPeriod.payday
     && lindenPayHits[0].start <= '2026-12-09' && lindenPayHits[0].end >= '2026-12-09',
   'that pay period is the independent cycle that contains 2026-12-09',
   lindenPayHits[0] && `${lindenPayHits[0].payday} ${lindenPayHits[0].start}–${lindenPayHits[0].end} vs ${lindenPeriod.payday}–${lindenPeriod.cycleEnd}`);
+const feb = (traj.months || []).find(m => m.month === '2027-02');
+const febSq = commitmentLines(feb).filter(l => l.id === 'square-one');
+ok(feb && febSq.length === 1 && near(febSq[0].amount, 3131.76) && febSq[0].date === '2027-02-10',
+  'February 2027 Month view contains Square One $3,131.76 once',
+  febSq.map(l => `${l.date} ${l.amount}`).join(', ') || 'missing');
+ok(!(traj.months || []).some(m => m.month !== '2027-02' && commitmentLines(m).some(l => l.id === 'square-one')),
+  'no other month contains Square One');
+const squarePeriod = independentPeriodContaining(anchor, '2027-02-10');
+ok(squarePeriod && squarePeriod.payday <= '2027-02-10' && '2027-02-10' <= squarePeriod.cycleEnd,
+  'independent biweekly walk places 2027-02-10 in one Seaspan cycle',
+  squarePeriod && `${squarePeriod.payday} through ${squarePeriod.cycleEnd}`);
+const squarePayHits = (traj.payPeriods || []).filter(p => commitmentLines(p).some(l => l.id === 'square-one'));
+ok(squarePayHits.length === 1, 'exactly one Seaspan pay period contains Square One',
+  squarePayHits.map(p => `${p.payday} ${p.start}–${p.end}`).join(' ; '));
+const paySquare = commitmentLines(squarePayHits[0]).filter(l => l.id === 'square-one');
+ok(paySquare.length === 1 && near(paySquare[0].amount, 3131.76) && paySquare[0].date === '2027-02-10',
+  'that pay period contains Square One $3,131.76 once');
+ok(squarePayHits[0].payday === squarePeriod.payday
+    && squarePayHits[0].start <= '2027-02-10' && squarePayHits[0].end >= '2027-02-10',
+  'that pay period is the independent cycle that contains 2027-02-10',
+  squarePayHits[0] && `${squarePayHits[0].payday} ${squarePayHits[0].start}–${squarePayHits[0].end} vs ${squarePeriod.payday}–${squarePeriod.cycleEnd}`);
 const fusionMonthAmounts = [];
 for (const month of traj.months || []) {
   for (const line of commitmentLines(month)) {

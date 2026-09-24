@@ -1932,7 +1932,55 @@
   // owner priority wins over date. Undated rows sort after dated ones
   // inside the protected band. Clear month-only `when` already has a cash
   // date via commitmentCashDate; spans, seasons, and TBD still invent no
-  // day. No commitment id is special.
+  // day. No commitment id is special. Yearly card-paid bills (Square One)
+  // already expand once as kind:'bill'; they join this sequence so Plan
+  // Spend can reprint that same dated obligation, not a second commitment.
+  function isYearlyCardPaidBill(bill, plan) {
+    return !!(bill && bill.frequency === 'yearly' && isCardPaidBill(bill, plan));
+  }
+  function isYearlyCardPaidBillEvent(event, plan) {
+    if (!event || event.kind !== 'bill' || event.cardPaid !== true) return false;
+    const bill = ((plan && plan.bills) || []).find(b => b && b.id === event.id);
+    return isYearlyCardPaidBill(bill, plan);
+  }
+  function yearlyCardPaidFundingRows(plan, asOf, opts) {
+    opts = opts || {};
+    if (!plan || !asOf) return [];
+    const commitmentIds = new Set(
+      (plan.commitments || []).map(c => c && c.id).filter(Boolean));
+    const horizon = knowledgeHorizon(plan, asOf, opts);
+    const rows = [];
+    let index = (plan.commitments || []).length;
+    for (const b of plan.bills || []) {
+      if (!isYearlyCardPaidBill(b, plan) || !b.id || commitmentIds.has(b.id)) continue;
+      const dates = outflowDates(b, asOf, horizon.end);
+      if (!dates.length) continue;
+      const date = dates[0];
+      const need = billOccurrenceCashAmount(b, date);
+      if (!(need > 0) || !isFinite(need)) continue;
+      rows.push({
+        id: b.id,
+        label: b.label,
+        date,
+        when: null,
+        tripWindow: null,
+        group: null,
+        groupLabel: null,
+        planSpendSummary: false,
+        need,
+        amountMin: null,
+        amountMax: null,
+        bounds: { floor: need, ceiling: need, flexibility: 'required' },
+        flexibility: 'required',
+        confidence: b.confidence || null,
+        adjustable: false,
+        priority: null,
+        index: index++,
+        source: 'yearly-card-paid-bill',
+      });
+    }
+    return rows;
+  }
   function commitmentGroupMeta(plan) {
     const labels = new Map();
     const summary = new Set();
@@ -1980,6 +2028,7 @@
         index,
       });
     });
+    yearlyCardPaidFundingRows(plan, asOf, opts).forEach(row => rows.push(row));
     const certaintyRank = c => c.confidence === 'confirmed' ? 0
       : c.confidence === 'estimated' ? 1 : 2;
     const flexRank = c => c.flexibility === 'required' ? 0
@@ -8579,6 +8628,10 @@
     const optionalRows = [];
     const unresolvedRows = [];
     for (const item of seq) {
+      // Yearly card-paid bills already occupy the walk as expandEvents
+      // kind:'bill'. They are Plan Spend / Road Ahead publication, not a
+      // payday leftover set-aside and not a second disabled commitment.
+      if (item.source === 'yearly-card-paid-bill') continue;
       const planRow = plans.find(p => p.id === item.id) || null;
       const floor = item.need != null ? item.need
         : (item.bounds ? item.bounds.floor : 0);
@@ -14037,13 +14090,15 @@
   // Stage 1 = income − joint-cash bills − required obligations − planned
   // Household Budget already applied by incumbent simulate (weeklyVariable
   // / 7 on each walk day in the published month). Stage 2 = stage1
-  // − dated non-optional commitments. Stage 3 = stage2 − walk kind:'extra'
-  // from plan.defaults.extraDebtMonthly / extraAbsorbed only. Scenario
-  // hypothetical extras, owner surplus-target policy, payday leftover,
-  // reserved current-regime smear, card-paid bills, optional
-  // commitments, and planned-debt flows are not Stage 3 and not a
-  // balancing bucket. Household Budget is not a separate calendar-month
-  // smear and is not a residual of the cash close.
+  // − dated non-optional commitments − yearly card-paid bills in the
+  // span (the Square One class; already expanded once as kind:'bill',
+  // not a second commitment row, not Stage 1 joint-cash bills). Stage 3
+  // = stage2 − walk kind:'extra' from plan.defaults.extraDebtMonthly /
+  // extraAbsorbed only. Scenario hypothetical extras, owner surplus-target
+  // policy, payday leftover, reserved current-regime smear, ordinary
+  // monthly card-paid bills, optional commitments, and planned-debt flows
+  // are not Stage 3 and not a balancing bucket. Household Budget is not a
+  // separate calendar-month smear and is not a residual of the cash close.
   // Each stage result is this span's own funding. Prior-period surplus
   // and the cumulative walk close are not added. A later deficit stays
   // visible when an earlier span was in surplus.
@@ -14168,7 +14223,8 @@
 
   // Group the same span events already used for a Stage 1 outflow
   // rollup (joint-cash non-card-paid bills, or required obligations)
-  // or a Stage 2 commitment rollup by id/label. Each line carries
+  // or a Stage 2 planned-spending rollup (dated commitments plus yearly
+  // card-paid bills) by id/label. Each line carries
   // id / label / date / amount / status. Date is the shared event
   // date when the group has one; mixed dates omit date rather than
   // inventing a day. Empty sets return [] so the caller omits `lines`.
@@ -14353,7 +14409,8 @@
     const bills = events.filter(e =>
       e && e.kind === 'bill' && e.jointCash !== false && !e.cardPaid);
     const obligations = events.filter(e => e && e.kind === 'obligation');
-    const commitments = events.filter(e => e && e.kind === 'commitment');
+    const commitments = events.filter(e =>
+      e && (e.kind === 'commitment' || isYearlyCardPaidBillEvent(e, input.plan)));
     const extras = events.filter(e =>
       e && e.kind === 'extra' && e.id !== 'hypothetical-extra');
     const sumOut = rows => roundCent(rows.reduce((s, e) => s + (-Number(e.amount) || 0), 0));
