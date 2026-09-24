@@ -111,11 +111,12 @@ function planSpendScheduledCard(card, cost, schedule, byId) {
       const row = byId.get(member.id);
       return `<li data-plan-spend-member="${member.id}"><span>${member.label}</span><b>${member.need != null ? money2(member.need) : 'Not established'}</b>
         <time>${member.date ? `Cash date ${fmtDateFull(member.date)}` : member.when || 'Cash date not established'}</time>
-        ${row && row.nextContribution ? `<small>Next protect ${money2(row.nextContribution.amount)} on ${fmtDateFull(row.nextContribution.payday)}</small>` : ''}</li>`;
+        ${row && row.nextContribution ? `<small>Next protect ${money2(row.nextContribution.amount)} on ${fmtDateFull(row.nextContribution.payday)}</small>` : ''}
+        ${planSpendConfidence(member)}</li>`;
     }).join('');
     return `<article class="planning-row plan-spend-card ${(PLAN_SPEND_VERDICT[card.verdict] || {}).cls || ''}" data-plan-spend-id="${card.id}" data-plan-spend-card="summary" data-plan-spend-verdict="${card.verdict || ''}" data-plan-spend-members="${ids.join(' ')}">
       <div class="plan-spend-glance"><h2>${card.label}</h2><div data-plan-spend-fact="schedule-remaining"><b>${card.scheduleRemaining != null ? money2(card.scheduleRemaining) : 'Not established'}</b><small>remaining schedule</small></div>
-      <div class="plan-spend-status">${status}</div>${planSpendScheduledFacts(cost)}</div>
+      <div class="plan-spend-status">${status}${planSpendConfidence(card)}</div>${planSpendScheduledFacts(cost)}</div>
       <details class="plan-spend-more"><summary>Show payment schedule</summary><ul class="plan-spend-schedule">${lines}</ul></details></article>`;
   }
   const requirement = planSpendRequirement(card);
@@ -129,7 +130,7 @@ function planSpendScheduledCard(card, cost, schedule, byId) {
       `<li><time>${fmtDateFull(row.payday)}</time><b>${money2(row.amount)}</b></li>`).join('')}</ul></details>` : '';
   return `<article class="planning-row plan-spend-card" data-plan-spend-id="${card.id}" data-plan-spend-card="row" data-plan-spend-verdict="${card.verdict || ''}" data-plan-spend-amount="${requirement.kind}">
     <div class="plan-spend-glance"><h2>${card.label}</h2><div data-plan-spend-fact="requirement"><b>${requirement.amount}</b><small>${requirement.label}</small></div>
-      <span data-plan-spend-when>${planSpendTiming(card).text}</span><div class="plan-spend-status">${status}</div>${facts}</div>${details}</article>`;
+      <span data-plan-spend-when>${planSpendTiming(card).text}</span><div class="plan-spend-status">${status}${planSpendConfidence(card)}</div>${facts}</div>${details}</article>`;
 }
 
 function planSpendPageHtml(advice, liveOverlay) {

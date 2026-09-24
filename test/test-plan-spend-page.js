@@ -73,6 +73,12 @@ ok(uncertain.schedule.costs[0].baseRequirement === 80
   'range floor is scheduled and ceiling remains distinct');
 ok(!uncertain.sim.events.some(event => event.kind === 'commitment' && event.id === 'trip'),
   'a ranged reserve does not invent a point cash event');
+const noSeaspan = synthetic(100, 150, false);
+noSeaspan.plan.income[0].id = 'other-pay';
+noSeaspan.plan.income[0].label = 'Other income';
+ok(F.planSpendPaydayFunding(noSeaspan.plan, noSeaspan.plan.opening.asOf,
+  noSeaspan.sim, noSeaspan.seq, []).status === 'unavailable',
+  'without a Seaspan identity the schedule fails closed');
 
 const asOf = data.meta.asOf;
 const advice = F.recommend(data.plan, asOf, {
@@ -242,7 +248,9 @@ const src = read('public/plan-spend.js');
 ok(/advice\.planSpendPaydayFunding/.test(src) && /Forecast\.recommend\(/.test(src),
   'Plan Spend reprints the Forecast recommendation publication');
 ok(!/Forecast\.(simulate|expandEvents|fundingSequence|paydayAllocation)\(/.test(src)
-  && !/plan\.commitments/.test(src), 'page has no second planner or commitment store');
+  && !/plan\.commitments/.test(src) && !/\.reduce\(/.test(src)
+  && !/\.need\s*[-+*/]/.test(src),
+  'page has no second planner, commitment store, or schedule arithmetic');
 const appSrc = read('public/app.js');
 const grab = re => { const match = re.exec(appSrc); assert.ok(match); return match[0]; };
 const helpers = [grab(/^const money = .*$/m), grab(/^const money2 = .*$/m),
@@ -263,12 +271,16 @@ ok(page.list.includes('Funding schedule unavailable — cash date not establishe
 
 if (process.argv.includes('--review')) {
   console.log('Review artifact: canonical opening ' + asOf);
+  const reviewRemaining = new Map(schedule.costs.map(cost => [cost.id, cent(cost.baseRequirement)]));
   for (const row of schedule.paydays) {
+    for (const allocation of row.allocations) reviewRemaining.set(allocation.id,
+      reviewRemaining.get(allocation.id) - cent(allocation.amount));
     console.log(JSON.stringify({
       payday: row.payday, protect: row.contribution, allocations: row.allocations,
       protectedAfterPayday: row.protectedAfterPayday,
       paymentsBeforeNextPayday: row.payments,
-      remainingForPlans: row.stillToFund,
+      remainingByPlan: schedule.costs.map(cost => ({ id: cost.id,
+        label: cost.label, amount: reviewRemaining.get(cost.id) / 100 })),
     }));
   }
   console.log('Earliest funding gap: ' + JSON.stringify(schedule.gap));
