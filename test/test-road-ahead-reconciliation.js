@@ -519,6 +519,23 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
     if (r.amount == null || !r.date) { notDated.push(r.id); continue; }
     if (r.date >= start && r.date <= t.horizon.end) ledger.push(event(r, r.date, 'commitments', start));
   }
+  // Yearly card-paid bills already expand once as kind:'bill' and stay
+  // out of Stage 1 (the bills loop above skips jointCash false / debt
+  // payers). Road Ahead Stage 2 now counts that same cash event with
+  // commitments. This oracle dates them from the calendar scan, not
+  // Forecast's expander, and does not invent a plan.commitments row.
+  const commitmentIds = new Set((p.commitments || []).map(c => c && c.id));
+  for (const r of p.bills) {
+    if (r.frequency !== 'yearly') continue;
+    if (r.householdObligation === false || r.needsDate) continue;
+    if (heldElsewhere.includes(r.payingAccount)) continue;
+    if (!(r.jointCash === false || debtIds.includes(r.payingAccount))) continue;
+    if (commitmentIds.has(r.id)) continue;
+    for (const date of dates(r, start, t.horizon.end)) {
+      if (prepaid(r.id, date)) continue;
+      ledger.push(event(r, date, 'commitments', start));
+    }
+  }
   assertPartition(t, ledger, p.income.find(r => r.id === 'payroll').anchor, { incomeThrough: '2026-12-31' });
   const summary = {};
   for (const k of Object.keys(paths)) summary[k] = sum(t.months.map(p => cents(component(p, k).amount))) / 100;
