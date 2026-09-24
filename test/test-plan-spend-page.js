@@ -451,6 +451,7 @@ console.log('\n=== 7. Forecast-owned funding explanation and household wording =
   const adverse = page.compose({ majorPlans: [gap, risk] }, null).list;
   ok(/FUNDING SHORTFALL/.test(row(adverse, 'gap').split('<details')[0])
       && row(adverse, 'gap').includes('$25.00')
+      && /this cost is short by \$25\.00/.test(row(adverse, 'gap'))
       && /AT RISK/.test(row(adverse, 'risk').split('<details')[0])
       && /protected uncertainty/.test(row(adverse, 'risk')),
     'gap stays conspicuous and AT RISK retains protected-uncertainty meaning');
@@ -483,6 +484,87 @@ console.log('\n=== 8. Current canonical Road Ahead reprint reconciles ===');
   ok(!/silver/i.test(read('public/plan-spend.js'))
       && !advice.planSpendFundingPaths.some(path => path.setAsideNow != null),
     'silver is not a funding source and no canonical plan-specific saved amount is invented');
+}
+
+console.log('\n=== 9. Shared overdue aggregate and carried residual due period ===');
+{
+  const asOf = '2026-11-16';
+  const plan = JSON.parse(JSON.stringify(live.plan));
+  plan.opening = Object.assign({}, plan.opening, {
+    asOf,
+    priorAsOf: live.plan.opening.asOf,
+  });
+  const advanced = {
+    meta: { asOf },
+    plan,
+    debts: live.debts,
+    revolvingExtra: live.revolvingExtra || [],
+  };
+  const advice = adviceFrom(advanced, periods);
+  const overdueIds = ['burrards-team-fees', 'fusion-household-oct', 'seattle-nov'];
+  const overdue = overdueIds.map(id => advice.majorPlans.find(p => p.id === id));
+  const seattlePlan = overdue[2];
+  const shared = overdue[0] && overdue[0].remaining;
+  ok(overdue.every(p => p && p.verdict === 'FUNDING GAP'
+      && p.remainingIdentity === 'joint-protected-overdue-shortfall'
+      && p.remaining === shared),
+    'Burrards, Fusion October, and Seattle November publish one joint overdue shortfall');
+  ok(seattlePlan && seattlePlan.need === 1500 && shared !== seattlePlan.need && shared > seattlePlan.need,
+    'that shared amount is not Seattle November\'s own $1,500 cost',
+    seattlePlan && `${shared} vs need ${seattlePlan.need}`);
+  const html = page.compose(advice, null).list;
+  const member = id => {
+    const re = new RegExp(`data-plan-spend-member="${id}"[\\s\\S]*?<\\/li>`);
+    const m = re.exec(html);
+    return m ? m[0] : row(html, id);
+  };
+  ok(overdue.every(p => {
+    const card = member(p.id) || '';
+    return /shared overdue funding shortfall/i.test(card)
+      && !/this cost is short by/.test(card);
+  }), 'no overdue protected row describes the shared aggregate as its private shortfall');
+  ok(/not this cost's private shortfall/i.test(row(html, 'seattle-nov') || '')
+      && /not this cost's private shortfall/i.test(row(html, 'burrards-team-fees') || ''),
+    'individual overdue cards name the shared aggregate and deny a private shortfall');
+  const later = advice.majorPlans.find(p => p.id === 'seattle-dec');
+  ok(later && later.remainingIdentity == null
+      && /this cost is short by/.test(row(html, 'seattle-dec') || ''),
+    'a later dated cost keeps its own Forecast shortfall wording');
+  const trajectory = F.baselineTrajectory(plan, live.debts, asOf, { periods });
+  const residual = (trajectory.payPeriods || []).find(p => p.windowKind === 'as-of-residual' && p.start === asOf);
+  const line = residual && residual.stage2 && residual.stage2.commitments
+    && (residual.stage2.commitments.lines || []).find(l => l && l.id === 'seattle-nov' && l.date === seattlePlan.date);
+  ok(residual && residual.start === '2026-11-16' && residual.end === '2026-11-19'
+      && line && seattlePlan.date < residual.start,
+    'the clipped residual carries Seattle November with its original Stage 2 date');
+  const path = advice.planSpendFundingPaths.find(p => p.id === 'seattle-nov');
+  ok(path && path.duePeriod && path.duePeriod.start === residual.start
+      && path.duePeriod.end === residual.end
+      && path.duePeriod.amount === residual.stage3.result.amount
+      && path.duePeriod.identity === 'standalone-period-surplus-deficit'
+      && path.setAsideNow === null && path.futureCashFlowNeeded === null,
+    'the carried cost links to that residual period\'s published Stage 3 result');
+  ok((row(html, 'seattle-nov') || '').includes(money2(residual.stage3.result.amount))
+      && !/remaining\s*[-+*/]/.test(stripComments(read('public/plan-spend.js'))),
+    'the card reprints the published Stage 3 amount and the page does no remaining arithmetic');
+
+  const canonAdvice = adviceFrom(live, periods);
+  const canonTrajectory = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, { periods });
+  const canonSea = canonAdvice.majorPlans.find(p => p.id === 'seattle-nov');
+  const canonSd = canonAdvice.majorPlans.find(p => p.id === 'san-diego');
+  const canonSeaPath = canonAdvice.planSpendFundingPaths.find(p => p.id === 'seattle-nov');
+  const canonSdPath = canonAdvice.planSpendFundingPaths.find(p => p.id === 'san-diego');
+  const canonSeaPeriod = canonTrajectory.payPeriods.find(p => p.start <= canonSea.date && canonSea.date <= p.end);
+  const canonSdPeriod = canonTrajectory.payPeriods.find(p => p.start <= canonSd.date && canonSd.date <= p.end);
+  ok(canonSea.verdict === 'ON TRACK' && canonSd.verdict === 'ON TRACK'
+      && canonSea.remainingIdentity == null && canonSd.remainingIdentity == null
+      && canonSeaPath.duePeriod.amount === 220.62
+      && canonSdPath.duePeriod.amount === -1934.62
+      && canonSeaPath.duePeriod.amount === canonSeaPeriod.stage3.result.amount
+      && canonSdPath.duePeriod.amount === canonSdPeriod.stage3.result.amount
+      && canonSea.date >= canonSeaPath.duePeriod.start
+      && canonSea.date <= canonSeaPath.duePeriod.end,
+    'canonical in-window Seattle +$220.62 and San Diego −$1,934.62 still match their published periods');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

@@ -45,18 +45,30 @@ function planSpendStatus(row) {
   return `<div class="plan-spend-status"><span class="chip ${state.chip}">${state.label}</span>${planSpendConfidence(row)}</div>`;
 }
 
+function planSpendSharedOverdueAggregate(row) {
+  return !!(row && row.remainingIdentity === 'joint-protected-overdue-shortfall');
+}
+
 function planSpendSummarySentence(row, grouped) {
   if (row.verdict === 'FUNDING GAP') {
     if (grouped) return 'At least one payment has a Forecast funding shortfall. See the payment schedule below.';
     const amount = row.remaining != null ? money2(row.remaining) : 'an amount not established';
+    if (planSpendSharedOverdueAggregate(row)) {
+      return `Atlas currently projects a shared overdue funding shortfall of ${amount} across unsettled protected costs. This amount is not this cost's private shortfall.`;
+    }
     return row.date
       ? `Atlas currently projects this cost is short by ${amount} by the deadline.`
       : `Atlas currently projects this cost is short by ${amount} in the modeled plan.`;
   }
   if (row.verdict === 'AT RISK') {
-    return grouped
-      ? 'The base payments fit, but a protected uncertainty case may not. See the payment schedule for the amount at risk.'
-      : `The base cost fits, but a protected uncertainty case is short by ${row.remaining != null ? money2(row.remaining) : 'an amount not established'}.`;
+    if (grouped) {
+      return 'The base payments fit, but a protected uncertainty case may not. See the payment schedule for the amount at risk.';
+    }
+    const amount = row.remaining != null ? money2(row.remaining) : 'an amount not established';
+    if (planSpendSharedOverdueAggregate(row)) {
+      return `The base costs fit together, but Forecast's shared overdue protected uncertainty is short by ${amount}. This amount is not this cost's private shortfall.`;
+    }
+    return `The base cost fits, but a protected uncertainty case is short by ${amount}.`;
   }
   if (row.verdict === 'ON TRACK') {
     if (grouped) {
@@ -94,7 +106,10 @@ function planSpendFundingFacts(path) {
 
 function planSpendFundingPath(path, row) {
   const projected = row && row.verdict === 'FUNDING GAP' && row.remaining != null
-    ? `<p class="plan-spend-path-gap">Forecast funding shortfall: ${money2(row.remaining)}.</p>` : '';
+    ? (planSpendSharedOverdueAggregate(row)
+      ? `<p class="plan-spend-path-gap" data-plan-spend-gap="shared-overdue">Shared overdue funding shortfall across unsettled protected costs: ${money2(row.remaining)}. Not this cost's private shortfall.</p>`
+      : `<p class="plan-spend-path-gap">Forecast funding shortfall: ${money2(row.remaining)}.</p>`)
+    : '';
   return `<details class="plan-spend-more plan-spend-path"><summary>Show funding path</summary>
     <p>Forecast can assess whether this obligation fits the modeled cash path, but has not assigned a per-period savings schedule to it. The path is unallocated.</p>
     <p>Cash already saved for this specific cost and the amount that must come from future cash flow have not been established. A current-payday allocation is not a saved balance.</p>
@@ -150,10 +165,12 @@ function planSpendSummaryHtml(card, pathById) {
       ? planSpendConfidence(member) : '';
     const memberAmount = member.need != null ? money2(member.need) : 'Not established';
     const due = planSpendDuePeriod(pathById.get(member.id));
+    const shared = planSpendSharedOverdueAggregate(member);
     const pressure = (member.verdict === 'FUNDING GAP' || member.verdict === 'AT RISK')
       && member.remaining != null
       ? planSpendFact('member-pressure', member.verdict === 'FUNDING GAP'
-        ? 'Funding shortfall' : 'Protected amount at risk', money2(member.remaining)) : '';
+        ? (shared ? 'Shared overdue funding shortfall' : 'Funding shortfall')
+        : (shared ? 'Shared protected amount at risk' : 'Protected amount at risk'), money2(member.remaining)) : '';
     return `<li data-plan-spend-member="${member.id}">
       <span>${member.label}</span><b>${memberAmount}</b><time>${planSpendMemberTiming(member)}</time>${exception}${confidence}
       ${pressure ? `<dl class="plan-spend-member-period">${pressure}</dl>` : ''}
