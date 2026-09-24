@@ -75,7 +75,7 @@ function planSpendFundingHero(schedule) {
       <span class="kicker">Next Seaspan payday</span><h2>${fmtDateFull(next.payday)}</h2>
       <strong class="plan-spend-action-amount">Set aside: ${money2(next.contribution)}</strong>
       ${planSpendActionLines(next.allocations)}
-      <dl class="plan-spend-action-totals"><div><dt>Projected protected after this payday</dt><dd>${money2(next.protectedAfterPayday)}</dd></div>
+      <dl class="plan-spend-action-totals"><div><dt>Protected when set aside</dt><dd>${money2(next.protectedAfterPayday)}</dd></div>
         <div><dt>Still to fund</dt><dd>${money2(next.stillToFund)}</dd></div></dl>
     </div>${gapHtml}
     <details class="plan-spend-payday-plan"><summary>Show payday funding plan</summary>
@@ -83,7 +83,7 @@ function planSpendFundingHero(schedule) {
       <div class="plan-spend-payday-grid">${schedule.paydays.map(row =>
         `<article class="plan-spend-payday" data-plan-spend-payday="${row.payday}"><h3>${fmtDateFull(row.payday)}</h3>
           <strong>Protect ${money2(row.contribution)}</strong>${planSpendActionLines(row.allocations)}
-          <p>Protected after payday: ${money2(row.protectedAfterPayday)}</p>
+          <p>Protected when set aside: ${money2(row.protectedAfterPayday)}</p>
           ${row.payments.length ? `<p>Paid before next payday: ${row.payments.map(payment =>
             `${payment.label} ${money2(payment.protectedConsumed)}`).join(' · ')}</p>` : ''}</article>`).join('')}</div>
     </details></section>`;
