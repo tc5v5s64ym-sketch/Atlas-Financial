@@ -168,6 +168,18 @@ function independentLedger(days) {
     scope(Number.isFinite(row.amount) && row.amount >= 0, `${row.id}: invalid point commitment`);
     rows.push({ id: row.id, date: row.date, kind: 'commitment', amount: row.amount });
   }
+  const commitmentIds = new Set((plan.commitments || []).map(row => row && row.id));
+  const billIds = new Set((plan.bills || []).map(row => row && row.id));
+  for (const row of (plan.budget && plan.budget.categories) || []) {
+    if (!row || row.class !== 'reserve' || !row.id) continue;
+    if (commitmentIds.has(row.id) || billIds.has(row.id)) continue;
+    const amount = Number(row.plannedAmount);
+    const date = row.planningDate;
+    if (!Number.isFinite(amount) || !(amount > 0) || typeof date !== 'string') continue;
+    scope(Number.isFinite(time(date)), `${row.id}: invalid reserve planning date`);
+    if (date < start || date > end) continue;
+    rows.push({ id: row.id, date, kind: 'reserve', amount });
+  }
   return rows;
 }
 
@@ -214,9 +226,11 @@ for (const [days, sim] of [[plan.windowDays, recommendation.sim], [fullDays, ful
   near(sim.totals.variable, variable, `${days}-day selected weekly spending`);
   near(sim.totals.extra, 0, `${days}-day no unsolicited extra debt payment`);
   near(sim.totals.injections, 0, `${days}-day no invented funding`);
+  const reservePlanning = total(expected.filter(row => row.kind === 'reserve'));
+  near(sim.totals.reservePlanning || 0, reservePlanning, `${days}-day dated reserve planning counted once`);
   const expectedEnding = startingCash + total(expected.filter(row => row.kind === 'income'))
     - total(expected.filter(row => ['obligation', 'bill', 'commitment'].includes(row.kind)))
-    - reserved - variable;
+    - reservePlanning - reserved - variable;
   near(sim.ending, expectedEnding, `${days}-day complete independent ending cash`);
 
   // Identity comparison catches a missing final/once payment, duplicate MBNA

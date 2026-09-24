@@ -81,10 +81,13 @@ ok((plan.bills || []).some(b => b.id === 'square-one'),
 ok(!rows.some(r => r.id === 'property-tax' || r.id === 'propertytax'),
   'property tax is not a second plan.commitments row');
 const property = (plan.budget.categories || []).find(c => c.id === 'propertytax');
-ok(property && property.class === 'reserve'
-  && /5,600|5600/.test(property.why) && /6,000|6000/.test(property.why)
-  && /5,639\.67|5639\.67/.test(property.why),
-  'property tax stays the reserve category, with the owner range and the Jul 2026 actual');
+ok(property && property.class === 'reserve' && property.plannedMonthly == null
+  && near(property.plannedAmount, 6000) && property.planningDate === '2027-07-01'
+  && property.confidence === 'estimated'
+  && /5,639\.67|5639\.67/.test(property.why)
+  && /2027-07-01/.test(property.why)
+  && !/\$5,600–\$6,000\/year/.test(property.why),
+  'property tax stays the reserve, with exact $6,000 on 2027-07-01 and the Jul 2026 actual');
 
 console.log('\n=== owner estimates are on the rows, not invented midpoints ===');
 const OWNER_CONFIRMED = new Set(['seattle-nov', 'seattle-dec', 'linden-birthday', 'provincials', 'san-diego']);
@@ -367,6 +370,87 @@ ok(independentlySettled(byId.burrard1)
   && independentlySettled(byId.fusioncamp)
   && independentlySettled(byId.tryouts),
   'the four Aug-settled rows are still settled on plan inputs');
+
+console.log('\n=== 2027 property tax is one reserve planning lump ===');
+{
+  const PLAN_DATE = '2027-07-01';
+  const PLAN_AMOUNT = 6000;
+  const HISTORICAL = 5639.67;
+  function utcAdd(iso, days) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+  }
+  function periodContaining(anchor, date) {
+    let payday = anchor;
+    while (utcAdd(payday, 14) <= date) payday = utcAdd(payday, 14);
+    while (payday > date) payday = utcAdd(payday, -14);
+    const cycleEnd = utcAdd(payday, 13);
+    return { payday, cycleEnd };
+  }
+  ok(!rows.some(r => /property/i.test(`${r.id} ${r.label}`)),
+    'no plan.commitments row is property tax');
+  const facts = fs.readFileSync(path.join(__dirname, '..', 'docs/ACCOUNT_FACTS.md'), 'utf8');
+  ok(/2 Jul 2026/.test(facts) && /\$5,639\.67/.test(facts),
+    'ACCOUNT_FACTS still records the 2 Jul 2026 historical $5,639.67');
+  const events = F.expandEvents(plan, asOf, '2027-08-18', {})
+    .filter(e => e.id === 'propertytax' || /property tax/i.test(e.label || ''));
+  ok(events.length === 1 && events[0].date === PLAN_DATE && near(events[0].amount, -PLAN_AMOUNT)
+      && events[0].kind === 'reserve' && events[0].planningLump === true,
+    'expandEvents emits one reserve planning lump of −$6,000 on 2027-07-01',
+    events.map(e => `${e.kind} ${e.date} ${e.amount}`).join(', ') || 'none');
+  ok(!events.some(e => near(Math.abs(e.amount), HISTORICAL)),
+    'the Jul 2026 historical amount is not a future cash event');
+  const plans = F.majorPlans(plan, asOf, {});
+  const cards = F.planSpendCards(plans).filter(c =>
+    c.id === 'propertytax' || /property tax/i.test(c.label || ''));
+  ok(cards.length === 1 && cards[0].kind === 'row' && cards[0].date === PLAN_DATE
+      && near(cards[0].need, PLAN_AMOUNT),
+    'Plan Spend reprints one property-tax card at $6,000 on 2027-07-01',
+    cards[0] ? `${cards[0].kind} ${cards[0].date} ${cards[0].need}` : 'missing');
+  const traj = F.baselineTrajectory(plan, data.debts, asOf, {
+    periods: require('../public/periods.json'),
+  });
+  const july = (traj.months || []).find(m => m.month === '2027-07');
+  const julyLines = ((july && july.stage2 && july.stage2.commitments && july.stage2.commitments.lines) || [])
+    .filter(l => l.id === 'propertytax');
+  ok(julyLines.length === 1 && julyLines[0].date === PLAN_DATE && near(julyLines[0].amount, PLAN_AMOUNT),
+    'July 2027 Road Ahead Month counts $6,000 once',
+    julyLines[0] ? `${julyLines[0].date} ${julyLines[0].amount}` : 'missing');
+  ok(!(traj.months || []).some(m => m.month !== '2027-07'
+      && ((m.stage2 && m.stage2.commitments && m.stage2.commitments.lines) || [])
+        .some(l => l.id === 'propertytax')),
+    'no other Road Ahead month lists property tax');
+  const anchor = (plan.income || []).find(r => r.id === 'payroll').anchor;
+  const wanted = periodContaining(anchor, PLAN_DATE);
+  const payHits = (traj.payPeriods || []).filter(p =>
+    ((p.stage2 && p.stage2.commitments && p.stage2.commitments.lines) || [])
+      .some(l => l.id === 'propertytax'));
+  ok(payHits.length === 1 && wanted && payHits[0].start <= PLAN_DATE && PLAN_DATE <= payHits[0].end
+      && payHits[0].payday === wanted.payday,
+    'the pay period containing 2027-07-01 counts property tax once',
+    payHits[0] ? `${payHits[0].payday} ${payHits[0].start}–${payHits[0].end}` : 'missing');
+  const payLine = ((payHits[0] && payHits[0].stage2.commitments.lines) || [])
+    .filter(l => l.id === 'propertytax');
+  ok(payLine.length === 1 && near(payLine[0].amount, PLAN_AMOUNT),
+    'that pay period lists $6,000 once');
+  const without = JSON.parse(JSON.stringify(plan));
+  const cat = without.budget.categories.find(c => c.id === 'propertytax');
+  cat.plannedAmount = null;
+  cat.planningDate = null;
+  const trajWithout = F.baselineTrajectory(without, data.debts, asOf, {
+    periods: require('../public/periods.json'),
+  });
+  const julyWithout = (trajWithout.months || []).find(m => m.month === '2027-07');
+  ok(julyWithout && near(july.stage2.commitments.amount - julyWithout.stage2.commitments.amount, PLAN_AMOUNT)
+      && near(julyWithout.stage2.result.amount - july.stage2.result.amount, PLAN_AMOUNT),
+    'removing the reserve lump moves July stage2 by $6,000 once');
+  const budget = F.budgetBreakdown(plan, require('../public/periods.json'), { asOf });
+  const taxRow = (budget.categories || []).find(c => c.id === 'propertytax');
+  ok(taxRow && taxRow.class === 'reserve' && !(taxRow.planned > 0),
+    'the $6,000 lump is not smeared into the weekly-cap planned amount');
+}
 ok(byId['fusion-household-paid'] && byId['fusion-household-paid'].settledOn === '2026-09-10',
   'Fusion paid row settledOn matches Interac evidence date');
 

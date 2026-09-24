@@ -244,7 +244,7 @@ function standingReminders(asOf, register) {
     { uid: 'atlas-reminder-property-tax@household',
       summary: 'Reminder — Maple Ridge property tax due', start: '2027-07-02', rrule: 'FREQ=YEARLY',
       kind: 'reminder',
-      description: 'BC municipal property tax falls due on the first business day of July. 1 July is Canada Day, so it is normally the 2nd.\n\nIn 2026 this was $5,639.67 and it was PAID FROM THE HELOC — a predictable annual bill converted into permanent debt at 4.90% on a facility that never amortises. Worth funding another way if at all possible.\n\nCheck the Home Owner Grant on the notice: in BC it has to be claimed every year, separately, and it is worth several hundred dollars if you qualify. It is not applied automatically.' + src },
+      description: 'Statutory reminder only: BC municipal property tax falls due on the first business day of July. 1 July is Canada Day, so it is normally the 2nd. This reminder is that statutory look-point. It is not the household planning/funding date, and it does not publish the planning amount. The planning date and amount live on the property-tax reserve.\n\nIn 2026 this was $5,639.67 and it was PAID FROM THE HELOC — a predictable annual bill converted into permanent debt at 4.90% on a facility that never amortises. Worth funding another way if at all possible.\n\nCheck the Home Owner Grant on the notice: in BC it has to be claimed every year, separately, and it is worth several hundred dollars if you qualify. It is not applied automatically.' + src },
     { uid: 'atlas-reminder-cra@household',
       summary: 'Reminder — CRA tax filing and any balance owing', start: '2027-04-30', rrule: 'FREQ=YEARLY',
       kind: 'reminder',

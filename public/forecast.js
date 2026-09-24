@@ -1091,6 +1091,8 @@
         .reduce((s, e) => s + -e.amount, 0);
       copy.noncash = weekEvents.filter(e => e.kind === 'noncash').reduce((s, e) => s + -e.amount, 0);
       copy.commitments = weekEvents.filter(e => e.kind === 'commitment').reduce((s, e) => s + -e.amount, 0);
+      copy.reservePlanning = weekEvents.filter(e => e.kind === 'reserve' && e.planningLump === true)
+        .reduce((s, e) => s + -e.amount, 0);
       copy.extra = weekEvents.filter(e => e.kind === 'extra' || e.kind === 'planned-debt')
         .reduce((s, e) => s + -e.amount, 0);
       const weekDays = daily.filter(d => d.date >= copy.start && d.date <= copy.end);
@@ -1134,6 +1136,8 @@
         .reduce((s, e) => s + -e.amount, 0),
       noncash: events.filter(e => e.kind === 'noncash').reduce((s, e) => s + -e.amount, 0),
       commitments: events.filter(e => e.kind === 'commitment').reduce((s, e) => s + -e.amount, 0),
+      reservePlanning: events.filter(e => e.kind === 'reserve' && e.planningLump === true)
+        .reduce((s, e) => s + -e.amount, 0),
       variable: 0,
       reserved: 0,
       extra: events.filter(e => e.kind === 'extra' || e.kind === 'planned-debt')
@@ -1202,6 +1206,7 @@
       bills: weeks.reduce((s, w) => s + w.bills, 0),
       noncash: weeks.reduce((s, w) => s + w.noncash, 0),
       commitments: weeks.reduce((s, w) => s + w.commitments, 0),
+      reservePlanning: weeks.reduce((s, w) => s + (w.reservePlanning || 0), 0),
       variable: weeks.reduce((s, w) => s + w.variable, 0),
       reserved: weeks.reduce((s, w) => s + (w.reserved || 0), 0),
       extra: weeks.reduce((s, w) => s + w.extra, 0),
@@ -1544,6 +1549,22 @@
         events.push({ date: cashDate, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
     }
+    // Dated reserve planning lumps (property tax). One cash outflow on the
+    // household planning date. Not a plan.commitments row, not a bill, and
+    // not a monthly smear of plannedAmount.
+    for (const lump of datedReservePlanningCategories(plan)) {
+      if (disabled.has(lump.id)) continue;
+      if (lump.date < start || lump.date > end) continue;
+      events.push({
+        date: lump.date,
+        amount: -lump.amount,
+        kind: 'reserve',
+        planningLump: true,
+        label: lump.label,
+        id: lump.id,
+        confidence: lump.confidence,
+      });
+    }
     // Cash arriving from outside the plan — modelled gap-funding injections,
     // historically including a transfer from Amanda's account or a HELOC draw
     // covering an opening gap. This injection path is not salary income.
@@ -1802,7 +1823,7 @@
         week = {
           n: weeks.length + 1, start: date, end: addDays(date, 6),
           opening: balance, confirmedIncome: 0, estimatedIncome: 0,
-          obligations: 0, bills: 0, commitments: 0, variable: 0, reserved: 0, extra: 0, noncash: 0,
+          obligations: 0, bills: 0, commitments: 0, reservePlanning: 0, variable: 0, reserved: 0, extra: 0, noncash: 0,
           injections: 0, closing: balance, events: [], belowBuffer: false, negative: false,
         };
         weeks.push(week);
@@ -1848,6 +1869,7 @@
         else if (e.kind === 'obligation') week.obligations += -e.amount;
         else if (e.kind === 'bill') week.bills += -e.amount;
         else if (e.kind === 'commitment') week.commitments += -e.amount;
+        else if (e.kind === 'reserve' && e.planningLump === true) week.reservePlanning += -e.amount;
         else if (e.kind === 'extra' || e.kind === 'planned-debt') week.extra += -e.amount;
         week.events.push(e);
         // The intra-day low matters: a big payment can dip below the buffer
@@ -1904,6 +1926,7 @@
       bills: weeks.reduce((s, w) => s + w.bills, 0),
       noncash: weeks.reduce((s, w) => s + w.noncash, 0),
       commitments: weeks.reduce((s, w) => s + w.commitments, 0),
+      reservePlanning: weeks.reduce((s, w) => s + (w.reservePlanning || 0), 0),
       variable: weeks.reduce((s, w) => s + w.variable, 0),
       reserved: weeks.reduce((s, w) => s + w.reserved, 0),
       extra: weeks.reduce((s, w) => s + w.extra, 0),
@@ -1942,6 +1965,69 @@
     if (!event || event.kind !== 'bill' || event.cardPaid !== true) return false;
     const bill = ((plan && plan.bills) || []).find(b => b && b.id === event.id);
     return isYearlyCardPaidBill(bill, plan);
+  }
+  // One dated cash lump on a reserve category. plannedAmount is the exact
+  // future planning figure; planningDate is the household planning/funding
+  // date, not a municipal statutory due date and not a yearly recurrence.
+  // A matching plan.commitments or plan.bills id would be a second store,
+  // so that category emits nothing.
+  function datedReservePlanningCategories(plan) {
+    const competing = new Set();
+    for (const row of (plan && plan.commitments) || []) {
+      if (row && row.id) competing.add(row.id);
+    }
+    for (const row of (plan && plan.bills) || []) {
+      if (row && row.id) competing.add(row.id);
+    }
+    const out = [];
+    for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
+      if (!cat || cat.class !== 'reserve' || !cat.id || competing.has(cat.id)) continue;
+      const amount = Number(cat.plannedAmount);
+      const date = typeof cat.planningDate === 'string' ? cat.planningDate : '';
+      if (!(amount > 0) || !isFinite(amount) || !ISO_CALENDAR_DATE.test(date)) continue;
+      out.push({
+        id: cat.id,
+        label: cat.label || cat.id,
+        date,
+        amount,
+        confidence: cat.confidence === 'confirmed' ? 'confirmed' : 'estimated',
+      });
+    }
+    return out;
+  }
+  function isDatedReservePlanningEvent(event) {
+    return !!(event && event.kind === 'reserve' && event.planningLump === true);
+  }
+  function datedReservePlanningFundingRows(plan, asOf, opts) {
+    opts = opts || {};
+    if (!plan || !asOf) return [];
+    const horizon = knowledgeHorizon(plan, asOf, opts);
+    const rows = [];
+    let index = (plan.commitments || []).length + (plan.bills || []).length;
+    for (const lump of datedReservePlanningCategories(plan)) {
+      if (lump.date < asOf || lump.date > horizon.end) continue;
+      rows.push({
+        id: lump.id,
+        label: lump.label,
+        date: lump.date,
+        when: null,
+        tripWindow: null,
+        group: null,
+        groupLabel: null,
+        planSpendSummary: false,
+        need: lump.amount,
+        amountMin: null,
+        amountMax: null,
+        bounds: { floor: lump.amount, ceiling: lump.amount, flexibility: 'required' },
+        flexibility: 'required',
+        confidence: lump.confidence,
+        adjustable: false,
+        priority: null,
+        index: index++,
+        source: 'dated-reserve-planning',
+      });
+    }
+    return rows;
   }
   function yearlyCardPaidFundingRows(plan, asOf, opts) {
     opts = opts || {};
@@ -2029,6 +2115,7 @@
       });
     });
     yearlyCardPaidFundingRows(plan, asOf, opts).forEach(row => rows.push(row));
+    datedReservePlanningFundingRows(plan, asOf, opts).forEach(row => rows.push(row));
     const certaintyRank = c => c.confidence === 'confirmed' ? 0
       : c.confidence === 'estimated' ? 1 : 2;
     const flexRank = c => c.flexibility === 'required' ? 0
@@ -8632,6 +8719,10 @@
       // kind:'bill'. They are Plan Spend / Road Ahead publication, not a
       // payday leftover set-aside and not a second disabled commitment.
       if (item.source === 'yearly-card-paid-bill') continue;
+      // The dated reserve lump already leaves cash on planningDate.
+      // Disabling the funding-sequence id would not remove that event,
+      // so it is not a second payday set-aside.
+      if (item.source === 'dated-reserve-planning') continue;
       const planRow = plans.find(p => p.id === item.id) || null;
       const floor = item.need != null ? item.need
         : (item.bounds ? item.bounds.floor : 0);
@@ -12498,7 +12589,7 @@
     if (event.kind === 'bill') {
       return { skip: false, unmapped: false, class: 'recurring-bills' };
     }
-    if (event.kind === 'commitment') {
+    if (event.kind === 'commitment' || isDatedReservePlanningEvent(event)) {
       return { skip: false, unmapped: false, class: 'dated-commitment' };
     }
     if (event.kind === 'obligation') {
@@ -14410,7 +14501,8 @@
       e && e.kind === 'bill' && e.jointCash !== false && !e.cardPaid);
     const obligations = events.filter(e => e && e.kind === 'obligation');
     const commitments = events.filter(e =>
-      e && (e.kind === 'commitment' || isYearlyCardPaidBillEvent(e, input.plan)));
+      e && (e.kind === 'commitment' || isYearlyCardPaidBillEvent(e, input.plan)
+        || isDatedReservePlanningEvent(e)));
     const extras = events.filter(e =>
       e && e.kind === 'extra' && e.id !== 'hypothetical-extra');
     const sumOut = rows => roundCent(rows.reduce((s, e) => s + (-Number(e.amount) || 0), 0));
