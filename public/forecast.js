@@ -2579,7 +2579,9 @@
   // event (id + original date). A carried unresolved cost keeps that
   // date and is applied inside the clipped residual; the historical
   // date need not fall inside the display span. The period that
-  // contains the line wins. No second walk or date rule is applied.
+  // contains the line wins. The published figure is that period's
+  // Stage 2 after-planned-spending result, not Stage 3 after extra
+  // debt. No second walk or date rule is applied.
   function planSpendPeriodContainsEvent(period, row) {
     const lines = period && period.stage2 && period.stage2.commitments
       && period.stage2.commitments.lines;
@@ -2594,7 +2596,7 @@
         ? periods.filter(p => planSpendPeriodContainsEvent(p, row)) : [];
       const inSpan = containing.filter(p => p && p.start <= row.date && row.date <= p.end);
       const period = (inSpan.length ? inSpan : containing)[0] || null;
-      const result = period && period.stage3 && period.stage3.result;
+      const result = period && period.stage2 && period.stage2.result;
       const duePeriod = result && result.identity === 'standalone-period-surplus-deficit'
         && result.status !== 'unavailable' && Number.isFinite(result.amount)
         ? {
@@ -2603,6 +2605,8 @@
             amount: result.amount,
             status: result.status,
             identity: result.identity,
+            source: 'stage2.result',
+            stageId: 'after-planned-spending',
             kind: result.amount < 0 ? 'shortfall' : result.amount > 0 ? 'surplus' : 'balanced',
           }
         : null;

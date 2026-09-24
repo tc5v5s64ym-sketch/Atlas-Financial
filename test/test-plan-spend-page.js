@@ -102,7 +102,10 @@ function adviceFrom(data, p) {
     extraFacilities: data.revolvingExtra || [],
     periods: p || null,
   });
-  const trajectory = F.baselineTrajectory(data.plan, data.debts || [], data.meta.asOf, { periods: p || null });
+  const trajectory = F.baselineTrajectory(data.plan, data.debts || [], data.meta.asOf, {
+    periods: p || null,
+    extraFacilities: data.revolvingExtra || [],
+  });
   advice.planSpendFundingPaths = F.planSpendFundingPaths(advice.majorPlans, trajectory);
   return advice;
 }
@@ -114,7 +117,9 @@ console.log('=== 1. Plan spend consumes Forecast.majorPlans and invents nothing 
 {
   const src = stripComments(read('public/plan-spend.js'));
   ok(/Forecast\.recommend\(/.test(src) && /advice\.majorPlans/.test(src)
-    && /Forecast\.planSpendFundingPaths\(/.test(src),
+    && /Forecast\.planSpendFundingPaths\(/.test(src)
+    && /extraFacilities:\s*d\.revolvingExtra/.test(src)
+    && /baselineTrajectory\([\s\S]*extraFacilities:\s*d\.revolvingExtra/.test(src),
     'plan-spend.js reads majorPlans and Forecast funding explanations');
   ok(!/plan\.commitments/.test(src), 'plan-spend.js never reads plan.commitments');
   ok(!/Forecast\.(fundingSequence|majorPlans|simulate|expandEvents)\(/.test(src),
@@ -222,9 +227,9 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
   }, null).list;
   const datedRow = row(datedWithWhen, 'dated-with-when');
   ok(/data-plan-spend-timing="dated"/.test(datedRow)
-      && timingSpan(datedRow) === `Due ${longDate('2026-12-09')}`
+      && timingSpan(datedRow) === `Cash date ${longDate('2026-12-09')}`
       && timingSpan(datedRow) !== 'Dec 2026',
-    'date 2026-12-09 wins over when Dec 2026 and prints the calendar date');
+    'date 2026-12-09 wins over when Dec 2026 and prints the calendar cash date');
   ok(!/Dec 2026/.test(datedRow), 'approximate when is not printed beside a Forecast date');
 
   const christmas = page.compose({
@@ -239,7 +244,7 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
   }, null).list;
   const christmasRow = row(christmas, 'dated-christmas');
   ok(/data-plan-spend-timing="dated"/.test(christmasRow)
-      && timingSpan(christmasRow) === `Due ${longDate('2026-12-25')}`
+      && timingSpan(christmasRow) === `Cash date ${longDate('2026-12-25')}`
       && !/by Christmas 2026/.test(christmasRow),
     'date 2026-12-25 wins over when by Christmas 2026');
 
@@ -270,18 +275,33 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
   const liveDated = liveAdvice.majorPlans.filter(p => p.date && !p.tripWindow && !summaryMembers.has(p.id));
   ok(liveDated.length > 0 && liveDated.every(p => {
     const r = row(liveHtml, p.id);
-    return r && /data-plan-spend-timing="dated"/.test(r) && timingSpan(r) === `Due ${longDate(p.date)}`;
-  }), `live: ${liveDated.length} Forecast-dated rows print fmtDateFull(date)`);
+    return r && /data-plan-spend-timing="dated"/.test(r) && timingSpan(r) === `Cash date ${longDate(p.date)}`;
+  }), `live: ${liveDated.length} Forecast-dated rows print Cash date fmtDateFull(date)`);
   const liveApprox = liveAdvice.majorPlans.filter(p => !p.date && p.when && !summaryMembers.has(p.id));
   ok(liveApprox.length > 0 && liveApprox.every(p => {
     const r = row(liveHtml, p.id);
     return r && /data-plan-spend-timing="approximate"/.test(r) && timingSpan(r) === p.when;
   }), `live: ${liveApprox.length} when-only rows print when verbatim`);
   const trip = liveAdvice.majorPlans.find(p => p.tripWindow);
-  ok(trip && timingSpan(row(liveHtml, trip.id)) === `${trip.tripWindow} trip · Due ${longDate(trip.date)}`
+  ok(trip && timingSpan(row(liveHtml, trip.id)) === `${trip.tripWindow} trip · Cash date ${longDate(trip.date)}`
       && /data-plan-spend-timing="trip-window"/.test(row(liveHtml, trip.id))
       && row(liveHtml, trip.id).includes(longDate(trip.date)),
-    'a Forecast trip window and distinct cash due date appear in the glance');
+    'a Forecast trip window and distinct cash date appear in the glance');
+  const seattle = liveAdvice.majorPlans.find(p => p.id === 'seattle-nov');
+  const sanDiego = liveAdvice.majorPlans.find(p => p.id === 'san-diego');
+  const seattleWhen = timingSpan(row(liveHtml, 'seattle-nov'));
+  const sanWhen = timingSpan(row(liveHtml, 'san-diego'));
+  ok(seattle && seattle.when === 'Nov 2026' && seattle.date === '2026-11-15'
+      && seattleWhen === `Cash date ${longDate('2026-11-15')}`
+      && !/\bDue\b/.test(seattleWhen)
+      && !row(liveHtml, 'seattle-nov').includes(`Due ${longDate('2026-11-15')}`),
+    'Seattle November prints the month-only cash date, not a due date');
+  ok(sanDiego && sanDiego.when === 'Jan 2027' && sanDiego.date === '2027-01-15'
+      && sanDiego.tripWindow === 'Jan 8–9, 2027'
+      && sanWhen === `Jan 8–9, 2027 trip · Cash date ${longDate('2027-01-15')}`
+      && !/\bDue\b/.test(sanWhen)
+      && !/January 8, 2027|January 9, 2027/.test(row(liveHtml, 'san-diego').split('<details')[0]),
+    'San Diego keeps the trip window distinct from the month-only cash date');
 }
 
 console.log('\n=== 4. Fail-closed empty / unavailable; no invented saved balance ===');
@@ -414,23 +434,35 @@ console.log('\n=== 7. Forecast-owned funding explanation and household wording =
     verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed' };
   const pressurePeriod = {
     start: '2026-04-03', end: '2026-04-16',
-    stage2: { commitments: { lines: [{ id: 'trip', date: trip.date, amount: 100 }] } },
-    stage3: { result: { amount: -50, status: 'estimated',
-      identity: 'standalone-period-surplus-deficit' } },
+    stage2: {
+      commitments: { lines: [{ id: 'trip', date: trip.date, amount: 100 }] },
+      result: { amount: 80, status: 'estimated',
+        identity: 'standalone-period-surplus-deficit' },
+    },
+    stage3: {
+      extras: { amount: 130 },
+      result: { amount: -50, status: 'estimated',
+        identity: 'standalone-period-surplus-deficit' },
+    },
   };
   const path = F.planSpendFundingPaths([trip], { status: 'ready', payPeriods: [pressurePeriod] })[0];
   ok(path && path.allocation === 'unallocated' && path.setAsideNow === null
-      && path.futureCashFlowNeeded === null && path.duePeriod.amount === -50
-      && path.duePeriod.kind === 'shortfall',
-    'Forecast links a due cash event while leaving unproven savings and future-flow amounts unknown');
+      && path.futureCashFlowNeeded === null && path.duePeriod.amount === 80
+      && path.duePeriod.kind === 'surplus'
+      && path.duePeriod.source === 'stage2.result'
+      && path.duePeriod.stageId === 'after-planned-spending'
+      && path.duePeriod.amount !== pressurePeriod.stage3.result.amount,
+    'Forecast links a cash event to Stage 2 after planned spending, not Stage 3 extra debt');
   const rendered = page.compose({ majorPlans: [trip], planSpendFundingPaths: [path] }, null).list;
   const glance = row(rendered, 'trip').split('<details')[0];
   ok(/data-plan-spend-verdict="ON TRACK"/.test(glance)
       && /FEASIBLE IN CURRENT PLAN/.test(glance) && !/>ON TRACK</.test(glance),
     'internal ON TRACK remains unchanged while the household sees feasible wording');
-  ok(glance.includes('−$50.00 shortfall') && glance.includes('Current Forecast can cover this by the deadline.')
-      && /data-plan-spend-period-status="estimated"/.test(glance) && />ESTIMATED<\/span>/.test(glance),
-    'a due-period shortfall coexists with feasibility and keeps its own estimated trust');
+  ok(glance.includes('+$80.00 surplus') && !glance.includes('−$50.00 shortfall')
+      && glance.includes('Current Forecast can cover this by the deadline.')
+      && /data-plan-spend-period-status="estimated"/.test(glance) && />ESTIMATED<\/span>/.test(glance)
+      && /After planned spending/.test(glance),
+    'after-planned-spending surplus coexists with feasibility and keeps its own estimated trust');
   ok(/Set-aside amount now<\/dt><dd>Not established<\/dd>/.test(glance)
       && /Still needed from future cash flow<\/dt><dd>Not established<\/dd>/.test(glance)
       && !/\$0\.00/.test(glance),
@@ -444,7 +476,7 @@ console.log('\n=== 7. Forecast-owned funding explanation and household wording =
   const undated = F.planSpendFundingPaths([Object.assign({}, trip, { date: null })],
     { status: 'ready', payPeriods: [pressurePeriod] })[0];
   ok(noLine.duePeriod === null && undated.duePeriod === null,
-    'a period requires the exact cash event and an undated plan gets no invented due-period result');
+    'a period requires the exact cash event and an undated plan gets no invented after-planned-spending result');
   const gap = Object.assign({}, trip, { id: 'gap', verdict: 'FUNDING GAP', remaining: 25 });
   const risk = Object.assign({}, trip, { id: 'risk', verdict: 'AT RISK', remaining: 25,
     amountMin: 100, amountMax: 125, need: null });
@@ -465,22 +497,24 @@ console.log('\n=== 7. Forecast-owned funding explanation and household wording =
 console.log('\n=== 8. Current canonical Road Ahead reprint reconciles ===');
 {
   const advice = adviceFrom(live, periods);
-  const trajectory = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, { periods });
+  const trajectory = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra || [],
+  });
   const seattle = advice.majorPlans.find(p => p.id === 'seattle-nov');
   const sanDiego = advice.majorPlans.find(p => p.id === 'san-diego');
   const seattlePeriod = trajectory.payPeriods.find(p => p.start <= seattle.date && seattle.date <= p.end);
   const sanPeriod = trajectory.payPeriods.find(p => p.start <= sanDiego.date && sanDiego.date <= p.end);
-  const independentResult = p => p.stage1.income.amount - p.stage1.bills.amount
+  const independentStage2 = p => p.stage1.income.amount - p.stage1.bills.amount
     - p.stage1.obligations.amount - p.stage1.householdBudget.amount
-    - p.stage2.commitments.amount - p.stage3.extras.amount;
-  ok(Math.abs(independentResult(seattlePeriod) - seattlePeriod.stage3.result.amount) < 0.005
-      && Math.abs(independentResult(sanPeriod) - sanPeriod.stage3.result.amount) < 0.005,
-    'Road Ahead due-period results reconcile to independently summed published components');
+    - p.stage2.commitments.amount;
+  ok(Math.abs(independentStage2(seattlePeriod) - seattlePeriod.stage2.result.amount) < 0.005
+      && Math.abs(independentStage2(sanPeriod) - sanPeriod.stage2.result.amount) < 0.005,
+    'after-planned-spending results reconcile to independently summed Stage 2 components');
   const html = pageList(live, periods).list;
   ok(seattle.verdict === 'ON TRACK' && sanDiego.verdict === 'ON TRACK'
-      && row(html, 'seattle-nov').includes(`+${money2(seattlePeriod.stage3.result.amount)} surplus`)
-      && row(html, 'san-diego').includes(`${money2(sanPeriod.stage3.result.amount)} shortfall`),
-    'canonical Seattle and San Diego cards copy their own Road Ahead pay-period results');
+      && row(html, 'seattle-nov').includes(`+${money2(seattlePeriod.stage2.result.amount)} surplus`)
+      && row(html, 'san-diego').includes(`${money2(sanPeriod.stage2.result.amount)} shortfall`),
+    'canonical Seattle and San Diego cards copy their own Stage 2 after-planned-spending results');
   ok(!/silver/i.test(read('public/plan-spend.js'))
       && !advice.planSpendFundingPaths.some(path => path.setAsideNow != null),
     'silver is not a funding source and no canonical plan-specific saved amount is invented');
@@ -530,7 +564,9 @@ console.log('\n=== 9. Shared overdue aggregate and carried residual due period =
   ok(later && later.remainingIdentity == null
       && /this cost is short by/.test(row(html, 'seattle-dec') || ''),
     'a later dated cost keeps its own Forecast shortfall wording');
-  const trajectory = F.baselineTrajectory(plan, live.debts, asOf, { periods });
+  const trajectory = F.baselineTrajectory(plan, live.debts, asOf, {
+    periods, extraFacilities: live.revolvingExtra || [],
+  });
   const residual = (trajectory.payPeriods || []).find(p => p.windowKind === 'as-of-residual' && p.start === asOf);
   const line = residual && residual.stage2 && residual.stage2.commitments
     && (residual.stage2.commitments.lines || []).find(l => l && l.id === 'seattle-nov' && l.date === seattlePlan.date);
@@ -540,16 +576,19 @@ console.log('\n=== 9. Shared overdue aggregate and carried residual due period =
   const path = advice.planSpendFundingPaths.find(p => p.id === 'seattle-nov');
   ok(path && path.duePeriod && path.duePeriod.start === residual.start
       && path.duePeriod.end === residual.end
-      && path.duePeriod.amount === residual.stage3.result.amount
+      && path.duePeriod.amount === residual.stage2.result.amount
       && path.duePeriod.identity === 'standalone-period-surplus-deficit'
+      && path.duePeriod.source === 'stage2.result'
       && path.setAsideNow === null && path.futureCashFlowNeeded === null,
-    'the carried cost links to that residual period\'s published Stage 3 result');
-  ok((row(html, 'seattle-nov') || '').includes(money2(residual.stage3.result.amount))
+    'the carried cost links to that residual period\'s published Stage 2 result');
+  ok((row(html, 'seattle-nov') || '').includes(money2(residual.stage2.result.amount))
       && !/remaining\s*[-+*/]/.test(stripComments(read('public/plan-spend.js'))),
-    'the card reprints the published Stage 3 amount and the page does no remaining arithmetic');
+    'the card reprints the published Stage 2 amount and the page does no remaining arithmetic');
 
   const canonAdvice = adviceFrom(live, periods);
-  const canonTrajectory = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, { periods });
+  const canonTrajectory = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra || [],
+  });
   const canonSea = canonAdvice.majorPlans.find(p => p.id === 'seattle-nov');
   const canonSd = canonAdvice.majorPlans.find(p => p.id === 'san-diego');
   const canonSeaPath = canonAdvice.planSpendFundingPaths.find(p => p.id === 'seattle-nov');
@@ -560,11 +599,52 @@ console.log('\n=== 9. Shared overdue aggregate and carried residual due period =
       && canonSea.remainingIdentity == null && canonSd.remainingIdentity == null
       && canonSeaPath.duePeriod.amount === 220.62
       && canonSdPath.duePeriod.amount === -1934.62
-      && canonSeaPath.duePeriod.amount === canonSeaPeriod.stage3.result.amount
-      && canonSdPath.duePeriod.amount === canonSdPeriod.stage3.result.amount
+      && canonSeaPath.duePeriod.amount === canonSeaPeriod.stage2.result.amount
+      && canonSdPath.duePeriod.amount === canonSdPeriod.stage2.result.amount
       && canonSea.date >= canonSeaPath.duePeriod.start
       && canonSea.date <= canonSeaPath.duePeriod.end,
-    'canonical in-window Seattle +$220.62 and San Diego −$1,934.62 still match their published periods');
+    'canonical in-window Seattle +$220.62 and San Diego −$1,934.62 still match their published Stage 2 periods');
+}
+
+console.log('\n=== 10. Extra debt cannot masquerade as planned-spend pressure ===');
+{
+  const extraPlan = JSON.parse(JSON.stringify(live.plan));
+  extraPlan.defaults = Object.assign({}, extraPlan.defaults, { extraDebtMonthly: 400 });
+  const extraData = {
+    meta: live.meta,
+    plan: extraPlan,
+    debts: live.debts,
+    revolvingExtra: live.revolvingExtra || [],
+  };
+  const extraAdvice = adviceFrom(extraData, periods);
+  const extraTraj = F.baselineTrajectory(extraPlan, live.debts, live.meta.asOf, {
+    periods, extraFacilities: live.revolvingExtra || [],
+  });
+  const seattle = extraAdvice.majorPlans.find(p => p.id === 'seattle-nov');
+  const period = extraTraj.payPeriods.find(p => seattle
+    && extraTraj.status === 'ready'
+    && (p.stage2.commitments.lines || []).some(l => l && l.id === seattle.id && l.date === seattle.date));
+  const independentStage2 = period
+    ? period.stage1.income.amount - period.stage1.bills.amount
+      - period.stage1.obligations.amount - period.stage1.householdBudget.amount
+      - period.stage2.commitments.amount
+    : null;
+  const path = extraAdvice.planSpendFundingPaths.find(p => p.id === 'seattle-nov');
+  ok(period && period.stage3.extras.amount === 400
+      && period.stage2.result.amount !== period.stage3.result.amount
+      && Math.abs(independentStage2 - period.stage2.result.amount) < 0.005
+      && Math.abs((independentStage2 - period.stage3.extras.amount) - period.stage3.result.amount) < 0.005,
+    'extraDebtMonthly makes Stage 2 and Stage 3 differ by independently summed extras');
+  ok(path && path.duePeriod
+      && path.duePeriod.amount === period.stage2.result.amount
+      && path.duePeriod.amount !== period.stage3.result.amount
+      && path.duePeriod.source === 'stage2.result',
+    'the funding path reprints Stage 2, not the extra-debt Stage 3 result');
+  const extraHtml = page.compose(extraAdvice, null).list;
+  const extraRow = row(extraHtml, 'seattle-nov') || '';
+  ok(period && extraRow.includes(money2(period.stage2.result.amount))
+      && !extraRow.includes(money2(period.stage3.result.amount)),
+    'the card shows after-planned-spending, not after-debt-strategy');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

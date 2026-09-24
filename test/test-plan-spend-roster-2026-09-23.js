@@ -406,7 +406,8 @@ const sanGlance = sanHtml.split('<details')[0];
 ok(sanGlance.includes('>San Diego<') && sanGlance.includes(money2(3000)) && sanGlance.includes(TRIP_WINDOW),
   'San Diego glance is the name, $3,000.00, and Jan 8–9, 2027');
 ok((sanGlance.match(/\$3,000\.00/g) || []).length === 1, 'the glance shows $3,000 once');
-ok(sanGlance.includes(TRIP_WINDOW) && sanGlance.includes(`Due ${longDate('2027-01-15')}`),
+ok(sanGlance.includes(TRIP_WINDOW) && sanGlance.includes(`Cash date ${longDate('2027-01-15')}`)
+    && !sanGlance.includes(`Due ${longDate('2027-01-15')}`),
   'the Forecast cash date and distinct trip window both appear in the collapsed card');
 ok(!/2027-01-08|2027-01-09|January 8, 2027|January 9, 2027/.test(sanHtml),
   'the card does not invent a trip-window payment day');

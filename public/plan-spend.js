@@ -20,10 +20,13 @@ function planSpendRequirement(row) {
 }
 
 function planSpendTiming(row) {
+  // Forecast `date` is a cash-planning date, not a payment due date
+  // unless a separate authoritative due-date fact exists. Month-only
+  // cash dates (15th of a clear month) stay distinct from trip windows.
   if (row.tripWindow && row.date) {
-    return { text: `${row.tripWindow} trip · Due ${fmtDateFull(row.date)}`, kind: 'trip-window' };
+    return { text: `${row.tripWindow} trip · Cash date ${fmtDateFull(row.date)}`, kind: 'trip-window' };
   }
-  if (row.date) return { text: `Due ${fmtDateFull(row.date)}`, kind: 'dated' };
+  if (row.date) return { text: `Cash date ${fmtDateFull(row.date)}`, kind: 'dated' };
   if (row.tripWindow) return { text: row.tripWindow, kind: 'trip-window' };
   if (row.when) return { text: row.when, kind: 'approximate' };
   return { text: 'Date not established', kind: 'unresolved' };
@@ -89,7 +92,7 @@ function planSpendDuePeriod(path) {
   const period = path && path.duePeriod;
   if (!period) return '';
   const sign = period.kind === 'surplus' ? '+' : '';
-  return planSpendFact('due-period', 'Due-period result',
+  return planSpendFact('due-period', 'After planned spending',
     `<span data-plan-spend-period="${period.start}:${period.end}" data-plan-spend-period-status="${period.status}">${sign}${money2(period.amount)} ${period.kind}</span> <span class="chip ${period.status === 'estimated' ? 'w' : 'e'}">${period.status.toUpperCase()}</span>`);
 }
 
@@ -114,7 +117,7 @@ function planSpendFundingPath(path, row) {
     <p>Forecast can assess whether this obligation fits the modeled cash path, but has not assigned a per-period savings schedule to it. The path is unallocated.</p>
     <p>Cash already saved for this specific cost and the amount that must come from future cash flow have not been established. A current-payday allocation is not a saved balance.</p>
     ${projected}
-    ${path && path.duePeriod ? `<p>The due-period result is the published Road Ahead pay-period result for ${fmtDateFull(path.duePeriod.start)}–${fmtDateFull(path.duePeriod.end)}. It excludes earlier-period surplus.</p>` : ''}
+    ${path && path.duePeriod ? `<p>After planned spending is the published Stage 2 pay-period result for ${fmtDateFull(path.duePeriod.start)}–${fmtDateFull(path.duePeriod.end)}. It is the period after named planned spending and excludes extra-debt strategy and earlier-period surplus.</p>` : ''}
   </details>`;
 }
 
@@ -215,7 +218,7 @@ function planSpendPageHtml(advice, liveOverlay) {
     : planSpendRowHtml(card, pathById.get(card.id))).join('');
   return {
     lede: `${cards.length} planned cost${cards.length === 1 ? '' : 's'} in Forecast's current funding order. Feasible means Forecast can cover a cost in the modeled plan; it does not mean the cash is already saved.`,
-    note: 'Amounts, dates, verdicts, and due-period results come from Forecast. A set-aside amount is shown only when Forecast can establish one for that cost.',
+    note: 'Amounts, cash dates, verdicts, and after-planned-spending results come from Forecast. A set-aside amount is shown only when Forecast can establish one for that cost.',
     list,
   };
 }
@@ -235,6 +238,7 @@ function planSpendAdvice(d, periods) {
   if (!advice.operatingPlanUnavailable) {
     const trajectory = Forecast.baselineTrajectory(d.plan, d.debts, d.meta.asOf, {
       periods: periods || null,
+      extraFacilities: d.revolvingExtra,
       currentPeriodActuals: actuals,
     });
     advice.planSpendFundingPaths = Forecast.planSpendFundingPaths(advice.majorPlans, trajectory);
