@@ -80,6 +80,26 @@ ok(F.planSpendPaydayFunding(noSeaspan.plan, noSeaspan.plan.opening.asOf,
   noSeaspan.sim, noSeaspan.seq, []).status === 'unavailable',
   'without a Seaspan identity the schedule fails closed');
 
+// Multiple protected costs before the next payday are one imminent requirement,
+// not "affected" labels attached to only the first amount.
+const beforePaydayPlan = fixture(100, 100, false);
+beforePaydayPlan.opening.asOf = '2026-01-15';
+beforePaydayPlan.startingCash.breakdown[0].value = 300;
+beforePaydayPlan.commitments = [
+  { id: 'first', label: 'First', date: '2026-01-15', amount: 100, confidence: 'confirmed' },
+  { id: 'second', label: 'Second', date: '2026-01-15', amount: 200, confidence: 'confirmed' },
+];
+const beforeSim = F.simulate(beforePaydayPlan, '2026-01-15',
+  { horizonDays: 30, viewDays: 30, weeklyVariable: 0 });
+const beforeSeq = F.fundingSequence(beforePaydayPlan, '2026-01-15');
+const beforeSchedule = F.planSpendPaydayFunding(beforePaydayPlan, '2026-01-15',
+  beforeSim, beforeSeq, F.majorPlans(beforePaydayPlan, '2026-01-15', { weeklyVariable: 0 }));
+ok(beforeSchedule.status === 'funding-gap' && beforeSchedule.gap
+  && cent(beforeSchedule.gap.required) === 30000
+  && cent(beforeSchedule.gap.shortBy) === 30000
+  && beforeSchedule.gap.affected.slice().sort().join(',') === 'first,second',
+  'all protected costs before the first payday are aggregated into the imminent gap');
+
 const asOf = data.meta.asOf;
 const advice = F.recommend(data.plan, asOf, {
   fundingSources: data.plan.funding && data.plan.funding.options,
@@ -92,6 +112,21 @@ const currentPayday = F.recommend(paydayPlan, '2026-01-02', {});
 ok(cent(currentPayday.planSpendPaydayFunding.paydays[0].contribution)
   === cent(currentPayday.paydayAllocation.futureCosts.find(row => row.id === 'trip').allocated),
   'current-payday serial contribution agrees with the incumbent payday allocation');
+const twoCostPaydayPlan = fixture(100, 150, false);
+twoCostPaydayPlan.opening.asOf = '2026-01-02';
+twoCostPaydayPlan.commitments = [
+  { id: 'early', label: 'Early', date: '2026-01-31', amount: 150, confidence: 'confirmed' },
+  { id: 'later', label: 'Later', date: '2026-02-10', amount: 150, confidence: 'confirmed' },
+];
+const twoCostPayday = F.recommend(twoCostPaydayPlan, '2026-01-02', {});
+const incumbentNamed = twoCostPayday.paydayAllocation.futureCosts
+  .filter(row => Number(row.allocated) > 0)
+  .map(row => row.id + ':' + cent(row.allocated)).sort().join(',');
+const serialNamed = twoCostPayday.planSpendPaydayFunding.paydays[0].allocations
+  .filter(row => Number(row.amount) > 0)
+  .map(row => row.id + ':' + cent(row.amount)).sort().join(',');
+ok(serialNamed === incumbentNamed,
+  'current-payday serial named allocations exactly reuse the incumbent payday authority');
 ok(schedule && schedule.status === 'ready', 'canonical dated opening publishes a complete schedule');
 const horizon = advice.knowledge.days;
 const sim = F.simulate(data.plan, asOf, Object.assign({}, advice.simOptions, {
