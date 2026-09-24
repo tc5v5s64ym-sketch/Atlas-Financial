@@ -96,12 +96,15 @@ function fixture(cashValue) {
 
 const page = loadPage('public/plan-spend.js');
 function adviceFrom(data, p) {
-  return F.recommend(data.plan, data.meta.asOf, {
+  const advice = F.recommend(data.plan, data.meta.asOf, {
     fundingSources: data.plan && data.plan.funding && data.plan.funding.options,
     debts: data.debts || [],
     extraFacilities: data.revolvingExtra || [],
     periods: p || null,
   });
+  const trajectory = F.baselineTrajectory(data.plan, data.debts || [], data.meta.asOf, { periods: p || null });
+  advice.planSpendFundingPaths = F.planSpendFundingPaths(advice.majorPlans, trajectory);
+  return advice;
 }
 function pageList(data, p) {
   return page.compose(adviceFrom(data, p), data.liveOverlay || null);
@@ -110,11 +113,12 @@ function pageList(data, p) {
 console.log('=== 1. Plan spend consumes Forecast.majorPlans and invents nothing ===');
 {
   const src = stripComments(read('public/plan-spend.js'));
-  ok(/Forecast\.recommend\(/.test(src) && /advice\.majorPlans/.test(src) && /advice\.paydayAllocation/.test(src),
-    'plan-spend.js reads majorPlans and paydayAllocation off Forecast.recommend');
+  ok(/Forecast\.recommend\(/.test(src) && /advice\.majorPlans/.test(src)
+    && /Forecast\.planSpendFundingPaths\(/.test(src),
+    'plan-spend.js reads majorPlans and Forecast funding explanations');
   ok(!/plan\.commitments/.test(src), 'plan-spend.js never reads plan.commitments');
-  ok(!/Forecast\.(fundingSequence|majorPlans|simulate|expandEvents|baselineTrajectory)\(/.test(src),
-    'plan-spend.js does not call the sequence, walk, or trajectory itself');
+  ok(!/Forecast\.(fundingSequence|majorPlans|simulate|expandEvents)\(/.test(src),
+    'plan-spend.js does not calculate sequence, verdict, events, or walk');
   const verdictAssign = /verdict\s*=\s*['"](ON TRACK|AT RISK|FUNDING GAP)['"]/.test(src)
     || /['"](ON TRACK|AT RISK|FUNDING GAP)['"]\s*:\s*\(?\s*\w*\s*(>|<|>=|<=|-|\+)/.test(src);
   ok(!verdictAssign, 'no verdict is computed in the page; the three strings appear only as presentation keys');
@@ -159,7 +163,7 @@ console.log('\n=== 2. Unsettled plans render; settled commitments are absent ===
   }), 'live summary groups render one card and not one card per member');
 }
 
-console.log('\n=== 3. Points, ranges, approximate timing, and Forecast remaining reprint ===');
+console.log('\n=== 3. Points, ranges, timing, and truthful shortfall wording ===');
 {
   const html = pageList(fixture(), null).list;
   const point = row(html, 'point');
@@ -178,8 +182,14 @@ console.log('\n=== 3. Points, ranges, approximate timing, and Forecast remaining
     'a dated commitment prints its Forecast date');
   const advice = adviceFrom(fixture(), null);
   for (const p of advice.majorPlans) {
-    ok(strip(factOf(row(html, p.id), 'remaining')).startsWith(money2(p.remaining)),
-      `${p.id} prints Forecast remaining ${money2(p.remaining)} unchanged`);
+    const card = row(html, p.id);
+    if (p.verdict === 'FUNDING GAP') {
+      ok(card.split('<details')[0].includes(money2(p.remaining)),
+        `${p.id} prints Forecast's funding shortfall ${money2(p.remaining)}`);
+    } else {
+      ok(!/Still unfunded in the plan|Covered in the plan/.test(card),
+        `${p.id} does not recast Forecast remaining as saved money`);
+    }
   }
 }
 
@@ -212,7 +222,7 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
   }, null).list;
   const datedRow = row(datedWithWhen, 'dated-with-when');
   ok(/data-plan-spend-timing="dated"/.test(datedRow)
-      && timingSpan(datedRow) === longDate('2026-12-09')
+      && timingSpan(datedRow) === `Due ${longDate('2026-12-09')}`
       && timingSpan(datedRow) !== 'Dec 2026',
     'date 2026-12-09 wins over when Dec 2026 and prints the calendar date');
   ok(!/Dec 2026/.test(datedRow), 'approximate when is not printed beside a Forecast date');
@@ -229,7 +239,7 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
   }, null).list;
   const christmasRow = row(christmas, 'dated-christmas');
   ok(/data-plan-spend-timing="dated"/.test(christmasRow)
-      && timingSpan(christmasRow) === longDate('2026-12-25')
+      && timingSpan(christmasRow) === `Due ${longDate('2026-12-25')}`
       && !/by Christmas 2026/.test(christmasRow),
     'date 2026-12-25 wins over when by Christmas 2026');
 
@@ -260,7 +270,7 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
   const liveDated = liveAdvice.majorPlans.filter(p => p.date && !p.tripWindow && !summaryMembers.has(p.id));
   ok(liveDated.length > 0 && liveDated.every(p => {
     const r = row(liveHtml, p.id);
-    return r && /data-plan-spend-timing="dated"/.test(r) && timingSpan(r) === longDate(p.date);
+    return r && /data-plan-spend-timing="dated"/.test(r) && timingSpan(r) === `Due ${longDate(p.date)}`;
   }), `live: ${liveDated.length} Forecast-dated rows print fmtDateFull(date)`);
   const liveApprox = liveAdvice.majorPlans.filter(p => !p.date && p.when && !summaryMembers.has(p.id));
   ok(liveApprox.length > 0 && liveApprox.every(p => {
@@ -268,11 +278,10 @@ console.log('\n=== 3b. Forecast date wins over approximate when; no invented dat
     return r && /data-plan-spend-timing="approximate"/.test(r) && timingSpan(r) === p.when;
   }), `live: ${liveApprox.length} when-only rows print when verbatim`);
   const trip = liveAdvice.majorPlans.find(p => p.tripWindow);
-  ok(trip && timingSpan(row(liveHtml, trip.id)) === trip.tripWindow
+  ok(trip && timingSpan(row(liveHtml, trip.id)) === `${trip.tripWindow} trip · Due ${longDate(trip.date)}`
       && /data-plan-spend-timing="trip-window"/.test(row(liveHtml, trip.id))
-      && /data-plan-spend-cash-date/.test(row(liveHtml, trip.id))
       && row(liveHtml, trip.id).includes(longDate(trip.date)),
-    'a Forecast trip window is the glance timing and the cash date stays in the disclosure');
+    'a Forecast trip window and distinct cash due date appear in the glance');
 }
 
 console.log('\n=== 4. Fail-closed empty / unavailable; no invented saved balance ===');
@@ -295,9 +304,9 @@ console.log('\n=== 4. Fail-closed empty / unavailable; no invented saved balance
   const pointTotal = liveAdvice.majorPlans.filter(p => p.need != null).reduce((s, p) => s + p.need, 0);
   ok(!html.includes(money2(pointTotal)),
     `the page does not print an independent total of point estimates (${money2(pointTotal)})`);
-  ok(composed.lede.includes(money2(liveAdvice.knowledge.encumbered))
-      && /protected floor, not a total/.test(composed.lede),
-    'the only aggregate is Forecast knowledge.encumbered');
+  ok(!composed.lede.includes(money2(liveAdvice.knowledge.encumbered))
+      && /does not mean the cash is already saved/.test(composed.lede),
+    'the lede explains feasibility without exposing an internal protected-floor figure');
 }
 
 console.log('\n=== 5. Page contract and dock chrome ===');
@@ -390,13 +399,90 @@ console.log('\n=== 6. Summary cards reprint Forecast.planSpendCards; compact dis
     'Forecast.planSpendCards publishes the FUNDING GAP member verdict on a mixed group');
   ok(/data-plan-spend-verdict="FUNDING GAP"/.test(mixedGlance)
       && /class="[^"]*\bfunding-gap\b/.test((mixedCard || '').split('>')[0])
-      && /<span class="chip c">FUNDING GAP<\/span>/.test(mixedGlance),
+      && /<span class="chip c">FUNDING SHORTFALL<\/span>/.test(mixedGlance),
     'mixed FUNDING GAP + ON TRACK shows the gap chip and card styling on the glance, without opening Details');
   const css = read('public/styles.css');
-  ok(/\.plan-spend-list \.plan-spend-card \{\s*padding:7px 10px;/.test(css)
+  ok(/\.plan-spend-list \.plan-spend-card \{\s*padding:14px 16px;/.test(css)
       && /grid-template-columns:minmax\(0,1fr\) auto;/.test(css)
       && /@media \(max-width:380px\)/.test(css),
-    'plan spend cards use tight padding and a shrinking name column on narrow widths');
+    'plan spend cards separate facts and adapt on narrow widths');
+}
+
+console.log('\n=== 7. Forecast-owned funding explanation and household wording ===');
+{
+  const trip = { id: 'trip', label: 'Fixture trip', need: 100, date: '2026-04-10',
+    verdict: 'ON TRACK', remaining: 0, confidence: 'confirmed' };
+  const pressurePeriod = {
+    start: '2026-04-03', end: '2026-04-16',
+    stage2: { commitments: { lines: [{ id: 'trip', date: trip.date, amount: 100 }] } },
+    stage3: { result: { amount: -50, status: 'estimated',
+      identity: 'standalone-period-surplus-deficit' } },
+  };
+  const path = F.planSpendFundingPaths([trip], { status: 'ready', payPeriods: [pressurePeriod] })[0];
+  ok(path && path.allocation === 'unallocated' && path.setAsideNow === null
+      && path.futureCashFlowNeeded === null && path.duePeriod.amount === -50
+      && path.duePeriod.kind === 'shortfall',
+    'Forecast links a due cash event while leaving unproven savings and future-flow amounts unknown');
+  const rendered = page.compose({ majorPlans: [trip], planSpendFundingPaths: [path] }, null).list;
+  const glance = row(rendered, 'trip').split('<details')[0];
+  ok(/data-plan-spend-verdict="ON TRACK"/.test(glance)
+      && /FEASIBLE IN CURRENT PLAN/.test(glance) && !/>ON TRACK</.test(glance),
+    'internal ON TRACK remains unchanged while the household sees feasible wording');
+  ok(glance.includes('−$50.00 shortfall') && glance.includes('Current Forecast can cover this by the deadline.')
+      && /data-plan-spend-period-status="estimated"/.test(glance) && />ESTIMATED<\/span>/.test(glance),
+    'a due-period shortfall coexists with feasibility and keeps its own estimated trust');
+  ok(/Set-aside amount now<\/dt><dd>Not established<\/dd>/.test(glance)
+      && /Still needed from future cash flow<\/dt><dd>Not established<\/dd>/.test(glance)
+      && !/\$0\.00/.test(glance),
+    'absence does not become $0 saved or $0 future need');
+  ok(/Show funding path/.test(rendered) && /path is unallocated/.test(rendered)
+      && !/\+\$\d.*toward Fixture trip/.test(rendered),
+    'funding path explains the unallocated cash path without a made-up contribution schedule');
+  const noLine = F.planSpendFundingPaths([trip], { status: 'ready', payPeriods: [
+    Object.assign({}, pressurePeriod, { stage2: { commitments: { lines: [{ id: 'other', date: trip.date }] } } }),
+  ] })[0];
+  const undated = F.planSpendFundingPaths([Object.assign({}, trip, { date: null })],
+    { status: 'ready', payPeriods: [pressurePeriod] })[0];
+  ok(noLine.duePeriod === null && undated.duePeriod === null,
+    'a period requires the exact cash event and an undated plan gets no invented due-period result');
+  const gap = Object.assign({}, trip, { id: 'gap', verdict: 'FUNDING GAP', remaining: 25 });
+  const risk = Object.assign({}, trip, { id: 'risk', verdict: 'AT RISK', remaining: 25,
+    amountMin: 100, amountMax: 125, need: null });
+  const adverse = page.compose({ majorPlans: [gap, risk] }, null).list;
+  ok(/FUNDING SHORTFALL/.test(row(adverse, 'gap').split('<details')[0])
+      && row(adverse, 'gap').includes('$25.00')
+      && /AT RISK/.test(row(adverse, 'risk').split('<details')[0])
+      && /protected uncertainty/.test(row(adverse, 'risk')),
+    'gap stays conspicuous and AT RISK retains protected-uncertainty meaning');
+  const css = read('public/styles.css');
+  ok(/\.plan-spend-facts dt/.test(css) && /\.plan-spend-facts dd/.test(css)
+      && /\.plan-spend-facts \{ grid-template-columns:1fr; \}/.test(css)
+      && !/NoneNo|Projected available by deadline/.test(rendered),
+    'mobile facts use separate label and value elements without concatenated legacy copy');
+}
+
+console.log('\n=== 8. Current canonical Road Ahead reprint reconciles ===');
+{
+  const advice = adviceFrom(live, periods);
+  const trajectory = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, { periods });
+  const seattle = advice.majorPlans.find(p => p.id === 'seattle-nov');
+  const sanDiego = advice.majorPlans.find(p => p.id === 'san-diego');
+  const seattlePeriod = trajectory.payPeriods.find(p => p.start <= seattle.date && seattle.date <= p.end);
+  const sanPeriod = trajectory.payPeriods.find(p => p.start <= sanDiego.date && sanDiego.date <= p.end);
+  const independentResult = p => p.stage1.income.amount - p.stage1.bills.amount
+    - p.stage1.obligations.amount - p.stage1.householdBudget.amount
+    - p.stage2.commitments.amount - p.stage3.extras.amount;
+  ok(Math.abs(independentResult(seattlePeriod) - seattlePeriod.stage3.result.amount) < 0.005
+      && Math.abs(independentResult(sanPeriod) - sanPeriod.stage3.result.amount) < 0.005,
+    'Road Ahead due-period results reconcile to independently summed published components');
+  const html = pageList(live, periods).list;
+  ok(seattle.verdict === 'ON TRACK' && sanDiego.verdict === 'ON TRACK'
+      && row(html, 'seattle-nov').includes(`+${money2(seattlePeriod.stage3.result.amount)} surplus`)
+      && row(html, 'san-diego').includes(`${money2(sanPeriod.stage3.result.amount)} shortfall`),
+    'canonical Seattle and San Diego cards copy their own Road Ahead pay-period results');
+  ok(!/silver/i.test(read('public/plan-spend.js'))
+      && !advice.planSpendFundingPaths.some(path => path.setAsideNow != null),
+    'silver is not a funding source and no canonical plan-specific saved amount is invented');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

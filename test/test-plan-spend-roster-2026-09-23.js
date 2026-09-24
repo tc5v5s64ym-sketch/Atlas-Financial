@@ -406,9 +406,8 @@ const sanGlance = sanHtml.split('<details')[0];
 ok(sanGlance.includes('>San Diego<') && sanGlance.includes(money2(3000)) && sanGlance.includes(TRIP_WINDOW),
   'San Diego glance is the name, $3,000.00, and Jan 8–9, 2027');
 ok((sanGlance.match(/\$3,000\.00/g) || []).length === 1, 'the glance shows $3,000 once');
-ok(/data-plan-spend-cash-date/.test(sanHtml) && sanHtml.includes(longDate('2027-01-15'))
-    && !sanGlance.includes(longDate('2027-01-15')),
-  'the Forecast cash date sits in the disclosure, not in place of the trip window');
+ok(sanGlance.includes(TRIP_WINDOW) && sanGlance.includes(`Due ${longDate('2027-01-15')}`),
+  'the Forecast cash date and distinct trip window both appear in the collapsed card');
 ok(!/2027-01-08|2027-01-09|January 8, 2027|January 9, 2027/.test(sanHtml),
   'the card does not invent a trip-window payment day');
 const lindenHtml = article(settledHtml, 'linden-birthday');
@@ -432,7 +431,7 @@ ok((settledHtml.match(/data-plan-spend-id="seattle-dec"/g) || []).length === 1
     && seattleDecHtml.includes(money2(1500)) && seattleDecHtml.includes(longDate('2026-12-09')),
   'seattle-dec still renders once at $1,500.00 on 9 December 2026');
 const provHtml = article(settledHtml, 'provincials');
-ok(provHtml.includes(money2(1500)) && /timing TBD/.test(provHtml) && /DATE TBD/.test(provHtml),
+ok(provHtml.includes(money2(1500)) && /timing TBD/.test(provHtml) && !/Due \d/.test(provHtml),
   'Provincials renders $1,500 with timing TBD');
 ok(!/\d{4}-\d{2}-\d{2}|January|February|March|April|May|June|July|August|September|October|November|December/.test(provHtml),
   'Provincials renders no invented calendar date');
@@ -583,11 +582,11 @@ const html = read('public/plan-spend.html');
 const css = read('public/styles.css');
 ok(/id="plan-spend-list"[^>]*class="[^"]*\bplan-spend-list\b/.test(html),
   'plan-spend.html puts plan-spend-list on the list the cards render into');
-ok(/\.plan-spend-list \.plan-spend-card \{\s*padding:7px 10px;/.test(css),
-  'card padding is 7px 10px');
+ok(/\.plan-spend-list \.plan-spend-card \{\s*padding:14px 16px;/.test(css),
+  'card padding gives the household facts room');
 ok(/grid-template-columns:minmax\(0,1fr\) auto;/.test(css)
-    && /grid-template-areas:\s*"name amount"\s*"when status";/.test(css),
-  'glance is name, amount, timing, status, and the name column can shrink');
+    && /grid-template-areas:\s*"name amount"\s*"when when"\s*"status status"\s*"explanation explanation"\s*"facts facts";/.test(css),
+  'glance is name, amount, timing, status, explanation, and facts; the name column can shrink');
 ok(/@media \(max-width:380px\)/.test(css) && /"status status"/.test(css),
   'at 380px the status pill wraps onto its own row instead of overflowing');
 ok(/<details class="plan-spend-more">/.test(settledHtml),
@@ -627,7 +626,7 @@ const mixedGlance = mixedArticle.split('<details')[0];
 ok(/data-plan-spend-card="summary"/.test(mixedArticle) && /data-plan-spend-verdict="FUNDING GAP"/.test(mixedGlance),
   'the grouped Fusion card glance carries FUNDING GAP');
 ok(/class="[^"]*\bfunding-gap\b/.test(mixedArticle.split('>')[0])
-    && /<span class="chip c">FUNDING GAP<\/span>/.test(mixedGlance),
+    && /<span class="chip c">FUNDING SHORTFALL<\/span>/.test(mixedGlance),
   'funding-gap styling and the gap chip are on the glance, without opening Details');
 ok(F.planSpendCards([
   { id: 'a', group: 'g', planSpendSummary: true, label: 'A', need: 1, verdict: 'AT RISK' },
@@ -653,7 +652,7 @@ ok(midNovCard && midNovCard.verdict === midNovWorst && midNovCard.verdict === 'F
 const midNovHtml = render(midNovPlans);
 const midNovGlance = article(midNovHtml, 'fusion-household').split('<details')[0];
 ok(/data-plan-spend-verdict="FUNDING GAP"/.test(midNovGlance)
-    && /<span class="chip c">FUNDING GAP<\/span>/.test(midNovGlance)
+    && /<span class="chip c">FUNDING SHORTFALL<\/span>/.test(midNovGlance)
     && /class="[^"]*\bfunding-gap\b/.test(article(midNovHtml, 'fusion-household').split('>')[0]),
   'the 2026-11-15 grouped Fusion glance shows FUNDING GAP without opening Details');
 

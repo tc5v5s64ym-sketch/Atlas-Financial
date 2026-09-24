@@ -2562,6 +2562,45 @@
     return cards;
   }
 
+  // A Plan Spend explanation is a link between two existing Forecast
+  // publications, not a savings planner. A majorPlans verdict proves joint
+  // feasibility, not cash already saved for this item. paydayAllocation can
+  // hold cash this payday, but it does not publish a serial contribution path
+  // or a plan-specific saved balance. Keep both amounts unknown until an
+  // authority actually establishes them. A due-period result is shown only
+  // when the Road Ahead period includes this exact dated cash event.
+  function planSpendFundingPaths(plans, trajectory) {
+    const periods = trajectory && trajectory.status === 'ready'
+      && Array.isArray(trajectory.payPeriods) ? trajectory.payPeriods : [];
+    return (Array.isArray(plans) ? plans : []).map(row => {
+      const period = row && row.date ? periods.find(p => p
+        && p.start <= row.date && row.date <= p.end
+        && p.stage2 && p.stage2.commitments
+        && Array.isArray(p.stage2.commitments.lines)
+        && p.stage2.commitments.lines.some(line => line && line.id === row.id
+          && line.date === row.date)) : null;
+      const result = period && period.stage3 && period.stage3.result;
+      const duePeriod = result && result.identity === 'standalone-period-surplus-deficit'
+        && result.status !== 'unavailable' && Number.isFinite(result.amount)
+        ? {
+            start: period.start,
+            end: period.end,
+            amount: result.amount,
+            status: result.status,
+            identity: result.identity,
+            kind: result.amount < 0 ? 'shortfall' : result.amount > 0 ? 'surplus' : 'balanced',
+          }
+        : null;
+      return {
+        id: row.id,
+        allocation: 'unallocated',
+        setAsideNow: null,
+        futureCashFlowNeeded: null,
+        duePeriod,
+      };
+    });
+  }
+
   function facilityCapacity(facility, opts) {
     if (!facility) return 0;
     // Unknown pending is not $0. Posted room is not usable capacity.
@@ -15791,7 +15830,7 @@
   }
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements,
-    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, plannedDebt, debtPriority, paydayAllocation,
+    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendFundingPaths, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
