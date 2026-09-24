@@ -2578,7 +2578,7 @@
   // Later contributions are capped by their own period capacity, so a weak
   // later payday can require an earlier contribution. Daily cash headroom
   // caps carried protection between paydays.
-  function planSpendPaydayFunding(plan, asOf, sim, seq, plans) {
+  function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation) {
     const unavailable = reason => ({ status: 'unavailable', reason,
       source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
     if (!plan || !asOf || !sim || sim.start !== asOf || !Array.isArray(sim.daily)
@@ -2716,15 +2716,41 @@
       cumulative += contribution;
       let left = contribution;
       const allocations = [];
-      for (const cost of schedulable) {
-        if (!left) break;
-        const amount = Math.min(left, cost.baseRequirement - allocated.get(cost.id));
-        if (amount <= 0) continue;
-        allocated.set(cost.id, allocated.get(cost.id) + amount);
-        active.set(cost.id, active.get(cost.id) + amount);
-        left -= amount;
-        allocations.push({ id: cost.id, label: cost.label, amount: dollars(amount) });
-        if (allocated.get(cost.id) === cost.baseRequirement) fullyFundedOn.set(cost.id, period.date);
+      // On the live payday, the incumbent paydayAllocation is already the
+      // named authority for these same dollars. Reuse its attribution rather
+      // than issuing a second FIFO instruction for the current payday.
+      const incumbentParts = period.date === asOf && incumbentAllocation
+        && Array.isArray(incumbentAllocation.futureCosts)
+        ? incumbentAllocation.futureCosts.filter(part => part && Number(part.allocated) > EPSILON
+          && allocated.has(part.id)) : [];
+      if (incumbentParts.length) {
+        const incumbentTotal = incumbentParts.reduce((sum, part) => sum + cents(part.allocated), 0);
+        if (incumbentTotal !== contribution) {
+          return unavailable('The current-payday funding schedule does not reconcile to the incumbent payday allocation.');
+        }
+        for (const part of incumbentParts) {
+          const cost = schedulable.find(row => row.id === part.id);
+          const amount = cents(part.allocated);
+          if (!cost || amount > cost.baseRequirement - allocated.get(cost.id)) {
+            return unavailable('The incumbent payday allocation cannot be reconciled to the planned-spend schedule.');
+          }
+          allocated.set(cost.id, allocated.get(cost.id) + amount);
+          active.set(cost.id, active.get(cost.id) + amount);
+          left -= amount;
+          allocations.push({ id: cost.id, label: cost.label, amount: dollars(amount) });
+          if (allocated.get(cost.id) === cost.baseRequirement) fullyFundedOn.set(cost.id, period.date);
+        }
+      } else {
+        for (const cost of schedulable) {
+          if (!left) break;
+          const amount = Math.min(left, cost.baseRequirement - allocated.get(cost.id));
+          if (amount <= 0) continue;
+          allocated.set(cost.id, allocated.get(cost.id) + amount);
+          active.set(cost.id, active.get(cost.id) + amount);
+          left -= amount;
+          allocations.push({ id: cost.id, label: cost.label, amount: dollars(amount) });
+          if (allocated.get(cost.id) === cost.baseRequirement) fullyFundedOn.set(cost.id, period.date);
+        }
       }
       const afterPayday = protectedBalance;
       const payments = [];
@@ -2794,10 +2820,14 @@
       source: 'Forecast.planSpendPaydayFunding', asOf,
       openingProtected: null, projectionOpeningProtected: 0,
       identity: 'cash-walk-period-capacity; latest-feasible cumulative protection',
-      paydays: rows, gap: gap || (prePayday.length ? {
-        payday: null, cashDate: prePayday[0].date, required: dollars(prePayday[0].baseRequirement),
-        available: 0, shortBy: dollars(prePayday[0].baseRequirement), affected: prePayday.map(row => row.id),
-      } : null),
+      paydays: rows, gap: gap || (prePayday.length ? (() => {
+        const overdueRequirement = prePayday.reduce((sum, row) => sum + row.baseRequirement, 0);
+        return {
+          payday: null, cashDate: prePayday.map(row => row.date).sort()[0],
+          required: dollars(overdueRequirement), available: 0,
+          shortBy: dollars(overdueRequirement), affected: prePayday.map(row => row.id),
+        };
+      })() : null),
       costs: costPublication, groups,
       unscheduled: seq.filter(row => row && !row.date).map(row => ({
         id: row.id, reason: 'cash-date-not-established', when: row.when || null,
@@ -9702,7 +9732,6 @@
         weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays: horizon.days,
         seq: sequence, sim: knowledgeSim,
       }));
-      const planSpendFunding = planSpendPaydayFunding(plan, asOf, knowledgeSim, sequence, plans);
       const paydayOpts = Object.assign({}, planOptions, {
         weeklyVariable: weeklyCap,
         periods: planOptions.periods || base.periods,
@@ -9711,6 +9740,8 @@
         injections: simOptions.injections,
       });
       const alloc = paydayAllocation(plan, asOf, paydayOpts);
+      const planSpendFunding = planSpendPaydayFunding(
+        plan, asOf, knowledgeSim, sequence, plans, alloc);
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));
