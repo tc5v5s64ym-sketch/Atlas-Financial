@@ -329,43 +329,18 @@ console.log('\n=== 8. Live trajectory Household Budget path includes the $800 mo
   const cats = (liveBd.categories || []).filter(c =>
     c && c.class !== 'reserve' && c.source !== 'historical-actual'
     && isFinite(Number(c.planned)) && Number(c.planned) > 0);
-  const baseWeights = cats.map(c => Math.round(Number(c.planned) * 100));
+  const weights = cats.map(c => Math.round(Number(c.planned) * 100));
+  const totalWeight = weights.reduce((s, w) => s + w, 0);
   const fortnightCents = Math.round(traj.weeklyVariable.amount * 200);
-  const payroll = (live.plan.income || []).find(row =>
-    row && row.frequency === 'biweekly' && row.anchor && /seaspan/i.test(row.label || ''));
-  const addDays = (iso, n) => {
-    const [y, m, d] = iso.split('-').map(Number);
-    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-  };
-  const cycleStart = iso => {
-    let start = payroll && payroll.anchor;
-    if (!start || !iso) return null;
-    while (addDays(start, 14) <= iso) start = addDays(start, 14);
-    while (start > iso) start = addDays(start, -14);
-    return start;
-  };
-  const dayWeights = iso => baseWeights.map((w, i) => {
-    const cat = cats[i];
-    if (!cat || cat.paydayCadence !== 'every-other-seaspan') return w;
-    const onStart = cycleStart(cat.paydayCadenceAnchor);
-    const start = cycleStart(iso);
-    if (!onStart || !start) return 0;
-    const steps = (Date.parse(start) - Date.parse(onStart)) / 86400000 / 14;
-    return steps % 2 === 0 ? w : 0;
-  });
-  // Same walk pennies. every-other-seaspan drops out on OFF days, so the
-  // $800 monthly weight takes its share of those days only.
   const through = days => {
-    const seats = baseWeights.map(() => 0);
-    if (!(days > 0)) return seats;
+    const seats = weights.map(() => 0);
+    if (!(days > 0) || !(totalWeight > 0)) return seats;
     let remainder = 7;
     for (let d = 0; d < days; d++) {
-      const weights = dayWeights(addDays(asOf, d));
-      const totalWeight = weights.reduce((s, w) => s + w, 0);
       remainder += fortnightCents;
       const pennies = Math.floor(remainder / 14);
       remainder %= 14;
-      if (pennies <= 0 || !(totalWeight > 0)) continue;
+      if (pennies <= 0) continue;
       let given = 0;
       const parts = weights.map((w, i) => {
         const num = pennies * w;

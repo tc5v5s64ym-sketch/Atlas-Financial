@@ -178,6 +178,12 @@ console.log('=== planned lines reconcile and keep cadence ===');
   const offLines = off.stage1.householdBudget.lines;
   ok(lineBy(onLines, 'Dog food') && !lineBy(offLines, 'Dog food'),
     'Dog food is on the ON cycle and absent from the next OFF cycle');
+  ok(!lineBy(onLines, 'Normal spending estimate')
+      && lineBy(offLines, 'Normal spending estimate'),
+    'the OFF cycle keeps the smoothed Dog food cents as an explicit residual');
+  ok(near(lineBy(onLines, 'Fuel').amount, lineBy(offLines, 'Fuel').amount, 0.02)
+      && near(lineBy(onLines, 'Other spend').amount, lineBy(offLines, 'Other spend').amount, 0.02),
+    'OFF-cycle Fuel and Other spend do not absorb the Dog food smear');
   ok(near(lineBy(onLines, 'Fuel').amount, 325, 0.1)
       && near(lineBy(onLines, 'Groceries').amount, 900, 0.1)
       && near(lineBy(onLines, 'Eating out').amount, 200, 0.1)
@@ -239,6 +245,61 @@ console.log('\n=== residual pay period stays clipped ===');
     'residual Fuel is not rewritten as the full payday amount');
   ok(lineSum(residual.stage1.householdBudget.lines) === roundCent(residual.stage1.householdBudget.amount),
     'residual lines still sum to the clipped Household Budget total');
+}
+
+console.log('\n=== hand-computed sole every-other cycle ===');
+{
+  // $100 every-other monthly equivalent. Calendar weeks are 365.25/12/7.
+  // weekly = round(100 / weeks, 2 cents) = 23.00.
+  // Walk pennies use fortnight cents round(23.00 * 200) = 4600.
+  // 14 days from a zero prior: floor((4600 * 14 + 7) / 14) = 4600 cents = $46.00.
+  // The next 14 days are the same $46.00. No largest-remainder split:
+  // the only category either receives the whole rollup or none of it.
+  const weeklyCents = Math.round((100 / (MONTH_DAYS / 7)) * 100);
+  const fortnightCents = Math.round((weeklyCents / 100) * 200);
+  const throughCents = days => Math.floor((fortnightCents * days + 7) / 14);
+  ok(weeklyCents === 2300 && fortnightCents === 4600, 'hand weekly rate is $23.00');
+  ok(throughCents(14) === 4600 && throughCents(28) - throughCents(14) === 4600,
+    'each full cycle from a zero prior is $46.00');
+  const only = {
+    windowDays: 60,
+    startingCash: { amount: 5000 },
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0, scenario: 'expected' },
+    opening: { asOf: '2026-08-28' },
+    budget: {
+      basis: 'ytd',
+      categories: [{
+        id: 'pets', label: 'Pets', class: 'essential', from: ['Pets'],
+        plannedPayday: 100, plannedMonthly: null,
+        paydayCadence: 'every-other-seaspan', paydayCadenceAnchor: '2026-08-28',
+        ownerLine: 'Dog food',
+      }],
+    },
+    income: [{
+      id: 'payroll', label: 'Payroll — Seaspan',
+      frequency: 'biweekly', anchor: '2026-08-28',
+      amount: 1000, confidence: 'confirmed',
+    }],
+    obligations: [], bills: [], commitments: [],
+  };
+  const traj = F.baselineTrajectory(only, [], '2026-08-28', { periods: periods() });
+  const on = (traj.payPeriods || []).find(p => p.payday === '2026-08-28');
+  const off = (traj.payPeriods || []).find(p => p.payday === '2026-09-11');
+  const onHb = on && on.stage1.householdBudget;
+  const offHb = off && off.stage1.householdBudget;
+  ok(onHb && onHb.amount === 46 && lineBy(onHb.lines, 'Dog food')
+      && lineBy(onHb.lines, 'Dog food').amount === 46
+      && !lineBy(onHb.lines, 'Normal spending estimate'),
+    'ON cycle publishes Dog food at the hand $46.00 and no residual',
+    onHb && onHb.lines.map(row => row.label + ':' + row.amount).join(', '));
+  ok(offHb && offHb.amount === 46 && !lineBy(offHb.lines, 'Dog food')
+      && lineBy(offHb.lines, 'Normal spending estimate')
+      && lineBy(offHb.lines, 'Normal spending estimate').amount === 46
+      && offHb.lines.length === 1,
+    'OFF cycle publishes the whole $46.00 as Normal spending estimate',
+    offHb && offHb.lines.map(row => row.label + ':' + row.amount).join(', '));
+  ok(lineSum(onHb.lines) === onHb.amount && lineSum(offHb.lines) === offHb.amount,
+    'both cycles reconcile lines to the unchanged rollup');
 }
 
 console.log('\n=== Planning does not split Household Budget ===');

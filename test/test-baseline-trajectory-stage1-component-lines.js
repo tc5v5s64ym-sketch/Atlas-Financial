@@ -619,40 +619,18 @@ console.log('\n=== 10. Live household September reconciles by event id and plann
     && isFinite(Number(c.planned)) && Number(c.planned) > 0);
   const walkDays = sep.stage1.householdBudget.walkDays;
   const priorDays = (Date.parse(sep.start) - Date.parse(asOf)) / 86400000;
-  const payroll = (live.plan.income || []).find(row =>
-    row && row.frequency === 'biweekly' && row.anchor && /seaspan/i.test(row.label || ''));
-  const payrollAnchor = payroll && payroll.anchor;
-  function cycleStartOn(iso) {
-    let start = payrollAnchor;
-    if (!start || !iso) return null;
-    while (addDays(start, 14) <= iso) start = addDays(start, 14);
-    while (start > iso) start = addDays(start, -14);
-    return start;
-  }
-  function dayWeight(cat, iso) {
-    const planned = Math.round(Number(cat.planned) * 100);
-    if (cat.paydayCadence !== 'every-other-seaspan') return planned;
-    const onStart = cycleStartOn(cat.paydayCadenceAnchor);
-    const start = cycleStartOn(iso);
-    if (!onStart || !start) return 0;
-    const steps = (Date.parse(start) - Date.parse(onStart)) / 86400000 / 14;
-    return steps % 2 === 0 ? planned : 0;
-  }
-  // Independently split walk pennies. every-other-seaspan weight is 0 on
-  // OFF cycle days, so those pennies stay with the categories that apply.
   const categoryThroughDays = days => {
-    const seats = cats.map(() => 0);
-    if (!(days > 0)) return seats;
+    const weightCents = cats.map(c => Math.round(Number(c.planned) * 100));
+    const W = weightCents.reduce((s, w) => s + w, 0);
+    const seats = weightCents.map(() => 0);
+    if (!(days > 0) || !(W > 0)) return seats;
     let remainder = 7;
     const fortnightCents = Math.round(weekly * 200);
     for (let d = 0; d < days; d++) {
-      const iso = addDays(asOf, d);
-      const weightCents = cats.map(c => dayWeight(c, iso));
-      const W = weightCents.reduce((s, w) => s + w, 0);
       remainder += fortnightCents;
       const pennies = Math.floor(remainder / 14);
       remainder %= 14;
-      if (pennies <= 0 || !(W > 0)) continue;
+      if (pennies <= 0) continue;
       let given = 0;
       const parts = weightCents.map((w, i) => {
         const num = pennies * w;
@@ -672,17 +650,26 @@ console.log('\n=== 10. Live household September reconciles by event id and plann
     label: c.ownerLine || c.label || c.id,
     amount: (after[i] - before[i]) / 100,
     cadence: c.paydayCadence || null,
-  })).filter(row => row.amount || row.cadence !== 'every-other-seaspan');
+  }));
   const budgetTotal = (after.reduce((s, n) => s + n, 0)
     - before.reduce((s, n) => s + n, 0)) / 100;
   const publishedBudget = sep.stage1.householdBudget.lines || [];
-  ok(cats.length > 1 && publishedBudget.length === expectedBudget.length,
-    'live September householdBudget.lines are present for contributing categories');
+  const residual = lineByLabel(publishedBudget, 'Normal spending estimate');
+  ok(cats.length > 1, 'live September has more than one contributing budget category');
+  let cadenceGap = 0;
   for (const row of expectedBudget) {
+    if (row.cadence === 'every-other-seaspan') {
+      const published = lineByLabel(publishedBudget, row.label);
+      cadenceGap = roundCent(cadenceGap + row.amount - (published ? published.amount : 0));
+      continue;
+    }
     const published = lineByLabel(publishedBudget, row.label);
     ok(published && near(published.amount, row.amount) && published.status === 'calculated',
       `live budget ${row.label} matches independent planned remainder smear`);
   }
+  ok(near(residual ? residual.amount : 0, cadenceGap),
+    'OFF-cycle every-other cents are the residual, not another category',
+    residual ? `${residual.amount} vs ${cadenceGap}` : String(cadenceGap));
   ok(near(lineSum(publishedBudget), sep.stage1.householdBudget.amount)
     && near(sep.stage1.householdBudget.amount, budgetTotal),
     'live September sum(householdBudget.lines) equals the walk-applied rollup');

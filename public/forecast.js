@@ -14539,12 +14539,16 @@
   // planned weeklyVariable (budgetBreakdown owner-target /
   // current-regime planned remainder, not historical actuals): each
   // contributing category receives a monotonic share of the same
-  // walk-boundary spending pennies. every-other-seaspan weight is zero
-  // on OFF-cycle days. A ready provisional baseline publishes the
+  // walk-boundary spending pennies. every-other-seaspan keeps that share
+  // only on ON-cycle days; the OFF-cycle share is an explicit Normal
+  // spending estimate residual and is not renamed onto another category.
+  // A ready provisional baseline publishes the
   // category cents already inside that 14-day blend when they sum to
   // it, and otherwise one Normal spending estimate line. A single
   // Household budget smear line is published only when the walk-applied
-  // total is non-zero and no contributing category can be named. Empty
+  // total is non-zero and no contributing category can be named. A
+  // nonzero total whose named shares are all absent is that same
+  // Normal spending estimate residual, not an empty breakdown. Empty
   // sets omit lines.
   // sum(lines) equals the unchanged component amount. Stage arithmetic
   // is otherwise unchanged.
@@ -14693,13 +14697,15 @@
     return cat.ownerLine || cat.label || DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.id || 'Household budget';
   }
 
+  const TRAJECTORY_BUDGET_RESIDUAL_LABEL = 'Normal spending estimate';
+
   // Attribute the walk-applied Household Budget smear. Planned rows use
   // the same budgetBreakdown categories as planned weeklyVariable.
-  // every-other-seaspan weight is zero on days whose Seaspan cycle is OFF,
-  // so that row is absent from an OFF pay period and is not renamed onto
-  // another category on an ON day. A provisional normal-spending baseline
-  // is attributed only when its own category cents already sum to the
-  // published 14-day amount. Otherwise one estimate line is kept.
+  // every-other-seaspan keeps its own weight share only on ON-cycle days.
+  // The smoothed share on OFF-cycle days stays an explicit residual. It is
+  // not renamed onto another category. A provisional normal-spending
+  // baseline is attributed only when its own category cents already sum to
+  // the published 14-day amount. Otherwise one estimate line is kept.
   function baselineTrajectoryHouseholdBudgetLines(input, walkDays, householdBudgetAmount, priorWalkDays) {
     const target = roundCent(householdBudgetAmount);
     if (!(walkDays > 0)) return [];
@@ -14723,7 +14729,7 @@
         weights, input.weeklyVariable, priorWalkDays);
       const lines = [];
       for (let i = 0; i < categories.length; i++) {
-        const amount = (after[i] - before[i]) / 100;
+        const amount = (after.seats[i] - before.seats[i]) / 100;
         if (!amount) continue;
         const row = categories[i];
         lines.push({
@@ -14753,33 +14759,49 @@
       const weights = contributing.map(c => Math.round(Number(c.planned) * 100));
       const dates = (Array.isArray(input.walkDaily) ? input.walkDaily : [])
         .map(row => row && row.date);
-      const weightAtDay = (dayIndex) => {
-        const date = dates[dayIndex];
-        return contributing.map((c, i) => {
-          if (isEveryOtherSeaspanCadence(c) && !dateInEveryOtherOnCycle(input.plan, date, c)) {
-            return 0;
-          }
-          return weights[i];
-        });
+      const withholdAtDay = (dayIndex, categoryIndex) => {
+        const cat = contributing[categoryIndex];
+        if (!isEveryOtherSeaspanCadence(cat)) return false;
+        return !dateInEveryOtherOnCycle(input.plan, dates[dayIndex], cat);
       };
       const after = trajectoryCategoryCentsThroughDays(
-        weights, input.weeklyVariable, priorWalkDays + walkDays, weightAtDay);
+        weights, input.weeklyVariable, priorWalkDays + walkDays, withholdAtDay);
       const before = trajectoryCategoryCentsThroughDays(
-        weights, input.weeklyVariable, priorWalkDays, weightAtDay);
+        weights, input.weeklyVariable, priorWalkDays, withholdAtDay);
+      let residualCents = 0;
       for (let i = 0; i < contributing.length; i++) {
-        const amount = (after[i] - before[i]) / 100;
+        const named = after.seats[i] - before.seats[i];
+        residualCents += after.withheld[i] - before.withheld[i];
         const c = contributing[i];
-        if (!amount && isEveryOtherSeaspanCadence(c)) continue;
+        // A zero every-other line is absent: its smoothed cents are the
+        // residual, or the category does not apply on this span. A zero
+        // share of any other contributing category stays, so a positive
+        // tail that rounds to no pennies in a short span is still a member.
+        if (!named && isEveryOtherSeaspanCadence(c)) continue;
         lines.push({
           id: c.id,
           label: trajectoryBudgetLineLabel(c),
-          amount,
+          amount: named / 100,
+          status: 'calculated',
+        });
+      }
+      if (residualCents) {
+        lines.push({
+          label: TRAJECTORY_BUDGET_RESIDUAL_LABEL,
+          amount: residualCents / 100,
           status: 'calculated',
         });
       }
     } else if (target !== 0) {
       lines.push({
         label: 'Household budget',
+        amount: target,
+        status: 'calculated',
+      });
+    }
+    if (!lines.length && target !== 0) {
+      lines.push({
+        label: TRAJECTORY_BUDGET_RESIDUAL_LABEL,
         amount: target,
         status: 'calculated',
       });
@@ -14801,33 +14823,38 @@
   // that funds trajectoryVariableThrough. Each day's pennies are split
   // by largest remainder of owner-target weight, so a later day never
   // takes a penny back and a positive tail cannot go negative.
-  function trajectoryCategoryCentsThroughDays(weights, weekly, days, weightAtDay) {
+  function trajectoryCategoryCentsThroughDays(weights, weekly, days, withholdAtDay) {
     const n = weights.length;
     const seats = new Array(n).fill(0);
-    if (!(days > 0) || !n) return seats;
+    const withheld = new Array(n).fill(0);
+    const totalWeight = weights.reduce((s, w) => s + (Number(w) || 0), 0);
+    if (!(days > 0) || !n || !(totalWeight > 0)) return { seats, withheld };
     const fortnightCents = Math.round(weekly * 200);
     let remainder = 7;
     for (let d = 0; d < days; d++) {
-      const dayWeights = weightAtDay ? weightAtDay(d) : weights;
-      const totalWeight = dayWeights.reduce((s, w) => s + (Number(w) || 0), 0);
       remainder += fortnightCents;
       const pennies = Math.floor(remainder / 14);
       remainder %= 14;
-      if (pennies <= 0 || !(totalWeight > 0)) continue;
+      if (pennies <= 0) continue;
       let given = 0;
       const parts = new Array(n);
+      const daySeats = new Array(n).fill(0);
       for (let i = 0; i < n; i++) {
-        const num = pennies * (Number(dayWeights[i]) || 0);
+        const num = pennies * (Number(weights[i]) || 0);
         const floor = Math.floor(num / totalWeight);
-        seats[i] += floor;
+        daySeats[i] = floor;
         given += floor;
         parts[i] = { i, rem: num % totalWeight };
       }
       parts.sort((a, b) => b.rem - a.rem || a.i - b.i);
       const leftover = pennies - given;
-      for (let k = 0; k < leftover; k++) seats[parts[k].i] += 1;
+      for (let k = 0; k < leftover; k++) daySeats[parts[k].i] += 1;
+      for (let i = 0; i < n; i++) {
+        if (withholdAtDay && withholdAtDay(d, i)) withheld[i] += daySeats[i];
+        else seats[i] += daySeats[i];
+      }
     }
-    return seats;
+    return { seats, withheld };
   }
 
   function baselineTrajectoryWalkVariableDays(daily, span) {
