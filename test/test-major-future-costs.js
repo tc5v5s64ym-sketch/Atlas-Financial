@@ -30,6 +30,7 @@ const NEW_IDS = [
   'burrards-team-fees',
   'seattle-nov',
   'seattle-dec',
+  'linden-birthday',
   'christmas-2026',
   'provincials',
   'san-diego',
@@ -44,12 +45,14 @@ const POINT = {
   'burrards-team-fees': 700,
   'seattle-nov': 1500,
   'seattle-dec': 1500,
+  'linden-birthday': 500,
   'christmas-2026': 3500,
   'provincials': 1500,
   'san-diego': 3000,
 };
 const OWNER_EXPLICIT_DATES = {
   'seattle-dec': '2026-12-09',
+  'linden-birthday': '2026-12-09',
   'christmas-2026': '2026-12-25',
 };
 const OWNER_DAY15_DATES = {
@@ -84,7 +87,7 @@ ok(property && property.class === 'reserve'
   'property tax stays the reserve category, with the owner range and the Jul 2026 actual');
 
 console.log('\n=== owner estimates are on the rows, not invented midpoints ===');
-const OWNER_CONFIRMED = new Set(['seattle-nov', 'seattle-dec', 'provincials', 'san-diego']);
+const OWNER_CONFIRMED = new Set(['seattle-nov', 'seattle-dec', 'linden-birthday', 'provincials', 'san-diego']);
 for (const [id, amount] of Object.entries(POINT)) {
   const row = byId[id];
   const confidence = OWNER_CONFIRMED.has(id) ? 'confirmed' : 'estimated';
@@ -163,6 +166,12 @@ ok(!later.some(e => STILL_UNDATED.includes(e.id)),
 ok(later.some(e => e.id === 'seattle-dec' && e.date === '2026-12-09'
     && near(e.amount, -1500)),
   'longer walk includes seattle-dec on the owner Dec 9 date');
+ok(later.filter(e => e.id === 'linden-birthday').length === 1
+    && later.some(e => e.id === 'linden-birthday' && e.date === '2026-12-09'
+      && near(e.amount, -500)),
+  'longer walk includes linden-birthday once on 2026-12-09 at −500');
+ok(later.filter(e => e.id === 'seattle-dec').length === 1,
+  'seattle-dec still emits once beside Linden on the longer walk');
 ok(later.some(e => e.id === 'christmas-2026' && e.date === '2026-12-25'
     && near(e.amount, -3500)),
   'longer walk includes christmas-2026 on the owner Dec 25 date');
@@ -221,9 +230,9 @@ ok(near(fusionRemainingOnly, 3300),
   'remaining instalments alone are $3,300, independent of owner-stated paid row',
   String(fusionRemainingOnly));
 const preexistingPoints = 895;
-const absorbedPoints = 700 + 1500 + 1500 + 3500 + 1500 + 3000;
+const absorbedPoints = 700 + 1500 + 1500 + 500 + 3500 + 1500 + 3000;
 const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
-ok(near(absorbedPoints, 11700) && near(HAND_TOTAL, 17095),
+ok(near(absorbedPoints, 12200) && near(HAND_TOTAL, 17595),
   'hand total at Aug. 19 opening includes Warriors $895 plus paid + remaining Fusion until each settledOn');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',

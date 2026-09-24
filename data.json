@@ -691,6 +691,17 @@
                 "note": "Owner-confirmed planning amount $1,500, Dec 2026 (owner 2026-09-23; supersedes the prior $1,200 estimate). Owner assigned cash date 2026-12-09 (Seattle tournament is Dec 9), not the month-only 15th. Distinct from Seattle November."
             },
             {
+                "id": "linden-birthday",
+                "date": "2026-12-09",
+                "label": "Linden birthday",
+                "amount": 500,
+                "when": "Dec 2026",
+                "budgetCategory": null,
+                "confidence": "confirmed",
+                "sinkingFund": true,
+                "note": "Owner 2026-09-23: Linden birthday $500. Assigned cash date 2026-12-09. Distinct from seattle-dec (same cash date, different $1,500 travel commitment) and from christmas-2026. One cash event."
+            },
+            {
                 "id": "christmas-2026",
                 "date": "2026-12-25",
                 "label": "Christmas 2026",

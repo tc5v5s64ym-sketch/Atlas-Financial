@@ -377,9 +377,17 @@ console.log('\n=== 6. Live household December reconciles seattle-dec / christmas
   const published = dec.stage2.commitments.lines || [];
   const independentSeattle = expected.lines.find(r => r.id === SEATTLE_DEC.id);
   const independentXmas = expected.lines.find(r => r.id === CHRISTMAS_2026.id);
+  const independentLinden = expected.lines.find(r => r.id === 'linden-birthday');
   ok(independentSeattle && independentSeattle.date === SEATTLE_DEC.date
     && independentXmas && independentXmas.date === CHRISTMAS_2026.date,
     'independent live December expandEvents includes seattle-dec / christmas-2026 with their dates');
+  ok(independentLinden && independentLinden.date === '2026-12-09'
+    && near(independentLinden.amount, 500)
+    && independentLinden.label === 'Linden birthday',
+    'independent live December expandEvents includes linden-birthday $500 on 2026-12-09');
+  ok(expected.lines.filter(r => r.id === 'linden-birthday').length === 1
+      && expected.lines.filter(r => r.id === SEATTLE_DEC.id).length === 1,
+    'live December has one Linden birthday line and one seattle-dec line');
   ok(expected.lines.length > 1 && published.length === expected.lines.length,
     'live December publishes one commitment line per independent commitment id');
   for (const row of expected.lines) {
@@ -411,6 +419,14 @@ console.log('\n=== 6. Live household December reconciles seattle-dec / christmas
   ok(periodSeattle && periodSeattle.date === SEATTLE_DEC.date
     && near(periodSeattle.amount, independentSeattle.amount),
     'live 9 Dec pay-period publishes seattle-dec with its date');
+  const periodLinden = lineById(periodLines, 'linden-birthday');
+  ok(periodExpected.lines.filter(r => r.id === 'linden-birthday').length === 1
+      && periodExpected.lines.some(r => r.id === 'linden-birthday'
+        && r.date === '2026-12-09' && near(r.amount, 500)),
+    'independent live 9 Dec pay-period includes linden-birthday $500 once');
+  ok(periodLinden && periodLinden.date === '2026-12-09' && near(periodLinden.amount, 500)
+      && periodLinden.label === 'Linden birthday',
+    'live 9 Dec pay-period publishes linden-birthday with its date');
   ok(near(lineSum(periodLines), seattlePeriod.stage2.commitments.amount)
     && near(seattlePeriod.stage2.commitments.amount, periodExpected.total),
     'live 9 Dec pay-period sum(commitments.lines) equals rollup and independent total');

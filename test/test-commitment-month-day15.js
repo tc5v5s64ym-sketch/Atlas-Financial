@@ -43,6 +43,7 @@ function independentMonth15(when) {
 
 const OWNER_EXPLICIT = {
   'seattle-dec': { date: '2026-12-09', amount: 1500, when: 'Dec 2026' },
+  'linden-birthday': { date: '2026-12-09', amount: 500, when: 'Dec 2026' },
   'christmas-2026': { date: '2026-12-25', amount: 3500, when: 'by Christmas 2026' },
 };
 const OWNER_DAY15 = {
@@ -56,10 +57,11 @@ const LEFT_UNDATED = {
 const RETIRED = ['downstairs-couch', 'exterior-painting', 'vehicle-maintenance', 'indio-tournament'];
 const HAND_DEC_CASH = [
   { id: 'seattle-dec', date: '2026-12-09', amount: -1500 },
+  { id: 'linden-birthday', date: '2026-12-09', amount: -500 },
   { id: 'christmas-2026', date: '2026-12-25', amount: -3500 },
   { id: 'fusion-household-dec', date: '2026-12-31', amount: -900 },
 ];
-const HAND_DEC_COMMITMENTS_OUT = 1500 + 3500 + 900;
+const HAND_DEC_COMMITMENTS_OUT = 1500 + 500 + 3500 + 900;
 
 const plan = data.plan;
 const rows = plan.commitments || [];
@@ -77,8 +79,12 @@ for (const [id, expected] of Object.entries(OWNER_EXPLICIT)) {
     `${id} owner day is not the month-only 15th`);
 }
 ok(OWNER_EXPLICIT['seattle-dec'].date !== '2026-12-15'
+    && OWNER_EXPLICIT['linden-birthday'].date !== '2026-12-15'
     && OWNER_EXPLICIT['christmas-2026'].date !== '2026-12-15',
-  'hand-listed Seattle/Christmas dates are Dec 9 and Dec 25, not the 15th');
+  'hand-listed Seattle/Linden/Christmas dates are Dec 9, Dec 9, and Dec 25, not the 15th');
+ok(OWNER_EXPLICIT['seattle-dec'].amount !== OWNER_EXPLICIT['linden-birthday'].amount
+    && OWNER_EXPLICIT['seattle-dec'].date === OWNER_EXPLICIT['linden-birthday'].date,
+  'Linden birthday shares Seattle December cash date and is a different $500 amount');
 for (const [id, expected] of Object.entries(OWNER_DAY15)) {
   const row = byId[id];
   const independent = independentMonth15(expected.when);
@@ -175,9 +181,15 @@ console.log('\n=== expandEvents dates the occurrences (synthetic when-only + liv
     'Dec 2026 expandEvents commitment cash matches the hand-listed occurrences',
     got.join(' ; '));
   const seattle = decEvents.find(e => e.id === 'seattle-dec');
+  const linden = decEvents.find(e => e.id === 'linden-birthday');
   const xmas = decEvents.find(e => e.id === 'christmas-2026');
   ok(seattle && seattle.date === '2026-12-09' && near(seattle.amount, -1500),
     'seattle-dec cash is −1500 on 2026-12-09');
+  ok(linden && linden.date === '2026-12-09' && near(linden.amount, -500),
+    'linden-birthday cash is −500 on 2026-12-09');
+  ok(decEvents.filter(e => e.id === 'linden-birthday').length === 1
+      && decEvents.filter(e => e.id === 'seattle-dec').length === 1,
+    'December emits Linden birthday once and seattle-dec once');
   ok(xmas && xmas.date === '2026-12-25' && near(xmas.amount, -3500),
     'christmas-2026 cash is −3500 on 2026-12-25');
 }
@@ -216,7 +228,7 @@ console.log('\n=== December Stage2 planned-spending includes the hand-listed com
   ok(traj.status === 'ready' && dec && dec.stage2 && dec.stage2.commitments,
     'December 2026 Stage2 is published');
   ok(near(dec.stage2.commitments.amount, HAND_DEC_COMMITMENTS_OUT),
-    'December Stage2 commitments equal the independent Dec cash total $5,900',
+    'December Stage2 commitments equal the independent Dec cash total $6,400',
     dec && dec.stage2 && String(dec.stage2.commitments.amount));
   const independentStage2 = (dec.stage1.result.amount || 0) - HAND_DEC_COMMITMENTS_OUT;
   ok(near(dec.stage2.result.amount, independentStage2)

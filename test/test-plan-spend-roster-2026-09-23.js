@@ -131,6 +131,22 @@ ok(byId['seattle-dec'] && byId['seattle-dec'].amount === 1500
   'Seattle December is $1,500 on the incumbent 2026-12-09');
 ok(byId['seattle-dec'].date !== independentMonth15('Dec 2026'),
   'Seattle December keeps Dec 9 rather than the month-only 15th');
+ok(byId['linden-birthday'] && byId['linden-birthday'].amount === 500
+    && byId['linden-birthday'].date === '2026-12-09'
+    && byId['linden-birthday'].when === 'Dec 2026'
+    && byId['linden-birthday'].label === 'Linden birthday'
+    && byId['linden-birthday'].payingAccount == null
+    && !Object.prototype.hasOwnProperty.call(byId['linden-birthday'], 'payingAccount'),
+  'Linden birthday is a $500 ordinary commitment on 2026-12-09 with no payingAccount');
+ok(rows.filter(r => r.id === 'linden-birthday').length === 1
+    && rows.filter(r => /linden birthday/i.test(`${r.id} ${r.label}`)).length === 1,
+  'exactly one Linden birthday commitment row');
+ok(byId['seattle-dec'] && byId['linden-birthday']
+    && byId['seattle-dec'].id !== byId['linden-birthday'].id
+    && byId['seattle-dec'].amount !== byId['linden-birthday'].amount,
+  'Linden birthday stays distinct from seattle-dec on the same cash date');
+ok(!priorById['linden-birthday'],
+  'linden-birthday is new versus the frozen 2026-09-23 prior main');
 ok(byId.provincials && byId.provincials.amount === 1500
     && byId.provincials.when === 'timing TBD'
     && (byId.provincials.date == null || byId.provincials.date === '')
@@ -189,6 +205,7 @@ function oneCash(id, date, amount) {
 }
 oneCash('seattle-nov', '2026-11-15', -1500);
 oneCash('seattle-dec', '2026-12-09', -1500);
+oneCash('linden-birthday', '2026-12-09', -500);
 oneCash('san-diego', '2027-01-15', -3000);
 ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-08' || e.date === '2027-01-09')),
   'San Diego does not also emit on January 8 or January 9');
@@ -217,12 +234,13 @@ for (const key of keys) {
 }
 cashDeltas.sort();
 const expectedDeltas = [
+  'linden-birthday@2026-12-09|null->-500',
   'san-diego@2027-01-15|null->-3000',
   'seattle-dec@2026-12-09|-1200->-1500',
   'seattle-nov@2026-11-15|-1200->-1500',
 ];
 ok(JSON.stringify(cashDeltas) === JSON.stringify(expectedDeltas),
-  'commitment cash events change only for Seattle +$300 each and the new San Diego $3,000',
+  'commitment cash events change only for Seattle +$300 each, San Diego $3,000, and Linden birthday $500',
   cashDeltas.join(' ; ') || 'none');
 
 console.log('\n=== funding sequence and sinking no longer carry the retired rows ===');
@@ -261,12 +279,15 @@ ok(near(sinkNow.get('Seattle November 2026'), 1500 / monthsInWindow)
     && near(sinkPrior.get('Seattle tournament #2'), 1200 / monthsInWindow),
   'each Seattle sinking smear is its own point amount over the window');
 const sinkingDelta = (sinking.sinkingMonthly || 0) - (priorSinking.sinkingMonthly || 0);
-const authorizedSinking = (1500 - 1200) + (1500 - 1200) + 3000;
+const authorizedSinking = (1500 - 1200) + (1500 - 1200) + 3000 + 500;
 ok(near(sinkingDelta, authorizedSinking / monthsInWindow),
-  'sinking monthly total moves only by Seattle +$300 each and San Diego $3,000',
+  'sinking monthly total moves only by Seattle +$300 each, San Diego $3,000, and Linden birthday $500',
   String(sinkingDelta));
 ok(near(sinkNow.get('San Diego'), 3000 / monthsInWindow),
   'San Diego sinking smear is the $3,000 point over the window, not a second $3,000');
+ok(near(sinkNow.get('Linden birthday'), 500 / monthsInWindow)
+    && sinkLabels.filter(l => l === 'Linden birthday').length === 1,
+  'sinking names Linden birthday once at the $500 smear');
 
 console.log('\n=== Plan Spend card is a reprint of Forecast.planSpendCards ===');
 function plansAt(asOf) {
@@ -311,6 +332,15 @@ const sanCards = F.planSpendCards(settledPlans).filter(c => c.id === 'san-diego'
 ok(sanCards.length === 1 && sanCards[0].kind === 'row' && sanCards[0].need === 3000
     && sanCards[0].date === '2027-01-15' && sanCards[0].tripWindow === TRIP_WINDOW,
   'Plan Spend has one San Diego row card of Forecast need $3,000');
+const lindenCards = F.planSpendCards(settledPlans).filter(c => c.id === 'linden-birthday');
+ok(lindenCards.length === 1 && lindenCards[0].kind === 'row' && lindenCards[0].need === 500
+    && lindenCards[0].date === '2026-12-09' && lindenCards[0].label === 'Linden birthday'
+    && lindenCards[0].tripWindow == null,
+  'Plan Spend has one Linden birthday row card of Forecast need $500 on 2026-12-09');
+const seattleDecCards = F.planSpendCards(settledPlans).filter(c => c.id === 'seattle-dec');
+ok(seattleDecCards.length === 1 && seattleDecCards[0].need === 1500
+    && seattleDecCards[0].date === '2026-12-09',
+  'Plan Spend still has one seattle-dec card of $1,500 on 2026-12-09');
 const prov = settledPlans.find(p => p.id === 'provincials');
 ok(prov && prov.need === 1500 && prov.date == null && prov.when === 'timing TBD',
   'Provincials published need is $1,500 with timing still unresolved');
@@ -371,6 +401,18 @@ ok(/data-plan-spend-cash-date/.test(sanHtml) && sanHtml.includes(longDate('2027-
   'the Forecast cash date sits in the disclosure, not in place of the trip window');
 ok(!/2027-01-08|2027-01-09|January 8, 2027|January 9, 2027/.test(sanHtml),
   'the card does not invent a trip-window payment day');
+const lindenHtml = article(settledHtml, 'linden-birthday');
+const lindenArticles = settledHtml.match(/data-plan-spend-id="linden-birthday"/g) || [];
+ok(lindenArticles.length === 1, 'the page renders exactly one Linden birthday card');
+const lindenGlance = lindenHtml.split('<details')[0];
+ok(lindenGlance.includes('>Linden birthday<') && lindenGlance.includes(money2(500))
+    && lindenGlance.includes(longDate('2026-12-09')),
+  'Linden birthday glance is the name, $500.00, and 9 December 2026');
+ok((lindenGlance.match(/\$500\.00/g) || []).length === 1, 'the glance shows $500 once');
+const seattleDecHtml = article(settledHtml, 'seattle-dec');
+ok((settledHtml.match(/data-plan-spend-id="seattle-dec"/g) || []).length === 1
+    && seattleDecHtml.includes(money2(1500)) && seattleDecHtml.includes(longDate('2026-12-09')),
+  'seattle-dec still renders once at $1,500.00 on 9 December 2026');
 const provHtml = article(settledHtml, 'provincials');
 ok(provHtml.includes(money2(1500)) && /timing TBD/.test(provHtml) && /DATE TBD/.test(provHtml),
   'Provincials renders $1,500 with timing TBD');
@@ -426,6 +468,29 @@ ok(commitmentLines(nov).some(l => l.id === 'seattle-nov' && near(l.amount, 1500)
   'November Month view contains Seattle November $1,500 on Nov 15');
 ok(commitmentLines(dec).some(l => l.id === 'seattle-dec' && near(l.amount, 1500) && l.date === '2026-12-09'),
   'December Month view contains Seattle December $1,500 on Dec 9');
+ok(commitmentLines(dec).filter(l => l.id === 'linden-birthday').length === 1
+    && commitmentLines(dec).some(l => l.id === 'linden-birthday' && near(l.amount, 500) && l.date === '2026-12-09'),
+  'December Month view contains Linden birthday $500 once on Dec 9');
+ok(commitmentLines(dec).filter(l => l.id === 'seattle-dec').length === 1,
+  'December Month view still contains seattle-dec once');
+ok(!(traj.months || []).some(m => m.month !== '2026-12' && commitmentLines(m).some(l => l.id === 'linden-birthday')),
+  'no other month contains Linden birthday');
+const lindenPeriod = independentPeriodContaining(anchor, '2026-12-09');
+ok(lindenPeriod && lindenPeriod.payday <= '2026-12-09' && '2026-12-09' <= lindenPeriod.cycleEnd,
+  'independent biweekly walk places 2026-12-09 in one Seaspan cycle',
+  lindenPeriod && `${lindenPeriod.payday} through ${lindenPeriod.cycleEnd}`);
+const lindenPayHits = (traj.payPeriods || []).filter(p => commitmentLines(p).some(l => l.id === 'linden-birthday'));
+ok(lindenPayHits.length === 1, 'exactly one Seaspan pay period contains Linden birthday',
+  lindenPayHits.map(p => `${p.payday} ${p.start}–${p.end}`).join(' ; '));
+const payLinden = commitmentLines(lindenPayHits[0]).filter(l => l.id === 'linden-birthday');
+ok(payLinden.length === 1 && near(payLinden[0].amount, 500) && payLinden[0].date === '2026-12-09',
+  'that pay period contains Linden birthday $500 once');
+ok(commitmentLines(lindenPayHits[0]).some(l => l.id === 'seattle-dec' && near(l.amount, 1500)),
+  'the same 9 Dec pay period still contains seattle-dec $1,500');
+ok(lindenPayHits[0].payday === lindenPeriod.payday
+    && lindenPayHits[0].start <= '2026-12-09' && lindenPayHits[0].end >= '2026-12-09',
+  'that pay period is the independent cycle that contains 2026-12-09',
+  lindenPayHits[0] && `${lindenPayHits[0].payday} ${lindenPayHits[0].start}–${lindenPayHits[0].end} vs ${lindenPeriod.payday}–${lindenPeriod.cycleEnd}`);
 const fusionMonthAmounts = [];
 for (const month of traj.months || []) {
   for (const line of commitmentLines(month)) {
@@ -465,11 +530,12 @@ for (const key of lineKeys) {
 lineDeltas.sort();
 const expectedLineDeltas = [
   '2026-11|seattle-nov|2026-11-15|1200->1500',
+  '2026-12|linden-birthday|2026-12-09|null->500',
   '2026-12|seattle-dec|2026-12-09|1200->1500',
   '2027-01|san-diego|2027-01-15|null->3000',
 ];
 ok(JSON.stringify(lineDeltas) === JSON.stringify(expectedLineDeltas),
-  'month Road Ahead commitment lines change only for the two Seattle amounts and San Diego',
+  'month Road Ahead commitment lines change only for the two Seattle amounts, San Diego, and Linden birthday',
   lineDeltas.join(' ; ') || 'none');
 
 console.log('\n=== compact card rules apply on the Plan Spend list ===');
