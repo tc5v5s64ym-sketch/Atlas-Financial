@@ -2,9 +2,10 @@
 /* Road Ahead Household Budget lines.
  *
  * Forecast publishes the categories behind stage1.householdBudget.
- * The rollup stays the walk-applied weeklyVariable. Line cents are an
- * independent split of that same walk: payday and monthly weights on
- * every day, every-other-seaspan weight only on ON-cycle days.
+ * The rollup stays the walk-applied weeklyVariable. Named lines keep a
+ * constant owner-target share of that walk. every-other-seaspan keeps
+ * its share only on ON-cycle days; the smoothed OFF-cycle share is an
+ * explicit Normal spending estimate residual, not another category.
  * Planning reprints lines and does not split them.
  *
  * `node test/test-household-budget-trajectory-lines.js`
