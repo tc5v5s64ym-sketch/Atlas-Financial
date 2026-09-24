@@ -1,7 +1,7 @@
 'use strict';
-/* Plan Spend renders Forecast.majorPlans in Forecast.planSpendCards order.
- * The funding explanation and due-period link are Forecast publications.
- * This page does not allocate savings or calculate household figures. */
+/* Plan Spend leads with Forecast's serial payday funding schedule and then
+ * renders Forecast.majorPlans in Forecast.planSpendCards order. This page
+ * does not allocate savings or calculate household figures. */
 
 const PLAN_SPEND_VERDICT = {
   'ON TRACK': { cls: 'on-track', chip: 'v', label: 'FEASIBLE IN CURRENT PLAN' },
@@ -48,150 +48,88 @@ function planSpendStatus(row) {
   return `<div class="plan-spend-status"><span class="chip ${state.chip}">${state.label}</span>${planSpendConfidence(row)}</div>`;
 }
 
-function planSpendSharedOverdueAggregate(row) {
-  return !!(row && row.remainingIdentity === 'joint-protected-overdue-shortfall');
+// All figures below are direct Forecast.planSpendPaydayFunding fields. This
+// surface formats them; it never totals contributions or walks cash.
+function planSpendActionLines(rows) {
+  return rows.length ? `<ul class="plan-spend-action-lines">${rows.map(row =>
+    `<li><span>${row.label}</span><b>${money2(row.amount)}</b></li>`).join('')}</ul>`
+    : '<p>No new protection needed from this payday.</p>';
 }
 
-function planSpendSummarySentence(row, grouped) {
-  if (row.verdict === 'FUNDING GAP') {
-    if (grouped) return 'At least one payment has a Forecast funding shortfall. See the payment schedule below.';
-    const amount = row.remaining != null ? money2(row.remaining) : 'an amount not established';
-    if (planSpendSharedOverdueAggregate(row)) {
-      return `Atlas currently projects a shared overdue funding shortfall of ${amount} across unsettled protected costs. This amount is not this cost's private shortfall.`;
-    }
-    return row.date
-      ? `Atlas currently projects this cost is short by ${amount} by the deadline.`
-      : `Atlas currently projects this cost is short by ${amount} in the modeled plan.`;
+function planSpendFundingHero(schedule) {
+  if (!schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.paydays)) {
+    return `<div class="note-box crit" data-plan-spend-funding="unavailable">${schedule && schedule.reason || 'Payday funding plan unavailable.'}</div>`;
   }
-  if (row.verdict === 'AT RISK') {
-    if (grouped) {
-      return 'The base payments fit, but a protected uncertainty case may not. See the payment schedule for the amount at risk.';
-    }
-    const amount = row.remaining != null ? money2(row.remaining) : 'an amount not established';
-    if (planSpendSharedOverdueAggregate(row)) {
-      return `The base costs fit together, but Forecast's shared overdue protected uncertainty is short by ${amount}. This amount is not this cost's private shortfall.`;
-    }
-    return `The base cost fits, but a protected uncertainty case is short by ${amount}.`;
-  }
-  if (row.verdict === 'ON TRACK') {
-    if (grouped) {
-      const count = (row.members || []).length;
-      const dated = (row.members || []).every(member => !!member.date);
-      return dated
-        ? `Current Forecast can cover all ${count} remaining payments by their deadlines.`
-        : 'Current Forecast can cover these payments in the modeled plan; some dates are not established.';
-    }
-    return row.date
-      ? 'Current Forecast can cover this by the deadline.'
-      : 'Current Forecast can cover this in the modeled plan; the exact date is not established.';
-  }
-  return 'Forecast has not published a feasibility verdict for this cost.';
+  const next = schedule.paydays[0];
+  if (!next) return '<div class="note-box crit">No future Seaspan payday is available for this funding plan.</div>';
+  const gap = schedule.gap;
+  const gapHtml = gap ? `<div class="note-box crit" data-plan-spend-funding="gap">
+    <b>Funding shortfall</b><p>${fmtDateFull(gap.payday || gap.cashDate)}:
+    required ${money2(gap.required)}, available ${money2(gap.available)}, short by ${money2(gap.shortBy)}.</p>
+    <p>Affected: ${gap.affected.map(id => {
+      const cost = (schedule.costs || []).find(row => row.id === id);
+      return cost ? cost.label : id;
+    }).join(' · ')}</p></div>` : '';
+  return `<section class="plan-spend-funding" aria-label="Payday funding action">
+    <div class="plan-spend-action" data-plan-spend-next-payday="${next.payday}">
+      <span class="kicker">Next Seaspan payday</span><h2>${fmtDateFull(next.payday)}</h2>
+      <strong class="plan-spend-action-amount">Set aside: ${money2(next.contribution)}</strong>
+      ${planSpendActionLines(next.allocations)}
+      <dl class="plan-spend-action-totals"><div><dt>Projected protected after this payday</dt><dd>${money2(next.protectedAfterPayday)}</dd></div>
+        <div><dt>Still to fund</dt><dd>${money2(next.stillToFund)}</dd></div></dl>
+    </div>${gapHtml}
+    <details class="plan-spend-payday-plan"><summary>Show payday funding plan</summary>
+      <p>These amounts earmark cash for named costs. The payment itself stays on its cash date.</p>
+      <div class="plan-spend-payday-grid">${schedule.paydays.map(row =>
+        `<article class="plan-spend-payday" data-plan-spend-payday="${row.payday}"><h3>${fmtDateFull(row.payday)}</h3>
+          <strong>Protect ${money2(row.contribution)}</strong>${planSpendActionLines(row.allocations)}
+          <p>Protected after payday: ${money2(row.protectedAfterPayday)}</p>
+          ${row.payments.length ? `<p>Paid before next payday: ${row.payments.map(payment =>
+            `${payment.label} ${money2(payment.protectedConsumed)}`).join(' · ')}</p>` : ''}</article>`).join('')}</div>
+    </details></section>`;
 }
 
-function planSpendDuePeriod(path) {
-  const period = path && path.duePeriod;
-  if (!period) return '';
-  const sign = period.kind === 'surplus' ? '+' : '';
-  return planSpendFact('due-period', 'After planned spending',
-    `<span data-plan-spend-period="${period.start}:${period.end}" data-plan-spend-period-status="${period.status}">${sign}${money2(period.amount)} ${period.kind}</span> <span class="chip ${period.status === 'estimated' ? 'w' : 'e'}">${period.status.toUpperCase()}</span>`);
-}
-
-function planSpendFundingFacts(path) {
-  const setAside = path && path.setAsideNow != null ? money2(path.setAsideNow) : 'Not established';
-  const future = path && path.futureCashFlowNeeded != null
-    ? money2(path.futureCashFlowNeeded) : 'Not established';
+function planSpendScheduledFacts(cost) {
+  if (!cost) return '<p>Funding schedule unavailable for this cost.</p>';
   return `<dl class="plan-spend-facts">
-    ${planSpendFact('set-aside', 'Set-aside amount now', setAside)}
-    ${planSpendFact('future-flow', 'Still needed from future cash flow', future)}
-    ${planSpendDuePeriod(path)}
-  </dl>`;
+    ${planSpendFact('protected', 'Already saved for this cost', cost.protectedNow != null ? money2(cost.protectedNow) : 'Not established')}
+    ${planSpendFact('remaining', 'Still to fund in this plan', money2(cost.stillToFund))}
+    ${planSpendFact('next', 'Next contribution', cost.nextContribution
+      ? `${money2(cost.nextContribution.amount)} on ${fmtDateFull(cost.nextContribution.payday)}` : 'No contribution scheduled')}
+    ${planSpendFact('fully-funded', 'Projected fully funded', cost.projectedFullyFunded
+      ? fmtDateFull(cost.projectedFullyFunded) : 'Not established')}
+  </dl>${cost.uncertaintyAdditional > 0
+    ? `<p>Base floor scheduled; ${money2(cost.uncertaintyAdditional)} above it remains uncertain.</p>` : ''}`;
 }
 
-function planSpendFundingPath(path, row) {
-  const projected = row && row.verdict === 'FUNDING GAP' && row.remaining != null
-    ? (planSpendSharedOverdueAggregate(row)
-      ? `<p class="plan-spend-path-gap" data-plan-spend-gap="shared-overdue">Shared overdue funding shortfall across unsettled protected costs: ${money2(row.remaining)}. Not this cost's private shortfall.</p>`
-      : `<p class="plan-spend-path-gap">Forecast funding shortfall: ${money2(row.remaining)}.</p>`)
-    : '';
-  return `<details class="plan-spend-more plan-spend-path"><summary>Show funding path</summary>
-    <p>Forecast can assess whether this obligation fits the modeled cash path, but has not assigned a per-period savings schedule to it. The path is unallocated.</p>
-    <p>Cash already saved for this specific cost and the amount that must come from future cash flow have not been established. A current-payday allocation is not a saved balance.</p>
-    ${projected}
-    ${path && path.duePeriod ? `<p>After planned spending is the published Stage 2 pay-period result for ${fmtDateFull(path.duePeriod.start)}–${fmtDateFull(path.duePeriod.end)}. It is the period after named planned spending and excludes extra-debt strategy and earlier-period surplus.</p>` : ''}
-  </details>`;
-}
-
-function planSpendRowHtml(row, path) {
-  const state = PLAN_SPEND_VERDICT[row.verdict] || { cls: '' };
-  const requirement = planSpendRequirement(row);
-  const timing = planSpendTiming(row);
-  return `<article class="planning-row plan-spend-card ${state.cls}" data-plan-spend-id="${row.id}" data-plan-spend-card="row" data-plan-spend-verdict="${row.verdict || ''}" data-plan-spend-amount="${requirement.kind}" data-plan-spend-timing="${timing.kind}">
-    <div class="plan-spend-glance">
-      <h2>${row.label}</h2>
-      <div data-plan-spend-fact="requirement"><b>${requirement.amount}</b><small>${requirement.label}</small></div>
-      <span data-plan-spend-when>${timing.text}</span>
-      ${planSpendStatus(row)}
-      <p class="plan-spend-explanation">${planSpendSummarySentence(row, false)}</p>
-      ${planSpendFundingFacts(path)}
-    </div>
-    ${planSpendFundingPath(path, row)}
-  </article>`;
-}
-
-function planSpendMemberTiming(member) {
-  if (member.date) return fmtDateFull(member.date);
-  if (member.when) return member.when;
-  return 'Date not established';
-}
-
-function planSpendSummaryTiming(card) {
-  const parts = (card.members || []).map(planSpendMemberTiming);
-  return { text: parts.join(' · '), kind: 'schedule' };
-}
-
-function planSpendSummaryAmount(card) {
-  if (card.scheduleRemaining != null && Number.isFinite(Number(card.scheduleRemaining))) {
-    return { amount: money2(card.scheduleRemaining), label: 'remaining', kind: 'schedule' };
+function planSpendScheduledCard(card, cost, schedule, byId) {
+  if (card.kind === 'summary') {
+    const ids = (card.members || []).map(member => member.id);
+    const affected = schedule && schedule.gap && ids.some(id => schedule.gap.affected.includes(id));
+    const status = affected ? '<span class="chip c">PAYDAY FUNDING GAP</span>' : planSpendStatus(card);
+    const lines = (card.members || []).map(member => {
+      const row = byId.get(member.id);
+      return `<li data-plan-spend-member="${member.id}"><span>${member.label}</span><b>${member.need != null ? money2(member.need) : 'Not established'}</b>
+        <time>${member.date ? `Cash date ${fmtDateFull(member.date)}` : member.when || 'Cash date not established'}</time>
+        ${row && row.nextContribution ? `<small>Next protect ${money2(row.nextContribution.amount)} on ${fmtDateFull(row.nextContribution.payday)}</small>` : ''}</li>`;
+    }).join('');
+    return `<article class="planning-row plan-spend-card ${(PLAN_SPEND_VERDICT[card.verdict] || {}).cls || ''}" data-plan-spend-id="${card.id}" data-plan-spend-card="summary" data-plan-spend-verdict="${card.verdict || ''}" data-plan-spend-members="${ids.join(' ')}">
+      <div class="plan-spend-glance"><h2>${card.label}</h2><div data-plan-spend-fact="schedule-remaining"><b>${card.scheduleRemaining != null ? money2(card.scheduleRemaining) : 'Not established'}</b><small>remaining schedule</small></div>
+      <div class="plan-spend-status">${status}</div>${planSpendScheduledFacts(cost)}</div>
+      <details class="plan-spend-more"><summary>Show payment schedule</summary><ul class="plan-spend-schedule">${lines}</ul></details></article>`;
   }
-  return { amount: 'Not established', label: 'remaining', kind: 'unresolved' };
-}
-
-function planSpendSummaryHtml(card, pathById) {
-  const state = PLAN_SPEND_VERDICT[card.verdict] || { cls: '' };
-  const amount = planSpendSummaryAmount(card);
-  const timing = planSpendSummaryTiming(card);
-  const memberIds = (card.members || []).map(member => member.id).join(' ');
-  const lines = (card.members || []).map(member => {
-    const exception = member.verdict && member.verdict !== card.verdict
-      ? `<span class="chip ${(PLAN_SPEND_VERDICT[member.verdict] || { chip: 'e' }).chip}">${(PLAN_SPEND_VERDICT[member.verdict] || { label: member.verdict }).label}</span>` : '';
-    const confidence = member.confidence && member.confidence !== card.confidence
-      ? planSpendConfidence(member) : '';
-    const memberAmount = member.need != null ? money2(member.need) : 'Not established';
-    const due = planSpendDuePeriod(pathById.get(member.id));
-    const shared = planSpendSharedOverdueAggregate(member);
-    const pressure = (member.verdict === 'FUNDING GAP' || member.verdict === 'AT RISK')
-      && member.remaining != null
-      ? planSpendFact('member-pressure', member.verdict === 'FUNDING GAP'
-        ? (shared ? 'Shared overdue funding shortfall' : 'Funding shortfall')
-        : (shared ? 'Shared protected amount at risk' : 'Protected amount at risk'), money2(member.remaining)) : '';
-    return `<li data-plan-spend-member="${member.id}">
-      <span>${member.label}</span><b>${memberAmount}</b><time>${planSpendMemberTiming(member)}</time>${exception}${confidence}
-      ${pressure ? `<dl class="plan-spend-member-period">${pressure}</dl>` : ''}
-      ${due ? `<dl class="plan-spend-member-period">${due}</dl>` : ''}
-    </li>`;
-  }).join('');
-  return `<article class="planning-row plan-spend-card ${state.cls}" data-plan-spend-id="${card.id}" data-plan-spend-card="summary" data-plan-spend-members="${memberIds}" data-plan-spend-verdict="${card.verdict || ''}" data-plan-spend-amount="${amount.kind}" data-plan-spend-timing="${timing.kind}">
-    <div class="plan-spend-glance">
-      <h2>${card.label}</h2>
-      <div data-plan-spend-fact="schedule-remaining"><b>${amount.amount}</b><small>${amount.label}</small></div>
-      <span data-plan-spend-when>${timing.text}</span>
-      ${planSpendStatus(card)}
-      <p class="plan-spend-explanation">${planSpendSummarySentence(card, true)}</p>
-      ${planSpendFundingFacts(null)}
-    </div>
-    <details class="plan-spend-more"><summary>Show payment schedule</summary><ul class="plan-spend-schedule">${lines}</ul></details>
-    ${planSpendFundingPath(null, card)}
-  </article>`;
+  const requirement = planSpendRequirement(card);
+  const affected = schedule && schedule.gap && schedule.gap.affected.includes(card.id);
+  const status = affected ? '<span class="chip c">PAYDAY FUNDING GAP</span>' : planSpendStatus(card);
+  const facts = !card.date ? '<p>Funding schedule unavailable — cash date not established.</p>'
+    : card.flexibility === 'optional' ? '<p>Optional cost; outside the current protected funding plan.</p>'
+      : planSpendScheduledFacts(cost);
+  const details = cost && cost.contributions.length
+    ? `<details class="plan-spend-more"><summary>Show funding schedule</summary><ul class="plan-spend-schedule">${cost.contributions.map(row =>
+      `<li><time>${fmtDateFull(row.payday)}</time><b>${money2(row.amount)}</b></li>`).join('')}</ul></details>` : '';
+  return `<article class="planning-row plan-spend-card" data-plan-spend-id="${card.id}" data-plan-spend-card="row" data-plan-spend-verdict="${card.verdict || ''}" data-plan-spend-amount="${requirement.kind}">
+    <div class="plan-spend-glance"><h2>${card.label}</h2><div data-plan-spend-fact="requirement"><b>${requirement.amount}</b><small>${requirement.label}</small></div>
+      <span data-plan-spend-when>${planSpendTiming(card).text}</span><div class="plan-spend-status">${status}</div>${facts}</div>${details}</article>`;
 }
 
 function planSpendPageHtml(advice, liveOverlay) {
@@ -211,14 +149,15 @@ function planSpendPageHtml(advice, liveOverlay) {
     return { lede: '', list: '<div class="note-box crit" data-plan-spend="cards-unavailable">Plan spend cards are unavailable.</div>', note: '' };
   }
   const cards = Forecast.planSpendCards(plans);
-  const pathById = new Map((Array.isArray(advice.planSpendFundingPaths)
-    ? advice.planSpendFundingPaths : []).map(path => [path.id, path]));
-  const list = cards.map(card => card.kind === 'summary'
-    ? planSpendSummaryHtml(card, pathById)
-    : planSpendRowHtml(card, pathById.get(card.id))).join('');
+  const schedule = advice.planSpendPaydayFunding;
+  const costById = new Map((schedule && schedule.costs || []).map(cost => [cost.id, cost]));
+  const groupById = new Map((schedule && schedule.groups || []).map(group => [group.id, group]));
+  const list = cards.map(card => planSpendScheduledCard(card,
+    card.kind === 'summary' ? groupById.get(card.id) : costById.get(card.id),
+    schedule, costById)).join('');
   return {
-    lede: `${cards.length} planned cost${cards.length === 1 ? '' : 's'} in Forecast's current funding order. Feasible means Forecast can cover a cost in the modeled plan; it does not mean the cash is already saved.`,
-    note: 'Amounts, cash dates, verdicts, and after-planned-spending results come from Forecast. A set-aside amount is shown only when Forecast can establish one for that cost.',
+    lede: planSpendFundingHero(schedule),
+    note: 'Forecast projects these amounts from the served opening. Protecting cash earmarks it; paying a planned cost is the one cash outflow.',
     list,
   };
 }
@@ -226,7 +165,7 @@ function planSpendPageHtml(advice, liveOverlay) {
 function planSpendAdvice(d, periods) {
   const overlay = d.liveOverlay;
   const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
-  const advice = Forecast.recommend(d.plan, d.meta.asOf, {
+  return Forecast.recommend(d.plan, d.meta.asOf, {
     fundingSources: d.plan.funding && d.plan.funding.options,
     debts: d.debts,
     extraFacilities: d.revolvingExtra,
@@ -235,15 +174,6 @@ function planSpendAdvice(d, periods) {
     operatingPlan: overlay && overlay.operatingPlan,
     operatingPlanNote: overlay && overlay.operatingPlanNote,
   });
-  if (!advice.operatingPlanUnavailable) {
-    const trajectory = Forecast.baselineTrajectory(d.plan, d.debts, d.meta.asOf, {
-      periods: periods || null,
-      extraFacilities: d.revolvingExtra,
-      currentPeriodActuals: actuals,
-    });
-    advice.planSpendFundingPaths = Forecast.planSpendFundingPaths(advice.majorPlans, trajectory);
-  }
-  return advice;
 }
 
 function renderPlanSpend(d, periods) {
@@ -251,7 +181,7 @@ function renderPlanSpend(d, periods) {
   const lede = $('plan-spend-lede');
   const list = $('plan-spend-list');
   const note = $('plan-spend-note');
-  if (lede) lede.textContent = html.lede;
+  if (lede) lede.innerHTML = html.lede;
   if (list) list.innerHTML = html.list;
   if (note) note.textContent = html.note;
 }

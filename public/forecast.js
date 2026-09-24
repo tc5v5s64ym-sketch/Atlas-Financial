@@ -2569,55 +2569,240 @@
     return cards;
   }
 
-  // A Plan Spend explanation is a link between two existing Forecast
-  // publications, not a savings planner. A majorPlans verdict proves joint
-  // feasibility, not cash already saved for this item. paydayAllocation can
-  // hold cash this payday, but it does not publish a serial contribution path
-  // or a plan-specific saved balance. Keep both amounts unknown until an
-  // authority actually establishes them. A due-period result is shown only
-  // when a Road Ahead period's Stage 2 lines contain this exact cash
-  // event (id + original date). A carried unresolved cost keeps that
-  // date and is applied inside the clipped residual; the historical
-  // date need not fall inside the display span. The period that
-  // contains the line wins. The published figure is that period's
-  // Stage 2 after-planned-spending result, not Stage 3 after extra
-  // debt. No second walk or date rule is applied.
-  function planSpendPeriodContainsEvent(period, row) {
-    const lines = period && period.stage2 && period.stage2.commitments
-      && period.stage2.commitments.lines;
-    if (!row || !row.id || !row.date || !Array.isArray(lines)) return false;
-    return lines.some(line => line && line.id === row.id && line.date === row.date);
-  }
-  function planSpendFundingPaths(plans, trajectory) {
-    const periods = trajectory && trajectory.status === 'ready'
-      && Array.isArray(trajectory.payPeriods) ? trajectory.payPeriods : [];
-    return (Array.isArray(plans) ? plans : []).map(row => {
-      const containing = row && row.date
-        ? periods.filter(p => planSpendPeriodContainsEvent(p, row)) : [];
-      const inSpan = containing.filter(p => p && p.start <= row.date && row.date <= p.end);
-      const period = (inSpan.length ? inSpan : containing)[0] || null;
-      const result = period && period.stage2 && period.stage2.result;
-      const duePeriod = result && result.identity === 'standalone-period-surplus-deficit'
-        && result.status !== 'unavailable' && Number.isFinite(result.amount)
-        ? {
-            start: period.start,
-            end: period.end,
-            amount: result.amount,
-            status: result.status,
-            identity: result.identity,
-            source: 'stage2.result',
-            stageId: 'after-planned-spending',
-            kind: result.amount < 0 ? 'shortfall' : result.amount > 0 ? 'surplus' : 'balanced',
-          }
-        : null;
-      return {
-        id: row.id,
-        allocation: 'unallocated',
-        setAsideNow: null,
-        futureCashFlowNeeded: null,
-        duePeriod,
+  // Serial protection on the incumbent master cash walk. A contribution is an
+  // earmark, never an event in simulate. Point payments already occur once in
+  // that walk; consuming protection only changes this projection's balance.
+  // The period capacity is the walk's net change with those point payments
+  // added back. The first period also has the unprotected opening above the
+  // buffer. This is a cash-path identity, not a sum of Road Ahead cards.
+  // Later contributions are capped by their own period capacity, so a weak
+  // later payday can require an earlier contribution. Daily cash headroom
+  // caps carried protection between paydays.
+  function planSpendPaydayFunding(plan, asOf, sim, seq, plans) {
+    const unavailable = reason => ({ status: 'unavailable', reason,
+      source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
+    if (!plan || !asOf || !sim || sim.start !== asOf || !Array.isArray(sim.daily)
+        || !Array.isArray(sim.events) || !Array.isArray(seq)) {
+      return unavailable('The Forecast master cash path is unavailable.');
+    }
+    const payroll = seaspanPayroll(plan);
+    if (!payroll || !payroll.anchor || payroll.frequency !== 'biweekly') {
+      return unavailable('A Seaspan pay-period calendar is unavailable.');
+    }
+    const cents = amount => Math.round(Number(amount) * 100);
+    const dollars = amount => amount / 100;
+    const floorCents = amount => Math.floor(Number(amount) * 100 + 0.000001);
+    const paydayDates = occurrences(payroll, asOf, sim.end);
+    if (!paydayDates.length) return unavailable('No future Seaspan payday is in the Forecast cash path.');
+    const published = new Map((plans || []).map(row => [row.id, row]));
+    const candidates = seq.filter(row => row && row.date && row.date >= asOf
+      && row.date <= sim.end && row.flexibility !== 'optional');
+    const costs = [];
+    for (const row of candidates) {
+      const amount = row.bounds && row.bounds.floor;
+      if (!Number.isFinite(amount) || amount < 0) {
+        return unavailable('A dated planned cost has no valid base requirement.');
+      }
+      const point = row.need != null;
+      const matching = point ? sim.events.filter(event => event && event.id === row.id
+        && event.date === row.date && cents(-event.amount) === cents(row.need)
+        && (event.kind === 'commitment' || event.kind === 'bill' || event.kind === 'reserve')) : [];
+      if (point && matching.length !== 1) {
+        return unavailable('A dated planned payment does not match one Forecast cash event.');
+      }
+      costs.push({ id: row.id, label: row.label, date: row.date,
+        group: row.group || null, baseRequirement: cents(amount),
+        ceiling: row.bounds && row.bounds.ceiling != null ? cents(row.bounds.ceiling) : cents(amount),
+        kind: point ? 'payment' : 'range-reserve',
+        confidence: row.confidence || null, verdict: (published.get(row.id) || {}).verdict || null,
+        rank: row.rank });
+    }
+    costs.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.rank - b.rank);
+    const prePayday = costs.filter(row => row.date < paydayDates[0]);
+    const schedulable = costs.filter(row => row.date >= paydayDates[0]);
+    const paidOn = new Map();
+    for (const cost of schedulable) {
+      if (cost.kind === 'payment') paidOn.set(cost.date,
+        (paidOn.get(cost.date) || 0) + cost.baseRequirement);
+    }
+    const periods = paydayDates.map((date, index) => ({
+      date, end: index + 1 < paydayDates.length
+        ? addDays(paydayDates[index + 1], -1) : sim.end,
+    }));
+    let before = cents(startingCashAmount(plan));
+    let paidCumulative = 0;
+    let dueCumulative = 0;
+    for (let i = 0; i < periods.length; i++) {
+      const period = periods[i];
+      const days = sim.daily.filter(day => day.date >= period.date && day.date <= period.end);
+      if (!days.length) return unavailable('A Seaspan period is missing from the Forecast cash path.');
+      let paidHere = 0;
+      let upper = Infinity;
+      for (const day of days) {
+        const paid = paidOn.get(day.date) || 0;
+        paidHere += paid;
+        paidCumulative += paid;
+        // S is cumulative contributions; S - paidCumulative is the
+        // protection still held on this day. Reserve protection has no
+        // economic payment and therefore is never added to paidCumulative.
+        upper = Math.min(upper, floorCents(day.balance - sim.buffer) + paidCumulative);
+      }
+      const endCash = cents(days[days.length - 1].balance);
+      const fresh = endCash - before + paidHere;
+      period.capacity = Math.max(0, i === 0
+        ? fresh + before - cents(sim.buffer) : fresh);
+      period.cashUpper = upper;
+      period.paymentTotal = paidHere;
+      before = endCash;
+      for (const cost of schedulable) {
+        if (cost.date >= period.date && cost.date <= period.end) dueCumulative += cost.baseRequirement;
+      }
+      period.dueCumulative = dueCumulative;
+    }
+    // Reserve the incumbent undated protected floor at the horizon end.
+    // Undated rows themselves receive no invented payday or allocation.
+    const undatedFloor = seq.filter(row => row && !row.date
+      && row.flexibility !== 'optional').reduce((sum, row) =>
+      sum + cents(row.bounds && row.bounds.floor || 0), 0);
+    const lastPeriod = periods[periods.length - 1];
+    lastPeriod.cashUpper = Math.min(lastPeriod.cashUpper,
+      floorCents(sim.ending - sim.buffer) + paidCumulative - undatedFloor);
+
+    // Backward latest-feasible lower envelope. L[i] is the least cumulative
+    // protection required by this payday if every later payday contributes
+    // up to its own cash-path capacity. Forward differences are therefore
+    // minimum-now; lowering a positive difference makes a future deadline
+    // miss even with maximum subsequent contributions.
+    let later = 0;
+    for (let i = periods.length - 1; i >= 0; i--) {
+      const nextCapacity = i + 1 < periods.length ? periods[i + 1].capacity : 0;
+      periods[i].minimumCumulative = Math.max(periods[i].dueCumulative, later - nextCapacity, 0);
+      later = periods[i].minimumCumulative;
+    }
+    const allocated = new Map(costs.map(cost => [cost.id, 0]));
+    const active = new Map(costs.map(cost => [cost.id, 0]));
+    const fullyFundedOn = new Map();
+    const rows = [];
+    let cumulative = 0;
+    let protectedBalance = 0;
+    let gap = null;
+    for (const period of periods) {
+      const required = Math.max(0, period.minimumCumulative - cumulative);
+      const available = Math.max(0, Math.min(period.capacity, period.cashUpper - cumulative));
+      const contribution = Math.min(required, available);
+      if (cumulative > period.cashUpper && !gap) {
+        gap = { payday: period.date, required: dollars(cumulative),
+          available: dollars(Math.max(0, period.cashUpper)),
+          shortBy: dollars(cumulative - period.cashUpper),
+          affected: schedulable.filter(cost => (active.get(cost.id) || 0) > 0)
+            .map(cost => cost.id), cashDate: period.date };
+      }
+      if (required > available && !gap) {
+        let maximum = cumulative + available;
+        let binding = periods.findIndex(candidate => candidate === period);
+        for (let j = binding; j < periods.length; j++) {
+          if (j > binding) maximum += periods[j].capacity;
+          if (maximum < periods[j].dueCumulative) { binding = j; break; }
+        }
+        const deadline = periods[binding].end;
+        const affected = schedulable.filter(cost => cost.date <= deadline
+          && (allocated.get(cost.id) || 0) < cost.baseRequirement).map(cost => cost.id);
+        gap = { payday: period.date, required: dollars(required),
+          available: dollars(available), shortBy: dollars(required - available),
+          affected, cashDate: schedulable.find(cost => affected.includes(cost.id))?.date || null };
+      }
+      const openingProtected = protectedBalance;
+      protectedBalance += contribution;
+      cumulative += contribution;
+      let left = contribution;
+      const allocations = [];
+      for (const cost of schedulable) {
+        if (!left) break;
+        const amount = Math.min(left, cost.baseRequirement - allocated.get(cost.id));
+        if (amount <= 0) continue;
+        allocated.set(cost.id, allocated.get(cost.id) + amount);
+        active.set(cost.id, active.get(cost.id) + amount);
+        left -= amount;
+        allocations.push({ id: cost.id, label: cost.label, amount: dollars(amount) });
+        if (allocated.get(cost.id) === cost.baseRequirement) fullyFundedOn.set(cost.id, period.date);
+      }
+      const afterPayday = protectedBalance;
+      const payments = [];
+      for (const cost of schedulable) {
+        if (cost.kind !== 'payment' || cost.date < period.date || cost.date > period.end) continue;
+        const consumed = Math.min(cost.baseRequirement, active.get(cost.id) || 0);
+        active.set(cost.id, (active.get(cost.id) || 0) - consumed);
+        protectedBalance -= consumed;
+        payments.push({ id: cost.id, label: cost.label, date: cost.date,
+          amount: dollars(cost.baseRequirement), protectedConsumed: dollars(consumed) });
+        if (consumed < cost.baseRequirement && !gap) {
+          gap = { payday: period.date, required: dollars(cost.baseRequirement),
+            available: dollars(consumed), shortBy: dollars(cost.baseRequirement - consumed),
+            affected: [cost.id], cashDate: cost.date };
+        }
+      }
+      rows.push({ payday: period.date, through: period.end,
+        capacity: dollars(period.capacity), cashCapacity: dollars(Math.max(0, period.cashUpper - (cumulative - contribution))),
+        required: dollars(required), contribution: dollars(contribution), allocations,
+        openingProtected: dollars(openingProtected), protectedAfterPayday: dollars(afterPayday),
+        payments, protectedAfterPayments: dollars(protectedBalance),
+        stillToFund: dollars(schedulable.reduce((sum, cost) =>
+          sum + cost.baseRequirement - (allocated.get(cost.id) || 0), 0)) });
+      if (gap) break;
+    }
+    const costPublication = costs.map(cost => {
+      const contributions = rows.flatMap(row => row.allocations
+        .filter(allocation => allocation.id === cost.id)
+        .map(allocation => ({ payday: row.payday, amount: allocation.amount })));
+      return { id: cost.id, label: cost.label, date: cost.date,
+        kind: cost.kind, group: cost.group, baseRequirement: dollars(cost.baseRequirement),
+        ceiling: dollars(cost.ceiling), uncertaintyAdditional: dollars(Math.max(0, cost.ceiling - cost.baseRequirement)),
+        protectedNow: null,
+        protectedAfterNextPayday: contributions.length && rows.length
+          && contributions[0].payday === rows[0].payday ? contributions[0].amount : 0,
+        stillToFund: dollars(cost.baseRequirement),
+        remainingAfterSchedule: dollars(cost.baseRequirement - (allocated.get(cost.id) || 0)),
+        nextContribution: contributions[0] || null,
+        contributions,
+        projectedFullyFunded: fullyFundedOn.get(cost.id) || null,
+        verdict: cost.verdict, confidence: cost.confidence,
       };
     });
+    const groups = [];
+    const seenGroups = new Set();
+    for (const item of seq) {
+      if (!item || !item.planSpendSummary || !item.group || seenGroups.has(item.group)) continue;
+      seenGroups.add(item.group);
+      const members = costPublication.filter(cost => cost.group === item.group);
+      if (!members.length) continue;
+      const groupContributions = rows.map(row => ({
+        payday: row.payday,
+        amount: roundCent(row.allocations.filter(a => members.some(m => m.id === a.id))
+          .reduce((sum, a) => sum + a.amount, 0)),
+      })).filter(row => row.amount > 0);
+      groups.push({ id: item.group, label: item.groupLabel || item.label,
+        members: members.map(member => member.id),
+        baseRequirement: roundCent(members.reduce((sum, member) => sum + member.baseRequirement, 0)),
+        protectedNow: null,
+        stillToFund: roundCent(members.reduce((sum, member) => sum + member.stillToFund, 0)),
+        nextContribution: groupContributions[0] || null,
+        projectedFullyFunded: members.every(member => member.projectedFullyFunded)
+          ? members.map(member => member.projectedFullyFunded).sort().at(-1) : null,
+      });
+    }
+    return { status: gap || prePayday.length ? 'funding-gap' : 'ready',
+      source: 'Forecast.planSpendPaydayFunding', asOf,
+      openingProtected: null, projectionOpeningProtected: 0,
+      identity: 'cash-walk-period-capacity; latest-feasible cumulative protection',
+      paydays: rows, gap: gap || (prePayday.length ? {
+        payday: null, cashDate: prePayday[0].date, required: dollars(prePayday[0].baseRequirement),
+        available: 0, shortBy: dollars(prePayday[0].baseRequirement), affected: prePayday.map(row => row.id),
+      } : null),
+      costs: costPublication, groups,
+      unscheduled: seq.filter(row => row && !row.date).map(row => ({
+        id: row.id, reason: 'cash-date-not-established', when: row.when || null,
+      })),
+    };
   }
 
   function facilityCapacity(facility, opts) {
@@ -9257,6 +9442,12 @@
       result.paydayAllocation.spendPermission = null;
       result.paydayAllocation.weeklyCap = null;
     }
+    if (result.planSpendPaydayFunding) {
+      result.planSpendPaydayFunding = {
+        status: 'unavailable', source: 'Forecast.planSpendPaydayFunding',
+        reason: note, paydays: [], costs: [], gap: null,
+      };
+    }
     if (result.defaultView) {
       result.defaultView.operatingCashExplanation = null;
       const periods = result.defaultView.calendarPeriods || [];
@@ -9511,6 +9702,7 @@
         weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays: horizon.days,
         seq: sequence, sim: knowledgeSim,
       }));
+      const planSpendFunding = planSpendPaydayFunding(plan, asOf, knowledgeSim, sequence, plans);
       const paydayOpts = Object.assign({}, planOptions, {
         weeklyVariable: weeklyCap,
         periods: planOptions.periods || base.periods,
@@ -9537,6 +9729,7 @@
         view,
         fundingSequence: sequence,
         majorPlans: plans,
+        planSpendPaydayFunding: planSpendFunding,
         plannedDebt: debt,
         infeasible: mode === 'infeasible' ? (infeasible || protectedAtCap.first) : null,
         // Named joint-cash obligations already in `zero.events` on the next
@@ -15849,7 +16042,7 @@
   }
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements,
-    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendFundingPaths, plannedDebt, debtPriority, paydayAllocation,
+    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
