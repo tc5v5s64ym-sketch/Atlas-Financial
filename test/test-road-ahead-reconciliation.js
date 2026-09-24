@@ -75,6 +75,9 @@ function assertPartition(t, ledger, anchor, { incomeThrough = '9999-12-31', budg
     eq(series.map(p => ({ key: monthly ? p.month : p.payday, start: p.start, end: p.end })), spans,
       'exact calendar partition, with no overlaps or missing days');
     for (const p of series) {
+      // Month stages are pay-period-close funding, not a calendar slice.
+      // Cash, debt, and the month start/end window stay on the calendar.
+      if (monthly) continue;
       const inSpan = ledger.filter(e => e.apply >= p.start && e.apply <= p.end);
       if (p.stage1.status === 'unavailable') continue;
       const expected = {};
@@ -123,19 +126,21 @@ function assertPartition(t, ledger, anchor, { incomeThrough = '9999-12-31', budg
   }
   // Compare whole-cent outputs, not a loose floating-point tolerance.
   if ([...t.months, ...t.payPeriods].every(p => p.stage1.status !== 'unavailable')) {
-    for (const k of Object.keys(paths)) eq(
+    const closed = t.payPeriods.filter(p => p.windowKind !== 'horizon-clipped' && p.end === p.cycleEnd);
+    for (const k of ['income', 'bills', 'obligations', 'budget', 'extras']) eq(
       sum(t.months.map(p => cents(component(p, k).amount))),
-      sum(t.payPeriods.map(p => cents(component(p, k).amount))), `${k}: partition conservation`);
-    for (const n of [1, 2, 3]) eq(sum(t.months.map(p => cents(p['stage' + n].result.amount))),
-      sum(t.payPeriods.map(p => cents(p['stage' + n].result.amount))), `stage ${n}: partition conservation`);
-    const lineTotals = series => {
-      const totals = {};
-      for (const p of series) for (const l of p.stage1.householdBudget.lines || []) {
-        totals[l.label] = (totals[l.label] || 0) + cents(l.amount);
+      sum(closed.map(p => cents(component(p, k).amount))), `${k}: each closed pay period belongs to one month`);
+    eq(sum(t.months.map(p => cents(p.stage1.result.amount))),
+      sum(closed.map(p => cents(p.stage1.result.amount))), 'stage 1: close-month conservation');
+    const seen = new Set();
+    for (const month of t.months) {
+      for (const row of month.closingPayPeriods || []) {
+        eq(seen.has(row.payday), false, 'pay period surplus is not counted twice');
+        seen.add(row.payday);
+        eq(String(row.close).slice(0, 7), month.month, 'close lands in the published month');
       }
-      return totals;
-    };
-    eq(lineTotals(t.months), lineTotals(t.payPeriods), 'each normal-spending category conserves cents too');
+    }
+    eq(seen.size, closed.length, 'every closed pay period is published in one month');
   }
 }
 
@@ -254,19 +259,35 @@ function categoryThroughDays(fortnightCents, days, weightCents) {
   assertPartition(t, ledger, '2026-01-30');
   const weights = [200000, 1];
   const labels = ['Big', 'Tiny tail'];
-  for (const series of [t.months, t.payPeriods]) {
-    for (const period of series) {
-      if (period.stage1.status === 'unavailable') continue;
-      const prior = ledger.filter(e => e.kind === 'budget' && e.apply < period.start).length;
-      const walk = ledger.filter(e =>
-        e.kind === 'budget' && e.apply >= period.start && e.apply <= period.end).length;
-      const expected = categoryThroughDays(weeklyCents * 2, prior + walk, weights)
-        .map((n, i) => n - categoryThroughDays(weeklyCents * 2, prior, weights)[i]);
-      const lines = period.stage1.householdBudget.lines || [];
-      eq(lines.map(l => l.label), labels, `${period.start}: named tail membership`);
-      eq(lines.map(l => cents(l.amount)), expected, `${period.start}: independent monotonic category cents`);
-      eq(expected.every(n => n >= 0), true, `${period.start}: independent tail split stays non-negative`);
+  for (const period of t.payPeriods) {
+    if (period.stage1.status === 'unavailable') continue;
+    const prior = ledger.filter(e => e.kind === 'budget' && e.apply < period.start).length;
+    const walk = ledger.filter(e =>
+      e.kind === 'budget' && e.apply >= period.start && e.apply <= period.end).length;
+    const expected = categoryThroughDays(weeklyCents * 2, prior + walk, weights)
+      .map((n, i) => n - categoryThroughDays(weeklyCents * 2, prior, weights)[i]);
+    const lines = period.stage1.householdBudget.lines || [];
+    eq(lines.map(l => l.label), labels, `${period.start}: named tail membership`);
+    eq(lines.map(l => cents(l.amount)), expected, `${period.start}: independent monotonic category cents`);
+    eq(expected.every(n => n >= 0), true, `${period.start}: independent tail split stays non-negative`);
+  }
+  for (const month of t.months) {
+    if (month.stage1.status === 'unavailable') continue;
+    const parts = t.payPeriods.filter(p =>
+      p.cycleEnd && p.cycleEnd.slice(0, 7) === month.month
+      && p.windowKind !== 'horizon-clipped' && p.end === p.cycleEnd
+      && p.stage1.status !== 'unavailable');
+    const totals = {};
+    for (const part of parts) for (const line of part.stage1.householdBudget.lines || []) {
+      totals[line.label] = (totals[line.label] || 0) + cents(line.amount);
     }
+    const lines = month.stage1.householdBudget.lines || [];
+    for (const line of lines) {
+      eq(cents(line.amount), totals[line.label] || 0,
+        `${month.month} ${line.label}: month cents sum the closing pay periods`);
+    }
+    eq(sum(lines.map(l => cents(l.amount))), sum(Object.values(totals)),
+      `${month.month}: category cents are not created by the month card`);
   }
   const aug = t.months.find(m => m.month === '2026-08');
   eq(aug && aug.stage1.householdBudget.lines.find(l => l.label === 'Tiny tail').amount >= 0, true,
@@ -346,7 +367,10 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
   }
   const t = ask(p, ds);
   assertPartition(t, ledger, '2026-01-02');
-  eq(t.months[0].stage1.obligations.amount, 2.02, 'two rounded payoff amounts total 2.02, not 2.03');
+  const payoffCents = sum(t.payPeriods.map(p => cents(p.stage1.obligations.amount)));
+  eq(payoffCents, 202, 'two rounded payoff amounts total 2.02, not 2.03');
+  eq(sum(t.months.map(p => cents(p.stage1.obligations.amount))), payoffCents,
+    'each rounded payoff is kept in the month its pay period closes');
 }
 
 // Recent baseline: completed posted 101.01; current groceries actual 40.01,

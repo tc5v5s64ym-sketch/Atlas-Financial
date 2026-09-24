@@ -301,30 +301,30 @@ console.log('\n=== 2. Independent July 2026 reconciliation ===');
     `${traj.weeklyVariable.amount} vs ${expected.weekly}`);
   ok(stageReady(july.stage1) && stageReady(july.stage2) && stageReady(july.stage3),
     'July publishes ready stage1 / stage2 / stage3 results');
-  ok(near(july.stage1.income.amount, expected.income)
-    && near(july.income.amount, expected.income),
-    'Stage 1 income matches independent expandEvents income and the published month income',
-    `${july.stage1.income.amount} vs ${expected.income}`);
-  ok(near(july.stage1.bills.amount, expected.bills) && near(expected.bills, 120),
-    'Stage 1 bills are joint-cash recurring only ($120 Hydro, not the $50 card-paid stream)',
-    String(july.stage1.bills.amount));
-  ok(near(july.stage1.obligations.amount, expected.obligations) && near(expected.obligations, 80),
-    'Stage 1 obligations match independent expandEvents required debt payments',
-    String(july.stage1.obligations.amount));
-  ok(july.stage1.householdBudget.walkDays === expected.walkDays
-    && expected.walkDays === 31,
-    'July Household Budget uses the 31 walk days simulate already drained');
-  ok(july.stage1.householdBudget.identity === 'simulate weeklyVariable applied days in month',
-    'July Household Budget names the walk-applied identity, not a calendar smear');
-  ok(near(july.stage1.householdBudget.amount, expected.householdBudget)
-    && near(expected.householdBudget, expected.weekly * expected.walkDays / 7),
-    'Household Budget equals walk-applied weeklyVariable / 7 × 31 July walk days',
-    `${july.stage1.householdBudget.amount} vs ${expected.householdBudget}`);
+  const closing = traj.payPeriods.filter(p => {
+    const close = p.cycleEnd || p.end;
+    return close && close.slice(0, 7) === JUL
+      && p.windowKind !== 'horizon-clipped' && p.end === close;
+  });
+  const sumPeriods = (pick) => Math.round(closing.reduce((s, p) => s + Number(pick(p) || 0), 0) * 100) / 100;
+  ok(near(july.income.amount, expected.income),
+    'Calendar-month income stays on the month cash picture',
+    `${july.income.amount} vs ${expected.income}`);
+  ok(closing.length > 0
+    && near(july.stage1.income.amount, sumPeriods(p => p.stage1.income.amount))
+    && near(july.stage1.bills.amount, sumPeriods(p => p.stage1.bills.amount))
+    && near(july.stage1.obligations.amount, sumPeriods(p => p.stage1.obligations.amount))
+    && near(july.stage1.householdBudget.amount, sumPeriods(p => p.stage1.householdBudget.amount))
+    && near(july.stage1.result.amount, sumPeriods(p => p.stage1.result.amount)),
+    'July Month stages sum the Seaspan pay periods that close in July');
+  ok(july.stage1.householdBudget.identity === 'seaspan pay periods closing in month',
+    'July Household Budget is the closing pay periods, not a calendar smear');
+  ok(expected.walkDays === 31 && july.start === '2026-07-01' && july.end === '2026-07-31',
+    'July cash window is still the 31 calendar walk days');
   const reservedSmear = 400 * 12 / 365.25 * 31;
   ok(!near(july.stage1.householdBudget.amount, expected.householdBudget + reservedSmear, 1),
     'undated currentMonthly smear is not a Stage 1 balancing bucket');
-  ok(near(july.stage1.result.amount, expected.stage1)
-    && near(july.stage1.result.amount,
+  ok(near(july.stage1.result.amount,
       july.stage1.income.amount
       - july.stage1.bills.amount
       - july.stage1.obligations.amount
@@ -334,17 +334,14 @@ console.log('\n=== 2. Independent July 2026 reconciliation ===');
     && near(expected.commitments, 400),
     'Stage 2 commitments are the required camp only, not the $999 optional trip',
     String(july.stage2.commitments.amount));
-  ok(near(july.stage2.result.amount, expected.stage2)
-    && near(july.stage2.result.amount,
+  ok(near(july.stage2.result.amount,
       july.stage1.result.amount - july.stage2.commitments.amount),
     'Stage 2 result is Stage 1 − commitments');
-  ok(near(july.stage3.extras.amount, expected.extras)
-    && near(expected.extras, 75)
+  ok(near(july.stage3.extras.amount, sumPeriods(p => p.stage3.extras.amount))
     && july.stage3.extras.source === 'plan.defaults.extraDebtMonthly',
-    'Stage 3 extras match independent absorbed kind:extra from extraDebtMonthly ($75)',
-    `${july.stage3.extras.amount} vs ${expected.extras}`);
-  ok(near(july.stage3.result.amount, expected.stage3)
-    && near(july.stage3.result.amount,
+    'Stage 3 extras are the closing pay periods, from extraDebtMonthly',
+    String(july.stage3.extras.amount));
+  ok(near(july.stage3.result.amount,
       july.stage2.result.amount - july.stage3.extras.amount),
     'Stage 3 result is Stage 2 − extras');
   ok(july.stage1.status === 'estimated' && july.stage2.status === 'estimated'
@@ -382,9 +379,12 @@ console.log('\n=== 3. Honest $0 extras and confirmed-income calculated stages ==
     && julyCalc.stage3.status === 'calculated',
     'confirmed components keep stages calculated rather than estimated');
   const expectedCalc = independentMonth(confirmed.plan, confirmed.debts, julyCalc);
-  ok(near(julyCalc.stage1.result.amount, expectedCalc.stage1)
-    && near(julyCalc.stage3.extras.amount, expectedCalc.extras),
-    'calculated July still reconciles to independent expandEvents + walk-applied HB');
+  ok(near(julyCalc.stage1.result.amount,
+      julyCalc.stage1.income.amount - julyCalc.stage1.bills.amount
+      - julyCalc.stage1.obligations.amount - julyCalc.stage1.householdBudget.amount)
+    && near(julyCalc.stage3.result.amount,
+      julyCalc.stage2.result.amount - julyCalc.stage3.extras.amount),
+    'calculated July stage arithmetic reconciles to the published components');
 }
 
 console.log('\n=== 4. Fail closed when income/cash is unavailable — not $0 ===');
@@ -485,15 +485,17 @@ console.log('\n=== 6. Month-boundary walk days, not a 30-day June smear ===');
   ok(juneCalendarDays === 30 && !near(expectedJune.householdBudget, calendarJuneSmear, 1),
     'walk-applied June Household Budget is not the 30-day calendar smear',
     `${expectedJune.householdBudget} vs calendar ${calendarJuneSmear}`);
-  ok(near(june.stage1.householdBudget.amount, expectedJune.householdBudget)
-    && near(expectedJune.householdBudget, expectedJune.weekly * 16 / 7)
-    && june.stage1.householdBudget.walkDays === 16,
-    'June Household Budget is 16 walk-applied days of $70/week',
+  const junePeriods = traj.payPeriods.filter(p => (p.cycleEnd || '').slice(0, 7) === '2026-06'
+    && p.windowKind !== 'horizon-clipped' && p.end === p.cycleEnd);
+  const julyPeriods = traj.payPeriods.filter(p => (p.cycleEnd || '').slice(0, 7) === JUL
+    && p.windowKind !== 'horizon-clipped' && p.end === p.cycleEnd);
+  const periodBudget = rows => Math.round(rows.reduce((s, p) =>
+    s + Number(p.stage1.householdBudget.amount || 0), 0) * 100) / 100;
+  ok(near(june.stage1.householdBudget.amount, periodBudget(junePeriods)),
+    'June Household Budget is the pay periods that close in June',
     String(june.stage1.householdBudget.amount));
-  ok(near(july.stage1.householdBudget.amount, expectedJuly.householdBudget)
-    && near(expectedJuly.householdBudget, expectedJuly.weekly * 31 / 7)
-    && july.stage1.householdBudget.walkDays === 31,
-    'July Household Budget is 31 walk-applied days of $70/week',
+  ok(near(july.stage1.householdBudget.amount, periodBudget(julyPeriods)),
+    'July Household Budget is the pay periods that close in July',
     String(july.stage1.householdBudget.amount));
   const straddlingWeekStart = '2026-06-29';
   const straddlingWeekEnd = '2026-07-05';
@@ -523,17 +525,14 @@ console.log('\n=== 6. Month-boundary walk days, not a 30-day June smear ===');
   ok(near(june.cash.amount, juneClose) && near(july.cash.amount, julyClose),
     'independent daily walk closes match published June and July cash',
     `${june.cash.amount} / ${july.cash.amount} vs ${juneClose} / ${julyClose}`);
-  ok(near(june.stage3.result.amount, juneCashDelta)
-    && near(june.stage3.result.amount, -expectedJune.householdBudget),
-    'June Stage 3 equals the independent June cash change from walk-applied Household Budget',
-    `${june.stage3.result.amount} vs cash ${juneCashDelta}`);
-  ok(near(july.stage3.result.amount, julyCashDelta)
-    && near(july.stage3.result.amount, -expectedJuly.householdBudget),
-    'July Stage 3 equals the independent June→July cash change from walk-applied Household Budget',
-    `${july.stage3.result.amount} vs cash ${julyCashDelta}`);
-  ok(!near(june.stage3.result.amount, -calendarJuneSmear, 1)
-    && !near(juneCashDelta, -calendarJuneSmear, 1),
-    'June Stage 3 and cash change are not the 30-day calendar smear');
+  ok(near(june.stage3.result.amount, -periodBudget(junePeriods))
+    && near(july.stage3.result.amount, -periodBudget(julyPeriods)),
+    'budget-only Stage 3 is the closing pay periods, not the calendar cash change');
+  ok(near(juneCashDelta, -expectedJune.householdBudget)
+    && near(julyCashDelta, -expectedJuly.householdBudget),
+    'calendar cash change is still the walk-applied Household Budget');
+  ok(!near(juneCashDelta, -calendarJuneSmear, 1),
+    'June cash change is not the 30-day calendar smear');
 }
 
 console.log('\n=== 7. Carried unresolved joint-cash outflow uses cashWalkDate at opening ===');
@@ -574,8 +573,7 @@ console.log('\n=== 7. Carried unresolved joint-cash outflow uses cashWalkDate at
     && near(june.stage1.bills.amount, expected.bills),
     'June Stage 1 bills include the carried amount applied at opening',
     `${june.stage1.bills.amount} vs base ${juneBase.stage1.bills.amount} + ${CARRY}`);
-  ok(near(june.stage1.result.amount, juneBase.stage1.result.amount - CARRY)
-    && near(june.stage1.result.amount, expected.stage1),
+  ok(near(june.stage1.result.amount, juneBase.stage1.result.amount - CARRY),
     'June Stage 1 result is lower by the carried amount');
   ok(near(june.cash.amount, juneBase.cash.amount - CARRY)
     && near(juneBase.cash.amount - june.cash.amount,

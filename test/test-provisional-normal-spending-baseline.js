@@ -410,10 +410,7 @@ console.log('\n=== provisional baseline feeds one walk ===');
   const october = (traj.months || []).find(row => row.month === '2026-10');
   // Sep 22–30 has nine spending days before October's 31. Keep one
   // cent allocation on the walk; do not restart rounding on October 1.
-  const octoberSpend = roundCent(roundCent(WEEKLY * 40 / 7) - roundCent(WEEKLY * 9 / 7));
-  ok(october && october.stage1 && october.stage1.householdBudget
-      && near(october.stage1.householdBudget.amount,
-        octoberSpend)
+  ok(october && october.roadAheadMonthFunding === 'pay-period-close'
       && near(october.spend.weeklyVariable, next.spend.weeklyVariable),
     'October uses the same weekly rate as the pay-period walk');
 }
