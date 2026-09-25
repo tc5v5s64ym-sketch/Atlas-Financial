@@ -8821,15 +8821,40 @@
     return representedKeySet(plan, opts, day).has(event.id + '@' + event.date);
   }
 
+  // In-memory live-plan retain of the pre-overlay walk. It is accepted
+  // only for this payday, only for chequing-a, and only when coverage of
+  // the gap through the day before payday was complete. A same-day
+  // refreshed row is not this object.
+  function retainedPrePaydayBillsBase(plan, payday) {
+    const base = plan && plan.opening && plan.opening.prePaydayBillsBase;
+    if (!base || typeof base !== 'object') return null;
+    if (String(base.payday) !== String(payday)) return null;
+    if (String(base.accountId) !== BILLS_ACCOUNT_ID) return null;
+    if (base.coverageComplete !== true) return null;
+    const amount = Number(base.amount);
+    if (!Number.isFinite(amount)) return null;
+    const fromAsOf = financialDate(base.fromAsOf);
+    const through = financialDate(base.through);
+    const dayBefore = addDays(payday, -1);
+    if (!fromAsOf || !through || !dayBefore) return null;
+    if (!(fromAsOf < payday)) return null;
+    if (through !== dayBefore || through < fromAsOf) return null;
+    return roundCent(amount);
+  }
+
   // Chequing-a stock immediately before payday. A day-before opening is
   // that stock. An earlier opening is walked only when posted chequing-a
   // movements cover every gap day. A same-day posted row is a refresh, not
-  // a pre-payday base, even when payroll is still unrepresented.
+  // a pre-payday base, even when payroll is still unrepresented. A valid
+  // in-memory prePaydayBillsBase for this payday is that walked stock
+  // after the live refresh has replaced the dated opening.
   function prePaydayBillsAccountCash(plan, payday, opts) {
     const posted = postedBillsAccountCash(plan);
     if (posted == null || !payday) return null;
     const openingAsOf = plan && plan.opening && financialDate(plan.opening.asOf);
     if (!openingAsOf) return null;
+    const retained = retainedPrePaydayBillsBase(plan, payday);
+    if (retained != null) return retained;
     if (openingAsOf >= payday) return null;
     if (openingAsOf === addDays(payday, -1)) return posted;
     if (liveOpeningAdvanced(plan, openingAsOf)) return null;
@@ -16663,7 +16688,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,

@@ -18,7 +18,13 @@
  * current-period window is not gap completeness. Scheduled-only
  * reconstruction is not retained. Missing, truncated, unattested,
  * or incomplete gap coverage withholds the opening. That is not
- * today's live cash walked backward.
+ * today's live cash walked backward. On a Dale/Seaspan payday, before
+ * posted chequing-a is replaced, live-plan also retains
+ * plan.opening.prePaydayBillsBase from Forecast.prePaydayBillsAccountCash
+ * on that same pre-overlay plan. Incomplete gap-day coverage stores
+ * nothing. That retain is the immediately pre-payday BILLS stock, in
+ * memory only: not today's refreshed balance, not a new cash store,
+ * and not a canonical write.
  * This command never writes data.json, positions.csv, or snapshots/.
  *
  *   node scripts/live-plan.js --fixture <file>
@@ -913,6 +919,37 @@ function retainPaydayAccountObservations(next, canonicalPlan, liveAsOf, report) 
   stampPaydayAccountObservation(next, obs, payday);
 }
 
+// Immediately pre-payday chequing-a, walked on the pre-overlay plan
+// before the same-day BILLS row is replaced. Forecast.prePaydayBillsAccountCash
+// is the only calculator. A null walk, including incomplete coverage of
+// any gap day, stores nothing. The refreshed balance is not an input.
+function retainPrePaydayBillsBase(next, canonicalPlan, liveAsOf, report) {
+  if (!next || !next.plan || !canonicalPlan || !liveAsOf) return;
+  const cycle = Forecast.spendingCycle(canonicalPlan, liveAsOf);
+  if (!cycle || cycle.start !== liveAsOf) return;
+  const payday = String(cycle.start);
+  const openingAsOf = Forecast.financialDate(
+    canonicalPlan.opening && canonicalPlan.opening.asOf);
+  if (!openingAsOf || !(openingAsOf < payday)) return;
+  const through = Forecast.addDays(payday, -1);
+  if (!through || through < openingAsOf) return;
+  const amount = Forecast.prePaydayBillsAccountCash(canonicalPlan, payday, {
+    currentPeriodActuals: (report && report.currentPeriodActuals) || null,
+  });
+  if (amount == null || !Number.isFinite(Number(amount))) return;
+  next.plan.opening = Object.assign({}, next.plan.opening || {}, {
+    prePaydayBillsBase: {
+      payday,
+      accountId: 'chequing-a',
+      amount: round2(amount),
+      fromAsOf: openingAsOf,
+      through,
+      coverageComplete: true,
+      source: 'dated-opening-walk',
+    },
+  });
+}
+
 function collectObservedCash(report, liveAsOf) {
   const accounts = [];
   if (!report || !liveAsOf) {
@@ -1007,6 +1044,7 @@ function overlayLiveState(input) {
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
   retainPaydaySnapshot(next, data.plan, cutover.liveAsOf || liveAsOf, report);
   retainPaydayAccountObservations(next, data.plan, cutover.liveAsOf || liveAsOf, report);
+  retainPrePaydayBillsBase(next, data.plan, cutover.liveAsOf || liveAsOf, report);
   for (const change of proposed) {
     if (change.field === 'pending') applyPendingOverlay(next, change);
     else applyPostedOverlay(next, change);
