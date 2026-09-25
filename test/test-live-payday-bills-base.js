@@ -35,6 +35,13 @@ const MOVEMENT_A = 200;
 const MOVEMENT_B = 50;
 const SAME_DAY_DEBIT = 100;
 const SAME_DAY_CREDIT = 40;
+// Within 1% of the fixture payroll (window is 40). This is the 4,250-style
+// near-payroll inflow, scaled to the fixture payroll of 4,000. It is not
+// read from data.json.
+const NEAR_PAYROLL = 4020;
+const OFF_PLAN_DEPOSIT = 4310;
+const SPLIT_A = 3000;
+const SPLIT_B = 1274.98;
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -101,7 +108,7 @@ function payrollStream() {
   };
 }
 
-function paydayMovement(id, lmAmount, payee) {
+function paydayMovement(id, lmAmount, payee, extra) {
   const tx = {
     id,
     date: PAYDAY,
@@ -111,7 +118,36 @@ function paydayMovement(id, lmAmount, payee) {
     atlasAccountId: 'chequing-a',
   };
   if (payee) tx.displayedPayee = payee;
+  if (extra) Object.assign(tx, extra);
   return tx;
+}
+
+// Proven household-internal transfer into chequing-a. The pair is the
+// existing TD TFR identity: opposite TO/FR, matching amount, two household
+// cash accounts. The chequing-b leg is not a BILLS movement.
+function householdTransferIntoBills(amount) {
+  return [
+    {
+      id: 'tfr-bills-in',
+      date: PAYDAY,
+      amount: -amount,
+      pending: false,
+      accountRole: 'household-cash',
+      atlasAccountId: 'chequing-a',
+      tfrReference: 'AB101',
+      tfrDirection: 'FR',
+    },
+    {
+      id: 'tfr-weekly-out',
+      date: PAYDAY,
+      amount: amount,
+      pending: false,
+      accountRole: 'household-cash',
+      atlasAccountId: 'chequing-b',
+      tfrReference: 'AB101',
+      tfrDirection: 'TO',
+    },
+  ];
 }
 
 function canonicalPlan() {
@@ -516,8 +552,12 @@ console.log('\n=== g. Same-day non-payroll debit is in Current Balance ===');
     'the debit is not dropped and payroll is not added twice');
 }
 
-console.log('\n=== h. Same-day non-payroll credit is in Current Balance ===');
+console.log('\n=== h. Same-day labelled refund is in Current Balance ===');
 {
+  // #426 counted an unlabelled 40 credit as ordinary and published
+  // base + 40 + payroll. An unlabelled credit now fails closed. This
+  // fixture keeps that counted result by setting categoryLabel Refund,
+  // the existing REFUND_LABELS identity. displayedPayee is not that label.
   const expected = add(add(walkedBase, SAME_DAY_CREDIT), PAYROLL);
   const observed = add(walkedBase, SAME_DAY_CREDIT);
   const { result } = overlay({
@@ -526,17 +566,19 @@ console.log('\n=== h. Same-day non-payroll credit is in Current Balance ===');
     observedBills: observed,
     actuals: actualsPacket({
       transactions: gapTransactions([
-        paydayMovement('same-day-credit', -SAME_DAY_CREDIT, 'CITY REFUND'),
+        paydayMovement('same-day-credit', -SAME_DAY_CREDIT, 'CITY REFUND', {
+          categoryLabel: 'Refund',
+        }),
       ]),
     }),
   });
   const pub = published(result.data);
   ok(near(pub.alloc, expected) && near(pub.publication.prePaydayBills, observed)
       && pub.publication.status === 'planned-dale-payday',
-    'Current Balance is walked base plus the ordinary credit plus planned payroll',
+    'Current Balance is walked base plus the labelled refund plus planned payroll',
     String(pub.alloc));
   ok(!near(pub.alloc, assumed) && !near(pub.alloc, add(add(observed, PAYROLL), PAYROLL)),
-    'the ordinary credit is not dropped and payroll is not added twice');
+    'the labelled refund is not dropped and payroll is not added twice');
 }
 
 console.log('\n=== i. Unclassifiable same-day credits fail closed ===');
@@ -565,6 +607,161 @@ console.log('\n=== i. Unclassifiable same-day credits fail closed ===');
   const twoPub = published(two.result.data);
   ok(twoPub.alloc == null && !near(twoPub.alloc, add(assumed, PAYROLL)),
     'two Seaspan-like credits fail closed instead of being ordinary income');
+}
+
+console.log('\n=== j. Ambiguous same-day inflows fail closed ===');
+{
+  const offPlan = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: add(walkedBase, OFF_PLAN_DEPOSIT),
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('off-plan', -OFF_PLAN_DEPOSIT),
+      ]),
+    }),
+  });
+  const offPub = published(offPlan.result.data);
+  const offDouble = add(add(walkedBase, OFF_PLAN_DEPOSIT), PAYROLL);
+  ok(offPub.alloc == null && offPub.publication.status === 'unavailable'
+      && !near(offPub.alloc, offDouble) && !near(offPub.alloc, assumed),
+    'an off-plan unrecognised deposit fails closed', String(offPub.alloc));
+  const offPlanText = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: add(walkedBase, OFF_PLAN_DEPOSIT),
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('off-plan-text', -OFF_PLAN_DEPOSIT, 'SEASPAN PAY'),
+      ]),
+    }),
+  });
+  const offTextPub = published(offPlanText.result.data);
+  ok(offTextPub.alloc == null && offTextPub.publication.status === 'unavailable',
+    'Seaspan text does not make an off-plan deposit the payroll', String(offTextPub.alloc));
+
+  const split = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: add(add(walkedBase, SPLIT_A), SPLIT_B),
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('split-a', -SPLIT_A),
+        paydayMovement('split-b', -SPLIT_B),
+      ]),
+    }),
+  });
+  const splitPub = published(split.result.data);
+  const splitDouble = add(add(add(walkedBase, SPLIT_A), SPLIT_B), PAYROLL);
+  ok(splitPub.alloc == null && splitPub.publication.status === 'unavailable'
+      && !near(splitPub.alloc, splitDouble),
+    'a split deposit fails closed', String(splitPub.alloc));
+
+  const small = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: add(walkedBase, SAME_DAY_CREDIT),
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('unlabelled-small', -SAME_DAY_CREDIT, 'CITY CREDIT'),
+      ]),
+    }),
+  });
+  const smallPub = published(small.result.data);
+  ok(smallPub.alloc == null && smallPub.publication.status === 'unavailable'
+      && !near(smallPub.alloc, add(add(walkedBase, SAME_DAY_CREDIT), PAYROLL)),
+    'an unlabelled small same-day credit fails closed', String(smallPub.alloc));
+}
+
+console.log('\n=== k. Proven household transfer is an ordinary credit ===');
+{
+  const expected = add(add(walkedBase, NEAR_PAYROLL), PAYROLL);
+  const observed = add(walkedBase, NEAR_PAYROLL);
+  const { result } = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: observed,
+    actuals: actualsPacket({
+      transactions: gapTransactions(householdTransferIntoBills(NEAR_PAYROLL)),
+    }),
+  });
+  const next = result.data;
+  const packet = next.liveOverlay && next.liveOverlay.currentPeriodActuals;
+  const walked = Forecast.postedAccountMovements(next.plan, 'chequing-a', {
+    start: PAYDAY, through: PAYDAY,
+  }, { currentPeriodActuals: packet });
+  const inflow = (walked.movements || []).find(row => row && row.id === 'tfr-bills-in');
+  ok(inflow && inflow.internalTransfer === true
+      && inflow.classification === 'internal-transfer'
+      && inflow.counterpartAccountId === 'chequing-b'
+      && near(inflow.amount, NEAR_PAYROLL),
+    'the near-payroll inflow is a proven transfer from chequing-b',
+    inflow ? inflow.classification : 'missing');
+  const pub = published(next);
+  ok(near(pub.alloc, expected) && near(pub.view, expected)
+      && near(pub.publication.prePaydayBills, observed)
+      && pub.publication.status === 'planned-dale-payday',
+    'Current Balance counts the household transfer plus planned payroll',
+    String(pub.alloc));
+  ok(!near(pub.alloc, assumed) && !near(pub.alloc, add(expected, PAYROLL)),
+    'the transfer is not dropped and payroll is not added twice');
+}
+
+console.log('\n=== l. Unlabelled near-payroll inflow is the residual deposit ===');
+{
+  // Same amount as k, with no TFR pair and no refund category. It is inside
+  // the 1% window, so it is excluded and planned payroll is added once.
+  // That understates the posted transfer until a positive non-income label
+  // exists. It does not double-count.
+  const dropped = assumed;
+  const counted = add(add(walkedBase, NEAR_PAYROLL), PAYROLL);
+  const { result } = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: add(walkedBase, NEAR_PAYROLL),
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('near-unlabelled', -NEAR_PAYROLL),
+      ]),
+    }),
+  });
+  const pub = published(result.data);
+  ok(near(pub.alloc, dropped) && near(pub.publication.prePaydayBills, walkedBase)
+      && pub.publication.status === 'planned-dale-payday',
+    'an unlabelled near-payroll inflow is excluded as the deposit',
+    String(pub.alloc));
+  ok(!near(pub.alloc, counted) && !near(pub.alloc, add(dropped, PAYROLL)),
+    'excluding it does not also add the inflow or a second payroll');
+}
+
+console.log('\n=== m. A retain with no transaction packet fails closed ===');
+{
+  const { result } = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: walkedBase,
+    actuals: actualsPacket(),
+  });
+  const next = result.data;
+  ok(next.plan.opening.prePaydayBillsBase
+      && near(next.plan.opening.prePaydayBillsBase.amount, walkedBase),
+    'the retain is present before the packet is removed');
+  const withPacket = published(next);
+  ok(near(withPacket.alloc, assumed),
+    'the same retain with its packet still publishes base plus payroll',
+    String(withPacket.alloc));
+  const bare = Forecast.recommend(next.plan, PAYDAY, {
+    debts: [],
+    targetBuffer: 500,
+  });
+  const bareAlloc = bare.paydayAllocation && bare.paydayAllocation.liveCurrentBalance;
+  const bareView = bare.defaultView && bare.defaultView.liveCurrentBalance;
+  const bareStatus = bare.paydayAllocation
+    && bare.paydayAllocation.currentBalancePublication
+    && bare.paydayAllocation.currentBalancePublication.status;
+  ok(bareAlloc == null && bareView == null && bareStatus === 'unavailable'
+      && !near(bareAlloc, assumed),
+    'a retained base with no transaction packet is unavailable', String(bareAlloc));
 }
 
 if (failures) {
