@@ -208,11 +208,12 @@ function planningRoadWaterfallValueHtml(component, opts) {
   return `<span class="planning-road-wf-amount"><b class="planning-road-amount-value">${shown}</b>${chip}</span>`;
 }
 
-function planningRoadWaterfallLineRow(row, dataKey, asOutflow) {
+function planningRoadWaterfallLineRow(row, dataKey, asOutflow, sign) {
   const label = row.label;
   const date = planningRoadPublishedLineDateHtml(row);
   const idAttr = planningRoadLineIdAttr(row);
-  return `<li class="planning-road-wf-row" data-planning-road-wf-row="${dataKey}"${idAttr}>
+  const signAttr = sign ? ` data-road-result-sign="${sign}"` : '';
+  return `<li class="planning-road-wf-row" data-planning-road-wf-row="${dataKey}"${idAttr}${signAttr}>
     <span class="planning-road-wf-label">${label}${date}</span>
     ${planningRoadWaterfallValueHtml(row, { asOutflow: !!asOutflow })}
   </li>`;
@@ -337,12 +338,23 @@ function planningRoadAheadDecisionHtml(period, granularity) {
   const s2 = (period && period.stage2) || {};
   const beforeKind = planningRoadDecisionKind(s1.result);
   const afterKind = planningRoadDecisionKind(s2.result);
-  const beforeLabel = beforeKind.lead === 'period-unavailable'
-    ? 'Before planned spending'
-    : `${beforeKind.word} before planned spending`;
-  const afterLabel = afterKind.lead === 'period-unavailable'
-    ? 'After planned spending'
-    : `${afterKind.word} after planned spending`;
+  const monthView = granularity !== 'pay-period';
+  const beforeLabel = monthView
+    ? 'Available to allocate'
+    : (beforeKind.lead === 'period-unavailable'
+      ? 'Before planned spending'
+      : `${beforeKind.word} before planned spending`);
+  const afterLabel = monthView
+    ? (afterKind.lead === 'period-unavailable'
+      ? 'After deductions'
+      : afterKind.word === 'Shortfall'
+        ? 'Shortfall after deductions'
+        : afterKind.word === 'Surplus'
+          ? 'Surplus after deductions'
+          : 'Break-even after deductions')
+    : (afterKind.lead === 'period-unavailable'
+      ? 'After planned spending'
+      : `${afterKind.word} after planned spending`);
   const lines = planningRoadPublishedLines(s2.commitments);
   const noun = planningRoadPayPeriodIsResidual(period)
     ? 'remainder through next payday'
@@ -385,10 +397,92 @@ function planningRoadStandaloneIdentityHtml(result) {
   return `<p class="planning-road-hero-narrative" data-road-standalone-phrase="${phrase ? 'forecast' : 'identity-only'}" data-road-surplus-deficit-identity="${result.identity}" data-road-prior-surplus="${result.priorPeriodSurplus}">${phrase}</p>`;
 }
 
+function planningRoadAheadMonthIncomeHtml(income) {
+  const lines = planningRoadPublishedLines(income);
+  const rows = lines.length
+    ? lines.map((row, i) => planningRoadWaterfallLineRow(row, `income-line-${i}`, false)).join('')
+      + planningRoadWaterfallTotalRow('Total income', income, 'income-total', { signedResult: true })
+    : planningRoadWaterfallTotalRow('Total income', income, 'income-total', { signedResult: true });
+  return `<div class="planning-road-wf-block planning-road-wf-income" data-planning-road-wf="income" data-planning-road-income="calendar">
+    <h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-income" aria-hidden="true"></span> Income received this month</h3>
+    <ul class="planning-road-wf-list">${rows}</ul>
+  </div>`;
+}
+
+function planningRoadAheadMonthSurplusHtml(period) {
+  const rows = Array.isArray(period.closingPayPeriods) ? period.closingPayPeriods : [];
+  const lineRows = rows.map((row, i) => {
+    const label = row.displayRange || row.payday || 'Pay period';
+    const amount = Number(row.stage1);
+    const sign = amount < 0 ? 'gap' : amount > 0 ? 'surplus' : 'neutral';
+    return planningRoadWaterfallLineRow({
+      label,
+      amount: row.stage1,
+      status: row.status || 'calculated',
+      id: row.payday,
+    }, `available-surplus-line-${i}`, false, sign);
+  }).join('');
+  const result = period.stage1 && period.stage1.result;
+  const phrase = planningRoadAheadResultPhrase(result);
+  const total = planningRoadWaterfallResultRow('Available to allocate', result, 'available-to-allocate');
+  return `<div class="planning-road-wf-block" data-planning-road-wf="available-surplus" data-road-result-sign="${phrase.cls}">
+    <h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-income" aria-hidden="true"></span> Available surplus this month</h3>
+    ${lineRows ? `<ul class="planning-road-wf-list">${lineRows}</ul>` : ''}
+    ${total}
+  </div>`;
+}
+
+function planningRoadAheadMonthWaterfallHtml(period) {
+  const s2 = period.stage2 || {};
+  const s3 = period.stage3 || {};
+  const incomeBlock = planningRoadAheadMonthIncomeHtml(period.income);
+  const surplusBlock = planningRoadAheadMonthSurplusHtml(period);
+  const plannedBlock = planningRoadWaterfallInlineSection(
+    'Planned spending', s2.commitments, 'planned-spending', { asOutflow: true });
+  const afterKind = planningRoadDecisionKind(s2.result);
+  const afterLabel = afterKind.lead === 'period-unavailable'
+    ? 'After deductions'
+    : afterKind.word === 'Shortfall'
+      ? 'Shortfall after deductions'
+      : afterKind.word === 'Surplus'
+        ? 'Surplus after deductions'
+        : 'Break-even after deductions';
+  const afterRow = planningRoadWaterfallResultRow(afterLabel, s2.result, 'after-deductions');
+  const extrasAmount = planningRoadFigure(s3.extras);
+  const extrasUnavailable = s3.extras && (s3.extras.status === 'unavailable'
+    || s3.extras.amount == null || !isFinite(Number(s3.extras.amount)));
+  const extrasBlock = (extrasUnavailable || (extrasAmount != null && extrasAmount !== 0))
+    ? planningRoadWaterfallInlineSection(
+      'Extra debt payments', s3.extras, 'extra-debt', { asOutflow: true })
+    : '';
+  const finalPhrase = planningRoadAheadResultPhrase(s3.result);
+  const finalLabel = finalPhrase.cls === 'gap' ? 'Final shortfall'
+    : finalPhrase.cls === 'surplus' ? 'Final surplus'
+    : 'Final result';
+  const finalRow = planningRoadWaterfallResultRow(finalLabel, s3.result, 'final');
+  const debtStrategy = `<div class="planning-road-debt-strategy" data-planning-road-wf="debt-strategy" data-planning-road-secondary="debt-strategy">
+    <details>
+    <summary>After debt strategy</summary>
+    ${extrasBlock}
+    ${finalRow}
+    </details>
+  </div>`;
+  const key = planningRoadAheadPeriodKey(period, 'month') || '';
+  return `<div class="planning-road-waterfall" data-planning-road-waterfall="ready" data-road-waterfall-period="${key}" data-road-waterfall-granularity="month">
+    ${incomeBlock}
+    ${surplusBlock}
+    ${plannedBlock}
+    ${afterRow}
+    <p class="planning-road-wf-footnote">From your Forecast plan · this month.</p>
+    ${debtStrategy}
+  </div>`;
+}
+
 function planningRoadAheadWaterfallHtml(period, granularity) {
   if (!period) {
     return '<p class="lede" data-planning-road-waterfall="empty">Forecast published no funding lines for this period.</p>';
   }
+  if (granularity !== 'pay-period') return planningRoadAheadMonthWaterfallHtml(period);
   const s1 = period.stage1 || {};
   const s2 = period.stage2 || {};
   const s3 = period.stage3 || {};
@@ -1163,16 +1257,32 @@ function planningRoadAheadBreakdownSheetHtml(period, granularity) {
   const plannedTitle = monthParts
     ? `Planned spending · ${monthParts.long}`
     : 'Planned spending';
+  const calendarIncome = granularity === 'pay-period' ? null : period.income;
+  const surplusRows = granularity === 'pay-period' ? [] : (Array.isArray(period.closingPayPeriods)
+    ? period.closingPayPeriods.map((row, i) => planningRoadBreakdownComponentRow(
+      row.displayRange || row.payday || 'Pay period',
+      { amount: row.stage1, status: row.status || 'calculated', id: row.payday },
+      `available-surplus-line-${i}`))
+    : []);
+  if (granularity !== 'pay-period' && s1 && s1.result) {
+    surplusRows.push(planningRoadBreakdownComponentRow('Available to allocate', s1.result, 'available-to-allocate'));
+  }
   const groups = [
-    planningRoadBreakdownGroup('Money in', [
-      s1 ? planningRoadBreakdownComponentRow('Income', s1.income, 'income') : '',
-    ]),
-    planningRoadBreakdownGroup('Bills & required costs', s1 ? [
-      planningRoadBreakdownComponentRow('Bills', s1.bills, 'bills'),
-      planningRoadBreakdownComponentRow('Required debt payments', s1.obligations, 'obligations'),
-      s1.householdBudget
-        ? planningRoadBreakdownComponentRow('Household budget', s1.householdBudget, 'household-budget') : '',
-    ] : []),
+    granularity === 'pay-period'
+      ? planningRoadBreakdownGroup('Money in', [
+        s1 ? planningRoadBreakdownComponentRow('Income', s1.income, 'income') : '',
+      ])
+      : planningRoadBreakdownGroup('Income received this month', calendarIncome
+        ? planningRoadBreakdownPublishedRows('Total income', calendarIncome, 'calendar-income') : []),
+    granularity === 'pay-period' ? '' : planningRoadBreakdownGroup('Available surplus this month', surplusRows),
+    granularity === 'pay-period'
+      ? planningRoadBreakdownGroup('Bills & required costs', s1 ? [
+        planningRoadBreakdownComponentRow('Bills', s1.bills, 'bills'),
+        planningRoadBreakdownComponentRow('Required debt payments', s1.obligations, 'obligations'),
+        s1.householdBudget
+          ? planningRoadBreakdownComponentRow('Household budget', s1.householdBudget, 'household-budget') : '',
+      ] : [])
+      : '',
     planningRoadBreakdownGroup(plannedTitle,
       s2 ? planningRoadBreakdownPublishedRows('Dated commitments', s2.commitments, 'commitments') : []),
     planningRoadBreakdownGroup('Debt strategy', [
@@ -1670,8 +1780,9 @@ function planningRoadAheadLeadHtml(traj, granularity, asOf, selectedKey) {
   }
   const key = planningRoadAheadPeriodKey(period, granularity);
   const afterKind = planningRoadDecisionKind(period.stage2 && period.stage2.result);
+  const cardTone = granularity === 'pay-period' ? afterKind.cls : 'neutral';
   return {
-    html: `<article class="planning-road-lead planning-road-lead-${afterKind.cls} planning-road-hero-card" data-road-lead="${afterKind.lead}" data-road-lead-period="${key || ''}" data-road-result-sign="${afterKind.cls}">
+    html: `<article class="planning-road-lead planning-road-lead-${cardTone} planning-road-hero-card" data-road-lead="${afterKind.lead}" data-road-lead-period="${key || ''}" data-road-result-sign="${afterKind.cls}">
       ${planningRoadAheadDecisionHtml(period, granularity)}
     </article>`,
     focusKey: key,

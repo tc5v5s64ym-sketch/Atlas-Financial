@@ -123,8 +123,9 @@ console.log('\n=== Shortfall, zero, and unavailable ===');
   base.stage3.result = { amount: -900, status: 'calculated' };
   const gap = page.planningRoadAheadDecisionHtml(base, 'month');
   ok(/Shortfall before planned spending/.test(step(gap, 'before')) === false
-    && /Surplus before planned spending/.test(step(gap, 'before'))
-    && /Shortfall after planned spending/.test(step(gap, 'after'))
+    && /Available to allocate/.test(step(gap, 'before'))
+    && /Shortfall after deductions/.test(step(gap, 'after'))
+    && !/Surplus after deductions/.test(step(gap, 'after'))
     && /Published commitment A/.test(step(gap, 'planned'))
     && /Published commitment B/.test(step(gap, 'planned'))
     && step(gap, 'planned').includes('−' + money2(800))
@@ -146,8 +147,10 @@ console.log('\n=== Shortfall, zero, and unavailable ===');
   withheld.stage2.commitments = { status: 'unavailable', reason: 'withheld' };
   withheld.stage2.result = { status: 'unavailable', reason: 'withheld' };
   const held = page.planningRoadAheadDecisionHtml(withheld, 'month');
-  ok(/Before planned spending/.test(step(held, 'before'))
-    && /After planned spending/.test(step(held, 'after'))
+  ok(/Available to allocate/.test(step(held, 'before'))
+    && /After deductions/.test(step(held, 'after'))
+    && !/Surplus after deductions/.test(step(held, 'after'))
+    && !/Shortfall after deductions/.test(step(held, 'after'))
     && /planning-road-amount-unavailable/.test(step(held, 'before'))
     && /planning-road-amount-unavailable/.test(step(held, 'planned'))
     && /planning-road-amount-unavailable/.test(step(held, 'after'))

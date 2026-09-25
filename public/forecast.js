@@ -15128,6 +15128,14 @@
         amount: roundCent(incomeSum),
         dalePayroll: dalePayrollMarker,
       };
+      // Calendar-month income is the dated events in the month. It is not
+      // the pay-period-close funding total on stage1. Named lines are the
+      // same attribution helper Stage 1 already uses; Planning reprints them.
+      if (input.spanNoun === 'month') {
+        income.identity = 'calendar-dated-income';
+        const lines = baselineTrajectoryIncomeLines(plan, modelledIncomeEvents, income.amount);
+        if (lines.length) income.lines = lines;
+      }
     }
     if (withheldDaleThroughSpanEnd || withheldLaterDale) {
       cash = {
@@ -15432,6 +15440,10 @@
         payday: p.payday,
         close: payPeriodSurplusCloseDate(p),
         stage1: p.stage1.result.amount,
+        status: p.stage1.result.status,
+        displayRange: p.windowKind === 'full-cycle'
+          ? (p.cycleRangeLabel || p.rangeLabel || '')
+          : (p.rangeLabel || p.cycleRangeLabel || ''),
       }));
     }
   }
