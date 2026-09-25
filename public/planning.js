@@ -339,11 +339,15 @@ function planningRoadAheadDecisionHtml(period, granularity) {
   const beforeKind = planningRoadDecisionKind(s1.result);
   const afterKind = planningRoadDecisionKind(s2.result);
   const monthView = granularity !== 'pay-period';
-  const beforeLabel = monthView
-    ? 'Available to allocate'
-    : (beforeKind.lead === 'period-unavailable'
-      ? 'Before planned spending'
-      : `${beforeKind.word} before planned spending`);
+  const beforeLabel = beforeKind.lead === 'period-unavailable'
+    ? 'Before planned spending'
+    : monthView
+      ? (beforeKind.word === 'Shortfall'
+        ? 'Shortfall before deductions'
+        : beforeKind.word === 'Surplus'
+          ? 'Available to allocate'
+          : 'Break-even before deductions')
+      : `${beforeKind.word} before planned spending`;
   const afterLabel = monthView
     ? (afterKind.lead === 'period-unavailable'
       ? 'After deductions'
@@ -397,14 +401,17 @@ function planningRoadStandaloneIdentityHtml(result) {
   return `<p class="planning-road-hero-narrative" data-road-standalone-phrase="${phrase ? 'forecast' : 'identity-only'}" data-road-surplus-deficit-identity="${result.identity}" data-road-prior-surplus="${result.priorPeriodSurplus}">${phrase}</p>`;
 }
 
-function planningRoadAheadMonthIncomeHtml(income) {
+function planningRoadAheadMonthIncomeHtml(income, period) {
   const lines = planningRoadPublishedLines(income);
   const rows = lines.length
     ? lines.map((row, i) => planningRoadWaterfallLineRow(row, `income-line-${i}`, false)).join('')
       + planningRoadWaterfallTotalRow('Total income', income, 'income-total', { signedResult: true })
     : planningRoadWaterfallTotalRow('Total income', income, 'income-total', { signedResult: true });
+  const span = period && period.start && period.end
+    ? `${fmtDate(period.start)}–${fmtDate(period.end)}`
+    : 'selected span';
   return `<div class="planning-road-wf-block planning-road-wf-income" data-planning-road-wf="income" data-planning-road-income="calendar">
-    <h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-income" aria-hidden="true"></span> Income received this month</h3>
+    <h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-income" aria-hidden="true"></span> Income received ${span}</h3>
     <ul class="planning-road-wf-list">${rows}</ul>
   </div>`;
 }
@@ -424,7 +431,11 @@ function planningRoadAheadMonthSurplusHtml(period) {
   }).join('');
   const result = period.stage1 && period.stage1.result;
   const phrase = planningRoadAheadResultPhrase(result);
-  const total = planningRoadWaterfallResultRow('Available to allocate', result, 'available-to-allocate');
+  const totalLabel = phrase.cls === 'gap' ? 'Shortfall before deductions'
+    : phrase.cls === 'surplus' ? 'Available to allocate'
+    : phrase.cls === 'neutral' ? 'Break-even before deductions'
+    : 'Before deductions';
+  const total = planningRoadWaterfallResultRow(totalLabel, result, 'available-to-allocate');
   return `<div class="planning-road-wf-block" data-planning-road-wf="available-surplus" data-road-result-sign="${phrase.cls}">
     <h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-income" aria-hidden="true"></span> Available surplus this month</h3>
     ${lineRows ? `<ul class="planning-road-wf-list">${lineRows}</ul>` : ''}
@@ -435,7 +446,7 @@ function planningRoadAheadMonthSurplusHtml(period) {
 function planningRoadAheadMonthWaterfallHtml(period) {
   const s2 = period.stage2 || {};
   const s3 = period.stage3 || {};
-  const incomeBlock = planningRoadAheadMonthIncomeHtml(period.income);
+  const incomeBlock = planningRoadAheadMonthIncomeHtml(period.income, period);
   const surplusBlock = planningRoadAheadMonthSurplusHtml(period);
   const plannedBlock = planningRoadWaterfallInlineSection(
     'Planned spending', s2.commitments, 'planned-spending', { asOutflow: true });
