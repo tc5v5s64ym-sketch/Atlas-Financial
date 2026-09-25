@@ -82,8 +82,10 @@ function gapTrajectory(baseTraj, month) {
   row.stage1.result = { amount: 1041, status: 'calculated' };
   row.stage2.commitments = { amount: 1400, status: 'estimated' };
   row.stage2.result = { amount: -359, status: 'calculated' };
+  row.stage2.dateOrderResult = { amount: -359, status: 'calculated', identity: 'date-order-month-funding' };
   row.stage3.extras = { amount: 600, status: 'calculated', source: 'plan.defaults.extraDebtMonthly' };
   row.stage3.result = { amount: -959, status: 'calculated' };
+  row.stage3.dateOrderResult = { amount: -959, status: 'calculated', identity: 'date-order-month-funding' };
   return { traj, row };
 }
 
@@ -121,14 +123,14 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
     'segmented control uses tablist semantics over the waterfall panel');
   ok(/data-planning-road-waterfall="ready"/.test(road)
     && /data-planning-road-wf="income"/.test(road)
-    && /Income received this month/.test(road)
+    && /Income received [A-Z][a-z]{2} \d{1,2}–[A-Z][a-z]{2} \d{1,2}/.test(road)
     && /data-planning-road-wf="available-surplus"/.test(road)
     && /data-planning-road-wf="planned-spending"/.test(road)
     && /data-planning-road-wf="after-deductions"/.test(road)
     && /data-planning-road-wf="final"/.test(road),
     'month waterfall reprints calendar income, available surplus, planned spending, and the result');
-  ok(/data-planning-road-wf="income"[\s\S]*planning-road-wf-kicker[\s\S]*Income received this month/.test(road)
-    && /data-planning-road-wf="available-surplus"[\s\S]*planning-road-wf-kicker[\s\S]*Available surplus this month/.test(road)
+  ok(/data-planning-road-wf="income"[\s\S]*planning-road-wf-kicker[\s\S]*Income received [A-Z][a-z]{2} \d{1,2}–[A-Z][a-z]{2} \d{1,2}/.test(road)
+    && /data-planning-road-wf="available-surplus"[\s\S]*planning-road-wf-kicker[\s\S]*Pay periods closing this month/.test(road)
     && /data-planning-road-wf="planned-spending"[\s\S]*planning-road-wf-kicker[\s\S]*Planned spending/.test(road),
     'month waterfall sections carry kicker chrome — badge plus label');
   const payShell = page.composeRoad(live, periods, 'pay-period').stages;
@@ -230,8 +232,8 @@ console.log('\n=== 1b. Identity, freshness, hero, horizon chips, slice control =
     && /data-trajectory-funding-granularity="month"/.test(road),
     'selected period header carries the month title and Month|Pay slice');
   ok(/planning-road-breakdown-summary-label">Full [A-Z][a-z]+ breakdown</.test(road)
-    && /planning-road-breakdown-group-title">Income received this month</.test(road)
-    && /planning-road-breakdown-group-title">Available surplus this month</.test(road),
+    && /planning-road-breakdown-group-title">Income received [A-Z][a-z]{2} \d{1,2}–[A-Z][a-z]{2} \d{1,2}</.test(road)
+    && /planning-road-breakdown-group-title">Pay periods closing this month</.test(road),
     'month breakdown names calendar income and available surplus');
   ok(!/This is a preview, not a change/.test(road)
     && !/What-if: extra payment/.test(road),
@@ -253,8 +255,8 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
   const { traj, row } = gapTrajectory(base, month);
   const road = page.composeRoadTraj(traj, 'month', month, live.meta.asOf);
   const signedBefore = page.ctx.planningRoadSignedMoney(row.stage1.result.amount);
-  const signedAfter = page.ctx.planningRoadSignedMoney(row.stage2.result.amount);
-  const signedFinal = page.ctx.planningRoadSignedMoney(row.stage3.result.amount);
+  const signedAfter = page.ctx.planningRoadSignedMoney(row.stage2.dateOrderResult.amount);
+  const signedFinal = page.ctx.planningRoadSignedMoney(row.stage3.dateOrderResult.amount);
 
   ok(/data-road-lead="period-shortfall"/.test(road.lead)
     && road.lead.includes(signedBefore)
@@ -295,8 +297,8 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
     && /Final shortfall/.test(stages),
     'final row is named shortfall and carries the Forecast sign');
 
-  const surplusMonth = base.months.find(m => m.stage2 && m.stage2.result
-    && isFinite(m.stage2.result.amount) && m.stage2.result.amount > 0);
+  const surplusMonth = base.months.find(m => m.stage2 && m.stage2.dateOrderResult
+    && isFinite(m.stage2.dateOrderResult.amount) && m.stage2.dateOrderResult.amount > 0);
   if (surplusMonth) {
     const surplus = page.composeRoadTraj(base, 'month', surplusMonth.month, live.meta.asOf);
     ok(/data-road-lead="period-surplus"/.test(surplus.lead)
@@ -309,7 +311,9 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
   const target = withheldMonth.months[1];
   target.stage2.commitments = { status: 'unavailable', reason: 'Forecast withheld this component.' };
   target.stage2.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
+  target.stage2.dateOrderResult = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
   target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
+  target.stage3.dateOrderResult = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
   const withheld = page.composeRoadTraj(withheldMonth, 'month', target.month, live.meta.asOf);
   const plannedBlock = (withheld.stages.split('data-planning-road-wf="planned-spending"')[1] || '')
     .split('data-planning-road-wf="')[0];
@@ -459,7 +463,7 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
   });
   const month = traj.months[0];
   const road = page.composeRoad(live, periods, 'month', month.month, live.meta.asOf);
-  const signed = page.ctx.planningRoadSignedMoney(month.stage2.result.amount);
+  const signed = page.ctx.planningRoadSignedMoney(month.stage2.dateOrderResult.amount);
   ok(new RegExp(`data-road-timeline-period="${month.month}"[\\s\\S]*data-road-timeline-sign="(surplus|gap|neutral|withheld)"`).test(road.timeline)
     || road.timeline.includes(`data-road-timeline-period="${month.month}"`),
     'horizon chip for the first month is present with a Forecast-derived sign');
@@ -467,11 +471,11 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
     && road.lead.includes(page.ctx.planningRoadSignedMoney(month.stage1.result.amount))
     && /data-road-lead="period-/.test(road.lead),
     'hero reprints Forecast stage1 and stage2 for the selected month');
-  ok(road.selected.includes(money2(month.stage3.result.amount)),
-    'selected-period panel still copies the same Forecast stage3 amount');
+  ok(road.selected.includes(money2(month.stage3.dateOrderResult.amount)),
+    'selected-period panel copies the Forecast date-order stage3 amount');
   const shell = page.render(live, periods)['planning-road-ahead'].innerHTML;
-  ok(shell.includes(money2(month.stage3.result.amount)),
-    'live shell reprints Forecast stage3 without alternate arithmetic');
+  ok(shell.includes(money2(month.stage3.dateOrderResult.amount)),
+    'live shell reprints Forecast date-order stage3 without alternate arithmetic');
 
   const roadBlock = planningSrc.split('function planningRoadAheadScrollSelectedTimeline')[0]
     .split('function planningRoadAheadWireSelection')[0];
@@ -729,6 +733,11 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
       && Number(period.stage3.result.amount) < 0) {
       period.stage3.result = Object.assign({}, period.stage3.result, { amount: 0 });
     }
+    if (period && period.stage3 && period.stage3.dateOrderResult
+      && isFinite(Number(period.stage3.dateOrderResult.amount))
+      && Number(period.stage3.dateOrderResult.amount) < 0) {
+      period.stage3.dateOrderResult = Object.assign({}, period.stage3.dateOrderResult, { amount: 0 });
+    }
   };
   const pressureTraj = JSON.parse(JSON.stringify(traj));
   (pressureTraj.months || []).forEach(clearGap);
@@ -783,8 +792,8 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
   const asOfRow = (pressureTraj.months || []).find(m => m.month === asOfMonth)
     || (pressureTraj.months || [])[0];
   ok(/data-road-lead="period-/.test(monthLead)
-    && asOfRow && monthLead.includes(page.ctx.planningRoadSignedMoney(asOfRow.stage2.result.amount)),
-    'Month view hero reprints the selected month Forecast stage2, not the pressure month CTA');
+    && asOfRow && monthLead.includes(page.ctx.planningRoadSignedMoney(asOfRow.stage2.dateOrderResult.amount)),
+    'Month view hero reprints the selected month Forecast date-order result, not the pressure month CTA');
 
   const dated = JSON.parse(JSON.stringify(pressureTraj));
   const datedPay = (dated.payPeriods || []).find(p => p.start && p.end && p.start.slice(0, 7) === signalMonth)
@@ -813,10 +822,12 @@ console.log('\n=== 1g. Stage 2/3 break-even narrative — $0 running total is no
     stage2: {
       commitments: { amount: 500, status: 'calculated' },
       result: { amount: 0, status: 'calculated' },
+      dateOrderResult: { amount: 0, status: 'calculated' },
     },
     stage3: {
       extras: { amount: 200, status: 'calculated' },
       result: { amount: 0, status: 'calculated' },
+      dateOrderResult: { amount: 0, status: 'calculated' },
     },
   };
   const stage2Note = narrative(period, 2, 'month', monthName);
@@ -914,6 +925,7 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   const withheld = JSON.parse(JSON.stringify(traj));
   const target = withheld.months[withheld.months.length - 1];
   target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this result.' };
+  target.stage3.dateOrderResult = { status: 'unavailable', reason: 'Forecast withheld this result.' };
   const withheldRoad = page.composeRoadTraj(withheld, 'month', traj.months[0].month, live.meta.asOf);
   const chip = new RegExp(`data-road-timeline-period="${target.month}"[\\s\\S]*?planning-road-horizon-chip-dot-withheld`);
   ok(chip.test(withheldRoad.timeline),

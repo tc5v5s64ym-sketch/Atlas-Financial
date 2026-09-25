@@ -459,7 +459,9 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
     eq(series, mode === 'month' ? t.months : t.payPeriods, 'toggle consumes existing Forecast array');
     for (const row of series.slice(0, 3)) {
       const poisoned = { ...row, cash: { status: 'calculated', amount: 987654321.23 } };
-      eq(ctx.planningRoadAheadStage3Result(poisoned), row.stage3.result, 'renderer selects standalone result');
+      eq(ctx.planningRoadAheadStage3Result(poisoned, mode),
+        mode === 'month' ? row.stage3.dateOrderResult : row.stage3.result,
+        'renderer selects the Forecast result for the chosen view');
       const packet = clone(t);
       (mode === 'month' ? packet.months : packet.payPeriods).forEach(r => { r.cash = poisoned.cash; });
       const html = ctx.planningRoadAheadHtml(packet, mode, mode === 'month' ? row.month : row.payday, t.asOf);

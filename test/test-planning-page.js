@@ -1006,8 +1006,9 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
   const src = stripComments(read('public/planning.js'));
   ok(/function planningRoadAheadHtml\(/.test(src) && /planningRoadAheadLeadHtml\(/.test(src),
     'planning.js composes the road-ahead dashboard from Forecast trajectory only');
-  ok(/stage3\.result/.test(src) && /planningRoadAheadWaterfallHtml\(/.test(src),
-    'road-ahead lead and waterfall read Forecast stage3 results');
+  ok(/planningRoadStageResult\(/.test(src) && /dateOrderResult/.test(src)
+    && /planningRoadAheadWaterfallHtml\(/.test(src),
+    'road-ahead lead and waterfall read Forecast date-order Month results');
   const roadSrc = src.split('function planningRoadAheadPeriodKey')[1].split('function planningTrajectoryFundingHtml')[0];
   ok(!/sustainable|on track|healthy|affordability|safe-to-spend|RYG|min-cash|What can you do/i.test(roadSrc),
     'road-ahead copy carries no invented judgment or recommendation engine');

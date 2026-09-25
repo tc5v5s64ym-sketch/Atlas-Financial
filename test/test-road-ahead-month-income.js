@@ -170,11 +170,43 @@ const early = ask(plan({
 const earlyJan = early.months.find(month => month.month === '2026-01');
 const earlyLine = earlyJan.stage2.commitments.lines.find(row => row.id === 'jan-buy');
 eq(earlyLine.shortfall, 100, 'January 31 cannot use the February close');
-eq(cents(earlyJan.stage2.result.amount), cents(-100),
+eq(cents(earlyJan.stage2.dateOrderResult.amount), cents(-100),
   'January after planned spending stays short without the later close');
 const febPeriodHand = hand.find(row => row.payday === '2026-01-30');
 eq(early.payPeriods.find(row => row.payday === '2026-01-30').stage1.result.amount, febPeriodHand.surplus,
   'the February-closing period still has its own surplus');
+
+// An early February requirement is still short even when later February
+// closes make the month-wide subtraction positive.
+const earlyFebTrajectory = ask(plan({
+  commitments: [{
+    id: 'feb-buy', label: 'February purchase',
+    date: '2026-02-01', amount: 100,
+    flexibility: 'required', confidence: 'confirmed',
+  }],
+}));
+const earlyFeb = earlyFebTrajectory.months.find(month => month.month === '2026-02');
+const febBuy = earlyFeb.stage2.commitments.lines.find(row => row.id === 'feb-buy');
+eq(earlyFeb.closingPayPeriods.every(row => row.close > '2026-02-01'), true,
+  'all February pay-period closes happen after the February 1 purchase');
+eq(earlyFeb.stage1.result.amount > 100, true,
+  'later February closes would mask the purchase in a month-wide subtraction');
+eq(febBuy.shortfall, 100, 'February 1 purchase is fully unfunded on its date');
+eq(earlyFeb.stage2.dateOrderResult.amount, -100,
+  'later same-month closes cannot turn the dated shortfall into surplus');
+eq(cents(earlyFeb.stage2.result.amount), cents(earlyFeb.stage1.result.amount - 100),
+  'the incumbent Stage 2 arithmetic identity remains available to other consumers');
+eq(earlyFeb.stage2.dateOrderResult.identity, 'date-order-month-funding',
+  'date-order Month result has its own Forecast identity');
+
+const deficitJan = ask(plan({ bills: [{
+  id: 'early-bill', label: 'Early bill', frequency: 'once',
+  date: '2026-01-04', amount: 20000, confidence: 'confirmed',
+}] })).months.find(month => month.month === '2026-01');
+eq(deficitJan.stage1.result.amount < 0, true, 'January close-month funding is negative');
+eq(deficitJan.stage2.commitments.amount, 0, 'negative funding fixture has no planned purchases');
+eq(cents(deficitJan.stage2.dateOrderResult.amount), cents(deficitJan.stage1.result.amount),
+  'negative close-month funding cannot become break-even at Stage 2');
 
 const rich = ask(plan({ startingCash: { amount: 90000 } }));
 const poor = ask(plan({ startingCash: { amount: 100 } }));
@@ -192,10 +224,10 @@ eq(rich.payPeriods.map(row => row.stage3.result.amount),
 
 const positive = ask(plan());
 const positiveJan = positive.months.find(month => month.month === '2026-01');
-eq(positiveJan.stage2.result.amount > 0, true, 'fixture January result is positive');
+eq(positiveJan.stage2.dateOrderResult.amount > 0, true, 'fixture January date-order result is positive');
 
 const negative = earlyJan;
-eq(negative.stage2.result.amount < 0, true, 'fixture January result can be negative');
+eq(negative.stage2.dateOrderResult.amount < 0, true, 'fixture January date-order result can be negative');
 
 function loadPage() {
   const appSrc = fs.readFileSync(path.join(__dirname, '..', 'public/app.js'), 'utf8');
@@ -217,7 +249,7 @@ const page = loadPage();
 const monthHtml = page.planningRoadAheadHtml(positive, 'month', '2026-01', AS_OF);
 const monthView = monthHtml.lead + monthHtml.stages;
 eq(/Income received Jan 1–Jan 31/.test(monthView), true, 'month view names the published calendar-income span');
-eq(/Available surplus this month/.test(monthView), true, 'month view names available surplus');
+eq(/Pay periods closing this month/.test(monthView), true, 'month view names pay periods closing this month');
 eq(/Surplus after deductions/.test(monthView), true, 'positive month result is Surplus after deductions');
 eq(/Shortfall after deductions/.test(monthView), false, 'positive month result is not labeled Shortfall');
 eq(/planning-road-lead-neutral/.test(monthHtml.lead), true, 'month card surface stays neutral');
@@ -236,6 +268,25 @@ eq(/planning-road-decision-surplus/.test(gapHtml.lead), true,
 eq(/planning-road-decision-gap/.test(gapHtml.lead), true,
   'the shortfall step keeps its own sign');
 
+const maskedHtml = page.planningRoadAheadHtml(earlyFebTrajectory, 'month', '2026-02', AS_OF);
+eq(/data-road-lead="period-shortfall"/.test(maskedHtml.lead), true,
+  'Month hero uses date-order result when incumbent Stage 2 net is positive');
+eq(/Shortfall after deductions/.test(maskedHtml.lead + maskedHtml.stages), true,
+  'Month decision and waterfall disclose the early shortfall');
+eq(/data-road-timeline-period="2026-02"[^>]*data-road-timeline-sign="gap"/.test(maskedHtml.timeline), true,
+  'Month horizon chip uses the date-order Stage 3 result');
+eq(maskedHtml.breakdown.includes(page.planningRoadSignedMoney(-100)), true,
+  'Month detailed breakdown reprints the date-order shortfall');
+const missingDateOrder = JSON.parse(JSON.stringify(earlyFebTrajectory));
+const missingFeb = missingDateOrder.months.find(month => month.month === '2026-02');
+delete missingFeb.stage2.dateOrderResult;
+delete missingFeb.stage3.dateOrderResult;
+const missingHtml = page.planningRoadAheadHtml(missingDateOrder, 'month', '2026-02', AS_OF);
+eq(/data-road-lead="period-unavailable"/.test(missingHtml.lead), true,
+  'missing date-order result fails the Month hero closed instead of using positive legacy net');
+eq(/data-road-timeline-period="2026-02"[^>]*data-road-timeline-sign="withheld"/.test(missingHtml.timeline), true,
+  'missing date-order result fails the Month horizon chip closed');
+
 
 // First horizon month is clipped: its heading must publish that exact span,
 // not claim the omitted pre-opening dates as income.
@@ -245,10 +296,17 @@ const clippedJan = clipped.months.find(month => month.month === '2026-01');
 const clippedHtml = page.planningRoadAheadHtml(clipped, 'month', '2026-01', '2026-01-19');
 const clippedView = clippedHtml.lead + clippedHtml.stages;
 eq(clippedJan.start, '2026-01-19', 'first horizon month starts at opening');
+const clippedEvents = F.expandEvents(clippedPlan, '2026-01-19', '2026-01-31')
+  .filter(event => event.kind === 'income' && event.date >= '2026-01-19'
+    && event.date <= '2026-01-31');
+eq(cents(clippedJan.income.amount), cents(clippedEvents.reduce((sum, event) => sum + event.amount, 0)),
+  'clipped income amount independently matches only the published dates');
 eq(/Income received Jan 19–Jan 31/.test(clippedView), true,
   'clipped first month labels the exact published income span');
 eq(/Income received this month/.test(clippedView), false,
   'clipped first month does not imply a full calendar month');
+eq(/planning-road-breakdown-group-title">Income received Jan 19–Jan 31</.test(clippedHtml.breakdown), true,
+  'clipped breakdown uses the same published span as the waterfall');
 
 // Stage 1 wording is sign-aware for all three states.
 const labelFixture = JSON.parse(JSON.stringify(positive));
@@ -257,10 +315,14 @@ labelMonth.stage1.result.amount = -1;
 let labelHtml = page.planningRoadAheadHtml(labelFixture, 'month', '2026-01', AS_OF);
 eq(/Shortfall before deductions/.test(labelHtml.lead + labelHtml.stages), true,
   'negative Stage 1 is labeled as a shortfall');
+eq(/planning-road-breakdown-label">Shortfall before deductions</.test(labelHtml.breakdown), true,
+  'negative Stage 1 breakdown does not call the amount available');
 labelMonth.stage1.result.amount = 0;
 labelHtml = page.planningRoadAheadHtml(labelFixture, 'month', '2026-01', AS_OF);
 eq(/Break-even before deductions/.test(labelHtml.lead + labelHtml.stages), true,
   'zero Stage 1 is labeled break-even');
+eq(/planning-road-breakdown-label">Break-even before deductions</.test(labelHtml.breakdown), true,
+  'zero Stage 1 breakdown is labeled break-even');
 labelMonth.stage1.result.amount = 1;
 labelHtml = page.planningRoadAheadHtml(labelFixture, 'month', '2026-01', AS_OF);
 eq(/Available to allocate/.test(labelHtml.lead + labelHtml.stages), true,
