@@ -7774,6 +7774,22 @@
   // Σ max(planned, actual) for planned categories plus Other Spending
   // actual. Remaining-only leftover and planned-plus-actual are both
   // wrong.
+  // Current Balance has one publisher. When paydayAllocation carries
+  // currentBalancePublication, that amount is the figure, including a
+  // deliberate null when a pre-payday BILLS base cannot be proved. Do not
+  // refill that null from a same-day posted row.
+  function publishedCurrentBalanceAmount(plan, alloc) {
+    const publication = alloc && alloc.currentBalancePublication;
+    if (publication) {
+      const amount = Number(publication.amount);
+      return publication.amount != null && isFinite(amount) ? roundCent(amount) : null;
+    }
+    if (alloc && alloc.liveCurrentBalance != null && isFinite(Number(alloc.liveCurrentBalance))) {
+      return roundCent(alloc.liveCurrentBalance);
+    }
+    return postedBillsAccountCash(plan);
+  }
+
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -7781,9 +7797,7 @@
     const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
-    const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
-      ? roundCent(alloc.liveCurrentBalance)
-      : postedBillsAccountCash(plan);
+    const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
     const priority = debtPriority(plan, debts || []);
@@ -8115,9 +8129,7 @@
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     const waterfalls = calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, calendarOpts);
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
-    const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
-      ? roundCent(alloc.liveCurrentBalance)
-      : postedBillsAccountCash(plan);
+    const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const activePeriod = (waterfalls.calendarPeriods || []).find(
       p => p && p.role === 'active'
     ) || null;
@@ -8775,11 +8787,14 @@
   // Household Current Balance. Canonical chequing-a / BILLS ACCOUNT only.
   // Normally the posted hub row. On a scheduled Dale/Seaspan payday, from
   // the America/Vancouver financial-day rollover until representedEvents
-  // prove that payroll, publish the pre-payday hub balance plus that one
-  // planned occurrence. The assumption is not a transaction, not a
-  // represented event, and not a second payroll. Amanda, child benefit,
-  // and other income are never pre-posted. Missing pre-payday evidence
-  // fails closed rather than inventing $0.
+  // prove that payroll, publish a trustworthy immediately pre-payday hub
+  // balance plus that one planned occurrence. A same-day or post-midnight
+  // refreshed hub balance is not that base: do not add planned payroll to
+  // it merely because representation is lagging. The assumption is not a
+  // transaction, not a represented event, and not a second payroll.
+  // Amanda, child benefit, and other income are never pre-posted. Missing
+  // pre-payday evidence fails closed rather than inventing an adjusted
+  // balance or $0.
   function plannedDalePaydayNote(amount) {
     const n = roundCent(amount);
     const abs = Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -8808,17 +8823,16 @@
 
   // Chequing-a stock immediately before payday. A day-before opening is
   // that stock. An earlier opening is walked only when posted chequing-a
-  // movements cover every gap day. A same-day posted row is the pre-pay
-  // stock only while payroll is still unrepresented (caller checks that).
+  // movements cover every gap day. A same-day posted row is a refresh, not
+  // a pre-payday base, even when payroll is still unrepresented.
   function prePaydayBillsAccountCash(plan, payday, opts) {
     const posted = postedBillsAccountCash(plan);
     if (posted == null || !payday) return null;
     const openingAsOf = plan && plan.opening && financialDate(plan.opening.asOf);
     if (!openingAsOf) return null;
-    if (openingAsOf > payday) return null;
-    if (openingAsOf === payday) return posted;
-    if (liveOpeningAdvanced(plan, openingAsOf)) return null;
+    if (openingAsOf >= payday) return null;
     if (openingAsOf === addDays(payday, -1)) return posted;
+    if (liveOpeningAdvanced(plan, openingAsOf)) return null;
     const start = addDays(openingAsOf, 1);
     const through = addDays(payday, -1);
     if (!start || !through || through < start) return posted;

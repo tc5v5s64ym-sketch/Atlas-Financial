@@ -37,9 +37,12 @@ Three concepts stay distinct:
    TENNIS INCOME balance are not Current Balance. Normally the figure is
    trustworthy posted BILLS cash. On a scheduled Dale/Seaspan payday, from
    00:00 America/Vancouver until that payroll is represented, Forecast
-   publishes the immediately pre-payday BILLS balance plus that planned
-   payroll, labelled as awaiting the bank update. Observed BILLS cash
-   replaces that assumption when the deposit is proved.
+   publishes a trustworthy immediately pre-payday BILLS balance plus that
+   planned payroll, labelled as awaiting the bank update. A same-day
+   refreshed BILLS balance is not that base. If the pre-payday balance
+   cannot be proved, Current Balance fails closed rather than adding the
+   planned payroll again. Observed BILLS cash replaces the assumption when
+   the deposit is represented.
 3. **Posting / representation proof.** When an Amanda salary occurrence has
    already transferred TENNIS INCOME → BILLS, that transfer identity proves
    the occurrence is already inside Current Balance. The transfer is not a

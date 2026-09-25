@@ -151,14 +151,12 @@ console.log('=== 1. Live balance changes mid-period do not mutate the snapshot =
   const independentAfter = PERIOD_INCOME;
   ok(paydayActive && paydayActive.start === PAYDAY,
     'This Pay Period starts on the synthetic payday');
-  const assumed = roundCent(OPENING + DALE);
-  ok(near(paydayAdvice.defaultView.liveCurrentBalance, assumed)
-      && near(paydayAdvice.paydayAllocation.liveCurrentBalance, assumed)
-      && paydayAdvice.paydayAllocation.currentBalancePublication
-      && paydayAdvice.paydayAllocation.currentBalancePublication.status === 'planned-dale-payday'
-      && near(paydayAdvice.paydayAllocation.currentBalancePublication.prePaydayBills, OPENING)
-      && near(paydayAdvice.paydayAllocation.currentBalancePublication.assumedDalePayroll, DALE),
-    'payday-morning live Current Balance is pre-pay BILLS plus planned Dale payroll');
+  const publication = paydayAdvice.paydayAllocation.currentBalancePublication;
+  ok(paydayAdvice.defaultView.liveCurrentBalance == null
+      && paydayAdvice.paydayAllocation.liveCurrentBalance == null
+      && publication && publication.status === 'unavailable'
+      && !near(paydayAdvice.paydayAllocation.liveCurrentBalance, roundCent(OPENING + DALE)),
+    'same-day opening is not a proven pre-payday base, so Current Balance does not add Dale payroll');
   ok(near(paydayActive.opening, OPENING) && paydayActive.openingKnown === true,
     'payday-morning snapshot opening is posted cash');
   ok(near(paydayActive.incomeAdded, PERIOD_INCOME)
@@ -357,9 +355,9 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
   ok(liveStart >= 0 && cardStart > liveStart,
     'live Current Balance is rendered before the payday snapshot card');
   ok(/Current Balance/.test(liveBlock) && /as of September 4/.test(liveBlock)
-      && liveBlock.includes(composer.money2(roundCent(OPENING + DALE)))
-      && /awaiting bank update/.test(liveBlock),
-    'live glance prints the assumed Current Balance and the provider observation date');
+      && !liveBlock.includes(composer.money2(roundCent(OPENING + DALE)))
+      && !/awaiting bank update/.test(liveBlock),
+    'live glance does not print same-day cash plus planned Dale payroll');
   ok(!/data-operating-prompt="Current Balance"/.test(card)
       && !/data-operating-prompt="Current balance as of/.test(card)
       && !/data-operating-prompt="Opening balance"/.test(card)

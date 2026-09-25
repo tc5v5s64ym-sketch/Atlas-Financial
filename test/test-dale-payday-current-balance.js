@@ -215,20 +215,42 @@ console.log('\n=== 4. Negative pre-pay balance ===');
     'negative pre-pay BILLS plus planned payroll', String(pub.alloc));
 }
 
-console.log('\n=== 5. Stale payday observation does not erase the assumption ===');
+console.log('\n=== 5. Post-payday refresh does not add payroll again ===');
 {
-  const expected = oracle(PRE, PAY);
-  const stale = plan({
+  const landed = oracle(PRE, PAY);
+  const doubled = oracle(landed, PAY);
+  ok(near(landed, 4430.42) && near(doubled, 8694.42),
+    'independent oracle names the landed balance and the double-count');
+  const refreshed = plan({
     asOf: PAYDAY,
     priorAsOf: BEFORE,
-    bills: PRE,
+    bills: landed,
     notRelied: [{ id: 'payroll', date: PAYDAY, reason: 'same-day-inbound-unproven' }],
   });
-  const pub = published(recommend(stale, PAYDAY));
-  ok(near(pub.alloc, expected) && pub.publication.status === 'planned-dale-payday',
-    'a payday refresh that has not represented payroll keeps pre-pay plus planned',
-    String(pub.alloc));
-  ok(!near(pub.alloc, PRE), 'the stale posted balance does not win by itself');
+  const pub = published(recommend(refreshed, PAYDAY));
+  ok(pub.alloc == null && pub.view == null && pub.period == null
+      && pub.publication.status === 'unavailable',
+    'a same-day BILLS refresh is not a proven pre-payday base', String(pub.alloc));
+  ok(!near(pub.alloc, doubled) && !near(pub.view, doubled) && !near(pub.period, doubled)
+      && !near(pub.alloc, oracle(4427.10, PAY)),
+    'representation lag does not add planned payroll onto the refreshed balance');
+  const html = composer.liveCurrentBalanceHtml(
+    pub.publication && { liveCurrentBalance: pub.view, currentBalancePublication: pub.publication },
+    null,
+    { liveCurrentBalance: pub.alloc, currentBalancePublication: pub.publication }
+  );
+  ok(html.includes('—') && !html.includes(composer.money2(doubled))
+      && !html.includes(composer.money2(landed)) && !/awaiting bank update/.test(html),
+    'the page does not print the refreshed balance plus planned payroll');
+  const actual = published(recommend(plan({
+    asOf: PAYDAY,
+    priorAsOf: BEFORE,
+    bills: 4427.10,
+  }), PAYDAY));
+  ok(actual.alloc == null && actual.view == null
+      && !near(actual.alloc, oracle(4427.10, PAY))
+      && !near(actual.view, oracle(4427.10, PAY)),
+    'an actual deposited balance without representation is not increased by the plan');
 }
 
 console.log('\n=== 6. Provider confirmation replaces the assumption ===');
