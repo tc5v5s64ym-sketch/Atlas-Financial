@@ -8898,7 +8898,15 @@
 
   // Positive non-income only. movement.classification 'refund' is not
   // this label: classifyCurrentPeriodTransaction returns refund for every
-  // negative amount before it reads categoryLabel.
+  // negative amount before it reads categoryLabel. A refund category
+  // inside the payroll window is not ordinary either: the caller fails
+  // that inflow closed. A proven household transfer stays ordinary inside
+  // that window, because it is paired to another household cash account.
+  function sameDayRefundCategory(tx) {
+    if (!tx) return false;
+    return REFUND_LABELS.has(normalizeCategoryLabel(tx.categoryLabel));
+  }
+
   function sameDayInflowPositivelyNonIncome(mov, tx) {
     if (mov && mov.internalTransfer === true
         && mov.classification === 'internal-transfer'
@@ -8906,15 +8914,16 @@
       return true;
     }
     if (!tx || tx.isIncome === true) return false;
-    return REFUND_LABELS.has(normalizeCategoryLabel(tx.categoryLabel));
+    return sameDayRefundCategory(tx);
   }
 
   // Posted chequing-a movements dated payday. Outflows are ordinary. An
-  // inflow is an ordinary credit only when positively labelled non-income.
-  // Otherwise exactly one inflow within 1% of planned payroll is excluded
-  // as the unrecognised deposit. Any other inflow returns null. A live
-  // retain with no transaction packet returns null. Returns 0 when no
-  // actuals packet was supplied and the opening was not a live retain.
+  // inflow is an ordinary credit only when positively labelled non-income,
+  // except a refund category within 1% of planned payroll, which fails
+  // closed. Otherwise exactly one inflow within 1% of planned payroll is
+  // excluded as the unrecognised deposit. Any other inflow returns null.
+  // A live retain with no transaction packet returns null. Returns 0 when
+  // no actuals packet was supplied and the opening was not a live retain.
   // Never reads the refreshed BILLS row.
   function sameDayNonPayrollBillsDelta(plan, payday, payrollAmount, opts) {
     const walked = postedAccountMovements(plan, BILLS_ACCOUNT_ID, {
@@ -8946,6 +8955,13 @@
       }
       const tx = byId.get(String(mov && mov.id));
       if (!tx) return null;
+      // A Refund label on a payroll-sized credit is not proof it is not
+      // the deposit. Counting it and then adding planned payroll doubles
+      // that cash. Proven household transfers are not this guard.
+      if (sameDayRefundCategory(tx)
+          && plausibleUnrecognisedDaleDeposit(amt, payrollAmount)) {
+        return null;
+      }
       if (sameDayInflowPositivelyNonIncome(mov, tx)) {
         delta = roundCent(delta + amt);
         continue;

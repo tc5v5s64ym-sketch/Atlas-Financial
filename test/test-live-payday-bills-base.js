@@ -764,6 +764,34 @@ console.log('\n=== m. A retain with no transaction packet fails closed ===');
     'a retained base with no transaction packet is unavailable', String(bareAlloc));
 }
 
+console.log('\n=== n. Payroll-sized refund label fails closed ===');
+{
+  // A Refund category on a credit inside 1% of planned payroll is not an
+  // ordinary credit. Counting it and adding payroll doubles that cash.
+  // 4035 is 35 away from 4000; the window is 40. A small Refund stays
+  // section h. A proven transfer inside the window stays section k.
+  function refundCase(amount, id) {
+    const run = overlay({
+      asOf: PAYDAY,
+      fetchedAt: midnight,
+      observedBills: add(walkedBase, amount),
+      actuals: actualsPacket({
+        transactions: gapTransactions([
+          paydayMovement(id, -amount, 'CITY REFUND', { categoryLabel: 'Refund' }),
+        ]),
+      }),
+    });
+    return published(run.result.data);
+  }
+  for (const amount of [PAYROLL, 4035]) {
+    const pub = refundCase(amount, 'refund-near-' + amount);
+    const doubled = add(add(walkedBase, amount), PAYROLL);
+    ok(pub.alloc == null && pub.view == null && pub.publication.status === 'unavailable'
+        && !near(pub.alloc, doubled) && !near(pub.alloc, assumed),
+      'a refund-labelled credit of ' + amount + ' fails closed', String(pub.alloc));
+  }
+}
+
 if (failures) {
   console.log('\nFAILED ' + failures);
   process.exit(1);

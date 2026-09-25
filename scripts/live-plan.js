@@ -923,7 +923,9 @@ function retainPaydayAccountObservations(next, canonicalPlan, liveAsOf, report) 
 // before the same-day BILLS row is replaced. The cutoff is the day before
 // payday: this stock does not include payday postings. Forecast counts a
 // same-day chequing-a inflow only when it is positively labelled
-// non-income. One unlabelled inflow within 1% of planned payroll is the
+// non-income. A refund category within 1% of planned payroll fails
+// closed. A proven household transfer inside that window is still
+// counted. One unlabelled inflow within 1% of planned payroll is the
 // unrecognised deposit and is excluded. Any other inflow, and a retain
 // with no transaction packet, fails closed.
 // Forecast.prePaydayBillsAccountCash is the only walk. A null walk,
