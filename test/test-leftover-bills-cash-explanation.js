@@ -85,7 +85,7 @@ function paydayPlan() {
       policy: 'true-surplus-highest-interest',
       provenance: 'owner-stated',
     },
-    opening: { asOf: PAYDAY, representedEvents: [] },
+    opening: { asOf: PAYDAY, representedEvents: [{ id: 'payroll', date: PAYDAY }] },
     income: [
       {
         id: 'payroll', label: 'Dale income', frequency: 'biweekly',
@@ -512,7 +512,8 @@ console.log('=== D. Page reprints Forecast BILLS identities and does not subtrac
     'page helper does not subtract leftover from BILLS or pair transfers');
   ok(/billsCashIdentity: 'posted-bills-account'/.test(forecastSrc)
       && /leftoverIdentity: 'balance-after-deductions'/.test(forecastSrc)
-      && /operatingCashIdentity: 'posted-planning-hub'/.test(forecastSrc)
+      && /'posted-planning-hub'/.test(forecastSrc)
+      && /'planned-dale-payday'/.test(forecastSrc)
       && /leftoverSameAsBillsCash: false/.test(forecastSrc)
       && /function billsLocationEffectForMovement\(/.test(forecastSrc)
       && /function postedBillsAccountCash\(/.test(forecastSrc),

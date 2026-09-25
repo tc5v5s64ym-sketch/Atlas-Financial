@@ -1641,10 +1641,15 @@ function liveCurrentBalanceHtml(view, liveOverlay, alloc) {
   } else if (/Updated /.test(glanceNote)) {
     dateLine = glanceNote.replace(/^Current Balance\. Not credit\.\s*/i, '');
   }
+  const publication = (view && view.currentBalancePublication)
+    || (alloc && alloc.currentBalancePublication)
+    || null;
+  const assumptionNote = publication && publication.note ? String(publication.note) : '';
   const printed = amount != null ? money2(amount) : '—';
   return `<div class="live-current-balance" data-live-current-balance>
     <p class="live-current-balance-label">Current Balance</p>
     <p class="live-current-balance-amount" data-live-current-balance-amount>${printed}</p>
+    ${assumptionNote ? `<p class="live-current-balance-note" data-live-current-balance-note>${assumptionNote}</p>` : ''}
     ${dateLine ? `<p class="live-current-balance-date">${dateLine}</p>` : ''}
   </div>`;
 }

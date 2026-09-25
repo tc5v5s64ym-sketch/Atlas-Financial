@@ -64,6 +64,7 @@ const suites = [
   ['cash-waterfall household homepage', 'test-cash-waterfall-view.js'],
   ['chequing availability headline', 'test-chequing-availability.js'],
   ['Current Balance is planning-hub cash only', 'test-current-balance-chequing-cash.js'],
+  ['Dale payday Current Balance assumption', 'test-dale-payday-current-balance.js'],
   ['ordered payday action sheet (AF-OPERATE-03)', 'test-operate-payday-action-sheet.js'],
   ['between-paydays operating view (AF-OPERATE-04)', 'test-operate-between-paydays.js'],
   ['future financial gravity (AF-OPERATE-05)', 'test-operate-future-gravity.js'],

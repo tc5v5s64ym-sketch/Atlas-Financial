@@ -87,7 +87,7 @@ function fixturePlan(extra) {
       policy: 'true-surplus-highest-interest',
       provenance: 'owner-stated',
     },
-    opening: { asOf: PAYDAY, representedEvents: [] },
+    opening: { asOf: PAYDAY, representedEvents: [{ id: 'payroll', date: PAYDAY }] },
     income: [
       {
         id: 'payroll', label: 'Dale income', frequency: 'biweekly',

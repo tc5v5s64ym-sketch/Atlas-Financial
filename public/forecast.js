@@ -7602,8 +7602,11 @@
 
   // Posted BILLS ACCOUNT cash is the incumbent chequing-a breakdown
   // row — the current-pay-period planning hub. Missing or non-finite
-  // evidence fails closed. This is Current Balance. It is not leftover,
-  // not pooled A+B, and not a second balance engine.
+  // evidence fails closed. Normally this is Current Balance. It is not
+  // leftover, not pooled A+B, and not a second balance engine. On a
+  // scheduled Dale/Seaspan payday, householdCurrentBalance may publish
+  // the pre-payday hub balance plus that one planned payroll until
+  // representation proves the deposit.
   function postedBillsAccountCash(plan) {
     const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
     const matches = rows.filter(row => row && row.id === BILLS_ACCOUNT_ID);
@@ -7663,7 +7666,7 @@
     return true;
   }
 
-  function operatingCashExplanation(plan, period, liveCurrentBalance, opts, asOf) {
+  function operatingCashExplanation(plan, period, liveCurrentBalance, opts, asOf, publication) {
     if (!period || period.role !== 'active' || period.operatingPlanUnavailable === true) {
       return null;
     }
@@ -7707,9 +7710,13 @@
       leftoverLabel: 'Balance After Deductions',
       leftoverNote: 'Amount remaining from this pay period\'s Income after assigned bills and the Household Budget hold. Not posted cash in BILLS ACCOUNT or WEEKLY SPENDING. Money moved to Savings is still household money.',
       operatingCash,
-      operatingCashIdentity: 'posted-planning-hub',
+      operatingCashIdentity: publication && publication.status === 'planned-dale-payday'
+        ? 'planned-dale-payday'
+        : 'posted-planning-hub',
       operatingCashLabel: 'Current Balance',
-      operatingCashNote: 'Posted BILLS ACCOUNT (planning hub) only. Not Weekly, not Savings, not Balance After Deductions.',
+      operatingCashNote: publication && publication.note
+        ? publication.note
+        : 'Posted BILLS ACCOUNT (planning hub) only. Not Weekly, not Savings, not Balance After Deductions.',
       billsCash,
       billsCashIdentity: 'posted-bills-account',
       billsCashLabel: 'BILLS ACCOUNT',
@@ -8050,7 +8057,8 @@
     const active = periods.find(p => p.role === 'active') || periods[0] || null;
     if (active && active.role === 'active') {
       active.operatingCashExplanation = operatingCashExplanation(
-        plan, active, liveCurrentBalance, calendarOpts, asOf);
+        plan, active, liveCurrentBalance, calendarOpts, asOf,
+        alloc && alloc.currentBalancePublication);
       active.paydayBoundaryBillsObservation = paydayBoundaryBillsObservation(
         plan, active.start, calendarOpts);
       active.postedBillsAccountMovements = postedAccountMovements(
@@ -8121,6 +8129,7 @@
       extraLabel: 'Extra this payday',
       cashNote: null,
       liveCurrentBalance,
+      currentBalancePublication: (alloc && alloc.currentBalancePublication) || null,
       periodStart,
       periodEnd: cycleEnd,
       currentBalance: leftover.currentBalance,
@@ -8763,6 +8772,120 @@
   // not release residual to extra debt or optional residual. Credit is not
   // cash. Q20 is not resolved here: the model buffer is the existing
   // feasibility floor, not a newly invented emergency-fund line.
+  // Household Current Balance. Canonical chequing-a / BILLS ACCOUNT only.
+  // Normally the posted hub row. On a scheduled Dale/Seaspan payday, from
+  // the America/Vancouver financial-day rollover until representedEvents
+  // prove that payroll, publish the pre-payday hub balance plus that one
+  // planned occurrence. The assumption is not a transaction, not a
+  // represented event, and not a second payroll. Amanda, child benefit,
+  // and other income are never pre-posted. Missing pre-payday evidence
+  // fails closed rather than inventing $0.
+  function plannedDalePaydayNote(amount) {
+    const n = roundCent(amount);
+    const abs = Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const sign = n < 0 ? '−' : '+';
+    return 'Includes planned Dale payday ' + sign + '$' + abs + ' awaiting bank update';
+  }
+
+  function dalePayrollEventOn(plan, day, opts) {
+    const stream = seaspanPayroll(plan);
+    if (!stream || !isDalePayrollStream(stream) || !day) return null;
+    const events = expandEvents(plan, day, day, Object.assign({}, opts || {}, {
+      keepRepresented: true,
+    }));
+    const hit = (events || []).find(event => event
+      && event.kind === 'income'
+      && event.id === stream.id
+      && event.date === day);
+    if (!hit || !Number.isFinite(Number(hit.amount))) return null;
+    return { id: stream.id, date: day, amount: roundCent(hit.amount) };
+  }
+
+  function dalePayrollRepresented(plan, event, day, opts) {
+    if (!event || !day) return false;
+    return representedKeySet(plan, opts, day).has(event.id + '@' + event.date);
+  }
+
+  // Chequing-a stock immediately before payday. A day-before opening is
+  // that stock. An earlier opening is walked only when posted chequing-a
+  // movements cover every gap day. A same-day posted row is the pre-pay
+  // stock only while payroll is still unrepresented (caller checks that).
+  function prePaydayBillsAccountCash(plan, payday, opts) {
+    const posted = postedBillsAccountCash(plan);
+    if (posted == null || !payday) return null;
+    const openingAsOf = plan && plan.opening && financialDate(plan.opening.asOf);
+    if (!openingAsOf) return null;
+    if (openingAsOf > payday) return null;
+    if (openingAsOf === payday) return posted;
+    if (liveOpeningAdvanced(plan, openingAsOf)) return null;
+    if (openingAsOf === addDays(payday, -1)) return posted;
+    const start = addDays(openingAsOf, 1);
+    const through = addDays(payday, -1);
+    if (!start || !through || through < start) return posted;
+    const walked = postedAccountMovements(plan, BILLS_ACCOUNT_ID, {
+      start, through,
+    }, opts);
+    if (!walked || walked.complete !== true) return null;
+    let balance = posted;
+    for (const mov of walked.movements || []) {
+      const amt = Number(mov && mov.amount);
+      if (!Number.isFinite(amt)) return null;
+      balance = roundCent(balance + amt);
+    }
+    return balance;
+  }
+
+  function householdCurrentBalance(plan, asOf, opts) {
+    opts = opts || {};
+    const day = financialDate(asOf);
+    const posted = postedBillsAccountCash(plan);
+    const postedPublication = amount => ({
+      amount: amount == null ? null : roundCent(amount),
+      effectiveDate: day,
+      accountId: BILLS_ACCOUNT_ID,
+      trust: amount == null ? 'unavailable' : 'posted',
+      status: amount == null ? 'unavailable' : 'provider-confirmed',
+      source: 'posted-bills-account',
+      assumedDalePayroll: null,
+      providerConfirmed: amount != null,
+      note: null,
+      prePaydayBills: null,
+    });
+    if (!day || opts.operatingPlan === 'unavailable') return postedPublication(posted);
+    const cycle = spendingCycle(plan, day);
+    if (!cycle || cycle.start !== day) return postedPublication(posted);
+    const payroll = dalePayrollEventOn(plan, day, opts);
+    if (!payroll) return postedPublication(posted);
+    if (dalePayrollRepresented(plan, payroll, day, opts)) return postedPublication(posted);
+    const pre = prePaydayBillsAccountCash(plan, day, opts);
+    if (pre == null) {
+      return {
+        amount: null,
+        effectiveDate: day,
+        accountId: BILLS_ACCOUNT_ID,
+        trust: 'unavailable',
+        status: 'unavailable',
+        source: 'pre-payday-bills-plus-planned-dale-payroll',
+        assumedDalePayroll: payroll.amount,
+        providerConfirmed: false,
+        note: null,
+        prePaydayBills: null,
+      };
+    }
+    return {
+      amount: roundCent(pre + payroll.amount),
+      effectiveDate: day,
+      accountId: BILLS_ACCOUNT_ID,
+      trust: 'planned-unconfirmed',
+      status: 'planned-dale-payday',
+      source: 'pre-payday-bills-plus-planned-dale-payroll',
+      assumedDalePayroll: payroll.amount,
+      providerConfirmed: false,
+      note: plannedDalePaydayNote(payroll.amount),
+      prePaydayBills: pre,
+    };
+  }
+
   function paydayAllocation(plan, asOf, opts) {
     opts = opts || {};
     const priority = debtPriority(plan, opts.debts || []);
@@ -8781,7 +8904,8 @@
     }));
 
     const opening = startingCashAmount(plan);
-    const liveCurrentBalance = postedBillsAccountCash(plan);
+    const currentBalancePublication = householdCurrentBalance(plan, asOf, opts);
+    const liveCurrentBalance = currentBalancePublication.amount;
 
     const todayEvents = expandEvents(plan, asOf, asOf, opts);
     let todayIncome = 0;
@@ -9249,6 +9373,7 @@
       available,
       opening,
       liveCurrentBalance: liveCurrentBalance != null ? roundCent(liveCurrentBalance) : null,
+      currentBalancePublication,
       todayIncome: roundCent(todayIncome),
       buffer,
       cashBasis: {
