@@ -84,7 +84,7 @@ function paydayPlan() {
       policy: 'true-surplus-highest-interest',
       provenance: 'owner-stated',
     },
-    opening: { asOf: PAYDAY, representedEvents: [] },
+    opening: { asOf: PAYDAY, representedEvents: [{ id: 'payroll', date: PAYDAY }] },
     income: [
       {
         id: 'payroll', label: 'Dale income', frequency: 'biweekly',
@@ -598,7 +598,8 @@ console.log('=== E. Page reprints Forecast identities and does not compute a gap
       && !/TFR-/.test(htmlFn) && !/householdInternalMovements/.test(htmlFn),
     'page helper does not subtract leftover from cash or pair transfers');
   ok(/leftoverIdentity: 'balance-after-deductions'/.test(forecastSrc)
-      && /operatingCashIdentity: 'posted-planning-hub'/.test(forecastSrc)
+      && /'posted-planning-hub'/.test(forecastSrc)
+      && /'planned-dale-payday'/.test(forecastSrc)
       && /sameContract: false/.test(forecastSrc)
       && /function operatingCashExplanation\(/.test(forecastSrc),
     'Forecast owns leftover vs operating-cash identities');

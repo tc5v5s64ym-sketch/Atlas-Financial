@@ -32,9 +32,17 @@ Three concepts stay distinct:
 
 1. **Future salary.** Confirmed ordinary salary is dependable Forecast
    household income on its normal cadence, including before the next payday.
-2. **Current posted cash.** Current Balance is posted household chequing
-   cash only (Chequing A / BILLS ACCOUNT and Chequing B / WEEKLY SPENDING).
-   Savings and the TENNIS INCOME balance are not Current Balance.
+2. **Current posted cash.** Current Balance is canonical Chequing A /
+   BILLS ACCOUNT only. Chequing B / WEEKLY SPENDING, savings, and the
+   TENNIS INCOME balance are not Current Balance. Normally the figure is
+   trustworthy posted BILLS cash. On a scheduled Dale/Seaspan payday, from
+   00:00 America/Vancouver until that payroll is represented, Forecast
+   publishes a trustworthy immediately pre-payday BILLS balance plus that
+   planned payroll, labelled as awaiting the bank update. A same-day
+   refreshed BILLS balance is not that base. If the pre-payday balance
+   cannot be proved, Current Balance fails closed rather than adding the
+   planned payroll again. Observed BILLS cash replaces the assumption when
+   the deposit is represented.
 3. **Posting / representation proof.** When an Amanda salary occurrence has
    already transferred TENNIS INCOME → BILLS, that transfer identity proves
    the occurrence is already inside Current Balance. The transfer is not a
@@ -46,10 +54,13 @@ twice per month**. Payday dates drift through the calendar, so a calendar
 half may contain one Seaspan paycheck or two. Owner policy **2026-09-11**:
 once the household financial date in America/Vancouver is a Seaspan
 payday, that salary is **relied upon / cleared for planning from 00:00
-PT** that day. Lunch Money lag — the deposit not yet posted or updated —
-is not a reason to leave it “not relied upon”. Forecast encodes that
-recognition. It does not invent a Lunch Money deposit and does not write
-`data.json`.
+PT** that day, and Current Balance assumes that planned deposit has
+arrived on top of the immediately pre-payday BILLS balance until
+trustworthy provider evidence represents it. Lunch Money lag — the
+deposit not yet posted or updated — is not a reason to leave it “not
+relied upon” or to keep the stale pre-pay BILLS balance as Current
+Balance. Forecast encodes that recognition. It does not invent a Lunch
+Money deposit and does not write `data.json`.
 
 **Amanda / Tennis BC.** Semi-monthly in household terms: the 15th and the
 last calendar day. The incumbent representation is two monthly Forecast

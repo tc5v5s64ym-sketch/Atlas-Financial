@@ -497,19 +497,25 @@ console.log('=== H. Leftover, Current Balance, and Prepare Ahead are unchanged =
     'provider-observation', 'recommend with observedCash');
   ok(snapshotsEqual(a, b),
     'leftover, Current Balance, and Prepare Ahead do not move when the packet is attached');
-  const hub = BILLS;
   const active = ((without.defaultView && without.defaultView.calendarPeriods) || [])
     .find(p => p && p.role === 'active') || null;
   const independentBad = active && active.incomeTotal != null && active.periodBillLoad != null
       && active.budgetHold != null
     ? roundCent(active.incomeTotal - active.periodBillLoad - active.budgetHold)
     : null;
-  ok(near(a.currentBalance, hub)
+  const publication = without.paydayAllocation
+    && without.paydayAllocation.currentBalancePublication;
+  const adjusted = roundCent(BILLS + DALE);
+  ok(a.currentBalance == null
+      && publication && publication.status === 'unavailable'
+      && publication.source === 'pre-payday-bills-plus-planned-dale-payroll'
+      && !near(a.currentBalance, adjusted)
+      && !near(a.currentBalance, LIVE_BILLS)
       && !near(a.currentBalance, POOLED)
       && independentBad != null
       && near(a.leftover, independentBad)
       && (!near(a.leftover, LIVE_BILLS) || near(independentBad, LIVE_BILLS)),
-    'Current Balance is posted hub (chequing-a); leftover is income-led BAD, not chequing-a cash unless coincidence');
+    'an unproved pre-payday gap fails Current Balance closed; leftover stays income-led BAD');
 }
 
 console.log('=== I. Live overlay on payday retains chequing-a; rename-invariant; no writes ===');
