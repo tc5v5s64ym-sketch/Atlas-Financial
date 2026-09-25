@@ -125,7 +125,7 @@ console.log('\n=== Shortfall, zero, and unavailable ===');
   base.stage3.result = { amount: -900, status: 'calculated' };
   const gap = page.planningRoadAheadDecisionHtml(base, 'month');
   ok(/Shortfall before planned spending/.test(step(gap, 'before')) === false
-    && /Available to allocate/.test(step(gap, 'before'))
+    && /Month-end available to allocate/.test(step(gap, 'before'))
     && /Shortfall after deductions/.test(step(gap, 'after'))
     && !/Surplus after deductions/.test(step(gap, 'after'))
     && /Published commitment A/.test(step(gap, 'planned'))

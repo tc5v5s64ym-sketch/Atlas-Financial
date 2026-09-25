@@ -1386,7 +1386,7 @@ console.log('\n=== Page contract ===');
     'planning.html has no leftover Road Ahead drawer shells');
   ok(!LEFTOVER_ROAD_DRAWER.test(html),
     'planning.html static copy does not name the leftover drawers');
-  ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js\?v=road-decision-story">/.test(html),
+  ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/planning.js\?v=month-surplus-reconciliation">/.test(html),
     'planning.html loads forecast.js before a cache-busted planning.js so Road Ahead cannot keep a stale decision-story helper');
   ok(!/sports|Seattle|Christmas|couch|painting|Indio|Provincials|insurance|vehicle/i.test(stripComments(read('public/planning.js')) + html),
     'no example list is hardcoded in the page or script');

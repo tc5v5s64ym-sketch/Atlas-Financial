@@ -15211,11 +15211,17 @@
     return roundCent(amounts.reduce((sum, amount) => sum + (Number(amount) || 0), 0));
   }
 
-  function trajectoryMergeFundingLines(groups) {
+  // mode 'occurrence' keeps each id+label+date as its own row. Bills and
+  // required payments that fall in two closing pay periods stay dated.
+  // Income and Household Budget keep the id/label merge.
+  function trajectoryMergeFundingLines(groups, mode) {
+    const byOccurrence = mode === 'occurrence';
     const byKey = new Map();
     for (const group of groups) {
       for (const line of (group && group.lines) || []) {
-        const key = (line.id || '') + '\n' + (line.label || '');
+        const key = byOccurrence
+          ? (line.id || '') + '\n' + (line.label || '') + '\n' + (line.date || '')
+          : (line.id || '') + '\n' + (line.label || '');
         if (!byKey.has(key)) {
           byKey.set(key, {
             id: line.id,
@@ -15231,8 +15237,12 @@
         if (line.date && row.dates.indexOf(line.date) === -1) row.dates.push(line.date);
       }
     }
-    return Array.from(byKey.values()).sort((a, b) =>
-      String(a.id || a.label).localeCompare(String(b.id || b.label))).map(row => {
+    return Array.from(byKey.values()).sort((a, b) => {
+      const ad = (a.dates[0] || '');
+      const bd = (b.dates[0] || '');
+      if (byOccurrence && ad !== bd) return ad < bd ? -1 : 1;
+      return String(a.id || a.label).localeCompare(String(b.id || b.label));
+    }).map(row => {
       const line = {
         label: row.label,
         amount: row.amount,
@@ -15244,7 +15254,7 @@
     });
   }
 
-  function trajectoryMergedComponent(parts, noun) {
+  function trajectoryMergedComponent(parts, noun, mode) {
     if (!parts.length) {
       return { amount: 0, status: 'calculated' };
     }
@@ -15260,7 +15270,7 @@
       amount: trajectorySumCents(parts.map(part => part.amount)),
       status: trajectoryWeakerStatus.apply(null, parts.map(part => part.status)),
     };
-    const lines = trajectoryMergeFundingLines(parts);
+    const lines = trajectoryMergeFundingLines(parts, mode);
     if (lines.length) row.lines = lines;
     return row;
   }
@@ -15361,8 +15371,8 @@
       }
       const periods = closing.map(row => row.period);
       const income = trajectoryMergedComponent(periods.map(p => p.stage1.income), 'month');
-      const bills = trajectoryMergedComponent(periods.map(p => p.stage1.bills), 'month');
-      const obligations = trajectoryMergedComponent(periods.map(p => p.stage1.obligations), 'month');
+      const bills = trajectoryMergedComponent(periods.map(p => p.stage1.bills), 'month', 'occurrence');
+      const obligations = trajectoryMergedComponent(periods.map(p => p.stage1.obligations), 'month', 'occurrence');
       const budgets = periods.map(p => p.stage1.householdBudget);
       const householdBudget = trajectoryMergedComponent(budgets, 'month');
       if (budgets.length && budgets[0].weeklyVariable != null) {
@@ -15405,6 +15415,20 @@
       const resultStatus = trajectoryWeakerStatus(stage1Status, commitmentsStatus);
       const dateOrderResult = trajectoryTimeCommitments(stage1Amount, commitments, closes);
       dateOrderResult.status = resultStatus;
+      // Visible Month rows must not pretend Stage 1 minus planned spending
+      // equals the date-order result when a later close could not fund an
+      // earlier requirement. Publish that gap explicitly. Planning reprints
+      // it and does not invent a plug.
+      const arithmeticAmount = roundCent(stage1Amount - commitmentsAmount);
+      const timingGap = roundCent(dateOrderResult.amount - arithmeticAmount);
+      if (timingGap !== 0) {
+        dateOrderResult.unavailableByDueDate = {
+          amount: timingGap,
+          status: resultStatus,
+          identity: 'date-order-unavailable-by-due-date',
+          label: 'Not available by due date',
+        };
+      }
       // The existing Stage 2 result remains the standalone arithmetic
       // identity used by other consumers. The Month decision surface reads
       // the separate Forecast-owned date-order result.

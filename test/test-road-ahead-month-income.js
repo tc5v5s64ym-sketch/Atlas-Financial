@@ -325,8 +325,8 @@ eq(/planning-road-breakdown-label">Break-even before deductions</.test(labelHtml
   'zero Stage 1 breakdown is labeled break-even');
 labelMonth.stage1.result.amount = 1;
 labelHtml = page.planningRoadAheadHtml(labelFixture, 'month', '2026-01', AS_OF);
-eq(/Available to allocate/.test(labelHtml.lead + labelHtml.stages), true,
-  'positive Stage 1 is labeled available to allocate');
+eq(/Month-end available to allocate/.test(labelHtml.lead + labelHtml.stages), true,
+  'positive Stage 1 is labeled month-end available to allocate');
 
 const pay = positive.payPeriods.find(row => row.payday === '2026-01-02');
 const payHtml = page.planningRoadAheadWaterfallHtml(pay, 'pay-period');

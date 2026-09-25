@@ -100,7 +100,7 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
   ok(/viewport-fit=cover/.test(html), 'planning.html keeps viewport-fit=cover for safe-area');
   ok(/id="planning-road-ahead"/.test(html), 'planning.html keeps road-ahead mount');
   ok(/sitenav-household/.test(html), 'planning reuses incumbent household bottom dock');
-  ok(/<script src="\/planning.js\?v=road-decision-story">/.test(html),
+  ok(/<script src="\/planning.js\?v=month-surplus-reconciliation">/.test(html),
     'planning.html cache-busts planning.js so live Road Ahead cannot keep the pre-decision-story helper');
 
   const liveEl = page.render(live, periods);
