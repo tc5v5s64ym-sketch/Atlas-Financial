@@ -3010,6 +3010,14 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 }
 .planning-road-wf-about { color: var(--text-secondary); font-size: .82rem; margin-right: 4px; }
 .planning-road-wf-income .planning-road-wf-amount b { color: var(--success-text); }
+.planning-road-wf-row[data-road-result-sign="surplus"] .planning-road-amount-value { color: var(--success-text); }
+.planning-road-wf-row[data-road-result-sign="gap"] .planning-road-amount-value { color: var(--road-gap); }
+.planning-road-decision-gap .planning-road-hero-kind { color: var(--road-gap); }
+.planning-road-decision-surplus .planning-road-hero-kind { color: var(--success-text); }
+.planning-road-lead-neutral {
+  background: var(--surface-1);
+  border-color: var(--border);
+}
 .planning-road-wf-expand { margin: 0; }
 .planning-road-wf-summary {
   display: flex;

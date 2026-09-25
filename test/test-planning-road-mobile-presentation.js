@@ -82,8 +82,10 @@ function gapTrajectory(baseTraj, month) {
   row.stage1.result = { amount: 1041, status: 'calculated' };
   row.stage2.commitments = { amount: 1400, status: 'estimated' };
   row.stage2.result = { amount: -359, status: 'calculated' };
+  row.stage2.dateOrderResult = { amount: -359, status: 'calculated', identity: 'date-order-month-funding' };
   row.stage3.extras = { amount: 600, status: 'calculated', source: 'plan.defaults.extraDebtMonthly' };
   row.stage3.result = { amount: -959, status: 'calculated' };
+  row.stage3.dateOrderResult = { amount: -959, status: 'calculated', identity: 'date-order-month-funding' };
   return { traj, row };
 }
 
@@ -121,22 +123,25 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
     'segmented control uses tablist semantics over the waterfall panel');
   ok(/data-planning-road-waterfall="ready"/.test(road)
     && /data-planning-road-wf="income"/.test(road)
-    && /data-planning-road-wf="bills"/.test(road)
-    && /data-planning-road-wf="household-budget"/.test(road)
+    && /Income received [A-Z][a-z]{2} \d{1,2}–[A-Z][a-z]{2} \d{1,2}/.test(road)
+    && /data-planning-road-wf="available-surplus"/.test(road)
     && /data-planning-road-wf="planned-spending"/.test(road)
+    && /data-planning-road-wf="after-deductions"/.test(road)
     && /data-planning-road-wf="final"/.test(road),
-    'waterfall stack reprints income, bills, household budget, planned spending, and final result');
-  ok(/data-planning-road-wf="income"[\s\S]*planning-road-wf-kicker[\s\S]*Income/.test(road)
-    && /data-planning-road-wf="bills"[\s\S]*planning-road-wf-kicker[\s\S]*Bills/.test(road)
-    && /data-planning-road-wf="obligations"[\s\S]*planning-road-wf-kicker[\s\S]*Required debt payments/.test(road)
-    && /data-planning-road-wf="household-budget"[\s\S]*planning-road-wf-kicker[\s\S]*Household budget/.test(road)
+    'month waterfall reprints calendar income, available surplus, planned spending, and the result');
+  ok(/data-planning-road-wf="income"[\s\S]*planning-road-wf-kicker[\s\S]*Income received [A-Z][a-z]{2} \d{1,2}–[A-Z][a-z]{2} \d{1,2}/.test(road)
+    && /data-planning-road-wf="available-surplus"[\s\S]*planning-road-wf-kicker[\s\S]*Pay periods closing this month/.test(road)
     && /data-planning-road-wf="planned-spending"[\s\S]*planning-road-wf-kicker[\s\S]*Planned spending/.test(road),
-    'every waterfall section carries the same kicker chrome — badge plus label');
-  ok(/data-planning-road-wf-expand="bills"/.test(road)
-    && /data-planning-road-wf-expand="household-budget"/.test(road)
-    && /data-planning-road-wf-expand="bills"[\s\S]*planning-road-wf-chevron/.test(road)
-    && /data-planning-road-wf-expand="household-budget"[\s\S]*planning-road-wf-chevron/.test(road),
-    'Bills and Household budget keep a tappable expander with chevron affordance');
+    'month waterfall sections carry kicker chrome — badge plus label');
+  const payShell = page.composeRoad(live, periods, 'pay-period').stages;
+  ok(/data-planning-road-wf-expand="bills"/.test(payShell)
+    && /data-planning-road-wf-expand="household-budget"/.test(payShell)
+    && /data-planning-road-wf-expand="bills"[\s\S]*planning-road-wf-chevron/.test(payShell)
+    && /data-planning-road-wf-expand="household-budget"[\s\S]*planning-road-wf-chevron/.test(payShell)
+    && /data-planning-road-wf="bills"[\s\S]*planning-road-wf-kicker[\s\S]*Bills/.test(payShell)
+    && /data-planning-road-wf="obligations"[\s\S]*planning-road-wf-kicker[\s\S]*Required debt payments/.test(payShell)
+    && /data-planning-road-wf="household-budget"[\s\S]*planning-road-wf-kicker[\s\S]*Household budget/.test(payShell),
+    'pay period waterfall keeps Bills and Household budget expanders');
   ok(/data-planning-road-planned="inline"/.test(road),
     'planned spending is a named inline block');
   const plannedChunk = road.split('data-planning-road-wf="planned-spending"')[1] || '';
@@ -227,9 +232,9 @@ console.log('\n=== 1b. Identity, freshness, hero, horizon chips, slice control =
     && /data-trajectory-funding-granularity="month"/.test(road),
     'selected period header carries the month title and Month|Pay slice');
   ok(/planning-road-breakdown-summary-label">Full [A-Z][a-z]+ breakdown</.test(road)
-    && /planning-road-breakdown-group-title">Money in</.test(road)
-    && /planning-road-breakdown-group-title">Bills &amp; required costs|planning-road-breakdown-group-title">Bills & required costs/.test(road),
-    'breakdown is a named sheet row with grouped line items');
+    && /planning-road-breakdown-group-title">Income received [A-Z][a-z]{2} \d{1,2}–[A-Z][a-z]{2} \d{1,2}</.test(road)
+    && /planning-road-breakdown-group-title">Pay periods closing this month</.test(road),
+    'month breakdown names calendar income and available surplus');
   ok(!/This is a preview, not a change/.test(road)
     && !/What-if: extra payment/.test(road),
     'leftover what-if banner and primary title stay absent');
@@ -250,8 +255,8 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
   const { traj, row } = gapTrajectory(base, month);
   const road = page.composeRoadTraj(traj, 'month', month, live.meta.asOf);
   const signedBefore = page.ctx.planningRoadSignedMoney(row.stage1.result.amount);
-  const signedAfter = page.ctx.planningRoadSignedMoney(row.stage2.result.amount);
-  const signedFinal = page.ctx.planningRoadSignedMoney(row.stage3.result.amount);
+  const signedAfter = page.ctx.planningRoadSignedMoney(row.stage2.dateOrderResult.amount);
+  const signedFinal = page.ctx.planningRoadSignedMoney(row.stage3.dateOrderResult.amount);
 
   ok(/data-road-lead="period-shortfall"/.test(road.lead)
     && road.lead.includes(signedBefore)
@@ -292,8 +297,8 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
     && /Final shortfall/.test(stages),
     'final row is named shortfall and carries the Forecast sign');
 
-  const surplusMonth = base.months.find(m => m.stage2 && m.stage2.result
-    && isFinite(m.stage2.result.amount) && m.stage2.result.amount > 0);
+  const surplusMonth = base.months.find(m => m.stage2 && m.stage2.dateOrderResult
+    && isFinite(m.stage2.dateOrderResult.amount) && m.stage2.dateOrderResult.amount > 0);
   if (surplusMonth) {
     const surplus = page.composeRoadTraj(base, 'month', surplusMonth.month, live.meta.asOf);
     ok(/data-road-lead="period-surplus"/.test(surplus.lead)
@@ -306,7 +311,9 @@ console.log('\n=== 1c. Selected-period surplus/deficit hero and waterfall reprin
   const target = withheldMonth.months[1];
   target.stage2.commitments = { status: 'unavailable', reason: 'Forecast withheld this component.' };
   target.stage2.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
+  target.stage2.dateOrderResult = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
   target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
+  target.stage3.dateOrderResult = { status: 'unavailable', reason: 'Forecast withheld this stage.' };
   const withheld = page.composeRoadTraj(withheldMonth, 'month', target.month, live.meta.asOf);
   const plannedBlock = (withheld.stages.split('data-planning-road-wf="planned-spending"')[1] || '')
     .split('data-planning-road-wf="')[0];
@@ -456,7 +463,7 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
   });
   const month = traj.months[0];
   const road = page.composeRoad(live, periods, 'month', month.month, live.meta.asOf);
-  const signed = page.ctx.planningRoadSignedMoney(month.stage2.result.amount);
+  const signed = page.ctx.planningRoadSignedMoney(month.stage2.dateOrderResult.amount);
   ok(new RegExp(`data-road-timeline-period="${month.month}"[\\s\\S]*data-road-timeline-sign="(surplus|gap|neutral|withheld)"`).test(road.timeline)
     || road.timeline.includes(`data-road-timeline-period="${month.month}"`),
     'horizon chip for the first month is present with a Forecast-derived sign');
@@ -464,11 +471,11 @@ console.log('\n=== 3. Forecast reprints unchanged — no page-side trajectory ma
     && road.lead.includes(page.ctx.planningRoadSignedMoney(month.stage1.result.amount))
     && /data-road-lead="period-/.test(road.lead),
     'hero reprints Forecast stage1 and stage2 for the selected month');
-  ok(road.selected.includes(money2(month.stage3.result.amount)),
-    'selected-period panel still copies the same Forecast stage3 amount');
+  ok(road.selected.includes(money2(month.stage3.dateOrderResult.amount)),
+    'selected-period panel copies the Forecast date-order stage3 amount');
   const shell = page.render(live, periods)['planning-road-ahead'].innerHTML;
-  ok(shell.includes(money2(month.stage3.result.amount)),
-    'live shell reprints Forecast stage3 without alternate arithmetic');
+  ok(shell.includes(money2(month.stage3.dateOrderResult.amount)),
+    'live shell reprints Forecast date-order stage3 without alternate arithmetic');
 
   const roadBlock = planningSrc.split('function planningRoadAheadScrollSelectedTimeline')[0]
     .split('function planningRoadAheadWireSelection')[0];
@@ -726,6 +733,11 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
       && Number(period.stage3.result.amount) < 0) {
       period.stage3.result = Object.assign({}, period.stage3.result, { amount: 0 });
     }
+    if (period && period.stage3 && period.stage3.dateOrderResult
+      && isFinite(Number(period.stage3.dateOrderResult.amount))
+      && Number(period.stage3.dateOrderResult.amount) < 0) {
+      period.stage3.dateOrderResult = Object.assign({}, period.stage3.dateOrderResult, { amount: 0 });
+    }
   };
   const pressureTraj = JSON.parse(JSON.stringify(traj));
   (pressureTraj.months || []).forEach(clearGap);
@@ -780,8 +792,8 @@ console.log('\n=== 10. Month-only pressure CTA fails closed in Pay period view (
   const asOfRow = (pressureTraj.months || []).find(m => m.month === asOfMonth)
     || (pressureTraj.months || [])[0];
   ok(/data-road-lead="period-/.test(monthLead)
-    && asOfRow && monthLead.includes(page.ctx.planningRoadSignedMoney(asOfRow.stage2.result.amount)),
-    'Month view hero reprints the selected month Forecast stage2, not the pressure month CTA');
+    && asOfRow && monthLead.includes(page.ctx.planningRoadSignedMoney(asOfRow.stage2.dateOrderResult.amount)),
+    'Month view hero reprints the selected month Forecast date-order result, not the pressure month CTA');
 
   const dated = JSON.parse(JSON.stringify(pressureTraj));
   const datedPay = (dated.payPeriods || []).find(p => p.start && p.end && p.start.slice(0, 7) === signalMonth)
@@ -810,10 +822,12 @@ console.log('\n=== 1g. Stage 2/3 break-even narrative — $0 running total is no
     stage2: {
       commitments: { amount: 500, status: 'calculated' },
       result: { amount: 0, status: 'calculated' },
+      dateOrderResult: { amount: 0, status: 'calculated' },
     },
     stage3: {
       extras: { amount: 200, status: 'calculated' },
       result: { amount: 0, status: 'calculated' },
+      dateOrderResult: { amount: 0, status: 'calculated' },
     },
   };
   const stage2Note = narrative(period, 2, 'month', monthName);
@@ -844,14 +858,14 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   const liveTraj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
-  const liveMonth = (liveTraj.months || []).find(m => m && m.stage1 && m.stage1.income
-    && (m.stage1.income.status === 'calculated' || m.stage1.income.status === 'estimated'));
-  const liveIncomeLines = liveMonth && Array.isArray(liveMonth.stage1.income.lines)
-    ? liveMonth.stage1.income.lines : [];
+  const liveMonth = (liveTraj.months || []).find(m => m && m.income
+    && (m.income.status === 'calculated' || m.income.status === 'estimated'));
+  const liveIncomeLines = liveMonth && Array.isArray(liveMonth.income.lines)
+    ? liveMonth.income.lines : [];
   if (liveIncomeLines.length) {
     ok(liveIncomeLines.every(row => row && incomeBlock.includes(row.label)),
-      'Planning reprints Forecast-published stage1 income line labels and does not invent splits');
-    ok(/Income total/.test(incomeBlock),
+      'Planning reprints Forecast-published calendar income line labels and does not invent splits');
+    ok(/Total income/.test(incomeBlock),
       'Planning reprints the Forecast income total beside published lines');
   } else {
     ok(!/\bDale\b/.test(incomeBlock) && !/\bAmanda\b/.test(incomeBlock),
@@ -862,8 +876,12 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   ok(!/atlas-card|card-strip|Card badge|data-card-badge|purple Card/i.test(liveRoad),
     'Road Ahead markup has no Budget card-strip markers');
 
-  const billsLive = wfBlock(liveRoad, 'bills');
-  const householdLive = wfBlock(liveRoad, 'household-budget');
+  const payPeriod = (liveTraj.payPeriods || []).find(p => p && p.stage1 && p.stage1.bills);
+  const payRoad = payPeriod
+    ? page.composeRoadTraj(liveTraj, 'pay-period', payPeriod.payday || payPeriod.id, live.meta.asOf)
+    : { stages: '' };
+  const billsLive = wfBlock(payRoad.stages, 'bills');
+  const householdLive = wfBlock(payRoad.stages, 'household-budget');
   ok(/data-planning-road-wf-expand="bills"/.test(billsLive)
     && /planning-road-wf-chevron/.test(billsLive)
     && /data-planning-road-wf-row="bills-total"/.test(billsLive),
@@ -872,11 +890,11 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && /planning-road-wf-chevron/.test(householdLive)
     && /data-planning-road-wf-row="household-budget-total"/.test(householdLive),
     'live Household budget total stays visible in the collapsed expander summary');
-  const liveBillsLines = liveMonth && liveMonth.stage1 && liveMonth.stage1.bills
-    && Array.isArray(liveMonth.stage1.bills.lines) ? liveMonth.stage1.bills.lines : [];
-  const liveBudgetLines = liveMonth && liveMonth.stage1 && liveMonth.stage1.householdBudget
-    && Array.isArray(liveMonth.stage1.householdBudget.lines)
-    ? liveMonth.stage1.householdBudget.lines : [];
+  const liveBillsLines = payPeriod && payPeriod.stage1 && payPeriod.stage1.bills
+    && Array.isArray(payPeriod.stage1.bills.lines) ? payPeriod.stage1.bills.lines : [];
+  const liveBudgetLines = payPeriod && payPeriod.stage1 && payPeriod.stage1.householdBudget
+    && Array.isArray(payPeriod.stage1.householdBudget.lines)
+    ? payPeriod.stage1.householdBudget.lines : [];
   if (liveBillsLines.length) {
     ok(liveBillsLines.every(row => row && billsLive.includes(row.label)),
       'Planning reprints Forecast-published stage1 bills line labels and does not invent splits');
@@ -907,6 +925,7 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   const withheld = JSON.parse(JSON.stringify(traj));
   const target = withheld.months[withheld.months.length - 1];
   target.stage3.result = { status: 'unavailable', reason: 'Forecast withheld this result.' };
+  target.stage3.dateOrderResult = { status: 'unavailable', reason: 'Forecast withheld this result.' };
   const withheldRoad = page.composeRoadTraj(withheld, 'month', traj.months[0].month, live.meta.asOf);
   const chip = new RegExp(`data-road-timeline-period="${target.month}"[\\s\\S]*?planning-road-horizon-chip-dot-withheld`);
   ok(chip.test(withheldRoad.timeline),
@@ -916,9 +935,10 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
 
   const withLines = JSON.parse(JSON.stringify(traj));
   const lined = withLines.months[0];
-  lined.stage1.income = {
-    amount: lined.stage1.income.amount,
-    status: lined.stage1.income.status,
+  lined.income = {
+    amount: lined.income.amount,
+    status: lined.income.status,
+    identity: 'calendar-dated-income',
     lines: [
       { label: 'Published stream A', amount: 100, status: 'confirmed' },
       { label: 'Published stream B', amount: 50, status: 'estimated' },
@@ -929,7 +949,7 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   ok(/Published stream A/.test(linedIncome)
     && /Published stream B/.test(linedIncome)
     && /planning-road-trust-confirmed">Confirmed</.test(linedIncome)
-    && /Income total/.test(linedIncome)
+    && /Total income/.test(linedIncome)
     && !/<details/.test(linedIncome),
     'when Forecast publishes income line labels, those lines and the income total stay always visible');
   ok(!/\bDale\b/.test(linedIncome) && !/\bAmanda\b/.test(linedIncome)
@@ -1041,35 +1061,35 @@ console.log('\n=== 12. Uniform headers, expanders with published lines, Dale/Ama
     periods, extraFacilities: live.revolvingExtra,
   });
   const withDetail = JSON.parse(JSON.stringify(traj));
-  const month = withDetail.months[0];
-  const incomeTotal = month.stage1.income.amount;
-  const billsTotal = month.stage1.bills.amount;
-  const householdTotal = month.stage1.householdBudget.amount;
-  month.stage1.income = {
+  const period = withDetail.payPeriods[0];
+  const incomeTotal = period.stage1.income.amount;
+  const billsTotal = period.stage1.bills.amount;
+  const householdTotal = period.stage1.householdBudget.amount;
+  period.stage1.income = {
     amount: incomeTotal,
-    status: month.stage1.income.status,
+    status: period.stage1.income.status,
     lines: [
       { label: 'Dale', amount: 6240, status: 'confirmed' },
       { label: 'Amanda', amount: 4180, status: 'confirmed' },
     ],
   };
-  month.stage1.bills = {
+  period.stage1.bills = {
     amount: billsTotal,
-    status: month.stage1.bills.status,
+    status: period.stage1.bills.status,
     lines: [
       { label: 'Mortgage', amount: 2140, status: 'confirmed' },
       { label: 'Car payment', amount: 600, status: 'confirmed' },
     ],
   };
-  month.stage1.householdBudget = {
+  period.stage1.householdBudget = {
     amount: householdTotal,
-    status: month.stage1.householdBudget.status,
+    status: period.stage1.householdBudget.status,
     items: [
       { label: 'Groceries', amount: 800, status: 'calculated' },
       { label: 'Fuel', amount: 220, status: 'calculated' },
     ],
   };
-  const road = page.composeRoadTraj(withDetail, 'month', month.month, live.meta.asOf);
+  const road = page.composeRoadTraj(withDetail, 'pay-period', period.payday || period.id, live.meta.asOf);
   const income = wfBlock(road.stages, 'income');
   const bills = wfBlock(road.stages, 'bills');
   const household = wfBlock(road.stages, 'household-budget');
@@ -1117,36 +1137,36 @@ console.log('\n=== 13. Road Ahead waterfall omits Estimated/Calculated chrome an
     periods, extraFacilities: live.revolvingExtra,
   });
   const withDetail = JSON.parse(JSON.stringify(traj));
-  const month = withDetail.months[0];
-  month.stage1.bills = {
-    amount: month.stage1.bills.amount,
+  const period = withDetail.payPeriods[0];
+  period.stage1.bills = {
+    amount: period.stage1.bills.amount,
     status: 'estimated',
     lines: [{ label: 'Published bill', amount: 100, status: 'estimated' }],
   };
-  month.stage1.obligations = {
-    amount: month.stage1.obligations && month.stage1.obligations.amount != null
-      ? month.stage1.obligations.amount : 200,
+  period.stage1.obligations = {
+    amount: period.stage1.obligations && period.stage1.obligations.amount != null
+      ? period.stage1.obligations.amount : 200,
     status: 'estimated',
     lines: [{ label: 'Published debt', amount: 200, status: 'calculated' }],
   };
-  month.stage1.householdBudget = {
-    amount: month.stage1.householdBudget.amount,
+  period.stage1.householdBudget = {
+    amount: period.stage1.householdBudget.amount,
     status: 'calculated',
     items: [{ label: 'Groceries', amount: 800, status: 'calculated' }],
   };
-  month.stage1.result = {
-    amount: month.stage1.result.amount,
+  period.stage1.result = {
+    amount: period.stage1.result.amount,
     status: 'estimated',
   };
-  month.stage2.commitments = {
-    amount: month.stage2.commitments.amount,
+  period.stage2.commitments = {
+    amount: period.stage2.commitments.amount,
     status: 'estimated',
   };
-  month.stage3.result = {
-    amount: month.stage3.result.amount,
+  period.stage3.result = {
+    amount: period.stage3.result.amount,
     status: 'calculated',
   };
-  const road = page.composeRoadTraj(withDetail, 'month', month.month, live.meta.asOf);
+  const road = page.composeRoadTraj(withDetail, 'pay-period', period.payday || period.id, live.meta.asOf);
   const wf = road.stages;
   const bills = wfBlock(wf, 'bills');
   const obligations = wfBlock(wf, 'obligations');

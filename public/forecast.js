@@ -15128,6 +15128,14 @@
         amount: roundCent(incomeSum),
         dalePayroll: dalePayrollMarker,
       };
+      // Calendar-month income is the dated events in the month. It is not
+      // the pay-period-close funding total on stage1. Named lines are the
+      // same attribution helper Stage 1 already uses; Planning reprints them.
+      if (input.spanNoun === 'month') {
+        income.identity = 'calendar-dated-income';
+        const lines = baselineTrajectoryIncomeLines(plan, modelledIncomeEvents, income.amount);
+        if (lines.length) income.lines = lines;
+      }
     }
     if (withheldDaleThroughSpanEnd || withheldLaterDale) {
       cash = {
@@ -15269,9 +15277,9 @@
 
   // Dated planned spending stays on its own date. Surplus from a pay
   // period is usable only on and after that period's close. Later
-  // surplus is not borrowed backward. The published stage result remains
-  // stage1 − these requirements so the card reconciles; each line records
-  // the shortfall that existed on its date.
+  // surplus is not borrowed backward. Each line records the shortfall that
+  // existed on its date. The month result also retains any net deficit from
+  // the closing pay periods.
   function trajectoryTimeCommitments(stage1Amount, commitments, closes) {
     const lines = (commitments.lines || []).map(line => Object.assign({}, line));
     const dated = lines.filter(line => line.date).sort((a, b) =>
@@ -15310,9 +15318,16 @@
     if (lines.length) commitments.lines = lines;
     commitments.unfundedOnDate = shortfall;
     commitments.surplusAfterRequirements = available;
-    return trajectoryAvailableResult(
-      roundCent(Number(stage1Amount) - Number(commitments.amount || 0)),
-      commitments.status || 'calculated');
+    // Household-facing Month result is the amount that was actually
+    // available in date order. A shortfall on an earlier requirement is
+    // never erased by a pay-period surplus that closes later in the month.
+    const netAmount = roundCent(Number(stage1Amount) - Number(commitments.amount || 0));
+    const resultAmount = shortfall > 0 ? Math.min(netAmount, -shortfall) : netAmount;
+    return Object.assign(trajectoryAvailableResult(
+      roundCent(resultAmount),
+      commitments.status || 'calculated'), {
+      identity: 'date-order-month-funding',
+    });
   }
 
   function applyRoadAheadMonthCloseFunding(months, payPeriods, events, walkStart, plan) {
@@ -15387,14 +15402,23 @@
         date: row.close,
         amount: roundCent(row.period.stage1.result.amount),
       }));
-      const stage2Result = trajectoryTimeCommitments(stage1Amount, commitments, closes);
-      stage2Result.status = trajectoryWeakerStatus(stage1Status, commitmentsStatus);
+      const resultStatus = trajectoryWeakerStatus(stage1Status, commitmentsStatus);
+      const dateOrderResult = trajectoryTimeCommitments(stage1Amount, commitments, closes);
+      dateOrderResult.status = resultStatus;
+      // The existing Stage 2 result remains the standalone arithmetic
+      // identity used by other consumers. The Month decision surface reads
+      // the separate Forecast-owned date-order result.
+      const stage2Result = trajectoryAvailableResult(
+        roundCent(stage1Amount - commitmentsAmount), resultStatus);
       const extrasParts = periods.map(p => p.stage3 && p.stage3.extras).filter(Boolean);
       const extras = trajectoryMergedComponent(extrasParts, 'month');
       extras.source = 'plan.defaults.extraDebtMonthly';
       const stage3Amount = extras.status === 'unavailable'
         ? null
         : roundCent(stage2Result.amount - (Number(extras.amount) || 0));
+      const stage3DateOrderAmount = extras.status === 'unavailable'
+        ? null
+        : roundCent(dateOrderResult.amount - (Number(extras.amount) || 0));
       month.stage1 = {
         id: 'normal-life',
         label: 'Normal life',
@@ -15412,6 +15436,7 @@
         status: stage2Result.status,
         commitments,
         result: stage2Result,
+        dateOrderResult,
       };
       month.stage3 = extras.status === 'unavailable'
         ? Object.assign({ id: 'after-debt-strategy', label: 'After debt strategy' }, {
@@ -15426,12 +15451,21 @@
           result: trajectoryAvailableResult(
             stage3Amount,
             trajectoryWeakerStatus(stage2Result.status, extras.status)),
+          dateOrderResult: Object.assign(trajectoryAvailableResult(
+            stage3DateOrderAmount,
+            trajectoryWeakerStatus(dateOrderResult.status, extras.status)), {
+            identity: 'date-order-month-funding',
+          }),
         };
       month.roadAheadMonthFunding = 'pay-period-close';
       month.closingPayPeriods = periods.map(p => ({
         payday: p.payday,
         close: payPeriodSurplusCloseDate(p),
         stage1: p.stage1.result.amount,
+        status: p.stage1.result.status,
+        displayRange: p.windowKind === 'full-cycle'
+          ? (p.cycleRangeLabel || p.rangeLabel || '')
+          : (p.rangeLabel || p.cycleRangeLabel || ''),
       }));
     }
   }
@@ -15470,8 +15504,10 @@
   // debt, and pressure on that window. Its Road Ahead stages sum the
   // Seaspan pay periods whose cycle closes in the month. Stage 1 is
   // their standalone normal-life surplus. Stage 2 subtracts dated
-  // planned spending, which cannot use a close that is still in the
-  // future. Stage 3 subtracts those periods' extra-debt amounts. A
+  // planned spending. Its incumbent net result stays available to other
+  // consumers; the Month dateOrderResult preserves shortfalls that cannot
+  // use a later close. Stage 3 applies the closing periods' extra-debt
+  // amounts to both results. A
   // closing period with unavailable funding fails the month closed.
   // The same walk also publishes a Seaspan
   // payday-to-payday series (`payPeriods`) with the same three-stage

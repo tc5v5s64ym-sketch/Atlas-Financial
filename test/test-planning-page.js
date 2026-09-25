@@ -1006,8 +1006,9 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
   const src = stripComments(read('public/planning.js'));
   ok(/function planningRoadAheadHtml\(/.test(src) && /planningRoadAheadLeadHtml\(/.test(src),
     'planning.js composes the road-ahead dashboard from Forecast trajectory only');
-  ok(/stage3\.result/.test(src) && /planningRoadAheadWaterfallHtml\(/.test(src),
-    'road-ahead lead and waterfall read Forecast stage3 results');
+  ok(/planningRoadStageResult\(/.test(src) && /dateOrderResult/.test(src)
+    && /planningRoadAheadWaterfallHtml\(/.test(src),
+    'road-ahead lead and waterfall read Forecast date-order Month results');
   const roadSrc = src.split('function planningRoadAheadPeriodKey')[1].split('function planningTrajectoryFundingHtml')[0];
   ok(!/sustainable|on track|healthy|affordability|safe-to-spend|RYG|min-cash|What can you do/i.test(roadSrc),
     'road-ahead copy carries no invented judgment or recommendation engine');
@@ -1044,8 +1045,9 @@ console.log('\n=== 22. Your Financial Road Ahead dashboard compose ===');
     const gapRoad = page.composeRoadAhead(live, periods, 'month', gapMonth.month, live.meta.asOf);
     ok(/data-road-lead="period-shortfall"/.test(gapRoad.lead)
       && gapRoad.lead.includes(page.ctx.planningRoadSignedMoney(gapMonth.stage2.result.amount))
-      && /Shortfall after planned spending/.test(gapRoad.lead),
-      'when Forecast publishes a negative stage2, selecting that month leads with that shortfall');
+      && /Shortfall after deductions/.test(gapRoad.lead)
+      && /planning-road-lead-neutral/.test(gapRoad.lead),
+      'when Forecast publishes a negative stage2, selecting that month leads with that shortfall on a neutral card');
   } else {
     ok(/data-road-lead="period-surplus"|data-road-lead="period-even"|data-road-lead="period-unavailable"/.test(road.lead),
       'without a negative stage3 on live data, lead reprints the selected month Forecast result — not an invented gap');
@@ -1419,30 +1421,31 @@ console.log('\n=== Leftover Road Ahead drawers are absent from primary markup/re
   const traj = F.baselineTrajectory(live.plan, live.debts, live.meta.asOf, {
     periods, extraFacilities: live.revolvingExtra,
   });
-  const liveIncome = traj.months[0] && traj.months[0].stage1 && traj.months[0].stage1.income;
+  const liveIncome = traj.months[0] && traj.months[0].income;
   const incomeChunk = (road.split('data-planning-road-wf="income"')[1] || '')
     .split('data-planning-road-wf="')[0];
   const publishedIncomeLines = page.ctx.planningRoadPublishedLines(liveIncome);
-  ok(liveIncome && liveIncome.amount != null,
-    'live stage1.income rollup is published');
+  ok(liveIncome && liveIncome.amount != null && liveIncome.identity === 'calendar-dated-income',
+    'live calendar-month income rollup is published');
   if (publishedIncomeLines.length) {
     ok(publishedIncomeLines.every(row => row && incomeChunk.includes(row.label)),
-      'Planning reprints Forecast-published stage1 income line labels and does not invent splits');
-    ok(/Income total/.test(incomeChunk) && !/50\s*\/\s*50/.test(incomeChunk),
+      'Planning reprints Forecast-published calendar income line labels and does not invent splits');
+    ok(/Total income/.test(incomeChunk) && !/50\s*\/\s*50/.test(incomeChunk),
       'Income reprints the Forecast total beside published lines and does not invent a 50/50 split');
   } else {
     ok(publishedIncomeLines.length === 0,
       'published-lines helper reprints nothing when Forecast published no lines');
-    ok(/Income total/.test(incomeChunk)
+    ok(/Total income/.test(incomeChunk)
       && !/\bDale\b/.test(incomeChunk) && !/\bAmanda\b/.test(incomeChunk)
       && !/Seaspan/.test(incomeChunk) && !/Tennis/.test(incomeChunk)
       && !/50\s*\/\s*50/.test(incomeChunk),
       'Income reprints the Forecast total and does not invent Dale/Amanda, Seaspan/Tennis, or a 50/50 split');
   }
   const withLines = JSON.parse(JSON.stringify(traj));
-  withLines.months[0].stage1.income = {
+  withLines.months[0].income = {
     amount: liveIncome.amount,
     status: liveIncome.status,
+    identity: 'calendar-dated-income',
     lines: [
       { label: 'Published stream A', amount: 100, status: 'confirmed' },
       { label: 'Published stream B', amount: 50, status: 'estimated' },
@@ -1452,7 +1455,7 @@ console.log('\n=== Leftover Road Ahead drawers are absent from primary markup/re
   const linedIncome = (lined.stages.split('data-planning-road-wf="income"')[1] || '')
     .split('data-planning-road-wf="')[0];
   ok(/Published stream A/.test(linedIncome) && /Published stream B/.test(linedIncome)
-    && /Income total/.test(linedIncome)
+    && /Total income/.test(linedIncome)
     && !/\bDale\b/.test(linedIncome) && !/\bAmanda\b/.test(linedIncome),
     'when Forecast publishes named income lines, Planning reprints those labels and still invents none');
 }
