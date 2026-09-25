@@ -15318,8 +15318,12 @@
     if (lines.length) commitments.lines = lines;
     commitments.unfundedOnDate = shortfall;
     commitments.surplusAfterRequirements = available;
+    // Household-facing Month result is the amount that was actually
+    // available in date order. A shortfall on an earlier requirement is
+    // never erased by a pay-period surplus that closes later in the month.
+    const resultAmount = shortfall > 0 ? -shortfall : Math.max(0, available);
     return trajectoryAvailableResult(
-      roundCent(Number(stage1Amount) - Number(commitments.amount || 0)),
+      roundCent(resultAmount),
       commitments.status || 'calculated');
   }
 
