@@ -5,9 +5,10 @@
  * the BILLS row before Forecast runs. The pre-payday base has to be
  * walked on the original plan first and kept only in memory.
  *
- * The numerical oracle adds the repo BILLS opening to the fixture's
+ * The numerical oracle adds the synthetic BILLS opening to the fixture's
  * posted movements, then adds planned payroll. It does not call
- * householdCurrentBalance or prePaydayBillsAccountCash.
+ * householdCurrentBalance or prePaydayBillsAccountCash. Opening, payroll,
+ * and movements are chosen here. They are not read from data.json.
  *
  * `node test/test-live-payday-bills-base.js`
  */
@@ -26,10 +27,14 @@ const PAYDAY = '2026-09-25';
 const OPENING_AS_OF = '2026-08-19';
 const GAP_START = '2026-08-20';
 const GAP_THROUGH = '2026-09-24';
-const PAYROLL = 4264;
-const MOVEMENT_A = 400;
-const MOVEMENT_B = 62.85;
-const DOUBLED = 8694.42;
+const OPENING_BILLS = 1000;
+const WEEKLY = 80;
+const SAVINGS = 20;
+const PAYROLL = 4000;
+const MOVEMENT_A = 200;
+const MOVEMENT_B = 50;
+const SAME_DAY_DEBIT = 100;
+const SAME_DAY_CREDIT = 40;
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -78,15 +83,36 @@ function round2(n) {
   return fromCents(cents(n));
 }
 
-const repo = JSON.parse(fs.readFileSync(DATA, 'utf8'));
 const repoHash = crypto.createHash('sha256').update(fs.readFileSync(DATA)).digest('hex');
-const openingBills = Number(cashRow(repo, 'chequing-a').value);
-const weekly = Number(cashRow(repo, 'chequing-b').value);
-const savings = Number(cashRow(repo, 'savings').value);
-const payrollRow = (repo.plan.income || []).find(row => row && row.id === 'payroll');
 const movementDebit = add(MOVEMENT_A, MOVEMENT_B);
-const walkedBase = add(openingBills, -movementDebit);
+const walkedBase = add(OPENING_BILLS, -movementDebit);
 const assumed = add(walkedBase, PAYROLL);
+const doubled = add(assumed, PAYROLL);
+const payrollNote = 'Includes planned Dale payday +$4,000.00 awaiting bank update';
+
+function payrollStream() {
+  return {
+    id: 'payroll',
+    label: 'Payroll — Seaspan',
+    frequency: 'biweekly',
+    anchor: '2026-08-14',
+    amount: PAYROLL,
+    confidence: 'confirmed',
+  };
+}
+
+function paydayMovement(id, lmAmount, payee) {
+  const tx = {
+    id,
+    date: PAYDAY,
+    amount: lmAmount,
+    pending: false,
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+  };
+  if (payee) tx.displayedPayee = payee;
+  return tx;
+}
 
 function canonicalPlan() {
   return {
@@ -96,13 +122,13 @@ function canonicalPlan() {
       defaults: { targetBuffer: 500 },
       startingCash: {
         breakdown: [
-          { id: 'chequing-a', value: openingBills, label: 'BILLS ACCOUNT', class: 'spendable' },
-          { id: 'chequing-b', value: weekly, label: 'WEEKLY SPENDING', class: 'spendable' },
-          { id: 'savings', value: savings, label: 'EMERGENCY SAVING', class: 'spendable' },
+          { id: 'chequing-a', value: OPENING_BILLS, label: 'BILLS ACCOUNT', class: 'spendable' },
+          { id: 'chequing-b', value: WEEKLY, label: 'WEEKLY SPENDING', class: 'spendable' },
+          { id: 'savings', value: SAVINGS, label: 'EMERGENCY SAVING', class: 'spendable' },
         ],
       },
       opening: { asOf: OPENING_AS_OF, representedEvents: [] },
-      income: [clone(payrollRow)],
+      income: [payrollStream()],
       bills: [],
       obligations: [],
       commitments: [],
@@ -173,9 +199,9 @@ function reportFor(opts) {
     currentPeriodActuals: opts.actuals,
     reconciliation: {
       rows: [
-        cashEvidence('chequing-a', openingBills, observed, asOf),
-        cashEvidence('chequing-b', weekly, weekly, asOf),
-        cashEvidence('savings', savings, savings, asOf),
+        cashEvidence('chequing-a', OPENING_BILLS, observed, asOf),
+        cashEvidence('chequing-b', WEEKLY, WEEKLY, asOf),
+        cashEvidence('savings', SAVINGS, SAVINGS, asOf),
       ],
     },
   };
@@ -216,7 +242,7 @@ function published(overlaid) {
 }
 
 function handWalk(transactions) {
-  let balance = openingBills;
+  let balance = OPENING_BILLS;
   for (const tx of transactions || []) {
     if (!tx || tx.pending === true) continue;
     if (tx.atlasAccountId !== 'chequing-a') continue;
@@ -232,25 +258,22 @@ const midnight = '2026-09-25T07:00:01.000Z';
 
 console.log('=== 0. Fixture arithmetic is independent of Forecast ===');
 {
-  ok(repo.plan.opening.asOf === OPENING_AS_OF && repo.meta.asOf === OPENING_AS_OF,
-    'repo opening as-of is 2026-08-19');
-  ok(near(openingBills, 629.27), 'repo BILLS opening is 629.27', String(openingBills));
-  ok(payrollRow && payrollRow.anchor === '2026-08-14' && near(payrollRow.amount, PAYROLL),
-    'repo Dale payroll is the 4264 Seaspan stream');
-  ok(near(movementDebit, 462.85), 'fixture gap debits total 462.85', String(movementDebit));
-  ok(near(walkedBase, 166.42), 'hand walk is opening minus those debits', String(walkedBase));
-  ok(near(assumed, 4430.42) && near(add(assumed, PAYROLL), DOUBLED),
-    'hand assumption is 4430.42 and the double is 8694.42', String(assumed));
+  ok(near(movementDebit, 250), 'synthetic gap debits total 250', String(movementDebit));
+  ok(near(walkedBase, 750), 'hand walk is the synthetic opening minus those debits', String(walkedBase));
+  ok(near(assumed, 4750) && near(doubled, 8750),
+    'hand assumption is 4750 and adding payroll again is 8750', String(assumed));
+  ok(!/data\.json/.test(payrollStream().label) && payrollStream().amount === PAYROLL,
+    'the payroll stream is the fixture value');
   ok(Forecast.financialDate(midnight) === PAYDAY,
     'payday midnight PT is the household payday');
   ok(Forecast.spendingCycle(canonicalPlan().plan, PAYDAY).start === PAYDAY,
-    '2026-09-25 is the Seaspan cycle start');
+    '2026-09-25 is the Seaspan cycle start for the synthetic anchor');
   const walked = Forecast.postedAccountMovements(canonicalPlan().plan, 'chequing-a', {
     start: GAP_START,
     through: GAP_THROUGH,
   }, { currentPeriodActuals: actualsPacket() });
   const movementSum = (walked.movements || []).reduce((s, row) => add(s, row.amount), 0);
-  ok(walked.complete === true && near(add(openingBills, movementSum), handWalk(gapTransactions())),
+  ok(walked.complete === true && near(add(OPENING_BILLS, movementSum), handWalk(gapTransactions())),
     'postedAccountMovements agrees with the hand walk', String(movementSum));
 }
 
@@ -274,8 +297,8 @@ console.log('\n=== a. Payday midnight, deposit not yet posted ===');
       && base.payday === PAYDAY && base.accountId === 'chequing-a',
     'in-memory base is the walked pre-payday BILLS stock', JSON.stringify(base));
   ok(near(cashRow(next, 'chequing-a').value, walkedBase)
-      && near(cashRow(data, 'chequing-a').value, openingBills),
-    'the BILLS row is the same-day observation; the repo opening stays');
+      && near(cashRow(data, 'chequing-a').value, OPENING_BILLS),
+    'the BILLS row is the same-day observation; the synthetic opening stays');
   ok(next.plan.opening.asOf === PAYDAY && next.plan.opening.priorAsOf === OPENING_AS_OF,
     'live cutover still stamps the fetch date');
   ok(near(pub.alloc, assumed) && near(pub.view, assumed) && near(pub.period, assumed),
@@ -284,9 +307,9 @@ console.log('\n=== a. Payday midnight, deposit not yet posted ===');
       && near(pub.publication.prePaydayBills, walkedBase)
       && near(pub.publication.assumedDalePayroll, PAYROLL)
       && pub.publication.providerConfirmed === false
-      && pub.publication.note === 'Includes planned Dale payday +$4,264.00 awaiting bank update',
+      && pub.publication.note === payrollNote,
     'the publication is the planned Dale payday result');
-  ok(!near(pub.alloc, DOUBLED) && near(pub.publication.prePaydayBills, walkedBase),
+  ok(!near(pub.alloc, doubled) && near(pub.publication.prePaydayBills, walkedBase),
     'planned payroll is added once, to the walked base');
   const html = composer.liveCurrentBalanceHtml(
     { liveCurrentBalance: pub.view, currentBalancePublication: pub.publication },
@@ -331,7 +354,7 @@ console.log('\n=== b. Deposit landed, not yet recognised as Seaspan payroll ==='
   ok(near(pub.alloc, assumed) && near(pub.view, assumed)
       && pub.publication.status === 'planned-dale-payday',
     'Current Balance stays walked base plus planned payroll', String(pub.alloc));
-  ok(!near(pub.alloc, add(landed, PAYROLL)) && !near(pub.alloc, DOUBLED),
+  ok(!near(pub.alloc, add(landed, PAYROLL)) && !near(pub.alloc, doubled),
     'planned payroll is not added to the refreshed balance');
 }
 
@@ -422,7 +445,7 @@ console.log('\n=== e. Non-payday behaviour is unchanged ===');
   }
 }
 
-console.log('\n=== f. The 8694.42 double stays impossible ===');
+console.log('\n=== f. Adding payroll to the refreshed balance stays impossible ===');
 {
   const landed = assumed;
   const { result } = overlay({
@@ -442,7 +465,7 @@ console.log('\n=== f. The 8694.42 double stays impossible ===');
   });
   const next = result.data;
   const pub = published(next);
-  ok(near(pub.alloc, assumed) && !near(pub.alloc, DOUBLED) && !near(pub.alloc, add(landed, PAYROLL)),
+  ok(near(pub.alloc, assumed) && !near(pub.alloc, doubled) && !near(pub.alloc, add(landed, PAYROLL)),
     'a payday deposit movement is not added again on top of the walk', String(pub.alloc));
   ok(near(pub.publication.prePaydayBills, walkedBase),
     'the base excludes the payday deposit');
@@ -462,6 +485,86 @@ console.log('\n=== f. The 8694.42 double stays impossible ===');
   incompleteFlag.plan.opening.prePaydayBillsBase.coverageComplete = false;
   const flagged = published(incompleteFlag);
   ok(flagged.alloc == null, 'coverageComplete false fails closed');
+}
+
+console.log('\n=== g. Same-day non-payroll debit is in Current Balance ===');
+{
+  const expected = add(add(walkedBase, -SAME_DAY_DEBIT), PAYROLL);
+  const observed = add(walkedBase, -SAME_DAY_DEBIT);
+  const { result } = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: observed,
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('same-day-debit', SAME_DAY_DEBIT, 'CITY UTILITY'),
+      ]),
+    }),
+  });
+  const next = result.data;
+  const pub = published(next);
+  ok(near(next.plan.opening.prePaydayBillsBase.amount, walkedBase),
+    'the retain still stops at the day before payday');
+  ok(near(cashRow(next, 'chequing-a').value, observed),
+    'the refreshed row includes the debit and not the planned payroll');
+  ok(near(pub.alloc, expected) && near(pub.view, expected)
+      && near(pub.publication.prePaydayBills, observed)
+      && pub.publication.status === 'planned-dale-payday',
+    'Current Balance is walked base plus the debit plus planned payroll', String(pub.alloc));
+  ok(!near(pub.alloc, assumed) && !near(pub.alloc, observed)
+      && !near(pub.alloc, add(expected, PAYROLL)),
+    'the debit is not dropped and payroll is not added twice');
+}
+
+console.log('\n=== h. Same-day non-payroll credit is in Current Balance ===');
+{
+  const expected = add(add(walkedBase, SAME_DAY_CREDIT), PAYROLL);
+  const observed = add(walkedBase, SAME_DAY_CREDIT);
+  const { result } = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: observed,
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('same-day-credit', -SAME_DAY_CREDIT, 'CITY REFUND'),
+      ]),
+    }),
+  });
+  const pub = published(result.data);
+  ok(near(pub.alloc, expected) && near(pub.publication.prePaydayBills, observed)
+      && pub.publication.status === 'planned-dale-payday',
+    'Current Balance is walked base plus the ordinary credit plus planned payroll',
+    String(pub.alloc));
+  ok(!near(pub.alloc, assumed) && !near(pub.alloc, add(add(observed, PAYROLL), PAYROLL)),
+    'the ordinary credit is not dropped and payroll is not added twice');
+}
+
+console.log('\n=== i. Unclassifiable same-day credits fail closed ===');
+{
+  const hole = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: walkedBase,
+    actuals: actualsPacket({ coverageThrough: GAP_THROUGH }),
+  });
+  const holePub = published(hole.result.data);
+  ok(hole.result.data.plan.opening.prePaydayBillsBase
+      && holePub.alloc == null && holePub.publication.status === 'unavailable',
+    'a packet that does not cover payday fails closed', String(holePub.alloc));
+  const two = overlay({
+    asOf: PAYDAY,
+    fetchedAt: midnight,
+    observedBills: assumed,
+    actuals: actualsPacket({
+      transactions: gapTransactions([
+        paydayMovement('deposit-a', -PAYROLL, 'SEASPAN PAY'),
+        paydayMovement('deposit-b', -(PAYROLL - 10), 'SEASPAN PAY'),
+      ]),
+    }),
+  });
+  const twoPub = published(two.result.data);
+  ok(twoPub.alloc == null && !near(twoPub.alloc, add(assumed, PAYROLL)),
+    'two Seaspan-like credits fail closed instead of being ordinary income');
 }
 
 if (failures) {

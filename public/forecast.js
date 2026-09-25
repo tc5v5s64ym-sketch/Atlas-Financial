@@ -8874,6 +8874,61 @@
     return balance;
   }
 
+  // A same-day chequing-a inflow that is still unrecognised may be Dale's
+  // deposit. Seaspan merchant text, or an amount within 1% of the planned
+  // payroll occurrence (at least one cent), is that case. It is not an
+  // ordinary credit: planned payroll is added once later.
+  function plausibleUnrecognisedDaleDeposit(amount, payrollAmount, merchantText) {
+    if (!(Number(amount) > 0)) return false;
+    if (/seaspan/i.test(String(merchantText || ''))) return true;
+    const planned = Number(payrollAmount);
+    if (!Number.isFinite(planned) || !(planned > 0)) return false;
+    const windowCents = Math.max(1, Math.round(Math.abs(planned) * 0.01 * 100));
+    const diff = Math.abs(Math.round(Number(amount) * 100) - Math.round(planned * 100));
+    return diff <= windowCents;
+  }
+
+  // Posted chequing-a movements dated payday, excluding a plausible
+  // unrecognised Dale deposit. Returns the cent adjustment to the
+  // pre-payday stock, 0 when no actuals packet was supplied and the
+  // opening was not a live retain, or null when the payday slice cannot
+  // be classified. Never reads the refreshed BILLS row.
+  function sameDayNonPayrollBillsDelta(plan, payday, payrollAmount, opts) {
+    const walked = postedAccountMovements(plan, BILLS_ACCOUNT_ID, {
+      start: payday,
+      through: payday,
+    }, opts);
+    if (!walked) return null;
+    if (walked.complete !== true) {
+      if (walked.reason === 'missing-actuals'
+          && retainedPrePaydayBillsBase(plan, payday) == null) {
+        return 0;
+      }
+      return null;
+    }
+    const packet = currentPeriodActualsPacket(opts);
+    const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
+    const byId = new Map();
+    for (const tx of txs) {
+      if (tx && tx.id != null && tx.id !== '') byId.set(String(tx.id), tx);
+    }
+    let delta = 0;
+    let plausibleDeposits = 0;
+    for (const mov of walked.movements || []) {
+      const amt = Number(mov && mov.amount);
+      if (!Number.isFinite(amt) || amt === 0) return null;
+      const tx = byId.get(String(mov && mov.id));
+      if (amt > 0 && !tx) return null;
+      if (plausibleUnrecognisedDaleDeposit(amt, payrollAmount, tx ? txTextBlob(tx) : '')) {
+        plausibleDeposits += 1;
+        if (plausibleDeposits > 1) return null;
+        continue;
+      }
+      delta = roundCent(delta + amt);
+    }
+    return delta;
+  }
+
   function householdCurrentBalance(plan, asOf, opts) {
     opts = opts || {};
     const day = financialDate(asOf);
@@ -8896,23 +8951,25 @@
     const payroll = dalePayrollEventOn(plan, day, opts);
     if (!payroll) return postedPublication(posted);
     if (dalePayrollRepresented(plan, payroll, day, opts)) return postedPublication(posted);
+    const unavailable = () => ({
+      amount: null,
+      effectiveDate: day,
+      accountId: BILLS_ACCOUNT_ID,
+      trust: 'unavailable',
+      status: 'unavailable',
+      source: 'pre-payday-bills-plus-planned-dale-payroll',
+      assumedDalePayroll: payroll.amount,
+      providerConfirmed: false,
+      note: null,
+      prePaydayBills: null,
+    });
     const pre = prePaydayBillsAccountCash(plan, day, opts);
-    if (pre == null) {
-      return {
-        amount: null,
-        effectiveDate: day,
-        accountId: BILLS_ACCOUNT_ID,
-        trust: 'unavailable',
-        status: 'unavailable',
-        source: 'pre-payday-bills-plus-planned-dale-payroll',
-        assumedDalePayroll: payroll.amount,
-        providerConfirmed: false,
-        note: null,
-        prePaydayBills: null,
-      };
-    }
+    if (pre == null) return unavailable();
+    const sameDay = sameDayNonPayrollBillsDelta(plan, day, payroll.amount, opts);
+    if (sameDay == null) return unavailable();
+    const stock = roundCent(pre + sameDay);
     return {
-      amount: roundCent(pre + payroll.amount),
+      amount: roundCent(stock + payroll.amount),
       effectiveDate: day,
       accountId: BILLS_ACCOUNT_ID,
       trust: 'planned-unconfirmed',
@@ -8921,7 +8978,7 @@
       assumedDalePayroll: payroll.amount,
       providerConfirmed: false,
       note: plannedDalePaydayNote(payroll.amount),
-      prePaydayBills: pre,
+      prePaydayBills: stock,
     };
   }
 

@@ -920,9 +920,13 @@ function retainPaydayAccountObservations(next, canonicalPlan, liveAsOf, report) 
 }
 
 // Immediately pre-payday chequing-a, walked on the pre-overlay plan
-// before the same-day BILLS row is replaced. Forecast.prePaydayBillsAccountCash
-// is the only calculator. A null walk, including incomplete coverage of
-// any gap day, stores nothing. The refreshed balance is not an input.
+// before the same-day BILLS row is replaced. The cutoff is the day before
+// payday: this stock does not include payday postings. Forecast applies
+// posted same-day non-payroll chequing-a movements when it publishes
+// Current Balance, and excludes a plausible unrecognised Dale deposit.
+// Forecast.prePaydayBillsAccountCash is the only walk. A null walk,
+// including incomplete coverage of any gap day, stores nothing. The
+// refreshed balance is not an input.
 function retainPrePaydayBillsBase(next, canonicalPlan, liveAsOf, report) {
   if (!next || !next.plan || !canonicalPlan || !liveAsOf) return;
   const cycle = Forecast.spendingCycle(canonicalPlan, liveAsOf);
