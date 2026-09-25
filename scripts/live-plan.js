@@ -921,9 +921,13 @@ function retainPaydayAccountObservations(next, canonicalPlan, liveAsOf, report) 
 
 // Immediately pre-payday chequing-a, walked on the pre-overlay plan
 // before the same-day BILLS row is replaced. The cutoff is the day before
-// payday: this stock does not include payday postings. Forecast applies
-// posted same-day non-payroll chequing-a movements when it publishes
-// Current Balance, and excludes a plausible unrecognised Dale deposit.
+// payday: this stock does not include payday postings. Forecast counts a
+// same-day chequing-a inflow only when it is positively labelled
+// non-income. A refund category within 1% of planned payroll fails
+// closed. A proven household transfer inside that window is still
+// counted. One unlabelled inflow within 1% of planned payroll is the
+// unrecognised deposit and is excluded. Any other inflow, and a retain
+// with no transaction packet, fails closed.
 // Forecast.prePaydayBillsAccountCash is the only walk. A null walk,
 // including incomplete coverage of any gap day, stores nothing. The
 // refreshed balance is not an input.

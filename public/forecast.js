@@ -8874,13 +8874,13 @@
     return balance;
   }
 
-  // A same-day chequing-a inflow that is still unrecognised may be Dale's
-  // deposit. Seaspan merchant text, or an amount within 1% of the planned
-  // payroll occurrence (at least one cent), is that case. It is not an
-  // ordinary credit: planned payroll is added once later.
-  function plausibleUnrecognisedDaleDeposit(amount, payrollAmount, merchantText) {
+  // A same-day chequing-a inflow within 1% of the planned payroll
+  // occurrence (at least one cent) may be Dale's deposit still
+  // unrecognised. Merchant text is not an identity. It is not an ordinary
+  // credit: planned payroll is added once later, and only when this is
+  // the single such inflow.
+  function plausibleUnrecognisedDaleDeposit(amount, payrollAmount) {
     if (!(Number(amount) > 0)) return false;
-    if (/seaspan/i.test(String(merchantText || ''))) return true;
     const planned = Number(payrollAmount);
     if (!Number.isFinite(planned) || !(planned > 0)) return false;
     const windowCents = Math.max(1, Math.round(Math.abs(planned) * 0.01 * 100));
@@ -8888,11 +8888,43 @@
     return diff <= windowCents;
   }
 
-  // Posted chequing-a movements dated payday, excluding a plausible
-  // unrecognised Dale deposit. Returns the cent adjustment to the
-  // pre-payday stock, 0 when no actuals packet was supplied and the
-  // opening was not a live retain, or null when the payday slice cannot
-  // be classified. Never reads the refreshed BILLS row.
+  function knownHouseholdCashAccount(accountId) {
+    if (accountId == null) return false;
+    const id = String(accountId).trim();
+    if (!id) return false;
+    if (HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1) return true;
+    return id === DESIGNATED_RESERVE_ID;
+  }
+
+  // Positive non-income only. movement.classification 'refund' is not
+  // this label: classifyCurrentPeriodTransaction returns refund for every
+  // negative amount before it reads categoryLabel. A refund category
+  // inside the payroll window is not ordinary either: the caller fails
+  // that inflow closed. A proven household transfer stays ordinary inside
+  // that window, because it is paired to another household cash account.
+  function sameDayRefundCategory(tx) {
+    if (!tx) return false;
+    return REFUND_LABELS.has(normalizeCategoryLabel(tx.categoryLabel));
+  }
+
+  function sameDayInflowPositivelyNonIncome(mov, tx) {
+    if (mov && mov.internalTransfer === true
+        && mov.classification === 'internal-transfer'
+        && knownHouseholdCashAccount(mov.counterpartAccountId)) {
+      return true;
+    }
+    if (!tx || tx.isIncome === true) return false;
+    return sameDayRefundCategory(tx);
+  }
+
+  // Posted chequing-a movements dated payday. Outflows are ordinary. An
+  // inflow is an ordinary credit only when positively labelled non-income,
+  // except a refund category within 1% of planned payroll, which fails
+  // closed. Otherwise exactly one inflow within 1% of planned payroll is
+  // excluded as the unrecognised deposit. Any other inflow returns null.
+  // A live retain with no transaction packet returns null. Returns 0 when
+  // no actuals packet was supplied and the opening was not a live retain.
+  // Never reads the refreshed BILLS row.
   function sameDayNonPayrollBillsDelta(plan, payday, payrollAmount, opts) {
     const walked = postedAccountMovements(plan, BILLS_ACCOUNT_ID, {
       start: payday,
@@ -8917,14 +8949,29 @@
     for (const mov of walked.movements || []) {
       const amt = Number(mov && mov.amount);
       if (!Number.isFinite(amt) || amt === 0) return null;
+      if (!(amt > 0)) {
+        delta = roundCent(delta + amt);
+        continue;
+      }
       const tx = byId.get(String(mov && mov.id));
-      if (amt > 0 && !tx) return null;
-      if (plausibleUnrecognisedDaleDeposit(amt, payrollAmount, tx ? txTextBlob(tx) : '')) {
+      if (!tx) return null;
+      // A Refund label on a payroll-sized credit is not proof it is not
+      // the deposit. Counting it and then adding planned payroll doubles
+      // that cash. Proven household transfers are not this guard.
+      if (sameDayRefundCategory(tx)
+          && plausibleUnrecognisedDaleDeposit(amt, payrollAmount)) {
+        return null;
+      }
+      if (sameDayInflowPositivelyNonIncome(mov, tx)) {
+        delta = roundCent(delta + amt);
+        continue;
+      }
+      if (plausibleUnrecognisedDaleDeposit(amt, payrollAmount)) {
         plausibleDeposits += 1;
         if (plausibleDeposits > 1) return null;
         continue;
       }
-      delta = roundCent(delta + amt);
+      return null;
     }
     return delta;
   }
