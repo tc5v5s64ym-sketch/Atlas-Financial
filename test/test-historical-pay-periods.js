@@ -390,7 +390,7 @@ console.log('\n=== 4. payday carryover is known cash carried forward, not income
     'current period opening is the same leftover counted once as opening');
 }
 
-console.log('\n=== 5. picker prints Forecast past views; page does not compute them ===');
+console.log('\n=== 5. timeline replaces legacy past picker; historical rows stay renderable ===');
 {
   const plan = historyPlan();
   const advice = recommend(plan);
@@ -400,10 +400,10 @@ console.log('\n=== 5. picker prints Forecast past views; page does not compute t
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'this-period', planView: advice.defaultView,
   });
-  ok(/Previous pay period/.test(defaultHtml) && /value="past:2026-08-14"/.test(defaultHtml),
-    'this-period More views lists the previous completed period');
-  ok(/value="past:2026-07-31"/.test(defaultHtml),
-    'this-period More views lists the earlier completed period');
+  ok(!/Previous pay period/.test(defaultHtml) && !/value="past:/.test(defaultHtml),
+    'More views no longer duplicates completed-period navigation');
+  ok(/payPeriodTimelineHtml\([\s\S]*?advice/.test(read('public/plan.js')),
+    'the household surface routes Forecast payPeriodViews through the timeline');
   ok(!/data-payday-carryover/.test(defaultHtml),
     'current-period UI does not print payday carryover');
   ok(/data-live-current-balance/.test(defaultHtml),

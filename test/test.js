@@ -168,6 +168,8 @@ const suites = [
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
   ['Plan completed historical pay periods', 'test-historical-pay-periods.js'],
   ['Budget timeline pay-period sequence', 'test-budget-timeline-pay-periods.js'],
+  ['Budget pay-period swipe navigation', 'test-budget-pay-period-swipe.js'],
+  ['Budget estimated payroll trust label', 'test-budget-estimated-payroll-label.js'],
   ['Plan payday carryover trend', 'test-payday-carryover-trend.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
