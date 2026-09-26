@@ -1912,7 +1912,16 @@ function calendarIncomeHtml(period) {
     const notRelied = row.notReliedUpon === true
       || row.settlement === 'not-relied-upon'
       || row.status === 'unresolved';
+    // 2027 payroll trust is the stamp Forecast already put on the row
+    // (status, settlement, incomeRegime). Confidence alone is not that
+    // stamp, and neither is the selected period date.
+    const estimatedTrust = !notRelied && (
+      row.status === 'estimated'
+      || row.settlement === 'estimated'
+      || row.incomeRegime === '2027-estimated'
+    );
     const status = notRelied ? 'not relied upon'
+      : estimatedTrust ? 'estimated'
       : row.status === 'received' ? 'received'
       : row.status === 'relied-upon' ? 'relied upon'
       : row.status === 'planned' ? 'planned'
@@ -1936,13 +1945,15 @@ function calendarIncomeHtml(period) {
         : row.status === 'relied-upon' ? 'relied upon'
         : row.alreadyInCash && row.status !== 'received' ? 'already in balance'
         : status);
-    const about = !daleSalary && row.confidence === 'estimated' && amount != null
+    const about = !estimatedTrust && !daleSalary && row.confidence === 'estimated' && amount != null
       ? 'about ' : '';
+    const estimateMark = estimatedTrust && amount != null
+      ? '<span class="est">≈ estimated</span> ' : '';
     const statusAttr = notRelied ? 'not-relied-upon'
       : row.status === 'relied-upon' ? 'relied-upon'
       : status;
     return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}"${extra}>
-      <span>${displayName}</span><span>${amount != null ? about + amount : '—'}</span>
+      <span>${displayName}</span><span>${amount != null ? estimateMark + about + amount : '—'}</span>
     </div>`;
   };
   const namedLines = named.map(row => line(row)).join('');
