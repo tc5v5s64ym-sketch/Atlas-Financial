@@ -169,6 +169,44 @@
     }
     return windows;
   }
+  // Budget timeline windows. The first two entries are the incumbent
+  // operating windows (same ids, labels, roles, and objects). Further
+  // entries are full Seaspan cycles chained by spendingCycle from the
+  // last window's next payday, id `future:<start>`, role `future`.
+  // A cycle is included only when its end is on or before `through`.
+  // No horizon clipping and no second payroll calendar. Stop — fail
+  // closed — when a cycle cannot be named or repeats a start already held.
+  function timelinePayPeriodWindows(plan, asOf, through) {
+    const windows = operatingPayPeriodWindows(plan, asOf);
+    if (!windows.length || !through) return windows;
+    const seen = new Set();
+    for (let i = 0; i < windows.length; i++) {
+      if (windows[i] && windows[i].start) seen.add(windows[i].start);
+    }
+    let guard = 0;
+    while (guard < 40) {
+      guard += 1;
+      const last = windows[windows.length - 1];
+      const nextPayday = last && last.cycle && last.cycle.nextPayday;
+      if (!nextPayday) break;
+      const cycle = spendingCycle(plan, nextPayday);
+      if (!cycle || !cycle.start || !cycle.end || !cycle.nextPayday) break;
+      if (cycle.start === last.start || seen.has(cycle.start)) break;
+      if (!(cycle.end <= through)) break;
+      seen.add(cycle.start);
+      const rangeLabel = formatSpendingCycleRange(cycle.start, cycle.end);
+      windows.push({
+        id: 'future:' + cycle.start,
+        label: rangeLabel,
+        rangeLabel,
+        start: cycle.start,
+        end: cycle.end,
+        cycle,
+        role: 'future',
+      });
+    }
+    return windows;
+  }
   // Completed Seaspan cycles before the current operating window. Dates come
   // from spendingCycle, walking back from the day before this payday. Not
   // mixed into defaultView.calendarPeriods. The picker prints these as
@@ -8124,10 +8162,20 @@
     const cycle = spendingCycle(plan, asOf);
     const periodStart = (cycle && cycle.start) || paydayDate || null;
     const cycleEnd = (cycle && cycle.end) || periodLast || null;
-    const windows = operatingPayPeriodWindows(plan, asOf);
-    const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
+    // One printer call for the whole Budget timeline. calendarPeriods
+    // stays the first two rows — the same objects — so Budget "Show both"
+    // does not gain future cycles. Further rows are returned beside that
+    // pair for payPeriodViews; they are not a second waterfall.
+    const bound = payPeriodTimelineBound(plan, asOf, opts);
+    const timelineWindows = timelinePayPeriodWindows(plan, asOf, bound.through);
+    const operatingWindows = timelineWindows.slice(0, 2);
+    const calendarOpts = Object.assign({}, opts, { periodWindows: operatingWindows });
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
-    const waterfalls = calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, calendarOpts);
+    const waterfalls = calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts,
+      Object.assign({}, opts, { periodWindows: timelineWindows }));
+    const printed = waterfalls.calendarPeriods || [];
+    const operatingPeriods = printed.slice(0, operatingWindows.length);
+    const timelineFuturePeriods = printed.slice(operatingWindows.length);
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const activePeriod = (waterfalls.calendarPeriods || []).find(
@@ -8159,8 +8207,10 @@
       bills: calendar.bills,
       billSections: calendar.billSections,
       undatedBills: calendar.undatedBills,
-      calendarPeriods: waterfalls.calendarPeriods,
+      calendarPeriods: operatingPeriods,
       activeCalendarPeriodId: waterfalls.activeCalendarPeriodId,
+      timelineFuturePeriods,
+      timelineBound: bound,
       operatingCashExplanation: waterfalls.operatingCashExplanation || null,
       paydayBoundaryBillsObservation: waterfalls.paydayBoundaryBillsObservation || null,
       postedBillsAccountMovements: waterfalls.postedBillsAccountMovements || null,
@@ -8170,6 +8220,111 @@
       firstCard: cards.firstCard,
       otherCards: cards.otherCards,
       bigPurchases: bigPurchasesGlance(plans, alloc),
+    };
+  }
+
+  // Dale-income authority end for the Budget timeline. Owner question A1
+  // (2027 Dale pay basis) is open, so the default and the ceiling are the
+  // payroll-modelled boundary. A caller may name an earlier end. A later
+  // end is ignored: this does not carry the 2026 net into 2027 and does
+  // not read the Road Ahead 2027 estimated payroll regime. A later owner
+  // decision replaces the modelled-through return.
+  function daleIncomeAuthorityEnd(opts) {
+    const modelledThrough = DALE_NET_MODELLED_THROUGH;
+    const requested = opts && opts.daleIncomeAuthorityEnd;
+    if (typeof requested === 'string' && ISO_CALENDAR_DATE.test(requested)
+        && requested < modelledThrough) {
+      return requested;
+    }
+    return modelledThrough;
+  }
+
+  // through = min(knowledge horizon end, Dale-income authority end).
+  // Full cycles only; the window helper omits a cycle that would be clipped.
+  function payPeriodTimelineBound(plan, asOf, opts) {
+    const horizon = knowledgeHorizon(plan, asOf, opts);
+    const incomeRegimeBoundary = daleIncomeAuthorityEnd(opts);
+    const knowledgeEnd = horizon && horizon.end ? horizon.end : null;
+    let through = null;
+    if (knowledgeEnd && incomeRegimeBoundary) {
+      through = knowledgeEnd < incomeRegimeBoundary ? knowledgeEnd : incomeRegimeBoundary;
+    } else {
+      through = incomeRegimeBoundary || knowledgeEnd;
+    }
+    return { through, knowledgeEnd, incomeRegimeBoundary };
+  }
+
+  function payPeriodTimelineHorizonReason(incomeRegimeBoundary, through, futureAfterNext) {
+    const boundary = incomeRegimeBoundary || 'unavailable';
+    const stop = through || 'unavailable';
+    const minimumUnmet = !(Number(futureAfterNext) >= 8);
+    const minimum = minimumUnmet
+      ? 'The owner minimum (next pay period plus 8 further future periods) is not met until the 2027 Dale pay basis is decided.'
+      : 'This as-of meets the owner minimum of the next pay period plus 8 further future periods inside the payroll-modelled boundary. Periods after that boundary stay unpublished until the 2027 Dale pay basis is decided.';
+    return 'Payroll-modelled Dale-income authority ends ' + boundary
+      + '. The timeline publishes full Seaspan cycles only, stopping at the last cycle whose end is on or before '
+      + stop
+      + '. The 2026 modelled net is not carried into 2027, and the Road Ahead 2027 estimated payroll regime is not used. '
+      + minimum;
+  }
+
+  // One chronological Budget timeline. Past, current, and next are the
+  // incumbent row objects. Further future rows are the same printer's
+  // remaining objects. Thin labels only. Does not recompute waterfalls,
+  // does not read Road Ahead, and does not sum extra-debt or big purchases.
+  function composePayPeriodTimeline(pastPeriodViews, calendarPeriods, futureRows, bound) {
+    const past = (pastPeriodViews || []).slice().reverse().filter(Boolean);
+    const periods = calendarPeriods || [];
+    const current = periods.find(p => p && (p.id === 'this-pay-period' || p.role === 'active')) || null;
+    const next = periods.find(p => p && p.id === 'next-pay-period') || null;
+    const future = (futureRows || []).filter(Boolean);
+    const views = past.concat(
+      current ? [current] : [],
+      next ? [next] : [],
+      future
+    );
+    const currentIndex = current ? views.indexOf(current) : 0;
+    for (let i = 0; i < views.length; i++) {
+      const row = views[i];
+      const offset = i - currentIndex;
+      let timelineRole;
+      let evidenceState;
+      if (row === current) {
+        timelineRole = 'current';
+        evidenceState = 'live';
+      } else if (row === next) {
+        timelineRole = 'next';
+        evidenceState = 'projected';
+      } else if (offset < 0) {
+        timelineRole = 'past';
+        evidenceState = 'historical';
+      } else {
+        timelineRole = 'future';
+        evidenceState = 'projected';
+      }
+      row.timelineRole = timelineRole;
+      row.timelineOffset = offset;
+      row.evidenceState = evidenceState;
+      // The incumbent next row is Budget's Next Pay Period. Do not add a
+      // second opening name on that shared object. Rows past it label the
+      // printer opening as projected period cash, not Current Balance.
+      if (timelineRole === 'future') {
+        row.openingLabel = 'Projected period cash';
+      }
+    }
+    const incomeRegimeBoundary = bound && bound.incomeRegimeBoundary
+      ? bound.incomeRegimeBoundary : null;
+    const through = bound && bound.through ? bound.through : null;
+    return {
+      views,
+      timeline: {
+        currentIndex,
+        count: views.length,
+        through,
+        horizonReason: payPeriodTimelineHorizonReason(
+          incomeRegimeBoundary, through, future.length),
+        incomeRegimeBoundary,
+      },
     };
   }
 
@@ -9753,6 +9908,12 @@
         if (periods[i]) periods[i].operatingCashExplanation = null;
       }
     }
+    // Future timeline rows are not on calendarPeriods. Null the same
+    // operating-cash claim on every timeline row, including those.
+    const timelineRows = result.payPeriodViews || [];
+    for (let i = 0; i < timelineRows.length; i++) {
+      if (timelineRows[i]) timelineRows[i].operatingCashExplanation = null;
+    }
     return result;
   }
 
@@ -10017,6 +10178,16 @@
         paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
           sim: knowledgeSim,
         }));
+      const defaultView = planDefaultView(plan, asOf, alloc, action, plans,
+        paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
+          sim: knowledgeSim,
+        }));
+      const timelineFuturePeriods = defaultView.timelineFuturePeriods || [];
+      const timelineBound = defaultView.timelineBound || null;
+      delete defaultView.timelineFuturePeriods;
+      delete defaultView.timelineBound;
+      const payPeriodTimelinePack = composePayPeriodTimeline(
+        pastPeriodViews, defaultView.calendarPeriods, timelineFuturePeriods, timelineBound);
       return withholdCurrentOperatingClaims({
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
@@ -10037,15 +10208,14 @@
         nearBoundary: nearBoundaryObligations(zeroSim.events, asOf, payFloor),
         paydayAllocation: alloc,
         currentPeriodAction: action,
-        defaultView: planDefaultView(plan, asOf, alloc, action, plans,
-          paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
-            sim: knowledgeSim,
-          })),
+        defaultView,
         nextPeriodView: planNextPeriodView(plan, asOf, action, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         weekViews: planWeekViews(plan, asOf, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         pastPeriodViews,
+        payPeriodViews: payPeriodTimelinePack.views,
+        payPeriodTimeline: payPeriodTimelinePack.timeline,
         paydayCarryoverTrend: planPaydayCarryoverTrend(pastPeriodViews),
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
@@ -13998,6 +14168,9 @@
   const SEASPAN_BONUS_LAST_DEPOSIT = '2026-02-25';
   const DALE_NET_MODELLED_THROUGH = '2026-12-31';
   const DALE_PAYROLL_REGIME_FROM = '2027-01-01';
+  // Budget payPeriodTimeline fails closed at DALE_NET_MODELLED_THROUGH
+  // via daleIncomeAuthorityEnd. Do not point that helper at the 2027
+  // estimated regime below; owner question A1 is still open.
 
   const SEASPAN_OBSERVED_SALARY_REGIMES = [
     { from: '2025-03-01', annual: 151283, trust: 'observed' },
