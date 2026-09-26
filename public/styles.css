@@ -540,38 +540,40 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 /* Pay-period switch: two planning windows, the current one obvious, the
    dates on the button rather than in a caption. */
 .calendar-waterfalls { display:flex; flex-direction:column; gap:14px; }
-.pay-period-timeline { touch-action:pan-y; outline:none; }
-.pay-period-timeline:focus-visible .pay-period-navigator {
-  outline:2px solid var(--s1); outline-offset:3px;
+/* Fixed slots and a bounded pointer step avoid inertia skipping pay periods. */
+.pay-period-navigator { min-width:0; padding:0 0 2px; }
+.budget-wheel {
+  overflow:hidden; touch-action:pan-y pinch-zoom; user-select:none;
+  mask-image:linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
 }
-.pay-period-navigator {
-  display:grid; grid-template-columns:44px minmax(0,1fr) 44px;
-  align-items:center; gap:10px;
+.budget-wheel-track {
+  display:flex; width:100%; transform:translateX(var(--wheel-offset));
+  transition:transform .22s ease-out;
 }
-.pay-period-heading { min-width:0; text-align:center; }
-.pay-period-heading h2 {
-  margin:0; font-size:1.08rem; line-height:1.25; font-weight:700;
-  font-variant-numeric:tabular-nums;
+.budget-wheel-track.is-moving { animation:budget-wheel-center .24s ease-out; }
+.budget-wheel-track.is-dragging { transition:none; }
+.budget-wheel-item {
+  flex:0 0 var(--wheel-slot); min-width:0; min-height:44px; padding:8px 4px;
+  border:0; border-radius:0; background:transparent; color:var(--text-secondary);
+  font:inherit; font-size:.82rem; font-weight:550; opacity:.55;
+  white-space:nowrap; cursor:pointer; text-align:center;
 }
-.pay-period-heading p {
-  margin:4px 0 0; color:var(--text-secondary); font-size:.78rem; font-weight:650;
+.budget-wheel-month .budget-wheel-item { text-transform:uppercase; letter-spacing:.07em; font-size:.8rem; }
+.budget-wheel-period .budget-wheel-item { font-variant-numeric:tabular-nums; }
+.budget-wheel-item[aria-current="true"] { color:var(--text-primary); font-weight:750; opacity:1; }
+.budget-wheel-item:focus-visible { outline:2px solid var(--s1); outline-offset:-3px; border-radius:6px; }
+.pay-period-navigator > p { margin:0; text-align:center; color:var(--text-secondary); font-size:.72rem; }
+.pay-period-navigator .sr-only {
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
 }
-.pay-period-nav-button {
-  width:44px; height:44px; padding:0; border:1px solid var(--border);
-  border-radius:999px; background:var(--surface-1); color:var(--text-primary);
-  cursor:pointer; font:inherit; font-size:1.7rem; line-height:1;
-}
-.pay-period-nav-button:hover:not(:disabled) { background:var(--raised); }
-.pay-period-nav-button:focus-visible { outline:2px solid var(--s1); outline-offset:2px; }
-.pay-period-nav-button:disabled { opacity:.32; cursor:not-allowed; }
-.pay-period-timeline .calendar-waterfall { animation:pay-period-snap .16s ease-out; }
 .pay-period-timeline .calendar-waterfall-head { display:none; }
-@keyframes pay-period-snap {
-  from { opacity:.72; transform:translateX(6px); }
-  to { opacity:1; transform:translateX(0); }
+@keyframes budget-wheel-center {
+  from { transform:translateX(var(--wheel-from)); }
+  to { transform:translateX(var(--wheel-offset)); }
 }
 @media (prefers-reduced-motion:reduce) {
-  .pay-period-timeline .calendar-waterfall { animation:none; }
+  .budget-wheel-track { animation:none !important; transition:none; }
 }
 .live-current-balance {
   padding:4px 4px 8px;

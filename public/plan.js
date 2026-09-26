@@ -2557,31 +2557,64 @@ function payPeriodSwipeStep(start, end) {
 }
 
 function payPeriodNavigatorHtml(selection) {
-  const rows = selection.rows || [];
-  const index = selection.index;
-  const period = selection.period;
-  if (!period) return '';
-  const previous = index > 0 ? rows[index - 1] : null;
-  const next = index + 1 < rows.length ? rows[index + 1] : null;
-  const targetLabel = row => payPeriodRangeLabel(row).replace(/<[^>]*>/g, '');
-  const button = (step, target, text) => {
-    const disabled = target ? '' : ' disabled aria-disabled="true"';
-    const direction = step < 0 ? 'Previous' : 'Next';
-    const name = target
-      ? `${direction} pay period, ${targetLabel(target)}`
-      : `${direction} pay period unavailable`;
-    return `<button type="button" class="pay-period-nav-button" data-pay-period-step="${step}" aria-label="${name}"${disabled}>
-      <span aria-hidden="true">${text}</span>
-    </button>`;
-  };
-  return `<div class="pay-period-navigator" data-pay-period-navigator>
-    ${button(-1, previous, '‹')}
-    <div class="pay-period-heading">
-      <h2 data-selected-pay-period-range>${payPeriodRangeLabel(period)}</h2>
-      <p role="status" aria-live="polite" aria-atomic="true" data-selected-pay-period-status>${payPeriodStatusLabel(period)}</p>
-    </div>
-    ${button(1, next, '›')}
+  if (!selection.period) return '';
+  const months = payPeriodMonths(selection);
+  const closeMonth = payPeriodCloseMonth(selection.period);
+  const monthIndex = months.findIndex(month => month.key === closeMonth);
+  const wheel = (kind, items, index, slot) => `<div class="budget-wheel budget-wheel-${kind}" data-budget-wheel="${kind}" role="group"
+      aria-label="${kind === 'month' ? 'Close month' : 'Pay period'} navigation. Swipe, tap an item, or use left and right arrow keys.">
+      <div class="budget-wheel-track" style="--wheel-slot:${slot}%;--wheel-offset:${50 - (index + 0.5) * slot}%">
+        ${items.map((item, i) => `<button type="button" class="budget-wheel-item" data-wheel-index="${i}"
+          tabindex="${i === index ? 0 : -1}"${i === index ? ' aria-current="true"' : ''}
+          aria-label="${item.name}">${item.label}</button>`).join('')}
+      </div>
+    </div>`;
+  return `<div class="pay-period-navigator" data-pay-period-navigator data-selected-close-month="${closeMonth}">
+    ${wheel('month', months.map(month => ({ label: month.label, name: month.name })), monthIndex, 46)}
+    ${wheel('period', selection.rows.map(row => ({
+      label: payPeriodRangeLabel(row),
+      name: `${payPeriodRangeLabel(row).replace(/<[^>]*>/g, '')}, ${payPeriodStatusLabel(row)}`,
+    })), selection.index, 52)}
+    <p role="status" aria-live="polite" aria-atomic="true" data-selected-pay-period-status>
+      <span class="sr-only" data-selected-pay-period-range>${payPeriodRangeLabel(selection.period)}. </span>${payPeriodStatusLabel(selection.period)}
+    </p>
   </div>`;
+}
+
+// Navigation context only: no reconstructed dates, calendar, or monthly money.
+function payPeriodCloseMonth(period) {
+  return String((period && period.end) || '').slice(0, 7);
+}
+
+function payPeriodMonths(selection) {
+  const months = [];
+  for (const row of selection.rows) {
+    const key = payPeriodCloseMonth(row);
+    if (months.some(month => month.key === key)) continue;
+    const date = new Date(`${row.end}T12:00:00`);
+    months.push({
+      key,
+      id: String(row.id || row.start || ''),
+      label: date.toLocaleDateString('en-CA', { month: 'long' }),
+      name: date.toLocaleDateString('en-CA', { month: 'long', year: 'numeric' }),
+    });
+  }
+  return months;
+}
+
+function payPeriodWheelSelection(advice, requestedId, kind, index) {
+  const selection = payPeriodSelection(advice, requestedId);
+  if (!Number.isInteger(index)) return selection;
+  const items = kind === 'month' ? payPeriodMonths(selection) : selection.rows;
+  const item = items[index];
+  if (!item) return selection;
+  // Re-selecting the current month keeps its period; entering another month
+  // resolves to the first published row closing there.
+  if (kind === 'month' && item.key === payPeriodCloseMonth(selection.period)) return selection;
+  if (kind === 'period' && Math.abs(index - selection.index) === 1) {
+    return payPeriodMoveSelection(advice, requestedId, index - selection.index);
+  }
+  return payPeriodSelection(advice, item.id || item.start);
 }
 
 function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraControls, plan) {
@@ -2608,7 +2641,7 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
     : '';
   return `<div class="calendar-waterfalls pay-period-timeline" data-calendar-waterfalls${asOfAttr} data-pay-period-swipe
       data-selected-pay-period="${periodId}" data-pay-period-index="${selection.index}"
-      tabindex="0" aria-label="Pay-period navigation. Use the Previous and Next buttons, or the left and right arrow keys.">
+      aria-label="Pay-period navigation">
     ${payPeriodNavigatorHtml(selection)}
     ${extraControls || ''}
     ${current ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
@@ -2869,55 +2902,102 @@ function wirePlanLookPicker(mount, ctx) {
   }
   const timeline = mount.querySelector('[data-pay-period-swipe]');
   if (timeline) {
-    const movePayPeriod = (step, focusSelector) => {
+    const selectPeriod = (moved, kind, focus) => {
       const selection = payPeriodSelection(ctx.advice, planPayPeriodId);
-      const moved = payPeriodMoveSelection(ctx.advice, planPayPeriodId, step);
       if (moved.index === selection.index) return;
-      const next = moved.period;
-      planPayPeriodId = String((next && (next.id || next.start)) || '');
+      const offsets = {};
+      timeline.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
+        const track = wheel.querySelector('.budget-wheel-track');
+        const offset = track.style.getPropertyValue('--wheel-offset');
+        const drag = track.style.getPropertyValue('--wheel-drag');
+        offsets[wheel.getAttribute('data-budget-wheel')] = drag
+          ? `calc(${offset} + ${drag})` : offset;
+      });
+      planPayPeriodId = String(moved.period.id || moved.period.start || '');
       const nextCtx = Object.assign({}, ctx, {
         planLook,
         planPayPeriodId,
         planView: selectedPlanView(ctx.advice, planLook),
       });
       mount.innerHTML = operatingSurfaceHtml(nextCtx);
+      mount.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
+        const track = wheel.querySelector('.budget-wheel-track');
+        const from = offsets[wheel.getAttribute('data-budget-wheel')];
+        if (from !== track.style.getPropertyValue('--wheel-offset')) {
+          track.style.setProperty('--wheel-from', from);
+          track.classList.add('is-moving');
+        }
+      });
       wirePlanLookPicker(mount, nextCtx);
-      const focusTarget = focusSelector && mount.querySelector(focusSelector);
-      const fallback = mount.querySelector('[data-pay-period-swipe]');
-      if (focusTarget && !focusTarget.disabled && typeof focusTarget.focus === 'function') {
-        focusTarget.focus();
-      } else if (fallback && typeof fallback.focus === 'function') {
-        fallback.focus();
+      if (focus) {
+        const target = mount.querySelector(`[data-budget-wheel="${kind}"] [aria-current="true"]`);
+        if (target) target.focus({ preventScroll: true });
       }
     };
-    timeline.addEventListener('click', event => {
-      const btn = event.target && event.target.closest
-        ? event.target.closest('[data-pay-period-step]') : null;
-      if (!btn || btn.disabled) return;
-      const step = Number(btn.getAttribute('data-pay-period-step'));
-      if (step !== -1 && step !== 1) return;
-      movePayPeriod(step, `[data-pay-period-step="${step}"]`);
+    timeline.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
+      const kind = wheel.getAttribute('data-budget-wheel');
+      const selection = payPeriodSelection(ctx.advice, planPayPeriodId);
+      const index = kind === 'month'
+        ? payPeriodMonths(selection).findIndex(month => month.key === payPeriodCloseMonth(selection.period))
+        : selection.index;
+      const choose = (targetIndex, focus) => selectPeriod(
+        payPeriodWheelSelection(ctx.advice, planPayPeriodId, kind, targetIndex), kind, focus
+      );
+      let suppressClick = false;
+      wheel.addEventListener('click', event => {
+        // A pointer-generated click after a drag must not select a second item.
+        if (suppressClick && event.detail !== 0) { suppressClick = false; return; }
+        const button = event.target && event.target.closest('[data-wheel-index]');
+        if (button) choose(Number(button.getAttribute('data-wheel-index')), true);
+      });
+      wheel.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        choose(index + (event.key === 'ArrowRight' ? 1 : -1), true);
+      });
+      const track = wheel.querySelector('.budget-wheel-track');
+      let start = null;
+      const reset = () => {
+        start = null;
+        track.style.transform = '';
+        track.style.setProperty('--wheel-drag', '');
+        track.classList.remove('is-dragging');
+      };
+      wheel.addEventListener('pointerdown', event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        suppressClick = false;
+        start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+      });
+      wheel.addEventListener('pointermove', event => {
+        if (!start || event.pointerId !== start.id) return;
+        if (!payPeriodSwipeStep(start, { x: event.clientX, y: event.clientY })) return;
+        // Capture after horizontal intent: taps still target buttons and native
+        // vertical page scrolling stays available through touch-action: pan-y.
+        wheel.setPointerCapture(event.pointerId);
+        suppressClick = true;
+        track.classList.remove('is-moving');
+        track.classList.add('is-dragging');
+        const drag = Math.max(-wheel.clientWidth * 0.45, Math.min(wheel.clientWidth * 0.45, event.clientX - start.x));
+        track.style.setProperty('--wheel-drag', `${drag}px`);
+        track.style.transform = `translateX(calc(var(--wheel-offset) + ${drag}px))`;
+      });
+      wheel.addEventListener('pointerup', event => {
+        if (!start || event.pointerId !== start.id) return;
+        const step = payPeriodSwipeStep(start, { x: event.clientX, y: event.clientY });
+        const dragged = suppressClick;
+        if (step) {
+          // Stop the compatibility click before remounting, including at bounds.
+          event.preventDefault();
+          choose(index + step, false);
+        } else if (dragged) event.preventDefault();
+        reset();
+      });
+      wheel.addEventListener('pointercancel', reset);
+      wheel.addEventListener('lostpointercapture', reset);
+      wheel.addEventListener('pointerleave', event => {
+        if (start && !wheel.hasPointerCapture(event.pointerId)) reset();
+      });
     });
-    timeline.addEventListener('keydown', event => {
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      const target = event.target;
-      if (target && target.matches && target.matches('input, select, textarea')) return;
-      event.preventDefault();
-      const step = event.key === 'ArrowRight' ? 1 : -1;
-      movePayPeriod(step, `[data-pay-period-step="${step}"]`);
-    });
-    let touchStart = null;
-    timeline.addEventListener('touchstart', event => {
-      const touch = event.touches && event.touches.length === 1 ? event.touches[0] : null;
-      touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
-    }, { passive: true });
-    timeline.addEventListener('touchend', event => {
-      const touch = event.changedTouches && event.changedTouches[0];
-      const step = payPeriodSwipeStep(touchStart, touch && { x: touch.clientX, y: touch.clientY });
-      touchStart = null;
-      if (step) movePayPeriod(step, null);
-    }, { passive: true });
-    timeline.addEventListener('touchcancel', () => { touchStart = null; }, { passive: true });
   }
 }
 

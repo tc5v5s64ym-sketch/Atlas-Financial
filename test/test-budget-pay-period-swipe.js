@@ -32,6 +32,8 @@ const source = [
   grab('payPeriodRangeLabel'),
   grab('payPeriodStatusLabel'),
   grab('payPeriodSwipeStep'),
+  grab('payPeriodCloseMonth'),
+  grab('payPeriodMonths'),
   grab('payPeriodNavigatorHtml'),
   grab('payPeriodTimelineHtml'),
 ].join('\n');
@@ -122,9 +124,9 @@ const atEnd = composer.payPeriodMoveSelection(advice, future.id, 1);
 const startNav = composer.payPeriodNavigatorHtml(atStart);
 const endNav = composer.payPeriodNavigatorHtml(atEnd);
 ok(id(atStart) === past0.id && id(atEnd) === future.id
-    && /data-pay-period-step="-1"[^>]* disabled/.test(startNav)
-    && /data-pay-period-step="1"[^>]* disabled/.test(endNav),
-  '7. bounds disable their controls and never wrap');
+    && /data-wheel-index="0"[\s\S]*?aria-current="true"/.test(startNav)
+    && /data-wheel-index="4"[\s\S]*?aria-current="true"/.test(endNav),
+  '7. bounds keep their selected items and never wrap');
 
 const futureHtml = composer.payPeriodTimelineHtml(advice, future.id, {}, {}, '', {});
 ok(!/data-live-current-balance/.test(futureHtml),
@@ -158,7 +160,7 @@ ok(composer.payPeriodSwipeStep({ x: 50, y: 10 }, { x: 57, y: 150 }) === 0
   '14. vertical scroll and weak horizontal intent do not change period');
 ok(/addEventListener\('keydown'/.test(planSource)
     && /ArrowLeft/.test(planSource) && /ArrowRight/.test(planSource)
-    && /data-pay-period-step/.test(planSource)
+    && /data-wheel-index/.test(planSource)
     && /aria-label="Pay-period navigation/.test(planSource),
   '15. desktop keyboard and named button navigation are wired without touch');
 ok(!/value="next-period"|value="past:/.test(
