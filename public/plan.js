@@ -2545,15 +2545,46 @@ function payPeriodStatusLabel(period) {
   return 'Projected pay period';
 }
 
-function payPeriodSwipeStep(start, end) {
+function payPeriodSwipeStep(start, end, slotPx) {
   if (!start || !end) return 0;
   const dx = Number(end.x) - Number(start.x);
   const dy = Number(end.y) - Number(start.y);
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return 0;
   const horizontal = Math.abs(dx);
   const vertical = Math.abs(dy);
-  if (horizontal < 44 || horizontal <= vertical * 1.35) return 0;
-  return dx < 0 ? 1 : -1;
+  const slot = Number(slotPx);
+  const slotKnown = Number.isFinite(slot) && slot >= 24;
+  // Callers that have not measured a slot keep the one-step pixel contract.
+  if (!slotKnown) {
+    if (horizontal < 44 || horizontal <= vertical * 1.35) return 0;
+    return dx < 0 ? 1 : -1;
+  }
+  // Vertical page scrolling wins over a slanted drag.
+  if (vertical >= 8 && vertical >= horizontal) return 0;
+  if (horizontal < 10 || horizontal < vertical * 1.15) return 0;
+  const traveled = -dx / slot;
+  // Half a slot rounds away from zero. Math.round(-0.5) is 0, which would
+  // make a backward swipe stick while the same forward swipe moves.
+  let steps = Math.sign(traveled) * Math.round(Math.abs(traveled));
+  const dt = Number(end.t) - Number(start.t);
+  // A flick promotes only a drag that has not already reached the next slot,
+  // and never adds items past the positional nearest.
+  if (steps === 0 && Number.isFinite(dt) && dt >= 16 && dt <= 260 && horizontal >= 16) {
+    const velocity = -dx / dt;
+    if (Math.abs(velocity) >= 0.55) steps = velocity > 0 ? 1 : -1;
+  }
+  return steps;
+}
+
+// Rubber-band past the first and last centered items. Inside the row the
+// track matches the finger one-to-one so the next label can reach center.
+function payPeriodDragPixels(dx, index, count, slotPx) {
+  if (!(slotPx > 0) || !Number.isFinite(dx)) return dx;
+  const min = (index - (count - 1)) * slotPx;
+  const max = index * slotPx;
+  if (dx > max) return max + (dx - max) * 0.3;
+  if (dx < min) return min + (dx - min) * 0.3;
+  return dx;
 }
 
 function payPeriodNavigatorHtml(selection) {
@@ -2573,11 +2604,11 @@ function payPeriodNavigatorHtml(selection) {
     ${wheel('month', months.map(month => ({
       label: `${month.label}<span class="budget-wheel-year">${month.key.slice(0, 4)}</span>`,
       name: month.name,
-    })), monthIndex, 46)}
+    })), monthIndex, 36)}
     ${wheel('period', selection.rows.map(row => ({
       label: payPeriodRangeLabel(row),
       name: `${payPeriodRangeLabel(row).replace(/<[^>]*>/g, '')}, ${payPeriodStatusLabel(row)}`,
-    })), selection.index, 52)}
+    })), selection.index, 40)}
     <p role="status" aria-live="polite" aria-atomic="true" data-selected-pay-period-status>
       <span class="sr-only" data-selected-pay-period-range>${payPeriodRangeLabel(selection.period)}. </span>${payPeriodStatusLabel(selection.period)}
     </p>
@@ -2959,6 +2990,11 @@ function wirePlanLookPicker(mount, ctx) {
         choose(index + (event.key === 'ArrowRight' ? 1 : -1), true);
       });
       const track = wheel.querySelector('.budget-wheel-track');
+      const slotPercent = parseFloat(track.style.getPropertyValue('--wheel-slot'));
+      const slotPx = Number(wheel.clientWidth) > 0 && slotPercent > 0
+        ? wheel.clientWidth * slotPercent / 100
+        : 0;
+      const count = kind === 'month' ? payPeriodMonths(selection).length : selection.rows.length;
       let start = null;
       const reset = () => {
         start = null;
@@ -2966,37 +3002,79 @@ function wirePlanLookPicker(mount, ctx) {
         track.style.setProperty('--wheel-drag', '');
         track.classList.remove('is-dragging');
       };
+      const settle = () => {
+        const dragged = track.classList.contains('is-dragging');
+        start = null;
+        track.style.setProperty('--wheel-drag', '');
+        track.classList.remove('is-dragging');
+        if (!dragged) {
+          track.style.transform = '';
+          return;
+        }
+        if (typeof track.getBoundingClientRect === 'function') track.getBoundingClientRect();
+        track.style.transform = 'translateX(var(--wheel-offset))';
+      };
       wheel.addEventListener('pointerdown', event => {
         if (!event.isPrimary || event.button !== 0) return;
         suppressClick = false;
-        start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+        start = {
+          x: event.clientX,
+          y: event.clientY,
+          t: event.timeStamp,
+          id: event.pointerId,
+          axis: '',
+        };
       });
       wheel.addEventListener('pointermove', event => {
-        if (!start || event.pointerId !== start.id) return;
-        if (!payPeriodSwipeStep(start, { x: event.clientX, y: event.clientY })) return;
-        // Capture after horizontal intent: taps still target buttons and native
-        // vertical page scrolling stays available through touch-action: pan-y.
-        wheel.setPointerCapture(event.pointerId);
-        suppressClick = true;
+        if (!start || event.pointerId !== start.id || start.axis === 'y') return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        if (start.axis !== 'x') {
+          const adx = Math.abs(dx);
+          const ady = Math.abs(dy);
+          if (adx < 8 && ady < 8) return;
+          // Lock the first clear axis so a vertical scroll never drags the wheel.
+          if (ady >= adx) { start.axis = 'y'; return; }
+          start.axis = 'x';
+          wheel.setPointerCapture(event.pointerId);
+          suppressClick = true;
+        }
         track.classList.remove('is-moving');
         track.classList.add('is-dragging');
-        const drag = Math.max(-wheel.clientWidth * 0.45, Math.min(wheel.clientWidth * 0.45, event.clientX - start.x));
+        const drag = payPeriodDragPixels(dx, index, count, slotPx);
         track.style.setProperty('--wheel-drag', `${drag}px`);
         track.style.transform = `translateX(calc(var(--wheel-offset) + ${drag}px))`;
+        if (event.cancelable) event.preventDefault();
       });
       wheel.addEventListener('pointerup', event => {
         if (!start || event.pointerId !== start.id) return;
-        const step = payPeriodSwipeStep(start, { x: event.clientX, y: event.clientY });
+        const origin = start;
         const dragged = suppressClick;
+        const step = origin.axis === 'x'
+          ? payPeriodSwipeStep(origin, {
+            x: event.clientX,
+            y: event.clientY,
+            t: event.timeStamp,
+          }, slotPx)
+          : 0;
         if (step) {
-          // Stop the compatibility click before remounting, including at bounds.
-          event.preventDefault();
-          choose(index + step, false);
-        } else if (dragged) event.preventDefault();
-        reset();
+          const target = Math.max(0, Math.min(count - 1, index + step));
+          if (target !== index) {
+            // Stop the compatibility click before remounting, including at bounds.
+            event.preventDefault();
+            choose(target, false);
+            reset();
+            return;
+          }
+        }
+        if (dragged && event.cancelable) event.preventDefault();
+        settle();
       });
       wheel.addEventListener('pointercancel', reset);
-      wheel.addEventListener('lostpointercapture', reset);
+      wheel.addEventListener('lostpointercapture', () => {
+        // pointerup already settled. A capture loss mid-drag is the cancel.
+        if (start) reset();
+      });
       wheel.addEventListener('pointerleave', event => {
         if (start && !wheel.hasPointerCapture(event.pointerId)) reset();
       });
