@@ -6120,15 +6120,25 @@
       if (!window || !row) return;
       // Budget's next window and every further timeline window have role
       // future. An occurrence after the Forecast financial date stays in
-      // this period and in the bill load, but the household-facing status
-      // stays planned. Settlement, amount, remaining, and actual are
-      // unchanged, so periodBillLoad and Balance After Deductions do not
-      // move. A date on or before asOf, and every active or lookback
-      // window, keep the incumbent status.
+      // this period and in the bill load, but every household-facing
+      // settlement disclosure treats it as not yet paid. Status, glance,
+      // settlement, and remaining all follow that rule, so Paid bills and
+      // Remaining bills do not still count it as paid. planned, amount,
+      // and movement stay, so periodBillLoad and Balance After Deductions
+      // do not move. A date on or before asOf, and every active or
+      // lookback window, keep the incumbent status. An opening-settled
+      // row is not rewritten: that flag is what keeps it out of the load.
       if (window.role === 'future' && row.date && asOf && row.date > asOf
-          && (row.status === 'PAID' || row.glanceKind === 'paid')) {
+          && row.settlement !== 'opening' && row.settledInOpening !== true
+          && (row.status === 'PAID' || row.glanceKind === 'paid'
+            || row.settlement === 'represented')) {
         row.status = 'planned';
         row.glanceKind = 'planned';
+        if (row.settlement === 'represented') row.settlement = 'upcoming';
+        const assigned = row.planned != null && isFinite(Number(row.planned))
+          ? Math.abs(Number(row.planned))
+          : Math.abs(Number(row.amount) || 0);
+        row.remaining = roundCent(assigned);
       }
       buckets[window.id].push(row);
     };
