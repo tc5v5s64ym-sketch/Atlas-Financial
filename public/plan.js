@@ -27,6 +27,7 @@ const state = {
 };
 let planLook = 'this-period';
 let planCalendarShow = null;
+let planPayPeriodId = null;
 // ONLY these are persisted or restored. `state` also carries the debt records
 // so the engine can size a payment against real balances, and serialising the
 // whole object would write account balances and credit limits into
@@ -2296,8 +2297,7 @@ function extraRepaymentHtml(period) {
 }
 
 // The Plan print stops at Balance After Deductions (Q07). That figure is
-// Forecast period.balanceAfterDeductions / afterHouseholdBudget —
-// displayed period income − assigned bills − Household Budget hold.
+// copied from Forecast's selected pay-period row.
 // Payday balance is the Income-block total from Forecast period.available.
 // Forecast still computes the extra-debt / big-purchase chain and the
 // cash projected ending on each period (the next period opens from cash,
@@ -2490,6 +2490,112 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
     ${calendarPickerHtml(view, pick, extraControls)}
     ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
+    ${undatedBlock}
+  </div>`;
+}
+
+function payPeriodSelection(advice, requestedId) {
+  const rows = Array.isArray(advice && advice.payPeriodViews)
+    ? advice.payPeriodViews.filter(Boolean)
+    : [];
+  if (!rows.length) return { rows, index: -1, period: null };
+  const rowId = row => String((row && (row.id || row.start)) || '');
+  let index = requestedId == null
+    ? -1
+    : rows.findIndex(row => rowId(row) === String(requestedId));
+  if (index < 0) index = rows.findIndex(row => row.timelineRole === 'current');
+  if (index < 0) index = 0;
+  return { rows, index, period: rows[index] };
+}
+
+function payPeriodMoveSelection(advice, requestedId, step) {
+  const selection = payPeriodSelection(advice, requestedId);
+  const nextIndex = selection.index + step;
+  if (step !== -1 && step !== 1) return selection;
+  if (nextIndex < 0 || nextIndex >= selection.rows.length) return selection;
+  return {
+    rows: selection.rows,
+    index: nextIndex,
+    period: selection.rows[nextIndex],
+  };
+}
+
+function payPeriodRangeLabel(period) {
+  if (!period) return 'Pay period unavailable';
+  if (period.rangeLabel) return period.rangeLabel;
+  if (period.start && period.end) return `${fmtDate(period.start)} – ${fmtDate(period.end)}`;
+  return period.start ? fmtDate(period.start) : 'Pay period unavailable';
+}
+
+function payPeriodStatusLabel(period) {
+  if (!period) return 'Pay period unavailable';
+  if (period.timelineRole === 'current') return 'Current pay period';
+  if (period.timelineRole === 'past') return 'Completed pay period';
+  return 'Projected pay period';
+}
+
+function payPeriodSwipeStep(start, end) {
+  if (!start || !end) return 0;
+  const dx = Number(end.x) - Number(start.x);
+  const dy = Number(end.y) - Number(start.y);
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return 0;
+  const horizontal = Math.abs(dx);
+  const vertical = Math.abs(dy);
+  if (horizontal < 44 || horizontal <= vertical * 1.35) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+function payPeriodNavigatorHtml(selection) {
+  const rows = selection.rows || [];
+  const index = selection.index;
+  const period = selection.period;
+  if (!period) return '';
+  const previous = index > 0 ? rows[index - 1] : null;
+  const next = index + 1 < rows.length ? rows[index + 1] : null;
+  const targetLabel = row => payPeriodRangeLabel(row).replace(/<[^>]*>/g, '');
+  const button = (step, target, text) => {
+    const disabled = target ? '' : ' disabled aria-disabled="true"';
+    const direction = step < 0 ? 'Previous' : 'Next';
+    const name = target
+      ? `${direction} pay period, ${targetLabel(target)}`
+      : `${direction} pay period unavailable`;
+    return `<button type="button" class="pay-period-nav-button" data-pay-period-step="${step}" aria-label="${name}"${disabled}>
+      <span aria-hidden="true">${text}</span>
+    </button>`;
+  };
+  return `<div class="pay-period-navigator" data-pay-period-navigator>
+    ${button(-1, previous, '‹')}
+    <div class="pay-period-heading">
+      <h2 data-selected-pay-period-range>${payPeriodRangeLabel(period)}</h2>
+      <p role="status" aria-live="polite" aria-atomic="true" data-selected-pay-period-status>${payPeriodStatusLabel(period)}</p>
+    </div>
+    ${button(1, next, '›')}
+  </div>`;
+}
+
+function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraControls, plan) {
+  const selection = payPeriodSelection(advice, requestedId);
+  const period = selection.period;
+  if (!period) return '';
+  const periodId = String(period.id || period.start || '');
+  const current = period.timelineRole === 'current';
+  const defaultView = (advice && advice.defaultView) || {};
+  const undated = current ? (defaultView.undatedBills || []) : [];
+  const undatedLines = undated.map(periodBillLine).join('');
+  const undatedBlock = undatedLines
+    ? `<div data-bill-section="needs-date" class="calendar-undated">
+        <div class="payday-group">Needs a date</div>
+        <div class="operating-lines">${undatedLines}</div>
+        <p class="operating-note">Not included in this period's remaining bills.</p>
+      </div>`
+    : '';
+  return `<div class="calendar-waterfalls pay-period-timeline" data-calendar-waterfalls data-pay-period-swipe
+      data-selected-pay-period="${periodId}" data-pay-period-index="${selection.index}"
+      tabindex="0" aria-label="Pay-period navigation. Use the Previous and Next buttons, or the left and right arrow keys.">
+    ${payPeriodNavigatorHtml(selection)}
+    ${extraControls || ''}
+    ${current ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
+    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan)}
     ${undatedBlock}
   </div>`;
 }
@@ -2744,6 +2850,58 @@ function wirePlanLookPicker(mount, ctx) {
       wirePlanLookPicker(mount, nextCtx);
     });
   }
+  const timeline = mount.querySelector('[data-pay-period-swipe]');
+  if (timeline) {
+    const movePayPeriod = (step, focusSelector) => {
+      const selection = payPeriodSelection(ctx.advice, planPayPeriodId);
+      const moved = payPeriodMoveSelection(ctx.advice, planPayPeriodId, step);
+      if (moved.index === selection.index) return;
+      const next = moved.period;
+      planPayPeriodId = String((next && (next.id || next.start)) || '');
+      const nextCtx = Object.assign({}, ctx, {
+        planLook,
+        planPayPeriodId,
+        planView: selectedPlanView(ctx.advice, planLook),
+      });
+      mount.innerHTML = operatingSurfaceHtml(nextCtx);
+      wirePlanLookPicker(mount, nextCtx);
+      const focusTarget = focusSelector && mount.querySelector(focusSelector);
+      const fallback = mount.querySelector('[data-pay-period-swipe]');
+      if (focusTarget && !focusTarget.disabled && typeof focusTarget.focus === 'function') {
+        focusTarget.focus();
+      } else if (fallback && typeof fallback.focus === 'function') {
+        fallback.focus();
+      }
+    };
+    timeline.addEventListener('click', event => {
+      const btn = event.target && event.target.closest
+        ? event.target.closest('[data-pay-period-step]') : null;
+      if (!btn || btn.disabled) return;
+      const step = Number(btn.getAttribute('data-pay-period-step'));
+      if (step !== -1 && step !== 1) return;
+      movePayPeriod(step, `[data-pay-period-step="${step}"]`);
+    });
+    timeline.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      const target = event.target;
+      if (target && target.matches && target.matches('input, select, textarea')) return;
+      event.preventDefault();
+      const step = event.key === 'ArrowRight' ? 1 : -1;
+      movePayPeriod(step, `[data-pay-period-step="${step}"]`);
+    });
+    let touchStart = null;
+    timeline.addEventListener('touchstart', event => {
+      const touch = event.touches && event.touches.length === 1 ? event.touches[0] : null;
+      touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    }, { passive: true });
+    timeline.addEventListener('touchend', event => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      const step = payPeriodSwipeStep(touchStart, touch && { x: touch.clientX, y: touch.clientY });
+      touchStart = null;
+      if (step) movePayPeriod(step, null);
+    }, { passive: true });
+    timeline.addEventListener('touchcancel', () => { touchStart = null; }, { passive: true });
+  }
 }
 
 /* Payday operating sheet. Every financial value and verdict is already on the
@@ -2832,7 +2990,6 @@ function operatingSurfaceHtml(ctx) {
   const look = ctx.planLook || 'this-period';
   const option = (value, label) =>
     `<option value="${value}"${look === value ? ' selected' : ''}>${label}</option>`;
-  const nextPeriod = advice.nextPeriodView;
   const weekOpts = (advice.weekViews || []).map(row => {
     if (!row || !row.periodStart) return '';
     const value = 'week:' + row.periodStart;
@@ -2841,36 +2998,19 @@ function operatingSurfaceHtml(ctx) {
       : `Week of ${fmtDate(row.periodStart)}`;
     return option(value, label);
   }).join('');
-  const pastOpts = (advice.pastPeriodViews || []).map((row, i) => {
-    if (!row || !row.start) return '';
-    const value = 'past:' + row.start;
-    const range = row.rangeLabel || '';
-    const label = i === 0
-      ? (range ? `Previous pay period · ${range}` : 'Previous pay period')
-      : (range || 'Completed pay period');
-    return option(value, label);
-  }).join('');
   const carryTrend = advice.paydayCarryoverTrend;
   const carryOpt = (carryTrend && (carryTrend.points || []).length)
     ? option('payday-carryover', 'Payday carryover')
     : '';
-  // The pay-period switch inside the sheet is the primary control. The week
-  // picker stays available behind a quiet disclosure, and is held open while
-  // a week, next-period, completed-period, or carryover-trend view is the
-  // one being read.
+  // The timeline is the pay-period control. This disclosure retains only the
+  // non-period views that it still owns.
   const picker = `<details class="plan-look" data-plan-look-picker${look !== 'this-period' ? ' open' : ''}>
     <summary class="plan-look-summary">More views</summary>
     <label class="plan-look-field">
       <span class="plan-look-label">What to look at</span>
       <select class="numin" data-plan-look>
-      ${option('this-period', 'This pay period')}
-      ${nextPeriod && nextPeriod.periodStart
-        ? option('next-period', nextPeriod.periodEnd
-          ? `Next pay period · ${fmtDate(nextPeriod.periodStart)} – ${fmtDate(nextPeriod.periodEnd)}`
-          : 'Next pay period')
-        : ''}
+      ${option('this-period', 'Pay-period timeline')}
       ${carryOpt}
-      ${pastOpts}
       ${weekOpts}
       </select>
     </label>
@@ -2884,17 +3024,28 @@ function operatingSurfaceHtml(ctx) {
   const bills = periodBillsHtml(view);
   const pastLook = look && look.slice(0, 5) === 'past:';
   const carryLook = look === 'payday-carryover';
-  const defaultWaterfalls = look === 'this-period'
-    && view.calendarPeriods && view.calendarPeriods.length
-    ? calendarWaterfallsHtml(
-      view,
-      ctx.planCalendarShow,
+  const timelineAvailable = typeof payPeriodTimelineHtml === 'function'
+    && Array.isArray(advice.payPeriodViews)
+    && advice.payPeriodViews.length > 0;
+  const defaultWaterfalls = look === 'this-period' && timelineAvailable
+    ? payPeriodTimelineHtml(
+      advice,
+      ctx.planPayPeriodId,
       ctx.liveOverlay,
       alloc,
       picker,
       ctx.plan
     )
-    : '';
+    : (look === 'this-period' && view.calendarPeriods && view.calendarPeriods.length
+      ? calendarWaterfallsHtml(
+        view,
+        ctx.planCalendarShow,
+        ctx.liveOverlay,
+        alloc,
+        picker,
+        ctx.plan
+      )
+      : '');
   const historical = pastLook && view && view.start
     ? `${picker}<div class="plan-sheet" data-historical-plan>${historicalPeriodHtml(view)}</div>`
     : '';
@@ -4052,7 +4203,7 @@ function renderPlan(d, periods, history) {
       weekly, recommended, weeklyOverride: state.weeklyVariable,
       capView, debts: state.debts, liveOverlay: d.liveOverlay,
       refreshTrust: d.refreshTrust,
-      planLook, planCalendarShow, planView,
+      planLook, planCalendarShow, planPayPeriodId, planView,
     };
     operatingMount.innerHTML = operatingSurfaceHtml(surfaceCtx);
     wirePlanLookPicker(operatingMount, surfaceCtx);
