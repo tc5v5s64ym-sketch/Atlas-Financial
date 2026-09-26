@@ -768,7 +768,7 @@ console.log('\n=== timeline source does not read Road Ahead ===');
   ok(!/baselineTrajectory|stage3|month-close|monthClose/.test(blob),
     'timeline windows, bound, composer, and regime stamp do not read Road Ahead values');
   ok(/projectedDalePayroll\(/.test(regime),
-    'further-future rows consume the shared projected Dale payroll source');
+    'future/projected rows consume the shared projected Dale payroll source');
   ok(!/daleEstimatedPayrollDeposits\(/.test(regime),
     'the timeline does not call the statutory calculator beside that source');
   ok(/projectedDalePayroll\(/.test(walk),
@@ -779,7 +779,7 @@ console.log('\n=== timeline source does not read Road Ahead ===');
     'projectedDalePayroll is the exported wrapper around the one calculator');
 }
 
-console.log('\n=== 2027 estimated regime on further-future rows only ===');
+console.log('\n=== 2027 estimated regime on future/projected rows ===');
 {
   // First 2027 Seaspan regular, deposit-year CPP/EI restart, annual 158091:
   //   gross 6080.42, pension 364.83, tax 1413.30, CPP 353.78, EI 99.11
@@ -906,9 +906,9 @@ console.log('\n=== 2027 estimated regime on further-future rows only ===');
     'when December is current, its Dale pay stays the fixture amount');
   ok(rolledNext && rolledNext.id === 'next-pay-period'
       && rolledNext === rolled.defaultView.calendarPeriods[1]
-      && incomeOn(rolledNext, 'payroll', '2027-01-01')[0].amount === DALE
-      && !incomeOn(rolledNext, 'payroll', '2027-01-01')[0].incomeRegime,
-    'Budget next keeps the incumbent January amount, not the estimate');
+      && incomeOn(rolledNext, 'payroll', '2027-01-01')[0].amount === DALE_2027
+      && incomeOn(rolledNext, 'payroll', '2027-01-01')[0].incomeRegime === '2027-estimated',
+    'Budget next uses the January estimate, not the 2026 net');
   ok(rolledFuture && rolledFuture.timelineRole === 'future'
       && incomeOn(rolledFuture, 'payroll', '2027-01-15')[0].amount === DALE_2027
       && incomeOn(rolledFuture, 'payroll', '2027-01-15')[0].incomeRegime === '2027-estimated',
@@ -948,6 +948,91 @@ console.log('\n=== 2027 estimated regime on further-future rows only ===');
     capped.payPeriodTimeline.through);
   ok(!(capped.payPeriodViews || []).some(p => p && p.start >= '2028-01-01'),
     '2028 cycles stay unpublished');
+}
+
+console.log('\n=== Dec 18 → Jan 1 as next stays estimated; current keeps incumbent evidence ===');
+{
+  // First 2027 regular, deposit-year CPP/EI restart, annual 158091:
+  //   gross 6080.42 − tax 1413.30 − CPP 353.78 − EI 99.11 − pension 364.83
+  //   = 3849.40. Not the fixture 4000 and not the 2026 post-max 4264.
+  const DALE_2027 = 3849.40;
+  const assumptions = {
+    salaryRaiseFactor: 1.04,
+    bonusRate: 0.18,
+    authorizedThroughYear: 2027,
+  };
+  function withRegime(asOf) {
+    const plan = timelinePlan(asOf);
+    plan.payrollPlanningAssumptions = assumptions;
+    return plan;
+  }
+
+  // Dec 18 2026 as-of: Jan 1–14 is Budget Next Pay Period.
+  // Income: Dale Jan 1 only = 3849.40
+  // Bills: mortgage Jan 1 1600 + hydro Jan 3 199 = 1799
+  // Hold: groceries 200 + dale-guilt-free 150 + pets 100
+  //   (first Seaspan start of January) = 450
+  // BAD: 3849.40 − 1799 − 450 = 1600.40
+  const asNext = recommend(withRegime('2026-12-18'), '2026-12-18');
+  const next = rowByRole(asNext, 'next');
+  const currentOnDec = rowByRole(asNext, 'current');
+  ok(currentOnDec && currentOnDec.start === '2026-12-18'
+      && incomeOn(currentOnDec, 'payroll', '2026-12-18')[0].amount === DALE
+      && !incomeOn(currentOnDec, 'payroll', '2026-12-18')[0].incomeRegime,
+    'Dec 18 as current keeps the 2026 fixture Dale amount');
+  ok(next && next.id === 'next-pay-period'
+      && next === asNext.defaultView.calendarPeriods[1]
+      && next.start === '2027-01-01' && next.end === '2027-01-14',
+    'Jan 1–14 is Budget Next Pay Period on Dec 18');
+  const nextDale = incomeOn(next, 'payroll', '2027-01-01');
+  ok(nextDale.length === 1 && nextDale[0].amount === DALE_2027
+      && nextDale[0].incomeRegime === '2027-estimated'
+      && nextDale[0].confidence === 'estimated'
+      && nextDale[0].status === 'estimated'
+      && nextDale[0].settlement === 'estimated',
+    'Jan 1 as next uses the estimated CPP/EI-reset net',
+    nextDale[0] && String(nextDale[0].amount));
+  ok(nextDale[0] && nextDale[0].amount !== DALE && nextDale[0].amount !== 4264,
+    'Jan 1 as next does not carry 4000 or 4264');
+  const nextIncome = roundCent(DALE_2027);
+  const nextBills = roundCent(MORTGAGE + HYDRO);
+  const nextHold = holdFor(PETS);
+  const nextBad = roundCent(nextIncome - nextBills - nextHold);
+  ok(nextBad === 1600.40, 'hand BAD for Jan 1 as next is 1600.40', String(nextBad));
+  expectPeriod(next, {
+    start: '2027-01-01', end: '2027-01-14',
+    income: nextIncome, bills: nextBills, hold: nextHold, bad: nextBad,
+  }, 'Jan 1 as next');
+
+  // Jan 1 2027 as-of: the same window is current and keeps incumbent
+  // fixture evidence. Income 4000; bills 1799; hold 450;
+  // BAD 4000 − 1799 − 450 = 1751.
+  const asCurrent = recommend(withRegime('2027-01-01'), '2027-01-01');
+  const nowCurrent = rowByRole(asCurrent, 'current');
+  const nowNext = rowByRole(asCurrent, 'next');
+  ok(nowCurrent && nowCurrent.id === 'this-pay-period'
+      && nowCurrent.start === '2027-01-01',
+    'Jan 1–14 is current on Jan 1');
+  const currentDale = incomeOn(nowCurrent, 'payroll', '2027-01-01');
+  ok(currentDale.length === 1 && currentDale[0].amount === DALE
+      && !currentDale[0].incomeRegime,
+    'Jan 1 as current keeps the incumbent fixture Dale amount',
+    currentDale[0] && String(currentDale[0].amount));
+  const currentIncome = roundCent(DALE);
+  const currentBills = roundCent(MORTGAGE + HYDRO);
+  const currentHold = holdFor(PETS);
+  const currentBad = roundCent(currentIncome - currentBills - currentHold);
+  ok(currentBad === 1751, 'hand BAD for Jan 1 as current is 1751', String(currentBad));
+  expectPeriod(nowCurrent, {
+    start: '2027-01-01', end: '2027-01-14',
+    income: currentIncome, bills: currentBills, hold: currentHold, bad: currentBad,
+  }, 'Jan 1 as current');
+  ok(nowNext && nowNext.id === 'next-pay-period' && nowNext.start === '2027-01-15',
+    'Jan 15–28 is next on Jan 1');
+  const laterDale = incomeOn(nowNext, 'payroll', '2027-01-15');
+  ok(laterDale.length === 1 && laterDale[0].amount === DALE_2027
+      && laterDale[0].incomeRegime === '2027-estimated',
+    'Jan 15 as next uses the estimate');
 }
 
 console.log('\n=== trajectory and timeline share one projected Dale payroll ===');

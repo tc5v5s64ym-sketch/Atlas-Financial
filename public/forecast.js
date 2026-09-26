@@ -7868,11 +7868,11 @@
     let unavailableOpeningLost = false;
     const heldCycleStarts = new Set();
     const sectionById = {};
-    // Further-future rows only. Budget's current and next windows keep
-    // the incumbent printer, including a 2027 date that has become
-    // this-pay-period or next-pay-period. This reads the payroll-regime
-    // authority, not Road Ahead stage, trajectory, or month-close results.
-    const daleRegime = (windows || []).some(w => w && String(w.id).indexOf('future:') === 0)
+    // Future/projected rows, including Budget's Next Pay Period. The
+    // current (active) window keeps the incumbent printer. This reads
+    // the payroll-regime authority, not Road Ahead stage, trajectory,
+    // or month-close results.
+    const daleRegime = (windows || []).some(w => w && w.role === 'future')
       ? timelineEstimatedDaleRegime(plan, asOf, opts) : null;
     const daleMaps = daleRegime ? futureTimelineDaleDepositMaps(daleRegime) : null;
     for (const section of calendar.billSections || []) {
@@ -7887,7 +7887,7 @@
       const projected = role === 'future';
       const lookback = role === 'lookback';
       let income = incomeByWindow[window.id] || [];
-      if (daleMaps && String(window.id).indexOf('future:') === 0) {
+      if (daleMaps && role === 'future') {
         income = applyFutureTimelineDaleIncome(plan, window, income, daleMaps);
       }
       const bills = section.rows || [];
@@ -8256,12 +8256,14 @@
   }
 
   // Owner Dale, 2026-09-25 7:43 PM PT: "Use the 2027 estimated payroll
-  // for 2027 pay periods, marked as estimated." Further-future timeline
-  // rows read projectedDalePayroll, the one Forecast-owned projected
-  // source. They do not call the statutory calculator themselves, and
-  // they do not read Road Ahead results. Current and next Budget rows
-  // do not use the estimate. A missing regime fails closed at the
-  // payroll-modelled boundary and does not carry the 2026 net forward.
+  // for 2027 pay periods, marked as estimated." Future/projected
+  // timeline rows, including next-pay-period, read projectedDalePayroll,
+  // the one Forecast-owned projected source. They do not call the
+  // statutory calculator themselves, and they do not read Road Ahead
+  // results. The current Budget row does not use the estimate.
+  // Actual/current evidence supersedes it when the period becomes
+  // current. A missing regime fails closed at the payroll-modelled
+  // boundary and does not carry the 2026 net forward.
   // A caller may name an earlier end. A later end does not pass the
   // regime or the knowledge horizon.
   function timelineEstimatedDaleRegime(plan, asOf, opts) {
@@ -8336,9 +8338,10 @@
     }, dep);
   }
 
-  // Replace 2027 Dale payroll on a further-future row with the estimated
-  // regime. A 2026 date in the same row stays on the incumbent amount.
-  // A 2027 Dale date with no regime deposit is omitted, not carried.
+  // Replace 2027 Dale payroll on a future/projected row, including
+  // next-pay-period, with the estimated regime. A 2026 date in the
+  // same row stays on the incumbent amount. A 2027 Dale date with no
+  // regime deposit is omitted, not carried.
   function applyFutureTimelineDaleIncome(plan, window, income, maps) {
     const next = [];
     const seen = new Set();
@@ -8411,7 +8414,7 @@
     const estimatedThrough = bound && bound.estimatedThrough;
     const binding = bound && bound.binding;
     const regime = estimatedThrough
-      ? 'From 2027-01-01, further future timeline rows use the owner-approved 2027 estimated payroll regime through '
+      ? 'From 2027-01-01, future and next Budget timeline rows use the owner-approved 2027 estimated payroll regime through '
         + estimatedThrough
         + ', marked estimated. The 2026 modelled net is not carried into 2027. Road Ahead stage, trajectory, and month-close results are not read.'
       : 'The 2027 estimated payroll regime is unavailable for this plan, so further cycles stop at the payroll-modelled boundary and the 2026 modelled net is not carried into 2027.';
@@ -14324,7 +14327,7 @@
   // tables. After the owner-authorized year the regime fails closed
   // until a later year is authorized and independently proved.
   // projectedDalePayroll is the one projected source both the Road Ahead
-  // walk and further-future Budget timeline rows consume. This function
+  // walk and future/projected Budget timeline rows consume. This function
   // remains the only statutory calculator.
   const SEASPAN_CURRENT_ANNUAL = 158091;
   const SEASPAN_RAISE_LAST_EFFECTIVE = '2026-02-22';
@@ -14336,9 +14339,9 @@
   // Owner Dale, 2026-09-25 7:43 PM PT: "Use the 2027 estimated payroll
   // for 2027 pay periods, marked as estimated." projectedDalePayroll
   // publishes that estimate from DALE_PAYROLL_REGIME_FROM through the
-  // assumption year. The Road Ahead walk and further-future Budget
+  // assumption year. The Road Ahead walk and future/projected Budget
   // timeline rows both consume it. Do not point either path at the
-  // other's results. Current and next Budget rows stay on expandEvents.
+  // other's results. The current Budget row stays on expandEvents.
   // A later year stays unpublished until a later regime is authorized.
 
   const SEASPAN_OBSERVED_SALARY_REGIMES = [
@@ -14697,7 +14700,7 @@
   // reset and the February bonus. This wrapper does not mint a second net.
   // Deposits before 2027-01-01 are not projected. A key already represented
   // at this financial date is omitted so the same cheque is not counted
-  // twice. The Road Ahead walk and further-future Budget timeline rows both
+  // twice. The Road Ahead walk and future/projected Budget timeline rows both
   // consume the returned deposits. .regime is the untouched calculator
   // result, so the walk's published regime object stays the same object
   // the calculator returned.
