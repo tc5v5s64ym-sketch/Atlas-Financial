@@ -2580,6 +2580,12 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
   const periodId = String(period.id || period.start || '');
   const current = period.timelineRole === 'current';
   const defaultView = (advice && advice.defaultView) || {};
+  // Budget polish uses the household financial as-of to age bill trust
+  // chrome. Keep the same Forecast/alloc authority as the legacy waterfall;
+  // a selected period date (or browser time) is not that authority.
+  const asOf = defaultView.asOf || (alloc && alloc.asOf) || '';
+  const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
+    ? ` data-household-as-of="${asOf}"` : '';
   const undated = current ? (defaultView.undatedBills || []) : [];
   const undatedLines = undated.map(periodBillLine).join('');
   const undatedBlock = undatedLines
@@ -2589,7 +2595,7 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
         <p class="operating-note">Not included in this period's remaining bills.</p>
       </div>`
     : '';
-  return `<div class="calendar-waterfalls pay-period-timeline" data-calendar-waterfalls data-pay-period-swipe
+  return `<div class="calendar-waterfalls pay-period-timeline" data-calendar-waterfalls${asOfAttr} data-pay-period-swipe
       data-selected-pay-period="${periodId}" data-pay-period-index="${selection.index}"
       tabindex="0" aria-label="Pay-period navigation. Use the Previous and Next buttons, or the left and right arrow keys.">
     ${payPeriodNavigatorHtml(selection)}

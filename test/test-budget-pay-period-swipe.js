@@ -17,6 +17,7 @@ const ok = (condition, label, detail = '') => {
 };
 
 const planSource = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public', 'plan.js'), 'utf8'));
+const polishSource = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public', 'budget-polish.js'), 'utf8'));
 const grab = (name) => {
   const re = new RegExp(`^function ${name}\\([\\s\\S]*?\\n\\}`, 'm');
   const match = re.exec(planSource);
@@ -85,6 +86,7 @@ const future = row('future:2031-02-26', 'future', '2031-02-26', 555, {
 const advice = {
   payPeriodViews: [past0, past1, current, next, future],
   defaultView: {
+    asOf: '2031-01-30',
     calendarPeriods: [current, next],
     liveCurrentBalance: current.liveCurrentBalance,
     undatedBills: [],
@@ -139,6 +141,12 @@ ok(/"evidenceState":"historical"/.test(pastHtml)
 ok(/data-rendered-row="future:2031-02-26" data-bad="555"/.test(futureHtml)
     && selectedRows[selectedRows.length - 2] === future,
   '11. the displayed BAD and body come directly from the selected row');
+const currentHtml = composer.payPeriodTimelineHtml(advice, current.id, {}, {}, '', {});
+ok(/data-calendar-waterfalls data-household-as-of="2031-01-30"/.test(currentHtml)
+    && /data-household-as-of="2031-01-30"/.test(futureHtml)
+    && !/data-household-as-of="2031-02-26"/.test(futureHtml)
+    && /function householdAsOf[\s\S]*?getAttribute\('data-household-as-of'\)/.test(polishSource),
+  '11a. every selected row supplies the authoritative as-of anchor Budget bill chrome consumes');
 
 console.log('\n=== authority and accessible input contracts ===');
 ok(!/income\s*[−-]\s*[^\n]*bills/i.test(planSource),
