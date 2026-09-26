@@ -338,35 +338,100 @@ console.log('\n=== 5. future rows do not invent actuals ===');
     'payPeriodTimeline has only the bound fields');
 }
 
-console.log('\n=== 5b. represented future occurrence stays PAID and stays in the bill load ===');
+console.log('\n=== 5b. a represented occurrence after asOf stays planned and stays in the bill load ===');
 {
   const plan = timelinePlan(AS_OF, {
     opening: {
-      representedEvents: [{ id: 'represented-future', date: '2026-11-10' }],
+      representedEvents: [
+        { id: 'represented-future', date: '2026-11-10' },
+        { id: 'represented-next', date: '2026-10-24' },
+        { id: 'represented-past', date: '2026-09-28' },
+        { id: 'represented-today', date: '2026-10-09' },
+      ],
     },
-    bills: [{
-      id: 'represented-future', label: 'Represented future bill', amount: 42,
-      frequency: 'once', date: '2026-11-10', confidence: 'confirmed',
-      payingAccount: 'chequing-a',
-    }],
+    bills: [
+      {
+        id: 'represented-future', label: 'Represented future bill', amount: 42,
+        frequency: 'once', date: '2026-11-10', confidence: 'confirmed',
+        payingAccount: 'chequing-a',
+      },
+      {
+        id: 'represented-next', label: 'Represented next bill', amount: 17,
+        frequency: 'once', date: '2026-10-24', confidence: 'confirmed',
+        payingAccount: 'chequing-a',
+      },
+      {
+        id: 'represented-past', label: 'Represented past bill', amount: 11,
+        frequency: 'once', date: '2026-09-28', confidence: 'confirmed',
+        payingAccount: 'chequing-a',
+      },
+      {
+        id: 'represented-today', label: 'Represented as-of bill', amount: 8,
+        frequency: 'once', date: '2026-10-09', confidence: 'confirmed',
+        payingAccount: 'chequing-a',
+      },
+    ],
   });
   const advice = recommend(plan);
+  function hits(id, date) {
+    const found = [];
+    for (const period of advice.payPeriodViews || []) {
+      for (const row of billOn(period, id, date)) {
+        found.push({ start: period.start, role: period.timelineRole, row });
+      }
+    }
+    return found;
+  }
+  function plannedFace(row) {
+    return !!(row && row.status !== 'PAID' && row.glanceKind !== 'paid'
+      && (row.status === 'planned' || row.status === 'projected')
+      && (row.glanceKind === 'planned' || row.glanceKind === 'projected'));
+  }
+  const futureHits = hits('represented-future', '2026-11-10');
   const host = rowByStart(advice, N2.start);
-  const represented = billOn(host, 'represented-future', '2026-11-10');
-  ok(represented.length === 1 && represented[0].status === 'PAID',
-    'a represented Nov 10 occurrence prints PAID on the future row');
+  ok(futureHits.length === 1 && futureHits[0].start === N2.start
+      && futureHits[0].role === 'future',
+    'the Nov 10 represented bill is on N+2 once');
+  ok(plannedFace(futureHits[0] && futureHits[0].row),
+    'a represented Nov 10 occurrence after asOf stays planned, not PAID',
+    futureHits[0] && futureHits[0].row.status);
+  ok(futureHits[0] && futureHits[0].row.settlement === 'represented'
+      && near(futureHits[0].row.amount, 42) && near(futureHits[0].row.planned, 42),
+    'that occurrence keeps its amount and represented settlement');
   ok(host && near(host.periodBillLoad, 42),
     'that occurrence stays in the bill load', String(host && host.periodBillLoad));
   ok(host && near(host.balanceAfterDeductions, roundCent(6000 - 42 - holdFor(PETS))),
     'N+2 BAD with the represented bill is 6000 − 42 − 450 = 5508',
     String(host && host.balanceAfterDeductions));
-  const others = (advice.payPeriodViews || []).filter(p =>
-    p && (p.timelineRole === 'future' || p.timelineRole === 'next'));
-  for (const period of others) {
-    const paid = (period.bills || []).filter(b => b && b.status === 'PAID' && b.id !== 'represented-future');
-    ok(paid.length === 0, period.start + ' has no other PAID bill',
-      paid.map(b => b.id).join(','));
-  }
+
+  const next = rowByRole(advice, 'next');
+  const nextHits = hits('represented-next', '2026-10-24');
+  ok(next === advice.defaultView.calendarPeriods[1],
+    'Budget next is still calendarPeriods[1]');
+  ok(nextHits.length === 1 && nextHits[0].role === 'next' && plannedFace(nextHits[0].row),
+    'a represented Oct 24 occurrence on Next Pay Period stays planned',
+    nextHits[0] && nextHits[0].row.status);
+  ok(next && near(next.periodBillLoad, roundCent(MORTGAGE + HYDRO + 17)),
+    'Next Pay Period bill load adds the 17 once',
+    String(next && next.periodBillLoad));
+  ok(next && near(next.balanceAfterDeductions, roundCent(NEXT.bad - 17)),
+    'Next Pay Period BAD is the incumbent 3351 minus 17',
+    String(next && next.balanceAfterDeductions));
+  ok(billOn(next, 'mortgage', '2026-11-01').length === 1
+      && billOn(next, 'hydro', '2026-11-03').length === 1,
+    'the incumbent next-period bills are still counted once');
+
+  const pastHits = hits('represented-past', '2026-09-28');
+  ok(pastHits.length === 1 && pastHits[0].role === 'past'
+      && pastHits[0].row.status === 'PAID' && pastHits[0].row.glanceKind === 'paid'
+      && near(pastHits[0].row.amount, 11),
+    'a represented key dated before asOf stays PAID on the past row',
+    pastHits.map(h => h.role + ':' + (h.row && h.row.status)).join(','));
+  const todayHits = hits('represented-today', AS_OF);
+  ok(todayHits.length === 1 && todayHits[0].role === 'current'
+      && todayHits[0].row.status === 'PAID' && todayHits[0].row.glanceKind === 'paid',
+    'a represented key dated on asOf stays PAID on the current row',
+    todayHits.map(h => h.role + ':' + (h.row && h.row.status)).join(','));
 }
 
 console.log('\n=== 6. completed historical period is unchanged on the timeline ===');
@@ -610,12 +675,22 @@ console.log('\n=== timeline source does not read Road Ahead ===');
   const compose = body('composePayPeriodTimeline', 'attachPaydayCarryover');
   const bound = body('payPeriodTimelineBound', 'payPeriodTimelineHorizonReason');
   const regime = body('timelineEstimatedDaleRegime', 'payPeriodTimelineBound');
-  ok(windows && compose && bound && regime, 'timeline helpers are present');
+  const walk = body('prepareBaselineTrajectoryWalk', 'trajectoryWeakerStatus');
+  const shared = body('projectedDalePayroll', 'normalSpendingCoverageUsable');
+  ok(windows && compose && bound && regime && walk && shared, 'timeline helpers are present');
   const blob = windows + compose + bound + regime;
   ok(!/baselineTrajectory|stage3|month-close|monthClose/.test(blob),
     'timeline windows, bound, composer, and regime stamp do not read Road Ahead values');
-  ok(/daleEstimatedPayrollDeposits/.test(regime + bound),
-    'the 2027 stamp reads the payroll-regime authority');
+  ok(/projectedDalePayroll\(/.test(regime),
+    'further-future rows consume the shared projected Dale payroll source');
+  ok(!/daleEstimatedPayrollDeposits\(/.test(regime),
+    'the timeline does not call the statutory calculator beside that source');
+  ok(/projectedDalePayroll\(/.test(walk),
+    'the trajectory walk consumes the same projected Dale payroll source');
+  ok(!/daleEstimatedPayrollDeposits\(/.test(walk),
+    'the walk does not call the statutory calculator beside that source');
+  ok(/daleEstimatedPayrollDeposits\(/.test(shared) && typeof F.projectedDalePayroll === 'function',
+    'projectedDalePayroll is the exported wrapper around the one calculator');
 }
 
 console.log('\n=== 2027 estimated regime on further-future rows only ===');
@@ -775,7 +850,9 @@ console.log('\n=== 2027 estimated regime on further-future rows only ===');
     'Sep 25 meets the owner minimum');
   const starts = (sep.payPeriodViews || []).map(p => p.start);
   ok(new Set(starts).size === starts.length, 'Sep 25 timeline starts do not duplicate');
-  console.log('  future-row count from 2026-09-25: ' + sepFutures.length);
+  console.log('  future-row count from 2026-09-25: ' + sepFutures.length
+    + '; through ' + sepTimeline.through
+    + '; boundary ' + sepTimeline.incomeRegimeBoundary);
 
   const capped = recommend(withRegime(AS_OF), AS_OF, {
     daleIncomeAuthorityEnd: '2028-06-30',
@@ -785,6 +862,74 @@ console.log('\n=== 2027 estimated regime on further-future rows only ===');
     capped.payPeriodTimeline.through);
   ok(!(capped.payPeriodViews || []).some(p => p && p.start >= '2028-01-01'),
     '2028 cycles stay unpublished');
+}
+
+console.log('\n=== trajectory and timeline share one projected Dale payroll ===');
+{
+  const DALE_2027 = 3849.40;
+  const BONUS_2027 = 14717.64;
+  const plan = {
+    windowDays: 91,
+    startingCash: { amount: 2500 },
+    defaults: { targetBuffer: 200, extraDebtMonthly: 0, scenario: 'expected' },
+    budget: {
+      basis: 'ytd',
+      categories: [{
+        id: 'groceries', label: 'Groceries', class: 'essential',
+        from: ['Groceries'], plannedWeekly: 140,
+      }],
+    },
+    obligations: [],
+    bills: [],
+    commitments: [],
+    income: [{
+      id: 'payroll', label: 'Payroll — Seaspan', frequency: 'biweekly',
+      anchor: ANCHOR, amount: 4264, confidence: 'confirmed',
+    }],
+    payrollPlanningAssumptions: {
+      salaryRaiseFactor: 1.04,
+      bonusRate: 0.18,
+      authorizedThroughYear: 2027,
+    },
+  };
+  const periods = {
+    periods: {
+      ytd: { label: 'YTD', months: 1, spending: [{ label: 'Groceries', total: 1000 }] },
+    },
+  };
+  const projected = F.projectedDalePayroll(plan, '2026-08-19', '2027-08-18', { asOf: '2026-08-19' });
+  const janDeposits = (projected.deposits || []).filter(d => d && d.date && d.date.slice(0, 7) === '2027-01');
+  const febDeposits = (projected.deposits || []).filter(d => d && d.date && d.date.slice(0, 7) === '2027-02');
+  const bonus = (projected.deposits || []).filter(d => d && d.kind === 'bonus' && d.date === '2027-02-25');
+  ok(projected.status === 'ready', 'projected Dale payroll is ready');
+  ok(janDeposits.length === 3 && janDeposits.every(d => d.kind === 'regular' && d.net === DALE_2027),
+    'January 2027 projected regulars are three deposits of 3849.40',
+    janDeposits.map(d => d.date + ':' + d.net).join(','));
+  ok(bonus.length === 1 && bonus[0].net === BONUS_2027,
+    'the February bonus is projected once at 14717.64');
+  const janNet = roundCent(janDeposits.reduce((s, d) => s + d.net, 0));
+  const febNet = roundCent(febDeposits.reduce((s, d) => s + d.net, 0));
+  ok(janNet === 11548.20, 'hand January projected net is 3 × 3849.40 = 11548.20', String(janNet));
+  ok(febNet === 22416.44, 'hand February projected net is 3849.40 + 3849.40 + 14717.64 = 22416.44',
+    String(febNet));
+  const settled = F.projectedDalePayroll(plan, '2027-01-01', '2027-01-31', {
+    asOf: '2027-01-01',
+    representedEvents: [{ id: 'payroll', date: '2027-01-01' }],
+  });
+  ok(settled.regime && (settled.regime.deposits || []).some(d => d.date === '2027-01-01' && d.kind === 'regular'),
+    'the calculator still emits the represented January cheque');
+  ok(!(settled.deposits || []).some(d => d.date === '2027-01-01'),
+    'the shared source omits a cheque already represented on asOf');
+  const traj = F.baselineTrajectory(plan, [], '2026-08-19', { periods });
+  const jan = (traj.months || []).find(m => m && m.month === '2027-01');
+  const feb = (traj.months || []).find(m => m && m.month === '2027-02');
+  ok(traj.status === 'ready' && jan && jan.income && jan.income.status === 'estimated'
+      && jan.income.amount === janNet,
+    'Road Ahead January income equals the shared projected source',
+    jan && jan.income && String(jan.income.amount));
+  ok(feb && feb.income && feb.income.amount === febNet,
+    'Road Ahead February income equals the shared projected source, bonus once',
+    feb && feb.income && String(feb.income.amount));
 }
 
 if (failures) {

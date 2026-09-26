@@ -6118,6 +6118,18 @@
     const pushRow = (due, row, hostWindow) => {
       const window = hostWindow || windowContainingDate(windows, due);
       if (!window || !row) return;
+      // Budget's next window and every further timeline window have role
+      // future. An occurrence after the Forecast financial date stays in
+      // this period and in the bill load, but the household-facing status
+      // stays planned. Settlement, amount, remaining, and actual are
+      // unchanged, so periodBillLoad and Balance After Deductions do not
+      // move. A date on or before asOf, and every active or lookback
+      // window, keep the incumbent status.
+      if (window.role === 'future' && row.date && asOf && row.date > asOf
+          && (row.status === 'PAID' || row.glanceKind === 'paid')) {
+        row.status = 'planned';
+        row.glanceKind = 'planned';
+      }
       buckets[window.id].push(row);
     };
     const activeWindow = windows.find(w => w && w.role === 'active') || windows[0];
@@ -7851,7 +7863,7 @@
     // this-pay-period or next-pay-period. This reads the payroll-regime
     // authority, not Road Ahead stage, trajectory, or month-close results.
     const daleRegime = (windows || []).some(w => w && String(w.id).indexOf('future:') === 0)
-      ? timelineEstimatedDaleRegime(plan) : null;
+      ? timelineEstimatedDaleRegime(plan, asOf, opts) : null;
     const daleMaps = daleRegime ? futureTimelineDaleDepositMaps(daleRegime) : null;
     for (const section of calendar.billSections || []) {
       if (section && section.id) sectionById[section.id] = section;
@@ -8235,19 +8247,23 @@
 
   // Owner Dale, 2026-09-25 7:43 PM PT: "Use the 2027 estimated payroll
   // for 2027 pay periods, marked as estimated." Further-future timeline
-  // rows read that existing regime. Current and next Budget rows do not.
-  // A missing regime fails closed at the payroll-modelled boundary and
-  // does not carry the 2026 net forward. A caller may name an earlier
-  // end. A later end does not pass the regime or the knowledge horizon.
-  function timelineEstimatedDaleRegime(plan) {
+  // rows read projectedDalePayroll, the one Forecast-owned projected
+  // source. They do not call the statutory calculator themselves, and
+  // they do not read Road Ahead results. Current and next Budget rows
+  // do not use the estimate. A missing regime fails closed at the
+  // payroll-modelled boundary and does not carry the 2026 net forward.
+  // A caller may name an earlier end. A later end does not pass the
+  // regime or the knowledge horizon.
+  function timelineEstimatedDaleRegime(plan, asOf, opts) {
     const assumptions = readPayrollPlanningAssumptions(plan);
     if (!assumptions || !assumptions.estimatedThrough) return null;
-    const regime = daleEstimatedPayrollDeposits(
-      plan, DALE_PAYROLL_REGIME_FROM, assumptions.estimatedThrough);
-    if (!regime || regime.status !== 'ready') return null;
+    const projected = projectedDalePayroll(
+      plan, DALE_PAYROLL_REGIME_FROM, assumptions.estimatedThrough,
+      Object.assign({}, opts || {}, { asOf: asOf || DALE_PAYROLL_REGIME_FROM }));
+    if (!projected || projected.status !== 'ready') return null;
     return {
-      estimatedThrough: assumptions.estimatedThrough,
-      deposits: regime.deposits || [],
+      estimatedThrough: projected.estimatedThrough,
+      deposits: projected.deposits || [],
     };
   }
 
@@ -8354,7 +8370,7 @@
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const knowledgeEnd = horizon && horizon.end ? horizon.end : null;
     const incomeRegimeBoundary = DALE_NET_MODELLED_THROUGH;
-    const regime = timelineEstimatedDaleRegime(plan);
+    const regime = timelineEstimatedDaleRegime(plan, asOf, opts);
     const estimatedThrough = regime ? regime.estimatedThrough : null;
     const regimeCeiling = estimatedThrough || incomeRegimeBoundary;
     let authorityEnd = regimeCeiling;
@@ -14290,13 +14306,16 @@
     };
   }
 
-  // Trajectory-local estimated Dale/Seaspan payroll. Does not change
-  // default expandEvents / simulate / recommend semantics. 2026 regular
-  // net on the operating plan stays the incumbent modelled amount.
-  // 2027 Dale deposits are estimated from salary evidence,
+  // Estimated Dale/Seaspan payroll calculator. Does not change default
+  // expandEvents / simulate / recommend semantics. 2026 regular net on
+  // the operating plan stays the incumbent modelled amount. 2027 Dale
+  // deposits are estimated from salary evidence,
   // plan.payrollPlanningAssumptions, and last-published CRA statutory
   // tables. After the owner-authorized year the regime fails closed
   // until a later year is authorized and independently proved.
+  // projectedDalePayroll is the one projected source both the Road Ahead
+  // walk and further-future Budget timeline rows consume. This function
+  // remains the only statutory calculator.
   const SEASPAN_CURRENT_ANNUAL = 158091;
   const SEASPAN_RAISE_LAST_EFFECTIVE = '2026-02-22';
   const SEASPAN_RAISE_NEXT_EFFECTIVE = '2027-02-22';
@@ -14304,12 +14323,13 @@
   const SEASPAN_BONUS_LAST_DEPOSIT = '2026-02-25';
   const DALE_NET_MODELLED_THROUGH = '2026-12-31';
   const DALE_PAYROLL_REGIME_FROM = '2027-01-01';
-  // Owner Dale, 2026-09-25 7:43 PM PT: further-future Budget timeline
-  // rows use daleEstimatedPayrollDeposits from DALE_PAYROLL_REGIME_FROM
-  // through the assumption year, marked estimated. Do not point that
-  // path at baselineTrajectory, stage results, or month-close. Current
-  // and next Budget rows stay on expandEvents. A later year stays
-  // unpublished until a later regime is authorized.
+  // Owner Dale, 2026-09-25 7:43 PM PT: "Use the 2027 estimated payroll
+  // for 2027 pay periods, marked as estimated." projectedDalePayroll
+  // publishes that estimate from DALE_PAYROLL_REGIME_FROM through the
+  // assumption year. The Road Ahead walk and further-future Budget
+  // timeline rows both consume it. Do not point either path at the
+  // other's results. Current and next Budget rows stay on expandEvents.
+  // A later year stays unpublished until a later regime is authorized.
 
   const SEASPAN_OBSERVED_SALARY_REGIMES = [
     { from: '2025-03-01', annual: 151283, trust: 'observed' },
@@ -14662,6 +14682,41 @@
     };
   }
 
+  // One Forecast-owned projected Dale payroll source. daleEstimatedPayrollDeposits
+  // remains the only statutory calculator, including the deposit-year CPP/EI
+  // reset and the February bonus. This wrapper does not mint a second net.
+  // Deposits before 2027-01-01 are not projected. A key already represented
+  // at this financial date is omitted so the same cheque is not counted
+  // twice. The Road Ahead walk and further-future Budget timeline rows both
+  // consume the returned deposits. .regime is the untouched calculator
+  // result, so the walk's published regime object stays the same object
+  // the calculator returned.
+  function projectedDalePayroll(plan, start, end, opts) {
+    const regime = daleEstimatedPayrollDeposits(plan, start, end);
+    const regimeReady = !!(regime && regime.status === 'ready');
+    const planning = regimeReady ? regime.planningAssumptions : null;
+    const estimatedThrough = planning && planning.estimatedThrough;
+    const unavailableFrom = planning && planning.unavailableFrom;
+    const asOf = (opts && opts.asOf) || start;
+    const superseded = representedKeySet(plan, opts || {}, asOf);
+    const deposits = [];
+    if (regimeReady) {
+      for (const dep of regime.deposits || []) {
+        if (!dep || !dep.date || dep.date < DALE_PAYROLL_REGIME_FROM) continue;
+        if (estimatedThrough && dep.date > estimatedThrough) continue;
+        if (superseded.has(dep.id + '@' + dep.date)) continue;
+        deposits.push(dep);
+      }
+    }
+    return {
+      status: regimeReady ? 'ready' : 'unavailable',
+      deposits,
+      estimatedThrough: regimeReady ? estimatedThrough : null,
+      unavailableFrom: regimeReady ? unavailableFrom : null,
+      regime,
+    };
+  }
+
   // Road Ahead normal-spending input only. Owner Household Budget
   // targets stay on the plan. Income, bills, obligations, and dated
   // commitments stay on expandEvents. This is not a second planner,
@@ -14959,20 +15014,16 @@
       return { status: 'unavailable', reason: 'Forecast could not establish the knowledge horizon.' };
     }
 
-    const regime = daleEstimatedPayrollDeposits(plan, horizon.start, horizon.end);
-    const regimeReady = !!(regime && regime.status === 'ready');
-    const planning = regimeReady ? regime.planningAssumptions : null;
-    const estimatedThrough = planning && planning.estimatedThrough;
-    const unavailableAfter = planning && planning.unavailableFrom;
+    const projectedPayroll = projectedDalePayroll(
+      plan, horizon.start, horizon.end, Object.assign({}, opts, { asOf: day }));
+    const regime = projectedPayroll.regime;
+    const regimeReady = projectedPayroll.status === 'ready';
+    const estimatedThrough = projectedPayroll.estimatedThrough;
+    const unavailableAfter = projectedPayroll.unavailableFrom;
     const estimatedByDate = new Map();
     const superseded = representedKeySet(plan, opts, day);
-    if (regimeReady) {
-      for (const dep of regime.deposits || []) {
-        if (dep.date < DALE_PAYROLL_REGIME_FROM) continue;
-        if (estimatedThrough && dep.date > estimatedThrough) continue;
-        if (superseded.has(dep.id + '@' + dep.date)) continue;
-        estimatedByDate.set(dep.kind + ':' + dep.date, dep);
-      }
+    for (const dep of projectedPayroll.deposits || []) {
+      estimatedByDate.set(dep.kind + ':' + dep.date, dep);
     }
     const planDaleBonusDates = new Set();
     for (const s of (plan && plan.income) || []) {
@@ -17110,7 +17161,7 @@
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
-    projectDebts, baselineTrajectory, baselineTrajectoryScenario, daleEstimatedPayrollDeposits,
+    projectDebts, baselineTrajectory, baselineTrajectoryScenario, daleEstimatedPayrollDeposits, projectedDalePayroll,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,
