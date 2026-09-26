@@ -274,17 +274,18 @@ console.log('\n=== 3. Plan prints Forecast trend values; page does not compute t
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'this-period', planView: advice.defaultView,
   });
-  ok(/value="payday-carryover"/.test(defaultHtml),
-    'More views lists Payday carryover');
+  ok(!/value="payday-carryover"/.test(defaultHtml) && !/data-plan-look/.test(defaultHtml),
+    'Budget has no More views Payday carryover control');
   ok(!/data-payday-carryover-trend/.test(defaultHtml),
     'current-period UI does not print the carryover trend');
-  const html = composer.operatingSurfaceHtml({
+  const html = composer.paydayCarryoverTrendHtml(advice.paydayCarryoverTrend);
+  const carrySheet = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'payday-carryover',
     planView: composer.selectedPlanView(advice, 'payday-carryover'),
   });
-  ok(/data-payday-carryover-trend/.test(html),
-    'Payday carryover look renders the Forecast trend sheet');
+  ok(/data-payday-carryover-trend/.test(html) && !/data-payday-carryover-trend/.test(carrySheet),
+    'the carryover printer still renders the Forecast trend; Budget does not navigate to it');
   const order = paydayOrder(html);
   const expected = ((advice.paydayCarryoverTrend && advice.paydayCarryoverTrend.points) || [])
     .map(p => p.payday);
@@ -384,11 +385,15 @@ console.log('\n=== 5. known negative carryover is a deficit, not leftover ===');
   ok(unknownPoint && unknownPoint.known !== true && unknownPoint.amount == null,
     'unknown earlier payday stays unknown beside the deficit');
 
-  const forecastHtml = composer.operatingSurfaceHtml({
+  const forecastHtml = composer.paydayCarryoverTrendHtml(advice.paydayCarryoverTrend);
+  const forecastSheet = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'payday-carryover',
     planView: composer.selectedPlanView(advice, 'payday-carryover'),
   });
+  ok(!/data-payday-carryover-trend/.test(forecastSheet)
+      && advice.paydayCarryoverTrend && Array.isArray(advice.paydayCarryoverTrend.points),
+    'Budget does not navigate to the deficit trend; Forecast still publishes the points');
   const forecastDeficitRow = rowHtml(forecastHtml, previous.nextPayday);
   ok(/data-carryover-sign="negative"/.test(forecastDeficitRow),
     'Forecast-published deficit row is marked negative');

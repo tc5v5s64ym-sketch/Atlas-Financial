@@ -366,10 +366,11 @@ console.log('\n=== 5. trusted control keeps the normal This payday waterfall ===
   ok(trusted.operatingPlanUnavailable !== true
       && /data-calendar-waterfall/.test(html)
       && /Current Balance/.test(html)
-      && /Pay periods/.test(html)
+      && /data-calendar-waterfall="this-pay-period"/.test(html)
+      && !/data-calendar-period-picker/.test(html)
       && !/data-unavailable-primary/.test(html)
       && !/data-last-trusted-opening/.test(html),
-    'trusted operating plan still prints This payday / pay-period / waterfall experience');
+    'trusted operating plan still prints the current pay-period waterfall');
   ok(near(Number(trusted.defaultView.currentBalance), CHEQUING_CASH),
     'trusted control does not move current figures');
   const liveAmount = /data-live-current-balance-amount>([^<]+)/.exec(html);

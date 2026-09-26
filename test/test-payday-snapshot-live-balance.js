@@ -350,8 +350,8 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
   const cardStart = html.indexOf('data-calendar-waterfall="this-pay-period"');
   const liveBlock = liveStart >= 0 ? html.slice(liveStart, cardStart) : '';
   const card = cardStart >= 0 ? html.slice(cardStart) : '';
-  ok(pickerStart >= 0 && pickerStart < liveStart,
-    'pay period selector prints before live Current Balance');
+  ok(pickerStart < 0 && liveStart >= 0,
+    'Budget has no pay period selector; live Current Balance still prints');
   ok(liveStart >= 0 && cardStart > liveStart,
     'live Current Balance is rendered before the payday snapshot card');
   ok(/Current Balance/.test(liveBlock) && /as of September 4/.test(liveBlock)

@@ -122,7 +122,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, calendarWaterfallHtml, money2 });`,
     { Forecast: F }
   );
 }
@@ -708,8 +708,9 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const glance = defaultGlance(html);
-  ok(/This Pay Period/.test(html) && /Next Pay Period/.test(html),
-    'page names the two payday waterfalls');
+  ok(/This Pay Period/.test(html) && !/Next Pay Period/.test(html)
+      && (advice.defaultView.calendarPeriods || []).some(p => /Next Pay Period/.test(p.label || '')),
+    'Budget names the active payday waterfall; Forecast still publishes the next period');
   ok(/data-calendar-waterfall="this-pay-period"/.test(html),
     'default print shows the active This Pay Period waterfall');
   ok(!/\bForecast\b|\bAtlas\b|\brepresented\b|\bunverified\b|\basOf\b/.test(glance),
@@ -902,10 +903,12 @@ console.log('\n=== 12. subscriptions exist only under Bills, never as a househol
   ok(budgetBlock && !/Subscriptions/i.test(budgetBlock[0])
       && !/included in Bills, remaining not deducted/.test(budgetBlock[0]),
     'Household Budget block does not print a subscriptions line');
-  const netflixLine = /data-period-bill="netflix"[^>]*>\s*<span>([^<]*)<\/span>/.exec(html);
+  const nextCard = composer.calendarWaterfallHtml(period(advice.defaultView, 'next-pay-period'));
+  const netflixLine = /data-period-bill="netflix"[^>]*>\s*<span>([^<]*)<\/span>/.exec(nextCard);
   ok(netflixLine && /Netflix/.test(netflixLine[1]) && / · (PAID|pending|still due)$/.test(netflixLine[1])
-      && !/BILLS ACCOUNT/i.test(netflixLine[1]),
-    'page prints Netflix as a Bills row without paying account',
+      && !/BILLS ACCOUNT/i.test(netflixLine[1])
+      && !/data-period-bill="netflix"/.test(html),
+    'next-period printer lists Netflix as a Bills row without paying account; Budget does not print that window',
     netflixLine && netflixLine[1]);
   ok(!/Pixieset|Mailchimp|CMAW/i.test(html),
     'Pixieset / Mailchimp / CMAW stay off the sheet');
@@ -1841,15 +1844,20 @@ console.log('\n=== 18. unavailable current period fail-closes the dependent next
     recommended: trusted.weekly,
     planCalendarShow: 'next-pay-period',
   });
-  ok(/Dale salary/.test(liveHtml)
-      && /data-period-income="amanda15"/.test(liveHtml)
-      && !/data-period-income="amandaEnd"/.test(liveHtml)
-      && !/Payroll — Seaspan/.test(liveHtml)
-      && /Netflix/.test(liveHtml)
-      && /<dt>Planned<\/dt>/.test(liveHtml)
-      && /household-budget-metrics/.test(liveHtml)
-      && !/data-operating-plan="unavailable"/.test(liveHtml),
-    'trusted printed next payday window still publishes arriving Seaspan, Amanda 15th, bills, and Household Budget');
+  const nextCard = composer.calendarWaterfallHtml(liveP2);
+  ok(/data-calendar-waterfall="this-pay-period"/.test(liveHtml)
+      && !/data-calendar-waterfall="next-pay-period"/.test(liveHtml)
+      && !/data-calendar-period-picker/.test(liveHtml),
+    'Budget prints the active payday waterfall and ignores a next-period show');
+  ok(/Dale salary/.test(nextCard)
+      && /data-period-income="amanda15"/.test(nextCard)
+      && !/data-period-income="amandaEnd"/.test(nextCard)
+      && !/Payroll — Seaspan/.test(nextCard)
+      && /Netflix/.test(nextCard)
+      && /<dt>Planned<\/dt>/.test(nextCard)
+      && /household-budget-metrics/.test(nextCard)
+      && !/data-operating-plan="unavailable"/.test(nextCard),
+    'next payday printer still publishes arriving Seaspan, Amanda 15th, bills, and Household Budget');
 
   const src = read('public/forecast.js');
   const waterfallFn = /function calendarPeriodWaterfalls\([\s\S]*?\n  \}/.exec(src);

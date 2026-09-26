@@ -157,7 +157,11 @@ console.log('\n=== Shortfall, zero, and unavailable ===');
     && /planning-road-amount-unavailable/.test(step(held, 'before'))
     && /planning-road-amount-unavailable/.test(step(held, 'planned'))
     && /planning-road-amount-unavailable/.test(step(held, 'after'))
-    && !/\$0\.00/.test(held),
+    && !/\$0\.00/.test(step(held, 'before'))
+    && !/\$0\.00/.test(step(held, 'planned'))
+    && !/\$0\.00/.test(step(held, 'after'))
+    && /data-canonical-headline=/.test(held)
+    && /data-reference-deducted="false"/.test(held),
     'unavailable before, planned, and after stay em-dashes and are not $0');
 
   const road = page.planningRoadAheadHtml(traj, 'month', monthKey(traj), live.meta.asOf);

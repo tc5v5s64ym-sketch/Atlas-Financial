@@ -400,10 +400,12 @@ console.log('\n=== 5. picker prints Forecast past views; page does not compute t
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'this-period', planView: advice.defaultView,
   });
-  ok(/Previous pay period/.test(defaultHtml) && /value="past:2026-08-14"/.test(defaultHtml),
-    'this-period More views lists the previous completed period');
-  ok(/value="past:2026-07-31"/.test(defaultHtml),
-    'this-period More views lists the earlier completed period');
+  ok(!/data-plan-look/.test(defaultHtml) && !/value="past:2026-08-14"/.test(defaultHtml),
+    'this-period Budget has no More views list of the previous completed period');
+  ok(!/value="past:2026-07-31"/.test(defaultHtml)
+      && (advice.pastPeriodViews || []).some(p => p && p.start === '2026-08-14')
+      && (advice.pastPeriodViews || []).some(p => p && p.start === '2026-07-31'),
+    'this-period Budget has no More views list of the earlier completed period');
   ok(!/data-payday-carryover/.test(defaultHtml),
     'current-period UI does not print payday carryover');
   ok(/data-live-current-balance/.test(defaultHtml),
@@ -411,12 +413,14 @@ console.log('\n=== 5. picker prints Forecast past views; page does not compute t
   const prevView = composer.selectedPlanView(advice, 'past:2026-08-14');
   ok(prevView && prevView.start === prev.start && prevView.end === prev.end,
     'picker selects the Forecast previous-period view');
-  const prevHtml = composer.operatingSurfaceHtml({
+  const prevHtml = composer.historicalPeriodHtml(prevView);
+  const prevSheet = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'past:2026-08-14', planView: prevView,
   });
-  ok(/data-historical-period/.test(prevHtml),
-    'previous period renders as a completed-period sheet');
+  ok(/data-historical-period/.test(prevHtml) && prevSheet === defaultHtml
+      && !/data-historical-period/.test(prevSheet),
+    'previous period still renders from the completed-period printer; Budget does not navigate to it');
   ok(/data-payday-carryover/.test(prevHtml) && prevHtml.includes(composer.money2(CARRY)),
     'previous period prints Payday carryover $1,000');
   ok(!/data-live-current-balance/.test(prevHtml),
@@ -439,12 +443,13 @@ console.log('\n=== 5. picker prints Forecast past views; page does not compute t
   const earlyView = composer.selectedPlanView(advice, 'past:2026-07-31');
   ok(earlyView && earlyView.start === early.start && earlyView.end === early.end,
     'picker selects the Forecast earlier-period view');
-  const earlyHtml = composer.operatingSurfaceHtml({
+  const earlyHtml = composer.historicalPeriodHtml(earlyView);
+  const earlySheet = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'past:2026-07-31', planView: earlyView,
   });
-  ok(/data-historical-period/.test(earlyHtml),
-    'earlier period renders as a completed-period sheet');
+  ok(/data-historical-period/.test(earlyHtml) && earlySheet === defaultHtml,
+    'earlier period still renders from the completed-period printer; Budget does not navigate to it');
   ok(!/data-payday-carryover/.test(earlyHtml),
     'earlier period does not invent a carryover figure');
   ok(/Jul 31/.test(earlyHtml) && !/Past gift/.test(earlyHtml),
@@ -565,17 +570,20 @@ console.log('\n=== 9. completed sheet publishes household-budget actuals for the
     'earlier period with no grocery actuals does not invent spent');
   ok(liveGroceries && near(liveGroceries.spent, GROCERY_LIVE),
     'current period still classifies the Sep 4 grocery actual');
-  const prevHtml = composer.operatingSurfaceHtml({
+  const prevHtml = composer.historicalPeriodHtml(
+    composer.selectedPlanView(advice, 'past:2026-08-14'));
+  const prevSheet = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'past:2026-08-14',
     planView: composer.selectedPlanView(advice, 'past:2026-08-14'),
   });
   ok(/data-operating-question="06"/.test(prevHtml)
       && /data-payday-household-budget/.test(prevHtml),
-    'completed sheet renders Forecast householdBudget');
+    'completed-period printer still renders Forecast householdBudget');
   ok(/data-budget-category="groceries"/.test(prevHtml)
-      && prevHtml.includes(composer.money2(GROCERY_PREV)),
-    'completed sheet prints the window\'s grocery actual');
+      && prevHtml.includes(composer.money2(GROCERY_PREV))
+      && !/data-historical-period/.test(prevSheet),
+    'completed-period printer prints the window\'s grocery actual; Budget does not open that sheet');
   const uncovered = historyPlan();
   const shortPacket = actualsPacket();
   shortPacket.coverageStart = '2026-08-28';

@@ -4430,6 +4430,12 @@
     'groceries', 'fuel', 'household', 'pets', 'restaurants',
     'dale-guilt-free', 'amanda-guilt-free',
   ];
+  // Road Ahead reference only. One flat allowance per Seaspan pay period,
+  // published beside Balance After Deductions. It is not a Budget calendar
+  // hold, not deducted from BAD, the month headline, or trajectory cash, and
+  // not a second other-spend store. plan other-spend.plannedMonthly stays the
+  // owner target and is not this figure.
+  const ROAD_AHEAD_OTHER_SPEND_PER_PAY_PERIOD = 400;
 
   // Explicit Lunch Money category Uncategorised matches the incumbent
   // remainder category as spend. That assignment is not a trusted named
@@ -7790,6 +7796,73 @@
     return postedBillsAccountCash(plan);
   }
 
+  // One Balance After Deductions identity. Displayed period income minus
+  // assigned bills and required payments minus the Household Budget hold.
+  // Opening cash is not a term. Callers publish this amount; they do not
+  // re-derive it.
+  function balanceAfterDeductionsAmount(incomeTotal, assignedBills, householdBudgetHold) {
+    if (incomeTotal == null || assignedBills == null || householdBudgetHold == null) return null;
+    const income = Number(incomeTotal);
+    const bills = Number(assignedBills);
+    const hold = Number(householdBudgetHold);
+    if (!isFinite(income) || !isFinite(bills) || !isFinite(hold)) return null;
+    return roundCent(roundCent(income - bills) - hold);
+  }
+
+  // Future canonical windows replace expandEvents-carried 2026 Dale net on
+  // or after 2027-01-01 with daleEstimatedPayrollDeposits. The active Budget
+  // window is left alone. An unauthorized regime fails that window closed
+  // rather than publishing the 2026 carry-forward.
+  function applyAuthorizedDalePayrollRegime(plan, windows, incomeByWindow) {
+    const future = (windows || []).filter(w => w && w.role === 'future' && w.end);
+    if (!future.some(w => w.end >= DALE_PAYROLL_REGIME_FROM)) return;
+    const end = future.reduce((max, w) => (w.end > max ? w.end : max), future[0].end);
+    const regime = daleEstimatedPayrollDeposits(plan, DALE_PAYROLL_REGIME_FROM, end);
+    const regimeReady = !!(regime && regime.status === 'ready');
+    const deposits = regimeReady
+      ? (regime.deposits || []).filter(d => d && d.date >= DALE_PAYROLL_REGIME_FROM)
+      : [];
+    for (const window of future) {
+      if (window.end < DALE_PAYROLL_REGIME_FROM) continue;
+      const rows = incomeByWindow[window.id] || [];
+      const inWindow = deposits.filter(d => d.date >= window.start && d.date <= window.end);
+      const carried = rows.filter(r =>
+        r && r.incomeClass === 'dale' && r.date >= DALE_PAYROLL_REGIME_FROM);
+      if (!carried.length && !inWindow.length) continue;
+      if (!regimeReady) {
+        window.canonicalIncomeUnavailable = true;
+        window.canonicalIncomeReason = regime && regime.reason
+          ? regime.reason
+          : 'Dale payroll/bonus from 2027-01-01 is unmodelled (deposit-year CPP/EI reset). Not $0 and not expandEvents-carried 2026 post-CPP/EI-max net.';
+        continue;
+      }
+      const kept = rows.filter(r =>
+        !(r && r.incomeClass === 'dale' && r.date >= DALE_PAYROLL_REGIME_FROM));
+      const added = inWindow.map(d => {
+        const net = roundCent(Number(d.net) || 0);
+        return {
+          id: d.id || (d.kind === 'bonus' ? 'payrollBonus' : 'payroll'),
+          label: d.label || (d.kind === 'bonus' ? 'Payroll bonus — Seaspan' : 'Payroll — Seaspan'),
+          kind: 'income',
+          date: d.date,
+          planned: net,
+          amount: net,
+          remaining: net,
+          status: 'estimated',
+          confidence: 'estimated',
+          trust: 'estimated',
+          incomeClass: 'dale',
+          glanceKind: 'in',
+          movement: householdMovement(net, 'in'),
+          alreadyInCash: false,
+        };
+      });
+      incomeByWindow[window.id] = kept.concat(added).sort((a, b) =>
+        String(a.date || '').localeCompare(String(b.date || ''))
+        || String(a.label || '').localeCompare(String(b.label || '')));
+    }
+  }
+
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -7797,6 +7870,9 @@
     const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
+    if (opts.authorizedDalePayrollOnFuture) {
+      applyAuthorizedDalePayrollRegime(plan, windows, incomeByWindow);
+    }
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
@@ -7819,7 +7895,8 @@
       const role = window.role || 'future';
       const projected = role === 'future';
       const lookback = role === 'lookback';
-      const income = incomeByWindow[window.id] || [];
+      const daleRegimeUnavailable = window.canonicalIncomeUnavailable === true;
+      const income = daleRegimeUnavailable ? [] : (incomeByWindow[window.id] || []);
       const bills = section.rows || [];
       const remainingBills = section.remainingTotal != null
         ? section.remainingTotal
@@ -7916,14 +7993,14 @@
       incomeAdded = planUnavailable || !openingKnown ? null : roundCent(incomeAdded);
       const otherItems = (planUnavailable ? [] : income).filter(r => r && r.otherIncome === true);
       const otherAmount = roundCent(otherItems.reduce((s, r) => s + (Number(r.amount) || 0), 0));
-      const incomeTotal = planUnavailable
+      const incomeTotal = planUnavailable || daleRegimeUnavailable
         ? null
         : roundCent(income.reduce((s, r) => s + (Number(r.amount) || 0), 0));
       // Payday balance is the income identity, including a salary that
       // remains visibly unproven for settlement. Opening cash is not added
       // to Payday balance.
-      const available = planUnavailable ? null : incomeTotal;
-      const periodBillLoad = planUnavailable
+      const available = planUnavailable || daleRegimeUnavailable ? null : incomeTotal;
+      const periodBillLoad = planUnavailable || daleRegimeUnavailable
         ? null
         : periodWaterfallBillLoad(bills, openingAsOf, openingSource);
       const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
@@ -7932,13 +8009,15 @@
       // It does not require a payday-boundary opening. Cash leftover
       // (opening + incomeAdded − bills − hold) stays internal so the
       // next period can open from cash, not from this remainder.
-      const afterBills = !planUnavailable && incomeTotal != null && periodBillLoad != null
+      const afterBills = !planUnavailable && !daleRegimeUnavailable
+        && incomeTotal != null && periodBillLoad != null
         ? roundCent(incomeTotal - periodBillLoad)
         : null;
       const afterRemainingBills = afterBills;
-      const afterHouseholdBudget = afterBills != null
-        ? roundCent(afterBills - budget.hold) : null;
-      const balanceAfterDeductions = afterHouseholdBudget;
+      const balanceAfterDeductions = planUnavailable || daleRegimeUnavailable
+        ? null
+        : balanceAfterDeductionsAmount(incomeTotal, periodBillLoad, budget.hold);
+      const afterHouseholdBudget = balanceAfterDeductions;
       const predictedEndingBalanceTerms = composeBalanceAfterDeductionsTerms(
         incomeTotal,
         periodBillLoad,
@@ -8038,6 +8117,7 @@
           : null,
         afterHouseholdBudget,
         balanceAfterDeductions,
+        canonicalIncomeReason: daleRegimeUnavailable ? (window.canonicalIncomeReason || null) : null,
         predictedEndingBalance: afterHouseholdBudget,
         predictedEndingBalanceIdentity: afterHouseholdBudget != null
           ? 'balance-after-deductions' : null,
@@ -15608,6 +15688,275 @@
     });
   }
 
+  function canonicalFundingLines(rows, amountOf) {
+    return (rows || []).map(row => {
+      const amount = amountOf(row);
+      if (amount == null || !isFinite(Number(amount))) return null;
+      const line = {
+        label: row.label || row.id || '',
+        amount: roundCent(amount),
+        status: row.status === 'estimated' || row.confidence === 'estimated' || row.trust === 'estimated'
+          ? 'estimated' : 'calculated',
+      };
+      if (row.id) line.id = row.id;
+      if (row.date) line.date = row.date;
+      return line;
+    }).filter(Boolean);
+  }
+
+  function canonicalOtherSpendAllowance(count) {
+    const n = count == null ? 1 : count;
+    return {
+      amount: roundCent(ROAD_AHEAD_OTHER_SPEND_PER_PAY_PERIOD * n),
+      unitAmount: ROAD_AHEAD_OTHER_SPEND_PER_PAY_PERIOD,
+      count: n,
+      label: 'Other spend allowance',
+      status: 'estimated',
+      deducted: false,
+      identity: 'road-ahead-other-spend-allowance',
+    };
+  }
+
+  function canonicalComponent(amount, lines, status) {
+    const row = {
+      amount: amount == null ? null : roundCent(amount),
+      status: status || 'calculated',
+    };
+    if (lines && lines.length) row.lines = lines;
+    return row;
+  }
+
+  function canonicalPictureFromPeriod(period) {
+    const range = {
+      start: period && period.start,
+      end: period && period.end,
+      rangeLabel: period && period.rangeLabel,
+      role: period && period.role,
+    };
+    const allowance = canonicalOtherSpendAllowance(1);
+    if (!period || period.balanceAfterDeductions == null || !isFinite(Number(period.balanceAfterDeductions))) {
+      return Object.assign({
+        identity: 'balance-after-deductions',
+        status: 'unavailable',
+        reason: (period && period.canonicalIncomeReason)
+          || 'Balance After Deductions is unavailable for this pay period. Not $0.',
+        balanceAfterDeductions: { status: 'unavailable', identity: 'balance-after-deductions' },
+        headline: { status: 'unavailable', identity: 'balance-after-deductions' },
+        otherSpendAllowance: allowance,
+        plannedSpending: {
+          amount: 0, status: 'calculated', deducted: false,
+          identity: 'planned-spending-reference', lines: [],
+        },
+      }, range);
+    }
+    const incomeLines = canonicalFundingLines(period.income, row => row.amount);
+    const billLines = canonicalFundingLines(
+      (period.bills || []).filter(row =>
+        billBelongsOnPaydayWaterfall(row, period.openingAsOf, period.openingSource)),
+      row => billAssignedAmount(row));
+    const budgetLines = canonicalFundingLines(period.householdBudget, row => row.hold);
+    const incomeStatus = incomeLines.some(line => line.status === 'estimated') ? 'estimated' : 'calculated';
+    const bad = roundCent(period.balanceAfterDeductions);
+    const status = incomeStatus;
+    return Object.assign({
+      identity: 'balance-after-deductions',
+      status,
+      income: canonicalComponent(period.incomeTotal, incomeLines, incomeStatus),
+      bills: canonicalComponent(period.periodBillLoad, billLines, 'calculated'),
+      householdBudget: canonicalComponent(period.budgetHold, budgetLines, 'calculated'),
+      balanceAfterDeductions: { amount: bad, status, identity: 'balance-after-deductions' },
+      headline: { amount: bad, status, identity: 'balance-after-deductions' },
+      otherSpendAllowance: allowance,
+      plannedSpending: {
+        amount: 0, status: 'calculated', deducted: false,
+        identity: 'planned-spending-reference', lines: [],
+      },
+    }, range);
+  }
+
+  function canonicalPayPeriodWindows(plan, asOf, through) {
+    const current = spendingCycle(plan, asOf);
+    if (!current || !current.start || !current.end) return [];
+    const windows = [];
+    let cycle = current;
+    let guard = 0;
+    while (cycle && cycle.start && cycle.end && guard < 48) {
+      if (through && cycle.start > through) break;
+      const role = windows.length === 0 ? 'active' : 'future';
+      const id = windows.length === 0
+        ? 'this-pay-period'
+        : (windows.length === 1 ? 'next-pay-period' : ('pay-period:' + cycle.start));
+      const label = windows.length === 0
+        ? 'This Pay Period'
+        : (windows.length === 1 ? 'Next Pay Period' : formatSpendingCycleRange(cycle.start, cycle.end));
+      windows.push({
+        id,
+        label,
+        rangeLabel: formatSpendingCycleRange(cycle.start, cycle.end),
+        start: cycle.start,
+        end: cycle.end,
+        cycle,
+        role,
+      });
+      if (!cycle.nextPayday) break;
+      const next = spendingCycle(plan, cycle.nextPayday);
+      if (!next || !next.start || next.start === cycle.start) break;
+      if (through && next.start > through) break;
+      cycle = next;
+      guard += 1;
+    }
+    return windows;
+  }
+
+  // Dated Plan Spend and reserve lumps shown beside BAD. Yearly card-paid
+  // bills already sit in the Budget bill load (Square One). They are not
+  // listed again. Nothing here is subtracted from BAD, the headline, or cash.
+  function canonicalPlannedSpendingReference(events, start, end, plan, billLines, walkStart) {
+    const inBills = new Set();
+    for (const line of billLines || []) {
+      if (!line) continue;
+      inBills.add((line.id || '') + '@' + (line.date || ''));
+    }
+    const lines = [];
+    for (const event of events || []) {
+      if (!event || !event.date) continue;
+      if (isYearlyCardPaidBillEvent(event, plan)) continue;
+      const key = (event.id || '') + '@' + event.date;
+      if (inBills.has(key)) continue;
+      if (event.kind !== 'commitment' && !isDatedReservePlanningEvent(event)) continue;
+      const apply = walkStart ? cashWalkDate(event, walkStart) : event.date;
+      if (!apply || apply < start || apply > end) continue;
+      const amount = roundCent(Math.abs(Number(event.amount) || 0));
+      if (!(amount > 0)) continue;
+      const line = {
+        id: event.id,
+        label: event.label,
+        date: event.date,
+        amount,
+        status: event.confidence === 'confirmed' ? 'calculated' : 'estimated',
+        deducted: false,
+      };
+      lines.push(line);
+    }
+    lines.sort((a, b) => String(a.date).localeCompare(String(b.date))
+      || String(a.label || '').localeCompare(String(b.label || '')));
+    return {
+      amount: roundCent(lines.reduce((sum, line) => sum + line.amount, 0)),
+      status: lines.some(line => line.status === 'estimated') ? 'estimated' : 'calculated',
+      deducted: false,
+      identity: 'planned-spending-reference',
+      lines,
+    };
+  }
+
+  function attachCanonicalPayPeriodPictures(plan, asOf, debts, opts, through, payPeriods, events, walkStart) {
+    const windows = canonicalPayPeriodWindows(plan, asOf, through);
+    if (!windows.length) return;
+    const waterfalls = calendarPeriodWaterfalls(
+      plan, asOf, null, [], debts || [],
+      Object.assign({}, opts || {}, {
+        periodWindows: windows,
+        authorizedDalePayrollOnFuture: true,
+      }));
+    const byStart = new Map();
+    for (const period of waterfalls.calendarPeriods || []) {
+      const picture = canonicalPictureFromPeriod(period);
+      const billLines = picture.bills && picture.bills.lines;
+      picture.plannedSpending = canonicalPlannedSpendingReference(
+        events, period.start, period.end, plan, billLines, walkStart);
+      byStart.set(period.start, picture);
+    }
+    for (const span of payPeriods || []) {
+      const key = span.cycleStart || span.payday;
+      span.canonical = byStart.get(key) || null;
+    }
+  }
+
+  function attachCanonicalMonthHeadlines(months, payPeriods, events, walkStart, plan) {
+    for (const month of months || []) {
+      const closing = [];
+      for (const period of payPeriods || []) {
+        const close = payPeriodSurplusCloseDate(period);
+        if (!close || trajectoryMonthOf(close) !== month.month) continue;
+        closing.push({ period, close });
+      }
+      const blocked = closing.find(row => {
+        const picture = row.period.canonical;
+        return !picture || picture.status === 'unavailable'
+          || !picture.headline || picture.headline.amount == null
+          || !isFinite(Number(picture.headline.amount));
+      });
+      if (blocked) {
+        const picture = blocked.period.canonical;
+        month.canonical = {
+          identity: 'closing-pay-period-balance-after-deductions',
+          status: 'unavailable',
+          reason: (picture && picture.reason)
+            || 'A Seaspan pay period closing in this month has unavailable Balance After Deductions. Not $0.',
+          headline: {
+            status: 'unavailable',
+            identity: 'closing-pay-period-balance-after-deductions',
+          },
+          otherSpendAllowance: canonicalOtherSpendAllowance(closing.length),
+          plannedSpending: {
+            amount: null, status: 'unavailable', deducted: false,
+            identity: 'planned-spending-reference',
+          },
+        };
+        continue;
+      }
+      const pictures = closing.map(row => row.period.canonical);
+      const status = pictures.length
+        ? trajectoryWeakerStatus.apply(null, pictures.map(picture => picture.status || 'calculated'))
+        : 'calculated';
+      const sum = trajectorySumCents(pictures.map(picture => picture.headline.amount));
+      const billLines = [];
+      for (const picture of pictures) {
+        for (const line of (picture.bills && picture.bills.lines) || []) billLines.push(line);
+      }
+      const planned = canonicalPlannedSpendingReference(
+        events, month.start, month.end, plan, billLines, walkStart);
+      const dateOrder = month.stage2 && month.stage2.dateOrderResult;
+      const timingGap = dateOrder && dateOrder.unavailableByDueDate;
+      month.canonical = {
+        identity: 'closing-pay-period-balance-after-deductions',
+        status,
+        closingCount: closing.length,
+        income: trajectoryMergedComponent(pictures.map(picture => picture.income), 'month'),
+        bills: trajectoryMergedComponent(pictures.map(picture => picture.bills), 'month', 'occurrence'),
+        householdBudget: trajectoryMergedComponent(
+          pictures.map(picture => picture.householdBudget), 'month'),
+        balanceAfterDeductions: {
+          amount: sum,
+          status,
+          identity: 'balance-after-deductions',
+        },
+        headline: {
+          amount: sum,
+          status,
+          identity: 'closing-pay-period-balance-after-deductions',
+        },
+        otherSpendAllowance: canonicalOtherSpendAllowance(closing.length),
+        plannedSpending: planned,
+        timing: timingGap && Number(timingGap.amount) !== 0
+          ? {
+            label: 'Due before this period closes',
+            amount: timingGap.amount,
+            status: timingGap.status || dateOrder.status,
+            identity: 'date-order-unavailable-by-due-date',
+            informational: true,
+            changesHeadline: false,
+          }
+          : null,
+      };
+      for (const row of month.closingPayPeriods || []) {
+        const match = closing.find(item => item.period.payday === row.payday);
+        const headline = match && match.period.canonical && match.period.canonical.headline;
+        if (headline && headline.amount != null) row.bad = headline.amount;
+      }
+    }
+  }
+
   function applyRoadAheadMonthCloseFunding(months, payPeriods, events, walkStart, plan) {
     const completed = [];
     for (const period of payPeriods || []) {
@@ -15760,6 +16109,7 @@
           : (p.rangeLabel || p.cycleRangeLabel || ''),
       }));
     }
+    attachCanonicalMonthHeadlines(months, payPeriods, events, walkStart, plan);
   }
 
   // Read-only baseline cash+debt trajectory over the incumbent
@@ -15976,6 +16326,8 @@
       };
     });
 
+    attachCanonicalPayPeriodPictures(
+      plan, day, walkOpts.debts, opts, horizon.end, payPeriods, events, day);
     applyRoadAheadMonthCloseFunding(series, payPeriods, events, day, plan);
 
     const pressure = baselineTrajectoryPressure({
@@ -16799,6 +17151,7 @@
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts, baselineTrajectory, baselineTrajectoryScenario, daleEstimatedPayrollDeposits,
+    balanceAfterDeductionsAmount,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,

@@ -102,7 +102,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, money2, glanceLineLabel });`,
+    `${source}\n({ operatingSurfaceHtml, calendarWaterfallHtml, money2, glanceLineLabel });`,
     { Forecast: F }
   );
 }
@@ -281,23 +281,27 @@ console.log('\n=== 2. future payingAccount is BILLS ACCOUNT; page omits it from 
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planCalendarShow: 'both',
   });
-  ok(/This Pay Period/.test(html) && /Next Pay Period/.test(html),
-    'plan.js prints the two Forecast payday-period labels');
+  ok(/This Pay Period/.test(html) && !/Next Pay Period/.test(html)
+      && (advice.defaultView.calendarPeriods || []).filter(p => /Pay Period/.test(p.label || '')).length === 2,
+    'Budget prints the active payday label; Forecast still publishes both period labels');
   function billIdentity(id) {
     const re = new RegExp('data-period-bill="' + id + '"[^>]*>\\s*<span>([^<]*)</span>');
     const m = re.exec(html);
     return m && m[1];
   }
   const mortgage = billIdentity('mortgage');
-  const netflix = billIdentity('netflix');
+  const nextCard = composer.calendarWaterfallHtml(
+    (advice.defaultView.calendarPeriods || []).find(p => p && p.id === 'next-pay-period'));
+  const netflix = (/data-period-bill="netflix"[^>]*>\s*<span>([^<]*)<\/span>/.exec(nextCard) || [])[1];
   const bell = billIdentity('bell');
   ok(mortgage && /^Mortgage · /.test(mortgage) && / · (PAID|pending|still due)$/.test(mortgage)
       && !/BILLS ACCOUNT/i.test(mortgage) && !/Chequing/i.test(mortgage),
     'This/Next Pay Period mortgage line omits paying account',
     mortgage);
   ok(netflix && /^Netflix · /.test(netflix) && / · (PAID|pending|still due)$/.test(netflix)
-      && !/BILLS ACCOUNT/i.test(netflix),
-    'subscription bill line omits paying account',
+      && !/BILLS ACCOUNT/i.test(netflix)
+      && !/data-period-bill="netflix"/.test(html),
+    'next-period subscription bill line omits paying account; Budget does not print that window',
     netflix);
   ok(bell === 'Bell · needs confirmation',
     'Needs a Date Bell is name · needs confirmation',

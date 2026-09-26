@@ -316,8 +316,8 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
 
   const pickerAt = html.indexOf('data-calendar-period-picker');
   const liveAt = html.indexOf('data-live-current-balance');
-  ok(pickerAt >= 0 && liveAt > pickerAt,
-    'pay period selector prints before Current Balance');
+  ok(pickerAt < 0 && liveAt >= 0 && !/data-plan-look/.test(html),
+    'Budget has no pay period selector; live Current Balance still prints');
   const incomePromptAt = html.indexOf('data-operating-prompt="Income"');
   const incomeLineAt = html.indexOf('data-period-income=');
   const paydayAt = html.indexOf('data-payday-balance');
@@ -425,9 +425,11 @@ console.log('\n=== 5. first card is revolving extra; HELOC stays off the card li
       && !/Big purchases on the horizon/.test(nextGlance)
       && !/Balance after big purchase allocation/.test(nextGlance),
     'next-period lookahead does not print debt or big-purchase waterfall rows');
-  ok(nextGlance.indexOf('Balance after household budget') >= 0
-      && nextGlance.indexOf('Household budget') < nextGlance.indexOf('Balance after household budget'),
-    'next-period lookahead still prints through Balance after household budget');
+  ok(nextHtml === html
+      && nextGlance.indexOf('Balance After Deductions') > nextGlance.indexOf('Household budget')
+      && advice.nextPeriodView && advice.nextPeriodView.afterHouseholdBudget != null
+      && !/data-calendar-period-picker/.test(nextHtml),
+    'a next-period look does not switch Budget; Forecast still publishes Balance after household budget');
 }
 
 console.log('\n=== 6. big purchases print Forecast cost and $0 saved; page does not subtract ===');

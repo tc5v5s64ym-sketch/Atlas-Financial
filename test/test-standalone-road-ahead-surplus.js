@@ -4,7 +4,8 @@
  * Owner direction 2026-09-22: each future Seaspan pay period and calendar
  * month funds itself. Prior-period surplus is not opening money for the
  * next period. The cumulative walk close may still carry that surplus
- * for Forecast internals. Road Ahead's household result is stage3.result.
+ * for Forecast internals. The household Road Ahead headline is canonical
+ * Balance After Deductions. stage3.result stays the internal walk identity.
  *
  * Independent of baselineTrajectoryMonthFunding: the expected results
  * below are the owner's period arithmetic, not a replay of that helper.
@@ -370,30 +371,36 @@ console.log('\n=== 5. Road Ahead reprints stage3, not cumulative cash ===');
   const page = loadPlanning();
   const traj = ask(basePlan(), '2026-10-02');
   const periodB = pay(traj, PERIOD_B.payday);
-  const signedDeficit = page.planningRoadSignedMoney(periodB.stage3.result.amount);
+  const headline = periodB.canonical && periodB.canonical.headline;
+  const signedHeadline = page.planningRoadSignedMoney(headline && headline.amount);
   const signedCarried = page.planningRoadSignedMoney(700);
   const cashText = signedCarried.replace(/^\+/, '');
   const road = page.planningRoadAheadHtml(traj, 'pay-period', PERIOD_B.payday, '2026-10-02');
   const surface = `${road.lead}\n${road.stages}\n${road.selected}\n${road.timeline}`;
-  ok(road.lead.includes(signedDeficit)
-    && road.stages.includes(signedDeficit)
-    && road.selected.includes(signedDeficit),
-    'lead, waterfall, and selected period show Period B −800');
+  ok(headline && headline.identity === 'balance-after-deductions'
+    && road.lead.includes(signedHeadline)
+    && road.stages.includes(signedHeadline)
+    && road.selected.includes(signedHeadline)
+    && /data-canonical-headline="balance-after-deductions"/.test(road.lead)
+    && /data-canonical-headline="balance-after-deductions"/.test(road.stages),
+    'lead, waterfall, and selected period show Period B Balance After Deductions');
   ok(!road.lead.includes(signedCarried) && !road.lead.includes(cashText)
     && !road.stages.includes(signedCarried) && !road.stages.includes(cashText),
     'lead and waterfall do not show the +700 cumulative close');
-  ok(!road.lead.includes(PHRASE_DEFICIT)
-    && road.stages.includes(PHRASE_DEFICIT)
-    && /data-road-surplus-deficit-identity="standalone-period-surplus-deficit"/.test(road.lead)
-    && /data-road-prior-surplus="excluded"/.test(road.lead)
-    && /data-planning-road-secondary="debt-strategy"/.test(road.stages)
-    && /data-road-prior-surplus="excluded"/.test(road.stages)
-    && road.stages.includes('Christmas'),
-    'primary story reprints stage2 identity; stage3 phrase and Christmas stay on the page, debt strategy secondary');
+  ok(/data-planning-road-decision="canonical"/.test(road.lead)
+    && /data-reference-deducted="false"/.test(road.lead)
+    && /data-reference-deducted="false"/.test(road.stages)
+    && periodB.canonical.plannedSpending.deducted === false
+    && periodB.canonical.otherSpendAllowance.deducted === false
+    && /data-planning-road-wf="planned-spending-reference"/.test(road.stages)
+    && road.stages.includes('Christmas')
+    && /data-road-surplus-deficit-identity="standalone-period-surplus-deficit"/.test(road.lead),
+    'Christmas stays a planned-spending reference; the canonical headline is not stage3 and the internal identity remains');
   ok(/data-road-timeline-period="2026-10-16"/.test(road.timeline)
     && !/data-road-lead-amount="700"/.test(road.lead)
-    && /data-road-lead-amount="-800"/.test(road.lead),
-    'the timeline keeps the Period B key and the lead amount is the stage3 result');
+    && new RegExp('data-canonical-headline="balance-after-deductions"[\\s\\S]*data-road-lead-amount="'
+      + Number(headline.amount) + '"').test(road.lead),
+    'the timeline keeps the Period B key and the canonical lead amount is Balance After Deductions');
 
   const planningSrc = read('public/planning.js');
   const leadFn = planningSrc.slice(

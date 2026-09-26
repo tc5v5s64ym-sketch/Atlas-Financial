@@ -1643,16 +1643,26 @@ console.log('\n=== Stage2 commitment named lines reprint on Road Ahead ===');
       status: 'estimated',
       lines: mockLines,
     };
+    withPay.payPeriods[0].canonical = withPay.payPeriods[0].canonical || {};
+    withPay.payPeriods[0].canonical.plannedSpending = {
+      amount: 400,
+      status: 'estimated',
+      deducted: false,
+      identity: 'planned-spending-reference',
+      lines: mockLines,
+    };
     const payKey = withPay.payPeriods[0].payday || withPay.payPeriods[0].id;
     const payLined = page.composeRoadAheadTraj(
       withPay, 'pay-period', payKey, live.meta.asOf);
-    const payWf = plannedBlock(payLined.stages);
+    const payWf = (String(payLined.stages)
+      .split('data-planning-road-wf="planned-spending-reference"')[1] || '')
+      .split('data-planning-road-wf="')[0];
     ok(/Published commitment A/.test(payWf)
       && /Published commitment B/.test(payWf)
       && !/data-planning-road-wf-row="planned-spending-total"/.test(payWf)
       && !waterfallRowLabels(payWf).includes('Planned spending')
       && !payWf.includes(money2(400)),
-      'pay-period waterfall also omits the Planned spending total when named lines exist');
+      'pay-period planned-spending reference omits the total when named lines exist');
   }
 
   const dec = traj.months.find(m => m.month === '2026-12');

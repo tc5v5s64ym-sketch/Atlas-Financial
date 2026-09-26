@@ -196,15 +196,17 @@ console.log('=== 1. Pay-period selector prints before Current Balance ===');
   const pickerAt = html.indexOf('data-calendar-period-picker');
   const liveAt = html.indexOf('data-live-current-balance');
   const cardAt = html.indexOf('data-calendar-waterfall="this-pay-period"');
-  ok(pickerAt >= 0 && liveAt > pickerAt && cardAt > liveAt,
-    'selector, then Current Balance, then the payday snapshot');
+  ok(pickerAt < 0 && liveAt >= 0 && cardAt > liveAt,
+    'no selector; Current Balance, then the payday snapshot');
   ok(/Current Balance/.test(html.slice(liveAt, cardAt))
       && html.slice(liveAt, cardAt).includes(composer.money2(412.30)),
     'Current Balance content is unchanged and still sits above the snapshot');
   const waterfallsFn = grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml');
-  ok(/calendarPickerHtml\(view, pick, extraControls\)/.test(waterfallsFn)
-      && waterfallsFn.indexOf('calendarPickerHtml') < waterfallsFn.indexOf('liveCurrentBalanceHtml'),
-    'calendarWaterfallsHtml prints the picker before live Current Balance');
+  ok(!/calendarPickerHtml\(/.test(waterfallsFn)
+      && waterfallsFn.indexOf('liveCurrentBalanceHtml') >= 0
+      && waterfallsFn.indexOf('liveCurrentBalanceHtml') < waterfallsFn.indexOf('shown.map')
+      && /activeId/.test(waterfallsFn),
+    'calendarWaterfallsHtml prints live Current Balance before the active waterfall and does not call the picker');
 }
 
 console.log('\n=== 2. Income card closes with Payday balance under income lines ===');

@@ -341,11 +341,57 @@ function planningRoadDecisionLinesHtml(component) {
   }</ul>`;
 }
 
-/** Primary selected-period story. Reprints Forecast stage1.result,
- *  stage2.commitments (amount + published lines only), and the published
- *  date-order Month result (or the unchanged pay-period stage2.result).
- *  No stage arithmetic on this page. */
+/** Canonical headline plus reference lines. Amounts are Forecast fields.
+ *  This page does not subtract the references from the headline. */
+function planningRoadCanonicalReferenceHtml(picture) {
+  if (!picture) return '';
+  const other = picture.otherSpendAllowance;
+  const planned = picture.plannedSpending;
+  const otherRow = other && other.amount != null
+    ? `<li class="planning-road-wf-row" data-planning-road-wf-row="other-spend-allowance" data-reference-deducted="false" data-other-spend-allowance="${Number(other.amount)}">
+        <span class="planning-road-wf-label">Other spend allowance</span>
+        ${planningRoadWaterfallValueHtml(other, { signedResult: true })}
+      </li>`
+    : '';
+  const plannedBlock = planned
+    ? planningRoadWaterfallInlineSection(
+      'Planned spending due', planned, 'planned-spending-reference', { asOutflow: true })
+    : '';
+  const timing = picture.timing && picture.timing.informational && picture.timing.changesHeadline === false
+    ? `<p class="planning-road-hero-narrative" data-planning-road-timing="informational" data-planning-road-timing-changes-headline="false">${picture.timing.label || 'Due before this period closes'}</p>`
+    : '';
+  return `<div data-canonical-reference="true" data-reference-deducted="false">
+    ${otherRow ? `<ul class="planning-road-wf-list">${otherRow}</ul>` : ''}
+    ${plannedBlock}
+    ${timing}
+  </div>`;
+}
+
+function planningRoadCanonicalDecisionHtml(period, granularity) {
+  const picture = period && period.canonical;
+  const headline = picture && picture.headline;
+  if (!headline) return null;
+  const monthView = granularity !== 'pay-period';
+  const kind = planningRoadDecisionKind(headline);
+  const label = monthView ? 'Available from closing pay periods' : 'Balance After Deductions';
+  const noun = monthView ? 'month' : 'pay period';
+  const amountAttr = headline.amount != null && isFinite(Number(headline.amount))
+    ? ` data-road-lead-amount="${Number(headline.amount)}"` : '';
+  return `<ol class="planning-road-decision" data-planning-road-decision="canonical" data-canonical-headline="${headline.identity || ''}" data-planning-road-decision-granularity="${granularity || 'month'}">
+    <li class="planning-road-decision-step planning-road-decision-${kind.cls}" data-planning-road-decision-step="headline" data-road-result-sign="${kind.cls}"${amountAttr}>
+      <span class="planning-road-decision-label">${label}</span>
+      <span class="planning-road-decision-amount">${planningRoadDecisionAmountHtml(headline, 'signed')}</span>
+    </li>
+  </ol>
+  ${planningRoadCanonicalReferenceHtml(picture)}
+  <p class="planning-road-hero-narrative">Balance After Deductions for this ${noun}, copied from Forecast. Other spend allowance and planned spending due are references and are not deducted.</p>`;
+}
+
+/** Primary selected-period story. When Forecast published a canonical
+ *  Balance After Deductions picture, that headline is the household result.
+ *  Otherwise the page still reprints the published stage fields. No arithmetic. */
 function planningRoadAheadDecisionHtml(period, granularity) {
+  const canonicalLead = planningRoadCanonicalDecisionHtml(period, granularity) || '';
   const s1 = (period && period.stage1) || {};
   const s2 = (period && period.stage2) || {};
   const beforeKind = planningRoadDecisionKind(s1.result);
@@ -385,7 +431,7 @@ function planningRoadAheadDecisionHtml(period, granularity) {
   const afterAmount = afterKind.lead === 'period-unavailable'
     ? ''
     : ` data-road-lead-amount="${Number(afterResult.amount)}"`;
-  return `<ol class="planning-road-decision" data-planning-road-decision="primary" data-planning-road-decision-granularity="${granularity || 'month'}">
+  return `${canonicalLead}<ol class="planning-road-decision" data-planning-road-decision="primary" data-planning-road-decision-granularity="${granularity || 'month'}">
     <li class="planning-road-decision-step planning-road-decision-${beforeKind.cls}" data-planning-road-decision-step="before" data-road-result-sign="${beforeKind.cls}">
       <span class="planning-road-decision-label">${beforeLabel}</span>
       <span class="planning-road-decision-amount">${planningRoadDecisionAmountHtml(s1.result, 'signed')}</span>
@@ -444,11 +490,12 @@ function planningRoadAheadMonthSurplusHtml(period) {
   const rows = Array.isArray(period.closingPayPeriods) ? period.closingPayPeriods : [];
   const lineRows = rows.map((row, i) => {
     const label = row.displayRange || row.payday || 'Pay period';
-    const amount = Number(row.stage1);
+    const published = row.bad != null && isFinite(Number(row.bad)) ? row.bad : row.stage1;
+    const amount = Number(published);
     const sign = amount < 0 ? 'gap' : amount > 0 ? 'surplus' : 'neutral';
     return planningRoadWaterfallLineRow({
       label,
-      amount: row.stage1,
+      amount: published,
       status: row.status || 'calculated',
       id: row.payday,
     }, `available-surplus-line-${i}`, false, sign);
@@ -564,6 +611,12 @@ function planningRoadAheadMonthWaterfallHtml(period) {
   const s3 = period.stage3 || {};
   const finalResult = planningRoadStageResult(s3, 'month');
   const incomeBlock = planningRoadAheadMonthIncomeHtml(period.income, period);
+  const canonical = period.canonical && period.canonical.headline
+    ? `<div data-canonical-picture="month" data-canonical-headline="${period.canonical.headline.identity || ''}">
+        ${planningRoadWaterfallResultRow('Available from closing pay periods', period.canonical.headline, 'canonical-headline')}
+        ${planningRoadCanonicalReferenceHtml(period.canonical)}
+      </div>`
+    : '';
   const surplusBlock = planningRoadAheadMonthSurplusHtml(period);
   const reconciliation = planningRoadAheadMonthReconciliationHtml(period);
   const extrasAmount = planningRoadFigure(s3.extras);
@@ -588,6 +641,7 @@ function planningRoadAheadMonthWaterfallHtml(period) {
   const key = planningRoadAheadPeriodKey(period, 'month') || '';
   return `<div class="planning-road-waterfall" data-planning-road-waterfall="ready" data-road-waterfall-period="${key}" data-road-waterfall-granularity="month">
     ${incomeBlock}
+    ${canonical}
     ${surplusBlock}
     ${reconciliation}
     <p class="planning-road-wf-footnote">From your Forecast plan · this month.</p>
@@ -600,6 +654,37 @@ function planningRoadAheadWaterfallHtml(period, granularity) {
     return '<p class="lede" data-planning-road-waterfall="empty">Forecast published no funding lines for this period.</p>';
   }
   if (granularity !== 'pay-period') return planningRoadAheadMonthWaterfallHtml(period);
+  if (period.canonical && period.canonical.headline) {
+    const picture = period.canonical;
+    const income = picture.income || {};
+    const incomeLines = planningRoadPublishedLines(income);
+    const incomeRows = incomeLines.length
+      ? incomeLines.map((row, i) => planningRoadWaterfallLineRow(row, `income-line-${i}`, false)).join('')
+        + planningRoadWaterfallTotalRow('Income total', income, 'income-total', { signedResult: true })
+      : planningRoadWaterfallTotalRow('Income total', income, 'income-total', { signedResult: true });
+    const billsBlock = planningRoadWaterfallExpandable('Bills', picture.bills, 'bills', {
+      asOutflow: true, totalLabel: 'Total bills',
+    });
+    const budgetBlock = picture.householdBudget
+      ? planningRoadWaterfallExpandable('Household budget', picture.householdBudget, 'household-budget', {
+        asOutflow: true, totalLabel: 'Household Budget Total',
+      })
+      : '';
+    const headlineRow = planningRoadWaterfallResultRow(
+      'Balance After Deductions', picture.headline, 'canonical-headline');
+    const key = planningRoadAheadPeriodKey(period, granularity) || '';
+    return `<div class="planning-road-waterfall" data-planning-road-waterfall="ready" data-canonical-picture="pay-period" data-canonical-headline="${picture.headline.identity || ''}" data-road-waterfall-period="${key}" data-road-waterfall-granularity="pay-period">
+      <div class="planning-road-wf-block planning-road-wf-income" data-planning-road-wf="income">
+        <h3 class="planning-road-wf-kicker"><span class="planning-road-wf-badge planning-road-wf-badge-income" aria-hidden="true"></span> Income</h3>
+        <ul class="planning-road-wf-list">${incomeRows}</ul>
+      </div>
+      ${billsBlock}
+      ${budgetBlock}
+      ${headlineRow}
+      ${planningRoadCanonicalReferenceHtml(picture)}
+      <p class="planning-road-wf-footnote">From your Forecast plan · this pay period.</p>
+    </div>`;
+  }
   const s1 = period.stage1 || {};
   const s2 = period.stage2 || {};
   const s3 = period.stage3 || {};

@@ -139,9 +139,12 @@ console.log('=== 1. Mobile shell markup and viewport priority ===');
     && /data-planning-road-wf-expand="bills"[\s\S]*planning-road-wf-chevron/.test(payShell)
     && /data-planning-road-wf-expand="household-budget"[\s\S]*planning-road-wf-chevron/.test(payShell)
     && /data-planning-road-wf="bills"[\s\S]*planning-road-wf-kicker[\s\S]*Bills/.test(payShell)
-    && /data-planning-road-wf="obligations"[\s\S]*planning-road-wf-kicker[\s\S]*Required debt payments/.test(payShell)
-    && /data-planning-road-wf="household-budget"[\s\S]*planning-road-wf-kicker[\s\S]*Household budget/.test(payShell),
-    'pay period waterfall keeps Bills and Household budget expanders');
+    && /data-planning-road-wf="household-budget"[\s\S]*planning-road-wf-kicker[\s\S]*Household budget/.test(payShell)
+    && /Balance After Deductions/.test(payShell)
+    && /data-reference-deducted="false"/.test(payShell)
+    && /data-other-spend-allowance=/.test(payShell)
+    && !/data-planning-road-wf="obligations"/.test(payShell),
+    'pay period waterfall keeps Bills, Household budget, and the Balance After Deductions headline');
   ok(/data-planning-road-planned="inline"/.test(road),
     'planned spending is a named inline block');
   const plannedChunk = road.split('data-planning-road-wf="planned-spending"')[1] || '';
@@ -890,14 +893,14 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
     && /planning-road-wf-chevron/.test(householdLive)
     && /data-planning-road-wf-row="household-budget-total"/.test(householdLive),
     'live Household budget total stays visible in the collapsed expander summary');
-  const liveBillsLines = payPeriod && payPeriod.stage1 && payPeriod.stage1.bills
-    && Array.isArray(payPeriod.stage1.bills.lines) ? payPeriod.stage1.bills.lines : [];
-  const liveBudgetLines = payPeriod && payPeriod.stage1 && payPeriod.stage1.householdBudget
-    && Array.isArray(payPeriod.stage1.householdBudget.lines)
-    ? payPeriod.stage1.householdBudget.lines : [];
+  const picture = payPeriod && payPeriod.canonical;
+  const liveBillsLines = picture && picture.bills && Array.isArray(picture.bills.lines)
+    ? picture.bills.lines : [];
+  const liveBudgetLines = picture && picture.householdBudget && Array.isArray(picture.householdBudget.lines)
+    ? picture.householdBudget.lines : [];
   if (liveBillsLines.length) {
     ok(liveBillsLines.every(row => row && billsLive.includes(row.label)),
-      'Planning reprints Forecast-published stage1 bills line labels and does not invent splits');
+      'Planning reprints Forecast-published canonical bill line labels and does not invent splits');
     ok(!/data-planning-road-wf-lines="unavailable"/.test(billsLive)
       && !/Forecast has not published these line items/.test(billsLive),
       'Bills expander lists published lines instead of the fail-closed empty state');
@@ -909,7 +912,7 @@ console.log('\n=== 11. Waterfall contract — inline planned spend, no card stri
   }
   if (liveBudgetLines.length) {
     ok(liveBudgetLines.every(row => row && householdLive.includes(row.label)),
-      'Planning reprints Forecast-published householdBudget line labels and does not invent splits');
+      'Planning reprints Forecast-published canonical household-budget line labels and does not invent splits');
     ok(!/data-planning-road-wf-lines="unavailable"/.test(householdLive)
       && !/Forecast has not published these line items/.test(householdLive),
       'Household budget expander lists published lines instead of the fail-closed empty state');
@@ -1089,18 +1092,23 @@ console.log('\n=== 12. Uniform headers, expanders with published lines, Dale/Ama
       { label: 'Fuel', amount: 220, status: 'calculated' },
     ],
   };
+  period.canonical = period.canonical || {};
+  period.canonical.income = period.stage1.income;
+  period.canonical.bills = period.stage1.bills;
+  period.canonical.householdBudget = period.stage1.householdBudget;
   const road = page.composeRoadTraj(withDetail, 'pay-period', period.payday || period.id, live.meta.asOf);
   const income = wfBlock(road.stages, 'income');
   const bills = wfBlock(road.stages, 'bills');
   const household = wfBlock(road.stages, 'household-budget');
-  const planned = wfBlock(road.stages, 'planned-spending');
+  const planned = wfBlock(road.stages, 'planned-spending-reference');
 
   ok(/planning-road-wf-kicker/.test(income)
     && /planning-road-wf-kicker/.test(bills)
-    && /planning-road-wf-kicker/.test(wfBlock(road.stages, 'obligations'))
     && /planning-road-wf-kicker/.test(household)
-    && /planning-road-wf-kicker/.test(planned),
-    'Income, Bills, Required debt, Household budget, and Planned spending all have section kickers');
+    && /planning-road-wf-kicker/.test(planned)
+    && /Balance After Deductions/.test(road.stages)
+    && !/data-planning-road-wf="obligations"/.test(road.stages),
+    'Income, Bills, Household budget, Balance After Deductions, and planned spending have section labels');
 
   ok(/\bDale\b/.test(income) && /\bAmanda\b/.test(income)
     && income.includes(page.ctx.planningRoadSignedMoney(6240))
@@ -1154,6 +1162,14 @@ console.log('\n=== 13. Road Ahead waterfall omits Estimated/Calculated chrome an
     status: 'calculated',
     items: [{ label: 'Groceries', amount: 800, status: 'calculated' }],
   };
+  period.canonical = period.canonical || {};
+  period.canonical.bills = period.stage1.bills;
+  period.canonical.householdBudget = period.stage1.householdBudget;
+  period.canonical.headline = {
+    amount: period.stage1.result.amount,
+    status: 'estimated',
+    identity: 'balance-after-deductions',
+  };
   period.stage1.result = {
     amount: period.stage1.result.amount,
     status: 'estimated',
@@ -1169,34 +1185,33 @@ console.log('\n=== 13. Road Ahead waterfall omits Estimated/Calculated chrome an
   const road = page.composeRoadTraj(withDetail, 'pay-period', period.payday || period.id, live.meta.asOf);
   const wf = road.stages;
   const bills = wfBlock(wf, 'bills');
-  const obligations = wfBlock(wf, 'obligations');
   const household = wfBlock(wf, 'household-budget');
-  const planned = wfBlock(wf, 'planned-spending');
-  const after = wfBlock(wf, 'after-obligations');
-  const finalRow = wfBlock(wf, 'final');
+  const planned = wfBlock(wf, 'planned-spending-reference');
+  const headline = wfBlock(wf, 'canonical-headline');
 
-  ok(/Required debt payments/.test(obligations)
-    && /Surplus after normal obligations|Shortfall after normal obligations|Break-even after normal obligations|After normal obligations/.test(wf)
+  ok(!/data-planning-road-wf="obligations"/.test(wf)
+    && /Balance After Deductions/.test(wf)
     && /Household budget/.test(household)
     && /Planned spending/.test(planned)
     && /Bills/.test(bills),
-    'waterfall keeps Forecast-published section labels; it does not invent shorter names');
+    'waterfall keeps Forecast-published section labels; Required debt is not a pay-period headline section');
   const chipChrome = /planning-road-trust-estimated|planning-road-trust-calculated|planning-road-wf-about|>Estimated<|>Calculated</;
   ok(!chipChrome.test(bills) && bills.includes('−' + money2(100)),
     'Bills rows/totals reprint amounts without Estimated/Calculated chrome');
-  ok(!chipChrome.test(obligations) && obligations.includes('−' + money2(200)),
-    'Required debt payments rows/totals reprint amounts without Estimated/Calculated chrome');
+  ok(period.stage1.obligations && period.stage1.obligations.lines
+      && period.stage1.obligations.lines[0].label === 'Published debt'
+      && !/data-planning-road-wf="obligations"/.test(wf),
+    'stage1 obligations stay on the trajectory and are not a pay-period waterfall section');
   ok(!chipChrome.test(household) && household.includes('−' + money2(800)),
     'Household budget rows/totals reprint amounts without Estimated/Calculated chrome');
   ok(!chipChrome.test(planned),
     'Planned spending reprints without Estimated/Calculated chrome');
-  ok(!chipChrome.test(after) && !chipChrome.test(finalRow),
-    'Surplus-after and final result rows omit Estimated/Calculated chips');
+  ok(!chipChrome.test(headline) && /Balance After Deductions/.test(headline),
+    'Balance After Deductions reprints without Estimated/Calculated chips');
   ok(!chipChrome.test(road.lead),
     'hero omits Estimated/Calculated chips while keeping the Forecast amount');
-  ok(/planning-road-wf-label">Required debt payments</.test(obligations)
-    && /planning-road-wf-result-label">/.test(after || wf),
-    'long Forecast labels stay in the label slot, not abbreviated beside the amount');
+  ok(/planning-road-wf-result-label">Balance After Deductions</.test(wf),
+    'Balance After Deductions stays in the label slot, not abbreviated beside the amount');
 
   const liveRoad = page.render(live, periods)['planning-road-ahead'].innerHTML;
   const liveWf = (liveRoad.split('data-planning-road-waterfall="ready"')[1] || '')

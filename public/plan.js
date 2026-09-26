@@ -2471,9 +2471,10 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
   const periods = (view && view.calendarPeriods) || [];
   if (!periods.length) return '';
   const activeId = (view && view.activeCalendarPeriodId) || (periods[0] && periods[0].id);
-  const pick = show || activeId;
-  const visible = pick === 'both' ? periods : periods.filter(p => p.id === pick);
-  const shown = visible.length ? visible : periods.filter(p => p.id === activeId);
+  // Budget is the current pay period only. The This/Next switch is not printed.
+  // `show` is ignored so a removed control cannot select another window.
+  const shown = periods.filter(p => p.id === activeId);
+  if (!shown.length && periods[0]) shown.push(periods[0]);
   const undated = (view && view.undatedBills) || [];
   const undatedLines = undated.map(periodBillLine).join('');
   const undatedBlock = undatedLines
@@ -2487,7 +2488,6 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
   const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
     ? ` data-household-as-of="${asOf}"` : '';
   return `<div class="calendar-waterfalls" data-calendar-waterfalls${asOfAttr}>
-    ${calendarPickerHtml(view, pick, extraControls)}
     ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
     ${undatedBlock}
@@ -2827,54 +2827,11 @@ function operatingSurfaceHtml(ctx) {
       <div class="operating-answer">${answer}</div>
     </div>`;
 
-  const view = ctx.planView || advice.defaultView || {};
+  const view = advice.defaultView || ctx.planView || {};
   const billsHeading = view.billsHeading || 'Bills';
-  const look = ctx.planLook || 'this-period';
-  const option = (value, label) =>
-    `<option value="${value}"${look === value ? ' selected' : ''}>${label}</option>`;
-  const nextPeriod = advice.nextPeriodView;
-  const weekOpts = (advice.weekViews || []).map(row => {
-    if (!row || !row.periodStart) return '';
-    const value = 'week:' + row.periodStart;
-    const label = row.periodEnd
-      ? `Week of ${fmtDate(row.periodStart)} – ${fmtDate(row.periodEnd)}`
-      : `Week of ${fmtDate(row.periodStart)}`;
-    return option(value, label);
-  }).join('');
-  const pastOpts = (advice.pastPeriodViews || []).map((row, i) => {
-    if (!row || !row.start) return '';
-    const value = 'past:' + row.start;
-    const range = row.rangeLabel || '';
-    const label = i === 0
-      ? (range ? `Previous pay period · ${range}` : 'Previous pay period')
-      : (range || 'Completed pay period');
-    return option(value, label);
-  }).join('');
-  const carryTrend = advice.paydayCarryoverTrend;
-  const carryOpt = (carryTrend && (carryTrend.points || []).length)
-    ? option('payday-carryover', 'Payday carryover')
-    : '';
-  // The pay-period switch inside the sheet is the primary control. The week
-  // picker stays available behind a quiet disclosure, and is held open while
-  // a week, next-period, completed-period, or carryover-trend view is the
-  // one being read.
-  const picker = `<details class="plan-look" data-plan-look-picker${look !== 'this-period' ? ' open' : ''}>
-    <summary class="plan-look-summary">More views</summary>
-    <label class="plan-look-field">
-      <span class="plan-look-label">What to look at</span>
-      <select class="numin" data-plan-look>
-      ${option('this-period', 'This pay period')}
-      ${nextPeriod && nextPeriod.periodStart
-        ? option('next-period', nextPeriod.periodEnd
-          ? `Next pay period · ${fmtDate(nextPeriod.periodStart)} – ${fmtDate(nextPeriod.periodEnd)}`
-          : 'Next pay period')
-        : ''}
-      ${carryOpt}
-      ${pastOpts}
-      ${weekOpts}
-      </select>
-    </label>
-  </details>`;
+  // Budget shows the current pay period. More views and the This/Next switch
+  // are not printed. Forecast still publishes nextPeriodView, weekViews,
+  // pastPeriodViews, and paydayCarryoverTrend for other readers.
   const cashAlloc = {
     available: view.currentBalance != null ? view.currentBalance : (alloc && alloc.available),
     cashBasis: view.cashNote ? null : (alloc && alloc.cashBasis),
@@ -2882,29 +2839,24 @@ function operatingSurfaceHtml(ctx) {
   };
   const cash = cashGlanceHtml(cashAlloc, view.cashNote ? null : ctx.liveOverlay, view.cashNote);
   const bills = periodBillsHtml(view);
-  const pastLook = look && look.slice(0, 5) === 'past:';
-  const carryLook = look === 'payday-carryover';
+  // Current pay period only. look stays this-period; the More views select
+  // and the This/Next switch are not printed. The ten-block remains the
+  // non-waterfall fallback, so the glance Household budget is not the
+  // default Budget print.
+  const look = 'this-period';
+  const historical = '';
+  const carryoverTrend = '';
   const defaultWaterfalls = look === 'this-period'
     && view.calendarPeriods && view.calendarPeriods.length
     ? calendarWaterfallsHtml(
       view,
-      ctx.planCalendarShow,
+      null,
       ctx.liveOverlay,
       alloc,
-      picker,
+      '',
       ctx.plan
     )
     : '';
-  const historical = pastLook && view && view.start
-    ? `${picker}<div class="plan-sheet" data-historical-plan>${historicalPeriodHtml(view)}</div>`
-    : '';
-  const carryoverTrend = carryLook
-    ? `${picker}<div class="plan-sheet" data-payday-carryover-trend-sheet>${paydayCarryoverTrendHtml(advice.paydayCarryoverTrend)}</div>`
-    : '';
-  // Week / next-period lookahead stops at Balance after household budget,
-  // matching the household Plan waterfall. Forecast still publishes the
-  // extra-debt / big-purchase chain on the view; those rows are not printed
-  // on lookahead spans. Budget digest stays after the boundary.
   const tenBlock = defaultWaterfalls || historical || carryoverTrend ? '' : `
     ${question('01', 'Current Balance', cash, 'opening')}
     ${question('02', billsHeading, bills)}
@@ -2914,17 +2866,11 @@ function operatingSurfaceHtml(ctx) {
     ${budgetDigestHtml(view.budgetDigest)}`;
 
   // The usable Plan print stops at Balance After Deductions. Forecast
-
   // still computes infeasible / unfunded / remaining-claim / paydayAllocation.risks
   // and weeklyCapView still composes that copy for folded diagnostics. The
   // large refresh-trust card remains on the fail-closed unavailable surface.
-  // Do not reintroduce an advisory block, a replacement warning, or a
-  // parallel warning authority on this sheet.
-
-  // In the default view the picker rides inside the pay-period switch row;
-  // the week and next-period printouts carry it at the top, held open.
   return `<div class="payday-operating-sheet" data-payday-sheet>
-    ${defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
+    ${defaultWaterfalls || `<div class="plan-sheet">${tenBlock}</div>`}
   </div>`;
 }
 

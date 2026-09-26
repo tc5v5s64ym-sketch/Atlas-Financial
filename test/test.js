@@ -106,6 +106,7 @@ const suites = [
   ['Road Ahead independent Month / Pay Period financial reconciliation', 'test-road-ahead-reconciliation.js'],
   ['Road Ahead Month surplus by Seaspan pay-period close', 'test-road-ahead-month-close.js'],
   ['Road Ahead Month calendar income vs close surplus', 'test-road-ahead-month-income.js'],
+  ['Canonical pay-period Balance After Deductions', 'test-canonical-pay-period.js'],
   ['Road Ahead Month close-period reconciliation', 'test-road-ahead-month-reconciliation.js'],
   ['Forecast residual pay-period identity vs Budget This Pay Period', 'test-pay-period-residual-identity.js'],
   ['Forecast baseline trajectory additional-debt-payment scenario (O4)', 'test-baseline-trajectory-scenario.js'],

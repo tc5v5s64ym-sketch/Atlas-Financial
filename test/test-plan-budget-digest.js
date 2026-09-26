@@ -105,7 +105,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, money2, fmtDate });`,
+    `${source}\n({ operatingSurfaceHtml, budgetDigestHtml, money2, fmtDate });`,
     { Forecast: F }
   );
 }
@@ -340,20 +340,27 @@ console.log('\n=== 4. incomplete actuals and stale history are plain words ===')
     advice: missing, weekly: missing.weekly, recommended: missing.weekly,
     planLook: 'next-period', planView: missing.nextPeriodView,
   });
-  ok(/Not all spending is in yet/.test(defaultGlance(nextMissing)),
-    'absent actuals print that not all spending is in yet on the lookahead digest');
+  const missingDigest = composer.budgetDigestHtml(missing.nextPeriodView && missing.nextPeriodView.budgetDigest);
+  ok(/Not all spending is in yet/.test(missingDigest)
+      && !/Not all spending is in yet/.test(defaultGlance(nextMissing)),
+    'absent actuals still word the digest printer; Budget does not print the lookahead digest');
+  const currentStale = composer.operatingSurfaceHtml({
+    advice: stale, weekly: stale.weekly, recommended: stale.weekly,
+  });
   const html = composer.operatingSurfaceHtml({
     advice: stale, weekly: stale.weekly, recommended: stale.weekly,
     planLook: 'next-period', planView: stale.nextPeriodView,
   });
-  const glance = defaultGlance(html);
-  ok(/Spending history only goes through/.test(glance)
-      && /24 Aug|Aug\.? 24/.test(glance),
-    'lookahead digest says spending history only goes through the dated history as-of');
+  const staleDigest = composer.budgetDigestHtml(stale.nextPeriodView && stale.nextPeriodView.budgetDigest);
+  ok(html === currentStale
+      && /Spending history only goes through/.test(staleDigest)
+      && /24 Aug|Aug\.? 24/.test(staleDigest),
+    'digest printer says spending history only goes through the dated history as-of; Budget does not');
   const staleEat = row(stale.nextPeriodView && stale.nextPeriodView.budgetDigest, 'restaurants');
-  ok(staleEat && glance.includes(`spent ${composer.money2(staleEat.spent)} of ${composer.money2(staleEat.planned)}`),
-    'stale history still prints overlay spent of the span hold on lookahead');
-  ok(!/remainingClaim|categoryRemainingClaim|posted-only|classified-incomplete/.test(glance),
+  ok(staleEat && staleDigest.includes(`spent ${composer.money2(staleEat.spent)} of ${composer.money2(staleEat.planned)}`)
+      && !defaultGlance(html).includes(`spent ${composer.money2(staleEat.spent)} of ${composer.money2(staleEat.planned)}`),
+    'stale history still prints overlay spent of the span hold on the digest printer, not on Budget');
+  ok(!/remainingClaim|categoryRemainingClaim|posted-only|classified-incomplete/.test(staleDigest),
     'digest does not print coverage codes');
 }
 
@@ -389,15 +396,17 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
     planLook: 'next-period', planView: advice.nextPeriodView,
   });
   const nextGlance = defaultGlance(nextHtml);
-  const expected = `spent ${composer.money2(eating.spent)} of ${composer.money2(eating.planned)}`;
-  ok((nextHtml.match(/data-operating-question=/g) || []).length === 5,
-    'lookahead stops at Balance after household budget (five snapshot questions)');
-  const q5 = nextGlance.indexOf('Balance after household budget');
-  ok(q5 >= 0 && nextGlance.indexOf('Spent against the budget') > q5,
-    'lookahead digest still prints after the household-budget boundary');
-  ok(nextGlance.includes(expected)
-      || /spent /.test(nextGlance),
-    'lookahead digest still prints spent of planned');
+  const nextEating = row(advice.nextPeriodView && advice.nextPeriodView.budgetDigest, 'restaurants');
+  const nextExpected = nextEating && nextEating.spent != null
+    ? `spent ${composer.money2(nextEating.spent)} of ${composer.money2(nextEating.planned)}`
+    : `planned ${composer.money2(nextEating && nextEating.planned)}`;
+  const nextDigest = composer.budgetDigestHtml(advice.nextPeriodView && advice.nextPeriodView.budgetDigest);
+  ok(nextHtml === html && (nextHtml.match(/data-operating-question=/g) || []).length === 5,
+    'a next-period look stays on the current five-question waterfall');
+  ok(nextEating && /Spent against the budget/.test(nextDigest)
+      && nextDigest.includes(nextExpected)
+      && !/Spent against the budget/.test(nextGlance),
+    'digest printer still prints spent of planned; Budget does not print that lookahead');
   const ids = (advice.defaultView.budgetDigest.rows || []).map(r => r.id).sort();
   ok(JSON.stringify(ids) === JSON.stringify(['fuel', 'groceries', 'pets', 'restaurants']),
     'only existing owner-target categories; current-regime telecom is omitted');

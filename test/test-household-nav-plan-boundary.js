@@ -325,25 +325,28 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance After Deductions and stop
   const activeSection = (both.match(/data-calendar-role="active"[\s\S]*?<\/section>/) || [''])[0];
   const futureSection = (both.match(/data-calendar-role="future"[\s\S]*?<\/section>/) || [''])[0];
   const activeQs = activeSection.match(/data-operating-question=/g) || [];
-  const futureQs = futureSection.match(/data-operating-question=/g) || [];
   const expectedActiveCount = 5;
-  ok(sections === (advice.defaultView.calendarPeriods || []).length,
-    'Show both renders every calendar period',
-    `${sections} vs ${(advice.defaultView.calendarPeriods || []).length}`);
+  const publishedCount = (advice.defaultView.calendarPeriods || []).length;
+  ok(sections === 1 && publishedCount === 2 && !/data-calendar-period-picker/.test(both),
+    'Budget renders the active calendar period; Forecast still publishes both',
+    `${sections} rendered vs ${publishedCount} published`);
   ok(activeQs.length === expectedActiveCount,
     'Show both active snapshot question count is five without opening',
     String(activeQs.length));
-  ok(futureQs.length === 6,
-    'Show both future snapshot includes opening as the sixth question',
-    String(futureQs.length));
+  const futurePeriod = (advice.defaultView.calendarPeriods || []).find(p => p && p.role === 'future');
+  const futureCard = composer.calendarWaterfallHtml(futurePeriod, data.liveOverlay, advice.paydayAllocation);
+  const futureCardQs = futureCard.match(/data-operating-question=/g) || [];
+  ok(futureSection === '' && futureCardQs.length === 6,
+    'Budget does not render the future snapshot; its printer still includes opening as the sixth question',
+    String(futureCardQs.length));
   ok(/data-live-current-balance/.test(both),
     'Show both still prints live Current Balance outside the snapshots');
   ok(!/data-operating-prompt="Current Balance"/.test(activeSection),
     'active snapshot does not print live Current Balance as Q01');
   ok(!/data-operating-prompt="Opening balance"/.test(activeSection),
     'active snapshot does not print payday-boundary opening');
-  ok(/data-operating-prompt="Opening balance"/.test(futureSection),
-    'future snapshot prints Opening balance');
+  ok(/data-operating-prompt="Opening balance"/.test(futureCard),
+    'future snapshot printer still prints Opening balance');
 
   ok(!REMOVED_ROWS.some(prompt => both.includes(prompt)),
     'Show both still omits extra-debt and ending rows');

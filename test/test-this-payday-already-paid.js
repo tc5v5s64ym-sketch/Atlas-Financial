@@ -273,8 +273,9 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
   });
   const glance = defaultGlance(html);
   const text = glance.replace(/<[^>]+>/g, ' ');
-  ok(/Bills/.test(html) && /This Pay Period/.test(html) && /Next Pay Period/.test(html),
-    'the bills heading is Bills, printed as This / Next Pay Period');
+  ok(/Bills/.test(html) && /This Pay Period/.test(html) && !/Next Pay Period/.test(html)
+      && (advice.defaultView.calendarPeriods || []).some(p => /Next Pay Period/.test(p.label || '')),
+    'the bills heading is Bills on the active pay period; Forecast still publishes Next Pay Period');
   ok(/data-payday-period-bills/.test(html),
     'period bills are one default-view list');
   ok(/Mortgage · Aug 28 · PAID/.test(glance)

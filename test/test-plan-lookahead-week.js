@@ -321,13 +321,16 @@ console.log('\n=== 3. next-period bills are that span only; no invented payees =
   ok(!ids.includes('tdfees') && !ids.includes('travel')
       && !ids.includes('bcaa-aug15-outstanding') && !ids.includes('camp'),
     'later-month fees, Travel Visa min, prior once stub, and October camp stay off');
+  const currentHtml = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+  });
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'next-period', planView: advice.nextPeriodView,
   });
   const glance = defaultGlance(html);
-  ok(/Payroll — Seaspan/.test(glance) && /still due/.test(glance),
-    'future-period bills print still due');
+  ok(html === currentHtml && !/data-plan-look/.test(html) && !/data-calendar-period-picker/.test(html),
+    'future-period bills stay on nextPeriodView; Budget does not switch to a still-due lookahead');
   ok(glance.includes('+' + composer.money2(PAYROLL))
       && glance.includes('−' + composer.money2(MORTGAGE)),
     'movements print money in as + and money out as −');
@@ -337,21 +340,25 @@ console.log('\n=== 3. next-period bills are that span only; no invented payees =
   const banned = bannedOnGlance(html);
   ok(!banned, 'lookahead glance has no Forecast field names or settlement code words',
     banned && banned[0]);
-  const lookaheadPrompts = [
+  const currentPrompts = [
     'Current Balance',
-    'Bills this pay period',
+    'Bills',
     'Balance after bills',
     'Household budget',
-    'Balance after household budget',
+    'Balance After Deductions',
   ];
   let prev = -1;
-  for (const label of lookaheadPrompts) {
+  for (const label of currentPrompts) {
     const at = glance.indexOf(label);
-    ok(at > prev, `next-period lookahead prints ${label} in waterfall order`);
+    ok(at > prev, `current Budget sheet prints ${label}; a next-period look does not switch it`);
     prev = at;
   }
+  ok(advice.nextPeriodView && advice.nextPeriodView.afterHouseholdBudget != null
+      && !/Bills this pay period/.test(glance)
+      && !/Balance after household budget/.test(glance),
+    'next-period Balance after household budget stays on nextPeriodView and is not a Budget ten-block');
   ok((html.match(/data-operating-question=/g) || []).length === 5,
-    'next-period lookahead has five snapshot questions, not debt or big-purchase rows');
+    'current Budget sheet has five snapshot questions, not debt or big-purchase rows');
   ok(!/Credit card to pay off first|Other credit cards|Balance after debt repayment|Big purchases on the horizon|Balance after big purchase allocation/.test(glance),
     'next-period lookahead omits debt-repayment and big-purchase waterfall rows');
 }
@@ -373,24 +380,24 @@ console.log('\n=== 4. week views come from the Forecast walk; picker asks for th
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  ok(/What to look at/.test(html) && /Next pay period/.test(html)
-      && /<select class="numin" data-plan-look>/.test(html),
-    'the sheet offers this period, next period, and a week picker');
-  ok(weeks.every(row => html.includes('value="week:' + row.periodStart + '"')),
-    'each picker week value is a Forecast-published week start');
+  ok(!/<select class="numin" data-plan-look>/.test(html) && !/What to look at/.test(html),
+    'the Budget sheet has no More views select and no week picker');
+  ok(weeks.length > 0 && weeks.every(row => row.periodStart
+      && !html.includes('value="week:' + row.periodStart + '"')),
+    'week starts stay on Forecast weekViews and are not picker values on the sheet');
   const weekHtml = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'week:' + paydayWeek.periodStart, planView: paydayWeek,
   });
   const glance = defaultGlance(weekHtml);
-  ok(/Bills this week/.test(glance) && !/Bills this pay period/.test(glance),
-    'the week printout uses week language, not pay-period language');
+  ok(weekHtml === html && !/Bills this week/.test(glance),
+    'a week look does not switch Budget to week language');
   ok(!/Credit card to pay off first|Balance after big purchase allocation/.test(glance),
     'week lookahead omits debt-repayment and big-purchase waterfall rows');
   ok((weekHtml.match(/data-operating-question=/g) || []).length === 5,
     'week lookahead stops at Balance after household budget');
-  ok(/Payroll — Seaspan/.test(glance) && !/Rogers/.test(glance),
-    'the week printout shows Forecast bills for that week, not invented payees');
+  ok((paydayWeek.bills || []).some(r => r.id === 'payroll') && !/Rogers/.test(glance),
+    'the week that contains Seaspan pay stays on weekViews; Budget does not invent payees');
   const planSrc = read('public/plan.js');
   const pick = /function selectedPlanView\([\s\S]*?\n\}/.exec(planSrc);
   ok(pick && /advice\.weekViews/.test(pick[0]) && /advice\.nextPeriodView/.test(pick[0])
@@ -406,8 +413,10 @@ console.log('\n=== 5. page still does not subtract leftover ===');
     'operatingSurfaceHtml calls no Forecast function');
   ok(fn && !/view\.currentBalance\s*-|afterBills\s*-|allocatedObligations/.test(fn[0]),
     'the payday sheet does not subtract leftover');
-  ok(fn && /ctx\.planView \|\| advice\.defaultView/.test(fn[0]),
-    'the sheet prints the selected Forecast view');
+  ok(fn && /advice\.defaultView \|\| ctx\.planView/.test(fn[0])
+      && !/data-plan-look/.test(fn[0])
+      && !/data-calendar-period-picker/.test(fn[0]),
+    'the sheet prints the current Forecast period and ignores a passed plan view');
 }
 
 if (failures) {
