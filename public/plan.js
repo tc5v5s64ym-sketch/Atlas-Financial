@@ -2570,7 +2570,10 @@ function payPeriodNavigatorHtml(selection) {
       </div>
     </div>`;
   return `<div class="pay-period-navigator" data-pay-period-navigator data-selected-close-month="${closeMonth}">
-    ${wheel('month', months.map(month => ({ label: month.label, name: month.name })), monthIndex, 46)}
+    ${wheel('month', months.map(month => ({
+      label: `${month.label}<span class="budget-wheel-year">${month.key.slice(0, 4)}</span>`,
+      name: month.name,
+    })), monthIndex, 46)}
     ${wheel('period', selection.rows.map(row => ({
       label: payPeriodRangeLabel(row),
       name: `${payPeriodRangeLabel(row).replace(/<[^>]*>/g, '')}, ${payPeriodStatusLabel(row)}`,

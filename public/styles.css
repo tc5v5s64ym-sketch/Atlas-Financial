@@ -559,6 +559,8 @@ footer strong { color:var(--text-secondary); font-weight:600; }
   white-space:nowrap; cursor:pointer; text-align:center;
 }
 .budget-wheel-month .budget-wheel-item { text-transform:uppercase; letter-spacing:.07em; font-size:.8rem; }
+.budget-wheel-year { display:block; visibility:hidden; font-size:.65rem; line-height:1.1; letter-spacing:.04em; }
+.budget-wheel-item[aria-current="true"] .budget-wheel-year { visibility:visible; }
 .budget-wheel-period .budget-wheel-item { font-variant-numeric:tabular-nums; }
 .budget-wheel-item[aria-current="true"] { color:var(--text-primary); font-weight:750; opacity:1; }
 .budget-wheel-item:focus-visible { outline:2px solid var(--s1); outline-offset:-3px; border-radius:6px; }

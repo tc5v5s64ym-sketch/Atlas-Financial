@@ -61,6 +61,17 @@ check('months come only from published row ends, distinguish years, and retain f
   assert.equal(months[4].key, '2027-01');
   assert.equal(months[4].name, 'January 2027');
 });
+check('the selected visible month states its Forecast close year across the long horizon', () => {
+  for (const [id, month, year] of [['current', 'October', '2026'], ['jan', 'January', '2027']]) {
+    const html = f.payPeriodNavigatorHtml(f.payPeriodSelection(advice, id));
+    assert.match(html, new RegExp(`aria-current="true"\\s+aria-label="${month} ${year}">${month}<span class="budget-wheel-year">${year}</span>`));
+  }
+  const repeatedMonth = { payPeriodViews: [rows[1], row('next-year', '2027-09-24', '2027-10-07', 'future')] };
+  const html = f.payPeriodNavigatorHtml(f.payPeriodSelection(repeatedMonth, 'next-year'));
+  assert.match(html, /data-selected-close-month="2027-10"/);
+  assert.match(html, /aria-current="true"\s+aria-label="October 2027">October<span class="budget-wheel-year">2027<\/span>/);
+  assert.match(css, /\[aria-current="true"\] \.budget-wheel-year \{ visibility:visible;/);
+});
 check('entering November selects its first row; selecting October again keeps its second row', () => {
   assert.equal(f.payPeriodWheelSelection(advice, 'next', 'month', 2).period, rows[3]);
   assert.equal(f.payPeriodWheelSelection(advice, 'next', 'month', 1).period, rows[2]);
