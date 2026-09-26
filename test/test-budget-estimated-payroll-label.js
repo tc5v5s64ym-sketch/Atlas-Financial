@@ -60,6 +60,8 @@ function loadComposer() {
     grab(planSrc, /^function payPeriodSelection\([\s\S]*?\n\}$/m, 'payPeriodSelection'),
     grab(planSrc, /^function payPeriodRangeLabel\([\s\S]*?\n\}$/m, 'payPeriodRangeLabel'),
     grab(planSrc, /^function payPeriodStatusLabel\([\s\S]*?\n\}$/m, 'payPeriodStatusLabel'),
+    grab(planSrc, /^function payPeriodCloseMonth\([\s\S]*?\n\}$/m, 'payPeriodCloseMonth'),
+    grab(planSrc, /^function payPeriodMonths\([\s\S]*?\n\}$/m, 'payPeriodMonths'),
     grab(planSrc, /^function payPeriodNavigatorHtml\([\s\S]*?\n\}$/m, 'payPeriodNavigatorHtml'),
     grab(planSrc, /^function payPeriodTimelineHtml\([\s\S]*?\n\}$/m, 'payPeriodTimelineHtml'),
   ].join('\n');
@@ -187,7 +189,7 @@ console.log('=== Forecast 2027 payroll keeps its estimate on the real timeline =
     'the selected 2027 row still uses the household as-of, not its own start');
   ok(!/data-live-current-balance/.test(timeline),
     'the future estimated row still has no live Current Balance');
-  ok(/data-selected-pay-period-status>Projected pay period</.test(timeline),
+  ok(/data-selected-pay-period-status>[\s\S]*?Projected pay period\s*</.test(timeline),
     'the period heading stays the projected role label');
 }
 
