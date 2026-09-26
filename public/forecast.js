@@ -184,7 +184,7 @@
       if (windows[i] && windows[i].start) seen.add(windows[i].start);
     }
     let guard = 0;
-    while (guard < 40) {
+    while (guard < 120) {
       guard += 1;
       const last = windows[windows.length - 1];
       const nextPayday = last && last.cycle && last.cycle.nextPayday;
@@ -7846,6 +7846,13 @@
     let unavailableOpeningLost = false;
     const heldCycleStarts = new Set();
     const sectionById = {};
+    // Further-future rows only. Budget's current and next windows keep
+    // the incumbent printer, including a 2027 date that has become
+    // this-pay-period or next-pay-period. This reads the payroll-regime
+    // authority, not Road Ahead stage, trajectory, or month-close results.
+    const daleRegime = (windows || []).some(w => w && String(w.id).indexOf('future:') === 0)
+      ? timelineEstimatedDaleRegime(plan) : null;
+    const daleMaps = daleRegime ? futureTimelineDaleDepositMaps(daleRegime) : null;
     for (const section of calendar.billSections || []) {
       if (section && section.id) sectionById[section.id] = section;
     }
@@ -7857,7 +7864,10 @@
       const role = window.role || 'future';
       const projected = role === 'future';
       const lookback = role === 'lookback';
-      const income = incomeByWindow[window.id] || [];
+      let income = incomeByWindow[window.id] || [];
+      if (daleMaps && String(window.id).indexOf('future:') === 0) {
+        income = applyFutureTimelineDaleIncome(plan, window, income, daleMaps);
+      }
       const bills = section.rows || [];
       const remainingBills = section.remainingTotal != null
         ? section.remainingTotal
@@ -8223,49 +8233,176 @@
     };
   }
 
-  // Dale-income authority end for the Budget timeline. Owner question A1
-  // (2027 Dale pay basis) is open, so the default and the ceiling are the
-  // payroll-modelled boundary. A caller may name an earlier end. A later
-  // end is ignored: this does not carry the 2026 net into 2027 and does
-  // not read the Road Ahead 2027 estimated payroll regime. A later owner
-  // decision replaces the modelled-through return.
-  function daleIncomeAuthorityEnd(opts) {
-    const modelledThrough = DALE_NET_MODELLED_THROUGH;
-    const requested = opts && opts.daleIncomeAuthorityEnd;
-    if (typeof requested === 'string' && ISO_CALENDAR_DATE.test(requested)
-        && requested < modelledThrough) {
-      return requested;
-    }
-    return modelledThrough;
+  // Owner Dale, 2026-09-25 7:43 PM PT: "Use the 2027 estimated payroll
+  // for 2027 pay periods, marked as estimated." Further-future timeline
+  // rows read that existing regime. Current and next Budget rows do not.
+  // A missing regime fails closed at the payroll-modelled boundary and
+  // does not carry the 2026 net forward. A caller may name an earlier
+  // end. A later end does not pass the regime or the knowledge horizon.
+  function timelineEstimatedDaleRegime(plan) {
+    const assumptions = readPayrollPlanningAssumptions(plan);
+    if (!assumptions || !assumptions.estimatedThrough) return null;
+    const regime = daleEstimatedPayrollDeposits(
+      plan, DALE_PAYROLL_REGIME_FROM, assumptions.estimatedThrough);
+    if (!regime || regime.status !== 'ready') return null;
+    return {
+      estimatedThrough: assumptions.estimatedThrough,
+      deposits: regime.deposits || [],
+    };
   }
 
-  // through = min(knowledge horizon end, Dale-income authority end).
+  function futureTimelineDaleDepositMaps(regime) {
+    const regular = new Map();
+    const bonus = new Map();
+    const through = regime && regime.estimatedThrough;
+    for (const dep of (regime && regime.deposits) || []) {
+      if (!dep || !dep.date || dep.date < DALE_PAYROLL_REGIME_FROM) continue;
+      if (through && dep.date > through) continue;
+      if (dep.kind === 'bonus') bonus.set(dep.date, dep);
+      else if (dep.kind === 'regular') regular.set(dep.date, dep);
+    }
+    return { regular, bonus };
+  }
+
+  function timelineDaleStream(plan, row) {
+    if (!row) return null;
+    const listed = ((plan && plan.income) || []).find(s => s && s.id === row.id) || null;
+    if (isDalePayrollStream(listed) || isDalePayrollStream(row)) return listed || row;
+    if (row.id === 'payrollBonus') return row;
+    return null;
+  }
+
+  function timelineDaleRowIsBonus(row, stream) {
+    if (!row) return false;
+    if (row.id === 'payrollBonus') return true;
+    return isDaleBonusStream(stream) || isDaleBonusStream(row);
+  }
+
+  function stampTimelineEstimatedDaleRow(row, dep) {
+    const net = roundCent(dep.net);
+    row.planned = net;
+    row.amount = net;
+    row.actual = null;
+    row.remaining = net;
+    row.movement = householdMovement(net, 'in');
+    row.confidence = 'estimated';
+    row.status = 'estimated';
+    row.settlement = 'estimated';
+    row.glanceKind = 'in';
+    row.alreadyInCash = false;
+    row.notReliedUpon = false;
+    row.incomeClass = 'dale';
+    row.otherIncome = false;
+    row.incomeRegime = '2027-estimated';
+    delete row.incomeRecognition;
+    delete row.notReliedUponReason;
+    return row;
+  }
+
+  function estimatedTimelineDaleIncomeRow(dep) {
+    const net = roundCent(dep.net);
+    const bonus = dep.kind === 'bonus';
+    return stampTimelineEstimatedDaleRow({
+      id: dep.id || (bonus ? 'payrollBonus' : 'payroll'),
+      label: dep.label || (bonus ? 'Payroll bonus — Seaspan' : 'Payroll — Seaspan'),
+      kind: 'income',
+      date: dep.date,
+    }, dep);
+  }
+
+  // Replace 2027 Dale payroll on a further-future row with the estimated
+  // regime. A 2026 date in the same row stays on the incumbent amount.
+  // A 2027 Dale date with no regime deposit is omitted, not carried.
+  function applyFutureTimelineDaleIncome(plan, window, income, maps) {
+    const next = [];
+    const seen = new Set();
+    for (const row of income || []) {
+      if (!row) continue;
+      const stream = timelineDaleStream(plan, row);
+      const inRegime = !!(stream && row.date && row.date >= DALE_PAYROLL_REGIME_FROM);
+      if (!inRegime) {
+        next.push(row);
+        continue;
+      }
+      const bonus = timelineDaleRowIsBonus(row, stream);
+      const dep = bonus ? maps.bonus.get(row.date) : maps.regular.get(row.date);
+      if (!dep) continue;
+      stampTimelineEstimatedDaleRow(row, dep);
+      seen.add((bonus ? 'bonus:' : 'regular:') + row.date);
+      next.push(row);
+    }
+    const place = (store, kind) => {
+      store.forEach((dep, date) => {
+        if (!window || date < window.start || date > window.end) return;
+        const key = kind + ':' + date;
+        if (seen.has(key)) return;
+        seen.add(key);
+        next.push(estimatedTimelineDaleIncomeRow(dep));
+      });
+    };
+    place(maps.regular, 'regular');
+    place(maps.bonus, 'bonus');
+    next.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
+      || String(a.label || '').localeCompare(String(b.label || '')));
+    return next;
+  }
+
+  // through = min(knowledge horizon end, 2027 estimated-regime end).
   // Full cycles only; the window helper omits a cycle that would be clipped.
+  // incomeRegimeBoundary stays the 2026-12-31 modelled/estimated split.
   function payPeriodTimelineBound(plan, asOf, opts) {
     const horizon = knowledgeHorizon(plan, asOf, opts);
-    const incomeRegimeBoundary = daleIncomeAuthorityEnd(opts);
     const knowledgeEnd = horizon && horizon.end ? horizon.end : null;
-    let through = null;
-    if (knowledgeEnd && incomeRegimeBoundary) {
-      through = knowledgeEnd < incomeRegimeBoundary ? knowledgeEnd : incomeRegimeBoundary;
-    } else {
-      through = incomeRegimeBoundary || knowledgeEnd;
+    const incomeRegimeBoundary = DALE_NET_MODELLED_THROUGH;
+    const regime = timelineEstimatedDaleRegime(plan);
+    const estimatedThrough = regime ? regime.estimatedThrough : null;
+    const regimeCeiling = estimatedThrough || incomeRegimeBoundary;
+    let authorityEnd = regimeCeiling;
+    const requested = opts && opts.daleIncomeAuthorityEnd;
+    const callerEarlier = typeof requested === 'string'
+      && ISO_CALENDAR_DATE.test(requested)
+      && requested < regimeCeiling;
+    if (callerEarlier) authorityEnd = requested;
+    let through = authorityEnd;
+    let binding = estimatedThrough ? '2027-estimated-regime' : 'payroll-modelled';
+    if (callerEarlier && authorityEnd === requested) binding = 'caller-authority-end';
+    if (knowledgeEnd && knowledgeEnd < through) {
+      through = knowledgeEnd;
+      binding = 'knowledge-horizon';
     }
-    return { through, knowledgeEnd, incomeRegimeBoundary };
+    return {
+      through,
+      knowledgeEnd,
+      incomeRegimeBoundary,
+      estimatedThrough,
+      binding,
+    };
   }
 
-  function payPeriodTimelineHorizonReason(incomeRegimeBoundary, through, futureAfterNext) {
-    const boundary = incomeRegimeBoundary || 'unavailable';
-    const stop = through || 'unavailable';
+  function payPeriodTimelineHorizonReason(bound, futureAfterNext) {
+    const boundary = (bound && bound.incomeRegimeBoundary) || 'unavailable';
+    const stop = (bound && bound.through) || 'unavailable';
+    const estimatedThrough = bound && bound.estimatedThrough;
+    const binding = bound && bound.binding;
+    const regime = estimatedThrough
+      ? 'From 2027-01-01, further future timeline rows use the owner-approved 2027 estimated payroll regime through '
+        + estimatedThrough
+        + ', marked estimated. The 2026 modelled net is not carried into 2027. Road Ahead stage, trajectory, and month-close results are not read.'
+      : 'The 2027 estimated payroll regime is unavailable for this plan, so further cycles stop at the payroll-modelled boundary and the 2026 modelled net is not carried into 2027.';
+    const which = binding === 'knowledge-horizon'
+      ? 'The binding boundary is the knowledge horizon.'
+      : binding === '2027-estimated-regime'
+        ? 'The binding boundary is the 2027 estimated-regime end.'
+        : binding === 'caller-authority-end'
+          ? 'The binding boundary is the caller Dale-income authority end.'
+          : 'The binding boundary is the payroll-modelled Dale-income end.';
     const minimumUnmet = !(Number(futureAfterNext) >= 8);
     const minimum = minimumUnmet
-      ? 'The owner minimum (next pay period plus 8 further future periods) is not met until the 2027 Dale pay basis is decided.'
-      : 'This as-of meets the owner minimum of the next pay period plus 8 further future periods inside the payroll-modelled boundary. Periods after that boundary stay unpublished until the 2027 Dale pay basis is decided.';
+      ? 'The owner minimum (next pay period plus 8 further future periods) is not met inside this through date.'
+      : 'This as-of meets the owner minimum of the next pay period plus 8 further future periods.';
     return 'Payroll-modelled Dale-income authority ends ' + boundary
-      + '. The timeline publishes full Seaspan cycles only, stopping at the last cycle whose end is on or before '
-      + stop
-      + '. The 2026 modelled net is not carried into 2027, and the Road Ahead 2027 estimated payroll regime is not used. '
-      + minimum;
+      + '. ' + regime + ' The timeline publishes full Seaspan cycles only, stopping at the last cycle whose end is on or before '
+      + stop + '. ' + which + ' ' + minimum;
   }
 
   // One chronological Budget timeline. Past, current, and next are the
@@ -8321,8 +8458,7 @@
         currentIndex,
         count: views.length,
         through,
-        horizonReason: payPeriodTimelineHorizonReason(
-          incomeRegimeBoundary, through, future.length),
+        horizonReason: payPeriodTimelineHorizonReason(bound, future.length),
         incomeRegimeBoundary,
       },
     };
@@ -14168,9 +14304,12 @@
   const SEASPAN_BONUS_LAST_DEPOSIT = '2026-02-25';
   const DALE_NET_MODELLED_THROUGH = '2026-12-31';
   const DALE_PAYROLL_REGIME_FROM = '2027-01-01';
-  // Budget payPeriodTimeline fails closed at DALE_NET_MODELLED_THROUGH
-  // via daleIncomeAuthorityEnd. Do not point that helper at the 2027
-  // estimated regime below; owner question A1 is still open.
+  // Owner Dale, 2026-09-25 7:43 PM PT: further-future Budget timeline
+  // rows use daleEstimatedPayrollDeposits from DALE_PAYROLL_REGIME_FROM
+  // through the assumption year, marked estimated. Do not point that
+  // path at baselineTrajectory, stage results, or month-close. Current
+  // and next Budget rows stay on expandEvents. A later year stays
+  // unpublished until a later regime is authorized.
 
   const SEASPAN_OBSERVED_SALARY_REGIMES = [
     { from: '2025-03-01', annual: 151283, trust: 'observed' },

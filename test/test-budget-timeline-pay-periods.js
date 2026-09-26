@@ -551,18 +551,20 @@ console.log('\n=== horizon stops at the last full cycle on or before the boundar
     'every further cycle ends on or before the boundary');
   ok(/Payroll-modelled Dale-income authority ends 2026-12-31/.test(timeline.horizonReason),
     'horizonReason names the payroll-modelled boundary');
-  ok(/is not met until the 2027 Dale pay basis is decided/.test(timeline.horizonReason),
+  ok(/2027 estimated payroll regime is unavailable/.test(timeline.horizonReason),
+    'without planning assumptions the 2027 regime is unavailable');
+  ok(/is not met inside this through date/.test(timeline.horizonReason),
     'horizonReason states the owner minimum is not met');
-  ok(/Road Ahead 2027 estimated payroll regime is not used/.test(timeline.horizonReason),
-    'horizonReason states the 2027 estimated regime is not used');
+  ok(/2026 modelled net is not carried into 2027/.test(timeline.horizonReason),
+    'horizonReason states the 2026 net is not carried forward');
   const extended = recommend(timelinePlan(AS_OF), AS_OF, {
     daleIncomeAuthorityEnd: '2027-12-31',
   });
   ok(extended.payPeriodTimeline.incomeRegimeBoundary === MODELLED_THROUGH
       && extended.payPeriodTimeline.through === MODELLED_THROUGH,
-    'a later requested end fails closed at 2026-12-31');
+    'without the regime, a later requested end stays at 2026-12-31');
   ok(!(extended.payPeriodViews || []).some(p => p && p.start >= '2027-01-01'),
-    'requesting 2027 does not publish a 2027 cycle');
+    'requesting 2027 does not publish a 2027 cycle when the regime is unavailable');
   const shortened = recommend(timelinePlan(AS_OF), AS_OF, {
     daleIncomeAuthorityEnd: '2026-11-05',
   });
@@ -605,12 +607,184 @@ console.log('\n=== timeline source does not read Road Ahead ===');
     return src.slice(start, end);
   }
   const windows = body('timelinePayPeriodWindows', 'completedPayPeriodWindows');
-  const compose = body('composePayPeriodTimeline', 'planPastPeriodViews');
+  const compose = body('composePayPeriodTimeline', 'attachPaydayCarryover');
   const bound = body('payPeriodTimelineBound', 'payPeriodTimelineHorizonReason');
-  ok(windows && compose && bound, 'timeline helpers are present');
-  const blob = windows + compose + bound;
+  const regime = body('timelineEstimatedDaleRegime', 'payPeriodTimelineBound');
+  ok(windows && compose && bound && regime, 'timeline helpers are present');
+  const blob = windows + compose + bound + regime;
   ok(!/baselineTrajectory|stage3|month-close|monthClose/.test(blob),
-    'timeline windows, bound, and composer do not read Road Ahead values');
+    'timeline windows, bound, composer, and regime stamp do not read Road Ahead values');
+  ok(/daleEstimatedPayrollDeposits/.test(regime + bound),
+    'the 2027 stamp reads the payroll-regime authority');
+}
+
+console.log('\n=== 2027 estimated regime on further-future rows only ===');
+{
+  // First 2027 Seaspan regular, deposit-year CPP/EI restart, annual 158091:
+  //   gross 6080.42, pension 364.83, tax 1413.30, CPP 353.78, EI 99.11
+  //   net 6080.42 − 1413.30 − 353.78 − 99.11 − 364.83 = 3849.40
+  // February bonus is 18% of 158091 = 28456.38 gross. After four identical
+  // regulars the bonus net is 14717.64 (tax 11581.75, CPP 1693.15, EI 463.84).
+  const DALE_2027 = 3849.40;
+  const BONUS_2027 = 14717.64;
+  const assumptions = {
+    salaryRaiseFactor: 1.04,
+    bonusRate: 0.18,
+    authorizedThroughYear: 2027,
+  };
+  function withRegime(asOf) {
+    const plan = timelinePlan(asOf);
+    plan.payrollPlanningAssumptions = assumptions;
+    return plan;
+  }
+  const forbidden = /received|relied-upon|provider/i;
+  function daleRows(period) {
+    return ((period && period.income) || []).filter(r => r && (r.id === 'payroll' || r.id === 'payrollBonus'));
+  }
+
+  const oct = recommend(withRegime(AS_OF));
+  const current = rowByRole(oct, 'current');
+  const next = rowByRole(oct, 'next');
+  ok(current === oct.defaultView.calendarPeriods[0],
+    'regime plan current is still calendarPeriods[0]');
+  ok(next === oct.defaultView.calendarPeriods[1],
+    'regime plan next is still calendarPeriods[1]');
+  expectPeriod(current, CURRENT, 'regime current');
+  expectPeriod(next, NEXT, 'regime next');
+  ok(daleRows(current).every(r => r.amount === DALE && !r.incomeRegime),
+    'current Dale row stays the 2026 fixture amount');
+  ok(daleRows(next).every(r => r.amount === DALE && !r.incomeRegime),
+    'Budget next Dale row stays the 2026 fixture amount');
+
+  const dec = rowByStart(oct, '2026-12-18');
+  const jan = rowByStart(oct, '2027-01-01');
+  ok(dec && dec.timelineRole === 'future', 'Dec 18–31 is a further-future row');
+  ok(jan && jan.timelineRole === 'future', 'Jan 1–14 is a further-future row');
+  const decDale = incomeOn(dec, 'payroll', '2026-12-18');
+  ok(decDale.length === 1 && decDale[0].amount === DALE && !decDale[0].incomeRegime,
+    'the December 2026 pay stays the fixture amount', decDale[0] && String(decDale[0].amount));
+  expectPeriod(dec, {
+    start: '2026-12-18', end: '2026-12-31',
+    income: 6000, bills: 0, hold: holdFor(0), bad: 5650,
+  }, 'Dec 18 boundary');
+  const janDale = incomeOn(jan, 'payroll', '2027-01-01');
+  ok(janDale.length === 1 && janDale[0].amount === DALE_2027,
+    'the January 2027 pay is the estimated net', janDale[0] && String(janDale[0].amount));
+  ok(janDale[0] && janDale[0].amount !== DALE && janDale[0].amount !== 4264,
+    'January does not carry 4000 or 4264');
+  const janIncome = roundCent(DALE_2027);
+  const janBills = roundCent(MORTGAGE + HYDRO);
+  const janHold = holdFor(PETS);
+  const janBad = roundCent(janIncome - janBills - janHold);
+  ok(janBad === 1600.40, 'hand BAD for Jan 1–14 is 1600.40', String(janBad));
+  expectPeriod(jan, {
+    start: '2027-01-01', end: '2027-01-14',
+    income: janIncome, bills: janBills, hold: janHold, bad: janBad,
+  }, 'Jan 1 estimated');
+  ok(budgetItem(jan, 'pets') && near(budgetItem(jan, 'pets').planned, PETS),
+    'January dog food lands on the first Seaspan start');
+  ok(billOn(jan, 'mortgage', '2027-01-01').length === 1
+      && billOn(jan, 'hydro', '2027-01-03').length === 1,
+    'January mortgage and hydro land once in Jan 1–14');
+  ok(billOn(dec, 'mortgage', '2027-01-01').length === 0,
+    'January mortgage is not also in the December period');
+
+  const labelled = (oct.payPeriodViews || []).filter(p => p && p.timelineRole === 'future');
+  let estimatedRows = 0;
+  for (const period of labelled) {
+    for (const row of daleRows(period)) {
+      if (!row.date || row.date < '2027-01-01') continue;
+      estimatedRows += 1;
+      const mark = [row.status, row.settlement, row.confidence, row.incomeRegime].join(' ');
+      ok(row.confidence === 'estimated' && row.status === 'estimated'
+          && row.incomeRegime === '2027-estimated' && row.settlement === 'estimated',
+        row.date + ' Dale row is marked estimated', mark);
+      ok(!forbidden.test(mark), row.date + ' has no received, relied-upon, or provider language', mark);
+      ok(row.amount !== DALE && row.amount !== 4264,
+        row.date + ' is not the carried 2026 net', String(row.amount));
+    }
+  }
+  ok(estimatedRows > 0, 'at least one 2027 Dale row is labelled', 'count=' + estimatedRows);
+
+  const bonusHits = [];
+  for (const period of oct.payPeriodViews || []) {
+    for (const row of (period.income || [])) {
+      if (row && (row.id === 'payrollBonus' || row.date === '2027-02-25')) {
+        bonusHits.push({ start: period.start, row });
+      }
+    }
+  }
+  ok(bonusHits.length === 1 && bonusHits[0].start === '2027-02-12'
+      && bonusHits[0].row.amount === BONUS_2027
+      && bonusHits[0].row.incomeRegime === '2027-estimated',
+    'the February bonus is in Feb 12–25 once',
+    bonusHits.map(h => h.start + ':' + (h.row && h.row.amount)).join(','));
+  const feb = rowByStart(oct, '2027-02-12');
+  const febRegular = incomeOn(feb, 'payroll', '2027-02-12');
+  ok(febRegular.length === 1 && febRegular[0].amount === DALE_2027,
+    'Feb 12 regular is still the pre-anniversary estimated net');
+  const febIncome = roundCent(DALE_2027 + BONUS_2027 + AMANDA_15 + CHILD);
+  const febHold = holdFor(PETS);
+  const febBad = roundCent(febIncome - 0 - febHold);
+  ok(febBad === 20617.04, 'hand BAD for the bonus period is 20617.04', String(febBad));
+  expectPeriod(feb, {
+    start: '2027-02-12', end: '2027-02-25',
+    income: febIncome, bills: 0, hold: febHold, bad: febBad,
+  }, 'Feb 12 bonus period');
+  ok(feb && feb.evidenceState === 'projected' && feb.liveCurrentBalance == null,
+    'the bonus period invents no live Current Balance');
+  ok((feb.householdBudget || []).every(item => item && item.spent == null),
+    'the bonus period invents no household spent');
+
+  const rolled = recommend(withRegime('2026-12-18'), '2026-12-18');
+  const rolledCurrent = rowByRole(rolled, 'current');
+  const rolledNext = rowByRole(rolled, 'next');
+  const rolledFuture = rowByStart(rolled, '2027-01-15');
+  ok(rolledCurrent && rolledCurrent.start === '2026-12-18'
+      && incomeOn(rolledCurrent, 'payroll', '2026-12-18')[0].amount === DALE,
+    'when December is current, its Dale pay stays the fixture amount');
+  ok(rolledNext && rolledNext.id === 'next-pay-period'
+      && rolledNext === rolled.defaultView.calendarPeriods[1]
+      && incomeOn(rolledNext, 'payroll', '2027-01-01')[0].amount === DALE
+      && !incomeOn(rolledNext, 'payroll', '2027-01-01')[0].incomeRegime,
+    'Budget next keeps the incumbent January amount, not the estimate');
+  ok(rolledFuture && rolledFuture.timelineRole === 'future'
+      && incomeOn(rolledFuture, 'payroll', '2027-01-15')[0].amount === DALE_2027
+      && incomeOn(rolledFuture, 'payroll', '2027-01-15')[0].incomeRegime === '2027-estimated',
+    'the following future row uses the January estimate');
+
+  const sep = recommend(withRegime('2026-09-25'), '2026-09-25');
+  const sepTimeline = sep.payPeriodTimeline;
+  const sepFutures = (sep.payPeriodViews || []).filter(p => p && p.timelineRole === 'future');
+  const eighth = rowByStart(sep, '2027-01-29');
+  ok(sepTimeline.incomeRegimeBoundary === MODELLED_THROUGH,
+    'incomeRegimeBoundary stays 2026-12-31');
+  ok(sepTimeline.through === '2027-09-24',
+    'from Sep 25 the knowledge horizon binds through', sepTimeline.through);
+  ok(/binding boundary is the knowledge horizon/.test(sepTimeline.horizonReason),
+    'horizonReason names the knowledge horizon');
+  ok(/2027 estimated payroll regime through 2027-12-31/.test(sepTimeline.horizonReason),
+    'horizonReason names the estimated-regime end');
+  ok(eighth && eighth.end === '2027-02-11' && eighth.timelineRole === 'future',
+    'next+8 reaches Jan 29–Feb 11 2027');
+  ok(sepFutures.length >= 8, 'at least eight further future rows are published',
+    'count=' + sepFutures.length);
+  ok(sepFutures.every(p => p.end <= sepTimeline.through),
+    'every further cycle ends on or before through');
+  ok(/meets the owner minimum/.test(sepTimeline.horizonReason),
+    'Sep 25 meets the owner minimum');
+  const starts = (sep.payPeriodViews || []).map(p => p.start);
+  ok(new Set(starts).size === starts.length, 'Sep 25 timeline starts do not duplicate');
+  console.log('  future-row count from 2026-09-25: ' + sepFutures.length);
+
+  const capped = recommend(withRegime(AS_OF), AS_OF, {
+    daleIncomeAuthorityEnd: '2028-06-30',
+  });
+  ok(capped.payPeriodTimeline.through === '2027-10-08',
+    'a later requested end cannot pass the knowledge horizon',
+    capped.payPeriodTimeline.through);
+  ok(!(capped.payPeriodViews || []).some(p => p && p.start >= '2028-01-01'),
+    '2028 cycles stay unpublished');
 }
 
 if (failures) {
