@@ -2990,10 +2990,13 @@ function wirePlanLookPicker(mount, ctx) {
         choose(index + (event.key === 'ArrowRight' ? 1 : -1), true);
       });
       const track = wheel.querySelector('.budget-wheel-track');
+      // Percentage is the layout authority. Pixel width is read when the
+      // gesture starts, so a later resize cannot leave snap math stale.
       const slotPercent = parseFloat(track.style.getPropertyValue('--wheel-slot'));
-      const slotPx = Number(wheel.clientWidth) > 0 && slotPercent > 0
-        ? wheel.clientWidth * slotPercent / 100
-        : 0;
+      const slotPxNow = () => {
+        const width = Number(wheel.clientWidth);
+        return width > 0 && slotPercent > 0 ? width * slotPercent / 100 : 0;
+      };
       const count = kind === 'month' ? payPeriodMonths(selection).length : selection.rows.length;
       let start = null;
       const reset = () => {
@@ -3023,6 +3026,7 @@ function wirePlanLookPicker(mount, ctx) {
           t: event.timeStamp,
           id: event.pointerId,
           axis: '',
+          slotPx: slotPxNow(),
         };
       });
       wheel.addEventListener('pointermove', event => {
@@ -3041,7 +3045,7 @@ function wirePlanLookPicker(mount, ctx) {
         }
         track.classList.remove('is-moving');
         track.classList.add('is-dragging');
-        const drag = payPeriodDragPixels(dx, index, count, slotPx);
+        const drag = payPeriodDragPixels(dx, index, count, start.slotPx);
         track.style.setProperty('--wheel-drag', `${drag}px`);
         track.style.transform = `translateX(calc(var(--wheel-offset) + ${drag}px))`;
         if (event.cancelable) event.preventDefault();
@@ -3055,7 +3059,7 @@ function wirePlanLookPicker(mount, ctx) {
             x: event.clientX,
             y: event.clientY,
             t: event.timeStamp,
-          }, slotPx)
+          }, origin.slotPx)
           : 0;
         if (step) {
           const target = Math.max(0, Math.min(count - 1, index + step));
