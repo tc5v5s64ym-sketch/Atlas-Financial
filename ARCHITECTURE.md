@@ -483,9 +483,12 @@ It reads `plan.payrollPlanningAssumptions` through
 statutory calculator. The Road Ahead walk and Budget timeline rows
 both consume that source. The estimate is applied on future, next, and
 current rows for Dale payroll dates from 2027-01-01, marked estimated
-(`incomeRegime` `2027-estimated`), until an observed deposit, a
-represented key, or cash already inside the dated opening supersedes
-that occurrence. The actual amount then wins once. It is not applied
+(`incomeRegime` `2027-estimated`), until an observed deposit or a
+represented key for that occurrence supersedes it. A date-passed
+`received` / `alreadyInCash` presentation does not, including when the
+calendar printer stamps `settlement` `opening` only because a recurring
+date is before the cash snapshot. That stamp is not an observed amount.
+The actual amount then wins once. It is not applied
 to past rows, 2026 dates, or `nextPeriodView`. When
 `plan.payrollPlanningAssumptions` are absent, current and next keep
 the incumbent amount and further 2027 cycles are omitted. The 2026

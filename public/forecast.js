@@ -8268,7 +8268,9 @@
   // is unavailable those rows keep the incumbent amount and further
   // 2027 cycles are omitted. A ready regime with no deposit for one
   // unevidenced 2027 date omits that date rather than carrying the
-  // 2026 net forward.
+  // 2026 net forward. A date that has merely passed does not supersede
+  // the estimate, including when the calendar printer marks that row
+  // received because it is inside the cash-snapshot date.
   // A caller may name an earlier end. A later end does not pass the
   // regime or the knowledge horizon.
   function timelineEstimatedDaleRegime(plan, asOf, opts) {
@@ -8343,14 +8345,19 @@
     }, dep);
   }
 
-  // A represented key, an observed actual, or cash already inside the
-  // dated opening supersedes the estimate. Payday recognition without
-  // that evidence does not: the row stays the estimate.
+  // Observed actual or a represented key supersedes the estimate.
+  // The calendar printer's date-passed presentation does not: received
+  // can be paid || inside || (datePassed && !otherOnce), and inside
+  // stamps settlement 'opening' for a recurring date merely before the
+  // cash snapshot. That is not an observed amount and not a represented
+  // key. historicalSettlementProven already refuses that same
+  // date-passed / inside-opening stamp. Payday recognition without a
+  // represented key or actual does not supersede either.
   function timelineDaleRowHasEvidence(row) {
     if (!row) return false;
-    if (row.settlement === 'represented' || row.settlement === 'opening') return true;
+    if (row.settlement === 'represented') return true;
     if (row.actual != null && isFinite(Number(row.actual))) return true;
-    return row.alreadyInCash === true && row.status === 'received';
+    return false;
   }
 
   function keepTimelineDaleEvidenceRow(row) {
