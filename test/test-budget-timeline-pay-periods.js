@@ -950,7 +950,7 @@ console.log('\n=== 2027 estimated regime on future/projected rows ===');
     '2028 cycles stay unpublished');
 }
 
-console.log('\n=== Dec 18 → Jan 1 as next stays estimated; current keeps incumbent evidence ===');
+console.log('\n=== Jan 1–14 stays estimated as future, next, and current until evidence ===');
 {
   // First 2027 regular, deposit-year CPP/EI restart, annual 158091:
   //   gross 6080.42 − tax 1413.30 − CPP 353.78 − EI 99.11 − pension 364.83
@@ -967,12 +967,38 @@ console.log('\n=== Dec 18 → Jan 1 as next stays estimated; current keeps incum
     return plan;
   }
 
-  // Dec 18 2026 as-of: Jan 1–14 is Budget Next Pay Period.
-  // Income: Dale Jan 1 only = 3849.40
+  // Jan 1–14 income is Dale only, 3849.40, in every role before evidence.
   // Bills: mortgage Jan 1 1600 + hydro Jan 3 199 = 1799
   // Hold: groceries 200 + dale-guilt-free 150 + pets 100
   //   (first Seaspan start of January) = 450
   // BAD: 3849.40 − 1799 − 450 = 1600.40
+  function janFace(period) {
+    const row = incomeOn(period, 'payroll', '2027-01-01')[0];
+    return row
+      ? [row.status, row.settlement, row.confidence, row.incomeRegime].join(' ')
+      : '';
+  }
+  const janIncome = roundCent(DALE_2027);
+  const janBills = roundCent(MORTGAGE + HYDRO);
+  const janHold = holdFor(PETS);
+  const janBad = roundCent(janIncome - janBills - janHold);
+  ok(janBad === 1600.40, 'hand BAD for unevidenced Jan 1–14 is 1600.40', String(janBad));
+  const janSpec = {
+    start: '2027-01-01', end: '2027-01-14',
+    income: janIncome, bills: janBills, hold: janHold, bad: janBad,
+  };
+
+  const asFuture = recommend(withRegime('2026-12-04'), '2026-12-04');
+  const futureJan = rowByStart(asFuture, '2027-01-01');
+  ok(futureJan && futureJan.timelineRole === 'future'
+      && futureJan.start === '2027-01-01' && futureJan.end === '2027-01-14',
+    'as of Dec 4, Jan 1–14 is a further-future row');
+  const futureDale = incomeOn(futureJan, 'payroll', '2027-01-01');
+  ok(futureDale.length === 1 && futureDale[0].amount === DALE_2027
+      && janFace(futureJan) === 'estimated estimated estimated 2027-estimated',
+    'Jan 1 as future uses the estimated net', janFace(futureJan));
+  expectPeriod(futureJan, janSpec, 'Jan 1 as future');
+
   const asNext = recommend(withRegime('2026-12-18'), '2026-12-18');
   const next = rowByRole(asNext, 'next');
   const currentOnDec = rowByRole(asNext, 'current');
@@ -994,45 +1020,117 @@ console.log('\n=== Dec 18 → Jan 1 as next stays estimated; current keeps incum
     nextDale[0] && String(nextDale[0].amount));
   ok(nextDale[0] && nextDale[0].amount !== DALE && nextDale[0].amount !== 4264,
     'Jan 1 as next does not carry 4000 or 4264');
-  const nextIncome = roundCent(DALE_2027);
-  const nextBills = roundCent(MORTGAGE + HYDRO);
-  const nextHold = holdFor(PETS);
-  const nextBad = roundCent(nextIncome - nextBills - nextHold);
-  ok(nextBad === 1600.40, 'hand BAD for Jan 1 as next is 1600.40', String(nextBad));
-  expectPeriod(next, {
-    start: '2027-01-01', end: '2027-01-14',
-    income: nextIncome, bills: nextBills, hold: nextHold, bad: nextBad,
-  }, 'Jan 1 as next');
+  ok(janFace(next) === 'estimated estimated estimated 2027-estimated'
+      && !/arriving|received|relied-upon|provider/i.test(janFace(next)),
+    'Jan 1 as next has no arriving, received, or relied-upon language', janFace(next));
+  expectPeriod(next, janSpec, 'Jan 1 as next');
 
-  // Jan 1 2027 as-of: the same window is current and keeps incumbent
-  // fixture evidence. Income 4000; bills 1799; hold 450;
-  // BAD 4000 − 1799 − 450 = 1751.
-  const asCurrent = recommend(withRegime('2027-01-01'), '2027-01-01');
+  // Jan 1 2027 as-of, before any deposit: the same window is current and
+  // still the estimate. BAD stays 1600.40. Not the fixture 4000 (BAD 1751).
+  const preCash = 500;
+  const beforePlan = withRegime('2026-12-31');
+  beforePlan.startingCash.breakdown[0].value = preCash;
+  const asCurrent = recommend(beforePlan, '2027-01-01');
   const nowCurrent = rowByRole(asCurrent, 'current');
   const nowNext = rowByRole(asCurrent, 'next');
   ok(nowCurrent && nowCurrent.id === 'this-pay-period'
       && nowCurrent.start === '2027-01-01',
     'Jan 1–14 is current on Jan 1');
   const currentDale = incomeOn(nowCurrent, 'payroll', '2027-01-01');
-  ok(currentDale.length === 1 && currentDale[0].amount === DALE
-      && !currentDale[0].incomeRegime,
-    'Jan 1 as current keeps the incumbent fixture Dale amount',
-    currentDale[0] && String(currentDale[0].amount));
-  const currentIncome = roundCent(DALE);
-  const currentBills = roundCent(MORTGAGE + HYDRO);
-  const currentHold = holdFor(PETS);
-  const currentBad = roundCent(currentIncome - currentBills - currentHold);
-  ok(currentBad === 1751, 'hand BAD for Jan 1 as current is 1751', String(currentBad));
-  expectPeriod(nowCurrent, {
-    start: '2027-01-01', end: '2027-01-14',
-    income: currentIncome, bills: currentBills, hold: currentHold, bad: currentBad,
-  }, 'Jan 1 as current');
+  ok(currentDale.length === 1 && currentDale[0].amount === DALE_2027
+      && janFace(nowCurrent) === 'estimated estimated estimated 2027-estimated',
+    'Jan 1 as current stays the estimate before evidence',
+    janFace(nowCurrent) + ' amount=' + (currentDale[0] && currentDale[0].amount));
+  ok(!/arriving|received|relied-upon|provider/i.test(janFace(nowCurrent)),
+    'Jan 1 as current has no relied-upon or provider language', janFace(nowCurrent));
+  expectPeriod(nowCurrent, janSpec, 'Jan 1 as current before evidence');
+  const publication = asCurrent.paydayAllocation && asCurrent.paydayAllocation.currentBalancePublication;
+  const balanceWithEstimate = roundCent(preCash + DALE_2027);
+  ok(balanceWithEstimate === 4349.40, 'hand Current Balance is 500 + 3849.40 = 4349.40',
+    String(balanceWithEstimate));
+  ok(publication && publication.status === 'planned-dale-payday'
+      && publication.providerConfirmed === false
+      && near(publication.assumedDalePayroll, DALE_2027)
+      && near(publication.amount, balanceWithEstimate)
+      && near(asCurrent.paydayAllocation.liveCurrentBalance, balanceWithEstimate)
+      && near(asCurrent.paydayAllocation.available, balanceWithEstimate)
+      && !/provider-verified|verified/i.test(publication.note || ''),
+    'payday Current Balance adds the same estimate once and stays unconfirmed',
+    publication && [publication.status, publication.assumedDalePayroll, publication.amount, publication.note].join(' / '));
+  ok(!near(publication && publication.amount, roundCent(preCash + DALE))
+      && !near(publication && publication.amount, roundCent(balanceWithEstimate + DALE_2027)),
+    'Current Balance is not the 2026 amount and does not add the estimate twice');
+  const incomplete = recommend(beforePlan, '2027-01-01', {
+    currentPeriodActuals: {
+      schema: 'atlas-current-period-actuals/v1',
+      observationAsOf: '2027-01-01',
+      coverageStart: '2026-12-01',
+      coverageThrough: '2026-12-31',
+      pendingCoverage: 'complete',
+      transactions: [{
+        id: 'ambiguous-inflow', date: '2027-01-01', amount: -2500, pending: false,
+        accountRole: 'household-cash', atlasAccountId: 'chequing-a',
+      }],
+    },
+  });
+  const closed = incomplete.paydayAllocation && incomplete.paydayAllocation.currentBalancePublication;
+  ok(closed && closed.amount == null && closed.status === 'unavailable'
+      && !near(closed.amount, balanceWithEstimate),
+    'an uncovered payday inflow still fails closed and does not publish the estimate on top',
+    closed && closed.status);
   ok(nowNext && nowNext.id === 'next-pay-period' && nowNext.start === '2027-01-15',
     'Jan 15–28 is next on Jan 1');
   const laterDale = incomeOn(nowNext, 'payroll', '2027-01-15');
   ok(laterDale.length === 1 && laterDale[0].amount === DALE_2027
       && laterDale[0].incomeRegime === '2027-estimated',
     'Jan 15 as next uses the estimate');
+
+  // After the deposit: observed actual 4100, not 3849.40 and not 4000.
+  // Counted once. BAD 4100 − 1799 − 450 = 1851.
+  const ACTUAL = 4100;
+  const afterPlan = withRegime('2027-01-01');
+  afterPlan.startingCash.breakdown[0].value = ACTUAL;
+  afterPlan.opening.representedEvents = [{ id: 'payroll', date: '2027-01-01' }];
+  const afterBad = roundCent(ACTUAL - janBills - janHold);
+  ok(afterBad === 1851, 'hand BAD after the actual deposit is 4100 − 1799 − 450 = 1851',
+    String(afterBad));
+  const after = recommend(afterPlan, '2027-01-01', {
+    representedEvents: [{ id: 'payroll', date: '2027-01-01' }],
+    currentPeriodActuals: {
+      schema: 'atlas-current-period-actuals/v1',
+      observationAsOf: '2027-01-01',
+      coverageStart: '2027-01-01',
+      coverageThrough: '2027-01-01',
+      pendingCoverage: 'complete',
+      transactions: [],
+      representedActuals: [{ id: 'payroll', date: '2027-01-01', actual: ACTUAL }],
+    },
+  });
+  const afterCurrent = rowByRole(after, 'current');
+  const afterDale = incomeOn(afterCurrent, 'payroll', '2027-01-01');
+  ok(afterDale.length === 1 && near(afterDale[0].amount, ACTUAL)
+      && afterDale[0].amount !== DALE_2027 && !afterDale[0].incomeRegime,
+    'the observed deposit replaces the estimate once',
+    afterDale.map(r => r.amount + '/' + r.incomeRegime).join(','));
+  expectPeriod(afterCurrent, {
+    start: '2027-01-01', end: '2027-01-14',
+    income: ACTUAL, bills: janBills, hold: janHold, bad: afterBad,
+  }, 'Jan 1 after the actual deposit');
+  const afterPub = after.paydayAllocation && after.paydayAllocation.currentBalancePublication;
+  ok(afterPub && near(afterPub.amount, ACTUAL) && afterPub.assumedDalePayroll == null
+      && !near(afterPub.amount, roundCent(ACTUAL + DALE_2027))
+      && !near(afterCurrent.incomeTotal, roundCent(ACTUAL + DALE_2027)),
+    'Current Balance and period income do not add the estimate on top of the actual',
+    afterPub && String(afterPub.amount));
+
+  const bare = recommend(timelinePlan('2027-01-01'), '2027-01-01');
+  const bareCurrent = rowByRole(bare, 'current');
+  const bareNext = rowByRole(bare, 'next');
+  ok(incomeOn(bareCurrent, 'payroll', '2027-01-01')[0].amount === DALE
+      && !incomeOn(bareCurrent, 'payroll', '2027-01-01')[0].incomeRegime
+      && incomeOn(bareNext, 'payroll', '2027-01-15')[0].amount === DALE
+      && !(bare.payPeriodViews || []).some(p => p && p.timelineRole === 'future' && p.start >= '2027-01-01'),
+    'without planning assumptions, current and next keep the incumbent amount and further 2027 rows are omitted');
 }
 
 console.log('\n=== trajectory and timeline share one projected Dale payroll ===');
