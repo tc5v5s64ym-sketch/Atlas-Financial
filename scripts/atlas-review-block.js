@@ -42,6 +42,48 @@ const PENDING_FINDINGS = 'Awaiting exact-head re-review after automated repair.'
 const SHA_RE = /^[0-9a-f]{40}$/i;
 const MAX_FINDINGS_CHARS = 280;
 
+/* Machine-readable Atlas Systems Review verdict block, adopted for future
+ * ChatGPT reviews so automation never infers the decision from prose:
+ *
+ *   ATLAS_SYSTEMS_REVIEW_V1
+ *   verdict: PASS
+ *   head: <40-character SHA>
+ *
+ * The block carries only closed fields. Human explanation follows outside it.
+ * Historical exact-prefix markers remain trusted for compatibility; this
+ * parser is tried first and the legacy prefix second. */
+const MACHINE_VERDICT_HEADER = 'ATLAS_SYSTEMS_REVIEW_V1';
+const MACHINE_VERDICT_VALUES = Object.freeze(['PASS', 'BLOCKING']);
+
+function parseMachineVerdict(body) {
+  const lines = String(body == null ? '' : body).split(/\r?\n/);
+  const start = lines.findIndex((line) => String(line).trim() === MACHINE_VERDICT_HEADER);
+  if (start < 0) return null;
+  const fields = {};
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = String(lines[index]);
+    if (!line.trim()) break;
+    const match = /^([A-Za-z][A-Za-z0-9_-]*)[ \t]*:[ \t]*(\S(?:.*\S)?)[ \t]*$/.exec(line);
+    if (!match) break;
+    const key = match[1].toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(fields, key)) return null;
+    fields[key] = match[2];
+  }
+  const keys = Object.keys(fields).sort();
+  if (keys.length !== 2 || keys[0] !== 'head' || keys[1] !== 'verdict') return null;
+  if (!MACHINE_VERDICT_VALUES.includes(fields.verdict)) return null;
+  if (!/^[0-9a-f]{40}$/i.test(fields.head || '')) return null;
+  return { verdict: fields.verdict, head: String(fields.head).toLowerCase() };
+}
+
+function classifyAtlasVerdict(body) {
+  const machine = parseMachineVerdict(body);
+  if (machine) return { outcome: machine.verdict, format: 'machine-v1', head: machine.head };
+  const legacy = classifyExactAtlasPrefix(body);
+  if (legacy) return { outcome: legacy.outcome, format: 'legacy', head: null };
+  return null;
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -243,7 +285,7 @@ function evaluateTrustedReview(input) {
     }
     return { ok: false, code: 'pr-not-targeting-main', reason: 'Pull request does not target main.' };
   }
-  const classified = classifyExactAtlasPrefix(input && input.reviewBody);
+  const classified = classifyAtlasVerdict(input && input.reviewBody);
   if (!classified) {
     return { ok: false, code: 'not-atlas-review-marker', reason: 'Review body is not an exact Atlas Contract / Systems Review marker.' };
   }
@@ -253,6 +295,9 @@ function evaluateTrustedReview(input) {
   }
   if (!SHA_RE.test(String(currentHead))) {
     return { ok: false, code: 'malformed-head', reason: 'Current PR head is not a 40-character SHA.' };
+  }
+  if (classified.format === 'machine-v1' && classified.head !== currentHead) {
+    return { ok: false, code: 'stale-head', reason: 'Machine verdict head is not the current PR head.' };
   }
   const fields = cardFieldsFromTrustedReview(
     classified.outcome,
@@ -319,16 +364,18 @@ function evaluateRepairPending(input) {
 function isAtlasCardSyncCandidate(review, currentHeadSha) {
   return gate.isTrustedAtlasReviewer(reviewLogin(review))
     && gate.isExactCurrentHead(review && review.commit_id, currentHeadSha)
-    && Boolean(classifyExactAtlasPrefix(review && review.body));
+    && Boolean(classifyAtlasVerdict(review && review.body));
 }
 
 function selectCardReview(reviews, currentHeadSha) {
   const list = Array.isArray(reviews) ? reviews.slice() : [];
   const candidates = list.filter((review) => isAtlasCardSyncCandidate(review, currentHeadSha));
   if (!candidates.length) return null;
-  candidates.sort((left, right) => (
-    String(left && left.submitted_at || '').localeCompare(String(right && right.submitted_at || ''))
-  ));
+  candidates.sort((left, right) => {
+    const byTime = String(left && left.submitted_at || '').localeCompare(String(right && right.submitted_at || ''));
+    if (byTime) return byTime;
+    return Number(left && left.id || 0) - Number(right && right.id || 0);
+  });
   return candidates[candidates.length - 1];
 }
 
@@ -391,7 +438,10 @@ module.exports = {
   PATCH_FIELDS,
   PASS_FINDINGS,
   PENDING_FINDINGS,
+  MACHINE_VERDICT_HEADER,
+  parseMachineVerdict,
   classifyExactAtlasPrefix,
+  classifyAtlasVerdict,
   locateReviewSection,
   inspectReviewBlock,
   patchReviewBlock,

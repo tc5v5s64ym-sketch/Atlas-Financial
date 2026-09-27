@@ -205,9 +205,13 @@ Those fields are the governance record. When the review is required, merge waits
 for ChatGPT `PASS` on the current exact head. That wait is a review contract, not
 a GitHub status check.
 
-`merge-card-check` enforces only that the card is filled and the closed openings
-are structurally valid. It does **not** parse or enforce ChatGPT identity,
-`PASS`, `BLOCKING`, or review-SHA equality. Confidence that the change is not
+`merge-card-check` enforces that the card is filled and the closed openings
+are structurally valid. For a `REQUIRED` review whose card claims `PASS`, it
+additionally enforces Systems Review provenance on the live exact head: a
+trusted direct GitHub PR review, or a validated owner-authorized
+transcription of a ChatGPT verdict. A card-claimed `PASS` with neither
+provenance path fails the check closed. `PENDING`, `BLOCKING`, and
+`NOT PASS` outcomes remain documentary. Confidence that the change is not
 junk comes from `npm test`, the secret hook, and the figures comment.
 Decision-desk advice from ChatGPT remains optional and is a separate role from
 this review.
@@ -274,9 +278,12 @@ The active implementation agent merges when all of these hold:
 
 When a high-risk trigger has fired, Atlas Contract / Systems Review `PASS` on
 the current exact head is also required governance before merge. ChatGPT
-performs that review. The builder cannot satisfy it. It is not a GitHub status
-check: `merge-card-check` does not parse or enforce ChatGPT identity, `PASS`,
-`BLOCKING`, or review-SHA equality.
+performs that review. The builder cannot satisfy it. For a `REQUIRED` review
+whose card claims `PASS`, `merge-card-check` enforces provenance on the live
+exact head: a trusted direct GitHub PR review carrying the exact-head verdict,
+or a validated owner-authorized transcription in the fixed closed form. A
+card-claimed `PASS` with neither path fails the check closed; `PENDING`,
+`BLOCKING`, and `NOT PASS` remain documentary.
 
 When no high-risk trigger has fired, the systems review is not required.
 Decision-desk advice from ChatGPT remains optional help. `auto-safe` work may
@@ -541,8 +548,10 @@ finding dispositions, or review-round narratives.
 `merge-card-check` therefore checks required rows, the current-state opening,
 and that the review decision opens `REQUIRED` or `NOT REQUIRED` with the closed
 `N/A` fields when not required. It does not judge whether the human trigger
-decision was correct, and it does not parse or enforce `PASS`, `BLOCKING`,
-review-SHA equality, or ChatGPT identity. File paths are facts, not prose;
+decision was correct. For a `REQUIRED` card claiming `PASS` it enforces
+provenance on the live exact head — trusted direct PR review or validated
+owner-authorized transcription — and fails closed otherwise; `PENDING`,
+`BLOCKING`, and `NOT PASS` stay documentary. File paths are facts, not prose;
 they are not a second review-status gate in this check. Small-PR discipline,
 closed-loop delivery, advisory dispositions, and cleanup explanations remain
 reviewer guidance.

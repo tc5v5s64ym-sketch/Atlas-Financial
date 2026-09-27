@@ -2,10 +2,14 @@
 
 /* Mechanical coverage for .github/workflows/merge-card-check.yml.
  * The suite executes the workflow's real inline script. It proves the check
- * catches missing fields and invalid closed forms, and that it does NOT hang
- * a PR on a review SHA, PASS/PENDING, or ChatGPT identity. It also proves
- * the check reads the live PR body, not the workflow event body, and fails
- * closed when the live PR is closed, retargeted, or no longer the event head.
+ * catches missing fields and invalid closed forms, and that PENDING /
+ * BLOCKING / NOT PASS outcomes stay documentary (a later fix must not hang
+ * the PR). For a REQUIRED card claiming PASS it proves the provenance gate:
+ * the PASS is merge-authorizing only with a trusted direct PR review or a
+ * validated owner-authorized transcription on the live exact head, and fails
+ * closed otherwise. It also proves the check reads the live PR body and live
+ * review list, not the workflow event body, and fails closed when the live
+ * PR is closed, retargeted, or no longer the event head.
  * It proves CLAUDE.md's documented current-state verdict vocabulary matches
  * the workflow CURRENT_STATE list, so a builder following CLAUDE.md verbatim
  * can write a verdict the mechanical check accepts. It deliberately does not
@@ -197,15 +201,15 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
 }
 
 const checks = [];
-const green = (name, body, files) => {
+const green = (name, body, files, options = {}) => {
   checks.push((async () => {
-    const message = await validate(body, HEAD, files);
+    const message = await validate(body, HEAD, files, options);
     ok(!message, name, message);
   })());
 };
-const red = (name, body, pattern, files) => {
+const red = (name, body, pattern, files, options = {}) => {
   checks.push((async () => {
-    const message = await validate(body, HEAD, files);
+    const message = await validate(body, HEAD, files, options);
     ok(Boolean(message) && (!pattern || pattern.test(message)), name, message || 'unexpected green');
   })());
 };
@@ -281,10 +285,24 @@ const required = {
   'Review outcome': 'PASS',
   'Findings and fix verification': 'No blockers remain on this exact head',
 };
-green('a passing required review on the exact head passes', card({ review: required }));
+const trustedPass = [{
+  id: 1,
+  commit_id: HEAD,
+  submitted_at: '2026-08-16T05:38:55Z',
+  user: { login: 'tc5v5s64ym-sketch' },
+  body: 'Atlas Contract / Systems Review — PASS\n\nExact reviewed head: `' + HEAD + '`\n',
+}];
+const pendingRequired = {
+  ...required,
+  'Review outcome': 'PENDING',
+  'Findings and fix verification': 'Awaiting exact-head Atlas review.',
+};
+green('a passing required review with provenance on the exact head passes',
+  card({ review: required }), ['docs/status.md'], { reviews: trustedPass });
 checks.push((async () => {
   const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
     runSha: 'd'.repeat(40),
+    reviews: trustedPass,
   });
   ok(!message, 'pull_request still validates the event head, not github.sha', message);
 })());
@@ -293,6 +311,7 @@ checks.push((async () => {
   const livePassBody = card({ review: required });
   const message = await validate(livePassBody, HEAD, ['docs/status.md'], {
     eventBody: staleEventBody,
+    reviews: trustedPass,
   });
   ok(!message, 'stale event body NOT PASS + live body PASS on the same head succeeds', message);
 })());
@@ -347,9 +366,10 @@ checks.push((async () => {
   );
 })());
 green(
-  'a complete card covers a high-risk path without a SHA lock',
+  'a complete card covers a high-risk path with provenance on the live head',
   card({ review: required }),
   ['data.json'],
+  { reviews: trustedPass },
 );
 green(
   'a high-risk path may say NOT REQUIRED — review SHA is not a merge lock',
@@ -361,15 +381,15 @@ green(
   card(),
   ['.github/workflows/merge-card-check.yml'],
 );
-green('an incomplete review SHA does not fail the completeness check', card({ review: {
+red('a PASS card without provenance fails the provenance gate', card({ review: {
   ...required, 'Exact reviewed head': 'abc1234',
-} }));
-green('a stale review SHA does not fail the completeness check', card({ review: {
+} }), /no trusted current-head PR review or valid transcription/i);
+red('a PASS card with a stale reviewed head fails the provenance gate', card({ review: {
   ...required, 'Exact reviewed head': 'b'.repeat(40),
-} }));
-green('a non-ChatGPT reviewer does not fail the completeness check', card({ review: {
+} }), /no trusted current-head PR review or valid transcription/i);
+red('a PASS card with a non-trusted reviewer and no provenance fails the gate', card({ review: {
   ...required, Reviewer: 'Codex',
-} }));
+} }), /no trusted current-head PR review or valid transcription/i);
 green('a BLOCKING review outcome does not fail the completeness check', card({ review: {
   ...required, 'Review outcome': 'BLOCKING',
 } }));
@@ -377,18 +397,6 @@ green('a PENDING review outcome does not fail the completeness check', card({ re
   ...required, 'Review outcome': 'PENDING',
 } }));
 
-const trustedPass = [{
-  id: 1,
-  commit_id: HEAD,
-  submitted_at: '2026-08-16T05:38:55Z',
-  user: { login: 'tc5v5s64ym-sketch' },
-  body: 'Atlas Contract / Systems Review — PASS\n\nExact reviewed head: `' + HEAD + '`\n',
-}];
-const pendingRequired = {
-  ...required,
-  'Review outcome': 'PENDING',
-  'Findings and fix verification': 'Awaiting exact-head Atlas review.',
-};
 checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
     reviews: trustedPass,
@@ -468,7 +476,11 @@ checks.push((async () => {
       body: 'Atlas Contract / Systems Review — NOT PASS\n\nNew blocker.\n',
     }],
   });
-  ok(!message, 'a later trusted NOT PASS does not fail the completeness check', message);
+  ok(
+    Boolean(message) && /latest trusted Systems Review verdict on this exact head is not PASS/i.test(message),
+    'a later trusted NOT PASS fails a PASS-claiming card closed',
+    message || 'unexpected green',
+  );
 })());
 checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
@@ -509,6 +521,7 @@ checks.push((async () => {
   const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
     eventName: 'workflow_dispatch',
     runSha: HEAD,
+    reviews: trustedPass,
   });
   ok(!message, 'workflow_dispatch with matching live PR/head and PASS card succeeds', message);
 })());
@@ -558,6 +571,7 @@ checks.push((async () => {
     ref: 'refs/heads/main',
     defaultBranch: 'main',
     createdChecks,
+    reviews: trustedPass,
   });
   ok(
     !message
@@ -575,6 +589,7 @@ checks.push((async () => {
     eventName: 'workflow_dispatch',
     runSha: HEAD,
     createdChecks,
+    reviews: trustedPass,
   });
   ok(
     !message && createdChecks.length === 0,
@@ -664,6 +679,7 @@ checks.push((async () => {
     eventName: 'workflow_dispatch',
     runSha: HEAD,
     eventBody: staleEventBody,
+    reviews: trustedPass,
   });
   ok(!message, 'workflow_dispatch still reads the live PASS card, not a stale event body', message);
 })());
@@ -692,6 +708,13 @@ checks.push((async () => {
   const message = await validate(livePass, HEAD, ['.github/workflows/merge-card-check.yml'], {
     eventName: 'workflow_dispatch',
     runSha: HEAD,
+    reviews: [{
+      id: 1,
+      commit_id: HEAD,
+      submitted_at: '2026-08-16T05:38:55Z',
+      user: { login: 'tc5v5s64ym-sketch' },
+      body: 'Atlas Contract / Systems Review — PASS\n\nExact reviewed head.',
+    }],
   });
   ok(
     !message,
@@ -700,12 +723,45 @@ checks.push((async () => {
   );
 })());
 
+// Provenance gate through the real workflow script: a REQUIRED card
+// claiming PASS fails closed without provenance, and passes via the
+// owner-authorized transcription fallback when no direct review exists.
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {});
+  ok(
+    Boolean(message) && /no trusted current-head PR review or valid transcription/i.test(message),
+    'workflow: REQUIRED PASS card without provenance fails closed',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const withTranscript = `${card({ review: required })}\n\nATLAS_SYSTEMS_REVIEW_TRANSCRIPT_V1\nreviewer: ChatGPT\nverdict: PASS\nhead: ${HEAD}\nmode: owner-authorized-transcription\n`;
+  const message = await validate(withTranscript, HEAD, ['docs/status.md'], {});
+  ok(!message, 'workflow: valid transcript block authorizes a REQUIRED PASS card', message);
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    reviews: [{
+      id: 2,
+      commit_id: HEAD,
+      submitted_at: '2026-09-27T12:00:00Z',
+      user: { login: 'tc5v5s64ym-sketch' },
+      body: 'Atlas Contract / Systems Review — BLOCKING\n\nBlocker.',
+    }],
+  });
+  ok(
+    Boolean(message) && /later trusted BLOCKING verdict/i.test(message),
+    'workflow: later trusted BLOCKING on the head fails a PASS card closed',
+    message || 'unexpected green',
+  );
+})());
+
 // The gate only requires the notes to exist. It does not inspect negation or
 // decide whether every finding was dispositioned.
 green('review prose and negation are not semantically parsed', card({ review: {
   ...required,
   'Findings and fix verification': 'P1 was not fixed; this is a reviewer judgement, not a regex target',
-} }));
+} }), ['docs/status.md'], { reviews: trustedPass });
 
 Promise.all(checks)
   .then(() => {

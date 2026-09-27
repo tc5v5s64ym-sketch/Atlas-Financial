@@ -211,6 +211,7 @@ const suites = [
   ['figures snapshot Credit and Planning coverage (B100)', 'test-figures-snapshot-credit-planning.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
   ['Atlas review-block card sync', 'test-atlas-review-block.js'],
+  ['Atlas Systems Review provenance hardening', 'test-atlas-review-provenance.js'],
   ['Atlas bounded re-review handoff', 'test-atlas-api-rereview.js'],
   ['Atlas manual REQUIRED review handoff', 'test-atlas-first-review.js'],
   ['Merge Card primary-risk projection', 'test-atlas-primary-risk.js'],
