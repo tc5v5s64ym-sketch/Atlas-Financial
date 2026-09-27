@@ -523,9 +523,26 @@ and every past or current row, keeps the incumbent status. Because the
 next timeline row is the same object as `calendarPeriods` id
 `next-pay-period`, Paid bills this period and Remaining bills to pay can
 change on Budget's Next Pay Period. The bill amount, `periodBillLoad`,
-and Balance After Deductions do not. The owner-approved $400 Other Spend
-estimate for future periods is deferred: this publication adds no
-constant, store, category, or allowance for it.
+and Balance After Deductions do not change from that bill-status rule.
+Owner 2026-09-26: every role-`future` pay period — Budget's Next Pay
+Period and every further timeline row — reserves the owner-stated
+`plan.budget` category `other-spend` field `futurePayPeriodReserve`
+(currently $400) once inside `calendarHouseholdBudget`. Budget prints
+that Forecast row as Other Spend. The amount is an owner planning
+assumption, estimated, not a historical average, not a transaction
+forecast, and not verified. Forecast stamps that row `confidence` and
+`trust` as `estimated`, and stamps the same period's `budgetHoldTrust`
+and `balanceAfterDeductionsTrust` as `estimated`. Budget prints the
+incumbent `≈ estimated` mark on that row, on Household Budget Total, and
+on Balance After Deductions. It does not recompute the cents. Current
+and lookback periods do not receive the stamp. It is included once in that period's
+Household Budget hold, so Balance After Deductions
+(income − bills − hold) and the incumbent cash leftover that opens the
+following period both reflect it. Current and lookback rows do not
+receive it. It is not `plannedMonthly` 800, not a `paydayCyclePlanned`
+smear, not `CALENDAR_PERIOD_BUDGET_IDS`, and not confirmation Other
+spending. Road Ahead, `budgetBreakdown`, and the weekly cap keep the
+$800/month target and do not read `futurePayPeriodReserve`.
 `public/plan.js` prints the selected view only. Diagnostics stay folded.
 
 **Named ranges are views of that same forecast.** Week, payday, month, 13 weeks,

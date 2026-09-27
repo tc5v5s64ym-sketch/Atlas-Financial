@@ -144,8 +144,8 @@ console.log('\n=== Plan payday sheet is the homepage, not the leftover waterfall
     'the leftover waterfall is not the default Plan presentation');
   ok(!/<link rel="stylesheet" href="\/cash-waterfall\.css">/.test(html),
     'cash-waterfall stylesheet is not the Plan first-screen');
-  ok(/<h1>This payday<\/h1>/.test(html),
-    'the homepage h1 is this payday');
+  ok(!/<h1>This payday<\/h1>/.test(html),
+    'the homepage does not open with a This payday heading');
 }
 
 console.log('\n=== mobile layout keeps the answer compact ===');

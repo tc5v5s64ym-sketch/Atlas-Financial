@@ -22,11 +22,12 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 console.log('=== default homepage speaks to the household first ===');
 {
   const html = read('public/index.html');
-  ok(/<h1>This payday<\/h1>/.test(html),
-    'the first surface is labelled this payday');
-  ok(/Live Current Balance, then this payday/.test(html)
-    && /household budget/.test(html),
-    'the intro says what the page is for in ordinary language');
+  ok(!/<h1>This payday<\/h1>/.test(html),
+    'the Budget operating surface does not open with a This payday heading');
+  ok(!/Live Current Balance, then this payday/.test(html),
+    'the Budget operating surface does not render the This payday lede');
+  ok(/id="operating-surface-body"/.test(html),
+    'the operating body is the Budget page content');
   const planAt = html.indexOf('<script src="/plan.js"></script>');
   const householdAt = html.indexOf('<script src="/household-view.js"></script>');
   ok(planAt >= 0 && householdAt > planAt,

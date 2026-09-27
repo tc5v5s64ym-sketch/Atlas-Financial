@@ -4462,8 +4462,11 @@
   // actuals still map there only with account/payee/note/tag evidence.
   // Other spend (`other-spend`, plannedMonthly 800) is not a calendar
   // hold: owner policy 2026-09-18 keeps that $800/month on Forecast /
-  // Road Ahead / trajectory via budgetBreakdown, while Budget calendar
-  // prints only Other spending confirmation actuals (OTHER_SPENDING_ID).
+  // Road Ahead / trajectory via budgetBreakdown. Owner 2026-09-26 reserves
+  // futurePayPeriodReserve on that same category for future pay periods
+  // only. calendarHouseholdBudget appends that amount once. It is not a
+  // member of this allowlist, not a paydayCyclePlanned smear of $800, and
+  // not confirmation Other spending (OTHER_SPENDING_ID).
   const CALENDAR_PERIOD_BUDGET_IDS = [
     'groceries', 'fuel', 'household', 'pets', 'restaurants',
     'dale-guilt-free', 'amanda-guilt-free',
@@ -4511,6 +4514,24 @@
   const AMANDA_GUILT_FREE_ID = 'amanda-guilt-free';
   const PERSONAL_SHOPPING_ID = 'shopping';
   const OTHER_SPENDING_ID = 'other-spending';
+  const OTHER_SPEND_ID = 'other-spend';
+  const FUTURE_OTHER_SPEND_LABEL = 'Other Spend';
+
+  // Owner planning assumption on the incumbent other-spend category.
+  // futurePayPeriodReserve is a future pay-period Household Budget hold.
+  // It is not plannedMonthly, not plannedPayday, and not a historical
+  // average. Absent, non-finite, or non-positive publishes nothing.
+  function futurePayPeriodOtherSpend(plan) {
+    const cats = (plan && plan.budget && plan.budget.categories) || [];
+    let cat = null;
+    for (let i = 0; i < cats.length; i++) {
+      if (cats[i] && cats[i].id === OTHER_SPEND_ID) cat = cats[i];
+    }
+    if (!cat || cat.futurePayPeriodReserve == null) return null;
+    const amount = Number(cat.futurePayPeriodReserve);
+    if (!isFinite(amount) || !(amount > 0)) return null;
+    return roundCent(amount);
+  }
 
   function currentPeriodBills(plan, asOf, origin, periodLast, opts) {
     const represented = representedKeySet(plan, opts, asOf);
@@ -7463,9 +7484,42 @@
         pendingRecon: confirmationRecon.filter(r => r.pending === true),
       });
     }
+    // Future pay periods only. Current and lookback keep incumbent
+    // evidence. The reserve is the owner field, included once in hold.
+    // Do not route it through paydayCyclePlanned: that would smear the
+    // $800/month target or apply it to the current period.
+    // The amount is an owner planning estimate. confidence/trust are
+    // the stamp. They do not change the cents.
+    let holdTrust = null;
+    if (role === 'future') {
+      const reserve = futurePayPeriodOtherSpend(plan);
+      if (reserve != null) {
+        holdTrust = 'estimated';
+        items.push({
+          id: OTHER_SPEND_ID,
+          label: FUTURE_OTHER_SPEND_LABEL,
+          monthly: null,
+          plannedWeekly: null,
+          plannedPayday: null,
+          planned: reserve,
+          spent: null,
+          remaining: reserve,
+          overspend: 0,
+          hold: reserve,
+          projected: true,
+          planningAssumption: true,
+          confidence: 'estimated',
+          trust: 'estimated',
+          futurePayPeriodReserve: true,
+          recon: [],
+          pendingRecon: [],
+        });
+      }
+    }
     return {
       items,
       hold: roundCent(items.reduce((s, r) => s + (Number(r.hold) || 0), 0)),
+      holdTrust,
       spentReady: actualsReady,
       spendingCycle: cycleResolved ? cycle : null,
       cycleUnresolved: !cycleResolved,
@@ -7833,7 +7887,9 @@
   // same spendingCycle window. Owner 2026-09-04: that hold is
   // Σ max(planned, actual) for planned categories plus Other Spending
   // actual. Remaining-only leftover and planned-plus-actual are both
-  // wrong.
+  // wrong. Owner 2026-09-26: a role-future window also includes
+  // other-spend futurePayPeriodReserve once. Current and lookback do
+  // not. That reserve is not the $800/month Road Ahead target.
   // Current Balance has one publisher. When paydayAllocation carries
   // currentBalancePublication, that amount is the figure, including a
   // deliberate null when a pre-payday BILLS base cannot be proved. Do not
@@ -8102,6 +8158,11 @@
         afterBills,
         householdBudget: planUnavailable ? [] : budget.items,
         budgetHold: planUnavailable ? null : budget.hold,
+        budgetHoldTrust: !planUnavailable && budget.holdTrust === 'estimated'
+          ? 'estimated' : null,
+        balanceAfterDeductionsTrust: !planUnavailable && afterHouseholdBudget != null
+          && budget.holdTrust === 'estimated'
+          ? 'estimated' : null,
         spendingCycleLabel,
         spendingCycle: planUnavailable ? null : budget.spendingCycle,
         cycleUnresolved: budget.cycleUnresolved === true,

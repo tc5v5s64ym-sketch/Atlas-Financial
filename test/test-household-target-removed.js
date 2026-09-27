@@ -372,11 +372,16 @@ console.log('\n=== live data.json no longer reserves Household $37.50 ===');
   ok(current && !budgetRow(current, 'household')
       && !budgetRow(current, 'other-spend')
       && near(current.budgetHold, 1725),
-    'live This Pay Period omits Household and planned Other spend; hold is $1,725.00 (Aug 14 Dog food OFF)');
+    'live This Pay Period omits Household and the future Other Spend reserve; hold is $1,725.00 (Aug 14 Dog food OFF)');
+  const nextOther = budgetRow(next, 'other-spend');
+  const smear = roundCent(800 * 14 / (365.25 / 12));
   ok(next && !budgetRow(next, 'household')
-      && !budgetRow(next, 'other-spend')
-      && near(next.budgetHold, 1825),
-    'live Next Pay Period omits Household and planned Other spend; hold is $1,825.00 (Aug 28 Dog food ON)');
+      && nextOther && nextOther.planningAssumption === true
+      && near(nextOther.planned, 400) && near(nextOther.hold, 400)
+      && !near(nextOther.planned, smear)
+      && near(next.budgetHold, 2225)
+      && near(next.budgetHold - 400, 1825),
+    'live Next Pay Period keeps the $1,825 Dog-food-ON base and adds the owner $400 future Other Spend once, not the $367.97 smear');
   const livePeriods = require('../public/periods.json');
   const liveBd = F.budgetBreakdown(liveData.plan, livePeriods, {
     paypalPerMonth: liveData.paypal ? liveData.paypal.perMonth : 0,

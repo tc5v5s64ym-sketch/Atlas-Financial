@@ -455,8 +455,8 @@ console.log('\n=== 6. big purchases print Forecast cost and $0 saved; page does 
 console.log('\n=== 7. compact freshness remains; worksheet clutter is gone from the page ===');
 {
   const page = read('public/index.html');
-  ok(/id="asof"/.test(page),
-    'the compact top as-of chip remains');
+  ok(!/id="asof"/.test(page) && !/id="theme-btn"/.test(page),
+    'the Budget page does not render the as-of chip or theme control');
   ok(/id="payday-answer" hidden/.test(page) && /id="road-ahead" hidden/.test(page),
     'worksheet and road-ahead diagnostic mounts are hidden from the default Plan');
   ok(!/View full current-period worksheet/.test(page) && !/Why \/ Road ahead/.test(page),
