@@ -1792,13 +1792,15 @@ function extraDebtGlanceHtml(alloc) {
   return '';
 }
 
-function runningLeftoverHtml(amount) {
+function runningLeftoverHtml(amount, trust) {
   const known = amount != null && isFinite(Number(amount));
   // Sign is presentation only: the same Forecast figure, coloured so a
   // negative running balance cannot be mistaken for a positive one.
   const sign = !known ? 'unknown' : Number(amount) < 0 ? 'negative' : 'non-negative';
-  return `<div class="payday-leftover" data-running-leftover data-sign="${sign}">
-    <span class="operating-amount">${known ? money2(amount) : '—'}</span>
+  const estimated = trust === 'estimated' && known;
+  const mark = estimated ? '<span class="est">≈ estimated</span> ' : '';
+  return `<div class="payday-leftover" data-running-leftover data-sign="${sign}"${estimated ? ' data-balance-trust="estimated"' : ''}>
+    <span class="operating-amount">${mark}${known ? money2(amount) : '—'}</span>
   </div>`;
 }
 
@@ -2041,7 +2043,11 @@ function householdBudgetMetric(label, amount, opts) {
     ? 'household-budget-metric household-budget-remaining'
     : 'household-budget-metric';
   const knownAmount = amount != null && isFinite(Number(amount));
-  const value = knownAmount ? money2(amount) : '—';
+  const plain = knownAmount ? money2(amount) : '—';
+  const estimated = !!(opts && opts.estimated) && knownAmount;
+  const value = estimated
+    ? `<span class="est">≈ estimated</span> ${plain}`
+    : plain;
   const recon = opts && Array.isArray(opts.recon) ? opts.recon : null;
   if (label === 'Spent' && recon && recon.length) {
     const esc = v => String(v == null ? '' : v)
@@ -2124,6 +2130,7 @@ function householdBudgetCategoryHtml(row) {
     );
   }
   const other = row.otherSpending === true || row.needsConfirmation === true;
+  const estimated = !other && (row.confidence === 'estimated' || row.trust === 'estimated');
   const name = row.label || '';
   const context = other
     ? (row.note || 'Not yet assigned to a budget category')
@@ -2132,17 +2139,18 @@ function householdBudgetCategoryHtml(row) {
     ? `<p class="household-budget-context">${context}</p>` : '';
   const recon = Array.isArray(row.recon) ? row.recon : [];
   const metrics = [];
-  if (!other && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned));
+  if (!other && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned, { estimated }));
   if (row.spent != null || recon.length) {
     metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id }));
   }
   if (!other && row.remaining != null) {
-    metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true }));
+    metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true, estimated }));
   }
   const kind = other ? 'other' : 'category';
   const projected = !other && row.projected && row.remaining != null
     ? '<p class="household-budget-context">Projected.</p>' : '';
-  return `<div class="household-budget-${kind}" data-budget-category="${row.id || ''}"${other ? ' data-other-spending' : ''}>
+  const trustAttr = estimated ? ' data-budget-trust="estimated"' : '';
+  return `<div class="household-budget-${kind}" data-budget-category="${row.id || ''}"${other ? ' data-other-spending' : ''}${trustAttr}>
     <h3 class="household-budget-name">${name}</h3>
     ${contextHtml}
     <dl class="household-budget-metrics">${metrics.join('')}</dl>
@@ -2163,11 +2171,23 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
       : (cycleText ? `<p class="household-budget-cycle">${cycleText}</p>` : '');
   // Forecast already owns the payday deduction as period.budgetHold.
   // Print that incumbent value. Do not sum category rows here.
-  const total = period && period.budgetHold != null
+  // budgetHoldTrust is Forecast's stamp when the hold includes the
+  // future Other Spend estimate. The page does not infer it.
+  const estimatedHold = period && period.budgetHoldTrust === 'estimated';
+  const holdMark = estimatedHold
+    ? '<span class="est">≈ estimated</span> '
+    : '';
+  const amount = period && period.budgetHold != null
+    ? `<span data-household-budget-total-amount>${money2(period.budgetHold)}</span>`
+    : '';
+  // The mark sits in the same flex child as the Forecast cents so the
+  // total stays label | figure. Current rows omit the wrapper entirely.
+  const value = estimatedHold ? `<span>${holdMark}${amount}</span>` : amount;
+  const total = amount
     ? `<div class="payday-totals household-budget-total">
-      <p class="payday-qual payday-total payday-total-strong" data-household-budget-total>
+      <p class="payday-qual payday-total payday-total-strong" data-household-budget-total${estimatedHold ? ' data-budget-hold-trust="estimated"' : ''}>
         <span>Household Budget Total</span>
-        <span data-household-budget-total-amount>${money2(period.budgetHold)}</span>
+        ${value}
       </p>
     </div>`
     : '';
@@ -2365,7 +2385,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan))}
-    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget), 'balance')}
+    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget, period.balanceAfterDeductionsTrust), 'balance')}
   </section>`;
 
 }

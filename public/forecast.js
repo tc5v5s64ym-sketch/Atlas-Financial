@@ -7488,9 +7488,13 @@
     // evidence. The reserve is the owner field, included once in hold.
     // Do not route it through paydayCyclePlanned: that would smear the
     // $800/month target or apply it to the current period.
+    // The amount is an owner planning estimate. confidence/trust are
+    // the stamp. They do not change the cents.
+    let holdTrust = null;
     if (role === 'future') {
       const reserve = futurePayPeriodOtherSpend(plan);
       if (reserve != null) {
+        holdTrust = 'estimated';
         items.push({
           id: OTHER_SPEND_ID,
           label: FUTURE_OTHER_SPEND_LABEL,
@@ -7504,6 +7508,8 @@
           hold: reserve,
           projected: true,
           planningAssumption: true,
+          confidence: 'estimated',
+          trust: 'estimated',
           futurePayPeriodReserve: true,
           recon: [],
           pendingRecon: [],
@@ -7513,6 +7519,7 @@
     return {
       items,
       hold: roundCent(items.reduce((s, r) => s + (Number(r.hold) || 0), 0)),
+      holdTrust,
       spentReady: actualsReady,
       spendingCycle: cycleResolved ? cycle : null,
       cycleUnresolved: !cycleResolved,
@@ -8151,6 +8158,11 @@
         afterBills,
         householdBudget: planUnavailable ? [] : budget.items,
         budgetHold: planUnavailable ? null : budget.hold,
+        budgetHoldTrust: !planUnavailable && budget.holdTrust === 'estimated'
+          ? 'estimated' : null,
+        balanceAfterDeductionsTrust: !planUnavailable && afterHouseholdBudget != null
+          && budget.holdTrust === 'estimated'
+          ? 'estimated' : null,
         spendingCycleLabel,
         spendingCycle: planUnavailable ? null : budget.spendingCycle,
         cycleUnresolved: budget.cycleUnresolved === true,

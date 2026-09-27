@@ -92,7 +92,7 @@ function loadComposer() {
     name
   ))).join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, calendarBudgetHtml, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, calendarBudgetHtml, calendarWaterfallHtml, money2 });`,
     { Forecast: F }
   );
 }
@@ -155,6 +155,28 @@ function budgetRow(period, id) {
 function holdSum(period) {
   return roundCent(((period && period.householdBudget) || [])
     .reduce((sum, row) => sum + (Number(row && row.hold) || 0), 0));
+}
+
+function categoryBlock(html, id) {
+  return String(html || '').split(/data-budget-category="/).slice(1)
+    .map(chunk => 'data-budget-category="' + chunk)
+    .find(chunk => chunk.startsWith('data-budget-category="' + id + '"')) || '';
+}
+
+function questionBlock(html, prompt) {
+  const marker = `data-operating-prompt="${prompt}"`;
+  const at = String(html || '').indexOf(marker);
+  if (at < 0) return '';
+  const next = html.indexOf('data-operating-prompt="', at + marker.length);
+  return html.slice(at, next < 0 ? html.length : next);
+}
+
+function totalBlock(html) {
+  const marker = 'data-household-budget-total';
+  const at = String(html || '').indexOf(marker);
+  if (at < 0) return '';
+  const end = html.indexOf('</p>', at);
+  return html.slice(at, end < 0 ? html.length : end);
 }
 
 const composer = loadComposer();
@@ -237,9 +259,16 @@ console.log('\n=== 3. current period does not receive the $400; a future period 
       && near(current.periodBillLoad, bareCurrent.periodBillLoad),
     'current income, bills, hold, and Balance After Deductions are unchanged by the future-only field');
   ok(row && row.label === 'Other Spend' && row.planningAssumption === true
+      && row.confidence === 'estimated' && row.trust === 'estimated'
       && row.futurePayPeriodReserve === true && near(row.planned, RESERVE)
       && near(row.hold, RESERVE) && row.spent == null,
-    'future period publishes exactly $400 Other Spend as a planning assumption');
+    'future period publishes exactly $400 Other Spend as an estimated planning assumption');
+  ok(future && future.budgetHoldTrust === 'estimated'
+      && future.balanceAfterDeductionsTrust === 'estimated',
+    'Forecast stamps the future hold and Balance After Deductions estimated');
+  ok(current && current.budgetHoldTrust !== 'estimated'
+      && current.balanceAfterDeductionsTrust !== 'estimated',
+    'the current period does not receive the estimated stamp');
   ok((future.householdBudget || []).filter(r => r && r.id === OTHER_ID).length === 1,
     'the future Other Spend row appears exactly once');
   ok(near(holdSum(future), future.budgetHold),
@@ -258,13 +287,45 @@ console.log('\n=== 3. current period does not receive the $400; a future period 
   ok(!near(row.hold, EXCLUDED_CYCLE),
     'the reserve is not the $367.97 monthly smear');
   const html = composer.calendarBudgetHtml(future);
+  const otherBlock = categoryBlock(html, OTHER_ID);
+  const groceryBlock = categoryBlock(html, 'groceries');
   ok(/data-budget-category="other-spend"/.test(html)
       && /Other Spend/.test(html)
-      && html.includes(composer.money2(RESERVE)),
+      && html.includes(composer.money2(RESERVE))
+      && (html.match(/data-budget-category="other-spend"/g) || []).length === 1,
     'Budget prints the Forecast Other Spend amount and does not invent a second one');
+  ok(/data-budget-trust="estimated"/.test(otherBlock)
+      && /<span class="est">≈ estimated<\/span>/.test(otherBlock)
+      && otherBlock.includes(composer.money2(RESERVE)),
+    'the future Other Spend row is visibly ≈ estimated');
+  ok(groceryBlock && !/≈ estimated/.test(groceryBlock)
+      && !/data-budget-trust="estimated"/.test(groceryBlock),
+    'other future Household Budget rows do not gain this estimate marker');
+  const total = totalBlock(html);
+  ok(/data-budget-hold-trust="estimated"/.test(total)
+      && /<span class="est">≈ estimated<\/span>/.test(total)
+      && /data-household-budget-total-amount>[^<]*</.test(total)
+      && total.includes(composer.money2(future.budgetHold)),
+    'the future Household Budget total is visibly estimated and still prints Forecast budgetHold');
+  const waterfall = composer.calendarWaterfallHtml(future);
+  const bad = questionBlock(waterfall, 'Balance After Deductions');
+  const afterBills = questionBlock(waterfall, 'Balance after bills');
+  ok(/data-balance-trust="estimated"/.test(bad)
+      && /<span class="est">≈ estimated<\/span>/.test(bad)
+      && bad.includes(composer.money2(future.balanceAfterDeductions)),
+    'future Balance After Deductions is visibly estimated and still prints the Forecast remainder');
+  ok(!/data-balance-trust="estimated"/.test(afterBills)
+      && !/≈ estimated/.test(afterBills),
+    'Balance after bills does not inherit the Other Spend estimate marker');
   const currentHtml = composer.calendarBudgetHtml(current);
+  const currentWaterfall = composer.calendarWaterfallHtml(current);
   ok(!/data-budget-category="other-spend"/.test(currentHtml),
     'current Household Budget HTML does not print Other Spend');
+  ok(!/≈ estimated/.test(currentHtml) && !/data-budget-hold-trust="estimated"/.test(currentHtml),
+    'the current Household Budget total does not gain the estimate marker');
+  ok(!/data-balance-trust="estimated"/.test(currentWaterfall)
+      && !/≈ estimated/.test(questionBlock(currentWaterfall, 'Balance After Deductions')),
+    'current Balance After Deductions does not gain the estimate marker');
 }
 
 console.log('\n=== 4. Forecast stays the authority; unrelated published figures stay put ===');
@@ -314,14 +375,21 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
     if (left.timelineRole === 'current' || left.timelineRole === 'past') {
       ok(!budgetRow(left, OTHER_ID),
         left.timelineRole + ' ' + left.start + ' has no Other Spend reserve');
+      ok(left.budgetHoldTrust !== 'estimated'
+          && left.balanceAfterDeductionsTrust !== 'estimated',
+        left.timelineRole + ' ' + left.start + ' does not gain the estimated stamp');
       ok(near(left.budgetHold, right.budgetHold)
           && near(left.balanceAfterDeductions, right.balanceAfterDeductions),
         left.timelineRole + ' hold and Balance After Deductions do not move');
     } else {
       futureRows += 1;
       const published = budgetRow(left, OTHER_ID);
-      ok(published && near(published.planned, RESERVE) && near(published.hold, RESERVE),
-        left.timelineRole + ' ' + left.start + ' publishes exactly $400 Other Spend');
+      ok(published && near(published.planned, RESERVE) && near(published.hold, RESERVE)
+          && published.confidence === 'estimated' && published.trust === 'estimated',
+        left.timelineRole + ' ' + left.start + ' publishes exactly $400 Other Spend as estimated');
+      ok(left.budgetHoldTrust === 'estimated'
+          && left.balanceAfterDeductionsTrust === 'estimated',
+        left.start + ' hold and Balance After Deductions are stamped estimated');
       ok(near(left.budgetHold - right.budgetHold, RESERVE),
         left.start + ' deductions include the $400 once');
       ok(near(right.balanceAfterDeductions - left.balanceAfterDeductions, RESERVE),
@@ -334,8 +402,46 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
   const forecastSrc = read('public/forecast.js');
   ok(/function futurePayPeriodOtherSpend\(/.test(forecastSrc)
       && /calendarHouseholdBudget\(/.test(forecastSrc)
-      && !/balanceAfterDeductions\s*-\s*400/.test(read('public/plan.js')),
-    'the $400 enters through Forecast; plan.js does not subtract it');
+      && /holdTrust = 'estimated'/.test(forecastSrc)
+      && /budgetHoldTrust:/.test(forecastSrc)
+      && /balanceAfterDeductionsTrust:/.test(forecastSrc)
+      && !/balanceAfterDeductions\s*-\s*400/.test(read('public/plan.js'))
+      && !/budgetHold\s*\+\s*400/.test(read('public/plan.js')),
+    'the $400 enters through Forecast; plan.js does not subtract or add it');
+  const planSrc = read('public/plan.js');
+  ok(/row\.confidence === 'estimated'/.test(planSrc)
+      && /row\.trust === 'estimated'/.test(planSrc)
+      && /period\.budgetHoldTrust === 'estimated'/.test(planSrc)
+      && /period\.balanceAfterDeductionsTrust/.test(planSrc)
+      && /≈ estimated/.test(planSrc),
+    'Budget prints Forecast estimated trust and does not invent the marker');
+  const liveCurrent = viewsA.find(row => row && row.timelineRole === 'current');
+  const livePast = viewsA.find(row => row && row.timelineRole === 'past');
+  const liveFuture = viewsA.find(row => row && (row.timelineRole === 'next' || row.timelineRole === 'future'));
+  const liveCurrentHtml = composer.calendarWaterfallHtml(liveCurrent);
+  const livePastHtml = composer.calendarWaterfallHtml(livePast);
+  const liveFutureHtml = composer.calendarWaterfallHtml(liveFuture);
+  const liveFutureOther = categoryBlock(liveFutureHtml, OTHER_ID);
+  const liveFutureTotal = totalBlock(liveFutureHtml);
+  const liveFutureBad = questionBlock(liveFutureHtml, 'Balance After Deductions');
+  ok(liveFuture
+      && /data-budget-trust="estimated"/.test(liveFutureOther)
+      && /<span class="est">≈ estimated<\/span>/.test(liveFutureOther)
+      && /data-budget-hold-trust="estimated"/.test(liveFutureTotal)
+      && /<span class="est">≈ estimated<\/span>/.test(liveFutureTotal)
+      && liveFutureTotal.includes(composer.money2(liveFuture.budgetHold))
+      && /data-balance-trust="estimated"/.test(liveFutureBad)
+      && /<span class="est">≈ estimated<\/span>/.test(liveFutureBad)
+      && liveFutureBad.includes(composer.money2(liveFuture.balanceAfterDeductions)),
+    'a live future pay period shows ≈ estimated on Other Spend, the total, and Balance After Deductions');
+  ok(liveCurrent && !/data-budget-hold-trust="estimated"/.test(liveCurrentHtml)
+      && !/data-balance-trust="estimated"/.test(liveCurrentHtml)
+      && !/data-budget-category="other-spend"/.test(liveCurrentHtml),
+    'the live current pay period does not show this estimate marker');
+  ok(livePast && !/data-budget-hold-trust="estimated"/.test(livePastHtml)
+      && !/data-balance-trust="estimated"/.test(livePastHtml)
+      && !/data-budget-category="other-spend"/.test(livePastHtml),
+    'a live past pay period does not show this estimate marker');
 }
 
 if (failures) {
