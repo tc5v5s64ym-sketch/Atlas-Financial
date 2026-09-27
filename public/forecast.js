@@ -2757,13 +2757,30 @@
       // On the live payday, the incumbent paydayAllocation is already the
       // named authority for these same dollars. Reuse its attribution rather
       // than issuing a second FIFO instruction for the current payday.
-      const incumbentParts = period.date === asOf && incumbentAllocation
-        && Array.isArray(incumbentAllocation.futureCosts)
+      // The incumbent authority has two parts: named futureCosts allocations
+      // (ordinary commitments) and the calculated protectedPath (reserve-
+      // planning / yearly-bill protection via the cash path). Both must
+      // reconcile to the schedule contribution; neither may be double-counted.
+      const isLivePayday = period.date === asOf && incumbentAllocation
+        && Array.isArray(incumbentAllocation.futureCosts);
+      const incumbentParts = isLivePayday
         ? incumbentAllocation.futureCosts.filter(part => part && Number(part.allocated) > EPSILON
           && allocated.has(part.id)) : [];
-      if (incumbentParts.length) {
-        const incumbentTotal = incumbentParts.reduce((sum, part) => sum + cents(part.allocated), 0);
-        if (incumbentTotal !== contribution) {
+      const incumbentTotal = incumbentParts.reduce((sum, part) => sum + cents(part.allocated), 0);
+      const pathAllocated = isLivePayday && incumbentAllocation.protectedPath
+        && incumbentAllocation.protectedPath.status === 'calculated'
+        ? cents(incumbentAllocation.protectedPath.allocated || 0) : 0;
+      // The protectedPath amount is only part of the Plan Spend identity when
+      // there are schedulable Plan Spend costs not already covered by the
+      // incumbent named allocation. Otherwise it's a general cash protection
+      // unrelated to Plan Spend, and the original futureCosts-only identity
+      // applies.
+      const incumbentIds = new Set(incumbentParts.map(part => part.id));
+      const hasNonIncumbentSchedulable = schedulable.some(cost => !incumbentIds.has(cost.id)
+        && cost.baseRequirement - allocated.get(cost.id) > 0);
+      const pathForPlanSpend = hasNonIncumbentSchedulable ? pathAllocated : 0;
+      if (incumbentParts.length || pathForPlanSpend > 0) {
+        if (incumbentTotal + pathForPlanSpend !== contribution) {
           return unavailable('The current-payday funding schedule does not reconcile to the incumbent payday allocation.');
         }
         for (const part of incumbentParts) {
@@ -2777,6 +2794,32 @@
           left -= amount;
           allocations.push({ id: cost.id, label: cost.label, amount: dollars(amount) });
           if (allocated.get(cost.id) === cost.baseRequirement) fullyFundedOn.set(cost.id, period.date);
+        }
+        // Attribute the protected-path remainder in schedule order, capped at
+        // each cost's remaining base requirement, skipping costs already
+        // satisfied by the incumbent named allocation. No dollar twice.
+        // Costs in the incumbent are the incumbent's authority; the path
+        // remainder belongs to the other schedulable costs.
+        let pathLeft = pathForPlanSpend;
+        for (const cost of schedulable) {
+          if (pathLeft <= 0) break;
+          if (incumbentIds.has(cost.id)) continue;
+          const remainingNeed = cost.baseRequirement - allocated.get(cost.id);
+          if (remainingNeed <= 0) continue;
+          const amount = Math.min(pathLeft, remainingNeed);
+          allocated.set(cost.id, allocated.get(cost.id) + amount);
+          active.set(cost.id, active.get(cost.id) + amount);
+          left -= amount;
+          pathLeft -= amount;
+          allocations.push({ id: cost.id, label: cost.label, amount: dollars(amount) });
+          if (allocated.get(cost.id) === cost.baseRequirement) fullyFundedOn.set(cost.id, period.date);
+        }
+        if (pathLeft > 0) {
+          return unavailable('The incumbent protected-path amount cannot be attributed to schedulable planned costs.');
+        }
+        const namedSum = allocations.reduce((sum, row) => sum + cents(row.amount), 0);
+        if (namedSum !== contribution) {
+          return unavailable('The current-payday named allocations do not sum to the published contribution.');
         }
       } else {
         for (const cost of schedulable) {
