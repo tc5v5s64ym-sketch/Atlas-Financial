@@ -212,6 +212,36 @@ junk comes from `npm test`, the secret hook, and the figures comment.
 Decision-desk advice from ChatGPT remains optional and is a separate role from
 this review.
 
+#### Recording a completed review when ChatGPT cannot write to GitHub
+
+The review verdict and its GitHub recording are separate facts. A connector or
+safety-layer write failure does not turn a completed `PASS` into `BLOCKING` or
+"re-review pending", and it does not authorize another code repair.
+
+The normal path is still for ChatGPT to record its exact-head verdict directly
+in GitHub. If that write is blocked after ChatGPT has explicitly completed the
+review on the current full SHA:
+
+1. preserve that exact head and classify the state as `PASS — RECORDING BLOCKED`;
+2. do not ask the builder to change code or rerun the repair loop;
+3. one owner-approved agent may **clerically transcribe** the completed ChatGPT
+   verdict into the existing Merge Card review block — `Required`, `Exact
+   reviewed head`, `Reviewer`, `Review outcome`, and `Findings and fix
+   verification` — without deciding, upgrading, downgrading, or materially
+   rewriting the verdict;
+4. the transcription notes that ChatGPT completed the exact-head review and
+   that the normal review/comment write was blocked by the connector; and
+5. merge still waits until the `PASS` is durably recorded in GitHub on that
+   exact head.
+
+A transcription is not a second review and grants the transcribing agent no
+review authority. It may not infer `PASS` from CI, bot reactions, an owner
+statement, a prior head, or the absence of findings. If the head moves, the old
+verdict cannot be transcribed onto the new head. If the PR-body write is also
+blocked, stop and notify the owner once; do not loop on recording attempts and
+do not merge. A `BLOCKING` verdict remains a code blocker even if its recording
+write fails.
+
 ### Independent improvement audit — optional and bounded
 
 Default to at most **one advisory pass** on a coherent head. Do not request a
