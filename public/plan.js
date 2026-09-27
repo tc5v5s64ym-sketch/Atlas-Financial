@@ -2334,6 +2334,32 @@ function extraRepaymentHtml(period) {
 // cash projected ending on each period (the next period opens from cash,
 // not from Balance After Deductions); those rows are not part of the
 // household Plan surface.
+function budgetPlanSpendEarmarkHtml(advice, period) {
+  // Reprints Forecast's planSpendPaydayFunding contribution for the payday
+  // starting this Budget period, so the household sees the Forecast earmark
+  // for named future costs. Presentation only: the schedule is a Forecast
+  // authority, the page does no arithmetic, and the Q01–Q07 waterfall is
+  // unchanged (B98). Renders for any published schedule (including
+  // funding-gap, which retains valid payday rows up to the first gap);
+  // only unavailable schedules are suppressed, matching plan-spend.js.
+  const schedule = advice && advice.planSpendPaydayFunding;
+  if (!schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.paydays)) return '';
+  const start = period && period.start;
+  if (!start) return '';
+  const payday = schedule.paydays.find(row => row && row.payday === start);
+  if (!payday) return '';
+  const contribution = Number(payday.contribution) || 0;
+  if (!(contribution > 0)) return '';
+  const lines = (payday.allocations || [])
+    .filter(row => row && Number(row.amount) > 0)
+    .map(row => `<div class="operating-line"><span>${row.label}</span><span>${money2(row.amount)}</span></div>`)
+    .join('');
+  return `<div class="payday-plan-spend-earmark" data-plan-spend-earmark="${payday.payday}">
+    <p class="operating-lead">Set aside ${money2(contribution)} for future costs</p>
+    ${lines ? `<div class="operating-lines">${lines}</div>` : ''}
+    <p class="operating-note">Forecast earmark for named planned costs on this payday — not extra money. The payment itself stays on its cash date.</p>
+  </div>`;
+}
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
@@ -2700,6 +2726,7 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
     ${extraControls || ''}
     ${current ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
     ${calendarWaterfallHtml(period, liveOverlay, alloc, plan)}
+    ${budgetPlanSpendEarmarkHtml(advice, period)}
     ${undatedBlock}
   </div>`;
 }

@@ -63,6 +63,7 @@ function loadComposer() {
     grab(planSrc, /^function payPeriodCloseMonth\([\s\S]*?\n\}$/m, 'payPeriodCloseMonth'),
     grab(planSrc, /^function payPeriodMonths\([\s\S]*?\n\}$/m, 'payPeriodMonths'),
     grab(planSrc, /^function payPeriodNavigatorHtml\([\s\S]*?\n\}$/m, 'payPeriodNavigatorHtml'),
+    grab(planSrc, /^function budgetPlanSpendEarmarkHtml\([\s\S]*?\n\}$/m, 'budgetPlanSpendEarmarkHtml'),
     grab(planSrc, /^function payPeriodTimelineHtml\([\s\S]*?\n\}$/m, 'payPeriodTimelineHtml'),
   ].join('\n');
   return vm.runInNewContext(

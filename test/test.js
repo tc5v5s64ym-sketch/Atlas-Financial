@@ -172,6 +172,7 @@ const suites = [
   ['Budget pay-period swipe navigation', 'test-budget-pay-period-swipe.js'],
   ['Budget synchronized month and pay-period wheels', 'test-budget-synchronized-wheels.js'],
   ['Budget estimated payroll trust label', 'test-budget-estimated-payroll-label.js'],
+  ['Budget Plan Spend earmark on pay periods', 'test-budget-plan-spend-earmark.js'],
   ['Plan payday carryover trend', 'test-payday-carryover-trend.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],

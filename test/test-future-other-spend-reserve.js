@@ -78,6 +78,7 @@ function loadComposer() {
     'payPeriodCloseMonth',
     'payPeriodMonths',
     'payPeriodWheelSelection',
+    'budgetPlanSpendEarmarkHtml',
     'payPeriodTimelineHtml',
     'operatingSurfaceHtml',
   ];

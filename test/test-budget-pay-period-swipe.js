@@ -35,6 +35,7 @@ const source = [
   grab('payPeriodCloseMonth'),
   grab('payPeriodMonths'),
   grab('payPeriodNavigatorHtml'),
+  grab('budgetPlanSpendEarmarkHtml'),
   grab('payPeriodTimelineHtml'),
 ].join('\n');
 const composer = vm.runInNewContext(`${source}\n({
