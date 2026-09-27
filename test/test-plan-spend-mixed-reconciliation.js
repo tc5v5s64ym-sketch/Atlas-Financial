@@ -256,4 +256,41 @@ function namedFor(live, id) {
   ok(namedFor(live, 'propertytax') === 5000, 'I: only the $50 attributable portion named');
 }
 
+// --- Case J: unrelated pending-cash protection + later bill needing $0 -----
+// $60 observed pending household debit (general cash protection held in the
+// incumbent protectedPath) + $100 yearly bill due 2026-03-31 needing $0
+// today. The pending debit must not be attributed to Plan Spend, and the
+// schedule must stay valid. Required by the PR #436 repair spec (regression
+// B): pending protection is never Plan Spend money merely because a
+// schedulable cost exists.
+{
+  const plan = basePlan(200);
+  plan.bills = [{ id: 'sq', label: 'SQ', frequency: 'yearly',
+    month: 3, day: 31, amount: 100, jointCash: false,
+    firstDue: '2026-03-31', confidence: 'confirmed' }];
+  const actuals = { transactions: [
+    { id: 'pend1', date: '2026-01-16', amount: 60, pending: true,
+      accountRole: 'household-cash', description: 'Pending merchant debit' },
+  ] };
+  const asOf = plan.opening.asOf;
+  const sim = F.simulate(plan, asOf, { horizonDays: 120, viewDays: 120, weeklyVariable: 0 });
+  const seq = F.fundingSequence(plan, asOf, {});
+  const plans = F.majorPlans(plan, asOf, { weeklyVariable: 0 });
+  const alloc = F.paydayAllocation(plan, asOf, {
+    weeklyVariable: 0, majorPlans: plans,
+    plannedDebt: F.plannedDebt(plan, asOf, { weeklyVariable: 0, majorPlans: plans }),
+    currentPeriodActuals: actuals,
+  });
+  const sched = F.planSpendPaydayFunding(plan, asOf, sim, seq, plans, alloc);
+  const live = sched.paydays.find(p => p.payday === asOf) || null;
+  const pathAmt = alloc.protectedPath && alloc.protectedPath.status === 'calculated'
+    ? cent(alloc.protectedPath.allocated || 0) : 0;
+  ok(pathAmt === 6000, 'J: incumbent path holds the $60 pending debit',
+    alloc.protectedPath && alloc.protectedPath.allocated);
+  ok(live && cent(live.contribution) === 0, 'J: live contribution $0', live && live.contribution);
+  ok(sched.status !== 'unavailable', 'J: pending-cash path keeps schedule valid');
+  ok(namedSum(live) === 0, 'J: pending cash not attributed to Plan Spend');
+  ok(namedFor(live, 'sq') === 0, 'J: sq named $0 on the live payday');
+}
+
 console.log(`\nplan-spend mixed reconciliation: ${checks} checks passed`);
