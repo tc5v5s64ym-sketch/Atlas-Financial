@@ -2450,11 +2450,30 @@ function paydayInstructionShellHtml(advice, period) {
     extraBody = `<p class="instruction-amount">${money2(0)}</p>
       <p class="operating-note">No extra principal this payday. Required minimums are already in bills above.</p>`;
   } else {
-    const target = extra.target ? ` on ${extra.target}` : ' on the focus debt';
+    // Incumbent convention (plan.js renderers): the target is the
+    // debtPriority object; the household name is target.label. Never
+    // interpolate the raw object. Tolerate a plain string defensively.
+    const rawTarget = extra.target;
+    const targetLabel = rawTarget == null ? null
+      : (typeof rawTarget === 'string' ? rawTarget : (rawTarget.label || null));
+    const target = targetLabel ? ` on ${targetLabel}` : ' on the focus debt';
     extraBody = `<p class="instruction-amount">${money2(extraValue)}</p>
       <p class="operating-note">Optional extra${target} — only after everything above is covered.</p>`;
   }
   const extraBlock = block('Extra on focus debt', extraBody);
+
+  // Funded optional plans are Forecast allocations taken from the same
+  // remaining pool as the remainder. The shell must name them: otherwise a
+  // funded optional destination disappears from "where does this money need
+  // to go?" while the remainder still calls itself truly unassigned.
+  // Reprint only — one line per Forecast row, no page-side total.
+  const optionalRows = (Array.isArray(alloc.optional) ? alloc.optional : [])
+    .filter(item => item && Number(item.allocated) > 0);
+  const optionalBlock = optionalRows.length ? block('Optional plans',
+    `<div class="operating-lines">${optionalRows
+      .map(item => `<div class="operating-line"><span>${item.label}</span><span>${money2(item.allocated)}</span></div>`)
+      .join('')}</div>
+      <p class="operating-note">Nice-to-have plans — funded only after everything above is covered.</p>`) : '';
 
   const remainderValue = known(alloc.remainder);
   const unresolved = Array.isArray(alloc.unresolved) ? alloc.unresolved : [];
@@ -2470,7 +2489,7 @@ function paydayInstructionShellHtml(advice, period) {
     <h2>Where this payday's money needs to go</h2>
     <p class="operating-note">The plan for this payday — set aside and protect. Nothing here is a transfer or a payment made.</p>
     <div class="instruction-blocks">
-      ${availableBlock}${billsBlock}${householdBlock}${plannedBlock}${protectedBlock}${extraBlock}${remainderBlock}
+      ${availableBlock}${billsBlock}${householdBlock}${plannedBlock}${protectedBlock}${extraBlock}${optionalBlock}${remainderBlock}
     </div>
   </section>`;
 }

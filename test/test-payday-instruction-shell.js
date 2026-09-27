@@ -168,7 +168,7 @@ const allocFixture = (overrides = {}) => Object.assign({
   // Decoy: the raw protectedPath hold. The page must never print it and
   // must never derive a residual from it.
   protectedPath: { status: 'calculated', allocated: 9999.99 },
-  extraDebt: { allocated: 250, target: 'Travel Visa', status: 'ok' },
+  extraDebt: { allocated: 250, target: { id: 'travel-visa', label: 'Travel Visa' }, status: 'ok' },
   remainder: 450,
   unresolved: [],
 }, overrides);
@@ -329,6 +329,32 @@ check('B15: shell does not render on non-default looks', () => {
   const advice = adviceFixture();
   const html = f.operatingSurfaceHtml({ advice, liveOverlay: null, planLook: 'past:2026-08-01' });
   assert.doesNotMatch(html, /data-payday-instruction-shell/);
+});
+
+check('B16: extra-debt target object renders its label, never [object Object]', () => {
+  const html = shell();
+  assert.match(html, /on Travel Visa/);
+  assert.doesNotMatch(html, /\[object Object\]/);
+  const stringTarget = shell({ extraDebt: { allocated: 250, target: 'Travel Visa', status: 'ok' } });
+  assert.match(stringTarget, /on Travel Visa/);
+  const noTarget = shell({ extraDebt: { allocated: 250, target: null, status: 'ok' } });
+  assert.match(noTarget, /on the focus debt/);
+  assert.doesNotMatch(noTarget, /\[object Object\]/);
+});
+
+check('B17: funded optional plans render as named lines; block omitted when none', () => {
+  const withOptional = shell({
+    optional: [
+      { id: 'opt-trip', label: 'Optional trip top-up', date: '2026-12-01', need: 100, allocated: 100, flexibility: 'optional' },
+      { id: 'opt-zero', label: 'Unfunded idea', date: '2026-12-01', need: 50, allocated: 0, flexibility: 'optional' },
+    ],
+  });
+  assert.match(withOptional, /Optional plans/);
+  assert.match(withOptional, /Optional trip top-up/);
+  assert.match(withOptional, /\$100\.00/);
+  assert.doesNotMatch(withOptional, /Unfunded idea/);
+  const withoutOptional = shell();
+  assert.doesNotMatch(withoutOptional, /Optional plans/);
 });
 
 console.log(`\n${checks} checks passed.`);

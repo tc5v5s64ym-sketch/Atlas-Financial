@@ -287,8 +287,13 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
   const positive = composer.operatingSurfaceHtml({
     advice: positiveAdvice, liveOverlay: data.liveOverlay,
   });
-  ok(!positive.includes(target.label) && !/data-payday-first-card/.test(positive),
-    'positive extra repayment stays a Forecast decision and is not printed on the default Plan');
+  ok(positive.includes(target.label) && /Extra on focus debt/.test(positive)
+      && positive.includes(composer.money2(25)),
+    'positive extra repayment prints its Forecast-owned target and amount on the default Plan shell');
+  ok(!/\[object Object\]/.test(positive),
+    'the printed extra-debt target is the Forecast-published label, never a raw object');
+  ok(!/data-payday-first-card/.test(positive),
+    'the old incumbent first-card row stays off the default Plan');
   const positiveActive = periods.find(p => p && p.role === 'active');
   ok(positiveActive && positiveActive.firstCard
       && positiveActive.firstCard.extraThisPayday === 25
