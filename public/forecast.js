@@ -2873,6 +2873,19 @@
         // same hold. Null on non-live rows, where the concept does not
         // apply. Unknown is not $0.
         nonPlanSpendProtected: isLivePayday ? dollars(pathAllocated - pathForPlanSpend) : null,
+        // Trust tag for the payday instruction shell (AMANDA SLICE 1): the
+        // live row's figures (contribution, named allocations,
+        // nonPlanSpendProtected) are only as strong as their weakest input
+        // — the incumbent allocation's income trust (which already detects
+        // the 2027 Dale-payroll projection), the named allocation parts'
+        // confidences, and the walk's income confidences. Null on non-live
+        // rows, where the concept does not apply.
+        trust: isLivePayday ? trajectoryWeakerStatus(
+          (incumbentAllocation && incumbentAllocation.paydayShellTrust
+            && incumbentAllocation.paydayShellTrust.available) || 'calculated',
+          trajectoryEventsStatus(incumbentParts),
+          trajectoryEventsStatus(
+            (sim.events || []).filter(e => e && e.kind === 'income'))) : null,
         openingProtected: dollars(openingProtected), protectedAfterPayday: dollars(afterPayday),
         payments, protectedAfterPayments: dollars(protectedBalance),
         stillToFund: dollars(schedulable.reduce((sum, cost) =>
@@ -9562,6 +9575,13 @@
     const todayEvents = expandEvents(plan, asOf, asOf, opts);
     const today = financialDate(asOf);
     let todayIncome = 0;
+    // Trust input for the payday instruction shell (AMANDA SLICE 1): the
+    // weakest input wins. A Dale-payroll amount replaced by the 2027
+    // projection is estimated even when the stream's own confidence says
+    // confirmed — the projection is the amount actually used, and the page
+    // must not print it as a verified fact. Missing confidence is not
+    // confirmed: it never promotes an estimate.
+    let todayIncomeEstimated = false;
     for (const e of todayEvents) {
       if (!e || e.kind !== 'income') continue;
       let amount = Number(e.amount) || 0;
@@ -9569,10 +9589,12 @@
           && (isDalePayrollStream(e) || e.id === 'payrollBonus')) {
         const estimated = projectedDaleOccurrenceNet(
           plan, e.id, e.date, Object.assign({}, opts, { asOf: today || e.date }));
-        if (estimated != null) amount = estimated;
+        if (estimated != null) { amount = estimated; todayIncomeEstimated = true; }
       }
+      if (e.confidence !== 'confirmed') todayIncomeEstimated = true;
       todayIncome += amount;
     }
+    const availableTrust = todayIncomeEstimated ? 'estimated' : 'calculated';
     const available = roundCent(opening + todayIncome);
 
     const cal = paydayCalendar(plan, asOf, opts);
@@ -10113,6 +10135,23 @@
       unallocated,
       allocatedTotal,
       remainder: unallocated,
+      // Trust tags for the payday instruction shell (AMANDA SLICE 1). Every
+      // figure the shell reprints carries the Forecast-published state the
+      // page must render with it: 'calculated' when every input was
+      // confirmed, 'estimated' when any input was not. Weakest input wins —
+      // missing confidence is not confirmed, so it never promotes an
+      // estimate (incumbent trajectoryEventsStatus rule). 'unknown' is not
+      // published here: a figure Forecast did not publish stays null and
+      // the page fails closed on it.
+      paydayShellTrust: {
+        available: availableTrust,
+        obligations: trajectoryWeakerStatus(availableTrust,
+          trajectoryEventsStatus(obligationItems)),
+        household: availableTrust,
+        extraDebt: availableTrust,
+        optional: availableTrust,
+        remainder: availableTrust,
+      },
       runningLeftover,
       plannedDebt: { permitted: !!(debt && debt.permitted), borrowed: debt && debt.borrowed || 0 },
       identity: roundCent(allocatedTotal + unallocated),
@@ -10534,6 +10573,14 @@
       const alloc = paydayAllocation(plan, asOf, paydayOpts);
       const planSpendFunding = planSpendPaydayFunding(
         plan, asOf, knowledgeSim, sequence, plans, alloc);
+      // Trust packet for the payday instruction shell (AMANDA SLICE 1).
+      // Forecast publishes the trust state of every figure the shell
+      // reprints; the page renders only this published state and fails
+      // closed when it is absent. The schedule row carries its own trust
+      // (see planSpendPaydayFunding). The cash floor is an owner-policy
+      // number the plan publishes, not an estimate.
+      const paydayShellTrust = Object.assign(
+        {}, (alloc && alloc.paydayShellTrust) || {}, { buffer: 'calculated' });
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));
@@ -10570,6 +10617,9 @@
         // a second horizon: the weekly search and the balances are unchanged.
         nearBoundary: nearBoundaryObligations(zeroSim.events, asOf, payFloor),
         paydayAllocation: alloc,
+        // Trust tags for the payday instruction shell (AMANDA SLICE 1).
+        // Composed above from the incumbent allocation plus the buffer.
+        paydayShellTrust,
         currentPeriodAction: action,
         defaultView,
         nextPeriodView: planNextPeriodView(plan, asOf, action, plans,

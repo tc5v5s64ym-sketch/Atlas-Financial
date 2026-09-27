@@ -186,6 +186,9 @@ const scheduleFixture = (overrides = {}) => Object.assign({
     ],
     nonPlanSpendProtected: 300,
     gap: null,
+    // Trust state Forecast publishes on the live row; the page renders
+    // only this published state.
+    trust: 'calculated',
   }],
   gap: null,
 }, overrides);
@@ -194,6 +197,17 @@ const currentPeriod = { id: 'current:2026-09-25', start: '2026-09-25', end: '202
 
 const adviceFixture = (allocOverrides, scheduleOverrides) => ({
   buffer: 500,
+  // Trust packet Forecast publishes for the shell (AMANDA SLICE 1 repair).
+  // Every figure the shell reprints carries a published trust state.
+  paydayShellTrust: {
+    available: 'calculated',
+    obligations: 'calculated',
+    household: 'calculated',
+    extraDebt: 'calculated',
+    optional: 'calculated',
+    remainder: 'calculated',
+    buffer: 'calculated',
+  },
   paydayAllocation: allocFixture(allocOverrides),
   planSpendPaydayFunding: scheduleOverrides === null ? null : scheduleFixture(scheduleOverrides),
   payPeriodViews: [currentPeriod],
@@ -271,6 +285,7 @@ check('B8: funding-gap schedule keeps the valid earmark and names the gap', () =
       payday: '2026-09-25', contribution: 1200,
       allocations: [{ id: 'a', label: 'Property tax reserve', amount: 1200 }],
       nonPlanSpendProtected: 300, gap: null,
+      trust: 'calculated',
     }],
     gap: { payday: '2026-09-25', shortBy: 200, cashDate: '2026-10-15' },
   });
@@ -355,6 +370,109 @@ check('B17: funded optional plans render as named lines; block omitted when none
   assert.doesNotMatch(withOptional, /Unfunded idea/);
   const withoutOptional = shell();
   assert.doesNotMatch(withoutOptional, /Optional plans/);
+});
+
+// ---------------------------------------------------------------- Part C ---
+// Trust tags (AMANDA SLICE 1 repair): every shell figure carries its
+// Forecast-published trust state ('calculated' | 'estimated') so estimated
+// state is never flattened into indistinguishable bare currency. The page
+// renders only the published state and fails closed when it is absent.
+
+check('C1: paydayAllocation publishes trust — confirmed inputs are calculated, anything weaker is estimated', () => {
+  const confirmed = runEngine(basePlan(200));
+  for (const key of ['available', 'obligations', 'household', 'extraDebt', 'optional', 'remainder']) {
+    assert.equal(confirmed.alloc.paydayShellTrust[key], 'calculated', key);
+  }
+  const estimatedPlan = basePlan(200);
+  estimatedPlan.income[0].confidence = 'estimated';
+  const estimated = runEngine(estimatedPlan);
+  assert.equal(estimated.alloc.paydayShellTrust.available, 'estimated');
+  assert.equal(estimated.alloc.paydayShellTrust.household, 'estimated');
+  // Missing confidence is not confirmed: it never promotes an estimate.
+  const missingPlan = basePlan(200);
+  delete missingPlan.income[0].confidence;
+  const missing = runEngine(missingPlan);
+  assert.equal(missing.alloc.paydayShellTrust.available, 'estimated');
+});
+
+check('C2: the live schedule row publishes its own trust — confirmed row is calculated', () => {
+  const { live } = runEngine(mixedPlan());
+  assert.ok(live, 'live row exists');
+  assert.equal(live.trust, 'calculated');
+});
+
+check('C3: the 2027 Dale-payroll projection renders as estimate, not bare currency', () => {
+  const plan = {
+    defaults: { targetBuffer: 500 },
+    opening: { asOf: '2027-01-15' },
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 2000 }] },
+    income: [{ id: 'payroll', label: 'Payroll — Seaspan', frequency: 'biweekly',
+      anchor: '2026-08-14', amount: 4000, confidence: 'confirmed' }],
+    obligations: [], bills: [], budget: { categories: [] }, commitments: [],
+    payrollPlanningAssumptions: { salaryRaiseFactor: 1.04, bonusRate: 0.18, authorizedThroughYear: 2027 },
+  };
+  const asOf = '2027-01-15';
+  const sim = F.simulate(plan, asOf, { horizonDays: 60, viewDays: 60, weeklyVariable: 0 });
+  const seq = F.fundingSequence(plan, asOf, {});
+  const plans = F.majorPlans(plan, asOf, { weeklyVariable: 0 });
+  const alloc = F.paydayAllocation(plan, asOf, {
+    weeklyVariable: 0, majorPlans: plans,
+    plannedDebt: F.plannedDebt(plan, asOf, { weeklyVariable: 0, majorPlans: plans }),
+  });
+  // The stream said confirmed, but the 2027 regime amount comes from the
+  // authorized projection — Forecast publishes estimated, not confirmed.
+  assert.equal(alloc.paydayShellTrust.available, 'estimated');
+  const sched = F.planSpendPaydayFunding(plan, asOf, sim, seq, plans, alloc);
+  const live = sched.paydays.find(p => p.payday === asOf);
+  assert.ok(live, 'live row exists');
+  assert.equal(live.trust, 'estimated');
+  const advice = {
+    buffer: 500,
+    paydayAllocation: alloc,
+    // Composed exactly the way the plan builder does.
+    paydayShellTrust: Object.assign({}, alloc.paydayShellTrust, { buffer: 'calculated' }),
+    planSpendPaydayFunding: sched,
+    payPeriodViews: [{ id: 'x', start: asOf, end: '2027-01-29', timelineRole: 'current' }],
+    defaultView: { asOf },
+  };
+  const html = f.paydayInstructionShellHtml(advice, { id: 'x', start: asOf });
+  assert.match(html, /\$5,849\.40/);
+  assert.match(html, /5,849\.40 <span class="trust-tag trust-estimated">estimate<\/span>/);
+  assert.doesNotMatch(html, /unavailable/);
+});
+
+check('C4: every shell figure on the normal payday renders with its trust tag', () => {
+  const html = shell();
+  assert.match(html, /\$5,000\.00 <span class="trust-tag">calculated<\/span>/); // available
+  assert.match(html, /\$2,000\.00 <span class="trust-tag">calculated<\/span>/); // bills
+  assert.match(html, /\$800\.00 <span class="trust-tag">calculated<\/span>/); // household
+  assert.match(html, /\$1,200\.00 <span class="trust-tag">calculated<\/span>/); // planned
+  assert.match(html, /Keep at least \$500\.00 <span class="trust-tag">calculated<\/span>/); // buffer
+  assert.match(html, /\$300\.00 <span class="trust-tag">calculated<\/span>/); // other protected
+  assert.match(html, /\$250\.00 <span class="trust-tag">calculated<\/span>/); // extra debt
+  assert.match(html, /\$450\.00 <span class="trust-tag">calculated<\/span>/); // remainder
+  assert.match(html, /Every figure carries its trust tag/);
+});
+
+check('C5: unpublished trust fails closed — figures render unavailable, never bare currency', () => {
+  const advice = adviceFixture();
+  delete advice.paydayShellTrust;
+  const html = f.paydayInstructionShellHtml(advice, currentPeriod);
+  assert.match(html, /Money available: unavailable/);
+  assert.match(html, /Bills & required minimums: unavailable/);
+  assert.match(html, /Current household spending: unavailable/);
+  assert.match(html, /Minimum cash floor: unavailable/);
+  assert.match(html, /Extra on focus debt: unavailable/);
+  assert.match(html, /Truly unassigned: unavailable/);
+  // The live row still publishes its own trust, so the row-gated blocks
+  // keep rendering — only the packet-gated blocks fail closed here.
+  assert.match(html, /\$1,200\.00 <span class="trust-tag">calculated<\/span>/);
+  // A live row with no published trust fails the planned blocks closed too.
+  const advice2 = adviceFixture();
+  delete advice2.planSpendPaydayFunding.paydays[0].trust;
+  const html2 = f.paydayInstructionShellHtml(advice2, currentPeriod);
+  assert.match(html2, /Set aside for planned spending: unavailable/);
+  assert.match(html2, /Other protected cash — keep in chequing: unavailable/);
 });
 
 console.log(`\n${checks} checks passed.`);

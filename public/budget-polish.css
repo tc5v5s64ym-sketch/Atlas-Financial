@@ -470,3 +470,23 @@ body:has(#operating-surface) .site-head-inner {
 .payday-instruction-shell .instruction-block .operating-note {
   margin: 4px 0 0;
 }
+/* AMANDA SLICE 1 repair — trust tags. Every shell figure carries its
+ * Forecast-published trust state so estimated state is never flattened
+ * into indistinguishable bare currency. */
+.payday-instruction-shell .trust-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--atlas-green-border, #cfe3d4);
+  font-size: 0.7rem;
+  font-weight: 600;
+  vertical-align: middle;
+  color: #2f5d3a;
+  background: #fff;
+}
+.payday-instruction-shell .trust-tag.trust-estimated {
+  border-color: #d9b25f;
+  color: #7a5a14;
+  background: #fdf6e3;
+}
