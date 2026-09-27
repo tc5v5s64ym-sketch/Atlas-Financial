@@ -396,7 +396,7 @@ that CSS leak from PR #268 is not a decision about their future. Their future
 (household nav, a diagnostics nav, or retirement) is owner direction; do not
 delete them on an agent's initiative.
 
-**B102 · Current-cash treatment of pending spending outside essential target lines** · **FIXED NOW in PR #263; merge pending** · *same cash-identity blocker, owner-directed repair*
+**B102 · Current-cash treatment of pending spending outside essential target lines** · **MERGED 2026-09-06 via PR #263** · *same cash-identity blocker, owner-directed repair*
 
 The earlier safe-follow-up disposition was incorrect. Unresolved household-cash
 pending in Other Spending, discretionary categories, and essential categories
@@ -413,9 +413,7 @@ $4,100 rather than $3,850. Repair proves $3,850 in each category, whether
 pending or settled with $4,750 posted cash, through extra debt, optional,
 unallocated, and mixed destinations. Positive essential pending $600 retains
 $600 principal plus $300 future groceries, converging with $4,400 posted cash
-and $300 future groceries after settlement. The older exact-head review PASS
-is superseded; the repaired candidate requires fresh ChatGPT Atlas Contract /
-Systems Review. This is one root cause and one repair, not deferred work.
+and $300 future groceries after settlement. The exact final head `3e12dbc9f526a7197ca0542f7ac3eb2826f7a955` received Atlas Contract / Systems Review PASS on 2026-09-06, and PR #263 merged the same day (merge commit `b5df202e23252368a4a46d4d4f51fdf9ac791268`). This is one root cause and one repair, not deferred work.
 
 **B101 · Plaid pending→posted identity is not Lunch Money `id`** · **DONE 2026-09-04** · *financial-correctness interruption; owner instruction after live Amazon authorization/settlement investigation*
 
