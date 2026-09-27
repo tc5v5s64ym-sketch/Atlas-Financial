@@ -1,17 +1,23 @@
 name: Merge card check
 
-# Completeness only. This check proves the PR named what it is: heading,
-# required rows, closed primary-risk and current-state openings, and a
-# Required / NOT REQUIRED decision. It does not lock merge on a review SHA,
-# a PASS/PENDING/NOT PASS outcome, or a ChatGPT review.
+# Completeness plus Systems Review provenance. This check proves the PR named
+# what it is: heading, required rows, closed primary-risk and current-state
+# openings, and a Required / NOT REQUIRED decision. For a REQUIRED review
+# whose card claims PASS, it additionally enforces provenance on the live
+# exact head: a trusted direct GitHub PR review, or a validated
+# owner-authorized transcription. A card-claimed PASS with neither path
+# fails closed. PENDING / BLOCKING / NOT PASS outcomes and NOT REQUIRED
+# cards keep their documentary behavior: a later fix must not invalidate the
+# card and hang the PR.
 #
 # Confidence that the change is not junk comes from `npm test`, the secret
-# hook, and the figures comment. This check only keeps the card aligned
-# with itself so a reader can see the claim.
+# hook, and the figures comment. This check keeps the card aligned with
+# itself and keeps a claimed PASS honest about where it came from.
 #
-# Card text is always read from the live pull request via pulls.get.
-# The Primary-risk helper is loaded from the trusted default branch, never
-# from PR-head JavaScript. Live PR body and labels are data only.
+# Card text and review lists are always read live via the GitHub API, never
+# from the workflow event payload. The Primary-risk and review-provenance
+# helpers are loaded from the trusted default branch, never from PR-head
+# JavaScript. Live PR body and labels are data only.
 
 on:
   pull_request:
@@ -220,11 +226,11 @@ jobs:
             const rowValue = (label) => {
               const pattern = esc(label);
               const table = new RegExp(
-                `^[ \\t]*\\|[ \\t]*\\*{0,2}${pattern}\\*{0,2}[ \\t]*\\|([^\\n|]*)`, 'im'
+                `^[ \t]*\|[ \t]*\*{0,2}${pattern}\*{0,2}[ \t]*\|([^\n|]*)`, 'im'
               ).exec(cardSection);
               if (table) return clean(table[1]);
               const bullet = new RegExp(
-                `^[ \\t]*[-*][ \\t]*\\*{0,2}${pattern}\\*{0,2}[ \\t]*:(.*)$`, 'im'
+                `^[ \t]*[-*][ \t]*\*{0,2}${pattern}\*{0,2}[ \t]*:(.*)$`, 'im'
               ).exec(cardSection);
               return bullet ? clean(bullet[1]) : null;
             };
@@ -289,7 +295,7 @@ jobs:
               const section = sectionAfter(reviewHeading);
               const read = (label) => {
                 const match = new RegExp(
-                  `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im'
+                  `^[ \t]*[-*][ \t]*\*{0,2}${esc(label)}\*{0,2}[ \t]*:(.*)$`, 'im'
                 ).exec(section);
                 return match ? clean(match[1]) : null;
               };
@@ -317,14 +323,66 @@ jobs:
                 problems.push('"Required" must open with REQUIRED or NOT REQUIRED.');
               }
 
-              // Review SHA / PASS / PENDING / trusted Atlas outcome are
-              // documentary. They must not fail this check: a later fix
-              // would otherwise invalidate the card and hang the PR.
+              // PENDING / BLOCKING / NOT PASS outcomes are documentary. They
+              // must not fail this check: a later fix would otherwise
+              // invalidate the card and hang the PR.
               if (notRequired) {
                 for (const label of ['Exact reviewed head', 'Reviewer', 'Review outcome']) {
                   if (!/^N\/A$/i.test(review[label])) {
                     problems.push(`A NOT REQUIRED review must record ${label}: N/A.`);
                   }
+                }
+              }
+
+              // Provenance gate: a REQUIRED card claiming PASS is
+              // merge-authorizing only with a mechanically valid provenance
+              // path on the live exact head — a trusted direct GitHub PR
+              // review, or a validated owner-authorized transcription.
+              // Reviews are fetched live; the event payload is never trusted
+              // for provenance. The validator runs from the trusted
+              // default-branch checkout, never from PR-head JavaScript.
+              if (required && /^PASS(?:\b|[ \t]*[—–:.-])/i.test(review['Review outcome'] || '')) {
+                let provenance;
+                try {
+                  const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+                  provenance = require(`${workspace}/scripts/atlas-review-provenance.js`);
+                } catch (error) {
+                  const detail = error && error.message ? ` (${error.message})` : '.';
+                  core.setFailed(`Merge-card check failed closed: could not load the review-provenance helper${detail}`);
+                  return;
+                }
+                if (!provenance || typeof provenance.validateProvenance !== 'function') {
+                  core.setFailed('Merge-card check failed closed: review-provenance helper is missing validateProvenance.');
+                  return;
+                }
+                let reviews;
+                try {
+                  reviews = await github.paginate(github.rest.pulls.listReviews, {
+                    owner,
+                    repo,
+                    pull_number,
+                    per_page: 100,
+                  });
+                } catch (error) {
+                  const detail = error && error.message ? ` (${error.message})` : '.';
+                  core.setFailed(`Merge-card check failed closed: live review fetch failed${detail}`);
+                  return;
+                }
+                const verdict = provenance.validateProvenance({
+                  pr: {
+                    state: liveState,
+                    merged: livePr.merged === true,
+                    baseRef: liveBaseRef,
+                    headSha: liveHead,
+                  },
+                  reviews,
+                  body,
+                  card: review,
+                });
+                if (!verdict.ok) {
+                  problems.push(verdict.message);
+                } else {
+                  core.info(`Systems Review provenance: ${verdict.path} path on the live head.`);
                 }
               }
             }
