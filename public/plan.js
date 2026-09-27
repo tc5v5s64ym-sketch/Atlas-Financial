@@ -3170,33 +3170,10 @@ function operatingSurfaceHtml(ctx) {
   const view = ctx.planView || advice.defaultView || {};
   const billsHeading = view.billsHeading || 'Bills';
   const look = ctx.planLook || 'this-period';
-  const option = (value, label) =>
-    `<option value="${value}"${look === value ? ' selected' : ''}>${label}</option>`;
-  const weekOpts = (advice.weekViews || []).map(row => {
-    if (!row || !row.periodStart) return '';
-    const value = 'week:' + row.periodStart;
-    const label = row.periodEnd
-      ? `Week of ${fmtDate(row.periodStart)} – ${fmtDate(row.periodEnd)}`
-      : `Week of ${fmtDate(row.periodStart)}`;
-    return option(value, label);
-  }).join('');
-  const carryTrend = advice.paydayCarryoverTrend;
-  const carryOpt = (carryTrend && (carryTrend.points || []).length)
-    ? option('payday-carryover', 'Payday carryover')
-    : '';
-  // The timeline is the pay-period control. This disclosure retains only the
-  // non-period views that it still owns.
-  const picker = `<details class="plan-look" data-plan-look-picker${look !== 'this-period' ? ' open' : ''}>
-    <summary class="plan-look-summary">More views</summary>
-    <label class="plan-look-field">
-      <span class="plan-look-label">What to look at</span>
-      <select class="numin" data-plan-look>
-      ${option('this-period', 'Pay-period timeline')}
-      ${carryOpt}
-      ${weekOpts}
-      </select>
-    </label>
-  </details>`;
+  // Week, carryover, and historical sheets stay renderable when a caller
+  // sets planLook. Forecast still publishes those views. This page does
+  // not offer a second view control between the selector and the cards.
+  const picker = '';
   const cashAlloc = {
     available: view.currentBalance != null ? view.currentBalance : (alloc && alloc.available),
     cashBasis: view.cashNote ? null : (alloc && alloc.cashBasis),

@@ -373,12 +373,10 @@ console.log('\n=== 4. week views come from the Forecast walk; picker asks for th
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  ok(/What to look at/.test(html) && /Pay-period timeline/.test(html)
-      && !/value="next-period"/.test(html)
-      && /<select class="numin" data-plan-look>/.test(html),
-    'the sheet leaves pay-period navigation to the timeline and retains the week picker');
-  ok(weeks.every(row => html.includes('value="week:' + row.periodStart + '"')),
-    'each picker week value is a Forecast-published week start');
+  ok(!/More views/.test(html) && !/What to look at/.test(html)
+      && !/<select class="numin" data-plan-look>/.test(html)
+      && !/value="next-period"/.test(html),
+    'the Budget surface leaves pay periods to the selector and does not offer More views');
   const weekHtml = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'week:' + paydayWeek.periodStart, planView: paydayWeek,

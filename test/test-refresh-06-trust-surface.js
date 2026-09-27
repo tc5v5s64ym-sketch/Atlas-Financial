@@ -678,11 +678,11 @@ console.log('\n=== J. homepage still leads with the operating surface ===');
   ok(/id="operating-surface"/.test(html)
     && html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"'),
   'the decision-first operating surface remains first');
-  ok(/Live Current Balance, then this payday/.test(html)
-    && /<h1>This payday<\/h1>/.test(html)
+  ok(!/Live Current Balance, then this payday/.test(html)
+    && !/<h1>This payday<\/h1>/.test(html)
     && !/View full current-period worksheet/.test(html)
     && !/Why \/ Road ahead/.test(html),
-    'the household lede names the default view without worksheet or Why / Road ahead clutter');
+    'the Budget page does not restore the This payday header, worksheet, or Why / Road ahead');
 }
 
 filesUnchanged('suite close');

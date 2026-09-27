@@ -4,6 +4,21 @@
  * visual state only.
  */
 
+/* Budget opens on the pay-period selector. Brand, theme, sign-out, and
+   the as-at chip stay on the other household pages. The bottom dock is
+   unchanged. This rule does not move a figure. */
+body:has(#operating-surface) .site-head {
+  border-bottom: 0;
+  background: transparent;
+}
+body:has(#operating-surface) .site-head-inner {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+#operating-surface {
+  padding-top: 2px;
+}
+
 #operating-surface-body.atlas-budget-ui-ready {
   --atlas-blue-soft: color-mix(in srgb, var(--s1) 11%, var(--surface-1));
   --atlas-blue-border: color-mix(in srgb, var(--s1) 22%, var(--border));

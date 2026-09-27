@@ -399,8 +399,8 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance After Deductions and stop
   'no stylesheet hides waterfall rows');
   const page = read('public/index.html');
   ok(!/extra debt and big purchases/.test(page)
-      && /Live Current Balance, then this payday’s income, bills and household budget\./.test(page),
-    'the Plan lede describes live Current Balance then the payday snapshot');
+      && !/Live Current Balance, then this payday’s income, bills and household budget\./.test(page),
+    'the Budget page does not render the removed This payday lede');
   ok(!/extra debt and big purchases/.test(planSrc),
     'the plan.js lede constant matches');
 }

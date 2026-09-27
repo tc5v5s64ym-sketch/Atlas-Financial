@@ -225,9 +225,9 @@ console.log('\n=== default homepage answers the operating questions first ===');
   const road = html.slice(roadAt, footerAt);
   ok(operatingAt >= 0 && worksheetAt > operatingAt && roadAt > worksheetAt && footerAt > roadAt,
     'operating surface leads; diagnostic mounts remain after it and before the footer');
-  ok(/<h1>This payday<\/h1>/.test(defaultSurface)
-    && (html.match(/<h1[\s>]/g) || []).length === 1,
-  'the only page h1 is this payday');
+  ok(!/<h1>This payday<\/h1>/.test(defaultSurface)
+    && (html.match(/<h1[\s>]/g) || []).length === 0,
+  'the Budget operating surface has no page h1');
   const worksheet = section(html, 'payday-answer');
   ok(worksheet && /hidden/.test(worksheet)
     && !/View full current-period worksheet/.test(worksheet),

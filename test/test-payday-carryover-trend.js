@@ -274,8 +274,8 @@ console.log('\n=== 3. Plan prints Forecast trend values; page does not compute t
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'this-period', planView: advice.defaultView,
   });
-  ok(/value="payday-carryover"/.test(defaultHtml),
-    'More views lists Payday carryover');
+  ok(!/More views/.test(defaultHtml) && !/value="payday-carryover"/.test(defaultHtml),
+    'the Budget operating surface does not offer More views or Payday carryover');
   ok(!/data-payday-carryover-trend/.test(defaultHtml),
     'current-period UI does not print the carryover trend');
   const html = composer.operatingSurfaceHtml({

@@ -53,6 +53,7 @@ const suites = [
   ['Groceries $900 per Seaspan pay period', 'test-groceries-payday-monthly.js'],
   ['Other spend $800/month owner target', 'test-other-spend-owner-target.js'],
   ['Other spend is not a Household Budget calendar hold', 'test-other-spend-calendar-hold.js'],
+  ['future pay-period Other Spend reserve', 'test-future-other-spend-reserve.js'],
   ['spending classification reconciliation', 'test-classification.js'],
   ['Lunch Money historical actuals authority (AF-OPERATE-01)', 'test-periods-lunchmoney.js'],
   ['read-only recurring card-charge audit', 'test-recurring-audit.js'],

@@ -477,11 +477,11 @@ console.log('\n=== 5c. live plan keeps the bill load and moves only the paid dis
       && near(roundCent(sep.paidBills + sep.remainingBills), sep.totalBillsThisPeriod),
     'Sep 11–24 paid bills 0 + remaining 3424.26 = total bills',
     sep && [sep.paidBills, sep.remainingBills, sep.totalBillsThisPeriod].join(' / '));
+  const FUTURE_OTHER = 400;
   ok(sep && near(sep.periodBillLoad, 3424.26) && near(sep.incomeTotal, 6652.30)
-      && near(sep.budgetHold, 1725)
-      && near(sep.balanceAfterDeductions, roundCent(6652.30 - 3424.26 - 1725))
-      && near(sep.balanceAfterDeductions, 1503.04),
-    'Sep 11–24 BAD stays 6652.30 − 3424.26 − 1725 = 1503.04',
+      && near(sep.budgetHold, roundCent(1725 + FUTURE_OTHER))
+      && near(sep.balanceAfterDeductions, roundCent(6652.30 - 3424.26 - 1725 - FUTURE_OTHER)),
+    'Sep 11–24 BAD is 6652.30 − 3424.26 − 1725 − 400 future Other Spend',
     sep && String(sep.balanceAfterDeductions));
   for (const spec of [
     ['tdcc', '2026-09-17', 94.03],
@@ -502,14 +502,14 @@ console.log('\n=== 5c. live plan keeps the bill load and moves only the paid dis
     targetBuffer: data.plan.defaults && data.plan.defaults.targetBuffer,
   });
   const next = (shifted.defaultView.calendarPeriods || [])[1];
-  const hand = roundCent(6652.30 - 3145.07 - 1725);
-  ok(hand === 1782.23, 'hand Next BAD is 6652.30 − 3145.07 − 1725 = 1782.23', String(hand));
+  const hand = roundCent(6652.30 - 3145.07 - 1725 - 400);
+  ok(hand === 1382.23, 'hand Next BAD is 6652.30 − 3145.07 − 1725 − 400 = 1382.23', String(hand));
   ok(next && next.id === 'next-pay-period' && next.start === '2026-10-09' && next.end === '2026-10-22'
       && next === rowByRole(shifted, 'next'),
     'at Sep 25, Oct 9–22 is Budget Next Pay Period');
   ok(next && near(next.incomeTotal, 6652.30) && near(next.periodBillLoad, 3145.07)
-      && near(next.budgetHold, 1725) && near(next.balanceAfterDeductions, hand),
-    'that Next row keeps income − bill load − household budget',
+      && near(next.budgetHold, roundCent(1725 + 400)) && near(next.balanceAfterDeductions, hand),
+    'that Next row keeps income − bill load − household budget, including the $400 future reserve once',
     next && [next.incomeTotal, next.periodBillLoad, next.budgetHold, next.balanceAfterDeductions].join(' / '));
   ok(next && near(roundCent(next.paidBills + next.remainingBills), next.totalBillsThisPeriod)
       && near(next.periodBillLoad, next.totalBillsThisPeriod),

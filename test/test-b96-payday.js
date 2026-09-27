@@ -639,16 +639,16 @@ console.log('\n=== M. homepage leads with the decision-first operating surface =
   const paydayAt = index.indexOf('id="payday-answer"');
   const plan90At = index.indexOf('id="plan90"');
   const outlookAt = index.indexOf('id="outlook"');
-  const h1At = index.indexOf('<h1');
-  const operatingSection = /<section id="operating-surface">[\s\S]*?<\/section>/.exec(index);
+  const h1Count = (index.match(/<h1[\s>]/g) || []).length;
+  ok(h1Count === 0,
+    'the Budget page has no page h1; the removed This payday heading is not the operating surface');
   const paydaySection = /<section id="payday-answer"[\s\S]*?<\/section>/.exec(index);
   const outlookSection = /<section id="outlook">[\s\S]*?<\/section>/.exec(index);
   ok(operatingAt >= 0 && paydayAt > operatingAt && plan90At > paydayAt,
     'the operating surface leads and diagnostic mounts remain after it');
   ok(outlookAt > paydayAt && outlookAt < plan90At,
     'Outlook diagnostic heading still sits between the worksheet mount and 90-day material');
-  ok(h1At > operatingAt && h1At < paydayAt,
-    'the page h1 is inside the decision-first operating surface');
+  const operatingSection = /<section id="operating-surface">[\s\S]*?<\/section>/.exec(index);
   ok(operatingSection && /id="operating-surface-body"/.test(operatingSection[0]),
     'the operating surface has a dedicated Forecast-result mount');
   ok(paydaySection && /id="payday-heading"/.test(paydaySection[0])
@@ -661,8 +661,8 @@ console.log('\n=== M. homepage leads with the decision-first operating surface =
     'static Now → next payday wording is gone');
   ok(/Master forecast outlook/i.test(index),
     'the 90-day band is labelled as master forecast outlook');
-  ok((index.match(/<h1[\s>]/g) || []).length === 1,
-    'there is exactly one h1 on the Plan page');
+  ok(h1Count === 0,
+    'there is no Plan page h1 after the This payday heading was removed');
   ok(paydaySection && !/id="status-band"/.test(paydaySection[0]),
     'the status band is not inside the secondary current-period worksheet');
   ok(outlookSection && /id="status-band"/.test(outlookSection[0]),

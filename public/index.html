@@ -13,13 +13,6 @@
 
 <header class="site-head">
   <div class="site-head-inner">
-    <div class="site-head-row">
-      <span class="brand">Household finances</span>
-      <span class="chip" id="asof">Loading…</span>
-      <span class="spacer"></span>
-      <button type="button" class="linkbtn" id="theme-btn">Theme: Auto</button>
-      <form method="POST" action="/logout"><button type="submit" class="linkbtn">Sign out</button></form>
-    </div>
     <nav class="sitenav sitenav-household" aria-label="Pages">
       <a href="/" data-nav="budget" aria-current="page"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Budget</span></a>
       <a href="/planning.html" data-nav="forecast"><span class="sitenav-icon" aria-hidden="true"></span><span class="sitenav-label">Forecast</span></a>
@@ -37,8 +30,6 @@
        and longer Forecast diagnostics keep their mounts for renderPlan, but
        they are not part of the household default page. -->
   <section id="operating-surface">
-    <h1>This payday</h1>
-    <p class="lede">Live Current Balance, then this payday’s income, bills and household budget.</p>
     <div class="operating-card" id="operating-surface-body" aria-live="polite"></div>
   </section>
 
