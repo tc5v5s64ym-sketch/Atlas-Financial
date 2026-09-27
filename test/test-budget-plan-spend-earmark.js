@@ -72,7 +72,8 @@ check('a period whose payday has a contribution shows the earmark with named all
   assert.match(html, /data-plan-spend-earmark="2026-10-23"/);
   assert.match(html, /Set aside \$1,200\.00 for future costs/);
   assert.match(html, /Fusion season — household \(October\)/);
-  assert.match(html, /Part of this period's Balance After Deductions — not extra money/);
+  assert.match(html, /Forecast earmark for named planned costs on this payday — not extra money/);
+  assert.doesNotMatch(html, /Balance After Deductions/);
 });
 
 check('the earmark renders after the waterfall, not inside it', () => {
@@ -92,9 +93,15 @@ check('a period with no matching payday shows no earmark', () => {
   assert.doesNotMatch(html, /data-plan-spend-earmark/);
 });
 
-check('no earmark when the schedule is not ready', () => {
+check('no earmark when the schedule is unavailable', () => {
   const html = render('future:2026-10-23', schedule('unavailable'));
   assert.doesNotMatch(html, /data-plan-spend-earmark/);
+});
+
+check('a funding-gap schedule still shows valid payday earmarks', () => {
+  const html = render('future:2026-10-23', schedule('funding-gap'));
+  assert.match(html, /data-plan-spend-earmark="2026-10-23"/);
+  assert.match(html, /Set aside \$1,200\.00 for future costs/);
 });
 
 check('no earmark when Forecast publishes no schedule', () => {

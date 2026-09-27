@@ -2336,15 +2336,17 @@ function extraRepaymentHtml(period) {
 // household Plan surface.
 function budgetPlanSpendEarmarkHtml(advice, period) {
   // Reprints Forecast's planSpendPaydayFunding contribution for the payday
-  // starting this Budget period, so the household sees how much of the
-  // period's Balance After Deductions is already earmarked for named future
-  // costs. Presentation only: the schedule is a Forecast authority, the
-  // page does no arithmetic, and the Q01–Q07 waterfall is unchanged (B98).
+  // starting this Budget period, so the household sees the Forecast earmark
+  // for named future costs. Presentation only: the schedule is a Forecast
+  // authority, the page does no arithmetic, and the Q01–Q07 waterfall is
+  // unchanged (B98). Renders for any published schedule (including
+  // funding-gap, which retains valid payday rows up to the first gap);
+  // only unavailable schedules are suppressed, matching plan-spend.js.
   const schedule = advice && advice.planSpendPaydayFunding;
-  if (!schedule || schedule.status !== 'ready') return '';
+  if (!schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.paydays)) return '';
   const start = period && period.start;
   if (!start) return '';
-  const payday = (schedule.paydays || []).find(row => row && row.payday === start);
+  const payday = schedule.paydays.find(row => row && row.payday === start);
   if (!payday) return '';
   const contribution = Number(payday.contribution) || 0;
   if (!(contribution > 0)) return '';
@@ -2355,7 +2357,7 @@ function budgetPlanSpendEarmarkHtml(advice, period) {
   return `<div class="payday-plan-spend-earmark" data-plan-spend-earmark="${payday.payday}">
     <p class="operating-lead">Set aside ${money2(contribution)} for future costs</p>
     ${lines ? `<div class="operating-lines">${lines}</div>` : ''}
-    <p class="operating-note">Earmarked on this payday for named planned costs. Part of this period's Balance After Deductions — not extra money. The payment itself stays on its cash date.</p>
+    <p class="operating-note">Forecast earmark for named planned costs on this payday — not extra money. The payment itself stays on its cash date.</p>
   </div>`;
 }
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
