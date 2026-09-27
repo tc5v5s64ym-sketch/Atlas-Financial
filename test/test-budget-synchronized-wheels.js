@@ -48,8 +48,8 @@ check('initial row is Forecast current, centered in its close month October', ()
   assert.equal(f.payPeriodCloseMonth(s.period), '2026-10');
   const html = f.payPeriodNavigatorHtml(s);
   assert.match(html, /data-selected-close-month="2026-10"/);
-  assert.match(html, /--wheel-slot:46%;--wheel-offset:-19%/);
-  assert.match(html, /--wheel-slot:52%;--wheel-offset:-28%/);
+  assert.match(html, /--wheel-slot:36%;--wheel-offset:-4%/);
+  assert.match(html, /--wheel-slot:40%;--wheel-offset:-10%/);
 });
 check('the three dispatched ranges map independently to October, October, November', () => {
   assert.deepEqual(rows.slice(1, 4).map(f.payPeriodCloseMonth), ['2026-10', '2026-10', '2026-11']);
@@ -87,16 +87,23 @@ check('both wheels reject bounds, noninteger input, and never wrap', () => {
 // Minimal event targets model remounts and pointer capture. Handlers are the
 // unmodified wirePlanLookPicker function, not a test reimplementation.
 class Track {
-  constructor(offset) {
-    this.values = { '--wheel-offset': offset };
-    this.style = { getPropertyValue: key => this.values[key], setProperty: (key, value) => { this.values[key] = value; } };
+  constructor(offset, slot) {
+    this.values = { '--wheel-offset': offset, '--wheel-slot': slot };
+    this.style = {
+      getPropertyValue: key => this.values[key] || '',
+      setProperty: (key, value) => { this.values[key] = value; },
+    };
     this.classes = new Set();
-    this.classList = { add: x => this.classes.add(x), remove: x => this.classes.delete(x) };
+    this.classList = {
+      add: x => this.classes.add(x),
+      remove: x => this.classes.delete(x),
+      contains: x => this.classes.has(x),
+    };
   }
 }
 class Wheel {
-  constructor(kind, offset) {
-    this.kind = kind; this.handlers = {}; this.track = new Track(offset); this.clientWidth = 360;
+  constructor(kind, offset, slot, width) {
+    this.kind = kind; this.handlers = {}; this.track = new Track(offset, slot); this.clientWidth = width;
     this.capture = null;
   }
   getAttribute() { return this.kind; }
@@ -115,7 +122,9 @@ const mount = {
   set innerHTML(html) {
     this.html = html;
     const offsets = [...html.matchAll(/--wheel-offset:([^";]+)%/g)].map(m => m[1] + '%');
-    this.wheels = [new Wheel('month', offsets[0]), new Wheel('period', offsets[1])];
+    const slots = [...html.matchAll(/--wheel-slot:([^";]+)%/g)].map(m => m[1] + '%');
+    const width = this.wheelWidth > 0 ? this.wheelWidth : 360;
+    this.wheels = [new Wheel('month', offsets[0], slots[0], width), new Wheel('period', offsets[1], slots[1], width)];
   },
   get innerHTML() { return this.html; },
   querySelector(selector) {
@@ -132,23 +141,40 @@ function load(id) {
   f.wirePlanLookPicker(mount, { advice, planLook: 'this-period', planPayPeriodId: id });
 }
 function selected() { return /data-selected-pay-period="([^"]+)"/.exec(mount.html)[1]; }
-function swipe(kind, dx, dy = 0, cancel = false) {
+function swipe(kind, dx, dy = 0, cancel = false, ms = 0) {
   const wheel = mount.wheels[kind === 'month' ? 0 : 1];
-  wheel.fire('pointerdown');
-  wheel.fire('pointermove', { clientX: 200 + dx, clientY: 20 + dy });
-  wheel.fire(cancel ? 'pointercancel' : 'pointerup', { clientX: 200 + dx, clientY: 20 + dy });
+  wheel.fire('pointerdown', { timeStamp: 1000 });
+  wheel.fire('pointermove', { clientX: 200 + dx, clientY: 20 + dy, timeStamp: 1000 + ms });
+  wheel.fire(cancel ? 'pointercancel' : 'pointerup', { clientX: 200 + dx, clientY: 20 + dy, timeStamp: 1000 + ms });
   return wheel;
 }
 function tap(kind, index) {
   const button = { getAttribute: () => String(index) };
   mount.wheels[kind === 'month' ? 0 : 1].fire('click', { detail: 1, target: { closest: () => button } });
 }
-check('one long period swipe advances exactly one Forecast row, even at multi-slot distance', () => {
-  load('current'); swipe('period', -1000); assert.equal(selected(), 'next');
-  swipe('period', -1000); assert.equal(selected(), 'nov-first');
+check('one normal period swipe advances exactly one Forecast row', () => {
+  load('current');
+  const before = mount.html.match(/data-proof-row="current">([^<]+)/)[1];
+  swipe('period', -100); assert.equal(selected(), 'next');
+  swipe('period', -100); assert.equal(selected(), 'nov-first');
   assert.match(mount.html, /data-selected-close-month="2026-11"/);
+  assert.match(mount.html, /aria-current="true"\s+aria-label="November 2026"/);
   assert.equal(mount.wheels[0].track.classes.has('is-moving'), true);
   assert.equal(mount.wheels[1].track.classes.has('is-moving'), true);
+  swipe('period', 100); swipe('period', 100);
+  assert.equal(selected(), 'current');
+  assert.equal(mount.html.match(/data-proof-row="current">([^<]+)/)[1], before);
+});
+check('a drag across two period centers snaps to that row and does not flick further', () => {
+  load('current');
+  swipe('period', -317, 0, false, 30);
+  assert.equal(selected(), 'nov-first');
+  assert.match(mount.html, /--wheel-offset:-90%/);
+});
+check('a short flick moves exactly one row; the same distance without speed does not', () => {
+  load('current');
+  swipe('period', -28, 0, false, 400); assert.equal(selected(), 'current');
+  swipe('period', -28, 0, false, 40); assert.equal(selected(), 'next');
 });
 check('period tap and swipe select the same exact row and body; keyboard focus follows selection', () => {
   load('next'); swipe('period', -100); const html = mount.html;
@@ -160,7 +186,7 @@ check('month tap and swipe select the first November row and synchronize the per
   load('next'); swipe('month', -100); const html = mount.html;
   load('next'); tap('month', 2); assert.equal(mount.html, html);
   assert.equal(selected(), 'nov-first');
-  assert.match(mount.html, /--wheel-offset:-132%/);
+  assert.match(mount.html, /--wheel-offset:-90%/);
 });
 check('vertical, subthreshold, cancelled, and nonprimary gestures do not select', () => {
   load('current'); swipe('period', 100, 180); assert.equal(selected(), 'current');
@@ -194,10 +220,62 @@ check('wheel inputs use named buttons, selected semantics, reduced motion, and n
   assert.match(mount.html, /type="button"/);
   assert.match(mount.html, /tabindex="0" aria-current="true"/);
   assert.match(css, /prefers-reduced-motion:reduce[\s\S]*?\.budget-wheel-track \{ animation:none !important; transition:none;/);
+  assert.match(css, /#000 3%, #000 97%/);
+  assert.doesNotMatch(css, /#000 8%, #000 92%/);
+  assert.match(css, /\.budget-wheel-item\[aria-current="true"\] \{ color:var\(--text-primary\); font-weight:750; opacity:1; \}/);
   assert.match(css, /touch-action:pan-y pinch-zoom/);
   assert.doesNotMatch(source, /let selectedMonth|let planMonth|data-pay-period-step/);
   assert.doesNotMatch(source, /baselineTrajectory|roadAhead|stage1|stage2|stage3/);
   assert.doesNotMatch(f.payPeriodNavigatorHtml.toString(), /incomeTotal|periodBillLoad|householdBudgetTotal|predictedEndingBalance|Forecast\./);
   assert.doesNotMatch(css, /pay-period-nav-button/);
+});
+check('a resize after wiring snaps to the Forecast row for the current slot, not the wired width', () => {
+  const periodSlot = wheel => wheel.track.style.getPropertyValue('--wheel-slot');
+  const half = (width, percent) => width * percent / 100 / 2;
+  mount.wheelWidth = 390;
+  load('current');
+  const period = mount.wheels[1];
+  const month = mount.wheels[0];
+  assert.equal(periodSlot(period), '40%');
+  assert.equal(periodSlot(month), '36%');
+  assert.match(mount.html, /data-budget-wheel="period"[\s\S]*style="--wheel-slot:40%/);
+  const periodPercent = parseFloat(periodSlot(period));
+  const monthPercent = parseFloat(periodSlot(month));
+  // 70px crosses half of a 320px period slot (128px) and not a 390px slot (156px).
+  assert.ok(70 > half(320, periodPercent) && 70 < half(390, periodPercent));
+  period.clientWidth = 320;
+  month.clientWidth = 320;
+  swipe('period', -70);
+  assert.equal(selected(), 'next');
+  assert.match(mount.html, /data-proof-row="next"/);
+
+  mount.wheelWidth = 320;
+  load('current');
+  mount.wheels[1].clientWidth = 390;
+  swipe('period', -70);
+  assert.equal(selected(), 'current');
+  swipe('period', -90);
+  assert.equal(selected(), 'next');
+
+  // 64px crosses half of a resized 320px month slot and not the wired 390px slot.
+  mount.wheelWidth = 390;
+  load('current');
+  assert.ok(64 > half(320, monthPercent) && 64 < half(390, monthPercent));
+  mount.wheels[0].clientWidth = 320;
+  swipe('month', -64);
+  assert.equal(selected(), 'nov-first');
+  assert.match(mount.html, /data-selected-close-month="2026-11"/);
+
+  // One gesture keeps the width captured at pointerdown if the viewport moves mid-drag.
+  mount.wheelWidth = 390;
+  load('current');
+  const wheel = mount.wheels[1];
+  wheel.clientWidth = 320;
+  wheel.fire('pointerdown', { timeStamp: 1000 });
+  wheel.clientWidth = 900;
+  wheel.fire('pointermove', { clientX: 130, clientY: 20, timeStamp: 1000 });
+  wheel.fire('pointerup', { clientX: 130, clientY: 20, timeStamp: 1000 });
+  assert.equal(selected(), 'next');
+  mount.wheelWidth = 0;
 });
 console.log(`\nALL ${checks} SYNCHRONIZED WHEEL CHECKS PASSED`);

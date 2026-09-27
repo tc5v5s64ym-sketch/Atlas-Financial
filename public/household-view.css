@@ -218,14 +218,14 @@
   }
 
   #operating-surface h1 {
-    font-size: 1.7rem;
-    margin-top: 20px;
+    font-size: 1.55rem;
+    margin-top: 4px;
   }
 
   #operating-surface .lede {
-    font-size: .93rem;
-    line-height: 1.45;
-    margin-bottom: 16px;
+    font-size: .9rem;
+    line-height: 1.35;
+    margin-bottom: 4px;
   }
 
   .household-primary {

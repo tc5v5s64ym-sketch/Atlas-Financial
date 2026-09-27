@@ -158,6 +158,16 @@ ok(!/baselineTrajectory|roadAhead|stage1|stage2|stage3/.test(planSource),
 ok(composer.payPeriodSwipeStep({ x: 50, y: 10 }, { x: 57, y: 150 }) === 0
     && composer.payPeriodSwipeStep({ x: 50, y: 10 }, { x: 92, y: 25 }) === 0,
   '14. vertical scroll and weak horizontal intent do not change period');
+ok(composer.payPeriodSwipeStep({ x: 200, y: 20, t: 0 }, { x: 100, y: 24, t: 0 }, 144) === 1
+    && composer.payPeriodSwipeStep({ x: 100, y: 24, t: 0 }, { x: 200, y: 20, t: 0 }, 144) === -1,
+  '14a. a normal one-slot drag changes the measured wheel by exactly one item');
+ok(composer.payPeriodSwipeStep({ x: 400, y: 0, t: 0 }, { x: 83, y: 0, t: 30 }, 144) === 2,
+  '14b. a drag across two slot centers snaps to two and a fast release does not add another');
+ok(composer.payPeriodSwipeStep({ x: 200, y: 10, t: 100 }, { x: 172, y: 12, t: 140 }, 144) === 1
+    && composer.payPeriodSwipeStep({ x: 200, y: 10, t: 100 }, { x: 172, y: 12, t: 500 }, 144) === 0
+    && composer.payPeriodSwipeStep({ x: 200, y: 10, t: 0 }, { x: 157, y: 12, t: 0 }, 144) === 0
+    && composer.payPeriodSwipeStep({ x: 50, y: 10, t: 0 }, { x: 150, y: 190, t: 0 }, 144) === 0,
+  '14c. a short flick moves one, a slow or sub-half drag stays, and vertical intent stays');
 ok(/addEventListener\('keydown'/.test(planSource)
     && /ArrowLeft/.test(planSource) && /ArrowRight/.test(planSource)
     && /data-wheel-index/.test(planSource)
