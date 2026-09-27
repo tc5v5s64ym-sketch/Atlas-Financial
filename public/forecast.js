@@ -2616,7 +2616,7 @@
   // Later contributions are capped by their own period capacity, so a weak
   // later payday can require an earlier contribution. Daily cash headroom
   // caps carried protection between paydays.
-  function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation) {
+  function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation, opts) {
     const unavailable = reason => ({ status: 'unavailable', reason,
       source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
     if (!plan || !asOf || !sim || sim.start !== asOf || !Array.isArray(sim.daily)
@@ -2770,15 +2770,33 @@
       const pathAllocated = isLivePayday && incumbentAllocation.protectedPath
         && incumbentAllocation.protectedPath.status === 'calculated'
         ? cents(incumbentAllocation.protectedPath.allocated || 0) : 0;
-      // The protectedPath amount is only part of the Plan Spend identity when
-      // there are schedulable Plan Spend costs not already covered by the
-      // incumbent named allocation. Otherwise it's a general cash protection
-      // unrelated to Plan Spend, and the original futureCosts-only identity
-      // applies.
+      // The protectedPath is a general cash-protection authority, not a
+      // Plan-Spend-only bucket: it can hold the target buffer and observed
+      // pending cash debits, which must stay outside Plan Spend. Only the
+      // portion actually attributable to this payday's schedulable Plan
+      // Spend costs may enter the identity:
+      //   1. minus the verifiable general-protection components (target
+      //      buffer from the incumbent packet; pending cash recomputed
+      //      from the same actuals the incumbent saw),
+      //   2. capped by the total remaining need of schedulable costs not
+      //      already covered by the incumbent named allocation,
+      //   3. capped by what this payday's schedule needs beyond the
+      //      incumbent named allocation — a path dollar this payday cannot
+      //      absorb is general protection, not a Plan Spend attribution.
+      // Anything the path cannot cover fails closed below.
       const incumbentIds = new Set(incumbentParts.map(part => part.id));
-      const hasNonIncumbentSchedulable = schedulable.some(cost => !incumbentIds.has(cost.id)
-        && cost.baseRequirement - allocated.get(cost.id) > 0);
-      const pathForPlanSpend = hasNonIncumbentSchedulable ? pathAllocated : 0;
+      const targetBufferCents = isLivePayday
+        && Number.isFinite(Number(incumbentAllocation.buffer))
+        ? Math.max(0, cents(incumbentAllocation.buffer)) : 0;
+      const pendingCashCents = isLivePayday ? Math.max(0, cents(
+        sumCategoryActuals(plan, asOf, null, opts || {}).pendingCash || 0)) : 0;
+      const unrelatedProtected = Math.min(pathAllocated,
+        targetBufferCents + pendingCashCents);
+      const nonIncumbentNeed = schedulable.reduce((sum, cost) => !incumbentIds.has(cost.id)
+        ? sum + Math.max(0, cost.baseRequirement - allocated.get(cost.id)) : sum, 0);
+      const absorbable = Math.max(0, contribution - incumbentTotal);
+      const pathForPlanSpend = Math.max(0, Math.min(
+        pathAllocated - unrelatedProtected, nonIncumbentNeed, absorbable));
       if (incumbentParts.length || pathForPlanSpend > 0) {
         if (incumbentTotal + pathForPlanSpend !== contribution) {
           return unavailable('The current-payday funding schedule does not reconcile to the incumbent payday allocation.');
@@ -10511,7 +10529,7 @@
       });
       const alloc = paydayAllocation(plan, asOf, paydayOpts);
       const planSpendFunding = planSpendPaydayFunding(
-        plan, asOf, knowledgeSim, sequence, plans, alloc);
+        plan, asOf, knowledgeSim, sequence, plans, alloc, paydayOpts);
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));

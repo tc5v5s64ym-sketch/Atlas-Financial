@@ -4,7 +4,16 @@
  * Proves the repaired identity: on the current payday,
  *   planSpendPaydayFunding.paydays[current].contribution
  *     = Σ(paydayAllocation.futureCosts[].allocated)
- *     + paydayAllocation.protectedPath.allocated   [when calculated]
+ *     + Plan-Spend-attributable portion of paydayAllocation.protectedPath
+ *         [when calculated]
+ *
+ * The protectedPath is a general cash-protection authority, not a
+ * Plan-Spend-only bucket: the attributable portion is the path minus the
+ * verifiable general-protection components (target buffer, observed
+ * pending cash), capped by the remaining need of non-incumbent schedulable
+ * costs and by what the current payday's schedule needs beyond the
+ * incumbent named allocation. A path dollar the payday cannot absorb is
+ * general protection, not a Plan Spend attribution.
  *
  * Before the repair, a valid mixed-source payday (ordinary commitment in
  * futureCosts AND reserve-planning/yearly-bill protection in protectedPath)
@@ -51,6 +60,24 @@ function runFixture(plan) {
 
 function namedSum(live) {
   return (live.allocations || []).reduce((s, a) => s + cent(a.amount), 0);
+}
+
+// Variant of runFixture that accepts per-call actuals for the incumbent and
+// the schedule repair (so both see the same pending-cash actuals), plus a
+// horizon override for later-dated costs.
+function runFixtureHorizon(plan, allocOpts, schedOpts, horizonDays) {
+  const h = horizonDays || 60;
+  const asOf = plan.opening.asOf;
+  const sim = F.simulate(plan, asOf, { horizonDays: h, viewDays: h, weeklyVariable: 0 });
+  const seq = F.fundingSequence(plan, asOf, {});
+  const plans = F.majorPlans(plan, asOf, { weeklyVariable: 0 });
+  const alloc = F.paydayAllocation(plan, asOf, Object.assign({
+    weeklyVariable: 0, majorPlans: plans,
+    plannedDebt: F.plannedDebt(plan, asOf, { weeklyVariable: 0, majorPlans: plans }),
+  }, allocOpts));
+  const sched = F.planSpendPaydayFunding(plan, asOf, sim, seq, plans, alloc, schedOpts);
+  const live = sched.paydays.find(p => p.payday === asOf) || null;
+  return { asOf, sched, live, alloc };
 }
 
 function namedFor(live, id) {
@@ -206,6 +233,50 @@ function namedFor(live, id) {
     r.id === 'trip' ? Object.assign({}, r, { allocated: 99999 }) : r);
   const sched = F.planSpendPaydayFunding(plan, asOf, sim, seq, plans, tampered);
   ok(sched.status === 'unavailable', 'G: genuine mismatch stays unavailable (fail closed)');
+}
+
+// --- Case H: target buffer is general protection, not Plan Spend ------------
+// $50 target buffer + $300 commitment due 2026-03-31 that needs $0 today.
+// The incumbent protectedPath holds the buffer plus walk need; the live
+// payday schedule needs nothing. Counting the whole path as Plan Spend
+// turned this previously valid schedule 'unavailable'; after the repair it
+// stays valid and no path dollar is attributed.
+{
+  const plan = basePlan(200);
+  plan.defaults.targetBuffer = 50;
+  plan.commitments = [{ id: 'trip', label: 'Trip', date: '2026-03-31',
+    amount: 300, confidence: 'confirmed' }];
+  const { sched, live, alloc } = runFixtureHorizon(plan, null, null, 120);
+  ok(sched.status !== 'unavailable', 'H: buffer-held path keeps schedule valid');
+  ok(live && cent(live.contribution) === 0, 'H: live contribution $0', live && live.contribution);
+  ok(alloc.protectedPath && alloc.protectedPath.status === 'calculated'
+    && cent(alloc.protectedPath.allocated || 0) > 0,
+    'H: incumbent path still holds general protection');
+  ok(namedSum(live) === 0, 'H: no path dollars attributed to Plan Spend');
+}
+
+// --- Case I: pending cash is general protection, not Plan Spend -------------
+// $60 observed pending household debit + $100 yearly bill due 2026-03-31
+// needing $0 today. The pending debit must not be attributed to the bill,
+// and the schedule must stay valid.
+{
+  const plan = basePlan(200);
+  plan.bills = [{ id: 'sq', label: 'SQ', frequency: 'yearly',
+    month: 3, day: 31, amount: 100, jointCash: false,
+    firstDue: '2026-03-31', confidence: 'confirmed' }];
+  const actuals = { transactions: [
+    { id: 'pend1', date: '2026-01-16', amount: 60, pending: true,
+      accountRole: 'household-cash', description: 'Pending merchant debit' },
+  ] };
+  const { sched, live, alloc } = runFixtureHorizon(plan,
+    { currentPeriodActuals: actuals }, { currentPeriodActuals: actuals }, 120);
+  ok(sched.status !== 'unavailable', 'I: pending-cash path keeps schedule valid');
+  ok(live && cent(live.contribution) === 0, 'I: live contribution $0', live && live.contribution);
+  ok(alloc.protectedPath && cent(alloc.protectedPath.allocated || 0) === 6000,
+    'I: incumbent path holds the $60 pending debit',
+    alloc.protectedPath && alloc.protectedPath.allocated);
+  ok(namedSum(live) === 0, 'I: pending cash not attributed to Plan Spend');
+  ok(namedFor(live, 'sq') === 0, 'I: sq named $0 on the live payday');
 }
 
 console.log(`\nplan-spend mixed reconciliation: ${checks} checks passed`);
