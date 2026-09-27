@@ -1,0 +1,334 @@
+'use strict';
+/* AMANDA SLICE 1 — payday instruction shell.
+ *
+ * The default Budget homepage answers "where does this money need to go?"
+ * with one concise shell that reprints Forecast-owned figures only:
+ * money available, bills & required minimums, current household spending,
+ * the planned-spending earmark, protected cash / minimum floor, optional
+ * extra debt, and genuinely unassigned money.
+ *
+ * Part A (Forecast authority): Forecast.planSpendPaydayFunding publishes
+ * the non-overlapping decomposition of the live payday's protectedPath
+ * hold — contribution (Plan-Spend-attributable) + nonPlanSpendProtected
+ * (everything else in that hold). Deterministic engine fixtures; no live
+ * household figures.
+ *
+ * Part B (page presentation): plan.js reprints those figures with zero
+ * page-side arithmetic. In particular the page never derives
+ * protectedPath − planSpendAttributed. Unknown is not $0.
+ *
+ * `node test/test-payday-instruction-shell.js`
+ */
+const assert = require('assert/strict');
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+const F = require('../public/forecast.js');
+const { sourceText } = require('./test-source-text');
+
+let checks = 0;
+function check(label, run) { run(); checks++; console.log('  PASS  ' + label); }
+
+const cent = x => Math.round(Number(x) * 100);
+
+// ---------------------------------------------------------------- Part A ---
+// Forecast-owned decomposition, through the real engine.
+
+function basePlan(pay) {
+  return {
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0 },
+    opening: { asOf: '2026-01-16' }, // a Seaspan payday (anchor 2026-01-02 + 14d)
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 0 }] },
+    income: [{ id: 'payroll', label: 'Seaspan', frequency: 'biweekly',
+      anchor: '2026-01-02', amount: pay, confidence: 'confirmed' }],
+    obligations: [], bills: [], budget: { categories: [] },
+    commitments: [],
+  };
+}
+
+function runEngine(plan, incumbent) {
+  const asOf = plan.opening.asOf;
+  const sim = F.simulate(plan, asOf, { horizonDays: 60, viewDays: 60, weeklyVariable: 0 });
+  const seq = F.fundingSequence(plan, asOf, {});
+  const plans = F.majorPlans(plan, asOf, { weeklyVariable: 0 });
+  const alloc = incumbent || F.paydayAllocation(plan, asOf, {
+    weeklyVariable: 0, majorPlans: plans,
+    plannedDebt: F.plannedDebt(plan, asOf, { weeklyVariable: 0, majorPlans: plans }),
+  });
+  const sched = F.planSpendPaydayFunding(plan, asOf, sim, seq, plans, alloc);
+  const live = sched.paydays.find(p => p.payday === asOf) || null;
+  return { asOf, sched, live, alloc };
+}
+
+// Mixed ordinary + reserve fixture (mirrors the mixed-reconciliation
+// identity case): trip $250 due 1/31 (needs $50 today) + property tax
+// $150 due 1/20 (needs $150 today). $200/payday.
+function mixedPlan() {
+  const plan = basePlan(200);
+  plan.commitments = [{ id: 'trip', label: 'Trip', date: '2026-01-31',
+    amount: 250, confidence: 'confirmed' }];
+  plan.budget.categories = [{ id: 'propertytax', label: 'Property tax', class: 'reserve',
+    plannedAmount: 150, planningDate: '2026-01-20', confidence: 'confirmed' }];
+  return plan;
+}
+
+check('A1: live row publishes nonPlanSpendProtected when the path hold exceeds the Plan Spend attribution', () => {
+  const plan = mixedPlan();
+  const real = runEngine(plan);
+  assert.equal(real.sched.status, 'ready');
+  const realAlloc = real.alloc;
+  const fcTotal = realAlloc.futureCosts.reduce((s, r) => s + cent(r.allocated || 0), 0);
+  const pathAmt = cent(realAlloc.protectedPath.allocated || 0);
+  assert.equal(fcTotal, 5000);
+  assert.equal(pathAmt, 15000);
+  // Synthetic incumbent: same named futureCosts, but the protectedPath
+  // hold is $225 — $75 of pending-shaped general protection beyond the
+  // $150 this payday's Plan Spend attributes from the path.
+  const synthetic = {
+    futureCosts: realAlloc.futureCosts,
+    protectedPath: { status: 'calculated', allocated: 225 },
+  };
+  const { sched, live } = runEngine(plan, synthetic);
+  assert.equal(sched.status, 'ready');
+  assert.ok(live, 'live row exists');
+  assert.equal(live.nonPlanSpendProtected, 75);
+});
+
+check('A2: contribution + nonPlanSpendProtected counts the hold exactly once (no double counting)', () => {
+  const plan = mixedPlan();
+  const real = runEngine(plan);
+  const synthetic = {
+    futureCosts: real.alloc.futureCosts,
+    protectedPath: { status: 'calculated', allocated: 225 },
+  };
+  const { live } = runEngine(plan, synthetic);
+  const fcTotal = 5000; // trip, from the incumbent named parts
+  const pathTotal = 22500; // bumped protectedPath hold, in cents
+  assert.equal(cent(live.contribution) + cent(live.nonPlanSpendProtected), fcTotal + pathTotal);
+  // The $75 of general protection is not inside the named allocations:
+  // named dollars still sum exactly to the contribution.
+  const namedSum = (live.allocations || []).reduce((s, a) => s + cent(a.amount), 0);
+  assert.equal(namedSum, cent(live.contribution));
+  assert.equal(namedSum, 20000);
+});
+
+check('A3: a fully-attributable path publishes a known $0, not an absent field', () => {
+  const { sched, live } = runEngine(mixedPlan());
+  assert.equal(sched.status, 'ready');
+  assert.ok(live, 'live row exists');
+  assert.equal(live.nonPlanSpendProtected, 0);
+});
+
+check('A4: non-live payday rows publish null (concept does not apply)', () => {
+  const { asOf, sched } = runEngine(mixedPlan());
+  const later = sched.paydays.filter(p => p.payday !== asOf);
+  assert.ok(later.length > 0, 'later payday rows exist');
+  for (const row of later) assert.equal(row.nonPlanSpendProtected, null);
+});
+
+check('A5: incumbent allocation/reconciliation identity is intact', () => {
+  const { sched, live, alloc } = runEngine(mixedPlan());
+  assert.equal(sched.status, 'ready');
+  const fcTotal = alloc.futureCosts.reduce((s, r) => s + cent(r.allocated || 0), 0);
+  const pathAmt = cent(alloc.protectedPath.allocated || 0);
+  assert.equal(cent(live.contribution), fcTotal + pathAmt);
+  const namedSum = (live.allocations || []).reduce((s, a) => s + cent(a.amount), 0);
+  assert.equal(namedSum, cent(live.contribution));
+  const ids = (live.allocations || []).map(a => a.id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+// ---------------------------------------------------------------- Part B ---
+// Page reprint behaviour. Deterministic fixture figures (not live numbers).
+
+const planSource = sourceText(fs.readFileSync(path.join(__dirname, '../public/plan.js'), 'utf8'));
+const context = vm.createContext({
+  fmtDate: value => value,
+  fmtDateLong: value => value,
+  money2: n => (n < 0 ? '−$' : '$') + Math.abs(Number(n)).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  liveCurrentBalanceHtml: () => '<div data-live-current-balance>cash</div>',
+  calendarWaterfallHtml: () => '<article data-waterfall>waterfall</article>',
+  periodBillLine: () => '',
+});
+vm.runInContext(planSource, context);
+vm.runInContext(`
+  calendarWaterfallHtml = () => '<article data-waterfall>waterfall</article>';
+  liveCurrentBalanceHtml = () => '<div data-live-current-balance>cash</div>';
+`, context);
+const f = context;
+
+const allocFixture = (overrides = {}) => Object.assign({
+  payday: '2026-09-25',
+  asOf: '2026-09-25',
+  lines: [{}],
+  available: 5000,
+  obligations: { allocated: 2000, shortfall: 0 },
+  requiredDebtPayments: { items: [{ id: 'visa-min', label: 'Visa required minimum', amount: 150 }] },
+  essentials: { allocated: 800 },
+  // Decoy: the raw protectedPath hold. The page must never print it and
+  // must never derive a residual from it.
+  protectedPath: { status: 'calculated', allocated: 9999.99 },
+  extraDebt: { allocated: 250, target: 'Travel Visa', status: 'ok' },
+  remainder: 450,
+  unresolved: [],
+}, overrides);
+
+const scheduleFixture = (overrides = {}) => Object.assign({
+  status: 'ready',
+  asOf: '2026-09-25',
+  source: 'Forecast.planSpendPaydayFunding',
+  paydays: [{
+    payday: '2026-09-25',
+    contribution: 1200,
+    allocations: [
+      { id: 'a', label: 'Property tax reserve', amount: 700 },
+      { id: 'b', label: 'Trip fund', amount: 500 },
+    ],
+    nonPlanSpendProtected: 300,
+    gap: null,
+  }],
+  gap: null,
+}, overrides);
+
+const currentPeriod = { id: 'current:2026-09-25', start: '2026-09-25', end: '2026-10-08', timelineRole: 'current' };
+
+const adviceFixture = (allocOverrides, scheduleOverrides) => ({
+  buffer: 500,
+  paydayAllocation: allocFixture(allocOverrides),
+  planSpendPaydayFunding: scheduleOverrides === null ? null : scheduleFixture(scheduleOverrides),
+  payPeriodViews: [currentPeriod],
+  defaultView: { asOf: '2026-09-25' },
+});
+
+const shell = (allocOverrides, scheduleOverrides, period = currentPeriod) =>
+  f.paydayInstructionShellHtml(adviceFixture(allocOverrides, scheduleOverrides), period);
+
+check('B1: normal payday renders every block with exact Forecast figures', () => {
+  const html = shell();
+  assert.match(html, /data-payday-instruction-shell="2026-09-25"/);
+  assert.match(html, /Where this payday's money needs to go/);
+  assert.match(html, /\$5,000\.00/); // available
+  assert.match(html, /\$2,000\.00/); // bills & required minimums
+  assert.match(html, /\$800\.00/); // household spending
+  assert.match(html, /\$1,200\.00/); // planned spending
+  assert.match(html, /Property tax reserve/);
+  assert.match(html, /Trip fund/);
+  assert.match(html, /Keep at least \$500\.00/); // buffer floor
+  assert.match(html, /\$300\.00/); // other protected
+  assert.match(html, /\$250\.00/); // extra debt
+  assert.match(html, /Travel Visa/);
+  assert.match(html, /\$450\.00/); // remainder
+});
+
+check('B2: required debt minimums stay inside bills; optional extra stays separate', () => {
+  const html = shell();
+  assert.match(html, /Required debt minimums are inside this figure/);
+  assert.doesNotMatch(html, /Visa required minimum/);
+  assert.match(html, /Extra on focus debt/);
+  assert.match(html, /\$250\.00/);
+});
+
+check('B3: $0 extra debt is explicit and does not erase required minimums', () => {
+  const html = shell({ extraDebt: { allocated: 0, target: 'Travel Visa', status: 'ok' } });
+  assert.match(html, /No extra principal this payday/);
+  assert.match(html, /Required minimums are already in bills above/);
+  assert.match(html, /\$2,000\.00/); // bills (with minimums) still shown
+});
+
+check('B4: planned-spending contribution shows named allocations', () => {
+  const html = shell();
+  assert.match(html, /Set aside for planned spending/);
+  assert.match(html, /Property tax reserve.*\$700\.00/s);
+  assert.match(html, /Trip fund.*\$500\.00/s);
+  assert.match(html, /Set aside for named planned costs — not extra money/);
+});
+
+check('B5: buffer is a floor/guardrail, never an emergency fund or transfer', () => {
+  const html = shell();
+  assert.match(html, /Keep at least \$500\.00/);
+  assert.match(html, /A cash floor, not a transfer/);
+  assert.doesNotMatch(html, /emergency fund/i);
+  assert.doesNotMatch(html, /Move \$.*to [Ss]avings/);
+});
+
+check('B6: other protected cash is the Forecast-published figure, keep-in-chequing', () => {
+  const html = shell();
+  assert.match(html, /Other protected cash — keep in chequing/);
+  assert.match(html, /\$300\.00/);
+  assert.match(html, /not a savings transfer/);
+});
+
+check('B7: unresolved planned costs are not relabelled as free money', () => {
+  const html = shell({ unresolved: [{ id: 'x', label: 'Mystery cost' }] });
+  assert.match(html, /1 planned cost is still unresolved — this is not free money/);
+  assert.match(html, /\$450\.00/);
+});
+
+check('B8: funding-gap schedule keeps the valid earmark and names the gap', () => {
+  const html = shell({}, {
+    status: 'funding-gap',
+    paydays: [{
+      payday: '2026-09-25', contribution: 1200,
+      allocations: [{ id: 'a', label: 'Property tax reserve', amount: 1200 }],
+      nonPlanSpendProtected: 300, gap: null,
+    }],
+    gap: { payday: '2026-09-25', shortBy: 200, cashDate: '2026-10-15' },
+  });
+  assert.match(html, /\$1,200\.00/);
+  assert.match(html, /Funding gap/);
+  assert.match(html, /\$200\.00/);
+});
+
+check('B9: unavailable schedule fails closed — unknown is not $0', () => {
+  const html = shell({}, { status: 'unavailable', paydays: [] });
+  assert.match(html, /Set aside for planned spending: unavailable/);
+  assert.match(html, /Other protected cash — keep in chequing: unavailable/);
+  assert.doesNotMatch(html, /data-plan-spend-earmark/);
+});
+
+check('B10: no matching payday row fails closed', () => {
+  const html = shell({}, {}, { id: 'x', start: '2026-10-09', end: '2026-10-22', timelineRole: 'future' });
+  assert.match(html, /Set aside for planned spending: unavailable/);
+});
+
+check('B11: no shell at all without a payday allocation', () => {
+  const advice = adviceFixture();
+  advice.paydayAllocation = null;
+  assert.equal(f.paydayInstructionShellHtml(advice, currentPeriod), '');
+});
+
+check('B12: the page never prints or derives from the raw protectedPath hold', () => {
+  const html = shell();
+  // The decoy hold must not appear anywhere…
+  assert.doesNotMatch(html, /9,999\.99/);
+  // …nor may either forbidden page-side residual appear…
+  assert.doesNotMatch(html, /9,699\.99/); // 9999.99 − 300
+  assert.doesNotMatch(html, /8,799\.99/); // 9999.99 − 1200
+  // …while the Forecast-published decomposition is reprinted exactly.
+  assert.match(html, /\$1,200\.00/);
+  const otherProtectedHits = (html.match(/\$300\.00/g) || []).length;
+  assert.equal(otherProtectedHits, 1);
+});
+
+check('B13: bills shortfall is disclosed, not hidden', () => {
+  const html = shell({ obligations: { allocated: 2000, shortfall: 150 } });
+  assert.match(html, /Shortfall of \$150\.00 — bills are not fully covered/);
+});
+
+check('B14: shell opens the default Budget surface ahead of the waterfall', () => {
+  const advice = adviceFixture();
+  const html = f.operatingSurfaceHtml({ advice, liveOverlay: null, planLook: 'this-period' });
+  const shellAt = html.indexOf('data-payday-instruction-shell');
+  const waterfallAt = html.indexOf('data-waterfall');
+  assert.ok(shellAt >= 0, 'shell mounts on the default surface');
+  assert.ok(waterfallAt >= 0, 'waterfall still renders');
+  assert.ok(shellAt < waterfallAt, 'shell opens ahead of the waterfall');
+});
+
+check('B15: shell does not render on non-default looks', () => {
+  const advice = adviceFixture();
+  const html = f.operatingSurfaceHtml({ advice, liveOverlay: null, planLook: 'past:2026-08-01' });
+  assert.doesNotMatch(html, /data-payday-instruction-shell/);
+});
+
+console.log(`\n${checks} checks passed.`);

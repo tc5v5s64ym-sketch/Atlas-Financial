@@ -81,6 +81,7 @@ function loadComposer() {
     'budgetPlanSpendEarmarkHtml',
     'payPeriodTimelineHtml',
     'operatingSurfaceHtml',
+    'paydayInstructionShellHtml',
   ];
   const source = [
     grab(appSrc, /^const money = .*$/m, 'money'),

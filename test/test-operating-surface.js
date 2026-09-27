@@ -95,6 +95,7 @@ function loadComposer() {
     grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
+    grab(planSrc, /^function paydayInstructionShellHtml\([\s\S]*?\n\}$/m, 'paydayInstructionShellHtml'),
   ].join('\n');
   return vm.runInNewContext(
     `${source}\n({ operatingSurfaceHtml, paydayCoverageNote, money2 });`,
@@ -169,9 +170,12 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     'Balance After Deductions',
   ];
 
+  // Start the order search at the waterfall's first question: the payday
+  // instruction shell above the waterfall reuses household words like "Bills".
+  const waterfall = rendered.slice(rendered.indexOf('data-live-current-balance'));
   let previous = -1;
   for (const prompt of prompts) {
-    const at = rendered.indexOf(prompt);
+    const at = waterfall.indexOf(prompt);
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }

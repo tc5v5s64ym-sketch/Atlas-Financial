@@ -2786,11 +2786,19 @@
       // fails closed as well.
       const incumbentIds = new Set(incumbentParts.map(part => part.id));
       const expectedPath = contribution - incumbentTotal;
+      // Forecast-owned non-overlapping decomposition of the live payday's
+      // protectedPath keep-in-chequing hold. The schedule contribution is
+      // the Plan-Spend-attributable part (named incumbent parts plus the
+      // path-attributable portion); nonPlanSpendProtected is the rest of
+      // that hold (pending debits, reserve / yearly-bill protection,
+      // buffer-path needs) — never Plan Spend money. The page reprints
+      // both; it must never derive one from the other by subtraction.
+      let pathForPlanSpend = 0;
       if (incumbentParts.length || pathAllocated > 0) {
         if (expectedPath < 0 || expectedPath > pathAllocated) {
           return unavailable('The current-payday funding schedule does not reconcile to the incumbent payday allocation.');
         }
-        const pathForPlanSpend = expectedPath;
+        pathForPlanSpend = expectedPath;
         for (const part of incumbentParts) {
           const cost = schedulable.find(row => row.id === part.id);
           const amount = cents(part.allocated);
@@ -2859,6 +2867,12 @@
       rows.push({ payday: period.date, through: period.end,
         capacity: dollars(period.capacity), cashCapacity: dollars(Math.max(0, period.cashUpper - (cumulative - contribution))),
         required: dollars(required), contribution: dollars(contribution), allocations,
+        // The live payday's protectedPath hold, decomposed by Forecast:
+        // contribution is the Plan-Spend-attributable part, and
+        // nonPlanSpendProtected is the non-overlapping remainder of that
+        // same hold. Null on non-live rows, where the concept does not
+        // apply. Unknown is not $0.
+        nonPlanSpendProtected: isLivePayday ? dollars(pathAllocated - pathForPlanSpend) : null,
         openingProtected: dollars(openingProtected), protectedAfterPayday: dollars(afterPayday),
         payments, protectedAfterPayments: dollars(protectedBalance),
         stillToFund: dollars(schedulable.reduce((sum, cost) =>
