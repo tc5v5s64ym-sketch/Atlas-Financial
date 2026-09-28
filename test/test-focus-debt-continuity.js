@@ -187,6 +187,8 @@ check('B2: $0 extra — focus stays visible; $0 never erases the strategy or inv
   assert.match(block, /Focus debt: Travel Visa/, 'focus debt remains visible at $0');
   assert.match(block, /No extra principal this payday/, '$0 stated plainly');
   assert.match(block, /Required minimums are already in bills above/, 'minimums identified as handled');
+  assert.match(block, /Strategy note: Owner-stated policy sends true surplus/,
+    'published strategy state shown separately, not as the reason for $0');
   assert.doesNotMatch(block, /because|since the|crowded|bills used|buffer prevented|cannot afford|paused/i,
     'no invented reason for the $0');
 });
@@ -219,15 +221,24 @@ check('B5: unavailable priority fails closed — published state rendered, no in
   assert.doesNotMatch(block, /After this debt clears/, 'no next target invented');
 });
 
-check('B6: unknown pending exposure — uncertainty preserved, never $0-as-safe or a reason', () => {
+check('B6: unknown pending exposure — uncertainty stays visible; $0 stays non-causal', () => {
+  const pendingReason = 'Travel Visa has unknown pending exposure; cash beyond the proven posted balance is not true surplus.';
   const block = extraBlock(shell({ extraDebt: { allocated: 0, target: travelVisa, status: 'ready',
-    reason: 'Travel Visa has unknown pending exposure; cash beyond the proven posted balance is not true surplus.',
-    nextTarget: triangleMc, consequence: nextTargetConsequence() } }));
+    reason: pendingReason, nextTarget: triangleMc, consequence: nextTargetConsequence() } }));
   assert.match(block, /Focus debt: Travel Visa/, 'focus visible');
   assert.match(block, /\$0\.00/, '$0 shown as a fact');
-  assert.doesNotMatch(block, /surplus/i, 'no safe-surplus claim');
-  assert.doesNotMatch(block, /because|since the|crowded|pending exposure/i,
-    'uncertainty not converted into a causal $0 story');
+  assert.match(block, /Strategy note: Travel Visa has unknown pending exposure/,
+    'Forecast uncertainty remains visible, shown separately as published state');
+  // The note is separate from the $0 line — never positioned as its cause.
+  assert.ok(block.indexOf('Strategy note:') > block.indexOf('No extra principal this payday'),
+    'strategy note follows the $0 statement, not framed as its cause');
+  // The $0 itself stays non-causal: no "because", no invented mechanism.
+  assert.doesNotMatch(block, /because|since the|crowded|bills used|buffer prevented|cannot afford|paused/i,
+    'no causal story for the $0');
+  // No safe-surplus claim: the only "surplus" on the block is Forecast's
+  // own "not true surplus" uncertainty, reprinted verbatim.
+  assert.doesNotMatch(block, /safe surplus|surplus available|surplus of \$|extra surplus/i,
+    'no safe-surplus claim');
 });
 
 check('B7: clear state — published "no eligible target" renders as published, never as debt-free', () => {
@@ -248,6 +259,17 @@ check('B8: required minimums are not double-counted in the extra block', () => {
   assert.match(html, /\$2,000\.00/, 'bills block carries the required-minimums figure');
   assert.doesNotMatch(block, /\$2,000\.00/, 'bills figure not repeated in the extra block');
   assert.match(block, /already in bills above/, 'extra block points at the bills block instead');
+});
+
+check('B9: positive extra with published uncertainty — strategy note stays visible too', () => {
+  const pendingReason = 'Travel Visa has unknown pending exposure; cash beyond the proven posted balance is not true surplus.';
+  const block = extraBlock(shell({ extraDebt: { allocated: 450, target: travelVisa, status: 'ready',
+    reason: pendingReason, nextTarget: triangleMc, consequence: nextTargetConsequence() } }));
+  assert.match(block, /\$450\.00/, 'exact extra allocation reprinted');
+  assert.match(block, /Optional extra on Travel Visa/, 'focus named');
+  assert.match(block, /Strategy note: Travel Visa has unknown pending exposure/,
+    'Forecast uncertainty visible alongside a positive allocation');
+  assert.doesNotMatch(block, /safe surplus|surplus available/i, 'no safe-surplus claim');
 });
 
 // ---------------------------------------------------------------- Part C ---

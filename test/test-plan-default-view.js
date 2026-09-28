@@ -148,7 +148,13 @@ function defaultGlance(html) {
 
 function bannedOnGlance(html) {
   const text = defaultGlance(html).replace(/<[^>]+>/g, ' ');
-  return /paydayAllocation|thisPaydayPaid|thisPaydayDue|representedEvents|unverified-settlement|true surplus|owner-fact/.exec(text)
+  // NOTE (Slice 6 repair, PR #444): "true surplus" was removed from this
+  // ban. It is not a field name -- it is inside Forecast's published
+  // household-facing strategy reason, which the Slice 6 Systems Review
+  // explicitly requires to stay visible on this surface (the unknown-
+  // pending uncertainty statement itself contains the phrase). Field
+  // names and settlement code words remain banned.
+  return /paydayAllocation|thisPaydayPaid|thisPaydayDue|representedEvents|unverified-settlement|owner-fact/.exec(text)
     || /\bunverified\b|\brepresented\b|\boverlay\b|\bForecast\b|\bAtlas\b/i.exec(text)
     || /posting unknown/i.exec(text)
     || /leftover cash|current cash flow/i.exec(text)

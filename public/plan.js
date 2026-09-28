@@ -2862,6 +2862,10 @@ function paydayInstructionShellHtml(advice, period) {
   // Forecast publishes the next-target consequence, the shell reprints it
   // as conditional ("after this debt clears"), never as a current
   // payment. No published next target is silence, never "debt free".
+  // Forecast's published strategy state (e.g. unknown pending exposure)
+  // is reprinted verbatim as a separate strategy note whenever a focus
+  // debt exists — uncertainty stays visible, never converted to $0 or
+  // safe surplus, and never presented as the reason an allocation is $0.
   // With no target, the published strategy state (reason) renders as
   // published — no debt is invented, and the $0 figure keeps its trust
   // tag. The page does not choose, compare, rank, or reorder debts and
@@ -2884,24 +2888,36 @@ function paydayInstructionShellHtml(advice, period) {
   const nextLabel = nextConsequence ? debtLabel(nextConsequence.nextTarget) : null;
   const afterClearsLine = nextLabel
     ? `<p class="operating-note">After this debt clears: ${nextLabel}.</p>` : '';
+  // Forecast's published strategy state (e.g. unknown pending exposure),
+  // reprinted verbatim and separately. It is the strategy's uncertainty /
+  // state — never the reason an allocation is $0, and the page never
+  // derives from or interprets it. Shown whenever a focus debt exists and
+  // the publication carries it (in the $0 branch with no target the
+  // reason already renders as the state line, so it is not repeated).
+  const reasonText = typeof extra.reason === 'string' && extra.reason ? extra.reason : null;
+  const strategyNote = reasonText && (extraValue > 0 || focusLabel)
+    ? `<p class="operating-note">Strategy note: ${reasonText}</p>` : '';
   let extraBody;
   if (extraValue == null || extraTag == null) {
     extraBody = unavailableNote('Extra on focus debt');
   } else if (!(extraValue > 0)) {
-    // $0 extra: the focus stays visible. No reason is given for the $0.
-    // With no target, the published strategy state renders as published.
+    // $0 extra: the focus stays visible. No reason is given for the $0 —
+    // the strategy note is Forecast's published state, shown separately,
+    // not a causal claim about the zero.
     const stateLine = focusLabel
       ? `<p class="operating-note">Focus debt: ${focusLabel}. No extra principal this payday — Required minimums are already in bills above.</p>`
-      : (typeof extra.reason === 'string' && extra.reason
-        ? `<p class="operating-note">${extra.reason}</p>`
+      : (reasonText
+        ? `<p class="operating-note">${reasonText}</p>`
         : `<p class="operating-note">No extra principal this payday. Required minimums are already in bills above.</p>`);
     extraBody = `<p class="instruction-amount">${money2(0)}${extraTag}</p>
       ${stateLine}
+      ${strategyNote}
       ${afterClearsLine}`;
   } else {
     const target = focusLabel ? ` on ${focusLabel}` : ' on the focus debt';
     extraBody = `<p class="instruction-amount">${money2(extraValue)}${extraTag}</p>
       <p class="operating-note">Optional extra${target} — only after everything above is covered.</p>
+      ${strategyNote}
       ${afterClearsLine}`;
   }
   const extraBlock = block('Extra on focus debt', extraBody);
