@@ -2489,6 +2489,79 @@ function budgetMonthComponentRow(label, component) {
     + `<span class="budget-month-amount">${money2(amount)}${tag}</span></div>`;
 }
 
+/* AMANDA SLICE 7 — MONTHLY FUNDING LADDER.
+ *
+ * The Month lens shows the three-step Forecast-owned funding ladder:
+ * Normal life (stage1.result), After planned spending
+ * (stage2.dateOrderResult), After debt strategy
+ * (stage3.dateOrderResult). Each rung reprints one Forecast-published
+ * result verbatim. The page maps the sign of each result to a household
+ * word (surplus / deficit / break-even) and keeps the published trust
+ * tag. It never computes a transition between rungs, never blames a
+ * stage for a change, and never recommends a remedy: the ladder exposes
+ * the progression, it does not prescribe one.
+ *
+ * Stage 2 / Stage 3 read the incumbent date-order decision result — the
+ * same semantics the Road Ahead consumer (planningRoadStageResult in
+ * planning.js) and the Month verdict already use. The standalone
+ * arithmetic identity must never stand in for the decision result, so
+ * there is no fallback to stage.result. Missing results fail closed;
+ * unavailable is never $0.
+ */
+function budgetMonthLadderStage(month, stageNum) {
+  const stage = month ? month['stage' + stageNum] : null;
+  const fallbackLabel = stageNum === 1 ? 'Normal life'
+    : stageNum === 2 ? 'After planned spending' : 'After debt strategy';
+  const label = (stage && stage.label) || fallbackLabel;
+  const published = stage
+    ? (stageNum === 1 ? stage.result : stage.dateOrderResult)
+    : null;
+  if (!published || published.status === 'unavailable'
+      || published.amount == null || !isFinite(Number(published.amount))) {
+    // Reprint Forecast's published reason wherever it lives: on the result
+    // itself, or on the stage when the decision result was never published.
+    const reason = (published && published.reason)
+      || (stage && stage.reason)
+      || 'Forecast did not publish this stage result.';
+    return { label, result: null, reason };
+  }
+  return { label, result: published };
+}
+
+function budgetMonthLadderRungHtml(rung, index) {
+  const stepWord = index === 0 ? '1' : index === 1 ? '2' : '3';
+  const label = (rung && rung.label) || 'Stage result';
+  if (!rung || !rung.result) {
+    const reason = (rung && rung.reason) || 'Forecast did not publish this stage result.';
+    return `<div class="budget-month-ladder-rung unavailable" data-budget-month-ladder="unavailable">`
+      + `<span class="budget-month-ladder-step" aria-hidden="true">${stepWord}</span>`
+      + `<span class="budget-month-ladder-label">${label}</span>`
+      + `<span class="budget-month-unavailable">unavailable — ${reason} Not $0.</span></div>`;
+  }
+  const amount = Number(rung.result.amount);
+  const word = amount > 0 ? 'projected surplus' : amount < 0 ? 'projected deficit' : 'break-even';
+  const sign = amount > 0 ? 'surplus' : amount < 0 ? 'deficit' : 'neutral';
+  const tag = budgetMonthTrustTag(rung.result.status) || '';
+  // The sign prefix and word are presentation formatting of the
+  // Forecast-published figure's sign — the page computes no transition
+  // between rungs and no delta from any component.
+  const displayAmount = amount > 0 ? `+${money2(amount)}`
+    : amount < 0 ? `−${money2(Math.abs(amount))}` : money2(0);
+  return `<div class="budget-month-ladder-rung" data-budget-month-ladder="${sign}">`
+    + `<span class="budget-month-ladder-step" aria-hidden="true">${stepWord}</span>`
+    + `<span class="budget-month-ladder-label">${label}</span>`
+    + `<span class="budget-month-ladder-amount">${displayAmount} <span class="budget-month-ladder-word">${word}</span>${tag}</span></div>`;
+}
+
+function budgetMonthLadderHtml(month) {
+  const monthLabel = (month && (budgetMonthName(month.month) || month.month)) || 'this month';
+  const rungs = [1, 2, 3].map(n => budgetMonthLadderStage(month, n));
+  return `<div class="budget-month-ladder" data-budget-month-ladder-view="${month && month.month ? month.month : 'unavailable'}">`
+    + `<div class="budget-month-ladder-title">How ${monthLabel} holds together</div>`
+    + rungs.map((rung, i) => budgetMonthLadderRungHtml(rung, i)).join('')
+    + `<p class="operating-note">Each step is one Forecast-published monthly result, shown in order. This page does not add or compare the steps.</p></div>`;
+}
+
 function budgetMonthVerdictHtml(month) {
   const stage3 = month && month.stage3;
   // AMANDA SLICE 3 repair (Systems Review BLOCKING on PR #441): the Month
@@ -2569,6 +2642,7 @@ function budgetMonthViewHtml(src) {
     + `<div class="budget-month-head">${picker}</div>`
     + `<p class="operating-note">How we are planning ${monthLabel}, copied from Forecast. This page does not calculate these figures.</p>`
     + `<div class="budget-month-rows">${rows.join('')}</div>`
+    + budgetMonthLadderHtml(month)
     + budgetMonthVerdictHtml(month)
     + `<p class="operating-note">${standaloneNote}</p></div>`;
 }
