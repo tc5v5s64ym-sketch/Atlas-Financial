@@ -2592,6 +2592,99 @@ function budgetMonthVerdictHtml(month) {
     + `<span class="budget-month-verdict-amount">${displayAmount}${tag}</span></div>`;
 }
 
+// AMANDA SLICE 8 — MONTHLY FUNDING PRESSURE DETAIL.
+// Beneath the Forecast-owned monthly picture, the Month lens names the known
+// planned costs with Forecast cash dates in the selected month. It reprints
+// the incumbent planSpendPaydayFunding publication the payday shell already
+// consumes (Slice 5) — label, amount, cash date, funding state, next
+// scheduled contribution, projected fully-funded date, trust — filtered to
+// the selected calendar month.
+//
+// Month membership comes ONLY from each cost's Forecast-published cash date
+// (cost.date sliced to YYYY-MM). The page invents no allocation rule and
+// asserts no causal claim: the block describes these as costs cash-dated in
+// the selected month, never as "the costs causing this month's pressure",
+// and it states plainly that costs outside the month can also affect the
+// month's funding result. Forecast's publication order is kept — the page
+// does not rank, sort, score, or compute. Missing or untrusted publications
+// fail closed; unavailable is never $0.
+function budgetMonthFundingPressureHtml(src, month) {
+  const monthKey = month && month.month;
+  const monthLabel = (monthKey && (budgetMonthName(monthKey) || monthKey)) || 'the selected month';
+  const open = key => `<div class="budget-month-funding-pressure" data-budget-month-funding-pressure="${key}">`
+    + `<p class="operating-lead">Planned costs in view</p>`;
+  const scopeNote = `<p class="operating-note">Known planned costs with Forecast cash dates in ${monthLabel}, `
+    + `listed in Forecast's publication order. Only costs cash-dated in ${monthLabel} are listed — `
+    + `costs outside this month can also affect the month's funding result.</p>`;
+  const schedule = src && src.advice && src.advice.planSpendPaydayFunding;
+  if (!monthKey || !schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.costs)) {
+    return open('unavailable') + scopeNote
+      + `<div class="operating-lines"><div class="operating-line"><span>Funding detail</span>`
+      + `<span>unavailable — Forecast did not publish the planned-spending schedule. This is not $0.</span></div></div></div>`;
+  }
+  // Membership is the published cash date, nothing else. A cost is in view
+  // exactly when its Forecast cash date falls in the selected calendar
+  // month. No page-side date arithmetic: the YYYY-MM prefix is the
+  // publication's own date string.
+  const inView = schedule.costs.filter(cost =>
+    cost && typeof cost.date === 'string' && cost.date.slice(0, 7) === monthKey);
+  if (!inView.length) {
+    return open(monthKey) + scopeNote
+      + `<div class="operating-lines"><div class="operating-line"><span>Planned costs</span>`
+      + `<span>Forecast published no planned costs with cash dates in ${monthLabel}.</span></div></div></div>`;
+  }
+  const fmtCashDate = iso => {
+    if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
+    try { return fmtDateLong(iso); } catch (e) { return null; }
+  };
+  // Per-cost trust is the cost's published confidence, reprinted — never
+  // promoted. Unpublished confidence fails the cost's figures closed.
+  const costTrustTag = confidence => confidence === 'estimated'
+    ? ' <span class="trust-tag trust-estimated">estimate</span>'
+    : confidence === 'confirmed'
+      ? ' <span class="trust-tag">confirmed</span>' : null;
+  const fundingStateWord = verdict => verdict === 'ON TRACK' ? 'On track'
+    : verdict === 'AT RISK' ? 'At risk'
+      : verdict === 'FUNDING GAP' ? 'Funding gap' : null;
+  const lines = inView.map(cost => {
+    const label = typeof cost.label === 'string' && cost.label.length ? cost.label : cost.id;
+    const tag = costTrustTag(cost.confidence);
+    const neededBy = fmtCashDate(cost.date);
+    const head = `<div class="operating-line" data-budget-month-cost="${cost.id}">`
+      + `<span>${label}</span><span>${neededBy ? `Needed by ${neededBy}` : 'Needed by — date not published'}</span></div>`;
+    if (tag == null) {
+      return head + `<div class="operating-line"><span>Funding detail</span>`
+        + `<span>unavailable — trust not published. This is not $0.</span></div>`;
+    }
+    const amount = Number(cost.baseRequirement);
+    const amountLine = !isFinite(amount)
+      ? `<div class="operating-line"><span>Amount</span><span>unavailable — not published.</span></div>`
+      : `<div class="operating-line"><span>Amount</span><span>${money2(amount)}${tag}</span></div>`;
+    const stateWord = fundingStateWord(cost.verdict);
+    const stateLine = stateWord == null
+      ? `<div class="operating-line"><span>Funding state</span><span>unavailable — not published.</span></div>`
+      : `<div class="operating-line"><span>Funding state</span><span>${stateWord}</span></div>`;
+    // The page states only the reprintable fact about the funding path.
+    // "none scheduled" is the honest wording when Forecast publishes no
+    // next contribution: a future cost with no scheduled funding is not
+    // "not required", and the publication carries no reason to assert.
+    const next = cost.nextContribution;
+    const nextAmount = next ? Number(next.amount) : null;
+    const nextWhen = next ? fmtCashDate(next.payday) : null;
+    const nextLine = next == null
+      ? `<div class="operating-line"><span>Next scheduled contribution</span><span>none scheduled</span></div>`
+      : !isFinite(nextAmount) || nextWhen == null
+        ? `<div class="operating-line"><span>Next scheduled contribution</span><span>unavailable — not published.</span></div>`
+        : `<div class="operating-line"><span>Next scheduled contribution</span><span>${money2(nextAmount)}${tag} on ${nextWhen}</span></div>`;
+    const fundedBy = fmtCashDate(cost.projectedFullyFunded);
+    const fundedByLine = fundedBy == null
+      ? `<div class="operating-line"><span>Projected funded by</span><span>not published</span></div>`
+      : `<div class="operating-line"><span>Forecast projects fully funded by</span><span>${fundedBy}${tag}</span></div>`;
+    return head + amountLine + stateLine + nextLine + fundedByLine;
+  }).join('');
+  return open(monthKey) + scopeNote + `<div class="operating-lines">${lines}</div></div>`;
+}
+
 function budgetMonthViewHtml(src) {
   const traj = budgetTrajectoryFor(src);
   if (!traj || traj.status !== 'ready') {
@@ -2644,6 +2737,7 @@ function budgetMonthViewHtml(src) {
     + `<div class="budget-month-rows">${rows.join('')}</div>`
     + budgetMonthLadderHtml(month)
     + budgetMonthVerdictHtml(month)
+    + budgetMonthFundingPressureHtml(src, month)
     + `<p class="operating-note">${standaloneNote}</p></div>`;
 }
 
