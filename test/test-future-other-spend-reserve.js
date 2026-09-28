@@ -82,12 +82,22 @@ function loadComposer() {
     'payPeriodTimelineHtml',
     'operatingSurfaceHtml',
     'paydayInstructionShellHtml',
+    // AMANDA SLICE 3 — the Month view functions called by operatingSurfaceHtml.
+    'budgetMonthName',
+    'budgetTrajectoryFor',
+    'budgetGranularityToggleHtml',
+    'budgetMonthTrustTag',
+    'budgetMonthComponentRow',
+    'budgetMonthVerdictHtml',
+    'budgetMonthViewHtml',
   ];
   const source = [
     grab(appSrc, /^const money = .*$/m, 'money'),
     grab(appSrc, /^const money2 = .*$/m, 'money2'),
     grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
     grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
+    grab(planSrc, /^const BUDGET_MONTH_NAMES = [\s\S]*?\];/m, 'BUDGET_MONTH_NAMES'),
+    'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null;',
   ].concat(names.map(name => grab(
     planSrc,
     new RegExp('^function ' + name + '\\([\\s\\S]*?\\n\\}$', 'm'),

@@ -28,6 +28,18 @@ const state = {
 let planLook = 'this-period';
 let planCalendarShow = null;
 let planPayPeriodId = null;
+/* AMANDA SLICE 3 — Month <-> Pay Period consolidated planning view.
+ * budgetGranularity selects which lens the Budget surface shows:
+ * 'pay-period' is the existing payday/pay-period operating picture;
+ * 'month' is the consolidated calendar-month picture from
+ * Forecast.baselineTrajectory months[]. budgetSelectedMonth is the
+ * 'YYYY-MM' key of the selected trajectory month. The trajectory is
+ * computed lazily and cached per input key; the page never computes
+ * financial figures itself. */
+let budgetGranularity = 'pay-period';
+let budgetSelectedMonth = null;
+let budgetTrajectoryCache = null;
+let budgetTrajectoryCacheKey = null;
 // ONLY these are persisted or restored. `state` also carries the debt records
 // so the engine can size a payment against real balances, and serialising the
 // whole object would write account balances and credit limits into
@@ -2360,6 +2372,157 @@ function budgetPlanSpendEarmarkHtml(advice, period) {
     <p class="operating-note">Forecast earmark for named planned costs on this payday — not extra money. The payment itself stays on its cash date.</p>
   </div>`;
 }
+/* ------------------------------------------------- AMANDA SLICE 3 ---
+ * Month <-> Pay Period consolidated planning view on the Budget surface.
+ *
+ * The Month lens reprints Forecast.baselineTrajectory months[] only:
+ * stage1 (income, bills, obligations, householdBudget), stage2
+ * (commitments), stage3 (extras, result). The page selects the Forecast
+ * row, formats values, labels them, and arranges them visually. It never
+ * sums income, subtracts expenses, calculates surplus/deficit,
+ * reconstructs stage totals, or carries surplus between months. The
+ * monthly surplus/deficit is Forecast stage3.result, copied verbatim.
+ * Unavailable is not $0. Trust tags are preserved from Forecast status.
+ */
+const BUDGET_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+function budgetMonthName(monthKey) {
+  if (!monthKey || String(monthKey).length < 7) return null;
+  const year = String(monthKey).slice(0, 4);
+  const mi = Number(String(monthKey).slice(5, 7)) - 1;
+  if (!year || mi < 0 || mi > 11) return null;
+  return `${BUDGET_MONTH_NAMES[mi]} ${year}`;
+}
+
+function budgetTrajectoryFor(src) {
+  if (!src || !src.plan) return null;
+  const asOf = src.asOf || (src.meta && src.meta.asOf);
+  const key = `${asOf || ''}|${(src.plan.opening && src.plan.opening.asOf) || ''}`;
+  if (budgetTrajectoryCache && budgetTrajectoryCacheKey === key) return budgetTrajectoryCache;
+  let traj = null;
+  try {
+    const overlay = src.liveOverlay;
+    const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
+    traj = Forecast.baselineTrajectory(src.plan, src.debts, asOf, {
+      periods: src.periods || null,
+      extraFacilities: src.revolvingExtra,
+      currentPeriodActuals: actuals,
+    });
+  } catch (e) {
+    traj = null;
+  }
+  budgetTrajectoryCache = traj;
+  budgetTrajectoryCacheKey = key;
+  return traj;
+}
+
+function budgetGranularityToggleHtml() {
+  const monthOn = budgetGranularity === 'month';
+  return `<div class="budget-granularity" role="group" aria-label="Budget planning granularity">`
+    + `<button type="button" class="budget-granularity-btn" data-budget-granularity="month" aria-pressed="${monthOn ? 'true' : 'false'}">Month</button>`
+    + `<button type="button" class="budget-granularity-btn" data-budget-granularity="pay-period" aria-pressed="${monthOn ? 'false' : 'true'}">Pay Period</button>`
+    + `</div>`;
+}
+
+function budgetMonthTrustTag(status) {
+  if (status === 'estimated') return ' <span class="trust-tag trust-estimated">estimate</span>';
+  if (status === 'calculated') return ' <span class="trust-tag">calculated</span>';
+  return null;
+}
+
+function budgetMonthComponentRow(label, component) {
+  if (!component || component.status === 'unavailable') {
+    const reason = component && component.reason ? component.reason : 'Forecast did not publish this figure.';
+    return `<div class="budget-month-row unavailable" data-budget-month-component="unavailable">`
+      + `<span class="budget-month-label">${label}</span>`
+      + `<span class="budget-month-unavailable">unavailable — ${reason} Not $0.</span></div>`;
+  }
+  const amount = component.amount;
+  if (amount == null || !isFinite(Number(amount))) {
+    return `<div class="budget-month-row unavailable" data-budget-month-component="unavailable">`
+      + `<span class="budget-month-label">${label}</span>`
+      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish an amount. Not $0.</span></div>`;
+  }
+  const tag = budgetMonthTrustTag(component.status) || '';
+  return `<div class="budget-month-row" data-budget-month-component="${label}">`
+    + `<span class="budget-month-label">${label}</span>`
+    + `<span class="budget-month-amount">${money2(amount)}${tag}</span></div>`;
+}
+
+function budgetMonthVerdictHtml(month) {
+  const stage3 = month && month.stage3;
+  const result = stage3 && stage3.result;
+  if (!result || result.status === 'unavailable' || result.amount == null || !isFinite(Number(result.amount))) {
+    const reason = result && result.reason ? result.reason : 'Forecast did not publish a monthly result.';
+    return `<div class="budget-month-verdict unavailable" data-budget-month-verdict="unavailable">`
+      + `<span class="budget-month-verdict-label">Monthly surplus / deficit</span>`
+      + `<span class="budget-month-unavailable">unavailable — ${reason} Not $0.</span></div>`;
+  }
+  const amount = Number(result.amount);
+  const isSurplus = amount > 0;
+  const isDeficit = amount < 0;
+  const label = isSurplus ? 'Monthly surplus' : isDeficit ? 'Monthly deficit' : 'Monthly balance';
+  const sign = isSurplus ? 'surplus' : isDeficit ? 'deficit' : 'neutral';
+  const tag = budgetMonthTrustTag(result.status) || '';
+  // The amount is Forecast stage3.result copied verbatim — the page does not
+  // calculate it. The sign prefix is presentation formatting of that figure.
+  const displayAmount = isSurplus ? `+${money2(amount)}` : isDeficit ? `−${money2(Math.abs(amount))}` : money2(0);
+  return `<div class="budget-month-verdict" data-budget-month-verdict="${sign}">`
+    + `<span class="budget-month-verdict-label">${label}</span>`
+    + `<span class="budget-month-verdict-amount">${displayAmount}${tag}</span></div>`;
+}
+
+function budgetMonthViewHtml(src) {
+  const traj = budgetTrajectoryFor(src);
+  if (!traj || traj.status !== 'ready') {
+    const reason = (traj && traj.reason) || 'Forecast could not publish the baseline trajectory.';
+    return `<div class="budget-month-view" data-budget-month-view="unavailable">`
+      + `<div class="note-box crit">${reason}</div>`
+      + `<p class="operating-note">Monthly planning is unavailable. This is not $0.</p></div>`;
+  }
+  const months = Array.isArray(traj.months) ? traj.months : [];
+  if (!months.length) {
+    return `<div class="budget-month-view" data-budget-month-view="unavailable">`
+      + `<div class="note-box crit">Forecast published no calendar months in this projection.</div></div>`;
+  }
+  if (!budgetSelectedMonth || !months.some(m => m && m.month === budgetSelectedMonth)) {
+    budgetSelectedMonth = months[0].month;
+  }
+  const month = months.find(m => m && m.month === budgetSelectedMonth) || months[0];
+  const monthLabel = budgetMonthName(month.month) || month.month;
+  const picker = `<label class="budget-month-picker"><span class="budget-month-picker-label">Month</span> `
+    + `<select class="budget-month-select" data-budget-month-picker aria-label="Calendar month for Budget month view">`
+    + months.map(m => {
+      const label = budgetMonthName(m.month) || m.month;
+      return `<option value="${m.month}"${m.month === month.month ? ' selected' : ''}>${label}</option>`;
+    }).join('')
+    + `</select></label>`;
+  const s1 = month.stage1 || {};
+  const s2 = month.stage2 || {};
+  const s3 = month.stage3 || {};
+  // Each row copies one Forecast-published component. Bills and required debt
+  // payments stay separate rows — the page never sums them.
+  const rows = [
+    budgetMonthComponentRow('Total income', month.income),
+    budgetMonthComponentRow('Regular household spending', s1.householdBudget),
+    budgetMonthComponentRow('Bills', s1.bills),
+    budgetMonthComponentRow('Required debt payments', s1.obligations),
+    budgetMonthComponentRow('Planned spending', s2.commitments),
+  ];
+  // Extra debt payment appears only when Forecast actually publishes it.
+  if (s3.extras && s3.extras.status !== 'unavailable') {
+    rows.push(budgetMonthComponentRow('Planned extra debt payment', s3.extras));
+  }
+  const standaloneNote = 'Each month funds itself — Forecast does not carry a prior month\u2019s surplus into this month\u2019s result.';
+  return `<div class="budget-month-view" data-budget-month-view="${month.month}">`
+    + `<div class="budget-month-head">${picker}</div>`
+    + `<p class="operating-note">How we are planning ${monthLabel}, copied from Forecast. This page does not calculate these figures.</p>`
+    + `<div class="budget-month-rows">${rows.join('')}</div>`
+    + budgetMonthVerdictHtml(month)
+    + `<p class="operating-note">${standaloneNote}</p></div>`;
+}
+
 function paydayInstructionShellHtml(advice, period) {
   // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
   // The planned-spending block is the Nest Money funding plan: the live
@@ -3141,8 +3304,34 @@ function selectedPlanView(advice, look) {
   return advice.defaultView || null;
 }
 
+/* AMANDA SLICE 3 — wire the Month <-> Pay Period toggle and the month
+ * picker. Switching granularity re-renders the Budget surface; it never
+ * recomputes Forecast figures. */
+function wireBudgetGranularity(mount, ctx) {
+  if (!mount || typeof mount.querySelector !== 'function') return;
+  mount.querySelectorAll('[data-budget-granularity]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('data-budget-granularity');
+      if (next !== 'month' && next !== 'pay-period') return;
+      if (next === budgetGranularity) return;
+      budgetGranularity = next;
+      mount.innerHTML = operatingSurfaceHtml(ctx);
+      wirePlanLookPicker(mount, ctx);
+    });
+  });
+  const picker = mount.querySelector('[data-budget-month-picker]');
+  if (picker) {
+    picker.addEventListener('change', () => {
+      budgetSelectedMonth = picker.value || budgetSelectedMonth;
+      mount.innerHTML = operatingSurfaceHtml(ctx);
+      wirePlanLookPicker(mount, ctx);
+    });
+  }
+}
+
 function wirePlanLookPicker(mount, ctx) {
   if (!mount || typeof mount.querySelector !== 'function') return;
+  wireBudgetGranularity(mount, ctx);
   const sel = mount.querySelector('[data-plan-look]');
   if (sel) {
     sel.value = planLook;
@@ -3476,12 +3665,23 @@ function operatingSurfaceHtml(ctx) {
   // surface, ahead of the waterfall. It always describes the current payday
   // (never a selected lookback/future period) and reprints Forecast-owned
   // figures only.
+  // AMANDA SLICE 3: Month <-> Pay Period granularity toggle on the default
+  // Budget surface. Month shows the consolidated calendar-month picture
+  // from Forecast.baselineTrajectory months[]; Pay Period shows the
+  // existing payday/pay-period operating picture. One dashboard, two
+  // lenses — the toggle changes granularity, never the Forecast values.
+  const granularityToggle = look === 'this-period' ? budgetGranularityToggleHtml() : '';
+  const monthView = look === 'this-period' && budgetGranularity === 'month'
+    ? budgetMonthViewHtml(ctx)
+    : '';
   const payPeriodViews = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
   const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
-  const instructionShell = look === 'this-period' ? paydayInstructionShellHtml(advice, currentPeriod) : '';
+  const instructionShell = look === 'this-period' && budgetGranularity !== 'month'
+    ? paydayInstructionShellHtml(advice, currentPeriod) : '';
+  const payPeriodContent = defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
   return `<div class="payday-operating-sheet" data-payday-sheet>
-    ${instructionShell}
-    ${defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
+    ${granularityToggle}
+    ${monthView || `${instructionShell}${payPeriodContent}`}
   </div>`;
 }
 
@@ -4608,7 +4808,8 @@ function renderPlan(d, periods, history) {
       unallocated: free, budget, creditAvailable: revolving,
       weekly, recommended, weeklyOverride: state.weeklyVariable,
       capView, debts: state.debts, liveOverlay: d.liveOverlay,
-      refreshTrust: d.refreshTrust,
+      refreshTrust: d.refreshTrust, periods,
+      revolvingExtra: d.revolvingExtra,
       planLook, planCalendarShow, planPayPeriodId, planView,
     };
     operatingMount.innerHTML = operatingSurfaceHtml(surfaceCtx);
