@@ -47,6 +47,9 @@
  *       projected fields as estimated, never confirmed (P1 repair)
  *   R2b the engine really publishes that combination (not a synthetic shape)
  *   R2c unpublished funding trust fails the projected fields closed
+ *   R3  when the same-input allocation cannot reconcile, the Month detail
+ *       follows the authoritative 'unavailable' verdict — never the
+ *       fallback FIFO publication (Systems Review second finding, PR #446)
  *
  * `node test/test-budget-month-funding-pressure.js`
  */
@@ -463,6 +466,57 @@ check('R2c: unpublished funding trust fails the projected fields closed', () => 
   assert.doesNotMatch(reno, /\$0\.00/, 'unknown never rendered as $0');
   assert.match(reno, /\$4,000\.00.*<span class="trust-tag">confirmed<\/span>/s,
     "the cost's own amount still reprints with its own trust");
+});
+
+check('R3: the Month detail follows the authoritative allocation path — not fallback FIFO', () => {
+  // Systems Review second finding (PR #446): the live payday must reuse
+  // the incumbent paydayAllocation as the named authority, computed from
+  // the same Month inputs — never a second FIFO attribution. Two-cost
+  // plan at weekly 0: the same-input allocation cannot reconcile to the
+  // schedule walk, so the authoritative verdict is 'unavailable', while
+  // the no-allocation fallback would publish 'ready'. The page must
+  // follow the authoritative path, including its verdict.
+  const plan = {
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0 },
+    opening: { asOf: '2026-01-02' },
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 500 }] },
+    income: [{ id: 'payroll', label: 'Seaspan', frequency: 'biweekly',
+      anchor: '2026-01-02', amount: 3000, confidence: 'confirmed' }],
+    obligations: [], bills: [], budget: { categories: [] },
+    commitments: [
+      { id: 'alpha', label: 'Alpha', date: '2026-01-10', amount: 700, confidence: 'confirmed' },
+      { id: 'beta', label: 'Beta', date: '2026-01-20', amount: 4000, confidence: 'confirmed' },
+    ],
+  };
+  const asOf = plan.opening.asOf;
+  const src = { plan, debts: [], asOf, meta: { asOf }, weekly: 0,
+    liveOverlay: null, revolvingExtra: null, periods: null, advice: null };
+  // The page's own input contract, then the real engine both ways.
+  const knobOpts = P.budgetMonthKnobOpts(src);
+  const horizon = F.knowledgeHorizon(plan, asOf, knobOpts);
+  const walkOpts = horizon && horizon.days > 0
+    ? Object.assign({}, knobOpts, { horizonDays: horizon.days, viewDays: horizon.days })
+    : knobOpts;
+  const sim = F.simulate(plan, asOf, walkOpts);
+  const seq = F.fundingSequence(plan, asOf, knobOpts);
+  const plans = F.majorPlans(plan, asOf, knobOpts);
+  const alloc = F.paydayAllocation(plan, asOf,
+    Object.assign({}, knobOpts, { majorPlans: plans }));
+  const authoritative = F.planSpendPaydayFunding(plan, asOf, sim, seq, plans, alloc);
+  const fallback = F.planSpendPaydayFunding(plan, asOf, sim, seq, plans);
+  assert.equal(authoritative.status, 'unavailable',
+    'the same-input allocation does not reconcile here — authoritative verdict is unavailable');
+  assert.match(authoritative.reason || '', /reconcile/i,
+    'the authoritative reason names the reconciliation');
+  assert.equal(fallback.status, 'ready',
+    'the no-allocation fallback would have published — the difference is the allocation wiring');
+  // The page follows the authoritative path.
+  evalInPage('budgetMonthScheduleCache = null; budgetMonthScheduleCacheKey = null;');
+  const pageSched = P.budgetMonthPlanSpendSchedule(src);
+  assert.equal(pageSched.status, 'unavailable',
+    'the Month detail follows the authoritative allocation path, not fallback FIFO');
+  assert.match(pageSched.reason || '', /reconcile/i,
+    'the page reprints the authoritative reconciliation verdict');
 });
 
 // ---------------------------------------------------------------- Part D ---

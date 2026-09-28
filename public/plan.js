@@ -2652,15 +2652,19 @@ function budgetMonthPlanSpendSchedule(src) {
     const sim = Forecast.simulate(src.plan, asOf, walkOpts);
     const seq = Forecast.fundingSequence(src.plan, asOf, knobOpts);
     const plans = Forecast.majorPlans(src.plan, asOf, knobOpts);
-    // No incumbent allocation: it belongs to the advice context's inputs
-    // (recommended weekly), and reusing it would reintroduce the stale-input
-    // defect this repair removes — its reconciliation checks would even fail
-    // the schedule closed when the active inputs genuinely differ. Without
-    // it the publication uses its own Forecast-owned attribution for the
-    // live-payday leg from this same walk, and fundingTrust treats the
-    // absent live row as 'calculated' per the publication's own identity.
-    // The Month detail reprints no live-row attribution or trust stamp.
-    schedule = Forecast.planSpendPaydayFunding(src.plan, asOf, sim, seq, plans);
+    // P1 REPAIR (Systems Review BLOCKING on PR #446, second finding): the
+    // live payday must reuse the incumbent paydayAllocation as the named
+    // authority rather than a second FIFO attribution — the per-cost
+    // nextContribution and projectedFullyFunded fields are produced from
+    // those allocations. The allocation is computed here from the SAME
+    // Month inputs (never the advice context's, which can carry the
+    // recommended weekly instead of the selected override). Its
+    // reconciliation checks fail the schedule closed when the two
+    // authorities cannot agree — that is Forecast's own verdict, reprinted
+    // as unavailable, never worked around page-side.
+    const alloc = Forecast.paydayAllocation(src.plan, asOf,
+      Object.assign({}, knobOpts, { majorPlans: plans }));
+    schedule = Forecast.planSpendPaydayFunding(src.plan, asOf, sim, seq, plans, alloc);
   } catch (e) {
     schedule = null;
   }
