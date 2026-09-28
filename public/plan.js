@@ -2361,12 +2361,16 @@ function budgetPlanSpendEarmarkHtml(advice, period) {
   </div>`;
 }
 function paydayInstructionShellHtml(advice, period) {
-  // AMANDA SLICE 2 — NEST MONEY INSTRUCTION. The planned-spending
-  // block is the explicit move instruction: the live payday's
-  // Plan-Spend-attributable contribution, with its named purposes, is
-  // the amount to move to the Nest Money bucket. Everything else stays
-  // in the BILLS/chequing account. The instruction directs a future
-  // household action; it never claims a transfer occurred.
+  // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
+  // The planned-spending block is the Nest Money earmark: the live
+  // payday's Plan-Spend-attributable contribution, with its named
+  // purposes, is the amount to set aside for the household's Nest Money
+  // bucket. Everything else stays in the BILLS/chequing account. The
+  // block issues no move directive — the engine publishes no prior Nest
+  // Money move state, so a move instruction would re-direct the same
+  // dollars on a later payday; the earmark carries an explicit blindness
+  // qualifier instead. The earmark directs a future household action; it
+  // never claims a transfer occurred.
   //
   // AMANDA SLICE 1 — PAYDAY INSTRUCTION SHELL.
   // One concise household-readable shell answering "where does this money
@@ -2434,15 +2438,23 @@ function paydayInstructionShellHtml(advice, period) {
   const rowTrustTag = row && row.trust === 'estimated'
     ? ' <span class="trust-tag trust-estimated">estimate</span>'
     : row && row.trust === 'calculated' ? ' <span class="trust-tag">calculated</span>' : null;
-  // AMANDA SLICE 2 — NEST MONEY INSTRUCTION. The live payday's
-  // Plan-Spend-attributable part (schedule contribution with its named
-  // allocations) is the money Forecast specifically attributes to known
-  // future planned costs — that, and only that, is the Nest Money move
-  // instruction. General protected cash (nonPlanSpendProtected), the
-  // buffer floor, bills, household spending, extra debt, optional plans
-  // and unassigned money stay in the BILLS/chequing account. The
-  // instruction is a planning directive; Atlas moves nothing and claims
-  // no transfer occurred.
+  // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
+  // The live payday's Plan-Spend-attributable part (schedule contribution
+  // with its named allocations) is the money Forecast specifically
+  // attributes to known future planned costs — that, and only that, is
+  // the Nest Money earmark. This block must NOT issue a "move $X to your
+  // Nest Money bucket" directive: the engine publishes no prior-move
+  // state (planSpendPaydayFunding.projectionOpeningProtected is a
+  // hardcoded 0; startingCashAmount excludes designated savings), so a
+  // later payday cannot recognize money moved by an earlier instruction
+  // and would re-instruct the same dollars. Per the P1, the instruction
+  // stays an earmark — with an explicit blindness qualifier — until the
+  // engine has an authoritative opening balance for prior Nest Money
+  // moves. General protected cash (nonPlanSpendProtected), the buffer
+  // floor, bills, household spending, extra debt, optional plans and
+  // unassigned money stay in the BILLS/chequing account. The earmark is
+  // a planning directive; Atlas moves nothing and claims no transfer
+  // occurred.
   let plannedBody;
   if (!schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.paydays) || !row) {
     // No schedule, an unavailable schedule, or no row for this payday:
@@ -2454,7 +2466,7 @@ function paydayInstructionShellHtml(advice, period) {
       plannedBody = unavailableNote('Nest Money to set aside');
     } else if (!(contribution > 0)) {
       plannedBody = `<p class="instruction-amount">${money2(0)}${rowTrustTag}</p>
-        <p class="operating-note">No Nest Money earmark this payday — nothing to move aside.</p>`;
+        <p class="operating-note">No Nest Money earmark this payday — nothing to set aside.</p>`;
     } else {
       const lines = (row.allocations || [])
         .filter(item => item && Number(item.amount) > 0)
@@ -2465,7 +2477,7 @@ function paydayInstructionShellHtml(advice, period) {
         ? `<p class="operating-note">Funding gap${gapShort == null ? '' : `: short ${money2(gapShort)}`} for ${schedule.gap.cashDate || 'an upcoming planned cost'}.</p>` : '';
       plannedBody = `<p class="instruction-amount">${money2(contribution)}${rowTrustTag}</p>
         ${lines ? `<div class="operating-lines">${lines}</div>` : ''}
-        <p class="operating-note">Move this amount to your Nest Money bucket for these planned costs. This is a planning instruction — no transfer has happened, and the payment itself stays on its cash date.</p>${gapNote}`;
+        <p class="operating-note">Set aside this amount for these planned costs — this payday's share of the funding plan. Atlas can't see money you've already moved to your Nest Money bucket, so subtract anything you already set aside for these costs; don't set aside the same dollars twice. No transfer has happened, and the payment itself stays on its cash date.</p>${gapNote}`;
     }
   }
   const plannedBlock = block('Nest Money to set aside', plannedBody);
@@ -2531,8 +2543,8 @@ function paydayInstructionShellHtml(advice, period) {
   const paydayAttr = alloc.payday || start || '';
   return `<section class="payday-instruction-shell" data-payday-instruction-shell="${paydayAttr}">
     <h2>Where this payday's money needs to go</h2>
-    <p class="operating-note">The plan for this payday — move Nest Money aside, keep the rest in chequing. Nothing here is a transfer or a payment made.</p>
-    <p class="operating-note">Only the Nest Money amount should be moved to your separate bucket. Everything else below stays in your BILLS/chequing account until it is spent or paid.</p>
+    <p class="operating-note">The plan for this payday — set Nest Money aside, keep the rest in chequing. Nothing here is a transfer or a payment made.</p>
+    <p class="operating-note">Only the Nest Money amount is earmarked for your separate bucket. Everything else below stays in your BILLS/chequing account until it is spent or paid.</p>
     <p class="operating-note">Every figure carries its trust tag: calculated means the inputs were confirmed; estimate means an input was estimated (for example a projected paycheck).</p>
     <div class="instruction-blocks">
       ${availableBlock}${billsBlock}${householdBlock}${plannedBlock}${protectedBlock}${extraBlock}${optionalBlock}${remainderBlock}

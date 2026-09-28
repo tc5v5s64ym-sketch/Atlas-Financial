@@ -7,12 +7,15 @@
  * the Nest Money instruction (AMANDA SLICE 2), protected cash / minimum
  * floor, optional extra debt, and genuinely unassigned money.
  *
- * AMANDA SLICE 2 — the shell answers "how much should we move aside for
+ * AMANDA SLICE 2 — the shell answers "how much should we set aside for
  * future planned costs, and what is it for?" The live payday's
  * Plan-Spend-attributable contribution, with its named allocations, is
- * the explicit Nest Money move instruction; everything else stays in
- * the BILLS/chequing account. The instruction directs a household
- * action; it never claims a transfer occurred.
+ * the Nest Money earmark; everything else stays in the BILLS/chequing
+ * account. P1 4117851665 repair: the block issues no move directive —
+ * the engine publishes no prior Nest Money move state, so a "move $X"
+ * instruction would re-direct the same dollars on a later payday. The
+ * earmark carries an explicit blindness qualifier instead. The earmark
+ * directs a household action; it never claims a transfer occurred.
  *
  * Part A (Forecast authority): Forecast.planSpendPaydayFunding publishes
  * the non-overlapping decomposition of the live payday's protectedPath
@@ -256,13 +259,17 @@ check('B3: $0 extra debt is explicit and does not erase required minimums', () =
   assert.match(html, /\$2,000\.00/); // bills (with minimums) still shown
 });
 
-check('B4: Nest Money instruction shows the contribution with its named purposes', () => {
+check('B4: Nest Money earmark shows the contribution with its named purposes', () => {
   const html = shell();
   assert.match(html, /Nest Money to set aside/);
   assert.match(html, /Property tax reserve.*\$700\.00/s);
   assert.match(html, /Trip fund.*\$500\.00/s);
-  assert.match(html, /Move this amount to your Nest Money bucket/);
-  assert.match(html, /no transfer has happened/);
+  // P1 4117851665: no move directive — the earmark carries the
+  // prior-move-blindness qualifier instead.
+  assert.doesNotMatch(html, /Move this amount to your Nest Money bucket/);
+  assert.match(html, /Set aside this amount for these planned costs/);
+  assert.match(html, /Atlas can't see money you've already moved/);
+  assert.match(html, /No transfer has happened/);
 });
 
 check('B5: buffer is a floor/guardrail, never an emergency fund or transfer', () => {
@@ -522,7 +529,7 @@ check('D1: Nest Money instruction equals the sum of its named allocations', () =
   assert.equal(headlineAmount(blockHtml), lines.reduce((a, b) => a + b, 0));
 });
 
-check('D2: $0 Nest Money payday is explicit — nothing to move, not unavailable', () => {
+check('D2: $0 Nest Money payday is explicit — nothing to set aside, not unavailable', () => {
   const html = shell({}, { paydays: [{
     payday: '2026-09-25', contribution: 0, allocations: [],
     nonPlanSpendProtected: 300, gap: null, trust: 'calculated',
@@ -530,7 +537,7 @@ check('D2: $0 Nest Money payday is explicit — nothing to move, not unavailable
   const blockHtml = nestMoneyBlock(html);
   assert.equal(headlineAmount(blockHtml), 0);
   assert.deepEqual(namedLineAmounts(blockHtml), []);
-  assert.match(blockHtml, /No Nest Money earmark this payday — nothing to move aside/);
+  assert.match(blockHtml, /No Nest Money earmark this payday — nothing to set aside/);
   assert.doesNotMatch(blockHtml, /unavailable/);
 });
 
@@ -594,6 +601,53 @@ check('D6: general protected cash, extra debt, optional spending and unassigned 
   assert.match(html, /Other protected cash — keep in chequing/);
   assert.match(html, /Lacrosse fees/);
   assert.match(html, /Truly unassigned/);
+});
+
+// ---------------------------------------------------------------- Part E ---
+// P1 4117851665 — no Nest Money move directive without prior-move tracking.
+//
+// Reproduced through the real engine (/tmp/repro2.js): payday 1
+// instructs $200 ($150 property tax + $50 trip); the household moves it
+// to the Nest bucket (chequing down, designated savings up); payday 2's
+// fresh computation — which has no prior-move input — instructs the
+// full $400 again: $600 total for a $400 need. The repair keeps the
+// block an earmark with an explicit blindness qualifier instead of
+// issuing a move directive the engine cannot reconcile.
+
+check('E1: a positive Nest Money earmark issues no move directive', () => {
+  const html = shell();
+  assert.doesNotMatch(html, /Move this amount to your Nest Money bucket/);
+  assert.doesNotMatch(html, /should be moved to your separate bucket/);
+  assert.doesNotMatch(html, /move Nest Money aside/i);
+});
+
+check('E2: the Nest Money block carries the prior-move-blindness qualifier', () => {
+  const blockHtml = nestMoneyBlock(shell());
+  assert.match(blockHtml, /Atlas can't see money you've already moved to your Nest Money bucket/);
+  assert.match(blockHtml, /don't set aside the same dollars twice/);
+});
+
+check('E3: the $0 earmark and the shell intro carry no move language', () => {
+  const zero = shell({}, { paydays: [{
+    payday: '2026-09-25', contribution: 0, allocations: [],
+    nonPlanSpendProtected: 300, gap: null, trust: 'calculated',
+  }] });
+  assert.doesNotMatch(zero, /nothing to move aside/);
+  assert.doesNotMatch(zero, /Move this amount/);
+  assert.match(shell(), /set Nest Money aside, keep the rest in chequing/);
+  assert.match(shell(), /Only the Nest Money amount is earmarked for your separate bucket/);
+});
+
+check('E4: the engine publishes no prior Nest Money move state — the qualifier is required', () => {
+  const { sched, live } = runEngine(mixedPlan());
+  assert.equal(sched.status, 'ready');
+  assert.ok(live, 'live row exists');
+  assert.ok(cent(live.contribution) > 0, 'fixture has a positive instruction');
+  // P1-cited: hardcoded 0, not derived from household moves.
+  assert.equal(sched.projectionOpeningProtected, 0);
+  // A fresh computation opens with no recognized prior protection.
+  assert.equal(live.openingProtected, 0);
+  // ...so every positive instruction must carry the qualifier (E2).
 });
 
 console.log(`\n${checks} checks passed.`);
