@@ -421,6 +421,19 @@ body:has(#operating-surface) .site-head-inner {
   .atlas-income-card [data-payday-balance] span:last-child {
     font-size: 1.12rem;
   }
+  /* AMANDA SLICE 7 repair (Systems Review BLOCKING on PR #445): the rung
+   * amount was forced onto one line and could overflow phone widths. On
+   * phones the rung stacks (label row, amount row) and the amount phrase
+   * wraps, so the full figure stays visible without horizontal overflow. */
+  .budget-month-ladder-rung {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .budget-month-ladder-amount {
+    white-space: normal;
+    flex-basis: 100%;
+    text-align: right;
+  }
 }
 /* AMANDA SLICE 1 — payday instruction shell. Household-readable blocks that
  * reprint Forecast-owned figures. Reuses operating-* typography. */
@@ -614,6 +627,71 @@ body:has(#operating-surface) .site-head-inner {
 }
 .budget-month-verdict[data-budget-month-verdict="deficit"] .budget-month-verdict-amount {
   color: #8f2a22;
+}
+/* AMANDA SLICE 7 — the monthly funding ladder. Three Forecast-published
+ * stage results in order, visually quieter than the verdict: the verdict
+ * stays the household's answer to "after everything, surplus or deficit?" */
+.budget-month-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--atlas-green-border, #cfe3d4);
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+.budget-month-ladder-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2f5d3a;
+}
+.budget-month-ladder-rung {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e8eef0;
+  border-radius: 8px;
+  background: #fff;
+}
+.budget-month-ladder-step {
+  flex: 0 0 auto;
+  width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  border-radius: 999px;
+  background: #eef4ef;
+  color: #2f5d3a;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.budget-month-ladder-label {
+  flex: 1 1 auto;
+  font-size: 0.9rem;
+  color: #33414a;
+}
+.budget-month-ladder-amount {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a2b33;
+  white-space: nowrap;
+}
+.budget-month-ladder-word {
+  font-weight: 400;
+  color: #5a6b73;
+}
+.budget-month-ladder-rung[data-budget-month-ladder="surplus"] .budget-month-ladder-amount {
+  color: #1e5c28;
+}
+.budget-month-ladder-rung[data-budget-month-ladder="deficit"] .budget-month-ladder-amount {
+  color: #8f2a22;
+}
+.budget-month-ladder-rung.unavailable .budget-month-unavailable {
+  font-size: 0.85rem;
+  color: #8a6d1b;
+  font-style: italic;
 }
 /* Trust tags in the month view match the instruction-shell language. */
 .budget-month-view .trust-tag {
