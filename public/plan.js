@@ -2799,7 +2799,12 @@ function paydayInstructionShellHtml(advice, period) {
         .map(cost => {
           const label = typeof cost.label === 'string' && cost.label.length ? cost.label : cost.id;
           const tag = costTrustTag(cost.confidence);
-          const head = `<div class="operating-line"><span>${label}</span><span>Nothing required from this payday</span></div>`;
+          // The page states only the reprintable fact — "No funding from this
+          // payday" — never the reason. The publication does not distinguish
+          // "not yet scheduled" from "crowded out by nearer costs" or "the
+          // payday could not fund what was required", so asserting a reason
+          // (e.g. "nothing required") would misdescribe the $0.
+          const head = `<div class="operating-line"><span>${label}</span><span>No funding from this payday</span></div>`;
           if (tag == null) {
             return head + `<div class="operating-line"><span>Future funding details</span><span>unavailable — trust not published.</span></div>`;
           }

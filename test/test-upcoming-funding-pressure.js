@@ -12,8 +12,7 @@
  * - funding now: this payday's named allocations, each with its Forecast
  *   cash date ("Needed by")
  * - still in the plan: dated costs with no allocation this payday and a
- *   cash date not before this payday, each with "Nothing required from
- *   this payday", Forecast's next scheduled contribution, and the
+ *   cash date not before this payday, each with "No funding from this payday", Forecast's next scheduled contribution, and the
  *   projected fully-funded date
  *
  * Truth boundaries: $0 today never means forgotten, complete, or
@@ -208,7 +207,7 @@ check('B1: funding-now line reprints label, amount, and the Forecast cash date',
 check('B2: $0-today cost stays visible with its future path — never forgotten/complete/cancelled', () => {
   const section = stillPlannedSection(shell());
   assert.match(section, /Property tax/, 'later cost named');
-  assert.match(section, /Nothing required from this payday/, 'honest $0-today wording');
+  assert.match(section, /No funding from this payday/, 'honest $0-today wording states the fact, not a reason');
   assert.match(section, /Next scheduled contribution.*\$2,639\.67.*on.*June 5/s, 'next contribution reprinted exactly');
   assert.match(section, /Projected funded by.*June 19/s, 'projected funded-by reprinted');
   assert.doesNotMatch(section, /forgotten|complete|cancelled/i, 'no false terminal wording');
@@ -287,7 +286,7 @@ check('B7: no scheduled next contribution renders "none scheduled" — never $0'
   assert.doesNotMatch(section, /\$0\.00/, 'no $0 invented for the missing path');
 });
 
-check('B8: overdue cost is not listed as "nothing required" — the gap block names it', () => {
+check('B8: overdue cost is not listed under Still in the plan — the gap block names it', () => {
   const html = shell({}, {
     status: 'funding-gap',
     fundingTrust: 'estimated',
@@ -307,6 +306,27 @@ check('B8: overdue cost is not listed as "nothing required" — the gap block na
   assert.doesNotMatch(section, /Overdue bill/, 'overdue cost excluded from Still in the plan');
   assert.match(html, /Funding shortfall ahead/, 'gap block rendered');
   assert.match(html, /Overdue bill/, 'overdue cost named by the gap block');
+});
+
+check('B10: P1 regression — the page never asserts a reason for $0 today', () => {
+  // Systems Review BLOCKING on head 942dff5c: a cost receiving $0 today was
+  // described as "Nothing required from this payday" when the real reason
+  // could be that the payday cannot fund what was required (crowded out by
+  // nearer costs, or a funding gap). The publication carries the fact, not
+  // the reason, so the page must state the fact only.
+  const html = shell({}, {
+    status: 'funding-gap',
+    fundingTrust: 'estimated',
+    gap: { payday: '2026-06-05', cashDate: '2026-07-02', required: 5639.67,
+      available: 2639.67, shortBy: 3000, affected: ['proptax'] },
+  });
+  const section = stillPlannedSection(html);
+  assert.match(section, /Property tax/, 'later cost still named');
+  assert.match(section, /No funding from this payday/, 'fact stated');
+  assert.doesNotMatch(section, /nothing required/i, 'no reason asserted for the $0');
+  assert.doesNotMatch(section, /not (yet |currently )?needed/i, 'no "not needed" wording either');
+  // The gap block — Forecast's own published reason — still stands alongside.
+  assert.match(html, /Funding shortfall ahead/, 'gap block unaffected');
 });
 
 check('B9: funding gap — future path shown AND shortfall shown, never "On track"', () => {
