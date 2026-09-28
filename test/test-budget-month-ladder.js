@@ -292,4 +292,37 @@ check('L11b: regression — month rows and granularity toggle intact', () => {
   assert.ok(toggle.includes('Month') && toggle.includes('Pay Period'), 'Month <-> Pay Period toggle intact');
 });
 
+check('L12: P2 repair — phone widths stack the rung and free the amount to wrap', () => {
+  // Systems Review BLOCKING on PR #445: the ladder amount was nowrap and
+  // could overflow ~320px viewports. The existing phone-width media query
+  // must stack the rung and no longer require the amount phrase to stay on
+  // one line. Desktop treatment is unchanged.
+  const css = fs.readFileSync(path.join(__dirname, '../public/budget-polish.css'), 'utf8');
+  const mediaStart = css.indexOf('@media (max-width: 520px)');
+  assert.ok(mediaStart !== -1, 'existing phone-width media query present');
+  let depth = 0, end = -1;
+  const openIdx = css.indexOf('{', mediaStart);
+  for (let i = openIdx; i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  assert.ok(end !== -1, 'media query body extracted');
+  const body = css.slice(openIdx, end + 1);
+  const amountRule = body.match(/\.budget-month-ladder-amount\s*\{([^}]*)\}/);
+  assert.ok(amountRule, 'media query styles the ladder amount');
+  assert.ok(/white-space\s*:\s*normal/.test(amountRule[1]),
+    'phone widths no longer force the amount phrase onto one line');
+  assert.ok(/flex-basis\s*:\s*100%/.test(amountRule[1]),
+    'amount takes its own row on phones');
+  const rungRule = body.match(/\.budget-month-ladder-rung\s*\{([^}]*)\}/);
+  assert.ok(rungRule && /flex-wrap\s*:\s*wrap/.test(rungRule[1]),
+    'rung wraps on phones');
+  // Desktop treatment is unchanged: strip the media block and confirm the
+  // base rule still keeps the single-line amount outside phone widths.
+  const desktop = css.slice(0, mediaStart) + css.slice(end + 1);
+  const desktopAmount = desktop.match(/\.budget-month-ladder-amount\s*\{([^}]*)\}/);
+  assert.ok(desktopAmount && /white-space\s*:\s*nowrap/.test(desktopAmount[1]),
+    'desktop single-line treatment untouched');
+});
+
 console.log(`\nAll ${checks} ladder checks passed.`);
