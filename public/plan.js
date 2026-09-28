@@ -2854,25 +2854,55 @@ function paydayInstructionShellHtml(advice, period) {
       : `<p class="instruction-amount">${money2(otherProtected)}${rowTrustTag}</p>
         <p class="operating-note">Other protected cash — keep in chequing. Protection beyond planned spending, not a savings transfer.</p>`));
 
+  // AMANDA SLICE 6 — FOCUS DEBT CONTINUITY.
+  // The focus debt stays visible even when this payday allocates $0 extra
+  // principal: the page reprints Forecast's published target, never a
+  // reason for the $0 (a zero allocation is a fact, not automatically a
+  // reason — the publication carries the fact, not the reason). When
+  // Forecast publishes the next-target consequence, the shell reprints it
+  // as conditional ("after this debt clears"), never as a current
+  // payment. No published next target is silence, never "debt free".
+  // With no target, the published strategy state (reason) renders as
+  // published — no debt is invented, and the $0 figure keeps its trust
+  // tag. The page does not choose, compare, rank, or reorder debts and
+  // does no payoff or balance arithmetic; it reprints the publication
+  // in place.
   const extra = alloc.extraDebt || {};
   const extraValue = known(extra.allocated);
   const extraTag = trustTag('extraDebt');
+  // Incumbent convention (plan.js renderers): the target is the
+  // debtPriority object; the household name is target.label. Never
+  // interpolate the raw object. Tolerate a plain string defensively.
+  const debtLabel = raw => raw == null ? null
+    : (typeof raw === 'string' ? raw : (raw.label || null));
+  const focusLabel = debtLabel(extra.target);
+  // Next target only from Forecast's published consequence, kept
+  // conditional. Reading any other field for it would be page-side
+  // target selection.
+  const nextConsequence = extra.consequence && extra.consequence.kind === 'next-target'
+    ? extra.consequence : null;
+  const nextLabel = nextConsequence ? debtLabel(nextConsequence.nextTarget) : null;
+  const afterClearsLine = nextLabel
+    ? `<p class="operating-note">After this debt clears: ${nextLabel}.</p>` : '';
   let extraBody;
   if (extraValue == null || extraTag == null) {
     extraBody = unavailableNote('Extra on focus debt');
   } else if (!(extraValue > 0)) {
+    // $0 extra: the focus stays visible. No reason is given for the $0.
+    // With no target, the published strategy state renders as published.
+    const stateLine = focusLabel
+      ? `<p class="operating-note">Focus debt: ${focusLabel}. No extra principal this payday — Required minimums are already in bills above.</p>`
+      : (typeof extra.reason === 'string' && extra.reason
+        ? `<p class="operating-note">${extra.reason}</p>`
+        : `<p class="operating-note">No extra principal this payday. Required minimums are already in bills above.</p>`);
     extraBody = `<p class="instruction-amount">${money2(0)}${extraTag}</p>
-      <p class="operating-note">No extra principal this payday. Required minimums are already in bills above.</p>`;
+      ${stateLine}
+      ${afterClearsLine}`;
   } else {
-    // Incumbent convention (plan.js renderers): the target is the
-    // debtPriority object; the household name is target.label. Never
-    // interpolate the raw object. Tolerate a plain string defensively.
-    const rawTarget = extra.target;
-    const targetLabel = rawTarget == null ? null
-      : (typeof rawTarget === 'string' ? rawTarget : (rawTarget.label || null));
-    const target = targetLabel ? ` on ${targetLabel}` : ' on the focus debt';
+    const target = focusLabel ? ` on ${focusLabel}` : ' on the focus debt';
     extraBody = `<p class="instruction-amount">${money2(extraValue)}${extraTag}</p>
-      <p class="operating-note">Optional extra${target} — only after everything above is covered.</p>`;
+      <p class="operating-note">Optional extra${target} — only after everything above is covered.</p>
+      ${afterClearsLine}`;
   }
   const extraBlock = block('Extra on focus debt', extraBody);
 
