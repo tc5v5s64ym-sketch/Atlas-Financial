@@ -2750,21 +2750,88 @@ function paydayInstructionShellHtml(advice, period) {
             ${affectedLabels.length ? `<div class="operating-line"><span>Affected</span><span>${affectedLabels.join(', ')}</span></div>` : ''}
           </div>`;
       }
+      // AMANDA SLICE 5 — UPCOMING FUNDING PRESSURE.
+      // For every dated planned cost Forecast publishes in schedule.costs,
+      // the shell shows whether this payday funds it now or later. Costs
+      // with a live-payday allocation are "funding now": the named lines
+      // gain their Forecast cash date ("Needed by"). Costs with no
+      // allocation this payday are "still in the plan": the shell reprints
+      // Forecast's next scheduled contribution and projected fully-funded
+      // date. $0 today never means forgotten, complete, or cancelled — the
+      // published future path is shown, and anything unpublished renders
+      // unavailable, never $0. Overdue costs (cash date before this payday)
+      // are not listed as "nothing required": the Slice 4 gap block already
+      // names them as already due. The page keeps Forecast's publication
+      // order; it does not rank, score, sort, or compute.
+      const costById = new Map((schedule.costs || [])
+        .filter(cost => cost && cost.id != null)
+        .map(cost => [cost.id, cost]));
+      const fundedNowIds = new Set((row.allocations || [])
+        .filter(item => item && Number(item.amount) > 0)
+        .map(item => item.id));
+      const fmtUpcomingDate = iso => {
+        if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
+        try { return fmtDateLong(iso); } catch (e) { return null; }
+      };
+      // Per-cost trust is the cost's published confidence, reprinted — never
+      // promoted. Unpublished confidence fails closed (null).
+      const costTrustTag = confidence => confidence === 'estimated'
+        ? ' <span class="trust-tag trust-estimated">estimate</span>'
+        : confidence === 'confirmed'
+          ? ' <span class="trust-tag">confirmed</span>' : null;
+      // "Funding now": the incumbent named allocations plus the Forecast
+      // cash date reprinted from schedule.costs. An unpublished or
+      // unparseable date is omitted, never invented.
+      const fundedNowLines = (row.allocations || [])
+        .filter(item => item && Number(item.amount) > 0)
+        .map(item => {
+          const cost = costById.get(item.id);
+          const tag = cost ? costTrustTag(cost.confidence) : null;
+          const neededBy = tag ? fmtUpcomingDate(cost.date) : null;
+          return `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${rowTrustTag}</span></div>`
+            + (neededBy ? `<div class="operating-line"><span>Needed by</span><span>${neededBy}${tag}</span></div>` : '');
+        }).join('');
+      // "Still in the plan": dated costs with no allocation this payday and
+      // a cash date not before this payday, in Forecast's publication order.
+      const stillPlannedLines = (schedule.costs || [])
+        .filter(cost => cost && cost.id != null && !fundedNowIds.has(cost.id)
+          && typeof cost.date === 'string' && cost.date >= row.payday)
+        .map(cost => {
+          const label = typeof cost.label === 'string' && cost.label.length ? cost.label : cost.id;
+          const tag = costTrustTag(cost.confidence);
+          const head = `<div class="operating-line"><span>${label}</span><span>Nothing required from this payday</span></div>`;
+          if (tag == null) {
+            return head + `<div class="operating-line"><span>Future funding details</span><span>unavailable — trust not published.</span></div>`;
+          }
+          const next = cost.nextContribution;
+          const nextAmount = next ? known(next.amount) : null;
+          const nextPayday = next ? fmtUpcomingDate(next.payday) : null;
+          const nextLine = next == null
+            ? `<div class="operating-line"><span>Next scheduled contribution</span><span>none scheduled</span></div>`
+            : nextAmount == null || nextPayday == null
+              ? `<div class="operating-line"><span>Next scheduled contribution</span><span>unavailable — not published.</span></div>`
+              : `<div class="operating-line"><span>Next scheduled contribution</span><span>${money2(nextAmount)}${tag} on ${nextPayday}</span></div>`;
+          const fundedBy = fmtUpcomingDate(cost.projectedFullyFunded);
+          const fundedByLine = fundedBy == null
+            ? `<div class="operating-line"><span>Projected funded by</span><span>not published</span></div>`
+            : `<div class="operating-line"><span>Projected funded by</span><span>${fundedBy}${tag}</span></div>`;
+          return head + nextLine + fundedByLine;
+        }).join('');
+      const stillPlannedHtml = stillPlannedLines
+        ? `<p class="operating-lead">Still in the plan</p><div class="operating-lines">${stillPlannedLines}</div>` : '';
       if (!(contribution > 0)) {
         // A $0 contribution does not mean fully funded: Forecast may still
         // carry remaining funding, so the funding status renders alongside
         // the $0 earmark instead of replacing it.
         plannedBody = `<p class="instruction-amount">${money2(0)}${rowTrustTag}</p>
           <p class="operating-note">No Nest Money earmark this payday.</p>
+          ${stillPlannedHtml}
           ${fundingStatusHtml}${gapHtml}`;
       } else {
-        const lines = (row.allocations || [])
-          .filter(item => item && Number(item.amount) > 0)
-          .map(item => `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${rowTrustTag}</span></div>`)
-          .join('');
         plannedBody = `<p class="instruction-amount">${money2(contribution)}${rowTrustTag}</p>
-          ${lines ? `<div class="operating-lines">${lines}</div>` : ''}
+          ${fundedNowLines ? `<div class="operating-lines">${fundedNowLines}</div>` : ''}
           <p class="operating-note">This payday's share of the funding plan for these named planned costs. Atlas can't see money you've already moved to your Nest Money bucket, so this is a planning amount only — not an instruction to transfer or move money into a separate bucket. No transfer has happened, and the payment itself stays on its cash date.</p>
+          ${stillPlannedHtml}
           ${fundingStatusHtml}${gapHtml}`;
       }
     }
