@@ -2,21 +2,28 @@
 /* AMANDA SLICE 8 — MONTHLY FUNDING PRESSURE DETAIL.
  *
  * The Budget Month lens names the known planned costs with Forecast cash
- * dates in the selected month, reprinting the incumbent
- * planSpendPaydayFunding publication the payday shell already consumes
- * (Slice 5). Month membership comes only from each cost's
- * Forecast-published cash date — never from a page-side allocation rule,
- * and never as a causal claim. The block describes these as costs
- * cash-dated in the selected month, not as "the costs causing this month's
- * pressure", and states that costs outside the month can also affect the
- * month's funding result.
+ * dates in the selected month, reprinting a planSpendPaydayFunding
+ * publication computed for the same active inputs as the selected Month
+ * trajectory (P1 repair: the advice context can carry different inputs —
+ * the recommend call runs without the active weekly override — so the
+ * page runs the incumbent Forecast publication chain on the trajectory's
+ * own knob inputs instead of reading the earlier advice publication).
+ * Month membership comes only from each cost's Forecast-published cash
+ * date — never from a page-side allocation rule, and never as a causal
+ * claim. The block describes these as costs cash-dated in the selected
+ * month, not as "the costs causing this month's pressure", and states
+ * that costs outside the month can also affect the month's funding
+ * result.
  *
  * Truth boundaries: every figure is a Forecast reprint; the page selects,
  * arranges, labels, formats and reprints. No ranking, no sorting
  * (Forecast's publication order is kept), no recommendations, no page-side
- * financial arithmetic. Estimated stays estimated. Unavailable is never
- * $0. A future cost with no scheduled contribution is "none scheduled" —
- * never "not required".
+ * financial arithmetic. The cost's own amount/date carry the cost's
+ * confidence; the projected funding fields (next contribution, projected
+ * fully-funded date) carry the schedule's fundingTrust — a confirmed cost
+ * can still have an estimated funding path (P1 repair). Estimated stays
+ * estimated. Unavailable is never $0. A future cost with no scheduled
+ * contribution is "none scheduled" — never "not required".
  *
  * Proof map (owner brief):
  *   P1  selected month with multiple relevant planned costs
@@ -32,6 +39,14 @@
  *   P11 Slice 7 ladder and Month verdict unchanged
  *   P12 Slice 4/5 semantics intact (neighboring suites, run separately)
  *   P13 phone-width rendering usable (incumbent classes only)
+ *   R1a changing the selected weekly input moves the Month detail — the
+ *       detail is computed from the trajectory's inputs, never the
+ *       earlier advice publication (Systems Review P1 repair, PR #446)
+ *   R1b the month view wires the freshly computed schedule (source proof)
+ *   R2a a confirmed cost with an estimated funding path renders the
+ *       projected fields as estimated, never confirmed (P1 repair)
+ *   R2b the engine really publishes that combination (not a synthetic shape)
+ *   R2c unpublished funding trust fails the projected fields closed
  *
  * `node test/test-budget-month-funding-pressure.js`
  */
@@ -136,6 +151,9 @@ function scheduleFixture(overrides = {}) {
   return Object.assign({
     status: 'ready',
     source: 'Forecast.planSpendPaydayFunding',
+    // Weakest input across the fixture's costs is estimated (roof,
+    // property tax) — the realistic publication for this mix.
+    fundingTrust: 'estimated',
     costs: [
       costFixture(),
       costFixture({ id: 'roof', label: 'Roof repair', date: '2026-01-20',
@@ -151,8 +169,8 @@ function scheduleFixture(overrides = {}) {
 
 const pressureHtml = (scheduleOverrides, monthKey = '2026-01') =>
   P.budgetMonthFundingPressureHtml(
-    { advice: { planSpendPaydayFunding: scheduleOverrides === null ? null : scheduleFixture(scheduleOverrides) } },
-    { month: monthKey });
+    { month: monthKey },
+    scheduleOverrides === null ? null : scheduleFixture(scheduleOverrides));
 
 // The block under test, scoped so later-block assertions cannot leak.
 function pressureSection(html) {
@@ -221,6 +239,14 @@ check('P6: estimated trust remains estimated — never promoted', () => {
   const fusion = section.slice(section.indexOf('data-budget-month-cost="fusion"'),
     section.indexOf('data-budget-month-cost="roof"'));
   assert.match(fusion, /<span class="trust-tag">confirmed<\/span>/, 'confirmed cost keeps its own tag');
+  // P1 repair: the fixture's funding trust is estimated, so the confirmed
+  // cost's projected fields render estimate — never confirmed.
+  assert.match(fusion, /Next scheduled contribution.*<span class="trust-tag trust-estimated">estimate<\/span>/s,
+    'confirmed cost: next contribution carries the funding trust, not the cost confidence');
+  assert.match(fusion, /Forecast projects fully funded by.*<span class="trust-tag trust-estimated">estimate<\/span>/s,
+    'confirmed cost: funded-by carries the funding trust, not the cost confidence');
+  assert.doesNotMatch(fusion, /Next scheduled contribution.*confirmed<\/span>/s,
+    'no confirmed tag on the projected contribution');
 });
 
 check('P7a: unavailable publication fails closed — never $0', () => {
@@ -302,6 +328,143 @@ check('P12: amounts are reprinted exactly — no page-side financial arithmetic'
   assert.doesNotMatch(html, /\$9,700\.00/, 'no summed total invented');
 });
 
+// ---------------------------------------------------------------- Part E ---
+// Systems Review P1 repairs (BLOCKING on PR #446).
+
+// Real plan where the selected weekly input moves the funding schedule:
+// one confirmed cost that needs several paydays of funding.
+function r1Plan() {
+  return {
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0 },
+    opening: { asOf: '2026-01-02' },
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 500 }] },
+    income: [{ id: 'payroll', label: 'Seaspan', frequency: 'biweekly',
+      anchor: '2026-01-02', amount: 3000, confidence: 'confirmed' }],
+    obligations: [], bills: [], budget: { categories: [] },
+    commitments: [
+      { id: 'reno', label: 'Reno', date: '2026-02-20', amount: 4000, confidence: 'confirmed' },
+    ],
+  };
+}
+
+function r1Src(plan, weekly, staleSchedule) {
+  const asOf = plan.opening.asOf;
+  return {
+    plan, debts: [], asOf, meta: { asOf },
+    weekly,
+    liveOverlay: null, revolvingExtra: null,
+    periods: null,
+    advice: { planSpendPaydayFunding: staleSchedule },
+  };
+}
+
+function r1StaleSchedule(plan) {
+  // The old defect: the advice publication computed WITHOUT the weekly
+  // override, as Forecast.recommend runs it.
+  const asOf = plan.opening.asOf;
+  const sim = F.simulate(plan, asOf, { horizonDays: 200, viewDays: 200, weeklyVariable: 0 });
+  return F.planSpendPaydayFunding(plan, asOf, sim, F.fundingSequence(plan, asOf),
+    F.majorPlans(plan, asOf, { weeklyVariable: 0 }));
+}
+
+const r1FmtDay = iso => new Date(iso + 'T00:00:00')
+  .toLocaleDateString('en-CA', { day: 'numeric', month: 'long' });
+
+check('R1a: the Month detail follows the selected weekly input — never a stale advice schedule', () => {
+  const plan = r1Plan();
+  const stale = r1StaleSchedule(plan);
+  const staleNext = stale.costs.find(c => c.id === 'reno').nextContribution;
+  // The page's own schedule for the SELECTED weekly override.
+  evalInPage('budgetMonthScheduleCache = null; budgetMonthScheduleCacheKey = null;');
+  const fresh = P.budgetMonthPlanSpendSchedule(r1Src(plan, 1000, stale));
+  const freshNext = fresh.costs.find(c => c.id === 'reno').nextContribution;
+  assert.notDeepEqual(freshNext, staleNext,
+    'the selected weekly input moves the funding schedule');
+  // And the rendered month view uses the fresh schedule, not the advice one.
+  evalInPage(`budgetGranularity = 'month';`);
+  evalInPage(`budgetSelectedMonth = '2026-02';`);
+  evalInPage('budgetTrajectoryCache = null; budgetTrajectoryCacheKey = null;');
+  evalInPage('budgetMonthScheduleCache = null; budgetMonthScheduleCacheKey = null;');
+  try {
+    const html = P.budgetMonthViewHtml(r1Src(plan, 1000, stale));
+    assert.ok(html.includes('Planned costs in view'), 'detail block rendered');
+    const section = html.slice(html.indexOf('Planned costs in view'));
+    assert.ok(section.includes('Reno'), 'cost named');
+    assert.ok(section.includes('on ' + r1FmtDay(freshNext.payday)),
+      `detail follows the selected weekly override (contribution on ${r1FmtDay(freshNext.payday)})`);
+    assert.ok(!section.includes('on ' + r1FmtDay(staleNext.payday)),
+      `the stale advice schedule is not rendered (not ${r1FmtDay(staleNext.payday)})`);
+  } finally {
+    evalInPage(`budgetGranularity = 'pay-period';`);
+    evalInPage('budgetSelectedMonth = null;');
+    evalInPage('budgetTrajectoryCache = null; budgetTrajectoryCacheKey = null;');
+    evalInPage('budgetMonthScheduleCache = null; budgetMonthScheduleCacheKey = null;');
+  }
+});
+
+check('R2a: confirmed cost, estimated funding path — projections render estimate, never confirmed', () => {
+  const html = pressureHtml({
+    fundingTrust: 'estimated',
+    costs: [costFixture({ id: 'reno', label: 'Reno', date: '2026-02-20',
+      confidence: 'confirmed', baseRequirement: 4000, verdict: 'ON TRACK',
+      nextContribution: { payday: '2026-01-30', amount: 1000 },
+      projectedFullyFunded: '2026-02-13' })],
+  }, '2026-02');
+  const section = pressureSection(html);
+  const reno = section.slice(section.indexOf('data-budget-month-cost="reno"'));
+  assert.match(reno, /Amount.*\$4,000\.00.*<span class="trust-tag">confirmed<\/span>/s,
+    "the cost's own amount keeps the cost's confirmed tag");
+  assert.match(reno, /Next scheduled contribution.*\$1,000\.00.*<span class="trust-tag trust-estimated">estimate<\/span>.*on January 30/s,
+    'next contribution carries the funding trust, not the cost confidence');
+  assert.match(reno, /Forecast projects fully funded by.*February 13.*<span class="trust-tag trust-estimated">estimate<\/span>/s,
+    'funded-by carries the funding trust, not the cost confidence');
+  assert.doesNotMatch(reno, /Next scheduled contribution[\s\S]*?confirmed<\/span>/,
+    'no confirmed tag on the projected contribution');
+  assert.doesNotMatch(reno, /fully funded by[\s\S]*?confirmed<\/span>/,
+    'no confirmed tag on the funded-by projection');
+});
+
+check('R2b: the engine really publishes estimated funding trust for a confirmed cost', () => {
+  const plan = r1Plan();
+  plan.income[0].confidence = 'estimated'; // estimated payroll, confirmed cost
+  const asOf = plan.opening.asOf;
+  const sim = F.simulate(plan, asOf, { horizonDays: 200, viewDays: 200, weeklyVariable: 0 });
+  const schedule = F.planSpendPaydayFunding(plan, asOf, sim, F.fundingSequence(plan, asOf),
+    F.majorPlans(plan, asOf, { weeklyVariable: 0 }));
+  const reno = schedule.costs.find(c => c.id === 'reno');
+  assert.equal(reno.confidence, 'confirmed', 'the cost itself is confirmed');
+  assert.equal(schedule.fundingTrust, 'estimated', 'the funding path is estimated');
+  assert.ok(reno.nextContribution, 'a next contribution is published');
+  const html = P.budgetMonthFundingPressureHtml({ month: '2026-02' }, schedule);
+  const section = pressureSection(html);
+  const block = section.slice(section.indexOf('data-budget-month-cost="reno"'));
+  assert.match(block, /Next scheduled contribution.*<span class="trust-tag trust-estimated">estimate<\/span>/s,
+    'rendered projection tagged estimate');
+  assert.doesNotMatch(block, /Next scheduled contribution[\s\S]*?confirmed<\/span>/,
+    'rendered projection never tagged confirmed');
+});
+
+check('R2c: unpublished funding trust fails the projected fields closed', () => {
+  const html = pressureHtml({
+    fundingTrust: null,
+    costs: [costFixture({ id: 'reno', label: 'Reno', date: '2026-02-20',
+      confidence: 'confirmed', baseRequirement: 4000, verdict: 'ON TRACK',
+      nextContribution: { payday: '2026-01-30', amount: 1000 },
+      projectedFullyFunded: '2026-02-13' })],
+  }, '2026-02');
+  const section = pressureSection(html);
+  const reno = section.slice(section.indexOf('data-budget-month-cost="reno"'));
+  assert.match(reno, /Next scheduled contribution.*unavailable — trust not published/s,
+    'next contribution fails closed');
+  assert.match(reno, /Projected funded by.*unavailable — trust not published/s,
+    'funded-by fails closed');
+  assert.doesNotMatch(reno, /\$1,000\.00/, 'untrusted projection never shown');
+  assert.doesNotMatch(reno, /February 13/, 'untrusted date never shown');
+  assert.doesNotMatch(reno, /\$0\.00/, 'unknown never rendered as $0');
+  assert.match(reno, /\$4,000\.00.*<span class="trust-tag">confirmed<\/span>/s,
+    "the cost's own amount still reprints with its own trust");
+});
+
 // ---------------------------------------------------------------- Part D ---
 // Full-view integration: the new block sits beneath the Slice 7 ladder and
 // the Month verdict inside the real month view; the toggle is intact.
@@ -348,6 +511,7 @@ check('P10/P11: full month view — toggle, ladder, verdict, and the new block t
   evalInPage(`budgetGranularity = 'month';`);
   evalInPage(`budgetSelectedMonth = '2026-10';`);
   evalInPage('budgetTrajectoryCache = null; budgetTrajectoryCacheKey = null;');
+  evalInPage('budgetMonthScheduleCache = null; budgetMonthScheduleCacheKey = null;');
   try {
     const html = P.budgetMonthViewHtml(src);
     assert.ok(html.includes('data-budget-month-view="2026-10"'), 'month view rendered');
@@ -362,6 +526,7 @@ check('P10/P11: full month view — toggle, ladder, verdict, and the new block t
     evalInPage(`budgetGranularity = 'pay-period';`);
     evalInPage('budgetSelectedMonth = null;');
     evalInPage('budgetTrajectoryCache = null; budgetTrajectoryCacheKey = null;');
+    evalInPage('budgetMonthScheduleCache = null; budgetMonthScheduleCacheKey = null;');
   }
 });
 
@@ -378,6 +543,13 @@ const slice8Region = (() => {
 
 check('P9a: no page-side ordering of costs in the slice 8 region', () => {
   assert.doesNotMatch(slice8Region, /\.sort\(/, 'no sort() — Forecast order kept');
+});
+
+check('R1b: the slice 8 region never reads the advice context', () => {
+  assert.doesNotMatch(slice8Region, /src\.advice/, 'no src.advice read — the schedule is computed, not inherited');
+  assert.doesNotMatch(slice8Region, /advice\.planSpendPaydayFunding/, 'no advice publication read');
+  assert.ok(planSource.includes('budgetMonthFundingPressureHtml(month, budgetMonthPlanSpendSchedule(src))'),
+    'the month view wires the input-matched schedule into the block');
 });
 
 check('P9b: no Math.* financial computation in the slice 8 region', () => {
