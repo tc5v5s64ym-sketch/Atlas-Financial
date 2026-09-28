@@ -4,8 +4,19 @@
  * The default Budget homepage answers "where does this money need to go?"
  * with one concise shell that reprints Forecast-owned figures only:
  * money available, bills & required minimums, current household spending,
- * the planned-spending earmark, protected cash / minimum floor, optional
- * extra debt, and genuinely unassigned money.
+ * the Nest Money instruction (AMANDA SLICE 2), protected cash / minimum
+ * floor, optional extra debt, and genuinely unassigned money.
+ *
+ * AMANDA SLICE 2 — the shell shows this payday's funding plan for
+ * future planned costs, and what it is for: the live payday's
+ * Plan-Spend-attributable contribution, with its named allocations, is
+ * the Nest Money earmark; everything else stays in the BILLS/chequing
+ * account. P1 4117851665 repair: the block presents the figure as an
+ * earmark/funding-plan amount only — never as an amount to transfer or
+ * set aside into a separate bucket, and never with a subtract-prior-
+ * moves requirement for the household — because the engine publishes
+ * no prior Nest Money move state. The earmark carries an explicit
+ * blindness qualifier; it never claims a transfer occurred.
  *
  * Part A (Forecast authority): Forecast.planSpendPaydayFunding publishes
  * the non-overlapping decomposition of the live payday's protectedPath
@@ -249,12 +260,20 @@ check('B3: $0 extra debt is explicit and does not erase required minimums', () =
   assert.match(html, /\$2,000\.00/); // bills (with minimums) still shown
 });
 
-check('B4: planned-spending contribution shows named allocations', () => {
+check('B4: Nest Money earmark shows the contribution with its named purposes', () => {
   const html = shell();
-  assert.match(html, /Set aside for planned spending/);
+  assert.match(html, /Nest Money funding plan/);
   assert.match(html, /Property tax reserve.*\$700\.00/s);
   assert.match(html, /Trip fund.*\$500\.00/s);
-  assert.match(html, /Set aside for named planned costs — not extra money/);
+  // P1 4117851665: no move directive — the block is an earmark/funding-plan
+  // amount only, never a transfer/set-aside instruction, and never asks
+  // the household to subtract prior moves.
+  assert.doesNotMatch(html, /Move this amount to your Nest Money bucket/);
+  assert.doesNotMatch(html, /Set aside this amount/i);
+  assert.match(html, /This payday's share of the funding plan/);
+  assert.match(html, /Atlas can't see money you've already moved/);
+  assert.doesNotMatch(html, /subtract anything you already set aside/);
+  assert.match(html, /No transfer has happened/);
 });
 
 check('B5: buffer is a floor/guardrail, never an emergency fund or transfer', () => {
@@ -296,14 +315,14 @@ check('B8: funding-gap schedule keeps the valid earmark and names the gap', () =
 
 check('B9: unavailable schedule fails closed — unknown is not $0', () => {
   const html = shell({}, { status: 'unavailable', paydays: [] });
-  assert.match(html, /Set aside for planned spending: unavailable/);
+  assert.match(html, /Nest Money funding plan: unavailable/);
   assert.match(html, /Other protected cash — keep in chequing: unavailable/);
   assert.doesNotMatch(html, /data-plan-spend-earmark/);
 });
 
 check('B10: no matching payday row fails closed', () => {
   const html = shell({}, {}, { id: 'x', start: '2026-10-09', end: '2026-10-22', timelineRole: 'future' });
-  assert.match(html, /Set aside for planned spending: unavailable/);
+  assert.match(html, /Nest Money funding plan: unavailable/);
 });
 
 check('B11: no shell at all without a payday allocation', () => {
@@ -471,8 +490,178 @@ check('C5: unpublished trust fails closed — figures render unavailable, never 
   const advice2 = adviceFixture();
   delete advice2.planSpendPaydayFunding.paydays[0].trust;
   const html2 = f.paydayInstructionShellHtml(advice2, currentPeriod);
-  assert.match(html2, /Set aside for planned spending: unavailable/);
+  assert.match(html2, /Nest Money funding plan: unavailable/);
   assert.match(html2, /Other protected cash — keep in chequing: unavailable/);
+});
+
+// ---------------------------------------------------------------- Part D ---
+// AMANDA SLICE 2 — Nest Money instruction identity proof.
+//
+// The shell answers "what is this payday's funding plan for future planned
+// costs, and what is it for?" These checks prove, on the rendered HTML
+// the household actually reads (independent of the engine's own
+// namedSum === contribution invariant, L-002):
+//   Nest Money instruction = sum of the named Nest Money allocations shown.
+// No dollar may appear simultaneously as Nest Money and as other
+// protected cash, optional spending, extra debt, or genuinely unassigned
+// money. Synthetic fixtures only (L-006).
+
+function nestMoneyBlock(html) {
+  const title = '<h3>Nest Money funding plan</h3>';
+  const start = html.indexOf(title);
+  assert.ok(start !== -1, 'Nest Money block is present');
+  const after = html.slice(start);
+  const next = after.indexOf('<h3>', title.length);
+  return next === -1 ? after : after.slice(0, next);
+}
+const headlineAmount = blockHtml => {
+  const m = blockHtml.match(/instruction-amount">\$([\d,]+\.\d\d)/);
+  return m ? Number(m[1].replace(/,/g, '')) : null;
+};
+const namedLineAmounts = blockHtml => {
+  const amounts = [];
+  const re = /operating-line"><span>[^<]*<\/span><span>\$([\d,]+\.\d\d)/g;
+  let m;
+  while ((m = re.exec(blockHtml))) amounts.push(Number(m[1].replace(/,/g, '')));
+  return amounts;
+};
+
+check('D1: Nest Money instruction equals the sum of its named allocations', () => {
+  const blockHtml = nestMoneyBlock(shell());
+  const lines = namedLineAmounts(blockHtml);
+  assert.deepEqual(lines, [700, 500]);
+  assert.equal(headlineAmount(blockHtml), lines.reduce((a, b) => a + b, 0));
+});
+
+check('D2: $0 Nest Money payday is explicit — earmark shown, not unavailable', () => {
+  const html = shell({}, { paydays: [{
+    payday: '2026-09-25', contribution: 0, allocations: [],
+    nonPlanSpendProtected: 300, gap: null, trust: 'calculated',
+  }] });
+  const blockHtml = nestMoneyBlock(html);
+  assert.equal(headlineAmount(blockHtml), 0);
+  assert.deepEqual(namedLineAmounts(blockHtml), []);
+  assert.match(blockHtml, /No Nest Money earmark this payday\./);
+  assert.doesNotMatch(blockHtml, /unavailable/);
+});
+
+check('D3: estimated-paycheck Nest Money instruction is tagged estimate, never verified', () => {
+  const html = shell({}, { paydays: [{
+    payday: '2026-09-25', contribution: 1200,
+    allocations: [{ id: 'a', label: 'Property tax reserve', amount: 1200 }],
+    nonPlanSpendProtected: 300, gap: null, trust: 'estimated',
+  }] });
+  const blockHtml = nestMoneyBlock(html);
+  assert.equal(headlineAmount(blockHtml), 1200);
+  assert.match(blockHtml, /trust-estimated">estimate</);
+  assert.doesNotMatch(blockHtml, />calculated</);
+});
+
+check('D4: funding-gap payday keeps the Nest Money identity — instruction still sums to its lines', () => {
+  const html = shell({}, {
+    status: 'funding-gap',
+    paydays: [{
+      payday: '2026-09-25', contribution: 1200,
+      allocations: [
+        { id: 'a', label: 'Property tax reserve', amount: 700 },
+        { id: 'b', label: 'Trip fund', amount: 500 },
+      ],
+      nonPlanSpendProtected: 300, gap: null, trust: 'calculated',
+    }],
+    gap: { payday: '2026-09-25', shortBy: 200, cashDate: '2026-10-15' },
+  });
+  const blockHtml = nestMoneyBlock(html);
+  const lines = namedLineAmounts(blockHtml);
+  assert.equal(headlineAmount(blockHtml), 1200);
+  assert.equal(lines.reduce((a, b) => a + b, 0), 1200);
+  assert.match(blockHtml, /Funding gap/);
+});
+
+check('D5: unknown schedule fails the Nest Money instruction closed — unknown is not $0', () => {
+  const blockHtml = nestMoneyBlock(shell({}, null));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.equal(headlineAmount(blockHtml), null);
+  assert.doesNotMatch(blockHtml, /\$0\.00/);
+});
+
+check('D6: general protected cash, extra debt, optional spending and unassigned money never enter the Nest Money block', () => {
+  const html = shell(
+    { optional: [{ id: 'lax', label: 'Lacrosse fees', allocated: 100 }] },
+    { paydays: [{
+      payday: '2026-09-25', contribution: 1200,
+      allocations: [
+        { id: 'a', label: 'Property tax reserve', amount: 700 },
+        { id: 'b', label: 'Trip fund', amount: 500 },
+      ],
+      nonPlanSpendProtected: 300, gap: null, trust: 'calculated',
+    }] });
+  const blockHtml = nestMoneyBlock(html);
+  assert.doesNotMatch(blockHtml, /\$300\.00/); // other protected cash stays out
+  assert.doesNotMatch(blockHtml, /\$250\.00/); // extra debt stays out
+  assert.doesNotMatch(blockHtml, /\$100\.00/); // optional spending stays out
+  assert.doesNotMatch(blockHtml, /\$450\.00/); // unassigned remainder stays out
+  assert.doesNotMatch(blockHtml, /Lacrosse fees/);
+  // ...and those dollars still render in their own blocks — nothing dropped.
+  assert.match(html, /Other protected cash — keep in chequing/);
+  assert.match(html, /Lacrosse fees/);
+  assert.match(html, /Truly unassigned/);
+});
+
+// ---------------------------------------------------------------- Part E ---
+// P1 4117851665 — no Nest Money transfer instruction the engine cannot
+// reconcile.
+//
+// Reproduced through the real engine (/tmp/repro2.js): payday 1
+// instructs $200 ($150 property tax + $50 trip); the household moves it
+// to the Nest bucket (chequing down, designated savings up); payday 2's
+// fresh computation — which has no prior-move input — instructs the
+// full $400 again: $600 total for a $400 need. The repair presents the
+// figure as an earmark/funding-plan amount only: no transfer or
+// set-aside directive, and no subtract-prior-moves requirement on the
+// household, until Forecast can consume authoritative prior Nest Money
+// state.
+
+check('E1: a positive Nest Money earmark issues no move directive', () => {
+  const html = shell();
+  assert.doesNotMatch(html, /Move this amount to your Nest Money bucket/);
+  assert.doesNotMatch(html, /should be moved to your separate bucket/);
+  assert.doesNotMatch(html, /move Nest Money aside/i);
+  assert.doesNotMatch(html, /Set aside this amount/i);
+});
+
+check('E2: the Nest Money block carries the prior-move-blindness qualifier, without asking the household to subtract', () => {
+  const blockHtml = nestMoneyBlock(shell());
+  assert.match(blockHtml, /Atlas can't see money you've already moved to your Nest Money bucket/);
+  assert.match(blockHtml, /this is a planning amount only — not an instruction to transfer or move money into a separate bucket/);
+  // The missing reconciliation must not be shifted to the household:
+  // no subtract-prior-moves requirement anywhere in the block.
+  assert.doesNotMatch(blockHtml, /subtract anything you already set aside/);
+  assert.doesNotMatch(blockHtml, /don't set aside the same dollars twice/);
+  assert.doesNotMatch(blockHtml, /subtract/i);
+});
+
+check('E3: the $0 earmark and the shell intro carry no move language', () => {
+  const zero = shell({}, { paydays: [{
+    payday: '2026-09-25', contribution: 0, allocations: [],
+    nonPlanSpendProtected: 300, gap: null, trust: 'calculated',
+  }] });
+  assert.doesNotMatch(zero, /nothing to move aside/);
+  assert.doesNotMatch(zero, /Move this amount/);
+  assert.doesNotMatch(zero, /nothing to set aside/);
+  assert.match(shell(), /the Nest Money funding plan, with the rest staying in chequing/);
+  assert.match(shell(), /a planning amount, not an instruction to transfer or move money/);
+});
+
+check('E4: the engine publishes no prior Nest Money move state — the qualifier is required', () => {
+  const { sched, live } = runEngine(mixedPlan());
+  assert.equal(sched.status, 'ready');
+  assert.ok(live, 'live row exists');
+  assert.ok(cent(live.contribution) > 0, 'fixture has a positive instruction');
+  // P1-cited: hardcoded 0, not derived from household moves.
+  assert.equal(sched.projectionOpeningProtected, 0);
+  // A fresh computation opens with no recognized prior protection.
+  assert.equal(live.openingProtected, 0);
+  // ...so every positive instruction must carry the qualifier (E2).
 });
 
 console.log(`\n${checks} checks passed.`);
