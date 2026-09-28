@@ -2381,7 +2381,7 @@ function budgetPlanSpendEarmarkHtml(advice, period) {
  * row, formats values, labels them, and arranges them visually. It never
  * sums income, subtracts expenses, calculates surplus/deficit,
  * reconstructs stage totals, or carries surplus between months. The
- * monthly surplus/deficit is Forecast stage3.result, copied verbatim.
+ * monthly surplus/deficit is Forecast stage3.dateOrderResult, copied verbatim.
  * Unavailable is not $0. Trust tags are preserved from Forecast status.
  */
 const BUDGET_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -2395,20 +2395,59 @@ function budgetMonthName(monthKey) {
   return `${BUDGET_MONTH_NAMES[mi]} ${year}`;
 }
 
+function budgetTrajectoryCacheKeyFor(asOf, plan, opts) {
+  // AMANDA SLICE 3 repair (Systems Review BLOCKING on PR #441): the cache
+  // identity must include every financial input that can change the
+  // selected plan. A dates-only key serves a stale trajectory after the
+  // household changes scenario, income, weekly spending, extra debt, or
+  // adjustable commitments.
+  const knob = key => {
+    const v = opts ? opts[key] : undefined;
+    if (v == null) return '';
+    if (typeof v === 'object') {
+      try { return JSON.stringify(v); } catch (e) { return ''; }
+    }
+    return String(v);
+  };
+  return [
+    asOf || '',
+    (plan.opening && plan.opening.asOf) || '',
+    knob('scenario'),
+    knob('targetBuffer'),
+    knob('extraDebtMonthly'),
+    knob('weeklyVariable'),
+    knob('incomeOverrides'),
+    knob('disabled'),
+    knob('extraDebtTarget'),
+    knob('currentPeriodActuals'),
+  ].join('|');
+}
+
 function budgetTrajectoryFor(src) {
   if (!src || !src.plan) return null;
   const asOf = src.asOf || (src.meta && src.meta.asOf);
-  const key = `${asOf || ''}|${(src.plan.opening && src.plan.opening.asOf) || ''}`;
+  const overlay = src.liveOverlay;
+  const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
+  // AMANDA SLICE 3 repair (Systems Review BLOCKING on PR #441): the Month
+  // lens must describe the same currently selected plan as the Pay Period
+  // lens. The incumbent active control state (scenario, income overrides,
+  // weekly spending, extra debt, adjustable commitments) is fed through
+  // the existing Forecast authority via the same simOpts() the Pay Period
+  // lens uses. weeklyVariable is the adjacent Pay Period lens's selected
+  // value (src.weekly), so the Month walk uses the selected weekly even
+  // when no explicit override exists. The page selects and reprints;
+  // Forecast computes.
+  const knobOpts = simOpts({
+    weeklyVariable: src.weekly,
+    periods: src.periods || null,
+    extraFacilities: src.revolvingExtra,
+    currentPeriodActuals: actuals,
+  });
+  const key = budgetTrajectoryCacheKeyFor(asOf, src.plan, knobOpts);
   if (budgetTrajectoryCache && budgetTrajectoryCacheKey === key) return budgetTrajectoryCache;
   let traj = null;
   try {
-    const overlay = src.liveOverlay;
-    const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
-    traj = Forecast.baselineTrajectory(src.plan, src.debts, asOf, {
-      periods: src.periods || null,
-      extraFacilities: src.revolvingExtra,
-      currentPeriodActuals: actuals,
-    });
+    traj = Forecast.baselineTrajectory(src.plan, src.debts, asOf, knobOpts);
   } catch (e) {
     traj = null;
   }
@@ -2452,7 +2491,13 @@ function budgetMonthComponentRow(label, component) {
 
 function budgetMonthVerdictHtml(month) {
   const stage3 = month && month.stage3;
-  const result = stage3 && stage3.result;
+  // AMANDA SLICE 3 repair (Systems Review BLOCKING on PR #441): the Month
+  // decision surface reads Forecast's household-facing date-order result,
+  // not the standalone arithmetic identity. An earlier-in-month funding
+  // shortfall can make the date-order result a deficit while the
+  // arithmetic result is a surplus. Fail closed when Forecast did not
+  // publish the decision result.
+  const result = stage3 && stage3.dateOrderResult;
   if (!result || result.status === 'unavailable' || result.amount == null || !isFinite(Number(result.amount))) {
     const reason = result && result.reason ? result.reason : 'Forecast did not publish a monthly result.';
     return `<div class="budget-month-verdict unavailable" data-budget-month-verdict="unavailable">`
@@ -2465,8 +2510,9 @@ function budgetMonthVerdictHtml(month) {
   const label = isSurplus ? 'Monthly surplus' : isDeficit ? 'Monthly deficit' : 'Monthly balance';
   const sign = isSurplus ? 'surplus' : isDeficit ? 'deficit' : 'neutral';
   const tag = budgetMonthTrustTag(result.status) || '';
-  // The amount is Forecast stage3.result copied verbatim — the page does not
-  // calculate it. The sign prefix is presentation formatting of that figure.
+  // The amount is Forecast stage3.dateOrderResult copied verbatim — the
+  // page does not calculate it. The sign prefix is presentation formatting
+  // of that figure.
   const displayAmount = isSurplus ? `+${money2(amount)}` : isDeficit ? `−${money2(Math.abs(amount))}` : money2(0);
   return `<div class="budget-month-verdict" data-budget-month-verdict="${sign}">`
     + `<span class="budget-month-verdict-label">${label}</span>`
@@ -2502,9 +2548,13 @@ function budgetMonthViewHtml(src) {
   const s2 = month.stage2 || {};
   const s3 = month.stage3 || {};
   // Each row copies one Forecast-published component. Bills and required debt
-  // payments stay separate rows — the page never sums them.
+  // payments stay separate rows — the page never sums them. Total income is
+  // the Stage 1 funding-decomposition income (stage1.income), which belongs
+  // to the same decomposition as the bills, obligations, household budget,
+  // commitments, extras and verdict rows — not the separate calendar-window
+  // month.income (Systems Review BLOCKING on PR #441).
   const rows = [
-    budgetMonthComponentRow('Total income', month.income),
+    budgetMonthComponentRow('Total income', s1.income),
     budgetMonthComponentRow('Regular household spending', s1.householdBudget),
     budgetMonthComponentRow('Bills', s1.bills),
     budgetMonthComponentRow('Required debt payments', s1.obligations),

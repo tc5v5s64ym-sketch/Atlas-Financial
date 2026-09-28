@@ -15266,9 +15266,18 @@
     const periods = opts.periods;
     const normalSpending = provisionalRecentNormalSpending(plan, day, opts);
     const plannedWeekly = plannedWeeklyVariable(plan, periods, Object.assign({}, opts, { asOf: day }));
-    const weekly = normalSpending && normalSpending.status === 'ready'
-      ? normalSpending.weeklyVariable
-      : plannedWeekly;
+    // AMANDA SLICE 3 repair (Systems Review BLOCKING on PR #441): the Month
+    // lens must describe the same currently selected plan as the Pay Period
+    // lens, so an explicit caller weeklyVariable (the active Budget weekly
+    // spending control) wins over the provisional/planned basis. Opts-wins
+    // with incumbent fallback, the same pattern simulate() uses for its
+    // own option-vs-default reads.
+    const weeklyOverride = opts.weeklyVariable != null ? Number(opts.weeklyVariable) : null;
+    const weekly = weeklyOverride != null && isFinite(weeklyOverride) && weeklyOverride >= 0
+      ? weeklyOverride
+      : normalSpending && normalSpending.status === 'ready'
+        ? normalSpending.weeklyVariable
+        : plannedWeekly;
     if (weekly == null || !isFinite(weekly) || weekly < 0) {
       return { status: 'unavailable', reason: 'A planned Household Budget breakdown is required.' };
     }
@@ -15303,11 +15312,25 @@
       viewDays: horizon.days,
       debts: Array.isArray(debts) ? debts : [],
       extraFacilities: opts.extraFacilities,
-      extraDebtMonthly: (plan.defaults && plan.defaults.extraDebtMonthly) || 0,
+      // AMANDA SLICE 3 repair (Systems Review BLOCKING on PR #441): the
+      // active Budget controls (scenario, income overrides, extra debt,
+      // target buffer) flow through the walk via the caller opts, with the
+      // incumbent plan-defaults fallback when the caller passes none. This
+      // is the same opts-wins pattern simulate() uses for its own reads;
+      // baselineTrajectoryScenario passes none of these keys, so its
+      // behaviour is unchanged.
+      extraDebtMonthly: opts.extraDebtMonthly != null
+        ? opts.extraDebtMonthly
+        : ((plan.defaults && plan.defaults.extraDebtMonthly) || 0),
       extraDebtTarget: opts.extraDebtTarget,
-      targetBuffer: plan.defaults && plan.defaults.targetBuffer,
-      scenario: (plan.defaults && plan.defaults.scenario) || 'expected',
+      targetBuffer: opts.targetBuffer != null
+        ? opts.targetBuffer
+        : (plan.defaults && plan.defaults.targetBuffer),
+      scenario: opts.scenario != null
+        ? opts.scenario
+        : ((plan.defaults && plan.defaults.scenario) || 'expected'),
       disabled: opts.disabled,
+      incomeOverrides: opts.incomeOverrides,
       representedEvents: opts.representedEvents,
       paypalPerMonth: opts.paypalPerMonth,
       periods,
@@ -15363,6 +15386,7 @@
       opts,
       day,
       weekly,
+      weeklyOverride,
       normalSpending,
       horizon,
       walkOpts,
@@ -16477,10 +16501,13 @@
 
     const normalSpending = ctx.normalSpending;
     const recentBaseline = !!(normalSpending && normalSpending.status === 'ready');
+    const weeklyWasOverridden = ctx.weeklyOverride != null;
     const spendPublication = {
       weeklyVariable: weekly,
-      status: recentBaseline ? 'estimated' : 'calculated',
-      source: recentBaseline ? 'provisional-recent-pay-period' : 'budgetBreakdown.planned',
+      status: weeklyWasOverridden ? 'calculated' : (recentBaseline ? 'estimated' : 'calculated'),
+      source: weeklyWasOverridden
+        ? 'user-planning-setting'
+        : (recentBaseline ? 'provisional-recent-pay-period' : 'budgetBreakdown.planned'),
       historicalActuals: recentBaseline ? 'recent-two-period-baseline' : 'excluded',
     };
     const byDate = new Map(sim.daily.map(row => [row.date, row]));
