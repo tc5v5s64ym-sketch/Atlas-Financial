@@ -2724,6 +2724,9 @@
     let cumulative = 0;
     let protectedBalance = 0;
     let gap = null;
+    // Captured live-row trust: the live contribution is one leg of the
+    // serial funding-status figures, so its trust feeds fundingTrust below.
+    let liveRowTrust = null;
     for (const period of periods) {
       const required = Math.max(0, period.minimumCumulative - cumulative);
       const available = Math.max(0, Math.min(period.capacity, period.cashUpper - cumulative));
@@ -2864,6 +2867,17 @@
             affected: [cost.id], cashDate: cost.date };
         }
       }
+      // Live-row trust (AMANDA SLICE 1): the live row's figures are only as
+      // strong as their weakest input. Captured for fundingTrust below —
+      // the live contribution is one leg of the serial funding figures.
+      // At most one live payday exists.
+      const rowTrust = isLivePayday ? trajectoryWeakerStatus(
+        (incumbentAllocation && incumbentAllocation.paydayShellTrust
+          && incumbentAllocation.paydayShellTrust.available) || 'calculated',
+        trajectoryEventsStatus(incumbentParts),
+        trajectoryEventsStatus(
+          (sim.events || []).filter(e => e && e.kind === 'income'))) : null;
+      if (isLivePayday) liveRowTrust = rowTrust;
       rows.push({ payday: period.date, through: period.end,
         capacity: dollars(period.capacity), cashCapacity: dollars(Math.max(0, period.cashUpper - (cumulative - contribution))),
         required: dollars(required), contribution: dollars(contribution), allocations,
@@ -2879,13 +2893,11 @@
         // — the incumbent allocation's income trust (which already detects
         // the 2027 Dale-payroll projection), the named allocation parts'
         // confidences, and the walk's income confidences. Null on non-live
-        // rows, where the concept does not apply.
-        trust: isLivePayday ? trajectoryWeakerStatus(
-          (incumbentAllocation && incumbentAllocation.paydayShellTrust
-            && incumbentAllocation.paydayShellTrust.available) || 'calculated',
-          trajectoryEventsStatus(incumbentParts),
-          trajectoryEventsStatus(
-            (sim.events || []).filter(e => e && e.kind === 'income'))) : null,
+        // rows, where the concept does not apply. This stamp is NOT the
+        // authority for the serial funding-status figures
+        // (protectedAfterPayday, stillToFund, funding gap) — those carry
+        // schedule.fundingTrust (AMANDA SLICE 4 P1 repair).
+        trust: rowTrust,
         openingProtected: dollars(openingProtected), protectedAfterPayday: dollars(afterPayday),
         payments, protectedAfterPayments: dollars(protectedBalance),
         stillToFund: dollars(schedulable.reduce((sum, cost) =>
@@ -2936,6 +2948,21 @@
       source: 'Forecast.planSpendPaydayFunding', asOf,
       openingProtected: null, projectionOpeningProtected: 0,
       identity: 'cash-walk-period-capacity; latest-feasible cumulative protection',
+      // Trust authority for the funding-status figures (AMANDA SLICE 4 P1
+      // repair): protectedAfterPayday, stillToFund, and the funding-gap
+      // shortfall/status path are serial schedule outputs — a future
+      // estimated planned cost can pull a contribution forward or drive a
+      // future gap, so the live row's Slice 1 stamp must not be reused for
+      // them. Weakest of every dated planned cost's confidence, the undated
+      // protected floor's confidence, the cash-walk income confidences, and
+      // the live row's own trust (identity 'calculated' when no live row
+      // exists, since the incumbent leg then does not apply). plan.js
+      // reprints this tag only; it never derives trust page-side.
+      fundingTrust: trajectoryWeakerStatus(
+        trajectoryEventsStatus(costs),
+        trajectoryEventsStatus(seq.filter(row => row && !row.date && row.flexibility !== 'optional')),
+        trajectoryEventsStatus((sim.events || []).filter(e => e && e.kind === 'income')),
+        liveRowTrust || 'calculated'),
       paydays: rows, gap: gap || (prePayday.length ? (() => {
         const overdueRequirement = prePayday.reduce((sum, row) => sum + row.baseRequirement, 0);
         return {

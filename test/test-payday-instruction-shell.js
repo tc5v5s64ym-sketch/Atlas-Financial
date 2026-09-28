@@ -188,6 +188,9 @@ const scheduleFixture = (overrides = {}) => Object.assign({
   status: 'ready',
   asOf: '2026-09-25',
   source: 'Forecast.planSpendPaydayFunding',
+  // Trust authority for the funding-status figures (AMANDA SLICE 4 P1
+  // repair): Forecast publishes this; the page only reprints it.
+  fundingTrust: 'calculated',
   paydays: [{
     payday: '2026-09-25',
     contribution: 1200,
@@ -309,7 +312,7 @@ check('B8: funding-gap schedule keeps the valid earmark and names the gap', () =
     gap: { payday: '2026-09-25', shortBy: 200, cashDate: '2026-10-15' },
   });
   assert.match(html, /\$1,200\.00/);
-  assert.match(html, /Funding gap/);
+  assert.match(html, /Funding shortfall ahead/);
   assert.match(html, /\$200\.00/);
 });
 
@@ -572,9 +575,16 @@ check('D4: funding-gap payday keeps the Nest Money identity — instruction stil
   });
   const blockHtml = nestMoneyBlock(html);
   const lines = namedLineAmounts(blockHtml);
+  // The earmark's named purposes still sum to the headline; the Slice 4
+  // gap block adds a separate shortfall figure (not an allocation), so the
+  // identity is proved on the named purposes, not on every dollar figure.
   assert.equal(headlineAmount(blockHtml), 1200);
-  assert.equal(lines.reduce((a, b) => a + b, 0), 1200);
-  assert.match(blockHtml, /Funding gap/);
+  assert.match(blockHtml, /Property tax reserve.*\$700\.00/s);
+  assert.match(blockHtml, /Trip fund.*\$500\.00/s);
+  // AMANDA SLICE 4: the Forecast-published gap is exposed with shortfall
+  // and date, in the brief's specified copy.
+  assert.match(blockHtml, /Funding shortfall ahead/);
+  assert.match(blockHtml, /Short by.*\$200\.00/s);
 });
 
 check('D5: unknown schedule fails the Nest Money instruction closed — unknown is not $0', () => {

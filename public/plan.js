@@ -2653,6 +2653,17 @@ function paydayInstructionShellHtml(advice, period) {
   const rowTrustTag = row && row.trust === 'estimated'
     ? ' <span class="trust-tag trust-estimated">estimate</span>'
     : row && row.trust === 'calculated' ? ' <span class="trust-tag">calculated</span>' : null;
+  // Trust tag for the funding-status figures (AMANDA SLICE 4 P1 repair).
+  // Forecast publishes schedule.fundingTrust as the authority for
+  // protectedAfterPayday, stillToFund, and the funding-gap shortfall/
+  // status path. The live row's Slice 1 stamp must not be reused for
+  // them: a future estimated planned cost can drive those figures while
+  // the live row stays calculated. Unpublished trust fails closed — the
+  // funding-status figures are omitted, never shown untagged.
+  const fundingTrustTag = schedule && schedule.fundingTrust === 'estimated'
+    ? ' <span class="trust-tag trust-estimated">estimate</span>'
+    : schedule && schedule.fundingTrust === 'calculated'
+      ? ' <span class="trust-tag">calculated</span>' : null;
   // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
   // The live payday's Plan-Spend-attributable part (schedule contribution
   // with its named allocations) is the money Forecast specifically
@@ -2678,20 +2689,84 @@ function paydayInstructionShellHtml(advice, period) {
     const contribution = known(row.contribution);
     if (contribution == null || rowTrustTag == null) {
       plannedBody = unavailableNote('Nest Money funding plan');
-    } else if (!(contribution > 0)) {
-      plannedBody = `<p class="instruction-amount">${money2(0)}${rowTrustTag}</p>
-        <p class="operating-note">No Nest Money earmark this payday.</p>`;
     } else {
-      const lines = (row.allocations || [])
-        .filter(item => item && Number(item.amount) > 0)
-        .map(item => `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${rowTrustTag}</span></div>`)
-        .join('');
-      const gapShort = schedule.gap ? known(schedule.gap.shortBy) : null;
-      const gapNote = schedule.status === 'funding-gap' && schedule.gap && schedule.gap.payday === row.payday
-        ? `<p class="operating-note">Funding gap${gapShort == null ? '' : `: short ${money2(gapShort)}`} for ${schedule.gap.cashDate || 'an upcoming planned cost'}.</p>` : '';
-      plannedBody = `<p class="instruction-amount">${money2(contribution)}${rowTrustTag}</p>
-        ${lines ? `<div class="operating-lines">${lines}</div>` : ''}
-        <p class="operating-note">This payday's share of the funding plan for these named planned costs. Atlas can't see money you've already moved to your Nest Money bucket, so this is a planning amount only — not an instruction to transfer or move money into a separate bucket. No transfer has happened, and the payment itself stays on its cash date.</p>${gapNote}`;
+      // AMANDA SLICE 4 — PLANNED-SPENDING FUNDING STATUS.
+      // The funding-status figures are Forecast reprints from the live
+      // payday row and the schedule: the projected protected amount after
+      // following this payday's plan, the amount still to fund, and the
+      // overall funding status. The page selects and reprints; Forecast
+      // computes. Each figure carries schedule.fundingTrust — the live
+      // row's Slice 1 stamp is not reused (P1 repair). A projection is
+      // not proof of money moved or saved — the copy says so explicitly,
+      // and the Slice 2 blindness qualifier is preserved. The subsection
+      // renders only when Forecast published both figures and their
+      // trust; otherwise it is omitted (never invented, never $0).
+      const protectedAfter = known(row.protectedAfterPayday);
+      const stillToFund = known(row.stillToFund);
+      let fundingStatusHtml = '';
+      if (protectedAfter != null && stillToFund != null && fundingTrustTag != null) {
+        const statusLabel = schedule.status === 'ready' ? 'On track' : null;
+        fundingStatusHtml = `<p class="operating-note">If this plan is followed — a projection, not money already moved or saved.</p>
+          <div class="operating-lines">
+            <div class="operating-line"><span>Projected protected</span><span>${money2(protectedAfter)}${fundingTrustTag}</span></div>
+            <div class="operating-line"><span>Still to fund</span><span>${money2(stillToFund)}${fundingTrustTag}</span></div>
+            ${statusLabel ? `<div class="operating-line"><span>Status</span><span>${statusLabel}${fundingTrustTag}</span></div>` : ''}
+          </div>`;
+      }
+      // A Forecast-published funding gap is exposed with its shortfall,
+      // date, and affected named costs — whenever Forecast publishes it,
+      // including a shortfall in a future payday. The shortfall figure
+      // carries schedule.fundingTrust, not the live row's stamp. The
+      // affected labels are a Forecast id-to-label lookup from
+      // schedule.costs, not page-side assembly. Nothing is invented:
+      // unknown parts are omitted, and an unknown shortfall is labelled
+      // unavailable, never $0. Without published funding trust the block
+      // is omitted rather than shown untagged.
+      let gapHtml = '';
+      const fundingGap = schedule.gap;
+      if (schedule.status === 'funding-gap' && fundingGap && fundingTrustTag != null) {
+        const shortBy = known(fundingGap.shortBy);
+        const labelById = new Map((schedule.costs || [])
+          .filter(cost => cost && cost.id != null)
+          .map(cost => [cost.id, cost.label]));
+        const affectedLabels = (Array.isArray(fundingGap.affected) ? fundingGap.affected : [])
+          .map(id => labelById.get(id))
+          .filter(label => typeof label === 'string' && label.length > 0);
+        const fmtGapDate = iso => {
+          if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
+          try { return fmtDateLong(iso); } catch (e) { return null; }
+        };
+        const cashDateLabel = fmtGapDate(fundingGap.cashDate);
+        const gapPaydayLabel = fmtGapDate(fundingGap.payday);
+        const whenValue = cashDateLabel
+          ? `${cashDateLabel}${fundingGap.payday == null ? ' — already due' : ''}`
+          : (gapPaydayLabel ? `payday of ${gapPaydayLabel}` : null);
+        gapHtml = `<p class="operating-lead">Funding shortfall ahead</p>
+          <div class="operating-lines">
+            ${shortBy == null
+              ? `<div class="operating-line"><span>Short by</span><span>unavailable — this figure was not published.</span></div>`
+              : `<div class="operating-line"><span>Short by</span><span>${money2(shortBy)}${fundingTrustTag}</span></div>`}
+            ${whenValue ? `<div class="operating-line"><span>When</span><span>${whenValue}</span></div>` : ''}
+            ${affectedLabels.length ? `<div class="operating-line"><span>Affected</span><span>${affectedLabels.join(', ')}</span></div>` : ''}
+          </div>`;
+      }
+      if (!(contribution > 0)) {
+        // A $0 contribution does not mean fully funded: Forecast may still
+        // carry remaining funding, so the funding status renders alongside
+        // the $0 earmark instead of replacing it.
+        plannedBody = `<p class="instruction-amount">${money2(0)}${rowTrustTag}</p>
+          <p class="operating-note">No Nest Money earmark this payday.</p>
+          ${fundingStatusHtml}${gapHtml}`;
+      } else {
+        const lines = (row.allocations || [])
+          .filter(item => item && Number(item.amount) > 0)
+          .map(item => `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${rowTrustTag}</span></div>`)
+          .join('');
+        plannedBody = `<p class="instruction-amount">${money2(contribution)}${rowTrustTag}</p>
+          ${lines ? `<div class="operating-lines">${lines}</div>` : ''}
+          <p class="operating-note">This payday's share of the funding plan for these named planned costs. Atlas can't see money you've already moved to your Nest Money bucket, so this is a planning amount only — not an instruction to transfer or move money into a separate bucket. No transfer has happened, and the payment itself stays on its cash date.</p>
+          ${fundingStatusHtml}${gapHtml}`;
+      }
     }
   }
   const plannedBlock = block('Nest Money funding plan', plannedBody);
