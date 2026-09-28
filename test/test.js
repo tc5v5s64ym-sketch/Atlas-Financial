@@ -174,6 +174,7 @@ const suites = [
   ['Budget estimated payroll trust label', 'test-budget-estimated-payroll-label.js'],
   ['Budget Plan Spend earmark on pay periods', 'test-budget-plan-spend-earmark.js'],
   ['Plan Spend mixed-source current-payday reconciliation', 'test-plan-spend-mixed-reconciliation.js'],
+  ['Payday instruction shell (AMANDA slice 1)', 'test-payday-instruction-shell.js'],
   ['Plan payday carryover trend', 'test-payday-carryover-trend.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],

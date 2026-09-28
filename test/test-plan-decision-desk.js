@@ -101,6 +101,7 @@ function loadComposer() {
     grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
+    grab(planSrc, /^function paydayInstructionShellHtml\([\s\S]*?\n\}$/m, 'paydayInstructionShellHtml'),
   ].join('\n');
   return vm.runInNewContext(
     `${source}\n({ operatingSurfaceHtml, futureGravityHtml, weeklyCapView, money, money2, fmtDateLong });`,

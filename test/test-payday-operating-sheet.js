@@ -102,6 +102,7 @@ function loadComposer() {
     grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
+    grab(planSrc, /^function paydayInstructionShellHtml\([\s\S]*?\n\}$/m, 'paydayInstructionShellHtml'),
   ].join('\n');
   return vm.runInNewContext(
     `${source}\n({ operatingSurfaceHtml, mustLeaveHtml, alreadyPaidHtml, paydayAllocationSummaryHtml, futureGravityHtml, weeklyCapView, money, money2 });`,
@@ -335,9 +336,12 @@ console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');
   const plusHtml = composer.operatingSurfaceHtml({
     advice: plusAdvice, weekly: plusAdvice.weekly, recommended: plusAdvice.weekly,
   });
-  ok(!/Synthetic high card/.test(plusHtml)
-      && !/Put \$40\.00 extra|Extra this payday \$40\.00|Extra \$40\.00/.test(plusHtml),
-    'a positive extraDebt allocation stays a Forecast decision and is not printed on the default Plan');
+  ok(/Extra on focus debt/.test(plusHtml)
+      && /Optional extra on Synthetic high card/.test(plusHtml)
+      && plusHtml.includes(composer.money2(40)),
+    'a positive extraDebt allocation prints its Forecast-owned amount and target label on the default Plan shell');
+  ok(!/\[object Object\]/.test(plusHtml),
+    'the printed extra-debt target is the Forecast-published label, never a raw object');
   const activePeriod = ((plusAdvice.defaultView && plusAdvice.defaultView.calendarPeriods) || [])
     .find(p => p && p.role === 'active');
   ok(activePeriod && activePeriod.extraDebt && near(activePeriod.extraDebt.allocated, 40)

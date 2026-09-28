@@ -2360,6 +2360,168 @@ function budgetPlanSpendEarmarkHtml(advice, period) {
     <p class="operating-note">Forecast earmark for named planned costs on this payday — not extra money. The payment itself stays on its cash date.</p>
   </div>`;
 }
+function paydayInstructionShellHtml(advice, period) {
+  // AMANDA SLICE 1 — PAYDAY INSTRUCTION SHELL.
+  // One concise household-readable shell answering "where does this money
+  // need to go?" Every figure is reprinted from Forecast-owned output; the
+  // page does no financial arithmetic. In particular the shell never
+  // subtracts a Plan-Spend-attributable portion from the protectedPath
+  // hold: Forecast publishes the non-overlapping decomposition itself
+  // (schedule contribution + nonPlanSpendProtected) and the page reprints
+  // both. Unknown is not $0 — anything Forecast did not publish renders
+  // as unavailable. Nothing here is a transfer or a payment made.
+  //
+  // Trust tags (AMANDA SLICE 1 repair): every figure the shell reprints
+  // carries its Forecast-published trust state ('calculated' | 'estimated'),
+  // rendered with the figure so estimated state is never flattened into
+  // indistinguishable bare currency. The page renders only that published
+  // state — never a page-side inference — and fails closed when Forecast
+  // did not publish it.
+  const alloc = advice && advice.paydayAllocation;
+  if (!alloc || !alloc.lines) return '';
+  const shellTrust = (advice && advice.paydayShellTrust) || {};
+  const trustTag = key => {
+    const trust = shellTrust[key];
+    if (trust === 'estimated') return ' <span class="trust-tag trust-estimated">estimate</span>';
+    if (trust === 'calculated') return ' <span class="trust-tag">calculated</span>';
+    return null;
+  };
+  const known = value => value != null && isFinite(Number(value)) ? Number(value) : null;
+  const unavailableNote = label =>
+    `<p class="operating-note">${label}: unavailable — this figure was not published.</p>`;
+  const block = (title, bodyHtml) =>
+    `<div class="instruction-block"><h3>${title}</h3>${bodyHtml}</div>`;
+
+  const available = known(alloc.available);
+  const availableTag = trustTag('available');
+  const availableBlock = block('Money available',
+    available == null || availableTag == null ? unavailableNote('Money available')
+      : `<p class="instruction-amount">${money2(available)}${availableTag}</p>`);
+
+  const obligations = alloc.obligations || {};
+  const billsValue = known(obligations.allocated);
+  const billsShortfall = known(obligations.shortfall);
+  const billsTag = trustTag('obligations');
+  const billsBlock = block('Bills & required minimums',
+    (billsValue == null || billsTag == null ? unavailableNote('Bills & required minimums')
+      : `<p class="instruction-amount">${money2(billsValue)}${billsTag}</p>`)
+    + `<p class="operating-note">Required debt minimums are inside this figure — they are not separate.</p>`
+    + (billsShortfall != null && billsShortfall > 0
+      ? `<p class="operating-note">Shortfall of ${money2(billsShortfall)} — bills are not fully covered.</p>` : ''));
+
+  const essentials = alloc.essentials || {};
+  const householdValue = known(essentials.allocated);
+  const householdTag = trustTag('household');
+  const householdBlock = block('Current household spending',
+    (householdValue == null || householdTag == null ? unavailableNote('Current household spending')
+      : `<p class="instruction-amount">${money2(householdValue)}${householdTag}</p>`)
+    + `<p class="operating-note">This payday's household spending hold.</p>`);
+
+  const schedule = advice && advice.planSpendPaydayFunding;
+  const start = period && period.start;
+  const row = schedule && schedule.status !== 'unavailable' && Array.isArray(schedule.paydays) && start
+    ? schedule.paydays.find(candidate => candidate && candidate.payday === start) : null;
+  // Trust tag for the live row's figures (contribution, named lines,
+  // other protected cash). Forecast publishes it on the row; the page
+  // renders only that published state and fails closed when it is absent.
+  const rowTrustTag = row && row.trust === 'estimated'
+    ? ' <span class="trust-tag trust-estimated">estimate</span>'
+    : row && row.trust === 'calculated' ? ' <span class="trust-tag">calculated</span>' : null;
+  let plannedBody;
+  if (!schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.paydays) || !row) {
+    // No schedule, an unavailable schedule, or no row for this payday:
+    // unknown is not $0, so the block fails closed.
+    plannedBody = unavailableNote('Set aside for planned spending');
+  } else {
+    const contribution = known(row.contribution);
+    if (contribution == null || rowTrustTag == null) {
+      plannedBody = unavailableNote('Set aside for planned spending');
+    } else if (!(contribution > 0)) {
+      plannedBody = `<p class="instruction-amount">${money2(0)}${rowTrustTag}</p>
+        <p class="operating-note">No planned-spending earmark this payday.</p>`;
+    } else {
+      const lines = (row.allocations || [])
+        .filter(item => item && Number(item.amount) > 0)
+        .map(item => `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${rowTrustTag}</span></div>`)
+        .join('');
+      const gapShort = schedule.gap ? known(schedule.gap.shortBy) : null;
+      const gapNote = schedule.status === 'funding-gap' && schedule.gap && schedule.gap.payday === row.payday
+        ? `<p class="operating-note">Funding gap${gapShort == null ? '' : `: short ${money2(gapShort)}`} for ${schedule.gap.cashDate || 'an upcoming planned cost'}.</p>` : '';
+      plannedBody = `<p class="instruction-amount">${money2(contribution)}${rowTrustTag}</p>
+        ${lines ? `<div class="operating-lines">${lines}</div>` : ''}
+        <p class="operating-note">Set aside for named planned costs — not extra money. The payment itself stays on its cash date.</p>${gapNote}`;
+    }
+  }
+  const plannedBlock = block('Set aside for planned spending', plannedBody);
+
+  const bufferValue = known(advice.buffer);
+  const bufferTag = trustTag('buffer');
+  const otherProtected = row ? known(row.nonPlanSpendProtected) : null;
+  const protectedBlock = block('Protected cash',
+    (bufferValue == null || bufferTag == null ? unavailableNote('Minimum cash floor')
+      : `<p class="instruction-amount">Keep at least ${money2(bufferValue)}${bufferTag}</p>
+        <p class="operating-note">A cash floor, not a transfer and not extra spending money.</p>`)
+    + (otherProtected == null || rowTrustTag == null ? unavailableNote('Other protected cash — keep in chequing')
+      : `<p class="instruction-amount">${money2(otherProtected)}${rowTrustTag}</p>
+        <p class="operating-note">Other protected cash — keep in chequing. Protection beyond planned spending, not a savings transfer.</p>`));
+
+  const extra = alloc.extraDebt || {};
+  const extraValue = known(extra.allocated);
+  const extraTag = trustTag('extraDebt');
+  let extraBody;
+  if (extraValue == null || extraTag == null) {
+    extraBody = unavailableNote('Extra on focus debt');
+  } else if (!(extraValue > 0)) {
+    extraBody = `<p class="instruction-amount">${money2(0)}${extraTag}</p>
+      <p class="operating-note">No extra principal this payday. Required minimums are already in bills above.</p>`;
+  } else {
+    // Incumbent convention (plan.js renderers): the target is the
+    // debtPriority object; the household name is target.label. Never
+    // interpolate the raw object. Tolerate a plain string defensively.
+    const rawTarget = extra.target;
+    const targetLabel = rawTarget == null ? null
+      : (typeof rawTarget === 'string' ? rawTarget : (rawTarget.label || null));
+    const target = targetLabel ? ` on ${targetLabel}` : ' on the focus debt';
+    extraBody = `<p class="instruction-amount">${money2(extraValue)}${extraTag}</p>
+      <p class="operating-note">Optional extra${target} — only after everything above is covered.</p>`;
+  }
+  const extraBlock = block('Extra on focus debt', extraBody);
+
+  // Funded optional plans are Forecast allocations taken from the same
+  // remaining pool as the remainder. The shell must name them: otherwise a
+  // funded optional destination disappears from "where does this money need
+  // to go?" while the remainder still calls itself truly unassigned.
+  // Reprint only — one line per Forecast row, no page-side total.
+  const optionalRows = (Array.isArray(alloc.optional) ? alloc.optional : [])
+    .filter(item => item && Number(item.allocated) > 0);
+  const optionalTag = trustTag('optional');
+  const optionalBlock = optionalRows.length ? block('Optional plans',
+    optionalTag == null ? unavailableNote('Optional plans')
+    : `<div class="operating-lines">${optionalRows
+      .map(item => `<div class="operating-line"><span>${item.label}</span><span>${money2(item.allocated)}${optionalTag}</span></div>`)
+      .join('')}</div>
+      <p class="operating-note">Nice-to-have plans — funded only after everything above is covered.</p>`) : '';
+
+  const remainderValue = known(alloc.remainder);
+  const remainderTag = trustTag('remainder');
+  const unresolved = Array.isArray(alloc.unresolved) ? alloc.unresolved : [];
+  const remainderBlock = block('Truly unassigned',
+    (remainderValue == null || remainderTag == null ? unavailableNote('Truly unassigned')
+      : `<p class="instruction-amount">${money2(remainderValue)}${remainderTag}</p>`)
+    + (unresolved.length
+      ? `<p class="operating-note">${unresolved.length} planned cost${unresolved.length === 1 ? ' is' : 's are'} still unresolved — this is not free money.</p>`
+      : `<p class="operating-note">Genuinely unassigned. Nothing else claims it.</p>`));
+
+  const paydayAttr = alloc.payday || start || '';
+  return `<section class="payday-instruction-shell" data-payday-instruction-shell="${paydayAttr}">
+    <h2>Where this payday's money needs to go</h2>
+    <p class="operating-note">The plan for this payday — set aside and protect. Nothing here is a transfer or a payment made.</p>
+    <p class="operating-note">Every figure carries its trust tag: calculated means the inputs were confirmed; estimate means an input was estimated (for example a projected paycheck).</p>
+    <div class="instruction-blocks">
+      ${availableBlock}${billsBlock}${householdBlock}${plannedBlock}${protectedBlock}${extraBlock}${optionalBlock}${remainderBlock}
+    </div>
+  </section>`;
+}
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
@@ -3280,7 +3442,15 @@ function operatingSurfaceHtml(ctx) {
 
   // In the default view the picker rides inside the pay-period switch row;
   // the week and next-period printouts carry it at the top, held open.
+  // AMANDA SLICE 1: the payday instruction shell opens the default Budget
+  // surface, ahead of the waterfall. It always describes the current payday
+  // (never a selected lookback/future period) and reprints Forecast-owned
+  // figures only.
+  const payPeriodViews = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
+  const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
+  const instructionShell = look === 'this-period' ? paydayInstructionShellHtml(advice, currentPeriod) : '';
   return `<div class="payday-operating-sheet" data-payday-sheet>
+    ${instructionShell}
     ${defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
   </div>`;
 }
