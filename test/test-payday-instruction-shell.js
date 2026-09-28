@@ -188,6 +188,9 @@ const scheduleFixture = (overrides = {}) => Object.assign({
   status: 'ready',
   asOf: '2026-09-25',
   source: 'Forecast.planSpendPaydayFunding',
+  // Trust authority for the funding-status figures (AMANDA SLICE 4 P1
+  // repair): Forecast publishes this; the page only reprints it.
+  fundingTrust: 'calculated',
   paydays: [{
     payday: '2026-09-25',
     contribution: 1200,

@@ -65,9 +65,43 @@ check('A1: the live engine publishes the funding-status fields the shell reprint
   assert.ok(Array.isArray(row.allocations), 'allocations published');
 });
 
+// P1 repair: an estimated future planned cost drives the schedule's gap,
+// so the funding-status trust must be estimated even though nothing about
+// the near costs changed. The confirmed-control proves the estimated
+// confidence alone flips the trust.
+function gapSchedule(roofConfidence) {
+  const plan = {
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0 },
+    opening: { asOf: '2026-01-01' },
+    startingCash: { breakdown: [{ id: 'chequing-a', value: 0 }] },
+    income: [{ id: 'payroll', label: 'Seaspan', frequency: 'biweekly',
+      anchor: '2026-01-02', amount: 1000, confidence: 'confirmed' }],
+    obligations: [], bills: [], budget: { categories: [] },
+    commitments: [
+      { id: 'furnace', label: 'Furnace', date: '2026-01-31', amount: 1500, confidence: 'confirmed' },
+      { id: 'roof', label: 'Roof', date: '2026-02-20', amount: 9000, confidence: roofConfidence },
+    ],
+  };
+  const asOf = plan.opening.asOf;
+  const sim = F.simulate(plan, asOf, { horizonDays: 60, viewDays: 60, weeklyVariable: 0 });
+  const seq = F.fundingSequence(plan, asOf);
+  return F.planSpendPaydayFunding(plan, asOf, sim, seq,
+    F.majorPlans(plan, asOf, { weeklyVariable: 0 }));
+}
+
+check('A2: an estimated future planned cost drives the gap — fundingTrust is estimated, not calculated', () => {
+  const s = gapSchedule('estimated');
+  assert.equal(s.status, 'funding-gap', 'schedule is in funding-gap');
+  assert.ok(s.gap && Number(s.gap.shortBy) > 0, 'shortfall published');
+  assert.ok(s.gap.affected.includes('roof'), 'estimated future cost drives the gap');
+  assert.equal(s.fundingTrust, 'estimated', 'funding trust reflects the estimated input');
+  const control = gapSchedule('confirmed');
+  assert.equal(control.status, 'funding-gap', 'control is also in funding-gap');
+  assert.equal(control.fundingTrust, 'calculated', 'confirmed inputs keep calculated trust');
+});
+
 // ---------------------------------------------------------------- Part B ---
 // Page reprint behaviour. Deterministic synthetic fixtures.
-
 const planSource = sourceText(fs.readFileSync(path.join(__dirname, '../public/plan.js'), 'utf8'));
 const context = vm.createContext({
   Forecast: F,
@@ -114,6 +148,9 @@ function scheduleFixture(overrides = {}) {
   return Object.assign({
     status: 'ready',
     source: 'Forecast.planSpendPaydayFunding',
+    // Trust authority for the funding-status figures (AMANDA SLICE 4 P1
+    // repair): Forecast publishes this; the page only reprints it.
+    fundingTrust: 'calculated',
     paydays: [paydayRow()],
     gap: null,
     costs: [
@@ -241,6 +278,43 @@ check('S10: Slice 1/2/3 shell behavior is intact', () => {
   assert.match(html, /Atlas can't see money you've already moved/); // Slice 2 blindness qualifier
   assert.match(html, /Where this payday's money needs to go/);
   assert.equal(typeof P.budgetMonthViewHtml, 'function'); // Slice 3 Month view still present
+});
+
+check('S11: P1 — the shell cannot label an estimate-driven shortfall calculated', () => {
+  // The P1 trap: the live row's Slice 1 stamp is calculated, but the
+  // funding-status authority is estimated (an estimated future planned
+  // cost drives the gap). The shortfall must carry the estimate tag and
+  // never borrow the live row's calculated tag.
+  const html = shell({}, {
+    status: 'funding-gap',
+    fundingTrust: 'estimated',
+    paydays: [paydayRow({ trust: 'calculated' })],
+    gap: { payday: '2026-10-09', cashDate: '2026-10-20', required: 9000,
+      available: 2500, shortBy: 6500, affected: ['proptax'] },
+  });
+  // The earmark still carries the live row's own calculated tag…
+  assert.match(html, /Nest Money funding plan[\s\S]*\$1,200\.00 <span class="trust-tag">calculated<\/span>/);
+  // …but the funding-status figures carry the estimate tag instead.
+  assert.match(html, /Short by.*\$6,500\.00 <span class="trust-tag trust-estimated">estimate<\/span>/s);
+  assert.match(html, /Still to fund.*<span class="trust-tag trust-estimated">estimate<\/span>/s);
+  assert.match(html, /Projected protected.*<span class="trust-tag trust-estimated">estimate<\/span>/s);
+  // No calculated tag may appear on any funding-status figure. Scope to the
+  // funding-status subsection + gap block (later blocks legitimately carry
+  // their own calculated tags).
+  const fundingStart = html.indexOf('If this plan is followed');
+  assert.ok(fundingStart !== -1, 'funding-status subsection rendered');
+  const fundingSection = html.slice(fundingStart, html.indexOf('<h3>Protected cash</h3>'));
+  assert.doesNotMatch(fundingSection, /trust-tag">calculated</);
+});
+
+check('S12: unpublished funding trust fails the funding-status figures closed — never untagged', () => {
+  const html = shell({}, { fundingTrust: null });
+  // The earmark (whose trust is the live row's own stamp) still renders…
+  assert.match(html, /\$1,200\.00/);
+  // …but the funding-status figures and the gap block are omitted.
+  assert.doesNotMatch(html, /Projected protected/);
+  assert.doesNotMatch(html, /Still to fund/);
+  assert.doesNotMatch(html, /Funding shortfall ahead/);
 });
 
 console.log(`\n${checks} checks passed.`);

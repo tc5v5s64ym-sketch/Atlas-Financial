@@ -2653,6 +2653,17 @@ function paydayInstructionShellHtml(advice, period) {
   const rowTrustTag = row && row.trust === 'estimated'
     ? ' <span class="trust-tag trust-estimated">estimate</span>'
     : row && row.trust === 'calculated' ? ' <span class="trust-tag">calculated</span>' : null;
+  // Trust tag for the funding-status figures (AMANDA SLICE 4 P1 repair).
+  // Forecast publishes schedule.fundingTrust as the authority for
+  // protectedAfterPayday, stillToFund, and the funding-gap shortfall/
+  // status path. The live row's Slice 1 stamp must not be reused for
+  // them: a future estimated planned cost can drive those figures while
+  // the live row stays calculated. Unpublished trust fails closed — the
+  // funding-status figures are omitted, never shown untagged.
+  const fundingTrustTag = schedule && schedule.fundingTrust === 'estimated'
+    ? ' <span class="trust-tag trust-estimated">estimate</span>'
+    : schedule && schedule.fundingTrust === 'calculated'
+      ? ' <span class="trust-tag">calculated</span>' : null;
   // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
   // The live payday's Plan-Spend-attributable part (schedule contribution
   // with its named allocations) is the money Forecast specifically
@@ -2684,31 +2695,36 @@ function paydayInstructionShellHtml(advice, period) {
       // payday row and the schedule: the projected protected amount after
       // following this payday's plan, the amount still to fund, and the
       // overall funding status. The page selects and reprints; Forecast
-      // computes. A projection is not proof of money moved or saved —
-      // the copy says so explicitly, and the Slice 2 blindness qualifier
-      // is preserved. The subsection renders only when Forecast published
-      // both figures; otherwise it is omitted (never invented, never $0).
+      // computes. Each figure carries schedule.fundingTrust — the live
+      // row's Slice 1 stamp is not reused (P1 repair). A projection is
+      // not proof of money moved or saved — the copy says so explicitly,
+      // and the Slice 2 blindness qualifier is preserved. The subsection
+      // renders only when Forecast published both figures and their
+      // trust; otherwise it is omitted (never invented, never $0).
       const protectedAfter = known(row.protectedAfterPayday);
       const stillToFund = known(row.stillToFund);
       let fundingStatusHtml = '';
-      if (protectedAfter != null && stillToFund != null) {
+      if (protectedAfter != null && stillToFund != null && fundingTrustTag != null) {
         const statusLabel = schedule.status === 'ready' ? 'On track' : null;
         fundingStatusHtml = `<p class="operating-note">If this plan is followed — a projection, not money already moved or saved.</p>
           <div class="operating-lines">
-            <div class="operating-line"><span>Projected protected</span><span>${money2(protectedAfter)}${rowTrustTag}</span></div>
-            <div class="operating-line"><span>Still to fund</span><span>${money2(stillToFund)}${rowTrustTag}</span></div>
-            ${statusLabel ? `<div class="operating-line"><span>Status</span><span>${statusLabel}</span></div>` : ''}
+            <div class="operating-line"><span>Projected protected</span><span>${money2(protectedAfter)}${fundingTrustTag}</span></div>
+            <div class="operating-line"><span>Still to fund</span><span>${money2(stillToFund)}${fundingTrustTag}</span></div>
+            ${statusLabel ? `<div class="operating-line"><span>Status</span><span>${statusLabel}${fundingTrustTag}</span></div>` : ''}
           </div>`;
       }
       // A Forecast-published funding gap is exposed with its shortfall,
       // date, and affected named costs — whenever Forecast publishes it,
-      // including a shortfall in a future payday. The affected labels are
-      // a Forecast id-to-label lookup from schedule.costs, not page-side
-      // assembly. Nothing is invented: unknown parts are omitted, and an
-      // unknown shortfall is labelled unavailable, never $0.
+      // including a shortfall in a future payday. The shortfall figure
+      // carries schedule.fundingTrust, not the live row's stamp. The
+      // affected labels are a Forecast id-to-label lookup from
+      // schedule.costs, not page-side assembly. Nothing is invented:
+      // unknown parts are omitted, and an unknown shortfall is labelled
+      // unavailable, never $0. Without published funding trust the block
+      // is omitted rather than shown untagged.
       let gapHtml = '';
       const fundingGap = schedule.gap;
-      if (schedule.status === 'funding-gap' && fundingGap) {
+      if (schedule.status === 'funding-gap' && fundingGap && fundingTrustTag != null) {
         const shortBy = known(fundingGap.shortBy);
         const labelById = new Map((schedule.costs || [])
           .filter(cost => cost && cost.id != null)
@@ -2729,7 +2745,7 @@ function paydayInstructionShellHtml(advice, period) {
           <div class="operating-lines">
             ${shortBy == null
               ? `<div class="operating-line"><span>Short by</span><span>unavailable — this figure was not published.</span></div>`
-              : `<div class="operating-line"><span>Short by</span><span>${money2(shortBy)}${rowTrustTag}</span></div>`}
+              : `<div class="operating-line"><span>Short by</span><span>${money2(shortBy)}${fundingTrustTag}</span></div>`}
             ${whenValue ? `<div class="operating-line"><span>When</span><span>${whenValue}</span></div>` : ''}
             ${affectedLabels.length ? `<div class="operating-line"><span>Affected</span><span>${affectedLabels.join(', ')}</span></div>` : ''}
           </div>`;
