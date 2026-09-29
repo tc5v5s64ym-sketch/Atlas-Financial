@@ -180,6 +180,7 @@ const suites = [
   ['Upcoming funding pressure (AMANDA slice 5)', 'test-upcoming-funding-pressure.js'],
   ['Focus debt continuity (AMANDA slice 6)', 'test-focus-debt-continuity.js'],
   ['Monthly funding pressure detail (AMANDA slice 8)', 'test-budget-month-funding-pressure.js'],
+  ['Same-month pay-period drilldown (AMANDA slice 9)', 'test-budget-month-pay-period-drilldown.js'],
   ['Plan payday carryover trend', 'test-payday-carryover-trend.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],

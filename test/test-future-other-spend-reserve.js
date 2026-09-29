@@ -81,6 +81,8 @@ function loadComposer() {
     'budgetPlanSpendEarmarkHtml',
     'payPeriodTimelineHtml',
     'operatingSurfaceHtml',
+    // AMANDA SLICE 9 — the drilldown predicate called by operatingSurfaceHtml.
+    'budgetInPayPeriodDrilldown',
     'paydayInstructionShellHtml',
     // AMANDA SLICE 3 — the Month view functions called by operatingSurfaceHtml.
     'budgetMonthName',
@@ -97,7 +99,7 @@ function loadComposer() {
     grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
     grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
     grab(planSrc, /^const BUDGET_MONTH_NAMES = [\s\S]*?\];/m, 'BUDGET_MONTH_NAMES'),
-    'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null;',
+    'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null; let budgetPayPeriodAnchorMonth = null; let budgetDrilldownPayPeriod = null;',
   ].concat(names.map(name => grab(
     planSrc,
     new RegExp('^function ' + name + '\\([\\s\\S]*?\\n\\}$', 'm'),
