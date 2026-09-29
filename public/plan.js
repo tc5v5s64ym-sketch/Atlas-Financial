@@ -2942,7 +2942,7 @@ function budgetDrilldownPeriodLabel(period) {
   return period.rangeLabel || null;
 }
 
-function budgetDrilldownPeriodHtml(period) {
+function budgetDrilldownPeriodHtml(period, src) {
   const key = (period && (period.payday || period.id)) || 'unknown';
   const label = budgetDrilldownPeriodLabel(period);
   if (!label) {
@@ -2969,6 +2969,7 @@ function budgetDrilldownPeriodHtml(period) {
     + `<p class="operating-note">${kindNote} This page does not calculate these figures.</p>`
     + `<div class="budget-month-rows">${stages.join('')}</div>`
     + budgetPayPeriodMoneyMapHtml(period)
+    + budgetPayPeriodFundingPlanHtml(period, src)
     + `</div>`;
 }
 
@@ -3077,6 +3078,119 @@ function budgetPayPeriodMoneyMapHtml(period) {
     + `</div>`;
 }
 
+/* AMANDA SLICE 11 — SELECTED PAY-PERIOD FUNDING PLAN.
+ *
+ * Slice 9 selects one Forecast-published pay-period row; Slice 10 maps what
+ * happens inside it. Slice 11 answers a different question: what does
+ * Forecast plan to earmark FROM this payday toward future planned costs?
+ *
+ * Authority boundary: the page selects the exact row Slice 9 selected and
+ * consumes Forecast.planSpendPaydayFunding through the incumbent Slice 8
+ * helper (budgetMonthPlanSpendSchedule), which regenerates the schedule
+ * from the SAME active inputs as the selected Month, the Slice 9 pay
+ * period, and the Slice 10 money map. The incumbent Forecast chain is
+ * never duplicated and no page-side funding arithmetic exists: the
+ * contribution is reprinted exactly (never summed from allocations),
+ * allocations reprint in Forecast publication order, and every funding
+ * figure carries the schedule-level fundingTrust — the row-level trust tag
+ * is null for future paydays by Forecast's own contract (only the live
+ * payday carries one for the payday instruction shell), and this page
+ * never borrows trajectory, cost, Slice 10, or advice-shell trust.
+ *
+ * Matching is by exact payday only: a funding row renders only when
+ * schedule.paydays[] publishes a row whose payday exactly equals the
+ * selected pay-period row's payday. There is no nearest-payday fallback,
+ * no substitution, no reconstruction. A residual window whose underlying
+ * cycle payday predates the current Forecast opening (e.g. Sep 28–Oct 8
+ * with cycle payday Sep 25 when the schedule starts Oct 9) fails closed
+ * with truthful copy — never $0, never another payday's plan.
+ *
+ * Wording is planning/earmark only ("Funding plan", "Earmarked in
+ * Forecast", "this payday's share of the funding plan"). Never transfer,
+ * set-aside, balance, or reserve language: Atlas still has no
+ * authoritative prior Nest Money transfer/balance state (Slice 2
+ * boundary).
+ */
+
+// Exact-payday funding-row lookup. Returns the Forecast-published
+// paydays[] row whose payday exactly equals the selected pay-period
+// row's payday, or null when Forecast published no such row. Never
+// substitutes, interpolates, or falls back to a neighbouring payday.
+function budgetPayPeriodFundingRow(schedule, period) {
+  const payday = period && (period.payday || period.id);
+  if (!payday || !schedule || !Array.isArray(schedule.paydays)) return null;
+  return schedule.paydays.find(row => row && row.payday === payday) || null;
+}
+
+// One named allocation: reprints label and amount in Forecast publication
+// order, each figure carrying the schedule-level fundingTrust tag. A
+// present-but-malformed allocation fails closed visibly — an incomplete
+// breakdown must never look complete, and never $0. The contribution is
+// independent of the lines and is still reprinted exactly.
+function budgetPayPeriodFundingLineHtml(allocation, trustTag) {
+  const label = allocation && typeof allocation.label === 'string' && allocation.label
+    ? allocation.label : null;
+  const amount = allocation ? allocation.amount : undefined;
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || !label) {
+    return `<div class="budget-month-row unavailable" data-budget-funding-allocation="unavailable">`
+      + `<span class="budget-month-label">${label || 'Planned-cost allocation'}</span>`
+      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish this allocation. Not $0.</span></div>`;
+  }
+  return `<div class="budget-month-row budget-funding-allocation" data-budget-funding-allocation="named">`
+    + `<span class="budget-month-label">${label}</span>`
+    + `<span class="budget-month-amount">${money2(amount)}${trustTag || ''}</span></div>`;
+}
+
+// The funding plan for the exact selected pay-period row. `src` feeds the
+// incumbent Slice 8 same-input schedule; `period` is the exact row Slice 9
+// selected. Fails closed whenever the schedule is unavailable, the
+// schedule's status is not a published one, no exact-payday funding row
+// exists, or the contribution/trust is not validly published. A published
+// $0 contribution is a known zero — it renders as $0 with its trust tag,
+// never as unavailable.
+function budgetPayPeriodFundingPlanHtml(period, src) {
+  const payday = period && (period.payday || period.id);
+  const failClosed = `<div class="budget-drilldown-funding-plan" data-budget-drilldown-funding-plan="unavailable">`
+    + `<p class="operating-lead">Future-cost funding</p>`
+    + `<p class="operating-note">Funding plan for this payday is unavailable from the current Forecast opening. This is not $0.</p></div>`;
+  if (!period || !payday) return failClosed;
+  let schedule = null;
+  try {
+    schedule = budgetMonthPlanSpendSchedule(src);
+  } catch (e) {
+    schedule = null;
+  }
+  // Only a genuinely published schedule may render: 'ready' or
+  // 'funding-gap' with an explicitly published fundingTrust. Anything
+  // else — missing, unavailable, or untrusted — fails closed.
+  const trustTag = schedule ? budgetMonthTrustTag(schedule.fundingTrust) : null;
+  if (!schedule || (schedule.status !== 'ready' && schedule.status !== 'funding-gap') || !trustTag) return failClosed;
+  const row = budgetPayPeriodFundingRow(schedule, period);
+  const contribution = row ? row.contribution : undefined;
+  // Strict validation, no coercion: the contribution must be a real finite
+  // number. false/""/null/strings are malformed data, never $0.
+  if (!row || typeof contribution !== 'number' || !Number.isFinite(contribution)) return failClosed;
+  // The allocations collection is part of the published contract:
+  // Forecast always publishes it as an array on each payday row. A
+  // missing or non-array collection is bad publication state — showing
+  // the trusted contribution with no named purposes and no warning would
+  // make an incomplete answer look complete. Fail closed, visibly. We
+  // never sum or reconcile the collection against the contribution.
+  if (!Array.isArray(row.allocations)) return failClosed;
+  const paydayLabel = fmtDateLong(payday);
+  const allocations = row.allocations;
+  return `<div class="budget-drilldown-funding-plan" data-budget-drilldown-funding-plan="${payday}">`
+    + `<p class="operating-lead">Future-cost funding from the ${paydayLabel} payday</p>`
+    + `<p class="operating-note">This payday's share of the funding plan, earmarked in Forecast toward future planned costs. `
+    + `This is a planning figure only — it does not move money, and it is not an account balance.</p>`
+    + `<div class="budget-month-rows">`
+    + `<div class="budget-month-row budget-funding-contribution" data-budget-funding-contribution="published">`
+    + `<span class="budget-month-label">Earmarked in Forecast</span>`
+    + `<span class="budget-month-amount">${money2(contribution)}${trustTag}</span></div>`
+    + allocations.map(a => budgetPayPeriodFundingLineHtml(a, trustTag)).join('')
+    + `</div></div>`;
+}
+
 function budgetPayPeriodDrilldownHtml(src) {
   const anchor = budgetPayPeriodAnchorMonth;
   const monthLabel = (anchor && budgetMonthName(anchor)) || anchor || 'the selected month';
@@ -3113,7 +3227,7 @@ function budgetPayPeriodDrilldownHtml(src) {
         return `<option value="${id}"${id === selectedId ? ' selected' : ''}>${label}</option>`;
       }).join('')
     + `</select></label>`;
-  return open + scopeNote + picker + budgetDrilldownPeriodHtml(selected) + `</div>`;
+  return open + scopeNote + picker + budgetDrilldownPeriodHtml(selected, src) + `</div>`;
 }
 
 function paydayInstructionShellHtml(advice, period) {
