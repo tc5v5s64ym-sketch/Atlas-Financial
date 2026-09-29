@@ -3024,6 +3024,91 @@ function budgetDrilldownComponentHtml(label, component) {
   return total + lines.map(budgetDrilldownLineHtml).join('');
 }
 
+/* AMANDA SLICE 13 — SELECTED PAY-PERIOD DEBT TARGET ATTRIBUTION.
+ *
+ * The money map answers "where does this pay period's extra debt payment
+ * go?" for the exact selected Forecast pay-period row. Forecast owns the
+ * answer: the coupled debt walk records the ordered per-debt split from
+ * the same payDown cascade that moves the balances, and publishes it on
+ * stage3.extras.allocations with a nextTarget continuity conclusion.
+ * This renderer is a pure reprint layer:
+ *
+ * - The published extras amount stays authoritative. The page never sums
+ *   allocation lines into the total — a deliberately non-reconciling
+ *   publication still shows the published total unchanged.
+ * - Allocation lines reprint in Forecast publication order. The page never
+ *   ranks, filters, or reorders them, never resolves a debt id itself
+ *   (the label is Forecast's own), and never borrows a target from the
+ *   current-payday Slice 6 publication or any other period.
+ * - Known $0 is "No extra debt payment planned in this pay period" and
+ *   never invents a debt target. Unknown/unavailable is never $0.
+ * - A missing, non-array, empty, or partially invalid allocations
+ *   publication fails the attribution closed as a whole: one explicit
+ *   unavailable line, never a partial target list that looks complete.
+ */
+function budgetExtraDebtAllocationsValid(allocations) {
+  if (!Array.isArray(allocations) || !allocations.length) return false;
+  const seen = {};
+  for (const line of allocations) {
+    if (!line || typeof line.debtId !== 'string' || !line.debtId
+        || typeof line.label !== 'string' || !line.label
+        || typeof line.amount !== 'number' || !Number.isFinite(line.amount)
+        || (line.status !== 'calculated' && line.status !== 'estimated')) {
+      return false;
+    }
+    // One entry per debt per payment, by the Forecast publication contract.
+    if (seen[line.debtId]) return false;
+    seen[line.debtId] = true;
+  }
+  return true;
+}
+
+function budgetExtraDebtNextTargetHtml(extras, allocations) {
+  const nt = extras && extras.nextTarget;
+  if (!nt || typeof nt !== 'object'
+      || typeof nt.debtId !== 'string' || !nt.debtId
+      || typeof nt.label !== 'string' || !nt.label
+      || (nt.status !== 'calculated' && nt.status !== 'estimated')) {
+    return '';
+  }
+  const lastLabel = allocations[allocations.length - 1].label;
+  const tag = budgetMonthTrustTag(nt.status) || '';
+  return `<div class="budget-month-row" data-budget-extra-debt-next-target="named">`
+    + `<span class="budget-month-label">After ${lastLabel} clears</span>`
+    + `<span class="budget-month-amount">${nt.label}${tag}</span></div>`;
+}
+
+function budgetDrilldownExtraDebtHtml(extras) {
+  const total = budgetDrilldownComponentHtml('Planned extra debt payment', extras);
+  // The attribution below only applies when the total rendered as a real
+  // published figure. Unavailable stays unavailable; the component row
+  // above already said so.
+  if (!extras || (extras.status !== 'calculated' && extras.status !== 'estimated')) {
+    return total;
+  }
+  const amount = extras.amount;
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return total;
+  if (amount === 0) {
+    // Known zero: no extra debt payment planned — never invent a target.
+    return total
+      + `<p class="operating-note" data-budget-extra-debt-target="none">No extra debt payment planned in this pay period.</p>`;
+  }
+  if (amount < 0) return total;
+  const allocations = extras.allocations;
+  if (!budgetExtraDebtAllocationsValid(allocations)) {
+    return total
+      + `<div class="budget-month-row unavailable" data-budget-extra-debt-target="unavailable">`
+      + `<span class="budget-month-label">Going to</span>`
+      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish which debt this payment goes to. Not $0.</span></div>`;
+  }
+  return total
+    + `<p class="operating-lead">Going to</p>`
+    + `<div class="budget-month-rows">`
+    + allocations.map(budgetDrilldownLineHtml).join('')
+    + budgetExtraDebtNextTargetHtml(extras, allocations)
+    + `</div>`;
+}
+
 // The money map for the exact selected Forecast pay-period row. `period`
 // must be the row object Slice 9 selected — never a re-lookup by cycle
 // dates, so a residual row's figures can never be swapped for the
@@ -3060,11 +3145,12 @@ function budgetPayPeriodMoneyMapHtml(period) {
     + budgetDrilldownStageHtml(s2)
     + `</div>`
   );
-  // Extra debt strategy — the published extras amount only. Forecast
-  // publishes no debt target on this component, so none is named here.
-  // An explicitly unavailable extras figure renders its unavailable
-  // reason; it is never silently omitted.
-  const extrasRows = budgetDrilldownComponentHtml('Planned extra debt payment', s3.extras);
+  // Extra debt strategy — the published extras amount, plus the
+  // Forecast-owned debt attribution (Slice 13): which debt(s) this pay
+  // period's extra payment actually goes to, in Forecast order, with
+  // Forecast's own continuity conclusion when published. The amount stays
+  // authoritative; the page never derives it from the allocations.
+  const extrasRows = budgetDrilldownExtraDebtHtml(s3.extras);
   groups.push(
     `<p class="operating-lead">${s3.label || 'After debt strategy'}</p>`
     + `<div class="budget-month-rows">`

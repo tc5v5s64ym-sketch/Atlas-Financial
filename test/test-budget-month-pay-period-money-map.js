@@ -390,7 +390,15 @@ check('P13: the new page code performs no financial arithmetic', () => {
   const block = src.slice(start, end);
   assert.ok(!block.includes('.reduce('), 'no line-item summation');
   assert.ok(!/amount\s*[-*\/]\s/.test(block), 'no amount subtraction/multiplication/division');
-  assert.ok(!block.includes('debtId'), 'the map never reads a debt id to name a target');
+  // AMANDA SLICE 13 contract change (owner-authorized): the map now reprints
+  // Forecast-published allocation lines, so it reads line.debtId for shape
+  // and duplicate-identity validation only. It must never resolve a debt id
+  // to a label itself — labels reprint from the publication, proved
+  // behaviorally by the Slice 13 suite (label fidelity check).
+  assert.ok(!/\bdebts\b\s*\[/.test(block), 'no debt-registry index lookup');
+  assert.ok(!/\.find\s*\(\s*(d|debt)/.test(block), 'no debt-registry find lookup');
+  assert.ok(!block.includes('debtById') && !block.includes('debtMap'),
+    'no debt-registry map lookup');
 });
 
 // ------------------------------------------------------------------ P14 ----
