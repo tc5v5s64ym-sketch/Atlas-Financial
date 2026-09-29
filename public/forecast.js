@@ -11381,7 +11381,8 @@
     // Pays `amount` down `chain`, absorbing what each balance can take and
     // passing the rest on. Returns whatever no facility could absorb, which is
     // only ever non-zero when the household has no debt left at all.
-    const payDown = (chain, amount) => {
+    // When `applied` is an array, each take is recorded on it in chain order.
+    const payDown = (chain, amount, applied) => {
       let left = amount;
       for (const s of chain) {
         if (left <= 0) break;
@@ -11390,8 +11391,45 @@
         s.balance -= take;
         s.paid += take;
         left -= take;
+        // Walk-owned record of where the money actually went, in chain
+        // order, so debt attribution never replays this cascade.
+        if (applied) applied.push({ state: s, amount: take });
       }
       return left;
+    };
+
+    // Builds the publishable attribution for one applied monthly extra
+    // payment from the payDown takes recorded above. `chain` is the same
+    // chain the cascade walked; `applied` is its per-debt takes in chain
+    // order. Amounts publish in cents. Each line's trust comes from that
+    // receiving debt's own input confidence — verified/confirmed balances
+    // calculate, anything else stays estimated and is never promoted —
+    // the debt-vocabulary analog of the incumbent trajectoryEventsStatus
+    // rule. nextTarget is the first chain debt after the last debt this
+    // payment touched that still has balance once this payment landed —
+    // Forecast's own continuity conclusion for this payment — or null.
+    const buildExtraDebtAllocation = (chain, applied) => {
+      const lineTrust = id => (debtInputConfidence[id] === 'verified'
+          || debtInputConfidence[id] === 'confirmed') ? 'calculated' : 'estimated';
+      const allocations = applied.map(({ state, amount }) => ({
+        debtId: state.id,
+        label: state.label,
+        amount: roundCent(amount),
+        status: lineTrust(state.id),
+      }));
+      let nextTarget = null;
+      const last = applied.length ? applied[applied.length - 1].state : null;
+      if (last) {
+        const idx = chain.findIndex(s => s && s.id === last.id);
+        for (let i = idx + 1; i < chain.length; i++) {
+          const s = chain[i];
+          if (s && s.balance > EPSILON) {
+            nextTarget = { debtId: s.id, label: s.label, status: lineTrust(s.id) };
+            break;
+          }
+        }
+      }
+      return { allocations, nextTarget };
     };
 
     const marks = [];
@@ -11403,6 +11441,20 @@
     // How much of each extra payment found a balance, by date. Handed back so
     // the cash simulation can spend exactly this and not the amount asked for.
     const extraAbsorbed = {};
+    // Walk-owned debt attribution for each applied monthly extra payment, by
+    // event date like extraAbsorbed. Each entry is
+    // { allocations: [{ debtId, label, amount, status }], nextTarget } —
+    // the ordered per-debt split the payDown cascade below actually applied,
+    // recorded from that same cascade, never replayed afterward. Handed back
+    // so the trajectory can publish where a pay period's extra debt goes.
+    const extraDebtAllocation = {};
+    // Input confidence per debt id, for the allocation lines' trust lineage:
+    // a line is calculated only when the receiving debt's input balance
+    // arrived verified or confirmed; anything else stays estimated.
+    const debtInputConfidence = {};
+    for (const d of (debts || [])) {
+      if (d && d.id && !(d.id in debtInputConfidence)) debtInputConfidence[d.id] = d.confidence;
+    }
     // The same, for dated minimums, keyed by date and obligation id — one
     // obligation can fall several times in a window.
     const obligationAbsorbed = {};
@@ -11516,10 +11568,17 @@
           // owner next-dollar priority. Monthly extras keep the policy chain.
           const chain = isHyp && honorCallerExtraTarget
             ? [target].filter(Boolean) : chainFrom(target);
-          const left = payDown(chain, -e.amount);
+          // Record the split from this same cascade — never replayed.
+          const applied = [];
+          const left = payDown(chain, -e.amount, applied);
           unabsorbed += left;
           // What this payment could actually land, for the cash side to match.
           extraAbsorbed[e.date] = -e.amount - left;
+          // The walk-owned attribution for this payment, for the trajectory
+          // to publish. Hypothetical extras stay out of stage3 entirely.
+          if (!isHyp && applied.length) {
+            extraDebtAllocation[e.date] = buildExtraDebtAllocation(chain, applied);
+          }
         } else if (e.kind === 'planned-debt') {
           const t = e.debtId ? byId[e.debtId] : null;
           if (!t) continue;
@@ -11538,7 +11597,7 @@
 
     return {
       marks, byId, end, unabsorbed, extraAbsorbed, obligationAbsorbed,
-      extraDebtPriority: priority,
+      extraDebtPriority: priority, extraDebtAllocation,
       // Every facility that is over its limit at some point, on the day it
       // actually happens rather than at the next 30-day snapshot. A facility
       // already over the limit today is a different problem from one that
@@ -15812,6 +15871,50 @@
     return days;
   }
 
+  // Forecast-owned debt attribution for one span's extra-debt payment(s):
+  // the ordered per-debt split the coupled debt walk actually applied,
+  // joined by extra event date — the same key the walk recorded. Every
+  // extra event in the span must have a complete walk record, or the
+  // attribution is withheld entirely: a partial target list would look
+  // complete while concealing a destination. The published amount stays
+  // authoritative; pages reprint these lines and never sum them.
+  function extraDebtSpanAttribution(extras, input) {
+    const events = Array.isArray(extras) ? extras : [];
+    if (!events.length) return {};
+    const byDate = (input && input.extraDebtAllocation) || null;
+    if (!byDate) return {};
+    const validLine = line => line && typeof line.debtId === 'string' && line.debtId
+      && typeof line.label === 'string' && line.label
+      && typeof line.amount === 'number' && Number.isFinite(line.amount)
+      && (line.status === 'calculated' || line.status === 'estimated');
+    const validNext = nt => nt && typeof nt.debtId === 'string' && nt.debtId
+      && typeof nt.label === 'string' && nt.label
+      && (nt.status === 'calculated' || nt.status === 'estimated');
+    const allocations = [];
+    let nextTarget = null;
+    for (const e of events) {
+      const record = e && byDate[e.date];
+      if (!record || !Array.isArray(record.allocations)
+          || !record.allocations.length
+          || !record.allocations.every(validLine)) {
+        return {};
+      }
+      for (const line of record.allocations) {
+        allocations.push({
+          debtId: line.debtId,
+          label: line.label,
+          amount: line.amount,
+          status: line.status,
+        });
+      }
+      const nt = record.nextTarget || null;
+      nextTarget = validNext(nt) ? { debtId: nt.debtId, label: nt.label, status: nt.status } : null;
+    }
+    const out = { allocations };
+    if (nextTarget) out.nextTarget = nextTarget;
+    return out;
+  }
+
   function baselineTrajectoryMonthFunding(input) {
     input = input || {};
     const income = input.income;
@@ -15956,11 +16059,18 @@
         id: 'after-debt-strategy',
         label: 'After debt strategy',
         status: stage3Status,
-        extras: {
+        // The amount stays authoritative. `allocations` is the walk-owned
+        // ordered per-debt split of this span's extra payment(s), published
+        // only when the coupled walk recorded every one of them; a partial
+        // record is withheld entirely rather than looking complete.
+        // `nextTarget` is the walk's own continuity conclusion once every
+        // debt this span's payment touched is clear, or null. Pages reprint;
+        // they never sum allocations into the amount.
+        extras: Object.assign({
           amount: extrasAmount,
           status: extrasStatus,
           source: 'plan.defaults.extraDebtMonthly',
-        },
+        }, extraDebtSpanAttribution(extras, input)),
         result: Object.assign(standalonePeriodResult(stage3Amount, stage3Status), {
           phrase: standalonePeriodPhrase(stage3Amount),
         }),
@@ -16120,6 +16230,7 @@
       income,
       cash,
       walkDaily: input.walkDaily,
+      extraDebtAllocation: input.extraDebtAllocation,
       householdBudgetIdentity: input.householdBudgetIdentity,
       spanNoun: input.spanNoun,
       periods: input.periods,
@@ -16544,6 +16655,11 @@
       weeklyVariable: weekly,
       walkDaily: sim.daily,
       walkStart: day,
+      // Walk-owned per-payment debt attribution, keyed by extra event date.
+      // The span picture joins it to this span's extra events by date — the
+      // same key the walk recorded — so a pay period reprints where its own
+      // extra payment actually went. Absent when the walk did not run.
+      extraDebtAllocation: (debtWalk && debtWalk.extraDebtAllocation) || null,
       isDalePayrollOrBonusIncome,
       regimeReady,
       estimatedThrough,
