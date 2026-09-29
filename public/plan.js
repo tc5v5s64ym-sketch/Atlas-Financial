@@ -40,6 +40,11 @@ let budgetGranularity = 'pay-period';
 let budgetSelectedMonth = null;
 let budgetTrajectoryCache = null;
 let budgetTrajectoryCacheKey = null;
+// The Month funding-detail schedule is cached on the same input key as
+// the trajectory, so the two cannot drift apart when the active Budget
+// inputs change (Systems Review P1 repair on the Slice 8 block, PR #446).
+let budgetMonthScheduleCache = null;
+let budgetMonthScheduleCacheKey = null;
 // ONLY these are persisted or restored. `state` also carries the debt records
 // so the engine can size a payment against real balances, and serialising the
 // whole object would write account balances and credit limits into
@@ -2423,26 +2428,32 @@ function budgetTrajectoryCacheKeyFor(asOf, plan, opts) {
   ].join('|');
 }
 
-function budgetTrajectoryFor(src) {
-  if (!src || !src.plan) return null;
-  const asOf = src.asOf || (src.meta && src.meta.asOf);
+// The selected Month trajectory's Forecast inputs, in one place. AMANDA
+// SLICE 3 established these (Systems Review BLOCKING on PR #441): the
+// Month lens must describe the same currently selected plan as the Pay
+// Period lens, so the incumbent active control state (scenario, income
+// overrides, weekly spending, extra debt, adjustable commitments) is fed
+// through the existing Forecast authority via the same simOpts() the Pay
+// Period lens uses. weeklyVariable is the adjacent Pay Period lens's
+// selected value (src.weekly), so the Month walk uses the selected weekly
+// even when no explicit override exists. The Slice 8 funding-detail
+// schedule is computed from these same inputs (P1 repair on PR #446) —
+// the page selects and reprints; Forecast computes.
+function budgetMonthKnobOpts(src) {
   const overlay = src.liveOverlay;
   const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
-  // AMANDA SLICE 3 repair (Systems Review BLOCKING on PR #441): the Month
-  // lens must describe the same currently selected plan as the Pay Period
-  // lens. The incumbent active control state (scenario, income overrides,
-  // weekly spending, extra debt, adjustable commitments) is fed through
-  // the existing Forecast authority via the same simOpts() the Pay Period
-  // lens uses. weeklyVariable is the adjacent Pay Period lens's selected
-  // value (src.weekly), so the Month walk uses the selected weekly even
-  // when no explicit override exists. The page selects and reprints;
-  // Forecast computes.
-  const knobOpts = simOpts({
+  return simOpts({
     weeklyVariable: src.weekly,
     periods: src.periods || null,
     extraFacilities: src.revolvingExtra,
     currentPeriodActuals: actuals,
   });
+}
+
+function budgetTrajectoryFor(src) {
+  if (!src || !src.plan) return null;
+  const asOf = src.asOf || (src.meta && src.meta.asOf);
+  const knobOpts = budgetMonthKnobOpts(src);
   const key = budgetTrajectoryCacheKeyFor(asOf, src.plan, knobOpts);
   if (budgetTrajectoryCache && budgetTrajectoryCacheKey === key) return budgetTrajectoryCache;
   let traj = null;
@@ -2592,6 +2603,182 @@ function budgetMonthVerdictHtml(month) {
     + `<span class="budget-month-verdict-amount">${displayAmount}${tag}</span></div>`;
 }
 
+// AMANDA SLICE 8 — MONTHLY FUNDING PRESSURE DETAIL.
+// Beneath the Forecast-owned monthly picture, the Month lens names the known
+// planned costs with Forecast cash dates in the selected month. It reprints
+// AMANDA SLICE 8 — MONTHLY FUNDING PRESSURE DETAIL. The Month lens names
+// the known planned costs with Forecast cash dates in the selected month,
+// reprinting Forecast's planSpendPaydayFunding publication — label,
+// amount, cash date, funding state, next scheduled contribution, projected
+// fully-funded date, trust — filtered to the selected calendar month.
+//
+// P1 REPAIR (Systems Review BLOCKING on PR #446): the detail is computed
+// for the same active inputs as the selected Month trajectory. It is NOT
+// read from the earlier advice/recommendation context: Forecast.recommend
+// runs at the recommended weekly, while the Month trajectory (and the
+// re-simulated pay-period sim) honour the active weekly override — so the
+// advice publication can carry different inputs, and the month and its
+// detail could disagree. budgetMonthPlanSpendSchedule runs the incumbent
+// Forecast publication chain (simulate -> fundingSequence -> majorPlans ->
+// planSpendPaydayFunding) on the trajectory's own knob inputs; the page
+// passes inputs, Forecast computes. No page-side funding math. The
+// schedule is cached on the same input key as the trajectory so the two
+// cannot drift apart when the active inputs change.
+//
+// Month membership comes ONLY from each cost's Forecast-published cash date
+// (cost.date sliced to YYYY-MM). The page invents no allocation rule and
+// asserts no causal claim: the block describes these as costs cash-dated in
+// the selected month, never as "the costs causing this month's pressure",
+// and it states plainly that costs outside the month can also affect the
+// month's funding result. Forecast's publication order is kept — the page
+// does not rank, sort, score, or compute. Missing or untrusted publications
+// fail closed; unavailable is never $0.
+function budgetMonthPlanSpendSchedule(src) {
+  if (!src || !src.plan) return null;
+  const asOf = src.asOf || (src.meta && src.meta.asOf);
+  if (!asOf) return null;
+  // The trajectory's own inputs — the selected weekly override included.
+  const knobOpts = budgetMonthKnobOpts(src);
+  const key = budgetTrajectoryCacheKeyFor(asOf, src.plan, knobOpts);
+  if (budgetMonthScheduleCache && budgetMonthScheduleCacheKey === key) return budgetMonthScheduleCache;
+  let schedule = null;
+  try {
+    // The walk runs over Forecast's knowledge horizon, mirroring how
+    // recommend sizes the sim behind the advice publication.
+    const horizon = Forecast.knowledgeHorizon(src.plan, asOf, knobOpts);
+    const walkOpts = horizon && horizon.days > 0
+      ? Object.assign({}, knobOpts, { horizonDays: horizon.days, viewDays: horizon.days })
+      : knobOpts;
+    const sim = Forecast.simulate(src.plan, asOf, walkOpts);
+    const seq = Forecast.fundingSequence(src.plan, asOf, knobOpts);
+    const plans = Forecast.majorPlans(src.plan, asOf, knobOpts);
+    // P1 REPAIR (Systems Review BLOCKING on PR #446, second finding): the
+    // live payday must reuse the incumbent paydayAllocation as the named
+    // authority rather than a second FIFO attribution — the per-cost
+    // nextContribution and projectedFullyFunded fields are produced from
+    // those allocations. The allocation is computed here from the SAME
+    // Month inputs (never the advice context's, which can carry the
+    // recommended weekly instead of the selected override). Its
+    // reconciliation checks fail the schedule closed when the two
+    // authorities cannot agree — that is Forecast's own verdict, reprinted
+    // as unavailable, never worked around page-side.
+    const alloc = Forecast.paydayAllocation(src.plan, asOf,
+      Object.assign({}, knobOpts, { majorPlans: plans }));
+    schedule = Forecast.planSpendPaydayFunding(src.plan, asOf, sim, seq, plans, alloc);
+  } catch (e) {
+    schedule = null;
+  }
+  budgetMonthScheduleCache = schedule;
+  budgetMonthScheduleCacheKey = key;
+  return schedule;
+}
+
+// Pure reprint: renders one Forecast planSpendPaydayFunding publication
+// for the selected month. The cost's own amount and date carry the cost's
+// published confidence. P1 REPAIR (Systems Review BLOCKING on PR #446):
+// the projected funding fields (next contribution, projected fully-funded
+// date) are funding-path projections — a confirmed cost can still have an
+// estimated funding path — so they carry Forecast's schedule-level
+// fundingTrust, never the cost's confidence. Unpublished funding trust
+// fails the projected fields closed: they are not shown untagged.
+function budgetMonthFundingPressureHtml(month, schedule) {
+  const monthKey = month && month.month;
+  const monthLabel = (monthKey && (budgetMonthName(monthKey) || monthKey)) || 'the selected month';
+  const open = key => `<div class="budget-month-funding-pressure" data-budget-month-funding-pressure="${key}">`
+    + `<p class="operating-lead">Planned costs in view</p>`;
+  const scopeNote = `<p class="operating-note">Known planned costs with Forecast cash dates in ${monthLabel}, `
+    + `listed in Forecast's publication order. Only costs cash-dated in ${monthLabel} are listed — `
+    + `costs outside this month can also affect the month's funding result.</p>`;
+  if (!monthKey || !schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.costs)) {
+    return open('unavailable') + scopeNote
+      + `<div class="operating-lines"><div class="operating-line"><span>Funding detail</span>`
+      + `<span>unavailable — Forecast did not publish the planned-spending schedule. This is not $0.</span></div></div></div>`;
+  }
+  // Membership is the published cash date, nothing else. A cost is in view
+  // exactly when its Forecast cash date falls in the selected calendar
+  // month. No page-side date arithmetic: the YYYY-MM prefix is the
+  // publication's own date string.
+  const inView = schedule.costs.filter(cost =>
+    cost && typeof cost.date === 'string' && cost.date.slice(0, 7) === monthKey);
+  if (!inView.length) {
+    return open(monthKey) + scopeNote
+      + `<div class="operating-lines"><div class="operating-line"><span>Planned costs</span>`
+      + `<span>Forecast published no planned costs with cash dates in ${monthLabel}.</span></div></div></div>`;
+  }
+  const fmtCashDate = iso => {
+    if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
+    try { return fmtDateLong(iso); } catch (e) { return null; }
+  };
+  // Per-cost trust is the cost's published confidence, reprinted for the
+  // cost's own amount and date — never promoted. Unpublished confidence
+  // fails the cost's figures closed.
+  const costTrustTag = confidence => confidence === 'estimated'
+    ? ' <span class="trust-tag trust-estimated">estimate</span>'
+    : confidence === 'confirmed'
+      ? ' <span class="trust-tag">confirmed</span>' : null;
+  // Projected-field trust (P1 repair): the funding-path projections carry
+  // the schedule's fundingTrust, never the cost's confidence. Unpublished
+  // funding trust fails the projected fields closed.
+  const fundingTrustTag = schedule.fundingTrust === 'estimated'
+    ? ' <span class="trust-tag trust-estimated">estimate</span>'
+    : schedule.fundingTrust === 'calculated'
+      ? ' <span class="trust-tag">calculated</span>' : null;
+  const fundingStateWord = verdict => verdict === 'ON TRACK' ? 'On track'
+    : verdict === 'AT RISK' ? 'At risk'
+      : verdict === 'FUNDING GAP' ? 'Funding gap' : null;
+  const lines = inView.map(cost => {
+    const label = typeof cost.label === 'string' && cost.label.length ? cost.label : cost.id;
+    const tag = costTrustTag(cost.confidence);
+    const neededBy = fmtCashDate(cost.date);
+    const head = `<div class="operating-line" data-budget-month-cost="${cost.id}">`
+      + `<span>${label}</span><span>${neededBy ? `Needed by ${neededBy}` : 'Needed by — date not published'}</span></div>`;
+    if (tag == null) {
+      return head + `<div class="operating-line"><span>Funding detail</span>`
+        + `<span>unavailable — trust not published. This is not $0.</span></div>`;
+    }
+    const amount = Number(cost.baseRequirement);
+    const amountLine = !isFinite(amount)
+      ? `<div class="operating-line"><span>Amount</span><span>unavailable — not published.</span></div>`
+      : `<div class="operating-line"><span>Amount</span><span>${money2(amount)}${tag}</span></div>`;
+    const stateWord = fundingStateWord(cost.verdict);
+    const stateLine = stateWord == null
+      ? `<div class="operating-line"><span>Funding state</span><span>unavailable — not published.</span></div>`
+      : `<div class="operating-line"><span>Funding state</span><span>${stateWord}</span></div>`;
+    // The page states only the reprintable fact about the funding path.
+    // "none scheduled" is the honest wording when Forecast publishes no
+    // next contribution: a future cost with no scheduled funding is not
+    // "not required", and the publication carries no reason to assert.
+    // The projected fields carry the schedule's funding trust — never the
+    // cost's confidence (P1 repair): a confirmed cost can have an
+    // estimated funding path. Without published funding trust the path
+    // cannot be characterised, so the projected fields fail closed.
+    const next = cost.nextContribution;
+    const nextAmount = next ? Number(next.amount) : null;
+    const nextWhen = next ? fmtCashDate(next.payday) : null;
+    let nextLine;
+    if (fundingTrustTag == null) {
+      nextLine = `<div class="operating-line"><span>Next scheduled contribution</span><span>unavailable — trust not published. This is not $0.</span></div>`;
+    } else if (next == null) {
+      nextLine = `<div class="operating-line"><span>Next scheduled contribution</span><span>none scheduled</span></div>`;
+    } else if (!isFinite(nextAmount) || nextWhen == null) {
+      nextLine = `<div class="operating-line"><span>Next scheduled contribution</span><span>unavailable — not published.</span></div>`;
+    } else {
+      nextLine = `<div class="operating-line"><span>Next scheduled contribution</span><span>${money2(nextAmount)}${fundingTrustTag} on ${nextWhen}</span></div>`;
+    }
+    const fundedBy = fmtCashDate(cost.projectedFullyFunded);
+    let fundedByLine;
+    if (fundingTrustTag == null) {
+      fundedByLine = `<div class="operating-line"><span>Projected funded by</span><span>unavailable — trust not published.</span></div>`;
+    } else if (fundedBy == null) {
+      fundedByLine = `<div class="operating-line"><span>Projected funded by</span><span>not published</span></div>`;
+    } else {
+      fundedByLine = `<div class="operating-line"><span>Forecast projects fully funded by</span><span>${fundedBy}${fundingTrustTag}</span></div>`;
+    }
+    return head + amountLine + stateLine + nextLine + fundedByLine;
+  }).join('');
+  return open(monthKey) + scopeNote + `<div class="operating-lines">${lines}</div></div>`;
+}
+
 function budgetMonthViewHtml(src) {
   const traj = budgetTrajectoryFor(src);
   if (!traj || traj.status !== 'ready') {
@@ -2644,6 +2831,7 @@ function budgetMonthViewHtml(src) {
     + `<div class="budget-month-rows">${rows.join('')}</div>`
     + budgetMonthLadderHtml(month)
     + budgetMonthVerdictHtml(month)
+    + budgetMonthFundingPressureHtml(month, budgetMonthPlanSpendSchedule(src))
     + `<p class="operating-note">${standaloneNote}</p></div>`;
 }
 
