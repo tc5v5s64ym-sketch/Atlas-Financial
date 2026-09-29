@@ -183,6 +183,7 @@ const suites = [
   ['Same-month pay-period drilldown (AMANDA slice 9)', 'test-budget-month-pay-period-drilldown.js'],
   ['Selected pay-period money map (AMANDA slice 10)', 'test-budget-month-pay-period-money-map.js'],
   ['Selected pay-period funding plan (AMANDA slice 11)', 'test-budget-month-pay-period-funding-plan.js'],
+  ['Selected pay-period funding shortfall (AMANDA slice 12)', 'test-budget-month-pay-period-funding-shortfall.js'],
   ['Plan payday carryover trend', 'test-payday-carryover-trend.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
