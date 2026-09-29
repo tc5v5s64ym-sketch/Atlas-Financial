@@ -185,6 +185,53 @@ console.log('continuity conclusion inherits upstream estimation');
   assertReprint(w, 'nextTarget-trust');
 }
 
+console.log('a skipped previously-cleared estimated debt keeps later lines estimated');
+{
+  const debts = [
+    card('tri', 'Triangle Mastercard', 100, 19.99, 'estimated'),
+    card('mbna', 'MBNA Mastercard', 5000, 12.99, 'verified'),
+  ];
+  const w = walk(debts, 1000);
+  const first = w.extraDebtAllocation['2026-01-15'];
+  eq(first.allocations[0].debtId, 'tri', 'first payment touches the estimated head');
+  ok(w.byId.tri.balance <= 0.005, 'the estimated head is modeled cleared');
+  const second = w.extraDebtAllocation['2026-02-15'];
+  ok(!!second, 'second payment recorded');
+  eq(second.allocations.length, 1, 'second payment lands on one debt');
+  eq(second.allocations[0].debtId, 'mbna', 'the cleared estimated head is skipped');
+  // Adversarial case: payDown records only debts that absorb money, so the
+  // skipped head never appears in the takes — but the payment reaches MBNA
+  // only because the walk modeled Triangle as cleared, and Triangle's
+  // modeled state is estimated. Publishing MBNA calculated would claim a
+  // routing certainty the inputs do not support.
+  eq(second.allocations[0].status, 'estimated',
+    'routing through a skipped estimated cleared debt stays estimated');
+  assertReprint(w, 'skipped-estimated');
+}
+
+console.log('nextTarget inherits estimation from a skipped cleared debt');
+{
+  const debts = [
+    card('tri', 'Triangle Mastercard', 100, 19.99, 'estimated'),
+    card('mbna', 'MBNA Mastercard', 5000, 12.99, 'verified'),
+    card('visa', 'Travel Visa', 3000, 9.99, 'verified'),
+  ];
+  const w = walk(debts, 1000);
+  const second = w.extraDebtAllocation['2026-02-15'];
+  ok(!!second, 'second payment recorded');
+  eq(second.allocations.map(l => l.debtId).join(','), 'mbna',
+    'second payment skips the cleared estimated head');
+  ok(!!second.nextTarget, 'continuity published');
+  eq(second.nextTarget.debtId, 'visa', 'after mbna the chain continues to visa');
+  // Adversarial case: every take in this payment is verified-grade and visa
+  // itself is verified — yet the conclusion "visa follows mbna" rests on
+  // the payment having reached MBNA, which rests on the estimated modeled
+  // state that Triangle really is cleared. Calculated would overstate it.
+  eq(second.nextTarget.status, 'estimated',
+    'nextTarget is estimated when routing skipped an estimated cleared debt');
+  assertReprint(w, 'nextTarget-skipped');
+}
+
 console.log('verified cascade stays calculated end to end');
 {
   const debts = [

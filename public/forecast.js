@@ -11405,30 +11405,43 @@
     // receiving debt's own input confidence — verified/confirmed balances
     // calculate, anything else stays estimated and is never promoted —
     // the debt-vocabulary analog of the incumbent trajectoryEventsStatus
-    // rule. Trust is CUMULATIVE through the cascade: line N's amount is
-    // min(residual, balanceN), and once any upstream take was estimated the
-    // residual feeding every downstream take is estimated too, so a
-    // downstream line can never be promoted back to calculated even when
-    // its own debt is verified. Calculated status is kept only while every
-    // amount dependency through that line is calculated. nextTarget carries
-    // the same dependency: the continuity conclusion is calculated only
-    // when all allocations it depends on were calculated. nextTarget is
-    // the first chain debt after the last debt this payment touched that
-    // still has balance once this payment landed — Forecast's own
-    // continuity conclusion for this payment — or null.
+    // rule. Trust is ROUTING-CUMULATIVE through the chain: the payment
+    // reaches chain position N only if every chain state at-or-before N is
+    // truly at its modeled balance, so a line is calculated only while
+    // every chain state through its position is calculated. A skipped
+    // zero-balance state still determines routing — payDown `continue`s
+    // past it without recording a take, but whether the payment reaches
+    // the debts behind it depends on that modeled-cleared state. Once any
+    // routing dependency is estimated, the line and everything downstream
+    // stays estimated, never promoted. nextTarget carries the same
+    // dependency through its own chain position: the continuity conclusion
+    // is calculated only when every chain state through the target is
+    // calculated. nextTarget is the first chain debt after the last debt
+    // this payment touched that still has balance once this payment
+    // landed — Forecast's own continuity conclusion for this payment —
+    // or null.
     const buildExtraDebtAllocation = (chain, applied) => {
       const lineTrust = id => (debtInputConfidence[id] === 'verified'
           || debtInputConfidence[id] === 'confirmed') ? 'calculated' : 'estimated';
-      let upstreamEstimated = false;
+      // True when any chain state at-or-before position `idx` is
+      // estimated-grade: the routing to reach that position depends on
+      // modeled state that is not verified, whether the state absorbed
+      // money in this payment or was skipped at a modeled zero balance.
+      const routingEstimatedThrough = idx => {
+        for (let i = 0; i <= idx; i++) {
+          const s = chain[i];
+          if (!s || lineTrust(s.id) !== 'calculated') return true;
+        }
+        return false;
+      };
       const allocations = applied.map(({ state, amount }) => {
-        // Once an estimated take upstream shaped the residual, every
-        // downstream amount is estimated as well — never promoted.
-        upstreamEstimated = upstreamEstimated || lineTrust(state.id) !== 'calculated';
+        const idx = chain.findIndex(s => s && s.id === state.id);
+        const estimated = idx === -1 || routingEstimatedThrough(idx);
         return {
           debtId: state.id,
           label: state.label,
           amount: roundCent(amount),
-          status: upstreamEstimated ? 'estimated' : 'calculated',
+          status: estimated ? 'estimated' : 'calculated',
         };
       });
       let nextTarget = null;
@@ -11438,13 +11451,13 @@
         for (let i = idx + 1; i < chain.length; i++) {
           const s = chain[i];
           if (s && s.balance > EPSILON) {
-            // The continuity conclusion rests on the cascade's modeled
-            // balances: if any allocation amount behind it was estimated,
-            // the conclusion is estimated too.
+            // Choosing this target depends on the modeled balances of
+            // every chain state through it — including estimated debts
+            // skipped at zero on the way here.
             nextTarget = {
               debtId: s.id,
               label: s.label,
-              status: upstreamEstimated ? 'estimated' : lineTrust(s.id),
+              status: routingEstimatedThrough(i) ? 'estimated' : 'calculated',
             };
             break;
           }
