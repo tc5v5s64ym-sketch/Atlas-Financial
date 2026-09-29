@@ -2958,7 +2958,110 @@ function budgetDrilldownPeriodHtml(period) {
   return `<div class="budget-drilldown-period" data-budget-drilldown-period="${key}">`
     + `<p class="operating-lead">${label}</p>`
     + `<p class="operating-note">${kindNote} This page does not calculate these figures.</p>`
-    + `<div class="budget-month-rows">${stages.join('')}</div></div>`;
+    + `<div class="budget-month-rows">${stages.join('')}</div>`
+    + budgetPayPeriodMoneyMapHtml(period)
+    + `</div>`;
+}
+
+/* AMANDA SLICE 10 — SELECTED PAY-PERIOD MONEY MAP.
+ *
+ * The Slice 9 drilldown selects one Forecast-published pay-period row. The
+ * money map explains what is inside that row's three-stage result: it
+ * reprints the Forecast-published component totals (income, household
+ * budget, bills, obligations, commitments, extras) and, when Forecast
+ * publishes them, the component line items in Forecast publication order.
+ *
+ * Authority boundary: the page selects the exact row Slice 9 selected,
+ * labels, formats and reprints. It never subtracts income from costs, never
+ * sums line items to reproduce a component total, never derives a missing
+ * total, never classifies a payment independently, never names a debt
+ * target Forecast did not publish for this row (stage3.extras carries an
+ * amount only), and never explains or prescribes: no causal language, no
+ * recommendations. A clipped/residual row keeps its clipped identity —
+ * every figure belongs to the row's published window, never the full cycle.
+ * Trust is reprinted per figure: a line keeps its own status, never the
+ * parent's. Unavailable is never $0.
+ */
+
+// One Forecast-published line item: its label, its amount, and its own
+// trust tag. The line never inherits the parent component's trust.
+function budgetDrilldownLineHtml(line) {
+  if (!line || typeof line.label !== 'string' || !line.label) return '';
+  const amount = line.amount;
+  if (amount == null || !isFinite(Number(amount))) {
+    return `<div class="budget-month-row unavailable" data-budget-drilldown-line="unavailable">`
+      + `<span class="budget-month-label">${line.label}</span>`
+      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish an amount. Not $0.</span></div>`;
+  }
+  const tag = budgetMonthTrustTag(line.status) || '';
+  return `<div class="budget-month-row budget-drilldown-line" data-budget-drilldown-line="named">`
+    + `<span class="budget-month-label">${line.label}</span>`
+    + `<span class="budget-month-amount">${money2(amount)}${tag}</span></div>`;
+}
+
+// One Forecast-published component: its total reprinted by the incumbent
+// component row (which fails closed on unavailable), followed by its
+// published line items in Forecast publication order. The page never sums
+// the lines — the total shown is always the published component total.
+function budgetDrilldownComponentHtml(label, component) {
+  const total = budgetMonthComponentRow(label, component);
+  const lines = component && Array.isArray(component.lines) ? component.lines : [];
+  return total + lines.map(budgetDrilldownLineHtml).join('');
+}
+
+// The money map for the exact selected Forecast pay-period row. `period`
+// must be the row object Slice 9 selected — never a re-lookup by cycle
+// dates, so a residual row's figures can never be swapped for the
+// full-cycle row's figures.
+function budgetPayPeriodMoneyMapHtml(period) {
+  if (!period) return '';
+  const s1 = period.stage1 || {};
+  const s2 = period.stage2 || {};
+  const s3 = period.stage3 || {};
+  const windowLabel = budgetDrilldownPeriodLabel(period) || 'this pay period';
+  const groups = [];
+  // Money coming in — the Stage 1 income publication, lines when published.
+  groups.push(
+    `<p class="operating-lead">Money coming in</p>`
+    + `<div class="budget-month-rows">`
+    + budgetDrilldownComponentHtml('Total income', s1.income)
+    + `</div>`
+  );
+  // Normal life — the Stage 1 outflow components, then the published result.
+  groups.push(
+    `<p class="operating-lead">${s1.label || 'Normal life'}</p>`
+    + `<div class="budget-month-rows">`
+    + budgetDrilldownComponentHtml('Regular household spending', s1.householdBudget)
+    + budgetDrilldownComponentHtml('Bills', s1.bills)
+    + budgetDrilldownComponentHtml('Required debt payments', s1.obligations)
+    + budgetDrilldownStageHtml(s1)
+    + `</div>`
+  );
+  // Planned spending — the Stage 2 commitments publication, then the result.
+  groups.push(
+    `<p class="operating-lead">${s2.label || 'After planned spending'}</p>`
+    + `<div class="budget-month-rows">`
+    + budgetDrilldownComponentHtml('Planned spending', s2.commitments)
+    + budgetDrilldownStageHtml(s2)
+    + `</div>`
+  );
+  // Extra debt strategy — the published extras amount only. Forecast
+  // publishes no debt target on this component, so none is named here.
+  const extrasRows = (s3.extras && s3.extras.status !== 'unavailable')
+    ? budgetDrilldownComponentHtml('Planned extra debt payment', s3.extras)
+    : '';
+  groups.push(
+    `<p class="operating-lead">${s3.label || 'After debt strategy'}</p>`
+    + `<div class="budget-month-rows">`
+    + extrasRows
+    + budgetDrilldownStageHtml(s3)
+    + `</div>`
+  );
+  return `<div class="budget-drilldown-money-map" data-budget-drilldown-money-map="${(period.payday || period.id || 'unknown')}">`
+    + `<p class="operating-lead">What is inside ${windowLabel}</p>`
+    + `<p class="operating-note">Each figure below is copied from Forecast for this pay period. This page does not calculate these figures.</p>`
+    + groups.join('')
+    + `</div>`;
 }
 
 function budgetPayPeriodDrilldownHtml(src) {

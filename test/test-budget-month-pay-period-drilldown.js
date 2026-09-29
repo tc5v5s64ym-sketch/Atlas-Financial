@@ -244,8 +244,11 @@ check('P6: stages are exact reprints of the selected payPeriods[] row', () => {
       assert.ok(!row.includes('advice.payPeriodViews'),
         'no generic advice substitution marker leaks into the reprint');
     }
-    assert.equal((html.match(/data-budget-drilldown-stage=/g) || []).length, 3,
-      'exactly the three published stages, no derived extras');
+    assert.equal((html.match(/data-budget-drilldown-stage=/g) || []).length, 6,
+      'the ladder plus the money-map group reprints show the published stages, no derived extras');
+    const ladderHtml = html.slice(0, html.indexOf('data-budget-drilldown-money-map='));
+    assert.equal((ladderHtml.match(/data-budget-drilldown-stage=/g) || []).length, 3,
+      'the Slice 9 ladder itself is exactly the three published stages');
   } finally { resetSlice9State(); }
 });
 
