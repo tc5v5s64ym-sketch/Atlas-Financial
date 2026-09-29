@@ -1,6 +1,6 @@
 // AMANDA SLICE 12 — SELECTED PAY-PERIOD FUNDING SHORTFALL DETAIL.
 //
-// Deterministic proof (25 checks) that the pay-period drilldown renders
+// Deterministic proof (27 checks) that the pay-period drilldown renders
 // Forecast's planSpendPaydayFunding gap publication for the EXACT
 // selected payday only: shortBy and cashDate are exact reprints, affected
 // IDs resolve through the same schedule publication's costs[] in
@@ -230,6 +230,69 @@ proof('P3 cashDate is an exact Forecast reprint', () => {
   const block = shortfallBlock(selectPayPeriod(P, '2026-10-09'));
   const neededByLine = block.slice(block.indexOf('Needed by'), block.indexOf('Needed by') + 140);
   assert.ok(neededByLine.includes('January 8'), 'published cashDate reprinted as January 8');
+  resetSlice12State(P);
+  delete globalThis.__slice12src;
+});
+
+// P3a — impossible cashDate fails the Needed by line closed, shortfall kept.
+proof('P3a impossible cashDate fails the Needed by line closed', () => {
+  const P = makeContext();
+  const src = { plan: comfortablePlan('2026-09-25'), debts: [], asOf: '2026-09-25',
+    weekly: 140, periods: null, revolvingExtra: null, liveOverlay: null };
+  globalThis.__slice12src = src;
+  withDoctoredGap(P, src, sched => {
+    sched.status = 'funding-gap';
+    sched.gap = { payday: '2026-10-09', required: 2000, available: 1000, shortBy: 750,
+      affected: sched.costs.map(c => c.id), cashDate: '2027-99-99' };
+  });
+  enterDrilldown(P, src, '2026-10');
+  const block = shortfallBlock(selectPayPeriod(P, '2026-10-09'));
+  assert.ok(block.includes('Short by'), 'shortfall amount still renders');
+  assert.ok(block.includes(money(750)), 'published $750.00 still shown');
+  const neededByLine = block.slice(block.indexOf('Needed by'), block.indexOf('Needed by') + 140);
+  assert.ok(neededByLine.includes('unavailable'), 'Needed by line fails closed');
+  assert.ok(!block.includes('Invalid Date'), 'no trusted Invalid Date renders');
+  resetSlice12State(P);
+  delete globalThis.__slice12src;
+});
+
+// P3b — cashDate with trailing junk fails the Needed by line closed.
+proof('P3b cashDate trailing junk fails the Needed by line closed', () => {
+  const P = makeContext();
+  const src = { plan: comfortablePlan('2026-09-25'), debts: [], asOf: '2026-09-25',
+    weekly: 140, periods: null, revolvingExtra: null, liveOverlay: null };
+  globalThis.__slice12src = src;
+  withDoctoredGap(P, src, sched => {
+    sched.status = 'funding-gap';
+    sched.gap = { payday: '2026-10-09', required: 2000, available: 1000, shortBy: 750,
+      affected: sched.costs.map(c => c.id), cashDate: '2027-01-08junk' };
+  });
+  enterDrilldown(P, src, '2026-10');
+  const block = shortfallBlock(selectPayPeriod(P, '2026-10-09'));
+  assert.ok(block.includes(money(750)), 'published $750.00 still shown');
+  const neededByLine = block.slice(block.indexOf('Needed by'), block.indexOf('Needed by') + 140);
+  assert.ok(neededByLine.includes('unavailable'), 'Needed by line fails closed');
+  assert.ok(!block.includes('Invalid Date'), 'no trusted Invalid Date renders');
+  resetSlice12State(P);
+  delete globalThis.__slice12src;
+});
+
+// P3c — a valid exact ISO calendar date renders; nothing is substituted.
+proof('P3c valid cashDate renders exactly, never substituted', () => {
+  const P = makeContext();
+  const src = { plan: comfortablePlan('2026-09-25'), debts: [], asOf: '2026-09-25',
+    weekly: 140, periods: null, revolvingExtra: null, liveOverlay: null };
+  globalThis.__slice12src = src;
+  withDoctoredGap(P, src, sched => {
+    sched.status = 'funding-gap';
+    sched.gap = { payday: '2026-10-09', required: 2000, available: 1000, shortBy: 750,
+      affected: sched.costs.map(c => c.id), cashDate: '2027-01-08' };
+  });
+  enterDrilldown(P, src, '2026-10');
+  const block = shortfallBlock(selectPayPeriod(P, '2026-10-09'));
+  const neededByLine = block.slice(block.indexOf('Needed by'), block.indexOf('Needed by') + 140);
+  assert.ok(neededByLine.includes('January 8'), 'published date rendered exactly');
+  assert.ok(!neededByLine.includes('unavailable'), 'valid date is not treated as unavailable');
   resetSlice12State(P);
   delete globalThis.__slice12src;
 });

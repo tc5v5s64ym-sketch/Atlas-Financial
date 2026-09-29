@@ -3225,6 +3225,22 @@ function budgetPayPeriodFundingPlanHtml(period, src) {
  * unavailable is never $0.
  */
 
+// Slice 12 cashDate guard: the publication contract is ISO date strings,
+// but only an exact valid ISO calendar date may render. Manual
+// days-in-month arithmetic (no Date parsing quirks, no timezone shifts)
+// rejects impossible months/days and trailing junk deterministically.
+function isValidIsoCalendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  if (month < 1 || month > 12 || day < 1) return false;
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const dim = month === 2 ? (leap ? 29 : 28)
+    : ([4, 6, 9, 11].includes(month) ? 30 : 31);
+  return day <= dim;
+}
+
 // Selected-payday funding shortfall, reprinted from the Forecast
 // planSpendPaydayFunding gap publication. Returns '' when Forecast
 // publishes no shortfall for the exact selected payday. Fails closed
@@ -3259,11 +3275,14 @@ function budgetPayPeriodFundingShortfallHtml(period, src) {
   // required - available page-side.
   const shortBy = gap.shortBy;
   if (typeof shortBy !== 'number' || !Number.isFinite(shortBy)) return failClosed;
-  // cashDate reprint under the incumbent contract (ISO date strings). A
-  // missing or malformed cashDate fails that line closed visibly — the
-  // shortfall amount is still Forecast's published figure.
-  const cashDateLabel = (typeof gap.cashDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(gap.cashDate))
-    ? fmtDateLong(gap.cashDate) : null;
+  // cashDate reprint under the incumbent contract (ISO date strings). The
+  // guard requires an exact valid ISO calendar date: a prefix-only match
+  // let impossible dates (2027-99-99) and trailing junk (2027-01-08junk)
+  // through and rendered "Needed by Invalid Date" as a trusted figure. A
+  // malformed cashDate fails that line closed visibly — the shortfall
+  // amount is still Forecast's published figure, and no date is ever
+  // substituted.
+  const cashDateLabel = isValidIsoCalendarDate(gap.cashDate) ? fmtDateLong(gap.cashDate) : null;
   // Affected costs: Forecast-owned IDs resolved through the same
   // schedule publication's costs[], in gap.affected[] order. A
   // missing/non-array collection, an unresolvable ID, or a malformed
