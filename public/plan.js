@@ -3170,8 +3170,15 @@ function budgetPayPeriodFundingPlanHtml(period, src) {
   // Strict validation, no coercion: the contribution must be a real finite
   // number. false/""/null/strings are malformed data, never $0.
   if (!row || typeof contribution !== 'number' || !Number.isFinite(contribution)) return failClosed;
+  // The allocations collection is part of the published contract:
+  // Forecast always publishes it as an array on each payday row. A
+  // missing or non-array collection is bad publication state — showing
+  // the trusted contribution with no named purposes and no warning would
+  // make an incomplete answer look complete. Fail closed, visibly. We
+  // never sum or reconcile the collection against the contribution.
+  if (!Array.isArray(row.allocations)) return failClosed;
   const paydayLabel = fmtDateLong(payday);
-  const allocations = Array.isArray(row.allocations) ? row.allocations : [];
+  const allocations = row.allocations;
   return `<div class="budget-drilldown-funding-plan" data-budget-drilldown-funding-plan="${payday}">`
     + `<p class="operating-lead">Future-cost funding from the ${paydayLabel} payday</p>`
     + `<p class="operating-note">This payday's share of the funding plan, earmarked in Forecast toward future planned costs. `

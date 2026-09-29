@@ -27,6 +27,9 @@
  *   P13 malformed amounts cannot coerce false, "", null or strings into currency
  *   P14 named allocation with malformed amount fails closed rather than
  *       disappearing or rendering $0
+ *   A1  (Systems Review 5353073945) a missing/non-array allocations
+ *       collection fails closed; a genuine $0 with allocations: [] renders
+ *       normally
  *   P15 active weekly/scenario input change recomputes both trajectory and
  *       funding schedule from the same input set
  *   P16 Slice 10 money map remains unchanged
@@ -415,6 +418,70 @@ check('P14: named allocation with malformed amount fails closed rather than disa
       assert.ok(block.includes('Not $0.'), 'the malformed allocation is never $0');
       assert.ok(block.includes(money(500)),
         'the valid sibling allocation still renders');
+    });
+  } finally { resetSlice11State(); }
+});
+
+check('A1 (Systems Review 5353073945): a missing or non-array allocations collection fails closed — bad publication, never "no allocations"', () => {
+  // Forecast's contract always publishes allocations as an array on each
+  // payday row. Showing the trusted contribution with no named purposes
+  // and no warning would make an incomplete answer look complete.
+  for (const badAlloc of [null, 'Fusion tournament', 1400, {}]) {
+    resetSlice11State();
+    try {
+      const plan = slice11Plan('2026-09-25');
+      const src = slice11Src(plan, 140, slice11Debts);
+      enterDrilldown(src, '2026-10');
+      selectPayPeriod('2026-10-09');
+      withDoctoredSchedule(src, doctored => {
+        doctored.paydays.find(r => r && r.payday === '2026-10-09').allocations = badAlloc;
+      }, () => {
+        const block = fundingBlock(P.budgetPayPeriodDrilldownHtml(src));
+        assert.ok(block.includes('data-budget-drilldown-funding-plan="unavailable"'),
+          `allocations ${JSON.stringify(badAlloc)} fails the funding plan closed`);
+        assert.ok(block.includes('This is not $0'), 'bad publication is never $0');
+        assert.ok(!block.includes('data-budget-funding-contribution="published"'),
+          'the trusted $1,400 does not render without its named purposes');
+      });
+    } finally { resetSlice11State(); }
+  }
+  // A deleted collection is the same bad-publication state.
+  resetSlice11State();
+  try {
+    const plan = slice11Plan('2026-09-25');
+    const src = slice11Src(plan, 140, slice11Debts);
+    enterDrilldown(src, '2026-10');
+    selectPayPeriod('2026-10-09');
+    withDoctoredSchedule(src, doctored => {
+      delete doctored.paydays.find(r => r && r.payday === '2026-10-09').allocations;
+    }, () => {
+      const block = fundingBlock(P.budgetPayPeriodDrilldownHtml(src));
+      assert.ok(block.includes('data-budget-drilldown-funding-plan="unavailable"'),
+        'a deleted allocations collection fails closed');
+      assert.ok(!block.includes('data-budget-funding-contribution="published"'),
+        'no trusted figure renders without its published purposes');
+    });
+  } finally { resetSlice11State(); }
+  // A genuine $0 contribution with a published empty collection renders
+  // normally — [] is the contract's legitimate "no allocations" state,
+  // and the page never reconciles the collection against the figure.
+  resetSlice11State();
+  try {
+    const plan = slice11Plan('2026-09-25');
+    const src = slice11Src(plan, 140, slice11Debts);
+    enterDrilldown(src, '2026-10');
+    selectPayPeriod('2026-10-23');
+    withDoctoredSchedule(src, doctored => {
+      const row = doctored.paydays.find(r => r && r.payday === '2026-10-23');
+      row.contribution = 0;
+      row.allocations = [];
+    }, () => {
+      const block = fundingBlock(P.budgetPayPeriodDrilldownHtml(src));
+      assert.ok(block.includes('data-budget-funding-contribution="published"'),
+        'a $0 contribution with allocations: [] renders as a known figure');
+      assert.ok(block.includes(money(0)), 'the known zero renders as $0.00');
+      assert.ok(!block.includes('data-budget-drilldown-funding-plan="unavailable"'),
+        'the legitimate empty collection does not fail closed');
     });
   } finally { resetSlice11State(); }
 });
