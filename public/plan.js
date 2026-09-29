@@ -38,6 +38,15 @@ let planPayPeriodId = null;
  * financial figures itself. */
 let budgetGranularity = 'pay-period';
 let budgetSelectedMonth = null;
+/* AMANDA SLICE 9 — SAME-MONTH PAY-PERIOD DRILLDOWN.
+ * Toggling Month -> Pay Period keeps the selected calendar month as the
+ * drilldown anchor (budgetPayPeriodAnchorMonth, a 'YYYY-MM' key) instead of
+ * falling back to the generic payday picture. budgetDrilldownPayPeriod is
+ * the selected cycle's payday id; period selection never moves
+ * budgetSelectedMonth. Null anchor = no drilldown context = the incumbent
+ * current-payday operating shell, unchanged. */
+let budgetPayPeriodAnchorMonth = null;
+let budgetDrilldownPayPeriod = null;
 let budgetTrajectoryCache = null;
 let budgetTrajectoryCacheKey = null;
 // The Month funding-detail schedule is cached on the same input key as
@@ -2835,6 +2844,130 @@ function budgetMonthViewHtml(src) {
     + `<p class="operating-note">${standaloneNote}</p></div>`;
 }
 
+/* AMANDA SLICE 9 — SAME-MONTH PAY-PERIOD DRILLDOWN.
+ *
+ * The household selected a calendar month to understand that month.
+ * Switching to Pay Period keeps that context: the drilldown shows the
+ * complete Forecast-published Seaspan pay-period cycles overlapping
+ * the anchored month, in Forecast's publication order, each with its
+ * published three-stage funding result reprinted verbatim.
+ *
+ * Authority boundary: the page selects (overlap on the published
+ * full-cycle identity), labels, formats and reprints. It never clips a
+ * cycle to month boundaries, never prorates, never sums cycles, never
+ * derives stages, never recomputes surplus/deficit, and never implies
+ * the cycles sum to the calendar-month total. Trust is reprinted:
+ * estimated stays estimated, unavailable is never $0. */
+
+// True only when the household reached Pay Period from the Month lens.
+// The default landing (no anchor) keeps the incumbent generic payday
+// operating picture, unchanged.
+function budgetInPayPeriodDrilldown() {
+  return budgetGranularity === 'pay-period' && !!budgetPayPeriodAnchorMonth;
+}
+
+// Last YYYY-MM-DD of the month key. Presentation date math for overlap
+// selection only — no financial allocation.
+function budgetMonthEndDay(monthKey) {
+  const y = Number(String(monthKey).slice(0, 4));
+  const m = Number(String(monthKey).slice(5, 7));
+  if (!y || !(m >= 1 && m <= 12)) return null;
+  const last = new Date(y, m, 0).getDate();
+  return `${String(monthKey).slice(0, 7)}-${String(last).padStart(2, '0')}`;
+}
+
+// The overlapping cycles, in Forecast publication order. Overlap is
+// tested on the published full-cycle identity (cycleStart/cycleEnd), so
+// a cycle that starts in the prior month or ends in the next month is
+// selected whole — never clipped to the month.
+function budgetDrilldownPeriods(traj, anchorMonth) {
+  const periods = traj && Array.isArray(traj.payPeriods) ? traj.payPeriods : [];
+  if (!anchorMonth || anchorMonth.length < 7) return [];
+  const monthStart = `${anchorMonth.slice(0, 7)}-01`;
+  const monthEnd = budgetMonthEndDay(anchorMonth);
+  if (!monthEnd) return [];
+  return periods.filter(p => {
+    if (!p) return false;
+    const s = p.cycleStart || p.start;
+    const e = p.cycleEnd || p.end;
+    return typeof s === 'string' && typeof e === 'string'
+      && s <= monthEnd && e >= monthStart;
+  });
+}
+
+function budgetDrilldownStageHtml(stage) {
+  const label = (stage && stage.label) || 'Stage';
+  const result = (stage && stage.result) || {};
+  if (!stage || stage.status === 'unavailable' || result.status === 'unavailable'
+      || result.amount == null || !isFinite(Number(result.amount))) {
+    const reason = result.reason || (stage && stage.reason)
+      || 'Forecast did not publish this stage.';
+    return `<div class="budget-month-row unavailable" data-budget-drilldown-stage="unavailable">`
+      + `<span class="budget-month-label">${label}</span>`
+      + `<span class="budget-month-unavailable">unavailable — ${reason} Not $0.</span></div>`;
+  }
+  const amount = Number(result.amount);
+  const tag = budgetMonthTrustTag(result.status) || '';
+  // Sign prefix is presentation formatting of the reprinted figure.
+  const display = amount > 0 ? `+${money2(amount)}`
+    : amount < 0 ? `\u2212${money2(Math.abs(amount))}` : money2(0);
+  const kind = amount > 0 ? 'surplus' : amount < 0 ? 'deficit' : 'balance';
+  const kindLabel = amount > 0 ? 'projected surplus' : amount < 0 ? 'projected deficit' : 'projected balance';
+  return `<div class="budget-month-row" data-budget-drilldown-stage="${kind}">`
+    + `<span class="budget-month-label">${label}</span>`
+    + `<span class="budget-month-amount">${display} ${kindLabel}${tag}</span></div>`;
+}
+
+function budgetDrilldownPeriodHtml(period) {
+  const key = (period && (period.payday || period.id)) || 'unknown';
+  // The full published cycle label — never relabelled to month bounds.
+  const cycleLabel = period.cycleRangeLabel || period.rangeLabel || key;
+  const stages = [
+    budgetDrilldownStageHtml(period.stage1),
+    budgetDrilldownStageHtml(period.stage2),
+    budgetDrilldownStageHtml(period.stage3),
+  ];
+  return `<div class="budget-drilldown-period" data-budget-drilldown-period="${key}">`
+    + `<p class="operating-lead">${cycleLabel}</p>`
+    + `<p class="operating-note">Three-stage funding for this Seaspan cycle, copied from Forecast. This page does not calculate these figures.</p>`
+    + `<div class="budget-month-rows">${stages.join('')}</div></div>`;
+}
+
+function budgetPayPeriodDrilldownHtml(src) {
+  const anchor = budgetPayPeriodAnchorMonth;
+  const monthLabel = (anchor && budgetMonthName(anchor)) || anchor || 'the selected month';
+  const open = `<div class="budget-pay-period-drilldown" data-budget-drilldown="${anchor || 'unavailable'}">`
+    + `<p class="operating-lead">Pay Period</p>`;
+  // The month and its overlapping cycles are different window identities.
+  // Stated plainly so the household never reads the cycles as month parts.
+  const scopeNote = `<p class="operating-note">Complete Forecast-published Seaspan pay cycles overlapping ${monthLabel}, `
+    + `in Forecast's publication order. Each cycle is shown in full — never clipped to month boundaries. `
+    + `These cycles answer payday-cycle questions; they are not expected to sum to the calendar-month total.</p>`;
+  const traj = budgetTrajectoryFor(src);
+  if (!traj || traj.status !== 'ready') {
+    const reason = (traj && traj.reason) || 'Forecast could not publish the baseline trajectory.';
+    return open + scopeNote
+      + `<div class="note-box crit">${reason}</div>`
+      + `<p class="operating-note">Pay-period detail is unavailable. This is not $0.</p></div>`;
+  }
+  const periods = budgetDrilldownPeriods(traj, anchor);
+  if (!periods.length) {
+    return open + scopeNote
+      + `<div class="note-box crit">Forecast published no Seaspan pay periods overlapping ${monthLabel}.</div></div>`;
+  }
+  const selected = periods.find(p => p && (p.payday || p.id) === budgetDrilldownPayPeriod) || periods[0];
+  const selectedId = selected.payday || selected.id;
+  const picker = `<label class="budget-month-picker"><span class="budget-month-picker-label">Pay period</span> `
+    + `<select class="budget-month-select" data-budget-drilldown-picker aria-label="Seaspan pay period overlapping ${monthLabel}">`
+    + periods.map(p => {
+        const id = p.payday || p.id;
+        const label = p.cycleRangeLabel || p.rangeLabel || id;
+        return `<option value="${id}"${id === selectedId ? ' selected' : ''}>${label}</option>`;
+      }).join('')
+    + `</select></label>`;
+  return open + scopeNote + picker + budgetDrilldownPeriodHtml(selected) + `</div>`;
+}
+
 function paydayInstructionShellHtml(advice, period) {
   // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
   // The planned-spending block is the Nest Money funding plan: the live
@@ -3819,6 +3952,11 @@ function wireBudgetGranularity(mount, ctx) {
       const next = btn.getAttribute('data-budget-granularity');
       if (next !== 'month' && next !== 'pay-period') return;
       if (next === budgetGranularity) return;
+      if (next === 'pay-period' && budgetGranularity === 'month') {
+        // AMANDA SLICE 9: entering Pay Period from the Month lens keeps
+        // the selected calendar month as the drilldown anchor.
+        budgetPayPeriodAnchorMonth = budgetSelectedMonth;
+      }
       budgetGranularity = next;
       mount.innerHTML = operatingSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
@@ -3828,6 +3966,16 @@ function wireBudgetGranularity(mount, ctx) {
   if (picker) {
     picker.addEventListener('change', () => {
       budgetSelectedMonth = picker.value || budgetSelectedMonth;
+      mount.innerHTML = operatingSurfaceHtml(ctx);
+      wirePlanLookPicker(mount, ctx);
+    });
+  }
+  // AMANDA SLICE 9: the drilldown cycle picker. Period selection never
+  // moves the selected calendar month.
+  const drilldown = mount.querySelector('[data-budget-drilldown-picker]');
+  if (drilldown) {
+    drilldown.addEventListener('change', () => {
+      budgetDrilldownPayPeriod = drilldown.value || null;
       mount.innerHTML = operatingSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
     });
@@ -4179,14 +4327,20 @@ function operatingSurfaceHtml(ctx) {
   const monthView = look === 'this-period' && budgetGranularity === 'month'
     ? budgetMonthViewHtml(ctx)
     : '';
+  // AMANDA SLICE 9: month-anchored pay-period drilldown. Only when the
+  // household reached Pay Period from the Month lens — otherwise the
+  // incumbent generic payday operating picture below is unchanged.
+  const drilldownView = look === 'this-period' && budgetInPayPeriodDrilldown()
+    ? budgetPayPeriodDrilldownHtml(ctx)
+    : '';
   const payPeriodViews = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
   const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
-  const instructionShell = look === 'this-period' && budgetGranularity !== 'month'
+  const instructionShell = look === 'this-period' && budgetGranularity !== 'month' && !drilldownView
     ? paydayInstructionShellHtml(advice, currentPeriod) : '';
   const payPeriodContent = defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
   return `<div class="payday-operating-sheet" data-payday-sheet>
     ${granularityToggle}
-    ${monthView || `${instructionShell}${payPeriodContent}`}
+    ${monthView || drilldownView || `${instructionShell}${payPeriodContent}`}
   </div>`;
 }
 
