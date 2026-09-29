@@ -3,9 +3,12 @@
  *
  * The household selects a calendar month to understand that month. Switching
  * Budget from Month to Pay Period must not drop that context: the drilldown
- * shows the complete Forecast-published Seaspan payday-to-payday cycles
- * overlapping the anchored month, in Forecast publication order, each with
- * its published three-stage funding result reprinted verbatim. Toggling back
+ * shows the Forecast-published Seaspan payday-to-payday periods overlapping
+ * the anchored month, in Forecast publication order, each with its published
+ * three-stage funding result reprinted verbatim. Complete cycles keep their
+ * full-cycle label; a clipped row (as-of residual, horizon-clipped) is
+ * labelled with its actual published window — never the whole cycle — so
+ * partial-window figures cannot read as whole-cycle figures. Toggling back
  * returns to exactly the same month.
  *
  * Authority boundary: the page selects (calendar overlap on the published
@@ -308,7 +311,7 @@ function periodFixture(stageOverrides = {}) {
     rangeLabel: 'Oct 9–Oct 22',
     cycleStart: '2026-10-09', cycleEnd: '2026-10-22',
     cycleRangeLabel: 'Oct 9–Oct 22',
-    windowKind: 'payday-to-payday', displayIdentity: 'Seaspan pay period',
+    windowKind: 'full-cycle', displayIdentity: 'Pay period',
     stage1: s1, stage2: s2, stage3: s3,
   };
 }
@@ -453,6 +456,74 @@ check('HEART: October -> Pay Period -> Sep 25–Oct 8 -> Month still October', (
     assert.ok(month.includes('data-budget-month-view="2026-10"'),
       'Month lens renders October');
   } finally { resetSlice9State(); }
+});
+
+// ---------------------------------------------------------------- Part D ---
+// P1 repair (Systems Review BLOCKING on PR #447): a trajectory that starts
+// mid-cycle. The engine publishes the first row as an as-of residual — its
+// figures cover only the residual window — so the drilldown must label it
+// with the truthful published window (rangeLabel), never the full-cycle
+// range that would make partial-window dollars look whole-cycle.
+
+function slice9MidCyclePlan() {
+  const plan = slice9Plan();
+  plan.opening.asOf = '2026-09-28'; // mid-cycle: inside Sep 25–Oct 8
+  return plan;
+}
+
+check('P14: mid-cycle trajectory start labels the residual with its truthful window', () => {
+  try {
+    resetSlice9State();
+    const plan = slice9MidCyclePlan();
+    const src = slice9Src(plan, 140);
+    // Engine sanity: the first October-overlapping row is the as-of residual.
+    const traj = F.baselineTrajectory(plan, [], '2026-09-28', { weeklyVariable: 140 });
+    assert.equal(traj.status, 'ready', 'mid-cycle trajectory is ready');
+    const rows = (traj.payPeriods || []).filter(p =>
+      p.cycleStart <= '2026-10-31' && p.cycleEnd >= '2026-10-01');
+    assert.equal(rows.length, 3, 'still three October-overlapping rows');
+    const residual = rows[0];
+    assert.equal(residual.windowKind, 'as-of-residual');
+    assert.equal(residual.rangeLabel, 'Sep 28–Oct 8');
+    assert.equal(residual.cycleRangeLabel, 'Sep 25–Oct 8');
+    assert.equal(residual.displayIdentity, 'Remaining through next payday');
+    // Page: the drilldown labels the residual with its actual window.
+    enterDrilldown(src, '2026-10');
+    const html = P.budgetPayPeriodDrilldownHtml(src);
+    const options = [...html.matchAll(/<option value="([^"]+)"[^>]*>([^<]+)<\/option>/g)]
+      .map(m => m[2]);
+    assert.deepEqual(options, ['Sep 28–Oct 8', 'Oct 9–Oct 22', 'Oct 23–Nov 5'],
+      'picker labels the residual with its published window, in Forecast order');
+    assert.ok(!html.includes('Sep 25–Oct 8'),
+      'the full-cycle range never labels the partial-window row');
+    // The default-selected panel is the residual: truthful heading, the
+    // published residual identity, and exact reprints of its figures.
+    assert.ok(html.includes('data-budget-drilldown-period="2026-09-25"'),
+      'residual panel renders (keyed by its cycle payday)');
+    assert.ok(html.includes('remaining through next payday'),
+      'panel names the published residual identity');
+    const money = n => Math.abs(Number(n)).toLocaleString('en-CA',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const panel = html.slice(html.indexOf('data-budget-drilldown-period="2026-09-25"'));
+    assert.ok(panel.includes(money(residual.stage1.result.amount)),
+      'residual stage figures are exact reprints of the published row');
+    assert.equal(evalInPage('budgetSelectedMonth'), '2026-10',
+      'the residual labelling changed nothing about the month anchor');
+  } finally { resetSlice9State(); }
+});
+
+check('P15: a clipped row with no published window identity fails closed, never $0', () => {
+  // A clipped row Forecast did not give a truthful window identity cannot
+  // be shown: the drilldown drops it instead of guessing a label.
+  const bad = periodFixture();
+  bad.windowKind = 'as-of-residual';
+  delete bad.rangeLabel;
+  assert.equal(P.budgetDrilldownPeriodLabel(bad), null,
+    'no truthful identity -> null label');
+  const html = P.budgetDrilldownPeriodHtml(bad);
+  assert.ok(html.includes('unavailable'), 'panel fails closed');
+  assert.ok(html.includes('This is not $0'), 'never $0');
+  assert.ok(!html.includes('$0.00'), 'no zero figure');
 });
 
 console.log(`\nSlice 9 drilldown: ${checks} checks passed.`);

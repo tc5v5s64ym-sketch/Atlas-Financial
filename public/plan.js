@@ -2918,18 +2918,46 @@ function budgetDrilldownStageHtml(stage) {
     + `<span class="budget-month-amount">${display} ${kindLabel}${tag}</span></div>`;
 }
 
+// Forecast's truthful published window identity for one pay-period row.
+// A complete cycle keeps its full-cycle label. A clipped row (as-of
+// residual, horizon-clipped) is labelled with its actual published
+// window (rangeLabel) — never the full-cycle range — so partial-window
+// figures cannot read as whole-cycle figures. Returns null when the row
+// carries no truthful identity; callers fail closed on null.
+function budgetDrilldownPeriodLabel(period) {
+  if (!period) return null;
+  if (period.windowKind === 'full-cycle') {
+    return period.cycleRangeLabel || period.rangeLabel
+      || period.payday || period.id || null;
+  }
+  return period.rangeLabel || null;
+}
+
 function budgetDrilldownPeriodHtml(period) {
   const key = (period && (period.payday || period.id)) || 'unknown';
-  // The full published cycle label — never relabelled to month bounds.
-  const cycleLabel = period.cycleRangeLabel || period.rangeLabel || key;
+  const label = budgetDrilldownPeriodLabel(period);
+  if (!label) {
+    // Fail closed: figures without a truthful window identity are never
+    // shown under a guessed label, and never as $0.
+    return `<div class="budget-drilldown-period" data-budget-drilldown-period="${key}">`
+      + `<p class="operating-lead">Pay period</p>`
+      + `<div class="note-box crit">Forecast did not publish this period's window identity.</div>`
+      + `<p class="operating-note">Pay-period detail is unavailable. This is not $0.</p></div>`;
+  }
   const stages = [
     budgetDrilldownStageHtml(period.stage1),
     budgetDrilldownStageHtml(period.stage2),
     budgetDrilldownStageHtml(period.stage3),
   ];
+  // The sub-note names the window kind Forecast published: a complete
+  // cycle is a Seaspan pay cycle; a clipped row is its published window
+  // identity (e.g. the as-of residual), never the whole cycle.
+  const kindNote = period.windowKind === 'full-cycle'
+    ? 'Three-stage funding for this Seaspan pay cycle, copied from Forecast.'
+    : `Three-stage funding for this ${(period.displayIdentity || 'partial pay-period window').toLowerCase()} (${label}), copied from Forecast.`;
   return `<div class="budget-drilldown-period" data-budget-drilldown-period="${key}">`
-    + `<p class="operating-lead">${cycleLabel}</p>`
-    + `<p class="operating-note">Three-stage funding for this Seaspan cycle, copied from Forecast. This page does not calculate these figures.</p>`
+    + `<p class="operating-lead">${label}</p>`
+    + `<p class="operating-note">${kindNote} This page does not calculate these figures.</p>`
     + `<div class="budget-month-rows">${stages.join('')}</div></div>`;
 }
 
@@ -2940,9 +2968,10 @@ function budgetPayPeriodDrilldownHtml(src) {
     + `<p class="operating-lead">Pay Period</p>`;
   // The month and its overlapping cycles are different window identities.
   // Stated plainly so the household never reads the cycles as month parts.
-  const scopeNote = `<p class="operating-note">Complete Forecast-published Seaspan pay cycles overlapping ${monthLabel}, `
-    + `in Forecast's publication order. Each cycle is shown in full — never clipped to month boundaries. `
-    + `These cycles answer payday-cycle questions; they are not expected to sum to the calendar-month total.</p>`;
+  const scopeNote = `<p class="operating-note">Forecast-published Seaspan pay periods overlapping ${monthLabel}, `
+    + `in Forecast's publication order. Complete cycles are shown in full — never clipped to month boundaries. `
+    + `A period that covers only part of a cycle is labelled with its actual published window, never the whole cycle. `
+    + `These periods answer payday-cycle questions; they are not expected to sum to the calendar-month total.</p>`;
   const traj = budgetTrajectoryFor(src);
   if (!traj || traj.status !== 'ready') {
     const reason = (traj && traj.reason) || 'Forecast could not publish the baseline trajectory.';
@@ -2950,7 +2979,10 @@ function budgetPayPeriodDrilldownHtml(src) {
       + `<div class="note-box crit">${reason}</div>`
       + `<p class="operating-note">Pay-period detail is unavailable. This is not $0.</p></div>`;
   }
-  const periods = budgetDrilldownPeriods(traj, anchor);
+  // Fail closed: a row Forecast did not give a truthful window identity
+  // cannot be shown — its figures must never appear under a guessed label.
+  const periods = budgetDrilldownPeriods(traj, anchor)
+    .filter(p => budgetDrilldownPeriodLabel(p));
   if (!periods.length) {
     return open + scopeNote
       + `<div class="note-box crit">Forecast published no Seaspan pay periods overlapping ${monthLabel}.</div></div>`;
@@ -2961,7 +2993,7 @@ function budgetPayPeriodDrilldownHtml(src) {
     + `<select class="budget-month-select" data-budget-drilldown-picker aria-label="Seaspan pay period overlapping ${monthLabel}">`
     + periods.map(p => {
         const id = p.payday || p.id;
-        const label = p.cycleRangeLabel || p.rangeLabel || id;
+        const label = budgetDrilldownPeriodLabel(p) || id;
         return `<option value="${id}"${id === selectedId ? ' selected' : ''}>${label}</option>`;
       }).join('')
     + `</select></label>`;
