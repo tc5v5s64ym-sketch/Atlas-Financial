@@ -147,7 +147,7 @@ console.log('nextTarget is the walk-owned continuity conclusion');
   assertReprint(w, 'nextTarget');
 }
 
-console.log('estimated balances stay estimated');
+console.log('estimated balances stay estimated, and propagate downstream');
 {
   const debts = [
     card('tri', 'Triangle Mastercard', 200, 19.99, 'estimated'),
@@ -156,7 +156,49 @@ console.log('estimated balances stay estimated');
   const w = walk(debts, 1000);
   const first = w.extraDebtAllocation['2026-01-15'];
   eq(first.allocations[0].status, 'estimated', 'estimated balance is not promoted');
-  eq(first.allocations[1].status, 'calculated', 'verified balance calculates');
+  // Adversarial case: MBNA is verified, but its amount is the residual
+  // after the estimated Triangle take — an estimated upstream dependency
+  // the cascade alone knows — so it must stay estimated.
+  eq(first.allocations[1].status, 'estimated',
+    'verified downstream of an estimated take stays estimated');
+  assertReprint(w, 'trust-propagation');
+}
+
+console.log('continuity conclusion inherits upstream estimation');
+{
+  const debts = [
+    card('tri', 'Triangle Mastercard', 200, 19.99, 'estimated'),
+    card('mbna', 'MBNA Mastercard', 5000, 12.99, 'verified'),
+    card('visa', 'Travel Visa', 3000, 9.99, 'verified'),
+  ];
+  const w = walk(debts, 1000);
+  const first = w.extraDebtAllocation['2026-01-15'];
+  eq(first.allocations.map(l => l.status).join(','), 'estimated,estimated',
+    'every amount after an estimated upstream take is estimated');
+  ok(!!first.nextTarget, 'continuity published');
+  eq(first.nextTarget.debtId, 'visa', 'after mbna the chain continues to visa');
+  // The continuity conclusion rests on the cascade's modeled balances; the
+  // walk's own residual shaped them, so an estimated upstream take makes
+  // the conclusion estimated even though visa itself is verified.
+  eq(first.nextTarget.status, 'estimated',
+    'nextTarget is estimated when any allocation behind it was estimated');
+  assertReprint(w, 'nextTarget-trust');
+}
+
+console.log('verified cascade stays calculated end to end');
+{
+  const debts = [
+    card('tri', 'Triangle Mastercard', 200, 19.99, 'verified'),
+    card('mbna', 'MBNA Mastercard', 5000, 12.99, 'confirmed'),
+    card('visa', 'Travel Visa', 3000, 9.99, 'verified'),
+  ];
+  const w = walk(debts, 1000);
+  const first = w.extraDebtAllocation['2026-01-15'];
+  eq(first.allocations.map(l => l.status).join(','), 'calculated,calculated',
+    'verified/confirmed cascade calculates at every line');
+  eq(first.nextTarget.status, 'calculated',
+    'continuity calculates when every dependency is calculated');
+  assertReprint(w, 'all-calculated');
 }
 
 console.log('zero and unavailable record nothing');

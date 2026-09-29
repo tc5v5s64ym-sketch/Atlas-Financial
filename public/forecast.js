@@ -11405,18 +11405,32 @@
     // receiving debt's own input confidence — verified/confirmed balances
     // calculate, anything else stays estimated and is never promoted —
     // the debt-vocabulary analog of the incumbent trajectoryEventsStatus
-    // rule. nextTarget is the first chain debt after the last debt this
-    // payment touched that still has balance once this payment landed —
-    // Forecast's own continuity conclusion for this payment — or null.
+    // rule. Trust is CUMULATIVE through the cascade: line N's amount is
+    // min(residual, balanceN), and once any upstream take was estimated the
+    // residual feeding every downstream take is estimated too, so a
+    // downstream line can never be promoted back to calculated even when
+    // its own debt is verified. Calculated status is kept only while every
+    // amount dependency through that line is calculated. nextTarget carries
+    // the same dependency: the continuity conclusion is calculated only
+    // when all allocations it depends on were calculated. nextTarget is
+    // the first chain debt after the last debt this payment touched that
+    // still has balance once this payment landed — Forecast's own
+    // continuity conclusion for this payment — or null.
     const buildExtraDebtAllocation = (chain, applied) => {
       const lineTrust = id => (debtInputConfidence[id] === 'verified'
           || debtInputConfidence[id] === 'confirmed') ? 'calculated' : 'estimated';
-      const allocations = applied.map(({ state, amount }) => ({
-        debtId: state.id,
-        label: state.label,
-        amount: roundCent(amount),
-        status: lineTrust(state.id),
-      }));
+      let upstreamEstimated = false;
+      const allocations = applied.map(({ state, amount }) => {
+        // Once an estimated take upstream shaped the residual, every
+        // downstream amount is estimated as well — never promoted.
+        upstreamEstimated = upstreamEstimated || lineTrust(state.id) !== 'calculated';
+        return {
+          debtId: state.id,
+          label: state.label,
+          amount: roundCent(amount),
+          status: upstreamEstimated ? 'estimated' : 'calculated',
+        };
+      });
       let nextTarget = null;
       const last = applied.length ? applied[applied.length - 1].state : null;
       if (last) {
@@ -11424,7 +11438,14 @@
         for (let i = idx + 1; i < chain.length; i++) {
           const s = chain[i];
           if (s && s.balance > EPSILON) {
-            nextTarget = { debtId: s.id, label: s.label, status: lineTrust(s.id) };
+            // The continuity conclusion rests on the cascade's modeled
+            // balances: if any allocation amount behind it was estimated,
+            // the conclusion is estimated too.
+            nextTarget = {
+              debtId: s.id,
+              label: s.label,
+              status: upstreamEstimated ? 'estimated' : lineTrust(s.id),
+            };
             break;
           }
         }
