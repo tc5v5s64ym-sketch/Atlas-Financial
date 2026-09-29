@@ -2970,6 +2970,7 @@ function budgetDrilldownPeriodHtml(period, src) {
     + `<div class="budget-month-rows">${stages.join('')}</div>`
     + budgetPayPeriodMoneyMapHtml(period)
     + budgetPayPeriodFundingPlanHtml(period, src)
+    + budgetPayPeriodFundingShortfallHtml(period, src)
     + `</div>`;
 }
 
@@ -3188,6 +3189,134 @@ function budgetPayPeriodFundingPlanHtml(period, src) {
     + `<span class="budget-month-label">Earmarked in Forecast</span>`
     + `<span class="budget-month-amount">${money2(contribution)}${trustTag}</span></div>`
     + allocations.map(a => budgetPayPeriodFundingLineHtml(a, trustTag)).join('')
+    + `</div></div>`;
+}
+
+/* AMANDA SLICE 12 — SELECTED PAY-PERIOD FUNDING SHORTFALL DETAIL.
+ *
+ * Slices 9–11 let Amanda select a pay period and understand what happens
+ * inside it, the three-stage result, the money map, and what that payday
+ * is supposed to fund for future planned costs. Slice 12 closes the
+ * failure-state gap: when Forecast's planned-cost funding schedule says
+ * the selected payday cannot meet everything, Amanda can answer how
+ * short it is, when the money is needed, and which planned costs
+ * Forecast's funding schedule names in the shortfall.
+ *
+ * The block renders only when schedule.status === 'funding-gap' AND
+ * schedule.gap.payday exactly equals the selected pay-period row's
+ * payday. Exact equality only: never a future gap on an earlier payday,
+ * never the first global gap on every pay period, never cashDate as the
+ * payday match, never nearest-payday. A pre-opening gap
+ * (gap.payday === null) is a different identity and never attaches to a
+ * visible payday; a residual period whose cycle payday predates the
+ * Forecast opening cannot borrow a future gap. With no exact-match gap
+ * the block is omitted — no shortfall for this payday is not an
+ * unavailable figure.
+ *
+ * Every figure is a Forecast reprint: shortBy is never derived from
+ * required - available page-side, affected costs are never totaled, and
+ * affected IDs resolve only through the same schedule publication's
+ * costs[], in gap.affected[] order. Affected is Forecast's
+ * funding-schedule attribution, not a causal or prescriptive conclusion:
+ * neutral language only, no cause, no recommendation, no borrow/defer/
+ * cancel wording. All funding figures carry schedule.fundingTrust —
+ * never Slice 10 component trust, Slice 11 row trust, cost confidence,
+ * or advice-shell trust. Unknown/unrecognized trust fails closed;
+ * unavailable is never $0.
+ */
+
+// Selected-payday funding shortfall, reprinted from the Forecast
+// planSpendPaydayFunding gap publication. Returns '' when Forecast
+// publishes no shortfall for the exact selected payday. Fails closed
+// visibly when Forecast does publish one but its publication is
+// malformed or untrusted.
+function budgetPayPeriodFundingShortfallHtml(period, src) {
+  const payday = period && (period.payday || period.id);
+  if (!period || !payday) return '';
+  let schedule = null;
+  try {
+    schedule = budgetMonthPlanSpendSchedule(src);
+  } catch (e) {
+    schedule = null;
+  }
+  const trustTag = schedule ? budgetMonthTrustTag(schedule.fundingTrust) : null;
+  if (!schedule || schedule.status !== 'funding-gap') return '';
+  const gap = schedule.gap;
+  // Exact-payday identity: the shortfall belongs to the selected payday
+  // only. gap.payday === null (a pre-opening shortfall) never attaches
+  // to a visible payday.
+  if (!gap || gap.payday !== payday) return '';
+  const failClosed = `<div class="budget-drilldown-funding-shortfall" data-budget-drilldown-funding-shortfall="unavailable">`
+    + `<p class="operating-lead">Funding shortfall</p>`
+    + `<p class="operating-note">Forecast published a funding shortfall for this payday, but the shortfall detail is unavailable from the current Forecast opening. This is not $0.</p></div>`;
+  // An exact-match gap with unrecognized trust is malformed publication
+  // state: the shortfall is real, but nothing about it may render
+  // untagged. Fail closed visibly — never omit a published shortfall.
+  if (!trustTag) return failClosed;
+  // Strict validation, no coercion: shortBy must be a real finite
+  // number. false/""/null/numeric strings/NaN/Infinity are malformed
+  // publication state — never $0, and never derived from
+  // required - available page-side.
+  const shortBy = gap.shortBy;
+  if (typeof shortBy !== 'number' || !Number.isFinite(shortBy)) return failClosed;
+  // cashDate reprint under the incumbent contract (ISO date strings). A
+  // missing or malformed cashDate fails that line closed visibly — the
+  // shortfall amount is still Forecast's published figure.
+  const cashDateLabel = (typeof gap.cashDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(gap.cashDate))
+    ? fmtDateLong(gap.cashDate) : null;
+  // Affected costs: Forecast-owned IDs resolved through the same
+  // schedule publication's costs[], in gap.affected[] order. A
+  // missing/non-array collection, an unresolvable ID, or a malformed
+  // label is malformed publication state — the affected detail fails
+  // closed visibly rather than silently dropping an ID and looking
+  // complete.
+  let affectedHtml = '';
+  if (!Array.isArray(gap.affected) || !Array.isArray(schedule.costs)) {
+    affectedHtml = `<div class="operating-line"><span>Affected planned costs</span><span>unavailable — Forecast did not publish this detail in a usable form.</span></div>`;
+  } else {
+    const labelById = new Map();
+    for (const cost of schedule.costs) {
+      if (cost && cost.id != null && typeof cost.label === 'string' && cost.label.length > 0
+        && !labelById.has(cost.id)) {
+        labelById.set(cost.id, cost.label);
+      }
+    }
+    const labels = [];
+    let affectedOk = true;
+    for (const id of gap.affected) {
+      const label = labelById.get(id);
+      if (typeof label !== 'string' || label.length === 0) { affectedOk = false; break; }
+      labels.push(label);
+    }
+    if (!affectedOk) {
+      affectedHtml = `<div class="operating-line"><span>Affected planned costs</span><span>unavailable — Forecast did not publish this detail in a usable form.</span></div>`;
+    } else if (labels.length) {
+      affectedHtml = `<div class="operating-line operating-line-stack"><span>Affected planned costs</span>`
+        + `<span>${labels.map(label => `<span class="affected-cost">${label}</span>`).join('')}</span></div>`
+        + `<p class="operating-note">Attribution only: Forecast's funding schedule names these planned costs in this payday's shortfall.</p>`;
+    } else {
+      affectedHtml = `<div class="operating-line"><span>Affected planned costs</span><span>none named in this Forecast publication</span></div>`;
+    }
+  }
+  // Optional Forecast context, reprinted only — never used to derive
+  // the shortfall. required - available is NOT computed page-side.
+  const knownAmount = value => (typeof value === 'number' && Number.isFinite(value)) ? money2(value) : null;
+  const requiredLine = knownAmount(gap.required);
+  const availableLine = knownAmount(gap.available);
+  return `<div class="budget-drilldown-funding-shortfall" data-budget-drilldown-funding-shortfall="${payday}">`
+    + `<p class="operating-lead">Funding shortfall</p>`
+    + `<div class="operating-lines">`
+    + `<div class="operating-line"><span>Short by</span><span>${money2(shortBy)}${trustTag}</span></div>`
+    + (cashDateLabel
+      ? `<div class="operating-line"><span>Needed by</span><span>${cashDateLabel}${trustTag}</span></div>`
+      : `<div class="operating-line"><span>Needed by</span><span>unavailable — Forecast did not publish this date.</span></div>`)
+    + (requiredLine != null
+      ? `<div class="operating-line"><span>Forecast required</span><span>${requiredLine}${trustTag}</span></div>`
+      : `<div class="operating-line"><span>Forecast required</span><span>unavailable — Forecast did not publish this figure. Not $0.</span></div>`)
+    + (availableLine != null
+      ? `<div class="operating-line"><span>Forecast available</span><span>${availableLine}${trustTag}</span></div>`
+      : `<div class="operating-line"><span>Forecast available</span><span>unavailable — Forecast did not publish this figure. Not $0.</span></div>`)
+    + affectedHtml
     + `</div></div>`;
 }
 
