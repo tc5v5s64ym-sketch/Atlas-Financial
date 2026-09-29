@@ -2498,10 +2498,15 @@ function budgetMonthComponentRow(label, component) {
       + `<span class="budget-month-unavailable">unavailable — ${reason} Not $0.</span></div>`;
   }
   const amount = component.amount;
-  if (amount == null || !isFinite(Number(amount))) {
+  // Strict validation, no coercion: the amount must be a real finite
+  // number (false/""/null are malformed data, never $0) and the trust
+  // state must be explicitly published ('calculated' | 'estimated').
+  // Anything else fails closed — currency never renders bare.
+  if (typeof amount !== 'number' || !Number.isFinite(amount)
+      || (component.status !== 'calculated' && component.status !== 'estimated')) {
     return `<div class="budget-month-row unavailable" data-budget-month-component="unavailable">`
       + `<span class="budget-month-label">${label}</span>`
-      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish an amount. Not $0.</span></div>`;
+      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish a valid figure. Not $0.</span></div>`;
   }
   const tag = budgetMonthTrustTag(component.status) || '';
   return `<div class="budget-month-row" data-budget-month-component="${label}">`
@@ -2898,15 +2903,19 @@ function budgetDrilldownPeriods(traj, anchorMonth) {
 function budgetDrilldownStageHtml(stage) {
   const label = (stage && stage.label) || 'Stage';
   const result = (stage && stage.result) || {};
+  // Strict validation, no coercion: the result amount must be a real finite
+  // number (false/""/null are malformed data, never $0) and the trust
+  // state must be explicitly published. Anything else fails closed.
   if (!stage || stage.status === 'unavailable' || result.status === 'unavailable'
-      || result.amount == null || !isFinite(Number(result.amount))) {
+      || typeof result.amount !== 'number' || !Number.isFinite(result.amount)
+      || (result.status !== 'calculated' && result.status !== 'estimated')) {
     const reason = result.reason || (stage && stage.reason)
       || 'Forecast did not publish this stage.';
     return `<div class="budget-month-row unavailable" data-budget-drilldown-stage="unavailable">`
       + `<span class="budget-month-label">${label}</span>`
       + `<span class="budget-month-unavailable">unavailable — ${reason} Not $0.</span></div>`;
   }
-  const amount = Number(result.amount);
+  const amount = result.amount;
   const tag = budgetMonthTrustTag(result.status) || '';
   // Sign prefix is presentation formatting of the reprinted figure.
   const display = amount > 0 ? `+${money2(amount)}`
@@ -2985,13 +2994,17 @@ function budgetDrilldownPeriodHtml(period) {
 
 // One Forecast-published line item: its label, its amount, and its own
 // trust tag. The line never inherits the parent component's trust.
+// Present-but-malformed line data (wrong-type amount, missing trust)
+// fails closed visibly: an incomplete breakdown must never look complete,
+// and never $0. Genuinely absent lines (no lines array) render no rows.
 function budgetDrilldownLineHtml(line) {
-  if (!line || typeof line.label !== 'string' || !line.label) return '';
-  const amount = line.amount;
-  if (amount == null || !isFinite(Number(amount))) {
+  const label = line && typeof line.label === 'string' && line.label ? line.label : null;
+  const amount = line ? line.amount : undefined;
+  const trustOk = !!line && (line.status === 'calculated' || line.status === 'estimated');
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || !trustOk) {
     return `<div class="budget-month-row unavailable" data-budget-drilldown-line="unavailable">`
-      + `<span class="budget-month-label">${line.label}</span>`
-      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish an amount. Not $0.</span></div>`;
+      + `<span class="budget-month-label">${label || 'Line item'}</span>`
+      + `<span class="budget-month-unavailable">unavailable — Forecast did not publish this line item. Not $0.</span></div>`;
   }
   const tag = budgetMonthTrustTag(line.status) || '';
   return `<div class="budget-month-row budget-drilldown-line" data-budget-drilldown-line="named">`
@@ -3047,9 +3060,9 @@ function budgetPayPeriodMoneyMapHtml(period) {
   );
   // Extra debt strategy — the published extras amount only. Forecast
   // publishes no debt target on this component, so none is named here.
-  const extrasRows = (s3.extras && s3.extras.status !== 'unavailable')
-    ? budgetDrilldownComponentHtml('Planned extra debt payment', s3.extras)
-    : '';
+  // An explicitly unavailable extras figure renders its unavailable
+  // reason; it is never silently omitted.
+  const extrasRows = budgetDrilldownComponentHtml('Planned extra debt payment', s3.extras);
   groups.push(
     `<p class="operating-lead">${s3.label || 'After debt strategy'}</p>`
     + `<div class="budget-month-rows">`

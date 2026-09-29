@@ -444,4 +444,105 @@ check('P16: the Month lens component surface is unchanged', () => {
   } finally { resetSlice10State(); }
 });
 
+// ---------------------------------------------------------------- Adversarial -
+// Systems Review BLOCKING (PR #448, head befc66c): the money map must fail
+// closed on malformed data — no coercion of false/""/null into $0.00, no
+// bare currency without an explicit published trust state, no silent
+// omission of unavailable or malformed figures.
+check('A1: coerced-falsy line amounts never become $0.00', () => {
+  for (const bad of [false, '', null, undefined, NaN, '123.45', Infinity]) {
+    const html = P.budgetDrilldownLineHtml({ label: 'Bad line', amount: bad, status: 'estimated' });
+    assert.ok(html.includes('unavailable') && html.includes('Not $0'),
+      `line amount ${String(bad)} fails closed`);
+    assert.ok(!html.includes('$0.00'), `line amount ${String(bad)} never renders $0.00`);
+  }
+});
+
+check('A2: a line without an explicit published trust state never renders bare currency', () => {
+  for (const line of [
+    { label: 'No trust', amount: 123.45 },
+    { label: 'Bogus trust', amount: 123.45, status: 'bogus' },
+    { label: 'Unavailable trust', amount: 123.45, status: 'unavailable' },
+  ]) {
+    const html = P.budgetDrilldownLineHtml(line);
+    assert.ok(!html.includes('$123.45'), `${line.label}: no bare currency`);
+    assert.ok(html.includes('unavailable'), `${line.label}: fails closed`);
+  }
+});
+
+check('A3: present-but-malformed lines render unavailable; genuinely absent lines render nothing', () => {
+  const comp = { amount: 100, status: 'calculated', lines: [null, {}, { label: 'Ghost' }, { label: 'Priceless', amount: 5 }] };
+  const html = P.budgetDrilldownComponentHtml('Bills', comp);
+  assert.equal((html.match(/data-budget-drilldown-line="unavailable"/g) || []).length, 4,
+    'each malformed line entry fails closed visibly, none silently dropped');
+  assert.ok(!html.includes('$5.00'), 'the trust-less line does not render bare currency');
+  assert.ok(html.includes(money(100)), 'the valid component total still reprints');
+  const noLines = P.budgetDrilldownComponentHtml('Bills', { amount: 100, status: 'calculated' });
+  assert.ok(!noLines.includes('data-budget-drilldown-line='),
+    'genuinely absent lines invent no rows');
+});
+
+check('A4: malformed component amounts and missing trust fail closed', () => {
+  const badAmount = P.budgetDrilldownComponentHtml('Bills', { amount: false, status: 'estimated' });
+  assert.ok(badAmount.includes('unavailable') && badAmount.includes('Not $0'), 'false amount fails closed');
+  assert.ok(!badAmount.includes('$0.00'), 'false amount never becomes $0.00');
+  const noTrust = P.budgetDrilldownComponentHtml('Bills', { amount: 100 });
+  assert.ok(!noTrust.includes('$100.00'), 'no bare currency without trust');
+  assert.ok(noTrust.includes('unavailable'), 'missing trust fails closed');
+  const bogusTrust = P.budgetDrilldownComponentHtml('Bills', { amount: 100, status: 'received' });
+  assert.ok(!bogusTrust.includes('$100.00'), 'unrecognized trust never renders currency');
+});
+
+check('A5: malformed stage results fail closed', () => {
+  const badAmount = P.budgetDrilldownStageHtml({ label: 'Normal life',
+    result: { amount: false, status: 'estimated' } });
+  assert.ok(badAmount.includes('unavailable'), 'false stage amount fails closed');
+  assert.ok(!badAmount.includes('$0.00'), 'false stage amount never renders $0.00 projected balance');
+  const noTrust = P.budgetDrilldownStageHtml({ label: 'Normal life',
+    result: { amount: 100, status: 'whatever' } });
+  assert.ok(noTrust.includes('unavailable'), 'stage without explicit trust fails closed');
+  assert.ok(!noTrust.includes('$100.00'), 'no bare stage currency');
+});
+
+check('A6: explicitly unavailable extras renders its reason, never silence', () => {
+  const row = { payday: '2026-10-09', rangeLabel: 'Oct 9–Oct 22', windowKind: 'full-cycle',
+    stage1: { label: 'Normal life', result: { amount: 10, status: 'calculated' },
+      income: { amount: 10, status: 'calculated' } },
+    stage2: { label: 'After planned spending', result: { amount: 10, status: 'calculated' },
+      commitments: { amount: 0, status: 'calculated' } },
+    stage3: { label: 'After debt strategy', result: { amount: 10, status: 'calculated' },
+      extras: { status: 'unavailable', reason: 'Forecast could not read extra-debt input.' } } };
+  const map = P.budgetPayPeriodMoneyMapHtml(row);
+  assert.ok(map.includes('Planned extra debt payment'), 'the extras row is present');
+  assert.ok(map.includes('Forecast could not read extra-debt input.'), 'its reason is shown');
+  assert.ok(map.includes('Not $0'), 'never $0');
+});
+
+check('A7: a malformed component inside a real map fails closed without destroying the rest', () => {
+  try {
+    resetSlice10State();
+    const plan = slice10Plan();
+    const src = slice10Src(plan, 140, slice10Debts);
+    enterDrilldown(src, '2026-10');
+    selectPayPeriod('2026-10-09');
+    const row = engineRow(plan, 140, '2026-10-09', slice10Debts);
+    const broken = Object.assign({}, row, {
+      stage1: Object.assign({}, row.stage1, {
+        bills: { amount: '', status: 'estimated' }, // malformed: coerces to 0 under Number()
+        obligations: { amount: 150 }, // malformed: no trust state
+      }),
+    });
+    const map = P.budgetPayPeriodMoneyMapHtml(broken);
+    for (const label of ['Bills', 'Required debt payments']) {
+      const at = map.indexOf(label);
+      assert.ok(at !== -1, `${label} row is present`);
+      const rowHtml = map.slice(at, at + 500);
+      assert.ok(rowHtml.includes('unavailable'), `${label} fails closed visibly`);
+      assert.ok(!rowHtml.includes('$0.00'),
+        `${label}: the malformed amount never becomes $0.00`);
+    }
+    assert.ok(map.includes(money(row.stage1.income.amount)), 'income survives');
+  } finally { resetSlice10State(); }
+});
+
 console.log(`\nSlice 10 money map: ${checks} checks passed.`);
