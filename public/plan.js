@@ -3968,7 +3968,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     if (summary && !planUnavailable) {
       // Overview values are published Forecast fields, never sums of details.
       const known = typeof summary.amount === 'number' && Number.isFinite(summary.amount)
-        && summary.trust !== 'unavailable' && summary.trust !== 'unknown';
+        && summary.trust !== 'unavailable' && summary.trust !== 'unknown'
+        && (!summary.trustRequired || summary.trust === 'calculated' || summary.trust === 'estimated');
       const estimate = summary.trust === 'estimated' ? '<span class="est">≈ estimated</span> ' : '';
       return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
         <details class="budget-step-details">
@@ -4011,11 +4012,11 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ${lookbackNote}${projectedNote}${openingUnknownNote}
     ${opening}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period), null,
-      { amount: period.available, note: 'Receipts and dates — planned or received' })}
+      { amount: period.available, trust: period.incomeTrust, trustRequired: true, note: 'Receipts and dates — planned or received' })}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period), null,
-      { amount: period.periodBillLoad, note: 'Period deduction, including required debt minimums' })}
+      { amount: period.periodBillLoad, trust: period.periodBillLoadTrust, trustRequired: true, note: 'Period deduction, including required debt minimums' })}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance',
-      { amount: period.afterBills != null ? period.afterBills : period.afterRemainingBills, note: 'Period income after the bill deduction' })}
+      { amount: period.afterBills != null ? period.afterBills : period.afterRemainingBills, trust: period.afterBillsTrust, trustRequired: true, note: 'Period income after the bill deduction' })}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan), null,
       { amount: period.budgetHold, trust: period.budgetHoldTrust, note: 'Targets, actual spending and the period reserve' })}
     ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget, period.balanceAfterDeductionsTrust)

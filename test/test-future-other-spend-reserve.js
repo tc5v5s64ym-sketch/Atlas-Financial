@@ -401,8 +401,8 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
       ok(!budgetRow(left, OTHER_ID),
         left.timelineRole + ' ' + left.start + ' has no Other Spend reserve');
       ok(left.budgetHoldTrust !== 'estimated'
-          && left.balanceAfterDeductionsTrust !== 'estimated',
-        left.timelineRole + ' ' + left.start + ' does not gain the estimated stamp');
+          && left.balanceAfterDeductionsTrust === right.balanceAfterDeductionsTrust,
+        left.timelineRole + ' ' + left.start + ' does not gain trust from the Other Spend reserve');
       ok(near(left.budgetHold, right.budgetHold)
           && near(left.balanceAfterDeductions, right.balanceAfterDeductions),
         left.timelineRole + ' hold and Balance After Deductions do not move');
@@ -460,13 +460,15 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
       && liveFutureBad.includes(composer.money2(liveFuture.balanceAfterDeductions)),
     'a live future pay period shows ≈ estimated on Other Spend, the total, and Balance After Deductions');
   ok(liveCurrent && !/data-budget-hold-trust="estimated"/.test(liveCurrentHtml)
-      && !/data-balance-trust="estimated"/.test(liveCurrentHtml)
+      && /data-balance-trust="estimated"/.test(liveCurrentHtml)
+        === (liveCurrent.balanceAfterDeductionsTrust === 'estimated')
       && !/data-budget-category="other-spend"/.test(liveCurrentHtml),
-    'the live current pay period does not show this estimate marker');
+    'the live current pay period preserves income/bill trust without the Other Spend reserve marker');
   ok(livePast && !/data-budget-hold-trust="estimated"/.test(livePastHtml)
-      && !/data-balance-trust="estimated"/.test(livePastHtml)
+      && /data-balance-trust="estimated"/.test(livePastHtml)
+        === (livePast.balanceAfterDeductionsTrust === 'estimated')
       && !/data-budget-category="other-spend"/.test(livePastHtml),
-    'a live past pay period does not show this estimate marker');
+    'a live past pay period preserves income/bill trust without the Other Spend reserve marker');
 }
 
 if (failures) {

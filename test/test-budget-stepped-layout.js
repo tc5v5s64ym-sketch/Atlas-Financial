@@ -25,6 +25,7 @@ function period(id, start, end, role) {
     role: role === 'current' ? 'active' : role === 'past' ? 'lookback' : 'future',
     projected: role !== 'current' && role !== 'past', openingKnown: true, opening: 600,
     available: 1800, periodBillLoad: 300, afterBills: 1500, budgetHold: 200,
+    incomeTrust: 'calculated', periodBillLoadTrust: 'calculated', afterBillsTrust: 'calculated',
     predictedEndingBalance: 1300, totalBillsThisPeriod: 390, paidBills: 90, remainingBills: 300,
     income: [{ id: 'payroll', incomeClass: 'dale', label: 'Salary', amount: 999,
       date: start, status: 'received' }],
@@ -89,6 +90,54 @@ for (const trust of ['unavailable', 'unknown']) {
 const unavailable = f.calendarWaterfallHtml(Object.assign({}, rows[1], { operatingPlanUnavailable: true }), null, null, plan);
 assert.doesNotMatch(unavailable, /class="budget-step-details"/);
 assert.match(unavailable, /data-current-waterfall="unavailable"/);
+
+// Exercise the incumbent 2027 payroll regime, rather than stamping a mock row.
+const financialData = require('./fixtures/budget-layout-data')();
+const financialAdvice = F.recommend(financialData.plan, financialData.meta.asOf, { debts: [] });
+const projected = financialAdvice.payPeriodViews.find(p => p.start === '2027-01-01');
+assert.equal(projected.income[0].incomeRegime, '2027-estimated');
+assert.equal(projected.incomeTotal, 3849.40);
+assert.equal(projected.periodBillLoad, 1600 + 199);
+assert.equal(projected.afterBills, 2050.40);
+assert.equal(projected.balanceAfterDeductions, 1950.40);
+const projectedHtml = f.calendarWaterfallHtml(projected, null, null, financialData.plan);
+for (const id of ['02', '05', '07']) {
+  assert.match(summary(projectedHtml, id), /≈ estimated/,
+    `collapsed ${id} must disclose the Forecast payroll estimate`);
+}
+assert.doesNotMatch(summary(projectedHtml, '04'), /≈ estimated/);
+const estimatedBillData = require('./fixtures/budget-layout-data')();
+estimatedBillData.plan.bills[1].confidence = 'estimated';
+estimatedBillData.plan.opening.asOf = '2026-11-20';
+// Use a period containing that bill while retaining confirmed 2026 income.
+const billPeriod = F.recommend(estimatedBillData.plan, '2026-11-20', { debts: [] })
+  .payPeriodViews.find(p => p.start === '2026-11-20');
+assert.ok(billPeriod);
+const billHtml = f.calendarWaterfallHtml(billPeriod, null, null, estimatedBillData.plan);
+assert.match(summary(billHtml, '04'), /≈ estimated/);
+assert.match(summary(billHtml, '05'), /≈ estimated/);
+assert.match(summary(billHtml, '07'), /≈ estimated/);
+assert.doesNotMatch(summary(billHtml, '02'), /≈ estimated/);
+assert.equal(billPeriod.periodBillLoad, 1799);
+assert.equal(billPeriod.afterBills, 2465);
+for (const trust of [undefined, null, 'unknown', 'unavailable', 'verified', 'nonsense']) {
+  const withheld = f.calendarWaterfallHtml(Object.assign({}, rows[1], {
+    incomeTrust: trust, periodBillLoadTrust: trust, afterBillsTrust: trust }), null, null, plan);
+  for (const id of ['02', '04', '05']) assert.match(summary(withheld, id), /Unavailable/);
+}
+const unknownInputs = require('./fixtures/budget-layout-data')();
+unknownInputs.plan.bills[1].confidence = 'unknown';
+const unknownPeriod = F.recommend(unknownInputs.plan, unknownInputs.meta.asOf, { debts: [] })
+  .payPeriodViews.find(p => p.start === '2027-01-01');
+assert.equal(unknownPeriod.periodBillLoadTrust, 'unavailable');
+assert.equal(unknownPeriod.afterBillsTrust, 'unavailable');
+assert.equal(unknownPeriod.balanceAfterDeductionsTrust, 'unavailable');
+const unknownHtml = f.calendarWaterfallHtml(unknownPeriod, null, null, unknownInputs.plan);
+for (const id of ['04', '05', '07']) assert.match(summary(unknownHtml, id), /Unavailable/);
+const missingConfidence = require('./fixtures/budget-layout-data')();
+delete missingConfidence.plan.bills[1].confidence;
+assert.equal(F.recommend(missingConfidence.plan, missingConfidence.meta.asOf, { debts: [] })
+  .payPeriodViews.find(p => p.start === '2027-01-01').periodBillLoadTrust, 'estimated');
 
 const short = JSON.parse(JSON.stringify(ctx));
 short.advice.paydayAllocation.obligations.shortfall = 50;
