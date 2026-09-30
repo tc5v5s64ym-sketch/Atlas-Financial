@@ -161,7 +161,10 @@ function adviceFixture(allocOverrides) {
 
 const currentPeriod = { id: 'current:2026-01-02', start: '2026-01-02', end: '2026-01-15', timelineRole: 'current' };
 const shell = (allocOverrides, period = currentPeriod) =>
-  P.paydayInstructionShellHtml(adviceFixture(allocOverrides), period);
+  P.paydayInstructionShellHtml(adviceFixture(allocOverrides), period,
+    // AMANDA SLICE 14: explicit schedule argument (null here — the
+    // planned block fails closed; this file tests the extra-debt block).
+    null);
 
 // The "Extra on focus debt" block, scoped so other blocks cannot leak in.
 function extraBlock(html) {

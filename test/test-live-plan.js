@@ -1811,7 +1811,7 @@ function calendarWaterfallComposer() {
     grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
     '({ calendarWaterfallHtml, glanceUpdatedNote, cashGlanceHtml, money2 })',
-  ].join('\n'), { Forecast });
+  ].join('\n'), { Forecast, state: { scenario: null, targetBuffer: 500, extraDebtMonthly: 0, incomeOverrides: {}, disabled: [], debts: null, extraDebtTarget: null, extraFacilities: null } });
 }
 
 function operatingSurfaceComposer() {
@@ -1893,6 +1893,12 @@ function operatingSurfaceComposer() {
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function unavailableOperatingSurfaceHtml\([\s\S]*?\n\}$/m, 'unavailableOperatingSurfaceHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
+    // AMANDA SLICE 14 — the same-input schedule chain read by operatingSurfaceHtml.
+    grab(planSrc, /^function budgetMonthPlanSpendSchedule\([\s\S]*?\n\}$/m, 'budgetMonthPlanSpendSchedule'),
+    grab(planSrc, /^function budgetMonthKnobOpts\([\s\S]*?\n\}/m, 'budgetMonthKnobOpts'),
+    grab(planSrc, /^function budgetTrajectoryCacheKeyFor\([\s\S]*?\n\}/m, 'budgetTrajectoryCacheKeyFor'),
+    grab(planSrc, /^function simOpts\([\s\S]*?\n\}/m, 'simOpts'),
+    grab(planSrc, /^function isValidIsoCalendarDate\([\s\S]*?\n\}/m, 'isValidIsoCalendarDate'),
     // AMANDA SLICE 3 — the Month view functions called by operatingSurfaceHtml.
     grab(planSrc, /^const BUDGET_MONTH_NAMES = [\s\S]*?\];/m, 'BUDGET_MONTH_NAMES'),
     grab(planSrc, /^function budgetMonthName\([\s\S]*?\n\}/m, 'budgetMonthName'),
@@ -1902,10 +1908,10 @@ function operatingSurfaceComposer() {
     grab(planSrc, /^function budgetMonthComponentRow\([\s\S]*?\n\}/m, 'budgetMonthComponentRow'),
     grab(planSrc, /^function budgetMonthVerdictHtml\([\s\S]*?\n\}/m, 'budgetMonthVerdictHtml'),
     grab(planSrc, /^function budgetMonthViewHtml\([\s\S]*?\n\}/m, 'budgetMonthViewHtml'),
-    'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null;',
+    'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null; let budgetMonthScheduleCache = null; let budgetMonthScheduleCacheKey = null;',
     grab(planSrc, /^function paydayInstructionShellHtml\([\s\S]*?\n\}$/m, 'paydayInstructionShellHtml'),
     '({ operatingSurfaceHtml, money2 })',
-  ].join('\n'), { Forecast });
+  ].join('\n'), { Forecast, state: { scenario: null, targetBuffer: 500, extraDebtMonthly: 0, incomeOverrides: {}, disabled: [], debts: null, extraDebtTarget: null, extraFacilities: null } });
 }
 
 function browserPlanComposer() {
@@ -1942,7 +1948,7 @@ function browserPlanComposer() {
     grab(planSrc, /^function paydayAmountCell\([\s\S]*?\n\}$/m, 'paydayAmountCell'),
     grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
     '({ paydayAnswerHtml, currentOperatingCashHeroTiles, currentOperatingConsumerDebtHeroTile, currentOperatingTransferNoteHtml })',
-  ].join('\n'), { Forecast });
+  ].join('\n'), { Forecast, state: { scenario: null, targetBuffer: 500, extraDebtMonthly: 0, incomeOverrides: {}, disabled: [], debts: null, extraDebtTarget: null, extraFacilities: null } });
 }
 
 console.log('\n=== 20. incomplete current cash still withholds a stale cycle as current ===');

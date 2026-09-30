@@ -229,12 +229,16 @@ const adviceFixture = (allocOverrides, scheduleOverrides) => ({
 });
 
 const shell = (allocOverrides, scheduleOverrides, period = currentPeriod) =>
-  f.paydayInstructionShellHtml(adviceFixture(allocOverrides, scheduleOverrides), period);
+  f.paydayInstructionShellHtml(adviceFixture(allocOverrides, scheduleOverrides), period,
+    // AMANDA SLICE 14: the shell is a pure reprint function of the
+    // caller-supplied same-input schedule — the third argument is the
+    // Forecast publication, never derived inside the shell.
+    scheduleOverrides === null ? null : scheduleFixture(scheduleOverrides));
 
 check('B1: normal payday renders every block with exact Forecast figures', () => {
   const html = shell();
   assert.match(html, /data-payday-instruction-shell="2026-09-25"/);
-  assert.match(html, /Where this payday's money needs to go/);
+  assert.match(html, /Today's money — current position/);
   assert.match(html, /\$5,000\.00/); // available
   assert.match(html, /\$2,000\.00/); // bills & required minimums
   assert.match(html, /\$800\.00/); // household spending
@@ -323,15 +327,18 @@ check('B9: unavailable schedule fails closed — unknown is not $0', () => {
   assert.doesNotMatch(html, /data-plan-spend-earmark/);
 });
 
-check('B10: no matching payday row fails closed', () => {
+check('B10: period.start no longer selects the row — the exact first payday does', () => {
   const html = shell({}, {}, { id: 'x', start: '2026-10-09', end: '2026-10-22', timelineRole: 'future' });
-  assert.match(html, /Nest Money funding plan: unavailable/);
+  // The planned block shows the schedule's first (exact) payday row,
+  // not the selected period's start.
+  assert.match(html, /data-exact-payday-plan="2026-09-25"/);
+  assert.doesNotMatch(html, /Nest Money funding plan: unavailable/);
 });
 
 check('B11: no shell at all without a payday allocation', () => {
   const advice = adviceFixture();
   advice.paydayAllocation = null;
-  assert.equal(f.paydayInstructionShellHtml(advice, currentPeriod), '');
+  assert.equal(f.paydayInstructionShellHtml(advice, currentPeriod, advice.planSpendPaydayFunding), '');
 });
 
 check('B12: the page never prints or derives from the raw protectedPath hold', () => {
@@ -457,7 +464,7 @@ check('C3: the 2027 Dale-payroll projection renders as estimate, not bare curren
     payPeriodViews: [{ id: 'x', start: asOf, end: '2027-01-29', timelineRole: 'current' }],
     defaultView: { asOf },
   };
-  const html = f.paydayInstructionShellHtml(advice, { id: 'x', start: asOf });
+  const html = f.paydayInstructionShellHtml(advice, { id: 'x', start: asOf }, sched);
   assert.match(html, /\$5,849\.40/);
   assert.match(html, /5,849\.40 <span class="trust-tag trust-estimated">estimate<\/span>/);
   assert.doesNotMatch(html, /unavailable/);
@@ -479,7 +486,7 @@ check('C4: every shell figure on the normal payday renders with its trust tag', 
 check('C5: unpublished trust fails closed — figures render unavailable, never bare currency', () => {
   const advice = adviceFixture();
   delete advice.paydayShellTrust;
-  const html = f.paydayInstructionShellHtml(advice, currentPeriod);
+  const html = f.paydayInstructionShellHtml(advice, currentPeriod, advice.planSpendPaydayFunding);
   assert.match(html, /Money available: unavailable/);
   assert.match(html, /Bills & required minimums: unavailable/);
   assert.match(html, /Current household spending: unavailable/);
@@ -492,7 +499,7 @@ check('C5: unpublished trust fails closed — figures render unavailable, never 
   // A live row with no published trust fails the planned blocks closed too.
   const advice2 = adviceFixture();
   delete advice2.planSpendPaydayFunding.paydays[0].trust;
-  const html2 = f.paydayInstructionShellHtml(advice2, currentPeriod);
+  const html2 = f.paydayInstructionShellHtml(advice2, currentPeriod, advice2.planSpendPaydayFunding);
   assert.match(html2, /Nest Money funding plan: unavailable/);
   assert.match(html2, /Other protected cash — keep in chequing: unavailable/);
 });
@@ -510,7 +517,8 @@ check('C5: unpublished trust fails closed — figures render unavailable, never 
 // money. Synthetic fixtures only (L-006).
 
 function nestMoneyBlock(html) {
-  const title = '<h3>Nest Money funding plan</h3>';
+  // AMANDA SLICE 14: the block title carries the exact payday's date.
+  const title = '<h3>Nest Money funding plan';
   const start = html.indexOf(title);
   assert.ok(start !== -1, 'Nest Money block is present');
   const after = html.slice(start);
@@ -672,6 +680,289 @@ check('E4: the engine publishes no prior Nest Money move state — the qualifier
   // A fresh computation opens with no recognized prior protection.
   assert.equal(live.openingProtected, 0);
   // ...so every positive instruction must carry the qualifier (E2).
+});
+
+// ---------------------------------------------------------------- Part F ---
+// AMANDA SLICE 14 — PAYDAY ACTION IDENTITY & FUNDING PARITY.
+//
+// The deployed failure: the selected/current period opened 2026-09-25
+// while the next exact Forecast payday was 2026-10-09. The shell looked
+// the planned row up by period.start, found no row, and printed
+// "Nest Money funding plan unavailable" — while Plan Spend showed the
+// trusted $0.00 for 2026-10-09. These checks prove, on the rendered
+// HTML the household actually reads:
+//   1. The planned block shows the EXACT payday's row (paydays[0]),
+//      labelled with its exact date — never period.start, never a
+//      nearest-payday substitution.
+//   2. A trusted $0 contribution renders $0.00 (never unavailable);
+//      unknown/null/malformed fails closed (never $0, never partial).
+//   3. The authoritative contribution is reprinted, never derived by
+//      summing allocations.
+//   4. Current position, selected period, and exact payday keep visibly
+//      separate identities; the shell is a pure function of the
+//      caller-supplied same-input schedule.
+
+const exactSchedule = (overrides = {}) => scheduleFixture(Object.assign({
+  asOf: '2026-09-25',
+  fundingTrust: 'estimated',
+  paydays: [
+    { payday: '2026-10-09', contribution: 0, allocations: [],
+      nonPlanSpendProtected: null, gap: null, trust: 'calculated' },
+    { payday: '2026-10-23', contribution: 450,
+      allocations: [
+        { id: 'proptax', label: 'Property tax reserve', amount: 300 },
+        { id: 'xmas', label: 'Christmas', amount: 150 },
+      ],
+      nonPlanSpendProtected: null, gap: null, trust: 'calculated' },
+  ],
+}, overrides));
+
+// The selected/current period opens 2026-09-25 — before the schedule's
+// first exact payday (2026-10-09). The ASCII range label keeps the
+// fixture encoding-simple; the page uses the period's own label.
+const exactPeriod = { id: 'current:2026-09-25', start: '2026-09-25', end: '2026-10-08',
+  timelineRole: 'current', rangeLabel: 'Sep 25-Oct 8' };
+
+const exactShell = (scheduleOverrides = {}, period = exactPeriod) =>
+  f.paydayInstructionShellHtml(adviceFixture(), period,
+    scheduleOverrides === null ? null : exactSchedule(scheduleOverrides));
+
+check('F1: the planned block shows the exact payday (2026-10-09), not the period start (2026-09-25)', () => {
+  const html = exactShell();
+  const blockHtml = nestMoneyBlock(html);
+  // The block carries the exact payday's identity…
+  assert.match(html, /data-exact-payday-plan="2026-10-09"/);
+  assert.match(blockHtml, /Nest Money funding plan — 2026-10-09 payday/);
+  assert.match(blockHtml, /Forecast's planned-cost funding for the 2026-10-09 payday\./);
+  // No Plan Spend equality claim: the schedule is regenerated on the
+  // Budget's active knob inputs, so the answers can differ after a
+  // Budget override (Systems Review 5361317547).
+  assert.doesNotMatch(blockHtml, /same answer Plan Spend shows/);
+  // …the trusted $0 renders $0.00, not unavailable…
+  assert.match(blockHtml, /\$0\.00/);
+  assert.match(blockHtml, /No Nest Money earmark this payday/);
+  assert.doesNotMatch(blockHtml, /unavailable/);
+  // …and the period start is never presented as the payday.
+  assert.doesNotMatch(blockHtml, /2026-09-25 payday/);
+});
+
+check('F2: a trusted $0 on the exact payday carries the schedule-level trust tag', () => {
+  // The 2026-10-09 row is not the live row (payday !== asOf), so by
+  // Forecast's contract its figures carry fundingTrust, never borrowed.
+  const blockHtml = nestMoneyBlock(exactShell());
+  assert.match(blockHtml, /\$0\.00 <span class="trust-tag trust-estimated">estimate<\/span>/);
+});
+
+check('F3: a null contribution on the exact payday fails closed — unknown is not $0', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: null, allocations: [],
+    nonPlanSpendProtected: null, gap: null, trust: 'estimated' }] }));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$0\.00/);
+});
+
+check('F4: a malformed allocations collection fails the block closed — never a partial named list', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450, allocations: null,
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$450\.00/);
+});
+
+check('F5: the authoritative contribution is reprinted when allocations do not reconcile — the page never sums', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'proptax', label: 'Property tax reserve', amount: 300 },
+      { id: 'xmas', label: 'Christmas', amount: 100 }, // lines sum to 400, not 450
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  // The headline is the Forecast-published 450, not the 400 the lines
+  // would sum to — the page performs no allocation arithmetic.
+  assert.equal(headlineAmount(blockHtml), 450);
+  assert.match(blockHtml, /Property tax reserve.*\$300\.00/s);
+  assert.match(blockHtml, /Christmas.*\$100\.00/s);
+});
+
+check('F6: current position, selected period, and exact payday keep visibly separate identities', () => {
+  const html = exactShell();
+  // 1. Current position: today's cash, not the period.
+  assert.match(html, /Today's money — current position/);
+  assert.match(html, /What today's cash must do/);
+  assert.match(html, /not the full pay period/);
+  // 2. The selected period is named and pointed at, never duplicated.
+  assert.match(html, /Sep 25-Oct 8 pay-period detail below/);
+  // 3. The exact payday plan names its date and its Plan Spend parity.
+  assert.match(html, /Nest Money funding plan — 2026-10-09 payday/);
+  assert.match(html, /not the Sep 25-Oct 8 period's/);
+});
+
+check('F7: named allocations render in Forecast publication order', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'xmas', label: 'Christmas', amount: 150 },
+      { id: 'proptax', label: 'Property tax reserve', amount: 300 },
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  const xmasAt = blockHtml.indexOf('>Christmas<');
+  const taxAt = blockHtml.indexOf('>Property tax reserve<');
+  assert.ok(xmasAt !== -1 && taxAt !== -1 && xmasAt < taxAt, 'Forecast order kept');
+});
+
+check('F8: no nearest-payday substitution — the exact first payday wins even when the period starts on a later payday', () => {
+  const period = Object.assign({}, exactPeriod, { start: '2026-10-23', end: '2026-11-05' });
+  const html = exactShell({}, period);
+  assert.match(html, /data-exact-payday-plan="2026-10-09"/);
+  assert.doesNotMatch(nestMoneyBlock(html), /2026-10-23 payday/);
+});
+
+check('F9: the shell reprints the passed schedule — the advice-embedded copy is never consulted', () => {
+  const advice = adviceFixture(); // embeds the default 1200-contribution schedule
+  const html = f.paydayInstructionShellHtml(advice, exactPeriod, exactSchedule());
+  const blockHtml = nestMoneyBlock(html);
+  // The passed schedule's trusted $0 wins; the embedded $1,200 never leaks in.
+  assert.match(blockHtml, /\$0\.00/);
+  assert.doesNotMatch(blockHtml, /\$1,200\.00/);
+});
+
+check('F10: the shell reprints the real engine publication\'s first payday row', () => {
+  const { sched } = runEngine(mixedPlan());
+  assert.ok(sched.paydays.length > 0, 'engine publishes payday rows');
+  const first = sched.paydays[0];
+  const html = f.paydayInstructionShellHtml(adviceFixture(), currentPeriod, sched);
+  const blockHtml = nestMoneyBlock(html);
+  // Exact identity: the block carries the publication's first payday.
+  assert.match(html, new RegExp('data-exact-payday-plan="' + first.payday + '"'));
+  // The headline is the first row's published contribution, reprinted —
+  // never derived by the page.
+  assert.equal(headlineAmount(blockHtml), first.contribution);
+  // Named allocations reprinted in the publication's order.
+  const tripAt = blockHtml.indexOf('>Trip<');
+  const taxAt = blockHtml.indexOf('>Property tax<');
+  assert.ok(tripAt !== -1 && taxAt !== -1 && tripAt < taxAt, 'publication order kept');
+  assert.match(blockHtml, />Trip<\/span><span>\$50\.00/);
+  assert.match(blockHtml, />Property tax<\/span><span>\$150\.00/);
+});
+
+
+// AMANDA SLICE 14 — P1 repair (Systems Review 5361317547): strict
+// funding validation, no coercion. Slice 11's contract is real finite
+// numbers only — Number() coercion turns false/"" into $0.00 and "50"
+// into $50.00, i.e. malformed data rendered as real-looking money.
+const malformedContributionRow = contribution => exactShell({ paydays: [{
+  payday: '2026-10-09', contribution, allocations: [],
+  nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] });
+
+check('F11: contribution false fails the block closed — no coercion to $0.00', () => {
+  const blockHtml = nestMoneyBlock(malformedContributionRow(false));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$0\.00/);
+});
+
+check('F12: contribution "" fails the block closed — no coercion to $0.00', () => {
+  const blockHtml = nestMoneyBlock(malformedContributionRow(''));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$0\.00/);
+});
+
+check('F13: contribution "1200" (numeric string) fails the block closed — never $1,200.00', () => {
+  const blockHtml = nestMoneyBlock(malformedContributionRow('1200'));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$1,200\.00/);
+});
+
+check('F14: contribution NaN and Infinity fail the block closed', () => {
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    const blockHtml = nestMoneyBlock(malformedContributionRow(bad));
+    assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+    assert.doesNotMatch(blockHtml, /instruction-amount/);
+  }
+});
+
+check('F15: malformed allocation amounts render as unavailable lines — never dollars, never silently dropped', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'ok', label: 'Property tax reserve', amount: 300 },
+      { id: 's1', label: 'String amount', amount: '150' },
+      { id: 's2', label: 'False amount', amount: false },
+      { id: 's3', label: 'Empty amount', amount: '' },
+      { id: 's4', label: 'NaN amount', amount: NaN },
+      { id: 's5', label: 'Infinity amount', amount: Infinity },
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  // The valid line still renders exactly.
+  assert.match(blockHtml, /Property tax reserve.*\$300\.00/s);
+  // No malformed amount renders as dollars.
+  assert.doesNotMatch(blockHtml, /\$150\.00/);
+  // Each malformed line renders a visible unavailable line — none is
+  // silently dropped.
+  const unavailableLines = blockHtml.match(/unavailable — Forecast did not publish this allocation\. Not \$0\./g) || [];
+  assert.equal(unavailableLines.length, 5);
+  // The headline stays the authoritative contribution, never a sum.
+  assert.equal(headlineAmount(blockHtml), 450);
+});
+
+check('F16: malformed allocation labels render as unavailable lines — never bare dollars', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'l1', label: 123, amount: 100 },
+      { id: 'l2', label: '', amount: 100 },
+      { id: 'l3', amount: 100 },
+      { id: 'l4', label: null, amount: 100 },
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  assert.doesNotMatch(blockHtml, /\$100\.00/);
+  const unavailableLines = blockHtml.match(/unavailable — Forecast did not publish this allocation\. Not \$0\./g) || [];
+  assert.equal(unavailableLines.length, 4);
+  assert.equal(headlineAmount(blockHtml), 450);
+});
+
+check('F17: a valid known-$0 allocation line stays out of funded-now (unchanged), while a malformed line is visible', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'z', label: 'Zero line', amount: 0 },
+      { id: 'ok', label: 'Property tax reserve', amount: 300 },
+      { id: 'bad', label: 'Bad line', amount: 'x' },
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  // Known $0: no funded-now line, no unavailable line — as before.
+  assert.doesNotMatch(blockHtml, /Zero line/);
+  assert.match(blockHtml, /Property tax reserve.*\$300\.00/s);
+  const unavailableLines = blockHtml.match(/unavailable — Forecast did not publish this allocation\. Not \$0\./g) || [];
+  assert.equal(unavailableLines.length, 1);
+});
+
+// AMANDA SLICE 14 — re-repair (Systems Review 5361504621): a malformed
+// allocation amount for a cost id that ALSO exists in schedule.costs
+// must fail closed — the cost keeps its visible unavailable line and
+// never falls through into "No funding from this payday", which would
+// convert malformed/unknown into a zero-funding claim. A valid
+// known-$0 allocation for another cost keeps its existing contract.
+check('F18: malformed allocation for an id ALSO in schedule.costs is unavailable, never "No funding from this payday"', () => {
+  const blockHtml = nestMoneyBlock(exactShell({
+    costs: [
+      { id: 'proptax', label: 'Property tax', date: '2026-12-31', confidence: 'confirmed' },
+      { id: 'trip', label: 'Trip fund', date: '2026-12-31', confidence: 'confirmed' },
+    ],
+    paydays: [{
+      payday: '2026-10-09', contribution: 450,
+      allocations: [
+        { id: 'proptax', label: 'Property tax', amount: '150' }, // malformed: string amount
+        { id: 'trip', label: 'Trip fund', amount: 0 }, // valid known-$0: unchanged contract
+      ],
+      nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  // Malformed line renders the visible unavailable line.
+  assert.match(blockHtml, /<span>Property tax<\/span><span>unavailable — Forecast did not publish this allocation\. Not \$0\.<\/span>/);
+  // The same cost id never falls through to the zero-funding claim.
+  assert.doesNotMatch(blockHtml, /<span>Property tax<\/span><span>No funding from this payday<\/span>/);
+  // The valid known-$0 cost keeps its existing "No funding from this payday" contract.
+  assert.match(blockHtml, /<span>Trip fund<\/span><span>No funding from this payday<\/span>/);
+  // Exactly one zero-funding claim in the block: the trip cost only.
+  assert.equal((blockHtml.match(/No funding from this payday/g) || []).length, 1);
 });
 
 console.log(`\n${checks} checks passed.`);
