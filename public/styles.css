@@ -633,7 +633,7 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 }
 .budget-step-summary::-webkit-details-marker { display:none; }
 .budget-step-summary:focus-visible { outline:3px solid var(--s1); outline-offset:-4px; }
-.budget-step-summary .operating-number {
+.budget-stepped-sheet .budget-step-summary .operating-number {
   display:block; position:static; margin:0; font-size:1.4rem; color:inherit; font-weight:600;
 }
 .budget-step-title .operating-prompt {

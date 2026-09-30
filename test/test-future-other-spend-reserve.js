@@ -235,13 +235,13 @@ console.log('\n=== 1. Budget operating surface drops the header and More views =
   ok(!/More views/.test(surface) && !/data-plan-look/.test(surface),
     'operatingSurfaceHtml does not build a More views control');
   const timeline = grab(planSrc, /^function payPeriodTimelineHtml\([\s\S]*?\n\}$/m, 'payPeriodTimelineHtml');
-  ok(timeline.indexOf('payPeriodNavigatorHtml') >= 0
-      && timeline.indexOf('payPeriodNavigatorHtml') < timeline.indexOf('liveCurrentBalanceHtml')
-      && timeline.indexOf('liveCurrentBalanceHtml') < timeline.indexOf('calendarWaterfallHtml'),
-    'the pay-period selector is printed before Current Balance and the financial cards');
+  ok(timeline.indexOf('liveCurrentBalanceHtml') >= 0
+      && timeline.indexOf('liveCurrentBalanceHtml') < timeline.indexOf('payPeriodNavigatorHtml')
+      && timeline.indexOf('payPeriodNavigatorHtml') < timeline.indexOf('calendarWaterfallHtml'),
+    'Current Balance is printed before the pay-period selector and financial cards');
 }
 
-console.log('\n=== 2. rendered selector is the first operating content ===');
+console.log('\n=== 2. Current Balance precedes the linked selectors ===');
 {
   const advice = recommend(syntheticPlan(RESERVE));
   const html = composer.operatingSurfaceHtml({
@@ -257,10 +257,10 @@ console.log('\n=== 2. rendered selector is the first operating content ===');
   const badAt = html.indexOf('data-operating-prompt="Balance After Deductions"');
   ok(selectorAt ===  html.indexOf('data-budget-wheel') || monthAt > selectorAt,
     'month wheel is inside the navigator');
-  ok(selectorAt >= 0 && monthAt > selectorAt && periodAt > monthAt
-      && balanceAt > periodAt && incomeAt > balanceAt && billsAt > incomeAt
+  ok(balanceAt >= 0 && selectorAt > balanceAt && monthAt > selectorAt && periodAt > monthAt
+      && incomeAt > periodAt && billsAt > incomeAt
       && budgetAt > billsAt && badAt > budgetAt,
-    'order is month, pay period, Current Balance, Income, Bills, Household Budget, Balance After Deductions');
+    'order is Current Balance, month, pay period, Income, Bills, Household Budget, Balance After Deductions');
   ok(!/More views/.test(html) && !/data-plan-look/.test(html),
     'rendered Budget surface has no More views control');
   ok(!/Household finances/.test(html) && !/Theme: Auto/.test(html) && !/Sign out/.test(html),

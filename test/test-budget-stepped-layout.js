@@ -30,7 +30,7 @@ function period(id, start, end, role) {
       date: start, status: 'received' }],
     otherIncome: { amount: 0, items: [] },
     bills: [{ id: 'required', label: 'Required payment', amount: -123, movement: -123,
-      date: end, status: 'planned' }],
+      date: end, status: role === 'current' ? 'still due' : 'planned' }],
     householdBudget: [{ id: 'groceries', label: 'Groceries', planned: 301, spent: 40, remaining: 261 }],
   };
 }

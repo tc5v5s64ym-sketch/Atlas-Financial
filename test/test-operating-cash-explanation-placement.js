@@ -370,6 +370,15 @@ function mountPaydayBody(doc, html) {
   return body;
 }
 
+// Legacy grouping still supports its delayed-explanation path. Keep that
+// fixture explicit now that the production composer emits native disclosures.
+function legacyPaydaySheetHtml() {
+  return `<div data-calendar-waterfalls><section data-calendar-waterfall="this-pay-period">
+    ${['02', '04', '05', '06', '07'].map(number =>
+      `<div data-operating-question="${number}"></div>`).join('')}
+  </section></div>`;
+}
+
 function withMutationObserver(fn) {
   const orig = global.MutationObserver;
   const observers = [];
@@ -508,19 +517,18 @@ console.log('\n=== plan.js markup does not print the explanation under Q07 ===')
     observers[0].fire();
 
     const waterfall = body.querySelector('[data-calendar-waterfall="this-pay-period"]');
-    ok(waterfall && waterfall.hasAttribute('data-atlas-budget-ui'),
-      'observer enhance groups the plan.js waterfall');
+    ok(waterfall && waterfall.querySelectorAll('.budget-step-details').length === 5
+        && !waterfall.hasAttribute('data-atlas-budget-ui'),
+      'observer preserves the five native plan.js disclosures');
     const expl = body.querySelector('[data-operating-cash-explanation]')
       || body.querySelector('.operating-cash-explanation');
     const q07 = waterfall.querySelector('[data-operating-question="07"]');
     const budgetCard = waterfall.querySelector('.atlas-household-budget-card');
     ok(q07 && !expl,
       'household UI does not print the explanation under Q07');
-    ok(budgetCard
-        && budgetCard.querySelector('[data-operating-question="07"]')
-        && !budgetCard.querySelector('.operating-cash-explanation')
-        && !budgetCard.querySelector('[data-operating-cash-explanation]'),
-      'household-budget card still closes at Q07; explanation is absent');
+    ok(q07 && q07.parentNode === waterfall && !budgetCard
+        && !nextElementSibling(q07),
+      'native waterfall closes at Q07 without a legacy wrapper or explanation');
   });
 }
 
@@ -535,7 +543,7 @@ console.log('\n=== APPLIED before the explanation exists (live timing failure) =
     sheet.className = 'payday-operating-sheet';
     sheet.setAttribute('data-payday-sheet', '');
     body.appendChild(sheet);
-    sheet.innerHTML = planPaydaySheetHtml(false);
+    sheet.innerHTML = legacyPaydaySheetHtml();
     observers[0].fire();
 
     const waterfall = body.querySelector('[data-calendar-waterfall="this-pay-period"]');
@@ -571,7 +579,8 @@ console.log('\n=== MutationObserver has no plan.js explanation to orphan ===');
 {
   const doc = createDocument();
   const body = mountPaydayBody(doc, planPaydaySheetHtml(true));
-  ok(UI.enhance(doc) === true, 'first enhance groups the complete plan.js snapshot');
+  ok(UI.enhance(doc) === false,
+    'empty-bill native snapshot needs no grouping or bill decoration');
   const waterfall = body.querySelector('[data-calendar-waterfall="this-pay-period"]');
   const expl = body.querySelector('[data-operating-cash-explanation]')
     || body.querySelector('.operating-cash-explanation');
@@ -579,8 +588,8 @@ console.log('\n=== MutationObserver has no plan.js explanation to orphan ===');
     'complete plan.js snapshot has no explanation node to orphan under Current Balance');
   const q07 = waterfall.querySelector('[data-operating-question="07"]');
   const budgetCard = waterfall.querySelector('.atlas-household-budget-card');
-  ok(q07 && budgetCard && q07.parentNode === budgetCard,
-    'Q07 still lives in the household-budget card');
+  ok(q07 && !budgetCard && q07.parentNode === waterfall,
+    'Q07 remains in the native waterfall without legacy grouping');
   ok(q07 && !nextElementSibling(q07),
     'Q07 is the last household-budget question; no explanation sibling');
 }

@@ -1981,8 +1981,14 @@ function calendarIncomeHtml(period) {
     const statusAttr = notRelied ? 'not-relied-upon'
       : row.status === 'relied-upon' ? 'relied-upon'
       : status;
+    // Other named receipts already include date/status in glanceLineLabel.
+    // Salary names omit that metadata, so print it once beneath the name.
+    const receiptStatus = notRelied ? 'deposit not confirmed' : status;
+    const receiptDate = (daleSalary || amandaSalary) && row.date
+      && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
+      ? `<time class="budget-receipt-date" datetime="${row.date}">${fmtDate(row.date)} · ${receiptStatus}</time>` : '';
     return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}"${extra}>
-      <span>${displayName}${row.date && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date)) ? `<time class="budget-receipt-date" datetime="${row.date}">${fmtDate(row.date)} · ${status}</time>` : ''}</span><span>${amount != null ? estimateMark + about + amount : '—'}</span>
+      <span>${displayName}${receiptDate}</span><span>${amount != null ? estimateMark + about + amount : '—'}</span>
     </div>`;
   };
   const namedLines = named.map(row => line(row)).join('');
@@ -4147,8 +4153,8 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
   const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
     ? ` data-household-as-of="${asOf}"` : '';
   return `<div class="calendar-waterfalls" data-calendar-waterfalls${asOfAttr}>
-    ${calendarPickerHtml(view, pick, extraControls)}
     ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
+    ${calendarPickerHtml(view, pick, extraControls)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
     ${undatedBlock}
   </div>`;

@@ -162,7 +162,10 @@ function defaultGlance(html) {
         i += nextClose + 10;
       }
     }
-    out = out.slice(0, start) + out.slice(i);
+    const inner = out.slice(start + openMatch[0].length, i - 10);
+    const summary = inner.match(/<summary\b[^>]*>[\s\S]*?<\/summary>/i);
+    const visible = /\sopen(?:\s|>)/.test(openMatch[0]) ? inner : (summary ? summary[0] : '');
+    out = out.slice(0, start) + visible + out.slice(i);
   }
   return out;
 }
@@ -296,11 +299,13 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
     'the bills heading is Bills, printed as This / Next Pay Period');
   ok(/data-payday-period-bills/.test(html),
     'period bills are one default-view list');
-  ok(/Mortgage · Aug 28 · PAID/.test(glance)
-      && /Fit4Less membership · Aug 28 · PAID/.test(glance),
+  const billsDetails = html.slice(html.indexOf('data-operating-question="04"'),
+    html.indexOf('data-operating-question="05"'));
+  ok(/Mortgage · Aug 28 · PAID/.test(billsDetails)
+      && /Fit4Less membership · Aug 28 · PAID/.test(billsDetails),
     'This Pay Period still lists the payday mortgage and Fit4Less as PAID');
-  ok(glance.includes('−' + composer.money2(MORTGAGE))
-      && glance.includes('−' + composer.money2(FIT)),
+  ok(billsDetails.includes('−' + composer.money2(MORTGAGE))
+      && billsDetails.includes('−' + composer.money2(FIT)),
     'those paid bills print as money out');
   const q2 = html.slice(html.indexOf('data-operating-question="02"'),
     html.indexOf('data-operating-question="03"'));
@@ -320,10 +325,10 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
     'default glance omits cancelled CMAW; previous-cycle BCAA stays off this window');
   ok(!/BCAA insurance · Aug 16/.test(glance) && !/posting unknown/i.test(text),
     'the August once BCAA row is previous payday cycle, not This Pay Period');
-  ok(/TD account fees/.test(glance)
-      && /still due/.test(glance)
-      && glance.includes('−' + composer.money2(FEES))
-      && !/Travel Visa minimum/.test(glance),
+  ok(/TD account fees/.test(billsDetails)
+      && /still due/.test(billsDetails)
+      && billsDetails.includes('−' + composer.money2(FEES))
+      && !/Travel Visa minimum/.test(billsDetails),
     'TD fees stay still due in this window; Travel Visa day 26 is the previous cycle');
   ok(!/unverified-settlement|\boverlay\b|\bForecast\b|\bAtlas\b|\bunverified\b|\brepresented\b/.test(text),
     'default glance stays kitchen-counter language');

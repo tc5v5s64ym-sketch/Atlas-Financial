@@ -14,6 +14,10 @@ const { ctx, state } = require('./test-budget-stepped-layout');
 const forecast = fs.readFileSync(path.join(root, 'public/forecast.js'), 'utf8');
 const source = fs.readFileSync(path.join(root, 'public/plan.js'), 'utf8');
 const style = fs.readFileSync(path.join(root, 'public/styles.css'), 'utf8');
+const presentation = ['household-view', 'budget-polish'].map(name => ({
+  css: fs.readFileSync(path.join(root, `public/${name}.css`), 'utf8'),
+  js: fs.readFileSync(path.join(root, `public/${name}.js`), 'utf8'),
+}));
 // Load the production formatters without app.js's network/bootstrap path.
 const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split('\n')
   .filter(line => /^const (money|money2|fmtDate|fmtDateLong) =/.test(line)).join('\n');
@@ -31,19 +35,33 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
       page.on('pageerror', e => errors.push(e.message));
       await page.setContent(`<html data-theme="light"><head></head><body>
         <main class="wrap" style="max-width:900px;padding-top:24px">
-          <p>Synthetic review fixture — not household balances</p><div id="budget"></div>
+          <p>Synthetic review fixture — not household balances</p>
+          <div id="operating-surface-body"></div>
         </main></body></html>`);
       await page.addStyleTag({ content: style });
+      for (const layer of presentation) await page.addStyleTag({ content: layer.css });
       await page.addScriptTag({ content: forecast });
       await page.addScriptTag({ content: `${helpers};const budgetTestCtx=${JSON.stringify(ctx)};` });
       await page.addScriptTag({ content: source });
       await page.evaluate(value => Object.assign(state, value), state);
       await page.evaluate(() => {
-        const mount = document.getElementById('budget');
+        const mount = document.getElementById('operating-surface-body');
         mount.innerHTML = operatingSurfaceHtml(budgetTestCtx);
         wirePlanLookPicker(mount, budgetTestCtx);
       });
+      for (const layer of presentation) await page.addScriptTag({ content: layer.js });
       return page;
+    }
+    async function presentationContract(page) {
+      assert.equal(await page.locator('.budget-step-details').count(), 5);
+      assert.equal(await page.locator('.atlas-budget-section').count(), 0,
+        'legacy polish must not regroup the native waterfall');
+      assert.equal(await page.locator('.budget-step-summary .operating-number')
+        .evaluateAll(nodes => nodes.every(node => getComputedStyle(node).display !== 'none')),
+      true, 'the later household stylesheet must preserve the waterfall operators');
+      const knownStates = page.locator('[data-bill-status="PAID"], [data-bill-status="still due"], [data-bill-status="pending"], [data-bill-status="needs confirmation"]');
+      assert.equal(await knownStates.locator('.atlas-bill-state').count(),
+        await knownStates.count(), 'published bill states keep one badge per row');
     }
     async function geometry(page) {
       const result = await page.evaluate(() => ({
@@ -98,6 +116,8 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
     }
 
     const desk = await setup(1440);
+    await presentationContract(desk);
+    assert.ok(await desk.locator('[data-bill-status] .atlas-bill-state').count() > 0);
     await geometry(desk);
     assert.equal(await selected(desk), 'current');
     const summary = desk.locator('.budget-step-summary').first();
@@ -116,6 +136,7 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
     await screenshot(desk, 'desktop-income-expanded.png');
     await step(desk, 'period', 'ArrowRight');
     assert.equal(await selected(desk), 'next');
+    await presentationContract(desk);
     assert.equal(await desk.locator('[data-live-current-balance]').count(), 0);
     assert.match(await desk.locator('[data-selected-pay-period-status]').innerText(), /Projected/);
     await step(desk, 'month', 'ArrowRight');
@@ -142,6 +163,7 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
 
     for (const width of [390, 320]) {
       const phone = await setup(width, true);
+      await presentationContract(phone);
       await geometry(phone);
       await screenshot(phone, `mobile-${width}-collapsed.png`);
       await phone.locator('[data-operating-question="06"] summary').tap();
@@ -165,7 +187,7 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
       await phone.close();
     }
     assert.deepEqual(errors, []);
-    console.log('PASS real Chromium: 1440/390/320 layouts, native accordion click/keyboard/touch/focus, linked wheels, repeated swipes and month/year bounds, current/future/past roles, no overflow or console errors');
+    console.log('PASS real Chromium: production presentation scripts/styles, 1440/390/320 layouts, native accordion click/keyboard/touch/focus, linked wheels, repeated swipes and month/year bounds, current/future/past roles, no overflow or console errors');
   } finally {
     await browser.close();
   }
