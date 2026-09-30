@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['Budget running build identity', 'test-running-build.js'],
   ['current-period actuals stay in the Seaspan spending cycle', 'test-current-period-cycle-actuals.js'],
   ['static sanity', 'test-static.js'],
   ['incumbent privacy guard (B77)', 'test-privacy-guard.js'],
