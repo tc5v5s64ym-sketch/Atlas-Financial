@@ -8951,7 +8951,11 @@
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
     const obligationStates = currentPeriodObligationStates(
       plan, asOf, Object.assign({}, opts, { paydayCalendar: cal }));
-    const origin = obligationStates.periodStart;
+    // The cash opening lookback still protects unresolved earlier bills.
+    // Household target/actual comparison instead belongs to this Seaspan
+    // cycle: priorAsOf may span several cycles and is not a spending period.
+    const cycle = spendingCycle(plan, asOf);
+    const origin = cycle ? cycle.start : obligationStates.periodStart;
     const periodLast = obligationStates.periodEnd;
     const coverage = actualsCoverageState(asOf, origin, opts);
     const useActuals = coverage.remainingClaim === 'precise'
@@ -9630,7 +9634,11 @@
     const periodLast = cal.periodLast;
     const periodDays = Math.max(1, diffDays(asOf, periodLast) + 1);
     const liquidityUntil = subsequent ? addDays(subsequent, 1) : periodLast;
-    const origin = periodOriginDate(plan, asOf, todayIsPayday);
+    // Match currentPeriodAction's category window. A carried cash opening
+    // may precede several cycles; it remains obligation/pending provenance,
+    // not the origin for one cycle's consumption or coverage comparison.
+    const cycle = spendingCycle(plan, asOf);
+    const origin = cycle ? cycle.start : periodOriginDate(plan, asOf, todayIsPayday);
     const coverage = actualsCoverageState(asOf, origin, opts);
     const useActuals = coverage.remainingClaim === 'precise'
       || coverage.remainingClaim === 'posted-only';
@@ -9647,10 +9655,7 @@
     const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
     const essentialMonthly = essentialNeed.monthly;
     const periodScale = needDays / CALENDAR_MONTH_DAYS;
-    const cycleStart = (() => {
-      const cycle = spendingCycle(plan, asOf);
-      return cycle && cycle.start;
-    })();
+    const cycleStart = cycle && cycle.start;
     const budgetCatById = new Map();
     for (const cat of (plan.budget && plan.budget.categories) || []) {
       if (cat && cat.id) budgetCatById.set(cat.id, cat);
