@@ -606,6 +606,70 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 .live-current-balance-date {
   margin:6px 0 0; font-size:.88rem; color:var(--text-secondary);
 }
+
+/* Selected Budget period: the existing Forecast print, with inline details. */
+.budget-stepped-sheet { --budget-blue:#1d62ac; }
+.budget-stepped-sheet .live-current-balance { padding:8px 4px 20px; }
+.budget-stepped-sheet .live-current-balance-amount { color:var(--s1); }
+.live-current-balance-account { margin:6px 0 0; font-size:.8rem; color:var(--text-secondary); }
+.budget-stepped-sheet .pay-period-navigator { margin-bottom:16px; }
+.budget-period-full-dates { display:block; margin:8px 0 4px; font-size:.8rem; font-variant-numeric:tabular-nums; }
+.budget-stepped-sheet .budget-wheel-item[aria-current="true"] { color:var(--s1); }
+.budget-stepped-sheet .calendar-waterfall {
+  border:0; border-radius:0; background:transparent; box-shadow:none; overflow:visible;
+}
+.budget-stepped-sheet .budget-step {
+  padding:0; margin-bottom:10px; border:1px solid color-mix(in srgb, var(--budget-blue) 32%, var(--border));
+  border-radius:12px; overflow:hidden; background:var(--surface-1);
+}
+.budget-stepped-sheet .budget-step[data-operating-question="04"] { margin-inline-start:12px; }
+.budget-stepped-sheet .budget-step[data-operating-question="05"] { margin-inline-start:24px; }
+.budget-stepped-sheet .budget-step[data-operating-question="06"] { margin-inline-start:36px; }
+.budget-stepped-sheet .budget-step[data-operating-question="07"] { margin-inline-start:48px; }
+.budget-step-summary {
+  display:grid; grid-template-columns:24px minmax(0,1fr) auto 16px; gap:12px; align-items:center;
+  min-height:76px; padding:16px 18px; background:var(--budget-blue); color:#fff;
+  cursor:pointer; list-style:none;
+}
+.budget-step-summary::-webkit-details-marker { display:none; }
+.budget-step-summary:focus-visible { outline:3px solid var(--s1); outline-offset:-4px; }
+.budget-step-summary .operating-number {
+  display:block; position:static; margin:0; font-size:1.4rem; color:inherit; font-weight:600;
+}
+.budget-step-title .operating-prompt {
+  display:block; margin:0; color:inherit; font-size:1rem; line-height:1.3;
+  font-weight:650; text-transform:none; letter-spacing:0;
+}
+.budget-step-caption { display:block; margin-top:4px; font-size:.76rem; line-height:1.35; color:#e3efff; }
+.budget-step-value { font-size:1.16rem; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
+.budget-step-value .est { display:block; font-size:.7rem; color:inherit; font-weight:500; }
+.budget-step-value[data-sign="negative"] { text-decoration:underline; text-underline-offset:4px; }
+.budget-step-chevron { font-size:1.2rem; transition:transform .15s; }
+.budget-step-details[open] > .budget-step-summary .budget-step-chevron { transform:rotate(180deg); }
+.budget-step-body { padding:18px 20px; }
+.budget-step-body .operating-lines { margin-top:0; }
+.budget-receipt-date { display:block; margin-top:3px; color:var(--text-secondary); font-size:.76rem; }
+.budget-stepped-sheet .budget-step-balance .budget-step-summary { background:#174f8b; }
+.budget-stepped-sheet [data-operating-question="07"] .budget-step-summary { background:#123e70; }
+.budget-secondary-details {
+  margin-top:16px; padding:12px 16px; border:1px solid var(--border); border-radius:12px;
+  background:var(--surface-1);
+}
+.budget-secondary-details > summary { min-height:32px; cursor:pointer; font-weight:600; }
+.budget-secondary-details > summary:focus-visible { outline:2px solid var(--s1); outline-offset:4px; }
+.budget-secondary-details .payday-instruction-shell { margin-top:12px; }
+@media (max-width:640px) {
+  .budget-stepped-sheet .budget-step[data-operating-question="04"] { margin-inline-start:4px; }
+  .budget-stepped-sheet .budget-step[data-operating-question="05"] { margin-inline-start:8px; }
+  .budget-stepped-sheet .budget-step[data-operating-question="06"] { margin-inline-start:12px; }
+  .budget-stepped-sheet .budget-step[data-operating-question="07"] { margin-inline-start:16px; }
+  .budget-step-summary { grid-template-columns:16px minmax(0,1fr) auto 12px; gap:8px; padding:14px 12px; }
+  .budget-step-title .operating-prompt { font-size:.88rem; }
+  .budget-step-caption { font-size:.67rem; }
+  .budget-step-value { font-size:1rem; }
+  .budget-step-body { padding:16px 12px; }
+}
+@media (prefers-reduced-motion:reduce) { .budget-step-chevron { transition:none; } }
 .calendar-period-picker { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:0; }
 .calendar-period-label {
   position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden;
