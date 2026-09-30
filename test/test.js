@@ -186,6 +186,7 @@ const suites = [
   ['Selected pay-period funding shortfall (AMANDA slice 12)', 'test-budget-month-pay-period-funding-shortfall.js'],
   ['Extra-debt target attribution, engine (AMANDA slice 13)', 'test-forecast-extra-debt-attribution.js'],
   ['Selected pay-period debt target attribution (AMANDA slice 13)', 'test-budget-month-pay-period-debt-target.js'],
+  ['Monthly extra-debt destination breakdown (AMANDA slice 15)', 'test-budget-month-extra-debt-destination.js'],
   ['Plan payday carryover trend', 'test-payday-carryover-trend.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],

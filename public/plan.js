@@ -2837,6 +2837,10 @@ function budgetMonthViewHtml(src) {
   // Extra debt payment appears only when Forecast actually publishes it.
   if (s3.extras && s3.extras.status !== 'unavailable') {
     rows.push(budgetMonthComponentRow('Planned extra debt payment', s3.extras));
+    // Slice 15: the monthly destination breakdown sits directly under the
+    // authoritative monthly total. The total row above stays authoritative;
+    // the detail below only reprints Forecast's per-pay-period attribution.
+    rows.push(budgetMonthExtraDebtDestinationsHtml(month, traj));
   }
   const standaloneNote = 'Each month funds itself — Forecast does not carry a prior month\u2019s surplus into this month\u2019s result.';
   return `<div class="budget-month-view" data-budget-month-view="${month.month}">`
@@ -2847,6 +2851,127 @@ function budgetMonthViewHtml(src) {
     + budgetMonthVerdictHtml(month)
     + budgetMonthFundingPressureHtml(month, budgetMonthPlanSpendSchedule(src))
     + `<p class="operating-note">${standaloneNote}</p></div>`;
+}
+
+/* AMANDA SLICE 15 — MONTHLY EXTRA-DEBT DESTINATION BREAKDOWN.
+ *
+ * The Month lens publishes the authoritative monthly total
+ * (month.stage3.extras.amount). This answers the follow-up question:
+ * "where does that extra money actually go?" — using the exact
+ * Forecast-owned per-pay-period attribution Slice 13 published.
+ *
+ * Authority boundary:
+ * - Forecast stays untouched. The monthly total is reprinted verbatim;
+ *   the page never sums pay periods or allocation lines into it.
+ * - Membership is Forecast's published closing set:
+ *   month.closingPayPeriods, joined back to traj.payPeriods by payday
+ *   identity. The page never recreates the month-close rule (close =
+ *   cycleEnd || end, horizon-clipped excluded) — Forecast already did the
+ *   selection; the anchor is the membership.
+ * - Each matched pay period reprints its own stage3.extras.allocations[]
+ *   in Forecast order with Forecast labels, amounts, and trust, using the
+ *   Slice 13 validation and line rendering — no second interpretation of
+ *   allocations. No cascade replay, no debt lookup, no ranking, no amount
+ *   reconstruction, no monthly aggregation.
+ * - Known $0 is a real $0 and invents no destination. A positive monthly
+ *   extra with missing or malformed attribution fails the destination
+ *   detail closed as a whole — never a partial list that looks complete.
+ *   Unavailable is never $0.
+ * - Required debt minimums are stage1.obligations and stay separate;
+ *   they are never extra-debt destinations.
+ *
+ * Month identity (verified on current main): Stage 1 is built from the
+ * Seaspan pay periods whose cycle closes in the selected month; Stage 2
+ * planned spending is dated to the calendar month itself; Stage 3
+ * extra-debt funding comes from those closing pay periods. This slice is
+ * the Stage 3 debt destination breakdown, so the closing-pay-period
+ * identity is the right one.
+ */
+
+// The fail-closed destination block: a positive monthly extra whose
+// attribution cannot be fully reprinted must never look complete.
+function budgetMonthExtraDebtDestinationFailClosed() {
+  return `<div class="budget-month-row unavailable" data-budget-month-extra-debt-destination="unavailable">`
+    + `<span class="budget-month-label">Where it goes</span>`
+    + `<span class="budget-month-unavailable">unavailable — Forecast did not publish the monthly extra-debt destination breakdown. Not $0.</span></div>`;
+}
+
+// One closing pay period's group inside the monthly destination
+// breakdown: the payday identity Forecast published, then that period's
+// own extras attribution reprinted verbatim through the Slice 13 reprint
+// layer (validation, line rendering, trust tags, nextTarget). Returns
+// null when the period's publication cannot be reprinted exactly.
+function budgetMonthExtraDebtPeriodGroupHtml(entry, period) {
+  // fmtDateLong is an app-shell global (public/app.js), not a plan.js
+  // binding: degrade to the raw ISO payday identity when it is absent
+  // (minimal test sandboxes) rather than crashing the month view.
+  const paydayLabel = (typeof fmtDateLong === 'function') ? fmtDateLong(entry.payday) : entry.payday;
+  const head = `<p class="operating-lead" data-budget-month-extra-debt-period="${entry.payday}">${paydayLabel} payday</p>`;
+  const rangeNote = entry.displayRange
+    ? `<p class="operating-note">${entry.displayRange}</p>`
+    : '';
+  const pExtras = period.stage3 && period.stage3.extras ? period.stage3.extras : {};
+  const pAmount = pExtras.amount;
+  if (typeof pAmount !== 'number' || !Number.isFinite(pAmount)) return null;
+  if (pAmount === 0) {
+    // Known zero for this period: nothing to attribute, nothing invented.
+    return head + rangeNote
+      + `<p class="operating-note" data-budget-month-extra-debt-period-none="${entry.payday}">No extra debt payment from this payday.</p>`;
+  }
+  if (pAmount < 0) return null;
+  if (pExtras.status !== 'calculated' && pExtras.status !== 'estimated') return null;
+  if (!budgetExtraDebtAllocationsValid(pExtras.allocations)) return null;
+  return head + rangeNote
+    + `<div class="budget-month-rows">`
+    + pExtras.allocations.map(budgetDrilldownLineHtml).join('')
+    + budgetExtraDebtNextTargetHtml(pExtras, pExtras.allocations)
+    + `</div>`;
+}
+
+// The destination detail for one selected month. `traj` supplies the
+// published pay-period rows the membership anchor joins back to.
+function budgetMonthExtraDebtDestinationsHtml(month, traj) {
+  const s3 = month && month.stage3 ? month.stage3 : {};
+  const extras = s3.extras;
+  // The detail only ever sits under the rendered monthly total.
+  // Unavailable stays unavailable; a malformed amount fails closed here
+  // exactly as the component row does — currency never renders bare.
+  if (!extras || extras.status === 'unavailable') return '';
+  const amount = extras.amount;
+  if (typeof amount !== 'number' || !Number.isFinite(amount)
+      || (extras.status !== 'calculated' && extras.status !== 'estimated')) return '';
+  if (amount === 0) {
+    // Known zero: a trusted $0 is a real answer — no destination exists.
+    return `<p class="operating-note" data-budget-month-extra-debt-destination="none">No planned extra debt payment this month.</p>`;
+  }
+  if (amount < 0) return '';
+  // Membership anchor: Forecast's published closing pay-period set. The
+  // page joins it back to the published pay-period rows by payday
+  // identity only — it never recomputes which periods close in the month.
+  const membership = month && Array.isArray(month.closingPayPeriods)
+    ? month.closingPayPeriods : null;
+  const payPeriods = traj && Array.isArray(traj.payPeriods) ? traj.payPeriods : [];
+  if (!membership || !membership.length) return budgetMonthExtraDebtDestinationFailClosed();
+  const groups = [];
+  for (const entry of membership) {
+    const payday = entry && typeof entry.payday === 'string' && entry.payday
+      ? entry.payday : null;
+    if (!payday) return budgetMonthExtraDebtDestinationFailClosed();
+    const matches = payPeriods.filter(p => p && typeof p.payday === 'string' && p.payday === payday);
+    // Exactly one published row per anchor entry: zero matches means the
+    // anchor names a period the trajectory did not publish; more than one
+    // is an ambiguous identity. Either way the breakdown cannot be
+    // trusted, so it fails closed as a whole — never a partial list.
+    if (matches.length !== 1) return budgetMonthExtraDebtDestinationFailClosed();
+    const group = budgetMonthExtraDebtPeriodGroupHtml(entry, matches[0]);
+    if (group === null) return budgetMonthExtraDebtDestinationFailClosed();
+    groups.push(group);
+  }
+  return `<div class="budget-month-extra-debt-destinations" data-budget-month-extra-debt-destination="detail">`
+    + `<p class="operating-lead">Where the planned extra debt payment goes</p>`
+    + `<p class="operating-note">Each pay period below reprints Forecast's own debt attribution for that period, in Forecast order. This page does not rank debts or combine periods.</p>`
+    + groups.join('')
+    + `</div>`;
 }
 
 /* AMANDA SLICE 9 — SAME-MONTH PAY-PERIOD DRILLDOWN.
