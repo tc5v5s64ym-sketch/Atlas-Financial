@@ -936,4 +936,33 @@ check('F17: a valid known-$0 allocation line stays out of funded-now (unchanged)
   assert.equal(unavailableLines.length, 1);
 });
 
+// AMANDA SLICE 14 — re-repair (Systems Review 5361504621): a malformed
+// allocation amount for a cost id that ALSO exists in schedule.costs
+// must fail closed — the cost keeps its visible unavailable line and
+// never falls through into "No funding from this payday", which would
+// convert malformed/unknown into a zero-funding claim. A valid
+// known-$0 allocation for another cost keeps its existing contract.
+check('F18: malformed allocation for an id ALSO in schedule.costs is unavailable, never "No funding from this payday"', () => {
+  const blockHtml = nestMoneyBlock(exactShell({
+    costs: [
+      { id: 'proptax', label: 'Property tax', date: '2026-12-31', confidence: 'confirmed' },
+      { id: 'trip', label: 'Trip fund', date: '2026-12-31', confidence: 'confirmed' },
+    ],
+    paydays: [{
+      payday: '2026-10-09', contribution: 450,
+      allocations: [
+        { id: 'proptax', label: 'Property tax', amount: '150' }, // malformed: string amount
+        { id: 'trip', label: 'Trip fund', amount: 0 }, // valid known-$0: unchanged contract
+      ],
+      nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  // Malformed line renders the visible unavailable line.
+  assert.match(blockHtml, /<span>Property tax<\/span><span>unavailable — Forecast did not publish this allocation\. Not \$0\.<\/span>/);
+  // The same cost id never falls through to the zero-funding claim.
+  assert.doesNotMatch(blockHtml, /<span>Property tax<\/span><span>No funding from this payday<\/span>/);
+  // The valid known-$0 cost keeps its existing "No funding from this payday" contract.
+  assert.match(blockHtml, /<span>Trip fund<\/span><span>No funding from this payday<\/span>/);
+  // Exactly one zero-funding claim in the block: the trip cost only.
+  assert.equal((blockHtml.match(/No funding from this payday/g) || []).length, 1);
+});
+
 console.log(`\n${checks} checks passed.`);

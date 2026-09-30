@@ -3713,6 +3713,20 @@ function paydayInstructionShellHtml(advice, period, schedule) {
       const fundedNowIds = new Set((row.allocations || [])
         .filter(item => item && strictMoney(item.amount) != null && item.amount > 0)
         .map(item => item.id));
+      // AMANDA SLICE 14 (re-repair, Systems Review 5361504621) — ids
+      // referenced by malformed allocation lines: the funded-now list
+      // already renders a visible unavailable line for each of these, so
+      // the same cost must not fall through into "No funding from this
+      // payday" — that would convert malformed/unknown into a
+      // zero-funding claim (unknown is never $0). Malformed here matches
+      // the funded-now definition exactly: non-number/NaN/Infinity
+      // amount, or a missing/empty/non-string label. A valid known-$0
+      // allocation is NOT malformed and keeps its existing contract.
+      const malformedAllocationIds = new Set((row.allocations || [])
+        .filter(item => item && item.id != null
+          && (typeof item.amount !== 'number' || !Number.isFinite(item.amount)
+            || !(typeof item.label === 'string' && item.label.length)))
+        .map(item => item.id));
       const fmtUpcomingDate = iso => {
         if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
         try { return fmtDateLong(iso); } catch (e) { return null; }
@@ -3748,6 +3762,7 @@ function paydayInstructionShellHtml(advice, period, schedule) {
       // a cash date not before this payday, in Forecast's publication order.
       const stillPlannedLines = (schedule.costs || [])
         .filter(cost => cost && cost.id != null && !fundedNowIds.has(cost.id)
+          && !malformedAllocationIds.has(cost.id)
           && typeof cost.date === 'string' && cost.date >= row.payday)
         .map(cost => {
           const label = typeof cost.label === 'string' && cost.label.length ? cost.label : cost.id;
