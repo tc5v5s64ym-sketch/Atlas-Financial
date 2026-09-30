@@ -3475,8 +3475,7 @@ function paydayInstructionShellHtml(advice, period, schedule) {
   //   3. Exact payday plan — the schedule's first payday row, labelled
   //      with its exact date.
   // The planned-cost funding block shows the EXACT payday's plan: the
-  // first payday row in the Forecast publication — the same row Plan
-  // Spend leads with as its next forecast payday. The
+  // first payday row in the Forecast publication. The
   // schedule arrives on the Budget's active inputs (the caller
   // regenerates it through the incumbent Forecast chain via
   // budgetMonthPlanSpendSchedule, so knob changes recompute it; the
@@ -3561,8 +3560,7 @@ function paydayInstructionShellHtml(advice, period, schedule) {
   // AMANDA SLICE 14 — EXACT-PAYDAY ROW SELECTION.
   // The schedule is the caller's same-input regeneration (never the
   // advice publication's copy here). The exact payday is the first
-  // payday row in the Forecast publication — the same row Plan Spend
-  // leads with as its next forecast payday. Never
+  // payday row in the Forecast publication. Never
   // period.start (the selected pay period's opening, which can predate
   // the forecast's first payday), never a nearest-payday substitution.
   const paydays = schedule && schedule.status !== 'unavailable' && Array.isArray(schedule.paydays)
@@ -3618,7 +3616,15 @@ function paydayInstructionShellHtml(advice, period, schedule) {
     // unknown is not $0, so the block fails closed.
     plannedBody = unavailableNote('Nest Money funding plan');
   } else {
-    const contribution = known(row.contribution);
+    // AMANDA SLICE 14 (P1 repair, Systems Review 5361317547) — strict
+    // funding validation, no coercion. Slice 11's contract is real finite
+    // numbers only: Number() coercion would turn false/"" into $0.00 and
+    // "50" into $50.00 — malformed data rendered as real-looking money.
+    // The shared known() helper stays as-is for the incumbent shell
+    // figures (out of this repair's bounds); the funding path validates
+    // strictly and fails closed.
+    const strictMoney = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
+    const contribution = strictMoney(row.contribution);
     if (contribution == null || plannedTrustTag == null || !Array.isArray(row.allocations)) {
       // Null contribution (Forecast publishes null only with estimated
       // trust), unpublished trust, or a malformed allocations collection:
@@ -3701,8 +3707,11 @@ function paydayInstructionShellHtml(advice, period, schedule) {
       const costById = new Map((schedule.costs || [])
         .filter(cost => cost && cost.id != null)
         .map(cost => [cost.id, cost]));
+      // A malformed allocation amount (non-number, NaN, Infinity, coerced
+      // string) never counts as funding now: only a real finite number > 0
+      // puts the cost in the funded-now set.
       const fundedNowIds = new Set((row.allocations || [])
-        .filter(item => item && Number(item.amount) > 0)
+        .filter(item => item && strictMoney(item.amount) != null && item.amount > 0)
         .map(item => item.id));
       const fmtUpcomingDate = iso => {
         if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
@@ -3716,14 +3725,23 @@ function paydayInstructionShellHtml(advice, period, schedule) {
           ? ' <span class="trust-tag">confirmed</span>' : null;
       // "Funding now": the incumbent named allocations plus the Forecast
       // cash date reprinted from schedule.costs. An unpublished or
-      // unparseable date is omitted, never invented.
+      // unparseable date is omitted, never invented. Malformed allocation
+      // lines (non-number/NaN/Infinity amount, bad label) are never
+      // silently dropped and never rendered as dollars — they render as a
+      // visible unavailable line (Slice 11 precedent). A valid known-$0
+      // line stays out of the funded-now list, as before.
       const fundedNowLines = (row.allocations || [])
-        .filter(item => item && Number(item.amount) > 0)
         .map(item => {
+          const rawAmount = item ? item.amount : undefined;
+          const label = item && typeof item.label === 'string' && item.label.length ? item.label : null;
+          if (typeof rawAmount !== 'number' || !Number.isFinite(rawAmount) || !label) {
+            return `<div class="operating-line"><span>${label || 'Planned-cost allocation'}</span><span>unavailable — Forecast did not publish this allocation. Not $0.</span></div>`;
+          }
+          if (!(rawAmount > 0)) return '';
           const cost = costById.get(item.id);
           const tag = cost ? costTrustTag(cost.confidence) : null;
           const neededBy = tag ? fmtUpcomingDate(cost.date) : null;
-          return `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${plannedTrustTag}</span></div>`
+          return `<div class="operating-line"><span>${label}</span><span>${money2(rawAmount)}${plannedTrustTag}</span></div>`
             + (neededBy ? `<div class="operating-line"><span>Needed by</span><span>${neededBy}${tag}</span></div>` : '');
         }).join('');
       // "Still in the plan": dated costs with no allocation this payday and
@@ -3777,14 +3795,14 @@ function paydayInstructionShellHtml(advice, period, schedule) {
     }
   }
   // AMANDA SLICE 14 — the planned block carries the exact payday's
-  // identity in its title and names the same answer Plan Spend shows,
-  // so it can never be read as the selected period's money.
+  // identity in its title, so it can never be read as the selected
+  // period's money.
   const periodRangeLabel = (period && (period.rangeLabel || period.label)) || 'selected';
   const plannedTitle = exactPaydayLabel
     ? `Nest Money funding plan — ${exactPaydayLabel} payday`
     : 'Nest Money funding plan';
   const plannedIdentityNote = exactPaydayLabel
-    ? `<p class="operating-note">Forecast's planned-cost funding for the ${exactPaydayLabel} payday — the same answer Plan Spend shows for this payday. This is that payday's plan, not the ${periodRangeLabel} period's.</p>`
+    ? `<p class="operating-note">Forecast's planned-cost funding for the ${exactPaydayLabel} payday. This is that payday's plan, not the ${periodRangeLabel} period's.</p>`
     : '';
   const plannedBlock = `<div class="instruction-block" data-exact-payday-plan="${exactPayday || ''}"><h3>${plannedTitle}</h3>${plannedIdentityNote}${plannedBody}</div>`;
 
@@ -4889,8 +4907,8 @@ function operatingSurfaceHtml(ctx) {
   const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
   const instructionShell = look === 'this-period' && budgetGranularity !== 'month' && !drilldownView
     // AMANDA SLICE 14: the shell's planned-cost funding block reads the
-    // same-input regenerated schedule (active knobs included) — the same
-    // publication Plan Spend leads with — never the advice copy alone.
+    // same-input regenerated schedule (active knobs included) — never the
+    // advice copy alone.
     ? paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx)) : '';
   const payPeriodContent = defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
   return `<div class="payday-operating-sheet" data-payday-sheet>

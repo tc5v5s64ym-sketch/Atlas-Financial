@@ -733,7 +733,11 @@ check('F1: the planned block shows the exact payday (2026-10-09), not the period
   // The block carries the exact payday's identity…
   assert.match(html, /data-exact-payday-plan="2026-10-09"/);
   assert.match(blockHtml, /Nest Money funding plan — 2026-10-09 payday/);
-  assert.match(blockHtml, /the same answer Plan Spend shows for this payday/);
+  assert.match(blockHtml, /Forecast's planned-cost funding for the 2026-10-09 payday\./);
+  // No Plan Spend equality claim: the schedule is regenerated on the
+  // Budget's active knob inputs, so the answers can differ after a
+  // Budget override (Systems Review 5361317547).
+  assert.doesNotMatch(blockHtml, /same answer Plan Spend shows/);
   // …the trusted $0 renders $0.00, not unavailable…
   assert.match(blockHtml, /\$0\.00/);
   assert.match(blockHtml, /No Nest Money earmark this payday/);
@@ -822,7 +826,7 @@ check('F9: the shell reprints the passed schedule — the advice-embedded copy i
   assert.doesNotMatch(blockHtml, /\$1,200\.00/);
 });
 
-check('F10: the shell reprints the real engine publication\'s first row — the same row Plan Spend leads with', () => {
+check('F10: the shell reprints the real engine publication\'s first payday row', () => {
   const { sched } = runEngine(mixedPlan());
   assert.ok(sched.paydays.length > 0, 'engine publishes payday rows');
   const first = sched.paydays[0];
@@ -839,6 +843,97 @@ check('F10: the shell reprints the real engine publication\'s first row — the 
   assert.ok(tripAt !== -1 && taxAt !== -1 && tripAt < taxAt, 'publication order kept');
   assert.match(blockHtml, />Trip<\/span><span>\$50\.00/);
   assert.match(blockHtml, />Property tax<\/span><span>\$150\.00/);
+});
+
+
+// AMANDA SLICE 14 — P1 repair (Systems Review 5361317547): strict
+// funding validation, no coercion. Slice 11's contract is real finite
+// numbers only — Number() coercion turns false/"" into $0.00 and "50"
+// into $50.00, i.e. malformed data rendered as real-looking money.
+const malformedContributionRow = contribution => exactShell({ paydays: [{
+  payday: '2026-10-09', contribution, allocations: [],
+  nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] });
+
+check('F11: contribution false fails the block closed — no coercion to $0.00', () => {
+  const blockHtml = nestMoneyBlock(malformedContributionRow(false));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$0\.00/);
+});
+
+check('F12: contribution "" fails the block closed — no coercion to $0.00', () => {
+  const blockHtml = nestMoneyBlock(malformedContributionRow(''));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$0\.00/);
+});
+
+check('F13: contribution "1200" (numeric string) fails the block closed — never $1,200.00', () => {
+  const blockHtml = nestMoneyBlock(malformedContributionRow('1200'));
+  assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+  assert.doesNotMatch(blockHtml, /\$1,200\.00/);
+});
+
+check('F14: contribution NaN and Infinity fail the block closed', () => {
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    const blockHtml = nestMoneyBlock(malformedContributionRow(bad));
+    assert.match(blockHtml, /Nest Money funding plan: unavailable/);
+    assert.doesNotMatch(blockHtml, /instruction-amount/);
+  }
+});
+
+check('F15: malformed allocation amounts render as unavailable lines — never dollars, never silently dropped', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'ok', label: 'Property tax reserve', amount: 300 },
+      { id: 's1', label: 'String amount', amount: '150' },
+      { id: 's2', label: 'False amount', amount: false },
+      { id: 's3', label: 'Empty amount', amount: '' },
+      { id: 's4', label: 'NaN amount', amount: NaN },
+      { id: 's5', label: 'Infinity amount', amount: Infinity },
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  // The valid line still renders exactly.
+  assert.match(blockHtml, /Property tax reserve.*\$300\.00/s);
+  // No malformed amount renders as dollars.
+  assert.doesNotMatch(blockHtml, /\$150\.00/);
+  // Each malformed line renders a visible unavailable line — none is
+  // silently dropped.
+  const unavailableLines = blockHtml.match(/unavailable — Forecast did not publish this allocation\. Not \$0\./g) || [];
+  assert.equal(unavailableLines.length, 5);
+  // The headline stays the authoritative contribution, never a sum.
+  assert.equal(headlineAmount(blockHtml), 450);
+});
+
+check('F16: malformed allocation labels render as unavailable lines — never bare dollars', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'l1', label: 123, amount: 100 },
+      { id: 'l2', label: '', amount: 100 },
+      { id: 'l3', amount: 100 },
+      { id: 'l4', label: null, amount: 100 },
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  assert.doesNotMatch(blockHtml, /\$100\.00/);
+  const unavailableLines = blockHtml.match(/unavailable — Forecast did not publish this allocation\. Not \$0\./g) || [];
+  assert.equal(unavailableLines.length, 4);
+  assert.equal(headlineAmount(blockHtml), 450);
+});
+
+check('F17: a valid known-$0 allocation line stays out of funded-now (unchanged), while a malformed line is visible', () => {
+  const blockHtml = nestMoneyBlock(exactShell({ paydays: [{
+    payday: '2026-10-09', contribution: 450,
+    allocations: [
+      { id: 'z', label: 'Zero line', amount: 0 },
+      { id: 'ok', label: 'Property tax reserve', amount: 300 },
+      { id: 'bad', label: 'Bad line', amount: 'x' },
+    ],
+    nonPlanSpendProtected: null, gap: null, trust: 'calculated' }] }));
+  // Known $0: no funded-now line, no unavailable line — as before.
+  assert.doesNotMatch(blockHtml, /Zero line/);
+  assert.match(blockHtml, /Property tax reserve.*\$300\.00/s);
+  const unavailableLines = blockHtml.match(/unavailable — Forecast did not publish this allocation\. Not \$0\./g) || [];
+  assert.equal(unavailableLines.length, 1);
 });
 
 console.log(`\n${checks} checks passed.`);
