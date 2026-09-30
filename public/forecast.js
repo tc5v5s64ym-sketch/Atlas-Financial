@@ -8951,7 +8951,11 @@
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
     const obligationStates = currentPeriodObligationStates(
       plan, asOf, Object.assign({}, opts, { paydayCalendar: cal }));
-    const origin = obligationStates.periodStart;
+    // The cash opening lookback still protects unresolved earlier bills.
+    // Household target/actual comparison instead belongs to this Seaspan
+    // cycle: priorAsOf may span several cycles and is not a spending period.
+    const cycle = spendingCycle(plan, asOf);
+    const origin = cycle ? cycle.start : obligationStates.periodStart;
     const periodLast = obligationStates.periodEnd;
     const coverage = actualsCoverageState(asOf, origin, opts);
     const useActuals = coverage.remainingClaim === 'precise'
