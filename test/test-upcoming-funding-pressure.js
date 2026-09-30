@@ -5,8 +5,9 @@
  * planned-spending money need to go out now versus later — and is a later
  * unavoidable expense that gets little or $0 today still scheduled for
  * timely funding?" Every figure is a Forecast reprint from
- * planSpendPaydayFunding — the page selects and reprints, Forecast
- * computes. No page-side financial arithmetic, ranking, or ordering.
+ * planSpendPaydayFunding — the caller passes the same-input regenerated
+ * schedule and the page reprints it, Forecast computes. No page-side
+ * financial arithmetic, ranking, or ordering.
  *
  * Shown for the live payday (from Forecast's live payday row + costs[]):
  * - funding now: this payday's named allocations, each with its Forecast
@@ -157,6 +158,9 @@ function scheduleFixture(overrides = {}) {
   return Object.assign({
     status: 'ready',
     source: 'Forecast.planSpendPaydayFunding',
+    // AMANDA SLICE 14: the live row is the row whose payday equals the
+    // schedule's asOf (the real publication contract).
+    asOf: '2026-01-02',
     fundingTrust: 'calculated',
     paydays: [paydayRow()],
     gap: null,
@@ -187,7 +191,9 @@ function adviceFixture(allocOverrides, scheduleOverrides) {
 
 const currentPeriod = { id: 'current:2026-01-02', start: '2026-01-02', end: '2026-01-15', timelineRole: 'current' };
 const shell = (allocOverrides, scheduleOverrides, period = currentPeriod) =>
-  P.paydayInstructionShellHtml(adviceFixture(allocOverrides, scheduleOverrides), period);
+  P.paydayInstructionShellHtml(adviceFixture(allocOverrides, scheduleOverrides), period,
+    // AMANDA SLICE 14: explicit same-input schedule argument.
+    scheduleOverrides === null ? null : scheduleFixture(scheduleOverrides));
 
 // The "Still in the plan" subsection, scoped so later-block assertions
 // cannot leak into it.

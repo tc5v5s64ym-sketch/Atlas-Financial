@@ -3464,9 +3464,32 @@ function budgetPayPeriodDrilldownHtml(src) {
   return open + scopeNote + picker + budgetDrilldownPeriodHtml(selected, src) + `</div>`;
 }
 
-function paydayInstructionShellHtml(advice, period) {
+function paydayInstructionShellHtml(advice, period, schedule) {
+  // AMANDA SLICE 14 — PAYDAY ACTION IDENTITY & FUNDING PARITY.
+  // The shell now keeps three identities visibly separate:
+  //   1. Current position (today) — the paydayAllocation current-cash
+  //      chain: what today's cash must do.
+  //   2. Selected pay period — the pay-period waterfall below the shell
+  //      (Payday balance, bills, Balance After Deductions). The shell
+  //      names it and points at it; it never duplicates its figures.
+  //   3. Exact payday plan — the schedule's first payday row, labelled
+  //      with its exact date.
+  // The planned-cost funding block shows the EXACT payday's plan: the
+  // first payday row in the Forecast publication — the same row Plan
+  // Spend leads with as its next forecast payday. The
+  // schedule arrives on the Budget's active inputs (the caller
+  // regenerates it through the incumbent Forecast chain via
+  // budgetMonthPlanSpendSchedule, so knob changes recompute it; the
+  // advice publication alone would stay on the recommended weekly).
+  // Exact identity only: never period.start (the selected pay period's
+  // opening, which can predate the forecast's first payday), never a
+  // nearest-payday substitution. The row is labelled with its exact
+  // date so it can never be read as the period's money. A trusted $0
+  // contribution renders $0.00; unknown fails closed, never $0. Named
+  // allocations are reprinted in Forecast order — never summed.
+  //
   // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
-  // The planned-spending block is the Nest Money funding plan: the live
+  // The planned-spending block is the Nest Money funding plan: the exact
   // payday's Plan-Spend-attributable contribution, with its named
   // purposes, is rendered as an earmark/funding-plan amount only.
   // Everything else stays in the BILLS/chequing account. The block is
@@ -3522,7 +3545,7 @@ function paydayInstructionShellHtml(advice, period) {
   const billsBlock = block('Bills & required minimums',
     (billsValue == null || billsTag == null ? unavailableNote('Bills & required minimums')
       : `<p class="instruction-amount">${money2(billsValue)}${billsTag}</p>`)
-    + `<p class="operating-note">Required debt minimums are inside this figure — they are not separate.</p>`
+    + `<p class="operating-note">Required debt minimums are inside this figure — they are not separate. This is today's position for bills; the period's total bills are in the pay-period detail below.</p>`
     + (billsShortfall != null && billsShortfall > 0
       ? `<p class="operating-note">Shortfall of ${money2(billsShortfall)} — bills are not fully covered.</p>` : ''));
 
@@ -3532,12 +3555,22 @@ function paydayInstructionShellHtml(advice, period) {
   const householdBlock = block('Current household spending',
     (householdValue == null || householdTag == null ? unavailableNote('Current household spending')
       : `<p class="instruction-amount">${money2(householdValue)}${householdTag}</p>`)
-    + `<p class="operating-note">This payday's household spending hold.</p>`);
+    + `<p class="operating-note">Today's household spending hold — not the whole period's Household Budget Total, which is in the pay-period detail below.</p>`);
 
-  const schedule = advice && advice.planSpendPaydayFunding;
   const start = period && period.start;
-  const row = schedule && schedule.status !== 'unavailable' && Array.isArray(schedule.paydays) && start
-    ? schedule.paydays.find(candidate => candidate && candidate.payday === start) : null;
+  // AMANDA SLICE 14 — EXACT-PAYDAY ROW SELECTION.
+  // The schedule is the caller's same-input regeneration (never the
+  // advice publication's copy here). The exact payday is the first
+  // payday row in the Forecast publication — the same row Plan Spend
+  // leads with as its next forecast payday. Never
+  // period.start (the selected pay period's opening, which can predate
+  // the forecast's first payday), never a nearest-payday substitution.
+  const paydays = schedule && schedule.status !== 'unavailable' && Array.isArray(schedule.paydays)
+    ? schedule.paydays : null;
+  const row = paydays && paydays.length ? paydays[0] : null;
+  const exactPayday = row && typeof row.payday === 'string' && isValidIsoCalendarDate(row.payday)
+    ? row.payday : null;
+  const exactPaydayLabel = exactPayday ? fmtDateLong(exactPayday) : null;
   // Trust tag for the live row's figures (contribution, named lines,
   // other protected cash). Forecast publishes it on the row; the page
   // renders only that published state and fails closed when it is absent.
@@ -3555,8 +3588,16 @@ function paydayInstructionShellHtml(advice, period) {
     ? ' <span class="trust-tag trust-estimated">estimate</span>'
     : schedule && schedule.fundingTrust === 'calculated'
       ? ' <span class="trust-tag">calculated</span>' : null;
+  // AMANDA SLICE 14 — trust for the exact-payday funding figures
+  // (contribution, named allocations). The live row carries its own
+  // Forecast-published row trust (AMANDA SLICE 1); any other payday
+  // carries only the schedule-level fundingTrust by Forecast's contract
+  // (AMANDA SLICE 11) — the page never borrows another figure's stamp,
+  // and unpublished trust fails the block closed, never untagged.
+  const isLiveRow = !!(exactPayday && schedule && exactPayday === schedule.asOf);
+  const plannedTrustTag = isLiveRow ? rowTrustTag : fundingTrustTag;
   // AMANDA SLICE 2 — NEST MONEY EARMARK (P1 4117851665 repair).
-  // The live payday's Plan-Spend-attributable part (schedule contribution
+  // The exact payday's Plan-Spend-attributable part (schedule contribution
   // with its named allocations) is the money Forecast specifically
   // attributes to known future planned costs — that, and only that, is
   // the Nest Money earmark. The block presents the figure as an
@@ -3572,13 +3613,16 @@ function paydayInstructionShellHtml(advice, period) {
   // stay in the BILLS/chequing account. The earmark is a planning
   // amount; Atlas moves nothing and claims no transfer occurred.
   let plannedBody;
-  if (!schedule || schedule.status === 'unavailable' || !Array.isArray(schedule.paydays) || !row) {
-    // No schedule, an unavailable schedule, or no row for this payday:
+  if (!paydays || !row || exactPayday == null) {
+    // No schedule, an unavailable schedule, or no exact-payday row:
     // unknown is not $0, so the block fails closed.
     plannedBody = unavailableNote('Nest Money funding plan');
   } else {
     const contribution = known(row.contribution);
-    if (contribution == null || rowTrustTag == null) {
+    if (contribution == null || plannedTrustTag == null || !Array.isArray(row.allocations)) {
+      // Null contribution (Forecast publishes null only with estimated
+      // trust), unpublished trust, or a malformed allocations collection:
+      // fail closed — never $0, never a partial named list.
       plannedBody = unavailableNote('Nest Money funding plan');
     } else {
       // AMANDA SLICE 4 — PLANNED-SPENDING FUNDING STATUS.
@@ -3679,7 +3723,7 @@ function paydayInstructionShellHtml(advice, period) {
           const cost = costById.get(item.id);
           const tag = cost ? costTrustTag(cost.confidence) : null;
           const neededBy = tag ? fmtUpcomingDate(cost.date) : null;
-          return `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${rowTrustTag}</span></div>`
+          return `<div class="operating-line"><span>${item.label}</span><span>${money2(item.amount)}${plannedTrustTag}</span></div>`
             + (neededBy ? `<div class="operating-line"><span>Needed by</span><span>${neededBy}${tag}</span></div>` : '');
         }).join('');
       // "Still in the plan": dated costs with no allocation this payday and
@@ -3719,12 +3763,12 @@ function paydayInstructionShellHtml(advice, period) {
         // A $0 contribution does not mean fully funded: Forecast may still
         // carry remaining funding, so the funding status renders alongside
         // the $0 earmark instead of replacing it.
-        plannedBody = `<p class="instruction-amount">${money2(0)}${rowTrustTag}</p>
+        plannedBody = `<p class="instruction-amount">${money2(0)}${plannedTrustTag}</p>
           <p class="operating-note">No Nest Money earmark this payday.</p>
           ${stillPlannedHtml}
           ${fundingStatusHtml}${gapHtml}`;
       } else {
-        plannedBody = `<p class="instruction-amount">${money2(contribution)}${rowTrustTag}</p>
+        plannedBody = `<p class="instruction-amount">${money2(contribution)}${plannedTrustTag}</p>
           ${fundedNowLines ? `<div class="operating-lines">${fundedNowLines}</div>` : ''}
           <p class="operating-note">This payday's share of the funding plan for these named planned costs. Atlas can't see money you've already moved to your Nest Money bucket, so this is a planning amount only — not an instruction to transfer or move money into a separate bucket. No transfer has happened, and the payment itself stays on its cash date.</p>
           ${stillPlannedHtml}
@@ -3732,7 +3776,17 @@ function paydayInstructionShellHtml(advice, period) {
       }
     }
   }
-  const plannedBlock = block('Nest Money funding plan', plannedBody);
+  // AMANDA SLICE 14 — the planned block carries the exact payday's
+  // identity in its title and names the same answer Plan Spend shows,
+  // so it can never be read as the selected period's money.
+  const periodRangeLabel = (period && (period.rangeLabel || period.label)) || 'selected';
+  const plannedTitle = exactPaydayLabel
+    ? `Nest Money funding plan — ${exactPaydayLabel} payday`
+    : 'Nest Money funding plan';
+  const plannedIdentityNote = exactPaydayLabel
+    ? `<p class="operating-note">Forecast's planned-cost funding for the ${exactPaydayLabel} payday — the same answer Plan Spend shows for this payday. This is that payday's plan, not the ${periodRangeLabel} period's.</p>`
+    : '';
+  const plannedBlock = `<div class="instruction-block" data-exact-payday-plan="${exactPayday || ''}"><h3>${plannedTitle}</h3>${plannedIdentityNote}${plannedBody}</div>`;
 
   const bufferValue = known(advice.buffer);
   const bufferTag = trustTag('buffer');
@@ -3840,13 +3894,15 @@ function paydayInstructionShellHtml(advice, period) {
 
   const paydayAttr = alloc.payday || start || '';
   return `<section class="payday-instruction-shell" data-payday-instruction-shell="${paydayAttr}">
-    <h2>Where this payday's money needs to go</h2>
-    <p class="operating-note">The plan for this payday — the Nest Money funding plan, with the rest staying in chequing. Nothing here is a transfer or a payment made.</p>
-    <p class="operating-note">The Nest Money amount below is this payday's funding plan for the named planned costs — a planning amount, not an instruction to transfer or move money. Everything else below stays in your BILLS/chequing account until it is spent or paid.</p>
+    <h2>Today's money — current position</h2>
+    <p class="operating-note">What today's cash must do. This is the current position — not the full pay period, and nothing here is a transfer or a payment made.</p>
+    <p class="operating-note">The exact payday's plan — the Nest Money funding plan, with the rest staying in chequing. Nothing here is a transfer or a payment made.</p>
+    <p class="operating-note">The Nest Money amount below is the exact payday's funding plan for the named planned costs — a planning amount, not an instruction to transfer or move money. Everything else below stays in your BILLS/chequing account until it is spent or paid.</p>
     <p class="operating-note">Every figure carries its trust tag: calculated means the inputs were confirmed; estimate means an input was estimated (for example a projected paycheck).</p>
     <div class="instruction-blocks">
       ${availableBlock}${billsBlock}${householdBlock}${plannedBlock}${protectedBlock}${extraBlock}${optionalBlock}${remainderBlock}
     </div>
+    <p class="operating-note">The ${periodRangeLabel} pay-period detail below shows this period's Payday balance, bills, and Balance After Deductions — a different window from today's position above.</p>
   </section>`;
 }
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
@@ -4832,7 +4888,10 @@ function operatingSurfaceHtml(ctx) {
   const payPeriodViews = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
   const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
   const instructionShell = look === 'this-period' && budgetGranularity !== 'month' && !drilldownView
-    ? paydayInstructionShellHtml(advice, currentPeriod) : '';
+    // AMANDA SLICE 14: the shell's planned-cost funding block reads the
+    // same-input regenerated schedule (active knobs included) — the same
+    // publication Plan Spend leads with — never the advice copy alone.
+    ? paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx)) : '';
   const payPeriodContent = defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
   return `<div class="payday-operating-sheet" data-payday-sheet>
     ${granularityToggle}

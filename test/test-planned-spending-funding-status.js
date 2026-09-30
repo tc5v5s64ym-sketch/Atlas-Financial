@@ -148,6 +148,9 @@ function scheduleFixture(overrides = {}) {
   return Object.assign({
     status: 'ready',
     source: 'Forecast.planSpendPaydayFunding',
+    // AMANDA SLICE 14: the live row is the row whose payday equals the
+    // schedule's asOf (the real publication contract).
+    asOf: '2026-09-25',
     // Trust authority for the funding-status figures (AMANDA SLICE 4 P1
     // repair): Forecast publishes this; the page only reprints it.
     fundingTrust: 'calculated',
@@ -177,7 +180,9 @@ function adviceFixture(allocOverrides, scheduleOverrides) {
 
 const currentPeriod = { id: 'current:2026-09-25', start: '2026-09-25', end: '2026-10-08', timelineRole: 'current' };
 const shell = (allocOverrides, scheduleOverrides, period = currentPeriod) =>
-  P.paydayInstructionShellHtml(adviceFixture(allocOverrides, scheduleOverrides), period);
+  P.paydayInstructionShellHtml(adviceFixture(allocOverrides, scheduleOverrides), period,
+    // AMANDA SLICE 14: explicit same-input schedule argument.
+    scheduleOverrides === null ? null : scheduleFixture(scheduleOverrides));
 
 check('S1: ready payday shows earmark, named allocations, projected protected, still to fund, On track', () => {
   const html = shell();
@@ -244,7 +249,7 @@ check('S7: projected protected is the Forecast figure only — general protectio
 
 check('S8: required debt minimums are not double-counted into planned spending', () => {
   const html = shell();
-  const start = html.indexOf('<h3>Nest Money funding plan</h3>');
+  const start = html.indexOf('<h3>Nest Money funding plan'); // AMANDA SLICE 14: dated title
   assert.ok(start !== -1, 'Nest Money block present');
   const next = html.indexOf('<h3>', start + 1);
   const block = next === -1 ? html.slice(start) : html.slice(start, next);
@@ -276,7 +281,7 @@ check('S10: Slice 1/2/3 shell behavior is intact', () => {
   const html = shell();
   assert.match(html, /trust-tag/); // Slice 1 trust tags
   assert.match(html, /Atlas can't see money you've already moved/); // Slice 2 blindness qualifier
-  assert.match(html, /Where this payday's money needs to go/);
+  assert.match(html, /Today's money — current position/);
   assert.equal(typeof P.budgetMonthViewHtml, 'function'); // Slice 3 Month view still present
 });
 

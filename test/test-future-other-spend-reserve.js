@@ -84,6 +84,12 @@ function loadComposer() {
     // AMANDA SLICE 9 — the drilldown predicate called by operatingSurfaceHtml.
     'budgetInPayPeriodDrilldown',
     'paydayInstructionShellHtml',
+    // AMANDA SLICE 14 — the shell's planned block reads the caller-passed
+    // same-input schedule; the harness must include its (pure) chain.
+    'budgetMonthPlanSpendSchedule',
+    'budgetMonthKnobOpts',
+    'budgetTrajectoryCacheKeyFor',
+    'simOpts',
     // AMANDA SLICE 3 — the Month view functions called by operatingSurfaceHtml.
     'budgetMonthName',
     'budgetTrajectoryFor',
@@ -99,7 +105,7 @@ function loadComposer() {
     grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
     grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
     grab(planSrc, /^const BUDGET_MONTH_NAMES = [\s\S]*?\];/m, 'BUDGET_MONTH_NAMES'),
-    'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null; let budgetPayPeriodAnchorMonth = null; let budgetDrilldownPayPeriod = null;',
+    'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null; let budgetPayPeriodAnchorMonth = null; let budgetDrilldownPayPeriod = null; let budgetMonthScheduleCache = null; let budgetMonthScheduleCacheKey = null;',
   ].concat(names.map(name => grab(
     planSrc,
     new RegExp('^function ' + name + '\\([\\s\\S]*?\\n\\}$', 'm'),
@@ -107,7 +113,12 @@ function loadComposer() {
   ))).join('\n');
   return vm.runInNewContext(
     `${source}\n({ operatingSurfaceHtml, calendarBudgetHtml, calendarWaterfallHtml, money2 });`,
-    { Forecast: F }
+    // AMANDA SLICE 14: minimal page-state stub for simOpts (read by
+    // budgetMonthKnobOpts inside the schedule chain).
+    { Forecast: F,
+      state: { scenario: null, targetBuffer: 500, extraDebtMonthly: 0,
+        incomeOverrides: {}, disabled: [], debts: null, extraDebtTarget: null,
+        extraFacilities: null } }
   );
 }
 
