@@ -10530,9 +10530,14 @@
         && String(tx.id) === String(row.id));
       if (matches.length !== 1) return true;
       const tx = matches[0];
-      return !(tx.atlasAccountId || tx.accountId || tx.account)
-        || (tx.accountRole && tx.accountRole !== 'revolving-credit')
-        || !isRevolvingCardAccount(tx)
+      // Match spendDuplicateKey's canonical account choice. accountId-only
+      // evidence cannot participate in its replacement detection, and any
+      // contradictory alias makes cash/card provenance uncertain.
+      const account = tx.atlasAccountId || tx.account;
+      if (!account || [tx.atlasAccountId, tx.account, tx.accountId].some(id =>
+        id != null && id !== '' && String(id) !== String(account))) return true;
+      return (tx.accountRole && tx.accountRole !== 'revolving-credit')
+        || !isRevolvingCardAccount({ account, accountRole: tx.accountRole })
         || tx.pendingPostedAmbiguous === true || duplicateIds.has(String(tx.id));
     };
     let basisTrust = 'calculated';

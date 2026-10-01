@@ -86,6 +86,9 @@ for (const amount of [50, 350]) {
 assert.equal(nextFunding(run(state(true, 'synthetic-mapped-card'))).contribution, 325);
 assert.equal(nextFunding(run(state(true, 'travelvisa', null))).contribution, 325,
   'incumbent canonical card identity also supplies provenance');
+const consistent = state();
+Object.assign(consistent.packet.transactions[0], { atlasAccountId: 'travelvisa', accountId: 'travelvisa' });
+assert.equal(nextFunding(run(consistent)).contribution, 325, 'consistent canonical aliases preserve admission');
 
 const negatives = [
   ['cash pending', s => Object.assign(s.packet.transactions[0], { account: 'chequing-a', accountRole: 'household-cash' })],
@@ -95,6 +98,29 @@ const negatives = [
   ['conflicting account role', s => { s.packet.transactions[0].accountRole = 'household-cash'; }],
   ['missing account', s => { delete s.packet.transactions[0].account; }],
   ['missing identity', s => { delete s.packet.transactions[0].id; }],
+  ['accountId-only pending provenance', s => {
+    const tx = s.packet.transactions[0]; tx.accountId = tx.account;
+    delete tx.account; delete tx.accountRole;
+  }],
+  ['mapped-role accountId-only pending provenance', s => {
+    const tx = s.packet.transactions[0]; tx.accountId = tx.account; delete tx.account;
+  }],
+  ['accountId-only possible replacement', s => {
+    const tx = s.packet.transactions[0]; tx.accountId = tx.account;
+    delete tx.account; delete tx.accountRole;
+    s.packet.transactions.push({ ...tx, id: 'synthetic-posted', pending: false });
+  }],
+  ['mapped-role accountId-only possible replacement', s => {
+    const tx = s.packet.transactions[0]; tx.accountId = tx.account; delete tx.account;
+    s.packet.transactions.push({ ...tx, id: 'synthetic-posted', pending: false });
+  }],
+  ['contradictory canonical cash/card aliases', s => {
+    const tx = s.packet.transactions[0]; tx.atlasAccountId = 'chequing-a'; delete tx.accountRole;
+  }],
+  ['mapped-role contradictory canonical aliases', s => {
+    s.packet.transactions[0].atlasAccountId = 'chequing-a';
+  }],
+  ['contradictory accountId alias', s => { s.packet.transactions[0].accountId = 'chequing-a'; }],
   ['reused identity', s => { s.packet.transactions.push({ ...s.packet.transactions[0], account: 'chequing-a' }); }],
   ['partial pending coverage', s => { s.packet.pendingCoverage = 'partial'; }],
   ['unknown pending coverage', s => { delete s.packet.pendingCoverage; }],
