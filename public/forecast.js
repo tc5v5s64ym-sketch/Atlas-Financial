@@ -4677,6 +4677,14 @@
     for (const e of events) {
       if (!isJointCashOutflow(e)) continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
+      // expandEvents checks settlement against its lookback start. This
+      // action list instead answers what is still required at asOf. A
+      // commitment satisfied since that earlier start must not reappear as
+      // unverified; keep its dated history and the existing cash walk intact.
+      if (e.kind === 'commitment') {
+        const row = (plan.commitments || []).find(c => c && c.id === e.id);
+        if (row && commitmentSettledBy(row, asOf)) continue;
+      }
       const amt = -e.amount;
       if (!(amt > EPSILON)) continue;
       const key = (e.id || e.label) + '@' + e.date;
