@@ -28,6 +28,9 @@ const state = {
 let planLook = 'this-period';
 let planCalendarShow = null;
 let planPayPeriodId = null;
+// Disclosure choices live only in this page session, never in financial data
+// or localStorage. A shortfall does not make this choice for the reader.
+const paydayDisclosuresOpen = new Set();
 /* AMANDA SLICE 3 — Month <-> Pay Period consolidated planning view.
  * budgetGranularity selects which lens the Budget surface shows:
  * 'pay-period' is the existing payday/pay-period operating picture;
@@ -3539,8 +3542,21 @@ function paydayInstructionShellHtml(advice, period, schedule) {
   const known = value => value != null && isFinite(Number(value)) ? Number(value) : null;
   const unavailableNote = label =>
     `<p class="operating-note">${label}: unavailable — this figure was not published.</p>`;
-  const block = (title, bodyHtml) =>
-    `<div class="instruction-block"><h3>${title}</h3>${bodyHtml}</div>`;
+  const block = (title, bodyHtml, options = {}) => {
+    // Move the already-rendered headline into a compact native summary.
+    // This is HTML presentation, not selection or arithmetic on money.
+    const amount = bodyHtml.match(/<p class="instruction-amount">([\s\S]*?)<\/p>/);
+    const headline = amount ? amount[1] : (options.headline || 'Unavailable');
+    const attention = options.attention || '';
+    const detail = bodyHtml.replace(amount ? amount[0] : '', '').replace(attention, '');
+    const attentionText = attention.replace(/^<p[^>]*>/, '').replace(/<\/p>$/, '');
+    const key = options.key || title;
+    const escapedKey = key.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    return `<details class="instruction-block" data-payday-breakdown="${escapedKey}"${options.attrs || ''}${typeof paydayDisclosuresOpen !== 'undefined' && paydayDisclosuresOpen.has(key) ? ' open' : ''}>
+      <summary><h3>${title}</h3><span class="${amount ? 'instruction-amount' : 'instruction-state'}">${headline}</span>${attentionText ? `<span class="instruction-warning">${attentionText}</span>` : ''}</summary>
+      <div class="instruction-detail">${detail}</div>
+    </details>`;
+  };
 
   const available = known(alloc.available);
   const availableTag = trustTag('available');
@@ -3552,12 +3568,13 @@ function paydayInstructionShellHtml(advice, period, schedule) {
   const billsValue = known(obligations.allocated);
   const billsShortfall = known(obligations.shortfall);
   const billsTag = trustTag('obligations');
+  const billsAttention = billsShortfall != null && billsShortfall > 0
+    ? `<p class="operating-note">Shortfall of ${money2(billsShortfall)} — bills are not fully covered.</p>` : '';
   const billsBlock = block('Bills & required minimums',
     (billsValue == null || billsTag == null ? unavailableNote('Bills & required minimums')
       : `<p class="instruction-amount">${money2(billsValue)}${billsTag}</p>`)
-    + `<p class="operating-note">Required debt minimums are inside this figure — they are not separate. This is today's position for bills; the period's total bills are in the pay-period detail below.</p>`
-    + (billsShortfall != null && billsShortfall > 0
-      ? `<p class="operating-note">Shortfall of ${money2(billsShortfall)} — bills are not fully covered.</p>` : ''));
+    + `<p class="operating-note">Required debt minimums are inside this figure — they are not separate. This is today's position for bills; the period's total bills are in the pay-period detail above.</p>`
+    + billsAttention, { attention: billsAttention });
 
   const essentials = alloc.essentials || {};
   const householdValue = known(essentials.allocated);
@@ -3830,7 +3847,11 @@ function paydayInstructionShellHtml(advice, period, schedule) {
   const plannedIdentityNote = exactPaydayLabel
     ? `<p class="operating-note">Forecast's planned-cost funding for the ${exactPaydayLabel} payday. This is that payday's plan, not the ${periodRangeLabel} period's.</p>`
     : '';
-  const plannedBlock = `<div class="instruction-block" data-exact-payday-plan="${exactPayday || ''}"><h3>${plannedTitle}</h3>${plannedIdentityNote}${plannedBody}</div>`;
+  const plannedBlock = block(plannedTitle, `${plannedIdentityNote}${plannedBody}`, {
+    key: 'planned-cost-funding', attrs: ` data-exact-payday-plan="${exactPayday || ''}"`,
+    attention: plannedBody.includes('<p class="operating-lead">Funding shortfall ahead</p>')
+      ? '<p class="operating-lead">Funding shortfall ahead</p>' : '',
+  });
 
   const bufferValue = known(advice.buffer);
   const bufferTag = trustTag('buffer');
@@ -3909,7 +3930,9 @@ function paydayInstructionShellHtml(advice, period, schedule) {
       ${strategyNote}
       ${afterClearsLine}`;
   }
-  const extraBlock = block('Extra on focus debt', extraBody);
+  const extraBlock = block('Extra on focus debt', extraBody, {
+    attention: strategyNote || (!focusLabel && reasonText ? `<p class="operating-note">${reasonText}</p>` : ''),
+  });
 
   // Funded optional plans are Forecast allocations taken from the same
   // remaining pool as the remainder. The shell must name them: otherwise a
@@ -3924,29 +3947,34 @@ function paydayInstructionShellHtml(advice, period, schedule) {
     : `<div class="operating-lines">${optionalRows
       .map(item => `<div class="operating-line"><span>${item.label}</span><span>${money2(item.allocated)}${optionalTag}</span></div>`)
       .join('')}</div>
-      <p class="operating-note">Nice-to-have plans — funded only after everything above is covered.</p>`) : '';
+      <p class="operating-note">Nice-to-have plans — funded only after everything above is covered.</p>`,
+    { headline: optionalTag == null ? 'Unavailable' : 'Funded plans' }) : '';
 
   const remainderValue = known(alloc.remainder);
   const remainderTag = trustTag('remainder');
   const unresolved = Array.isArray(alloc.unresolved) ? alloc.unresolved : [];
+  const remainderAttention = unresolved.length
+    ? `<p class="operating-note">${unresolved.length} planned cost${unresolved.length === 1 ? ' is' : 's are'} still unresolved — this is not free money.</p>` : '';
   const remainderBlock = block('Truly unassigned',
     (remainderValue == null || remainderTag == null ? unavailableNote('Truly unassigned')
       : `<p class="instruction-amount">${money2(remainderValue)}${remainderTag}</p>`)
-    + (unresolved.length
-      ? `<p class="operating-note">${unresolved.length} planned cost${unresolved.length === 1 ? ' is' : 's are'} still unresolved — this is not free money.</p>`
-      : `<p class="operating-note">Genuinely unassigned. Nothing else claims it.</p>`));
+    + (remainderAttention || `<p class="operating-note">Genuinely unassigned. Nothing else claims it.</p>`),
+    { attention: remainderAttention });
 
   const paydayAttr = alloc.payday || start || '';
   return `<section class="payday-instruction-shell" data-payday-instruction-shell="${paydayAttr}">
     <h2>Today's money — current position</h2>
     <p class="operating-note">What today's cash must do. This is the current position — not the full pay period, and nothing here is a transfer or a payment made.</p>
-    <p class="operating-note">The exact payday's plan — the Nest Money funding plan, with the rest staying in chequing. Nothing here is a transfer or a payment made.</p>
-    <p class="operating-note">The Nest Money amount below is the exact payday's funding plan for the named planned costs — a planning amount, not an instruction to transfer or move money. Everything else below stays in your BILLS/chequing account until it is spent or paid.</p>
-    <p class="operating-note">Every figure carries its trust tag: calculated means the inputs were confirmed; estimate means an input was estimated (for example a projected paycheck).</p>
     <div class="instruction-blocks">
       ${availableBlock}${billsBlock}${householdBlock}${plannedBlock}${protectedBlock}${extraBlock}${optionalBlock}${remainderBlock}
     </div>
-    <p class="operating-note">The ${periodRangeLabel} pay-period detail below shows this period's Payday balance, bills, and Balance After Deductions — a different window from today's position above.</p>
+    <details class="instruction-context" data-payday-breakdown="current-cash-context"${typeof paydayDisclosuresOpen !== 'undefined' && paydayDisclosuresOpen.has('current-cash-context') ? ' open' : ''}>
+    <summary>How to read these amounts</summary>
+    <p class="operating-note">The exact payday's plan — the Nest Money funding plan, with the rest staying in chequing. Nothing here is a transfer or a payment made.</p>
+    <p class="operating-note">The Nest Money amount below is the exact payday's funding plan for the named planned costs — a planning amount, not an instruction to transfer or move money. Everything else below stays in your BILLS/chequing account until it is spent or paid.</p>
+    <p class="operating-note">Every figure carries its trust tag: calculated means the inputs were confirmed; estimate means an input was estimated (for example a projected paycheck).</p>
+    </details>
+    <p class="operating-note">The ${periodRangeLabel} pay-period detail above shows this period's Payday balance, bills, and Balance After Deductions — a different window from today's position here.</p>
   </section>`;
 }
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
@@ -4652,6 +4680,15 @@ function wireBudgetGranularity(mount, ctx) {
 }
 
 function wirePlanLookPicker(mount, ctx) {
+  mount.querySelectorAll('[data-current-payday-details], [data-payday-breakdown]').forEach(details => {
+    details.addEventListener('toggle', () => {
+      if (!details.isConnected) return;
+      const key = details.hasAttribute('data-current-payday-details')
+        ? 'current-payday' : details.getAttribute('data-payday-breakdown');
+      if (details.open) paydayDisclosuresOpen.add(key);
+      else paydayDisclosuresOpen.delete(key);
+    });
+  });
   if (!mount || typeof mount.querySelector !== 'function') return;
   wireBudgetGranularity(mount, ctx);
   const sel = mount.querySelector('[data-plan-look]');
@@ -5015,7 +5052,7 @@ function operatingSurfaceHtml(ctx) {
   const reportedShortfall = [alloc && alloc.obligations, alloc && alloc.essentials]
     .some(bucket => bucket && typeof bucket.shortfall === 'number' && bucket.shortfall > 0);
   const paydayDetails = instructionShell
-    ? `<details class="budget-secondary-details" data-current-payday-details${reportedShortfall ? ' open' : ''}><summary>Current payday details${reportedShortfall ? ' — shortfall reported' : ''}</summary>${instructionShell}</details>` : '';
+    ? `<details class="budget-secondary-details" data-current-payday-details${reportedShortfall ? ' data-shortfall-reported' : ''}${typeof paydayDisclosuresOpen !== 'undefined' && paydayDisclosuresOpen.has('current-payday') ? ' open' : ''}><summary>Current payday details${reportedShortfall ? '<span class="budget-shortfall-summary"> — shortfall reported</span>' : ''}</summary>${instructionShell}</details>` : '';
   return `<div class="payday-operating-sheet budget-stepped-sheet" data-payday-sheet>
     ${monthView || drilldownView || `${payPeriodContent}${paydayDetails}`}
     ${granularityToggle ? `<details class="budget-secondary-details" data-budget-more-views><summary>More Budget views</summary>${granularityToggle}</details>` : ''}

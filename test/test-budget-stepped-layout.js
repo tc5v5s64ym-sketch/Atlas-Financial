@@ -166,10 +166,17 @@ const withConsumption = f.calendarWaterfallHtml(Object.assign({}, rows[1], {
 assert.match(summary(withConsumption, 'reserve-use'), /\$600\.00/);
 assert.match(withConsumption, /not extra income, observed saved cash or an actual withdrawal/);
 
-const short = JSON.parse(JSON.stringify(ctx));
-short.advice.paydayAllocation.obligations.shortfall = 50;
-assert.match(f.operatingSurfaceHtml(short), /data-current-payday-details open/);
-assert.match(f.operatingSurfaceHtml(short), /shortfall reported/);
+for (const bucket of ['obligations', 'essentials']) {
+  const short = JSON.parse(JSON.stringify(ctx));
+  short.advice.paydayAllocation[bucket].shortfall = 50;
+  const original = JSON.stringify(short);
+  const printed = f.operatingSurfaceHtml(short);
+  assert.doesNotMatch(printed, /<details[^>]*data-current-payday-details[^>]*\bopen\b/);
+  assert.match(printed, /data-current-payday-details data-shortfall-reported/);
+  assert.match(printed, /<summary>Current payday details<span class="budget-shortfall-summary"> — shortfall reported<\/span><\/summary>/);
+  assert.equal(JSON.stringify(short), original, 'the closed warning must not mutate Forecast output');
+}
+assert.doesNotMatch(f.operatingSurfaceHtml(ctx), /data-shortfall-reported|budget-shortfall-summary/);
 const year = f.payPeriodNavigatorHtml(f.payPeriodSelection(advice, 'jan'));
 assert.match(year, /Jan 1, 2027 – Jan 14, 2027/);
 assert.equal(JSON.stringify(ctx), before, 'rendering must not mutate published data');
