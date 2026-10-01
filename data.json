@@ -658,15 +658,37 @@
                 "note": "Owner 2026-09-16: end-of-month Fusion household payment if needed — $900 in December. Remaining schedule after paid portion totals $3,300 ($1,200 + $1,200 + $900)."
             },
             {
-                "id": "burrards-team-fees",
-                "date": "2026-09-15",
-                "label": "Burrards team fees",
-                "amount": 700,
-                "when": "Sep 2026",
+                "id": "burrards-logan-team-fee-oct",
+                "date": "2026-10-16",
+                "label": "Logan Burrards team fee — instalment 1",
+                "amount": 202.88,
+                "budgetCategory": "sport",
+                "confidence": "confirmed",
+                "group": "burrards-team-fees",
+                "sinkingFund": true,
+                "note": "Owner-approved input correction 2026-10-01: U13 notice instalment 1, part of the $405.75 total. Unpaid per owner; no settlement or actual funding is established. Replaces part of the old $700 September estimate. See docs/source_intake/BURRARDS_TEAM_FEES_2026-10-01.md."
+            },
+            {
+                "id": "burrards-logan-team-fee-nov",
+                "date": "2026-11-01",
+                "label": "Logan Burrards team fee — instalment 2",
+                "amount": 202.87,
+                "budgetCategory": "sport",
+                "confidence": "confirmed",
+                "group": "burrards-team-fees",
+                "sinkingFund": true,
+                "note": "Owner-approved input correction 2026-10-01: U13 notice instalment 2, the remainder of the same $405.75 total. Unpaid per owner; do not add another total-fee obligation or infer settlement. See docs/source_intake/BURRARDS_TEAM_FEES_2026-10-01.md."
+            },
+            {
+                "id": "burrards-linden-team-fee",
+                "label": "Linden Burrards team fee — proposal held",
+                "amount": 340,
+                "when": "Approval and due date pending",
                 "budgetCategory": "sport",
                 "confidence": "estimated",
+                "group": "burrards-team-fees",
                 "sinkingFund": true,
-                "note": "Owner estimate ~$700, likely Sep 2026. Not a confirmed invoice. Owner month-only dating policy: cash date 2026-09-15 (15th of the clear month). Distinct from the settled 12 August registrations."
+                "note": "Owner approved retaining the provisional U11 $340 as an undated protected hold on 2026-10-01. Team approval, payment instructions and due date remain unknown. Unpaid; no due date, actual saving or settlement is invented. Distinct from paid August registrations. See docs/source_intake/BURRARDS_TEAM_FEES_2026-10-01.md."
             },
             {
                 "id": "seattle-nov",

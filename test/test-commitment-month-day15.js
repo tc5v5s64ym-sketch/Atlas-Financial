@@ -42,19 +42,21 @@ function independentMonth15(when) {
 }
 
 const OWNER_EXPLICIT = {
+  'burrards-logan-team-fee-oct': { date: '2026-10-16', amount: 202.88, when: null },
+  'burrards-logan-team-fee-nov': { date: '2026-11-01', amount: 202.87, when: null },
   'seattle-dec': { date: '2026-12-09', amount: 1500, when: 'Dec 2026' },
   'linden-birthday': { date: '2026-12-09', amount: 500, when: 'Dec 2026' },
   'christmas-2026': { date: '2026-12-25', amount: 3500, when: 'by Christmas 2026' },
 };
 const OWNER_DAY15 = {
-  'burrards-team-fees': { date: '2026-09-15', amount: 700, when: 'Sep 2026' },
   'seattle-nov': { date: '2026-11-15', amount: 1500, when: 'Nov 2026' },
   'san-diego': { date: '2027-01-15', amount: 3000, when: 'Jan 2027' },
 };
 const LEFT_UNDATED = {
+  'burrards-linden-team-fee': 'Approval and due date pending',
   'provincials': 'timing TBD',
 };
-const RETIRED = ['downstairs-couch', 'exterior-painting', 'vehicle-maintenance', 'indio-tournament'];
+const RETIRED = ['downstairs-couch', 'exterior-painting', 'vehicle-maintenance', 'indio-tournament', 'burrards-team-fees'];
 const HAND_DEC_CASH = [
   { id: 'seattle-dec', date: '2026-12-09', amount: -1500 },
   { id: 'linden-birthday', date: '2026-12-09', amount: -500 },
@@ -70,7 +72,7 @@ const byId = Object.fromEntries(rows.map(r => [r.id, r]));
 console.log('=== canonical rows: explicit owner dates vs day-15 vs left undated ===');
 for (const [id, expected] of Object.entries(OWNER_EXPLICIT)) {
   const row = byId[id];
-  ok(row && row.date === expected.date && row.when === expected.when
+  ok(row && row.date === expected.date && (row.when || null) === expected.when
       && (expected.amount == null ? row.amount == null : near(row.amount, expected.amount)),
     `${id} stores owner date ${expected.date} and keeps when "${expected.when}"`,
     row ? `${row.date} amount=${row.amount}` : 'missing');
@@ -196,7 +198,6 @@ console.log('\n=== expandEvents dates the occurrences (synthetic when-only + liv
 
 {
   const day15Cash = [
-    { id: 'burrards-team-fees', date: '2026-09-15', amount: -700 },
     { id: 'seattle-nov', date: '2026-11-15', amount: -1500 },
     { id: 'san-diego', date: '2027-01-15', amount: -3000 },
   ];

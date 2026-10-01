@@ -186,9 +186,13 @@ statement-period history as dated 8 Jul – 7 Aug 2026 evidence.
 
 *(owner-stated 2026-08-09 as an atomic same-day pair; owner-confirmed PAID
 2026-08-16)* Logan's and Linden's Burrards registrations are both paid. No
-registration amounts remain owed. Upcoming team fees are a separate planning
-estimate of approximately **$700 total** sometime in September 2026; exact
-amount and due date unknown. Not a confirmed invoice. The historical Aug. 9
+registration amounts remain owed. The separate approximately **$700 total**
+September team-fee estimate was superseded by the owner-approved 2026-10-01
+input correction. Current team-fee amounts, dates and uncertainty live only on
+the `burrards-logan-team-fee-*` and `burrards-linden-team-fee` rows in
+`data.json` `plan.commitments`; [the intake record](source_intake/BURRARDS_TEAM_FEES_2026-10-01.md)
+records the approval. All team fees remain unpaid; Linden's hold is provisional
+and undated. The historical Aug. 9
 opening-gap arithmetic below is left as the as-of snapshot; it is not a
 current unpaid obligation.
 

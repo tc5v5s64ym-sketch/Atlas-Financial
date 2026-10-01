@@ -4,8 +4,10 @@
  * become cash events and are not smeared across the 91-day sinking line.
  * They do encumber protected principal on the B94 master walk.
  *
- * Amounts below are the owner estimates from the 2026-08-16 instruction,
- * written as literals — not read back from the rows they prove.
+ * Deliberate current-input reconciliation: amounts below are the owner
+ * instructions, including the approved Oct 1 team-fee replacement, written
+ * independently of the rows they prove. Engine behaviour uses synthetic data
+ * in test-burrards-team-fee-inputs.js.
  */
 const fs = require('fs');
 const path = require('path');
@@ -27,7 +29,9 @@ const rows = plan.commitments || [];
 const byId = Object.fromEntries(rows.map(r => [r.id, r]));
 
 const NEW_IDS = [
-  'burrards-team-fees',
+  'burrards-logan-team-fee-oct',
+  'burrards-logan-team-fee-nov',
+  'burrards-linden-team-fee',
   'seattle-nov',
   'seattle-dec',
   'linden-birthday',
@@ -36,13 +40,16 @@ const NEW_IDS = [
   'san-diego',
 ];
 const RETIRED_IDS = [
+  'burrards-team-fees',
   'downstairs-couch',
   'exterior-painting',
   'vehicle-maintenance',
   'indio-tournament',
 ];
 const POINT = {
-  'burrards-team-fees': 700,
+  'burrards-logan-team-fee-oct': 202.88,
+  'burrards-logan-team-fee-nov': 202.87,
+  'burrards-linden-team-fee': 340,
   'seattle-nov': 1500,
   'seattle-dec': 1500,
   'linden-birthday': 500,
@@ -51,16 +58,18 @@ const POINT = {
   'san-diego': 3000,
 };
 const OWNER_EXPLICIT_DATES = {
+  'burrards-logan-team-fee-oct': '2026-10-16',
+  'burrards-logan-team-fee-nov': '2026-11-01',
   'seattle-dec': '2026-12-09',
   'linden-birthday': '2026-12-09',
   'christmas-2026': '2026-12-25',
 };
 const OWNER_DAY15_DATES = {
-  'burrards-team-fees': '2026-09-15',
   'seattle-nov': '2026-11-15',
   'san-diego': '2027-01-15',
 };
 const STILL_UNDATED = [
+  'burrards-linden-team-fee',
   'provincials',
 ];
 const RANGES = {};
@@ -90,7 +99,8 @@ ok(property && property.class === 'reserve' && property.plannedMonthly == null
   'property tax stays the reserve, with exact $6,000 on 2027-07-01 and the Jul 2026 actual');
 
 console.log('\n=== owner estimates are on the rows, not invented midpoints ===');
-const OWNER_CONFIRMED = new Set(['seattle-nov', 'seattle-dec', 'linden-birthday', 'provincials', 'san-diego']);
+const OWNER_CONFIRMED = new Set(['seattle-nov', 'seattle-dec', 'linden-birthday', 'provincials', 'san-diego',
+  'burrards-logan-team-fee-oct', 'burrards-logan-team-fee-nov']);
 for (const [id, amount] of Object.entries(POINT)) {
   const row = byId[id];
   const confidence = OWNER_CONFIRMED.has(id) ? 'confirmed' : 'estimated';
@@ -150,9 +160,14 @@ const unclearCash = events.filter(e => STILL_UNDATED.includes(e.id));
 ok(unclearCash.length === 0,
   'expandEvents emits no cash event for a still-undated absorbed cost',
   unclearCash.map(e => e.id).join(',') || 'none');
-ok(events.some(e => e.id === 'burrards-team-fees' && e.date === '2026-09-15'
-    && near(e.amount, -700)),
-  '91-day expandEvents includes Burrards team fees on the owner 15th');
+for (const [id, date, amount] of [
+  ['burrards-logan-team-fee-oct', '2026-10-16', 202.88],
+  ['burrards-logan-team-fee-nov', '2026-11-01', 202.87],
+]) {
+  const hits = events.filter(e => e.id === id);
+  ok(hits.length === 1 && hits[0].date === date && near(hits[0].amount, -amount),
+    `91-day expandEvents includes ${id} once on the notice date`);
+}
 ok(events.some(e => e.id === 'seattle-nov' && e.date === '2026-11-15'
     && near(e.amount, -1500)),
   '91-day expandEvents includes Seattle November on the owner 15th');
@@ -233,9 +248,9 @@ ok(near(fusionRemainingOnly, 3300),
   'remaining instalments alone are $3,300, independent of owner-stated paid row',
   String(fusionRemainingOnly));
 const preexistingPoints = 895;
-const absorbedPoints = 700 + 1500 + 1500 + 500 + 3500 + 1500 + 3000;
+const absorbedPoints = 202.88 + 202.87 + 340 + 1500 + 1500 + 500 + 3500 + 1500 + 3000;
 const HAND_TOTAL = preexistingPoints + absorbedPoints + fusionHouseholdUnsettled;
-ok(near(absorbedPoints, 12200) && near(HAND_TOTAL, 17595),
+ok(near(absorbedPoints, 12245.75) && near(HAND_TOTAL, 17640.75),
   'hand total at Aug. 19 opening includes Warriors $895 plus paid + remaining Fusion until each settledOn');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',

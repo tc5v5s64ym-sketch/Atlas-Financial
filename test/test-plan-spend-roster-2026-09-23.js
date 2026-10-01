@@ -5,6 +5,9 @@
  * out of Forecast and then used as the expected value. Cash dates for
  * clear months are recomputed here. Seaspan period membership is a
  * 14-day walk from the payroll anchor, not Forecast.seaspanPayPeriodsIntersecting.
+ * The historical-to-current allowlists include the separately approved Oct 1
+ * team-fee replacement; its exact input and synthetic behavior have their own
+ * regression in test-burrards-team-fee-inputs.js.
  *
  * The canonical opening remains 2026-08-19. fusion-household-paid has
  * settledOn 2026-09-10, so that opening still publishes the paid row.
@@ -207,6 +210,10 @@ oneCash('seattle-nov', '2026-11-15', -1500);
 oneCash('seattle-dec', '2026-12-09', -1500);
 oneCash('linden-birthday', '2026-12-09', -500);
 oneCash('san-diego', '2027-01-15', -3000);
+oneCash('burrards-logan-team-fee-oct', '2026-10-16', -202.88);
+oneCash('burrards-logan-team-fee-nov', '2026-11-01', -202.87);
+ok(!nowEvents.some(e => e.id === 'burrards-team-fees' || e.id === 'burrards-linden-team-fee'),
+  'the replaced aggregate and undated provisional hold emit no cash event');
 ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-08' || e.date === '2027-01-09')),
   'San Diego does not also emit on January 8 or January 9');
 ok(!nowEvents.some(e => e.id === 'provincials'), 'Provincials emits no Forecast cash date');
@@ -234,13 +241,16 @@ for (const key of keys) {
 }
 cashDeltas.sort();
 const expectedDeltas = [
+  'burrards-logan-team-fee-nov@2026-11-01|null->-202.87',
+  'burrards-logan-team-fee-oct@2026-10-16|null->-202.88',
+  'burrards-team-fees@2026-09-15|-700->null',
   'linden-birthday@2026-12-09|null->-500',
   'san-diego@2027-01-15|null->-3000',
   'seattle-dec@2026-12-09|-1200->-1500',
   'seattle-nov@2026-11-15|-1200->-1500',
 ];
 ok(JSON.stringify(cashDeltas) === JSON.stringify(expectedDeltas),
-  'commitment cash events change only for Seattle +$300 each, San Diego $3,000, and Linden birthday $500',
+  'commitment cash events change only for the approved team-fee replacement, Seattle, San Diego and Linden birthday',
   cashDeltas.join(' ; ') || 'none');
 
 console.log('\n=== funding sequence and sinking no longer carry the retired rows ===');
@@ -279,10 +289,18 @@ ok(near(sinkNow.get('Seattle November 2026'), 1500 / monthsInWindow)
     && near(sinkPrior.get('Seattle tournament #2'), 1200 / monthsInWindow),
   'each Seattle sinking smear is its own point amount over the window');
 const sinkingDelta = (sinking.sinkingMonthly || 0) - (priorSinking.sinkingMonthly || 0);
-const authorizedSinking = (1500 - 1200) + (1500 - 1200) + 3000 + 500;
+// Only dated commitments smear into this window's sinking line. The $340
+// undated hold stays protected in the funding sequence, without inventing a
+// cash date or adding it to the dated $405.75 sinking amount.
+const authorizedSinking = (1500 - 1200) + (1500 - 1200) + 3000 + 500
+  + (202.88 + 202.87 - 700);
 ok(near(sinkingDelta, authorizedSinking / monthsInWindow),
-  'sinking monthly total moves only by Seattle +$300 each, San Diego $3,000, and Linden birthday $500',
+  'sinking monthly delta includes only the approved dated costs, with no undated hold smear',
   String(sinkingDelta));
+ok(near(sinkNow.get('Logan Burrards team fee — instalment 1'), 202.88 / monthsInWindow)
+    && near(sinkNow.get('Logan Burrards team fee — instalment 2'), 202.87 / monthsInWindow)
+    && !sinkNow.has('Burrards team fees') && !sinkNow.has('Linden Burrards team fee — proposal held'),
+  'each dated team fee smears its exact amount; retired and undated rows do not');
 ok(near(sinkNow.get('San Diego'), 3000 / monthsInWindow),
   'San Diego sinking smear is the $3,000 point over the window, not a second $3,000');
 ok(near(sinkNow.get('Linden birthday'), 500 / monthsInWindow)
@@ -568,6 +586,9 @@ for (const key of lineKeys) {
 }
 lineDeltas.sort();
 const expectedLineDeltas = [
+  '2026-09|burrards-team-fees|2026-09-15|700->null',
+  '2026-10|burrards-logan-team-fee-oct|2026-10-16|null->202.88',
+  '2026-11|burrards-logan-team-fee-nov|2026-11-01|null->202.87',
   '2026-11|seattle-nov|2026-11-15|1200->1500',
   '2026-12|linden-birthday|2026-12-09|null->500',
   '2026-12|seattle-dec|2026-12-09|1200->1500',
@@ -575,7 +596,7 @@ const expectedLineDeltas = [
   '2027-07|propertytax|2027-07-01|null->6000',
 ];
 ok(JSON.stringify(lineDeltas) === JSON.stringify(expectedLineDeltas),
-  'month Road Ahead commitment lines change only for Seattle, San Diego, Linden birthday, and the property-tax reserve',
+  'month Road Ahead commitment lines change only for the approved team fees, Seattle, San Diego, Linden birthday and property-tax reserve',
   lineDeltas.join(' ; ') || 'none');
 
 console.log('\n=== compact card rules apply on the Plan Spend list ===');

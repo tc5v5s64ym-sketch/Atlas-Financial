@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['owner-approved unpaid Burrards team-fee inputs', 'test-burrards-team-fee-inputs.js'],
   ['exact deployed PR provenance', 'test-build-provenance.js'],
   ['Budget running build identity', 'test-running-build.js'],
   ['current-period actuals stay in the Seaspan spending cycle', 'test-current-period-cycle-actuals.js'],
