@@ -2368,6 +2368,10 @@ function extraRepaymentHtml(period) {
 // not from Balance After Deductions); those rows are not part of the
 // household Plan surface.
 function budgetPlanSpendEarmarkHtml(advice, period) {
+  // The selected Budget publication supersedes this cap-basis banner, even
+  // when unavailable. Falling back would publish competing funding amounts.
+  // The Plan Spend route retains its incumbent cash/cap schedule and details.
+  if (period && period.plannedCostFunding) return '';
   // Reprints Forecast's planSpendPaydayFunding contribution for the payday
   // starting this Budget period, so the household sees the Forecast earmark
   // for named future costs. Presentation only: the schedule is a Forecast
@@ -3974,12 +3978,12 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
         <details class="budget-step-details">
           <summary class="budget-step-summary">
-            <span class="operating-number" aria-hidden="true">${number === '02' ? '+' : (number === '04' || number === '06' ? '−' : '=')}</span>
+            <span class="operating-number" aria-hidden="true">${number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
             <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span><span class="budget-step-caption">${summary.note}</span></span>
             <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>
           </summary>
-          <div class="operating-answer budget-step-body">${known ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}</div>
+          <div class="operating-answer budget-step-body">${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}</div>
         </details>
       </div>`;
     }
@@ -4007,6 +4011,40 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
         </div>`, 'opening');
     }
   }
+  const funding = period.plannedCostFunding;
+  const numeric = value => typeof value === 'number' && Number.isFinite(value);
+  const fundingKnown = funding && (funding.status === 'ready' || funding.status === 'funding-gap')
+    && funding.start === period.start && funding.end === period.end
+    && numeric(funding.contribution) && funding.contribution >= 0 && numeric(funding.afterProposedFunding)
+    && (funding.trust === 'calculated' || funding.trust === 'estimated');
+  const fundingEstimate = fundingKnown && funding.trust === 'estimated' ? ' ≈ estimated' : '';
+  const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fundMoney = value => fundingKnown && numeric(value) ? money2(value) + fundingEstimate : 'Unavailable';
+  const costMoney = row => numeric(row.cost) && row.confidence === 'confirmed' ? money2(row.cost)
+    : numeric(row.cost) && row.confidence === 'estimated' ? money2(row.cost) + ' ≈ estimated' : 'Unavailable';
+  const costRows = funding && Array.isArray(funding.items) ? funding.items : [];
+  const unscheduled = fundingKnown && Array.isArray(funding.unscheduled) ? funding.unscheduled : [];
+  const itemDetails = `${costRows.map(row => `<div class="budget-funding-item" data-budget-funding-item="${escape(row.id)}">
+      <h3>${escape(row.label)}</h3>
+      <div class="operating-line"><span>This period — proposed</span><span>${fundMoney(row.contribution)}</span></div>
+      <div class="operating-line"><span>Cumulative proposed / cost</span><span>${fundMoney(row.cumulativeProposed)} / ${costMoney(row)}</span></div>
+      <div class="operating-line"><span>Still to set aside after this period</span><span>${fundMoney(row.remainingGap)}</span></div>
+      ${numeric(row.ceiling) && numeric(row.cost) && row.ceiling > row.cost ? `<p class="operating-note">Estimated cost range: ${costMoney(row)}–${money2(row.ceiling)}. The upper estimate remains additional uncertainty.</p>` : ''}
+      <p class="operating-note">Planning date: ${escape(row.date || 'Unavailable')} · Destination account: unavailable · Actual saved: unavailable.</p>
+    </div>`).join('')}`;
+  const fundingBody = fundingKnown ? `<p class="operating-note">Proposed earmarks from this Budget period's income, bills and household allowance. They are not transfers or money already saved.</p>
+    ${itemDetails}
+    ${unscheduled.map(row => `<div class="budget-funding-item" data-budget-funding-item="${escape(row.id)}"><h3>${escape(row.label)}</h3>
+      <p>${costMoney(row)} · ${escape(row.date || row.when || 'Date unknown')}</p><p class="operating-note">${escape(row.reason)} Proposed contribution and saved balance: unavailable.</p></div>`).join('')}
+    ${funding.gap ? `<p class="operating-note crit">Funding shortfall: ${fundMoney(funding.gap.shortBy)}. This projection does not fully cover the protected plan.</p>` : ''}
+    ${numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0 ? `<p class="operating-note">${fundMoney(funding.proposedFundingForBillPayments)} of this period's bill deduction is paid from earlier proposed funding. Forecast adds that protection back once in the final proposed balance, so the payment and contribution are not deducted twice.</p>` : ''}
+    <p class="operating-note">Deficit Planning is the bridge/planned-cost pot; Savings Dont Touch is the tax/insurance pot. Account funding and silver draws are not assigned by this projection.</p>`
+    : `<p class="operating-note">${escape(funding && funding.reason || 'Forecast has not published a funding schedule for this period.')} Actual saved balances and the original payday plan remain unavailable.</p>${itemDetails}`;
+  const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
+  const finalAmount = fundedBalanceKnown ? funding.afterProposedFunding
+    : (period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget);
+  const finalTrust = fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
   return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
     ${lookbackNote}${projectedNote}${openingUnknownNote}
@@ -4019,9 +4057,18 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       { amount: period.afterBills != null ? period.afterBills : period.afterRemainingBills, trust: period.afterBillsTrust, trustRequired: true, note: 'Period income after the bill deduction' })}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan), null,
       { amount: period.budgetHold, trust: period.budgetHoldTrust, note: 'Targets, actual spending and the period reserve' })}
-    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget, period.balanceAfterDeductionsTrust)
+    ${q('savings', 'Proposed savings', planUnavailable ? unavailable : fundingBody, null,
+      { amount: fundingKnown ? funding.contribution : null, trust: fundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, note: 'Named costs — proposed funding, separate from actual saved cash' })}
+    ${fundingKnown && numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0
+      ? q('reserve-use', 'Earlier proposed funding for bills',
+        '<p class="operating-note">Projected use of earlier earmarks for costs already included in Bills above. This offsets that bill deduction once; it is not extra income, observed saved cash or an actual withdrawal.</p>', 'credit',
+        { amount: funding.proposedFundingForBillPayments, trust: funding.trust, trustRequired: true,
+          note: 'Planning only — bill payment offset, not new income' }) : ''}
+    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(finalAmount, finalTrust)
       + '<p class="operating-note">A positive period balance may be needed for a later short period. It is not permission to spend.</p>', 'balance',
-      { amount: period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget, trust: period.balanceAfterDeductionsTrust, note: 'Period income after bills and the household reserve' })}
+      { amount: finalAmount, trust: finalTrust, note: fundedBalanceKnown
+        ? 'After bills, household and proposed funding — retain any future carry'
+        : 'Before savings — the funding deduction is unavailable' })}
   </section>`;
 
 }

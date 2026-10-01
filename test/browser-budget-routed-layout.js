@@ -10,6 +10,7 @@ const { randomBytes } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { chromium } = require('playwright');
 const makeData = require('./fixtures/budget-layout-data');
+const makeFundingData = require('./fixtures/budget-funding-data');
 const root = path.join(__dirname, '..');
 const screenshots = process.env.ATLAS_BUDGET_SCREENSHOTS_DIR
   || path.join(require('node:os').tmpdir(), 'atlas-budget-routed-review');
@@ -71,7 +72,7 @@ fs.mkdirSync(screenshots, { recursive: true });
       await page.goto(base);
       await page.locator('.budget-step-summary').first().waitFor();
       assert.equal(await page.evaluate(() => App.data.meta.title), 'Synthetic Budget review');
-      assert.equal(await page.locator('.budget-step-details').count(), 5);
+      assert.equal(await page.locator('.budget-step-details').count(), 6);
       assert.equal(await page.locator('.atlas-budget-section').count(), 0);
       const balance = await page.locator('[data-live-current-balance]').boundingBox();
       assert.ok(balance.y < 250 && balance.height < 250, JSON.stringify(balance));
@@ -150,11 +151,56 @@ fs.mkdirSync(screenshots, { recursive: true });
       await page.locator('.budget-step-summary').first().waitFor();
       assert.doesNotMatch(await page.locator('[data-live-current-balance]').innerText(), /\$0\.00/);
       assert.match(await page.locator('[data-live-current-balance]').innerText(), /—/);
+
+      // Same authenticated production route, now with independently checked
+      // Budget contributions. This is real Forecast output, not injected HTML.
+      data = makeFundingData();
+      await page.reload();
+      const savings = page.locator('[data-operating-question="savings"] summary');
+      await savings.waitFor();
+      assert.equal(await page.locator('[data-plan-spend-earmark]').count(), 0,
+        'the selected Budget schedule must not compete with the old cap-basis banner');
+      assert.match(await savings.innerText(), /250\.00/);
+      assert.match(await page.locator('[data-operating-question="07"] summary').innerText(), /250\.00/);
+      await savings.focus();
+      await page.keyboard.press('Enter');
+      const named = page.locator('[data-budget-funding-item="named-cost"]');
+      assert.match(await named.innerText(), /250\.00 \/ \$600\.00/);
+      assert.match(await named.innerText(), /350\.00/);
+      assert.match(await named.innerText(), /Actual saved: unavailable/);
+      assert.equal(await savings.evaluate(el => document.activeElement === el), true);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.screenshot({ path: path.join(screenshots, `routed-${width}-funding-current.png`), fullPage: true });
+      await page.keyboard.press('Space');
+      assert.equal(await savings.evaluate(el => el.parentElement.open), false);
+      await page.locator('[data-budget-wheel="period"] button').filter({ hasText: /Aug 28/ }).click();
+      // Wheel settle can re-render the selected period after animation; open
+      // the accordion only after it has settled, then prove visible content.
+      await page.waitForTimeout(500);
+      assert.match(await page.locator('[data-selected-pay-period-range]').innerText(), /Aug 28, 2026 – Sep 10, 2026/);
+      assert.match(await savings.innerText(), /350\.00/);
+      assert.match(await page.locator('[data-operating-question="07"] summary').innerText(), /0\.00/);
+      await savings.click();
+      await named.waitFor({ state: 'visible' });
+      assert.match(await named.innerText(), /600\.00 \/ \$600\.00/);
+      assert.match(await named.innerText(), /Still to set aside after this period\s+\$0\.00/);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.screenshot({ path: path.join(screenshots, `routed-${width}-funding-next.png`), fullPage: true });
+
+      data.plan.commitments[0].confidence = 'unknown';
+      await page.reload();
+      await savings.waitFor();
+      assert.match(await savings.innerText(), /Unavailable/);
+      assert.equal(await page.locator('[data-plan-spend-earmark]').count(), 0);
+      await savings.click();
+      assert.match(await named.innerText(), /Named cost/);
+      assert.doesNotMatch(await named.innerText(), /\$0\.00/);
+      assert.match(await page.locator('[data-operating-question="07"] summary').innerText(), /Before savings/);
       await context.close();
     }
     assert.deepEqual(external, [], 'routed proof must make no provider or external requests');
     assert.deepEqual(errors, []);
-    console.log('PASS authenticated production Budget route + App.boot + real Forecast: 1440/390/320 first viewport, Current Balance first, folded payday details below waterfall, 2027 collapsed estimate propagation, unknown trust, keyboard/focus/accordion, repeated real touch swipes, no overflow/errors/external requests. All financial JSON is synthetic.');
+    console.log('PASS authenticated production Budget route + App.boot + real Forecast: 1440/390/320 first viewport, Current Balance first, folded payday details below waterfall, 2027 estimate propagation, unknown trust, proposed funding/current-next progress and gap, keyboard/focus/accordion, repeated real touch swipes, no overflow/errors/external requests. All financial JSON is synthetic.');
   } finally {
     if (browser) await browser.close();
     server.kill('SIGTERM');

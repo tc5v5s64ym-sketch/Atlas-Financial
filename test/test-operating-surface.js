@@ -185,6 +185,7 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     'Bills',
     'Balance after bills',
     'Household budget',
+    'Proposed savings',
     'Balance After Deductions',
   ];
 
@@ -198,7 +199,7 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
-  const snapshotQs = 5;
+  const snapshotQs = 6;
   ok(/data-live-current-balance/.test(rendered)
       && (rendered.match(/data-operating-question=/g) || []).length === snapshotQs
       && !/data-operating-prompt="Current Balance"/.test(rendered)

@@ -59,7 +59,7 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
       return page;
     }
     async function presentationContract(page) {
-      assert.equal(await page.locator('.budget-step-details').count(), 5);
+      assert.equal(await page.locator('.budget-step-details').count(), 6);
       assert.equal(await page.locator('.atlas-budget-section').count(), 0,
         'legacy polish must not regroup the native waterfall');
       assert.equal(await page.locator('.budget-step-summary .operating-number')

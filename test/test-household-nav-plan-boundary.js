@@ -320,10 +320,10 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance After Deductions and stop
     'Q07 is Balance After Deductions');
   ok(html.includes(composer.money2(active.afterHouseholdBudget)),
     'Q07 prints the Forecast afterHouseholdBudget figure');
-  const questions = [...html.matchAll(/data-operating-question="(\d+)"/g)].map(m => m[1]);
-  const expectedQs = ['02', '04', '05', '06', '07'];
+  const questions = [...html.matchAll(/data-operating-question="([^"]+)"/g)].map(m => m[1]);
+  const expectedQs = ['02', '04', '05', '06', 'savings', '07'];
   ok(questions.join(',') === expectedQs.join(',') && !questions.includes('03'),
-    'the active snapshot has five questions, numbered 02 and 04–07',
+    'the active snapshot includes the bounded proposed-savings disclosure before Q07',
     questions.join(','));
 
   for (const prompt of REMOVED_ROWS) {
@@ -345,15 +345,15 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance After Deductions and stop
   const futureSection = (both.match(/data-calendar-role="future"[\s\S]*?<\/section>/) || [''])[0];
   const activeQs = activeSection.match(/data-operating-question=/g) || [];
   const futureQs = futureSection.match(/data-operating-question=/g) || [];
-  const expectedActiveCount = 5;
+  const expectedActiveCount = 6;
   ok(sections === (advice.defaultView.calendarPeriods || []).length,
     'Show both renders every calendar period',
     `${sections} vs ${(advice.defaultView.calendarPeriods || []).length}`);
   ok(activeQs.length === expectedActiveCount,
-    'Show both active snapshot question count is five without opening',
+    'Show both active snapshot has six questions including proposed savings, without opening',
     String(activeQs.length));
-  ok(futureQs.length === 6,
-    'Show both future snapshot includes opening as the sixth question',
+  ok(futureQs.length === 7,
+    'Show both future snapshot includes opening as the seventh question',
     String(futureQs.length));
   ok(/data-live-current-balance/.test(both),
     'Show both still prints live Current Balance outside the snapshots');

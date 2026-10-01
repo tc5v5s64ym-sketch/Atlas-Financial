@@ -1923,8 +1923,16 @@
         week.reserved += reservedDaily;
       }
       if (date >= variableFrom) {
-        balance -= dailyVariable;
-        week.variable += dailyVariable;
+        // Budget's selected-period funding composes this same walk with
+        // Forecast-published household holds, rather than the searched cap.
+        // This in-memory map is constructed in Forecast, never by a page.
+        const variable = opts.budgetHouseholdDaily instanceof Map
+          ? opts.budgetHouseholdDaily.get(date) : dailyVariable;
+        if (typeof variable !== 'number' || !Number.isFinite(variable) || variable < 0) {
+          throw new Error('The household cash-walk allowance is unavailable.');
+        }
+        balance -= variable;
+        week.variable += variable;
       }
       if (measured && balance < min.balance) min = { date, balance };
       daily.push({ date, balance });
@@ -2616,7 +2624,7 @@
   // Later contributions are capped by their own period capacity, so a weak
   // later payday can require an earlier contribution. Daily cash headroom
   // caps carried protection between paydays.
-  function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation) {
+  function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation, periodBasis) {
     const unavailable = reason => ({ status: 'unavailable', reason,
       source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
     if (!plan || !asOf || !sim || sim.start !== asOf || !Array.isArray(sim.daily)
@@ -2668,6 +2676,17 @@
         ? addDays(paydayDates[index + 1], -1) : sim.end,
     }));
     let before = cents(startingCashAmount(plan));
+    if (periodBasis && paydayDates[0] > asOf) {
+      const tail = sim.daily.filter(day => day.date < paydayDates[0]);
+      const boundary = tail.at(-1);
+      if (!boundary || !Number.isFinite(boundary.balance)
+          || tail.some(day => !Number.isFinite(day.balance) || day.balance < sim.buffer - EPSILON)) {
+        return unavailable('Cash before the next payday needs an unestablished bridge.');
+      }
+      // The partial current cycle has already consumed cash. Its change is
+      // not the next full period's income, allowance or contribution basis.
+      before = cents(boundary.balance);
+    }
     let paidCumulative = 0;
     let dueCumulative = 0;
     for (let i = 0; i < periods.length; i++) {
@@ -2689,6 +2708,16 @@
       const fresh = endCash - before + paidHere;
       period.capacity = Math.max(0, i === 0
         ? fresh + before - cents(sim.buffer) : fresh);
+      if (periodBasis) {
+        const basis = periodBasis.get(period.date);
+        if (!basis || basis.end !== period.end || !Number.isFinite(basis.capacity)
+            || Math.abs(fresh - cents(basis.capacity)) > 1) {
+          return unavailable('The funding cash walk does not reconcile to the selected Budget period.');
+        }
+        // This publication assigns period income, not opening cash. Opening
+        // cash still protects the walk, but cannot become new income/funding.
+        period.capacity = Math.max(0, cents(basis.capacity));
+      }
       period.cashUpper = upper;
       period.paymentTotal = paidHere;
       before = endCash;
@@ -2764,7 +2793,7 @@
       // (ordinary commitments) and the calculated protectedPath (reserve-
       // planning / yearly-bill protection via the cash path). Both must
       // reconcile to the schedule contribution; neither may be double-counted.
-      const isLivePayday = period.date === asOf && incumbentAllocation
+      const isLivePayday = !periodBasis && period.date === asOf && incumbentAllocation
         && Array.isArray(incumbentAllocation.futureCosts);
       const incumbentParts = isLivePayday
         ? incumbentAllocation.futureCosts.filter(part => part && Number(part.allocated) > EPSILON
@@ -10384,6 +10413,182 @@
     return result;
   }
 
+  // Selected Budget funding evolves the incumbent allocator on Budget's own
+  // income / bill-load / category-hold publications. No cap or recent-spend
+  // estimate substitutes for those holds. This is a projection, not saved cash
+  // or a reconstruction of the original payday plan.
+  function publishBudgetPeriodFunding(plan, asOf, periods, opts) {
+    const finite = n => typeof n === 'number' && Number.isFinite(n);
+    const seq = fundingSequence(plan, asOf, opts);
+    const disabled = new Set(opts.disabled || []);
+    const active = (plan.commitments || []).filter(c => !disabled.has(c.id) && !commitmentSettledBy(c, asOf));
+    const validCostAmount = c => finite(c.amount) && c.amount >= 0
+      || c.amount == null && finite(c.amountMin) && c.amountMin >= 0
+        && (c.amountMax == null || finite(c.amountMax) && c.amountMax >= c.amountMin);
+    const displayPrice = c => {
+      const input = active.find(row => row.id === c.id);
+      return input && !validCostAmount(input) ? { cost: null, ceiling: null }
+        : { cost: c.need != null ? c.need : c.bounds && c.bounds.floor,
+          ceiling: c.bounds && c.bounds.ceiling };
+    };
+    const missingCosts = active.filter(c => !seq.some(row => row.id === c.id));
+    const roster = seq.map(c => Object.assign({ id: c.id, label: c.label,
+      date: c.date || null, confidence: c.confidence || 'estimated',
+      contribution: null, cumulativeProposed: null, remainingGap: null, actualSaved: null }, displayPrice(c)))
+      .concat(missingCosts.map(c => ({ id: c.id, label: c.label, date: commitmentCashDate(c),
+        cost: null, ceiling: null, confidence: c.confidence || 'estimated',
+        contribution: null, cumulativeProposed: null, remainingGap: null, actualSaved: null })));
+    const ordered = (periods || []).filter(p => p && p.end >= asOf)
+      .sort((a, b) => a.start.localeCompare(b.start));
+    const unavailable = reason => {
+      for (const p of periods || []) p.plannedCostFunding = {
+        status: 'unavailable', reason, contribution: null, trust: 'unavailable',
+        actualSaved: null, originalPaydayPlan: null, items: roster,
+      };
+    };
+    const full = ordered.filter(p => p.start >= asOf && diffDays(p.start, p.end) === 13);
+    if (!full.length) return unavailable('No complete future Budget pay period is available.');
+    // The incumbent sequence omits absent amounts and accepts legacy numeric
+    // coercion. This new money publication must not turn either into zero or
+    // precision. Keep their names above, but close the protected projection.
+    if (active.some(c => commitmentFlexibility(c) !== 'optional' && !validCostAmount(c))
+        || periodWaterfallTotalTrust(seq.filter(c => c.flexibility !== 'optional'), 0,
+          c => c.bounds && c.bounds.floor) === 'unavailable') {
+      return unavailable('A protected planned cost has unavailable amount or trust evidence.');
+    }
+    const end = full.at(-1).end;
+    const daily = new Map();
+    const incomes = new Map();
+    const basis = new Map();
+    let basisTrust = 'calculated';
+    for (const p of ordered) {
+      if (p.end > end) continue;
+      if (!finite(p.incomeTotal) || !finite(p.periodBillLoad) || !finite(p.budgetHold)
+          || !finite(p.balanceAfterDeductions) || p.budgetHold < 0
+          || periodWaterfallCombinedTrust(p.incomeTrust, p.periodBillLoadTrust,
+            p.budgetHoldTrust == null ? 'calculated' : p.budgetHoldTrust,
+            p.balanceAfterDeductionsTrust == null ? 'calculated' : p.balanceAfterDeductionsTrust) === 'unavailable') {
+        return unavailable('The selected Budget income, bills or household allowance is unavailable.');
+      }
+      basisTrust = periodWaterfallCombinedTrust(basisTrust, p.incomeTrust, p.periodBillLoadTrust,
+        p.budgetHoldTrust == null ? 'calculated' : p.budgetHoldTrust,
+        p.balanceAfterDeductionsTrust == null ? 'calculated' : p.balanceAfterDeductionsTrust);
+      let allowance = p.budgetHold;
+      if (p.start < asOf) {
+        // Today's cash already includes observed spending. Missing actuals
+        // cannot become zero spent or an invented original payday snapshot.
+        const items = p.householdBudget || [];
+        if (!items.every(r => finite(r.hold) && finite(r.spent))
+            || Math.abs(roundCent(items.reduce((s, r) => s + r.hold, 0)) - p.budgetHold) > 0.01
+            || actualsCoverageState(asOf, p.start, opts).remainingClaim !== 'precise'
+            || items.some(r => (r.pendingRecon || []).some(tx => !tx.pendingPostedDuplicate))) {
+          return unavailable('Current-period spending evidence is incomplete; future funding is unavailable.');
+        }
+        allowance = roundCent(items.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
+      }
+      const from = p.start < asOf ? asOf : p.start;
+      const days = diffDays(from, p.end) + 1;
+      const cents = Math.round(allowance * 100);
+      // Monotonic pennies preserve the exact period allowance, including
+      // alternating category targets, without a daily rounding remainder.
+      for (let i = 0; i < days; i++) daily.set(addDays(from, i),
+        (Math.floor(cents * (i + 1) / days) - Math.floor(cents * i / days)) / 100);
+      for (const row of p.income || []) {
+        if (row.date >= asOf && row.date <= end) incomes.set(row.id + '@' + row.date, row);
+      }
+      if (p.start >= asOf) basis.set(p.start, { end: p.end, capacity: p.balanceAfterDeductions, period: p });
+    }
+    for (let d = asOf; d <= end; d = addDays(d, 1)) {
+      if (!daily.has(d)) return unavailable('The Budget cash-walk coverage is incomplete.');
+    }
+    try {
+      const walkOpts = Object.assign({}, opts, {
+        horizonDays: diffDays(asOf, end) + 1, viewDays: diffDays(asOf, end) + 1,
+        viewStart: asOf, weeklyVariable: 0, budgetHouseholdDaily: daily,
+        incomeOccurrenceAdjust: (stream, date) => {
+          const row = incomes.get(stream.id + '@' + date);
+          return row ? { amount: row.amount, confidence: row.confidence } : null;
+        },
+      });
+      const sim = simulate(plan, asOf, walkOpts);
+      // Do not borrow cap-based majorPlans verdicts, or ask that printer to
+      // extend this bounded Budget walk beyond its payroll/period coverage.
+      // Schedule feasibility below is its own earned funding-gap publication.
+      const plans = [];
+      // Payments already printed in Bills must not be charged a second time
+      // as new saving. The allocator adds back its point payments, so expose
+      // that same mechanical capacity adjustment and later consumption.
+      for (const [start, b] of basis) {
+        const p = b.period;
+        const scheduled = seq.filter(c => c.date >= start && c.date <= p.end && c.need != null
+          && c.flexibility !== 'optional');
+        b.billPaymentIds = scheduled.filter(c => (p.bills || []).some(r => r.id === c.id
+          && r.date === c.date && billBelongsOnPaydayWaterfall(r, p.openingAsOf, p.openingSource))).map(c => c.id);
+        b.billPayments = scheduled.reduce((s, c) => s + (p.bills || [])
+          .filter(r => r.id === c.id && r.date === c.date
+            && billBelongsOnPaydayWaterfall(r, p.openingAsOf, p.openingSource))
+          .reduce((n, r) => n + (r.planned != null ? r.planned : r.amount), 0), 0);
+        b.capacity = roundCent(b.capacity + b.billPayments);
+      }
+      const schedule = planSpendPaydayFunding(plan, asOf, sim, seq, plans, null, basis);
+      if (!schedule || schedule.status === 'unavailable') return unavailable(
+        schedule && schedule.reason || 'Budget funding schedule unavailable.');
+      if (schedule.fundingTrust !== 'calculated' && schedule.fundingTrust !== 'estimated') {
+        return unavailable('The proposed funding inputs have unknown trust.');
+      }
+      const cumulative = new Map();
+      const byDate = new Map();
+      for (const row of schedule.paydays) {
+        for (const part of row.allocations) cumulative.set(part.id,
+          (cumulative.get(part.id) || 0) + Math.round(part.amount * 100));
+        const items = schedule.costs.map(cost => {
+          const part = row.allocations.find(a => a.id === cost.id);
+          const proposed = (cumulative.get(cost.id) || 0) / 100;
+          return { id: cost.id, label: cost.label, date: cost.date,
+            cost: cost.baseRequirement, ceiling: cost.ceiling, confidence: cost.confidence || 'estimated',
+            contribution: part ? part.amount : 0, cumulativeProposed: proposed,
+            remainingGap: roundCent(cost.baseRequirement - proposed), actualSaved: null,
+            projectedFullyFunded: cost.projectedFullyFunded };
+        });
+        const b = basis.get(row.payday);
+        const billConsumption = roundCent(row.payments.filter(r => b.billPaymentIds.includes(r.id))
+          .reduce((s, r) => s + r.protectedConsumed, 0));
+        byDate.set(row.payday, { status: schedule.status, asOf,
+          source: 'Forecast.planSpendPaydayFunding', basis: 'selected-Budget-period',
+          start: row.payday, end: row.through, contribution: row.contribution,
+          trust: periodWaterfallCombinedTrust(schedule.fundingTrust, basisTrust), items, gap: schedule.gap,
+          actualSaved: null, originalPaydayPlan: null,
+          // This is projected consumption of earlier earmarks, not receipt
+          // of new income and not evidence of an actual savings withdrawal.
+          billPaymentsAlreadyDeducted: b.billPayments,
+          proposedFundingForBillPayments: billConsumption,
+          afterProposedFunding: roundCent(b.period.balanceAfterDeductions - row.contribution + billConsumption),
+          projectedPayments: row.payments,
+          capacity: b.capacity,
+          operatingPeriodSurplus: b.period.balanceAfterDeductions,
+          unscheduled: seq.filter(c => !schedule.costs.some(cost => cost.id === c.id)).map(c => Object.assign({
+            id: c.id, label: c.label,
+            confidence: c.confidence || 'estimated', date: c.date || null, when: c.when || null,
+            contribution: null, cumulativeProposed: null, remainingGap: null, actualSaved: null,
+            reason: c.flexibility === 'optional' ? 'Outside protected funding schedule.' : !c.date
+              ? 'Planning date not established.' : 'Outside the covered funding dates.',
+          }, displayPrice(c))).concat(missingCosts.map(c => ({ id: c.id, label: c.label, cost: null,
+            confidence: c.confidence || 'estimated', date: commitmentCashDate(c), when: c.when || null,
+            contribution: null, cumulativeProposed: null, remainingGap: null, actualSaved: null,
+            reason: 'Cost amount not established; outside protected funding schedule.' }))),
+        });
+      }
+      for (const p of periods || []) p.plannedCostFunding = byDate.get(p.start) || {
+        status: 'unavailable', contribution: null, trust: 'unavailable', actualSaved: null,
+        originalPaydayPlan: null, items: roster,
+        reason: p.start < asOf ? 'This period has no original funding snapshot; it has not been reconstructed.'
+          : 'No complete funding schedule was published for this period.',
+      };
+    } catch (e) {
+      unavailable('Forecast could not reconcile the Budget funding cash walk.');
+    }
+  }
+
   function recommend(plan, asOf, opts) {
     const base = Object.assign({}, opts || {});
     const buffer = base.targetBuffer != null ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
@@ -10663,6 +10868,7 @@
       delete defaultView.timelineBound;
       const payPeriodTimelinePack = composePayPeriodTimeline(
         pastPeriodViews, defaultView.calendarPeriods, timelineFuturePeriods, timelineBound);
+      publishBudgetPeriodFunding(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
       return withholdCurrentOperatingClaims({
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,

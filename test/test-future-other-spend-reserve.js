@@ -348,9 +348,11 @@ console.log('\n=== 3. current period does not receive the $400; a future period 
     'current Household Budget HTML does not print Other Spend');
   ok(!/≈ estimated/.test(currentHtml) && !/data-budget-hold-trust="estimated"/.test(currentHtml),
     'the current Household Budget total does not gain the estimate marker');
-  ok(!/data-balance-trust="estimated"/.test(currentWaterfall)
-      && !/≈ estimated/.test(questionBlock(currentWaterfall, 'Balance After Deductions')),
-    'current Balance After Deductions does not gain the estimate marker');
+  ok(current.balanceAfterDeductionsTrust == null
+      && current.plannedCostFunding.trust === 'estimated'
+      && /data-balance-trust="estimated"/.test(currentWaterfall)
+      && /≈ estimated/.test(questionBlock(currentWaterfall, 'Balance After Deductions')),
+    'original current deductions remain calculated; the proposed-funding remainder discloses future allowance estimates');
 }
 
 console.log('\n=== 4. Forecast stays the authority; unrelated published figures stay put ===');

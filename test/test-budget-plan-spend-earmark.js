@@ -109,4 +109,11 @@ check('no earmark when Forecast publishes no schedule', () => {
   assert.doesNotMatch(html, /data-plan-spend-earmark/);
 });
 
+check('selected Budget funding suppresses the old cap-basis banner, including unavailable', () => {
+  for (const status of ['ready', 'unavailable']) {
+    const selectedPeriod = Object.assign({}, periods[1], { plannedCostFunding: { status } });
+    assert.equal(f.budgetPlanSpendEarmarkHtml(adviceFor(selectedPeriod.id, schedule('ready')), selectedPeriod), '');
+  }
+});
+
 console.log(`\n${checks} checks passed.`);
