@@ -213,7 +213,9 @@ function commitmentKey(row) {
   }
   return JSON.stringify(copy);
 }
-const SUPERSEDED_COMMITMENT_IDS = new Set(['fusion-season', 'warriors', 'home-insurance']);
+// Oct 1 team-fee replacement has its own exact-input/synthetic regression;
+// that authorized replacement is not a union-dues side effect.
+const SUPERSEDED_COMMITMENT_IDS = new Set(['fusion-season', 'warriors', 'home-insurance', 'burrards-team-fees']);
 const OWNER_2026_09_23_RETIRED = new Set([
   'downstairs-couch',
   'exterior-painting',
@@ -238,7 +240,7 @@ ok((before.plan.commitments || [])
     const afterRow = (plan.commitments || []).find(c => c.id === row.id);
     return afterRow && commitmentKey(row) === commitmentKey(afterRow);
   }),
-  'pre-existing commitments (except superseded Fusion/Warriors rows) keep identity and amounts');
+  'pre-existing commitments (except explicitly superseded rows) keep identity and amounts');
 function incomeKey(stream) {
   const copy = {
     id: stream.id,

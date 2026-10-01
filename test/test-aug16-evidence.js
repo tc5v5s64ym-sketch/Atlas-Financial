@@ -282,7 +282,7 @@ console.log('\n=== 10–11. stale Fusion 3 × $500 gone; future estimate is not 
   ok(/^ANSWERED\b/.test(statusOf('Q23')), 'Q23 is ANSWERED', statusOf('Q23'));
 }
 
-console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees remain estimated ===');
+console.log('\n=== 12–13. Burrards registrations settled; team fees follow the approved current roster ===');
 {
   const b1 = plan.commitments.find(c => c.id === 'burrard1');
   const b2 = plan.commitments.find(c => c.id === 'burrard2');
@@ -295,12 +295,11 @@ console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees rema
   const events16 = F.expandEvents(plan, '2026-08-16', F.addDays('2026-08-16', 90), {});
   ok(!events16.some(e => e.id === 'burrard1' || e.id === 'burrard2'),
     'an Aug. 16 opening omits the paid registrations');
-  const fees = (plan.commitments || []).find(c => c.id === 'burrards-team-fees');
-  ok(fees && fees.confidence === 'estimated' && near(fees.amount, 700)
-    && fees.date === '2026-09-15' && fees.when === 'Sep 2026',
-    '~$700 team fees remain estimated, now dated 2026-09-15 under month-only policy');
-  ok(!(plan.commitments || []).some(c => c.id === 'burrards-team-fees' && c.date !== '2026-09-15'),
-    'Burrards team-fee cash date is the owner 15th, not another invented day');
+  const feeIds = ['burrards-logan-team-fee-oct', 'burrards-logan-team-fee-nov', 'burrards-linden-team-fee'];
+  ok(feeIds.every(id => plan.commitments.some(c => c.id === id && !c.settledOn)),
+    'owner-approved Oct 1 team fees remain unpaid; separate input regression proves amounts/dates');
+  ok(!plan.commitments.some(c => c.id === 'burrards-team-fees'),
+    'the superseded September estimate is not retained beside the unpaid replacements');
 }
 
 console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not double-counted ===');

@@ -871,6 +871,15 @@
         "path": "data.json",
         "json_pointer": "/plan/bills/22"
       }
+    },
+    {
+      "id": "BURRARDS-TEAM-FEES-001",
+      "source": "docs/source_intake/BURRARDS_TEAM_FEES_2026-10-01.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments"
+      }
     }
   ]
 }
