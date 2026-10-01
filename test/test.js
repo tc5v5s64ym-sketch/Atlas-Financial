@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['pending-card Budget funding and settlement conservation', 'test-budget-pending-card-funding.js'],
   ['secondary Budget failed-cap spending basis', 'test-budget-secondary-spending-basis.js'],
   ['owner-approved unpaid Burrards team-fee inputs', 'test-burrards-team-fee-inputs.js'],
   ['exact deployed PR provenance', 'test-build-provenance.js'],
