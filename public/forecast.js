@@ -10518,6 +10518,28 @@
     const daily = new Map();
     const incomes = new Map();
     const basis = new Map();
+    const actuals = currentPeriodActualsPacket(opts);
+    const transactions = actuals && Array.isArray(actuals.transactions) ? actuals.transactions : [];
+    const duplicateIds = pendingPostedDuplicateIdSet(actuals);
+    const unresolvedPendingSpend = row => {
+      // reconTxFrom omits accountRole and ambiguity flags. Resolve exactly
+      // one original transaction; a display row cannot prove card provenance
+      // or settlement identity. Possible replacements remain unresolved.
+      if (row.id == null) return true;
+      const matches = transactions.filter(tx => tx && tx.id != null
+        && String(tx.id) === String(row.id));
+      if (matches.length !== 1) return true;
+      const tx = matches[0];
+      // Match spendDuplicateKey's canonical account choice. accountId-only
+      // evidence cannot participate in its replacement detection, and any
+      // contradictory alias makes cash/card provenance uncertain.
+      const account = tx.atlasAccountId || tx.account;
+      if (!account || [tx.atlasAccountId, tx.account, tx.accountId].some(id =>
+        id != null && id !== '' && String(id) !== String(account))) return true;
+      return (tx.accountRole && tx.accountRole !== 'revolving-credit')
+        || !isRevolvingCardAccount({ account, accountRole: tx.accountRole })
+        || tx.pendingPostedAmbiguous === true || duplicateIds.has(String(tx.id));
+    };
     let basisTrust = 'calculated';
     for (const p of ordered) {
       if (p.end > end) continue;
@@ -10539,7 +10561,9 @@
         if (!items.every(r => finite(r.hold) && finite(r.spent))
             || Math.abs(roundCent(items.reduce((s, r) => s + r.hold, 0)) - p.budgetHold) > 0.01
             || actualsCoverageState(asOf, p.start, opts).remainingClaim !== 'precise'
-            || items.some(r => (r.pendingRecon || []).some(tx => !tx.pendingPostedDuplicate))) {
+            || !actuals || !Array.isArray(actuals.transactions) || !actuals.coverageStart
+            || actuals.observationAsOf !== asOf
+            || items.some(r => (r.pendingRecon || []).some(unresolvedPendingSpend))) {
           return unavailable('Current-period spending evidence is incomplete; future funding is unavailable.');
         }
         allowance = roundCent(items.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
