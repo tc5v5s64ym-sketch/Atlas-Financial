@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
+const { randomBytes } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { chromium } = require('playwright');
 const makeData = require('./fixtures/budget-layout-data');
@@ -20,12 +21,14 @@ fs.mkdirSync(screenshots, { recursive: true });
   const port = socket.address().port;
   await new Promise(resolve => socket.close(resolve));
   const base = `http://127.0.0.1:${port}`;
+  const syntheticPassword = randomBytes(24).toString('hex');
+  const syntheticSession = randomBytes(32).toString('hex');
   // Explicit environment: never inherit any integration credential or enable
   // a live overlay/provider call while testing a presentation change.
   const server = spawn(process.execPath, ['server.js'], { cwd: root,
     env: { PATH: process.env.PATH, PORT: String(port), NODE_ENV: 'test',
-      SITE_PASSWORD: 'synthetic-browser-password',
-      SESSION_SECRET: 'synthetic-browser-session-secret-only', ATLAS_LIVE_OVERLAY: 'off' },
+      SITE_PASSWORD: syntheticPassword,
+      SESSION_SECRET: syntheticSession, ATLAS_LIVE_OVERLAY: 'off' },
     stdio: ['ignore', 'pipe', 'pipe'] });
   let serverLog = '';
   server.stdout.on('data', chunk => { serverLog += chunk; });
@@ -60,7 +63,7 @@ fs.mkdirSync(screenshots, { recursive: true });
         return route.continue();
       });
       const login = await context.request.post(`${base}/login`, {
-        form: { password: 'synthetic-browser-password' } });
+        form: { password: syntheticPassword } });
       assert.ok(login.ok());
       const page = await context.newPage();
       page.on('pageerror', error => errors.push(error.message));
