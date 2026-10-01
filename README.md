@@ -85,9 +85,11 @@ The small Budget build label is bound to the HTML serving that page, using
 `RENDER_GIT_COMMIT` (or the existing local `ATLAS_GIT_SHA` override). `npm ci`
 captures non-secret, exact-commit provenance in the gitignored
 `.atlas-build.json`; the server rejects a different SHA and can fall back to
-local Git metadata. Standard two-parent GitHub merge messages for this repository
-identify the PR automatically. For squash/rebase merges, an explicit final
-`Atlas-PR: <number>` commit trailer can preserve that identity. A generic issue
+local Git metadata. Parent headers are read from that exact commit object, so
+shallow build checkouts need no ancestor history. Standard two-parent GitHub
+merge messages for this repository identify the PR automatically. For
+squash/rebase merges, an explicit final `Atlas-PR: <number>` commit trailer can
+preserve that identity. A generic issue
 reference, unmarked direct/rebased commit, missing Git, or ambiguous metadata
 keeps the truthful commit-only label. No GitHub API/token is used at build time
 or in the browser. The artifact is server-only and contains no financial data.
