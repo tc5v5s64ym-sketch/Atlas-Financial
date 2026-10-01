@@ -12,18 +12,23 @@ const PR = '[1-9][0-9]{0,8}';
 
 function fromGit(root) {
   try {
-    const record = execFileSync('git', ['show', '-s', '--no-notes',
-      '--format=%H%x00%P%x00%s%x00%b', 'HEAD'], {
+    const options = {
       cwd: root, timeout: 1500, maxBuffer: 32768,
       env: { PATH: process.env.PATH }, stdio: ['ignore', 'pipe', 'ignore'],
       encoding: 'utf8',
-    });
-    const [gitSha, parents, subject, rawBody] = record.split('\0');
+    };
+    const record = execFileSync('git', ['show', '-s', '--no-notes',
+      '--format=%H%x00%s%x00%b', 'HEAD'], options);
+    const [gitSha, subject, rawBody] = record.split('\0');
     if (!FULL_SHA.test(gitSha) || rawBody === undefined) return null;
     const body = rawBody.replace(/\n+$/, '');
     const merge = new RegExp(`^Merge pull request #(${PR}) from tc5v5s64ym-sketch/[A-Za-z0-9_./-]+$`)
       .exec(subject);
-    const parentIds = parents.split(' ');
+    // Pretty-format %P hides parents at a shallow boundary. The exact commit
+    // object retains them without fetching ancestors or consulting a provider.
+    const headers = execFileSync('git', ['cat-file', 'commit', gitSha], options).split('\n\n')[0];
+    const parentIds = headers.split('\n').filter(line => line.startsWith('parent '))
+      .map(line => line.slice(7));
     const mergePr = merge && parentIds.length === 2 && parentIds.every(id => FULL_SHA.test(id))
       ? Number(merge[1]) : null;
     // Linear/squash/rebase history needs an explicit final trailer. A generic

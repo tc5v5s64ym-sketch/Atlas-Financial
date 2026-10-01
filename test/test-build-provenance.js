@@ -32,6 +32,31 @@ function main() {
   const h = makeHistory();
   const missing = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-build-no-git-'));
   try {
+    // Build hosts can retain only HEAD. Pretty-format %P then hides parents,
+    // although the exact merge commit object still records both of them.
+    h.git('checkout', '--detach', h.merge);
+    const shallow = path.join(missing, 'shallow');
+    execFileSync('git', ['clone', '--depth=1', '--no-tags', `file://${h.root}`, shallow], {
+      env: { PATH: process.env.PATH }, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const shallowGit = (...args) => execFileSync('git', args, {
+      cwd: shallow, env: { PATH: process.env.PATH }, encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    assert.equal(shallowGit('rev-parse', '--is-shallow-repository'), 'true');
+    assert.equal(shallowGit('rev-parse', 'HEAD'), h.merge);
+    assert.equal(shallowGit('show', '-s', '--format=%P', 'HEAD'), '');
+    assert.equal(shallowGit('cat-file', 'commit', 'HEAD').split('\n\n')[0]
+      .split('\n').filter(line => line.startsWith('parent ')).length, 2);
+    const shallowRecord = Build.capture(shallow);
+    assert.equal(shallowRecord.gitSha, h.merge);
+    assert.equal(shallowRecord.prNumber, 27, 'a shallow merge must retain exact-commit PR provenance');
+    assert.equal(shallowRecord.prSource, 'git-merge-subject');
+    assert.equal(Build.label(shallow, h.merge), `Running PR #27 · ${h.merge.slice(0, 7)}`);
+    fs.copyFileSync(path.join(shallow, Build.FILE), path.join(missing, Build.FILE));
+    assert.equal(Build.label(missing, h.merge), `Running PR #27 · ${h.merge.slice(0, 7)}`,
+      'shallow install provenance remains usable without Git at runtime');
+    assert.equal(Build.label(missing, h.direct), `Running commit ${h.direct.slice(0, 7)}`);
     for (const [sha, pr, source] of [[h.merge, 27, 'git-merge-subject'],
       [h.squash, 28, 'git-pr-trailer'], [h.rebase, 29, 'git-pr-trailer']]) {
       h.git('checkout', '--detach', sha);
@@ -87,7 +112,7 @@ function main() {
     assert.equal(Build.capture(missing).gitSha, null, 'no Git clears old cached provenance');
     const pkg = require('../package.json');
     assert.equal(pkg.scripts.postinstall, 'node scripts/running-build.js', 'npm ci integrates capture');
-    console.log('PASS exact Git merge/trailer provenance, squash/rebase/direct fallback, stale/unknown/malformed metadata, artifact without Git, install integration');
+    console.log('PASS exact Git merge/trailer provenance including shallow merge capture, squash/rebase/direct fallback, stale/unknown/malformed metadata, artifact without Git, install integration');
   } finally {
     fs.rmSync(h.root, { recursive: true, force: true });
     fs.rmSync(missing, { recursive: true, force: true });
