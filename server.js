@@ -697,6 +697,15 @@ app.get('/balance-history.json', (_req, res) => {
   }
 });
 
+// Bind the label to this HTML response, not a later metadata fetch or GitHub
+// main. An open tab keeps its own build identity across a deployment.
+const runningBuildSha = Assistant.versionIdentifier(process.env).gitSha;
+const budgetHtml = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
+  .replace('Running build unavailable', runningBuildSha
+    ? `Running commit ${runningBuildSha.slice(0, 7)}`
+    : 'Running build unavailable');
+app.get(['/', '/index.html'], (_req, res) => res.type('html').end(budgetHtml));
+
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false, lastModified: false, maxAge: 0,
   setHeaders: (res) => res.set('Cache-Control', 'no-store'),
