@@ -489,7 +489,7 @@ check('R3: the Month detail follows the authoritative allocation path — not fa
     ],
   };
   const asOf = plan.opening.asOf;
-  const src = { plan, debts: [], asOf, meta: { asOf }, weekly: 0,
+  const src = { plan, debts: [], asOf, meta: { asOf }, weekly: 0, weeklyOverride: 0,
     liveOverlay: null, revolvingExtra: null, periods: null, advice: null };
   // The page's own input contract, then the real engine both ways.
   const knobOpts = P.budgetMonthKnobOpts(src);

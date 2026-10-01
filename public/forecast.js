@@ -1808,6 +1808,7 @@
   /* ------------------------------------------------------------- simulate */
   // opts adds:
   //   weeklyVariable — spread evenly across the 7 days of each week
+  //   weeklyVariableBasis — optional Forecast-published rate, trust and source
   //   variableFrom   — variable spending starts on this date, not at the window
   //                    opening. During an opening squeeze there is nothing to
   //                    spend, and pretending otherwise understates the recovery.
@@ -1990,6 +1991,21 @@
       // above the buffer once everything has cleared. Bounded by zero.
       extraDebtCapacity: Math.max(0, balance - buffer),
     };
+    if (Object.hasOwn(opts, 'weeklyVariableBasis')) {
+      const basis = opts.weeklyVariableBasis;
+      const valid = basis && typeof basis.amount === 'number'
+        && Number.isFinite(basis.amount) && basis.amount >= 0
+        && basis.amount === Number(opts.weeklyVariable || 0)
+        && !(opts.budgetHouseholdDaily instanceof Map)
+        && (basis.status === 'calculated' || basis.status === 'estimated')
+        && typeof basis.source === 'string' && basis.source.length > 0;
+      // Publish provenance for the rate actually walked. Missing trust or
+      // mismatched inputs stay unavailable; legacy cap callers omit it.
+      full.weeklyVariableBasis = valid
+        ? { amount: basis.amount, status: basis.status, source: basis.source }
+        : { amount: null, status: 'unavailable', source: 'Forecast.simulate',
+          reason: 'The selected weekly spending basis is unavailable or does not match the cash walk.' };
+    }
     return (viewStart > asOf || viewDays < days)
       ? sliceSimulation(full, asOf, viewDays, plan, opts) : full;
   }
@@ -2631,6 +2647,12 @@
         || !Array.isArray(sim.events) || !Array.isArray(seq)) {
       return unavailable('The Forecast master cash path is unavailable.');
     }
+    const hasSpendingBasis = Object.hasOwn(sim, 'weeklyVariableBasis');
+    const spendingBasis = sim.weeklyVariableBasis;
+    if (hasSpendingBasis && (!spendingBasis
+        || (spendingBasis.status !== 'calculated' && spendingBasis.status !== 'estimated'))) {
+      return unavailable('The Forecast spending-basis trust is unavailable.');
+    }
     const payroll = seaspanPayroll(plan);
     if (!payroll || !payroll.anchor || payroll.frequency !== 'biweekly') {
       return unavailable('A Seaspan pay-period calendar is unavailable.');
@@ -2975,6 +2997,7 @@
     }
     return { status: gap || prePayday.length ? 'funding-gap' : 'ready',
       source: 'Forecast.planSpendPaydayFunding', asOf,
+      ...(hasSpendingBasis ? { weeklyVariableBasis: Object.assign({}, spendingBasis) } : {}),
       openingProtected: null, projectionOpeningProtected: 0,
       identity: 'cash-walk-period-capacity; latest-feasible cumulative protection',
       // Trust authority for the funding-status figures (AMANDA SLICE 4 P1
@@ -2986,12 +3009,14 @@
       // protected floor's confidence, the cash-walk income confidences, and
       // the live row's own trust (identity 'calculated' when no live row
       // exists, since the incumbent leg then does not apply). plan.js
-      // reprints this tag only; it never derives trust page-side.
+      // reprints this tag only; it never derives trust page-side. A supplied
+      // secondary spending basis is another input to this same weakest trust.
       fundingTrust: trajectoryWeakerStatus(
         trajectoryEventsStatus(costs),
         trajectoryEventsStatus(seq.filter(row => row && !row.date && row.flexibility !== 'optional')),
         trajectoryEventsStatus((sim.events || []).filter(e => e && e.kind === 'income')),
-        liveRowTrust || 'calculated'),
+        liveRowTrust || 'calculated',
+        hasSpendingBasis ? spendingBasis.status : 'calculated'),
       paydays: rows, gap: gap || (prePayday.length ? (() => {
         const overdueRequirement = prePayday.reduce((sum, row) => sum + row.baseRequirement, 0);
         return {
@@ -15669,7 +15694,14 @@
     // spending control) wins over the provisional/planned basis. Opts-wins
     // with incumbent fallback, the same pattern simulate() uses for its
     // own option-vs-default reads.
-    const weeklyOverride = opts.weeklyVariable != null ? Number(opts.weeklyVariable) : null;
+    // A recommended zero can be the protected-plan failure sentinel, not
+    // an owner instruction to spend nothing. Budget supplies the incumbent
+    // cap verdict separately; only a supported recommendation can override
+    // this baseline with zero. An explicit owner zero keeps its meaning.
+    const unsupportedRecommendedZero = opts.weeklyVariableIsRecommendation === true
+      && opts.weeklyVariable === 0 && opts.weeklyCapHolds !== true;
+    const weeklyOverride = !unsupportedRecommendedZero && opts.weeklyVariable != null
+      ? Number(opts.weeklyVariable) : null;
     const weekly = weeklyOverride != null && isFinite(weeklyOverride) && weeklyOverride >= 0
       ? weeklyOverride
       : normalSpending && normalSpending.status === 'ready'

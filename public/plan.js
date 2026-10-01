@@ -2444,6 +2444,8 @@ function budgetTrajectoryCacheKeyFor(asOf, plan, opts) {
     knob('targetBuffer'),
     knob('extraDebtMonthly'),
     knob('weeklyVariable'),
+    knob('weeklyVariableIsRecommendation'),
+    knob('weeklyCapHolds'),
     knob('incomeOverrides'),
     knob('disabled'),
     knob('extraDebtTarget'),
@@ -2458,8 +2460,9 @@ function budgetTrajectoryCacheKeyFor(asOf, plan, opts) {
 // overrides, weekly spending, extra debt, adjustable commitments) is fed
 // through the existing Forecast authority via the same simOpts() the Pay
 // Period lens uses. weeklyVariable is the adjacent Pay Period lens's
-// selected value (src.weekly), so the Month walk uses the selected weekly
-// even when no explicit override exists. The Slice 8 funding-detail
+// selected value (src.weekly), with the Forecast cap verdict and explicit
+// override identity. Forecast rejects an unsupported recommended zero;
+// an owner-selected zero stays a setting. The Slice 8 funding-detail
 // schedule is computed from these same inputs (P1 repair on PR #446) —
 // the page selects and reprints; Forecast computes.
 function budgetMonthKnobOpts(src) {
@@ -2467,6 +2470,8 @@ function budgetMonthKnobOpts(src) {
   const actuals = overlay && overlay.applied === true ? overlay.currentPeriodActuals : null;
   return simOpts({
     weeklyVariable: src.weekly,
+    weeklyVariableIsRecommendation: src.weeklyOverride == null,
+    weeklyCapHolds: src.advice && src.advice.holds,
     periods: src.periods || null,
     extraFacilities: src.revolvingExtra,
     currentPeriodActuals: actuals,
@@ -2661,25 +2666,46 @@ function budgetMonthVerdictHtml(month) {
 // month's funding result. Forecast's publication order is kept — the page
 // does not rank, sort, score, or compute. Missing or untrusted publications
 // fail closed; unavailable is never $0.
-function budgetMonthPlanSpendSchedule(src) {
+function budgetMonthPlanSpendSchedule(src, operatingRate = false) {
   if (!src || !src.plan) return null;
   const asOf = src.asOf || (src.meta && src.meta.asOf);
   if (!asOf) return null;
   // The trajectory's own inputs — the selected weekly override included.
   const knobOpts = budgetMonthKnobOpts(src);
-  const key = budgetTrajectoryCacheKeyFor(asOf, src.plan, knobOpts);
+  const key = budgetTrajectoryCacheKeyFor(asOf, src.plan, knobOpts)
+    + (operatingRate ? '|operating-cap' : '');
   if (budgetMonthScheduleCache && budgetMonthScheduleCacheKey === key) return budgetMonthScheduleCache;
+  let resolvedOpts = knobOpts;
+  if (!operatingRate) {
+    const trajectory = budgetTrajectoryFor(src);
+    const spending = trajectory && trajectory.weeklyVariable;
+    if (!trajectory || trajectory.status !== 'ready' || !spending
+        || typeof spending.amount !== 'number' || !Number.isFinite(spending.amount)
+        || spending.amount < 0
+        || (spending.status !== 'calculated' && spending.status !== 'estimated')) {
+      return { status: 'unavailable', source: 'Forecast.planSpendPaydayFunding',
+        reason: (trajectory && trajectory.reason) || 'Forecast did not publish a spending basis. Not $0.',
+        paydays: [], costs: [], gap: null };
+    }
+    // Copy the secondary trajectory's resolved rate. simulate defaults an
+    // absent rate to zero, so raw cap inputs cannot be reused after Forecast
+    // has rejected an unsupported recommendation. The main payday shell
+    // keeps its incumbent selected-cap allocation path, with a separate key.
+    resolvedOpts = Object.assign({}, knobOpts, {
+      weeklyVariable: spending.amount, weeklyVariableBasis: spending,
+    });
+  }
   let schedule = null;
   try {
     // The walk runs over Forecast's knowledge horizon, mirroring how
     // recommend sizes the sim behind the advice publication.
-    const horizon = Forecast.knowledgeHorizon(src.plan, asOf, knobOpts);
+    const horizon = Forecast.knowledgeHorizon(src.plan, asOf, resolvedOpts);
     const walkOpts = horizon && horizon.days > 0
-      ? Object.assign({}, knobOpts, { horizonDays: horizon.days, viewDays: horizon.days })
-      : knobOpts;
+      ? Object.assign({}, resolvedOpts, { horizonDays: horizon.days, viewDays: horizon.days })
+      : resolvedOpts;
     const sim = Forecast.simulate(src.plan, asOf, walkOpts);
-    const seq = Forecast.fundingSequence(src.plan, asOf, knobOpts);
-    const plans = Forecast.majorPlans(src.plan, asOf, knobOpts);
+    const seq = Forecast.fundingSequence(src.plan, asOf, resolvedOpts);
+    const plans = Forecast.majorPlans(src.plan, asOf, resolvedOpts);
     // P1 REPAIR (Systems Review BLOCKING on PR #446, second finding): the
     // live payday must reuse the incumbent paydayAllocation as the named
     // authority rather than a second FIFO attribution — the per-cost
@@ -2691,7 +2717,7 @@ function budgetMonthPlanSpendSchedule(src) {
     // authorities cannot agree — that is Forecast's own verdict, reprinted
     // as unavailable, never worked around page-side.
     const alloc = Forecast.paydayAllocation(src.plan, asOf,
-      Object.assign({}, knobOpts, { majorPlans: plans }));
+      Object.assign({}, resolvedOpts, { majorPlans: plans }));
     schedule = Forecast.planSpendPaydayFunding(src.plan, asOf, sim, seq, plans, alloc);
   } catch (e) {
     schedule = null;
@@ -5047,7 +5073,7 @@ function operatingSurfaceHtml(ctx) {
     // AMANDA SLICE 14: the shell's planned-cost funding block reads the
     // same-input regenerated schedule (active knobs included) — never the
     // advice copy alone.
-    ? paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx)) : '';
+    ? paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx, true)) : '';
   const payPeriodContent = defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
   const reportedShortfall = [alloc && alloc.obligations, alloc && alloc.essentials]
     .some(bucket => bucket && typeof bucket.shortfall === 'number' && bucket.shortfall > 0);
