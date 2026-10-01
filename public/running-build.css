@@ -1,0 +1,8 @@
+/* Kept outside the operating card so Budget layout changes do not replace it. */
+.running-build {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: .75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
