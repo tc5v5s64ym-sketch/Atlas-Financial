@@ -152,7 +152,10 @@ function defaultGlance(html) {
         i += nextClose + 10;
       }
     }
-    out = out.slice(0, start) + out.slice(i);
+    const inner = out.slice(start + openMatch[0].length, i - 10);
+    const summary = inner.match(/<summary\b[^>]*>[\s\S]*?<\/summary>/i);
+    const visible = /\sopen(?:\s|>)/.test(openMatch[0]) ? inner : (summary ? summary[0] : '');
+    out = out.slice(0, start) + visible + out.slice(i);
   }
   return out;
 }
@@ -329,12 +332,13 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     'Balance After Deductions',
   ];
 
-  // Start the order search at the waterfall's first question: the payday
-  // instruction shell above the waterfall reuses household words like "Bills".
+  // Check headings rather than repeated account-caption words.
   const waterfall = glance.slice(glance.indexOf('data-live-current-balance'));
   let previous = -1;
   for (const prompt of prompts) {
-    const at = waterfall.indexOf(prompt);
+    const at = prompt === 'Current Balance'
+      ? waterfall.indexOf('live-current-balance-label')
+      : waterfall.indexOf(`data-operating-prompt="${prompt}"`);
     ok(at > previous, `${prompt} appears on the default view in order`);
     previous = at;
   }
@@ -347,8 +351,8 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
 
   const pickerAt = html.indexOf('data-calendar-period-picker');
   const liveAt = html.indexOf('data-live-current-balance');
-  ok(pickerAt >= 0 && liveAt > pickerAt,
-    'pay period selector prints before Current Balance');
+  ok(liveAt >= 0 && pickerAt > liveAt,
+    'Current Balance prints before the pay period selector');
   const incomePromptAt = html.indexOf('data-operating-prompt="Income"');
   const incomeLineAt = html.indexOf('data-period-income=');
   const paydayAt = html.indexOf('data-payday-balance');
@@ -394,17 +398,19 @@ console.log('\n=== 3. bills this pay period: paid stay listed, history stays off
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const glance = defaultGlance(html);
-  ok(/Mortgage · Aug 28 · PAID/.test(glance)
-      && /Fit4Less membership · Aug 28 · PAID/.test(glance),
-    'paid bills print PAID rather than being hidden');
-  ok(/TD account fees \(two accounts\) · Aug 30 · still due/.test(glance),
-    'later-in-window bills stay still due');
-  ok(/Dale salary/.test(glance) && !/Canada child benefit/.test(glance)
-      && !/Payroll — Seaspan/.test(glance),
+  const bills = html.slice(html.indexOf('data-operating-question="04"'), html.indexOf('data-operating-question="05"'));
+  const income = html.slice(html.indexOf('data-operating-question="02"'), html.indexOf('data-operating-question="04"'));
+  ok(/Mortgage · Aug 28 · PAID/.test(bills)
+      && /Fit4Less membership · Aug 28 · PAID/.test(bills),
+    'expanded bills retain the paid bills and PAID classification');
+  ok(/TD account fees \(two accounts\) · Aug 30 · still due/.test(bills),
+    'later-in-window bills stay still due in the expanded list');
+  ok(/Dale salary/.test(income) && !/Canada child benefit/.test(income)
+      && !/Payroll — Seaspan/.test(income),
     'Dale salary prints in the income block; Aug 20 child benefit is previous cycle');
   ok(!/Rogers/.test(glance) && !/CMAW/.test(glance),
     'glance does not invent bills');
-  ok(glance.includes('−' + composer.money2(MORTGAGE)),
+  ok(bills.includes('−' + composer.money2(MORTGAGE)),
     'bill movements print money out as −');
 }
 
@@ -421,10 +427,11 @@ console.log('\n=== 4. household budget prints existing owner targets only ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const glance = defaultGlance(html);
-  ok(/Groceries/.test(glance) && /Fuel/.test(glance) && /Dog food/.test(glance)
-      && /Eating out/.test(glance),
-    'kitchen-counter budget labels print');
-  ok(!/Dale spending/.test(glance) && !/Amanda spending/.test(glance),
+  const household = html.slice(html.indexOf('data-operating-question="06"'), html.indexOf('data-operating-question="07"'));
+  ok(/Groceries/.test(household) && /Fuel/.test(household) && /Dog food/.test(household)
+      && /Eating out/.test(household),
+    'expanded household details retain kitchen-counter category labels');
+  ok(!/Dale spending/.test(household) && !/Amanda spending/.test(household),
     'missing owner-target adults are omitted');
 }
 

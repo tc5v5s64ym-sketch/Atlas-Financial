@@ -173,6 +173,7 @@ const suites = [
   ['Budget timeline pay-period sequence', 'test-budget-timeline-pay-periods.js'],
   ['Budget pay-period swipe navigation', 'test-budget-pay-period-swipe.js'],
   ['Budget synchronized month and pay-period wheels', 'test-budget-synchronized-wheels.js'],
+  ['Budget stepped period layout and inline disclosures', 'test-budget-stepped-layout.js'],
   ['Budget estimated payroll trust label', 'test-budget-estimated-payroll-label.js'],
   ['Budget Plan Spend earmark on pay periods', 'test-budget-plan-spend-earmark.js'],
   ['Plan Spend mixed-source current-payday reconciliation', 'test-plan-spend-mixed-reconciliation.js'],

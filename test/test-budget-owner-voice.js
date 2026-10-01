@@ -90,10 +90,9 @@ console.log('=== 1. Income labels and Dale exact dollars ===');
     'Dale payroll prints as Dale salary only');
   ok(/data-period-income="payroll"/.test(html),
     'Dale salary keeps the Forecast payroll identity');
-  const daleAmt = html.match(/data-period-income="payroll"[\s\S]*?<span>([^<]*)<\/span>\s*<span>([^<]*)<\/span>/);
-  ok(daleAmt && daleAmt[1] === 'Dale salary'
-      && daleAmt[2] === '+' + composer.money2(4264)
-      && !/about/i.test(daleAmt[2]) && !/about/i.test(daleAmt[0]),
+  const daleAmt = html.match(/data-period-income="payroll"[\s\S]*?<span>Dale salary<time[^>]*>[^<]*<\/time><\/span>\s*<span>([^<]*)<\/span>/);
+  ok(daleAmt && daleAmt[1] === '+' + composer.money2(4264)
+      && !/about/i.test(daleAmt[0]),
     'Dale salary prints exact $4,264.00 with no about prefix',
     daleAmt && daleAmt[0]);
   ok(/Amanda salary/.test(html)
@@ -101,8 +100,12 @@ console.log('=== 1. Income labels and Dale exact dollars ===');
       && !/not relied upon/.test(html)
       && /data-income-status="not-relied-upon"/.test(html),
     'Amanda salary drops Tennis BC / not-relied copy; settlement attr remains');
+  ok(/datetime="2026-09-15">Sep 15 · deposit not confirmed<\/time>/.test(html),
+    'Amanda receipt keeps the published date and unconfirmed state in plain language');
   ok(/Child benefit/.test(html) && /data-period-income="childBenefit"/.test(html),
     'Child benefit remains a named income line');
+  ok((html.match(/Sep 20/g) || []).length === 1,
+    'benefit date/status prints once, without duplicated receipt metadata');
   ok(/Payday balance/.test(html) && !/Rollover balance/.test(html),
     'income block still prints Payday balance and never Rollover balance');
 }

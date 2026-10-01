@@ -112,7 +112,7 @@ class Wheel {
   setPointerCapture(id) { this.capture = id; }
   hasPointerCapture(id) { return this.capture === id; }
   fire(name, extra = {}) {
-    const e = Object.assign({ isPrimary: true, button: 0, pointerId: 1, clientX: 200, clientY: 20, preventDefault() { this.prevented = true; } }, extra);
+    const e = Object.assign({ target: this, isPrimary: true, button: 0, pointerId: 1, clientX: 200, clientY: 20, preventDefault() { this.prevented = true; } }, extra);
     this.handlers[name](e);
     return e;
   }
@@ -164,6 +164,25 @@ check('one normal period swipe advances exactly one Forecast row', () => {
   swipe('period', 100); swipe('period', 100);
   assert.equal(selected(), 'current');
   assert.equal(mount.html.match(/data-proof-row="current">([^<]+)/)[1], before);
+});
+check('touch capture handoff from a child button keeps the drag; loss on the wheel cancels', () => {
+  load('current');
+  const wheel = mount.wheels[1];
+  wheel.fire('pointerdown');
+  wheel.fire('pointermove', { clientX: 180 });
+  // Browsers implicitly capture touch on the hit button. Its loss bubbles
+  // when the wheel explicitly captures the horizontal gesture.
+  wheel.fire('lostpointercapture', { target: { tagName: 'BUTTON' } });
+  wheel.fire('pointermove', { clientX: 100 });
+  wheel.fire('pointerup', { clientX: 100 });
+  assert.equal(selected(), 'next');
+  load('current');
+  const cancelled = mount.wheels[1];
+  cancelled.fire('pointerdown');
+  cancelled.fire('pointermove', { clientX: 180 });
+  cancelled.fire('lostpointercapture');
+  cancelled.fire('pointerup', { clientX: 100 });
+  assert.equal(selected(), 'current');
 });
 check('a drag across two period centers snaps to that row and does not flick further', () => {
   load('current');

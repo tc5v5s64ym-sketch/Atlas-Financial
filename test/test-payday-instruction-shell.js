@@ -359,14 +359,15 @@ check('B13: bills shortfall is disclosed, not hidden', () => {
   assert.match(html, /Shortfall of \$150\.00 — bills are not fully covered/);
 });
 
-check('B14: shell opens the default Budget surface ahead of the waterfall', () => {
+check('B14: shell remains in current-payday details after the selected waterfall', () => {
   const advice = adviceFixture();
   const html = f.operatingSurfaceHtml({ advice, liveOverlay: null, planLook: 'this-period' });
   const shellAt = html.indexOf('data-payday-instruction-shell');
   const waterfallAt = html.indexOf('data-waterfall');
   assert.ok(shellAt >= 0, 'shell mounts on the default surface');
   assert.ok(waterfallAt >= 0, 'waterfall still renders');
-  assert.ok(shellAt < waterfallAt, 'shell opens ahead of the waterfall');
+  assert.ok(shellAt > waterfallAt, 'selected waterfall leads and current-payday details follow');
+  assert.match(html, /<details[^>]*data-current-payday-details/);
 });
 
 check('B15: shell does not render on non-default looks', () => {

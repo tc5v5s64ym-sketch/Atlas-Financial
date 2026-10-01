@@ -188,12 +188,13 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     'Balance After Deductions',
   ];
 
-  // Start the order search at the waterfall's first question: the payday
-  // instruction shell above the waterfall reuses household words like "Bills".
+  // Check headings, not repeated words in the account caption or details.
   const waterfall = rendered.slice(rendered.indexOf('data-live-current-balance'));
   let previous = -1;
   for (const prompt of prompts) {
-    const at = waterfall.indexOf(prompt);
+    const at = prompt === 'Current Balance'
+      ? waterfall.indexOf('<p class="live-current-balance-label">Current Balance</p>')
+      : waterfall.indexOf(`data-operating-prompt="${prompt}"`);
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }

@@ -213,6 +213,16 @@
     if (!waterfall) return false;
     if (waterfall.getAttribute('data-operating-plan') === 'unavailable') return false;
 
+    // Native step disclosures already provide the selected-period hierarchy.
+    // Keep published bill badges, but do not reparent steps into legacy cards.
+    if (waterfall.querySelector('.budget-step-details')) {
+      let changed = false;
+      waterfall.querySelectorAll('[data-bill-status]').forEach(line => {
+        if (decorateBillLine(doc, line)) changed = true;
+      });
+      return changed;
+    }
+
     let grouped = false;
     if (!waterfall.hasAttribute(APPLIED)) {
       waterfall.setAttribute(APPLIED, 'true');

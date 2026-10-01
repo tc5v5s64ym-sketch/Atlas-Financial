@@ -1676,6 +1676,7 @@ function liveCurrentBalanceHtml(view, liveOverlay, alloc) {
   return `<div class="live-current-balance" data-live-current-balance>
     <p class="live-current-balance-label">Current Balance</p>
     <p class="live-current-balance-amount" data-live-current-balance-amount>${printed}</p>
+    <p class="live-current-balance-account">Bills account only</p>
     ${assumptionNote ? `<p class="live-current-balance-note" data-live-current-balance-note>${assumptionNote}</p>` : ''}
     ${dateLine ? `<p class="live-current-balance-date">${dateLine}</p>` : ''}
   </div>`;
@@ -1980,8 +1981,14 @@ function calendarIncomeHtml(period) {
     const statusAttr = notRelied ? 'not-relied-upon'
       : row.status === 'relied-upon' ? 'relied-upon'
       : status;
+    // Other named receipts already include date/status in glanceLineLabel.
+    // Salary names omit that metadata, so print it once beneath the name.
+    const receiptStatus = notRelied ? 'deposit not confirmed' : status;
+    const receiptDate = (daleSalary || amandaSalary) && row.date
+      && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
+      ? `<time class="budget-receipt-date" datetime="${row.date}">${fmtDate(row.date)} · ${receiptStatus}</time>` : '';
     return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}"${extra}>
-      <span>${displayName}</span><span>${amount != null ? estimateMark + about + amount : '—'}</span>
+      <span>${displayName}${receiptDate}</span><span>${amount != null ? estimateMark + about + amount : '—'}</span>
     </div>`;
   };
   const namedLines = named.map(row => line(row)).join('');
@@ -3957,12 +3964,31 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ? `<p class="operating-note">${period.cashNote}</p>` : '';
   // `kind` is a presentation hint only (opening / balance) so the
   // running-balance thread can be styled as one sequence.
-  const q = (number, prompt, answer, kind) => `
-    <div class="operating-question${kind ? ` operating-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
+  const q = (number, prompt, answer, kind, summary) => {
+    if (summary && !planUnavailable) {
+      // Overview values are published Forecast fields, never sums of details.
+      const known = typeof summary.amount === 'number' && Number.isFinite(summary.amount)
+        && summary.trust !== 'unavailable' && summary.trust !== 'unknown'
+        && (!summary.trustRequired || summary.trust === 'calculated' || summary.trust === 'estimated');
+      const estimate = summary.trust === 'estimated' ? '<span class="est">≈ estimated</span> ' : '';
+      return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
+        <details class="budget-step-details">
+          <summary class="budget-step-summary">
+            <span class="operating-number" aria-hidden="true">${number === '02' ? '+' : (number === '04' || number === '06' ? '−' : '=')}</span>
+            <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span><span class="budget-step-caption">${summary.note}</span></span>
+            <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
+            <span class="budget-step-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div class="operating-answer budget-step-body">${known ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}</div>
+        </details>
+      </div>`;
+    }
+    return `<div class="operating-question${kind ? ` operating-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
       <div class="operating-number">${number}</div>
       <h2 class="operating-prompt">${prompt}</h2>
       <div class="operating-answer">${answer}</div>
     </div>`;
+  };
   const unavailable = planUnavailable ? calendarCurrentUnavailableHtml(period) : null;
   let opening = '';
   if (showSnapshotOpening) {
@@ -3985,11 +4011,17 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
     ${lookbackNote}${projectedNote}${openingUnknownNote}
     ${opening}
-    ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
-    ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
-    ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
-    ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan))}
-    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget, period.balanceAfterDeductionsTrust), 'balance')}
+    ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period), null,
+      { amount: period.available, trust: period.incomeTrust, trustRequired: true, note: 'Receipts and dates — planned or received' })}
+    ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period), null,
+      { amount: period.periodBillLoad, trust: period.periodBillLoadTrust, trustRequired: true, note: 'Period deduction, including required debt minimums' })}
+    ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance',
+      { amount: period.afterBills != null ? period.afterBills : period.afterRemainingBills, trust: period.afterBillsTrust, trustRequired: true, note: 'Period income after the bill deduction' })}
+    ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan), null,
+      { amount: period.budgetHold, trust: period.budgetHoldTrust, note: 'Targets, actual spending and the period reserve' })}
+    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget, period.balanceAfterDeductionsTrust)
+      + '<p class="operating-note">A positive period balance may be needed for a later short period. It is not permission to spend.</p>', 'balance',
+      { amount: period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget, trust: period.balanceAfterDeductionsTrust, note: 'Period income after bills and the household reserve' })}
   </section>`;
 
 }
@@ -4122,8 +4154,8 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls, p
   const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
     ? ` data-household-as-of="${asOf}"` : '';
   return `<div class="calendar-waterfalls" data-calendar-waterfalls${asOfAttr}>
-    ${calendarPickerHtml(view, pick, extraControls)}
     ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
+    ${calendarPickerHtml(view, pick, extraControls)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc, plan)).join('')}
     ${undatedBlock}
   </div>`;
@@ -4213,6 +4245,11 @@ function payPeriodDragPixels(dx, index, count, slotPx) {
 
 function payPeriodNavigatorHtml(selection) {
   if (!selection.period) return '';
+  const fullDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
+    ? new Date(`${value}T12:00:00`).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  const startDate = fullDate(selection.period.start);
+  const endDate = fullDate(selection.period.end);
+  const fullRange = startDate && endDate ? `${startDate} – ${endDate}` : payPeriodRangeLabel(selection.period);
   const months = payPeriodMonths(selection);
   const closeMonth = payPeriodCloseMonth(selection.period);
   const monthIndex = months.findIndex(month => month.key === closeMonth);
@@ -4234,7 +4271,7 @@ function payPeriodNavigatorHtml(selection) {
       name: `${payPeriodRangeLabel(row).replace(/<[^>]*>/g, '')}, ${payPeriodStatusLabel(row)}`,
     })), selection.index, 40)}
     <p role="status" aria-live="polite" aria-atomic="true" data-selected-pay-period-status>
-      <span class="sr-only" data-selected-pay-period-range>${payPeriodRangeLabel(selection.period)}. </span>${payPeriodStatusLabel(selection.period)}
+      <span class="budget-period-full-dates" data-selected-pay-period-range>${fullRange}</span>${payPeriodStatusLabel(selection.period)}
     </p>
   </div>`;
 }
@@ -4300,9 +4337,9 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
   return `<div class="calendar-waterfalls pay-period-timeline" data-calendar-waterfalls${asOfAttr} data-pay-period-swipe
       data-selected-pay-period="${periodId}" data-pay-period-index="${selection.index}"
       aria-label="Pay-period navigation">
+    ${current ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
     ${payPeriodNavigatorHtml(selection)}
     ${extraControls || ''}
-    ${current ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
     ${calendarWaterfallHtml(period, liveOverlay, alloc, plan)}
     ${budgetPlanSpendEarmarkHtml(advice, period)}
     ${undatedBlock}
@@ -4741,9 +4778,11 @@ function wirePlanLookPicker(mount, ctx) {
         settle();
       });
       wheel.addEventListener('pointercancel', reset);
-      wheel.addEventListener('lostpointercapture', () => {
-        // pointerup already settled. A capture loss mid-drag is the cancel.
-        if (start) reset();
+      wheel.addEventListener('lostpointercapture', event => {
+        // Touch starts with implicit capture on the hit button. Its loss
+        // bubbles when the wheel takes capture; that handoff is not a cancel.
+        // pointerup already settled. Losing this wheel's capture mid-drag is.
+        if (event.target === wheel && start) reset();
       });
       wheel.addEventListener('pointerleave', event => {
         if (start && !wheel.hasPointerCapture(event.pointerId)) reset();
@@ -4899,8 +4938,8 @@ function operatingSurfaceHtml(ctx) {
 
   // In the default view the picker rides inside the pay-period switch row;
   // the week and next-period printouts carry it at the top, held open.
-  // AMANDA SLICE 1: the payday instruction shell opens the default Budget
-  // surface, ahead of the waterfall. It always describes the current payday
+  // The payday instruction shell remains available below the selected
+  // period waterfall. It always describes the current payday
   // (never a selected lookback/future period) and reprints Forecast-owned
   // figures only.
   // AMANDA SLICE 3: Month <-> Pay Period granularity toggle on the default
@@ -4926,9 +4965,13 @@ function operatingSurfaceHtml(ctx) {
     // advice copy alone.
     ? paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx)) : '';
   const payPeriodContent = defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
-  return `<div class="payday-operating-sheet" data-payday-sheet>
-    ${granularityToggle}
-    ${monthView || drilldownView || `${instructionShell}${payPeriodContent}`}
+  const reportedShortfall = [alloc && alloc.obligations, alloc && alloc.essentials]
+    .some(bucket => bucket && typeof bucket.shortfall === 'number' && bucket.shortfall > 0);
+  const paydayDetails = instructionShell
+    ? `<details class="budget-secondary-details" data-current-payday-details${reportedShortfall ? ' open' : ''}><summary>Current payday details${reportedShortfall ? ' — shortfall reported' : ''}</summary>${instructionShell}</details>` : '';
+  return `<div class="payday-operating-sheet budget-stepped-sheet" data-payday-sheet>
+    ${monthView || drilldownView || `${payPeriodContent}${paydayDetails}`}
+    ${granularityToggle ? `<details class="budget-secondary-details" data-budget-more-views><summary>More Budget views</summary>${granularityToggle}</details>` : ''}
   </div>`;
 }
 

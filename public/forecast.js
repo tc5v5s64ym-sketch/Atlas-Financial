@@ -7713,6 +7713,29 @@
     }, 0));
   }
 
+  // Trust for an already-published period term. This does not recompute its
+  // amount. Missing confidence stays estimated; an absent/invalid amount
+  // cannot acquire precision from the existing numeric fallback.
+  function periodWaterfallTotalTrust(rows, total, amountOf) {
+    if (typeof total !== 'number' || !Number.isFinite(total)) return 'unavailable';
+    let trust = 'calculated';
+    for (const row of rows) {
+      const amount = row && amountOf(row);
+      if (typeof amount !== 'number' || !Number.isFinite(amount)) return 'unavailable';
+      if (row.confidence === 'unknown' || row.confidence === 'unavailable') return 'unavailable';
+      if (row.confidence !== 'confirmed' || row.status === 'estimated'
+          || row.settlement === 'estimated' || row.incomeRegime === '2027-estimated') {
+        trust = 'estimated';
+      }
+    }
+    return trust;
+  }
+
+  function periodWaterfallCombinedTrust(...terms) {
+    if (terms.some(trust => trust !== 'calculated' && trust !== 'estimated')) return 'unavailable';
+    return terms.includes('estimated') ? 'estimated' : 'calculated';
+  }
+
   // Named Balance After Deductions identity. Every term is inspectable.
   // closes is a boolean check, not a plug that forces equality.
   // Owner 2026-09-21: household remaining is income − bills − Household
@@ -8171,8 +8194,16 @@
         ? roundCent(incomeTotal - periodBillLoad)
         : null;
       const afterRemainingBills = afterBills;
+      const incomeTrust = periodWaterfallTotalTrust(income, incomeTotal, row => row.amount);
+      const periodBillLoadTrust = periodWaterfallTotalTrust(
+        bills.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)),
+        periodBillLoad, row => row.planned != null ? row.planned : row.amount);
+      const afterBillsTrust = periodWaterfallCombinedTrust(incomeTrust, periodBillLoadTrust);
       const afterHouseholdBudget = afterBills != null
         ? roundCent(afterBills - budget.hold) : null;
+      const balanceAfterDeductionsTrust = periodWaterfallCombinedTrust(afterBillsTrust,
+        typeof budget.hold === 'number' && Number.isFinite(budget.hold)
+          ? (budget.holdTrust === 'estimated' ? 'estimated' : 'calculated') : 'unavailable');
       const balanceAfterDeductions = afterHouseholdBudget;
       const predictedEndingBalanceTerms = composeBalanceAfterDeductionsTerms(
         incomeTotal,
@@ -8250,6 +8281,7 @@
         income: planUnavailable ? [] : income,
         incomeAdded,
         incomeTotal,
+        incomeTrust,
         otherIncome: planUnavailable
           ? { amount: 0, items: [] }
           : { amount: otherAmount, items: otherItems },
@@ -8259,15 +8291,16 @@
         paidBills,
         remainingBills: planUnavailable ? null : remainingBills,
         periodBillLoad,
+        periodBillLoadTrust,
         afterRemainingBills,
         afterBills,
+        afterBillsTrust,
         householdBudget: planUnavailable ? [] : budget.items,
         budgetHold: planUnavailable ? null : budget.hold,
         budgetHoldTrust: !planUnavailable && budget.holdTrust === 'estimated'
           ? 'estimated' : null,
-        balanceAfterDeductionsTrust: !planUnavailable && afterHouseholdBudget != null
-          && budget.holdTrust === 'estimated'
-          ? 'estimated' : null,
+        balanceAfterDeductionsTrust: balanceAfterDeductionsTrust === 'calculated'
+          ? null : balanceAfterDeductionsTrust,
         spendingCycleLabel,
         spendingCycle: planUnavailable ? null : budget.spendingCycle,
         cycleUnresolved: budget.cycleUnresolved === true,
