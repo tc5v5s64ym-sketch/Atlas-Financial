@@ -32,6 +32,7 @@ secrets.json
 lunchmoney.dat
 
 # Node
+.atlas-build.json
 node_modules/
 npm-debug.log*
 .npm/

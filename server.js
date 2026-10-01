@@ -29,6 +29,7 @@ const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
+const RunningBuild = require('./scripts/running-build.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
 const AssistantOAuth = require('./scripts/assistant-oauth.js');
 const TalkGemini = require('./scripts/talk-gemini.js');
@@ -701,9 +702,7 @@ app.get('/balance-history.json', (_req, res) => {
 // main. An open tab keeps its own build identity across a deployment.
 const runningBuildSha = Assistant.versionIdentifier(process.env).gitSha;
 const budgetHtml = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
-  .replace('Running build unavailable', runningBuildSha
-    ? `Running commit ${runningBuildSha.slice(0, 7)}`
-    : 'Running build unavailable');
+  .replace('Running build unavailable', RunningBuild.label(__dirname, runningBuildSha));
 app.get(['/', '/index.html'], (_req, res) => res.type('html').end(budgetHtml));
 
 app.use(express.static(path.join(__dirname, 'public'), {
