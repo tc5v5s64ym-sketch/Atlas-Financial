@@ -81,6 +81,17 @@ legitimately hold, and is the one home for it.
 
 ## Running it locally
 
+The small Budget build label is bound to the HTML serving that page, using
+`RENDER_GIT_COMMIT` (or the existing local `ATLAS_GIT_SHA` override). `npm ci`
+captures non-secret, exact-commit provenance in the gitignored
+`.atlas-build.json`; the server rejects a different SHA and can fall back to
+local Git metadata. Standard two-parent GitHub merge messages for this repository
+identify the PR automatically. For squash/rebase merges, an explicit final
+`Atlas-PR: <number>` commit trailer can preserve that identity. A generic issue
+reference, unmarked direct/rebased commit, missing Git, or ambiguous metadata
+keeps the truthful commit-only label. No GitHub API/token is used at build time
+or in the browser. The artifact is server-only and contains no financial data.
+
 Set the two environment variables, then start. Placeholders below are shown in
 angle brackets deliberately — the pre-commit hook blocks anything that looks
 like a real secret assignment, including in documentation.

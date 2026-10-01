@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "postinstall": "node scripts/running-build.js",
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node test/test.js"
