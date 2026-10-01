@@ -792,7 +792,7 @@ check('F6: current position, selected period, and exact payday keep visibly sepa
   assert.match(html, /What today's cash must do/);
   assert.match(html, /not the full pay period/);
   // 2. The selected period is named and pointed at, never duplicated.
-  assert.match(html, /Sep 25-Oct 8 pay-period detail below/);
+  assert.match(html, /Sep 25-Oct 8 pay-period detail above/);
   // 3. The exact payday plan names its date and its Plan Spend parity.
   assert.match(html, /Nest Money funding plan — 2026-10-09 payday/);
   assert.match(html, /not the Sep 25-Oct 8 period's/);
@@ -964,6 +964,27 @@ check('F18: malformed allocation for an id ALSO in schedule.costs is unavailable
   assert.match(blockHtml, /<span>Trip fund<\/span><span>No funding from this payday<\/span>/);
   // Exactly one zero-funding claim in the block: the trip cost only.
   assert.equal((blockHtml.match(/No funding from this payday/g) || []).length, 1);
+});
+
+check('G1: compact summaries keep published shortfall and unresolved warnings visible above their explanations', () => {
+  const html = shell({ obligations: { wanted: 2150, allocated: 2000, shortfall: 150 },
+    unresolved: [{ id: 'unknown-cost', label: 'Unknown cost' }] });
+  const summaries = [...html.matchAll(/<details class="instruction-block"[^>]*>\s*<summary>([\s\S]*?)<\/summary>/g)]
+    .map(match => match[1]);
+  assert.ok(summaries.some(text => /Bills & required minimums/.test(text)
+    && /Shortfall of \$150\.00 — bills are not fully covered/.test(text)));
+  assert.ok(summaries.some(text => /Truly unassigned/.test(text)
+    && /1 planned cost is still unresolved — this is not free money/.test(text)));
+  assert.doesNotMatch(html, /<details class="instruction-block"[^>]*\bopen\b/);
+  assert.match(html, /Required debt minimums are inside this figure/);
+});
+
+check('G2: an unavailable funding row has an unavailable headline and retains its explanation, never a dollar headline', () => {
+  const blockHtml = nestMoneyBlock(shell({}, { status: 'unavailable', paydays: [] }));
+  const summaryHtml = blockHtml.split('</summary>')[0];
+  assert.match(summaryHtml, /Unavailable/);
+  assert.doesNotMatch(summaryHtml, /\$[\d,]+\.\d\d/);
+  assert.match(blockHtml, /Nest Money funding plan: unavailable — this figure was not published/);
 });
 
 console.log(`\n${checks} checks passed.`);

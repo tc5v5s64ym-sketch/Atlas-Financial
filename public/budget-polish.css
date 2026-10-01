@@ -437,12 +437,24 @@ body:has(#operating-surface) .site-head-inner {
 }
 /* AMANDA SLICE 1 — payday instruction shell. Household-readable blocks that
  * reprint Forecast-owned figures. Reuses operating-* typography. */
+[data-current-payday-details] > summary {
+  min-height: 44px;
+  align-content: center;
+}
+[data-current-payday-details][data-shortfall-reported] {
+  border-color: var(--critical);
+}
+.budget-shortfall-summary {
+  color: var(--critical);
+  font-weight: 700;
+}
 .payday-instruction-shell {
   margin: 0 0 18px;
   padding: 16px 18px;
-  border: 1px solid var(--atlas-green-border, #cfe3d4);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--atlas-green-soft, #f2f8f3);
+  background: var(--plane);
+  color: var(--text-primary);
 }
 .payday-instruction-shell > h2 {
   margin: 0 0 4px;
@@ -452,33 +464,98 @@ body:has(#operating-surface) .site-head-inner {
   margin: 0 0 12px;
 }
 .payday-instruction-shell .instruction-blocks {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  border-top: 1px solid var(--border);
 }
 .payday-instruction-shell .instruction-block {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.65);
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  overflow-wrap: anywhere;
 }
-.payday-instruction-shell .instruction-block > h3 {
-  margin: 0 0 6px;
+.payday-instruction-shell .instruction-block > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 8px;
+  gap: 4px 8px;
+  align-items: baseline;
+  min-height: 48px;
+  padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.payday-instruction-shell .instruction-block > summary::-webkit-details-marker {
+  display: none;
+}
+.payday-instruction-shell .instruction-block > summary::after {
+  content: '';
+  grid-column: 3;
+  grid-row: 1;
+  width: 6px;
+  height: 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg);
+}
+.payday-instruction-shell .instruction-block[open] > summary::after {
+  transform: rotate(225deg);
+}
+.payday-instruction-shell summary:focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: 2px;
+}
+.payday-instruction-shell .instruction-block h3 {
+  margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
 }
-.payday-instruction-shell .instruction-amount {
-  margin: 0 0 6px;
-  font-size: 1.25rem;
+.payday-instruction-shell .instruction-amount,
+.payday-instruction-shell .instruction-state {
+  margin: 0;
+  font-size: 1rem;
   font-weight: 700;
+  text-align: right;
+}
+.payday-instruction-shell .instruction-warning {
+  grid-column: 1 / -1;
+  color: var(--critical);
+  font-size: 0.86rem;
+}
+.payday-instruction-shell .instruction-detail {
+  padding: 0 12px 12px;
+}
+.payday-instruction-shell .instruction-context {
+  margin-top: 12px;
+}
+.payday-instruction-shell .instruction-context > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .payday-instruction-shell .instruction-block > summary {
+    grid-template-columns: minmax(0, 1fr) 8px;
+  }
+  .payday-instruction-shell .instruction-block > summary::after {
+    grid-column: 2;
+  }
+  .payday-instruction-shell .instruction-amount,
+  .payday-instruction-shell .instruction-state {
+    grid-column: 1;
+    text-align: left;
+  }
 }
 .payday-instruction-shell .instruction-block .operating-lines {
   margin: 0 0 6px;
 }
 .payday-instruction-shell .instruction-block .operating-line {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   padding: 4px 0;
+}
+.payday-instruction-shell .operating-line > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .payday-instruction-shell .instruction-block .operating-note {
   margin: 4px 0 0;
@@ -491,17 +568,17 @@ body:has(#operating-surface) .site-head-inner {
   margin-left: 8px;
   padding: 1px 8px;
   border-radius: 999px;
-  border: 1px solid var(--atlas-green-border, #cfe3d4);
+  border: 1px solid var(--border);
   font-size: 0.7rem;
   font-weight: 600;
   vertical-align: middle;
-  color: #2f5d3a;
-  background: #fff;
+  color: var(--success-text);
+  background: var(--surface-1);
 }
 .payday-instruction-shell .trust-tag.trust-estimated {
-  border-color: #d9b25f;
-  color: #7a5a14;
-  background: #fdf6e3;
+  border-color: var(--warning);
+  color: var(--text-primary);
+  background: var(--plane);
 }
 
 /* AMANDA SLICE 3 — Month <-> Pay Period consolidated planning view.

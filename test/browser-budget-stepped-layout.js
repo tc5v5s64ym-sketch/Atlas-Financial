@@ -77,8 +77,10 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
       assert.equal(await shell.count(), 1);
       assert.equal(await shell.evaluate(node =>
         node.closest('details')?.hasAttribute('data-current-payday-details')), true);
-      assert.equal(await details.evaluate(node => node.open), shortfall);
-      assert.equal(await shell.locator('h2').isVisible(), shortfall,
+      assert.equal(await details.evaluate(node => node.open), false);
+      assert.equal(await details.locator('.budget-shortfall-summary').count(), shortfall ? 1 : 0);
+      if (shortfall) assert.ok(await details.locator('.budget-shortfall-summary').isVisible());
+      assert.equal(await shell.locator('h2').isVisible(), false,
         'Today\'s money must be folded on the default page');
       const cashBox = await balance.boundingBox();
       const periodBox = await waterfall.boundingBox();
@@ -224,7 +226,7 @@ const helpers = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8').split(
     });
     await fullPageOrder(desk, true);
     await geometry(desk);
-    await screenshot(desk, 'desktop-shortfall-expanded.png');
+    await screenshot(desk, 'desktop-shortfall-collapsed.png');
     assert.deepEqual(errors, []);
     console.log('PASS real Chromium: full production index document + presentation scripts/styles, Current Balance first, folded current-position details and visible shortfall below waterfall, 1440/390/320 layouts, native accordion click/keyboard/touch/focus, linked wheels, repeated swipes and month/year bounds, current/future/past roles, no overflow or console errors');
   } finally {

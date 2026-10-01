@@ -168,10 +168,11 @@ const shell = (allocOverrides, period = currentPeriod) =>
 
 // The "Extra on focus debt" block, scoped so other blocks cannot leak in.
 function extraBlock(html) {
-  const start = html.indexOf('<h3>Extra on focus debt</h3>');
+  const start = html.indexOf('<details class="instruction-block" data-payday-breakdown="Extra on focus debt"');
   assert.ok(start !== -1, 'Extra on focus debt block rendered');
-  const end = html.indexOf('<div class="instruction-block">', start + 1);
-  return html.slice(start, end === -1 ? undefined : end);
+  const end = html.indexOf('</details>', start);
+  assert.ok(end !== -1, 'the semantic focus-debt row has its own closing boundary');
+  return html.slice(start, end + '</details>'.length);
 }
 
 check('B1: positive extra — focus debt and exact allocation visible', () => {
@@ -232,9 +233,15 @@ check('B6: unknown pending exposure — uncertainty stays visible; $0 stays non-
   assert.match(block, /\$0\.00/, '$0 shown as a fact');
   assert.match(block, /Strategy note: Travel Visa has unknown pending exposure/,
     'Forecast uncertainty remains visible, shown separately as published state');
-  // The note is separate from the $0 line — never positioned as its cause.
-  assert.ok(block.indexOf('Strategy note:') > block.indexOf('No extra principal this payday'),
-    'strategy note follows the $0 statement, not framed as its cause');
+  // The compact summary keeps the published uncertainty visible in its own
+  // element. It never becomes the amount's trust tag or a reason for $0.
+  const summary = block.split('</summary>')[0];
+  assert.match(summary, /<span class="instruction-amount">\$0\.00 <span class="trust-tag">calculated<\/span><\/span>/,
+    'the exact $0 figure and its published trust remain a separate headline');
+  assert.match(summary, /<span class="instruction-warning">Strategy note: Travel Visa has unknown pending exposure; cash beyond the proven posted balance is not true surplus\.<\/span>/,
+    'the verbatim published uncertainty remains a separate, visible summary note');
+  assert.match(block.split('</summary>')[1], /Focus debt: Travel Visa\. No extra principal this payday — Required minimums are already in bills above\./,
+    'the explanation still states the $0 fact and minimums without a causal claim');
   // The $0 itself stays non-causal: no "because", no invented mechanism.
   assert.doesNotMatch(block, /because|since the|crowded|bills used|buffer prevented|cannot afford|paused/i,
     'no causal story for the $0');
