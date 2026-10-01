@@ -10456,6 +10456,31 @@
           c => c.bounds && c.bounds.floor) === 'unavailable') {
       return unavailable('A protected planned cost has unavailable amount or trust evidence.');
     }
+    // The incumbent protects unsettled overdue required principal and every
+    // observed unresolved household-cash debit on these same dollars. The
+    // allocator below only sees dated candidates on or after asOf and holds
+    // only undated rows, so either encumbrance would be silently released as
+    // new proposals. Withhold instead; the roster above keeps their names,
+    // amounts and dates — nothing is zeroed or hidden.
+    let overdueCents = 0;
+    for (const row of seq) {
+      if (!row || !row.date || row.date >= asOf || row.flexibility === 'optional') continue;
+      const principal = row.need != null ? row.need : row.bounds && row.bounds.floor;
+      if (Number.isFinite(Number(principal)) && Number(principal) > 0) {
+        overdueCents += Math.round(Number(principal) * 100);
+      }
+    }
+    if (overdueCents > 0) {
+      return unavailable('Unsettled overdue planned principal of $'
+        + (overdueCents / 100).toFixed(2)
+        + ' still encumbers household cash; selected-period proposals are withheld until it is settled.');
+    }
+    const unresolvedPendingCash = sumCategoryActuals(plan, asOf, null, opts).pendingCash;
+    if (unresolvedPendingCash > 0) {
+      return unavailable('Unresolved pending household-cash debits of $'
+        + Number(unresolvedPendingCash).toFixed(2)
+        + ' still encumber household cash; selected-period proposals are withheld until they settle.');
+    }
     const end = full.at(-1).end;
     const daily = new Map();
     const incomes = new Map();

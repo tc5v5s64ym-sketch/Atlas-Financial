@@ -169,4 +169,37 @@ assert.equal(january.plannedCostFunding.capacity, 3849.40 - 200 - 300,
 assert.equal(january.plannedCostFunding.afterProposedFunding, 3849.40 - 200 - 300 - 600);
 assert.equal(selected(yearAdvice, '2026-12-18').plannedCostFunding.contribution, 0);
 assert.equal(selected(yearAdvice, '2026-12-18').plannedCostFunding.end, '2026-12-31');
+// Unsettled overdue required principal — point and dated-range forms — and
+// unresolved all-dates pending household-cash debits still encumber the same
+// dollars the incumbent protects. Proposals are withheld, never released as
+// ready; the rows keep their names and amounts (no zeroing, no hiding).
+const overdue = fixture(); overdue.plan.commitments.push({ id: 'overdue-cost', label: 'Overdue cost',
+  date: '2026-08-10', amount: 1000, confidence: 'confirmed' });
+const overdueFunding = selected(run(overdue), '2026-08-14').plannedCostFunding;
+assert.equal(overdueFunding.status, 'unavailable');
+assert.equal(overdueFunding.contribution, null);
+assert.equal(overdueFunding.items.find(r => r.id === 'overdue-cost').cost, 1000);
+assert.match(overdueFunding.reason, /overdue/i);
+
+const overdueRange = fixture(); overdueRange.plan.commitments.push({ id: 'overdue-range',
+  label: 'Overdue range', date: '2026-08-10', amountMin: 1000, amountMax: 1100,
+  confidence: 'confirmed' });
+const overdueRangeFunding = selected(run(overdueRange), '2026-08-14').plannedCostFunding;
+assert.equal(overdueRangeFunding.status, 'unavailable');
+assert.equal(overdueRangeFunding.contribution, null);
+assert.match(overdueRangeFunding.reason, /overdue/i);
+
+const priorPending = fixture();
+const priorPacket = { schema: 'atlas-current-period-actuals/v1', observationAsOf: '2026-08-14',
+  coverageStart: '2026-08-01', coverageThrough: '2026-08-14', pendingCoverage: 'complete',
+  transactions: [{ id: 'synthetic-pending', date: '2026-08-13', amount: 1000,
+    account: 'chequing-a', accountRole: 'household-cash', categoryLabel: 'Groceries',
+    displayedPayee: 'Groceries', pending: true }] };
+const priorPendingFunding = selected(
+  F.recommend(priorPending.plan, '2026-08-14', { currentPeriodActuals: priorPacket }),
+  '2026-08-14').plannedCostFunding;
+assert.equal(priorPendingFunding.status, 'unavailable');
+assert.equal(priorPendingFunding.contribution, null);
+assert.match(priorPendingFunding.reason, /pending/i);
+
 console.log('PASS Budget funding: independent capacity/contribution/gap arithmetic, payment conservation, original/actual unavailable, trust and old-obligation protection');
