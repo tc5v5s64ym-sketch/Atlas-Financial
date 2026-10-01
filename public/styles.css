@@ -3355,3 +3355,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 @media (min-width:641px) {
   .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
+.budget-funding-item { padding: 1rem 0; border-top: 1px solid #d8e6f5; }
+.budget-funding-item h3 { margin: 0 0 .6rem; font-size: 1rem; color: #123b65; }
+.budget-funding-item .operating-line { gap: .75rem; }
+.budget-funding-item .operating-line > span:last-child { text-align: right; }

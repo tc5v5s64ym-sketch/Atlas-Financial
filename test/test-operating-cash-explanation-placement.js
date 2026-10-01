@@ -517,9 +517,9 @@ console.log('\n=== plan.js markup does not print the explanation under Q07 ===')
     observers[0].fire();
 
     const waterfall = body.querySelector('[data-calendar-waterfall="this-pay-period"]');
-    ok(waterfall && waterfall.querySelectorAll('.budget-step-details').length === 5
+    ok(waterfall && waterfall.querySelectorAll('.budget-step-details').length === 6
         && !waterfall.hasAttribute('data-atlas-budget-ui'),
-      'observer preserves the five native plan.js disclosures');
+      'observer preserves the native plan.js disclosures, including proposed savings');
     const expl = body.querySelector('[data-operating-cash-explanation]')
       || body.querySelector('.operating-cash-explanation');
     const q07 = waterfall.querySelector('[data-operating-question="07"]');

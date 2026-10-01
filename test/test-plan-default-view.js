@@ -329,6 +329,7 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     'Bills',
     'Balance after bills',
     'Household budget',
+    'Proposed savings',
     'Balance After Deductions',
   ];
 
@@ -342,7 +343,7 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     ok(at > previous, `${prompt} appears on the default view in order`);
     previous = at;
   }
-  const snapshotQs = 5;
+  const snapshotQs = 6;
   ok(/data-live-current-balance/.test(html)
       && (html.match(/data-operating-question=/g) || []).length === snapshotQs
       && !/data-operating-prompt="Current Balance"/.test(html)

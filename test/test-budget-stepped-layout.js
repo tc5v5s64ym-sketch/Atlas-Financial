@@ -53,7 +53,7 @@ const html = f.operatingSurfaceHtml(ctx);
 assert.ok(html.indexOf('data-live-current-balance') < html.indexOf('data-pay-period-navigator'));
 assert.ok(html.indexOf('data-live-current-balance') < html.indexOf('data-current-payday-details'));
 assert.match(html, /Bills account only/);
-assert.equal((html.match(/class="budget-step-details"/g) || []).length, 5);
+assert.equal((html.match(/class="budget-step-details"/g) || []).length, 6);
 assert.doesNotMatch(html, /<details class="budget-step-details"[^>]* open/);
 assert.match(html, /data-budget-more-views/);
 assert.ok(html.indexOf('data-current-payday-details') > html.indexOf('data-calendar-waterfall='));
@@ -138,6 +138,33 @@ const missingConfidence = require('./fixtures/budget-layout-data')();
 delete missingConfidence.plan.bills[1].confidence;
 assert.equal(F.recommend(missingConfidence.plan, missingConfidence.meta.asOf, { debts: [] })
   .payPeriodViews.find(p => p.start === '2027-01-01').periodBillLoadTrust, 'estimated');
+
+// Deliberately inconsistent item sums prove this renderer only reprints the
+// Forecast totals. No second contribution/final-balance calculator lives here.
+const funding = { status: 'ready', start: rows[1].start, end: rows[1].end, trust: 'estimated',
+  contribution: 123.45, afterProposedFunding: 456.78, proposedFundingForBillPayments: 0,
+  items: [{ id: 'cost', label: '<Named cost>', contribution: 99, cumulativeProposed: 101,
+    cost: 600, remainingGap: 499, confidence: 'confirmed', date: '2026-10-08' }] };
+const fundedHtml = f.calendarWaterfallHtml(Object.assign({}, rows[1], { plannedCostFunding: funding }), null, null, plan);
+assert.match(summary(fundedHtml, 'savings'), /\$123\.45/);
+assert.match(summary(fundedHtml, 'savings'), /≈ estimated/);
+assert.match(summary(fundedHtml, '07'), /\$456\.78/);
+assert.doesNotMatch(summary(fundedHtml, '07'), /1300\.00|1176\.55/);
+assert.match(fundedHtml, /&lt;Named cost&gt;/);
+assert.match(fundedHtml, /Actual saved: unavailable/);
+for (const patch of [{ contribution: '123.45' }, { contribution: null }, { trust: null },
+  { trust: 'unknown' }, { end: '2026-10-09' }, { afterProposedFunding: '456.78' }]) {
+  const html = f.calendarWaterfallHtml(Object.assign({}, rows[1], {
+    plannedCostFunding: Object.assign({}, funding, patch) }), null, null, plan);
+  assert.match(summary(html, 'savings'), /Unavailable/);
+  assert.match(summary(html, '07'), /Before savings/);
+  assert.doesNotMatch(html, /\$123\.45|\$456\.78/);
+  assert.match(html, /&lt;Named cost&gt;/);
+}
+const withConsumption = f.calendarWaterfallHtml(Object.assign({}, rows[1], {
+  plannedCostFunding: Object.assign({}, funding, { proposedFundingForBillPayments: 600 }) }), null, null, plan);
+assert.match(summary(withConsumption, 'reserve-use'), /\$600\.00/);
+assert.match(withConsumption, /not extra income, observed saved cash or an actual withdrawal/);
 
 const short = JSON.parse(JSON.stringify(ctx));
 short.advice.paydayAllocation.obligations.shortfall = 50;
