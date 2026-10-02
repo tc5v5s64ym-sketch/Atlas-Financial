@@ -107,4 +107,32 @@ const unknown = state(); unknown.plan.income[0].confidence = 'unknown';
 assert.equal(period(run(unknown), '2027-01-01').plannedCostFunding.contribution, null,
   'unknown income trust still withholds funding');
 
+// Posted irregular Other Income has a synthesized display id that is not in
+// representedEvents. Its published settlement still proves it is in opening
+// cash. 100 opening - 300 remaining groceries = -200 before the next payday;
+// replaying the posted 300 would falsely release the next 300 contribution.
+for (const cash of [100, 400]) {
+  const other = fixture(); other.meta.asOf = other.plan.opening.asOf = '2026-08-20';
+  other.plan.startingCash.breakdown[0].value = cash;
+  other.plan.commitments[0].amount = 300;
+  const opts = { currentPeriodActuals: {
+    schema: 'atlas-current-period-actuals/v1', observationAsOf: '2026-08-20',
+    coverageStart: '2026-08-14', coverageThrough: '2026-08-20',
+    transactionCoverage: 'complete', pendingCoverage: 'complete',
+    transactions: [{ id: 'synthetic-other', date: '2026-08-20', amount: -300,
+      account: 'chequing-a', accountRole: 'household-cash', categoryLabel: 'Other Income',
+      displayedPayee: 'Synthetic external income', pending: false }],
+  } };
+  const baseline = run(other, { currentPeriodActuals: { ...opts.currentPeriodActuals, transactions: [] } });
+  const a = run(other, opts);
+  const received = period(a, '2026-08-14').income.find(r => r.id === 'other-income:synthetic-other');
+  assert.equal(received.amount, 300);
+  assert.equal(received.settlement, 'represented');
+  assert.equal(received.alreadyInCash, true);
+  assert.equal(period(a, '2026-08-28').plannedCostFunding.contribution, cash < 300 ? null : 300,
+    'represented Other Income cannot repair a short current tail');
+  assert.deepEqual(period(a, '2026-08-28').plannedCostFunding,
+    period(baseline, '2026-08-28').plannedCostFunding, 'opening cash alone owns already-posted income');
+}
+
 console.log('PASS missing-income Budget funding: independent bonus/capacity arithmetic, zero and existing/zero-base streams, occurrence identity, repeat-call deduplication, estimated trust and settlement');

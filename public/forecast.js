@@ -10587,7 +10587,8 @@
       // The published Budget income can include Forecast-owned occurrences
       // with no ordinary stream (notably estimated payroll bonuses). Match
       // id + date even for zero-base streams so each occurrence enters once.
-      // expandEvents still owns represented/not-relied-upon settlement.
+      // Published settlement also covers synthesized ids absent from the
+      // represented key set. Already-received income belongs to opening cash.
       const ordinaryIncomeKeys = new Set();
       for (const stream of plan.income || []) {
         for (const date of occurrences(stream, asOf, end)) {
@@ -10603,6 +10604,9 @@
         },
         additionalIncomeEvents: Array.from(incomes.entries())
           .filter(([key]) => !ordinaryIncomeKeys.has(key))
+          .filter(([, row]) => row.alreadyInCash !== true
+            && row.settlement !== 'represented' && row.settlement !== 'opening'
+            && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon')
           .map(([, row]) => ({ kind: 'income', id: row.id, label: row.label,
             date: row.date, amount: row.amount, confidence: row.confidence })),
       });
