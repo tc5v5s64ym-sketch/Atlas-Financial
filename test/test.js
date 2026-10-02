@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['one household ledger across observed Budget and savings', 'test-household-path.js'],
   ['read-only bill payment evidence and exact sanitized links', 'test-bill-detail.js'],
   ['Budget bill payment evidence integration and hooks', 'test-bill-detail-budget-integration.js'],
   ['from-today Budget savings arithmetic and evidence', 'test-from-today-funding.js'],
