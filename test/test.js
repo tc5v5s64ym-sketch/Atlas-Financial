@@ -25,6 +25,10 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['read-only bill payment evidence and exact sanitized links', 'test-bill-detail.js'],
+  ['Budget bill payment evidence integration and hooks', 'test-bill-detail-budget-integration.js'],
+  ['from-today Budget savings arithmetic and evidence', 'test-from-today-funding.js'],
+  ['from-today observation to Budget integration', 'test-from-today-integration.js'],
   ['selected Budget missing-income occurrence funding', 'test-budget-missing-income-funding.js'],
   ['pending-card Budget funding and settlement conservation', 'test-budget-pending-card-funding.js'],
   ['secondary Budget failed-cap spending basis', 'test-budget-secondary-spending-basis.js'],

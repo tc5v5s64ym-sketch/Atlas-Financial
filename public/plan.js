@@ -1908,6 +1908,14 @@ function periodBillLine(row) {
     : 'still due';
   const amount = glanceSignedMoney(glanceMoney(row, kind));
   const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
+  if (typeof BillDetail !== 'undefined') {
+    // App.data is this render's served packet, also used by renderPlan above.
+    // The disclosure only reprints Forecast rows and exact sanitized links.
+    return BillDetail.html(row, App.data, {
+      label: glanceLineLabel(row, status),
+      amount: amount != null ? about + amount : '—', status,
+    });
+  }
   const dateAttr = row.date && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
     ? ` data-bill-date="${row.date}"` : '';
   return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}"${dateAttr}>
@@ -4100,8 +4108,51 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   const finalAmount = fundedBalanceKnown ? funding.afterProposedFunding
     : (period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget);
   const finalTrust = fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
-  return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
+  const today = period.fromTodayFunding;
+  const todayKnown = !planUnavailable && today && today.basis === 'Budget-from-today'
+    && (today.status === 'ready' || today.status === 'funding-gap')
+    && (today.trust === 'calculated' || today.trust === 'estimated') && numeric(today.contribution);
+  const todayMoney = amount => todayKnown && numeric(amount)
+    ? money2(amount) + (today.trust === 'estimated' ? ' ≈ estimated' : '') : 'Unavailable';
+  const forwardItems = rows => (rows || []).map(row => `<div class="budget-funding-item" data-from-today-cost="${escape(row.id)}">
+    <h3>${escape(row.label)}</h3>
+    <div class="operating-line"><span>Proposed contribution</span><span>${todayMoney(row.contribution)}</span></div>
+    <div class="operating-line"><span>Cumulative proposed / cost</span><span>${todayMoney(row.cumulativeProposed)} / ${costMoney(row)}</span></div>
+    <div class="operating-line"><span>Remaining requirement</span><span>${todayMoney(row.remainingGap)}</span></div>
+    <p class="operating-note">Planning date: ${escape(row.date || 'Unknown')}${row.confidence === 'estimated' ? ' · estimated' : ''}${numeric(row.ceiling) && row.ceiling > row.cost ? ` · upper estimate ${money2(row.ceiling)}` : ''}. Actual saved and destination account: unknown.</p>
+  </div>`).join('');
+  const fromTodayBody = today ? `<div data-from-today="${escape(today.asOf)}">
+    <p class="operating-note">A new proposal dated ${escape(today.asOf)}. Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.</p>
+    ${todayKnown ? `<p class="operating-note">Chequing evidence: ${escape(today.cashAsOf)}. Spending observed through ${escape(today.observationAsOf)}. Budget targets and actuals supply the remaining household needs.</p>
+      <div class="operating-line"><span>Current chequing cash</span><span>${todayMoney(today.currentCash)}</span></div>
+      <div class="operating-line"><span>Remaining bills and debt payments</span><span>${todayMoney(today.operatingBills)}</span></div>
+      <div class="operating-line"><span>Remaining household needs</span><span>${todayMoney(today.remainingHousehold)}</span></div>
+      <div class="operating-line"><span>Required operating cash through ${escape(today.currentThrough)}, including the existing cash floor</span><span>${todayMoney(today.requiredOperatingCash)}</span></div>
+      <div class="operating-line"><span>Capacity for proposed funding now</span><span>${todayMoney(today.availableNow)}</span></div>
+      <div class="operating-line"><span>Proposed to set aside now</span><span>${todayMoney(today.contribution)}</span></div>
+      <div class="operating-line"><span>Chequing left after this proposal</span><span>${todayMoney(today.cashAfterProposal)}</span></div>
+      ${today.operatingShortfall > 0 ? `<p class="operating-note crit">Current cash is ${todayMoney(today.operatingShortfall)} short of remaining operating needs.</p>` : ''}
+      <p class="operating-note">Future receipts in this period: ${todayMoney(today.futureIncomeThisPeriod)}. They are not money available to set aside now. Remaining chequing may be needed later; it is not spending permission.</p>
+      ${forwardItems(today.items)}
+      ${today.reason ? `<p class="operating-note crit">${escape(today.reason)}</p>` : ''}
+      <details><summary>Forward proposals through ${escape(today.through)}</summary>
+      ${(today.periods || []).map(row => `<details data-from-today-period="${escape(row.payday)}"><summary>${escape(row.payday)} · ${todayMoney(row.contribution)} proposed</summary>
+        ${row.status === 'unavailable' ? `<p class="operating-note">${escape(row.reason)}</p>` : `${forwardItems(row.items)}<p class="operating-note">Proposed funds still held after scheduled payments: ${todayMoney(row.protectedAfterPayments)}. Remaining requirement: ${todayMoney(row.stillToFund)}.</p>`}
+      </details>`).join('')}</details>
+      ${(today.unscheduled || []).map(row => `<p class="operating-note">${escape(row.label)} · ${costMoney(row)} · ${escape(row.date || 'Date unknown')}. ${escape(row.reason)} Contribution unavailable.</p>`).join('')}`
+      : `<p class="operating-note">${escape(today.reason || 'Current funding evidence is unavailable.')}</p>${forwardItems(today.items)}`}
+    <p class="operating-note">These are proposed earmarks, not transfers or balances already saved. Shared savings and silver are not added to chequing cash. Bucket ownership, silver attribution and actual saved balances remain unknown.</p>
+  </div>` : '';
+  const todayHtml = today && !planUnavailable ? `<div class="budget-step" data-from-today-proposal>
+    <details class="budget-step-details"><summary class="budget-step-summary">
+      <span class="operating-number" aria-hidden="true">↳</span>
+      <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">From today · ${escape(today.asOf)}</span><span class="budget-step-caption">Current cash proposal · open for needs, costs and the forward schedule</span></span>
+      <span class="budget-step-value">${todayMoney(today.contribution)}</span><span class="budget-step-chevron" aria-hidden="true">⌄</span>
+    </summary><div class="operating-answer budget-step-body">${fromTodayBody}</div></details>
+  </div>` : '';
+  return `${todayHtml}<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
+    ${today ? '<p class="operating-note">The pay-period view below uses the full period income. It is separate from the dated current-cash proposal above.</p>' : ''}
     ${lookbackNote}${projectedNote}${openingUnknownNote}
     ${opening}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period), null,
@@ -5408,6 +5459,7 @@ function renderPlan(d, periods, history) {
     periods,
     currentPeriodActuals: actuals,
     operatingPlan: d.liveOverlay && d.liveOverlay.operatingPlan,
+    observedCash: d.liveOverlay && d.liveOverlay.observedCash,
     operatingPlanNote: d.liveOverlay && d.liveOverlay.operatingPlanNote,
   }));
   const fundingPlan = advice.funding || null;

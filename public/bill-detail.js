@@ -1,5 +1,4 @@
 /* Read-only Budget disclosure. Forecast owns the supplied bill row.
- * FOUNDATION — awaiting Budget integration after PR #470 stabilizes.
  * Consumer: periodBillLine/calendarPeriodBillsHtml in public/plan.js.
  * No fetching, matching, settlement decisions, totals, or retained packets.
  */
@@ -126,10 +125,13 @@
         + '</p><ul class="bill-detail-payments">' + payments + '</ul>'
         + '<p>Transaction state does not change Forecast’s published bill status or amounts.</p>'
       : '<p>' + missing + reason + ' Missing evidence does not mean unpaid.</p>';
-    return '<details class="bill-detail" data-bill-detail><summary>'
+    const dateAttr = date(row.date) ? ' data-bill-date="' + escape(row.date) + '"' : '';
+    return '<details class="bill-detail" data-bill-detail><summary class="operating-line"'
+      + ' data-period-bill="' + escape(row.id) + '" data-bill-status="'
+      + escape(text(summary.status) || text(row.status)) + '"' + dateAttr + '>'
       + '<span>' + escape(text(summary.label) || text(row.label) || 'Bill details') + '</span>'
       + '<span>' + escape(summary.amount) + '</span>'
-      + '<span class="bill-detail-cue">Details</span></summary>'
+      + '</summary>'
       + '<div class="bill-detail-body"><h4>' + escape(text(row.label) || 'Bill details') + '</h4><dl>'
       + fact('Published status', text(row.status) || 'Unavailable')
       + fact('Settlement', text(row.settlement) || 'Unavailable')

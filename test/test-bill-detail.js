@@ -1,5 +1,5 @@
 'use strict';
-// Isolated proof until PR #470 stabilizes; run explicitly before registration.
+// Exact sanitized-link contract; Budget wiring is covered separately.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -105,7 +105,8 @@ function run() {
   assert.deepEqual(Detail.evidence(row, data).payments,
     [{ date: '2026-08-18', amount: 97.5, account: 'chequing-a', pending: false }]);
   const html = Detail.html(row, data, { label: 'Synthetic bill · PAID', amount: '−$97.50' });
-  for (const expected of ['<details', '<summary>', 'Due date', '2026-08-19', '$100.00', '$97.50',
+  for (const expected of ['<details', '<summary class="operating-line"', 'data-period-bill="bill"',
+    'data-bill-status="PAID"', 'data-bill-date="2026-08-19"', 'Due date', '2026-08-19', '$100.00', '$97.50',
     '$0.00', row.payerLabel, 'Synthetic bills account', 'estimated', 'Posted', '2026-08-18']) {
     assert.ok(html.includes(expected), expected);
   }

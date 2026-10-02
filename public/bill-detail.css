@@ -1,4 +1,4 @@
-/* Isolated disclosure styling; load beside bill-detail.js at Budget integration. */
+/* Read-only Budget bill disclosures, including nested bill-list steps. */
 .bill-detail { border-bottom: 1px solid var(--line, #c5c9cf); min-width: 0; }
 .bill-detail > summary {
   min-height: 44px; padding: 10px 4px; box-sizing: border-box;
@@ -6,8 +6,11 @@
   overflow-wrap: anywhere;
 }
 .bill-detail > summary > :first-child { flex: 1; min-width: 0; }
-.bill-detail > summary > :nth-child(2) { flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.bill-detail-cue { font-size: .85em; text-decoration: underline; }
+.bill-detail > summary > :last-child { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.operating-lines .bill-detail > summary.operating-line {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.bill-detail > summary::after { content: 'Details'; grid-column: 1 / -1; text-align: right; font-size: .85em; text-decoration: underline; }
 .bill-detail > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .bill-detail-body { padding: 4px 8px 16px; overflow-wrap: anywhere; }
 .bill-detail-body h4 { margin: 12px 0 8px; font-size: 1em; }
@@ -17,7 +20,12 @@
 .bill-detail-body dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .bill-detail-payments { list-style: none; padding: 0; margin: 0; }
 .bill-detail-payments > li + li { border-top: 1px solid var(--line, #c5c9cf); margin-top: 10px; padding-top: 10px; }
+@media (max-width: 480px) {
+  .operating-lines .bill-detail > summary.operating-line { grid-template-columns: minmax(0, 1fr) auto; }
+  .operating-lines .bill-detail > summary.operating-line > :first-child { grid-column: 1 / -1; }
+  .operating-lines .bill-detail > summary.operating-line > :last-child { justify-self: end; }
+}
 @media (max-width: 360px) {
   .bill-detail > summary { flex-wrap: wrap; }
-  .bill-detail-cue { flex-basis: 100%; }
+  .bill-detail > summary::after { flex-basis: 100%; }
 }
