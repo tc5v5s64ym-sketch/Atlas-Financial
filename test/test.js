@@ -29,6 +29,8 @@ const suites = [
   ['Budget bill payment evidence integration and hooks', 'test-bill-detail-budget-integration.js'],
   ['from-today Budget savings arithmetic and evidence', 'test-from-today-funding.js'],
   ['from-today observation to Budget integration', 'test-from-today-integration.js'],
+  ['savings evidence holds and independent gates', 'test-savings-evidence.js'],
+  ['savings evidence authenticated server and Budget', 'test-savings-evidence-integration.js'],
   ['selected Budget missing-income occurrence funding', 'test-budget-missing-income-funding.js'],
   ['pending-card Budget funding and settlement conservation', 'test-budget-pending-card-funding.js'],
   ['secondary Budget failed-cap spending basis', 'test-budget-secondary-spending-basis.js'],

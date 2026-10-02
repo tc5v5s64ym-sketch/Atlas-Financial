@@ -3359,3 +3359,5 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .budget-funding-item h3 { margin: 0 0 .6rem; font-size: 1rem; color: #123b65; }
 .budget-funding-item .operating-line { gap: .75rem; }
 .budget-funding-item .operating-line > span:last-child { text-align: right; }
+.from-today-evidence { margin: .75rem 0; padding-inline-start: 1.25rem; overflow-wrap: anywhere; }
+.from-today-evidence li + li { margin-top: 1rem; }
