@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { chromium } = require('playwright');
-const { fixture } = require('./test-bill-detail');
+const { fixture, cardObservation } = require('./test-bill-detail');
 const root = path.join(__dirname, '..', 'public');
 function servedFixture() {
   return { accounts: [], ...fixture(), meta: { asOf: '2026-08-20', title: 'Synthetic bill evidence review' } };
@@ -189,8 +189,48 @@ function servedFixture() {
         await bill().scrollIntoViewIfNeeded();
         await page.screenshot({ path: path.join(output, `budget-normal-${width}.png`) });
       }
+      // Real sanitized card-payment pipeline, preserving every signed leg.
+      for (const mode of ['posted', 'split', 'unknown', 'pending', 'refund', 'reversal']) {
+        data = { accounts: [], ...cardObservation(mode) };
+        await load(); await openBills();
+        assert.equal(await details().evaluate(el => el.open), false);
+        const before = await snapshot();
+        await bill().focus(); await page.keyboard.press('Enter');
+        const printed = await paymentBody().innerText();
+        if (['posted', 'split', 'unknown'].includes(mode)) {
+          assert.match(printed, mode === 'split' ? /\$-125\.00 \(credit\)/ : /\$-250\.00 \(credit\)/);
+          assert.match(printed, /Actual\s+\$-250\.00/);
+          assert.match(printed, /sign alone does not identify a payment, refund or reversal/);
+          assert.match(await bill().locator(':scope > span:last-child').innerText(), /about −\$250.00/);
+          if (mode === 'split') assert.equal((printed.match(/\(credit\)/g) || []).length, 2);
+        } else {
+          assert.match(printed, /Transaction evidence is unavailable/);
+          assert.doesNotMatch(printed, /Transaction amount|\(credit\)/);
+        }
+        assert.doesNotMatch(printed, /Synthetic private note|8101|8102|8002/);
+        assert.equal(await snapshot(), before);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await tap(bill());
+        assert.equal(await details().evaluate(el => el.open), false);
+      }
+      // Signed evidence never trusts a direction/type hint. Zero is unknown;
+      // a pending linked credit is explicitly not a posted payment.
+      for (const [amount, pending, direction] of [[250, false, 'debit'], [0, false, 'direction unavailable'], [-250, true, 'credit']]) {
+        data = { accounts: [], ...cardObservation() };
+        Object.assign(data.liveOverlay.currentPeriodActuals.transactions[0], { amount, pending,
+          kindHint: '<img src=x onerror="window.hacked=true">', direction: '<svg onload=bad>', notes: 'PRIVATE SIGN NOTE' });
+        await load(); await openBills(); await tap(bill());
+        const printed = await paymentBody().innerText();
+        assert.ok(printed.includes(`${amount < 0 ? '$-250.00' : amount > 0 ? '$250.00' : '$0.00'} (${direction})`));
+        assert.match(printed, /Actual\s+\$-250\.00/);
+        if (pending) assert.match(printed, /Pending — not a posted payment/);
+        assert.doesNotMatch(printed, /PRIVATE|onerror|onload/);
+        assert.equal(await details().locator('img,svg,script').count(), 0);
+        assert.equal(await page.evaluate(() => window.hacked === true), false);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      }
       await context.close();
-      console.log(`PASS integrated Budget bill evidence: ${width}px, native keyboard/touch, badges, nested steps, refresh/navigation, period identity, unavailable and hostile evidence`);
+      console.log(`PASS integrated Budget bill evidence: ${width}px, native keyboard/touch, badges, nested steps, refresh/navigation, period identity, signed debit/credit, pending/split/refund/reversal, unavailable and hostile evidence`);
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []); assert.deepEqual(writes, []);
   } finally {

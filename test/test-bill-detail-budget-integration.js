@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const F = require('../public/forecast');
 const Detail = require('../public/bill-detail');
-const { fixture, publication } = require('./test-bill-detail');
+const { fixture, cardObservation, publication } = require('./test-bill-detail');
 const data = fixture();
 const before = JSON.stringify(data);
 const advice = publication(data), forecastBefore = JSON.stringify(advice);
@@ -32,7 +32,7 @@ assert.match(html, /Planned<\/dt><dd>\$100.00/);
 assert.match(html, /Actual<\/dt><dd>\$97.50/);
 assert.match(html, /Remaining<\/dt><dd>\$0.00/);
 assert.match(html, /Transaction date<\/dt><dd>2026-08-18/);
-assert.match(html, /Transaction amount<\/dt><dd>\$97.50/);
+assert.match(html, /Transaction amount<\/dt><dd>\$97.50 \(debit\)/);
 assert.match(html, /Transaction account<\/dt><dd>Synthetic bills account/);
 assert.doesNotMatch(html, /tx-1|<details[^>]*\bopen\b/);
 
@@ -67,6 +67,23 @@ assert.doesNotMatch(undated, /data-bill-date=|Transaction date/);
 assert.equal(JSON.stringify(data), before);
 assert.equal(JSON.stringify(advice), forecastBefore);
 assert.equal(JSON.stringify(publication(data)), forecastBefore);
+for (const mode of ['posted', 'split', 'unknown', 'pending', 'refund', 'reversal']) {
+  const card = cardObservation(mode), advice = publication(card);
+  const before = JSON.stringify({ data: card, advice });
+  context.served = card;
+  context.period = advice.defaultView.calendarPeriods[0];
+  const output = render();
+  if (mode === 'posted' || mode === 'split' || mode === 'unknown') {
+    assert.match(output, mode === 'split' ? /\$-125\.00 \(credit\)/ : /\$-250\.00 \(credit\)/);
+    assert.match(output, /Actual<\/dt><dd>\$-250\.00/);
+    assert.match(output, /about −\$250.00<\/span><\/summary>/, 'Forecast movement remains its supplied outflow');
+    assert.match(output, /sign alone does not identify a payment, refund or reversal/);
+  } else {
+    assert.match(output, /Transaction evidence is unavailable/);
+    assert.doesNotMatch(output, /\(credit\)/);
+  }
+  assert.equal(JSON.stringify({ data: card, advice: publication(card) }), before);
+}
 const document = fs.readFileSync(require.resolve('../public/index.html'), 'utf8');
 assert.match(document, /href="\/bill-detail.css"/);
 assert.ok(document.indexOf('src="/bill-detail.js"') < document.indexOf('src="/plan.js"'));

@@ -116,13 +116,15 @@
     const reason = found.reason === 'conflict' ? ' The linked records conflict.' : '';
     const payments = found.payments.map(payment => '<li><dl>'
       + fact('Transaction date', payment.date)
-      + fact('Transaction amount', money(payment.amount))
+      + fact('Transaction amount', money(payment.amount) + ' ('
+        + (payment.amount > 0 ? 'debit' : payment.amount < 0 ? 'credit' : 'direction unavailable') + ')')
       + fact('Transaction account', accountLabel(payment.account, data))
       + fact('Transaction state', payment.pending ? 'Pending — not a posted payment' : 'Posted')
       + '</dl></li>').join('');
     const proof = payments
       ? '<p>Linked transaction evidence · observation as of ' + escape(found.asOf)
         + '</p><ul class="bill-detail-payments">' + payments + '</ul>'
+        + '<p>Debits are positive and credits negative for the transaction account. A card payment may be a credit; the sign alone does not identify a payment, refund or reversal.</p>'
         + '<p>Transaction state does not change Forecast’s published bill status or amounts.</p>'
       : '<p>' + missing + reason + ' Missing evidence does not mean unpaid.</p>';
     const dateAttr = date(row.date) ? ' data-bill-date="' + escape(row.date) + '"' : '';
