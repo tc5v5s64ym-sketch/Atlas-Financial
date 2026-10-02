@@ -2660,7 +2660,11 @@
     const cents = amount => Math.round(Number(amount) * 100);
     const dollars = amount => amount / 100;
     const floorCents = amount => Math.floor(Number(amount) * 100 + 0.000001);
+    const fromToday = periodBasis && periodBasis.get(asOf)?.fromToday === true;
     const paydayDates = occurrences(payroll, asOf, sim.end);
+    // Budget may seed this same serial allocator with evidenced cash today.
+    // This is a proposal date, never a fabricated payroll occurrence.
+    if (fromToday && paydayDates[0] !== asOf) paydayDates.unshift(asOf);
     if (!paydayDates.length) return unavailable('No future Seaspan payday is in the Forecast cash path.');
     const published = new Map((plans || []).map(row => [row.id, row]));
     const candidates = seq.filter(row => row && row.date && row.date >= asOf
@@ -2733,11 +2737,11 @@
       if (periodBasis) {
         const basis = periodBasis.get(period.date);
         if (!basis || basis.end !== period.end || !Number.isFinite(basis.capacity)
-            || Math.abs(fresh - cents(basis.capacity)) > 1) {
+            || Math.abs(fresh - cents(basis.walkCapacity ?? basis.capacity)) > 1) {
           return unavailable('The funding cash walk does not reconcile to the selected Budget period.');
         }
-        // This publication assigns period income, not opening cash. Opening
-        // cash still protects the walk, but cannot become new income/funding.
+        // Future rows assign period income. Only the explicit from-today
+        // seed can assign evidenced opening cash; neither invents savings.
         period.capacity = Math.max(0, cents(basis.capacity));
       }
       period.cashUpper = upper;
@@ -10469,7 +10473,13 @@
         contribution: null, cumulativeProposed: null, remainingGap: null, actualSaved: null })));
     const ordered = (periods || []).filter(p => p && p.end >= asOf)
       .sort((a, b) => a.start.localeCompare(b.start));
+    const current = ordered.find(p => p.start <= asOf && p.end >= asOf);
+    const todayUnavailable = reason => ({ status: 'unavailable', asOf,
+      source: 'Forecast.planSpendPaydayFunding', basis: 'Budget-from-today',
+      reason, contribution: null, trust: 'unavailable', actualSaved: null,
+      originalPaydayPlan: null, items: roster, periods: [] });
     const unavailable = reason => {
+      if (current && !current.fromTodayFunding) current.fromTodayFunding = todayUnavailable(reason);
       for (const p of periods || []) p.plannedCostFunding = {
         status: 'unavailable', reason, contribution: null, trust: 'unavailable',
         actualSaved: null, originalPaydayPlan: null, items: roster,
@@ -10666,6 +10676,113 @@
           .reduce((n, r) => n + (r.planned != null ? r.planned : r.amount), 0), 0);
         b.capacity = roundCent(b.capacity + b.billPayments);
       }
+      // Evolve the same Budget walk and serial allocator for a separate
+      // current-cash proposal. Keep the income-only payday publication below
+      // intact, including its unavailable original snapshot.
+      if (current) {
+        const cashRows = (plan.startingCash?.breakdown || [])
+          .filter(r => r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
+        const cashKnown = plan.opening?.asOf === asOf && cashRows.length > 0
+          && new Set(cashRows.map(r => r.id)).size === cashRows.length
+          && cashRows.every(r => finite(r.value) && !['unknown', 'unavailable'].includes(r.confidence)
+            && (!r.evidenceDate || financialDate(r.evidenceDate) === asOf));
+        const currentItems = current.householdBudget || [];
+        const evidenceKnown = actuals && Array.isArray(actuals.transactions)
+          && actuals.observationAsOf === asOf && actuals.coverageStart
+          && actualsCoverageState(asOf, current.start, opts).remainingClaim === 'precise'
+          && transactions.every(tx => tx && tx.id != null && tx.id !== '' && finite(tx.amount))
+          && new Set(transactions.map(tx => String(tx.id))).size === transactions.length
+          && currentItems.every(r => finite(r.hold) && finite(r.spent)
+            && !(r.pendingRecon || []).some(unresolvedPendingSpend));
+        if (opts.operatingPlan === 'unavailable' || !cashKnown || !evidenceKnown) {
+          current.fromTodayFunding = todayUnavailable(opts.operatingPlan === 'unavailable'
+            ? opts.operatingPlanNote || 'Current cash evidence is stale; refresh before setting money aside.'
+            : !cashKnown ? 'Dated, complete household chequing cash is unavailable.'
+              : 'Current-period spending evidence is incomplete; money available from today is unknown.');
+        } else {
+          // Even on payday, observed consumption has already happened. Do
+          // not replay it, or add today's scheduled salary to observed cash.
+          const remaining = roundCent(currentItems.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
+          const forwardDaily = new Map(daily);
+          const days = diffDays(asOf, current.end) + 1, pennies = Math.round(remaining * 100);
+          for (let i = 0; i < days; i++) forwardDaily.set(addDays(asOf, i),
+            (Math.floor(pennies * (i + 1) / days) - Math.floor(pennies * i / days)) / 100);
+          const forwardOpts = Object.assign({}, walkOpts, {
+            injections: [], budgetHouseholdDaily: forwardDaily,
+            incomeOccurrenceAdjust: (stream, date) => date === asOf
+              ? { amount: 0, confidence: 'confirmed' } : walkOpts.incomeOccurrenceAdjust(stream, date),
+            additionalIncomeEvents: walkOpts.additionalIncomeEvents.filter(e => e.date > asOf),
+          });
+          const forwardSim = simulate(plan, asOf, forwardOpts);
+          const forwardBasis = new Map(basis);
+          const events = forwardSim.events.filter(e => cashWalkDate(e, asOf) <= current.end);
+          const costIds = new Set(seq.filter(c => c.date >= asOf && c.date <= current.end
+            && c.need != null && c.flexibility !== 'optional').map(c => c.id));
+          const cash = startingCashAmount(plan);
+          const payments = events.filter(e => costIds.has(e.id)
+            && (e.kind === 'commitment' || e.kind === 'bill' || e.kind === 'reserve'));
+          const costPayments = roundCent(payments.reduce((s, e) => s - e.amount, 0));
+          const income = roundCent(events.filter(e => e.kind === 'income').reduce((s, e) => s + e.amount, 0));
+          const closing = forwardSim.daily.find(d => d.date === current.end).balance;
+          const walkCapacity = roundCent(closing - cash + costPayments);
+          // Later deposits protect the walk but cannot be set aside now.
+          const capacity = roundCent(cash + walkCapacity - income - forwardSim.buffer);
+          const deductions = roundCent(income - walkCapacity);
+          const bills = roundCent(deductions - remaining);
+          forwardBasis.set(asOf, { fromToday: true, end: current.end,
+            capacity, walkCapacity });
+          const forward = planSpendPaydayFunding(plan, asOf, forwardSim, seq, [], null, forwardBasis);
+          if (forward.status === 'unavailable') current.fromTodayFunding = todayUnavailable(forward.reason);
+          else {
+            const trust = periodWaterfallCombinedTrust(forward.fundingTrust, basisTrust,
+              cashRows.some(r => r.confidence === 'estimated' || r.status === 'estimated')
+                ? 'estimated' : 'calculated');
+            const cumulative = new Map();
+            const rows = forward.paydays.map(row => {
+              for (const a of row.allocations) cumulative.set(a.id,
+                (cumulative.get(a.id) || 0) + Math.round(a.amount * 100));
+              return Object.assign({}, row, { items: forward.costs.map(c => ({
+                id: c.id, label: c.label, date: c.date, confidence: c.confidence || 'estimated',
+                cost: c.baseRequirement, ceiling: c.ceiling, actualSaved: null,
+                contribution: row.allocations.find(a => a.id === c.id)?.amount || 0,
+                cumulativeProposed: (cumulative.get(c.id) || 0) / 100,
+                remainingGap: roundCent(c.baseRequirement - (cumulative.get(c.id) || 0) / 100),
+                projectedFullyFunded: c.projectedFullyFunded,
+              })) });
+            });
+            const first = rows[0];
+            const gapLabels = forward.gap?.affected.map(id => roster.find(r => r.id === id)?.label || id) || [];
+            const barrier = forward.gap ? 'Proposals stop after the protected funding gap on '
+              + forward.gap.payday + ': $' + forward.gap.shortBy.toFixed(2)
+              + ' short' + (gapLabels.length ? ' for ' + gapLabels.join(', ') : '')
+              + '. Later contributions are unavailable until that earlier gap is resolved.' : null;
+            const published = new Map(rows.map(r => [r.payday, r]));
+            const dates = [asOf, ...full.map(p => p.start).filter(d => d > asOf)];
+            current.fromTodayFunding = { status: forward.status, asOf,
+              source: forward.source, basis: 'Budget-from-today', trust,
+              through: end, currentThrough: current.end, observationAsOf: actuals.observationAsOf,
+              cashAsOf: plan.opening.asOf, currentCash: cash,
+              operatingBills: bills, remainingHousehold: remaining,
+              requiredOperatingCash: roundCent(deductions + forwardSim.buffer),
+              operatingShortfall: roundCent(Math.max(0, -capacity)),
+              availableNow: Math.max(0, Math.min(first.capacity, first.cashCapacity)),
+              contribution: first.contribution,
+              cashAfterProposal: roundCent(cash - first.contribution),
+              futureIncomeThisPeriod: income,
+              actualSaved: null, originalPaydayPlan: null, gap: forward.gap, reason: barrier,
+              items: first.items,
+              unscheduled: roster.filter(r => !forward.costs.some(c => c.id === r.id)).map(r => ({
+                ...r, reason: seq.find(c => c.id === r.id)?.flexibility === 'optional'
+                  ? 'Outside protected funding schedule.' : !r.date
+                    ? 'Planning date not established; its protected requirement remains reserved.'
+                    : 'Outside the supported funding dates.',
+              })),
+              periods: dates.map(date => published.get(date) || { payday: date,
+                status: 'unavailable', contribution: null, items: [], reason: barrier }),
+            };
+          }
+        }
+      }
       const schedule = planSpendPaydayFunding(plan, asOf, sim, seq, plans, null, basis);
       if (!schedule || schedule.status === 'unavailable') return unavailable(
         schedule && schedule.reason || 'Budget funding schedule unavailable.');
@@ -10718,7 +10835,11 @@
         status: 'unavailable', contribution: null, trust: 'unavailable', actualSaved: null,
         originalPaydayPlan: null, items: roster,
         reason: p.start < asOf ? 'This period has no original funding snapshot; it has not been reconstructed.'
-          : 'No complete funding schedule was published for this period.',
+          : schedule.gap ? 'Proposals stop after the protected funding gap on ' + (schedule.gap.payday || schedule.gap.cashDate)
+            + ': $' + schedule.gap.shortBy.toFixed(2) + ' short for '
+            + schedule.gap.affected.map(id => roster.find(r => r.id === id)?.label || id).join(', ')
+            + '. Resolve that earlier gap before later contributions are available.'
+            : 'No complete funding schedule was published for this period.',
       };
     } catch (e) {
       unavailable('Forecast could not reconcile the Budget funding cash walk.');

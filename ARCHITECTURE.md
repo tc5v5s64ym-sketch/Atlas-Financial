@@ -827,6 +827,25 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 
 ### Budget savings-display amendment — owner direction 2026-09-30
 
+Owner dispatch 2026-10-02 adds the separate **From today** proposal:
+`Forecast.recommend.payPeriodViews[].fromTodayFunding` on the active period.
+`publishBudgetPeriodFunding` evolves the same `Forecast.simulate` Budget-basis
+walk and `Forecast.planSpendPaydayFunding` serial allocator with a dated
+current-cash seed. The seed uses evidenced household chequing, remaining
+Budget holds after observed consumption, remaining cash obligations and the
+existing operating floor. Already-received income is in cash; same-day
+scheduled income and proposed recovery injections are not added to that seed.
+Later receipts cannot increase today's contribution capacity. Future periods
+retain their Budget income/bill/household capacity and supported payroll horizon.
+The original payday publication stays separate and is never reconstructed.
+The page reprints contributions, cumulative proposals, remaining requirements,
+dated evidence and the first protected gap; later rows stay unavailable and
+name that earlier barrier. These remain earmarks, not a ledger, transfers,
+actual saved balances, bucket ownership or silver attribution. Missing cash or
+spending evidence, unresolved pending cash and overdue protected principal
+withhold the proposal. The existing undated protection and deadline/priority
+rules remain in the incumbent allocator. No financial input or write gate moves.
+
 Dale authorized the selected Budget pay-period waterfall to show what each
 period proposes to fund and when silver proceeds would be needed. Source:
 owner Budget dispatch through ChatGPT, 2026-09-30:
