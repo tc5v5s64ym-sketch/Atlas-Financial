@@ -1908,6 +1908,14 @@ function periodBillLine(row) {
     : 'still due';
   const amount = glanceSignedMoney(glanceMoney(row, kind));
   const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
+  if (typeof BillDetail !== 'undefined') {
+    // App.data is this render's served packet, also used by renderPlan above.
+    // The disclosure only reprints Forecast rows and exact sanitized links.
+    return BillDetail.html(row, App.data, {
+      label: glanceLineLabel(row, status),
+      amount: amount != null ? about + amount : '—', status,
+    });
+  }
   const dateAttr = row.date && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
     ? ` data-bill-date="${row.date}"` : '';
   return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}"${dateAttr}>
