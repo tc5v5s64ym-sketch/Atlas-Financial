@@ -21,6 +21,7 @@ const LivePlan = require('../scripts/live-plan.js');
 const Assistant = require('../scripts/assistant-packet.js');
 const AssistantMcp = require('../scripts/assistant-mcp.js');
 const AssistantOAuth = require('../scripts/assistant-oauth.js');
+const LunchMoney = require('../scripts/assistant-lunchmoney.js');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const {
   StreamableHTTPClientTransport,
@@ -300,8 +301,77 @@ async function startOAuthIssuer() {
   };
 }
 
+async function startLunchMoneyStub() {
+  let tx = {
+    id: 71, date: '2026-10-01', amount: '19.99', currency: 'cad',
+    payee: 'Synthetic Shop', notes: null, category_id: 3,
+    plaid_account_id: 4, manual_account_id: null, is_pending: false, status: 'reviewed',
+  };
+  const categories = [{ id: 3, name: 'Groceries' }, { id: 8, name: 'Household' }];
+  let hits = 0;
+  const server = http.createServer((req, res) => {
+    hits += 1;
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const p = url.pathname.replace(/^\/v2/, '') || '/';
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      let body = {};
+      if (chunks.length) {
+        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { body = {}; }
+      }
+      let data;
+      if (req.method === 'GET' && p === '/categories') data = { categories };
+      else if (req.method === 'GET' && p.startsWith('/categories/')) {
+        data = categories.find(c => c.id === Number(p.split('/').pop()));
+      } else if (req.method === 'GET' && p === '/plaid_accounts') {
+        data = { plaid_accounts: [{ id: 4, name: 'Bank' }] };
+      } else if (req.method === 'GET' && p === '/manual_accounts') {
+        data = { manual_accounts: [] };
+      } else if (req.method === 'GET' && p === '/transactions') {
+        data = { transactions: [tx], has_more: false };
+      } else if (req.method === 'GET' && p.startsWith('/transactions/')) {
+        data = tx;
+      } else if (req.method === 'PUT' && p.startsWith('/transactions/')) {
+        Object.assign(tx, body);
+        data = tx;
+      } else {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: 'not found' }));
+        return;
+      }
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify(data));
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.listen(0, '127.0.0.1', resolve);
+    server.on('error', reject);
+  });
+  return {
+    base: `http://127.0.0.1:${server.address().port}/v2`,
+    hits: () => hits,
+    resetHits: () => { hits = 0; },
+    close: () => new Promise(done => server.close(() => done())),
+  };
+}
+
+async function withOfficialMcp(resource, token, fn) {
+  const client = new Client({ name: 'atlas-oauth-proof', version: '1.0.0' });
+  const transport = new StreamableHTTPClientTransport(new URL(resource), {
+    requestInit: { headers: { authorization: `Bearer ${token}` } },
+  });
+  try {
+    await client.connect(transport);
+    return await fn(client);
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
 async function withOAuthAtlas(fn) {
   const oauth = await startOAuthIssuer();
+  const lunchMoney = await startLunchMoneyStub();
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   const resource = `${base}/assistant/mcp`;
@@ -312,13 +382,16 @@ async function withOAuthAtlas(fn) {
     ATLAS_MCP_RESOURCE_URL: resource,
     ATLAS_OAUTH_ISSUER: oauth.issuer,
     ATLAS_OAUTH_JWKS_URI: oauth.jwksUri,
+    LUNCHMONEY_ACCESS_TOKEN: 'synthetic-readonly-token-not-real',
+    ATLAS_LUNCHMONEY_API_BASE: lunchMoney.base,
     PORT: String(port),
   }));
   try {
-    await fn({ base, resource, oauth, atlas });
+    await fn({ base, resource, oauth, atlas, lunchMoney });
   } finally {
     await atlas.stop();
     await oauth.close();
+    await lunchMoney.close();
   }
 }
 
@@ -908,6 +981,9 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       'MCP transport does not call Forecast or recompute cash');
     ok(/assistant-packet/.test(mcpSrc) && /looksSanitized/.test(mcpSrc),
       'MCP transport consumes the incumbent packet sanitizer');
+    ok(/scopeDenial/.test(mcpSrc)
+        && mcpSrc.indexOf('scopeDenial') < mcpSrc.indexOf('.invoke('),
+      'MCP transport enforces Lunch Money operation scopes before dispatch');
   }
 
   console.log('\n=== OAuth MCP fails closed when configuration is absent ===');
@@ -1014,7 +1090,7 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
   });
 
   console.log('\n=== standards-compatible OAuth protects the one MCP tool ===');
-  await withOAuthAtlas(async ({ base, resource, oauth }) => {
+  await withOAuthAtlas(async ({ base, resource, oauth, lunchMoney }) => {
     async function mcp(headers, body) {
       return fetch(resource, {
         method: 'POST',
@@ -1041,9 +1117,11 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         && metadata.authorization_servers.length === 1
         && metadata.authorization_servers[0] === oauth.issuer,
       'protected-resource metadata binds the MCP resource to one external issuer');
-    ok(metadata.scopes_supported.length === 2
-        && metadata.scopes_supported[0] === AssistantMcp.REQUIRED_SCOPE,
-      'protected-resource metadata advertises only atlas.current.read');
+    ok(metadata.scopes_supported.length === 3
+        && metadata.scopes_supported[0] === AssistantMcp.REQUIRED_SCOPE
+        && metadata.scopes_supported.includes(LunchMoney.READ_SCOPE)
+        && metadata.scopes_supported.includes(LunchMoney.WRITE_SCOPE),
+      'protected-resource metadata advertises packet read plus distinct ledger read/write scopes');
 
     const none = await mcp({}, initialize);
     const challenge = none.headers.get('www-authenticate') || '';
@@ -1127,13 +1205,40 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
           && wrapped.writesCanonicalState === false
           && wrapped.productionWrite === false,
         'MCP packet preserves Forecast authority and declares no writes');
+      lunchMoney.resetHits();
+      const deniedCatalog = await client.callTool({ name: 'get_lunchmoney_catalog', arguments: {} });
+      ok(deniedCatalog.isError === true
+          && deniedCatalog.structuredContent.reason === 'transaction-read-scope-required',
+        'packet-only OAuth token cannot read the Lunch Money catalog');
+      const deniedQuery = await client.callTool({
+        name: 'get_lunchmoney_transactions',
+        arguments: { startDate: '2026-10-01', endDate: '2026-10-02' },
+      });
+      ok(deniedQuery.isError === true
+          && deniedQuery.structuredContent.reason === 'transaction-read-scope-required',
+        'packet-only OAuth token cannot read Lunch Money transactions');
+      const deniedPrepare = await client.callTool({
+        name: 'prepare_lunchmoney_edit',
+        arguments: { transactionRef: 'tx-' + 'a'.repeat(24), changes: { notes: 'no' } },
+      });
+      ok(deniedPrepare.isError === true
+          && deniedPrepare.structuredContent.reason === 'transaction-write-scope-required',
+        'packet-only OAuth token cannot prepare Lunch Money edits');
       const deniedEdit = await client.callTool({ name: 'apply_lunchmoney_edit',
         arguments: { previewId: 'edit-' + 'a'.repeat(48), confirmed: true } });
       ok(deniedEdit.isError === true && deniedEdit.structuredContent.reason === 'transaction-write-scope-required',
-        'read-only OAuth client cannot invoke the real provider write tool');
+        'packet-only OAuth token cannot apply Lunch Money edits');
+      ok(lunchMoney.hits() === 0,
+        'packet-only Lunch Money denials never reach the provider');
+      const catalogTool = listed.tools.find(tool => tool.name === 'get_lunchmoney_catalog');
+      const queryTool = listed.tools.find(tool => tool.name === 'get_lunchmoney_transactions');
+      ok(catalogTool._meta.securitySchemes[0].scopes.includes(LunchMoney.READ_SCOPE)
+          && queryTool._meta.securitySchemes[0].scopes.includes(LunchMoney.READ_SCOPE)
+          && !catalogTool._meta.securitySchemes[0].scopes.includes(LunchMoney.WRITE_SCOPE),
+        'lookup tools advertise the distinct ledger-read scope');
       const writeTool = listed.tools.find(tool => tool.name === 'apply_lunchmoney_edit');
       ok(writeTool.annotations.readOnlyHint === false && writeTool.annotations.idempotentHint === false
-        && writeTool._meta.securitySchemes[0].scopes.includes('atlas.transactions.write'),
+        && writeTool._meta.securitySchemes[0].scopes.includes(LunchMoney.WRITE_SCOPE),
         'write tool advertises distinct write scope and non-idempotent semantics');
       let refused = false;
       try {
@@ -1148,6 +1253,66 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     } finally {
       await client.close().catch(() => {});
     }
+
+    const readToken = await oauth.sign(resource, {
+      scope: `${AssistantMcp.REQUIRED_SCOPE} ${LunchMoney.READ_SCOPE}`,
+    });
+    await withOfficialMcp(resource, readToken, async readClient => {
+      lunchMoney.resetHits();
+      const catalog = await readClient.callTool({ name: 'get_lunchmoney_catalog', arguments: {} });
+      ok(catalog.isError === false && catalog.structuredContent.status === 'ok'
+          && catalog.structuredContent.categories.length === 2,
+        'ledger-read OAuth token can read the Lunch Money catalog');
+      const queried = await readClient.callTool({
+        name: 'get_lunchmoney_transactions',
+        arguments: { startDate: '2026-10-01', endDate: '2026-10-02' },
+      });
+      ok(queried.isError === false && queried.structuredContent.matchedCount === 1
+          && queried.structuredContent.rows[0].payee === 'Synthetic Shop',
+        'ledger-read OAuth token can read Lunch Money transactions');
+      ok(lunchMoney.hits() > 0, 'authorized ledger reads reach the provider stub');
+      const deniedWrite = await readClient.callTool({
+        name: 'prepare_lunchmoney_edit',
+        arguments: {
+          transactionRef: queried.structuredContent.rows[0].transactionRef,
+          changes: { notes: 'no' },
+        },
+      });
+      ok(deniedWrite.isError === true
+          && deniedWrite.structuredContent.reason === 'transaction-write-scope-required',
+        'ledger-read OAuth token cannot prepare Lunch Money edits');
+    });
+
+    const writeToken = await oauth.sign(resource, {
+      scope: `${AssistantMcp.REQUIRED_SCOPE} ${LunchMoney.READ_SCOPE} ${LunchMoney.WRITE_SCOPE}`,
+    });
+    await withOfficialMcp(resource, writeToken, async writeClient => {
+      const catalog = await writeClient.callTool({ name: 'get_lunchmoney_catalog', arguments: {} });
+      const queried = await writeClient.callTool({
+        name: 'get_lunchmoney_transactions',
+        arguments: { startDate: '2026-10-01', endDate: '2026-10-02' },
+      });
+      const preview = await writeClient.callTool({
+        name: 'prepare_lunchmoney_edit',
+        arguments: {
+          transactionRef: queried.structuredContent.rows[0].transactionRef,
+          changes: {
+            categoryRef: catalog.structuredContent.categories[1].categoryRef,
+            notes: 'Owner confirmed correction',
+          },
+        },
+      });
+      ok(preview.isError === false && preview.structuredContent.status === 'preview'
+          && preview.structuredContent.providerWrite === false,
+        'write-scoped OAuth token can prepare an exact Lunch Money edit');
+      const applied = await writeClient.callTool({
+        name: 'apply_lunchmoney_edit',
+        arguments: { previewId: preview.structuredContent.previewId, confirmed: true },
+      });
+      ok(applied.isError === false && applied.structuredContent.status === 'applied'
+          && applied.structuredContent.verifiedByReadback === true,
+        'write-scoped OAuth token can apply a confirmed Lunch Money edit');
+    });
 
     const getMcp = await fetch(resource, {
       headers: { authorization: `Bearer ${accessToken}` }, redirect: 'manual',

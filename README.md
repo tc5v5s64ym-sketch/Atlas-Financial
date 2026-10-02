@@ -56,7 +56,9 @@ is still the whole financial picture of two people.
   protected-resource metadata at `/.well-known/oauth-protected-resource`,
   verifies the exact configured issuer identifier, signature/JWKS, audience,
   expiry/not-before, and scope on every request. Lunch Money tools also require
-  an authenticated JWT `sub`; preview/apply require `atlas.transactions.write`.
+  an authenticated JWT `sub`; catalog/query require `atlas.transactions.read`
+  and preview/apply require `atlas.transactions.write`. `atlas.current.read`
+  does not grant ledger access.
   Only category/notes edits and amount-conserving splits are supported.
   Opaque access tokens are not supported.
 - OAuth login, consent, authorization-code + PKCE, client registration, token
@@ -206,10 +208,11 @@ privacy-guard CI job (GitHub API / connector writes).
 ### Direct Lunch Money ChatGPT tools (owner authorization 2026-10-02)
 
 Deploy the updated server, configure the external issuer to grant
-`atlas.transactions.write` alongside `atlas.current.read` for the exact MCP
-resource, then reconnect/refresh Atlas Financial in ChatGPT so tool discovery
-and consent include the new scope. The issuer must provide a stable authenticated
-`sub`. Reuse the server-side Lunch Money credential; never paste it into chat.
+`atlas.transactions.read` and, for edits, `atlas.transactions.write` alongside
+`atlas.current.read` for the exact MCP resource, then reconnect/refresh Atlas
+Financial in ChatGPT so tool discovery and consent include the new scopes. The
+issuer must provide a stable authenticated `sub`. Reuse the server-side Lunch
+Money credential; never paste it into chat.
 
 Call `get_lunchmoney_catalog` for account/category references, then
 `get_lunchmoney_transactions` with explicit start/end dates. These tools expose

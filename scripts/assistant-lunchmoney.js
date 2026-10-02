@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const z = require('zod/v4');
 const Provider = require('./provider-observe.js');
 const Credentials = require('./local-credentials.js');
+const READ_SCOPE = 'atlas.transactions.read';
 const WRITE_SCOPE = 'atlas.transactions.write';
 const TTL = 10 * 60 * 1000;
 const MAX_REFS = 10000;
@@ -34,6 +35,21 @@ function cents(value) {
 }
 function fingerprint(tx) { return crypto.createHash('sha256').update(JSON.stringify(tx)).digest('hex'); }
 function fail(reason) { return { status: 'unavailable', reason, writesAtlasState: false }; }
+function requiredScope(operation) {
+  if (operation === 'prepare' || operation === 'apply') return WRITE_SCOPE;
+  if (operation === 'catalog' || operation === 'query') return READ_SCOPE;
+  return null;
+}
+function scopeDenial(operation, auth = {}) {
+  const required = requiredScope(operation);
+  if (!required) return fail('invalid-arguments');
+  if (!(auth.scopes || []).includes(required)) {
+    return fail(required === WRITE_SCOPE
+      ? 'transaction-write-scope-required'
+      : 'transaction-read-scope-required');
+  }
+  return null;
+}
 function safeText(value) { return typeof value === 'string' ? value.slice(0, 2000) : null; }
 
 function createService(options = {}) {
@@ -244,7 +260,8 @@ function createService(options = {}) {
   }
   async function invoke(operation, args, auth = {}) {
     if (!auth.principal) return fail('authenticated-subject-required');
-    if ((operation === 'prepare' || operation === 'apply') && !(auth.scopes || []).includes(WRITE_SCOPE)) return fail('transaction-write-scope-required');
+    const denied = scopeDenial(operation, auth);
+    if (denied) return denied;
     const parsed = schemas[operation]?.safeParse(args);
     if (!parsed?.success) return fail('invalid-arguments');
     try { return await ({ catalog, query, prepare, apply })[operation](parsed.data, auth); }
@@ -252,4 +269,4 @@ function createService(options = {}) {
   }
   return { invoke };
 }
-module.exports = { WRITE_SCOPE, TTL, schemas, cents, createService };
+module.exports = { READ_SCOPE, WRITE_SCOPE, TTL, schemas, cents, requiredScope, scopeDenial, createService };

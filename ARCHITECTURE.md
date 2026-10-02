@@ -1556,9 +1556,11 @@ source-account labels and pending/split/group status may be returned through
 these OAuth tools; raw provider IDs and credentials may not be returned.
 The static assistant packet and browser Talk grants are unchanged.
 
-Every direct tool requires the verified OAuth subject. Preview and apply also
-require `atlas.transactions.write`; `atlas.current.read` remains mandatory for
-MCP transport. The external issuer owns granting these scopes and consent.
+Every direct tool requires the verified OAuth subject. Catalog and query
+require the separately authorized `atlas.transactions.read` scope; preview
+and apply require `atlas.transactions.write`. `atlas.current.read` remains
+mandatory for MCP transport and does not grant Lunch Money ledger access.
+The external issuer owns granting these scopes and consent.
 Server-side provider credentials may be used only for those bounded calls.
 Opaque principal-bound references and exact previews are ephemeral, expire in
 10 minutes, and are consumed before apply. The user must see and explicitly

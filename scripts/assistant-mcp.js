@@ -94,13 +94,22 @@ function createServer(getPacket, opts = {}) {
   ];
   for (const [name, operation, description] of definitions) {
     const writeAccess = operation === 'prepare' || operation === 'apply';
-    const scopes = writeAccess ? [REQUIRED_SCOPE, LunchMoney.WRITE_SCOPE] : [REQUIRED_SCOPE];
+    const operationScope = writeAccess ? LunchMoney.WRITE_SCOPE : LunchMoney.READ_SCOPE;
+    const scopes = [REQUIRED_SCOPE, operationScope];
     server.registerTool(name, {
       title: name.replaceAll('_', ' '), description, inputSchema: LunchMoney.schemas[operation],
       annotations: { readOnlyHint: operation !== 'apply', destructiveHint: operation === 'apply',
         idempotentHint: operation !== 'apply', openWorldHint: true },
       _meta: { securitySchemes: [{ type: 'oauth2', scopes }] },
     }, async args => {
+      // Enforce operation scopes at the MCP dispatch boundary. Tool metadata
+      // advertises them but does not authorize; atlas.current.read is only the
+      // packet-transport gate and does not grant ledger access.
+      const denied = LunchMoney.scopeDenial(operation, opts.auth || {});
+      if (denied) {
+        return { content: [{ type: 'text', text: JSON.stringify(denied) }], structuredContent: denied,
+          isError: true };
+      }
       const result = opts.lunchMoney
         ? await opts.lunchMoney.invoke(operation, args, opts.auth)
         : { status: 'unavailable', reason: 'lunchmoney-not-configured' };

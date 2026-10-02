@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { createService, WRITE_SCOPE, TTL, cents } = require('../scripts/assistant-lunchmoney');
+const { createService, READ_SCOPE, WRITE_SCOPE, TTL, cents } = require('../scripts/assistant-lunchmoney');
 (async () => {
   let clock = Date.parse('2026-10-02T00:00:00Z');
   let writes = []; let ambiguous = false; let ignoreWrite = false; let ledger = null; let more = false;
@@ -26,7 +26,7 @@ const { createService, WRITE_SCOPE, TTL, cents } = require('../scripts/assistant
       else data = tx;
       return { ok: true, json: async () => structuredClone(data) };
     } });
-  const auth = { principal: 'owner', scopes: [WRITE_SCOPE] };
+  const auth = { principal: 'owner', scopes: [READ_SCOPE, WRITE_SCOPE] };
   const catalog = await service.invoke('catalog', {}, auth);
   assert.equal(catalog.status, 'ok'); assert.notEqual(catalog.accounts[0].accountRef, catalog.accounts[1].accountRef);
   const args = { startDate: '2026-10-01', endDate: '2026-10-02' };
@@ -34,6 +34,9 @@ const { createService, WRITE_SCOPE, TTL, cents } = require('../scripts/assistant
   assert.equal(JSON.stringify(lookup).includes('plaid_account_id'), false);
   const transactionRef = lookup.rows[0].transactionRef;
   const input = { transactionRef, changes: { categoryRef: catalog.categories[1].categoryRef, notes: 'Owner confirmed correction' } };
+  assert.equal((await service.invoke('catalog', {}, { principal: 'owner', scopes: [] })).reason, 'transaction-read-scope-required');
+  assert.equal((await service.invoke('query', args, { principal: 'owner', scopes: [WRITE_SCOPE] })).reason, 'transaction-read-scope-required');
+  assert.equal((await service.invoke('prepare', input, { principal: 'owner', scopes: [READ_SCOPE] })).reason, 'transaction-write-scope-required');
   assert.equal((await service.invoke('prepare', input, { principal: 'owner', scopes: [] })).status, 'unavailable');
   assert.equal((await service.invoke('prepare', input, { ...auth, principal: 'other' })).status, 'unavailable');
   const preview = await service.invoke('prepare', input, auth); assert.equal(preview.status, 'preview'); assert.equal(writes.length, 0);
