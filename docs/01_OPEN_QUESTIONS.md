@@ -11,7 +11,18 @@ the site may hold evidence about a question. They do not close it.
 
 ---
 
-## Tier 1 — Changes what the numbers mean
+## Tier 1 - Changes what the numbers mean
+
+### Savings pool setup - which two accounts, and which starting assignments?
+**Status:** OPEN · **Owner:** Dale
+The 2026-10-02 convention is approved in `ARCHITECTURE.md`, but the two real
+account identities and starting confirmed goal amounts were not supplied.
+No illustrative balance, target or assignment is household input. Existing
+goal requirements remain on commitments, yearly bills and group members.
+**What the answer changes:** an owner-authorized `plan.savingsEarmarks` snapshot
+and the incumbent provider account map, through the existing input-update / PR
+workflow. Until then the real inventory shows setup unknown. This question
+does not authorize a bank action, Lunch Money write or in-app persistent writer.
 
 ### Q1. Does the business make money?
 **Status:** OPEN · **Owner:** Dale + wife + accountant

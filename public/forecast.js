@@ -454,6 +454,189 @@
 
   const HOUSEHOLD_CHEQUING_IDS = ['chequing-a', 'chequing-b'];
   const DESIGNATED_RESERVE_ID = 'savings';
+  // Confirmed purpose only. The observer owns the ephemeral cash evidence;
+  // Forecast reconciles it. Neither history nor a proposal is a balance.
+  const SAVINGS_INSTRUCTIONS_HELD = 'Additional savings proposals are withheld until the funding plan accounts for existing assignments and the cash used to pay each cost.';
+  const SAVINGS_ALIAS = /^[a-z][a-z0-9-]{0,63}$/;
+  function savingsCents(value, signed) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || (value < 0 && !signed)) return null;
+    const cents = Math.round(value * 100);
+    return Number.isSafeInteger(cents) && Math.abs(value * 100 - cents) < 0.000001 ? cents : null;
+  }
+  function savingsKeys(value, allowed) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      && Object.keys(value).every(key => allowed.includes(key));
+  }
+  function savingsDate(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  }
+  function savingsEarmarksEnabled(plan) {
+    const block = plan && plan.savingsEarmarks;
+    return block != null && !(savingsKeys(block, ['version', 'currency', 'pools', 'history'])
+      && block.version === 1 && block.currency === 'CAD' && Array.isArray(block.pools) && !block.pools.length
+      && Array.isArray(block.history) && !block.history.length);
+  }
+  function savingsGoal(plan, ref, asOf) {
+    const key = ref.kind + ':' + ref.id;
+    const commitments = (plan && plan.commitments) || [];
+    let rows = [];
+    if (ref.kind === 'commitment') rows = commitments.filter(c => c && c.id === ref.id);
+    if (ref.kind === 'yearly-bill') rows = ((plan && plan.bills) || [])
+      .filter(b => b && b.id === ref.id && b.frequency === 'yearly');
+    if (ref.kind === 'group') rows = commitments.filter(c => c && c.group === ref.id);
+    const group = ((plan && plan.groups) || []).filter(g => g && g.id === ref.id);
+    const resolved = rows.length > 0 && (ref.kind === 'group' || rows.length === 1)
+      && (ref.kind !== 'yearly-bill' || !commitments.some(c => c && c.id === ref.id))
+      && group.length <= 1 && new Set(rows.map(r => r.id)).size === rows.length;
+    const members = rows.map(row => 'goal:' + row.id);
+    let targetCents = 0, ceilingCents = 0, targetKnown = resolved, estimated = false;
+    for (const row of rows) {
+      const settled = ref.kind !== 'yearly-bill' && commitmentSettledBy(row, asOf);
+      const low = settled ? 0 : (row.amount != null ? row.amount : row.amountMin);
+      const high = settled ? 0 : (row.amount != null ? row.amount : row.amountMax);
+      const a = savingsCents(low), b = savingsCents(high);
+      if (a == null || b == null || b < a) targetKnown = false;
+      else {
+        targetCents += a; ceilingCents += b;
+        if (!Number.isSafeInteger(targetCents) || !Number.isSafeInteger(ceilingCents)) targetKnown = false;
+      }
+      if (row.confidence !== 'confirmed') estimated = true;
+    }
+    return { key, ref: { kind: ref.kind, id: ref.id }, resolved, members,
+      label: ref.kind === 'group' ? group[0]?.label || rows[0]?.groupLabel || ref.id : rows[0]?.label || ref.id,
+      target: targetKnown ? targetCents / 100 : null,
+      targetMax: targetKnown ? ceilingCents / 100 : null,
+      targetTrust: targetKnown ? (estimated ? 'estimated' : 'calculated') : 'unknown',
+      settled: resolved && ref.kind !== 'yearly-bill' && rows.every(r => commitmentSettledBy(r, asOf)),
+    };
+  }
+  function savingsEarmarksState(plan, asOf) {
+    const block = plan && plan.savingsEarmarks;
+    const invalid = reason => ({ status: 'invalid', reason, pools: [], history: [], latest: null });
+    if (!savingsEarmarksEnabled(plan)) return { status: 'setup-unknown', reason: 'The two savings accounts and starting goal assignments have not been confirmed.', pools: [], history: [], latest: null };
+    if (!savingsKeys(block, ['version', 'currency', 'pools', 'history']) || block.version !== 1
+        || block.currency !== 'CAD' || !Array.isArray(block.pools) || block.pools.length !== 2
+        || !Array.isArray(block.history)) return invalid('Savings configuration requires version 1, CAD, two explicit pools and confirmation history.');
+    const poolIds = new Set(), accounts = new Set();
+    const held = ((plan.startingCash && plan.startingCash.heldElsewhere) || []).map(r => r && r.id);
+    for (const pool of block.pools) {
+      if (!savingsKeys(pool, ['id', 'accountId', 'label']) || !SAVINGS_ALIAS.test(pool.id || '')
+          || !SAVINGS_ALIAS.test(pool.accountId || '') || poolIds.has(pool.id) || accounts.has(pool.accountId)
+          || HOUSEHOLD_CHEQUING_IDS.includes(pool.accountId) || held.includes(pool.accountId)
+          || pool.accountId === 'savings-dont-touch' || pool.accountId === 'amanda-debt-payments'
+          || (pool.label != null && (typeof pool.label !== 'string' || !pool.label.trim() || pool.label.length > 160))) {
+        return invalid('Each savings pool needs one distinct reserve identity; operating and excluded staging accounts cannot be repurposed.');
+      }
+      const cashRows = ((plan.startingCash && plan.startingCash.breakdown) || []).filter(r => r && r.id === pool.accountId);
+      if (cashRows.length > 1 || (cashRows.length && pool.accountId !== DESIGNATED_RESERVE_ID)) return invalid('A pool alias conflicts with an existing cash identity.');
+      poolIds.add(pool.id); accounts.add(pool.accountId);
+    }
+    let lastDate = '';
+    for (let i = 0; i < block.history.length; i++) {
+      const revision = block.history[i];
+      if (!savingsKeys(revision, ['revision', 'confirmedAt', 'source', 'pools']) || revision.revision !== i + 1
+          || !savingsDate(revision.confirmedAt) || revision.confirmedAt < lastDate
+          || typeof revision.source !== 'string' || !revision.source.trim() || revision.source.length > 200
+          || !Array.isArray(revision.pools)) return invalid('Savings history needs ordered full confirmation snapshots with date, source and revision.');
+      lastDate = revision.confirmedAt;
+      const seenPools = new Set(), claims = new Map();
+      let revisionTotal = 0;
+      for (const snapshot of revision.pools) {
+        if (!savingsKeys(snapshot, ['poolId', 'allocations']) || !poolIds.has(snapshot.poolId)
+            || seenPools.has(snapshot.poolId) || !Array.isArray(snapshot.allocations)) return invalid('A confirmation must identify each supplied pool once.');
+        seenPools.add(snapshot.poolId);
+        const seenGoals = new Set();
+        let total = 0;
+        for (const allocation of snapshot.allocations) {
+          const ref = allocation && allocation.goalRef;
+          const cents = savingsCents(allocation && allocation.amount);
+          if (!savingsKeys(allocation, ['goalRef', 'amount']) || !savingsKeys(ref, ['kind', 'id'])
+              || !['commitment', 'yearly-bill', 'group'].includes(ref.kind) || !SAVINGS_ALIAS.test(ref.id || '')
+              || cents == null) return invalid('An earmark must reference an existing goal and contain a nonnegative whole-cent confirmed amount.');
+          const goal = savingsGoal(plan, ref, asOf);
+          if (seenGoals.has(goal.key)) return invalid('A goal is repeated inside one pool.');
+          seenGoals.add(goal.key); total += cents; revisionTotal += cents;
+          if (!Number.isSafeInteger(total) || !Number.isSafeInteger(revisionTotal)) return invalid('Confirmed amounts exceed exact-cent arithmetic.');
+          for (const member of goal.members) {
+            if (claims.has(member) && claims.get(member) !== goal.key) return invalid('A group and its member cannot pledge the same purpose twice.');
+            claims.set(member, goal.key);
+          }
+        }
+      }
+    }
+    const latest = block.history[block.history.length - 1] || null;
+    return { status: 'ready', currency: block.currency, pools: block.pools, history: block.history, latest };
+  }
+  function savingsInventory(plan, asOf) {
+    const config = savingsEarmarksState(plan, asOf);
+    const packet = { status: config.status, asOf, currency: config.currency || 'CAD', reason: config.reason || null,
+      source: 'Forecast.savingsInventory', nonAdditive: true, intentSource: 'plan.savingsEarmarks',
+      incrementalInstructions: savingsEarmarksEnabled(plan) ? 'withheld' : 'incumbent',
+      instructionReason: savingsEarmarksEnabled(plan) ? SAVINGS_INSTRUCTIONS_HELD : null,
+      revision: config.latest && config.latest.revision || null, pools: [], goals: [] };
+    if (config.status !== 'ready') return packet;
+    const observation = plan.savingsPoolObservation;
+    const observationDate = observation && observation.asOf;
+    const checkDate = savingsDate(observationDate) && observationDate > asOf ? observationDate : asOf;
+    const allGoals = new Map();
+    for (const pool of config.pools) {
+      const snapshot = config.latest && config.latest.pools.find(r => r.poolId === pool.id);
+      const intentKnown = !!snapshot;
+      const allocations = (snapshot && snapshot.allocations) || [];
+      const total = allocations.reduce((sum, row) => sum + savingsCents(row.amount), 0);
+      const observed = (observation && observation.accounts || []).filter(r => r && r.accountId === pool.accountId);
+      const cash = observed.length === 1 ? observed[0] : null;
+      const valueCents = savingsCents(cash && cash.value, true);
+      const trusted = cash && cash.source === 'provider-observe:lunchmoney' && cash.currency === config.currency
+        && valueCents != null && savingsDate(cash.evidenceDate) && cash.evidenceDate === checkDate
+        && (!config.latest || config.latest.confirmedAt <= cash.evidenceDate);
+      const pendingClear = trusted && cash.pendingState === 'clear';
+      const resolved = allocations.every(a => savingsGoal(plan, a.goalRef, asOf).resolved);
+      const deficit = trusted && intentKnown ? Math.max(0, total - valueCents) : null;
+      let status = !trusted ? (cash && savingsDate(cash.evidenceDate)
+        && (cash.evidenceDate < checkDate || config.latest && config.latest.confirmedAt > cash.evidenceDate) ? 'stale' : 'cash-unknown')
+        : !intentKnown ? 'intent-unknown' : deficit > 0 ? 'deficit' : !pendingClear ? 'pending-evidence'
+          : !resolved ? 'goal-unresolved' : 'backed';
+      const reasons = { stale: 'Pool balance is stale. Confirmed intent is retained.',
+        'cash-unknown': 'Current pool cash, currency or account identity is unproven. Confirmed intent is retained.',
+        'intent-unknown': 'Starting allocations are unknown. Observed cash is not yet labelled unallocated.',
+        deficit: 'Observed cash cannot cover all confirmed earmarks. Intent is retained; individual funded claims are withheld.',
+        'pending-evidence': 'Pending pool movements or pending coverage are unresolved. Current backing is withheld.',
+        'goal-unresolved': 'An existing goal reference is unavailable. Intent is retained until that reference is reconciled.',
+        backed: 'All confirmed earmarks are backed by current observed pool cash.' };
+      const row = { id: pool.id, accountId: pool.accountId, label: pool.label || pool.id, status, reason: reasons[status],
+        observedCash: trusted ? valueCents / 100 : null, observedTrust: trusted ? 'verified' : 'unknown',
+        observedAsOf: cash && cash.evidenceDate || null, currency: config.currency,
+        intentKnown, intent: intentKnown ? total / 100 : null, intentTrust: intentKnown ? 'calculated' : 'unknown',
+        deficit: deficit == null ? null : deficit / 100, deficitTrust: deficit == null ? 'unknown' : 'calculated',
+        unallocated: status === 'backed' ? (valueCents - total) / 100 : null,
+        unallocatedTrust: status === 'backed' ? 'calculated' : 'unknown',
+        revision: config.latest && config.latest.revision || null,
+        confirmedAt: intentKnown ? config.latest.confirmedAt : null,
+        confirmationSource: intentKnown ? config.latest.source : null, allocations: [] };
+      for (const allocation of allocations) {
+        const goal = savingsGoal(plan, allocation.goalRef, asOf);
+        const funded = status === 'backed' ? allocation.amount : null;
+        const entry = { goalKey: goal.key, goalRef: goal.ref, label: goal.label, intent: allocation.amount,
+          confirmedAt: row.confirmedAt, source: row.confirmationSource, revision: row.revision,
+          backed: funded, backedTrust: funded == null ? 'unknown' : 'calculated' };
+        row.allocations.push(entry);
+        if (!allGoals.has(goal.key)) allGoals.set(goal.key, { ...goal, intentCents: 0, backedCents: 0, backingKnown: true, pools: [] });
+        const sum = allGoals.get(goal.key);
+        sum.intentCents += savingsCents(allocation.amount);
+        if (funded == null) sum.backingKnown = false; else sum.backedCents += savingsCents(funded);
+        sum.pools.push(pool.id);
+      }
+      packet.pools.push(row);
+    }
+    packet.goals = Array.from(allGoals.values()).map(goal => ({ key: goal.key, goalRef: goal.ref, label: goal.label,
+      target: goal.target, targetMax: goal.targetMax, targetTrust: goal.targetTrust, settled: goal.settled,
+      intent: goal.intentCents / 100, backed: goal.backingKnown ? goal.backedCents / 100 : null,
+      backedTrust: goal.backingKnown ? 'calculated' : 'unknown', pools: goal.pools,
+      release: 'Confirmation required; paying or reducing a goal never releases its earmark automatically.' }));
+    return packet;
+  }
   function postedHouseholdChequingCash(plan) {
     const cash = (plan && plan.startingCash) || {};
     const rows = cash.breakdown || [];
@@ -486,6 +669,18 @@
   // inventing $0 funded. Synthetic fixtures without household chequing
   // ids do not invent a designated reserve.
   function designatedReserveEvidence(plan) {
+    if (savingsEarmarksEnabled(plan)) {
+      const observation = plan.savingsPoolObservation;
+      const rows = (observation && observation.accounts || []).filter(r => r && r.accountId === DESIGNATED_RESERVE_ID);
+      const row = rows.length === 1 ? rows[0] : null;
+      const date = observation && observation.asOf;
+      if (row && savingsCents(row.value, true) != null && row.currency === 'CAD'
+          && savingsDate(date) && row.evidenceDate === date && row.pendingState === 'clear'
+          && row.source === 'provider-observe:lunchmoney') {
+        return { status: 'ready', amount: Math.max(0, row.value), present: true, nonAdditive: true };
+      }
+      return { status: 'unavailable', reason: 'Current designated reserve evidence is unproven; goal earmarks are a non-additive breakdown of the same cash.' };
+    }
     const cash = (plan && plan.startingCash) || {};
     const rows = Array.isArray(cash.breakdown) ? cash.breakdown : [];
     const matches = rows.filter(row => row && row.id === DESIGNATED_RESERVE_ID);
@@ -2643,6 +2838,7 @@
   function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation, periodBasis) {
     const unavailable = reason => ({ status: 'unavailable', reason,
       source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
+    if (savingsEarmarksEnabled(plan)) return unavailable(SAVINGS_INSTRUCTIONS_HELD);
     if (!plan || !asOf || !sim || sim.start !== asOf || !Array.isArray(sim.daily)
         || !Array.isArray(sim.events) || !Array.isArray(seq)) {
       return unavailable('The Forecast master cash path is unavailable.');
@@ -6703,8 +6899,9 @@
     if (tx.accountRole === 'household-external' || tx.accountRole === 'unmapped') {
       return null;
     }
-    if (tx.accountRole && tx.accountRole !== 'household-cash') return null;
+    if (tx.accountRole && tx.accountRole !== 'household-cash' && tx.accountRole !== 'household-reserve') return null;
     const id = String(tx.atlasAccountId || tx.accountId || tx.account || '').trim();
+    if (tx.accountRole === 'household-reserve' && SAVINGS_ALIAS.test(id)) return id;
     if (HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1) return id;
     if (id === DESIGNATED_RESERVE_ID) return id;
     return null;
@@ -10442,6 +10639,18 @@
   // estimate substitutes for those holds. This is a projection, not saved cash
   // or a reconstruction of the original payday plan.
   function publishBudgetPeriodFunding(plan, asOf, periods, opts) {
+    if (savingsEarmarksEnabled(plan)) {
+      for (const period of periods || []) {
+        period.plannedCostFunding = { status: 'unavailable', reason: SAVINGS_INSTRUCTIONS_HELD,
+          contribution: null, trust: 'unavailable', actualSaved: null, items: [] };
+        if (period.start <= asOf && period.end >= asOf) period.fromTodayFunding = {
+          status: 'unavailable', reason: SAVINGS_INSTRUCTIONS_HELD, asOf,
+          basis: 'Budget-from-today', contribution: null, trust: 'unavailable',
+          actualSaved: null, items: [], periods: [], evidenceFailures: [],
+        };
+      }
+      return;
+    }
     const finite = n => typeof n === 'number' && Number.isFinite(n);
     const seq = fundingSequence(plan, asOf, opts);
     const disabled = new Set(opts.disabled || []);
@@ -11219,6 +11428,7 @@
         fundingSequence: sequence,
         majorPlans: plans,
         planSpendPaydayFunding: planSpendFunding,
+        savingsInventory: savingsInventory(plan, asOf),
         plannedDebt: debt,
         infeasible: mode === 'infeasible' ? (infeasible || protectedAtCap.first) : null,
         // Named joint-cash obligations already in `zero.events` on the next
@@ -18212,7 +18422,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { savingsInventory, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,

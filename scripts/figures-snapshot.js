@@ -102,6 +102,19 @@ opts.fundingSources = (plan.funding || {}).options;
 opts.extraFacilities = data.revolvingExtra;
 
 const advice = F.recommend(plan, asOf, opts);
+const savings = advice.savingsInventory;
+if (savings) {
+  put('savings.setup', savings.status);
+  put('savings.incrementalInstructions', savings.incrementalInstructions);
+  for (const pool of savings.pools || []) {
+    for (const key of ['status', 'observedCash', 'observedAsOf', 'intent', 'unallocated', 'deficit']) {
+      put('savings.pool.' + pool.id + '.' + key, pool[key]);
+    }
+  }
+  for (const goal of savings.goals || []) {
+    for (const key of ['intent', 'backed', 'target', 'targetMax', 'settled']) put('savings.goal.' + goal.key + '.' + key, goal[key]);
+  }
+}
 put('plan.mode', advice.mode);
 if (advice.funding) {
   put('plan.fundingSource', advice.funding.parts.map(p => p.id).join('+'));

@@ -52,6 +52,7 @@ const CREDIT_ROLES = new Set(['revolving-credit']);
 const EXTERNAL_LIVE_ROLE = 'household-external';
 const SUPPORTED_LIVE_ROLES = {
   'household-cash': 'cash',
+  'household-reserve': 'cash',
   'revolving-credit': 'debts',
   heloc: 'debts',
   mortgage: 'debts',
@@ -151,6 +152,10 @@ function knownCanonicalIdsByCollection(data) {
   for (const row of [].concat(cash.breakdown || [], cash.heldElsewhere || [])) {
     if (row && row.id) byCollection.cash.add(String(row.id));
   }
+  const configured = Forecast.savingsEarmarksState(data && data.plan, '9999-12-31');
+  if (configured.status === 'ready') {
+    for (const pool of configured.pools) byCollection.cash.add(pool.accountId);
+  }
   for (const row of (data && data.debts) || []) {
     if (row && row.id) byCollection.debts.add(String(row.id));
   }
@@ -189,16 +194,23 @@ function assertLiveMap(mapDoc, opts) {
     if (!role || !SUPPORTED_LIVE_ROLES[role]) fail('unsupported-atlas-role');
     if (!collection || !atlasId) fail('live-account-map-invalid');
     if (SUPPORTED_LIVE_ROLES[role] !== collection) fail('live-account-map-invalid');
+    const pools = Forecast.savingsEarmarksState(opts && opts.data && opts.data.plan, '9999-12-31');
+    const configuredReserve = pools.status === 'ready' && pools.pools.some(p => p.accountId === atlasId);
+    if (role === 'household-reserve' && !configuredReserve) fail('invalid-atlas-account-id');
+    if (configuredReserve && atlasId !== 'savings' && role !== 'household-reserve') fail('unsupported-atlas-role');
     const atlasKey = collection + ':' + String(atlasId);
     if (atlasKeys.has(atlasKey)) fail('live-account-map-invalid');
     atlasKeys.add(atlasKey);
     if (known) {
       const ids = known[collection];
       if (!ids || !ids.has(String(atlasId))) fail('invalid-atlas-account-id');
+      if (role === 'household-reserve' && known.debts.has(String(atlasId))) fail('invalid-atlas-account-id');
     }
     if (role === 'household-cash' && collection === 'cash') cashIds.add(String(atlasId));
   }
-  for (const id of REQUIRED_LIVE_CASH_IDS) {
+  const required = Forecast.savingsEarmarksState(opts && opts.data && opts.data.plan, '9999-12-31').status !== 'setup-unknown'
+    ? ['chequing-a', 'chequing-b'] : REQUIRED_LIVE_CASH_IDS;
+  for (const id of required) {
     if (!cashIds.has(id)) fail('missing-required-cash-mapping');
   }
 }
@@ -3003,15 +3015,47 @@ function observationsFromMappedAccount(account, mapping, fetchedAt) {
   return out;
 }
 
-function spendableCashFromObservations(observations) {
+function spendableCashFromObservations(observations, data) {
   let cash = 0;
   for (const obs of observations) {
     if (obs.fact === 'available-credit' || obs.fact === 'limit') continue;
+    if (Forecast.savingsEarmarksState(data && data.plan, '9999-12-31').status !== 'setup-unknown'
+        && !['chequing-a', 'chequing-b'].includes(obs.canonical && obs.canonical.id)) continue;
     if (obs.canonical && obs.canonical.collection === 'cash' && obs.evidenceValue != null) {
       cash += Number(obs.evidenceValue);
     }
   }
   return Math.round(cash * 100) / 100;
+}
+
+// Sanitized account observations only. No transaction history, allocation,
+// target, inferred purpose or financial calculation enters this packet.
+function savingsPoolObservations(data, normalized, accountMap) {
+  if (!data || !data.plan || Forecast.savingsEarmarksState(data.plan, '9999-12-31').status === 'setup-unknown') return null;
+  const asOf = dateOnly(normalized.fetchedAt);
+  const config = Forecast.savingsEarmarksState(data.plan, asOf);
+  if (config.status !== 'ready') return { asOf, accounts: [] };
+  const ids = new Set(['savings', ...config.pools.map(pool => pool.accountId)]);
+  const accounts = [];
+  for (const accountId of ids) {
+    const maps = (accountMap.mappings || []).filter(m => m && m.canonical
+      && m.canonical.collection === 'cash' && m.canonical.id === accountId);
+    if (maps.length !== 1) continue;
+    const mapping = maps[0];
+    if (mapping.atlasRole !== 'household-reserve' && !(accountId === 'savings' && mapping.atlasRole === 'household-cash')) continue;
+    if ((accountMap.mappings || []).filter(m => m && String(m.providerAccountId) === String(mapping.providerAccountId)).length !== 1) continue;
+    const matches = normalized.accounts.filter(a => a.providerAccountId === String(mapping.providerAccountId));
+    if (matches.length !== 1) continue;
+    const account = matches[0];
+    if (!['cash', 'depository'].includes(String(account.type || '').toLowerCase())) continue;
+    if ((data.debts || []).some(debt => debt && debt.id === accountId)) continue;
+    const pending = normalized.transactions.some(tx => tx && tx.providerAccountId === account.providerAccountId && tx.pending === true);
+    accounts.push({ accountId, value: account.balance, currency: String(account.currency || '').toUpperCase(),
+      evidenceDate: dateOnly(postedBalanceEvidenceInstant(account)),
+      pendingState: pending ? 'pending' : pendingCoverageIsComplete(normalized.pendingCoverage) ? 'clear' : 'unknown',
+      source: 'provider-observe:lunchmoney' });
+  }
+  return { asOf, accounts };
 }
 
 function observe(input) {
@@ -3162,7 +3206,8 @@ function observe(input) {
     collapsedTransactions: collapsed.transactions,
     identityEvidence: collapsed.identityEvidence,
     observations,
-    spendableCash: spendableCashFromObservations(observations),
+    spendableCash: spendableCashFromObservations(observations, input.data),
+    savingsPools: savingsPoolObservations(input.data, { ...normalized, transactions: collapsed.transactions }, mapDoc),
     cardCapacityIsCash: R.householdCashFromCardCapacity(),
     cardInferences,
     representedEventCandidates: represented,
@@ -3353,6 +3398,7 @@ function paydayGapCompleteFromEvidence(opts) {
 function atlasAccountRole(mapping) {
   if (!mapping || !mapping.atlasRole) return 'unmapped';
   if (mapping.atlasRole === 'household-cash') return 'household-cash';
+  if (mapping.atlasRole === 'household-reserve') return 'household-reserve';
   if (CREDIT_ROLES.has(mapping.atlasRole)) return 'revolving-credit';
   if (mapping.atlasRole === 'heloc' || mapping.atlasRole === 'mortgage') return mapping.atlasRole;
   if (mapping.atlasRole === EXTERNAL_LIVE_ROLE) return EXTERNAL_LIVE_ROLE;

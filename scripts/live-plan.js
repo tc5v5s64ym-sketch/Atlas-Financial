@@ -299,6 +299,7 @@ function pendingRowsForDebt(report, id) {
 function assertFreshLivePacket(data, report, liveAsOf) {
   if (!liveAsOf) fail('Live overlay is missing a household financial date.');
   for (const id of POSTED_CASH) {
+    if (id === 'savings' && Forecast.savingsEarmarksState(data && data.plan, liveAsOf).status !== 'setup-unknown') continue;
     const locator = `cash:${id}`;
     const rows = postedRowsForLocator(report, locator);
     const fresh = rows.find(row => (
@@ -526,7 +527,7 @@ function applyPendingOverlay(data, change) {
 }
 
 function assertOwnerPolicyUntouched(before, after) {
-  const keys = ['income', 'bills', 'obligations', 'commitments', 'budget', 'actions', 'nextDollar'];
+  const keys = ['income', 'bills', 'obligations', 'commitments', 'budget', 'actions', 'nextDollar', 'savingsEarmarks'];
   for (const key of keys) {
     if (JSON.stringify((before.plan || {})[key]) !== JSON.stringify((after.plan || {})[key])) {
       fail(`Live overlay must not rewrite plan.${key}.`);
@@ -1049,6 +1050,7 @@ function overlayLiveState(input) {
     assertFreshLivePacket(data, report, liveAsOf);
   }
   const next = clone(data);
+  if (Forecast.savingsEarmarksState(data.plan, liveAsOf).status !== 'setup-unknown') next.plan.savingsPoolObservation = report.savingsPools || { asOf: liveAsOf, accounts: [] };
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
   retainPaydaySnapshot(next, data.plan, cutover.liveAsOf || liveAsOf, report);
   retainPaydayAccountObservations(next, data.plan, cutover.liveAsOf || liveAsOf, report);
@@ -1172,6 +1174,9 @@ function failedOverlay(canonical, reason, extra) {
     || (canonical.meta && canonical.meta.asOf) || null;
   const report = extra && extra.report;
   const liveAsOf = report ? liveAsOfFrom(report, historicalOpeningAsOf) : null;
+  if (Forecast.savingsEarmarksState(canonical.plan, liveAsOf).status !== 'setup-unknown') {
+    next.plan.savingsPoolObservation = report && report.savingsPools || { asOf: liveAsOf, accounts: [] };
+  }
   const operatingPlan = operatingPlanFromOverlay(false, historicalOpeningAsOf, liveAsOf);
   next.liveOverlay = overlayMeta({
     applied: false,
