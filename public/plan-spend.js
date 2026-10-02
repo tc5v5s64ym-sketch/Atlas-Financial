@@ -179,7 +179,10 @@ function planSpendAdvice(d, periods) {
 }
 
 function renderPlanSpend(d, periods) {
-  const html = planSpendPageHtml(planSpendAdvice(d, periods), d.liveOverlay);
+  const advice = planSpendAdvice(d, periods);
+  const html = planSpendPageHtml(advice, d.liveOverlay);
+  const inventoryMount = $('savings-inventory');
+  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = SavingsInventory.html(advice.savingsInventory);
   const lede = $('plan-spend-lede');
   const list = $('plan-spend-list');
   const note = $('plan-spend-note');

@@ -1,5 +1,17 @@
 # Backlog
 
+**Confirmed savings inventory - 2026-10-02 owner instruction - IN PROGRESS.**
+One outcome: show confirmed goal intent backed by observed cash in two explicit
+reserve pools, with unallocated cash, pool deficits and honest unknown/stale/
+pending states on Budget and Plan Spend. Authority is recorded in
+`ARCHITECTURE.md`; proof is in `docs/proof/SAVINGS_EARMARKS.md` and the synthetic
+savings earmark suites. Real account identities and starting amounts remain the
+open setup question. Incremental savings instructions stay withheld when
+configured until allocator seeding and corresponding reserve-backed payment
+flows are integrated and independently proved. This PR does not implement that
+integration, change fuel/currency/classification policy, write to a provider or
+merge itself. Closure requires independent Systems Review and exact-head checks.
+
 **Work that can be done.** Questions only the household can answer live in
 `docs/01_OPEN_QUESTIONS.md` — keep the two apart. If an item needs a human to
 *know* something, it is a question. If it needs someone to *do* something, it

@@ -4014,6 +4014,7 @@ function paydayInstructionShellHtml(advice, period, schedule) {
 }
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   if (!period) return '';
+  const confirmedSavings = plan && Forecast.savingsEarmarksState(plan, period.start).status !== 'setup-unknown';
   const planUnavailable = period.operatingPlanUnavailable === true;
   // Active period: Current Balance at the top is the hub. Opening is not
   // a Balance After Deductions term, so it is not printed on this
@@ -4103,7 +4104,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     ${funding.gap ? `<p class="operating-note crit">Funding shortfall: ${fundMoney(funding.gap.shortBy)}. This projection does not fully cover the protected plan.</p>` : ''}
     ${numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0 ? `<p class="operating-note">${fundMoney(funding.proposedFundingForBillPayments)} of this period's bill deduction is paid from earlier proposed funding. Forecast adds that protection back once in the final proposed balance, so the payment and contribution are not deducted twice.</p>` : ''}
     <p class="operating-note">Deficit Planning is the bridge/planned-cost pot; Savings Dont Touch is the tax/insurance pot. Account funding and silver draws are not assigned by this projection.</p>`
-    : `<p class="operating-note">${escape(funding && funding.reason || 'Forecast has not published a funding schedule for this period.')} Actual saved balances and the original payday plan remain unavailable.</p>${itemDetails}`;
+    : `<p class="operating-note">${escape(funding && funding.reason || 'Forecast has not published a funding schedule for this period.')} ${confirmedSavings ? 'See the savings inventory for confirmed assignments and observed backing.' : 'Actual saved balances and the original payday plan remain unavailable.'}</p>${itemDetails}`;
   const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
   const finalAmount = fundedBalanceKnown ? funding.afterProposedFunding
     : (period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget);
@@ -4122,7 +4123,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     <p class="operating-note">Planning date: ${escape(row.date || 'Unknown')}${row.confidence === 'estimated' ? ' · estimated' : ''}${numeric(row.ceiling) && row.ceiling > row.cost ? ` · upper estimate ${money2(row.ceiling)}` : ''}. Actual saved and destination account: unknown.</p>
   </div>`).join('');
   const fromTodayBody = today ? `<div data-from-today="${escape(today.asOf)}">
-    <p class="operating-note">${todayKnown ? 'A new proposal dated' : 'Evidence checked for'} ${escape(today.asOf)}. ${todayKnown ? 'Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.' : 'No savings proposal is available. The original payday allocation and actual saved balance have not been reconstructed.'}</p>
+    <p class="operating-note">${todayKnown ? 'A new proposal dated' : 'Evidence checked for'} ${escape(today.asOf)}. ${confirmedSavings ? 'Additional contributions are withheld. Confirmed assignments and backing are shown in the savings inventory.' : todayKnown ? 'Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.' : 'No savings proposal is available. The original payday allocation and actual saved balance have not been reconstructed.'}</p>
     ${todayKnown ? `<p class="operating-note">Chequing evidence: ${escape(today.cashAsOf)}. Spending observed through ${escape(today.observationAsOf)}. Budget targets and actuals supply the remaining household needs.</p>
       <div class="operating-line"><span>Current chequing cash</span><span>${todayMoney(today.currentCash)}</span></div>
       <div class="operating-line"><span>Remaining bills and debt payments</span><span>${todayMoney(today.operatingBills)}</span></div>
@@ -4149,7 +4150,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
             <p class="operating-note">${escape(issue.action)}</p>
           </li>`).join('')}</ul>`
         : `<p class="operating-note">${escape(today.reason || 'Current funding evidence is unavailable.')}</p>`}
-    <p class="operating-note">These are proposed earmarks, not transfers or balances already saved. Shared savings and silver are not added to chequing cash. Bucket ownership, silver attribution and actual saved balances remain unknown.</p>
+    <p class="operating-note">${confirmedSavings ? 'The savings inventory is a breakdown of pool cash, not extra chequing cash. No silver purpose is inferred.' : 'These are proposed earmarks, not transfers or balances already saved. Shared savings and silver are not added to chequing cash. Bucket ownership, silver attribution and actual saved balances remain unknown.'}</p>
   </div>` : '';
   const todayHtml = today && !planUnavailable ? `<div class="budget-step" data-from-today-proposal>
     <details class="budget-step-details"><summary class="budget-step-summary">
@@ -5471,6 +5472,8 @@ function renderPlan(d, periods, history) {
     operatingPlanNote: d.liveOverlay && d.liveOverlay.operatingPlanNote,
   }));
   const fundingPlan = advice.funding || null;
+  const inventoryMount = $('savings-inventory');
+  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = SavingsInventory.html(advice.savingsInventory);
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   const capView = weeklyCapView(advice, state.weeklyVariable);
