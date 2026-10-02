@@ -10584,6 +10584,17 @@
       if (!daily.has(d)) return unavailable('The Budget cash-walk coverage is incomplete.');
     }
     try {
+      // The published Budget income can include Forecast-owned occurrences
+      // with no ordinary stream (notably estimated payroll bonuses). Match
+      // id + date even for zero-base streams so each occurrence enters once.
+      // Published settlement also covers synthesized ids absent from the
+      // represented key set. Already-received income belongs to opening cash.
+      const ordinaryIncomeKeys = new Set();
+      for (const stream of plan.income || []) {
+        for (const date of occurrences(stream, asOf, end)) {
+          ordinaryIncomeKeys.add(stream.id + '@' + date);
+        }
+      }
       const walkOpts = Object.assign({}, opts, {
         horizonDays: diffDays(asOf, end) + 1, viewDays: diffDays(asOf, end) + 1,
         viewStart: asOf, weeklyVariable: 0, budgetHouseholdDaily: daily,
@@ -10591,6 +10602,13 @@
           const row = incomes.get(stream.id + '@' + date);
           return row ? { amount: row.amount, confidence: row.confidence } : null;
         },
+        additionalIncomeEvents: Array.from(incomes.entries())
+          .filter(([key]) => !ordinaryIncomeKeys.has(key))
+          .filter(([, row]) => row.alreadyInCash !== true
+            && row.settlement !== 'represented' && row.settlement !== 'opening'
+            && row.notReliedUpon !== true && row.settlement !== 'not-relied-upon')
+          .map(([, row]) => ({ kind: 'income', id: row.id, label: row.label,
+            date: row.date, amount: row.amount, confidence: row.confidence })),
       });
       const sim = simulate(plan, asOf, walkOpts);
       // Do not borrow cap-based majorPlans verdicts, or ask that printer to
