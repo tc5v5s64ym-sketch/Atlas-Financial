@@ -10521,6 +10521,7 @@
     const actuals = currentPeriodActualsPacket(opts);
     const transactions = actuals && Array.isArray(actuals.transactions) ? actuals.transactions : [];
     const duplicateIds = pendingPostedDuplicateIdSet(actuals);
+    const admittedPending = new Map();
     const unresolvedPendingSpend = row => {
       // reconTxFrom omits accountRole and ambiguity flags. Resolve exactly
       // one original transaction; a display row cannot prove card provenance
@@ -10536,9 +10537,28 @@
       const account = tx.atlasAccountId || tx.account;
       if (!account || [tx.atlasAccountId, tx.account, tx.accountId].some(id =>
         id != null && id !== '' && String(id) !== String(account))) return true;
-      return (tx.accountRole && tx.accountRole !== 'revolving-credit')
+      if ((tx.accountRole && tx.accountRole !== 'revolving-credit')
         || !isRevolvingCardAccount({ account, accountRole: tx.accountRole })
-        || tx.pendingPostedAmbiguous === true || duplicateIds.has(String(tx.id));
+        || tx.pendingPostedAmbiguous === true || duplicateIds.has(String(tx.id))) return true;
+      // Provenance identifies the card; it cannot prove the incurred charge
+      // is in openingBalance. Use the same debt id, pending amount and unknown
+      // flags as the debt walk and utilisation. Do not add exposure again.
+      const facilities = (opts.debts || []).filter(d => d && d.id != null
+        && String(d.id) === String(account));
+      if (facilities.length !== 1 || pendingUnknown(facilities[0])
+          || !finite(facilities[0].pending) || facilities[0].pending < 0) return true;
+      const cents = Math.max(0, Math.round(Number(tx.amount) * 100));
+      if (!finite(cents)) return true;
+      const key = String(account);
+      const admitted = admittedPending.get(key) || { ids: new Set(), cents: 0 };
+      // A recon row may be printed again; count each admitted transaction
+      // once per facility. Refunds cannot offset unsupported pending charges.
+      if (!admitted.ids.has(String(tx.id))) {
+        admitted.ids.add(String(tx.id));
+        admitted.cents += cents;
+      }
+      admittedPending.set(key, admitted);
+      return Math.round(facilities[0].pending * 100) < admitted.cents;
     };
     let basisTrust = 'calculated';
     for (const p of ordered) {
