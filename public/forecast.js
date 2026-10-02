@@ -4288,9 +4288,11 @@
     return txs.some(tx => tx && tx.accountRole === 'unmapped');
   }
 
-  function actualsCoverageState(asOf, periodStart, opts) {
+  function actualsCoverageState(asOf, periodStart, opts, failures) {
     const packet = currentPeriodActualsPacket(opts);
     if (!packet) {
+      if (failures) failures.push({ code: 'actuals-missing',
+        message: 'No current-period transaction actuals were supplied.' });
       return {
         status: 'absent',
         remainingClaim: 'unavailable',
@@ -4305,71 +4307,43 @@
     const coverageThrough = packet.coverageThrough || null;
     const observationAsOf = packet.observationAsOf || null;
     const pendingStatus = pendingCoverageStatus(packet);
-    if (!coverageThrough || coverageThrough < asOf) {
+    // Collect the same checks for savings disclosure without changing the
+    // incumbent first-failure coverage state or its remaining-claim decision.
+    const checks = [
+      [!coverageThrough || coverageThrough < asOf, 'actuals-stale', 'stale',
+        'Transaction actuals are not current through the financial as-of.'],
+      [coverageStart && periodStart && coverageStart > periodStart, 'actuals-period-coverage', 'incomplete',
+        'Transaction coverage starts after the current period origin.'],
+      [hasUnresolvedAccountActuals(packet), 'actuals-unmapped-account', 'incomplete',
+        'Current-period transactions include an unresolved provider account. Remaining amounts unavailable.'],
+      [transactionCoverageStatus(packet) === 'truncated', 'actuals-posted-incomplete', 'incomplete',
+        'Posted transaction coverage is truncated. Current remaining amounts unavailable.'],
+      [pendingStatus !== 'complete', 'actuals-pending-incomplete', 'current',
+        'Pending coverage is not complete. Observed pending still constrains remaining; additional unknown pending may exist.'],
+    ].filter(row => row[0]);
+    if (failures) for (const [, code, , message] of checks) failures.push({ code, message });
+    if (checks.length) {
+      const [, code, status, reason] = checks[0];
       return {
-        status: 'stale',
-        remainingClaim: 'unavailable',
+        status,
+        remainingClaim: code === 'actuals-pending-incomplete' ? 'posted-only' : 'unavailable',
         pendingStatus,
         observationAsOf,
         coverageStart,
         coverageThrough,
-        reason: 'Transaction actuals are not current through the financial as-of.',
-      };
-    }
-    if (coverageStart && periodStart && coverageStart > periodStart) {
-      return {
-        status: 'incomplete',
-        remainingClaim: 'unavailable',
-        pendingStatus,
-        observationAsOf,
-        coverageStart,
-        coverageThrough,
-        reason: 'Transaction coverage starts after the current period origin.',
-      };
-    }
-    if (hasUnresolvedAccountActuals(packet)) {
-      return {
-        status: 'incomplete',
-        remainingClaim: 'unavailable',
-        pendingStatus,
-        observationAsOf,
-        coverageStart,
-        coverageThrough,
-        reason: 'Current-period transactions include an unresolved provider account. Remaining amounts unavailable.',
-      };
-    }
-    if (transactionCoverageStatus(packet) === 'truncated') {
-      return {
-        status: 'incomplete',
-        remainingClaim: 'unavailable',
-        pendingStatus,
-        observationAsOf,
-        coverageStart,
-        coverageThrough,
-        reason: 'Posted transaction coverage is truncated. Current remaining amounts unavailable.',
-      };
-    }
-    if (pendingStatus === 'complete') {
-      return {
-        status: 'current',
-        // Provider/account coverage completeness, not named-category remaining
-        // precision. Unclassified household spend is a separate claim.
-        remainingClaim: 'precise',
-        pendingStatus,
-        observationAsOf,
-        coverageStart,
-        coverageThrough,
-        reason: null,
+        reason,
       };
     }
     return {
       status: 'current',
-      remainingClaim: 'posted-only',
+      // Provider/account coverage completeness, not named-category remaining
+      // precision. Unclassified household spend is a separate claim.
+      remainingClaim: 'precise',
       pendingStatus,
       observationAsOf,
       coverageStart,
       coverageThrough,
-      reason: 'Pending coverage is not complete. Observed pending still constrains remaining; additional unknown pending may exist.',
+      reason: null,
     };
   }
 
@@ -10491,26 +10465,187 @@
     const ordered = (periods || []).filter(p => p && p.end >= asOf)
       .sort((a, b) => a.start.localeCompare(b.start));
     const current = ordered.find(p => p.start <= asOf && p.end >= asOf);
-    const todayUnavailable = reason => ({ status: 'unavailable', asOf,
+    const full = ordered.filter(p => p.start >= asOf && diffDays(p.start, p.end) === 13);
+    const todayUnavailable = (reason, failures = []) => ({ status: 'unavailable', asOf,
       source: 'Forecast.planSpendPaydayFunding', basis: 'Budget-from-today',
       reason, contribution: null, trust: 'unavailable', actualSaved: null,
-      originalPaydayPlan: null, items: roster, periods: [] });
-    const unavailable = reason => {
-      if (current && !current.fromTodayFunding) current.fromTodayFunding = todayUnavailable(reason);
+      originalPaydayPlan: null, items: roster, periods: [],
+      evidenceFailures: orderedFailures([...(current ? spendingFailures(current, true) : []),
+        ...cashFailures(), ...failures]),
+    });
+    const unavailable = (reason, failures) => {
+      if (current && !current.fromTodayFunding) current.fromTodayFunding = todayUnavailable(reason, failures);
       for (const p of periods || []) p.plannedCostFunding = {
         status: 'unavailable', reason, contribution: null, trust: 'unavailable',
         actualSaved: null, originalPaydayPlan: null, items: roster,
       };
     };
-    const full = ordered.filter(p => p.start >= asOf && diffDays(p.start, p.end) === 13);
-    if (!full.length) return unavailable('No complete future Budget pay period is available.');
+    const daily = new Map();
+    const incomes = new Map();
+    const basis = new Map();
+    const actuals = currentPeriodActualsPacket(opts);
+    const transactions = actuals && Array.isArray(actuals.transactions) ? actuals.transactions : [];
+    const duplicateIds = pendingPostedDuplicateIdSet(actuals);
+    const pendingByFacility = new Map();
+    const pendingCardAccount = tx => {
+      const account = tx.atlasAccountId || tx.account;
+      if (!account || [tx.atlasAccountId, tx.account, tx.accountId].some(id =>
+        id != null && id !== '' && String(id) !== String(account))) return null;
+      if ((tx.accountRole && tx.accountRole !== 'revolving-credit')
+          || !isRevolvingCardAccount({ account, accountRole: tx.accountRole })) return null;
+      return String(account);
+    };
+    const refreshAction = 'Refresh account and transaction evidence so Atlas can check again.';
+    const identityAction = 'Refresh after the card settles. If both entries remain, verify whether they are one purchase or two before making any correction.';
+    const safeDate = date => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+    const safeLabel = label => typeof label === 'string' ? label.slice(0, 160) : null;
+    const accountLabel = account => safeLabel((opts.debts || []).find(d => d && d.id === account)?.label
+      || (plan.startingCash?.breakdown || []).find(r => r && r.id === account)?.label)
+      || (account === 'chequing-a' ? 'Bills account' : account === 'chequing-b' ? 'Weekly spending account' : null);
+    const failure = (code, message, context = {}, action = refreshAction) => ({ code, message, action, ...context });
+    const orderedFailures = rows => {
+      const unique = new Map(rows.map(row => [JSON.stringify(row), row]));
+      return Array.from(unique).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, row]) => row);
+    };
+    const pendingSpendFailures = (row, categoryLabel) => {
+      const context = { categoryLabel: safeLabel(categoryLabel), date: safeDate(row.date) };
+      const fail = (code, message, action = refreshAction) => [failure(code, message, context, action)];
+      // A rendered supporting row cannot prove provenance. Resolve its exact
+      // original identity before inspecting the same matching card exposure.
+      if (row.id == null) return fail('pending-identity-unresolved', 'A pending spending entry has no transaction identity.');
+      const matches = transactions.filter(tx => tx && tx.id != null && String(tx.id) === String(row.id));
+      if (matches.length !== 1) return fail('pending-identity-unresolved', 'A pending spending entry does not have one unique transaction identity.');
+      const tx = matches[0];
+      const account = pendingCardAccount(tx);
+      context.accountLabel = accountLabel(account);
+      if (!account) return fail('pending-account-unresolved', 'The account behind a pending spending entry is missing or contradictory.');
+      const identityFailures = [];
+      if (tx.pendingPostedAmbiguous === true) identityFailures.push(failure('pending-settlement-ambiguous',
+        'The provider pending-to-posted links do not establish a unique settlement.', context, identityAction));
+      if (duplicateIds.has(String(tx.id))) identityFailures.push(failure('pending-possible-replacement',
+        'A pending entry may already have posted. Atlas cannot establish whether these are one purchase or two.', context, identityAction));
+      if (identityFailures.length) return identityFailures;
+      const facilities = (opts.debts || []).filter(d => d && d.id != null && String(d.id) === account);
+      if (facilities.length !== 1 || pendingUnknown(facilities[0])
+          || !finite(facilities[0].pending) || facilities[0].pending < 0) {
+        return fail('pending-card-exposure-unavailable', 'The matching card does not have one known pending balance.');
+      }
+      if (!pendingByFacility.has(account)) {
+        let cents = 0;
+        const exposureFailures = [];
+        // Keep the incumbent complete positive-debit exposure check: issuer
+        // charges, represented bills and business purchases also consume it.
+        for (const pendingTx of transactions) {
+          if (!pendingTx || transactionPendingState(pendingTx) !== 'pending'
+              || skipSplitParent(pendingTx, actuals)) continue;
+          if (![pendingTx.atlasAccountId, pendingTx.account, pendingTx.accountId]
+            .some(id => id != null && String(id) === account)) continue;
+          const amount = Number(pendingTx.amount);
+          if (pendingTx.amount == null || pendingTx.amount === '' || !finite(amount)) {
+            exposureFailures.push(...fail('pending-card-amount-unavailable', 'A pending entry on this card has no usable amount.'));
+            continue;
+          }
+          if (amount <= 0) continue;
+          if (pendingCardAccount(pendingTx) !== account || pendingTx.id == null || pendingTx.id === ''
+              || transactions.filter(t => t && t.id != null && String(t.id) === String(pendingTx.id)).length !== 1
+              || pendingTx.pendingPostedAmbiguous === true || duplicateIds.has(String(pendingTx.id))) {
+            exposureFailures.push(...fail('pending-card-identity-unresolved', 'Another pending debit on this card has unresolved account or settlement identity.', identityAction));
+          }
+          cents += Math.round(amount * 100);
+        }
+        if (!finite(cents)) exposureFailures.push(...fail('pending-card-amount-unavailable', 'The pending entries on this card cannot be totalled reliably.'));
+        if (exposureFailures.length) return exposureFailures;
+        pendingByFacility.set(account, cents);
+      }
+      return Math.round(facilities[0].pending * 100) < pendingByFacility.get(account)
+        ? fail('pending-card-exposure-insufficient', 'The matching card pending balance does not cover all its observed positive pending debits. A total on another card cannot back these entries.') : [];
+    };
+    const spendingFailures = (p, strict) => {
+      const issues = [];
+      actualsCoverageState(asOf, p.start, opts, issues);
+      for (const issue of issues) {
+        issue.action = issue.code === 'actuals-unmapped-account'
+          ? 'Refresh evidence. If the account is still unresolved, its household or external purpose needs to be confirmed.' : refreshAction;
+        issue.periodStart = safeDate(p.start);
+        issue.requiredThrough = safeDate(asOf);
+        issue.coverageStart = safeDate(actuals?.coverageStart);
+        issue.coverageThrough = safeDate(actuals?.coverageThrough);
+      }
+      if (actuals) {
+        if (!Array.isArray(actuals.transactions)) issues.push(failure('actuals-transactions-missing', 'The observation has no transaction list.'));
+        if (!actuals.coverageStart) issues.push(failure('actuals-start-missing', 'The start of the spending coverage is unknown.'));
+        if (actuals.observationAsOf !== asOf) issues.push(failure('actuals-observation-mismatch',
+          'The spending observation is not dated to this proposal.', { date: safeDate(actuals.observationAsOf), requiredThrough: safeDate(asOf) }));
+      }
+      const items = p.householdBudget || [];
+      for (const row of items) {
+        if (!finite(row.hold) || !finite(row.spent)) issues.push(failure('budget-category-amount-unavailable',
+          'The household allowance or observed spending is unavailable for this category.', { categoryLabel: safeLabel(row.label) }));
+        for (const pending of row.pendingRecon || []) issues.push(...pendingSpendFailures(pending, row.label));
+      }
+      if ((!strict || p.start < asOf)
+          && Math.abs(roundCent(items.reduce((sum, row) => sum + row.hold, 0)) - p.budgetHold) > 0.01) {
+        issues.push(failure('budget-category-total-mismatch', 'The category allowances do not reconcile to the Budget total.', {},
+          'Refresh the Budget. If this remains, Atlas needs to resolve the mismatch; no transaction correction has been established.'));
+      }
+      // These stricter incumbent checks belong only to the From today seed.
+      if (strict && !transactions.every(tx => tx && tx.id != null && tx.id !== '' && finite(tx.amount))) {
+        issues.push(failure('actuals-transaction-invalid', 'A spending record is missing a usable identity or amount.'));
+      }
+      if (strict && new Set(transactions.map(tx => String(tx?.id))).size !== transactions.length) {
+        issues.push(failure('actuals-identity-not-unique', 'The spending observation repeats a transaction identity.'));
+      }
+      return issues;
+    };
+    const cashRows = (plan.startingCash?.breakdown || []).filter(r => r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
+    const observed = opts.observedCash;
+    const trustedCash = r => finite(r.value) && r.unknown !== true && [r.confidence, r.status].every(tag => tag == null
+      || ['verified', 'confirmed', 'calculated', 'estimated'].includes(String(tag).toLowerCase()));
+    const cashFailures = () => {
+      const issues = [];
+      const add = (code, message, context) => issues.push(failure(code, message, context));
+      if (opts.operatingPlan === 'unavailable') add('operating-plan-unavailable', 'The current account observation could not support an operating plan.');
+      if (plan.opening?.asOf !== asOf) add('cash-opening-date', 'The chequing opening is not dated to this proposal.', { date: safeDate(plan.opening?.asOf) });
+      for (const id of HOUSEHOLD_CHEQUING_IDS) {
+        const rows = cashRows.filter(r => r.id === id), context = { accountLabel: accountLabel(id) };
+        if (rows.length !== 1) add('cash-account-missing-or-duplicate', 'This chequing account needs one uniquely identified balance.', context);
+        for (const row of rows) {
+          if (!trustedCash(row)) add('cash-account-untrusted', 'This chequing balance is missing or its evidence is not trusted.', context);
+          if (row.evidenceDate && financialDate(row.evidenceDate) !== asOf) add('cash-account-stale', 'This chequing balance is not current for the proposal date.', context);
+        }
+      }
+      if (observed || opts.operatingPlan === 'live') {
+        if (!observed) add('cash-observation-missing', 'The live observation does not supply chequing balance evidence.');
+        else {
+          if (observed.complete !== true) add('cash-observation-incomplete', 'The chequing balance observation is incomplete.');
+          if (financialDate(observed.asOf) !== asOf) add('cash-observation-date', 'The chequing balance observation is not dated to this proposal.');
+          for (const id of HOUSEHOLD_CHEQUING_IDS) {
+            const rows = Array.isArray(observed.accounts) ? observed.accounts.filter(r => r && r.id === id) : [];
+            const opening = cashRows.find(r => r.id === id), context = { accountLabel: accountLabel(id) };
+            if (rows.length !== 1) add('cash-observation-account', 'The observation must include this chequing account exactly once.', context);
+            else {
+              if (!trustedCash(rows[0])) add('cash-observation-account-untrusted', 'The observed balance for this chequing account is missing or untrusted.', context);
+              if (financialDate(rows[0].evidenceDate) !== asOf) add('cash-observation-account-stale', 'The observed balance for this chequing account is not current for the proposal date.', context);
+              if (!opening || Math.round(rows[0].value * 100) !== Math.round(opening.value * 100)) {
+                add('cash-observation-mismatch', 'The observed chequing balance does not match the balance used by Forecast.', context);
+              }
+            }
+          }
+        }
+      }
+      return issues;
+    };
+    if (!full.length) return unavailable('No complete future Budget pay period is available.',
+      [failure('funding-periods-unavailable', 'No complete future Budget pay period is available.')]);
     // The incumbent sequence omits absent amounts and accepts legacy numeric
     // coercion. This new money publication must not turn either into zero or
     // precision. Keep their names above, but close the protected projection.
     if (active.some(c => commitmentFlexibility(c) !== 'optional' && !validCostAmount(c))
         || periodWaterfallTotalTrust(seq.filter(c => c.flexibility !== 'optional'), 0,
           c => c.bounds && c.bounds.floor) === 'unavailable') {
-      return unavailable('A protected planned cost has unavailable amount or trust evidence.');
+      return unavailable('A protected planned cost has unavailable amount or trust evidence.',
+        [failure('protected-cost-evidence-unavailable', 'A protected planned cost has unavailable amount or trust evidence.', {},
+          'A supported amount and its confidence are needed for the planned cost. Refreshing transactions alone cannot supply a missing household planning fact.')]);
     }
     // The incumbent protects unsettled overdue required principal and every
     // observed unresolved household-cash debit on these same dollars. The
@@ -10529,80 +10664,19 @@
     if (overdueCents > 0) {
       return unavailable('Unsettled overdue planned principal of $'
         + (overdueCents / 100).toFixed(2)
-        + ' still encumbers household cash; selected-period proposals are withheld until it is settled.');
+        + ' still encumbers household cash; selected-period proposals are withheld until it is settled.',
+        [failure('protected-cost-overdue', 'An unsettled overdue planned cost still needs protection.', {},
+          'Refresh settlement evidence. If it was paid elsewhere, verified payment details are needed; passing the due date does not establish payment.')]);
     }
     const unresolvedPendingCash = sumCategoryActuals(plan, asOf, null, opts).pendingCash;
     if (unresolvedPendingCash > 0) {
       return unavailable('Unresolved pending household-cash debits of $'
         + Number(unresolvedPendingCash).toFixed(2)
-        + ' still encumber household cash; selected-period proposals are withheld until they settle.');
+        + ' still encumber household cash; selected-period proposals are withheld until they settle.',
+        [failure('pending-cash-unresolved', 'Unresolved pending chequing debits still need protection.', {},
+          'Refresh after these debits settle. They cannot be treated as money available for savings.')]);
     }
     const end = full.at(-1).end;
-    const daily = new Map();
-    const incomes = new Map();
-    const basis = new Map();
-    const actuals = currentPeriodActualsPacket(opts);
-    const transactions = actuals && Array.isArray(actuals.transactions) ? actuals.transactions : [];
-    const duplicateIds = pendingPostedDuplicateIdSet(actuals);
-    const pendingByFacility = new Map();
-    const pendingCardAccount = tx => {
-      const account = tx.atlasAccountId || tx.account;
-      if (!account || [tx.atlasAccountId, tx.account, tx.accountId].some(id =>
-        id != null && id !== '' && String(id) !== String(account))) return null;
-      if ((tx.accountRole && tx.accountRole !== 'revolving-credit')
-          || !isRevolvingCardAccount({ account, accountRole: tx.accountRole })) return null;
-      return String(account);
-    };
-    const unresolvedPendingSpend = row => {
-      // reconTxFrom omits accountRole and ambiguity flags. Resolve exactly
-      // one original transaction; a display row cannot prove card provenance
-      // or settlement identity. Possible replacements remain unresolved.
-      if (row.id == null) return true;
-      const matches = transactions.filter(tx => tx && tx.id != null
-        && String(tx.id) === String(row.id));
-      if (matches.length !== 1) return true;
-      const tx = matches[0];
-      // Match spendDuplicateKey's canonical account choice. accountId-only
-      // evidence cannot participate in its replacement detection, and any
-      // contradictory alias makes cash/card provenance uncertain.
-      const account = pendingCardAccount(tx);
-      if (!account
-        || tx.pendingPostedAmbiguous === true || duplicateIds.has(String(tx.id))) return true;
-      // Provenance identifies the card; it cannot prove the incurred charge
-      // is in openingBalance. Use the same debt id, pending amount and unknown
-      // flags as the debt walk and utilisation. Do not add exposure again.
-      const facilities = (opts.debts || []).filter(d => d && d.id != null
-        && String(d.id) === String(account));
-      if (facilities.length !== 1 || pendingUnknown(facilities[0])
-          || !finite(facilities[0].pending) || facilities[0].pending < 0) return true;
-      if (!pendingByFacility.has(account)) {
-        let cents = 0;
-        // Provider pending exposure is independent of consumption membership.
-        // Include issuer charges, represented bills and business purchases too.
-        // A positive transfer on this card is a debt debit; another account's
-        // transfer and negative card credits do not back an admitted charge.
-        for (const pendingTx of transactions) {
-          if (!pendingTx || transactionPendingState(pendingTx) !== 'pending'
-              || skipSplitParent(pendingTx, actuals)) continue;
-          if (![pendingTx.atlasAccountId, pendingTx.account, pendingTx.accountId]
-            .some(id => id != null && String(id) === account)) continue;
-          const amount = Number(pendingTx.amount);
-          if (pendingTx.amount == null || pendingTx.amount === '' || !finite(amount)) return true;
-          if (amount <= 0) continue;
-          if (pendingCardAccount(pendingTx) !== account || pendingTx.id == null || pendingTx.id === ''
-              || transactions.filter(t => t && t.id != null
-                && String(t.id) === String(pendingTx.id)).length !== 1
-              || pendingTx.pendingPostedAmbiguous === true
-              || duplicateIds.has(String(pendingTx.id))) return true;
-          cents += Math.round(amount * 100);
-        }
-        if (!finite(cents)) return true;
-        // Cache the complete packet total so repeated recon publications cannot
-        // count a transaction twice. Refunds cannot offset positive charges.
-        pendingByFacility.set(account, cents);
-      }
-      return Math.round(facilities[0].pending * 100) < pendingByFacility.get(account);
-    };
     let basisTrust = 'calculated';
     for (const p of ordered) {
       if (p.end > end) continue;
@@ -10611,7 +10685,8 @@
           || periodWaterfallCombinedTrust(p.incomeTrust, p.periodBillLoadTrust,
             p.budgetHoldTrust == null ? 'calculated' : p.budgetHoldTrust,
             p.balanceAfterDeductionsTrust == null ? 'calculated' : p.balanceAfterDeductionsTrust) === 'unavailable') {
-        return unavailable('The selected Budget income, bills or household allowance is unavailable.');
+        return unavailable('The selected Budget income, bills or household allowance is unavailable.',
+          [failure('budget-basis-unavailable', 'The Budget income, bills or household allowance is unavailable for this period.', { date: safeDate(p.start) })]);
       }
       basisTrust = periodWaterfallCombinedTrust(basisTrust, p.incomeTrust, p.periodBillLoadTrust,
         p.budgetHoldTrust == null ? 'calculated' : p.budgetHoldTrust,
@@ -10621,12 +10696,7 @@
         // Today's cash already includes observed spending. Missing actuals
         // cannot become zero spent or an invented original payday snapshot.
         const items = p.householdBudget || [];
-        if (!items.every(r => finite(r.hold) && finite(r.spent))
-            || Math.abs(roundCent(items.reduce((s, r) => s + r.hold, 0)) - p.budgetHold) > 0.01
-            || actualsCoverageState(asOf, p.start, opts).remainingClaim !== 'precise'
-            || !actuals || !Array.isArray(actuals.transactions) || !actuals.coverageStart
-            || actuals.observationAsOf !== asOf
-            || items.some(r => (r.pendingRecon || []).some(unresolvedPendingSpend))) {
+        if (spendingFailures(p, false).length) {
           return unavailable('Current-period spending evidence is incomplete; future funding is unavailable.');
         }
         allowance = roundCent(items.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
@@ -10644,7 +10714,8 @@
       if (p.start >= asOf) basis.set(p.start, { end: p.end, capacity: p.balanceAfterDeductions, period: p });
     }
     for (let d = asOf; d <= end; d = addDays(d, 1)) {
-      if (!daily.has(d)) return unavailable('The Budget cash-walk coverage is incomplete.');
+      if (!daily.has(d)) return unavailable('The Budget cash-walk coverage is incomplete.',
+        [failure('budget-dates-incomplete', 'The Budget projection does not cover every required date.', { date: safeDate(d) })]);
     }
     try {
       // The published Budget income can include Forecast-owned occurrences
@@ -10697,37 +10768,9 @@
       // current-cash proposal. Keep the income-only payday publication below
       // intact, including its unavailable original snapshot.
       if (current) {
-        const cashRows = (plan.startingCash?.breakdown || [])
-          .filter(r => r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
-        const trustedCash = r => finite(r.value) && r.unknown !== true
-          && [r.confidence, r.status].every(tag => tag == null
-            || ['verified', 'confirmed', 'calculated', 'estimated'].includes(String(tag).toLowerCase()));
-        const cashComplete = HOUSEHOLD_CHEQUING_IDS.every(id => cashRows.filter(r => r.id === id).length === 1);
-        const observed = opts.observedCash;
-        // Same-date overlays can retain canonical rows whose provider stock
-        // was not observed. A complete transaction window cannot fill that
-        // hole. Require both uniquely backed stocks whenever live evidence
-        // is in use, and reconcile them to the actual Forecast opening.
-        const liveCashKnown = (!observed && opts.operatingPlan !== 'live') || !!(observed
-          && observed.complete === true && financialDate(observed.asOf) === asOf
-          && Array.isArray(observed.accounts) && HOUSEHOLD_CHEQUING_IDS.every(id => {
-            const rows = observed.accounts.filter(r => r && r.id === id);
-            const opening = cashRows.find(r => r.id === id);
-            return rows.length === 1 && trustedCash(rows[0])
-              && financialDate(rows[0].evidenceDate) === asOf && opening
-              && Math.round(rows[0].value * 100) === Math.round(opening.value * 100);
-          }));
-        const cashKnown = plan.opening?.asOf === asOf && cashComplete && liveCashKnown
-          && cashRows.every(r => trustedCash(r)
-            && (!r.evidenceDate || financialDate(r.evidenceDate) === asOf));
+        const cashKnown = cashFailures().filter(row => row.code !== 'operating-plan-unavailable').length === 0;
         const currentItems = current.householdBudget || [];
-        const evidenceKnown = actuals && Array.isArray(actuals.transactions)
-          && actuals.observationAsOf === asOf && actuals.coverageStart
-          && actualsCoverageState(asOf, current.start, opts).remainingClaim === 'precise'
-          && transactions.every(tx => tx && tx.id != null && tx.id !== '' && finite(tx.amount))
-          && new Set(transactions.map(tx => String(tx.id))).size === transactions.length
-          && currentItems.every(r => finite(r.hold) && finite(r.spent)
-            && !(r.pendingRecon || []).some(unresolvedPendingSpend));
+        const evidenceKnown = spendingFailures(current, true).length === 0;
         if (opts.operatingPlan === 'unavailable' || !cashKnown || !evidenceKnown) {
           current.fromTodayFunding = todayUnavailable(opts.operatingPlan === 'unavailable'
             ? opts.operatingPlanNote || 'Current cash evidence is stale; refresh before setting money aside.'

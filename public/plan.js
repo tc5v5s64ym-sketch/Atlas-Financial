@@ -4122,7 +4122,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     <p class="operating-note">Planning date: ${escape(row.date || 'Unknown')}${row.confidence === 'estimated' ? ' · estimated' : ''}${numeric(row.ceiling) && row.ceiling > row.cost ? ` · upper estimate ${money2(row.ceiling)}` : ''}. Actual saved and destination account: unknown.</p>
   </div>`).join('');
   const fromTodayBody = today ? `<div data-from-today="${escape(today.asOf)}">
-    <p class="operating-note">A new proposal dated ${escape(today.asOf)}. Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.</p>
+    <p class="operating-note">${todayKnown ? 'A new proposal dated' : 'Evidence checked for'} ${escape(today.asOf)}. ${todayKnown ? 'Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.' : 'No savings proposal is available. The original payday allocation and actual saved balance have not been reconstructed.'}</p>
     ${todayKnown ? `<p class="operating-note">Chequing evidence: ${escape(today.cashAsOf)}. Spending observed through ${escape(today.observationAsOf)}. Budget targets and actuals supply the remaining household needs.</p>
       <div class="operating-line"><span>Current chequing cash</span><span>${todayMoney(today.currentCash)}</span></div>
       <div class="operating-line"><span>Remaining bills and debt payments</span><span>${todayMoney(today.operatingBills)}</span></div>
@@ -4140,13 +4140,21 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
         ${row.status === 'unavailable' ? `<p class="operating-note">${escape(row.reason)}</p>` : `${forwardItems(row.items)}<p class="operating-note">Proposed funds still held after scheduled payments: ${todayMoney(row.protectedAfterPayments)}. Remaining requirement: ${todayMoney(row.stillToFund)}.</p>`}
       </details>`).join('')}</details>
       ${(today.unscheduled || []).map(row => `<p class="operating-note">${escape(row.label)} · ${costMoney(row)} · ${escape(row.date || 'Date unknown')}. ${escape(row.reason)} Contribution unavailable.</p>`).join('')}`
-      : `<p class="operating-note">${escape(today.reason || 'Current funding evidence is unavailable.')}</p>${forwardItems(today.items)}`}
+      : Array.isArray(today.evidenceFailures) && today.evidenceFailures.length
+        ? `<p class="operating-note">Forecast is withholding the proposal for the following reasons. Each needs to be resolved before an amount can be shown.</p>
+          <ul class="from-today-evidence">${today.evidenceFailures.map(issue => `<li data-savings-evidence-reason="${escape(issue.code)}">
+            <p>${escape(issue.message)}</p>
+            ${issue.accountLabel || issue.categoryLabel || issue.date ? `<p class="operating-note">${[issue.accountLabel, issue.categoryLabel, issue.date].filter(Boolean).map(escape).join(' · ')}</p>` : ''}
+            ${issue.periodStart || issue.requiredThrough ? `<p class="operating-note">Needed: ${escape(issue.periodStart || today.asOf)} through ${escape(issue.requiredThrough || today.asOf)}.${issue.coverageStart || issue.coverageThrough ? ` Coverage supplied: ${escape(issue.coverageStart || 'unknown start')} through ${escape(issue.coverageThrough || 'unknown end')}.` : ''}</p>` : ''}
+            <p class="operating-note">${escape(issue.action)}</p>
+          </li>`).join('')}</ul>`
+        : `<p class="operating-note">${escape(today.reason || 'Current funding evidence is unavailable.')}</p>`}
     <p class="operating-note">These are proposed earmarks, not transfers or balances already saved. Shared savings and silver are not added to chequing cash. Bucket ownership, silver attribution and actual saved balances remain unknown.</p>
   </div>` : '';
   const todayHtml = today && !planUnavailable ? `<div class="budget-step" data-from-today-proposal>
     <details class="budget-step-details"><summary class="budget-step-summary">
       <span class="operating-number" aria-hidden="true">↳</span>
-      <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">From today · ${escape(today.asOf)}</span><span class="budget-step-caption">Current cash proposal · open for needs, costs and the forward schedule</span></span>
+      <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">From today · ${escape(today.asOf)}</span><span class="budget-step-caption">${todayKnown ? 'Current cash proposal · open for needs, costs and the forward schedule' : 'Proposal unavailable · open for the evidence needed'}</span></span>
       <span class="budget-step-value">${todayMoney(today.contribution)}</span><span class="budget-step-chevron" aria-hidden="true">⌄</span>
     </summary><div class="operating-answer budget-step-body">${fromTodayBody}</div></details>
   </div>` : '';

@@ -224,7 +224,8 @@ const blocked = await budgetRefresh(carry.canonical, carry.source);
 assert.equal(blocked.proposal.contribution, null);
 assert.equal(blocked.proposal.items.find(r => r.id === 'named-cost').cumulativeProposed, null);
 assert.match(blocked.todayHtml, /operating.*2026-09-24.*25.00.*50.00/i);
-assert.match(blocked.todayHtml, /Cumulative proposed \/ cost<\/span><span>Unavailable \/ \$600\.00/);
+assert.doesNotMatch(blocked.todayHtml, /Cumulative proposed \/ cost|data-from-today-cost/,
+  'a withheld proposal shows the reason, not a table of unavailable allocations');
 assert.doesNotMatch(blocked.todayHtml, /Proposed to set aside now|\$250\.00|\$350\.00|data-from-today-period/);
 carry.canonical.plan.bills.at(-1).amount = 575;
 assert.equal((await budgetRefresh(carry.canonical, carry.source)).proposal.status, 'ready');
@@ -268,7 +269,7 @@ for (const sameDate of [true, false]) {
       assert.ok(!result.proposal || result.proposal.contribution === null, `${sameDate}/${id}/${missing}`);
       if (result.proposal) assert.equal(result.proposal.trust, 'unavailable');
       assert.doesNotMatch(result.todayHtml, /Proposed to set aside now|\$250\.00/);
-      if (sameDate) assert.match(result.todayHtml, /complete household chequing cash is unavailable/);
+      if (sameDate) assert.match(result.todayHtml, /data-savings-evidence-reason="cash-/);
       else assert.equal(result.advice.operatingPlanUnavailable, true, 'advancing failure preserves stale-plan barrier');
     }
   }
