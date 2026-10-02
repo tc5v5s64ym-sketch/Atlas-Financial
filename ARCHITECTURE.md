@@ -834,7 +834,8 @@ walk and `Forecast.planSpendPaydayFunding` serial allocator with a dated
 current-cash seed. The seed uses evidenced household chequing, remaining
 Budget holds after observed consumption, remaining cash obligations and the
 existing operating floor. Already-received income is in cash; same-day
-scheduled income and proposed recovery injections are not added to that seed.
+scheduled income, proposed recovery injections and unreceived planned-debt
+draws are not added to that seed; required planned repayments stay reserved.
 Later receipts cannot increase today's contribution capacity. Future periods
 retain their Budget income/bill/household capacity and supported payroll horizon.
 The original payday publication stays separate and is never reconstructed.
@@ -843,7 +844,12 @@ dated evidence and the first protected gap; later rows stay unavailable and
 name that earlier barrier. These remain earmarks, not a ledger, transfers,
 actual saved balances, bucket ownership or silver attribution. Missing cash or
 spending evidence, unresolved pending cash and overdue protected principal
-withhold the proposal. The existing undated protection and deadline/priority
+withhold the proposal. Both canonical household-chequing stocks must be
+uniquely known; a live refresh must back both with same-date observations,
+including when the opening date does not advance. If a later operating cash
+limit disproves earlier proposed earmarks, the entire From today proposal is
+withheld with the date, shortfall and existing cash floor; no new allocation
+priority is inferred. The existing undated protection and deadline/priority
 rules remain in the incumbent allocator. No financial input or write gate moves.
 
 Dale authorized the selected Budget pay-period waterfall to show what each

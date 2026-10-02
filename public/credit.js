@@ -100,7 +100,12 @@ function creditAccountOpen(row, headingTag) {
 }
 
 function creditAccountClose(row) {
-  return `</dl>${row.structure ? `<p class="credit-structure">${row.structure}</p>` : ''}</article>`;
+  // Card structure prose can retain dated balances and activity after a live
+  // overlay. Keep the explanation structural; the facts above own amounts.
+  const structure = row.shape === 'card'
+    ? 'Revolving credit: purchases and interest add to the balance; payments reduce it.'
+    : row.structure;
+  return `</dl>${structure ? `<p class="credit-structure">${structure}</p>` : ''}</article>`;
 }
 
 // Mortgage: a secured term debt. Balance, rate, the regular payment on the

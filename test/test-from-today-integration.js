@@ -4,6 +4,8 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const os = require('node:os');
+const path = require('node:path');
 const Live = require('../scripts/live-plan');
 const F = require('../public/forecast');
 const fixture = require('./fixtures/budget-funding-data');
@@ -55,7 +57,7 @@ function refresh(source = payload) {
   const d = overlay.data;
   const advice = F.recommend(d.plan, d.meta.asOf, { debts: d.debts,
     currentPeriodActuals: d.liveOverlay.currentPeriodActuals,
-    operatingPlan: d.liveOverlay.operatingPlan });
+    operatingPlan: d.liveOverlay.operatingPlan, observedCash: d.liveOverlay.observedCash });
   return { overlay, advice, current: advice.payPeriodViews.find(p => p.start === '2026-08-14') };
 }
 const first = refresh(), second = refresh();
@@ -123,4 +125,154 @@ const shortHtml = vm.runInContext('calendarWaterfallHtml(row, overlay, alloc, pl
 assert.match(shortHtml, /Proposals stop after the protected funding gap on 2026-08-20/);
 assert.match(shortHtml, /2026-08-28 · Unavailable proposed/);
 assert.doesNotMatch(shortHtml, /2026-08-28 · \$0\.00 proposed/);
+
+// Review repairs go through the actual Budget entrypoint's recommend call,
+// including its real live-evidence options. Stop after that expensive call,
+// then execute the actual selected-period renderer with the returned advice.
+// Only the surrounding DOM boot is held; no financial function is replaced.
+(async () => {
+async function budgetRefresh(canonical, source, extraOpts = {}) {
+  const before = JSON.stringify({ canonical, source });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-from-today-review-'));
+  let served;
+  try {
+    const fixturePath = path.join(dir, 'observation.json');
+    const mapPath = path.join(dir, 'map.json');
+    fs.writeFileSync(fixturePath, JSON.stringify(source));
+    fs.writeFileSync(mapPath, JSON.stringify(map));
+    // The actual server wrapper uses the same observation/overlay path and
+    // production fail-closed fallback for an incomplete advancing refresh.
+    served = await Live.applyForServer(canonical, { ATLAS_LIVE_OVERLAY: 'fixture',
+      ATLAS_LIVE_OVERLAY_FIXTURE: fixturePath, ATLAS_LIVE_OVERLAY_MAP: mapPath });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  const overlay = { data: served };
+  let advice, passed;
+  const stop = new Error('Budget recommend completed');
+  context.served = served;
+  context.Forecast = { ...F, recommend(plan, asOf, opts) {
+    passed = opts;
+    advice = F.recommend(plan, asOf, { ...opts, ...extraOpts });
+    throw stop;
+  } };
+  vm.runInContext('Object.assign(state, served.plan.defaults, { debts: served.debts });', context);
+  try { vm.runInContext('renderPlan(served, null, null)', context); }
+  catch (error) { if (error !== stop) throw error; }
+  finally { context.Forecast = F; }
+  assert.ok(advice, 'real Budget entrypoint must call recommend');
+  assert.equal(passed.observedCash, served.liveOverlay.observedCash,
+    'real Budget must pass observed stock evidence, including incomplete packets');
+  assert.equal(JSON.stringify({ canonical, source }), before);
+  const current = advice.payPeriodViews.find(p => p.start <= served.meta.asOf && p.end >= served.meta.asOf);
+  context.row = current; context.plan = served.plan;
+  context.overlay = served.liveOverlay; context.alloc = advice.paydayAllocation;
+  const html = vm.runInContext('calendarWaterfallHtml(row, overlay, alloc, plan)', context);
+  return { overlay, advice, current, proposal: current.fromTodayFunding, html,
+    todayHtml: html.split('<section class="calendar-waterfall"')[0] };
+}
+function reviewFixture() {
+  const canonical = fixture();
+  canonical.meta.asOf = canonical.plan.opening.asOf = '2026-08-13';
+  canonical.plan.defaults.targetBuffer = 50;
+  canonical.plan.startingCash.breakdown = structuredClone(data.plan.startingCash.breakdown);
+  canonical.plan.startingCash.breakdown[0].value = 1000;
+  canonical.plan.bills.push({ id: 'still-due', label: 'Still due', frequency: 'once',
+    date: '2026-08-25', amount: 150, confidence: 'confirmed' });
+  canonical.plan.obligations.push({ id: 'minimum', label: 'Required card payment',
+    debtId: 'travelvisa', effect: 'payment', frequency: 'once', date: '2026-08-25',
+    amount: 25, confidence: 'confirmed' });
+  canonical.debts = structuredClone(data.debts);
+  const source = structuredClone(payload);
+  source.accounts[0].balance = 1000;
+  return { canonical, source };
+}
+const control = reviewFixture();
+const complete = await budgetRefresh(control.canonical, control.source);
+assert.equal(complete.proposal.currentCash, 1000);
+assert.equal(complete.proposal.operatingBills, 375);
+assert.equal(complete.proposal.availableNow, 325);
+assert.equal(complete.proposal.contribution, 250);
+assert.equal(complete.proposal.periods[1].contribution, 350);
+assert.deepEqual((await budgetRefresh(control.canonical, control.source)).proposal, complete.proposal);
+
+// P1: supplied-dollar $750 - $375 - $250 - $50 = $75 through recommend
+// and the real rendered instruction, with both modelled credit paths.
+const poor = reviewFixture(); poor.source.accounts[0].balance = 750;
+for (const date of [AS_OF, '2026-08-25']) {
+  for (const field of ['plannedFlows', 'injections']) {
+    const result = await budgetRefresh(poor.canonical, poor.source, {
+      [field]: [{ date, amount: 1000, id: 'synthetic-loan', debtId: 'heloc' }],
+    });
+    assert.equal(result.proposal.status, 'funding-gap');
+    assert.equal(result.proposal.operatingBills, 375);
+    assert.equal(result.proposal.availableNow, 75);
+    assert.equal(result.proposal.contribution, 75);
+    assert.match(result.todayHtml, /Proposed to set aside now<\/span><span>\$75\.00/);
+    assert.match(result.todayHtml, /2026-08-20.*175.00.*Named cost/);
+    assert.doesNotMatch(result.todayHtml, /Proposed to set aside now<\/span><span>\$250\.00/);
+  }
+}
+
+// P1: independently supplied carry: 1000 - 375 - 250 = 375;
+// 375 + 1000 - 200 - 150 - 300 - 600 = 125;
+// 125 + 1000 - 200 - 300 - 600 = 25 < the $50 floor.
+// The allocator's later operating barrier must retract earlier actionable
+// proposals, including the named-cost fully-funded appearance in Budget.
+const carry = reviewFixture();
+carry.canonical.plan.bills.push({ id: 'later-operations', label: 'Later operating bill',
+  frequency: 'once', date: '2026-09-20', amount: 600, confidence: 'confirmed' });
+const blocked = await budgetRefresh(carry.canonical, carry.source);
+assert.equal(blocked.proposal.contribution, null);
+assert.equal(blocked.proposal.items.find(r => r.id === 'named-cost').cumulativeProposed, null);
+assert.match(blocked.todayHtml, /operating.*2026-09-24.*25.00.*50.00/i);
+assert.match(blocked.todayHtml, /Cumulative proposed \/ cost<\/span><span>Unavailable \/ \$600\.00/);
+assert.doesNotMatch(blocked.todayHtml, /Proposed to set aside now|\$250\.00|\$350\.00|data-from-today-period/);
+carry.canonical.plan.bills.at(-1).amount = 575;
+assert.equal((await budgetRefresh(carry.canonical, carry.source)).proposal.status, 'ready');
+carry.canonical.plan.bills.at(-1).amount = 1000;
+carry.source.accounts[0].balance = 750;
+const blockedBeyondFirstGap = await budgetRefresh(carry.canonical, carry.source);
+assert.equal(blockedBeyondFirstGap.proposal.contribution, null);
+assert.match(blockedBeyondFirstGap.todayHtml, /operating.*2026-09-24/i);
+assert.doesNotMatch(blockedBeyondFirstGap.todayHtml, /Proposed to set aside now|\$75\.00/);
+
+// P1: either missing canonical stock and either missing provider stock must
+// withhold same-date and date-advancing instructions. An actual observed zero
+// is complete evidence; omission is not. Savings/silver cannot fill the hole.
+for (const sameDate of [true, false]) {
+  const known = reviewFixture();
+  known.canonical.plan.startingCash.breakdown[1].value = known.source.accounts[1].balance = 1000;
+  if (sameDate) {
+    known.canonical.meta.asOf = known.canonical.plan.opening.asOf = AS_OF;
+    known.canonical.plan.opening.priorAsOf = '2026-08-13';
+  }
+  const both = await budgetRefresh(known.canonical, known.source);
+  assert.equal(both.proposal.currentCash, 2000, 'pool is A+B; savings/silver remain excluded');
+  assert.equal(both.advice.paydayAllocation.currentBalancePublication.amount, 1000,
+    'Current Balance remains the Bills account only');
+  assert.equal(both.advice.paydayAllocation.currentBalancePublication.accountId, 'chequing-a');
+  assert.equal(both.proposal.contribution, 250);
+  for (const id of ['chequing-a', 'chequing-b']) {
+    for (const missing of ['canonical', 'provider']) {
+      const input = reviewFixture();
+      input.canonical.plan.startingCash.breakdown[1].value = 1000;
+      input.source.accounts[1].balance = 1000;
+      if (sameDate) {
+        input.canonical.meta.asOf = input.canonical.plan.opening.asOf = AS_OF;
+        input.canonical.plan.opening.priorAsOf = '2026-08-13';
+      }
+      if (missing === 'canonical') input.canonical.plan.startingCash.breakdown =
+        input.canonical.plan.startingCash.breakdown.filter(r => r.id !== id);
+      else input.source.accounts = input.source.accounts.filter(r => r.id !== (id === 'chequing-a' ? 1001 : 1002));
+      const result = await budgetRefresh(input.canonical, input.source);
+      assert.equal(result.overlay.data.liveOverlay.observedCash.complete, false);
+      assert.ok(!result.proposal || result.proposal.contribution === null, `${sameDate}/${id}/${missing}`);
+      if (result.proposal) assert.equal(result.proposal.trust, 'unavailable');
+      assert.doesNotMatch(result.todayHtml, /Proposed to set aside now|\$250\.00/);
+      if (sameDate) assert.match(result.todayHtml, /complete household chequing cash is unavailable/);
+      else assert.equal(result.advice.operatingPlanUnavailable, true, 'advancing failure preserves stale-plan barrier');
+    }
+  }
+}
+assert.equal(fs.readFileSync(require.resolve('../data.json'), 'utf8'), diskBefore);
 console.log('PASS from-today integration: provider observation, read-only refresh, Forecast and real Budget rendering');
+})().catch(error => { console.error(error); process.exitCode = 1; });

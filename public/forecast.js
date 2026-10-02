@@ -2721,6 +2721,7 @@
       if (!days.length) return unavailable('A Seaspan period is missing from the Forecast cash path.');
       let paidHere = 0;
       let upper = Infinity;
+      let upperDate = null;
       for (const day of days) {
         const paid = paidOn.get(day.date) || 0;
         paidHere += paid;
@@ -2728,7 +2729,8 @@
         // S is cumulative contributions; S - paidCumulative is the
         // protection still held on this day. Reserve protection has no
         // economic payment and therefore is never added to paidCumulative.
-        upper = Math.min(upper, floorCents(day.balance - sim.buffer) + paidCumulative);
+        const dayUpper = floorCents(day.balance - sim.buffer) + paidCumulative;
+        if (dayUpper < upper) { upper = dayUpper; upperDate = day.date; }
       }
       const endCash = cents(days[days.length - 1].balance);
       const fresh = endCash - before + paidHere;
@@ -2745,6 +2747,7 @@
         period.capacity = Math.max(0, cents(basis.capacity));
       }
       period.cashUpper = upper;
+      period.cashUpperDate = upperDate;
       period.paymentTotal = paidHere;
       before = endCash;
       for (const cost of schedulable) {
@@ -2758,8 +2761,11 @@
       && row.flexibility !== 'optional').reduce((sum, row) =>
       sum + cents(row.bounds && row.bounds.floor || 0), 0);
     const lastPeriod = periods[periods.length - 1];
-    lastPeriod.cashUpper = Math.min(lastPeriod.cashUpper,
-      floorCents(sim.ending - sim.buffer) + paidCumulative - undatedFloor);
+    const endingUpper = floorCents(sim.ending - sim.buffer) + paidCumulative - undatedFloor;
+    if (endingUpper < lastPeriod.cashUpper) {
+      lastPeriod.cashUpper = endingUpper;
+      lastPeriod.cashUpperDate = sim.end;
+    }
 
     // Backward latest-feasible lower envelope. L[i] is the least cumulative
     // protection required by this payday if every later payday contributes
@@ -2786,6 +2792,17 @@
       const required = Math.max(0, period.minimumCumulative - cumulative);
       const available = Math.max(0, Math.min(period.capacity, period.cashUpper - cumulative));
       const contribution = Math.min(required, available);
+      // Validate each proposed prefix against ALL known later cash limits,
+      // including beyond the first protected gap where the allocator stops.
+      // This is a publication guard, not a redistribution or priority policy.
+      const operatingBarrier = fromToday && cumulative + contribution > 0
+        && periods.find(later => later.date >= period.date
+          && cumulative + contribution > later.cashUpper);
+      if (operatingBarrier) return unavailable(
+        'Known operating cash needs on ' + operatingBarrier.cashUpperDate + ' leave earlier proposals $'
+        + dollars(cumulative + contribution - operatingBarrier.cashUpper).toFixed(2)
+        + ' short of the existing $' + Number(sim.buffer).toFixed(2)
+        + ' cash floor. From-today contributions are unavailable until this operating gap is resolved.');
       if (cumulative > period.cashUpper && !gap) {
         gap = { payday: period.date, required: dollars(cumulative),
           available: dollars(Math.max(0, period.cashUpper)),
@@ -10682,9 +10699,26 @@
       if (current) {
         const cashRows = (plan.startingCash?.breakdown || [])
           .filter(r => r && HOUSEHOLD_CHEQUING_IDS.includes(r.id));
-        const cashKnown = plan.opening?.asOf === asOf && cashRows.length > 0
-          && new Set(cashRows.map(r => r.id)).size === cashRows.length
-          && cashRows.every(r => finite(r.value) && !['unknown', 'unavailable'].includes(r.confidence)
+        const trustedCash = r => finite(r.value) && r.unknown !== true
+          && [r.confidence, r.status].every(tag => tag == null
+            || ['verified', 'confirmed', 'calculated', 'estimated'].includes(String(tag).toLowerCase()));
+        const cashComplete = HOUSEHOLD_CHEQUING_IDS.every(id => cashRows.filter(r => r.id === id).length === 1);
+        const observed = opts.observedCash;
+        // Same-date overlays can retain canonical rows whose provider stock
+        // was not observed. A complete transaction window cannot fill that
+        // hole. Require both uniquely backed stocks whenever live evidence
+        // is in use, and reconcile them to the actual Forecast opening.
+        const liveCashKnown = (!observed && opts.operatingPlan !== 'live') || !!(observed
+          && observed.complete === true && financialDate(observed.asOf) === asOf
+          && Array.isArray(observed.accounts) && HOUSEHOLD_CHEQUING_IDS.every(id => {
+            const rows = observed.accounts.filter(r => r && r.id === id);
+            const opening = cashRows.find(r => r.id === id);
+            return rows.length === 1 && trustedCash(rows[0])
+              && financialDate(rows[0].evidenceDate) === asOf && opening
+              && Math.round(rows[0].value * 100) === Math.round(opening.value * 100);
+          }));
+        const cashKnown = plan.opening?.asOf === asOf && cashComplete && liveCashKnown
+          && cashRows.every(r => trustedCash(r)
             && (!r.evidenceDate || financialDate(r.evidenceDate) === asOf));
         const currentItems = current.householdBudget || [];
         const evidenceKnown = actuals && Array.isArray(actuals.transactions)
@@ -10709,6 +10743,9 @@
             (Math.floor(pennies * (i + 1) / days) - Math.floor(pennies * i / days)) / 100);
           const forwardOpts = Object.assign({}, walkOpts, {
             injections: [], budgetHouseholdDaily: forwardDaily,
+            // Purpose-debt draws are another modelled injection path. Keep
+            // required repayments, never an unreceived loan in this walk.
+            plannedFlows: (walkOpts.plannedFlows || []).filter(flow => Number(flow?.amount) < 0),
             incomeOccurrenceAdjust: (stream, date) => date === asOf
               ? { amount: 0, confidence: 'confirmed' } : walkOpts.incomeOccurrenceAdjust(stream, date),
             additionalIncomeEvents: walkOpts.additionalIncomeEvents.filter(e => e.date > asOf),
@@ -10735,7 +10772,8 @@
           if (forward.status === 'unavailable') current.fromTodayFunding = todayUnavailable(forward.reason);
           else {
             const trust = periodWaterfallCombinedTrust(forward.fundingTrust, basisTrust,
-              cashRows.some(r => r.confidence === 'estimated' || r.status === 'estimated')
+              cashRows.concat(observed?.accounts || []).some(r => r && HOUSEHOLD_CHEQUING_IDS.includes(r.id)
+                && [r.confidence, r.status].some(tag => String(tag).toLowerCase() === 'estimated'))
                 ? 'estimated' : 'calculated');
             const cumulative = new Map();
             const rows = forward.paydays.map(row => {

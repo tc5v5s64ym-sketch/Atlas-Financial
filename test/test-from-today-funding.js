@@ -10,6 +10,7 @@ function state() {
   data.meta.asOf = data.plan.opening.asOf = AS_OF;
   data.plan.opening.priorAsOf = '2026-08-13';
   data.plan.startingCash.breakdown[0].value = 1000;
+  data.plan.startingCash.breakdown.push({ id: 'chequing-b', value: 0 });
   data.plan.defaults.targetBuffer = 50;
   data.plan.bills.push({ id: 'still-due', label: 'Still due', frequency: 'once',
     date: '2026-08-25', amount: 150, confidence: 'confirmed' });
@@ -28,8 +29,8 @@ function state() {
     ] };
   return { data, packet };
 }
-const run = s => F.recommend(s.data.plan, AS_OF,
-  { debts: s.data.debts, currentPeriodActuals: s.packet });
+const run = (s, opts = {}) => F.recommend(s.data.plan, AS_OF,
+  { debts: s.data.debts, currentPeriodActuals: s.packet, ...opts });
 const current = a => a.payPeriodViews.find(p => p.start === '2026-08-14');
 const today = s => current(run(s)).fromTodayFunding;
 const s = state(), before = JSON.stringify(s), a = run(s), f = current(a).fromTodayFunding;
@@ -137,6 +138,82 @@ const insufficient = state(); insufficient.data.plan.startingCash.breakdown[0].v
 assert.equal(today(insufficient).contribution, 0);
 assert.equal(today(insufficient).operatingShortfall, 675 - 100);
 
+// Systems Review #470 P1: no unreceived credit, including the purpose-debt
+// path, may turn $75 of current capacity into a $250 instruction. Same-day
+// modelled draws are not evidence of receipt either. Later repayment remains
+// an outflow; it must not disappear along with the proposed credit.
+for (const date of [AS_OF, '2026-08-25']) {
+  for (const opts of [
+    { plannedFlows: [{ date, amount: 1000, id: 'synthetic-loan', debtId: 'heloc' }] },
+    { injections: [{ date, amount: 1000, id: 'synthetic-recovery', debtId: 'heloc' }] },
+  ]) {
+    const got = current(run(poor, opts)).fromTodayFunding;
+    assert.equal(got.status, 'funding-gap');
+    assert.equal(got.operatingBills, 375);
+    assert.equal(got.requiredOperatingCash, 675);
+    assert.equal(got.availableNow, 75);
+    assert.equal(got.contribution, 75);
+    assert.equal(got.gap.shortBy, 175);
+  }
+}
+const repayment = current(run(poor, { plannedFlows: [
+  { date: '2026-08-25', amount: 1000, id: 'synthetic-loan', debtId: 'heloc' },
+  { date: '2026-08-26', amount: -25, id: 'synthetic-repayment', debtId: 'heloc' },
+] })).fromTodayFunding;
+assert.equal(repayment.operatingBills, 400);
+assert.equal(repayment.availableNow, 50);
+assert.equal(repayment.contribution, 50);
+
+// P1: an independent daily operating ledger disproves the old $250 + $350
+// instruction. The named $600 payment leaves $25 on Sep 24, below the $50
+// floor. Only $575 of that cost is compatible with all known operations.
+// Withholding is intentional: this repair does not invent a new allocation
+// priority or alter the established future-payday publication.
+const laterBill = state();
+laterBill.data.plan.bills.push({ id: 'later-operations', label: 'Later operating bill',
+  frequency: 'once', date: '2026-09-20', amount: 600, confidence: 'confirmed' });
+function independentCarry(cost) {
+  const days = [];
+  let cash = 1000;
+  for (let day = AS_OF; day <= '2026-09-24'; day = F.addDays(day, 1)) {
+    if (day === AS_OF) cash -= 200;
+    if (day === '2026-08-25') cash -= 150 + 25;
+    if (day === '2026-08-28' || day === '2026-09-11') cash += 1000 - 200;
+    if (day === '2026-08-28') cash -= 150;
+    if (day === '2026-09-10') cash -= cost;
+    if (day === '2026-09-20') cash -= 600;
+    const start = day < '2026-08-28' ? AS_OF : day < '2026-09-11' ? '2026-08-28' : '2026-09-11';
+    const count = day < '2026-08-28' ? 8 : 14;
+    const householdCents = day < '2026-08-28' ? 25000 : 30000;
+    const index = Math.round((Date.parse(day) - Date.parse(start)) / 86400000);
+    cash -= (Math.floor(householdCents * (index + 1) / count) - Math.floor(householdCents * index / count)) / 100;
+    cash = Math.round(cash * 100) / 100;
+    days.push({ day, cash });
+  }
+  return days;
+}
+const unsafeCarry = independentCarry(600);
+for (const [date, dollars] of [['2026-08-27', 375], ['2026-09-10', 125], ['2026-09-24', 25]]) {
+  assert.equal(unsafeCarry.find(d => d.day === date).cash, dollars);
+}
+assert.equal(Math.min(...independentCarry(575).map(d => d.cash)), 50);
+const blockedCarry = today(laterBill);
+assert.equal(blockedCarry.status, 'unavailable');
+assert.equal(blockedCarry.contribution, null);
+assert.equal(blockedCarry.items[0].cumulativeProposed, null);
+assert.equal(blockedCarry.items[0].projectedFullyFunded, undefined);
+assert.equal(blockedCarry.periods.length, 0, 'no earlier unsafe proposals survive the operating barrier');
+assert.match(blockedCarry.reason, /operating.*2026-09-24.*25.00.*50.00/i);
+const boundary = structuredClone(laterBill);
+boundary.data.plan.bills.at(-1).amount = 575;
+assert.equal(today(boundary).status, 'ready', 'exactly meeting the floor must remain available');
+assert.equal(today(boundary).periods[1].items[0].remainingGap, 0);
+const earlyGapWithLaterBreach = structuredClone(laterBill);
+earlyGapWithLaterBreach.data.plan.startingCash.breakdown[0].value = 750;
+earlyGapWithLaterBreach.data.plan.bills.at(-1).amount = 1000;
+assert.equal(today(earlyGapWithLaterBreach).contribution, null,
+  'a first protected-cost gap must not hide a known later operating barrier to today\'s $75');
+
 const overdue = state(); overdue.data.plan.commitments[0].date = '2026-08-19';
 assert.match(today(overdue).reason, /overdue/);
 assert.equal(today(overdue).items[0].date, '2026-08-19');
@@ -159,6 +236,10 @@ for (const [name, change] of [
   ['stale cash', x => { x.data.plan.opening.asOf = '2026-08-19'; }],
   ['null cash', x => { x.data.plan.startingCash.breakdown[0].value = null; }],
   ['missing cash', x => { x.data.plan.startingCash.breakdown = []; }],
+  ['missing Bills account', x => { x.data.plan.startingCash.breakdown.shift(); }],
+  ['missing Weekly account', x => { x.data.plan.startingCash.breakdown.pop(); }],
+  ['unknown cash trust', x => { x.data.plan.startingCash.breakdown[1].confidence = 'unknown'; }],
+  ['conflicting cash trust', x => { x.data.plan.startingCash.breakdown[1].status = 'CONFLICT'; }],
   ['duplicate cash', x => { x.data.plan.startingCash.breakdown.push({ ...x.data.plan.startingCash.breakdown[0] }); }],
   ['unsupported pending card', x => { x.data.debts[0].pending = 49; }],
   ['duplicate pending observation', x => { x.packet.transactions.push({ ...x.packet.transactions[0] }); }],
@@ -176,6 +257,30 @@ const withheld = current(F.recommend(s.data.plan, AS_OF, { debts: s.data.debts,
 assert.equal(withheld.contribution, null, 'stale operating plan cannot publish a current proposal');
 const estimatedCash = state(); estimatedCash.data.plan.startingCash.breakdown[0].confidence = 'estimated';
 assert.equal(today(estimatedCash).trust, 'estimated');
+// A live packet must back BOTH canonical stocks, independently of opening
+// and transaction dates. Partial, duplicate, stale or mismatched evidence
+// cannot inherit the retained canonical balance on a same-date refresh.
+const observed = { complete: true, asOf: AS_OF, accounts: [
+  { id: 'chequing-a', value: 1000, evidenceDate: AS_OF },
+  { id: 'chequing-b', value: 0, evidenceDate: AS_OF },
+] };
+assert.equal(current(run(s, { operatingPlan: 'live', observedCash: observed })).fromTodayFunding.contribution, 250);
+const estimatedObservation = structuredClone(observed);
+estimatedObservation.accounts[1].confidence = 'estimated';
+assert.equal(current(run(s, { operatingPlan: 'live', observedCash: estimatedObservation })).fromTodayFunding.trust, 'estimated');
+for (const change of [
+  x => { x.complete = false; },
+  x => { x.accounts.shift(); },
+  x => { x.accounts.pop(); },
+  x => { x.accounts.push({ ...x.accounts[1] }); },
+  x => { x.accounts[1].evidenceDate = '2026-08-19'; },
+  x => { x.accounts[1].value = 10; },
+  x => { x.accounts[1].unknown = true; },
+]) {
+  const packet = structuredClone(observed); change(packet);
+  assert.equal(current(run(s, { operatingPlan: 'live', observedCash: packet })).fromTodayFunding.contribution, null);
+}
+assert.equal(current(run(s, { operatingPlan: 'live' })).fromTodayFunding.contribution, null);
 
 // Supported rolling-year horizon uses only already-authorized payroll rules.
 const year = state(); year.data.plan.payrollPlanningAssumptions = {

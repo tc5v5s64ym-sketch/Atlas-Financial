@@ -5451,6 +5451,7 @@ function renderPlan(d, periods, history) {
     periods,
     currentPeriodActuals: actuals,
     operatingPlan: d.liveOverlay && d.liveOverlay.operatingPlan,
+    observedCash: d.liveOverlay && d.liveOverlay.observedCash,
     operatingPlanNote: d.liveOverlay && d.liveOverlay.operatingPlanNote,
   }));
   const fundingPlan = advice.funding || null;
