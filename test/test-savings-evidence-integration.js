@@ -79,8 +79,8 @@ async function withServer(input, fn) {
     for (const name of ['scripts', 'public', 'docs']) fs.cpSync(path.join(ROOT, name), path.join(dir, name), { recursive: true });
     fs.copyFileSync(path.join(ROOT, 'server.js'), path.join(dir, 'server.js'));
     fs.mkdirSync(path.join(dir, 'snapshots'));
-    fs.writeFileSync(path.join(dir, 'public/periods.json'), 'null');
     const write = next => {
+      fs.writeFileSync(path.join(dir, 'public/periods.json'), JSON.stringify(next.periods || null));
       fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify(next.data));
       fs.writeFileSync(path.join(dir, 'observation.json'), JSON.stringify(next.payload));
       fs.writeFileSync(path.join(dir, 'map.json'), JSON.stringify(next.map));
