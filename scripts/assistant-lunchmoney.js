@@ -146,6 +146,18 @@ function createService(options = {}) {
   async function query(input, auth) {
     const { categories, accounts } = await catalogData(auth.principal);
     const category = input.categoryRef ? resolve(input.categoryRef, 'cat', auth.principal).id : null;
+    const categoryRow = category && categories.find(c => c.id === category);
+    if (category && !categoryRow) throw new Error('category-evidence-unavailable');
+    // Lunch Money category-group filters include their children. Keep the
+    // local evidence check consistent with that provider contract.
+    const categoryIds = new Set(category ? [category] : []);
+    function includeChildren(row) {
+      for (const child of row.children || []) {
+        if (!Number.isSafeInteger(child.id) || child.id <= 0) throw new Error('invalid-category-identity');
+        categoryIds.add(child.id); includeChildren(child);
+      }
+    }
+    if (categoryRow?.is_group) includeChildren(categoryRow);
     const account = input.accountRef ? resolve(input.accountRef, 'acct', auth.principal) : null;
     const exclude = input.excludeAccountRef ? resolve(input.excludeAccountRef, 'acct', auth.principal) : null;
     const selected = [];
@@ -153,7 +165,7 @@ function createService(options = {}) {
     let offset = 0; let complete = false;
     for (let page = 0; page < 20; page++) {
       const params = new URLSearchParams({ start_date: input.startDate, end_date: input.endDate,
-        include_pending: 'true', limit: '250', offset: String(offset) });
+        include_pending: 'true', include_group_children: 'true', limit: '250', offset: String(offset) });
       if (category) params.set('category_id', String(category));
       if (account) params.set(account.accountType === 'plaid' ? 'plaid_account_id' : 'manual_account_id', String(account.id));
       const data = await request('GET', '/transactions?' + params);
@@ -164,7 +176,8 @@ function createService(options = {}) {
         const acc = accountKey(tx);
         if (!date.safeParse(tx.date).success) throw new Error('malformed-date');
         if (tx.date < input.startDate || tx.date > input.endDate) continue;
-        if (category && tx.category_id !== category) continue;
+        if (tx.is_group_parent === true) continue;
+        if (category && !categoryIds.has(tx.category_id)) continue;
         if ((account || exclude) && !acc) throw new Error('account-evidence-unavailable');
         if (account && (acc[0] !== account.accountType || acc[1] !== account.id)) continue;
         if (exclude && acc && acc[0] === exclude.accountType && acc[1] === exclude.id) continue;
@@ -179,7 +192,7 @@ function createService(options = {}) {
     const start = input.offset || 0; const limit = input.limit || 100;
     return { status: 'ok', source: 'Lunch Money v2', observedAt: new Date(now()).toISOString(),
       window: { startDate: input.startDate, endDate: input.endDate }, coverage: 'complete-provider-response',
-      note: 'Provider ledger evidence, not Atlas budget membership or a claim that every bank has synced. Amounts use Lunch Money signed debit convention; currencies remain separate. Pending and posted rows are explicit. Never add split/group parents to their children.',
+      note: 'Provider ledger evidence, not Atlas budget membership or a claim that every bank has synced. Amounts use Lunch Money signed debit convention; currencies remain separate. Pending and posted rows are explicit. Group children are included and group parents excluded; split parents are excluded by the provider default. Never add parents to their children.',
       rows: selected.slice(start, start + limit), matchedCount: selected.length, hasMore: start + limit < selected.length,
       nextOffset: start + limit < selected.length ? start + limit : null, referenceExpiresInSeconds: TTL / 1000 };
   }
@@ -245,7 +258,9 @@ function createService(options = {}) {
       } else {
         verified = verified && Object.entries(preview.body).every(([key, value]) => key === 'notes'
           ? (after[key] || '') === value : after[key] === value)
-          && ['amount', 'currency', 'date', 'payee', 'plaid_account_id', 'manual_account_id'].every(key => after[key] === current[key]);
+          && ['amount', 'currency', 'date', 'payee', 'plaid_account_id', 'manual_account_id'].every(key => after[key] === current[key])
+          && (preview.body.category_id !== undefined || after.category_id === current.category_id)
+          && (preview.body.notes !== undefined || (after.notes ?? '') === (current.notes ?? ''));
       }
       if (!verified) return { status: 'write-unverified', reason: 'readback-did-not-match-do-not-retry', providerWriteMayHaveOccurred: true };
       const cat = await catalogData(auth.principal);

@@ -215,7 +215,9 @@ issuer must provide a stable authenticated `sub`. Reuse the server-side Lunch
 Money credential; never paste it into chat.
 
 Call `get_lunchmoney_catalog` for account/category references, then
-`get_lunchmoney_transactions` with explicit start/end dates. These tools expose
+`get_lunchmoney_transactions` with explicit start/end dates. Category-group
+filters include their subcategories. Account lookups include individual group
+children and omit group parents so purchases are counted once. These tools expose
 selected ledger fields including payee and notes, unlike the sanitized Atlas
 packet. References and previews expire after ten minutes or server restart.
 For a correction, `prepare_lunchmoney_edit` produces an exact preview; after the

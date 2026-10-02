@@ -1281,6 +1281,12 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       ok(deniedWrite.isError === true
           && deniedWrite.structuredContent.reason === 'transaction-write-scope-required',
         'ledger-read OAuth token cannot prepare Lunch Money edits');
+      const deniedApply = await readClient.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: 'edit-' + 'b'.repeat(48), confirmed: true } });
+      ok(deniedApply.isError === true
+          && deniedApply.structuredContent.reason === 'transaction-write-scope-required',
+        'ledger-read OAuth token cannot apply Lunch Money edits');
+
     });
 
     const writeToken = await oauth.sign(resource, {

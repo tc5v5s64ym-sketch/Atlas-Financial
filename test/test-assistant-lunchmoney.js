@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { createService, READ_SCOPE, WRITE_SCOPE, TTL, cents } = require('../scripts/assistant-lunchmoney');
 (async () => {
   let clock = Date.parse('2026-10-02T00:00:00Z');
-  let writes = []; let ambiguous = false; let ignoreWrite = false; let ledger = null; let more = false;
+  let writes = []; let ambiguous = false; let ignoreWrite = false; let ledger = null; let more = false; let eraseUntargetedNotes = false; let changeUntargetedCategory = false; let lastQuery;
   let tx = { id: 71, date: '2026-10-01', amount: '19.99', currency: 'cad', payee: 'Synthetic Shop', notes: null,
     category_id: 3, plaid_account_id: 4, manual_account_id: null, is_pending: false, status: 'reviewed' };
   const categories = [{ id: 3, name: 'Groceries' }, { id: 8, name: 'Household' }];
@@ -14,7 +14,7 @@ const { createService, READ_SCOPE, WRITE_SCOPE, TTL, cents } = require('../scrip
         writes.push({ path: p, query: u.search, body: JSON.parse(options.body) });
         if (ambiguous) throw new Error('synthetic transport failure');
         const body = JSON.parse(options.body);
-        if (options.method === 'PUT') { if (!ignoreWrite) Object.assign(tx, body); }
+        if (options.method === 'PUT') { if (!ignoreWrite) Object.assign(tx, body); if (eraseUntargetedNotes) tx.notes = null; if (changeUntargetedCategory) tx.category_id = 8; }
         else { tx.is_split_parent = true; tx.children = body.child_transactions.map((c, i) => ({ ...tx, children: undefined,
           is_split_parent: false, id: 100 + i, split_parent_id: tx.id, ...c, notes: c.notes ?? tx.notes })); }
         data = tx;
@@ -22,7 +22,7 @@ const { createService, READ_SCOPE, WRITE_SCOPE, TTL, cents } = require('../scrip
       else if (p.startsWith('/categories/')) data = categories.find(c => c.id === Number(p.split('/').pop()));
       else if (p === '/plaid_accounts') data = { plaid_accounts: [{ id: 4, name: 'Bank' }] };
       else if (p === '/manual_accounts') data = { manual_accounts: [{ id: 4, name: 'Cash' }] };
-      else if (p === '/transactions') data = { transactions: ledger || [tx], has_more: more };
+      else if (p === '/transactions') { lastQuery = u.searchParams; data = { transactions: ledger || [tx], has_more: more }; }
       else data = tx;
       return { ok: true, json: async () => structuredClone(data) };
     } });
@@ -85,6 +85,16 @@ const { createService, READ_SCOPE, WRITE_SCOPE, TTL, cents } = require('../scrip
   ignoreWrite = true;
   assert.equal((await service.invoke('apply', { previewId: mismatch.previewId, confirmed: true }, auth)).status, 'write-unverified');
   ignoreWrite = false;
+  tx.notes = 'Preserve this existing note';
+  const notesGuard = await service.invoke('prepare', { transactionRef: freshRef, changes: { categoryRef: freshCatalog.categories[0].categoryRef } }, auth);
+  eraseUntargetedNotes = true;
+  assert.equal((await service.invoke('apply', { previewId: notesGuard.previewId, confirmed: true }, auth)).status, 'write-unverified');
+  eraseUntargetedNotes = false;
+  tx.category_id = 3;
+  const categoryGuard = await service.invoke('prepare', { transactionRef: freshRef, changes: { notes: 'Notes only' } }, auth);
+  changeUntargetedCategory = true;
+  assert.equal((await service.invoke('apply', { previewId: categoryGuard.previewId, confirmed: true }, auth)).status, 'write-unverified');
+  changeUntargetedCategory = false;
   categories[1].archived = true;
   assert.equal((await service.invoke('prepare', { transactionRef: freshRef, changes: { categoryRef: freshCatalog.categories[1].categoryRef } }, auth)).status, 'unavailable');
   delete categories[1].archived;
@@ -99,6 +109,28 @@ const { createService, READ_SCOPE, WRITE_SCOPE, TTL, cents } = require('../scrip
   const beforeConcurrent = writes.length;
   const outcomes = await Promise.all([1, 2].map(() => service.invoke('apply', { previewId: concurrent.previewId, confirmed: true }, auth)));
   assert.equal(outcomes.filter(x => x.status === 'applied').length, 1); assert.equal(writes.length, beforeConcurrent + 1);
+  // Independent provider contract: Food contains two leaf categories. The
+  // provider returns both children, a mismatched category, and a group parent.
+  categories.push({ id: 9, name: 'Food', is_group: true, children: [{ id: 3, name: 'Groceries' }, { id: 10, name: 'Dining' }] });
+  const groupedCatalog = await service.invoke('catalog', {}, auth);
+  const food = groupedCatalog.categories.find(c => c.name === 'Food');
+  ledger = [ { ...tx, id: 71, category_id: 3, amount: '10.00' },
+    { ...tx, id: 72, category_id: 10, amount: '9.99', group_parent_id: 75 },
+    { ...tx, id: 73, category_id: 8, amount: '3.00' },
+    { ...tx, id: 75, category_id: 9, amount: '19.99', is_group_parent: true, plaid_account_id: null } ];
+  const grouped = await service.invoke('query', { ...args, categoryRef: food.categoryRef, limit: 1 }, auth);
+  assert.equal(grouped.status, 'ok'); assert.equal(grouped.matchedCount, 2);
+  assert.equal(grouped.hasMore, true); assert.equal(grouped.rows[0].amount, '10.00');
+  assert.equal(lastQuery.get('category_id'), '9'); assert.equal(lastQuery.get('include_group_children'), 'true');
+  const groupedNext = await service.invoke('query', { ...args, categoryRef: food.categoryRef, offset: grouped.nextOffset, limit: 1 }, auth);
+  assert.equal(groupedNext.rows[0].amount, '9.99'); assert.equal(groupedNext.hasMore, false);
+  const bank = groupedCatalog.accounts.find(a => a.type === 'plaid');
+  const included = await service.invoke('query', { ...args, accountRef: bank.accountRef }, auth);
+  assert.equal(included.matchedCount, 3); assert.equal(lastQuery.get('include_group_children'), 'true');
+  const outsideBank = await service.invoke('query', { ...args, excludeAccountRef: bank.accountRef }, auth);
+  assert.equal(outsideBank.status, 'ok'); assert.equal(outsideBank.matchedCount, 0);
+  const leaf = groupedCatalog.categories.find(c => c.name === 'Dining');
+  assert.equal((await service.invoke('query', { ...args, categoryRef: leaf.categoryRef }, auth)).matchedCount, 1);
   assert.equal(cents('-10.25'), -1025); assert.throws(() => cents('1.001'));
   console.log('Lunch Money: lookup, namespaces, scope, subject, confirmation, stale/expired/replay guards, exact edits, split conservation, ambiguous writes PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });
