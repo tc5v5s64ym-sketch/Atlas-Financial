@@ -45,6 +45,41 @@ function publication(data) {
 function publishedRow(data) {
   return publication(data).defaultView.calendarPeriods[0].bills.find(row => row.id === 'bill');
 }
+function cardObservation(mode = 'posted') {
+  // Invented card payment through the actual observer/reconciler/overlay.
+  // Provider credit sign remains negative; Forecast owns the bill row.
+  const data = fixture();
+  delete data.liveOverlay;
+  data.plan.opening.representedEvents = [];
+  data.plan.bills[0].amount = 250;
+  data.debts = [{ id: 'travelvisa', label: 'Synthetic payment card', balance: 750,
+    limit: 2000, apr: 0, minPayment: 0 }];
+  const asOf = data.meta.asOf;
+  const accountMap = { schema: 'atlas-provider-account-map/v1', provider: 'lunchmoney', scope: 'fixture',
+    owns: 'Synthetic identities only.', does_not_own: 'Financial facts or write authority.', mappings: [
+      { providerAccountId: '8001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+      { providerAccountId: '8002', canonical: { collection: 'debts', id: 'travelvisa' }, atlasRole: 'revolving-credit' },
+    ] };
+  const tx = { id: 8101, account_id: 8002, date: '2026-08-19', amount: -250,
+    is_pending: mode === 'pending', payee: 'Synthetic card payment', notes: 'Synthetic private note' };
+  if (mode === 'refund' || mode === 'reversal') tx.payee += ' ' + mode.toUpperCase();
+  const rule = { eventId: 'bill', payeePattern: 'Synthetic card payment', atlasAccountId: 'travelvisa',
+    direction: 'credit', payeeExcludePatterns: ['REFUND', 'REVERSAL'] };
+  if (mode === 'unknown') delete rule.direction;
+  if (mode === 'split') { tx.amount = -125; rule.settlesWhen = 'two-leg-sum'; rule.sameAccountSplitLegs = true; }
+  const payload = { provider: 'lunchmoney', fetchedAt: asOf + 'T18:00:00Z',
+    transactionWindow: { startDate: '2026-08-14', endDate: asOf, complete: true, hasMore: false },
+    pendingCoverage: { complete: true, basis: 'is_pending-unbounded', hasMore: false }, accounts: [
+      { id: 8001, type: 'cash', name: 'Synthetic bills', balance: 1000, updated_at: asOf + 'T17:55:00Z' },
+      { id: 8002, type: 'credit', subtype: 'credit_card', name: 'Synthetic card', balance: 750,
+        credit_limit: 2000, updated_at: asOf + 'T17:55:00Z' },
+    ], transactions: mode === 'split' ? [tx, { ...tx, id: 8102 }] : [tx] };
+  const before = JSON.stringify({ data, payload, accountMap });
+  const result = Live.fromObservation({ data, payload, accountMap, identity: { rules: [rule] } });
+  assert.equal(JSON.stringify({ data, payload, accountMap }), before, 'observation inputs unchanged');
+  assert.equal(result.data.liveOverlay.applied, true);
+  return result.data;
+}
 function freeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.values(value).forEach(freeze);
@@ -97,6 +132,27 @@ function observationContract() {
 
 function run() {
   observationContract();
+  for (const mode of ['posted', 'pending', 'split', 'unknown', 'refund', 'reversal']) {
+    const card = cardObservation(mode), row = publishedRow(card);
+    const before = JSON.stringify({ data: card, publication: publication(card) });
+    const payments = Detail.evidence(row, card).payments;
+    const output = Detail.html(row, card);
+    if (mode === 'refund' || mode === 'reversal' || mode === 'pending') {
+      assert.deepEqual(payments, [], mode + ' has no incumbent exact link');
+      assert.match(output, /Transaction evidence is unavailable/);
+      assert.doesNotMatch(output, /Transaction amount<|\(credit\)/);
+    } else {
+      assert.deepEqual(payments.map(p => p.amount), mode === 'split' ? [-125, -125] : [-250]);
+      assert.match(output, mode === 'split' ? /\$-125\.00 \(credit\)/ : /\$-250\.00 \(credit\)/);
+      assert.match(output, /Debits are positive and credits negative for the transaction account/);
+      assert.match(output, /sign alone does not identify a payment, refund or reversal/);
+      assert.match(output, /Actual<\/dt><dd>\$-250\.00/, 'Forecast signed actual is untouched');
+      if (mode === 'split') assert.equal((output.match(/\(credit\)/g) || []).length, 2);
+      assert.doesNotMatch(output, /Synthetic private note|8101|8102|8002/);
+      freeze(card); freeze(row); Detail.html(row, card);
+    }
+    assert.equal(JSON.stringify({ data: card, publication: publication(card) }), before);
+  }
   const data = fixture(), row = publishedRow(data), packet = data.liveOverlay.currentPeriodActuals;
   // Independent supplied-dollar facts: planned $100, observed $97.50, remaining
   // $0 because Forecast already marked the exact occurrence represented.
@@ -105,6 +161,23 @@ function run() {
   assert.deepEqual(Detail.evidence(row, data).payments,
     [{ date: '2026-08-18', amount: 97.5, account: 'chequing-a', pending: false }]);
   const html = Detail.html(row, data, { label: 'Synthetic bill · PAID', amount: '−$97.50' });
+  assert.match(html, /Transaction amount<\/dt><dd>\$97\.50 \(debit\)/);
+  // Direction explains the signed amount, never its cause. Unknown metadata
+  // and refund/reversal hints cannot turn a linked credit into a payment claim.
+  for (const kindHint of [null, 'refund', 'reversal', '<img src=x onerror=bad>']) {
+    for (const amount of [-250, 250, 0]) {
+      const signed = clone(data);
+      Object.assign(signed.liveOverlay.currentPeriodActuals.transactions[0], { amount, kindHint,
+        direction: '<svg onload=bad>', accountRole: '<img src=x onerror=bad>' });
+      const output = Detail.html(row, signed);
+      assert.match(output, amount < 0 ? /\$-250\.00 \(credit\)/ : amount > 0
+        ? /\$250\.00 \(debit\)/ : /\$0\.00 \(direction unavailable\)/);
+      assert.match(output, /sign alone does not identify a payment, refund or reversal/);
+      assert.doesNotMatch(output, /<img|<svg|onerror|onload|Payment credited|Refund credited|Reversal posted/);
+      assert.equal(Detail.evidence(row, signed).payments[0].amount, amount);
+      assert.deepEqual([row.planned, row.actual, row.remaining], [100, 97.5, 0]);
+    }
+  }
   for (const expected of ['<details', '<summary class="operating-line"', 'data-period-bill="bill"',
     'data-bill-status="PAID"', 'data-bill-date="2026-08-19"', 'Due date', '2026-08-19', '$100.00', '$97.50',
     '$0.00', row.payerLabel, 'Synthetic bills account', 'estimated', 'Posted', '2026-08-18']) {
@@ -126,6 +199,9 @@ function run() {
   const pending = clone(data);
   pending.liveOverlay.currentPeriodActuals.transactions[0].pending = true;
   pending.liveOverlay.currentPeriodActuals.representedActuals[0].postedOn = '2026-08-19';
+  assert.match(Detail.html(row, pending), /Pending — not a posted payment/);
+  pending.liveOverlay.currentPeriodActuals.transactions[0].amount = -250;
+  assert.match(Detail.html(row, pending), /\$-250\.00 \(credit\)/);
   assert.match(Detail.html(row, pending), /Pending — not a posted payment/);
   assert.match(Detail.html(row, pending), /Published status<\/dt><dd>PAID/);
   assert.match(Detail.html(row, pending), /Transaction date<\/dt><dd>2026-08-18/,
@@ -213,5 +289,5 @@ function run() {
     /\b(?:fetch|XMLHttpRequest|localStorage|sessionStorage)\s*[.(]/, 'no fetch/write/cache seam');
   console.log('PASS isolated bill detail: exact links, single/multiple, periods, pending, unavailable/conflicts, hostile text, immutable inputs and all Forecast outputs');
 }
-module.exports = { fixture, publishedRow, publication };
+module.exports = { fixture, cardObservation, publishedRow, publication };
 if (require.main === module) run();
