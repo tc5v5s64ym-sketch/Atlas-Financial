@@ -2336,6 +2336,7 @@ function calendarPeriodBillsHtml(period) {
   }
   return `<div class="payday-period-bills" data-payday-period-bills>
     <div class="operating-lines">${lines}</div>
+    <p class="operating-note">The Bills deduction uses assigned amounts, excluding bills already settled in the opening. Paid bills shows the settled amounts displayed above.</p>
     ${totals.length ? `<div class="payday-totals">${totals.join('')}</div>` : ''}
   </div>`;
 }

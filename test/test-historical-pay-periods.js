@@ -108,6 +108,10 @@ function loadComposer() {
     grab(planSrc, /^function budgetMonthViewHtml\([\s\S]*?\n\}/m, 'budgetMonthViewHtml'),
     'let budgetGranularity = \'pay-period\'; let budgetSelectedMonth = null; let budgetTrajectoryCache = null; let budgetTrajectoryCacheKey = null; let budgetPayPeriodAnchorMonth = null; let budgetDrilldownPayPeriod = null; let budgetMonthScheduleCache = null; let budgetMonthScheduleCacheKey = null;',
     grab(planSrc, /^function paydayInstructionShellHtml\([\s\S]*?\n\}$/m, 'paydayInstructionShellHtml'),
+    ...['payPeriodSelection', 'payPeriodRangeLabel', 'payPeriodStatusLabel',
+      'payPeriodNavigatorHtml', 'payPeriodCloseMonth', 'payPeriodMonths',
+      'payPeriodTimelineHtml', 'budgetPlanSpendEarmarkHtml'].map(name =>
+      grab(planSrc, new RegExp('^function ' + name + '\\([\\s\\S]*?\\n\\}', 'm'), name)),
   ].join('\n');
   return vm.runInNewContext(
     `${source}\n({ operatingSurfaceHtml, selectedPlanView, historicalPeriodHtml, money2 });`,
@@ -610,6 +614,158 @@ console.log('\n=== 9. completed sheet publishes household-budget actuals for the
     'incomplete historical coverage omits spent rather than inventing it');
   ok(near(withheldPrev.budgetHold, 0),
     'unproven historical spent does not become a completed-period total');
+}
+
+console.log('\n=== 10. finalized historical facts close every publication alias ===');
+{
+  function fixture(payrollActual = 4017.25, billActuals = true) {
+    const plan = historyPlan();
+    plan.opening.priorAsOf = '2026-08-13';
+    plan.opening.representedEvents.push({ id: 'payroll', date: ANCHOR });
+    const packet = actualsPacket();
+    packet.representedActuals = [
+      ...(payrollActual == null ? [] : [{ id: 'payroll', date: ANCHOR, actual: payrollActual }]),
+      ...(billActuals ? [
+        { id: 'bill-prev', date: '2026-08-21', actual: 93.40 },
+        { id: 'bill-recur-prev', date: '2026-08-21', actual: 126.60 },
+      ] : []),
+    ];
+    return { plan, packet };
+  }
+  const run = ({ plan, packet }) => F.recommend(plan, AS_OF, {
+    targetBuffer: 500, debts, currentPeriodActuals: packet,
+    paydaySnapshot: plan.opening.paydaySnapshot,
+  });
+  const past = advice => advice.pastPeriodViews.find(p => p.start === ANCHOR);
+  function closure(p, income, assigned, hold, label) {
+    // Independent integer-cent arithmetic on the fixture, not a Forecast helper.
+    const afterBills = (Math.round(income * 100) - Math.round(assigned * 100)) / 100;
+    const afterBudget = (Math.round(afterBills * 100) - Math.round(hold * 100)) / 100;
+    for (const key of ['incomeTotal', 'available']) ok(p[key] === income, label + ' ' + key);
+    ok(p.periodBillLoad === assigned && p.budgetHold === hold, label + ' independent deductions');
+    for (const key of ['afterBills', 'afterRemainingBills']) ok(p[key] === afterBills, label + ' ' + key);
+    for (const key of ['afterHouseholdBudget', 'balanceAfterDeductions', 'predictedEndingBalance',
+      'afterDebtRepayment', 'afterBigPurchases', 'projectedEnding']) {
+      ok(p[key] === afterBudget, label + ' ' + key);
+    }
+    for (const key of ['afterBills', 'afterHouseholdBudget', 'afterDebtRepayment', 'afterBigPurchases']) {
+      ok(p.leftover[key] === p[key], label + ' leftover.' + key);
+    }
+    const t = p.predictedEndingBalanceTerms;
+    ok(t && t.periodIncome === income && t.assignedBills === assigned
+      && t.householdBudgetHold === hold && t.balanceAfterDeductions === afterBudget,
+    label + ' identity terms match finalized facts');
+    ok(t && t.periodIncome - t.assignedBills - t.householdBudgetHold === afterBudget
+      && t.closes === true && t.identity === 'balance-after-deductions'
+      && p.predictedEndingBalanceIdentity === t.identity, label + ' independent identity closure');
+  }
+  const f = fixture();
+  const before = JSON.stringify(f);
+  const advice = run(f);
+  const p = past(advice);
+  closure(p, 6067.25, 200, 40, 'unequal actuals');
+  ok(p.totalBillsThisPeriod === 220 && p.paidBills === 220,
+    'displayed bills and paid disclosure are 93.40 + 126.60, assigned deduction stays 200');
+  ok(p.openingKnown === false && p.opening == null && p.incomeAdded == null,
+    'finalized income does not invent historical opening cash');
+  ok(p.paydayCarryover === CARRY, 'recorded carryover survives finalization');
+  ok(advice.payPeriodViews.find(row => row.id === p.id) === p,
+    'default timeline consumes the incumbent finalized historical object');
+  const html = composer.operatingSurfaceHtml({ advice, weekly: advice.weekly,
+    recommended: advice.weekly, planLook: 'this-period', planPayPeriodId: 'past:2026-08-14',
+    planView: advice.defaultView });
+  ok(html.includes('data-selected-pay-period="past:2026-08-14"'),
+    'default this-period timeline selects completed Aug 14 window');
+  for (const amount of [6067.25, 200, 5867.25, 5827.25, 220, 93.40, 126.60]) {
+    ok(html.includes(composer.money2(amount)), 'default timeline prints finalized ' + amount);
+  }
+  ok(/Paid bills this period<\/span><span>\$220\.00/.test(html),
+    'paid disclosure on default timeline matches settled rows');
+  const second = run(f);
+  ok(JSON.stringify(f) === before && JSON.stringify(p) === JSON.stringify(past(second)),
+    'repeated publication mutates neither plan nor packet and is deterministic');
+  const payrollOnly = run(fixture(4017.25, false));
+  closure(past(payrollOnly), 6067.25, 200, 40, 'payroll-only change');
+  const billOnly = run(fixture(4000, true));
+  closure(past(billOnly), 6050, 200, 40, 'bill-only change');
+  ok(past(billOnly).paidBills === 220, 'bill-only change updates paid disclosure');
+  const missing = run(fixture(null, false));
+  closure(past(missing), 6050, 200, 40, 'missing actuals');
+  ok(incomeRow(past(missing), 'payroll').actual == null
+    && billRow(past(missing), 'bill-recur-prev').status === 'planned',
+    'missing actuals do not invent amounts or settlement');
+  const estimated = fixture();
+  estimated.plan.income[0].confidence = 'estimated';
+  const ep = past(run(estimated));
+  closure(ep, 6067.25, 200, 40, 'estimated input');
+  ok(ep.incomeTrust === 'estimated' && ep.afterBillsTrust === 'estimated'
+    && ep.balanceAfterDeductionsTrust === 'estimated', 'all dependent trust remains estimated');
+  const short = fixture();
+  short.packet.coverageStart = '2026-08-28';
+  const sp = past(run(short));
+  ok(budgetRow(sp, 'groceries').spent == null && sp.budgetHold === 0,
+    'incomplete coverage still withholds historical spending');
+  closure(sp, 6067.25, 200, 0, 'incomplete coverage');
+  const excluded = fixture();
+  excluded.plan.opening.asOf = '2026-08-28';
+  delete excluded.plan.opening.priorAsOf;
+  excluded.plan.obligations = [{ id: 'opening-minimum', label: 'Synthetic opening minimum',
+    debtId: 'triangle', frequency: 'monthly', day: 21, firstDue: '2026-09-21',
+    amount: 30, confidence: 'confirmed', payingAccount: 'chequing-a' }];
+  const xp = past(run(excluded));
+  const stub = billRow(xp, 'opening-minimum');
+  ok(stub && stub.settledInOpening === true, 'true opening-settled minimum remains flagged');
+  ok(xp.periodBillLoad === 200, 'opening-settled minimum is excluded from assigned deduction');
+  const cadenceOpening = { plan: historyPlan(), packet: actualsPacket() };
+  const cp = past(run(cadenceOpening));
+  closure(cp, 6050, 80, 40, 'incumbent cadence-opening allocation');
+  ok(billRow(cp, 'bill-recur-prev').status === 'planned' && cp.paidBills === 80,
+    'unproven cadence opening remains planned while retaining its assigned exclusion');
+  const unresolved = fixture(null, false);
+  unresolved.plan.opening.notReliedUponEvents = [{ id: 'amandaSalary15',
+    date: '2026-08-15', reason: 'unconfirmed-transfer' }];
+  const up = past(run(unresolved));
+  ok(incomeRow(up, 'amandaSalary15').status === 'unresolved'
+    && incomeRow(up, 'amandaSalary15').notReliedUpon === true,
+    'historical finalization preserves unresolved not-relied-upon status');
+  closure(up, 6050, 200, 40, 'unresolved settlement');
+  const unknown = fixture();
+  unknown.plan.income[0].confidence = 'unknown';
+  const unknownPeriod = past(run(unknown));
+  ok(unknownPeriod.incomeTrust === 'unavailable' && unknownPeriod.afterBillsTrust === 'unavailable'
+    && unknownPeriod.balanceAfterDeductionsTrust === 'unavailable',
+    'unknown confidence remains withheld across dependent trust');
+  const zero = fixture(0);
+  closure(past(run(zero)), 2050, 200, 40, 'observed zero payroll');
+  ok(/assigned amounts/.test(html) && /settled amounts/.test(html),
+    'default timeline explains the assigned deduction and settlement disclosure bases');
+  for (const key of ['calendarPeriods']) {
+    ok(JSON.stringify(advice.defaultView[key]) === JSON.stringify(payrollOnly.defaultView[key]),
+      'historical bill actuals do not rewrite current/next ' + key);
+    ok(JSON.stringify(advice.defaultView[key]) === JSON.stringify(missing.defaultView[key]),
+      'historical payroll and bill actuals do not rewrite current/next ' + key);
+  }
+  ok(JSON.stringify(advice.payPeriodViews.filter(row => row.timelineRole === 'future'))
+    === JSON.stringify(payrollOnly.payPeriodViews.filter(row => row.timelineRole === 'future')),
+    'historical bill actuals do not rewrite further future periods');
+  const controls = fixture();
+  controls.plan.bills.push(
+    { id: 'current-control', label: 'Synthetic current bill', frequency: 'once',
+      date: '2026-09-04', amount: 30, confidence: 'confirmed' },
+    { id: 'future-control', label: 'Synthetic future bill', frequency: 'once',
+      date: '2026-09-14', amount: 60, confidence: 'confirmed' });
+  controls.packet.representedActuals.push(
+    { id: 'current-control', date: '2026-09-04', actual: 42 },
+    { id: 'future-control', date: '2026-09-14', actual: 72 });
+  const controlAdvice = run(controls);
+  const current = controlAdvice.defaultView.calendarPeriods.find(row => row.role === 'active');
+  const next = controlAdvice.defaultView.calendarPeriods.find(row => row.role === 'future');
+  ok(billRow(current, 'current-control').status === 'PAID'
+    && current.periodBillLoad === 30 && current.paidBills === 42,
+    'current settlement disclosure follows actuals while its assigned deduction stays planned');
+  ok(billRow(next, 'future-control').status === 'planned'
+    && next.paidBills === 0 && next.remainingBills === next.periodBillLoad,
+    'future represented occurrence stays planned and outside paid disclosure');
 }
 
 if (failures) {

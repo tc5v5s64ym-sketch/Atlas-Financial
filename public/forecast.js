@@ -7863,7 +7863,9 @@
   function periodPaidBillDisclosure(bills) {
     return roundCent((bills || []).reduce((sum, row) => {
       if (!row || row.needsDate || !rowIsSettledBill(row)) return sum;
-      return sum + billAssignedAmount(row);
+      // Settlement disclosure follows the printed PAID amount. The
+      // assigned deduction still belongs to periodWaterfallBillLoad.
+      return sum + periodDisplayedBillAbs(row);
     }, 0));
   }
 
@@ -8140,15 +8142,28 @@
           && window.end >= DALE_PAYROLL_REGIME_FROM) {
         income = applyFutureTimelineDaleIncome(plan, window, income, daleMaps);
       }
-      const bills = section.rows || [];
-      const remainingBills = section.remainingTotal != null
+      // Finalize historical rows before any dependent totals, trust,
+      // identity terms or leftover stages are composed by this printer.
+      if (lookback) income = income.map(sealHistoricalIncomeRow);
+      // The incumbent assignment/opening exclusions are independent of
+      // historical settlement disclosure. Retain that basis while sealing
+      // copies for publication; a planned/unknown stamp cannot reassign a
+      // bill already excluded by the opening contract.
+      const assignedBillRows = section.rows || [];
+      const bills = lookback
+        ? assignedBillRows.map(row => sealHistoricalBillRow(Object.assign({}, row)))
+        : assignedBillRows;
+      const remainingBills = lookback ? historicalRemainingBills(bills)
+        : section.remainingTotal != null
         ? section.remainingTotal
         : roundCent(bills.reduce((s, r) => {
           if (!r || r.status === 'PAID' || r.needsDate) return s;
           return s + (r.remaining != null ? Math.abs(Number(r.remaining))
             : Math.abs(Number(r.amount) || 0));
         }, 0));
-      const totalBillsThisPeriod = section.total != null
+      const totalBillsThisPeriod = lookback
+        ? roundCent(bills.reduce((s, r) => s + periodDisplayedBillAbs(r), 0))
+        : section.total != null
         ? section.total
         : roundCent(bills.reduce((s, r) => {
           if (!r || r.needsDate) return s;
@@ -8245,7 +8260,7 @@
       const available = planUnavailable ? null : incomeTotal;
       const periodBillLoad = planUnavailable
         ? null
-        : periodWaterfallBillLoad(bills, openingAsOf, openingSource);
+        : periodWaterfallBillLoad(assignedBillRows, openingAsOf, openingSource);
       const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
       // Balance After Deductions is the household remaining:
       // displayed period income − assigned bills − Household Budget.
@@ -8258,7 +8273,7 @@
       const afterRemainingBills = afterBills;
       const incomeTrust = periodWaterfallTotalTrust(income, incomeTotal, row => row.amount);
       const periodBillLoadTrust = periodWaterfallTotalTrust(
-        bills.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)),
+        assignedBillRows.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)),
         periodBillLoad, row => row.planned != null ? row.planned : row.amount);
       const afterBillsTrust = periodWaterfallCombinedTrust(incomeTrust, periodBillLoadTrust);
       const afterHouseholdBudget = afterBills != null
@@ -8891,7 +8906,7 @@
     }, 0));
   }
 
-  function historicalDisplayedBillAbs(row) {
+  function periodDisplayedBillAbs(row) {
     if (!row) return 0;
     if (row.movement != null && isFinite(Number(row.movement))) {
       return Math.abs(Number(row.movement));
@@ -8899,25 +8914,6 @@
     const raw = row.actual != null ? row.actual
       : (row.amount != null ? row.amount : row.planned);
     return Math.abs(Number(raw) || 0);
-  }
-
-  function sealHistoricalPeriodFacts(period) {
-    if (!period) return period;
-    period.income = (period.income || []).map(sealHistoricalIncomeRow);
-    period.bills = (period.bills || []).map(sealHistoricalBillRow);
-    const otherItems = ((period.otherIncome && period.otherIncome.items) || [])
-      .map(sealHistoricalIncomeRow);
-    const otherAmount = roundCent(otherItems.reduce(
-      (s, r) => s + (Number(r && r.amount) || 0), 0));
-    period.otherIncome = { amount: otherAmount, items: otherItems };
-    period.incomeTotal = roundCent((period.income || []).reduce(
-      (s, r) => s + (Number(r && r.amount) || 0), 0));
-    period.available = period.incomeTotal;
-    period.paidBills = periodPaidBillDisclosure(period.bills);
-    period.remainingBills = historicalRemainingBills(period.bills);
-    period.totalBillsThisPeriod = roundCent((period.bills || []).reduce(
-      (s, r) => s + historicalDisplayedBillAbs(r), 0));
-    return period;
   }
 
   function planPastPeriodViews(plan, asOf, alloc, plans, debts, opts) {
@@ -8931,7 +8927,7 @@
       const period = (waterfalls.calendarPeriods || [])[0];
       if (!period) continue;
       views.push(attachPaydayCarryover(
-        sealHistoricalPeriodFacts(period), plan, asOf, window, opts));
+        period, plan, asOf, window, opts));
     }
     return views;
   }
