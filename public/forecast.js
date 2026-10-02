@@ -10521,7 +10521,15 @@
     const actuals = currentPeriodActualsPacket(opts);
     const transactions = actuals && Array.isArray(actuals.transactions) ? actuals.transactions : [];
     const duplicateIds = pendingPostedDuplicateIdSet(actuals);
-    const admittedPending = new Map();
+    const pendingByFacility = new Map();
+    const pendingCardAccount = tx => {
+      const account = tx.atlasAccountId || tx.account;
+      if (!account || [tx.atlasAccountId, tx.account, tx.accountId].some(id =>
+        id != null && id !== '' && String(id) !== String(account))) return null;
+      if ((tx.accountRole && tx.accountRole !== 'revolving-credit')
+          || !isRevolvingCardAccount({ account, accountRole: tx.accountRole })) return null;
+      return String(account);
+    };
     const unresolvedPendingSpend = row => {
       // reconTxFrom omits accountRole and ambiguity flags. Resolve exactly
       // one original transaction; a display row cannot prove card provenance
@@ -10534,11 +10542,8 @@
       // Match spendDuplicateKey's canonical account choice. accountId-only
       // evidence cannot participate in its replacement detection, and any
       // contradictory alias makes cash/card provenance uncertain.
-      const account = tx.atlasAccountId || tx.account;
-      if (!account || [tx.atlasAccountId, tx.account, tx.accountId].some(id =>
-        id != null && id !== '' && String(id) !== String(account))) return true;
-      if ((tx.accountRole && tx.accountRole !== 'revolving-credit')
-        || !isRevolvingCardAccount({ account, accountRole: tx.accountRole })
+      const account = pendingCardAccount(tx);
+      if (!account
         || tx.pendingPostedAmbiguous === true || duplicateIds.has(String(tx.id))) return true;
       // Provenance identifies the card; it cannot prove the incurred charge
       // is in openingBalance. Use the same debt id, pending amount and unknown
@@ -10547,18 +10552,33 @@
         && String(d.id) === String(account));
       if (facilities.length !== 1 || pendingUnknown(facilities[0])
           || !finite(facilities[0].pending) || facilities[0].pending < 0) return true;
-      const cents = Math.max(0, Math.round(Number(tx.amount) * 100));
-      if (!finite(cents)) return true;
-      const key = String(account);
-      const admitted = admittedPending.get(key) || { ids: new Set(), cents: 0 };
-      // A recon row may be printed again; count each admitted transaction
-      // once per facility. Refunds cannot offset unsupported pending charges.
-      if (!admitted.ids.has(String(tx.id))) {
-        admitted.ids.add(String(tx.id));
-        admitted.cents += cents;
+      if (!pendingByFacility.has(account)) {
+        let cents = 0;
+        // Provider pending exposure is independent of consumption membership.
+        // Include issuer charges, represented bills and business purchases too.
+        // A positive transfer on this card is a debt debit; another account's
+        // transfer and negative card credits do not back an admitted charge.
+        for (const pendingTx of transactions) {
+          if (!pendingTx || transactionPendingState(pendingTx) !== 'pending'
+              || skipSplitParent(pendingTx, actuals)) continue;
+          if (![pendingTx.atlasAccountId, pendingTx.account, pendingTx.accountId]
+            .some(id => id != null && String(id) === account)) continue;
+          const amount = Number(pendingTx.amount);
+          if (pendingTx.amount == null || pendingTx.amount === '' || !finite(amount)) return true;
+          if (amount <= 0) continue;
+          if (pendingCardAccount(pendingTx) !== account || pendingTx.id == null || pendingTx.id === ''
+              || transactions.filter(t => t && t.id != null
+                && String(t.id) === String(pendingTx.id)).length !== 1
+              || pendingTx.pendingPostedAmbiguous === true
+              || duplicateIds.has(String(pendingTx.id))) return true;
+          cents += Math.round(amount * 100);
+        }
+        if (!finite(cents)) return true;
+        // Cache the complete packet total so repeated recon publications cannot
+        // count a transaction twice. Refunds cannot offset positive charges.
+        pendingByFacility.set(account, cents);
       }
-      admittedPending.set(key, admitted);
-      return Math.round(facilities[0].pending * 100) < admitted.cents;
+      return Math.round(facilities[0].pending * 100) < pendingByFacility.get(account);
     };
     let basisTrust = 'calculated';
     for (const p of ordered) {
