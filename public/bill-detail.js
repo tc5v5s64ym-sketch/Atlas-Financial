@@ -1,0 +1,144 @@
+/* Read-only Budget disclosure. Forecast owns the supplied bill row.
+ * FOUNDATION — awaiting Budget integration after PR #470 stabilizes.
+ * Consumer: periodBillLine/calendarPeriodBillsHtml in public/plan.js.
+ * No fetching, matching, settlement decisions, totals, or retained packets.
+ */
+(function (root, factory) {
+  'use strict';
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.BillDetail = api;
+})(typeof globalThis === 'object' ? globalThis : this, function () {
+  'use strict';
+  const text = value => typeof value === 'string' ? value : '';
+  const escape = value => text(value).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const date = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value + 'T00:00:00Z'))
+    && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
+  const money = value => typeof value === 'number' && Number.isFinite(value)
+    ? '$' + value.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : 'Unavailable';
+  const unavailable = reason => ({ reason, asOf: null, payments: [] });
+
+  // The observer publishes transactionId as the first transactionIds entry.
+  // Repeated ids are harmless; disagreeing single/plural links are not.
+  function links(row) {
+    const hasMany = row.transactionIds != null;
+    if (hasMany && !Array.isArray(row.transactionIds)) return null;
+    const ids = hasMany ? row.transactionIds.slice() : [];
+    if (row.transactionId != null) {
+      if (hasMany && !ids.includes(row.transactionId)) return null;
+      ids.unshift(row.transactionId);
+    }
+    if (!ids.length || ids.some(id => !text(id))) return null;
+    return [...new Set(ids)];
+  }
+
+  function transaction(row, asOf) {
+    if (!row || !date(row.date) || row.date > asOf
+      || typeof row.amount !== 'number' || !Number.isFinite(row.amount)
+      || typeof row.pending !== 'boolean'
+      || row.pendingPostedDuplicate === true || row.pendingPostedAmbiguous === true
+      || row.contradictoryEvidence === true) return null;
+    const account = text(row.atlasAccountId) || text(row.account);
+    if (!account || (row.atlasAccountId && row.account && row.atlasAccountId !== row.account)) return null;
+    // Explicit projection: provider fields, merchant, notes, tags and raw ids
+    // never enter the result, DOM, attributes, or accessible name.
+    return { date: row.date, amount: row.amount, account, pending: row.pending };
+  }
+
+  function evidence(row, data) {
+    const overlay = data && data.liveOverlay;
+    const packet = overlay && overlay.currentPeriodActuals;
+    const asOf = data && data.plan && data.plan.opening && data.plan.opening.asOf;
+    if (!row || !text(row.id) || !date(row.date)) return unavailable('occurrence');
+    if (!overlay || overlay.applied !== true || overlay.operatingPlan === 'unavailable'
+      || !date(asOf) || overlay.effectiveAsOf !== asOf || overlay.observedAsOf !== asOf
+      || (data.meta && data.meta.asOf !== asOf)
+      || !packet || packet.schema !== 'atlas-current-period-actuals/v1'
+      || packet.observationAsOf !== asOf) return unavailable('observation');
+    if (!Array.isArray(packet.representedActuals) || !Array.isArray(packet.transactions)) {
+      return unavailable('links');
+    }
+    const matches = packet.representedActuals.filter(item => item
+      && item.id === row.id && item.date === row.date);
+    if (!matches.length) return unavailable('links');
+    const ids = links(matches[0]);
+    if (!ids) return unavailable('links');
+    // Exact duplicate occurrences may repeat; conflicting occurrence records
+    // must not silently choose one or combine separate evidence claims.
+    const signature = item => JSON.stringify([links(item)?.slice().sort(), item.actual, item.postedOn]);
+    if (matches.some(item => signature(item) !== signature(matches[0]))) return unavailable('conflict');
+    const reused = packet.representedActuals.some(item => item
+      && (item.id !== row.id || item.date !== row.date)
+      && [item.transactionId, ...(Array.isArray(item.transactionIds) ? item.transactionIds : [])]
+        .some(id => ids.includes(id)));
+    if (reused) return unavailable('conflict');
+    const payments = [];
+    for (const id of ids) {
+      const found = packet.transactions.filter(item => item && item.id === id);
+      if (!found.length) return unavailable('links');
+      const projected = found.map(item => transaction(item, asOf));
+      if (projected.some(item => !item)) return unavailable('transaction');
+      if (projected.some(item => JSON.stringify(item) !== JSON.stringify(projected[0]))) {
+        return unavailable('conflict');
+      }
+      payments.push(projected[0]);
+    }
+    return { reason: null, asOf, payments };
+  }
+
+  function accountLabel(id, data) {
+    const cash = data && data.plan && data.plan.startingCash;
+    const rows = [...(cash && cash.breakdown || []), ...(cash && cash.heldElsewhere || []),
+      ...(data && data.debts || []), ...(data && data.revolvingExtra || [])];
+    const labels = [...new Set(rows.filter(row => row && row.id === id)
+      .map(row => text(row.label)).filter(Boolean))];
+    return labels.length === 1 ? labels[0] : 'Account label unavailable';
+  }
+
+  function fact(label, value) {
+    return '<div><dt>' + escape(label) + '</dt><dd>' + escape(value) + '</dd></div>';
+  }
+
+  // summary contains only plain display strings from the incumbent row printer
+  // (glanceLineLabel/glanceSignedMoney); it is escaped, never trusted markup.
+  // Replacing this HTML on refresh/period switch intentionally closes details
+  // and discards all prior evidence. There is no transaction-id cache.
+  function html(row, data, summary) {
+    row = row || {};
+    summary = summary || {};
+    const found = evidence(row, data);
+    const paid = row.status === 'PAID';
+    const missing = paid
+      ? 'This bill is marked PAID by Forecast. Transaction evidence is unavailable.'
+      : 'Transaction evidence is unavailable for this bill occurrence.';
+    const reason = found.reason === 'conflict' ? ' The linked records conflict.' : '';
+    const payments = found.payments.map(payment => '<li><dl>'
+      + fact('Transaction date', payment.date)
+      + fact('Transaction amount', money(payment.amount))
+      + fact('Transaction account', accountLabel(payment.account, data))
+      + fact('Transaction state', payment.pending ? 'Pending — not a posted payment' : 'Posted')
+      + '</dl></li>').join('');
+    const proof = payments
+      ? '<p>Linked transaction evidence · observation as of ' + escape(found.asOf)
+        + '</p><ul class="bill-detail-payments">' + payments + '</ul>'
+        + '<p>Transaction state does not change Forecast’s published bill status or amounts.</p>'
+      : '<p>' + missing + reason + ' Missing evidence does not mean unpaid.</p>';
+    return '<details class="bill-detail" data-bill-detail><summary>'
+      + '<span>' + escape(text(summary.label) || text(row.label) || 'Bill details') + '</span>'
+      + '<span>' + escape(summary.amount) + '</span>'
+      + '<span class="bill-detail-cue">Details</span></summary>'
+      + '<div class="bill-detail-body"><h4>' + escape(text(row.label) || 'Bill details') + '</h4><dl>'
+      + fact('Published status', text(row.status) || 'Unavailable')
+      + fact('Settlement', text(row.settlement) || 'Unavailable')
+      + fact('Due date', date(row.date) ? row.date : 'Unavailable')
+      + fact('Planned', money(row.planned)) + fact('Actual', money(row.actual))
+      + fact('Remaining', money(row.remaining))
+      + fact('Planned payer', text(row.payerLabel) || 'Unavailable')
+      + fact('Published confidence', text(row.confidence) || 'Unavailable')
+      + '</dl><h4>Payment evidence</h4>' + proof + '</div></details>';
+  }
+  return { html, evidence };
+});
