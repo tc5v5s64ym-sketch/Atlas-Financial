@@ -31,6 +31,8 @@ const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
 const RunningBuild = require('./scripts/running-build.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
+const LunchMoneyAssistant = require('./scripts/assistant-lunchmoney.js');
+const lunchMoneyAssistant = LunchMoneyAssistant.createService();
 const AssistantOAuth = require('./scripts/assistant-oauth.js');
 const TalkGemini = require('./scripts/talk-gemini.js');
 const TalkPresentation = require('./scripts/talk-presentation.js');
@@ -339,7 +341,12 @@ app.post('/assistant/mcp', mcpOAuthGate, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    await AssistantMcp.handleHttp(req, res, { getPacket: buildCurrentAssistantPacket });
+    await AssistantMcp.handleHttp(req, res, {
+      getPacket: buildCurrentAssistantPacket,
+      lunchMoney: lunchMoneyAssistant,
+      auth: { principal: req.auth && req.auth.extra && req.auth.extra.subject,
+        scopes: req.auth && req.auth.scopes || [] },
+    });
   } catch (err) {
     console.error('assistant MCP request failed');
     if (!res.headersSent) {

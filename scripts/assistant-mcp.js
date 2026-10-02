@@ -1,9 +1,7 @@
 'use strict';
-/* Standards-compatible MCP transport for the incumbent Atlas assistant packet.
- *
- * This module is transport only. It registers one read-only tool whose result
- * is produced by scripts/assistant-packet.js. It does not calculate financial
- * figures, authenticate users, call providers, or write Atlas state.
+/* Standards-compatible MCP transport for the Atlas packet and owner-authorized
+ * direct Lunch Money tools. Provider credentials remain server-side; bounded
+ * edits are delegated to assistant-lunchmoney.js, never Atlas state writes.
  */
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const {
@@ -11,10 +9,11 @@ const {
 } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const z = require('zod/v4');
 const Assistant = require('./assistant-packet.js');
+const LunchMoney = require('./assistant-lunchmoney.js');
 
 const TOOL_NAME = 'get_atlas_current';
 const SERVER_NAME = 'atlas-financial-assistant';
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = '1.1.0';
 const REQUIRED_SCOPE = 'atlas.current.read';
 const ALLOWED_ORIGINS = Object.freeze([
   'https://chatgpt.com',
@@ -32,7 +31,8 @@ const ANNOTATIONS = Object.freeze({
 const INSTRUCTIONS = [
   'Use get_atlas_current to retrieve the sanitized Atlas current-state packet.',
   'Forecast is the sole financial planner and calculation authority.',
-  'This server cannot write Atlas or provider state and cannot move money.',
+  'This server cannot write Atlas state or move money. Provider writes are restricted to confirmed Lunch Money transaction edits.',
+  'Lunch Money tools read its ledger directly. prepare_lunchmoney_edit only creates a preview; show it to the user and call apply_lunchmoney_edit only after explicit confirmation of that exact preview. Never retry an uncertain write. Lunch Money remains the ledger authority; Forecast remains the planner.',
 ].join(' ');
 
 function originAllowed(origin) {
@@ -70,7 +70,7 @@ function packetResult(packet) {
   };
 }
 
-function createServer(getPacket) {
+function createServer(getPacket, opts = {}) {
   if (typeof getPacket !== 'function') throw new Error('getPacket is required');
   const server = new McpServer({
     name: SERVER_NAME,
@@ -86,11 +86,33 @@ function createServer(getPacket) {
     annotations: descriptor.annotations,
     _meta: descriptor._meta,
   }, async () => packetResult(await getPacket()));
+  const definitions = [
+    ['get_lunchmoney_catalog', 'catalog', 'List Lunch Money accounts and categories with opaque references. Call before account/category filtering or editing; references expire after 10 minutes.'],
+    ['get_lunchmoney_transactions', 'query', 'Read Lunch Money transactions for an explicit date range (maximum 366 days), including merchant, amount, currency, source account, category, notes and pending status. Filter by catalog references or merchant. Follow nextOffset for all matches. This is provider ledger evidence, not Atlas budget classification; never sum different currencies or pending/posted duplicates blindly.'],
+    ['prepare_lunchmoney_edit', 'prepare', 'Prepare a proposed category/notes correction or split for one exact transactionRef obtained by lookup. Category refs must exist. Split amounts are decimal strings that sum exactly to the parent. This tool never writes; show before/proposed to the user and wait for their explicit confirmation.'],
+    ['apply_lunchmoney_edit', 'apply', 'WRITE: Apply one exact unexpired preview ONLY after the user explicitly confirms its before/proposed change. Set confirmed=true only for that confirmation. Category/notes or split writes only; no payments, transfers, account/balance edits or deletions. Re-reads before writing, single-use preview, verifies provider readback. A write-unverified result must never be automatically retried.'],
+  ];
+  for (const [name, operation, description] of definitions) {
+    const writeAccess = operation === 'prepare' || operation === 'apply';
+    const scopes = writeAccess ? [REQUIRED_SCOPE, LunchMoney.WRITE_SCOPE] : [REQUIRED_SCOPE];
+    server.registerTool(name, {
+      title: name.replaceAll('_', ' '), description, inputSchema: LunchMoney.schemas[operation],
+      annotations: { readOnlyHint: operation !== 'apply', destructiveHint: operation === 'apply',
+        idempotentHint: operation !== 'apply', openWorldHint: true },
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes }] },
+    }, async args => {
+      const result = opts.lunchMoney
+        ? await opts.lunchMoney.invoke(operation, args, opts.auth)
+        : { status: 'unavailable', reason: 'lunchmoney-not-configured' };
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result,
+        isError: result.status === 'unavailable' || result.status === 'write-unverified' };
+    });
+  }
   return server;
 }
 
 async function handleHttp(req, res, opts) {
-  const server = createServer(opts && opts.getPacket);
+  const server = createServer(opts && opts.getPacket, opts);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

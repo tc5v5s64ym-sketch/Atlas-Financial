@@ -1041,7 +1041,7 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         && metadata.authorization_servers.length === 1
         && metadata.authorization_servers[0] === oauth.issuer,
       'protected-resource metadata binds the MCP resource to one external issuer');
-    ok(metadata.scopes_supported.length === 1
+    ok(metadata.scopes_supported.length === 2
         && metadata.scopes_supported[0] === AssistantMcp.REQUIRED_SCOPE,
       'protected-resource metadata advertises only atlas.current.read');
 
@@ -1102,8 +1102,9 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     try {
       await client.connect(transport);
       const listed = await client.listTools();
-      ok(listed.tools.length === 1 && listed.tools[0].name === AssistantMcp.TOOL_NAME,
-        'official MCP client sees exactly one Atlas tool');
+      ok(listed.tools.length === 5 && listed.tools[0].name === AssistantMcp.TOOL_NAME
+        && listed.tools.some(tool => tool.name === 'apply_lunchmoney_edit'),
+        'official MCP client sees current state plus Lunch Money lookup/preview/edit tools');
       const listedTool = listed.tools[0];
       ok(listedTool.annotations.readOnlyHint === true
           && listedTool.annotations.destructiveHint === false
@@ -1126,6 +1127,14 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
           && wrapped.writesCanonicalState === false
           && wrapped.productionWrite === false,
         'MCP packet preserves Forecast authority and declares no writes');
+      const deniedEdit = await client.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: 'edit-' + 'a'.repeat(48), confirmed: true } });
+      ok(deniedEdit.isError === true && deniedEdit.structuredContent.reason === 'transaction-write-scope-required',
+        'read-only OAuth client cannot invoke the real provider write tool');
+      const writeTool = listed.tools.find(tool => tool.name === 'apply_lunchmoney_edit');
+      ok(writeTool.annotations.readOnlyHint === false && writeTool.annotations.idempotentHint === false
+        && writeTool._meta.securitySchemes[0].scopes.includes('atlas.transactions.write'),
+        'write tool advertises distinct write scope and non-idempotent semantics');
       let refused = false;
       try {
         const writeAttempt = await client.callTool({
