@@ -745,22 +745,28 @@ was legacy staging requiring reconciliation. The current role selection
 retains authorization for a deliberate reviewed reconciliation; it does not
 establish funded amounts or a new opening.
 
-Ending 8420 is the existing `cash:savings-dont-touch` identity established by
-`docs/ACCOUNT_FACTS.md` and `docs/reconciliation/balance-map.json`. Its approved
-future purpose is property-tax and home-insurance reserve. Historical staging
-evidence remains historical evidence. Runtime still excludes this identity as
-staging, and the
-existing validator rejects it as a savings pool. No alias may bypass that
-boundary. Activation requires an explicit atomic reconciliation of the canonical
-classification, provider mapping, Forecast exclusion and non-additive inventory,
-with proof that cash is counted once. This documentation records intent only;
-it does not perform that cutover.
+**Identity resolved by read-only provider evidence, 2026-10-03.** The existing
+private provider mapping for EMERGENCY SAVING / `cash:savings` links to the live
+catalog account whose mask is 3074. The live SAVINGS-DONT TOUCH mask is 8420,
+consistent with `docs/ACCOUNT_FACTS.md` and `docs/reconciliation/balance-map.json`.
+No screenshot balance was consumed. Real provider IDs remain in the private map.
 
-Ending 3074 has no proven link to the incumbent `cash:savings` / EMERGENCY SAVING
-identity. A display name without the suffix is insufficient. Its intended
-sports-cost role cannot activate until the owner or account evidence proves the
-exact identity. The precise remaining question lives in
-`docs/01_OPEN_QUESTIONS.md`.
+`plan.savingsEarmarks` now configures these exact canonical identities as
+`purpose-reserve`, with existing goal references separate from confirmation
+history. Ending 8420 stays in held-elsewhere evidence with its dated amount
+unchanged, but its canonical class is explicitly reconciled to purpose reserve.
+The validator accepts this known identity only with that classification and an
+explicit `reconciledOn`; aliases, duplicate opening rows and other excluded
+accounts remain rejected. Both provider mappings must be `household-reserve`.
+The gitignored local map is prepared; deployment must install the same two
+identity-only changes in its existing private map before activating this head.
+No other provider roles are changed. The legacy map is not an implicit migration.
+
+Forecast excludes both pools from spendable cash and publishes their inventory
+as a non-additive view. The old generic `savings` deficit backing is unavailable
+for a purpose reserve even when current cash is observed: sports and home funds
+cannot silently finance generic shortfalls. Existing configurations without the
+new purpose role preserve their incumbent behavior.
 
 Dale explicitly rejected screenshot balances as setup inputs. He will move
 funds himself after amounts are chosen and then confirm the new baseline.

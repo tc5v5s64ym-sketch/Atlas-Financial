@@ -9,7 +9,7 @@
     "Identity is providerAccountId, never the display name.",
     "Mapping does not authorize a canonical write.",
     "Map non-household provider accounts as atlasRole household-external. Do not leave a current-period account unmapped: unresolved accounts cannot authorize a precise remaining figure.",
-    "DEBT&PAYMENTS / TENNIS INCOME and SAVINGS-DONT TOUCH are non-household. Give them household-external, not household-cash, and do not omit them if they still produce transactions.",
+    "DEBT&PAYMENTS / TENNIS INCOME remains household-external. The owner-authorized 2026-10-03 savings cutover uses household-reserve for both purpose pools, never household-cash. Keep the real provider IDs private and verify suffix identity before changing a map.",
     "TENNIS INCOME must carry externalId tennis-income so a uniquely paired debit can prove a BILLS salary transfer. That label is not a household-cash identity. Without it, the salary cannot be proven represented; a complete trusted current-cash overlay still proceeds and does not count the salary until a unique TENNIS INCOME→BILLS pair exists."
   ],
   "mappings": [
@@ -26,7 +26,7 @@
     {
       "providerAccountId": "YOUR_EMERGENCY_SAVING_ID",
       "canonical": { "collection": "cash", "id": "savings" },
-      "atlasRole": "household-cash"
+      "atlasRole": "household-reserve"
     },
     {
       "providerAccountId": "YOUR_PERSONAL_CREDIT_CARD_ID",
@@ -60,7 +60,8 @@
     },
     {
       "providerAccountId": "YOUR_SAVINGS_DONT_TOUCH_ID",
-      "atlasRole": "household-external"
+      "canonical": { "collection": "cash", "id": "savings-dont-touch" },
+      "atlasRole": "household-reserve"
     }
   ]
 }

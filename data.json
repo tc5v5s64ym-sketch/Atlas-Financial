@@ -7,6 +7,37 @@
         "disclaimer": "Financial education and planning support. Not professional financial, tax, legal, mortgage or investment advice."
     },
     "plan": {
+        "savingsEarmarks": {
+            "version": 1,
+            "currency": "CAD",
+            "pools": [
+                {
+                    "id": "sports",
+                    "accountId": "savings",
+                    "label": "DEFICIT PLANNING — Fusion and sports",
+                    "role": "purpose-reserve",
+                    "purpose": "Fusion and related sports costs",
+                    "goalRefs": [
+                        { "kind": "group", "id": "fusion-household" },
+                        { "kind": "group", "id": "burrards-team-fees" },
+                        { "kind": "commitment", "id": "warriors" }
+                    ]
+                },
+                {
+                    "id": "home",
+                    "accountId": "savings-dont-touch",
+                    "label": "SAVINGS-DONT TOUCH — property tax and home insurance",
+                    "role": "purpose-reserve",
+                    "purpose": "Property tax and home insurance",
+                    "reconciledOn": "2026-10-03",
+                    "goalRefs": [
+                        { "kind": "budget-reserve", "id": "propertytax" },
+                        { "kind": "yearly-bill", "id": "square-one" }
+                    ]
+                }
+            ],
+            "history": []
+        },
         "windowDays": 91,
         "defaults": {
             "targetBuffer": 500,
@@ -65,9 +96,9 @@
                 },
                 {
                     "id": "savings",
-                    "label": "Savings",
+                    "label": "DEFICIT PLANNING — Fusion and sports",
                     "value": 0.58,
-                    "class": "spendable",
+                    "class": "purpose-reserve",
                     "note": "Lunch Money mapped EMERGENCY SAVING balance on the 2026-08-19 observation. The $90.00 Aug. 13 transfer to Chequing B is already inside this figure (90.58 - 90.00 = 0.58)."
                 }
             ],
@@ -81,10 +112,10 @@
                 },
                 {
                     "id": "savings-dont-touch",
-                    "label": "SAVINGS-DONT TOUCH — staging",
+                    "label": "SAVINGS-DONT TOUCH — property tax and home insurance",
                     "value": 74.2,
-                    "class": "staging",
-                    "note": "On her profile. Money passes through to the HELOC and cards within days; it has never held a balance."
+                    "class": "purpose-reserve",
+                    "note": "Historical staging evidence: on her profile, money passed through to the HELOC and cards within days. Owner authorized the purpose-reserve cutover on 2026-10-03 for property tax and home insurance. This retained dated value is historical evidence, not a new savings baseline or confirmed assignment."
                 },
                 {
                     "id": "wise",
@@ -1413,13 +1444,14 @@
             "cash": "chequing-b"
         },
         {
-            "label": "Savings",
+            "label": "DEFICIT PLANNING — Fusion and sports",
             "cash": "savings",
-            "class": "spendable"
+            "class": "purpose-reserve"
         },
         {
             "label": "SAVINGS-DONT TOUCH",
-            "cash": "savings-dont-touch"
+            "cash": "savings-dont-touch",
+            "class": "purpose-reserve"
         },
         {
             "label": "Wise (two US spending accounts)",

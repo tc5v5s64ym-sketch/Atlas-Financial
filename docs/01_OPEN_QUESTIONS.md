@@ -13,31 +13,25 @@ the site may hold evidence about a question. They do not close it.
 
 ## Tier 1 - Changes what the numbers mean
 
-### Savings pool setup - prove ending 3074 identity, then confirm the new baseline
+### Savings pool setup - confirm assignments and the new baseline after funding
 **Status:** OPEN · **Owner:** Dale
 The convention and the current 2026-10-03 03:16:39 UTC owner-selected roles live
 in `ARCHITECTURE.md`: ending 3074 for Fusion/related sports; ending 8420 for
 property tax/home insurance. Role choice is answered. The owner screenshot
-confirms both TD labels and suffixes but not the provider identity link.
-Ending 8420 is proven as `cash:savings-dont-touch`;
-its deliberate staging reconciliation is implementation work, not another
-request for role approval.
-
-Only the identity fact remains needed now: **is DEFICIT PLANNING ending 3074
-the same bank account currently mapped as EMERGENCY SAVING / `cash:savings`?**
-Owner confirmation or read-only evidence linking the suffix to that existing
-mapping settles it. The live catalog names alone do not establish this link.
-Do not guess a new alias or treat the old account label as proof.
+confirms both TD labels and suffixes. A read-only 2026-10-03 provider catalog
+lookup directly links the private EMERGENCY SAVING / `cash:savings` mapping to
+mask 3074, and SAVINGS-DONT TOUCH to mask 8420. Identity and role selection are
+answered; no further owner identity confirmation is required. Runtime cutover
+and private deployment-map installation are implementation work.
 
 Starting confirmed goal amounts and the new baseline are deferred: Dale will
 move funds himself after amounts are chosen, then confirm that baseline.
 Screenshot balances are irrelevant to this setup. Unknown assignments are not
 confirmed empty assignments or zero funded. Existing goal requirements remain
 on commitments, yearly bills and group members.
-**What the answer changes:** the exact account mapping needed for a reviewed
-two-pool configuration; a later explicit confirmation supplies starting
+**What the answer changes:** a later explicit confirmation supplies starting
 assignments and baseline through the existing input-update / PR workflow.
-Until activation is safely reconciled, the real inventory shows setup unknown.
+Configured roles and planned goal references do not establish funded assignments.
 This question does not authorize a bank action, Lunch Money write or in-app
 persistent writer.
 

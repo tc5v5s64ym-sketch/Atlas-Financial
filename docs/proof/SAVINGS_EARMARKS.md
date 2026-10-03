@@ -127,8 +127,9 @@ nonnegative whole cents. Balance and target fields are rejected.
 Confirmed inputs initially use the existing owner-authorized input-update / PR
 workflow. Append a revision and retain prior snapshots. The incumbent provider
 map identifies the actual accounts; a new reserve alias uses the narrowly
-validated `household-reserve` role. The incumbent `savings` mapping remains
-compatible. Reserve aliases cannot become operating cash or repurpose excluded
+validated `household-reserve` role. Legacy configurations retain the incumbent
+`savings` mapping compatibility; explicit purpose reserves require reserve routing.
+Reserve aliases cannot become operating cash or repurpose excluded
 staging, held business cash or debt identities. No new persistent writer,
 database, ledger, bank action, Lunch Money write, authentication, signing,
 credential or network setting is introduced.
@@ -152,6 +153,35 @@ settlement. The authenticated integration reaches GET observation, overlay,
 Forecast and both actual page mounts with the same synthetic property-tax goal,
 and confirms unknown assignments stay unknown. No production configuration,
 identity or starting balance is supplied by this reference support.
+
+## Owner-selected purpose cutover acceptance
+
+`node test/test-purpose-savings.js` independently reproduces the missing cutover
+against immutable main `ffe46ebe8201a130ed80843d489a91dc9f033d01`. The new
+configuration uses the proven canonical accounts, explicit `purpose-reserve`
+roles, non-monetary planned `goalRefs`, and empty unconfirmed history. Only the
+known `savings-dont-touch` identity can reconcile historical held-elsewhere
+staging through its explicit class and `reconciledOn`. Missing reconciliation,
+wrong class, duplicate opening rows, operating/business identities, aliases,
+goal amounts and duplicate references fail closed.
+
+Synthetic authenticated GET evidence proves 100,000 operating cents remains
+separate from 30,117 + 14,408 reserve cents. Existing property-tax and insurance
+requirements appear in both page mounts, with null assignments/backing and
+estimated requirements still estimated. No empty confirmed snapshot is seeded.
+Observed purpose savings cannot implicitly back generic ACR, even with current
+cash evidence. Removing observations leaves the whole chequing walk unchanged.
+Transfers retain unknown assignments and classify as internal movements; missing
+reserve evidence leaves operating cash usable. The production-input diff oracle
+permits only role/class/label/historical-note changes and the new configuration:
+all balances, openings, requirements, dates and unrelated inputs match base.
+
+Read-only provider catalog evidence directly resolves masks 3074 and 8420.
+The prepared gitignored local private map changes only their mappings to
+`household-reserve`, with existing stable provider IDs. The deployment's private
+map must receive those same identity-only changes before activation. This is an
+operational gate, not a renewed owner identity question. No provider transaction
+or canonical balance write was made. Funding confirmation remains deferred.
 
 ## Platform limits
 

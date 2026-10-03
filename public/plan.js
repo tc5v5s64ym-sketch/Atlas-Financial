@@ -4103,7 +4103,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       <p>${costMoney(row)} · ${escape(row.date || row.when || 'Date unknown')}</p><p class="operating-note">${escape(row.reason)} Proposed contribution and saved balance: unavailable.</p></div>`).join('')}
     ${funding.gap ? `<p class="operating-note crit">Funding shortfall: ${fundMoney(funding.gap.shortBy)}. This projection does not fully cover the protected plan.</p>` : ''}
     ${numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0 ? `<p class="operating-note">${fundMoney(funding.proposedFundingForBillPayments)} of this period's bill deduction is paid from earlier proposed funding. Forecast adds that protection back once in the final proposed balance, so the payment and contribution are not deducted twice.</p>` : ''}
-    <p class="operating-note">Deficit Planning is the bridge/planned-cost pot; Savings Dont Touch is the tax/insurance pot. Account funding and silver draws are not assigned by this projection.</p>`
+    <p class="operating-note">DEFICIT PLANNING is for Fusion and related sports; SAVINGS-DONT TOUCH is for property tax and home insurance. Account funding and silver draws are not assigned by this projection.</p>`
     : `<p class="operating-note">${escape(funding && funding.reason || 'Forecast has not published a funding schedule for this period.')} ${confirmedSavings ? 'See the savings inventory for confirmed assignments and observed backing.' : 'Actual saved balances and the original payday plan remain unavailable.'}</p>${itemDetails}`;
   const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
   const finalAmount = fundedBalanceKnown ? funding.afterProposedFunding

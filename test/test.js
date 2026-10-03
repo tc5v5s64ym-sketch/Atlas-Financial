@@ -26,6 +26,7 @@ const ROOT = path.join(__dirname, '..');
 
 const suites = [
   ['Lunch Money MCP reads and confirmed bounded edits', 'test-assistant-lunchmoney.js'],
+  ['owner-selected purpose savings and explicit staging cutover', 'test-purpose-savings.js'],
   ['confirmed savings earmarks and independent cash conservation', 'test-savings-earmarks.js'],
   ['property-tax savings reference to incumbent Budget reserve', 'test-savings-property-tax.js'],
   ['confirmed savings authenticated observation and both surfaces', 'test-savings-earmarks-integration.js'],
