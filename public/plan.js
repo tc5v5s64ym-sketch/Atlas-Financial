@@ -4852,9 +4852,12 @@ function wirePlanLookPicker(mount, ctx) {
       }
     });
   });
-  const evidence = mount.querySelector('[data-budget-today-evidence]');
-  const how = mount.querySelector('[data-budget-cash-how]');
-  const nextPayday = mount.querySelector('[data-budget-cash-next]');
+  // Preserve the incumbent minimal-mount boundary: financial VM consumers can
+  // render with querySelectorAll only. Native disclosures require a real DOM.
+  const evidence = typeof mount.querySelector === 'function'
+    ? mount.querySelector('[data-budget-today-evidence]') : null;
+  const how = evidence ? mount.querySelector('[data-budget-cash-how]') : null;
+  const nextPayday = evidence ? mount.querySelector('[data-budget-cash-next]') : null;
   if (evidence && how) {
     let returnFocus = how;
     const close = () => {
