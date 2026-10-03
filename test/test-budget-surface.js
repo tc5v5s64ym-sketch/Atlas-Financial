@@ -139,6 +139,40 @@ ok(/data-budget-spent="groceries"[\s\S]*?Synthetic grocer[\s\S]*?212\.40[\s\S]*?
   'Groceries opens to its transactions');
 ok(/data-other-spending[\s\S]*?Synthetic general store/.test(html), 'unassigned spending keeps its transaction');
 
+console.log('\n=== signed deficits, overflow and known zero income on the financial path ===');
+const summaryHtml = (source, id) => source.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '';
+const segments = source => [...source.matchAll(/class="budget-waterfall-bar([^\"]*)" style="left:([^%]+)%;width:([^%]+)%"/g)]
+  .map(match => ({ negative: match[1].includes('is-negative'), left: Number(match[2]), width: Number(match[3]) }));
+const deficitHtml = page().render(fx.served({ periodInternet: 1800 }));
+// 4,050 income - (1,400 + 120 + 60 + 1,800) bills = 670;
+// 670 - 752.99 household = -82.99. Shared axis is [-4,050, +4,050].
+ok(step(deficitHtml, '04').includes(money(3380)) && step(deficitHtml, '05').includes(money(670)),
+  'synthetic observations produce the independent 3,380 bill load and 670 after bills');
+ok(/data-sign="negative"/.test(summaryHtml(deficitHtml, '07')) && /82\.99/.test(step(deficitHtml, '07'))
+  && /estimated/.test(step(deficitHtml, '07')), 'the -82.99 final balance keeps its sign and Forecast estimate');
+for (const id of ['06', '07']) ok(/data-budget-bar-state="deficit"/.test(summaryHtml(deficitHtml, id))
+  && !/is-unknown/.test(summaryHtml(deficitHtml, id)), `${id}: a known negative start or amount is a deficit, never unknown`);
+const incomeSegments = segments(summaryHtml(deficitHtml, '02'));
+ok(incomeSegments.length === 1 && incomeSegments[0].left === 50 && incomeSegments[0].width === 50,
+  'every signed-period row uses zero at the shared midpoint and the same income units');
+const householdSegments = segments(summaryHtml(deficitHtml, '06'));
+ok(householdSegments.length === 2 && householdSegments[0].negative && !householdSegments[1].negative
+  && Math.abs(householdSegments[0].width - 82.99 / 4050 * 50) < 1e-9
+  && Math.abs(householdSegments[1].width - 670 / 4050 * 50) < 1e-9,
+  'the household deduction crosses zero: 82.99 below zero and 670 above, without losing either signed portion');
+const overflowHtml = page().render(fx.served({ periodInternet: 10000 }));
+ok(/is-overflow-start/.test(summaryHtml(overflowHtml, '07')) && /8,282\.99/.test(step(overflowHtml, '07'))
+  && !/is-unknown/.test(summaryHtml(overflowHtml, '07')),
+  'known -8,282.99 beyond the -4,050 axis gets signed overflow, not an unavailable hatch');
+const zeroIncomeHtml = page().render(fx.served({ zeroIncome: true }));
+ok(step(zeroIncomeHtml, '02').includes(money(0)) && !/Unavailable/.test(step(zeroIncomeHtml, '02')),
+  'no invented salary receipt: zero income remains a published known zero');
+for (const id of ['02', '04', '06', '07']) ok(/data-budget-bar-state="zero-income"/.test(summaryHtml(zeroIncomeHtml, id))
+  && !/is-unknown/.test(summaryHtml(zeroIncomeHtml, id)) && segments(summaryHtml(zeroIncomeHtml, id)).length === 0,
+  `${id}: zero income disables ratio geometry explicitly, without dividing by zero or changing trust`);
+ok(/data-sign="negative"/.test(summaryHtml(zeroIncomeHtml, '07')) && /2,417\.99/.test(step(zeroIncomeHtml, '07')),
+  'zero-income deficit independently reconciles 0 - 1,665 - 752.99 = -2,417.99');
+
 console.log("\n=== today's money and the next-payday plan ===");
 const today = text(section(html, 'today'));
 const period = text(section(html, 'period'));

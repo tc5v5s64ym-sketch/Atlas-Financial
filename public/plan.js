@@ -4042,14 +4042,40 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       // Geometry only: size each already-published step against period income.
       // Never derive another financial total or read a formatted HTML value.
       const scaleKnown = typeof period.available === 'number' && Number.isFinite(period.available)
-        && period.available > 0 && ['calculated', 'estimated'].includes(period.incomeTrust);
-      const barKnown = known && scaleKnown && typeof summary.barStart === 'number'
-        && Number.isFinite(summary.barStart) && summary.barStart >= 0 && summary.amount >= 0;
-      const percent = value => Math.max(0, Math.min(100, value / period.available * 100));
-      const barStart = barKnown ? percent(summary.barStart) : 0;
-      const barWidth = barKnown ? Math.min(100 - barStart, percent(summary.amount)) : 0;
-      const graph = `<span class="budget-waterfall-track${barKnown ? '' : ' is-unknown'}" aria-hidden="true">${barKnown
-        ? `<span class="budget-waterfall-bar" style="left:${barStart}%;width:${barWidth}%"></span>` : ''}</span>`;
+        && period.available >= 0 && ['calculated', 'estimated'].includes(period.incomeTrust);
+      const positionKnown = typeof summary.barStart === 'number' && Number.isFinite(summary.barStart);
+      // Every row shares the same income units and zero. Deficit periods get
+      // an equal negative half; signed dollars remain published Forecast values.
+      const signedScale = scaleKnown && period.available > 0 && [
+        [period.afterBills, period.afterBillsTrust],
+        [period.afterHouseholdBudget, period.balanceAfterDeductionsTrust],
+        [finalAmount, finalTrust],
+      ].some(([value, trust]) => typeof value === 'number' && Number.isFinite(value)
+        && value < 0 && ['calculated', 'estimated'].includes(trust));
+      const barKnown = known && positionKnown && scaleKnown && period.available > 0;
+      const zero = signedScale ? 50 : 0;
+      const units = signedScale ? 50 : 100;
+      const start = barKnown ? zero + summary.barStart / period.available * units : zero;
+      const end = barKnown ? start + summary.amount / period.available * units : zero;
+      const low = Math.min(start, end), high = Math.max(start, end);
+      const deficit = known && positionKnown && (summary.barStart < 0
+        || (summary.amount < 0 && (kind === 'balance' || number === '02')));
+      const state = !known ? 'unknown' : scaleKnown && period.available === 0 ? 'zero-income'
+        : !barKnown ? 'unscaled' : deficit ? 'deficit' : 'known';
+      const segment = (left, right, negative) => right > left
+        ? `<span class="budget-waterfall-bar${negative ? ' is-negative' : ''}" style="left:${left}%;width:${right - left}%"></span>` : '';
+      const bars = barKnown
+        ? segment(Math.max(0, low), Math.min(zero, high), true)
+          + segment(Math.max(zero, low), Math.min(100, high), false) : '';
+      const overflowStart = barKnown && low < -1e-9, overflowEnd = barKnown && high > 100 + 1e-9;
+      const classes = `${state === 'unknown' ? ' is-unknown' : ''}${signedScale ? ' is-signed' : ''}${deficit ? ' is-deficit' : ''}`
+        + `${overflowStart ? ' is-overflow-start' : ''}${overflowEnd ? ' is-overflow-end' : ''}`;
+      const graph = `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
+        ${bars}${signedScale ? '<span class="budget-waterfall-zero">0</span>' : ''}${state === 'zero-income'
+          ? '<span class="budget-waterfall-scale-note">Zero income</span>' : state === 'unscaled'
+            ? '<span class="budget-waterfall-scale-note">Scale unavailable</span>' : ''}
+        ${overflowStart ? '<span class="budget-waterfall-overflow at-start">←</span>' : ''}${overflowEnd ? '<span class="budget-waterfall-overflow at-end">→</span>' : ''}
+      </span>`;
       return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
         <details class="budget-step-details">
           <summary class="budget-step-summary">

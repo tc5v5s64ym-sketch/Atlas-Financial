@@ -49,6 +49,11 @@ async function geometry(page) {
       };
       await boot();
       await geometry(page);
+      const trackBounds = await page.locator('.budget-waterfall-track').evaluateAll(rows => rows.map(row => {
+        const r = row.getBoundingClientRect(); return [r.left, r.width];
+      }));
+      assert.ok(trackBounds.every(([left, width]) => Math.abs(left - trackBounds[0][0]) < .01
+        && Math.abs(width - trackBounds[0][1]) < .01), 'all waterfall rows share the same rendered track origin and width');
       const hero = page.locator('[data-budget-period-result]');
       assert.match(await hero.innerText(), /1,632\.01/); // 4050 - 1665 - 752.99
       assert.match(await hero.innerText(), /estimated[\s\S]*Before savings/);
@@ -95,6 +100,33 @@ async function geometry(page) {
       }
       await page.locator('[data-budget-drilldown-exit]').click();
       assert.equal(await page.locator('[data-budget-granularity="pay-period"]').evaluate(el => el === document.activeElement), true);
+      // Signed Forecast results keep known trust. No-income geometry is an
+      // explicit unscaled known state; it must never become an unknown hatch.
+      for (const [name, options, expected] of [
+        ['deficit', { periodInternet: 1800 }, '82.99'],
+        ['overflow', { periodInternet: 10000 }, '8,282.99'],
+        ['zero-income', { zeroIncome: true }, '2,417.99'],
+      ]) {
+        data = fx.served(options); await boot(); await geometry(page);
+        const final = page.locator('[data-operating-question="07"] > details > summary');
+        assert.match(await final.innerText(), new RegExp(expected.replace('.', '\\.')));
+        assert.equal(await final.locator('[data-sign="negative"]').count(), 1);
+        assert.equal(await final.locator('.is-unknown').count(), 0);
+        assert.equal(await page.locator('[data-operating-question="06"] > details > summary .is-unknown').count(), 0);
+        if (name === 'deficit') {
+          assert.equal(await page.locator('[data-operating-question="06"] .budget-waterfall-bar').count(), 2);
+          assert.equal(await final.locator('.budget-waterfall-bar.is-negative').count(), 1);
+          assert.equal(await page.locator('.budget-waterfall-zero').count(), 6);
+        } else if (name === 'overflow') {
+          assert.equal(await final.locator('.is-overflow-start').count(), 1);
+        } else {
+          assert.match(await page.locator('[data-operating-question="02"] > details > summary').innerText(), /0\.00/);
+          assert.equal(await page.locator('[data-budget-bar-state="zero-income"]').count(), 5);
+          assert.equal(await page.locator('.budget-waterfall-bar').count(), 0);
+        }
+        await page.screenshot({ path: path.join(screenshots, `${name}-${width}.png`), fullPage: true });
+        await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `${name}-period-${width}.png`) });
+      }
       // Configured pools with unknown assignments must retain the withholding reason.
       data = fx.served({ withheldSavings: true }); await boot(); await geometry(page);
       assert.match(await page.locator('#savings-inventory').innerText(), /Assignments unknown/);

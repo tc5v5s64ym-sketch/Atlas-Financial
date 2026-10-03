@@ -21,6 +21,15 @@ total. The existing period funding rules, including prior proposed funding
 used for bills, still determine the final balance. Unavailable values stay
 unavailable and use hatched tracks. No sample controls enter production.
 
+Known signed balances are distinct from missing values. Positive periods keep
+the approved zero-to-income scale. When Forecast publishes a deficit, every
+row shares an equal negative/positive income scale with a visible zero marker;
+the portion below zero is red. Values outside that scale get directional
+overflow arrows. A known zero-income period says `Zero income` and omits ratio
+geometry. Known values with unavailable chart geometry say `Scale unavailable`;
+only unavailable financial values use the unknown hatch. Desktop tracks share
+one origin and width regardless of the length of their money labels.
+
 ## Finite visual-difference checklist
 
 | Item | Status and closure |
@@ -63,6 +72,25 @@ the comparisons to make those differences reviewable.
 Missing-data captures: [unknown assignments and withheld proposal](withheld-390.png),
 [unavailable operating plan](unavailable-390.png). Period crops omit surrounding
 page sections; the full captures retain the actual navigation and layout.
+
+Signed financial-path regressions:
+
+| State | Desktop | Mobile | Narrow mobile |
+|---|---|---|---|
+| Known deficit | [1440px](deficit-1440.png) | [390px](deficit-390.png) | [320px](deficit-320.png) |
+| Known signed overflow | [1440px](overflow-1440.png) | [390px](overflow-390.png) | [320px](overflow-320.png) |
+| Known zero income | [1440px](zero-income-1440.png) | [390px](zero-income-390.png) | [320px](zero-income-320.png) |
+
+These independent invented observations reproduce the blocking
+[signed-bar finding](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/485#discussion_r4174982251)
+without reading or capturing the household's actual deficit periods. The
+deficit variant has 4,050 income, 3,380 bills and 752.99 household: final
+`-82.99`. The household bar crosses zero with 82.99 below and 670 above it.
+The overflow variant has 11,580 bills: final `-8,282.99`, outside the signed
+income scale. The zero-income variant removes the invented salary observation
+and both scheduled income amounts: final `0 - 1,665 - 752.99 = -2,417.99`.
+The active-path contract and actual browser proof check those figures, signs,
+trust, states, segment positions, bounded geometry and shared track dimensions.
 
 `node test/test-budget-surface.js` independently reconciles 2,600 + 1,450 =
 4,050 income; 1,400 + 120 + 60 + 85 = 1,665 bills; 450 + 160 + 120 + 22.99 =

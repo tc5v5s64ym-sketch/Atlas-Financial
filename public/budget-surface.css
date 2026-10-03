@@ -89,7 +89,7 @@
 .budget-surface .budget-step[data-operating-question] { margin-inline-start:0; }
 .budget-surface .budget-step-details { border:0; border-radius:10px; background:none; }
 .budget-surface .budget-step .budget-step-summary {
-  display:grid; grid-template-columns:18px minmax(0,1fr) minmax(40px,.55fr) auto 8px;
+  display:grid; grid-template-columns:18px minmax(0,1fr) minmax(40px,.55fr) 112px 8px;
   gap:8px; align-items:center; padding:10px 6px; border:0; border-radius:10px;
   background:transparent; color:var(--text-primary); box-shadow:none; min-height:0;
 }
@@ -127,6 +127,14 @@
   background:color-mix(in srgb, var(--text-primary) 9%, var(--surface-1));
 }
 .budget-waterfall-bar { position:absolute; inset-block:0; border-radius:6px; background:var(--s1); }
+.budget-surface .budget-waterfall-bar.is-negative { background:var(--critical); }
+.budget-waterfall-track.is-deficit { background:color-mix(in srgb,var(--critical) 9%,var(--surface-1)); }
+.budget-waterfall-zero { position:absolute; left:50%; top:-13px; transform:translateX(-50%); color:var(--text-secondary); font-size:9px; line-height:1; }
+.budget-waterfall-track.is-signed::after { content:''; position:absolute; left:50%; top:-2px; bottom:-2px; width:1px; background:var(--text-secondary); }
+.budget-waterfall-scale-note { position:absolute; inset:0; font-size:9px; line-height:10px; text-align:center; color:var(--text-secondary); white-space:nowrap; }
+.budget-waterfall-overflow { position:absolute; top:-6px; color:var(--critical); font-size:16px; font-weight:700; line-height:20px; }
+.budget-waterfall-overflow.at-start { left:0; }
+.budget-waterfall-overflow.at-end { right:0; color:var(--s1); }
 [data-operating-question="04"] .budget-waterfall-bar,
 [data-operating-question="06"] .budget-waterfall-bar,
 [data-operating-question="savings"] .budget-waterfall-bar {
@@ -142,7 +150,7 @@
 .budget-surface [data-operating-question="07"] .operating-prompt { font-weight:700; }
 .budget-surface [data-operating-question="07"] .budget-step-value { font-size:17px; }
 @media (max-width: 1100px) {
-  .budget-surface .budget-step-summary { grid-template-columns:18px minmax(0,1fr) auto 8px; }
+  .budget-surface .budget-step .budget-step-summary { grid-template-columns:18px minmax(0,1fr) auto 8px; }
   .budget-surface-period .budget-waterfall-track { grid-column:2 / 4; grid-row:2; height:8px; }
   .budget-surface .budget-step-value { grid-column:3; grid-row:1; }
   .budget-surface .budget-step-chevron { grid-column:4; grid-row:1; }
