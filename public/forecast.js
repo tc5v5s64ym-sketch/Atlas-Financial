@@ -5486,9 +5486,9 @@
     return roundCent(sum);
   }
 
-  function unpaidJointCashInRange(plan, start, end, opts) {
+  function unpaidJointCashInRange(plan, start, end, opts, walkEvents) {
     if (!start || !end) return 0;
-    const events = expandEvents(plan, start, end, opts);
+    const events = walkEvents || expandEvents(plan, start, end, opts);
     const skipOnce = onceBillIdsBeforePayday(plan, start);
     let sum = 0;
     for (const e of events || []) {
@@ -5496,7 +5496,7 @@
       if (!isJointCashOutflow(e) && !e.cardPaid) continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
       if (e.id && skipOnce.has(e.id)) continue;
-      const amt = -e.amount;
+      const amt = -operatingEventAmount(e);
       if (amt > EPSILON) sum += amt;
     }
     return roundCent(sum);
@@ -9351,6 +9351,10 @@
   // payday's income — the paydayAllocation available identity, not a new
   // cash engine. Extra and big-purchase set-aside are $0: those are this
   // payday's surplus decisions, not a second future waterfall.
+  // NOTE: `sim` must be the complete master walk (knowledgeSim), not the
+  // clipped display slice: periodEnd is the full payday period and unpaid
+  // joint cash is charged from sim.events, so a shortened display slice
+  // would silently drop unpaid expenses from the leftover. PR #484 B1.
   function planNextPeriodView(plan, asOf, action, plans, debts, sim, opts) {
     const nextPayday = (action && action.nextPayday) || null;
     if (!nextPayday) return null;
@@ -9360,7 +9364,8 @@
     const opening = startOfDayCash(sim, nextPayday);
     if (opening == null) return null;
     const available = roundCent(opening + incomeOnDate(plan, nextPayday, opts));
-    const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts);
+    const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts,
+      sim && sim.events);
     const days = Math.max(1, diffDays(nextPayday, periodLast) + 1);
     const householdBudget = householdBudgetScaled(plan, days, nextPayday, periodLast);
     const leftover = runningLeftoverFromAlloc(
@@ -9394,7 +9399,8 @@
     const opening = week.opening != null && isFinite(Number(week.opening))
       ? roundCent(week.opening) : null;
     if (opening == null) return null;
-    const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts);
+    const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts,
+      week.events);
     const householdBudget = householdBudgetScaled(plan, 7, week.start, week.end);
     const leftover = runningLeftoverFromAlloc(
       opening, unpaid, budgetAmountTotal(householdBudget), 0, 0);
@@ -11641,8 +11647,13 @@
         paydayShellTrust,
         currentPeriodAction: action,
         defaultView,
+        // The next-period panel publishes a COMPLETE payday period (periodEnd
+        // is the full period last day), so its unpaid-expense packet must be
+        // the complete master walk (knowledgeSim), not the clipped display
+        // slice (viewSim): a shortened display view must not drop unpaid
+        // expenses from the full next-period leftover. PR #484 B1.
         nextPeriodView: planNextPeriodView(plan, asOf, action, plans,
-          paydayOpts.debts || base.debts, viewSim, paydayOpts),
+          paydayOpts.debts || base.debts, knowledgeSim, paydayOpts),
         weekViews: planWeekViews(plan, asOf, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         pastPeriodViews,
