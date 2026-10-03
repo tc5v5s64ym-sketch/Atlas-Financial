@@ -303,12 +303,12 @@ async function startOAuthIssuer() {
 
 async function startLunchMoneyStub() {
   let tx = {
-    id: 71, date: '2026-10-01', amount: '19.99', currency: 'cad',
+    id: 71, date: '2026-10-01', amount: '19.9900', currency: 'cad',
     payee: 'Synthetic Shop', notes: null, category_id: 3,
     plaid_account_id: 4, manual_account_id: null, is_pending: false, status: 'reviewed',
   };
   const categories = [{ id: 3, name: 'Groceries' }, { id: 8, name: 'Household' }];
-  let hits = 0;
+  let hits = 0; let transactionFailure = false;
   const server = http.createServer((req, res) => {
     hits += 1;
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -337,6 +337,11 @@ async function startLunchMoneyStub() {
           balance: '800.0000', currency: 'usd', balance_as_of: '2026-08-18',
           updated_at: '2026-10-02T18:00:00Z' }] };
       } else if (req.method === 'GET' && p === '/transactions') {
+        if (transactionFailure) {
+          res.statusCode = 429;
+          res.end(JSON.stringify({ error: 'synthetic-private-ledger-and-token' }));
+          return;
+        }
         data = { transactions: [tx], has_more: false };
       } else if (req.method === 'GET' && p.startsWith('/transactions/')) {
         data = tx;
@@ -360,6 +365,7 @@ async function startLunchMoneyStub() {
     base: `http://127.0.0.1:${server.address().port}/v2`,
     hits: () => hits,
     resetHits: () => { hits = 0; },
+    failTransactions: value => { transactionFailure = value; },
     close: () => new Promise(done => server.close(() => done())),
   };
 }
@@ -1292,9 +1298,23 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         arguments: { startDate: '2026-10-01', endDate: '2026-10-02' },
       });
       ok(queried.isError === false && queried.structuredContent.matchedCount === 1
-          && queried.structuredContent.rows[0].payee === 'Synthetic Shop',
-        'ledger-read OAuth token can read Lunch Money transactions');
+          && queried.structuredContent.rows[0].payee === 'Synthetic Shop'
+          && queried.structuredContent.rows[0].amount === '19.9900',
+        'ledger-read OAuth token preserves provider transaction amount precision');
       ok(lunchMoney.hits() > 0, 'authorized ledger reads reach the provider stub');
+      lunchMoney.failTransactions(true);
+      const failedQuery = await readClient.callTool({
+        name: 'get_lunchmoney_transactions',
+        arguments: { startDate: '2026-10-01', endDate: '2026-10-02' },
+      });
+      lunchMoney.failTransactions(false);
+      ok(failedQuery.isError === true
+          && failedQuery.structuredContent.reason === 'lunchmoney-operation-unavailable'
+          && failedQuery.structuredContent.diagnostic.stage === 'transactions-request'
+          && failedQuery.structuredContent.diagnostic.code === 'provider-request-failed'
+          && failedQuery.structuredContent.diagnostic.upstreamStatus === 429
+          && !JSON.stringify(failedQuery).includes('synthetic-private-ledger-and-token'),
+        'authenticated MCP failures preserve safe stage/code/status without provider body');
       const deniedWrite = await readClient.callTool({
         name: 'prepare_lunchmoney_edit',
         arguments: {
@@ -1340,7 +1360,8 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         arguments: { previewId: preview.structuredContent.previewId, confirmed: true },
       });
       ok(applied.isError === false && applied.structuredContent.status === 'applied'
-          && applied.structuredContent.verifiedByReadback === true,
+          && applied.structuredContent.verifiedByReadback === true
+          && applied.structuredContent.transaction.amount === '19.9900',
         'write-scoped OAuth token can apply a confirmed Lunch Money edit');
     });
 
