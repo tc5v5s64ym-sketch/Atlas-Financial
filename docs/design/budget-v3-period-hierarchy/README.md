@@ -36,7 +36,7 @@ one origin and width regardless of the length of their money labels.
 |---|---|
 | 1. Period result and restrained waterfall | Implemented in this slice. Prominent existing result, fixed income scale, neutral rows, negative/estimate qualifiers, hatching. Native evidence disclosures remain until item 7. |
 | 2. Page header, period selector, equal overview geometry | Partial. Equal desktop columns implemented. Move the incumbent live navigation above the cards; match header, spacing and progress strip to the reference. Preserve real navigation across month/year boundaries. |
-| 3. Today cash card | Next slice: use the existing current period's `fromTodayFunding` fields and their own trust, compact cash allocation bar, floor, withheld evidence and next-payday link. Move duplicate bills-account balance into its evidence. Keep current-position instructions reachable. |
+| 3. Today cash card | Next slice: prominent Current balance from the published Bills-account-only identity and trust; household funding remains separately scoped across chequing. Use the current period's `fromTodayFunding` fields, existing floor, withheld evidence and next-payday link. Compact overview with explanations behind accessible info controls. Preserve negative spending-account transactions and obligations. |
 | 4. Worth a look | Pending. Reprint existing evidence/pressure states once; unknown spending remains in money and outside known-category over-plan counts. No new warning or total authority. |
 | 5. Household categories and grouped bills | Pending. Visible real category bars/transactions and bill status groups sourced from shared Forecast selectors. Preserve actuals, pending replacement/ambiguity, unassigned spending and paid-without-linked-transaction states. |
 | 6. Unified upcoming funding | Pending. Default Today; next-payday proposal one click away, one timeline, never add proposals. Use shared selectors; preserve source-specific cash-walk vs bill-list deductions, forward schedule and shortfall evidence. Configured savings assignments remain unconfirmed. |
@@ -92,6 +92,19 @@ and both scheduled income amounts: final `0 - 1,665 - 752.99 = -2,417.99`.
 The active-path contract and actual browser proof check those figures, signs,
 trust, states, segment positions, bounded geometry and shared track dimensions.
 
+The follow-up zero-income blocker on concurrent head
+`ac4fbb66308833729b2a34fa00f1a5fd1506d82c` is covered by a publication-boundary
+matrix through the active composer: positive, zero and negative known amounts
+with calculated/estimated trust against positive/zero income; unavailable,
+nonfinite, untrusted and negative denominators; missing/nonfinite positions;
+and unavailable/nonfinite/untrusted monetary values. Forecast's existing
+optional household/final null trust stamp still means calculated, as its
+publication contract defines. Explicit invalid monetary trust is withheld in
+both the row and result hero. Missing chart scale never changes monetary trust.
+The concurrent levy regression remains: independent 4,050 income minus
+6,665 bills minus 752.99 household gives `-3,367.99`; its browser capture uses a
+distinct `levy-deficit` filename so it cannot overwrite the crossing-zero proof.
+
 `node test/test-budget-surface.js` independently reconciles 2,600 + 1,450 =
 4,050 income; 1,400 + 120 + 60 + 85 = 1,665 bills; 450 + 160 + 120 + 22.99 =
 752.99 household; final 4,050 - 1,665 - 752.99 = 1,632.01 before unknown savings.
@@ -111,8 +124,10 @@ then run `node test/browser-budget-v3-period.js`. The production dependency
 lockfile is unchanged. The deterministic financial and VM proofs run in
 `npm test` without Playwright.
 
-The Windows full suite has four host limitations: POSIX wrapper execution in
+The Windows full suite has four recurring host limitations: POSIX wrapper execution in
 two workflow tests, symlink privilege in the figures reference test, and dummy
-DPAPI execution in the local credential-resolver test. No test is weakened;
+DPAPI execution in the local credential-resolver test. A fifth observed failure
+is Node 24's Windows libuv teardown abort after the Talk suite prints all checks
+passed; the isolated Talk rerun passes. No test is weakened;
 exact-head Ubuntu CI remains required. Deployment and independent exact-head
 Systems PASS are obtained by the parent before merge; this builder does not merge.

@@ -173,6 +173,61 @@ for (const id of ['02', '04', '06', '07']) ok(/data-budget-bar-state="zero-incom
 ok(/data-sign="negative"/.test(summaryHtml(zeroIncomeHtml, '07')) && /2,417\.99/.test(step(zeroIncomeHtml, '07')),
   'zero-income deficit independently reconciles 0 - 1,665 - 752.99 = -2,417.99');
 
+console.log('\n=== published amount trust is independent of chart scaling ===');
+// Fault injection at the Forecast publication boundary, through the active
+// composer. The observation/Forecast regressions above reconcile real figures;
+// this matrix checks that a missing ratio denominator cannot change their trust.
+const matrixPage = page();
+matrixPage.render(fx.served());
+const publishedRow = '__ctx.advice.payPeriodViews.find(row => row.start === "2026-08-14")';
+const matrix = (amount, amountTrust, income, incomeTrust, position = 0) => matrixPage.rerender(`
+  Object.assign(${publishedRow}, { budgetHold: ${amount}, budgetHoldTrust: ${JSON.stringify(amountTrust)},
+    predictedEndingBalance: ${amount}, afterHouseholdBudget: ${position},
+    balanceAfterDeductionsTrust: ${JSON.stringify(amountTrust)},
+    available: ${income}, incomeTrust: ${JSON.stringify(incomeTrust)} })`);
+for (const trust of ['calculated', 'estimated', null]) for (const amount of [100, 0, -100]) {
+  for (const income of [4050, 0]) {
+    const result = matrix(amount, trust, income, trust || 'calculated', amount < 0 ? -100 : 0);
+    for (const id of ['06', '07']) {
+      const row = summaryHtml(result, id);
+      ok(!/is-unknown|Unavailable/.test(row) && /data-budget-bar-state=/.test(row)
+        && (income !== 0 || /data-budget-bar-state="zero-income"/.test(row)),
+      `${trust} amount ${amount}, income ${income}, row ${id}: known money survives scale availability`);
+    }
+    const hero = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(result)?.[0] || '');
+    ok(!/Unavailable/.test(hero) && hero.includes(Math.abs(amount).toFixed(2)),
+      `${trust} amount ${amount}, income ${income}: result hero agrees with row trust`);
+  }
+  for (const [income, incomeTrust] of [['null', 'unavailable'], ['NaN', 'calculated'],
+    ['Infinity', 'estimated'], [4050, 'unknown'], [4050, 'untrusted'], [-4050, 'calculated']]) {
+    const result = matrix(amount, trust, income, incomeTrust);
+    for (const id of ['06', '07']) ok(/data-budget-bar-state="unscaled"/.test(summaryHtml(result, id))
+      && !/is-unknown|Unavailable/.test(summaryHtml(result, id)),
+    `${trust} amount ${amount}, denominator ${income}/${incomeTrust}, row ${id}: scale unavailable, money known`);
+  }
+  for (const position of ['null', 'NaN', 'Infinity']) {
+    const result = matrix(amount, trust, 4050, 'calculated', position);
+    ok(/data-budget-bar-state="unscaled"/.test(summaryHtml(result, '06'))
+      && !/is-unknown|Unavailable/.test(summaryHtml(result, '06')),
+    `${trust} amount ${amount}, position ${position}: missing chart position cannot withhold known money`);
+  }
+}
+for (const amount of [100, 0, -100, 'null', 'NaN', 'Infinity', '"100"']) {
+  for (const trust of ['unavailable', 'unknown', 'untrusted']) {
+    const result = matrix(amount, trust, 4050, 'calculated');
+    for (const id of ['06', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
+      && /Unavailable/.test(summaryHtml(result, id)) && segments(summaryHtml(result, id)).length === 0,
+    `${amount}/${trust}, row ${id}: unpublished money is withheld with no numeric bar`);
+    ok(/Unavailable/.test(text(/data-budget-period-result[\s\S]*?<\/div>/.exec(result)?.[0] || '')),
+      `${amount}/${trust}: result hero also withholds unpublished money`);
+  }
+}
+for (const amount of ['NaN', 'Infinity', '"100"']) {
+  const result = matrix(amount, 'calculated', 0, 'calculated');
+  for (const id of ['06', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
+    && /Unavailable/.test(summaryHtml(result, id)), `${amount}/calculated, row ${id}: nonnumeric money stays unknown at zero income`);
+}
+
 console.log("\n=== today's money and the next-payday plan ===");
 const today = text(section(html, 'today'));
 const period = text(section(html, 'period'));
@@ -238,6 +293,44 @@ ok(text(downHtml).includes(`Last trusted opening ${money(15 + 604.49)}`) && /As 
 ok(!downHtml.includes(money(EXPECT.final)) && !/data-calendar-waterfall="/.test(downHtml),
   'no pay-period figures are printed when the plan is unavailable');
 ok(!/data-budget-period-result/.test(downHtml), 'the overview is withheld with the unavailable operating plan');
+
+console.log('\n=== known deficit is not unknown ===');
+{
+  // Independent fixture arithmetic, not a rerun of Forecast's leftover helper.
+  const DEFICIT = {
+    income: 2600 + 1450,
+    bills: 1400 + 120 + 60 + 85 + 5000,
+    household: 450 + 160 + 120 + 22.99,
+  };
+  DEFICIT.afterBills = DEFICIT.income - DEFICIT.bills;
+  DEFICIT.final = Math.round((DEFICIT.afterBills - DEFICIT.household) * 100) / 100;
+  const signed = n => (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-CA', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const deficitPage = page();
+  const deficitHtml = deficitPage.render(fx.served({ deficitPeriod: true }));
+  const published = deficitPage.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-08-14');
+  ok(published && published.afterBills === DEFICIT.afterBills
+    && published.afterHouseholdBudget === DEFICIT.final
+    && published.balanceAfterDeductions === DEFICIT.final
+    && published.balanceAfterDeductionsTrust === 'estimated',
+    `Forecast publishes independently derived − after-bills ${DEFICIT.afterBills} and final ${DEFICIT.final}, estimated`,
+    published && `${published.afterBills} / ${published.afterHouseholdBudget} / ${published.balanceAfterDeductionsTrust}`);
+  const summaryHtml = id => deficitHtml.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '';
+  const heroText = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(deficitHtml)?.[0] || '');
+  ok(heroText.includes(signed(DEFICIT.final)) && /estimated/.test(heroText),
+    'the hero keeps the published negative final and its estimate qualifier', heroText);
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('06')) && !/is-unknown/.test(summaryHtml('06'))
+    && step(deficitHtml, '06').includes(money(DEFICIT.household)),
+    'Household Budget with a negative start uses the deficit track, not the unknown hatch');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('07')) && !/is-unknown/.test(summaryHtml('07'))
+    && step(deficitHtml, '07').includes(signed(DEFICIT.final)) && /≈ estimated/.test(step(deficitHtml, '07')),
+    'the final negative amount uses the deficit track and keeps its published dollars and estimate');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('05')) && step(deficitHtml, '05').includes(signed(DEFICIT.afterBills)),
+    'the negative after-bills row keeps its published deficit and is not hatched unknown');
+  ok(!/style="left:/.test(summaryHtml('savings')) && /budget-waterfall-track is-unknown/.test(summaryHtml('savings'))
+    && /Proposed savings[\s\S]*?Unavailable/.test(text(deficitHtml)),
+    'unavailable savings stay hatched with no invented zero-length numeric bar');
+}
 
 console.log('\n=== the layout module stays a layout module ===');
 {

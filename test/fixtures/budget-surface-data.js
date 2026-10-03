@@ -129,9 +129,16 @@ function withheldSavings(data) {
 // The served /data.json packet, through the real observation and overlay.
 // opts.unavailablePlan: the server's fail-closed packet for a refresh it
 // could not trust — the dated Aug 13 opening, observed Aug 20.
+function deficitPeriod(data) {
+  data.plan.bills.push({ id: 'levy', label: 'Synthetic levy', frequency: 'monthly',
+    day: 16, amount: 5000, confidence: 'confirmed', payingAccount: 'chequing-a' });
+  return data;
+}
+
 function served(opts = {}) {
   const Live = require('../../scripts/live-plan');
-  const data = opts.withheldSavings ? withheldSavings(canonical()) : canonical();
+  const data = opts.withheldSavings ? withheldSavings(canonical())
+    : opts.deficitPeriod ? deficitPeriod(canonical()) : canonical();
   const observed = payload();
   if (typeof opts.periodInternet === 'number') {
     data.plan.bills.find(row => row.id === 'internet').amount = opts.periodInternet;

@@ -4036,8 +4036,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     if (summary && !planUnavailable) {
       // Overview values are published Forecast fields, never sums of details.
       const known = typeof summary.amount === 'number' && Number.isFinite(summary.amount)
-        && summary.trust !== 'unavailable' && summary.trust !== 'unknown'
-        && (!summary.trustRequired || summary.trust === 'calculated' || summary.trust === 'estimated');
+        && (summary.trust === 'calculated' || summary.trust === 'estimated'
+          || (!summary.trustRequired && summary.trust == null));
       const estimate = summary.trust === 'estimated' ? '<span class="est">≈ estimated</span> ' : '';
       // Geometry only: size each already-published step against period income.
       // Never derive another financial total or read a formatted HTML value.
@@ -4051,7 +4051,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
         [period.afterHouseholdBudget, period.balanceAfterDeductionsTrust],
         [finalAmount, finalTrust],
       ].some(([value, trust]) => typeof value === 'number' && Number.isFinite(value)
-        && value < 0 && ['calculated', 'estimated'].includes(trust));
+        && value < 0 && (trust == null || ['calculated', 'estimated'].includes(trust)));
       const barKnown = known && positionKnown && scaleKnown && period.available > 0;
       const zero = signedScale ? 50 : 0;
       const units = signedScale ? 50 : 100;
@@ -4068,7 +4068,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
         ? segment(Math.max(0, low), Math.min(zero, high), true)
           + segment(Math.max(zero, low), Math.min(100, high), false) : '';
       const overflowStart = barKnown && low < -1e-9, overflowEnd = barKnown && high > 100 + 1e-9;
-      const classes = `${state === 'unknown' ? ' is-unknown' : ''}${signedScale ? ' is-signed' : ''}${deficit ? ' is-deficit' : ''}`
+      const classes = `${state === 'unknown' ? ' is-unknown' : deficit ? ' is-deficit' : ''}${signedScale ? ' is-signed' : ''}`
         + `${overflowStart ? ' is-overflow-start' : ''}${overflowEnd ? ' is-overflow-end' : ''}`;
       const graph = `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
         ${bars}${signedScale ? '<span class="budget-waterfall-zero">0</span>' : ''}${state === 'zero-income'
@@ -4147,7 +4147,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   const finalAmount = fundedBalanceKnown ? funding.afterProposedFunding
     : (period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget);
   const finalTrust = fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
-  const finalKnown = numeric(finalAmount) && !['unavailable', 'unknown'].includes(finalTrust);
+  // Forecast's optional household/final trust stamp is null for calculated
+  // values; explicit unavailable/unknown/untrusted stamps still fail closed.
+  const finalKnown = numeric(finalAmount) && (finalTrust == null || ['calculated', 'estimated'].includes(finalTrust));
   const finalCaption = fundedBalanceKnown
     ? 'After bills, household and proposed funding — retain any future carry'
     : 'Before savings — the funding deduction is unavailable';

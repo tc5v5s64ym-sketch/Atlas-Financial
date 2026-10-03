@@ -26,6 +26,7 @@ function period(id, start, end, role) {
     projected: role !== 'current' && role !== 'past', openingKnown: true, opening: 600,
     available: 1800, periodBillLoad: 300, afterBills: 1500, budgetHold: 200,
     incomeTrust: 'calculated', periodBillLoadTrust: 'calculated', afterBillsTrust: 'calculated',
+    budgetHoldTrust: 'calculated', balanceAfterDeductionsTrust: 'calculated',
     predictedEndingBalance: 1300, totalBillsThisPeriod: 390, paidBills: 90, remainingBills: 300,
     income: [{ id: 'payroll', incomeClass: 'dale', label: 'Salary', amount: 999,
       date: start, status: 'received' }],
@@ -90,6 +91,35 @@ for (const trust of ['unavailable', 'unknown']) {
 const unavailable = f.calendarWaterfallHtml(Object.assign({}, rows[1], { operatingPlanUnavailable: true }), null, null, plan);
 assert.doesNotMatch(unavailable, /class="budget-step-details"/);
 assert.match(unavailable, /data-current-waterfall="unavailable"/);
+
+const deficitInputs = require('./fixtures/budget-layout-data')();
+deficitInputs.meta.asOf = deficitInputs.plan.opening.asOf = '2026-08-20';
+deficitInputs.plan.income[0].amount = 3100;
+deficitInputs.plan.income[0].confidence = 'estimated';
+deficitInputs.plan.bills[0].amount = 5000;
+const deficitPeriod = F.recommend(deficitInputs.plan, deficitInputs.meta.asOf, { debts: [] })
+  .payPeriodViews.find(p => p.start === '2026-08-28');
+assert.ok(deficitPeriod);
+// Independently invented income, levy, hydro and grocery target. No copied
+// household payroll policy amount enters this new deficit regression.
+const independentIncome = 3100;
+const independentBills = 5000 + 199;
+const independentHold = 100;
+assert.equal(deficitPeriod.available, independentIncome);
+assert.equal(deficitPeriod.periodBillLoad, independentBills);
+assert.equal(deficitPeriod.afterBills, Math.round((independentIncome - independentBills) * 100) / 100);
+assert.equal(deficitPeriod.afterHouseholdBudget,
+  Math.round((independentIncome - independentBills - independentHold) * 100) / 100);
+assert.ok(deficitPeriod.afterBills < 0 && deficitPeriod.afterHouseholdBudget < 0);
+const deficitHtml = f.calendarWaterfallHtml(deficitPeriod, null, null, deficitInputs.plan);
+assert.match(summary(deficitHtml, '06'), /is-deficit/);
+assert.doesNotMatch(summary(deficitHtml, '06'), /is-unknown/);
+assert.match(summary(deficitHtml, '07'), /is-deficit/);
+assert.doesNotMatch(summary(deficitHtml, '07'), /is-unknown/);
+assert.match(summary(deficitHtml, '07'), /\$\-2199\.00/);
+assert.match(summary(deficitHtml, '07'), /≈ estimated/);
+assert.match(summary(deficitHtml, 'savings'), /is-unknown/);
+assert.doesNotMatch(summary(deficitHtml, 'savings'), /is-deficit|style="left:/);
 
 // Exercise the incumbent 2027 payroll regime, rather than stamping a mock row.
 const financialData = require('./fixtures/budget-layout-data')();
