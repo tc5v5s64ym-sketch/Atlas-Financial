@@ -13,6 +13,9 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v =>
   Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v);
 const ref = z.string().regex(/^(tx|cat|acct)-[a-f0-9]{24}$/);
 const money = z.string().regex(/^-?\d{1,10}(\.\d{1,2})?$/);
+// Provider evidence is a decimal string with up to four places. Read it
+// verbatim; the separate `money`/cents contract still governs split edits.
+const providerMoney = z.string().max(64).regex(/^-?\d+(\.\d{1,4})?$/);
 const child = z.object({ amount: money, categoryRef: ref.nullable(), notes: z.string().max(1000).optional() }).strict();
 const changes = z.object({ categoryRef: ref.nullable().optional(), notes: z.string().max(1000).optional() })
   .strict().refine(v => Object.keys(v).length > 0);
@@ -35,6 +38,33 @@ function cents(value) {
 }
 function fingerprint(tx) { return crypto.createHash('sha256').update(JSON.stringify(tx)).digest('hex'); }
 function fail(reason) { return { status: 'unavailable', reason, writesAtlasState: false }; }
+class ProviderRequestError extends Error {
+  constructor(code, stage, upstreamStatus) {
+    super(code);
+    this.stage = stage;
+    if (Number.isInteger(upstreamStatus) && upstreamStatus >= 100 && upstreamStatus <= 599) {
+      this.upstreamStatus = upstreamStatus;
+    }
+  }
+}
+const READ_ERROR_CODES = new Set([
+  'invalid-provider-amount', 'malformed-transaction', 'malformed-date',
+  'invalid-provider-identity', 'invalid-category-identity', 'reference-capacity',
+  'reference-expired-or-unavailable', 'category-evidence-unavailable',
+  'account-evidence-unavailable', 'catalog-unavailable', 'coverage-unavailable',
+  'duplicate-provider-identity',
+]);
+function readFailure(operation, error) {
+  // Never expose error text, request URLs/headers, provider bodies or IDs.
+  const requestError = error instanceof ProviderRequestError;
+  const code = requestError || READ_ERROR_CODES.has(error && error.message)
+    ? error.message : 'unexpected-failure';
+  const stage = requestError ? error.stage
+    : code === 'invalid-provider-amount' || code === 'malformed-transaction'
+      ? 'transaction-validation' : operation;
+  return { ...fail('lunchmoney-operation-unavailable'), diagnostic: { stage, code,
+    ...(requestError && error.upstreamStatus !== undefined ? { upstreamStatus: error.upstreamStatus } : {}) } };
+}
 function requiredScope(operation) {
   if (operation === 'prepare' || operation === 'apply') return WRITE_SCOPE;
   if (operation === 'catalog' || operation === 'query') return READ_SCOPE;
@@ -114,14 +144,28 @@ function createService(options = {}) {
     return value;
   }
   async function request(method, path, body) {
-    const token = await resolveToken();
-    if (!token) throw new Error('credential-unavailable');
-    const base = Provider.lunchMoneyApiBase(env);
-    const response = await fetcher(base + path, { method, redirect: 'error',
-      signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    if (!response.ok) throw new Error('provider-request-failed');
-    return response.json();
+    const stage = path.startsWith('/transactions') ? 'transactions-request'
+      : path.startsWith('/categories') ? 'categories-request'
+        : path.startsWith('/plaid_accounts') ? 'synced-accounts-request' : 'manual-accounts-request';
+    let token;
+    try { token = await resolveToken(); }
+    catch (_) { throw new ProviderRequestError('credential-unavailable', stage); }
+    if (!token) throw new ProviderRequestError('credential-unavailable', stage);
+    let base;
+    try { base = Provider.lunchMoneyApiBase(env); }
+    catch (_) { throw new ProviderRequestError('provider-configuration-invalid', stage); }
+    let response;
+    try {
+      response = await fetcher(base + path, { method, redirect: 'error',
+        signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    } catch (error) {
+      throw new ProviderRequestError(error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+        ? 'provider-request-timeout' : 'provider-network-error', stage);
+    }
+    if (!response.ok) throw new ProviderRequestError('provider-request-failed', stage, response.status);
+    try { return await response.json(); }
+    catch (_) { throw new ProviderRequestError('provider-response-invalid-json', stage, response.status); }
   }
   function accountKey(tx) {
     if (tx.plaid_account_id != null) return ['plaid', tx.plaid_account_id];
@@ -137,7 +181,7 @@ function createService(options = {}) {
   }
   function project(tx, principal, categories, accounts) {
     if (!tx || !date.safeParse(tx.date).success || typeof tx.currency !== 'string' || !/^[a-z]{3}$/.test(tx.currency) || typeof tx.amount !== 'string') throw new Error('malformed-transaction');
-    cents(tx.amount);
+    if (!providerMoney.safeParse(tx.amount).success) throw new Error('invalid-provider-amount');
     const account = accountKey(tx);
     const accountRow = account && accounts.find(a => a.type === account[0] && a.providerId === account[1]);
     return { transactionRef: alias('tx', tx.id, principal), date: tx.date, amount: tx.amount,
@@ -322,7 +366,10 @@ function createService(options = {}) {
     const parsed = schemas[operation]?.safeParse(args);
     if (!parsed?.success) return fail('invalid-arguments');
     try { return await ({ catalog, query, prepare, apply })[operation](parsed.data, auth); }
-    catch (_) { return fail('lunchmoney-operation-unavailable'); }
+    catch (error) {
+      return operation === 'catalog' || operation === 'query'
+        ? readFailure(operation, error) : fail('lunchmoney-operation-unavailable');
+    }
   }
   return { invoke };
 }
