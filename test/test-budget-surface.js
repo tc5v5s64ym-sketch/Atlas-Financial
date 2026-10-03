@@ -237,7 +237,57 @@ ok(today.includes(`Bills & required minimums ${money(EXPECT.remaining)} estimate
 ok(/Nest Money funding plan — August 28 payday/.test(today), 'the next-payday plan is in the Today section, labelled with its payday');
 ok(/From today · 2026-08-20/.test(period) && !/From today ·/.test(today),
   "today's proposal sits with the period, separate from the next-payday plan");
-ok(period.includes(money(EXPECT.billsAccount)) && /Bills account only/.test(period), `bills-account balance is ${money(EXPECT.billsAccount)}`);
+ok(today.includes(money(EXPECT.billsAccount)) && /Bills account only/.test(today), `Current balance is the published Bills-only ${money(EXPECT.billsAccount)}`);
+ok((html.match(/data-live-current-balance-amount/g) || []).length === 1,
+  'the Bills-only Current balance is printed once in the active overview');
+const currentHero = /data-budget-cash-hero[\s\S]*?<\/p>/.exec(html)?.[0] || '';
+ok(currentHero.includes(money(EXPECT.billsAccount)) && !currentHero.includes(money(EXPECT.available)),
+  'the prominent Current balance does not aggregate daily-spending cash');
+ok(/data-budget-today-evidence[^>]* hidden/.test(html), 'current-position explanations and instructions start folded');
+ok(section(html, 'today').indexOf('data-budget-cash-detail') > section(html, 'today').indexOf('data-budget-today-evidence'),
+  'household cash breakdown stays in the info disclosure, outside the permanent overview');
+ok(/class="budget-period-info"[\s\S]*data-from-today-proposal[\s\S]*<\/details>/.test(section(html, 'period')),
+  'the dated current-cash proposal stays reachable behind period info, distinct from the full-period result');
+ok(/data-budget-cash-part="floor"[\s\S]*?calculated[\s\S]*?300\.00/.test(html),
+  'the cash floor uses its own published calculated trust, rather than the proposal estimate');
+ok(/data-budget-cash-answer[\s\S]*?873\.50[\s\S]*?501\.50/.test(html),
+  'Today funding includes dining: (450 - 308.55) + (160 - 74.20) + (120 - 38.75) = 308.50; keep 265 + 308.50 + 300 = 873.50; capacity 1375 - 873.50 = 501.50');
+const negativeSpending = page().render(fx.served({ spendingCash: -50, savingsCash: 8000 }));
+const negativeHero = /data-budget-cash-hero[\s\S]*?<\/p>/.exec(negativeSpending)?.[0] || '';
+ok(negativeHero.includes(money(1215)) && !negativeHero.includes(money(1215 - 50)) && !negativeHero.includes(money(8000)),
+  'Current balance remains Bills-only when the daily-spending account is negative and savings are large');
+ok(/data-budget-spent="groceries"[\s\S]*?Synthetic grocer[\s\S]*?212\.40/.test(negativeSpending)
+  && /data-budget-cash-part="household"[\s\S]*?308\.50/.test(negativeSpending),
+  'daily-spending transactions remain household actuals and future obligations despite its negative balance');
+const missingBalance = p.rerender("__ctx.advice.defaultView.currentBalancePublication = { accountId: 'chequing-a', amount: null, trust: 'unavailable' }");
+ok(/data-budget-cash-hero[^>]*>Unavailable<\/p>/.test(missingBalance),
+  'a deliberately unavailable Bills balance is never refilled from another account or the old numeric field');
+const missingPublication = p.rerender('__ctx.advice.defaultView.currentBalancePublication = null');
+ok(/data-budget-cash-hero[^>]*>Unavailable<\/p>/.test(missingPublication),
+  'an explicit null publication also stays unavailable instead of falling back to a duplicate publication');
+for (const [accountId, amount, trust] of [['savings-a', 8000, 'posted'], ['chequing-a', '1215', 'posted'],
+  ['chequing-a', 1215, 'unavailable']]) {
+  const withheld = p.rerender(`__ctx.advice.defaultView.currentBalancePublication = ${JSON.stringify({accountId, amount, trust})}`);
+  ok(/data-budget-cash-hero[^>]*>Unavailable<\/p>/.test(withheld),
+    `${accountId}/${amount}/${trust}: Current balance withholds wrong identity, nonnumeric or untrusted money`);
+}
+const unconfirmedBalance = p.rerender("__ctx.advice.defaultView.currentBalancePublication = { accountId: 'chequing-a', amount: 1215, trust: 'planned-unconfirmed' }");
+ok(/payday receipt unconfirmed/.test(text(unconfirmedBalance))
+  && /budget-cash-est/.test(/data-budget-cash-hero[\s\S]*?<\/p>/.exec(unconfirmedBalance)?.[0] || ''),
+  'the published planned-unconfirmed Bills balance keeps a visible receipt qualifier');
+p.rerender("__ctx.advice.defaultView.currentBalancePublication = __ctx.advice.paydayAllocation.currentBalancePublication");
+
+const overspendPage = page();
+const overspendHtml = overspendPage.render(fx.served({ groceriesExtra: 200 }));
+const overspendPeriod = overspendPage.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-08-14');
+// 212.40 + 96.15 + 200 = 508.55 groceries, above the 450 target.
+// Hold = 508.55 + 160 + 120 + 22.99 = 811.54; final = 4050 - 1665 - 811.54.
+ok(overspendPeriod.budgetHold === 811.54 && overspendPeriod.balanceAfterDeductions === 1573.46
+  && step(overspendHtml, '06').includes(money(811.54)) && step(overspendHtml, '07').includes(money(1573.46)),
+  'observed grocery overrun raises the published household reserve and reduces the final balance by 58.55');
+ok(overspendPeriod.fromTodayFunding.remainingHousehold === 167.05
+  && /data-budget-spent="groceries"[\s\S]*?Synthetic extra grocer[\s\S]*?200\.00/.test(overspendHtml),
+  'the observed overrun stays in transaction evidence; remaining household is 0 groceries + 85.80 fuel + 81.25 dining');
 
 console.log('\n=== navigation ===');
 const next = p.context.__ctx.advice.payPeriodViews.find(v => v.timelineRole === 'next');

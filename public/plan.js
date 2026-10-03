@@ -4012,7 +4012,7 @@ function paydayInstructionShellHtml(advice, period, schedule) {
     <p class="operating-note">The ${periodRangeLabel} pay-period detail above shows this period's Payday balance, bills, and Balance After Deductions — a different window from today's position here.</p>
   </section>`;
 }
-function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
+function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview = false) {
   if (!period) return '';
   const confirmedSavings = plan && Forecast.savingsEarmarksState(plan, period.start).status !== 'setup-unknown';
   const planUnavailable = period.operatingPlanUnavailable === true;
@@ -4038,7 +4038,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       const known = typeof summary.amount === 'number' && Number.isFinite(summary.amount)
         && (summary.trust === 'calculated' || summary.trust === 'estimated'
           || (!summary.trustRequired && summary.trust == null));
-      const estimate = summary.trust === 'estimated' ? '<span class="est">≈ estimated</span> ' : '';
+      const estimate = summary.trust === 'estimated' ? compactOverview
+        ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> '
+        : '<span class="est">≈ estimated</span> ' : '';
       // Geometry only: size each already-published step against period income.
       // Never derive another financial total or read a formatted HTML value.
       const scaleKnown = typeof period.available === 'number' && Number.isFinite(period.available)
@@ -4081,7 +4083,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
         <details class="budget-step-details">
           <summary class="budget-step-summary">
             <span class="operating-number" aria-hidden="true">${number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
-            <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span><span class="budget-step-caption">${summary.note}</span></span>
+            <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span><span class="budget-step-caption">${compactOverview ? number === '07' && !fundedBalanceKnown ? 'Before savings' : '' : summary.note}</span></span>
             ${graph}
             <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>
@@ -4157,8 +4159,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   const finalHero = !planUnavailable ? `<div class="budget-period-result" data-budget-period-result>
     <h2>Balance After Deductions</h2>
     <p class="budget-period-result-value"${finalKnown && finalAmount < 0 ? ' data-sign="negative"' : ''}>${finalKnown
-      ? `${finalTrust === 'estimated' ? '<span class="est">≈ estimated</span> ' : ''}${money2(finalAmount)}` : 'Unavailable'}</p>
-    <p class="budget-period-result-caption">${finalCaption}</p>
+      ? `${finalTrust === 'estimated' ? compactOverview ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : ''}${money2(finalAmount)}` : 'Unavailable'}</p>
+    <p class="budget-period-result-caption">${compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
   </div>` : '';
   const today = period.fromTodayFunding;
   const todayKnown = !planUnavailable && today && today.basis === 'Budget-from-today'
@@ -4210,10 +4212,12 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       <span class="budget-step-value">${todayMoney(today.contribution)}</span><span class="budget-step-chevron" aria-hidden="true">⌄</span>
     </summary><div class="operating-answer budget-step-body">${fromTodayBody}</div></details>
   </div>` : '';
-  return `${todayHtml}<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
+  return `${compactOverview ? "" : todayHtml}<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
-    ${today ? '<p class="operating-note">The pay-period view below uses the full period income. It is separate from the dated current-cash proposal above.</p>' : ''}
-    ${lookbackNote}${projectedNote}${openingUnknownNote}
+    ${compactOverview ? `<details class="budget-period-info"><summary aria-label="About the selected period figures">ⓘ</summary>
+      ${today ? '<p class="operating-note">This view uses full period income. The dated current-cash proposal is separate.</p>' : ''}${lookbackNote}${projectedNote}${openingUnknownNote}
+      <p class="operating-note">Values marked ≈ are estimates. Opening and current balances are context, not extra income. Period results include Forecast's household spending reserve and any recorded overspending. Future funding and required protection are planning amounts; they are not transfers already made.</p>${todayHtml}</details>`
+      : `${today ? '<p class="operating-note">The pay-period view below uses the full period income. It is separate from the dated current-cash proposal above.</p>' : ''}${lookbackNote}${projectedNote}${openingUnknownNote}`}
     ${finalHero}
     ${opening}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period), null,
@@ -4526,7 +4530,7 @@ function payPeriodWheelSelection(advice, requestedId, kind, index) {
   return payPeriodSelection(advice, item.id || item.start);
 }
 
-function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraControls, plan) {
+function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraControls, plan, compactOverview = false) {
   const selection = payPeriodSelection(advice, requestedId);
   const period = selection.period;
   if (!period) return '';
@@ -4551,10 +4555,10 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
   return `<div class="calendar-waterfalls pay-period-timeline" data-calendar-waterfalls${asOfAttr} data-pay-period-swipe
       data-selected-pay-period="${periodId}" data-pay-period-index="${selection.index}"
       aria-label="Pay-period navigation">
-    ${current ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
+    ${current && !compactOverview ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
     ${payPeriodNavigatorHtml(selection)}
     ${extraControls || ''}
-    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan)}
+    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview)}
     ${budgetPlanSpendEarmarkHtml(advice, period)}
     ${undatedBlock}
   </div>`;
@@ -4833,6 +4837,56 @@ function wireBudgetGranularity(mount, ctx) {
 }
 
 function wirePlanLookPicker(mount, ctx) {
+  mount.querySelectorAll('.budget-period-info').forEach(info => {
+    info.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && info.open) {
+        event.preventDefault();
+        event.stopPropagation();
+        info.open = false;
+        info.querySelector('summary').focus();
+      }
+    });
+  });
+  const evidence = mount.querySelector('[data-budget-today-evidence]');
+  const how = mount.querySelector('[data-budget-cash-how]');
+  const nextPayday = mount.querySelector('[data-budget-cash-next]');
+  if (evidence && how) {
+    let returnFocus = how;
+    const close = () => {
+      evidence.hidden = true;
+      how.setAttribute('aria-expanded', 'false');
+      paydayDisclosuresOpen.delete('today-evidence');
+      returnFocus.focus();
+    };
+    const open = trigger => {
+      returnFocus = trigger;
+      evidence.hidden = false;
+      how.setAttribute('aria-expanded', 'true');
+      paydayDisclosuresOpen.add('today-evidence');
+    };
+    how.addEventListener('click', () => {
+      returnFocus = how;
+      if (!evidence.hidden) close();
+      else { open(how); evidence.querySelector('[data-budget-cash-back]').focus(); }
+    });
+    nextPayday?.addEventListener('click', () => {
+      open(nextPayday);
+      const plan = evidence.querySelector('[data-payday-breakdown="planned-cost-funding"]');
+      if (plan) { plan.open = true; plan.querySelector('summary').focus(); }
+      else evidence.querySelector('[data-budget-cash-back]').focus();
+    });
+    evidence.querySelector('[data-budget-cash-back]')?.addEventListener('click', close);
+    evidence.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); }
+    });
+    evidence.addEventListener('focusin', event => {
+      // Native Tab/focus scrolling must keep long evidence summaries clear of
+      // the mobile navigation dock. CSS supplies the safe scroll margin.
+      if (event.target.matches('button, summary, input, select, a')) {
+        event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    });
+  }
   mount.querySelectorAll('[data-current-payday-details], [data-payday-breakdown]').forEach(details => {
     details.addEventListener('toggle', () => {
       if (!details.isConnected) return;
@@ -5135,7 +5189,8 @@ function budgetPayPeriodContentHtml(ctx) {
       ctx.liveOverlay,
       alloc,
       picker,
-      ctx.plan
+      ctx.plan,
+      ctx.budgetCompactOverview === true
     )
     : (look === 'this-period' && view.calendarPeriods && view.calendarPeriods.length
       ? calendarWaterfallsHtml(
@@ -5177,6 +5232,86 @@ function currentPaydayShellHtml(ctx) {
   const payPeriodViews = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
   const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
   return paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx, true));
+}
+
+// Compact #480 Today overview. Reprint Forecast's dated current-cash proposal,
+// never add payday income to observed cash or substitute the selected period.
+// All current-position instructions remain whole in the native disclosure.
+function budgetTodayCashCardHtml(ctx) {
+  const advice = ctx.advice || {};
+  const alloc = advice.paydayAllocation || {};
+  const current = (advice.payPeriodViews || []).find(row => row && row.timelineRole === 'current');
+  const today = current && current.fromTodayFunding;
+  const strict = value => typeof value === 'number' && Number.isFinite(value);
+  const trusted = trust => trust === 'calculated' || trust === 'estimated';
+  const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ready = !!(today && today.basis === 'Budget-from-today'
+    && ['ready', 'funding-gap'].includes(today.status) && trusted(today.trust)
+    && strict(today.contribution));
+  // BILLS_ACCOUNT_ID is chequing-a (Forecast and ACCOUNT_FACTS authority).
+  // A deliberate null is never refilled from an aggregate or another account.
+  const publication = Object.prototype.hasOwnProperty.call(advice.defaultView || {}, 'currentBalancePublication')
+    ? advice.defaultView.currentBalancePublication : alloc.currentBalancePublication;
+  const balanceKnown = publication?.accountId === 'chequing-a' && strict(publication.amount)
+    && ['posted', 'planned-unconfirmed'].includes(publication.trust);
+  const cash = ready ? today.currentCash : null; // chart scale, never Current Balance
+  const cashTrust = today?.trust;
+  const asOf = publication?.effectiveDate || alloc.cashBasis?.asOf || advice.defaultView?.asOf;
+  const print = (value, trust) => strict(value) && trusted(trust)
+    ? `<span data-budget-cash-trust="${trust}">${trust === 'estimated' ? '<span class="budget-cash-est" aria-hidden="true">≈</span> ' : ''}<span class="budget-cash-sr">${trust} </span>${money2(value)}</span>`
+    : '<span class="budget-cash-unknown">Unavailable</span>';
+  const floorTrust = advice.paydayShellTrust?.buffer;
+  const parts = [
+    { key: 'bills', label: 'Bills & debt payments',
+      value: ready ? today.operatingBills : null, trust: today?.trust },
+    { key: 'household', label: 'Household spending remaining', value: ready ? today.remainingHousehold : null, trust: today?.trust },
+    { key: 'floor', label: 'Cash floor', value: advice.buffer, trust: floorTrust },
+    { key: 'proposed', label: 'Upcoming costs · proposed', value: ready ? today.contribution : null, trust: today?.trust },
+  ];
+  // Dimensionless geometry only. No new financial total, remainder, or deduction.
+  const chartKnown = ready && strict(cash) && cash > 0 && trusted(cashTrust)
+    && today.operatingShortfall === 0
+    && parts.every(part => strict(part.value) && part.value >= 0 && trusted(part.trust));
+  const chart = chartKnown ? `<div class="budget-cash-chart" aria-hidden="true">${parts.map(part =>
+    `<span class="budget-cash-segment budget-cash-${part.key}" style="width:${Math.min(100, part.value / cash * 100)}%"></span>`).join('')}</div>` : '';
+  const legend = ready ? `<div class="budget-cash-legend">${parts.map(part =>
+    `<div class="budget-cash-leg" data-budget-cash-part="${part.key}"><span class="budget-cash-swatch budget-cash-${part.key}" aria-hidden="true"></span><div><span>${escape(part.label)}</span><strong>${print(part.value, part.trust)}</strong></div></div>`).join('')}</div>` : '';
+  const status = ready ? `<div class="budget-cash-answer${today.operatingShortfall > 0 || today.reason ? ' has-gap' : ''}" data-budget-cash-answer>
+      <div><span>Cash needed</span><strong>${print(today.requiredOperatingCash, today.trust)}</strong></div>
+      <div><span>Available to fund now</span><strong>${print(today.availableNow, today.trust)}</strong></div>
+      ${today.operatingShortfall > 0 ? `<div class="budget-cash-warning"><span>Operating cash shortfall</span><strong>${print(today.operatingShortfall, today.trust)}</strong></div>` : ''}
+      ${today.gap && strict(today.gap.shortBy) ? `<div class="budget-cash-warning"><span>Funding gap · ${escape(fmtDate(today.gap.payday))}</span><strong>${print(today.gap.shortBy, today.trust)}</strong></div>` : ''}
+    </div>` : '<div class="budget-cash-withheld" data-budget-cash-withheld><strong>Funding unavailable</strong><span>Open info for evidence</span></div>';
+  const notice = !ready ? status : today.operatingShortfall > 0
+    ? '<p class="budget-cash-notice has-gap">Operating cash shortfall ' + print(today.operatingShortfall, today.trust) + '</p>'
+    : today.gap && strict(today.gap.shortBy) && today.gap.shortBy > 0
+      ? '<p class="budget-cash-notice has-gap">Funding gap ' + print(today.gap.shortBy, today.trust) + '</p>'
+      : today.reason ? '<p class="budget-cash-notice">Funding needs attention</p>' : '';
+  const schedule = budgetMonthPlanSpendSchedule(ctx, true);
+  const row = schedule && schedule.status !== 'unavailable' && Array.isArray(schedule.paydays) ? schedule.paydays[0] : null;
+  const nextDate = row && isValidIsoCalendarDate(row.payday) ? row.payday : null;
+  const next = nextDate ? `<button type="button" class="budget-cash-next" data-budget-cash-next>
+    <span class="budget-cash-date" aria-hidden="true"><small>${escape(new Date(nextDate + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short' }))}</small><b>${Number(nextDate.slice(8))}</b></span>
+    <span><strong>${nextDate > asOf ? 'Next payday' : 'Payday plan'} · ${escape(fmtDateLong(nextDate))}</strong><small>Funding details</small></span><span aria-hidden="true">›</span>
+  </button>` : '';
+  const evidenceOpen = paydayDisclosuresOpen.has('today-evidence');
+  return `<div class="budget-today-cash" data-budget-today-cash data-live-current-balance>
+    <header><p class="budget-cash-eyebrow">Today${asOf ? ' · ' + escape(fmtDateLong(asOf)) : ''}</p>
+      <button type="button" class="budget-cash-how" data-budget-cash-how aria-controls="budget-today-evidence" aria-expanded="${evidenceOpen}"><span aria-hidden="true">ⓘ</span><span class="budget-cash-sr">Current balance and funding details</span></button><h2>Current balance</h2></header>
+    <p class="budget-cash-hero" data-budget-cash-hero data-live-current-balance-amount${balanceKnown && publication.amount < 0 ? ' data-sign="negative"' : ''}>${balanceKnown ? `${publication.trust === 'planned-unconfirmed' ? '<span class="budget-cash-est" aria-hidden="true">≈</span> ' : ''}${money2(publication.amount)}` : 'Unavailable'}</p>
+    <p class="budget-cash-sub">Bills account only${balanceKnown && publication.trust === 'planned-unconfirmed' ? ' · payday receipt unconfirmed' : ''}</p>
+    ${notice}${next}
+    <section class="budget-today-evidence" id="budget-today-evidence" data-budget-today-evidence aria-label="Current balance and funding evidence"${evidenceOpen ? '' : ' hidden'}>
+      <button type="button" class="budget-cash-back" data-budget-cash-back>‹ Back to overview</button>
+      <div class="budget-cash-plan" data-budget-cash-detail><h3>Cash needed${today?.currentThrough ? " through " + escape(fmtDate(today.currentThrough)) : ""}</h3><p class="budget-cash-plan-scope">Across chequing accounts</p>${chart}${legend}${ready ? status : ""}</div>
+      ${publication?.note ? `<p>${escape(publication.note)}</p>` : ''}
+      <p>This funding plan uses both chequing accounts. Cash needed protects remaining bills, household spending and the existing floor. Available to fund is capacity, separate from the proposed contribution for upcoming costs. Savings and credit are excluded.</p>
+      ${ready && strict(today.futureIncomeThisPeriod) ? `<p>Future receipts in this period: ${print(today.futureIncomeThisPeriod, today.trust)}. These are not cash available now.</p>` : ''}
+      ${today?.evidenceFailures?.length ? `<ul>${today.evidenceFailures.map(issue => `<li data-budget-cash-reason="${escape(issue.code)}">${escape(issue.message)}${issue.action ? `<small>${escape(issue.action)}</small>` : ''}</li>`).join('')}</ul>` : !ready ? `<p>${escape(today?.reason || 'Current funding evidence is unavailable.')}</p>` : ''}
+      <div class="budget-today-evidence-body">${paydayInstructionShellHtml(advice, current, schedule)}</div>
+    </section>
+  </div>`;
 }
 
 function operatingSurfaceHtml(ctx) {
@@ -5240,8 +5375,8 @@ function budgetSurfaceParts() {
     granularity: () => budgetGranularity,
     granularityToggleHtml: () => budgetGranularityToggleHtml(),
     inDrilldown: () => budgetInPayPeriodDrilldown(),
-    todayHtml: ctx => currentPaydayShellHtml(ctx),
-    periodHtml: ctx => budgetPayPeriodContentHtml(ctx),
+    todayHtml: ctx => budgetTodayCashCardHtml(ctx),
+    periodHtml: ctx => budgetPayPeriodContentHtml(Object.assign({}, ctx, { budgetCompactOverview: true })),
     monthHtml: ctx => budgetMonthViewHtml(ctx),
     selectedMonthLabel: () => (budgetSelectedMonth && budgetMonthName(budgetSelectedMonth)) || null,
     drilldownHtml: ctx => budgetPayPeriodDrilldownHtml(ctx),

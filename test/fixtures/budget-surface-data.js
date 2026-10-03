@@ -165,6 +165,20 @@ function served(opts = {}) {
     // No salary occurred: 1,215 closing + 1,400 paid mortgage = 2,615 opening.
     data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 2615;
   }
+  if (typeof opts.groceriesExtra === 'number' && opts.groceriesExtra > 0) {
+    observed.transactions.push(tx(92008, 1002, '2026-08-19', opts.groceriesExtra, 'Synthetic extra grocer', 11));
+    // Independent higher opening finances this extra observed purchase;
+    // the observation's closing spending balance remains 160.
+    data.plan.startingCash.breakdown.find(row => row.id === 'chequing-b').value += opts.groceriesExtra;
+  }
+  // Independent observation variants for the account-identity contract.
+  for (const [key, providerId, canonicalId, original] of [
+    ['spendingCash', 1002, 'chequing-b', 160], ['savingsCash', 1003, 'savings', 0],
+  ]) {
+    if (typeof opts[key] !== 'number') continue;
+    observed.accounts.find(row => row.id === providerId).balance = opts[key];
+    data.plan.startingCash.breakdown.find(row => row.id === canonicalId).value += opts[key] - original;
+  }
   const overlay = Live.fromObservation({ data, payload: observed, accountMap: map, identity });
   if (opts.unavailablePlan) {
     return Live.failedOverlay(canonical(), 'Synthetic refresh could not be trusted.', { report: overlay.report });

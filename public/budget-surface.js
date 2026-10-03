@@ -28,7 +28,7 @@
     const today = parts.todayHtml(ctx);
     const period = parts.periodHtml(ctx);
     return `<div class="budget-surface-grid">
-      ${card('today', today, { eyebrow: 'Today', label: 'Today’s money' })}
+      ${card('today', today, { label: "Today's money" })}
       ${card('period', period, { eyebrow: 'Pay period', label: 'Selected pay period' })}
     </div>`;
   }
