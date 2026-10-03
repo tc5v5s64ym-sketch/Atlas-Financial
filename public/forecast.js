@@ -742,18 +742,24 @@
     if (event.kind === 'noncash') return 0;
     return event.jointCash === false ? (event.cardPaid ? reserveFundedAmount(event) : 0) : operatingEventAmount(event);
   }
+  function reservePaymentEventMatch(event, payment) {
+    return event.id === payment.id
+        && event.date === payment.date
+        && ['commitment', 'bill', 'reserve'].includes(event.kind)
+        && savingsCents(-event.amount) === savingsCents(payment.requirement)
+        && (event.jointCash !== false || event.cardPaid);
+  }
   function applyReserveFunding(events, plan, start, end, opts) {
     const funding = reserveFundingState(plan, start, opts);
     if (funding.status !== 'ready') return events;
     const relevant = funding.payments.filter(payment => payment.date >= start && payment.date <= end);
     // One matched expense is necessary for every in-window seed. A missing,
     // represented, duplicated or changed occurrence withholds all components.
-    if (relevant.some(payment => events.filter(event => event.id === payment.id
-        && event.date === payment.date && ['commitment', 'bill', 'reserve'].includes(event.kind)
-        && savingsCents(-event.amount) === savingsCents(payment.requirement)
-        && (event.jointCash !== false || event.cardPaid)).length !== 1)) return events;
+    if (relevant.some(payment => events.filter(event => reservePaymentEventMatch(event, payment)).length !== 1)) return events;
+    // Annotate only the uniquely matched expense. A same-key income or a
+    // differently priced bill must never acquire the reserve component.
     return events.map(event => {
-      const payment = relevant.find(row => row.id === event.id && row.date === event.date);
+      const payment = relevant.find(row => reservePaymentEventMatch(event, row));
       return payment ? Object.assign({}, event, { reserveFunding: {
         amount: payment.backed, parts: payment.parts, asOf: start, revision: funding.revision,
         source: funding.source, projected: true,

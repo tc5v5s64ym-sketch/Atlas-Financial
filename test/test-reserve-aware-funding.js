@@ -126,5 +126,29 @@ assert.equal(walk(reduced).totals.reserveFunding, 100);
 assert.equal(F.savingsInventory(reduced.plan, reduced.meta.asOf).pools[0].intent, 169.37);
 const forged = walk(data); delete forged.events.find(e => e.id === 'named-cost').reserveFunding;
 assert.equal(F.planSpendPaydayFunding(data.plan, data.meta.asOf, forged, F.fundingSequence(data.plan, data.meta.asOf, {}), [], null).status, 'unavailable', 'seeding without a matched payment component fails closed');
+// PR #482 P1 regression: one backed assignment credits exactly one cash event.
+// A same-key income or a differently priced bill alias must never acquire the
+// reserve component, and total consumption must never exceed the backing.
+for (const alias of [
+  { planKey: 'income', entry: { id: 'named-cost', label: 'Synthetic other income', frequency: 'once', date: '2026-09-10', amount: 50, confidence: 'confirmed' }, income: 205000n, bills: 55000n, close: 106937n },
+  { planKey: 'bills', entry: { id: 'named-cost', label: 'Synthetic alias bill', frequency: 'once', date: '2026-09-10', amount: 123.47, confidence: 'confirmed' }, income: 200000n, bills: 67347n, close: 89590n },
+]) {
+  const d = backedFixture();
+  d.plan[alias.planKey].push(alias.entry);
+  const s = walk(d);
+  assert.equal(cents(s.totals.reserveFunding), 16937n, 'alias must not duplicate reserve credit');
+  assert.equal(cents(s.totals.income), alias.income, 'reserves are never income');
+  assert.equal(cents(s.totals.bills), alias.bills);
+  assert.equal(cents(s.ending), alias.close, 'independent cents ledger closes exactly once');
+  const aliased = s.events.filter(e => e.id === 'named-cost' && e.date === '2026-09-10');
+  assert.equal(aliased.filter(e => e.reserveFunding).length, 1, 'exactly one event carries the component');
+  for (const e of aliased) {
+    if (e.kind === 'commitment' && cents(-e.amount) === 60000n) {
+      assert.equal(cents(e.reserveFunding.amount), 16937n, 'the true expense keeps its component');
+    } else {
+      assert.equal(e.reserveFunding, undefined, 'alias event must not acquire reserveFunding');
+    }
+  }
+}
 assert.deepEqual(run(data), advice, 'repeat refresh is deterministic');
 console.log('PASS reserve-aware funding controls: stocks/flows, groups, both pools, annual/tax, evidence gates, exact cents, repeat and no mutation');
