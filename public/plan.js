@@ -5296,6 +5296,11 @@ function budgetTodayCashCardHtml(ctx) {
     <span><strong>${nextDate > asOf ? 'Next payday' : 'Payday plan'} · ${escape(fmtDateLong(nextDate))}</strong><small>Funding details</small></span><span aria-hidden="true">›</span>
   </button>` : '';
   const evidenceOpen = paydayDisclosuresOpen.has('today-evidence');
+  // Incumbent Prepare Ahead publication: this is current protection left
+  // after obligations/essentials, not a newly calculated period carryover.
+  const protection = alloc.protectedPath;
+  const protectionKnown = protection?.status === 'calculated' && strict(protection.allocated) && protection.allocated >= 0;
+  const keep = `<div class="budget-cash-keep" data-budget-cash-keep><span>Keep for later</span><strong>${print(protectionKnown ? protection.allocated : null, protectionKnown ? 'calculated' : 'unavailable')}</strong><small>After bills &amp; essentials · across chequing</small></div>`;
   return `<div class="budget-today-cash" data-budget-today-cash data-live-current-balance>
     <header><p class="budget-cash-eyebrow">Today${asOf ? ' · ' + escape(fmtDateLong(asOf)) : ''}</p>
       <button type="button" class="budget-cash-how" data-budget-cash-how aria-controls="budget-today-evidence" aria-expanded="${evidenceOpen}"><span aria-hidden="true">ⓘ</span><span class="budget-cash-sr">Current balance and funding details</span></button><h2>Current balance</h2></header>
@@ -5305,6 +5310,8 @@ function budgetTodayCashCardHtml(ctx) {
     <section class="budget-today-evidence" id="budget-today-evidence" data-budget-today-evidence aria-label="Current balance and funding evidence"${evidenceOpen ? '' : ' hidden'}>
       <button type="button" class="budget-cash-back" data-budget-cash-back>‹ Back to overview</button>
       <div class="budget-cash-plan" data-budget-cash-detail><h3>Cash needed${today?.currentThrough ? " through " + escape(fmtDate(today.currentThrough)) : ""}</h3><p class="budget-cash-plan-scope">Across chequing accounts</p>${chart}${legend}${ready ? status : ""}</div>
+      ${keep}
+      <p>This is the current allocation's future cash protection after bills and essential spending. It is not a Bills-account-only balance or the selected period's required carryover.</p>
       ${publication?.note ? `<p>${escape(publication.note)}</p>` : ''}
       <p>This funding plan uses both chequing accounts. Cash needed protects remaining bills, household spending and the existing floor. Available to fund is capacity, separate from the proposed contribution for upcoming costs. Savings and credit are excluded.</p>
       ${ready && strict(today.futureIncomeThisPeriod) ? `<p>Future receipts in this period: ${print(today.futureIncomeThisPeriod, today.trust)}. These are not cash available now.</p>` : ''}

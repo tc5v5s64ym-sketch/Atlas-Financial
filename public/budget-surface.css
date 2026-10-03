@@ -187,6 +187,9 @@
 .budget-cash-hero { font-size:clamp(34px,4vw,48px); font-weight:720; line-height:1.08; letter-spacing:-.04em; margin:0; font-variant-numeric:tabular-nums; }
 .budget-cash-hero[data-sign="negative"] { color:var(--critical); }
 .budget-cash-sub { margin:8px 0 26px; color:var(--text-secondary); font-size:13px; }
+.budget-cash-keep { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 12px; padding-top:16px; border-top:1px solid var(--border); font-size:14px; }
+.budget-cash-keep strong { font-variant-numeric:tabular-nums; }
+.budget-cash-keep small { grid-column:1 / -1; font-size:11px; color:var(--text-secondary); }
 .budget-cash-plan h3 { font-size:14px; font-weight:650; margin:0; }
 .budget-cash-plan { margin:8px 0 20px; }
 .budget-cash-plan-scope { color:var(--text-secondary); font-size:12px; margin:4px 0 14px; }

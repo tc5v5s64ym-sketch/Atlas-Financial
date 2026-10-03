@@ -63,6 +63,7 @@ async function geometry(page) {
       assert.equal(await page.locator('[data-budget-today-evidence]').isVisible(), false);
       assert.equal(await page.locator('[data-budget-cash-answer]').isVisible(), false);
       assert.equal(await page.locator('[data-budget-cash-detail]').isVisible(), false);
+      assert.equal(await page.locator('[data-budget-cash-keep]').isVisible(), false);
       assert.equal(await page.locator('[data-from-today-proposal]').isVisible(), false);
       assert.equal(await page.locator('.budget-surface-today').evaluate(el => getComputedStyle(el).position), 'static');
       await page.screenshot({ path: path.join(screenshots, `current-${width}.png`), fullPage: true });
@@ -86,6 +87,8 @@ async function geometry(page) {
       await how.focus(); await page.keyboard.press('Enter');
       assert.equal(await page.locator('[data-budget-today-evidence]').isVisible(), true);
       assert.equal(await page.locator('[data-budget-cash-detail]').isVisible(), true);
+      assert.equal(await page.locator('[data-budget-cash-keep]').isVisible(), true);
+      assert.match(await page.locator('[data-budget-cash-keep]').innerText(), /After bills & essentials.*across chequing/);
       assert.match(await page.locator('[data-budget-cash-answer]').innerText(), /873\.50[\s\S]*501\.50/);
       assert.match(await page.locator('.budget-cash-plan-scope').innerText(), /Across chequing accounts/);
       await page.locator('[data-budget-cash-detail]').screenshot({ path: path.join(screenshots, `today-details-${width}.png`) });

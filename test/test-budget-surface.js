@@ -244,6 +244,22 @@ const currentHero = /data-budget-cash-hero[\s\S]*?<\/p>/.exec(html)?.[0] || '';
 ok(currentHero.includes(money(EXPECT.billsAccount)) && !currentHero.includes(money(EXPECT.available)),
   'the prominent Current balance does not aggregate daily-spending cash');
 ok(/data-budget-today-evidence[^>]* hidden/.test(html), 'current-position explanations and instructions start folded');
+const currentProtection = p.context.__ctx.advice.paydayAllocation.protectedPath;
+const keepHtml = /data-budget-cash-keep[\s\S]*?<\/div>/.exec(html)?.[0] || '';
+ok(currentProtection.status === 'calculated' && currentProtection.allocated > 300
+  && keepHtml.includes(money(currentProtection.allocated)) && /After bills &amp; essentials/.test(keepHtml),
+  'Keep republishes current Forecast protection, including future needs beyond the cash floor; it never substitutes the floor');
+// Publication-boundary identity proof, independent of the detail-line amount.
+// Engine correctness is independently cash-walk reconciled in test-prepare-ahead.
+const stampedKeep = p.rerender("__ctx.advice.paydayAllocation.protectedPath = { status: 'calculated', allocated: 456.78 }; __ctx.advice.paydayAllocation.lines = [{ kind: 'future-path', amount: 9999 }]");
+const stampedKeepHtml = /data-budget-cash-keep[\s\S]*?<\/div>/.exec(stampedKeep)?.[0] || '';
+ok(stampedKeepHtml.includes('$456.78') && !/300\.00|9999|9,999/.test(stampedKeepHtml),
+  'Keep uses the authoritative protected-path publication, independently of the floor or incompatible detail-line amounts');
+const missingProtection = p.rerender("__ctx.advice.paydayAllocation.protectedPath = { status: 'unavailable', allocated: null }");
+ok(/data-budget-cash-keep[\s\S]*?Unavailable/.test(missingProtection)
+  && !/data-budget-cash-keep[\s\S]*?<\/div>/.exec(missingProtection)?.[0].includes('$0.00'),
+  'unavailable protection stays unavailable, without a zero or cash-floor substitute');
+p.render(fx.served());
 ok(section(html, 'today').indexOf('data-budget-cash-detail') > section(html, 'today').indexOf('data-budget-today-evidence'),
   'household cash breakdown stays in the info disclosure, outside the permanent overview');
 ok(/class="budget-period-info"[\s\S]*data-from-today-proposal[\s\S]*<\/details>/.test(section(html, 'period')),
