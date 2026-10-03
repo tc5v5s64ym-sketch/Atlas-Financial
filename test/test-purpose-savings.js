@@ -116,12 +116,17 @@ async function main() {
   const normalize = d => {
     const copy = clone(d); delete copy.plan.savingsEarmarks;
     for (const row of [...copy.plan.startingCash.breakdown, ...copy.plan.startingCash.heldElsewhere]) {
-      if (['savings', 'savings-dont-touch'].includes(row.id)) { delete row.label; delete row.class; delete row.note; }
+      if (['savings', 'savings-dont-touch'].includes(row.id)) { delete row.class; delete row.note; }
     }
-    for (const row of copy.assets) if (['savings', 'savings-dont-touch'].includes(row.cash)) { delete row.label; delete row.class; }
+    for (const row of copy.assets) if (['savings', 'savings-dont-touch'].includes(row.cash)) delete row.class;
     return copy;
   };
   assert.deepEqual(normalize(after), normalize(before));
+  const S = require('../scripts/snapshot-balances'), fs = require('node:fs');
+  const csv = S.parsePositions(fs.readFileSync(require('node:path').join(__dirname, '../docs/positions.csv'), 'utf8'));
+  const map = require('../docs/reconciliation/balance-map.json');
+  assert.deepEqual(S.buildSnapshot(after, csv, map), S.buildSnapshot(before, csv, map),
+    'new role labels never rewrite the historical balance snapshot');
   assert.equal(F.savingsEarmarksState(after.plan, '2026-10-03').status, 'ready');
   assert.deepEqual(after.plan.savingsEarmarks.history, []);
   assert.ok(UI.html(F.savingsInventory(after.plan, '2026-10-03')).includes('Starting goal assignments have not been supplied'));

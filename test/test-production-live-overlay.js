@@ -87,7 +87,7 @@ function syntheticLiveMap() {
     mappings: [
       { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
       { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
-      { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+      { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-reserve' },
       { providerAccountId: '3004', canonical: { collection: 'debts', id: 'tdcc' }, atlasRole: 'revolving-credit' },
       { providerAccountId: '3005', canonical: { collection: 'debts', id: 'cashback' }, atlasRole: 'revolving-credit' },
       { providerAccountId: '3006', canonical: { collection: 'debts', id: 'travelvisa' }, atlasRole: 'revolving-credit' },
@@ -108,7 +108,7 @@ function cashOnlyLiveMap() {
     mappings: [
       { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
       { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
-      { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+      { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-reserve' },
     ],
   };
 }
@@ -528,7 +528,7 @@ function independentGroceryRemaining(plan, asOf) {
       mappings: [
         { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
         { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
-        { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+        { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-reserve' },
         { providerAccountId: '3999', canonical: { collection: 'debts', id: 'savings' }, atlasRole: 'revolving-credit' },
       ],
     }),
@@ -554,7 +554,7 @@ function independentGroceryRemaining(plan, asOf) {
           mappings: [
             { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
             { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
-            { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+            { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-reserve' },
           ],
         }),
       }, liveData);
@@ -594,7 +594,7 @@ function independentGroceryRemaining(plan, asOf) {
           mappings: [
             { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
             { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
-            { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+            { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-reserve' },
             { providerAccountId: '3999', canonical: { collection: 'debts', id: 'savings' }, atlasRole: 'revolving-credit' },
           ],
         }),

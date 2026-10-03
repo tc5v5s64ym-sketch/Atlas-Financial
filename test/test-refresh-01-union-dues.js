@@ -276,7 +276,9 @@ function cashKey(row) {
     id: row.id,
     label: row.label,
     value: row.value,
-    class: row.class,
+      // The later owner-authorized purpose cutover changes only these two
+      // classes; this cancellation proof still reconciles IDs/labels/amounts.
+      class: ['savings', 'savings-dont-touch'].includes(row.id) ? undefined : row.class,
   });
 }
 ok(JSON.stringify((before.plan.startingCash.breakdown || []).map(cashKey))

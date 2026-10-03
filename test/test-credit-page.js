@@ -407,7 +407,7 @@ function mockProvider(accounts) {
     mappings: [
       { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
       { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
-      { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+      { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-reserve' },
       { providerAccountId: '3004', canonical: { collection: 'debts', id: 'tdcc' }, atlasRole: 'revolving-credit' },
       { providerAccountId: '3005', canonical: { collection: 'debts', id: 'cashback' }, atlasRole: 'revolving-credit' },
       { providerAccountId: '3006', canonical: { collection: 'debts', id: 'travelvisa' }, atlasRole: 'revolving-credit' },

@@ -96,7 +96,7 @@
                 },
                 {
                     "id": "savings",
-                    "label": "DEFICIT PLANNING — Fusion and sports",
+                    "label": "Savings",
                     "value": 0.58,
                     "class": "purpose-reserve",
                     "note": "Lunch Money mapped EMERGENCY SAVING balance on the 2026-08-19 observation. The $90.00 Aug. 13 transfer to Chequing B is already inside this figure (90.58 - 90.00 = 0.58)."
@@ -112,7 +112,7 @@
                 },
                 {
                     "id": "savings-dont-touch",
-                    "label": "SAVINGS-DONT TOUCH — property tax and home insurance",
+                    "label": "SAVINGS-DONT TOUCH — staging",
                     "value": 74.2,
                     "class": "purpose-reserve",
                     "note": "Historical staging evidence: on her profile, money passed through to the HELOC and cards within days. Owner authorized the purpose-reserve cutover on 2026-10-03 for property tax and home insurance. This retained dated value is historical evidence, not a new savings baseline or confirmed assignment."
@@ -1444,7 +1444,7 @@
             "cash": "chequing-b"
         },
         {
-            "label": "DEFICIT PLANNING — Fusion and sports",
+            "label": "Savings",
             "cash": "savings",
             "class": "purpose-reserve"
         },
