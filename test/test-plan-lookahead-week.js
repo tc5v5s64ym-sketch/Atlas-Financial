@@ -95,6 +95,8 @@ function loadComposer() {
     grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
     grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
+    grab(planSrc, /^function budgetPayPeriodContentHtml\([\s\S]*?\n\}$/m, 'budgetPayPeriodContentHtml'),
+    grab(planSrc, /^function currentPaydayShellHtml\([\s\S]*?\n\}$/m, 'currentPaydayShellHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
     // AMANDA SLICE 14 — the same-input schedule chain read by operatingSurfaceHtml.
     grab(planSrc, /^function budgetMonthPlanSpendSchedule\([\s\S]*?\n\}$/m, 'budgetMonthPlanSpendSchedule'),
@@ -420,11 +422,12 @@ console.log('\n=== 5. page still does not subtract leftover ===');
 {
   const planSrc = read('public/plan.js');
   const fn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);
+  const content = /function budgetPayPeriodContentHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(fn && !/\bForecast\.[A-Za-z]+\s*\(/.test(fn[0]),
     'operatingSurfaceHtml calls no Forecast function');
   ok(fn && !/view\.currentBalance\s*-|afterBills\s*-|allocatedObligations/.test(fn[0]),
     'the payday sheet does not subtract leftover');
-  ok(fn && /ctx\.planView \|\| advice\.defaultView/.test(fn[0]),
+  ok(content && /ctx\.planView \|\| advice\.defaultView/.test(content[0]),
     'the sheet prints the selected Forecast view');
 }
 

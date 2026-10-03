@@ -181,15 +181,15 @@ console.log('\n=== 1. Allowlist / labels / glance membership ===');
 console.log('\n=== 2. Dale Budget → Household budget is the calendar waterfall ===');
 {
   const planSrc = read('public/plan.js');
-  const surface = grab(planSrc, /function operatingSurfaceHtml\([\s\S]*?\n\}/,
-    'operatingSurfaceHtml');
+  const surface = grab(planSrc, /function budgetPayPeriodContentHtml\([\s\S]*?\n\}/,
+    'budgetPayPeriodContentHtml');
   const waterfall = grab(planSrc, /function calendarWaterfallHtml\([\s\S]*?\n\}/,
     'calendarWaterfallHtml');
   ok(/look === 'this-period'/.test(surface)
       && /calendarWaterfallsHtml\(/.test(surface)
       && /question\('04', 'Household budget', householdBudgetHtml\(view\)\)/.test(surface)
       && /defaultWaterfalls \|\| historical \|\| carryoverTrend \? ''/.test(surface),
-    'default this-period prints calendar waterfalls; glance householdBudgetHtml is the More-views ten-block only');
+    'default this-period prints calendar waterfalls; glance householdBudgetHtml is the fallback ten-block only');
   ok(/q\('06', 'Household budget'/.test(waterfall)
       && /calendarBudgetHtml\(period/.test(waterfall),
     'Budget Household budget Q06 consumes calendarBudgetHtml(period.householdBudget)');

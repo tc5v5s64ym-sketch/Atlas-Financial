@@ -1,0 +1,66 @@
+/* Budget surface frame: layout and card chrome around the incumbent
+ * components. Presentation only; no figure, label or status changes here. */
+
+#operating-surface:has([data-budget-surface]) { max-width:1080px; }
+
+.budget-surface { display:grid; gap:16px; }
+
+.budget-surface-bar { display:flex; justify-content:center; }
+.budget-surface-bar .budget-granularity {
+  box-shadow:0 1px 2px rgba(21,21,19,.06), 0 6px 18px rgba(21,21,19,.06);
+}
+
+.budget-surface-grid {
+  display:grid; gap:16px; align-items:start;
+  grid-template-columns:minmax(0,1fr);
+}
+@media (min-width: 960px) {
+  .budget-surface-grid { grid-template-columns:minmax(0,5fr) minmax(0,7fr); }
+  .budget-surface-today { position:sticky; top:64px; }
+}
+
+.budget-surface-card {
+  background:var(--surface-1); border:1px solid var(--border); border-radius:18px;
+  padding:18px 18px 20px; min-width:0;
+  box-shadow:0 1px 2px rgba(21,21,19,.04), 0 8px 24px rgba(21,21,19,.045);
+}
+.budget-surface-eyebrow {
+  margin:0 0 10px; font-size:.72rem; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--text-secondary);
+}
+
+/* The shell keeps its own heading; inside a card it does not need the
+   disclosure frame it had when it lived under "Current payday details". */
+.budget-surface-today .payday-instruction-shell {
+  margin:0; padding:0; border:0; border-radius:0; background:none;
+}
+.budget-surface-today .payday-instruction-shell > h2 { margin-top:0; font-size:1.15rem; }
+.budget-surface-today .payday-instruction-shell .instruction-block { overflow-wrap:break-word; }
+/* The Today column is narrow at every width, so its rows use the shell's
+   own stacked phone layout: label, then amount. */
+.budget-surface-today .payday-instruction-shell .instruction-block > summary {
+  grid-template-columns:minmax(0,1fr) 8px;
+}
+.budget-surface-today .payday-instruction-shell .instruction-block > summary::after { grid-column:2; }
+.budget-surface-today .payday-instruction-shell .instruction-amount,
+.budget-surface-today .payday-instruction-shell .instruction-state { grid-column:1; text-align:left; }
+
+.budget-surface-period .pay-period-navigator { margin-top:4px; }
+.budget-surface-period .budget-stepped-sheet,
+.budget-surface-period .calendar-waterfalls { margin:0; }
+
+.budget-surface-actions { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
+.budget-surface-month .budget-surface-actions { margin:16px 0 0; }
+.budget-surface-link {
+  min-height:40px; padding:8px 16px; border-radius:999px; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--s1) 35%, var(--border));
+  background:color-mix(in srgb, var(--s1) 8%, var(--surface-1));
+  color:var(--text-primary); font:inherit; font-size:.9rem; font-weight:600;
+}
+.budget-surface-link:hover { background:color-mix(in srgb, var(--s1) 14%, var(--surface-1)); }
+.budget-surface-link:focus-visible { outline:2px solid var(--s1); outline-offset:2px; }
+
+@media (max-width: 520px) {
+  .budget-surface { gap:12px; }
+  .budget-surface-card { padding:14px 12px 16px; border-radius:16px; }
+}
