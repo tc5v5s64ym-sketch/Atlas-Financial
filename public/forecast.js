@@ -530,6 +530,7 @@
     const poolIds = new Set(), accounts = new Set();
     const held = ((plan.startingCash && plan.startingCash.heldElsewhere) || []).map(r => r && r.id);
     for (const pool of block.pools) {
+      if (!pool || typeof pool !== 'object' || Array.isArray(pool)) return invalid('Each pool requires an explicit reserve identity.');
       const purposeReserve = pool.role === 'purpose-reserve';
       const heldRows = ((plan.startingCash && plan.startingCash.heldElsewhere) || []).filter(r => r && r.id === pool.accountId);
       const stagingCutover = purposeReserve && pool.accountId === 'savings-dont-touch'
@@ -689,7 +690,8 @@
     if (hasHouseholdChequing) return postedHouseholdChequingCash(plan);
     return rows.reduce((s, b) => {
       if (!b || b.id === DESIGNATED_RESERVE_ID
-          || ((plan.savingsEarmarks && plan.savingsEarmarks.pools) || []).some(p => p && p.accountId === b.id)) return s;
+          || (Array.isArray(plan.savingsEarmarks && plan.savingsEarmarks.pools) ? plan.savingsEarmarks.pools : [])
+            .some(p => p && p.accountId === b.id)) return s;
       return s + (Number(b.value) || 0);
     }, 0);
   }
