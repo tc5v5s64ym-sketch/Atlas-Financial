@@ -127,10 +127,15 @@ function withheldSavings(data) {
 }
 
 // The served /data.json packet, through the real observation and overlay.
+// opts.unavailablePlan: the server's fail-closed packet for a refresh it
+// could not trust — the dated Aug 13 opening, observed Aug 20.
 function served(opts = {}) {
   const Live = require('../../scripts/live-plan');
   const data = opts.withheldSavings ? withheldSavings(canonical()) : canonical();
   const overlay = Live.fromObservation({ data, payload: payload(), accountMap: map, identity });
+  if (opts.unavailablePlan) {
+    return Live.failedOverlay(canonical(), 'Synthetic refresh could not be trusted.', { report: overlay.report });
+  }
   return overlay.data;
 }
 

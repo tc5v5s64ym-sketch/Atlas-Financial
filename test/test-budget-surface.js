@@ -180,12 +180,12 @@ ok(!/Proposed to set aside now/.test(withheld) && !/data-from-today-cost/.test(w
 ok(step(withheld, '07').includes(money(EXPECT.final)), 'the waterfall itself is unchanged by withheld savings');
 
 console.log('\n=== current plan unavailable ===');
-const down = fx.served();
-down.liveOverlay.operatingPlan = 'unavailable';
-down.liveOverlay.operatingPlanNote = 'Current plan unavailable. The latest refresh could not be trusted.';
-const downHtml = page().render(down);
+const downHtml = page().render(fx.served({ unavailablePlan: true }));
 ok(/data-budget-surface="unavailable"/.test(downHtml) && /Current plan unavailable/.test(text(downHtml)),
   'an untrusted refresh shows the unavailable surface');
+// The Aug 13 opening, independently: 15 bills account + 604.49 spending account.
+ok(text(downHtml).includes(`Last trusted opening ${money(15 + 604.49)}`) && /As at August 13/.test(text(downHtml)),
+  'the last trusted opening is the dated Aug 13 balance, labelled as dated', text(downHtml).slice(0, 400));
 ok(!downHtml.includes(money(EXPECT.final)) && !/data-calendar-waterfall="/.test(downHtml),
   'no pay-period figures are printed when the plan is unavailable');
 
