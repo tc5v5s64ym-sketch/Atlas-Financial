@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Budget — redesign mockup · Atlas Financial</title>
+<!--
+  Standalone design mockup for the Budget page. Not served by server.js and not
+  wired to Forecast. Every amount below is copied as published from the live
+  Budget page of 2026-10-02 so the layout can be judged against real shapes;
+  none is a current or canonical figure. The script only formats, sorts and
+  sizes bars — it totals no money, so it cannot produce a figure Forecast did
+  not publish. Transaction rows inside the category sheets are illustrative.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --bg:#f4f3ef;
+  --surface:#ffffff;
+  --surface-2:#f8f7f4;
+  --ink:#161614;
+  --ink-2:#56554f;
+  --ink-3:#86857d;
+  --line:rgba(22,22,20,.09);
+  --line-2:rgba(22,22,20,.05);
+  --accent:#2a6fd0;
+  --accent-ink:#1d56a8;
+  --accent-soft:#e9f0fb;
+  --good:#1b7a3d;
+  --good-fill:#2f9a57;
+  --good-soft:#e7f4eb;
+  --warn:#8f5b00;
+  --warn-fill:#e0a112;
+  --warn-soft:#fbf3de;
+  --bad:#b8322f;
+  --bad-fill:#d4483f;
+  --bad-soft:#fbeae8;
+  --muted-fill:#d9d7cf;
+  --bar-track:#ecebe5;
+  --hatch:repeating-linear-gradient(-45deg, rgba(22,22,20,.10) 0 2px, transparent 2px 7px);
+  --shadow:0 1px 2px rgba(22,22,20,.04), 0 8px 24px rgba(22,22,20,.05);
+  --shadow-lift:0 1px 2px rgba(22,22,20,.06), 0 18px 48px rgba(22,22,20,.16);
+  --r-xl:22px; --r-lg:16px; --r-md:12px; --r-sm:8px;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg:#121211; --surface:#1c1c1a; --surface-2:#232321;
+    --ink:#f1f0eb; --ink-2:#b9b8b0; --ink-3:#8b8a83;
+    --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.05);
+    --accent:#6ea2ef; --accent-ink:#9cc0f6; --accent-soft:rgba(110,162,239,.14);
+    --good:#6fcf93; --good-fill:#3fae69; --good-soft:rgba(63,174,105,.14);
+    --warn:#f0c15a; --warn-fill:#e0a112; --warn-soft:rgba(224,161,18,.14);
+    --bad:#f08c84; --bad-fill:#e0564c; --bad-soft:rgba(224,86,76,.15);
+    --muted-fill:#45443f; --bar-track:#2c2c29;
+    --hatch:repeating-linear-gradient(-45deg, rgba(255,255,255,.12) 0 2px, transparent 2px 7px);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    --shadow-lift:0 1px 2px rgba(0,0,0,.4), 0 18px 48px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#121211; --surface:#1c1c1a; --surface-2:#232321;
+  --ink:#f1f0eb; --ink-2:#b9b8b0; --ink-3:#8b8a83;
+  --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.05);
+  --accent:#6ea2ef; --accent-ink:#9cc0f6; --accent-soft:rgba(110,162,239,.14);
+  --good:#6fcf93; --good-fill:#3fae69; --good-soft:rgba(63,174,105,.14);
+  --warn:#f0c15a; --warn-fill:#e0a112; --warn-soft:rgba(224,161,18,.14);
+  --bad:#f08c84; --bad-fill:#e0564c; --bad-soft:rgba(224,86,76,.15);
+  --muted-fill:#45443f; --bar-track:#2c2c29;
+  --hatch:repeating-linear-gradient(-45deg, rgba(255,255,255,.12) 0 2px, transparent 2px 7px);
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  --shadow-lift:0 1px 2px rgba(0,0,0,.4), 0 18px 48px rgba(0,0,0,.5);
+}
+
+* { box-sizing:border-box; }
+html { -webkit-text-size-adjust:100%; scroll-behavior:smooth; scroll-padding-top:132px; }
+body {
+  margin:0; background:var(--bg); color:var(--ink);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+button { font:inherit; color:inherit; }
+a { color:var(--accent-ink); }
+.num, .m { font-variant-numeric:tabular-nums; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+
+/* Mockup strip */
+.mock-strip {
+  background:var(--ink); color:var(--bg); font-size:12px; text-align:center;
+  padding:6px 14px; letter-spacing:.01em;
+}
+.mock-strip b { font-weight:650; }
+
+/* Top bar */
+.topbar {
+  position:sticky; top:0; z-index:30;
+  background:color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter:saturate(1.4) blur(14px); -webkit-backdrop-filter:saturate(1.4) blur(14px);
+  border-bottom:1px solid var(--line-2);
+}
+.topbar-inner { max-width:1240px; margin:0 auto; padding:10px 28px; display:flex; align-items:center; gap:28px; }
+.brand { font-weight:750; letter-spacing:-.02em; font-size:17px; display:flex; align-items:center; gap:8px; }
+.brand-mark { width:22px; height:22px; border-radius:7px; background:linear-gradient(135deg, var(--accent), #6b4fd0); display:grid; place-items:center; color:#fff; font-size:12px; }
+.sitenav { display:flex; gap:2px; }
+.sitenav a { text-decoration:none; color:var(--ink-2); padding:7px 12px; border-radius:999px; font-size:14px; font-weight:500; }
+.sitenav a:hover { background:var(--line-2); color:var(--ink); }
+.sitenav a[aria-current="page"] { background:var(--surface); color:var(--ink); box-shadow:var(--shadow); font-weight:620; }
+.topbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.fresh {
+  display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2);
+  padding:6px 12px 6px 10px; border-radius:999px; background:var(--surface); box-shadow:var(--shadow); border:0; cursor:pointer;
+}
+.dot { width:8px; height:8px; border-radius:50%; background:var(--good-fill); box-shadow:0 0 0 3px var(--good-soft); flex:none; }
+.icon-btn { width:34px; height:34px; border-radius:999px; border:0; background:var(--surface); box-shadow:var(--shadow); display:grid; place-items:center; cursor:pointer; color:var(--ink-2); }
+.icon-btn svg { width:17px; height:17px; }
+
+/* Page */
+.page { max-width:1240px; margin:0 auto; padding:26px 28px 80px; }
+
+/* Period header */
+.period { display:flex; align-items:flex-end; gap:24px; margin:4px 0 22px; flex-wrap:wrap; }
+.period-switch { display:flex; align-items:center; gap:10px; }
+.period-arrow { width:36px; height:36px; border-radius:999px; border:1px solid var(--line); background:var(--surface); display:grid; place-items:center; cursor:pointer; color:var(--ink-2); }
+.period-arrow:hover { color:var(--ink); border-color:var(--ink-3); }
+.period-arrow svg { width:16px; height:16px; }
+.eyebrow { font-size:12px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); }
+.period h1 { margin:2px 0 0; font-size:32px; line-height:1.1; letter-spacing:-.025em; font-weight:720; }
+.pill {
+  display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:3px 10px;
+  font-size:12px; font-weight:620; white-space:nowrap; line-height:1.5;
+}
+.pill.accent { background:var(--accent-soft); color:var(--accent-ink); }
+.pill.good { background:var(--good-soft); color:var(--good); }
+.pill.warn { background:var(--warn-soft); color:var(--warn); }
+.pill.bad { background:var(--bad-soft); color:var(--bad); }
+.pill.muted { background:var(--line-2); color:var(--ink-2); border:1px dashed var(--line); }
+.period-progress { margin-left:auto; min-width:300px; flex:0 1 380px; }
+.period-progress-top { display:flex; justify-content:space-between; font-size:13px; color:var(--ink-2); margin-bottom:8px; gap:12px; }
+.period-progress-top b { color:var(--ink); font-weight:650; }
+.days { display:grid; grid-template-columns:repeat(14, 1fr); gap:3px; }
+.days span { height:8px; border-radius:3px; background:var(--bar-track); }
+.days span.past { background:color-mix(in srgb, var(--accent) 55%, var(--bar-track)); }
+.days span.today { background:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+
+/* Jump chips */
+.jump { display:none; }
+
+/* Grid */
+.grid { display:grid; gap:18px; margin-bottom:18px; }
+.hero { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.split { grid-template-columns:minmax(0,7fr) minmax(0,5fr); align-items:start; }
+.split-upcoming { grid-template-columns:minmax(0,8fr) minmax(0,4fr); align-items:start; }
+.stack { display:grid; gap:18px; }
+
+/* Cards */
+.card {
+  background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--shadow);
+  padding:24px; position:relative; min-width:0;
+}
+.card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:14px; }
+.card-head h2 { margin:3px 0 0; font-size:19px; letter-spacing:-.015em; font-weight:680; }
+.card-head .sub { color:var(--ink-2); font-size:13.5px; margin-top:4px; }
+.section-title { display:flex; align-items:baseline; gap:12px; margin:34px 2px 14px; }
+.section-title h2 { font-size:22px; margin:0; letter-spacing:-.02em; font-weight:700; }
+.section-title p { margin:0; color:var(--ink-2); font-size:14px; }
+
+/* Money */
+.m { white-space:nowrap; }
+.m .c { font-size:.62em; vertical-align:.52em; margin-left:1px; opacity:.85; font-weight:inherit; }
+.m .approx { color:var(--warn-fill); font-weight:600; margin-right:.18em; }
+.big .approx, .mid .approx { font-size:.62em; vertical-align:.2em; font-weight:650; margin-right:.12em; }
+.big { font-size:46px; line-height:1; letter-spacing:-.035em; font-weight:720; }
+.mid { font-size:26px; line-height:1.1; letter-spacing:-.025em; font-weight:700; }
+.unk {
+  display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:620; color:var(--ink-2);
+  padding:2px 10px; border-radius:999px; border:1px dashed var(--ink-3); background:var(--surface-2);
+}
+
+/* Today card */
+.today { display:flex; flex-direction:column; }
+.today-figure { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+.today-sub { color:var(--ink-2); font-size:13.5px; margin-top:8px; display:flex; gap:6px 14px; flex-wrap:wrap; }
+.today-sub b { color:var(--ink); font-weight:620; }
+.alloc { margin:22px 0 8px; }
+.alloc-bar { display:flex; height:16px; border-radius:999px; overflow:hidden; gap:2px; background:var(--surface); }
+.alloc-bar span { display:block; height:100%; transition:filter .2s; }
+.alloc-bar span:hover { filter:brightness(1.08); }
+.seg-bills { background:var(--ink); }
+.seg-needs { background:var(--accent); }
+.seg-floor { background:var(--muted-fill); background-image:var(--hatch); }
+.seg-free { background:var(--good-fill); }
+.alloc-legend { display:grid; grid-template-columns:1fr 1fr; gap:12px 18px; margin-top:16px; }
+.leg { display:flex; gap:10px; align-items:flex-start; min-width:0; }
+.leg-sw { width:10px; height:10px; border-radius:3px; margin-top:5px; flex:none; }
+.leg-label { font-size:13px; color:var(--ink-2); line-height:1.35; }
+.leg-value { font-size:16px; font-weight:650; display:block; color:var(--ink); margin-top:1px; }
+.answer {
+  margin-top:20px; padding:14px 16px; border-radius:var(--r-lg); background:var(--good-soft);
+  display:flex; gap:12px; align-items:flex-start;
+}
+.answer svg { flex:none; width:20px; height:20px; color:var(--good); margin-top:1px; }
+.answer p { margin:0; font-size:14.5px; }
+.answer p + p { margin-top:4px; color:var(--ink-2); font-size:13px; }
+.link-btn {
+  border:0; background:none; padding:0; color:var(--accent-ink); font-weight:600; cursor:pointer;
+  display:inline-flex; align-items:center; gap:4px; font-size:13.5px;
+}
+.link-btn svg { width:14px; height:14px; }
+.card-foot { margin-top:auto; padding-top:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.fine { font-size:12.5px; color:var(--ink-3); line-height:1.45; }
+.next-pay {
+  width:100%; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:14px; align-items:center;
+  padding:12px 14px; border-radius:var(--r-lg); border:1px solid var(--line); background:none; text-align:left; cursor:pointer;
+}
+.next-pay:hover { background:var(--surface-2); }
+.next-pay > svg { width:18px; height:18px; color:var(--ink-3); }
+.next-pay-date { width:42px; text-align:center; border-radius:10px; background:var(--accent-soft); color:var(--accent-ink); padding:4px 0; line-height:1.1; }
+.next-pay-date small { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.next-pay-date b { font-size:17px; }
+.next-pay-t { display:block; font-size:14px; font-weight:620; }
+.next-pay-d { display:block; font-size:12.5px; color:var(--ink-2); margin-top:1px; }
+
+/* Waterfall */
+.wf { display:grid; gap:4px; margin-top:20px; }
+.wf-row {
+  display:grid; grid-template-columns:22px minmax(170px,1.5fr) minmax(0,1.25fr) auto; align-items:center; gap:12px;
+  padding:9px 10px; border-radius:var(--r-md); border:0; background:none; text-align:left; cursor:pointer; width:100%;
+}
+.wf-row:hover { background:var(--surface-2); }
+.wf-op { font-weight:700; color:var(--ink-3); text-align:center; font-size:16px; }
+.wf-name { font-size:14.5px; font-weight:560; }
+.wf-name small { display:block; color:var(--ink-3); font-size:12px; font-weight:450; margin-top:1px; }
+.wf-track { position:relative; height:12px; border-radius:6px; background:var(--bar-track); }
+.wf-bar { position:absolute; top:0; bottom:0; border-radius:6px; }
+.wf-row.income .wf-bar { background:var(--accent); }
+.wf-row.minus .wf-bar { background:var(--ink-2); opacity:.55; }
+.wf-row.sub .wf-bar { background:color-mix(in srgb, var(--accent) 35%, var(--bar-track)); }
+.wf-row.final .wf-bar { background:var(--good-fill); }
+.wf-row.unavail .wf-track { background:var(--hatch), var(--bar-track); }
+.wf-val { font-size:15px; font-weight:650; text-align:right; min-width:104px; }
+.wf-row.final { background:var(--surface-2); margin-top:4px; }
+.wf-row.final .wf-name { font-weight:700; }
+.wf-row.final .wf-val { font-size:17px; }
+.wf-divider { height:1px; background:var(--line); margin:2px 10px; }
+
+/* Attention */
+.attention { padding:18px 22px; }
+.attention-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.attention-head h2 { font-size:16px; margin:0; font-weight:680; }
+.attention-list { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; }
+.att {
+  display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--r-lg);
+  background:var(--surface-2); border:0; text-align:left; cursor:pointer; width:100%; min-width:0;
+}
+.att:hover { background:color-mix(in srgb, var(--surface-2) 70%, var(--line)); }
+.att-ico { width:26px; height:26px; border-radius:8px; display:grid; place-items:center; flex:none; }
+.att-ico svg { width:15px; height:15px; }
+.att.bad .att-ico { background:var(--bad-soft); color:var(--bad); }
+.att.warn .att-ico { background:var(--warn-soft); color:var(--warn); }
+.att.info .att-ico { background:var(--line-2); color:var(--ink-2); }
+.att-t { font-size:13.5px; font-weight:620; line-height:1.3; }
+.att-d { font-size:12.5px; color:var(--ink-2); margin-top:3px; line-height:1.35; }
+
+/* Spending */
+.budget-summary { display:flex; gap:28px; flex-wrap:wrap; padding:14px 0 18px; border-bottom:1px solid var(--line); margin-bottom:6px; }
+.stat-label { font-size:12.5px; color:var(--ink-3); }
+.stat-value { font-size:20px; font-weight:680; letter-spacing:-.015em; margin-top:2px; }
+.stat-value.bad { color:var(--bad); }
+.cats { display:grid; }
+.cat {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 16px; padding:14px 6px; border:0; background:none;
+  text-align:left; width:100%; cursor:pointer; border-bottom:1px solid var(--line-2); border-radius:0;
+}
+.cat:last-child { border-bottom:0; }
+.cat:hover { background:var(--surface-2); border-radius:var(--r-md); }
+.cat-name { font-weight:600; font-size:14.5px; display:flex; align-items:center; gap:8px; min-width:0; }
+.cat-meta { font-size:12.5px; color:var(--ink-3); font-weight:450; }
+.cat-status { font-size:14px; font-weight:650; text-align:right; white-space:nowrap; }
+.cat-status.over { color:var(--bad); }
+.cat-status.left { color:var(--good); }
+.cat-status.used { color:var(--ink-3); }
+.cat-bar { grid-column:1 / -1; position:relative; height:8px; border-radius:4px; background:var(--bar-track); }
+.cat-fill { position:absolute; left:0; top:0; bottom:0; border-radius:4px; background:var(--accent); }
+.cat.over .cat-fill { border-radius:4px 0 0 4px; }
+.cat-over { position:absolute; top:0; bottom:0; background:var(--bad-fill); border-radius:0 4px 4px 0; }
+.plan-mark { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--surface); }
+.cat.used .cat-fill { background:var(--ink-3); }
+.cat.unassigned .cat-bar { background:var(--hatch), var(--bar-track); }
+.pace { position:absolute; top:-4px; bottom:-4px; width:2px; border-radius:1px; background:var(--ink); opacity:.55; }
+.pace-key { display:inline-flex; align-items:center; gap:6px; }
+.pace-key i { display:inline-block; width:2px; height:12px; background:var(--ink); opacity:.55; border-radius:1px; }
+
+/* Bills */
+.bills-progress { display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--bar-track); margin:14px 0 6px; }
+.bills-progress span { background:var(--good-fill); }
+.bills-figs { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink-3); }
+.group { margin-top:18px; }
+.group-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 4px 6px; }
+.group-head h3 { margin:0; font-size:13px; font-weight:650; color:var(--ink-2); display:flex; gap:8px; align-items:center; }
+.group-note { font-size:12.5px; color:var(--ink-3); margin:-2px 4px 8px; }
+.bill {
+  display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:12px; align-items:center;
+  padding:9px 6px; border:0; background:none; width:100%; text-align:left; cursor:pointer; border-radius:var(--r-md);
+}
+.bill:hover { background:var(--surface-2); }
+.date-chip { width:44px; text-align:center; border-radius:10px; background:var(--surface-2); padding:4px 0; line-height:1.1; }
+.date-chip small { display:block; font-size:10px; font-weight:650; text-transform:uppercase; color:var(--ink-3); letter-spacing:.04em; }
+.date-chip b { font-size:16px; font-weight:680; }
+.bill-name { font-size:14px; font-weight:560; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bill-state { font-size:12px; color:var(--ink-3); margin-top:1px; display:flex; align-items:center; gap:6px; }
+.bill-amt { font-weight:650; font-size:14.5px; text-align:right; }
+.sdot { width:7px; height:7px; border-radius:50%; flex:none; }
+.sdot.paid { background:var(--good-fill); }
+.sdot.due { background:var(--accent); }
+.sdot.check { background:var(--warn-fill); }
+.bill.is-paid .bill-name, .bill.is-paid .bill-amt { color:var(--ink-2); }
+details.paid-group > summary { list-style:none; cursor:pointer; }
+details.paid-group > summary::-webkit-details-marker { display:none; }
+.chev { width:16px; height:16px; transition:transform .2s var(--ease); color:var(--ink-3); }
+details[open] > summary .chev { transform:rotate(180deg); }
+.deduct-note {
+  margin-top:16px; padding:12px 14px; border-radius:var(--r-md); background:var(--surface-2);
+  display:flex; justify-content:space-between; gap:14px; align-items:center;
+}
+.deduct-note p { margin:0; font-size:12.5px; color:var(--ink-2); }
+.deduct-note .m { font-weight:650; }
+
+/* Upcoming */
+.up-summary { display:flex; gap:28px; flex-wrap:wrap; margin:2px 0 18px; }
+.gap-callout {
+  display:flex; gap:12px; align-items:flex-start; padding:14px 16px; border-radius:var(--r-lg);
+  background:var(--bad-soft); margin-bottom:16px;
+}
+.gap-callout svg { width:20px; height:20px; color:var(--bad); flex:none; margin-top:1px; }
+.gap-callout p { margin:0; font-size:14px; }
+.gap-callout p + p { margin-top:3px; font-size:12.5px; color:var(--ink-2); }
+.timeline { position:relative; }
+.month { display:grid; grid-template-columns:72px minmax(0,1fr); gap:14px; }
+.month + .month { border-top:1px solid var(--line-2); }
+.month-label { padding-top:16px; font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-3); }
+.month-label small { display:block; font-weight:500; letter-spacing:0; text-transform:none; font-size:11.5px; }
+.month-items { display:grid; padding:6px 0; }
+.cost {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 16px; padding:10px 8px 10px 14px; position:relative;
+  border:0; background:none; width:100%; text-align:left; cursor:pointer; border-radius:var(--r-md);
+}
+.cost:hover { background:var(--surface-2); }
+.cost.in-gap::before {
+  content:""; position:absolute; left:2px; top:10px; bottom:10px; width:3px; border-radius:2px; background:var(--bad-fill); opacity:.75;
+}
+.cost-name { font-size:14.5px; font-weight:580; }
+.cost-when { font-size:12.5px; color:var(--ink-3); margin-top:1px; }
+.cost-amt { text-align:right; font-weight:650; font-size:14.5px; }
+.cost-progress { grid-column:1 / -1; display:flex; align-items:center; gap:10px; margin-top:4px; }
+.cost-track { flex:1; height:6px; border-radius:3px; background:var(--bar-track); position:relative; overflow:hidden; }
+.cost-track span { position:absolute; left:0; top:0; bottom:0; background:var(--good-fill); border-radius:3px; }
+.cost-state { font-size:12.5px; color:var(--ink-2); white-space:nowrap; }
+.cost-state.covered { color:var(--good); font-weight:620; }
+.cost.undated .cost-track { background:var(--hatch), var(--bar-track); }
+.gap-key { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-2); }
+.gap-key i { width:3px; height:14px; border-radius:2px; background:var(--bad-fill); opacity:.75; display:inline-block; }
+
+/* Payday plan + savings */
+.plan-alloc { display:grid; gap:2px; margin:14px 0 12px; }
+.plan-line { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line-2); font-size:14px; align-items:baseline; }
+.plan-line:last-child { border-bottom:0; }
+.plan-line small { display:block; color:var(--ink-3); font-size:12px; }
+.plan-line .m { font-weight:650; }
+.mini-callout { padding:11px 13px; border-radius:var(--r-md); font-size:13px; display:flex; gap:10px; align-items:flex-start; }
+.mini-callout svg { width:16px; height:16px; flex:none; margin-top:1px; }
+.mini-callout.bad { background:var(--bad-soft); }
+.mini-callout.bad svg { color:var(--bad); }
+.mini-callout.info { background:var(--surface-2); color:var(--ink-2); }
+.mini-callout.info svg { color:var(--ink-3); }
+.kv { display:grid; gap:0; margin-top:12px; }
+.kv-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid var(--line-2); font-size:13.5px; align-items:baseline; }
+.kv-row span:first-child { color:var(--ink-2); }
+.kv-row small { display:block; color:var(--ink-3); font-size:12px; }
+.kv-row .m { font-weight:650; color:var(--ink); }
+.savings-empty { text-align:left; }
+.savings-empty .ico {
+  width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:var(--surface-2); color:var(--ink-2); margin-bottom:12px;
+}
+.savings-empty .ico svg { width:20px; height:20px; }
+.savings-empty h3 { margin:0 0 6px; font-size:16px; }
+.savings-empty p { margin:0; color:var(--ink-2); font-size:13.5px; }
+
+/* Footer */
+.legend-card { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:18px; }
+.legend-item { display:flex; gap:10px; align-items:flex-start; }
+.legend-item .sym { width:30px; height:30px; border-radius:9px; background:var(--surface-2); display:grid; place-items:center; font-weight:700; flex:none; font-size:15px; }
+.legend-item b { font-size:13.5px; display:block; }
+.legend-item span { font-size:12.5px; color:var(--ink-2); }
+.page-foot { margin-top:22px; font-size:12.5px; color:var(--ink-3); max-width:760px; line-height:1.5; }
+
+/* Sheet */
+.scrim { position:fixed; inset:0; background:rgba(10,10,9,.32); opacity:0; pointer-events:none; transition:opacity .25s var(--ease); z-index:60; }
+.scrim.open { opacity:1; pointer-events:auto; }
+.sheet {
+  position:fixed; z-index:61; background:var(--surface); box-shadow:var(--shadow-lift);
+  top:12px; right:12px; bottom:12px; width:min(440px, calc(100vw - 24px)); border-radius:var(--r-xl);
+  transform:translateX(calc(100% + 24px)); transition:transform .32s var(--ease);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.sheet.open { transform:none; }
+.sheet-head { padding:20px 22px 12px; display:flex; align-items:flex-start; gap:12px; border-bottom:1px solid var(--line-2); }
+.sheet-head h2 { margin:2px 0 0; font-size:20px; letter-spacing:-.015em; }
+.sheet-close { margin-left:auto; }
+.sheet-body { padding:18px 22px 28px; overflow:auto; }
+.sheet-hero { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.sheet-body p { color:var(--ink-2); font-size:14px; margin:12px 0; }
+.sheet-body h3 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-3); margin:22px 0 6px; }
+.tx { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line-2); font-size:14px; }
+.tx small { color:var(--ink-3); display:block; font-size:12px; }
+.grab { display:none; }
+
+/* Toast */
+.toast {
+  position:fixed; left:50%; bottom:28px; transform:translate(-50%, 20px); opacity:0; z-index:70;
+  background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:999px; font-size:13.5px;
+  transition:all .25s var(--ease); pointer-events:none; max-width:calc(100vw - 32px); text-align:center;
+}
+.toast.show { opacity:1; transform:translate(-50%, 0); }
+
+/* Mobile dock */
+.dock { display:none; }
+
+/* ---------- Tablet ---------- */
+@media (max-width: 1080px) {
+  .attention-list { grid-template-columns:repeat(2, minmax(0,1fr)); }
+  .split, .split-upcoming { grid-template-columns:minmax(0,1fr); }
+  .split-upcoming .stack { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .legend-card { grid-template-columns:repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 860px) {
+  .hero { grid-template-columns:minmax(0,1fr); }
+  .sitenav { display:none; }
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 640px) {
+  html { scroll-padding-top:118px; }
+  body { font-size:15px; padding-bottom:calc(92px + env(safe-area-inset-bottom)); }
+  .mock-strip { font-size:11px; padding:5px 10px; }
+  .topbar-inner { padding:8px 16px; gap:10px; }
+  .fresh .fresh-long { display:none; }
+  .page { padding:6px 12px 40px; }
+  .period { margin:8px 4px 4px; gap:12px; align-items:center; }
+  .period h1 { font-size:22px; }
+  .period-switch { width:100%; justify-content:space-between; }
+  .period-title { text-align:center; flex:1; }
+  .period-progress { min-width:0; flex:1 1 100%; margin:4px 0 0; }
+  .jump {
+    display:flex; gap:6px; overflow-x:auto; position:sticky; top:52px; z-index:25; padding:10px 4px;
+    margin:0 -12px 6px; padding-left:16px; padding-right:16px; scrollbar-width:none;
+    background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  }
+  .jump::-webkit-scrollbar { display:none; }
+  .jump a {
+    flex:none; text-decoration:none; color:var(--ink-2); font-size:13.5px; font-weight:560; padding:7px 14px; border-radius:999px;
+    background:var(--surface); box-shadow:var(--shadow);
+  }
+  .jump a.active { background:var(--ink); color:var(--bg); }
+  .grid { gap:12px; margin-bottom:12px; }
+  .card { padding:18px; border-radius:20px; }
+  .big { font-size:40px; }
+  .mid { font-size:23px; }
+  .alloc-legend { grid-template-columns:1fr 1fr; gap:10px 14px; }
+  .wf-row { grid-template-columns:18px minmax(0,1fr) auto; gap:4px 10px; padding:9px 6px; }
+  .wf-track { grid-column:2 / -1; grid-row:2; height:8px; }
+  .wf-val { min-width:0; }
+  .attention { padding:16px 0 16px 16px; }
+  .attention-list {
+    display:flex; overflow-x:auto; scroll-snap-type:x mandatory; gap:8px; padding-right:16px; scrollbar-width:none;
+  }
+  .attention-list::-webkit-scrollbar { display:none; }
+  .att { flex:0 0 78%; scroll-snap-align:start; }
+  .budget-summary, .up-summary { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; }
+  .stat-value { font-size:17px; }
+  .bill-name { white-space:normal; display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical; line-height:1.3; }
+  .wf-name small { display:inline; margin-left:4px; }
+  .wf-name small::before { content:"· "; }
+  .section-title { margin:26px 4px 10px; flex-direction:column; gap:2px; }
+  .section-title h2 { font-size:20px; }
+  .split-upcoming .stack { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .month { grid-template-columns:minmax(0,1fr); gap:0; }
+  .month-label { padding:14px 8px 0; }
+  .month-label small { display:inline; margin-left:6px; }
+  .budget-summary { gap:18px; }
+  .legend-card { grid-template-columns:minmax(0,1fr); gap:14px; }
+  .sheet {
+    top:auto; left:0; right:0; bottom:0; width:100%; max-height:86vh; border-radius:24px 24px 0 0;
+    transform:translateY(100%);
+  }
+  .sheet-body { padding-bottom:calc(28px + env(safe-area-inset-bottom)); }
+  .grab { display:block; width:38px; height:5px; border-radius:3px; background:var(--line); margin:8px auto 0; }
+  .toast { bottom:calc(100px + env(safe-area-inset-bottom)); }
+  .dock {
+    display:flex; position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:40;
+    justify-content:space-around; padding:6px; border-radius:26px;
+    background:color-mix(in srgb, var(--surface) 70%, transparent); backdrop-filter:saturate(1.5) blur(18px); -webkit-backdrop-filter:saturate(1.5) blur(18px);
+    box-shadow:0 10px 30px rgba(0,0,0,.12), inset 0 0 0 1px var(--line-2);
+  }
+  .dock a { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; text-decoration:none; color:var(--ink-2); font-size:10.5px; font-weight:560; padding:7px 0; border-radius:20px; }
+  .dock a svg { width:21px; height:21px; }
+  .dock a[aria-current="page"] { color:var(--accent-ink); background:var(--accent-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition:none !important; scroll-behavior:auto !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="mock-strip"><b>Design mockup</b> · figures copied from the 2 Oct 2026 Budget page · not live, not connected to Forecast</div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">A</span>Atlas</div>
+    <nav class="sitenav" aria-label="Pages">
+      <a href="#" aria-current="page">Budget</a>
+      <a href="#">Forecast</a>
+      <a href="#">Bills</a>
+      <a href="#">Subscriptions</a>
+      <a href="#">Credit</a>
+      <a href="#">Plan spend</a>
+    </nav>
+    <div class="topbar-right">
+      <button class="fresh" type="button" data-sheet="freshness"><span class="dot" aria-hidden="true"></span><span>Updated Oct 2<span class="fresh-long"> · Lunch Money</span></span></button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Switch light or dark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+
+  <section class="period" aria-label="Pay period">
+    <div class="period-switch">
+      <button class="period-arrow" type="button" data-period="prev" aria-label="Previous pay period">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="period-title">
+        <div class="eyebrow">Pay period <span class="pill accent" style="margin-left:6px">Current</span></div>
+        <h1>Sep 25 – Oct 8</h1>
+      </div>
+      <button class="period-arrow" type="button" data-period="next" aria-label="Next pay period">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div class="period-progress">
+      <div class="period-progress-top"><span><b>Day 8</b> of 14</span><span>Next payday <b>Fri, Oct 9</b> · in 7 days</span></div>
+      <div class="days" id="days" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <nav class="jump" id="jump" aria-label="Sections">
+    <a href="#overview" class="active">Overview</a>
+    <a href="#spending">Spending</a>
+    <a href="#bills">Bills</a>
+    <a href="#upcoming">Upcoming costs</a>
+  </nav>
+
+  <div class="grid hero" id="overview">
+    <article class="card today" aria-labelledby="today-h">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Today · Fri, Oct 2</div>
+          <h2 id="today-h">Cash in chequing</h2>
+        </div>
+        <button class="link-btn" type="button" data-sheet="today">How this works
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></button>
+      </div>
+      <div class="today-figure"><span class="big" id="today-cash"></span></div>
+      <div class="today-sub">
+        <span>Both chequing accounts · credit is not counted</span>
+        <span>Bills account alone <b id="bills-acct"></b></span>
+      </div>
+
+      <div class="alloc">
+        <div class="alloc-bar" id="alloc-bar" role="img" aria-label="How today's chequing cash is spoken for"></div>
+        <div class="alloc-legend" id="alloc-legend"></div>
+      </div>
+
+      <div class="answer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <div>
+          <p id="today-answer"></p>
+          <p>No more pay lands before Oct 8. Whatever is left is not extra spending money.</p>
+        </div>
+      </div>
+      <div class="card-foot">
+        <button class="next-pay" type="button" data-sheet="upcoming">
+          <span class="next-pay-date"><small>Oct</small><b>9</b></span>
+          <span><span class="next-pay-t">Next payday · Friday</span><span class="next-pay-d" id="next-pay-d"></span></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+    </article>
+
+    <article class="card period-plan" aria-labelledby="plan-h">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">This pay period · Sep 25 – Oct 8</div>
+          <h2 id="plan-h">Balance After Deductions</h2>
+        </div>
+        <span class="pill warn">≈ Estimate</span>
+      </div>
+      <div class="today-figure"><span class="big" id="bad-figure"></span></div>
+      <div class="today-sub"><span>Before savings — this period's savings step isn't available.</span></div>
+      <div class="wf" id="waterfall"></div>
+      <div class="card-foot">
+        <span class="fine">A positive balance may be needed for a later short period. It is not permission to spend.</span>
+      </div>
+    </article>
+  </div>
+
+  <article class="card attention" aria-labelledby="att-h">
+    <div class="attention-head">
+      <h2 id="att-h">Worth a look</h2>
+      <span class="pill muted" id="att-count"></span>
+    </div>
+    <div class="attention-list" id="attention"></div>
+  </article>
+
+  <div class="grid split">
+    <section class="card" id="spending" aria-labelledby="spend-h">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Spending this period</div>
+          <h2 id="spend-h">Household budget</h2>
+          <div class="sub">Tap a category to see what was spent.</div>
+        </div>
+        <span class="fine pace-key"><i aria-hidden="true"></i>Today</span>
+      </div>
+      <div class="budget-summary" id="budget-summary"></div>
+      <div class="cats" id="cats"></div>
+      <div class="deduct-note">
+        <p>The plan counts each category at its plan or its spending, whichever is higher, plus anything not yet assigned.</p>
+        <button class="link-btn" type="button" data-sheet="wf-budget">Details</button>
+      </div>
+    </section>
+
+    <section class="card" id="bills" aria-labelledby="bills-h">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Bills this period</div>
+          <h2 id="bills-h"><span id="bills-left"></span> left to pay</h2>
+          <div class="sub" id="bills-sub"></div>
+        </div>
+      </div>
+      <div class="bills-progress" aria-hidden="true"><span id="bills-paid-bar"></span></div>
+      <div class="bills-figs"><span id="bills-paid-fig"></span><span id="bills-total-fig"></span></div>
+      <div id="bill-groups"></div>
+      <div class="deduct-note">
+        <p>The plan deducts <span class="m" id="bills-deduct"></span> — assigned amounts, excluding bills settled before the period opened.</p>
+        <button class="link-btn" type="button" data-sheet="wf-bills">Why</button>
+      </div>
+    </section>
+  </div>
+
+  <section id="upcoming" aria-label="Upcoming costs and savings">
+  <div class="section-title">
+    <h2>Upcoming costs &amp; savings</h2>
+    <p>Named costs the plan is setting money aside for.</p>
+  </div>
+
+  <div class="grid split-upcoming">
+    <section class="card" aria-labelledby="costs-h">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">From today's cash</div>
+          <h2 id="costs-h">Costs ahead</h2>
+        </div>
+        <span class="gap-key"><i aria-hidden="true"></i>Inside the shortfall</span>
+      </div>
+      <div class="up-summary" id="up-summary"></div>
+      <div class="gap-callout" role="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <div>
+          <p id="gap-text"></p>
+          <p>Later proposals pause until that gap is covered. These are proposed earmarks — not transfers, and not money already saved.</p>
+        </div>
+      </div>
+      <div class="timeline" id="timeline"></div>
+    </section>
+
+    <div class="stack">
+      <section class="card" aria-labelledby="payday-h">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Next payday · Fri, Oct 9</div>
+            <h2 id="payday-h">Payday plan</h2>
+          </div>
+          <span class="pill bad">Shortfall ahead</span>
+        </div>
+        <div class="stat-label">Proposed for Nest Money</div>
+        <div class="mid" id="nest-figure"></div>
+        <div class="plan-alloc" id="nest-lines"></div>
+        <div class="mini-callout bad">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+          <span id="nest-short"></span>
+        </div>
+        <div class="kv" id="payday-kv"></div>
+        <div class="mini-callout info" style="margin-top:12px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <span>A separate proposal from today's. They cover the same costs, so don't add them together. Nothing here is a transfer.</span>
+        </div>
+      </section>
+
+      <section class="card savings-empty" aria-labelledby="sav-h">
+        <div class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7h-1.5A5.5 5.5 0 0 0 7 9.5H5a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2h1.2A6.5 6.5 0 0 0 9 18v2h3v-1.5h2V20h3v-2.6A6 6 0 0 0 19.5 13H21v-3h-2z"/></svg></div>
+        <div class="eyebrow">Savings assigned to goals</div>
+        <h3 id="sav-h" style="margin-top:4px">Not set up yet</h3>
+        <p>The two savings accounts and their starting goal assignments haven't been confirmed. Saved balances show as <span class="unk">Unknown</span> — Atlas never assumes $0.</p>
+      </section>
+    </div>
+  </div>
+  </section>
+
+  <div class="section-title"><h2>Reading the numbers</h2></div>
+  <section class="card legend-card" aria-label="How figures are marked">
+    <div class="legend-item"><div class="sym" style="color:var(--warn-fill)">≈</div><div><b>Estimate</b><span>At least one input is estimated, such as a pay deposit not yet seen.</span></div></div>
+    <div class="legend-item"><div class="sym">$</div><div><b>No mark</b><span>Published without an estimate flag. Nothing on this page is marked verified.</span></div></div>
+    <div class="legend-item"><div class="sym"><span class="unk" style="padding:0 6px;font-size:11px">?</span></div><div><b>Unknown</b><span>Not published yet. Never counted as $0.</span></div></div>
+    <div class="legend-item"><div class="sym"><span class="sdot check" style="width:10px;height:10px"></span></div><div><b>Not confirmed</b><span>Due date passed with no payment seen. That doesn't mean it's unpaid.</span></div></div>
+  </section>
+
+  <p class="page-foot">Private. No account numbers, card numbers or addresses appear on this page. Atlas is read-only — nothing here moves money, and no changes have been made to any account. Forecast assumptions are documented in Records.</p>
+</main>
+
+<nav class="dock" aria-label="Pages">
+  <a href="#" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.5 12 3.5l8.5 7v9a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M9.5 21v-6h5v6"/></svg>Budget</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5v4M16 3.5v4"/></svg>Forecast</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5h8.5v17l-2.1-1.3-2.15 1.3-2.15-1.3L8 20.5V3.5z"/><path d="M10.2 8h4.6M10.2 11.5h4.6"/></svg>Bills</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7.2A6.2 6.2 0 0 1 17.4 9.1"/><path d="M17.5 5.5v3.6h-3.6"/><path d="M17 16.8A6.2 6.2 0 0 1 6.6 14.9"/><path d="M6.5 18.5v-3.6h3.6"/></svg>Subs</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="5.5" width="18.5" height="13" rx="2.5"/><path d="M2.75 9.5h18.5M6.5 15h4"/></svg>Credit</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7h11M8 12h11M8 17h8M4.5 7h.01M4.5 12h.01M4.5 17h.01"/></svg>Plan</a>
+</nav>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-head">
+    <div><div class="eyebrow" id="sheet-eyebrow"></div><h2 id="sheet-title"></h2></div>
+    <button class="icon-btn sheet-close" type="button" id="sheet-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+</aside>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+'use strict';
+
+/* Published values, copied as shown on the live Budget page (2026-10-02).
+   trust: 'est' = published with ≈ estimated; 'calc' = published calculated;
+   null = published without a tag. Unknown amounts are null, never 0. */
+const D = {
+  period: { day: 8, days: 14 },
+  today: {
+    cash: { v: 2408.27, t: 'est' },
+    billsAccount: { v: 2914.67, t: null },
+    bills: { v: 1047.74, t: 'est' },
+    needs: { v: 236.07, t: 'est' },
+    floor: { v: 500.00, t: 'calc' },
+    required: { v: 1783.81, t: 'est' },
+    free: { v: 624.46, t: 'est' },
+    futureIncome: { v: 0.00, t: 'est' },
+  },
+  waterfall: {
+    income: { v: 6652.00, t: 'est' },
+    bills: { v: 2536.33, t: 'est' },
+    afterBills: { v: 4115.67, t: 'est' },
+    budget: { v: 2543.60, t: null },
+    savings: { v: null, t: null },
+    final: { v: 1572.07, t: 'est' },
+  },
+  income: [
+    { name: 'Dale salary', date: 'Sep 25', state: 'Received', v: 4264.00 },
+    { name: 'Amanda salary', date: 'Sep 30', state: 'Deposit not confirmed', v: 2387.99, warn: true },
+    { name: 'Other income', date: 'Sep 29', state: 'Received', v: 0.01 },
+  ],
+  budget: {
+    total: { v: 2543.60, t: null },
+    categories: [
+      { id: 'groceries', name: 'Groceries', planned: 900.00, spent: 1008.90, remaining: -108.90, n: 6 },
+      { id: 'fuel', name: 'Fuel', planned: 325.00, spent: 452.75, remaining: -127.75, n: 6 },
+      { id: 'dog', name: 'Dog food', planned: 100.00, spent: 0.00, remaining: 100.00, n: 0 },
+      { id: 'eating', name: 'Eating out', planned: 200.00, spent: 63.93, remaining: 136.07, n: 5 },
+      { id: 'dale', name: 'Dale guilt-free spending', planned: 150.00, spent: 150.00, remaining: 0.00, n: 1 },
+      { id: 'amanda', name: 'Amanda guilt-free spending', planned: 150.00, spent: 259.80, remaining: -109.80, n: 3 },
+      { id: 'other', name: 'Other spending', planned: null, spent: 372.15, remaining: null, n: 13, unassigned: true },
+    ],
+  },
+  bills: {
+    total: 2554.33, paid: 1663.54, left: 890.79, deduct: { v: 2536.33, t: 'est' },
+    rows: [
+      { id: 'fit4less', name: 'Fit4Less membership', mon: 'Sep', day: 25, iso: '2026-09-25', state: 'paid', planned: 11.54, actual: 11.54, remaining: 0, est: false, evidence: 'Payment seen Sep 25 · posted' },
+      { id: 'mortgage', name: 'Mortgage', mon: 'Sep', day: 25, iso: '2026-09-25', state: 'paid', planned: 1600.00, actual: 1600.00, remaining: 0, est: false, evidence: 'Payment seen Sep 25 · posted' },
+      { id: 'travelvisa', name: 'Travel Visa minimum', mon: 'Sep', day: 26, iso: '2026-09-26', state: 'paid', planned: 17.00, actual: 35.00, remaining: 0, est: true, evidence: 'Payment seen Sep 29 · posted' },
+      { id: 'mbna', name: 'Amazon.ca Mastercard minimum (MBNA)', mon: 'Sep', day: 30, iso: '2026-09-30', state: 'check', planned: 158.27, actual: null, remaining: 158.27, est: true },
+      { id: 'google', name: 'Google storage — 100 GB', mon: 'Sep', day: 30, iso: '2026-09-30', state: 'check', planned: 3.13, actual: null, remaining: 3.13, est: false },
+      { id: 'tdfees', name: 'TD account fees (two accounts)', mon: 'Sep', day: 30, iso: '2026-09-30', state: 'check', planned: 35.90, actual: null, remaining: 35.90, est: false },
+      { id: 'hydro', name: 'BC Hydro equal payment', mon: 'Oct', day: 1, iso: '2026-10-01', state: 'check', planned: 145.92, actual: null, remaining: 145.92, est: true },
+      { id: 'tdcb', name: 'TD Cash Back Visa minimum', mon: 'Oct', day: 1, iso: '2026-10-01', state: 'check', planned: 170.00, actual: null, remaining: 170.00, est: true },
+      { id: 'youtube', name: 'YouTube Premium', mon: 'Oct', day: 2, iso: '2026-10-02', state: 'paid', planned: 17.00, actual: 17.00, remaining: 0, est: false, evidence: 'Marked paid by Forecast · no transaction linked' },
+      { id: 'fortis', name: 'FortisBC gas', mon: 'Oct', day: 3, iso: '2026-10-03', state: 'due', planned: 124.00, actual: 0, remaining: 124.00, est: false, when: 'tomorrow' },
+      { id: 'triangle', name: 'Triangle Mastercard minimum', mon: 'Oct', day: 7, iso: '2026-10-07', state: 'due', planned: 253.57, actual: 0, remaining: 253.57, est: true, when: 'Wed' },
+    ],
+  },
+  costs: {
+    stillToFund: { v: 22213.05, t: 'est' },
+    proposedNow: { v: 624.46, t: 'est' },
+    gap: { v: 3458.38, t: 'est', through: 'Jan 15' },
+    rows: [
+      { id: 'logan1', name: 'Logan Burrards team fee — instalment 1', month: 'Oct', year: 2026, date: 'Oct 16', cost: 202.88, costEst: false, proposed: 202.88, remaining: 0.00, gap: true },
+      { id: 'fusion10', name: 'Fusion season — October', month: 'Oct', year: 2026, date: 'Oct 31', dateEst: true, cost: 1200.00, costEst: true, proposed: 421.58, remaining: 778.42, gap: true },
+      { id: 'logan2', name: 'Logan Burrards team fee — instalment 2', month: 'Nov', year: 2026, date: 'Nov 1', cost: 202.87, costEst: false, proposed: 0, remaining: 202.87, gap: true },
+      { id: 'seattle11', name: 'Seattle — November', month: 'Nov', year: 2026, date: 'Nov 15', cost: 1500.00, costEst: false, proposed: 0, remaining: 1500.00, gap: true },
+      { id: 'fusion11', name: 'Fusion season — November', month: 'Nov', year: 2026, date: 'Nov 30', dateEst: true, cost: 1200.00, costEst: true, proposed: 0, remaining: 1200.00, gap: true },
+      { id: 'seattle12', name: 'Seattle — December', month: 'Dec', year: 2026, date: 'Dec 9', cost: 1500.00, costEst: false, proposed: 0, remaining: 1500.00, gap: true },
+      { id: 'linden', name: 'Linden birthday', month: 'Dec', year: 2026, date: 'Dec 9', cost: 500.00, costEst: false, proposed: 0, remaining: 500.00, gap: true },
+      { id: 'xmas', name: 'Christmas', month: 'Dec', year: 2026, date: 'Dec 25', dateEst: true, cost: 3500.00, costEst: true, proposed: 0, remaining: 3500.00, gap: true },
+      { id: 'fusion12', name: 'Fusion season — December', month: 'Dec', year: 2026, date: 'Dec 31', dateEst: true, cost: 900.00, costEst: true, proposed: 0, remaining: 900.00, gap: true },
+      { id: 'sandiego', name: 'San Diego', month: 'Jan', year: 2027, date: 'Jan 15', cost: 3000.00, costEst: false, proposed: 0, remaining: 3000.00, gap: true },
+      { id: 'insurance', name: 'Square One home insurance', month: 'Feb', year: 2027, date: 'Feb 10', dateEst: true, cost: 3131.76, costEst: true, proposed: 0, remaining: 3131.76 },
+      { id: 'proptax', name: 'Property tax', month: 'Jul', year: 2027, date: 'Jul 1', dateEst: true, cost: 6000.00, costEst: true, proposed: 0, remaining: 6000.00 },
+    ],
+    undated: [
+      { id: 'provincials', name: 'Provincials', cost: 1500.00, costEst: false },
+      { id: 'linden-fee', name: 'Linden Burrards team fee', cost: 340.00, costEst: true },
+    ],
+  },
+  payday: {
+    nest: { v: 1376.37, t: 'est' },
+    lines: [
+      { name: 'Logan Burrards team fee — instalment 1', by: 'Needed by Oct 16', v: 202.88 },
+      { name: 'Fusion season — October', by: 'Needed by Oct 31 (estimated date)', v: 1173.49 },
+    ],
+    short: { v: 568.06, t: 'est', when: 'Oct 31', affected: 10 },
+    floor: { v: 500.00, t: 'calc' },
+    focusExtra: { v: 0.00, t: 'calc' },
+    unassigned: { v: 0.53, t: 'calc' },
+  },
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* Formatting only: sign, ≈ mark, cents styling. */
+function money(v, opts = {}) {
+  if (v == null) return '<span class="unk">Unknown</span>';
+  const est = opts.t === 'est' || opts.est === true;
+  const neg = v < 0 || opts.minus;
+  const abs = Math.abs(v);
+  const [whole, cents] = fmt.format(abs).split('.');
+  const sign = neg ? '−' : (opts.plus ? '+' : '');
+  const label = `${neg ? 'minus ' : ''}${fmt.format(abs)}${est ? ', estimated' : ''}`;
+  const body = opts.cents === false ? `${whole}.${cents}` : `${whole}<span class="c">.${cents}</span>`;
+  return `<span class="m" aria-label="${label}">${est ? '<span class="approx" aria-hidden="true">≈</span>' : ''}<span aria-hidden="true">${sign}${opts.small ? `${whole}.${cents}` : body}</span></span>`;
+}
+const small = (v, o = {}) => money(v, Object.assign({ small: true }, o));
+const pct = (part, whole) => whole > 0 ? Math.max(0, Math.min(100, (part / whole) * 100)) : 0;
+
+const ICON = {
+  alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><path d="M7.5 7.5h.01"/></svg>',
+  piggy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17h.01"/></svg>',
+  chev: '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>',
+};
+
+/* ---------- Period strip ---------- */
+$('days').innerHTML = Array.from({ length: D.period.days }, (_, i) =>
+  `<span class="${i + 1 < D.period.day ? 'past' : i + 1 === D.period.day ? 'today' : ''}"></span>`).join('');
+
+/* ---------- Today ---------- */
+const T = D.today;
+$('today-cash').innerHTML = money(T.cash.v, T.cash);
+$('bills-acct').innerHTML = small(T.billsAccount.v, T.billsAccount);
+const allocParts = [
+  { cls: 'seg-bills', label: 'Bills & debt payments to Oct 8', f: T.bills, sheet: 'today' },
+  { cls: 'seg-needs', label: 'Household spending still planned', f: T.needs, sheet: 'wf-budget' },
+  { cls: 'seg-floor', label: 'Cash floor — always kept', f: T.floor, sheet: 'today' },
+  { cls: 'seg-free', label: 'Proposed for upcoming costs', f: T.free, sheet: 'upcoming' },
+];
+$('alloc-bar').innerHTML = allocParts.map(p =>
+  `<span class="${p.cls}" style="width:${pct(p.f.v, T.cash.v)}%" title="${esc(p.label)}"></span>`).join('');
+$('alloc-legend').innerHTML = allocParts.map(p =>
+  `<div class="leg"><span class="leg-sw ${p.cls}" aria-hidden="true"></span><div class="leg-label">${esc(p.label)}<span class="leg-value">${small(p.f.v, p.f)}</span></div></div>`).join('');
+$('today-answer').innerHTML = `<b>${small(T.required.v, T.required)}</b> is spoken for until payday. The plan proposes setting aside <b>${small(T.free.v, T.free)}</b> for upcoming costs.`;
+
+$('next-pay-d').innerHTML = `Payday plan proposes ${small(D.payday.nest.v, D.payday.nest)} for ${D.payday.lines.length} costs · shortfall ahead`;
+
+/* ---------- Waterfall ---------- */
+const W = D.waterfall;
+$('bad-figure').innerHTML = money(W.final.v, W.final);
+const scale = W.income.v;
+const wfRows = [
+  { op: '+', cls: 'income', name: 'Income', note: '1 deposit not confirmed', from: 0, to: W.income.v, f: W.income, sheet: 'wf-income' },
+  { op: '−', cls: 'minus', name: 'Bills', note: 'Includes required debt minimums', from: W.afterBills.v, to: W.income.v, f: W.bills, sheet: 'wf-bills', minus: true },
+  { op: '=', cls: 'sub', name: 'Balance after bills', from: 0, to: W.afterBills.v, f: W.afterBills, sheet: 'wf-afterbills' },
+  { op: '−', cls: 'minus', name: 'Household budget', note: 'Plans, spending & unassigned', from: W.final.v, to: W.afterBills.v, f: W.budget, sheet: 'wf-budget', minus: true },
+  { op: '−', cls: 'unavail', name: 'Proposed savings', note: 'Not available this period', from: 0, to: 0, f: W.savings, sheet: 'wf-savings' },
+];
+$('waterfall').innerHTML = wfRows.map(r => `
+  <button class="wf-row ${r.cls}" type="button" data-sheet="${r.sheet}">
+    <span class="wf-op" aria-hidden="true">${r.op}</span>
+    <span class="wf-name">${esc(r.name)}${r.note ? `<small>${esc(r.note)}</small>` : ''}</span>
+    <span class="wf-track" aria-hidden="true">${r.f.v != null ? `<span class="wf-bar" style="left:${pct(r.from, scale)}%;width:${pct(r.to - r.from, scale)}%"></span>` : ''}</span>
+    <span class="wf-val">${r.f.v == null ? '<span class="unk">Unknown</span>' : small(r.f.v, Object.assign({ minus: r.minus }, r.f))}</span>
+  </button>`).join('') + `
+  <button class="wf-row final" type="button" data-sheet="wf-final">
+    <span class="wf-op" aria-hidden="true">=</span>
+    <span class="wf-name">Balance After Deductions<small>Before savings</small></span>
+    <span class="wf-track" aria-hidden="true"><span class="wf-bar" style="left:0;width:${pct(W.final.v, scale)}%"></span></span>
+    <span class="wf-val">${small(W.final.v, W.final)}</span>
+  </button>`;
+
+/* ---------- Attention ---------- */
+const checkBills = D.bills.rows.filter(b => b.state === 'check');
+const attention = [
+  { kind: 'bad', icon: ICON.alert, t: `Upcoming costs are ${small(D.costs.gap.v, D.costs.gap)} short`, d: `Today's cash can't protect every cost through ${D.costs.gap.through}.`, target: 'upcoming' },
+  { kind: 'warn', icon: ICON.clock, t: `${checkBills.length} bills past due, not confirmed`, d: 'No payment seen yet. That doesn\u2019t mean they\u2019re unpaid.', target: 'bills' },
+  { kind: 'warn', icon: ICON.tag, t: `${small(372.15)} of spending has no category`, d: 'Counted in full until it\u2019s assigned.', target: 'cat-other' },
+  { kind: 'info', icon: ICON.piggy, t: 'Amanda\u2019s Sep 30 pay not confirmed', d: 'Counted as expected income, so period totals are estimates.', target: 'wf-income' },
+];
+$('att-count').textContent = `${attention.length} items`;
+$('attention').innerHTML = attention.map(a => `
+  <button class="att ${a.kind}" type="button" data-go="${a.target}">
+    <span class="att-ico" aria-hidden="true">${a.icon}</span>
+    <span><span class="att-t">${a.t}</span><span class="att-d" style="display:block">${a.d}</span></span>
+  </button>`).join('');
+
+/* ---------- Spending ---------- */
+const B = D.budget;
+const over = B.categories.filter(c => c.remaining != null && c.remaining < 0);
+$('budget-summary').innerHTML = `
+  <div><div class="stat-label">Counted this period</div><div class="stat-value">${small(B.total.v, B.total)}</div></div>
+  <div><div class="stat-label">Left to spend</div><div class="stat-value">${small(T.needs.v, T.needs)}</div></div>
+  <div><div class="stat-label">Over plan</div><div class="stat-value bad">${over.length} of ${B.categories.filter(c => !c.unassigned).length}</div></div>`;
+const pace = pct(D.period.day, D.period.days);
+$('cats').innerHTML = B.categories.map(c => {
+  let kind, status;
+  if (c.unassigned) { kind = 'unassigned'; status = `<span class="cat-status used">${small(c.spent)}</span>`; }
+  else if (c.remaining < 0) { kind = 'over'; status = `<span class="cat-status over">${small(-c.remaining)} over</span>`; }
+  else if (c.remaining === 0) { kind = 'used'; status = '<span class="cat-status used">All used</span>'; }
+  else { kind = 'left'; status = `<span class="cat-status left">${small(c.remaining)} left</span>`; }
+  const meta = c.unassigned ? 'Not yet assigned to a category'
+    : `${small(c.spent)} of ${small(c.planned)}`;
+  /* Bar geometry only: an over-plan bar is drawn on a longer track so the
+     overspend is visible as its own red run past the plan marker. */
+  const track = c.unassigned ? 1 : Math.max(c.planned, c.spent);
+  const within = c.unassigned ? 0 : pct(Math.min(c.spent, c.planned), track);
+  const planAt = c.unassigned ? 0 : pct(c.planned, track);
+  const overW = kind === 'over' ? pct(c.spent, track) - planAt : 0;
+  return `<button class="cat ${kind}" type="button" data-sheet="cat-${c.id}" id="cat-row-${c.id}">
+    <span class="cat-name">${esc(c.name)}</span>${status}
+    <span class="cat-meta" style="grid-column:1/-1;margin-top:-4px">${meta}</span>
+    <span class="cat-bar" aria-hidden="true"><span class="cat-fill" style="width:${within}%"></span>${overW ? `<span class="cat-over" style="left:${planAt}%;width:${overW}%"></span><span class="plan-mark" style="left:${planAt}%"></span>` : ''}${c.unassigned ? '' : `<span class="pace" style="left:${pace * planAt / 100}%"></span>`}</span>
+  </button>`;
+}).join('');
+
+/* ---------- Bills ---------- */
+const BL = D.bills;
+$('bills-left').innerHTML = money(BL.left);
+$('bills-sub').innerHTML = `${BL.rows.filter(r => r.state !== 'paid').length} still to pay or confirm`;
+$('bills-paid-bar').style.width = pct(BL.paid, BL.total) + '%';
+$('bills-paid-fig').innerHTML = `${small(BL.paid)} paid`;
+$('bills-total-fig').innerHTML = `${small(BL.total)} this period`;
+$('bills-deduct').innerHTML = small(BL.deduct.v, BL.deduct);
+const STATE = {
+  paid: { dot: 'paid', label: 'Paid' },
+  due: { dot: 'due', label: 'To pay' },
+  check: { dot: 'check', label: 'Not confirmed' },
+};
+const billRow = b => `
+  <button class="bill ${b.state === 'paid' ? 'is-paid' : ''}" type="button" data-sheet="bill-${b.id}">
+    <span class="date-chip"><small>${b.mon}</small><b>${b.day}</b></span>
+    <span style="min-width:0"><span class="bill-name" style="display:block">${esc(b.name)}</span>
+      <span class="bill-state"><span class="sdot ${STATE[b.state].dot}"></span>${b.state === 'due' && b.when ? `Due ${esc(b.when)}` : STATE[b.state].label}</span></span>
+    <span class="bill-amt">${small(b.state === 'paid' ? b.actual : b.remaining, { est: b.est })}</span>
+  </button>`;
+const due = BL.rows.filter(b => b.state === 'due');
+const paid = BL.rows.filter(b => b.state === 'paid');
+$('bill-groups').innerHTML = `
+  <div class="group"><div class="group-head"><h3><span class="sdot due"></span>Coming up</h3></div>${due.map(billRow).join('')}</div>
+  <div class="group"><div class="group-head"><h3><span class="sdot check"></span>Due date passed · not confirmed</h3></div>
+    <p class="group-note">No payment seen yet. That doesn't mean they're unpaid.</p>${checkBills.map(billRow).join('')}</div>
+  <details class="group paid-group"><summary class="group-head"><h3><span class="sdot paid"></span>Paid · ${paid.length}</h3>${ICON.chev}</summary>${paid.map(billRow).join('')}</details>`;
+
+/* ---------- Upcoming costs ---------- */
+const C = D.costs;
+$('up-summary').innerHTML = `
+  <div><div class="stat-label">Proposed now</div><div class="stat-value">${small(C.proposedNow.v, C.proposedNow)}</div></div>
+  <div><div class="stat-label">Still to set aside</div><div class="stat-value">${small(C.stillToFund.v, C.stillToFund)}</div></div>
+  <div><div class="stat-label">Dated costs</div><div class="stat-value">${C.rows.length} <span class="fine">+ ${C.undated.length} undated</span></div></div>`;
+$('gap-text').innerHTML = `<b>${small(C.gap.v, C.gap)} short</b> across the ${C.rows.filter(r => r.gap).length} costs through ${C.gap.through}.`;
+const months = [];
+for (const r of C.rows) {
+  const key = `${r.month} ${r.year}`;
+  let m = months.find(x => x.key === key);
+  if (!m) months.push(m = { key, month: r.month, year: r.year, rows: [] });
+  m.rows.push(r);
+}
+const costRow = r => {
+  const covered = r.proposed > 0 && r.remaining === 0;
+  const partial = r.proposed > 0 && r.remaining > 0;
+  const state = covered ? `<span class="cost-state covered">Covered by today's proposal</span>`
+    : partial ? `<span class="cost-state">${small(r.proposed, { est: true })} proposed · ${small(r.remaining, { est: true })} to go</span>`
+    : `<span class="cost-state">Nothing proposed yet</span>`;
+  return `<button class="cost ${r.gap ? 'in-gap' : ''}" type="button" data-sheet="cost-${r.id}">
+    <span><span class="cost-name" style="display:block">${esc(r.name)}</span><span class="cost-when" style="display:block">${esc(r.date)}${r.dateEst ? ' · estimated date' : ''}</span></span>
+    <span class="cost-amt">${small(r.cost, { est: r.costEst })}</span>
+    <span class="cost-progress"><span class="cost-track"><span style="width:${pct(r.proposed, r.cost)}%"></span></span>${state}</span>
+  </button>`;
+};
+$('timeline').innerHTML = months.map(m => `
+  <div class="month"><div class="month-label">${m.month}<small>${m.year}</small></div><div class="month-items">${m.rows.map(costRow).join('')}</div></div>`).join('') + `
+  <div class="month"><div class="month-label">No date<small>yet</small></div><div class="month-items">${C.undated.map(r => `
+    <button class="cost undated" type="button" data-sheet="undated-${r.id}">
+      <span><span class="cost-name" style="display:block">${esc(r.name)}</span><span class="cost-when" style="display:block">Date not set · still reserved</span></span>
+      <span class="cost-amt">${small(r.cost, { est: r.costEst })}</span>
+      <span class="cost-progress"><span class="cost-track"></span><span class="cost-state">Contribution unknown</span></span>
+    </button>`).join('')}</div></div>`;
+
+/* ---------- Payday plan ---------- */
+const P = D.payday;
+$('nest-figure').innerHTML = money(P.nest.v, P.nest);
+$('nest-lines').innerHTML = P.lines.map(l => `<div class="plan-line"><span>${esc(l.name)}<small>${esc(l.by)}</small></span>${small(l.v, { est: true })}</div>`).join('');
+$('nest-short').innerHTML = `Even with this plan, <b>${P.short.when}</b> is projected <b>${small(P.short.v, P.short)} short</b>, affecting ${P.short.affected} costs.`;
+$('payday-kv').innerHTML = `
+  <div class="kv-row"><span>Keep in chequing<small>A floor, not spending money</small></span><span>at least ${small(P.floor.v)}</span></div>
+  <div class="kv-row"><span>Extra on focus debt<small>TD Cash Back Visa · minimums already in bills</small></span>${small(P.focusExtra.v)}</div>
+  <div class="kv-row"><span>Truly unassigned<small>2 planned costs unresolved — not free money</small></span>${small(P.unassigned.v)}</div>`;
+
+/* ---------- Sheets ---------- */
+const sheetEl = $('sheet'), scrim = $('scrim');
+let lastFocus = null;
+const kvs = rows => `<div class="kv">${rows.map(([k, v]) => `<div class="kv-row"><span>${k}</span><span>${v}</span></div>`).join('')}</div>`;
+const SAMPLE_TX = {
+  groceries: [['Sep 25', 'Supermarket', 264.20], ['Sep 28', 'Warehouse club', 391.87], ['Sep 28', 'Supermarket', 30.88], ['Sep 29', 'Supermarket', 90.27], ['Oct 1', 'Grocer', 58.12], ['Oct 2', 'Supermarket', 173.56]],
+  fuel: [['Sep 28', 'Gas station', 44.19], ['Sep 28', 'Gas station', 100.00], ['Sep 28', 'Gas station', 100.00], ['Oct 1', 'Gas station', 8.56], ['Oct 1', 'Gas station', 100.00], ['Oct 1', 'Gas station', 100.00]],
+  dog: [],
+  eating: [['Sep 25', 'Convenience store', 14.85], ['Sep 28', 'Convenience store', 11.49], ['Sep 28', 'Fast food', 22.21], ['Sep 28', 'Café', 8.99], ['Sep 29', 'Coffee shop', 6.39]],
+  dale: [['Sep 25', 'e-Transfer', 150.00]],
+  amanda: [['Sep 28', 'Shoe store', 170.00], ['Sep 29', 'Online retailer', 34.92], ['Sep 30', 'Online shop', 54.88]],
+  other: [['Sep 25', 'PayPal', 27.99], ['Sep 28', 'Dollar store', 29.27], ['Sep 28', 'Bike shop', 48.28], ['Sep 28', 'Shoe store', 62.03], ['Sep 29', 'Google', 3.13], ['Sep 29', 'Overdraft fee', 5.00], ['Sep 29', 'Overdraft interest', 8.26], ['Sep 29', 'PayPal', 11.75], ['Sep 29', 'PayPal', 19.03], ['Sep 30', 'Event registration', 29.12], ['Oct 1', 'Party store', 62.50], ['Oct 1', 'PayPal', 14.80], ['Oct 2', 'Liquor store', 50.99]],
+};
+const sheets = {
+  freshness: () => ({ eyebrow: 'Data', title: 'Updated Oct 2', body: `
+    <p>Balances and spending come from Lunch Money, observed and reconciled on Fri, Oct 2. Forecast turns that into the plan on this page.</p>
+    ${kvs([['Chequing balances', 'Oct 2'], ['Spending observed through', 'Oct 2'], ['Bills needing confirmation', `${checkBills.length}`], ['Spending without a category', small(372.15)]])}
+    <p class="fine">Atlas is read-only: it never moves money or changes an account.</p>` }),
+  today: () => ({ eyebrow: 'Today · Fri, Oct 2', title: 'How today\u2019s cash is spoken for', body: `
+    <p>A fresh proposal from today's chequing cash. It's separate from the payday plan and doesn't reconstruct anything already saved.</p>
+    ${kvs([
+      ['Cash in chequing', small(T.cash.v, T.cash)],
+      ['Bills & debt payments to Oct 8', small(T.bills.v, Object.assign({ minus: true }, T.bills))],
+      ['Household spending still planned', small(T.needs.v, Object.assign({ minus: true }, T.needs))],
+      ['Cash floor', small(T.floor.v, { minus: true })],
+      ['<b>Spoken for until payday</b>', `<b>${small(T.required.v, T.required)}</b>`],
+      ['<b>Proposed for upcoming costs</b>', `<b>${small(T.free.v, T.free)}</b>`],
+    ])}
+    <h3>Why bills differ from the Bills list</h3>
+    <p>This figure comes from Forecast's day-by-day cash walk to Oct 8 — every scheduled payment out of chequing. The Bills card lists this period's bill schedule. They're built differently, so they don't have to match.</p>
+    <p class="fine">More pay arriving before Oct 8: ${small(T.futureIncome.v, T.futureIncome)}. Shared savings and silver are never added to chequing cash.</p>` }),
+  'wf-income': () => ({ eyebrow: 'This pay period', title: 'Income', body: `
+    <div class="sheet-hero"><span class="mid">${money(W.income.v, W.income)}</span><span class="pill warn">≈ Estimate</span></div>
+    ${D.income.map(i => `<div class="tx"><span>${esc(i.name)}<small>${esc(i.date)} · ${i.warn ? `<span style="color:var(--warn)">${esc(i.state)}</span>` : esc(i.state)}</small></span>${small(i.v, { plus: true })}</div>`).join('')}
+    <p>The total is an estimate because Amanda's Sep 30 deposit hasn't been seen yet.</p>` }),
+  'wf-bills': () => ({ eyebrow: 'This pay period', title: 'Bills deduction', body: `
+    <div class="sheet-hero"><span class="mid">${money(W.bills.v, W.bills)}</span><span class="pill warn">≈ Estimate</span></div>
+    <p>The plan deducts each bill's assigned amount, including required debt minimums. Bills already settled before the period opened aren't deducted again.</p>
+    ${kvs([['All bills this period', small(BL.total)], ['Paid so far (actual amounts)', small(BL.paid)], ['Left to pay', small(BL.left)]])}
+    <p class="fine">Paid amounts can differ from planned ones — the Travel Visa minimum was planned at ${small(17)} and paid at ${small(35)}.</p>` }),
+  'wf-afterbills': () => ({ eyebrow: 'This pay period', title: 'Balance after bills', body: `
+    <div class="sheet-hero"><span class="mid">${money(W.afterBills.v, W.afterBills)}</span><span class="pill warn">≈ Estimate</span></div>
+    <p>Period income after the bill deduction — what's available for the household budget and savings.</p>` }),
+  'wf-budget': () => ({ eyebrow: 'This pay period', title: 'Household budget', body: `
+    <div class="sheet-hero"><span class="mid">${money(W.budget.v, W.budget)}</span></div>
+    <p>Each category counts at its plan or its actual spending, whichever is higher. Spending that isn't in a category yet counts in full. That keeps the plan honest when a category runs over.</p>
+    ${kvs(B.categories.map(c => [esc(c.name), c.unassigned ? `${small(c.spent)} spent` : `${small(c.spent)} of ${small(c.planned)}`]))}
+    <p class="fine">${small(T.needs.v, T.needs)} is still planned in categories that aren't used up.</p>` }),
+  'wf-savings': () => ({ eyebrow: 'This pay period', title: 'Proposed savings', body: `
+    <div class="sheet-hero"><span class="unk">Unknown</span></div>
+    <p>This period has no original funding snapshot, and Atlas won't reconstruct one. So the savings step is shown as unknown — not $0 — and Balance After Deductions is shown before savings.</p>
+    <p>Today's proposal for upcoming costs is under <b>Upcoming costs</b>.</p>` }),
+  'wf-final': () => ({ eyebrow: 'This pay period', title: 'Balance After Deductions', body: `
+    <div class="sheet-hero"><span class="mid">${money(W.final.v, W.final)}</span><span class="pill warn">≈ Estimate</span></div>
+    ${kvs([['Income', small(W.income.v, W.income)], ['Bills', small(W.bills.v, Object.assign({ minus: true }, W.bills))], ['Household budget', small(W.budget.v, { minus: true })], ['Proposed savings', '<span class="unk">Unknown</span>']])}
+    <p>A positive balance may be needed for a later short period. It is not permission to spend.</p>` }),
+  upcoming: () => null,
+};
+for (const c of B.categories) {
+  sheets[`cat-${c.id}`] = () => {
+    const tx = SAMPLE_TX[c.id] || [];
+    return { eyebrow: 'Household budget', title: c.name, body: `
+      ${c.unassigned ? '<p>Spending that hasn\u2019t been given a budget category yet. It counts in full against the household budget until it\u2019s assigned.</p>' : ''}
+      ${kvs(c.unassigned ? [['Spent', small(c.spent)], ['Planned', '<span class="unk">No plan</span>']]
+        : [['Planned', small(c.planned)], ['Spent', small(c.spent)], [c.remaining < 0 ? 'Over plan' : 'Remaining', `<span style="color:${c.remaining < 0 ? 'var(--bad)' : 'inherit'}">${small(Math.abs(c.remaining))}</span>`]])}
+      <h3>${tx.length ? `Transactions · ${tx.length}` : 'Transactions'}</h3>
+      ${tx.length ? tx.map(([d, n, v]) => `<div class="tx"><span>${esc(n)}<small>${esc(d)}</small></span>${small(v)}</div>`).join('') : '<p>Nothing spent yet this period.</p>'}
+      <p class="fine">Merchant names in this mockup are illustrative.</p>` };
+  };
+}
+for (const b of BL.rows) {
+  sheets[`bill-${b.id}`] = () => {
+    const status = b.state === 'paid' ? '<span class="pill good">Paid</span>'
+      : b.state === 'due' ? '<span class="pill accent">To pay</span>' : '<span class="pill warn">Not confirmed</span>';
+    const evidence = b.evidence || 'No payment seen yet. Missing evidence doesn\u2019t mean unpaid.';
+    return { eyebrow: `Bill · due ${b.mon} ${b.day}`, title: b.name, body: `
+      <div class="sheet-hero"><span class="mid">${money(b.state === 'paid' ? b.actual : b.remaining, { est: b.est })}</span>${status}</div>
+      ${kvs([['Planned', small(b.planned, { est: b.est })], ['Actual', b.actual == null ? '<span class="unk">Unknown</span>' : small(b.actual)], ['Remaining', small(b.remaining)], ['Paid from', 'Bills account']])}
+      <h3>Payment evidence</h3><p>${esc(evidence)}</p>
+      ${b.state === 'check' ? '<p class="fine">The due date has passed. Atlas only marks a bill paid when it sees the payment, so this is a prompt to check — not a warning that it was missed.</p>' : ''}` };
+  };
+}
+for (const r of C.rows) {
+  sheets[`cost-${r.id}`] = () => ({ eyebrow: `Upcoming · ${r.date}${r.dateEst ? ' (estimated)' : ''}`, title: r.name, body: `
+    <div class="sheet-hero"><span class="mid">${money(r.cost, { est: r.costEst })}</span>${r.gap ? '<span class="pill bad">In the shortfall</span>' : ''}</div>
+    ${kvs([['Proposed from today', small(r.proposed, { est: true })], ['Still to set aside', small(r.remaining, { est: true })], ['Actually saved', '<span class="unk">Unknown</span>'], ['Destination account', '<span class="unk">Unknown</span>']])}
+    <p class="fine">A proposed earmark — not a transfer, and not money already saved.</p>` });
+}
+for (const r of C.undated) {
+  sheets[`undated-${r.id}`] = () => ({ eyebrow: 'Upcoming · date not set', title: r.name, body: `
+    <div class="sheet-hero"><span class="mid">${money(r.cost, { est: r.costEst })}</span></div>
+    <p>No planning date has been set, so no contribution can be scheduled. Its amount stays reserved in the plan.</p>` });
+}
+
+function openSheet(key, trigger) {
+  const make = sheets[key];
+  const s = make && make();
+  if (!s) return;
+  $('sheet-eyebrow').textContent = s.eyebrow;
+  $('sheet-title').textContent = s.title;
+  $('sheet-body').innerHTML = s.body;
+  lastFocus = trigger || document.activeElement;
+  sheetEl.classList.add('open'); scrim.classList.add('open');
+  sheetEl.setAttribute('aria-hidden', 'false');
+  $('sheet-close').focus({ preventScroll: true });
+}
+function closeSheet() {
+  sheetEl.classList.remove('open'); scrim.classList.remove('open');
+  sheetEl.setAttribute('aria-hidden', 'true');
+  if (lastFocus) lastFocus.focus({ preventScroll: true });
+}
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-sheet]');
+  if (s) {
+    const key = s.getAttribute('data-sheet');
+    if (key === 'upcoming') { $('upcoming').scrollIntoView(); return; }
+    openSheet(key, s); return;
+  }
+  const g = e.target.closest('[data-go]');
+  if (g) {
+    const key = g.getAttribute('data-go');
+    if (key === 'upcoming' || key === 'bills') $(key).scrollIntoView();
+    else if (key.startsWith('cat-')) { const row = $(`cat-row-${key.slice(4)}`); row.scrollIntoView({ block: 'center' }); setTimeout(() => openSheet(key, row), 350); }
+    else openSheet(key, g);
+    return;
+  }
+  const p = e.target.closest('[data-period]');
+  if (p) toast(p.getAttribute('data-period') === 'prev' ? 'Sep 11 – 24 would open here — same layout, that period\u2019s figures.' : 'Oct 9 – 22 would open here as a projection.');
+});
+scrim.addEventListener('click', closeSheet);
+$('sheet-close').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && sheetEl.classList.contains('open')) closeSheet(); });
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* Theme */
+$('theme-toggle').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark';
+});
+const qTheme = new URLSearchParams(location.search).get('theme');
+if (qTheme === 'dark' || qTheme === 'light') document.documentElement.dataset.theme = qTheme;
+
+/* Jump chips scroll-spy (phone) */
+const chips = Array.from(document.querySelectorAll('#jump a'));
+const targets = chips.map(a => document.querySelector(a.getAttribute('href')));
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver(entries => {
+    for (const en of entries) if (en.isIntersecting) {
+      const i = targets.indexOf(en.target);
+      chips.forEach((c, j) => c.classList.toggle('active', i === j));
+    }
+  }, { rootMargin: '-45% 0px -50% 0px' });
+  targets.forEach(t => t && io.observe(t));
+}
+</script>
+</body>
+</html>
