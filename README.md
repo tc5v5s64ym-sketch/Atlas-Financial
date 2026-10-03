@@ -214,7 +214,24 @@ Financial in ChatGPT so tool discovery and consent include the new scopes. The
 issuer must provide a stable authenticated `sub`. Reuse the server-side Lunch
 Money credential; never paste it into chat.
 
-Call `get_lunchmoney_catalog` for account/category references, then
+Call `get_lunchmoney_catalog` for all synced/manual account balances and
+account/category references. Savings are included. Each account carries its
+provider account type/status, exact signed decimal balance and currency,
+semantic balance date (`balance_last_update` for synced accounts,
+`balance_as_of` for manual accounts), and separate object/sync timestamps.
+Missing or invalid balances/currencies are unavailable, never zero; missing
+dates remain unknown and future dates are flagged. The response lists all
+accounts returned by these two provider endpoints, including closed/inactive
+accounts. It does not establish that every household account is linked, include
+the separate crypto endpoints, or force a bank sync. Reading now is not evidence
+that the bank balance is current. Provider-reported balances retain unknown
+verification trust; show their dates and any account status that needs attention.
+Do not combine cash with amounts owed or different currencies, or treat savings,
+restricted/business funds or available credit as spendable cash. Forecast still
+owns household spend permission. This uses the existing ledger-read scope and
+the same three catalog GETs; no new client, OAuth scope or provider write.
+
+For transactions, call
 `get_lunchmoney_transactions` with explicit start/end dates. Category-group
 filters include their subcategories. Account lookups include individual group
 children and omit group parents so purchases are counted once. These tools expose

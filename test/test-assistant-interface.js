@@ -325,9 +325,17 @@ async function startLunchMoneyStub() {
       else if (req.method === 'GET' && p.startsWith('/categories/')) {
         data = categories.find(c => c.id === Number(p.split('/').pop()));
       } else if (req.method === 'GET' && p === '/plaid_accounts') {
-        data = { plaid_accounts: [{ id: 4, name: 'Bank' }] };
+        data = { plaid_accounts: [
+          { id: 4, name: 'Bank', type: 'depository', subtype: 'checking',
+            balance: '-50.2500', currency: 'cad', balance_last_update: '2026-10-01T18:00:00Z' },
+          { id: 5, name: 'EMERGENCY SAVING', type: 'depository', subtype: 'savings',
+            balance: '1234.5678', currency: 'cad', balance_last_update: '2026-10-01T18:00:00Z',
+            last_fetch: '2026-10-02T18:00:00Z' },
+        ] };
       } else if (req.method === 'GET' && p === '/manual_accounts') {
-        data = { manual_accounts: [] };
+        data = { manual_accounts: [{ id: 4, name: 'Manual card', type: 'credit',
+          balance: '800.0000', currency: 'usd', balance_as_of: '2026-08-18',
+          updated_at: '2026-10-02T18:00:00Z' }] };
       } else if (req.method === 'GET' && p === '/transactions') {
         data = { transactions: [tx], has_more: false };
       } else if (req.method === 'GET' && p.startsWith('/transactions/')) {
@@ -1263,6 +1271,22 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       ok(catalog.isError === false && catalog.structuredContent.status === 'ok'
           && catalog.structuredContent.categories.length === 2,
         'ledger-read OAuth token can read the Lunch Money catalog');
+      const balances = catalog.structuredContent.accounts;
+      ok(balances.length === 3
+          && balances[0].balance.amount === '-50.2500'
+          && balances[1].name === 'EMERGENCY SAVING'
+          && balances[1].subtype === 'savings'
+          && balances[1].balance.amount === '1234.5678'
+          && balances[1].balance.asOf === '2026-10-01T18:00:00Z'
+          && balances[1].timestamps.lastFetchedAt === '2026-10-02T18:00:00Z'
+          && balances[2].balance.amount === '800.0000'
+          && balances[2].balance.currency === 'usd'
+          && balances[2].balance.asOf === '2026-08-18'
+          && balances.every(row => row.balance.trust === 'unknown'),
+        'authenticated MCP round trip preserves savings, exact balances, currencies and actual balance dates');
+      ok(lunchMoney.hits() === 3 && catalog.structuredContent.providerWrite === false
+          && catalog.structuredContent.writesAtlasState === false,
+        'balance catalog uses only the three incumbent provider GETs without state writes');
       const queried = await readClient.callTool({
         name: 'get_lunchmoney_transactions',
         arguments: { startDate: '2026-10-01', endDate: '2026-10-02' },

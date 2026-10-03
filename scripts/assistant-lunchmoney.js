@@ -52,6 +52,42 @@ function scopeDenial(operation, auth = {}) {
 }
 function safeText(value) { return typeof value === 'string' ? value.slice(0, 2000) : null; }
 
+// Keep provider decimal precision/sign and semantic balance dates. A catalog
+// GET, object edit, or successful sync is not proof of today's bank balance.
+function providerDate(value) {
+  if (typeof value !== 'string') return null;
+  return date.safeParse(value).success || z.iso.datetime({ offset: true }).safeParse(value).success
+    ? value : null;
+}
+function accountEvidence(row, kind, observedAt) {
+  const amount = typeof row.balance === 'string' && row.balance.length <= 64
+    && /^-?\d+(\.\d{1,4})?$/.test(row.balance) ? row.balance : null;
+  const currency = typeof row.currency === 'string' && /^[a-z]{3}$/.test(row.currency)
+    ? row.currency : null;
+  const dateField = kind === 'plaid' ? 'balance_last_update' : 'balance_as_of';
+  const asOf = providerDate(row[dateField]);
+  const status = amount !== null && currency !== null ? 'reported' : 'unavailable';
+  return {
+    accountType: safeText(row.type), subtype: safeText(row.subtype),
+    institution: safeText(row.institution_name), accountStatus: safeText(row.status),
+    closedOn: date.safeParse(row.closed_on).success ? row.closed_on : null,
+    balance: {
+      status, amount: status === 'reported' ? amount : null, currency,
+      asOf, asOfField: asOf ? dateField : null,
+      freshness: !asOf ? 'unknown' : Date.parse(asOf) > observedAt ? 'future-date' : 'provider-dated',
+      trust: 'unknown', source: 'Lunch Money v2',
+      ...(status === 'unavailable' ? { reason: amount === null
+        ? 'balance-missing-or-invalid' : 'currency-missing-or-invalid' } : {}),
+    },
+    // These are useful diagnostics, never substitutes for balance.asOf.
+    timestamps: {
+      updatedAt: providerDate(row.updated_at), lastFetchedAt: providerDate(row.last_fetch),
+      lastImportedAt: providerDate(row.last_import),
+      lastSuccessfulSyncAt: providerDate(row.plaid_last_successful_update),
+    },
+  };
+}
+
 function createService(options = {}) {
   const env = options.env || process.env;
   const now = options.now || Date.now;
@@ -114,15 +150,18 @@ function createService(options = {}) {
       groupParent: tx.is_group_parent === true, groupChild: tx.group_parent_id != null,
       updatedAt: tx.updated_at || null };
   }
-  async function catalogData(principal) {
+  async function catalogData(principal, includeBalances = false) {
     const [c, p, m] = await Promise.all([request('GET', '/categories'), request('GET', '/plaid_accounts'), request('GET', '/manual_accounts')]);
     if (!Array.isArray(c.categories) || !Array.isArray(p.plaid_accounts) || !Array.isArray(m.manual_accounts)) throw new Error('catalog-unavailable');
     const categories = c.categories.flatMap(row => [row, ...(row.children || [])]);
+    const observedAt = now();
     const accounts = [
-      ...p.plaid_accounts.map(a => ({ type: 'plaid', providerId: a.id, label: safeText(a.display_name || a.name) })),
-      ...m.manual_accounts.map(a => ({ type: 'manual', providerId: a.id, label: safeText(a.name) })),
+      ...p.plaid_accounts.map(a => ({ type: 'plaid', providerId: a.id, label: safeText(a.display_name || a.name),
+        ...(includeBalances ? { evidence: accountEvidence(a, 'plaid', observedAt) } : {}) })),
+      ...m.manual_accounts.map(a => ({ type: 'manual', providerId: a.id, label: safeText(a.name),
+        ...(includeBalances ? { evidence: accountEvidence(a, 'manual', observedAt) } : {}) })),
     ].map(a => ({ ...a, ref: accountAlias(a.type, a.providerId, principal, a.label) }));
-    return { categories, accounts };
+    return { categories, accounts, observedAt };
   }
   async function categoryId(value, principal) {
     if (value === null) return null;
@@ -136,12 +175,15 @@ function createService(options = {}) {
       || tx.is_group_parent || tx.group_parent_id != null || tx.status === 'delete_pending') throw new Error('transaction-not-editable');
   }
   async function catalog(_, auth) {
-    const { categories, accounts } = await catalogData(auth.principal);
-    return { status: 'ok', source: 'Lunch Money v2', referenceExpiresInSeconds: TTL / 1000,
+    const { categories, accounts, observedAt } = await catalogData(auth.principal, true);
+    return { status: 'ok', source: 'Lunch Money v2', observedAt: new Date(observedAt).toISOString(),
+      coverage: 'complete-provider-account-response', writesAtlasState: false, providerWrite: false,
+      note: 'All synced and manual accounts returned by Lunch Money, including savings and closed/inactive accounts. This is not proof that every household account is linked or every bank has synced. Balances are provider-reported, not independently verified; trust remains unknown. Show each balance date and flag old, missing, or future dates. observedAt and sync/object timestamps are not balance dates. Positive asset balances are held funds; positive liability balances are amounts owed. Preserve signs and currencies; never combine assets with debt or different currencies. Savings, restricted or business funds, and available credit are not automatically spendable household cash. Forecast remains the planner.',
+      referenceExpiresInSeconds: TTL / 1000,
       categories: categories.map(c => ({ categoryRef: alias('cat', c.id, auth.principal), name: safeText(c.name),
         archived: c.archived === true, group: c.is_group === true, income: c.is_income === true,
         excludedFromBudget: c.exclude_from_budget === true, excludedFromTotals: c.exclude_from_totals === true })),
-      accounts: accounts.map(a => ({ accountRef: a.ref, name: a.label, type: a.type })) };
+      accounts: accounts.map(a => ({ accountRef: a.ref, name: a.label, type: a.type, ...a.evidence })) };
   }
   async function query(input, auth) {
     const { categories, accounts } = await catalogData(auth.principal);
