@@ -140,8 +140,24 @@ function deficitPeriod(data) {
   return data;
 }
 
+// Keep the scheduled income rows and their anchors; set both amounts to
+// zero so Forecast publishes known $0 income and known deficits without a
+// positive percentage scale.
+function zeroIncome(data) {
+  data.plan.income.forEach(row => { row.amount = 0; });
+  return data;
+}
+
 function served(opts = {}) {
   const Live = require('../../scripts/live-plan');
+  if (opts.zeroIncome) {
+    // Observation actuals include the invented $2,600 payroll and would
+    // restore a positive income scale. This packet keeps the zeroed
+    // schedule so Forecast can publish known $0 income.
+    const data = zeroIncome(canonical());
+    data.meta = Object.assign({}, data.meta, { asOf: AS_OF });
+    return data;
+  }
   const data = opts.withheldSavings ? withheldSavings(canonical())
     : opts.deficitPeriod ? deficitPeriod(canonical())
     : canonical();

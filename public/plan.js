@@ -4043,17 +4043,19 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       // Never derive another financial total or read a formatted HTML value.
       const scaleKnown = typeof period.available === 'number' && Number.isFinite(period.available)
         && period.available > 0 && ['calculated', 'estimated'].includes(period.incomeTrust);
-      const geometryKnown = known && scaleKnown && typeof summary.barStart === 'number'
-        && Number.isFinite(summary.barStart);
-      const overflow = geometryKnown && (summary.barStart < 0 || summary.amount < 0);
-      const barKnown = geometryKnown && !overflow;
+      // Known state is independent of whether a positive income scale exists.
+      // Zero income makes percentage geometry undefined; it does not make a
+      // published zero or a known deficit unknown.
+      const startKnown = typeof summary.barStart === 'number' && Number.isFinite(summary.barStart);
+      const deficit = known && (summary.amount < 0 || (startKnown && summary.barStart < 0));
+      const barKnown = known && scaleKnown && startKnown && !deficit;
       const percent = value => Math.max(0, Math.min(100, value / period.available * 100));
       const barStart = barKnown ? percent(summary.barStart) : 0;
       const barWidth = barKnown ? Math.min(100 - barStart, percent(summary.amount))
-        : overflow ? percent(Math.abs(summary.amount)) : 0;
-      const trackClass = barKnown ? '' : overflow ? ' is-deficit' : ' is-unknown';
-      const graph = `<span class="budget-waterfall-track${trackClass}" aria-hidden="true">${barKnown || overflow
-        ? `<span class="budget-waterfall-bar" style="left:${overflow ? 0 : barStart}%;width:${barWidth}%"></span>` : ''}</span>`;
+        : (deficit && scaleKnown) ? percent(Math.abs(summary.amount)) : 0;
+      const trackClass = !known ? ' is-unknown' : deficit ? ' is-deficit' : scaleKnown ? '' : ' is-noscale';
+      const graph = `<span class="budget-waterfall-track${trackClass}" aria-hidden="true">${barKnown || (deficit && scaleKnown)
+        ? `<span class="budget-waterfall-bar" style="left:${deficit ? 0 : barStart}%;width:${barWidth}%"></span>` : ''}</span>`;
       return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
         <details class="budget-step-details">
           <summary class="budget-step-summary">

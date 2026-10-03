@@ -143,6 +143,10 @@
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--critical) 42%, transparent);
 }
 .budget-waterfall-track.is-deficit .budget-waterfall-bar { background:var(--critical); }
+.budget-waterfall-track.is-noscale {
+  background:color-mix(in srgb, var(--text-primary) 9%, var(--surface-1));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 22%, transparent);
+}
 .budget-surface [data-operating-question="07"] .budget-step-summary { background:var(--surface-2); }
 .budget-surface [data-operating-question="07"] .operating-prompt { font-weight:700; }
 .budget-surface [data-operating-question="07"] .budget-step-value { font-size:17px; }

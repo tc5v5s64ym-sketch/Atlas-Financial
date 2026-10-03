@@ -111,7 +111,7 @@ async function geometry(page) {
       assert.match(await page.locator('[data-operating-question="07"] .budget-step-value').innerText(), /estimated/);
       const trackState = id => page.locator(`[data-operating-question="${id}"] .budget-waterfall-track`)
         .evaluate(el => ({ deficit: el.classList.contains('is-deficit'), unknown: el.classList.contains('is-unknown'),
-          hatch: getComputedStyle(el).backgroundImage }));
+          noscale: el.classList.contains('is-noscale'), hatch: getComputedStyle(el).backgroundImage }));
       const householdTrack = await trackState('06');
       const finalTrack = await trackState('07');
       const savingsTrack = await trackState('savings');
@@ -122,8 +122,31 @@ async function geometry(page) {
       assert.ok(savingsTrack.hatch.includes('repeating-linear-gradient'), 'unavailable savings keep the hatch');
       await page.screenshot({ path: path.join(screenshots, `deficit-${width}.png`), fullPage: true });
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `deficit-period-${width}.png`) });
+      data = fx.served({ zeroIncome: true }); await boot(); await geometry(page);
+      assert.match(await page.locator('[data-budget-period-result]').innerText(), /2,395\.00/);
+      assert.match(await page.locator('[data-operating-question="02"] .budget-step-value').innerText(), /0\.00/);
+      assert.match(await page.locator('[data-operating-question="07"] .budget-step-value').innerText(), /estimated/);
+      const incomeTrack = await trackState('02');
+      const zeroBillsTrack = await trackState('04');
+      const zeroAfterTrack = await trackState('05');
+      const zeroHousehold = await trackState('06');
+      const zeroFinal = await trackState('07');
+      const zeroSavings = await trackState('savings');
+      assert.deepEqual({
+        noscale: incomeTrack.noscale, deficit: incomeTrack.deficit, unknown: incomeTrack.unknown,
+      }, { noscale: true, deficit: false, unknown: false });
+      assert.ok(!incomeTrack.hatch.includes('repeating-linear-gradient'), 'known $0 income is not the unknown hatch');
+      assert.deepEqual({ deficit: zeroBillsTrack.deficit, unknown: zeroBillsTrack.unknown }, { deficit: true, unknown: false });
+      assert.deepEqual({ deficit: zeroAfterTrack.deficit, unknown: zeroAfterTrack.unknown }, { deficit: true, unknown: false });
+      assert.deepEqual({ deficit: zeroHousehold.deficit, unknown: zeroHousehold.unknown }, { deficit: true, unknown: false });
+      assert.deepEqual({ deficit: zeroFinal.deficit, unknown: zeroFinal.unknown }, { deficit: true, unknown: false });
+      assert.ok(!zeroFinal.hatch.includes('repeating-linear-gradient'), 'zero-income deficit is not the unknown hatch');
+      assert.deepEqual({ deficit: zeroSavings.deficit, unknown: zeroSavings.unknown }, { deficit: false, unknown: true });
+      assert.ok(zeroSavings.hatch.includes('repeating-linear-gradient'), 'unavailable savings keep the hatch');
+      await page.screenshot({ path: path.join(screenshots, `zero-income-${width}.png`), fullPage: true });
+      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `zero-income-period-${width}.png`) });
       await page.close();
-      console.log(`PASS ${width}px: financial hero, geometry, evidence, keyboard reachability, focus restoration, unknown assignments, unavailable plan and known deficit`);
+      console.log(`PASS ${width}px: financial hero, geometry, evidence, keyboard reachability, focus restoration, unknown assignments, unavailable plan, known deficit and known zero-income`);
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
     console.log('PASS actual App.boot → Forecast → active Budget renderer; no external requests or page errors');
