@@ -183,6 +183,57 @@ map must receive those same identity-only changes before activation. This is an
 operational gate, not a renewed owner identity question. No provider transaction
 or canonical balance write was made. Funding confirmation remains deferred.
 
+## Explicit purpose-reserve funding integration
+
+`test-reserve-aware-funding.js` first fails on immutable main
+`3e38a3418fe7d75b7e720aa282286e1fb01fc98c`: a backed assignment still receives
+an unavailable schedule. The integrated path applies only to explicit
+`purpose-reserve` pools. Legacy configured reserves retain their withholding
+and generic ACR behavior; absent configuration retains the incumbent output.
+
+Independent synthetic integer-cent identity:
+
+```text
+60,000 cost = 16,937 actually backed + 8,063 proposed now + 35,000 proposed later
+60,000 payment = 16,937 reserve-funded + 43,063 proposed protection consumed
+operating close = 200,000 income - 55,000 bills - 43,063 operating cost
+operating close + pool close = opening pool stocks + income - full expenses
+```
+
+Observed stocks, confirmed assignments, simulated consumption and new proposals
+remain distinct. The full expense stays on its one cash event; a current backed
+assignment annotates only its matched projected payment component. No reserve
+stock enters salary, an opening chequing balance, a generic funding injection,
+or a second annual occurrence. Excess and settled-goal intent is retained.
+An explicit confirmed empty snapshot permits a zero seed; unknown history never
+does. Invalid, stale, pending, missing, deficit, unresolved and unsupported
+payment evidence withholds incremental instructions and emits no reserve credit.
+
+Controls cover grouped member order, split backing across both pools, annual
+bill credits, property-tax planning and estimated trust, sliced cash accounting,
+Road Ahead operating requirements, no invented debt, repeat refresh, mutation
+and a seed whose matching payment annotation is deliberately removed.
+`test-reserve-aware-funding-integration.js` exercises the actual observer,
+read-only overlay, Forecast, Budget From today renderer, Plan Spend mounts and
+authenticated synthetic server GET. A repeated GET cannot accumulate cash or
+assignments. Both fixtures use synthetic identities and amounts only.
+
+```text
+node test/test-reserve-aware-funding.js
+node test/test-reserve-aware-funding-integration.js
+node test/test-budget-period-funding.js
+node test/test-from-today-funding.js
+node test/test-forecast.js
+node test/test-authority-coverage.js
+npm test
+```
+
+The deployed canonical history remains empty. This implementation does not
+establish household funding, perform a transfer, release intent, attribute
+silver, choose a bonus policy or add future costs. Current purpose mappings and
+the existing page mounts are preserved. Exact-head Systems Review remains
+required before merge.
+
 ## Platform limits
 
 Windows runs must report their actual failures. On untouched base, the figures

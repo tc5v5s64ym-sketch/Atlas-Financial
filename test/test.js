@@ -25,6 +25,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['purpose-reserve funding seed and independent payment conservation', 'test-reserve-aware-funding.js'],
+  ['purpose-reserve authenticated funding and both page consumers', 'test-reserve-aware-funding-integration.js'],
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
   ['MCP provider account balances and truthful freshness', 'test-assistant-account-balances.js'],
   ['Lunch Money MCP reads and confirmed bounded edits', 'test-assistant-lunchmoney.js'],
@@ -329,4 +331,3 @@ if (failed.length) {
   process.exit(1);
 }
 console.log(`\x1b[32mALL ${suites.length} SUITES PASSED\x1b[0m`);
-
