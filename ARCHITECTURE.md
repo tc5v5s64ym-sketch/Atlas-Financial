@@ -1622,3 +1622,18 @@ Pending/grouped/already-split rows fail closed. Provider read completeness is
 not bank sync completeness or Atlas budget membership. Currency remains explicit.
 No promise of atomicity with external clients: the provider has no conditional
 write contract; process locks protect concurrent previews only in this instance.
+
+Owner request 2026-10-02 to ask for all account balances extends the existing
+read-only catalog projection to the balances already returned by the synced
+and manual account GETs, including savings. The same `atlas.transactions.read`
+scope and authenticated-subject gate apply. Only allowlisted account labels,
+provider type/status, signed decimal balance/currency, semantic balance date
+and separate sync/object timestamps leave this boundary; provider IDs, masks,
+connection IDs, metadata and credentials do not. Missing values stay unavailable.
+Provider dates are not replaced by request or sync time, and provider-reported
+balances are not promoted to independently verified/current bank facts.
+No aggregate cash/net-worth/spendable figure is calculated here. Savings,
+restricted/business accounts and credit remain distinct from Forecast household
+cash. Coverage is only the synced/manual accounts returned by Lunch Money,
+not all institutions or the separate crypto API. No bank sync, mapping change,
+canonical refresh, schema/store replacement, OAuth change or new write is granted.

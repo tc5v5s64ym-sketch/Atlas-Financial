@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['MCP provider account balances and truthful freshness', 'test-assistant-account-balances.js'],
   ['Lunch Money MCP reads and confirmed bounded edits', 'test-assistant-lunchmoney.js'],
   ['confirmed savings earmarks and independent cash conservation', 'test-savings-earmarks.js'],
   ['property-tax savings reference to incumbent Budget reserve', 'test-savings-property-tax.js'],

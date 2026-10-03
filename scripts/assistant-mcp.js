@@ -13,7 +13,7 @@ const LunchMoney = require('./assistant-lunchmoney.js');
 
 const TOOL_NAME = 'get_atlas_current';
 const SERVER_NAME = 'atlas-financial-assistant';
-const SERVER_VERSION = '1.1.0';
+const SERVER_VERSION = '1.2.0';
 const REQUIRED_SCOPE = 'atlas.current.read';
 const ALLOWED_ORIGINS = Object.freeze([
   'https://chatgpt.com',
@@ -30,6 +30,7 @@ const ANNOTATIONS = Object.freeze({
 });
 const INSTRUCTIONS = [
   'Use get_atlas_current to retrieve the sanitized Atlas current-state packet.',
+  'Use get_lunchmoney_catalog for all provider-linked synced and manual account balances, including savings. Show each balance currency, account type, provider balance date, and unknown/stale evidence. Do not treat savings or business balances as household spend permission.',
   'Forecast is the sole financial planner and calculation authority.',
   'This server cannot write Atlas state or move money. Provider writes are restricted to confirmed Lunch Money transaction edits.',
   'Lunch Money tools read its ledger directly. prepare_lunchmoney_edit only creates a preview; show it to the user and call apply_lunchmoney_edit only after explicit confirmation of that exact preview. Never retry an uncertain write. Lunch Money remains the ledger authority; Forecast remains the planner.',
@@ -87,7 +88,7 @@ function createServer(getPacket, opts = {}) {
     _meta: descriptor._meta,
   }, async () => packetResult(await getPacket()));
   const definitions = [
-    ['get_lunchmoney_catalog', 'catalog', 'List Lunch Money accounts and categories with opaque references. Call before account/category filtering or editing; references expire after 10 minutes.'],
+    ['get_lunchmoney_catalog', 'catalog', 'Read all Lunch Money synced and manual account balances, including savings, plus account/category references. Returns provider decimal balances, currency, account type/status, semantic balance date and separate sync timestamps. Show missing, old or future balance dates; a fresh GET is not a fresh bank balance. No combined cash/debt or mixed-currency total; savings/business funds are not automatically spendable. Call before account/category filtering or editing; references expire after 10 minutes.'],
     ['get_lunchmoney_transactions', 'query', 'Read Lunch Money transactions for an explicit date range (maximum 366 days), including merchant, amount, currency, source account, category, notes and pending status. Filter by catalog references or merchant. Follow nextOffset for all matches. This is provider ledger evidence, not Atlas budget classification; never sum different currencies or pending/posted duplicates blindly.'],
     ['prepare_lunchmoney_edit', 'prepare', 'Prepare a proposed category/notes correction or split for one exact transactionRef obtained by lookup. Category refs must exist. Split amounts are decimal strings that sum exactly to the parent. This tool never writes; show before/proposed to the user and wait for their explicit confirmation.'],
     ['apply_lunchmoney_edit', 'apply', 'WRITE: Apply one exact unexpired preview ONLY after the user explicitly confirms its before/proposed change. Set confirmed=true only for that confirmation. Category/notes or split writes only; no payments, transfers, account/balance edits or deletions. Re-reads before writing, single-use preview, verifies provider readback. A write-unverified result must never be automatically retried.'],
