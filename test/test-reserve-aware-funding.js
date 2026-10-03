@@ -46,6 +46,75 @@ assert.equal(cents(september.stage2.commitments.lines[0].reserveFunded), 16937n)
 assert.equal(cents(september.stage2.result.amount), cents(september.stage1.result.amount) - 43063n);
 assert.deepEqual(F.projectDebts(data.plan, [], data.meta.asOf, {}).byId, {}, 'reserve payment components invent no debt');
 
+// Plan week / next-period leftovers must charge the operating walk, not the
+// gross requirement. Glance still publishes the $600 bill separately.
+const GROSS = 60000n, RESERVE = 16937n, OPERATING = GROSS - RESERVE;
+const PAYROLL = 100000n, PERIOD_BILL = 20000n, LATER_BILL = 15000n;
+function walkOpeningCents(sim, date) {
+  const idx = (sim.daily || []).findIndex(d => d.date === date);
+  if (idx > 0) return cents(sim.daily[idx - 1].balance);
+  const week = (sim.weeks || []).find(w => w && w.start === date);
+  return cents(week.opening);
+}
+const next = advice.nextPeriodView;
+assert.equal(next.periodStart, '2026-08-28');
+assert.equal(cents((next.bills || []).find(b => b.id === 'named-cost').planned), GROSS,
+  'next-period glance keeps the gross named-cost requirement');
+const nextAvailable = walkOpeningCents(advice.sim, next.periodStart) + PAYROLL;
+const nextBroken = nextAvailable - PERIOD_BILL - LATER_BILL - GROSS;
+const nextAfterBills = nextAvailable - PERIOD_BILL - LATER_BILL - OPERATING;
+assert.equal(cents(next.currentBalance), nextAvailable);
+assert.equal(cents(next.afterBills), nextAfterBills,
+  'next-period afterBills deducts the reserve-adjusted operating cost');
+assert.equal(cents(next.afterBills) - nextBroken, RESERVE,
+  'using the gross $600 would understate every next-period leftover by the reserve');
+const nextHold = cents((next.householdBudget || []).reduce((s, r) => s + (Number(r.amount) || 0), 0));
+assert.equal(cents(next.afterHouseholdBudget), nextAfterBills - nextHold);
+assert.equal(cents(next.afterDebtRepayment), nextAfterBills - nextHold);
+assert.equal(cents(next.afterBigPurchases), nextAfterBills - nextHold);
+const namedWeek = (advice.weekViews || []).find(w =>
+  w.periodStart <= '2026-09-10' && w.periodEnd >= '2026-09-10');
+assert.equal(cents((namedWeek.bills || []).find(b => b.id === 'named-cost').planned), GROSS,
+  'week glance keeps the gross named-cost requirement');
+const weekOpening = walkOpeningCents(advice.sim, namedWeek.periodStart);
+const weekBroken = weekOpening - GROSS;
+const weekAfterBills = weekOpening - OPERATING;
+assert.equal(cents(namedWeek.currentBalance), weekOpening);
+assert.equal(cents(namedWeek.afterBills), weekAfterBills,
+  'week afterBills deducts the reserve-adjusted operating cost');
+assert.equal(cents(namedWeek.afterBills) - weekBroken, RESERVE,
+  'using the gross $600 would understate every leftover in that week by the reserve');
+const weekHold = cents((namedWeek.householdBudget || []).reduce((s, r) => s + (Number(r.amount) || 0), 0));
+assert.equal(cents(namedWeek.afterHouseholdBudget), weekAfterBills - weekHold);
+assert.equal(cents(namedWeek.afterDebtRepayment), weekAfterBills - weekHold);
+assert.equal(cents(namedWeek.afterBigPurchases), weekAfterBills - weekHold);
+
+// PR #484 B1 regression: the next-period panel publishes the complete payday
+// period, so its leftover must charge the complete master event packet even
+// when the display slice includes the next payday but ends before an unpaid
+// expense later in that period. Shortened views must agree with the full
+// view, for backed and unknown/legacy inputs.
+const SHORT_VIEWS = ['month', { days: 15 }, { days: 21 }, { start: '2026-08-28', end: '2026-09-03' }];
+for (const view of SHORT_VIEWS) {
+  const d = backedFixture();
+  const a = F.recommend(d.plan, d.meta.asOf, { view });
+  assert.equal(a.nextPeriodView.periodStart, '2026-08-28');
+  assert.equal(a.nextPeriodView.periodEnd, '2026-09-10');
+  assert.equal(cents(a.nextPeriodView.afterBills), 51937n,
+    'backed short view must deduct the full reserve-adjusted operating cost');
+  assert.equal(cents(a.nextPeriodView.afterHouseholdBudget), 21937n,
+    'backed short view downstream leftovers must agree with the full view');
+}
+for (const view of SHORT_VIEWS) {
+  const d = backedFixture();
+  d.plan.savingsEarmarks.history[0].pools[0].allocations = [];
+  const a = F.recommend(d.plan, d.meta.asOf, { view });
+  assert.equal(cents(a.nextPeriodView.afterBills), 43000n,
+    'unknown/legacy short view must deduct the full gross requirement');
+  assert.equal(cents(a.nextPeriodView.afterHouseholdBudget), 13000n,
+    'unknown/legacy short view downstream leftovers must agree with the full view');
+}
+
 for (const assigned of [600, 800]) {
   const d = backedFixture(); d.plan.savingsPoolObservation.accounts[0].value = 1000;
   d.plan.savingsEarmarks.history[0].pools[0].allocations[0].amount = assigned;
