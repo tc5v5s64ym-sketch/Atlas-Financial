@@ -50,6 +50,8 @@ function page() {
       documentElement: { dataset: {}, style: {} }, createElement: stubEl, createElementNS: stubEl, body: stubEl() },
     window: { addEventListener() {}, matchMedia() { return { matches: false, addEventListener() {} }; } },
     localStorage: { getItem() { return null; }, setItem() {} }, location: { pathname: '/', search: '' } });
+  // In a browser window is the global object; page scripts register on it.
+  context.window = Object.assign(context, { matchMedia() { return { matches: false, addEventListener() {} }; } });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8'), context);
   vm.runInContext('App.boot = () => {}; App.once = () => {}; App.register = () => {};', context);
   for (const f of ['forecast-chequing.js', 'balance-history.js', 'bill-detail.js', 'savings-inventory.js',
@@ -155,7 +157,22 @@ const back = p.rerender('budgetPayPeriodAnchorMonth = null; budgetDrilldownPayPe
 ok(/data-budget-surface="pay-period"/.test(back), 'leaving the drilldown returns to the current pay period');
 
 console.log('\n=== withheld savings proposals ===');
-const withheld = page().render(fx.served({ withheldSavings: true }));
+const withheldPage = page();
+const withheld = withheldPage.render(fx.served({ withheldSavings: true }));
+const inventory = text(withheldPage.context.document.getElementById('savings-inventory').innerHTML);
+// Configured accounts, unknown cash and unknown starting allocations are
+// three different facts; each pool must keep the one that applies to it.
+const poolA = inventory.slice(inventory.indexOf('Synthetic reserve A'), inventory.indexOf('Synthetic reserve B'));
+const poolB = inventory.slice(inventory.indexOf('Synthetic reserve B'));
+ok(poolA.length > 0 && poolB.length > 0, 'both configured savings accounts are listed by name', inventory.slice(0, 300));
+ok(/^Synthetic reserve A Assignments unknown/.test(poolA) && /Observed pool cash \$0\.00 verified/.test(poolA),
+  'pool A: observed cash is known and shown as observed; its assignments are unknown', poolA.slice(0, 300));
+ok(/^Synthetic reserve B Cash unknown/.test(poolB) && /Observed pool cash Unknown/.test(poolB),
+  'pool B: its cash is unknown, not $0', poolB.slice(0, 300));
+ok([poolA, poolB].every(pool => /Confirmed assigned Unknown/.test(pool) && /Unallocated cash Unknown/.test(pool)
+    && /Starting goal assignments have not been supplied/.test(pool)),
+  'both pools: starting allocations are unknown, never $0');
+ok(!/not set up/i.test(inventory), 'configured accounts are not called "not set up"');
 const reason = 'Additional savings proposals are withheld until the funding plan accounts for existing assignments and the cash used to pay each cost.';
 ok(text(withheld).includes(reason), "Forecast's withheld reason is shown");
 ok(!/Proposed to set aside now/.test(withheld) && !/data-from-today-cost/.test(withheld),

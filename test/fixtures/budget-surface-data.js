@@ -119,8 +119,10 @@ const identity = { schema: 'atlas-provider-transaction-identity/v1', rules: [
 // Savings accounts configured, starting allocations not yet confirmed: the
 // state in which Forecast withholds new savings proposals.
 function withheldSavings(data) {
-  data.plan.savingsEarmarks = { version: 1, currency: 'CAD',
-    pools: [{ id: 'reserve-a', accountId: 'savings', label: 'Synthetic reserve' }], history: [] };
+  data.plan.savingsEarmarks = { version: 1, currency: 'CAD', pools: [
+    { id: 'reserve-a', accountId: 'savings', label: 'Synthetic reserve A' },
+    { id: 'reserve-b', accountId: 'synthetic-reserve-b', label: 'Synthetic reserve B' },
+  ], history: [] };
   return data;
 }
 
