@@ -945,7 +945,7 @@ function bootPage() {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  for (const file of ['public/app.js', 'public/forecast.js', 'public/plan.js']) {
+  for (const file of ['public/app.js', 'public/forecast.js', 'public/budget-surface.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });
   }
   return { get, sandbox };
@@ -956,6 +956,8 @@ function bootPage() {
   // App.boot resolves its fetches and renders on the microtask queue; a
   // macrotask turn runs after all of them have drained.
   setTimeout(() => {
+    ok(/data-budget-surface=/.test(page.get('operating-surface-body').innerHTML),
+      'the active Budget renderer completes during boot');
     const bandEl = page.get('status-band');
     const fundEl = page.get('funding-options');
     const inputs = published({ targetBuffer: plan.defaults.targetBuffer, weeklyVariable: null });

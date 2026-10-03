@@ -406,7 +406,7 @@ function bootPlanPage(payload, periodsOverride) {
   };
   sandbox.window = sandbox; sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  for (const file of ['public/app.js', 'public/forecast.js', 'public/plan.js']) {
+  for (const file of ['public/app.js', 'public/forecast.js', 'public/budget-surface.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });
   }
   return { get };
@@ -442,6 +442,8 @@ console.log('\n=== 9. Budget breakdown shows the target-only Other spend row ===
   };
   const synthPage = bootPlanPage(synthPayload, periodsFixture());
   await settle();
+  ok(/data-budget-surface=/.test(synthPage.get('operating-surface-body').innerHTML),
+    'the active Budget renderer completes during boot');
   const synthCats = synthPage.get('budget-cats').innerHTML;
   const synthRow = catRow(synthCats, SYNTHETIC_LABEL);
   const synthBd = F.budgetBreakdown(synthPlan, periodsFixture(), { asOf: START });

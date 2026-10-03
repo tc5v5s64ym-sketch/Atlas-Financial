@@ -129,10 +129,43 @@ function withheldSavings(data) {
 // The served /data.json packet, through the real observation and overlay.
 // opts.unavailablePlan: the server's fail-closed packet for a refresh it
 // could not trust — the dated Aug 13 opening, observed Aug 20.
+function deficitPeriod(data) {
+  data.plan.bills.push({ id: 'levy', label: 'Synthetic levy', frequency: 'monthly',
+    day: 16, amount: 5000, confidence: 'confirmed', payingAccount: 'chequing-a' });
+  return data;
+}
+
+// Keep the scheduled income rows and their anchors; set both amounts to
+// zero so Forecast publishes known $0 income and known deficits without a
+// positive percentage scale.
+function zeroIncome(data) {
+  data.plan.income.forEach(row => { row.amount = 0; });
+  return data;
+}
+
 function served(opts = {}) {
   const Live = require('../../scripts/live-plan');
-  const data = opts.withheldSavings ? withheldSavings(canonical()) : canonical();
-  const overlay = Live.fromObservation({ data, payload: payload(), accountMap: map, identity });
+  if (opts.zeroIncomeWithoutSpend) {
+    // Observation actuals include the invented $2,600 payroll and would
+    // restore a positive income scale. This packet keeps the zeroed
+    // schedule so Forecast can publish known $0 income.
+    const data = zeroIncome(canonical());
+    data.meta = Object.assign({}, data.meta, { asOf: AS_OF });
+    return data;
+  }
+  const data = opts.withheldSavings ? withheldSavings(canonical())
+    : opts.deficitPeriod ? deficitPeriod(canonical()) : canonical();
+  const observed = payload();
+  if (typeof opts.periodInternet === 'number') {
+    data.plan.bills.find(row => row.id === 'internet').amount = opts.periodInternet;
+  }
+  if (opts.zeroIncome) {
+    data.plan.income.forEach(row => { row.amount = 0; });
+    observed.transactions = observed.transactions.filter(row => row.id !== 92001);
+    // No salary occurred: 1,215 closing + 1,400 paid mortgage = 2,615 opening.
+    data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 2615;
+  }
+  const overlay = Live.fromObservation({ data, payload: observed, accountMap: map, identity });
   if (opts.unavailablePlan) {
     return Live.failedOverlay(canonical(), 'Synthetic refresh could not be trusted.', { report: overlay.report });
   }

@@ -914,7 +914,7 @@ function bootPage(knobs) {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  for (const file of ['public/app.js', 'public/forecast.js', 'public/plan.js']) {
+  for (const file of ['public/app.js', 'public/forecast.js', 'public/budget-surface.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });
   }
   return { get, sandbox };
@@ -944,6 +944,8 @@ const BOOT = [
   for (const b of BOOT) {
     const page = bootPage(b.knobs);
     await settle();
+    ok(/data-budget-surface=/.test(page.get('operating-surface-body').innerHTML),
+      'the active Budget renderer completes during boot');
     const card = page.get('nextmove-card').innerHTML;
     const after = /<div class="nm-after"><b>What happens after<\/b><p>([\s\S]*?)<\/p>/.exec(card);
     const inputs = published(b.setting);

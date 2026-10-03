@@ -736,7 +736,7 @@ function bootPage(knobs) {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  for (const file of ['public/app.js', 'public/forecast.js', 'public/plan.js']) {
+  for (const file of ['public/app.js', 'public/forecast.js', 'public/budget-surface.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });
   }
   return { get, sandbox };
@@ -758,6 +758,8 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
   const { advice: tightAdv } = published({ targetBuffer: bufHelocShort });
   const tightCard = tightAdv.funding.sources.find(s => s.id === 'heloc');
   setTimeout(() => {
+    ok(/data-budget-surface=/.test(page.get('operating-surface-body').innerHTML),
+      'the active Budget renderer completes during boot');
     const risks = page.get('risk-list');
     const tiles = page.get('hero-tiles');
     ok(helocAlt.applies

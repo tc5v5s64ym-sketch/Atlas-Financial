@@ -99,6 +99,21 @@ ok(p.context.__retainedCalls === 0, 'the retained operatingSurfaceHtml is not ca
 ok(!/data-budget-more-views|data-current-payday-details/.test(html),
   'the old "More Budget views" and "Current payday details" disclosures are not rendered');
 ok((html.match(/data-calendar-waterfall="/g) || []).length === 1, 'exactly one pay-period waterfall is printed');
+const hero = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(html)?.[0] || '');
+ok(hero.includes(money(EXPECT.final)) && /estimated/.test(hero) && /Before savings/.test(hero),
+  'the overview republishes the independently reconciled final balance and its estimate/before-savings qualifier');
+const bar = id => /style="left:([^%]+)%;width:([^%]+)%"/.exec(
+  html.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '');
+ok(bar('02') && Number(bar('02')[1]) === 0 && Number(bar('02')[2]) === 100,
+  'income fills the fixed income scale');
+ok(bar('04') && Math.abs(Number(bar('04')[1]) - EXPECT.afterBills / EXPECT.income * 100) < 1e-9
+  && Math.abs(Number(bar('04')[2]) - EXPECT.bills / EXPECT.income * 100) < 1e-9,
+  'the bill deduction occupies its independently derived segment on the same scale');
+ok(bar('07') && Math.abs(Number(bar('07')[2]) - EXPECT.final / EXPECT.income * 100) < 1e-9,
+  'the final bar keeps the income scale rather than rescaling the ending balance');
+ok(!bar('savings') && /budget-waterfall-track is-unknown/.test(
+  html.split('data-operating-question="savings"')[1]?.split('</summary>')[0] || ''),
+  'unavailable savings are hatched with no invented zero-length numeric bar');
 
 console.log('\n=== pay-period waterfall on the active surface ===');
 ok(step(html, '02').includes(money(EXPECT.income)) && /≈ estimated/.test(step(html, '02')),
@@ -123,6 +138,95 @@ ok(/data-period-bill="mortgage"[\s\S]*?Linked transaction evidence/.test(html),
 ok(/data-budget-spent="groceries"[\s\S]*?Synthetic grocer[\s\S]*?212\.40[\s\S]*?Synthetic market[\s\S]*?96\.15/.test(html),
   'Groceries opens to its transactions');
 ok(/data-other-spending[\s\S]*?Synthetic general store/.test(html), 'unassigned spending keeps its transaction');
+
+console.log('\n=== signed deficits, overflow and known zero income on the financial path ===');
+const summaryHtml = (source, id) => source.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '';
+const segments = source => [...source.matchAll(/class="budget-waterfall-bar([^\"]*)" style="left:([^%]+)%;width:([^%]+)%"/g)]
+  .map(match => ({ negative: match[1].includes('is-negative'), left: Number(match[2]), width: Number(match[3]) }));
+const deficitHtml = page().render(fx.served({ periodInternet: 1800 }));
+// 4,050 income - (1,400 + 120 + 60 + 1,800) bills = 670;
+// 670 - 752.99 household = -82.99. Shared axis is [-4,050, +4,050].
+ok(step(deficitHtml, '04').includes(money(3380)) && step(deficitHtml, '05').includes(money(670)),
+  'synthetic observations produce the independent 3,380 bill load and 670 after bills');
+ok(/data-sign="negative"/.test(summaryHtml(deficitHtml, '07')) && /82\.99/.test(step(deficitHtml, '07'))
+  && /estimated/.test(step(deficitHtml, '07')), 'the -82.99 final balance keeps its sign and Forecast estimate');
+for (const id of ['06', '07']) ok(/data-budget-bar-state="deficit"/.test(summaryHtml(deficitHtml, id))
+  && !/is-unknown/.test(summaryHtml(deficitHtml, id)), `${id}: a known negative start or amount is a deficit, never unknown`);
+const incomeSegments = segments(summaryHtml(deficitHtml, '02'));
+ok(incomeSegments.length === 1 && incomeSegments[0].left === 50 && incomeSegments[0].width === 50,
+  'every signed-period row uses zero at the shared midpoint and the same income units');
+const householdSegments = segments(summaryHtml(deficitHtml, '06'));
+ok(householdSegments.length === 2 && householdSegments[0].negative && !householdSegments[1].negative
+  && Math.abs(householdSegments[0].width - 82.99 / 4050 * 50) < 1e-9
+  && Math.abs(householdSegments[1].width - 670 / 4050 * 50) < 1e-9,
+  'the household deduction crosses zero: 82.99 below zero and 670 above, without losing either signed portion');
+const overflowHtml = page().render(fx.served({ periodInternet: 10000 }));
+ok(/is-overflow-start/.test(summaryHtml(overflowHtml, '07')) && /8,282\.99/.test(step(overflowHtml, '07'))
+  && !/is-unknown/.test(summaryHtml(overflowHtml, '07')),
+  'known -8,282.99 beyond the -4,050 axis gets signed overflow, not an unavailable hatch');
+const zeroIncomeHtml = page().render(fx.served({ zeroIncome: true }));
+ok(step(zeroIncomeHtml, '02').includes(money(0)) && !/Unavailable/.test(step(zeroIncomeHtml, '02')),
+  'no invented salary receipt: zero income remains a published known zero');
+for (const id of ['02', '04', '06', '07']) ok(/data-budget-bar-state="zero-income"/.test(summaryHtml(zeroIncomeHtml, id))
+  && !/is-unknown/.test(summaryHtml(zeroIncomeHtml, id)) && segments(summaryHtml(zeroIncomeHtml, id)).length === 0,
+  `${id}: zero income disables ratio geometry explicitly, without dividing by zero or changing trust`);
+ok(/data-sign="negative"/.test(summaryHtml(zeroIncomeHtml, '07')) && /2,417\.99/.test(step(zeroIncomeHtml, '07')),
+  'zero-income deficit independently reconciles 0 - 1,665 - 752.99 = -2,417.99');
+
+console.log('\n=== published amount trust is independent of chart scaling ===');
+// Fault injection at the Forecast publication boundary, through the active
+// composer. The observation/Forecast regressions above reconcile real figures;
+// this matrix checks that a missing ratio denominator cannot change their trust.
+const matrixPage = page();
+matrixPage.render(fx.served());
+const publishedRow = '__ctx.advice.payPeriodViews.find(row => row.start === "2026-08-14")';
+const matrix = (amount, amountTrust, income, incomeTrust, position = 0) => matrixPage.rerender(`
+  Object.assign(${publishedRow}, { budgetHold: ${amount}, budgetHoldTrust: ${JSON.stringify(amountTrust)},
+    predictedEndingBalance: ${amount}, afterHouseholdBudget: ${position},
+    balanceAfterDeductionsTrust: ${JSON.stringify(amountTrust)},
+    available: ${income}, incomeTrust: ${JSON.stringify(incomeTrust)} })`);
+for (const trust of ['calculated', 'estimated', null]) for (const amount of [100, 0, -100]) {
+  for (const income of [4050, 0]) {
+    const result = matrix(amount, trust, income, trust || 'calculated', amount < 0 ? -100 : 0);
+    for (const id of ['06', '07']) {
+      const row = summaryHtml(result, id);
+      ok(!/is-unknown|Unavailable/.test(row) && /data-budget-bar-state=/.test(row)
+        && (income !== 0 || /data-budget-bar-state="zero-income"/.test(row)),
+      `${trust} amount ${amount}, income ${income}, row ${id}: known money survives scale availability`);
+    }
+    const hero = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(result)?.[0] || '');
+    ok(!/Unavailable/.test(hero) && hero.includes(Math.abs(amount).toFixed(2)),
+      `${trust} amount ${amount}, income ${income}: result hero agrees with row trust`);
+  }
+  for (const [income, incomeTrust] of [['null', 'unavailable'], ['NaN', 'calculated'],
+    ['Infinity', 'estimated'], [4050, 'unknown'], [4050, 'untrusted'], [-4050, 'calculated']]) {
+    const result = matrix(amount, trust, income, incomeTrust);
+    for (const id of ['06', '07']) ok(/data-budget-bar-state="unscaled"/.test(summaryHtml(result, id))
+      && !/is-unknown|Unavailable/.test(summaryHtml(result, id)),
+    `${trust} amount ${amount}, denominator ${income}/${incomeTrust}, row ${id}: scale unavailable, money known`);
+  }
+  for (const position of ['null', 'NaN', 'Infinity']) {
+    const result = matrix(amount, trust, 4050, 'calculated', position);
+    ok(/data-budget-bar-state="unscaled"/.test(summaryHtml(result, '06'))
+      && !/is-unknown|Unavailable/.test(summaryHtml(result, '06')),
+    `${trust} amount ${amount}, position ${position}: missing chart position cannot withhold known money`);
+  }
+}
+for (const amount of [100, 0, -100, 'null', 'NaN', 'Infinity', '"100"']) {
+  for (const trust of ['unavailable', 'unknown', 'untrusted']) {
+    const result = matrix(amount, trust, 4050, 'calculated');
+    for (const id of ['06', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
+      && /Unavailable/.test(summaryHtml(result, id)) && segments(summaryHtml(result, id)).length === 0,
+    `${amount}/${trust}, row ${id}: unpublished money is withheld with no numeric bar`);
+    ok(/Unavailable/.test(text(/data-budget-period-result[\s\S]*?<\/div>/.exec(result)?.[0] || '')),
+      `${amount}/${trust}: result hero also withholds unpublished money`);
+  }
+}
+for (const amount of ['NaN', 'Infinity', '"100"']) {
+  const result = matrix(amount, 'calculated', 0, 'calculated');
+  for (const id of ['06', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
+    && /Unavailable/.test(summaryHtml(result, id)), `${amount}/calculated, row ${id}: nonnumeric money stays unknown at zero income`);
+}
 
 console.log("\n=== today's money and the next-payday plan ===");
 const today = text(section(html, 'today'));
@@ -188,6 +292,95 @@ ok(text(downHtml).includes(`Last trusted opening ${money(15 + 604.49)}`) && /As 
   'the last trusted opening is the dated Aug 13 balance, labelled as dated', text(downHtml).slice(0, 400));
 ok(!downHtml.includes(money(EXPECT.final)) && !/data-calendar-waterfall="/.test(downHtml),
   'no pay-period figures are printed when the plan is unavailable');
+ok(!/data-budget-period-result/.test(downHtml), 'the overview is withheld with the unavailable operating plan');
+
+console.log('\n=== known deficit is not unknown ===');
+{
+  // Independent fixture arithmetic, not a rerun of Forecast's leftover helper.
+  const DEFICIT = {
+    income: 2600 + 1450,
+    bills: 1400 + 120 + 60 + 85 + 5000,
+    household: 450 + 160 + 120 + 22.99,
+  };
+  DEFICIT.afterBills = DEFICIT.income - DEFICIT.bills;
+  DEFICIT.final = Math.round((DEFICIT.afterBills - DEFICIT.household) * 100) / 100;
+  const signed = n => (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-CA', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const deficitPage = page();
+  const deficitHtml = deficitPage.render(fx.served({ deficitPeriod: true }));
+  const published = deficitPage.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-08-14');
+  ok(published && published.afterBills === DEFICIT.afterBills
+    && published.afterHouseholdBudget === DEFICIT.final
+    && published.balanceAfterDeductions === DEFICIT.final
+    && published.balanceAfterDeductionsTrust === 'estimated',
+    `Forecast publishes independently derived − after-bills ${DEFICIT.afterBills} and final ${DEFICIT.final}, estimated`,
+    published && `${published.afterBills} / ${published.afterHouseholdBudget} / ${published.balanceAfterDeductionsTrust}`);
+  const summaryHtml = id => deficitHtml.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '';
+  const heroText = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(deficitHtml)?.[0] || '');
+  ok(heroText.includes(signed(DEFICIT.final)) && /estimated/.test(heroText),
+    'the hero keeps the published negative final and its estimate qualifier', heroText);
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('06')) && !/is-unknown/.test(summaryHtml('06'))
+    && step(deficitHtml, '06').includes(money(DEFICIT.household)),
+    'Household Budget with a negative start uses the deficit track, not the unknown hatch');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('07')) && !/is-unknown/.test(summaryHtml('07'))
+    && step(deficitHtml, '07').includes(signed(DEFICIT.final)) && /≈ estimated/.test(step(deficitHtml, '07')),
+    'the final negative amount uses the deficit track and keeps its published dollars and estimate');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('05')) && step(deficitHtml, '05').includes(signed(DEFICIT.afterBills)),
+    'the negative after-bills row keeps its published deficit and is not hatched unknown');
+  ok(!/style="left:/.test(summaryHtml('savings')) && /budget-waterfall-track is-unknown/.test(summaryHtml('savings'))
+    && /Proposed savings[\s\S]*?Unavailable/.test(text(deficitHtml)),
+    'unavailable savings stay hatched with no invented zero-length numeric bar');
+}
+
+console.log('\n=== known zero income is not unknown ===');
+{
+  // Independent fixture arithmetic: scheduled amounts stay 0; bills and
+  // household targets are the canonical invented figures.
+  const ZERO = {
+    income: 0,
+    bills: 1400 + 120 + 60 + 85,
+    household: 450 + 160 + 120,
+  };
+  ZERO.afterBills = ZERO.income - ZERO.bills;
+  ZERO.final = ZERO.afterBills - ZERO.household;
+  const signed = n => (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-CA', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const zeroPage = page();
+  const zeroHtml = zeroPage.render(fx.served({ zeroIncomeWithoutSpend: true }));
+  const published = zeroPage.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-08-14');
+  ok(published && published.available === ZERO.income
+    && published.incomeTrust === 'calculated'
+    && published.afterBills === ZERO.afterBills
+    && published.budgetHold === ZERO.household
+    && published.afterHouseholdBudget === ZERO.final
+    && published.balanceAfterDeductions === ZERO.final
+    && published.balanceAfterDeductionsTrust === 'estimated',
+    `Forecast publishes independently derived $0 income, after-bills ${ZERO.afterBills} and final ${ZERO.final}, estimated`,
+    published && `${published.available} / ${published.afterBills} / ${published.afterHouseholdBudget} / ${published.incomeTrust}`);
+  const summaryHtml = id => zeroHtml.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '';
+  const heroText = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(zeroHtml)?.[0] || '');
+  ok(heroText.includes(signed(ZERO.final)) && /estimated/.test(heroText),
+    'the hero keeps the published negative final and its estimate qualifier', heroText);
+  ok(/budget-waterfall-track is-noscale/.test(summaryHtml('02')) && !/is-unknown/.test(summaryHtml('02'))
+    && !/style="left:/.test(summaryHtml('02')) && step(zeroHtml, '02').includes(money(ZERO.income)),
+    'known $0 income uses the no-scale track, not the unknown hatch or an invented bar');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('04')) && !/is-unknown/.test(summaryHtml('04'))
+    && !/style="left:/.test(summaryHtml('04')) && step(zeroHtml, '04').includes(money(ZERO.bills)),
+    'bills with a negative remaining start stay a known deficit with no invented scale');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('05')) && !/is-unknown/.test(summaryHtml('05'))
+    && !/style="left:/.test(summaryHtml('05')) && step(zeroHtml, '05').includes(signed(ZERO.afterBills)),
+    'the negative after-bills row keeps its published deficit and is not hatched unknown');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('06')) && !/is-unknown/.test(summaryHtml('06'))
+    && !/style="left:/.test(summaryHtml('06')) && step(zeroHtml, '06').includes(money(ZERO.household)),
+    'Household Budget with a negative start uses the deficit track, not the unknown hatch');
+  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('07')) && !/is-unknown/.test(summaryHtml('07'))
+    && !/style="left:/.test(summaryHtml('07'))
+    && step(zeroHtml, '07').includes(signed(ZERO.final)) && /≈ estimated/.test(step(zeroHtml, '07')),
+    'the final negative amount uses the deficit track and keeps its published dollars and estimate');
+  ok(!/style="left:/.test(summaryHtml('savings')) && /budget-waterfall-track is-unknown/.test(summaryHtml('savings'))
+    && /Proposed savings[\s\S]*?Unavailable/.test(text(zeroHtml)),
+    'unavailable savings stay hatched with no invented zero-length numeric bar');
+}
 
 console.log('\n=== the layout module stays a layout module ===');
 {
