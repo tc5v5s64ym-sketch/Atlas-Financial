@@ -1357,7 +1357,7 @@ async function run(argv) {
     const mapPath = args.map
       || (fs.existsSync(O.LOCAL_MAP) ? O.LOCAL_MAP : O.DEFAULT_MAP);
     const accountMap = loadJson(mapPath);
-    O.assertLiveMap(accountMap);
+    O.assertLiveMap(accountMap, { data });
     const now = new Date().toISOString();
     const payload = await O.fetchLunchMoneyLive(
       await O.resolveLiveToken(),

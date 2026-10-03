@@ -23,7 +23,66 @@ function purposeFixture() {
   x.data.plan.savingsEarmarks.history = [];
   return x;
 }
+async function cliRoutingRegression() {
+  const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+  const L = require('../scripts/live-plan'), C = require('../scripts/canonical-refresh');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-purpose-cli-'));
+  const dataPath = path.join(dir, 'data.json'), mapPath = path.join(dir, 'map.json');
+  const originals = { token: O.resolveLiveToken, fetch: O.fetchLunchMoneyLive, write: process.stdout.write };
+  let payload, tokenCalls = 0, fetchCalls = 0;
+  // Exercise the actual live CLI paths without resolving credentials or making requests.
+  O.resolveLiveToken = async () => { tokenCalls++; return 'synthetic-cli-token'; };
+  O.fetchLunchMoneyLive = async token => {
+    assert.equal(token, 'synthetic-cli-token'); fetchCalls++; return clone(payload);
+  };
+  async function invoke(api, input) {
+    input.map.scope = 'live'; payload = input.payload;
+    fs.writeFileSync(dataPath, JSON.stringify(input.data));
+    fs.writeFileSync(mapPath, JSON.stringify(input.map));
+    const before = fs.readFileSync(dataPath), mapBefore = fs.readFileSync(mapPath);
+    let output = '';
+    process.stdout.write = chunk => { output += chunk.toString(); return true; };
+    try {
+      const result = await api.run(['--live', '--map', mapPath, '--data', dataPath]);
+      assert.equal(result, 0);
+      const printed = JSON.parse(output);
+      assert.equal(printed.writesCanonicalState, false, 'live planning and refresh preview stay read-only');
+      if (api === C) assert.equal(Object.hasOwn(printed, 'operatingAnswer'), false);
+      return printed;
+    } finally {
+      process.stdout.write = originals.write;
+      assert.deepEqual(fs.readFileSync(dataPath), before, 'CLI never rewrites the opening or seeds funding');
+      assert.deepEqual(fs.readFileSync(mapPath), mapBefore, 'CLI never rewrites provider routing');
+    }
+  }
+  try {
+    for (const api of [L, C]) {
+      await invoke(api, purposeFixture());
+      const legacy = purposeFixture(); delete legacy.data.plan.savingsEarmarks;
+      legacy.data.plan.startingCash.heldElsewhere[0].class = 'staging';
+      legacy.map.mappings.find(m => m.canonical.id === 'savings').atlasRole = 'household-cash';
+      const home = legacy.map.mappings.find(m => m.canonical.id === 'savings-dont-touch');
+      delete home.canonical; home.atlasRole = 'household-external';
+      await invoke(api, legacy);
+      for (const id of ['savings', 'savings-dont-touch']) {
+        const invalid = purposeFixture();
+        invalid.map.mappings.find(m => m.canonical.id === id).atlasRole = 'household-cash';
+        await assert.rejects(() => invoke(api, invalid), /unsupported-atlas-role/);
+      }
+      const unconfigured = purposeFixture(); delete unconfigured.data.plan.savingsEarmarks;
+      await assert.rejects(() => invoke(api, unconfigured), /invalid-atlas-account-id/);
+    }
+    assert.equal(tokenCalls, 7, 'successful live paths plus incumbent refresh payload loading only');
+    assert.equal(fetchCalls, 7, 'all provider reads use synthetic payloads');
+  } finally {
+    O.resolveLiveToken = originals.token; O.fetchLunchMoneyLive = originals.fetch;
+    process.stdout.write = originals.write;
+    for (const file of [dataPath, mapPath]) if (fs.existsSync(file)) fs.unlinkSync(file);
+    fs.rmdirSync(dir);
+  }
+}
 async function main() {
+  await cliRoutingRegression();
   const x = purposeFixture(), p = x.data.plan;
   assert.equal(F.savingsEarmarksState(p, AS_OF).status, 'ready');
   const ctx = { module: { exports: {} }, exports: {}, console };
@@ -130,7 +189,7 @@ async function main() {
   assert.equal(F.savingsEarmarksState(after.plan, '2026-10-03').status, 'ready');
   assert.deepEqual(after.plan.savingsEarmarks.history, []);
   assert.ok(UI.html(F.savingsInventory(after.plan, '2026-10-03')).includes('Starting goal assignments have not been supplied'));
-  console.log('PASS purpose savings: explicit canonical cutover, strict reserve routing, immutable-main events, unknown baseline, independent cash conservation, real authenticated overlay and both surfaces, transfers, missing evidence and unchanged production financial inputs');
+  console.log('PASS purpose savings: both live CLI paths and legacy controls, explicit canonical cutover, strict reserve routing, immutable-main events, unknown baseline, independent cash conservation, real authenticated overlay and both surfaces, transfers, missing evidence and unchanged production financial inputs');
 }
 module.exports = { purposeFixture, main };
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
