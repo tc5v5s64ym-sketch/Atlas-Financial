@@ -15,8 +15,9 @@ account mapping, balance, target or starting assignment is added by this PR.
 `Forecast.savingsInventory` is the sole reconciler. The incumbent GET observer
 provides sanitized, ephemeral account evidence, distinct from intent.
 `public/savings-inventory.js` formats the same packet on both pages and computes
-no financial result. Requirements come from existing commitments, yearly bills
-and group members. Group/member and cross-source aliases cannot pledge a goal
+no financial result. Requirements come from existing commitments, yearly bills,
+group members and `budget-reserve` `plan.budget.categories` rows (class
+`reserve`). Group/member and cross-source aliases cannot pledge a goal
 twice. Silver already in cash is not added again or assigned a purpose.
 
 The configured inventory is a non-additive breakdown of that cash. ACR still
