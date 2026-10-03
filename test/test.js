@@ -171,6 +171,7 @@ const suites = [
   ['proven household-internal cash movement', 'test-household-internal-movement.js'],
   ['leftover vs Current Balance operating-cash explanation', 'test-leftover-operating-cash-explanation.js'],
   ['leftover vs BILLS ACCOUNT cash explanation', 'test-leftover-bills-cash-explanation.js'],
+  ['configured purpose-reserve transfer recognition', 'test-purpose-reserve-transfers.js'],
   ['payday-boundary chequing-a posted cash observation', 'test-payday-boundary-bills-observation.js'],
   ['payday-boundary chequing-a observation persist', 'test-payday-boundary-observation-persist.js'],
   ['posted chequing-a movement evidence set', 'test-chequing-a-posted-movements.js'],
