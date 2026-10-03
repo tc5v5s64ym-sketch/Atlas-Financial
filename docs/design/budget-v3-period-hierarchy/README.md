@@ -104,6 +104,10 @@ both the row and result hero. Missing chart scale never changes monetary trust.
 The concurrent levy regression remains: independent 4,050 income minus
 6,665 bills minus 752.99 household gives `-3,367.99`; its browser capture uses a
 distinct `levy-deficit` filename so it cannot overwrite the crossing-zero proof.
+The additional concurrent no-observation zero-income fixture is retained as
+`zeroIncomeWithoutSpend`: `0 - 1,665 - 730 = -2,395`. It supplements the real
+observation/overlay zero-income path above, which preserves the invented 22.99
+Other Spend transaction; neither fixture replaces or drops the other's checks.
 
 `node test/test-budget-surface.js` independently reconciles 2,600 + 1,450 =
 4,050 income; 1,400 + 120 + 60 + 85 = 1,665 bills; 450 + 160 + 120 + 22.99 =

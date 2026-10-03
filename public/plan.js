@@ -4068,7 +4068,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
         ? segment(Math.max(0, low), Math.min(zero, high), true)
           + segment(Math.max(zero, low), Math.min(100, high), false) : '';
       const overflowStart = barKnown && low < -1e-9, overflowEnd = barKnown && high > 100 + 1e-9;
-      const classes = `${state === 'unknown' ? ' is-unknown' : deficit ? ' is-deficit' : ''}${signedScale ? ' is-signed' : ''}`
+      const classes = `${state === 'unknown' ? ' is-unknown' : deficit ? ' is-deficit'
+        : state === 'zero-income' || state === 'unscaled' ? ' is-noscale' : ''}${signedScale ? ' is-signed' : ''}`
         + `${overflowStart ? ' is-overflow-start' : ''}${overflowEnd ? ' is-overflow-end' : ''}`;
       const graph = `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
         ${bars}${signedScale ? '<span class="budget-waterfall-zero">0</span>' : ''}${state === 'zero-income'

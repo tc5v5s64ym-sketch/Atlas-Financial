@@ -154,6 +154,25 @@ async function geometry(page) {
       assert.ok(savingsTrack.hatch.includes('repeating-linear-gradient'), 'unavailable savings keep the hatch');
       await page.screenshot({ path: path.join(screenshots, `levy-deficit-${width}.png`), fullPage: true });
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `levy-deficit-period-${width}.png`) });
+      // Preserve the concurrent no-observation zero-income regression separately
+      // from the observation/overlay fixture, which retains actual Other Spend.
+      data = fx.served({ zeroIncomeWithoutSpend: true }); await boot(); await geometry(page);
+      assert.match(await page.locator('[data-budget-period-result]').innerText(), /2,395\.00/);
+      assert.match(await page.locator('[data-operating-question="02"] .budget-step-value').innerText(), /0\.00/);
+      assert.match(await page.locator('[data-operating-question="07"] .budget-step-value').innerText(), /estimated/);
+      const zeroIncomeTrack = page.locator('[data-operating-question="02"] .budget-waterfall-track');
+      assert.equal(await zeroIncomeTrack.evaluate(el => el.classList.contains('is-noscale')), true);
+      for (const id of ['02', '04', '05', '06', '07']) {
+        const track = await trackState(id);
+        assert.equal(track.unknown, false);
+        assert.ok(!track.hatch.includes('repeating-linear-gradient'));
+        assert.equal(await page.locator(`[data-operating-question="${id}"] .budget-waterfall-bar`).count(), 0);
+        if (id !== '02') assert.equal(track.deficit, true);
+      }
+      assert.equal((await trackState('savings')).unknown, true);
+      assert.ok((await trackState('savings')).hatch.includes('repeating-linear-gradient'));
+      await page.screenshot({ path: path.join(screenshots, `zero-income-no-observations-${width}.png`), fullPage: true });
+      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `zero-income-no-observations-period-${width}.png`) });
       await page.close();
       console.log(`PASS ${width}px: financial hero, geometry, evidence, keyboard reachability, focus restoration, unknown assignments, unavailable plan and known deficit`);
     }

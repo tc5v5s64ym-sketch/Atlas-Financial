@@ -78,6 +78,8 @@ for (const amount of [undefined, null, false, '', '1800', NaN, Infinity]) {
 }
 const zero = f.calendarWaterfallHtml(Object.assign({}, rows[1], { available: 0 }), null, null, plan);
 assert.match(summary(zero, '02'), /\$0\.00/);
+assert.match(summary(zero, '02'), /is-noscale/);
+assert.doesNotMatch(summary(zero, '02'), /is-unknown|is-deficit|style="left:/);
 const estimated = f.calendarWaterfallHtml(Object.assign({}, rows[2], {
   budgetHoldTrust: 'estimated', balanceAfterDeductionsTrust: 'estimated' }), null, null, plan);
 assert.match(summary(estimated, '06'), /≈ estimated/);
@@ -120,6 +122,42 @@ assert.match(summary(deficitHtml, '07'), /\$\-2199\.00/);
 assert.match(summary(deficitHtml, '07'), /≈ estimated/);
 assert.match(summary(deficitHtml, 'savings'), /is-unknown/);
 assert.doesNotMatch(summary(deficitHtml, 'savings'), /is-deficit|style="left:/);
+
+const zeroInputs = require('./fixtures/budget-surface-data').canonical();
+zeroInputs.plan.income.forEach(row => { row.amount = 0; });
+const zeroPeriod = F.recommend(zeroInputs.plan, '2026-08-20', { debts: zeroInputs.debts || [] })
+  .payPeriodViews.find(p => p.start === '2026-08-14');
+assert.ok(zeroPeriod);
+// Independent fixture arithmetic: both scheduled amounts stay 0; bills and
+// household targets are the canonical invented figures, not Forecast leftovers.
+const zeroIncome = 0;
+const zeroBills = 1400 + 120 + 60 + 85;
+const zeroHold = 450 + 160 + 120;
+assert.equal(zeroPeriod.available, zeroIncome);
+assert.equal(zeroPeriod.incomeTrust, 'calculated');
+assert.equal(zeroPeriod.periodBillLoad, zeroBills);
+assert.equal(zeroPeriod.afterBills, zeroIncome - zeroBills);
+assert.equal(zeroPeriod.budgetHold, zeroHold);
+assert.equal(zeroPeriod.afterHouseholdBudget, zeroIncome - zeroBills - zeroHold);
+assert.equal(zeroPeriod.balanceAfterDeductions, -2395);
+assert.equal(zeroPeriod.balanceAfterDeductionsTrust, 'estimated');
+const zeroHtml = f.calendarWaterfallHtml(zeroPeriod, null, null, zeroInputs.plan);
+assert.match(summary(zeroHtml, '02'), /\$0\.00/);
+assert.match(summary(zeroHtml, '02'), /is-noscale/);
+assert.doesNotMatch(summary(zeroHtml, '02'), /is-unknown|is-deficit|style="left:/);
+assert.match(summary(zeroHtml, '04'), /is-deficit/);
+assert.doesNotMatch(summary(zeroHtml, '04'), /is-unknown|style="left:/);
+assert.match(summary(zeroHtml, '05'), /is-deficit/);
+assert.match(summary(zeroHtml, '05'), /\$\-1665\.00/);
+assert.doesNotMatch(summary(zeroHtml, '05'), /is-unknown|style="left:/);
+assert.match(summary(zeroHtml, '06'), /is-deficit/);
+assert.doesNotMatch(summary(zeroHtml, '06'), /is-unknown|style="left:/);
+assert.match(summary(zeroHtml, '07'), /is-deficit/);
+assert.match(summary(zeroHtml, '07'), /\$\-2395\.00/);
+assert.match(summary(zeroHtml, '07'), /≈ estimated/);
+assert.doesNotMatch(summary(zeroHtml, '07'), /is-unknown|style="left:/);
+assert.match(summary(zeroHtml, 'savings'), /is-unknown/);
+assert.doesNotMatch(summary(zeroHtml, 'savings'), /is-deficit|is-noscale|style="left:/);
 
 // Exercise the incumbent 2027 payroll regime, rather than stamping a mock row.
 const financialData = require('./fixtures/budget-layout-data')();
