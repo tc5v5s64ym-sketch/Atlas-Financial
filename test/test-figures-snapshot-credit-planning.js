@@ -38,7 +38,7 @@ const same = (a, b) => {
 const PLAN_PREFIX = /^(meta|cash|plan|payday|operating|totals|budget|scoreboard|debt|balance|heloc|action|policy)\./;
 const PLAN_KEYS_ON_MAIN = [
   'meta.asOf', 'meta.windowDays', 'meta.targetBuffer', 'meta.scenario',
-  'cash.spendableToday', 'cash.elsewhere.operational', 'cash.elsewhere.staging',
+  'cash.spendableToday', 'cash.elsewhere.operational', 'cash.elsewhere.purpose-reserve',
   'cash.elsewhere.other-liquid', 'plan.mode', 'plan.weeklyCap', 'plan.weeklyCapMonthly',
   'plan.effectiveFrom', 'plan.bindingDate', 'plan.bindingBalance', 'plan.endingCash',
   'plan.lowestCash', 'plan.lowestCashDate', 'payday.available', 'payday.obligations',
@@ -437,8 +437,17 @@ console.log('\n=== 4. Existing Plan snapshot coverage remains intact ===');
 {
   const liveSnap = buildFiguresSnapshot(live, periods);
   const mainSnap = runReferenceSnapshot(MAIN);
+  // The owner-authorized canonical cutover renames exactly one held-cash
+  // classification. Its dated value must be conserved, never duplicated or
+  // inferred as a fresh pool balance. Every other Plan key retains its guard.
+  const priorReserve = Object.prototype.hasOwnProperty.call(mainSnap, 'cash.elsewhere.staging')
+    ? mainSnap['cash.elsewhere.staging'] : mainSnap['cash.elsewhere.purpose-reserve'];
+  ok(same(liveSnap['cash.elsewhere.purpose-reserve'], priorReserve),
+    'purpose class preserves the identical dated staging cash amount');
+  ok(!Object.prototype.hasOwnProperty.call(liveSnap, 'cash.elsewhere.staging'),
+    'the same dated cash is not also published as staging');
   const missing = PLAN_KEYS_ON_MAIN.filter(k => !Object.prototype.hasOwnProperty.call(liveSnap, k));
-  ok(missing.length === 0, 'every Plan key from current main is still present',
+  ok(missing.length === 0, 'every current Plan contract key is present after the explicit class cutover',
     missing.join(', '));
   const incumbentKeys = PLAN_KEYS_ON_MAIN.filter(k =>
     Object.prototype.hasOwnProperty.call(mainSnap, k)

@@ -3029,7 +3029,7 @@ async function run(argv) {
   const payload = await loadPayload(args);
   const mapPath = args.map || O.resolveMapPath({ live: args.live, fixture: args.fixture, map: args.map });
   const accountMap = loadJson(mapPath);
-  if (args.live) O.assertLiveMap(accountMap);
+  if (args.live) O.assertLiveMap(accountMap, { data });
   const { preview } = previewFrom(
     observeInput(args, data, payload, accountMap),
     (args.cutoverAsOf || args.preservePaydayObservation) ? {

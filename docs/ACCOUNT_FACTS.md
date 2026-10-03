@@ -814,9 +814,16 @@ planned amount.
 
 ### SAVINGS-DONT TOUCH *(…6478420)* — **historical staging; planned-cost role selected**
 The following is the historical account reading, not a current funding claim.
-Owner-selected future purpose and the pending runtime reconciliation are owned
+Owner-selected purpose and the explicit runtime reconciliation are owned
 by `ARCHITECTURE.md`, under "Confirmed savings purpose". That decision does not
 replace this dated evidence or establish a new baseline.
+
+Read-only Lunch Money catalog evidence on 2026-10-03 directly identifies
+SAVINGS-DONT TOUCH by mask 8420 and EMERGENCY SAVING by mask 3074. The incumbent
+private provider map links the latter to `cash:savings`; it is the owner's
+renamed DEFICIT PLANNING account. Provider IDs remain private. Roles now selected
+are sports for 3074 and property tax/home insurance for 8420, never generic
+shortfall backing. Starting assignments and a new baseline remain unset.
 
 Historical balance $74.20. Despite the name, nothing was saved in this window.
 Money arrived from Chequing A and left within hours or days, mostly to the HELOC

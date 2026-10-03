@@ -530,15 +530,36 @@
     const poolIds = new Set(), accounts = new Set();
     const held = ((plan.startingCash && plan.startingCash.heldElsewhere) || []).map(r => r && r.id);
     for (const pool of block.pools) {
-      if (!savingsKeys(pool, ['id', 'accountId', 'label']) || !SAVINGS_ALIAS.test(pool.id || '')
+      if (!pool || typeof pool !== 'object' || Array.isArray(pool)) return invalid('Each pool requires an explicit reserve identity.');
+      const purposeReserve = pool.role === 'purpose-reserve';
+      const heldRows = ((plan.startingCash && plan.startingCash.heldElsewhere) || []).filter(r => r && r.id === pool.accountId);
+      const stagingCutover = purposeReserve && pool.accountId === 'savings-dont-touch'
+        && savingsDate(pool.reconciledOn) && heldRows.length === 1 && heldRows[0].class === 'purpose-reserve';
+      if (!savingsKeys(pool, ['id', 'accountId', 'label', 'role', 'purpose', 'goalRefs', 'reconciledOn']) || !SAVINGS_ALIAS.test(pool.id || '')
           || !SAVINGS_ALIAS.test(pool.accountId || '') || poolIds.has(pool.id) || accounts.has(pool.accountId)
-          || HOUSEHOLD_CHEQUING_IDS.includes(pool.accountId) || held.includes(pool.accountId)
-          || pool.accountId === 'savings-dont-touch' || pool.accountId === 'amanda-debt-payments'
+          || HOUSEHOLD_CHEQUING_IDS.includes(pool.accountId) || held.includes(pool.accountId) && !stagingCutover
+          || pool.accountId === 'savings-dont-touch' && !stagingCutover || pool.accountId === 'amanda-debt-payments'
+          || (pool.role != null && !purposeReserve)
+          || (purposeReserve && (!['savings', 'savings-dont-touch'].includes(pool.accountId)
+            || typeof pool.purpose !== 'string' || !pool.purpose.trim() || pool.purpose.length > 160))
+          || (pool.reconciledOn != null && !stagingCutover)
           || (pool.label != null && (typeof pool.label !== 'string' || !pool.label.trim() || pool.label.length > 160))) {
         return invalid('Each savings pool needs one distinct reserve identity; operating and excluded staging accounts cannot be repurposed.');
       }
       const cashRows = ((plan.startingCash && plan.startingCash.breakdown) || []).filter(r => r && r.id === pool.accountId);
       if (cashRows.length > 1 || (cashRows.length && pool.accountId !== DESIGNATED_RESERVE_ID)) return invalid('A pool alias conflicts with an existing cash identity.');
+      if (stagingCutover && cashRows.length) return invalid('A reconciled reserve cannot also appear in the opening breakdown.');
+      if (pool.goalRefs != null) {
+        if (!purposeReserve || !Array.isArray(pool.goalRefs)) return invalid('Planned goal references require an explicit purpose reserve.');
+        const goals = new Set(), members = new Set();
+        for (const ref of pool.goalRefs) {
+          if (!savingsKeys(ref, ['kind', 'id']) || !['commitment', 'yearly-bill', 'group', 'budget-reserve'].includes(ref.kind)
+              || !SAVINGS_ALIAS.test(ref.id || '')) return invalid('Planned goals must reference existing requirements without amounts.');
+          const goal = savingsGoal(plan, ref, asOf);
+          if (goals.has(goal.key) || goal.members.some(m => members.has(m))) return invalid('Planned goal identity is duplicated.');
+          goals.add(goal.key); goal.members.forEach(m => members.add(m));
+        }
+      }
       poolIds.add(pool.id); accounts.add(pool.accountId);
     }
     let lastDate = '';
@@ -615,6 +636,8 @@
         'goal-unresolved': 'An existing goal reference is unavailable. Intent is retained until that reference is reconciled.',
         backed: 'All confirmed earmarks are backed by current observed pool cash.' };
       const row = { id: pool.id, accountId: pool.accountId, label: pool.label || pool.id, status, reason: reasons[status],
+        purpose: pool.purpose || null,
+        plannedGoals: (pool.goalRefs || []).map(ref => ({ ...savingsGoal(plan, ref, asOf), intent: null, backed: null, backedTrust: 'unknown' })),
         observedCash: trusted ? valueCents / 100 : null, observedTrust: trusted ? 'verified' : 'unknown',
         observedAsOf: cash && cash.evidenceDate || null, currency: config.currency,
         intentKnown, intent: intentKnown ? total / 100 : null, intentTrust: intentKnown ? 'calculated' : 'unknown',
@@ -666,7 +689,9 @@
     );
     if (hasHouseholdChequing) return postedHouseholdChequingCash(plan);
     return rows.reduce((s, b) => {
-      if (!b || b.id === DESIGNATED_RESERVE_ID) return s;
+      if (!b || b.id === DESIGNATED_RESERVE_ID
+          || (Array.isArray(plan.savingsEarmarks && plan.savingsEarmarks.pools) ? plan.savingsEarmarks.pools : [])
+            .some(p => p && p.accountId === b.id)) return s;
       return s + (Number(b.value) || 0);
     }, 0);
   }
@@ -679,6 +704,11 @@
   // ids do not invent a designated reserve.
   function designatedReserveEvidence(plan) {
     if (savingsEarmarksEnabled(plan)) {
+      const configured = savingsEarmarksState(plan, '9999-12-31');
+      if (configured.status !== 'ready') return { status: 'unavailable', reason: 'Savings configuration is unproven; implicit deficit backing is withheld.' };
+      if (configured.pools.some(p => p.accountId === DESIGNATED_RESERVE_ID && p.role === 'purpose-reserve')) {
+        return { status: 'unavailable', reason: 'Purpose savings are reserved for planned goals and do not implicitly back generic cash shortfalls.' };
+      }
       const observation = plan.savingsPoolObservation;
       const rows = (observation && observation.accounts || []).filter(r => r && r.accountId === DESIGNATED_RESERVE_ID);
       const row = rows.length === 1 ? rows[0] : null;
@@ -6174,7 +6204,7 @@
   function gapMovementAffectsSpendableOpening(mov, plan) {
     if (!gapMovementAffectsJointCash(mov)) return false;
     const id = gapMovementAccountId(mov);
-    if (id === DESIGNATED_RESERVE_ID) return false;
+    if (isRecognizedHouseholdReserve(plan, id)) return false;
     if (!id) return true;
     const rows = ((plan && plan.startingCash && plan.startingCash.breakdown) || []);
     const hasChequing = rows.some(
@@ -8083,8 +8113,29 @@
     return HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1;
   }
 
+  function configuredPurposeReserveAccountIds(plan) {
+    const asOf = (plan && plan.opening && plan.opening.asOf) || '9999-12-31';
+    const configured = savingsEarmarksState(plan, asOf);
+    if (!configured || configured.status !== 'ready') return [];
+    const ids = [];
+    for (const pool of configured.pools || []) {
+      if (!pool || pool.role !== 'purpose-reserve') continue;
+      const id = String(pool.accountId || '').trim();
+      if (SAVINGS_ALIAS.test(id)) ids.push(id);
+    }
+    return ids;
+  }
+
+  function isRecognizedHouseholdReserve(plan, accountId) {
+    const id = accountId == null ? '' : String(accountId).trim();
+    if (!id) return false;
+    if (id === DESIGNATED_RESERVE_ID) return true;
+    return configuredPurposeReserveAccountIds(plan).indexOf(id) !== -1;
+  }
+
   function householdCashLocationLabel(plan, id) {
-    const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+    const cash = (plan && plan.startingCash) || {};
+    const rows = (cash.breakdown || []).concat(cash.heldElsewhere || []);
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (row && row.id === id && row.label) return String(row.label);
@@ -8092,15 +8143,23 @@
     if (id === 'chequing-a') return 'BILLS ACCOUNT';
     if (id === 'chequing-b') return 'WEEKLY SPENDING';
     if (id === DESIGNATED_RESERVE_ID) return 'designated savings';
+    if (!isRecognizedHouseholdReserve(plan, id)) return null;
+    const asOf = (plan && plan.opening && plan.opening.asOf) || '9999-12-31';
+    const configured = savingsEarmarksState(plan, asOf);
+    const pool = ((configured && configured.pools) || []).find(row => (
+      row && row.role === 'purpose-reserve' && row.accountId === id
+    ));
+    if (pool && pool.label) return String(pool.label);
+    if (pool && pool.purpose) return String(pool.purpose);
     return null;
   }
 
-  function operatingCashEffectForMovement(movement) {
+  function operatingCashEffectForMovement(movement, plan) {
     if (!movement) return null;
     const srcOp = isOperatingCashAccount(movement.sourceAccountId);
     const dstOp = isOperatingCashAccount(movement.destinationAccountId);
-    const srcSav = movement.sourceAccountId === DESIGNATED_RESERVE_ID;
-    const dstSav = movement.destinationAccountId === DESIGNATED_RESERVE_ID;
+    const srcSav = isRecognizedHouseholdReserve(plan, movement.sourceAccountId);
+    const dstSav = isRecognizedHouseholdReserve(plan, movement.destinationAccountId);
     if (srcOp && dstOp) return 'stays-in-operating-cash';
     if (srcOp && dstSav) return 'leaves-operating-cash';
     if (srcSav && dstOp) return 'enters-operating-cash';
@@ -8189,7 +8248,7 @@
     for (let i = 0; i < published.length; i++) {
       const m = published[i];
       if (!window || !movementInOperatingCashWindow(m, window)) continue;
-      const effect = operatingCashEffectForMovement(m);
+      const effect = operatingCashEffectForMovement(m, plan);
       if (!effect) continue;
       const billsEffect = billsLocationEffectForMovement(m);
       const sourceLabel = householdCashLocationLabel(plan, m.sourceAccountId);
@@ -9733,12 +9792,12 @@
     return diff <= windowCents;
   }
 
-  function knownHouseholdCashAccount(accountId) {
+  function knownHouseholdCashAccount(plan, accountId) {
     if (accountId == null) return false;
     const id = String(accountId).trim();
     if (!id) return false;
     if (HOUSEHOLD_CHEQUING_IDS.indexOf(id) !== -1) return true;
-    return id === DESIGNATED_RESERVE_ID;
+    return isRecognizedHouseholdReserve(plan, id);
   }
 
   // Positive non-income only. movement.classification 'refund' is not
@@ -9752,10 +9811,10 @@
     return REFUND_LABELS.has(normalizeCategoryLabel(tx.categoryLabel));
   }
 
-  function sameDayInflowPositivelyNonIncome(mov, tx) {
+  function sameDayInflowPositivelyNonIncome(plan, mov, tx) {
     if (mov && mov.internalTransfer === true
         && mov.classification === 'internal-transfer'
-        && knownHouseholdCashAccount(mov.counterpartAccountId)) {
+        && knownHouseholdCashAccount(plan, mov.counterpartAccountId)) {
       return true;
     }
     if (!tx || tx.isIncome === true) return false;
@@ -9807,7 +9866,7 @@
           && plausibleUnrecognisedDaleDeposit(amt, payrollAmount)) {
         return null;
       }
-      if (sameDayInflowPositivelyNonIncome(mov, tx)) {
+      if (sameDayInflowPositivelyNonIncome(plan, mov, tx)) {
         delta = roundCent(delta + amt);
         continue;
       }

@@ -689,9 +689,11 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');
 {
+  // Purpose reserves are optional evidence for the operating overlay. Remove
+  // a required operating account to prove the current-cash failure boundary.
   const served = serve(clone(liveData), {
     fetchedAt: '2026-08-31T18:00:00.000Z',
-    tweaks: Object.assign({ omitProviderIds: [3003] }, freshness('2026-08-31T17:55:00.000Z')),
+    tweaks: Object.assign({ omitProviderIds: [3001] }, freshness('2026-08-31T17:55:00.000Z')),
   });
   ok(served.liveOverlay.applied === false
       && served.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,

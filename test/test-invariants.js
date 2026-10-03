@@ -37,7 +37,9 @@ const liveFunding = () => F.resolveFundingSources(
 
 console.log('=== cash classification ===');
 const cash = plan.startingCash;
-const CLASSES = ['spendable', 'operational', 'staging', 'other-liquid', 'restricted'];
+const CLASSES = ['spendable', 'operational', 'staging', 'other-liquid', 'restricted', 'purpose-reserve'];
+const purposeIds = new Set((plan.savingsEarmarks?.pools || [])
+  .filter(pool => pool.role === 'purpose-reserve').map(pool => pool.accountId));
 const chequingIds = ['chequing-a', 'chequing-b'];
 const chequingSum = cash.breakdown
   .filter(b => chequingIds.includes(b.id))
@@ -52,8 +54,9 @@ ok(designatedSavings && !near(breakdownSum, chequingSum),
   designatedSavings ? money(designatedSavings.value) : 'missing');
 ok(!Object.prototype.hasOwnProperty.call(cash, 'amount'),
   'the opening total is not stored beside the spendable accounts');
-ok(cash.breakdown.every(b => b.class === 'spendable'),
-  'every account inside the plan opening balance is classified spendable');
+ok(cash.breakdown.every(b => b.class === 'spendable' && !purposeIds.has(b.id)
+  || b.id === 'savings' && b.class === 'purpose-reserve' && purposeIds.has(b.id)),
+  'opening rows are operating cash or the explicitly configured non-spendable savings reserve');
 ok((cash.heldElsewhere || []).every(h => CLASSES.includes(h.class)),
   'every excluded pot carries a real classification',
   (cash.heldElsewhere || []).map(h => h.class).join(', '));
@@ -70,6 +73,9 @@ ok(amanda && amanda.class === 'operational',
 // The cash register is the numeric home. Matching `assets[]` rows carry a
 // `cash` id and no stored value — a second stored balance is the defect.
 const cashAccounts = cash.breakdown.concat(cash.heldElsewhere || []);
+ok(cashAccounts.filter(row => row.class === 'purpose-reserve').every(row =>
+  ['savings', 'savings-dont-touch'].includes(row.id) && purposeIds.has(row.id)),
+  'purpose classification belongs only to the explicitly configured canonical savings identities');
 const registerTotal = cashAccounts.reduce((s, a) => s + a.value, 0);
 const assetCash = data.assets.filter(a => a.cash);
 ok(assetCash.length === cashAccounts.length,

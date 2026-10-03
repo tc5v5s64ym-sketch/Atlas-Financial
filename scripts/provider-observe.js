@@ -195,9 +195,10 @@ function assertLiveMap(mapDoc, opts) {
     if (!collection || !atlasId) fail('live-account-map-invalid');
     if (SUPPORTED_LIVE_ROLES[role] !== collection) fail('live-account-map-invalid');
     const pools = Forecast.savingsEarmarksState(opts && opts.data && opts.data.plan, '9999-12-31');
-    const configuredReserve = pools.status === 'ready' && pools.pools.some(p => p.accountId === atlasId);
+    const configuredReserve = collection === 'cash' && pools.status === 'ready' && pools.pools.some(p => p.accountId === atlasId);
     if (role === 'household-reserve' && !configuredReserve) fail('invalid-atlas-account-id');
-    if (configuredReserve && atlasId !== 'savings' && role !== 'household-reserve') fail('unsupported-atlas-role');
+    const purposeReserve = configuredReserve && pools.pools.some(p => p.accountId === atlasId && p.role === 'purpose-reserve');
+    if (configuredReserve && (atlasId !== 'savings' || purposeReserve) && role !== 'household-reserve') fail('unsupported-atlas-role');
     const atlasKey = collection + ':' + String(atlasId);
     if (atlasKeys.has(atlasKey)) fail('live-account-map-invalid');
     atlasKeys.add(atlasKey);
