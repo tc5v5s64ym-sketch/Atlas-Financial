@@ -667,7 +667,98 @@
       intent: goal.intentCents / 100, backed: goal.backingKnown ? goal.backedCents / 100 : null,
       backedTrust: goal.backingKnown ? 'calculated' : 'unknown', pools: goal.pools,
       release: 'Confirmation required; paying or reducing a goal never releases its earmark automatically.' }));
+    const funding = reserveFundingState(plan, asOf, {}, packet);
+    if (funding.status === 'ready') {
+      packet.incrementalInstructions = 'eligible';
+      packet.instructionReason = 'Funding proposals require matching payments and count backed assignments once. New contributions are proposals, not saved balances or transfers.';
+    } else packet.instructionReason = funding.reason;
     return packet;
+  }
+
+  // Consume the existing inventory and sequence, never infer purpose from cash.
+  // Group assignments follow the incumbent sequence; surplus assignment stays
+  // assigned. Only the next exact payment occurrence may consume a seed.
+  function reserveFundingState(plan, asOf, opts, inventory) {
+    const unavailable = reason => ({ status: 'unavailable', asOf, reason, payments: [] });
+    if (!savingsEarmarksEnabled(plan)) return { status: 'incumbent', payments: [] };
+    if (!Array.isArray(plan.savingsEarmarks.pools) || plan.savingsEarmarks.pools.some(pool => !pool || pool.role !== 'purpose-reserve')) {
+      return unavailable(SAVINGS_INSTRUCTIONS_HELD);
+    }
+    inventory = inventory || savingsInventory(plan, asOf);
+    if (inventory.status !== 'ready' || !plan.savingsPoolObservation
+        || plan.savingsPoolObservation.asOf !== asOf
+        || inventory.pools.some(pool => pool.status !== 'backed')) {
+      return unavailable('Confirmed assignments and current, clear backing are required before proposing additional savings. Unknown funding is not zero saved.');
+    }
+    const seq = fundingSequence(plan, asOf, opts || {});
+    const disabled = new Set(opts && opts.disabled || []);
+    const payments = new Map();
+    for (const pool of inventory.pools) {
+      for (const allocation of pool.allocations) {
+        let left = savingsCents(allocation.backed);
+        if (left == null) return unavailable('An assignment has no independently backed exact-cent amount.');
+        if (!left) continue;
+        const goal = savingsGoal(plan, allocation.goalRef, asOf);
+        if (!goal.resolved) return unavailable('An assigned goal no longer has one authoritative requirement.');
+        const ids = goal.members.map(member => member.slice('goal:'.length));
+        const candidates = seq.filter(row => ids.includes(row.id) && !disabled.has(row.id));
+        // Settled/disabled goals retain intent, but cannot finance another cost.
+        const outstanding = ids.filter(id => !disabled.has(id) && !((plan.commitments || [])
+          .some(c => c.id === id && commitmentSettledBy(c, asOf))));
+        if (!outstanding.length) continue;
+        if (candidates.length !== outstanding.length || candidates.some(row => !row.date
+            || row.date < asOf || row.need == null || row.flexibility === 'optional'
+            || savingsCents(row.need) == null || savingsCents(row.bounds && row.bounds.floor) !== savingsCents(row.need))) {
+          return unavailable('An assigned requirement lacks one supported dated payment. Its funding remains reserved; no payment or contribution is invented.');
+        }
+        for (const row of candidates.sort((a, b) => a.date.localeCompare(b.date) || a.rank - b.rank)) {
+          const key = row.id + '@' + row.date;
+          const required = savingsCents(row.need);
+          const payment = payments.get(key) || { id: row.id, date: row.date,
+            requirement: required / 100, backed: 0, parts: [] };
+          const available = required - savingsCents(payment.backed);
+          const take = Math.min(left, available);
+          if (take > 0) {
+            payment.backed = (savingsCents(payment.backed) + take) / 100;
+            payment.parts.push({ poolId: pool.id, accountId: pool.accountId,
+              label: pool.label, goalKey: allocation.goalKey, amount: take / 100 });
+            payments.set(key, payment);
+            left -= take;
+          }
+          if (!left) break;
+        }
+      }
+    }
+    return { status: 'ready', asOf, revision: inventory.revision,
+      source: 'Forecast.savingsInventory', payments: Array.from(payments.values()) };
+  }
+  function reserveFundedAmount(event) {
+    return event && event.reserveFunding ? event.reserveFunding.amount : 0;
+  }
+  function operatingEventAmount(event) {
+    return reserveFundedAmount(event) ? roundCent(event.amount + reserveFundedAmount(event)) : event.amount;
+  }
+  function residualEventAmount(event) {
+    if (event.kind === 'noncash') return 0;
+    return event.jointCash === false ? (event.cardPaid ? reserveFundedAmount(event) : 0) : operatingEventAmount(event);
+  }
+  function applyReserveFunding(events, plan, start, end, opts) {
+    const funding = reserveFundingState(plan, start, opts);
+    if (funding.status !== 'ready') return events;
+    const relevant = funding.payments.filter(payment => payment.date >= start && payment.date <= end);
+    // One matched expense is necessary for every in-window seed. A missing,
+    // represented, duplicated or changed occurrence withholds all components.
+    if (relevant.some(payment => events.filter(event => event.id === payment.id
+        && event.date === payment.date && ['commitment', 'bill', 'reserve'].includes(event.kind)
+        && savingsCents(-event.amount) === savingsCents(payment.requirement)
+        && (event.jointCash !== false || event.cardPaid)).length !== 1)) return events;
+    return events.map(event => {
+      const payment = relevant.find(row => row.id === event.id && row.date === event.date);
+      return payment ? Object.assign({}, event, { reserveFunding: {
+        amount: payment.backed, parts: payment.parts, asOf: start, revision: funding.revision,
+        source: funding.source, projected: true,
+      } }) : event;
+    });
   }
   function postedHouseholdChequingCash(plan) {
     const cash = (plan && plan.startingCash) || {};
@@ -1353,6 +1444,7 @@
         return apply >= copy.start && apply <= copy.end;
       });
       copy.events = weekEvents;
+      if (full.reserveFunding) copy.reserveFunding = weekEvents.reduce((sum, event) => sum + reserveFundedAmount(event), 0);
       copy.confirmedIncome = weekEvents.filter(e => e.kind === 'income' && e.confidence === 'confirmed')
         .reduce((s, e) => s + e.amount, 0);
       copy.estimatedIncome = weekEvents.filter(e => e.kind === 'income' && e.confidence !== 'confirmed')
@@ -1373,8 +1465,8 @@
       copy.closing = weekDays.length ? weekDays[weekDays.length - 1].balance : copy.closing;
       const residual = weekDays.reduce((s, p, i) => {
         const prev = i ? weekDays[i - 1].balance : copy.opening;
-        const eventNet = weekEvents.filter(e => cashWalkDate(e, walkStart) === p.date && e.kind !== 'noncash' && e.jointCash !== false)
-          .reduce((n, e) => n + e.amount, 0);
+        const eventNet = weekEvents.filter(e => cashWalkDate(e, walkStart) === p.date)
+          .reduce((n, e) => n + residualEventAmount(e), 0);
         return s + Math.max(0, prev + eventNet - p.balance);
       }, 0);
       // Residual is weekly-cap variable plus reserved current-regime cash
@@ -1418,8 +1510,8 @@
     const opening = startIdx > 0 ? full.daily[startIdx - 1].balance : startingCashAmount(plan);
     const residual = daily.reduce((s, p, i) => {
       const prev = i ? daily[i - 1].balance : opening;
-      const eventNet = events.filter(e => cashWalkDate(e, walkStart) === p.date && e.kind !== 'noncash' && e.jointCash !== false)
-        .reduce((n, e) => n + e.amount, 0);
+      const eventNet = events.filter(e => cashWalkDate(e, walkStart) === p.date)
+        .reduce((n, e) => n + residualEventAmount(e), 0);
       return s + Math.max(0, prev + eventNet - p.balance);
     }, 0);
     totals.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * daily.length
@@ -1427,6 +1519,7 @@
     totals.variable = Math.max(0, residual - totals.reserved);
     totals.income = totals.confirmedIncome + totals.estimatedIncome;
     const ending = daily[daily.length - 1].balance;
+    if (full.reserveFunding) totals.reserveFunding = events.reduce((sum, event) => sum + reserveFundedAmount(event), 0);
     return Object.assign({}, full, {
       start, end, daily, weeks, events, totals, min, ending,
       shortfall: additionalCashRequiredFromWalkMin(min.balance),
@@ -1451,6 +1544,8 @@
     const events = (full.events || []).filter(e => e.date <= end);
     const weeks = (full.weeks || []).filter(w => w.start <= end).map(w => {
       const copy = Object.assign({}, w);
+      if (full.reserveFunding) copy.reserveFunding = events.filter(event => event.date >= copy.start && event.date <= end)
+        .reduce((sum, event) => sum + reserveFundedAmount(event), 0);
       if (copy.end > end) {
         const closingRow = daily[daily.length - 1];
         copy.end = end;
@@ -1485,6 +1580,7 @@
     };
     totals.income = totals.confirmedIncome + totals.estimatedIncome;
     const ending = daily.length ? daily[daily.length - 1].balance : startingCashAmount(plan);
+    if (full.reserveFunding) totals.reserveFunding = events.reduce((sum, event) => sum + reserveFundedAmount(event), 0);
     const delta = daily.map((p, i) => p.balance - (i ? daily[i - 1].balance : startingCashAmount(plan)));
     const suffixMin = new Array(viewDays).fill(Infinity);
     for (let i = viewDays - 1; i >= 0; i--) {
@@ -1939,11 +2035,11 @@
     const kept = omitRepresented(events, plan, opts, start);
     const already = new Set(kept.map(e => e.id + '@' + e.date));
     const carried = carriedUnresolvedJointCashOutflows(plan, start, opts, already);
-    if (!carried.length) return kept;
+    if (!carried.length) return applyReserveFunding(kept, plan, start, end, opts);
     const out = kept.concat(carried);
     out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return out;
+    return applyReserveFunding(out, plan, start, end, opts);
   }
 
   // Additional cash needed to keep this walk's measured trajectory at or
@@ -2104,12 +2200,13 @@
       const todays = byDate.get(date) || [];
       for (const e of todays) {
         if (e.kind === 'noncash') { week.noncash += -e.amount; week.events.push(e); continue; }
+        if (reserveFundedAmount(e)) week.reserveFunding = (week.reserveFunding || 0) + reserveFundedAmount(e);
         // Card-paid dated service: planning gravity on the reserved
         // ledger for that day, not a chequing bill and not a card
         // capitalisation. Travel Visa settlement stays a separate
         // payment obligation.
         if (e.cardPaid) {
-          balance += e.amount;
+          balance += operatingEventAmount(e);
           week.reserved += -e.amount;
           week.events.push(e);
           continue;
@@ -2118,7 +2215,7 @@
         // the schedule (week.events) so it does not disappear, but it is
         // not deducted from joint cash and is not a week.bills cash total.
         if (e.jointCash === false) { week.events.push(e); continue; }
-        balance += e.amount;
+        balance += operatingEventAmount(e);
         if (e.kind === 'income') {
           if (e.confidence === 'confirmed') week.confirmedIncome += e.amount;
           else week.estimatedIncome += e.amount;
@@ -2225,6 +2322,11 @@
       // above the buffer once everything has cleared. Bounded by zero.
       extraDebtCapacity: Math.max(0, balance - buffer),
     };
+    if (savingsEarmarksEnabled(plan) && Array.isArray(plan.savingsEarmarks.pools)
+        && plan.savingsEarmarks.pools.some(pool => pool && pool.role === 'purpose-reserve')) {
+      full.reserveFunding = reserveFundingState(plan, asOf, opts);
+      totals.reserveFunding = weeks.reduce((sum, week) => sum + (week.reserveFunding || 0), 0);
+    }
     if (Object.hasOwn(opts, 'weeklyVariableBasis')) {
       const basis = opts.weeklyVariableBasis;
       const valid = basis && typeof basis.amount === 'number'
@@ -2877,10 +2979,13 @@
   function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation, periodBasis) {
     const unavailable = reason => ({ status: 'unavailable', reason,
       source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
-    if (savingsEarmarksEnabled(plan)) return unavailable(SAVINGS_INSTRUCTIONS_HELD);
     if (!plan || !asOf || !sim || sim.start !== asOf || !Array.isArray(sim.daily)
         || !Array.isArray(sim.events) || !Array.isArray(seq)) {
       return unavailable('The Forecast master cash path is unavailable.');
+    }
+    const reserves = savingsEarmarksEnabled(plan) ? sim.reserveFunding : null;
+    if (savingsEarmarksEnabled(plan) && (!reserves || reserves.status !== 'ready' || reserves.asOf !== asOf)) {
+      return unavailable(reserves && reserves.reason || SAVINGS_INSTRUCTIONS_HELD);
     }
     const hasSpendingBasis = Object.hasOwn(sim, 'weeklyVariableBasis');
     const spendingBasis = sim.weeklyVariableBasis;
@@ -2917,20 +3022,30 @@
       if (point && matching.length !== 1) {
         return unavailable('A dated planned payment does not match one Forecast cash event.');
       }
+      const backing = reserves && reserves.payments.find(payment => payment.id === row.id && payment.date === row.date);
+      const seed = backing ? savingsCents(backing.backed) : 0;
+      if (seed == null || seed > cents(amount) || seed < 0
+          || seed && (!matching[0] || savingsCents(reserveFundedAmount(matching[0])) !== seed
+            || matching[0].reserveFunding.asOf !== asOf
+            || matching[0].reserveFunding.parts.reduce((sum, part) => sum + savingsCents(part.amount), 0) !== seed)) {
+        return unavailable('Existing savings do not match one exact reserve-backed payment on the Forecast cash path.');
+      }
       costs.push({ id: row.id, label: row.label, date: row.date,
         group: row.group || null, baseRequirement: cents(amount),
+        actualSaved: reserves ? seed : null,
+        reserveParts: backing ? backing.parts : [],
         ceiling: row.bounds && row.bounds.ceiling != null ? cents(row.bounds.ceiling) : cents(amount),
         kind: point ? 'payment' : 'range-reserve',
         confidence: row.confidence || null, verdict: (published.get(row.id) || {}).verdict || null,
         rank: row.rank });
     }
     costs.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.rank - b.rank);
-    const prePayday = costs.filter(row => row.date < paydayDates[0]);
+    const prePayday = costs.filter(row => row.date < paydayDates[0] && row.baseRequirement > (row.actualSaved || 0));
     const schedulable = costs.filter(row => row.date >= paydayDates[0]);
     const paidOn = new Map();
     for (const cost of schedulable) {
       if (cost.kind === 'payment') paidOn.set(cost.date,
-        (paidOn.get(cost.date) || 0) + cost.baseRequirement);
+        (paidOn.get(cost.date) || 0) + cost.baseRequirement - (cost.actualSaved || 0));
     }
     const periods = paydayDates.map((date, index) => ({
       date, end: index + 1 < paydayDates.length
@@ -2986,7 +3101,7 @@
       period.paymentTotal = paidHere;
       before = endCash;
       for (const cost of schedulable) {
-        if (cost.date >= period.date && cost.date <= period.end) dueCumulative += cost.baseRequirement;
+        if (cost.date >= period.date && cost.date <= period.end) dueCumulative += cost.baseRequirement - (cost.actualSaved || 0);
       }
       period.dueCumulative = dueCumulative;
     }
@@ -3013,9 +3128,10 @@
       periods[i].minimumCumulative = Math.max(periods[i].dueCumulative, later - nextCapacity, 0);
       later = periods[i].minimumCumulative;
     }
-    const allocated = new Map(costs.map(cost => [cost.id, 0]));
+    const allocated = new Map(costs.map(cost => [cost.id, cost.actualSaved || 0]));
     const active = new Map(costs.map(cost => [cost.id, 0]));
     const fullyFundedOn = new Map();
+    for (const cost of costs) if (reserves && cost.actualSaved === cost.baseRequirement) fullyFundedOn.set(cost.id, asOf);
     const rows = [];
     let cumulative = 0;
     let protectedBalance = 0;
@@ -3163,14 +3279,16 @@
       const payments = [];
       for (const cost of schedulable) {
         if (cost.kind !== 'payment' || cost.date < period.date || cost.date > period.end) continue;
-        const consumed = Math.min(cost.baseRequirement, active.get(cost.id) || 0);
+        const operatingPayment = cost.baseRequirement - (cost.actualSaved || 0);
+        const consumed = Math.min(operatingPayment, active.get(cost.id) || 0);
         active.set(cost.id, (active.get(cost.id) || 0) - consumed);
         protectedBalance -= consumed;
         payments.push({ id: cost.id, label: cost.label, date: cost.date,
-          amount: dollars(cost.baseRequirement), protectedConsumed: dollars(consumed) });
-        if (consumed < cost.baseRequirement && !gap) {
-          gap = { payday: period.date, required: dollars(cost.baseRequirement),
-            available: dollars(consumed), shortBy: dollars(cost.baseRequirement - consumed),
+          amount: dollars(cost.baseRequirement), protectedConsumed: dollars(consumed),
+          ...(reserves ? { reserveFunded: dollars(cost.actualSaved), operatingPayment: dollars(operatingPayment), reserveParts: cost.reserveParts } : {}) });
+        if (consumed < operatingPayment && !gap) {
+          gap = { payday: period.date, required: dollars(operatingPayment),
+            available: dollars(consumed), shortBy: dollars(operatingPayment - consumed),
             affected: [cost.id], cashDate: cost.date };
         }
       }
@@ -3218,10 +3336,11 @@
       return { id: cost.id, label: cost.label, date: cost.date,
         kind: cost.kind, group: cost.group, baseRequirement: dollars(cost.baseRequirement),
         ceiling: dollars(cost.ceiling), uncertaintyAdditional: dollars(Math.max(0, cost.ceiling - cost.baseRequirement)),
-        protectedNow: null,
+        protectedNow: cost.actualSaved == null ? null : dollars(cost.actualSaved),
+        ...(reserves ? { actualSaved: dollars(cost.actualSaved), reserveParts: cost.reserveParts } : {}),
         protectedAfterNextPayday: contributions.length && rows.length
           && contributions[0].payday === rows[0].payday ? contributions[0].amount : 0,
-        stillToFund: dollars(cost.baseRequirement),
+        stillToFund: dollars(cost.baseRequirement - (cost.actualSaved || 0)),
         remainingAfterSchedule: dollars(cost.baseRequirement - (allocated.get(cost.id) || 0)),
         nextContribution: contributions[0] || null,
         contributions,
@@ -3244,7 +3363,7 @@
       groups.push({ id: item.group, label: item.groupLabel || item.label,
         members: members.map(member => member.id),
         baseRequirement: roundCent(members.reduce((sum, member) => sum + member.baseRequirement, 0)),
-        protectedNow: null,
+        protectedNow: reserves ? roundCent(members.reduce((sum, member) => sum + member.protectedNow, 0)) : null,
         stillToFund: roundCent(members.reduce((sum, member) => sum + member.stillToFund, 0)),
         nextContribution: groupContributions[0] || null,
         projectedFullyFunded: members.every(member => member.projectedFullyFunded)
@@ -3274,7 +3393,7 @@
         liveRowTrust || 'calculated',
         hasSpendingBasis ? spendingBasis.status : 'calculated'),
       paydays: rows, gap: gap || (prePayday.length ? (() => {
-        const overdueRequirement = prePayday.reduce((sum, row) => sum + row.baseRequirement, 0);
+        const overdueRequirement = prePayday.reduce((sum, row) => sum + row.baseRequirement - (row.actualSaved || 0), 0);
         return {
           payday: null, cashDate: prePayday.map(row => row.date).sort()[0],
           required: dollars(overdueRequirement), available: 0,
@@ -9941,6 +10060,7 @@
     const payFloor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const seq = fundingSequence(plan, asOf, opts);
+    const reserveState = reserveFundingState(plan, asOf, opts);
     const plans = opts.majorPlans || majorPlans(plan, asOf, Object.assign({}, opts, {
       weeklyVariable: opts.weeklyVariable != null ? opts.weeklyVariable : 0,
       horizonDays: horizon.days,
@@ -10034,7 +10154,7 @@
       if (!isJointCashOutflow(e) && !e.cardPaid) continue;
       if (e.kind === 'extra' || e.kind === 'injection' || e.kind === 'planned-debt') continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
-      const amt = -e.amount;
+      const amt = -operatingEventAmount(e);
       if (!(amt > EPSILON)) continue;
       obligationsWanted += amt;
       obligationItems.push({
@@ -10045,6 +10165,7 @@
         effect: e.effect || null,
         date: e.date,
         amount: roundCent(amt),
+        ...(e.reserveFunding ? { fullRequirement: -e.amount, reserveFunded: reserveFundedAmount(e) } : {}),
         confidence: e.confidence || null,
         cardPaid: e.cardPaid === true,
         // Settlement is expandEvents / representedEvents: a represented
@@ -10189,12 +10310,13 @@
       const planRow = plans.find(p => p.id === item.id) || null;
       const floor = item.need != null ? item.need
         : (item.bounds ? item.bounds.floor : 0);
+      const reserve = reserveState.payments.find(payment => payment.id === item.id && payment.date === item.date);
       const row = {
         id: item.id,
         label: item.label,
         date: item.date,
         when: item.when,
-        need: floor,
+        need: reserve ? roundCent(floor - reserve.backed) : floor,
         flexibility: item.flexibility,
         plan: planRow,
         confidence: item.confidence || null,
@@ -10707,12 +10829,13 @@
   // estimate substitutes for those holds. This is a projection, not saved cash
   // or a reconstruction of the original payday plan.
   function publishBudgetPeriodFunding(plan, asOf, periods, opts) {
-    if (savingsEarmarksEnabled(plan)) {
+    const reserves = savingsEarmarksEnabled(plan) ? reserveFundingState(plan, asOf, opts) : null;
+    if (reserves && reserves.status !== 'ready') {
       for (const period of periods || []) {
-        period.plannedCostFunding = { status: 'unavailable', reason: SAVINGS_INSTRUCTIONS_HELD,
+        period.plannedCostFunding = { status: 'unavailable', reason: reserves.reason,
           contribution: null, trust: 'unavailable', actualSaved: null, items: [] };
         if (period.start <= asOf && period.end >= asOf) period.fromTodayFunding = {
-          status: 'unavailable', reason: SAVINGS_INSTRUCTIONS_HELD, asOf,
+          status: 'unavailable', reason: reserves.reason, asOf,
           basis: 'Budget-from-today', contribution: null, trust: 'unavailable',
           actualSaved: null, items: [], periods: [], evidenceFailures: [],
         };
@@ -11078,7 +11201,7 @@
           const cash = startingCashAmount(plan);
           const payments = events.filter(e => costIds.has(e.id)
             && (e.kind === 'commitment' || e.kind === 'bill' || e.kind === 'reserve'));
-          const costPayments = roundCent(payments.reduce((s, e) => s - e.amount, 0));
+          const costPayments = roundCent(payments.reduce((s, e) => s - operatingEventAmount(e), 0));
           const income = roundCent(events.filter(e => e.kind === 'income').reduce((s, e) => s + e.amount, 0));
           const closing = forwardSim.daily.find(d => d.date === current.end).balance;
           const walkCapacity = roundCent(closing - cash + costPayments);
@@ -11101,10 +11224,11 @@
                 (cumulative.get(a.id) || 0) + Math.round(a.amount * 100));
               return Object.assign({}, row, { items: forward.costs.map(c => ({
                 id: c.id, label: c.label, date: c.date, confidence: c.confidence || 'estimated',
-                cost: c.baseRequirement, ceiling: c.ceiling, actualSaved: null,
+                cost: c.baseRequirement, ceiling: c.ceiling, actualSaved: c.actualSaved ?? null,
+                ...(reserves ? { reserveParts: c.reserveParts } : {}),
                 contribution: row.allocations.find(a => a.id === c.id)?.amount || 0,
                 cumulativeProposed: (cumulative.get(c.id) || 0) / 100,
-                remainingGap: roundCent(c.baseRequirement - (cumulative.get(c.id) || 0) / 100),
+                remainingGap: roundCent(c.baseRequirement - (c.actualSaved || 0) - (cumulative.get(c.id) || 0) / 100),
                 projectedFullyFunded: c.projectedFullyFunded,
               })) });
             });
@@ -11158,7 +11282,8 @@
           return { id: cost.id, label: cost.label, date: cost.date,
             cost: cost.baseRequirement, ceiling: cost.ceiling, confidence: cost.confidence || 'estimated',
             contribution: part ? part.amount : 0, cumulativeProposed: proposed,
-            remainingGap: roundCent(cost.baseRequirement - proposed), actualSaved: null,
+            remainingGap: roundCent(cost.baseRequirement - (cost.actualSaved || 0) - proposed), actualSaved: cost.actualSaved ?? null,
+            ...(reserves ? { reserveParts: cost.reserveParts } : {}),
             projectedFullyFunded: cost.projectedFullyFunded };
         });
         const b = basis.get(row.payday);
@@ -11173,7 +11298,8 @@
           // of new income and not evidence of an actual savings withdrawal.
           billPaymentsAlreadyDeducted: b.billPayments,
           proposedFundingForBillPayments: billConsumption,
-          afterProposedFunding: roundCent(b.period.balanceAfterDeductions - row.contribution + billConsumption),
+          afterProposedFunding: roundCent(b.period.balanceAfterDeductions - row.contribution + billConsumption
+            + row.payments.filter(r => b.billPaymentIds.includes(r.id)).reduce((sum, r) => sum + (r.reserveFunded || 0), 0)),
           projectedPayments: row.payments,
           capacity: b.capacity,
           operatingPeriodSurplus: b.period.balanceAfterDeductions,
@@ -14836,7 +14962,7 @@
         unmapped = true;
         continue;
       }
-      const amount = Number(event.amount) || 0;
+      const amount = Number(operatingEventAmount(event)) || 0;
       const prev = byClass.get(mapped.class) || { class: mapped.class, amount: 0, count: 0 };
       prev.amount += amount;
       prev.count += 1;
@@ -15259,7 +15385,7 @@
         const apply = cashWalkDate(event, walkStart);
         if (!apply || apply < month.start || apply > month.end) continue;
         if (event.kind === 'noncash' || event.jointCash === false) continue;
-        const amount = Number(event.amount) || 0;
+        const amount = Number(operatingEventAmount(event)) || 0;
         if (!amount) continue;
         if (amount > 0) inflow += amount;
         else outflow += -amount;
@@ -16583,9 +16709,13 @@
       const line = {
         id: rows[0].id || id,
         label: rows[0].label || id,
-        amount: roundCent(rows.reduce((s, e) => s + (-Number(e.amount) || 0), 0)),
+        amount: roundCent(rows.reduce((s, e) => s + (-Number(operatingEventAmount(e)) || 0), 0)),
         status: trajectoryEventsStatus(rows),
       };
+      if (rows.some(event => event.reserveFunding)) {
+        line.fullRequirement = roundCent(rows.reduce((sum, event) => sum - event.amount, 0));
+        line.reserveFunded = roundCent(rows.reduce((sum, event) => sum + reserveFundedAmount(event), 0));
+      }
       if (dates.length === 1) line.date = dates[0];
       lines.push(line);
     }
@@ -16868,7 +16998,7 @@
         || isDatedReservePlanningEvent(e)));
     const extras = events.filter(e =>
       e && e.kind === 'extra' && e.id !== 'hypothetical-extra');
-    const sumOut = rows => roundCent(rows.reduce((s, e) => s + (-Number(e.amount) || 0), 0));
+    const sumOut = rows => roundCent(rows.reduce((s, e) => s + (-Number(operatingEventAmount(e)) || 0), 0));
     const billsAmount = sumOut(bills);
     const obligationsAmount = sumOut(obligations);
     const commitmentsAmount = sumOut(commitments);
@@ -17358,7 +17488,7 @@
         amount: event.amount < 0 ? -roundCent(-event.amount) : roundCent(event.amount),
       }));
       const commitmentsAmount = roundCent(monthEvents.reduce((sum, event) =>
-        sum + (-Number(event.amount) || 0), 0));
+        sum + (-Number(operatingEventAmount(event)) || 0), 0));
       const commitmentsStatus = trajectoryEventsStatus(monthEvents);
       const commitments = {
         amount: commitmentsAmount,

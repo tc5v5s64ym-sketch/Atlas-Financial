@@ -4095,7 +4095,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       <div class="operating-line"><span>Cumulative proposed / cost</span><span>${fundMoney(row.cumulativeProposed)} / ${costMoney(row)}</span></div>
       <div class="operating-line"><span>Still to set aside after this period</span><span>${fundMoney(row.remainingGap)}</span></div>
       ${numeric(row.ceiling) && numeric(row.cost) && row.ceiling > row.cost ? `<p class="operating-note">Estimated cost range: ${costMoney(row)}–${money2(row.ceiling)}. The upper estimate remains additional uncertainty.</p>` : ''}
-      <p class="operating-note">Planning date: ${escape(row.date || 'Unavailable')} · Destination account: unavailable · Actual saved: unavailable.</p>
+      <p class="operating-note">Planning date: ${escape(row.date || 'Unavailable')} · Destination account: ${row.reserveParts && row.reserveParts.length ? row.reserveParts.map(part => escape(part.label || part.accountId)).join(' · ') : 'unavailable'} · Actual saved: ${numeric(row.actualSaved) ? money2(row.actualSaved) + ' calculated backing' : 'unavailable'}.</p>
     </div>`).join('')}`;
   const fundingBody = fundingKnown ? `<p class="operating-note">Proposed earmarks from this Budget period's income, bills and household allowance. They are not transfers or money already saved.</p>
     ${itemDetails}
@@ -4120,10 +4120,10 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     <div class="operating-line"><span>Proposed contribution</span><span>${todayMoney(row.contribution)}</span></div>
     <div class="operating-line"><span>Cumulative proposed / cost</span><span>${todayMoney(row.cumulativeProposed)} / ${costMoney(row)}</span></div>
     <div class="operating-line"><span>Remaining requirement</span><span>${todayMoney(row.remainingGap)}</span></div>
-    <p class="operating-note">Planning date: ${escape(row.date || 'Unknown')}${row.confidence === 'estimated' ? ' · estimated' : ''}${numeric(row.ceiling) && row.ceiling > row.cost ? ` · upper estimate ${money2(row.ceiling)}` : ''}. Actual saved and destination account: unknown.</p>
+    <p class="operating-note">Planning date: ${escape(row.date || 'Unknown')}${row.confidence === 'estimated' ? ' · estimated' : ''}${numeric(row.ceiling) && row.ceiling > row.cost ? ` · upper estimate ${money2(row.ceiling)}` : ''}. ${numeric(row.actualSaved) ? 'Actual saved: ' + money2(row.actualSaved) + ' calculated backing. Destination account: ' + (row.reserveParts && row.reserveParts.length ? row.reserveParts.map(part => escape(part.label || part.accountId)).join(' · ') : 'unknown') + '.' : 'Actual saved and destination account: unknown.'}</p>
   </div>`).join('');
   const fromTodayBody = today ? `<div data-from-today="${escape(today.asOf)}">
-    <p class="operating-note">${todayKnown ? 'A new proposal dated' : 'Evidence checked for'} ${escape(today.asOf)}. ${confirmedSavings ? 'Additional contributions are withheld. Confirmed assignments and backing are shown in the savings inventory.' : todayKnown ? 'Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.' : 'No savings proposal is available. The original payday allocation and actual saved balance have not been reconstructed.'}</p>
+    <p class="operating-note">${todayKnown ? 'A new proposal dated' : 'Evidence checked for'} ${escape(today.asOf)}. ${confirmedSavings ? todayKnown ? 'Backed assignments are included once; additional contributions remain proposals.' : 'Additional contributions are withheld. Confirmed assignments and backing are shown in the savings inventory.' : todayKnown ? 'Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.' : 'No savings proposal is available. The original payday allocation and actual saved balance have not been reconstructed.'}</p>
     ${todayKnown ? `<p class="operating-note">Chequing evidence: ${escape(today.cashAsOf)}. Spending observed through ${escape(today.observationAsOf)}. Budget targets and actuals supply the remaining household needs.</p>
       <div class="operating-line"><span>Current chequing cash</span><span>${todayMoney(today.currentCash)}</span></div>
       <div class="operating-line"><span>Remaining bills and debt payments</span><span>${todayMoney(today.operatingBills)}</span></div>
