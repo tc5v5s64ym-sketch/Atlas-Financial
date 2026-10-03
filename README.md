@@ -49,14 +49,18 @@ is still the whole financial picture of two people.
   stays disabled. The browser never holds that secret. It never writes and
   does not persist prompts or answers. `GET /talk/capability` reports whether
   that path is configured.
-- `POST /assistant/mcp` exposes that incumbent packet as exactly one MCP tool,
-  `get_atlas_current`. It accepts only issuer-signed JWT access tokens issued
+- `POST /assistant/mcp` exposes the incumbent packet as `get_atlas_current`,
+  plus direct Lunch Money catalog, transaction lookup, edit preview and confirmed apply tools. It accepts only issuer-signed JWT access tokens issued
   for the exact MCP resource with scope `atlas.current.read`; the static
   assistant token and browser cookie do not work there. Atlas publishes OAuth
   protected-resource metadata at `/.well-known/oauth-protected-resource`,
   verifies the exact configured issuer identifier, signature/JWKS, audience,
-  expiry/not-before, and scope on every request, and has no write-capable MCP
-  tool. Opaque access tokens are not supported.
+  expiry/not-before, and scope on every request. Lunch Money tools also require
+  an authenticated JWT `sub`; catalog/query require `atlas.transactions.read`
+  and preview/apply require `atlas.transactions.write`. `atlas.current.read`
+  does not grant ledger access.
+  Only category/notes edits and amount-conserving splits are supported.
+  Opaque access tokens are not supported.
 - OAuth login, consent, authorization-code + PKCE, client registration, token
   issuance, and refresh belong to the configured external standards-compatible
   authorization server. Atlas is only the resource server; it adds no user
@@ -199,3 +203,28 @@ Raw bank exports and statement PDFs live in `raw/` on this machine only. They
 contain names, addresses and partial card numbers, are gitignored, and are
 additionally blocked by `.githooks/pre-commit` (local) and the incumbent
 privacy-guard CI job (GitHub API / connector writes).
+
+
+### Direct Lunch Money ChatGPT tools (owner authorization 2026-10-02)
+
+Deploy the updated server, configure the external issuer to grant
+`atlas.transactions.read` and, for edits, `atlas.transactions.write` alongside
+`atlas.current.read` for the exact MCP resource, then reconnect/refresh Atlas
+Financial in ChatGPT so tool discovery and consent include the new scopes. The
+issuer must provide a stable authenticated `sub`. Reuse the server-side Lunch
+Money credential; never paste it into chat.
+
+Call `get_lunchmoney_catalog` for account/category references, then
+`get_lunchmoney_transactions` with explicit start/end dates. Category-group
+filters include their subcategories. Account lookups include individual group
+children and omit group parents so purchases are counted once. These tools expose
+selected ledger fields including payee and notes, unlike the sanitized Atlas
+packet. References and previews expire after ten minutes or server restart.
+For a correction, `prepare_lunchmoney_edit` produces an exact preview; after the
+user confirms that preview, `apply_lunchmoney_edit` writes and verifies readback.
+An uncertain write must be reconciled by lookup, never automatically retried.
+Pending, grouped and already split transactions cannot be edited in this slice.
+Preview state is process-local; use a single instance or session affinity. A
+restart or different instance fails closed. Re-reading detects stale previews,
+but the provider offers no atomic compare-and-swap against another client's
+concurrent edit. Atlas does not change canonical facts or bank balances.

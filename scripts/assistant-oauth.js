@@ -15,6 +15,7 @@ const {
   requireBearerAuth,
 } = require('@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js');
 const AssistantMcp = require('./assistant-mcp.js');
+const { READ_SCOPE, WRITE_SCOPE } = require('./assistant-lunchmoney.js');
 
 const METADATA_PATH = '/.well-known/oauth-protected-resource';
 const ASYMMETRIC_JWT_ALGORITHMS = Object.freeze([
@@ -84,9 +85,9 @@ function protectedResourceMetadata(config) {
   return {
     resource: config.resource.href,
     authorization_servers: [config.issuer],
-    scopes_supported: [config.requiredScope],
+    scopes_supported: [config.requiredScope, READ_SCOPE, WRITE_SCOPE],
     bearer_methods_supported: ['header'],
-    resource_name: 'Atlas Financial read-only assistant',
+    resource_name: 'Atlas Financial assistant with confirmed Lunch Money edits',
   };
 }
 
