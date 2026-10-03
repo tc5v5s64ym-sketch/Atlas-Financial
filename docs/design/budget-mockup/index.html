@@ -8,10 +8,13 @@
 <!--
   Standalone design mockup for the Budget page. Not served by server.js and not
   wired to Forecast. Every amount below is copied as published from the live
-  Budget page of 2026-10-02 so the layout can be judged against real shapes;
-  none is a current or canonical figure. The script only formats, sorts and
-  sizes bars — it totals no money, so it cannot produce a figure Forecast did
-  not publish. Transaction rows inside the category sheets are illustrative.
+  Budget page of 2026-10-03 (pay-period and Month views) so the layout can be
+  judged against real shapes; none is a current or canonical figure. The script
+  only formats, sorts and sizes bars — every amount it prints is one Forecast
+  published, and bar scaling never surfaces as a figure. Transaction rows inside the category sheets
+  and the "missing data" preview are illustrative.
+
+  URL options for review: ?view=month  ?lens=payday  ?missing=1  ?theme=dark
 -->
 <style>
 :root {
@@ -84,16 +87,18 @@ body {
 }
 button { font:inherit; color:inherit; }
 a { color:var(--accent-ink); }
-.num, .m { font-variant-numeric:tabular-nums; }
-.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.m { font-variant-numeric:tabular-nums; white-space:nowrap; }
+[hidden] { display:none !important; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
 
-/* Mockup strip */
-.mock-strip {
-  background:var(--ink); color:var(--bg); font-size:12px; text-align:center;
-  padding:6px 14px; letter-spacing:.01em;
-}
+/* Strips */
+.mock-strip { background:var(--ink); color:var(--bg); font-size:12px; text-align:center; padding:6px 14px; }
 .mock-strip b { font-weight:650; }
+.missing-strip {
+  background:var(--warn-soft); color:var(--warn); font-size:13px; text-align:center; padding:8px 14px; font-weight:560;
+  border-bottom:1px solid color-mix(in srgb, var(--warn-fill) 30%, transparent);
+}
+.missing-strip button { border:0; background:none; color:inherit; text-decoration:underline; cursor:pointer; font-weight:650; padding:0 4px; }
 
 /* Top bar */
 .topbar {
@@ -115,20 +120,30 @@ a { color:var(--accent-ink); }
   padding:6px 12px 6px 10px; border-radius:999px; background:var(--surface); box-shadow:var(--shadow); border:0; cursor:pointer;
 }
 .dot { width:8px; height:8px; border-radius:50%; background:var(--good-fill); box-shadow:0 0 0 3px var(--good-soft); flex:none; }
+.is-missing .fresh .dot { background:var(--warn-fill); box-shadow:0 0 0 3px var(--warn-soft); }
 .icon-btn { width:34px; height:34px; border-radius:999px; border:0; background:var(--surface); box-shadow:var(--shadow); display:grid; place-items:center; cursor:pointer; color:var(--ink-2); }
 .icon-btn svg { width:17px; height:17px; }
 
-/* Page */
 .page { max-width:1240px; margin:0 auto; padding:26px 28px 80px; }
 
 /* Period header */
 .period { display:flex; align-items:flex-end; gap:24px; margin:4px 0 22px; flex-wrap:wrap; }
+.period-left { display:flex; flex-direction:column; gap:14px; }
 .period-switch { display:flex; align-items:center; gap:10px; }
-.period-arrow { width:36px; height:36px; border-radius:999px; border:1px solid var(--line); background:var(--surface); display:grid; place-items:center; cursor:pointer; color:var(--ink-2); }
+.period-arrow { width:36px; height:36px; border-radius:999px; border:1px solid var(--line); background:var(--surface); display:grid; place-items:center; cursor:pointer; color:var(--ink-2); flex:none; }
 .period-arrow:hover { color:var(--ink); border-color:var(--ink-3); }
 .period-arrow svg { width:16px; height:16px; }
 .eyebrow { font-size:12px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); }
 .period h1 { margin:2px 0 0; font-size:32px; line-height:1.1; letter-spacing:-.025em; font-weight:720; }
+.seg {
+  display:inline-flex; padding:3px; border-radius:999px; background:color-mix(in srgb, var(--ink) 6%, transparent); gap:2px;
+}
+.seg button {
+  border:0; background:none; padding:6px 14px; border-radius:999px; font-size:13.5px; font-weight:580; color:var(--ink-2); cursor:pointer; white-space:nowrap;
+}
+.seg button[aria-pressed="true"] { background:var(--surface); color:var(--ink); box-shadow:var(--shadow); }
+.seg.wide { display:flex; }
+.seg.wide button { flex:1; padding:9px 14px; }
 .pill {
   display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:3px 10px;
   font-size:12px; font-weight:620; white-space:nowrap; line-height:1.5;
@@ -137,30 +152,26 @@ a { color:var(--accent-ink); }
 .pill.good { background:var(--good-soft); color:var(--good); }
 .pill.warn { background:var(--warn-soft); color:var(--warn); }
 .pill.bad { background:var(--bad-soft); color:var(--bad); }
-.pill.muted { background:var(--line-2); color:var(--ink-2); border:1px dashed var(--line); }
+.pill.muted { background:var(--line-2); color:var(--ink-2); }
 .period-progress { margin-left:auto; min-width:300px; flex:0 1 380px; }
 .period-progress-top { display:flex; justify-content:space-between; font-size:13px; color:var(--ink-2); margin-bottom:8px; gap:12px; }
 .period-progress-top b { color:var(--ink); font-weight:650; }
-.days { display:grid; grid-template-columns:repeat(14, 1fr); gap:3px; }
+.days { display:grid; gap:3px; }
 .days span { height:8px; border-radius:3px; background:var(--bar-track); }
 .days span.past { background:color-mix(in srgb, var(--accent) 55%, var(--bar-track)); }
 .days span.today { background:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+.days span.payday { box-shadow:inset 0 0 0 2px var(--good-fill); }
 
-/* Jump chips */
 .jump { display:none; }
 
-/* Grid */
+/* Layout */
 .grid { display:grid; gap:18px; margin-bottom:18px; }
 .hero { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .split { grid-template-columns:minmax(0,7fr) minmax(0,5fr); align-items:start; }
 .split-upcoming { grid-template-columns:minmax(0,8fr) minmax(0,4fr); align-items:start; }
-.stack { display:grid; gap:18px; }
+.stack { display:grid; gap:18px; align-content:start; }
 
-/* Cards */
-.card {
-  background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--shadow);
-  padding:24px; position:relative; min-width:0;
-}
+.card { background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--shadow); padding:24px; position:relative; min-width:0; }
 .card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:14px; }
 .card-head h2 { margin:3px 0 0; font-size:19px; letter-spacing:-.015em; font-weight:680; }
 .card-head .sub { color:var(--ink-2); font-size:13.5px; margin-top:4px; }
@@ -168,27 +179,35 @@ a { color:var(--accent-ink); }
 .section-title h2 { font-size:22px; margin:0; letter-spacing:-.02em; font-weight:700; }
 .section-title p { margin:0; color:var(--ink-2); font-size:14px; }
 
-/* Money */
-.m { white-space:nowrap; }
-.m .c { font-size:.62em; vertical-align:.52em; margin-left:1px; opacity:.85; font-weight:inherit; }
+/* Money and states */
+.m .c { font-size:.62em; vertical-align:.52em; margin-left:1px; opacity:.85; }
 .m .approx { color:var(--warn-fill); font-weight:600; margin-right:.18em; }
 .big .approx, .mid .approx { font-size:.62em; vertical-align:.2em; font-weight:650; margin-right:.12em; }
 .big { font-size:46px; line-height:1; letter-spacing:-.035em; font-weight:720; }
 .mid { font-size:26px; line-height:1.1; letter-spacing:-.025em; font-weight:700; }
-.unk {
-  display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:620; color:var(--ink-2);
-  padding:2px 10px; border-radius:999px; border:1px dashed var(--ink-3); background:var(--surface-2);
+.neg { color:var(--bad); }
+/* One vocabulary for every figure that isn't a plain number. */
+.st {
+  display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:620; white-space:nowrap;
+  padding:1px 9px; border-radius:999px; line-height:1.6; vertical-align:middle;
 }
+.st svg { width:12px; height:12px; flex:none; }
+.st-unknown { color:var(--ink-2); border:1px dashed var(--ink-3); background:var(--surface-2); }
+.st-withheld { color:var(--ink-2); background:var(--line-2); border:1px solid var(--line); }
+.st-pending { color:var(--accent-ink); background:var(--accent-soft); }
+.st-check { color:var(--warn); background:var(--warn-soft); }
+.st-setup { color:var(--ink-2); border:1px dashed var(--ink-3); }
+.st-none { color:var(--ink-3); font-weight:560; padding:0; }
+.big .st, .mid .st { font-size:15px; padding:4px 14px; letter-spacing:0; font-weight:620; }
+.is-unknown-bar { background:var(--hatch), var(--bar-track) !important; }
 
-/* Today card */
+/* Today */
 .today { display:flex; flex-direction:column; }
-.today-figure { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
 .today-sub { color:var(--ink-2); font-size:13.5px; margin-top:8px; display:flex; gap:6px 14px; flex-wrap:wrap; }
 .today-sub b { color:var(--ink); font-weight:620; }
 .alloc { margin:22px 0 8px; }
-.alloc-bar { display:flex; height:16px; border-radius:999px; overflow:hidden; gap:2px; background:var(--surface); }
-.alloc-bar span { display:block; height:100%; transition:filter .2s; }
-.alloc-bar span:hover { filter:brightness(1.08); }
+.alloc-bar { display:flex; height:16px; border-radius:999px; overflow:hidden; gap:2px; }
+.alloc-bar span { display:block; height:100%; }
 .seg-bills { background:var(--ink); }
 .seg-needs { background:var(--accent); }
 .seg-floor { background:var(--muted-fill); background-image:var(--hatch); }
@@ -198,17 +217,23 @@ a { color:var(--accent-ink); }
 .leg-sw { width:10px; height:10px; border-radius:3px; margin-top:5px; flex:none; }
 .leg-label { font-size:13px; color:var(--ink-2); line-height:1.35; }
 .leg-value { font-size:16px; font-weight:650; display:block; color:var(--ink); margin-top:1px; }
-.answer {
-  margin-top:20px; padding:14px 16px; border-radius:var(--r-lg); background:var(--good-soft);
-  display:flex; gap:12px; align-items:flex-start;
-}
+.answer { margin-top:20px; padding:14px 16px; border-radius:var(--r-lg); background:var(--good-soft); display:flex; gap:12px; align-items:flex-start; }
 .answer svg { flex:none; width:20px; height:20px; color:var(--good); margin-top:1px; }
 .answer p { margin:0; font-size:14.5px; }
 .answer p + p { margin-top:4px; color:var(--ink-2); font-size:13px; }
-.link-btn {
-  border:0; background:none; padding:0; color:var(--accent-ink); font-weight:600; cursor:pointer;
-  display:inline-flex; align-items:center; gap:4px; font-size:13.5px;
+.withheld {
+  margin-top:18px; padding:16px; border-radius:var(--r-lg); background:var(--surface-2); border:1px dashed var(--line);
 }
+.withheld h3 { margin:0 0 4px; font-size:14.5px; display:flex; gap:8px; align-items:center; }
+.withheld h3 svg { width:16px; height:16px; color:var(--ink-3); }
+.withheld > p { margin:0 0 10px; font-size:13px; color:var(--ink-2); }
+.reasons { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.reasons li { display:grid; grid-template-columns:18px minmax(0,1fr); gap:8px; font-size:13.5px; }
+.reasons li::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--warn-fill); margin:7px 0 0 4px; }
+.reasons small { display:block; color:var(--ink-3); font-size:12px; }
+.withheld .action { margin-top:12px; font-size:12.5px; color:var(--ink-2); display:flex; gap:8px; align-items:flex-start; }
+.withheld .action svg { width:14px; height:14px; flex:none; margin-top:2px; color:var(--accent-ink); }
+.link-btn { border:0; background:none; padding:0; color:var(--accent-ink); font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; font-size:13.5px; }
 .link-btn svg { width:14px; height:14px; }
 .card-foot { margin-top:auto; padding-top:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
 .fine { font-size:12.5px; color:var(--ink-3); line-height:1.45; }
@@ -218,11 +243,11 @@ a { color:var(--accent-ink); }
 }
 .next-pay:hover { background:var(--surface-2); }
 .next-pay > svg { width:18px; height:18px; color:var(--ink-3); }
-.next-pay-date { width:42px; text-align:center; border-radius:10px; background:var(--accent-soft); color:var(--accent-ink); padding:4px 0; line-height:1.1; }
-.next-pay-date small { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-.next-pay-date b { font-size:17px; }
-.next-pay-t { display:block; font-size:14px; font-weight:620; }
-.next-pay-d { display:block; font-size:12.5px; color:var(--ink-2); margin-top:1px; }
+.date-badge { width:42px; text-align:center; border-radius:10px; background:var(--accent-soft); color:var(--accent-ink); padding:4px 0; line-height:1.1; }
+.date-badge small { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.date-badge b { font-size:17px; }
+.np-t { display:block; font-size:14px; font-weight:620; }
+.np-d { display:block; font-size:12.5px; color:var(--ink-2); margin-top:1px; }
 
 /* Waterfall */
 .wf { display:grid; gap:4px; margin-top:20px; }
@@ -240,45 +265,36 @@ a { color:var(--accent-ink); }
 .wf-row.minus .wf-bar { background:var(--ink-2); opacity:.55; }
 .wf-row.sub .wf-bar { background:color-mix(in srgb, var(--accent) 35%, var(--bar-track)); }
 .wf-row.final .wf-bar { background:var(--good-fill); }
-.wf-row.unavail .wf-track { background:var(--hatch), var(--bar-track); }
 .wf-val { font-size:15px; font-weight:650; text-align:right; min-width:104px; }
 .wf-row.final { background:var(--surface-2); margin-top:4px; }
 .wf-row.final .wf-name { font-weight:700; }
 .wf-row.final .wf-val { font-size:17px; }
-.wf-divider { height:1px; background:var(--line); margin:2px 10px; }
 
 /* Attention */
 .attention { padding:18px 22px; }
 .attention-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
 .attention-head h2 { font-size:16px; margin:0; font-weight:680; }
 .attention-list { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; }
-.att {
-  display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--r-lg);
-  background:var(--surface-2); border:0; text-align:left; cursor:pointer; width:100%; min-width:0;
-}
+.att { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--r-lg); background:var(--surface-2); border:0; text-align:left; cursor:pointer; width:100%; min-width:0; }
 .att:hover { background:color-mix(in srgb, var(--surface-2) 70%, var(--line)); }
 .att-ico { width:26px; height:26px; border-radius:8px; display:grid; place-items:center; flex:none; }
 .att-ico svg { width:15px; height:15px; }
 .att.bad .att-ico { background:var(--bad-soft); color:var(--bad); }
 .att.warn .att-ico { background:var(--warn-soft); color:var(--warn); }
 .att.info .att-ico { background:var(--line-2); color:var(--ink-2); }
-.att-t { font-size:13.5px; font-weight:620; line-height:1.3; }
-.att-d { font-size:12.5px; color:var(--ink-2); margin-top:3px; line-height:1.35; }
+.att-t { display:block; font-size:13.5px; font-weight:620; line-height:1.3; }
+.att-d { display:block; font-size:12.5px; color:var(--ink-2); margin-top:3px; line-height:1.35; }
 
 /* Spending */
-.budget-summary { display:flex; gap:28px; flex-wrap:wrap; padding:14px 0 18px; border-bottom:1px solid var(--line); margin-bottom:6px; }
+.summary3 { display:flex; gap:28px; flex-wrap:wrap; padding:14px 0 18px; border-bottom:1px solid var(--line); margin-bottom:6px; }
 .stat-label { font-size:12.5px; color:var(--ink-3); }
 .stat-value { font-size:20px; font-weight:680; letter-spacing:-.015em; margin-top:2px; }
 .stat-value.bad { color:var(--bad); }
-.cats { display:grid; }
-.cat {
-  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 16px; padding:14px 6px; border:0; background:none;
-  text-align:left; width:100%; cursor:pointer; border-bottom:1px solid var(--line-2); border-radius:0;
-}
+.cat { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 16px; padding:14px 6px; border:0; background:none; text-align:left; width:100%; cursor:pointer; border-bottom:1px solid var(--line-2); }
 .cat:last-child { border-bottom:0; }
 .cat:hover { background:var(--surface-2); border-radius:var(--r-md); }
 .cat-name { font-weight:600; font-size:14.5px; display:flex; align-items:center; gap:8px; min-width:0; }
-.cat-meta { font-size:12.5px; color:var(--ink-3); font-weight:450; }
+.cat-meta { grid-column:1 / -1; margin-top:-4px; font-size:12.5px; color:var(--ink-3); display:flex; justify-content:space-between; gap:10px; }
 .cat-status { font-size:14px; font-weight:650; text-align:right; white-space:nowrap; }
 .cat-status.over { color:var(--bad); }
 .cat-status.left { color:var(--good); }
@@ -286,153 +302,156 @@ a { color:var(--accent-ink); }
 .cat-bar { grid-column:1 / -1; position:relative; height:8px; border-radius:4px; background:var(--bar-track); }
 .cat-fill { position:absolute; left:0; top:0; bottom:0; border-radius:4px; background:var(--accent); }
 .cat.over .cat-fill { border-radius:4px 0 0 4px; }
+.cat.used .cat-fill { background:var(--ink-3); }
 .cat-over { position:absolute; top:0; bottom:0; background:var(--bad-fill); border-radius:0 4px 4px 0; }
 .plan-mark { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--surface); }
-.cat.used .cat-fill { background:var(--ink-3); }
-.cat.unassigned .cat-bar { background:var(--hatch), var(--bar-track); }
+.cat.unassigned .cat-bar, .cat.unknown .cat-bar { background:var(--hatch), var(--bar-track); }
 .pace { position:absolute; top:-4px; bottom:-4px; width:2px; border-radius:1px; background:var(--ink); opacity:.55; }
 .pace-key { display:inline-flex; align-items:center; gap:6px; }
 .pace-key i { display:inline-block; width:2px; height:12px; background:var(--ink); opacity:.55; border-radius:1px; }
+.tx-hint { display:inline-flex; align-items:center; gap:3px; color:var(--accent-ink); font-weight:560; }
+.tx-hint svg { width:12px; height:12px; }
 
 /* Bills */
 .bills-progress { display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--bar-track); margin:14px 0 6px; }
 .bills-progress span { background:var(--good-fill); }
 .bills-figs { display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink-3); }
+.bill-counts { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
 .group { margin-top:18px; }
 .group-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 4px 6px; }
 .group-head h3 { margin:0; font-size:13px; font-weight:650; color:var(--ink-2); display:flex; gap:8px; align-items:center; }
 .group-note { font-size:12.5px; color:var(--ink-3); margin:-2px 4px 8px; }
-.bill {
-  display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:12px; align-items:center;
-  padding:9px 6px; border:0; background:none; width:100%; text-align:left; cursor:pointer; border-radius:var(--r-md);
-}
+.bill { display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:12px; align-items:center; padding:9px 6px; border:0; background:none; width:100%; text-align:left; cursor:pointer; border-radius:var(--r-md); }
 .bill:hover { background:var(--surface-2); }
 .date-chip { width:44px; text-align:center; border-radius:10px; background:var(--surface-2); padding:4px 0; line-height:1.1; }
 .date-chip small { display:block; font-size:10px; font-weight:650; text-transform:uppercase; color:var(--ink-3); letter-spacing:.04em; }
 .date-chip b { font-size:16px; font-weight:680; }
-.bill-name { font-size:14px; font-weight:560; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bill-name { display:block; font-size:14px; font-weight:560; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .bill-state { font-size:12px; color:var(--ink-3); margin-top:1px; display:flex; align-items:center; gap:6px; }
 .bill-amt { font-weight:650; font-size:14.5px; text-align:right; }
-.sdot { width:7px; height:7px; border-radius:50%; flex:none; }
+.sdot { width:7px; height:7px; border-radius:50%; flex:none; display:inline-block; }
 .sdot.paid { background:var(--good-fill); }
-.sdot.due { background:var(--accent); }
+.sdot.due { background:var(--ink-2); }
+.sdot.pending { background:var(--accent); }
 .sdot.check { background:var(--warn-fill); }
 .bill.is-paid .bill-name, .bill.is-paid .bill-amt { color:var(--ink-2); }
 details.paid-group > summary { list-style:none; cursor:pointer; }
 details.paid-group > summary::-webkit-details-marker { display:none; }
 .chev { width:16px; height:16px; transition:transform .2s var(--ease); color:var(--ink-3); }
 details[open] > summary .chev { transform:rotate(180deg); }
-.deduct-note {
-  margin-top:16px; padding:12px 14px; border-radius:var(--r-md); background:var(--surface-2);
-  display:flex; justify-content:space-between; gap:14px; align-items:center;
-}
-.deduct-note p { margin:0; font-size:12.5px; color:var(--ink-2); }
-.deduct-note .m { font-weight:650; }
+.note-box { margin-top:16px; padding:12px 14px; border-radius:var(--r-md); background:var(--surface-2); display:flex; justify-content:space-between; gap:14px; align-items:center; }
+.note-box p { margin:0; font-size:12.5px; color:var(--ink-2); }
+.note-box .m { font-weight:650; }
 
 /* Upcoming */
-.up-summary { display:flex; gap:28px; flex-wrap:wrap; margin:2px 0 18px; }
-.gap-callout {
-  display:flex; gap:12px; align-items:flex-start; padding:14px 16px; border-radius:var(--r-lg);
-  background:var(--bad-soft); margin-bottom:16px;
-}
+.lens-intro { display:flex; gap:10px; align-items:flex-start; margin:14px 0 18px; font-size:13px; color:var(--ink-2); }
+.lens-intro svg { width:16px; height:16px; flex:none; margin-top:1px; color:var(--ink-3); }
+.summary-row { display:flex; gap:28px; flex-wrap:wrap; margin:2px 0 16px; }
+.gap-callout { display:flex; gap:12px; align-items:flex-start; padding:14px 16px; border-radius:var(--r-lg); background:var(--bad-soft); margin-bottom:16px; }
 .gap-callout svg { width:20px; height:20px; color:var(--bad); flex:none; margin-top:1px; }
 .gap-callout p { margin:0; font-size:14px; }
 .gap-callout p + p { margin-top:3px; font-size:12.5px; color:var(--ink-2); }
-.timeline { position:relative; }
 .month { display:grid; grid-template-columns:72px minmax(0,1fr); gap:14px; }
 .month + .month { border-top:1px solid var(--line-2); }
 .month-label { padding-top:16px; font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-3); }
 .month-label small { display:block; font-weight:500; letter-spacing:0; text-transform:none; font-size:11.5px; }
 .month-items { display:grid; padding:6px 0; }
-.cost {
-  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 16px; padding:10px 8px 10px 14px; position:relative;
-  border:0; background:none; width:100%; text-align:left; cursor:pointer; border-radius:var(--r-md);
-}
+.cost { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 16px; padding:10px 8px 10px 14px; position:relative; border:0; background:none; width:100%; text-align:left; cursor:pointer; border-radius:var(--r-md); }
 .cost:hover { background:var(--surface-2); }
-.cost.in-gap::before {
-  content:""; position:absolute; left:2px; top:10px; bottom:10px; width:3px; border-radius:2px; background:var(--bad-fill); opacity:.75;
-}
-.cost-name { font-size:14.5px; font-weight:580; }
-.cost-when { font-size:12.5px; color:var(--ink-3); margin-top:1px; }
+.cost.in-gap::before { content:""; position:absolute; left:2px; top:10px; bottom:10px; width:3px; border-radius:2px; background:var(--bad-fill); opacity:.75; }
+.cost-name { display:block; font-size:14.5px; font-weight:580; }
+.cost-when { display:block; font-size:12.5px; color:var(--ink-3); margin-top:1px; }
 .cost-amt { text-align:right; font-weight:650; font-size:14.5px; }
 .cost-progress { grid-column:1 / -1; display:flex; align-items:center; gap:10px; margin-top:4px; }
 .cost-track { flex:1; height:6px; border-radius:3px; background:var(--bar-track); position:relative; overflow:hidden; }
 .cost-track span { position:absolute; left:0; top:0; bottom:0; background:var(--good-fill); border-radius:3px; }
+.lens-payday .cost-track span { background:var(--accent); }
 .cost-state { font-size:12.5px; color:var(--ink-2); white-space:nowrap; }
 .cost-state.covered { color:var(--good); font-weight:620; }
-.cost.undated .cost-track { background:var(--hatch), var(--bar-track); }
+.lens-payday .cost-state.covered { color:var(--accent-ink); }
 .gap-key { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-2); }
 .gap-key i { width:3px; height:14px; border-radius:2px; background:var(--bad-fill); opacity:.75; display:inline-block; }
-
-/* Payday plan + savings */
-.plan-alloc { display:grid; gap:2px; margin:14px 0 12px; }
-.plan-line { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line-2); font-size:14px; align-items:baseline; }
-.plan-line:last-child { border-bottom:0; }
-.plan-line small { display:block; color:var(--ink-3); font-size:12px; }
-.plan-line .m { font-weight:650; }
-.mini-callout { padding:11px 13px; border-radius:var(--r-md); font-size:13px; display:flex; gap:10px; align-items:flex-start; }
-.mini-callout svg { width:16px; height:16px; flex:none; margin-top:1px; }
-.mini-callout.bad { background:var(--bad-soft); }
-.mini-callout.bad svg { color:var(--bad); }
-.mini-callout.info { background:var(--surface-2); color:var(--ink-2); }
-.mini-callout.info svg { color:var(--ink-3); }
-.kv { display:grid; gap:0; margin-top:12px; }
+.kv { display:grid; margin-top:12px; }
 .kv-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid var(--line-2); font-size:13.5px; align-items:baseline; }
-.kv-row span:first-child { color:var(--ink-2); }
+.kv-row > span:first-child { color:var(--ink-2); }
 .kv-row small { display:block; color:var(--ink-3); font-size:12px; }
 .kv-row .m { font-weight:650; color:var(--ink); }
-.savings-empty { text-align:left; }
-.savings-empty .ico {
-  width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:var(--surface-2); color:var(--ink-2); margin-bottom:12px;
-}
-.savings-empty .ico svg { width:20px; height:20px; }
-.savings-empty h3 { margin:0 0 6px; font-size:16px; }
-.savings-empty p { margin:0; color:var(--ink-2); font-size:13.5px; }
+.empty-state .ico { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:var(--surface-2); color:var(--ink-2); margin-bottom:12px; }
+.empty-state .ico svg { width:20px; height:20px; }
+.empty-state h3 { margin:4px 0 6px; font-size:16px; }
+.empty-state p { margin:0; color:var(--ink-2); font-size:13.5px; }
 
-/* Footer */
-.legend-card { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:18px; }
-.legend-item { display:flex; gap:10px; align-items:flex-start; }
-.legend-item .sym { width:30px; height:30px; border-radius:9px; background:var(--surface-2); display:grid; place-items:center; font-weight:700; flex:none; font-size:15px; }
-.legend-item b { font-size:13.5px; display:block; }
-.legend-item span { font-size:12.5px; color:var(--ink-2); }
+/* Month view */
+.month-hero { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:18px; margin-bottom:18px; }
+.verdict-note { margin-top:14px; font-size:13.5px; color:var(--ink-2); }
+.ladder { display:grid; gap:10px; margin-top:6px; }
+.rung { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:4px 14px; align-items:center; padding:12px 12px; border-radius:var(--r-md); background:var(--surface-2); border:0; width:100%; text-align:left; cursor:pointer; }
+.rung-n { width:26px; height:26px; border-radius:50%; display:grid; place-items:center; font-size:13px; font-weight:700; background:var(--surface); color:var(--ink-2); box-shadow:var(--shadow); grid-row:span 2; }
+.rung-l { font-weight:600; font-size:14.5px; }
+.rung-l small { display:block; font-weight:450; color:var(--ink-3); font-size:12px; }
+.rung-v { text-align:right; font-weight:680; font-size:15.5px; }
+.rung-v small { display:block; font-weight:500; font-size:11.5px; color:var(--ink-3); }
+.rung-bar { grid-column:2 / -1; position:relative; height:8px; border-radius:4px; background:var(--bar-track); }
+.rung-bar .zero { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink-3); left:50%; }
+.rung-bar span { position:absolute; top:0; bottom:0; border-radius:4px; }
+.rung-bar span.neg-b { background:var(--bad-fill); }
+.rung-bar span.pos-b { background:var(--good-fill); }
+.flow { display:grid; gap:14px; margin-top:8px; }
+.flow-row { display:grid; grid-template-columns:44px minmax(0,1fr); gap:12px; align-items:center; }
+.flow-row > span { font-size:12px; font-weight:700; color:var(--ink-3); text-transform:uppercase; letter-spacing:.05em; }
+.flow-bar { display:flex; height:22px; border-radius:7px; overflow:hidden; gap:2px; }
+.flow-bar i { display:block; height:100%; }
+.fl-income { background:var(--accent); }
+.fl-household { background:var(--accent); opacity:.55; }
+.fl-bills { background:var(--ink); }
+.fl-debt { background:var(--ink-2); opacity:.7; }
+.fl-planned { background:var(--warn-fill); }
+.fl-extra { background:var(--good-fill); }
+.comp-list { margin-top:16px; }
+.comp { display:grid; grid-template-columns:12px minmax(0,1fr) auto; gap:10px; padding:10px 0; border-top:1px solid var(--line-2); align-items:center; font-size:14px; }
+.comp i { width:10px; height:10px; border-radius:3px; }
+.comp small { display:block; color:var(--ink-3); font-size:12px; }
+.comp .m { font-weight:650; }
+.windows { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:16px; align-items:center; margin-top:4px; }
+.window { padding:14px 16px; border-radius:var(--r-lg); background:var(--surface-2); }
+.window .eyebrow { margin-bottom:4px; }
+.window .mid { font-size:22px; }
+.window p { margin:6px 0 0; font-size:12.5px; color:var(--ink-2); }
+.windows .vs { font-size:12px; font-weight:700; color:var(--ink-3); text-transform:uppercase; }
+
+/* Legend */
+.legend-card { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:18px 22px; }
+.legend-item { display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+.legend-item b { font-size:13.5px; }
+.legend-item span.d { font-size:12.5px; color:var(--ink-2); }
+.legend-foot { grid-column:1 / -1; display:flex; justify-content:space-between; gap:12px; align-items:center; padding-top:16px; border-top:1px solid var(--line-2); flex-wrap:wrap; }
+.btn { border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:8px 16px; font-weight:600; font-size:13.5px; cursor:pointer; }
+.btn:hover { border-color:var(--ink-3); }
+.btn[aria-pressed="true"] { background:var(--ink); color:var(--bg); border-color:var(--ink); }
 .page-foot { margin-top:22px; font-size:12.5px; color:var(--ink-3); max-width:760px; line-height:1.5; }
 
 /* Sheet */
 .scrim { position:fixed; inset:0; background:rgba(10,10,9,.32); opacity:0; pointer-events:none; transition:opacity .25s var(--ease); z-index:60; }
 .scrim.open { opacity:1; pointer-events:auto; }
-.sheet {
-  position:fixed; z-index:61; background:var(--surface); box-shadow:var(--shadow-lift);
-  top:12px; right:12px; bottom:12px; width:min(440px, calc(100vw - 24px)); border-radius:var(--r-xl);
-  transform:translateX(calc(100% + 24px)); transition:transform .32s var(--ease);
-  display:flex; flex-direction:column; overflow:hidden;
-}
+.sheet { position:fixed; z-index:61; background:var(--surface); box-shadow:var(--shadow-lift); top:12px; right:12px; bottom:12px; width:min(440px, calc(100vw - 24px)); border-radius:var(--r-xl); transform:translateX(calc(100% + 24px)); transition:transform .32s var(--ease); display:flex; flex-direction:column; overflow:hidden; }
 .sheet.open { transform:none; }
 .sheet-head { padding:20px 22px 12px; display:flex; align-items:flex-start; gap:12px; border-bottom:1px solid var(--line-2); }
 .sheet-head h2 { margin:2px 0 0; font-size:20px; letter-spacing:-.015em; }
-.sheet-close { margin-left:auto; }
+.sheet-close { margin-left:auto; flex:none; }
 .sheet-body { padding:18px 22px 28px; overflow:auto; }
-.sheet-hero { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.sheet-hero { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
 .sheet-body p { color:var(--ink-2); font-size:14px; margin:12px 0; }
 .sheet-body h3 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-3); margin:22px 0 6px; }
 .tx { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line-2); font-size:14px; }
 .tx small { color:var(--ink-3); display:block; font-size:12px; }
 .grab { display:none; }
-
-/* Toast */
-.toast {
-  position:fixed; left:50%; bottom:28px; transform:translate(-50%, 20px); opacity:0; z-index:70;
-  background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:999px; font-size:13.5px;
-  transition:all .25s var(--ease); pointer-events:none; max-width:calc(100vw - 32px); text-align:center;
-}
+.toast { position:fixed; left:50%; bottom:28px; transform:translate(-50%, 20px); opacity:0; z-index:70; background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:999px; font-size:13.5px; transition:all .25s var(--ease); pointer-events:none; max-width:calc(100vw - 32px); text-align:center; }
 .toast.show { opacity:1; transform:translate(-50%, 0); }
-
-/* Mobile dock */
 .dock { display:none; }
 
-/* ---------- Tablet ---------- */
 @media (max-width: 1080px) {
   .attention-list { grid-template-columns:repeat(2, minmax(0,1fr)); }
-  .split, .split-upcoming { grid-template-columns:minmax(0,1fr); }
+  .split, .split-upcoming, .month-hero { grid-template-columns:minmax(0,1fr); }
   .split-upcoming .stack { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .legend-card { grid-template-columns:repeat(2, minmax(0,1fr)); }
 }
@@ -440,98 +459,77 @@ details[open] > summary .chev { transform:rotate(180deg); }
   .hero { grid-template-columns:minmax(0,1fr); }
   .sitenav { display:none; }
 }
-
-/* ---------- Phone ---------- */
 @media (max-width: 640px) {
   html { scroll-padding-top:118px; }
-  body { font-size:15px; padding-bottom:calc(92px + env(safe-area-inset-bottom)); }
+  body { padding-bottom:calc(92px + env(safe-area-inset-bottom)); }
   .mock-strip { font-size:11px; padding:5px 10px; }
   .topbar-inner { padding:8px 16px; gap:10px; }
   .fresh .fresh-long { display:none; }
   .page { padding:6px 12px 40px; }
-  .period { margin:8px 4px 4px; gap:12px; align-items:center; }
+  .period { margin:8px 4px 4px; gap:12px; align-items:stretch; }
+  .period-left { width:100%; gap:12px; }
+  .period-left .seg { align-self:center; }
   .period h1 { font-size:22px; }
   .period-switch { width:100%; justify-content:space-between; }
   .period-title { text-align:center; flex:1; }
   .period-progress { min-width:0; flex:1 1 100%; margin:4px 0 0; }
-  .jump {
-    display:flex; gap:6px; overflow-x:auto; position:sticky; top:52px; z-index:25; padding:10px 4px;
-    margin:0 -12px 6px; padding-left:16px; padding-right:16px; scrollbar-width:none;
-    background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
-  }
+  .jump { display:flex; gap:6px; overflow-x:auto; position:sticky; top:52px; z-index:25; margin:0 -12px 6px; padding:10px 16px; scrollbar-width:none; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
   .jump::-webkit-scrollbar { display:none; }
-  .jump a {
-    flex:none; text-decoration:none; color:var(--ink-2); font-size:13.5px; font-weight:560; padding:7px 14px; border-radius:999px;
-    background:var(--surface); box-shadow:var(--shadow);
-  }
+  .jump a { flex:none; text-decoration:none; color:var(--ink-2); font-size:13.5px; font-weight:560; padding:7px 14px; border-radius:999px; background:var(--surface); box-shadow:var(--shadow); }
   .jump a.active { background:var(--ink); color:var(--bg); }
-  .grid { gap:12px; margin-bottom:12px; }
+  .grid, .month-hero { gap:12px; margin-bottom:12px; }
   .card { padding:18px; border-radius:20px; }
   .big { font-size:40px; }
   .mid { font-size:23px; }
-  .alloc-legend { grid-template-columns:1fr 1fr; gap:10px 14px; }
+  .alloc-legend { gap:10px 14px; }
   .wf-row { grid-template-columns:18px minmax(0,1fr) auto; gap:4px 10px; padding:9px 6px; }
   .wf-track { grid-column:2 / -1; grid-row:2; height:8px; }
   .wf-val { min-width:0; }
-  .attention { padding:16px 0 16px 16px; }
-  .attention-list {
-    display:flex; overflow-x:auto; scroll-snap-type:x mandatory; gap:8px; padding-right:16px; scrollbar-width:none;
-  }
-  .attention-list::-webkit-scrollbar { display:none; }
-  .att { flex:0 0 78%; scroll-snap-align:start; }
-  .budget-summary, .up-summary { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; }
-  .stat-value { font-size:17px; }
-  .bill-name { white-space:normal; display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical; line-height:1.3; }
   .wf-name small { display:inline; margin-left:4px; }
   .wf-name small::before { content:"· "; }
+  .attention { padding:16px 0 16px 16px; }
+  .attention-list { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; gap:8px; padding-right:16px; scrollbar-width:none; }
+  .attention-list::-webkit-scrollbar { display:none; }
+  .att { flex:0 0 78%; scroll-snap-align:start; }
+  .summary3, .summary-row { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; }
+  .stat-value { font-size:17px; }
+  .bill-name { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; line-height:1.3; }
   .section-title { margin:26px 4px 10px; flex-direction:column; gap:2px; }
   .section-title h2 { font-size:20px; }
   .split-upcoming .stack { grid-template-columns:minmax(0,1fr); gap:12px; }
   .month { grid-template-columns:minmax(0,1fr); gap:0; }
   .month-label { padding:14px 8px 0; }
   .month-label small { display:inline; margin-left:6px; }
-  .budget-summary { gap:18px; }
+  .seg.wide button { font-size:13px; padding:9px 8px; }
+  .windows { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .windows .vs { text-align:center; }
   .legend-card { grid-template-columns:minmax(0,1fr); gap:14px; }
-  .sheet {
-    top:auto; left:0; right:0; bottom:0; width:100%; max-height:86vh; border-radius:24px 24px 0 0;
-    transform:translateY(100%);
-  }
+  .sheet { top:auto; left:0; right:0; bottom:0; width:100%; max-height:86vh; border-radius:24px 24px 0 0; transform:translateY(100%); }
   .sheet-body { padding-bottom:calc(28px + env(safe-area-inset-bottom)); }
   .grab { display:block; width:38px; height:5px; border-radius:3px; background:var(--line); margin:8px auto 0; }
   .toast { bottom:calc(100px + env(safe-area-inset-bottom)); }
-  .dock {
-    display:flex; position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:40;
-    justify-content:space-around; padding:6px; border-radius:26px;
-    background:color-mix(in srgb, var(--surface) 70%, transparent); backdrop-filter:saturate(1.5) blur(18px); -webkit-backdrop-filter:saturate(1.5) blur(18px);
-    box-shadow:0 10px 30px rgba(0,0,0,.12), inset 0 0 0 1px var(--line-2);
-  }
+  .dock { display:flex; position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:40; justify-content:space-around; padding:6px; border-radius:26px; background:color-mix(in srgb, var(--surface) 70%, transparent); backdrop-filter:saturate(1.5) blur(18px); -webkit-backdrop-filter:saturate(1.5) blur(18px); box-shadow:0 10px 30px rgba(0,0,0,.12), inset 0 0 0 1px var(--line-2); }
   .dock a { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; text-decoration:none; color:var(--ink-2); font-size:10.5px; font-weight:560; padding:7px 0; border-radius:20px; }
   .dock a svg { width:21px; height:21px; }
   .dock a[aria-current="page"] { color:var(--accent-ink); background:var(--accent-soft); }
 }
-@media (prefers-reduced-motion: reduce) {
-  * { transition:none !important; scroll-behavior:auto !important; }
-}
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
 </style>
 </head>
 <body>
 
-<div class="mock-strip"><b>Design mockup</b> · figures copied from the 2 Oct 2026 Budget page · not live, not connected to Forecast</div>
+<div class="mock-strip"><b>Design mockup</b> · figures copied from the 3 Oct 2026 Budget page · not live, not connected to Forecast</div>
+<div class="missing-strip" id="missing-strip" hidden>Previewing how the page looks when data is missing — illustrative, not a real state. <button type="button" data-action="missing-off">Back to Oct 3 figures</button></div>
 
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand"><span class="brand-mark" aria-hidden="true">A</span>Atlas</div>
     <nav class="sitenav" aria-label="Pages">
-      <a href="#" aria-current="page">Budget</a>
-      <a href="#">Forecast</a>
-      <a href="#">Bills</a>
-      <a href="#">Subscriptions</a>
-      <a href="#">Credit</a>
-      <a href="#">Plan spend</a>
+      <a href="#" aria-current="page">Budget</a><a href="#">Forecast</a><a href="#">Bills</a><a href="#">Subscriptions</a><a href="#">Credit</a><a href="#">Plan spend</a>
     </nav>
     <div class="topbar-right">
-      <button class="fresh" type="button" data-sheet="freshness"><span class="dot" aria-hidden="true"></span><span>Updated Oct 2<span class="fresh-long"> · Lunch Money</span></span></button>
-      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Switch light or dark">
+      <button class="fresh" type="button" data-sheet="freshness"><span class="dot" aria-hidden="true"></span><span id="fresh-label"></span></button>
+      <button class="icon-btn" type="button" data-action="theme" aria-label="Switch light or dark">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
       </button>
     </div>
@@ -539,197 +537,38 @@ details[open] > summary .chev { transform:rotate(180deg); }
 </header>
 
 <main class="page">
-
-  <section class="period" aria-label="Pay period">
-    <div class="period-switch">
-      <button class="period-arrow" type="button" data-period="prev" aria-label="Previous pay period">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-      </button>
-      <div class="period-title">
-        <div class="eyebrow">Pay period <span class="pill accent" style="margin-left:6px">Current</span></div>
-        <h1>Sep 25 – Oct 8</h1>
+  <section class="period" aria-label="Budget window">
+    <div class="period-left">
+      <div class="seg" role="group" aria-label="View by">
+        <button type="button" data-view="period">Pay period</button>
+        <button type="button" data-view="month">Month</button>
       </div>
-      <button class="period-arrow" type="button" data-period="next" aria-label="Next pay period">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-      </button>
+      <div class="period-switch">
+        <button class="period-arrow" type="button" data-step="prev" aria-label="Previous">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div class="period-title">
+          <div class="eyebrow" id="window-eyebrow"></div>
+          <h1 id="window-title"></h1>
+        </div>
+        <button class="period-arrow" type="button" data-step="next" aria-label="Next">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
     </div>
     <div class="period-progress">
-      <div class="period-progress-top"><span><b>Day 8</b> of 14</span><span>Next payday <b>Fri, Oct 9</b> · in 7 days</span></div>
+      <div class="period-progress-top" id="progress-top"></div>
       <div class="days" id="days" aria-hidden="true"></div>
     </div>
   </section>
 
-  <nav class="jump" id="jump" aria-label="Sections">
-    <a href="#overview" class="active">Overview</a>
-    <a href="#spending">Spending</a>
-    <a href="#bills">Bills</a>
-    <a href="#upcoming">Upcoming costs</a>
-  </nav>
+  <nav class="jump" id="jump" aria-label="Sections"></nav>
 
-  <div class="grid hero" id="overview">
-    <article class="card today" aria-labelledby="today-h">
-      <div class="card-head">
-        <div>
-          <div class="eyebrow">Today · Fri, Oct 2</div>
-          <h2 id="today-h">Cash in chequing</h2>
-        </div>
-        <button class="link-btn" type="button" data-sheet="today">How this works
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></button>
-      </div>
-      <div class="today-figure"><span class="big" id="today-cash"></span></div>
-      <div class="today-sub">
-        <span>Both chequing accounts · credit is not counted</span>
-        <span>Bills account alone <b id="bills-acct"></b></span>
-      </div>
-
-      <div class="alloc">
-        <div class="alloc-bar" id="alloc-bar" role="img" aria-label="How today's chequing cash is spoken for"></div>
-        <div class="alloc-legend" id="alloc-legend"></div>
-      </div>
-
-      <div class="answer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <div>
-          <p id="today-answer"></p>
-          <p>No more pay lands before Oct 8. Whatever is left is not extra spending money.</p>
-        </div>
-      </div>
-      <div class="card-foot">
-        <button class="next-pay" type="button" data-sheet="upcoming">
-          <span class="next-pay-date"><small>Oct</small><b>9</b></span>
-          <span><span class="next-pay-t">Next payday · Friday</span><span class="next-pay-d" id="next-pay-d"></span></span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
-        </button>
-      </div>
-    </article>
-
-    <article class="card period-plan" aria-labelledby="plan-h">
-      <div class="card-head">
-        <div>
-          <div class="eyebrow">This pay period · Sep 25 – Oct 8</div>
-          <h2 id="plan-h">Balance After Deductions</h2>
-        </div>
-        <span class="pill warn">≈ Estimate</span>
-      </div>
-      <div class="today-figure"><span class="big" id="bad-figure"></span></div>
-      <div class="today-sub"><span>Before savings — this period's savings step isn't available.</span></div>
-      <div class="wf" id="waterfall"></div>
-      <div class="card-foot">
-        <span class="fine">A positive balance may be needed for a later short period. It is not permission to spend.</span>
-      </div>
-    </article>
-  </div>
-
-  <article class="card attention" aria-labelledby="att-h">
-    <div class="attention-head">
-      <h2 id="att-h">Worth a look</h2>
-      <span class="pill muted" id="att-count"></span>
-    </div>
-    <div class="attention-list" id="attention"></div>
-  </article>
-
-  <div class="grid split">
-    <section class="card" id="spending" aria-labelledby="spend-h">
-      <div class="card-head">
-        <div>
-          <div class="eyebrow">Spending this period</div>
-          <h2 id="spend-h">Household budget</h2>
-          <div class="sub">Tap a category to see what was spent.</div>
-        </div>
-        <span class="fine pace-key"><i aria-hidden="true"></i>Today</span>
-      </div>
-      <div class="budget-summary" id="budget-summary"></div>
-      <div class="cats" id="cats"></div>
-      <div class="deduct-note">
-        <p>The plan counts each category at its plan or its spending, whichever is higher, plus anything not yet assigned.</p>
-        <button class="link-btn" type="button" data-sheet="wf-budget">Details</button>
-      </div>
-    </section>
-
-    <section class="card" id="bills" aria-labelledby="bills-h">
-      <div class="card-head">
-        <div>
-          <div class="eyebrow">Bills this period</div>
-          <h2 id="bills-h"><span id="bills-left"></span> left to pay</h2>
-          <div class="sub" id="bills-sub"></div>
-        </div>
-      </div>
-      <div class="bills-progress" aria-hidden="true"><span id="bills-paid-bar"></span></div>
-      <div class="bills-figs"><span id="bills-paid-fig"></span><span id="bills-total-fig"></span></div>
-      <div id="bill-groups"></div>
-      <div class="deduct-note">
-        <p>The plan deducts <span class="m" id="bills-deduct"></span> — assigned amounts, excluding bills settled before the period opened.</p>
-        <button class="link-btn" type="button" data-sheet="wf-bills">Why</button>
-      </div>
-    </section>
-  </div>
-
-  <section id="upcoming" aria-label="Upcoming costs and savings">
-  <div class="section-title">
-    <h2>Upcoming costs &amp; savings</h2>
-    <p>Named costs the plan is setting money aside for.</p>
-  </div>
-
-  <div class="grid split-upcoming">
-    <section class="card" aria-labelledby="costs-h">
-      <div class="card-head">
-        <div>
-          <div class="eyebrow">From today's cash</div>
-          <h2 id="costs-h">Costs ahead</h2>
-        </div>
-        <span class="gap-key"><i aria-hidden="true"></i>Inside the shortfall</span>
-      </div>
-      <div class="up-summary" id="up-summary"></div>
-      <div class="gap-callout" role="note">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-        <div>
-          <p id="gap-text"></p>
-          <p>Later proposals pause until that gap is covered. These are proposed earmarks — not transfers, and not money already saved.</p>
-        </div>
-      </div>
-      <div class="timeline" id="timeline"></div>
-    </section>
-
-    <div class="stack">
-      <section class="card" aria-labelledby="payday-h">
-        <div class="card-head">
-          <div>
-            <div class="eyebrow">Next payday · Fri, Oct 9</div>
-            <h2 id="payday-h">Payday plan</h2>
-          </div>
-          <span class="pill bad">Shortfall ahead</span>
-        </div>
-        <div class="stat-label">Proposed for Nest Money</div>
-        <div class="mid" id="nest-figure"></div>
-        <div class="plan-alloc" id="nest-lines"></div>
-        <div class="mini-callout bad">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
-          <span id="nest-short"></span>
-        </div>
-        <div class="kv" id="payday-kv"></div>
-        <div class="mini-callout info" style="margin-top:12px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-          <span>A separate proposal from today's. They cover the same costs, so don't add them together. Nothing here is a transfer.</span>
-        </div>
-      </section>
-
-      <section class="card savings-empty" aria-labelledby="sav-h">
-        <div class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7h-1.5A5.5 5.5 0 0 0 7 9.5H5a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2h1.2A6.5 6.5 0 0 0 9 18v2h3v-1.5h2V20h3v-2.6A6 6 0 0 0 19.5 13H21v-3h-2z"/></svg></div>
-        <div class="eyebrow">Savings assigned to goals</div>
-        <h3 id="sav-h" style="margin-top:4px">Not set up yet</h3>
-        <p>The two savings accounts and their starting goal assignments haven't been confirmed. Saved balances show as <span class="unk">Unknown</span> — Atlas never assumes $0.</p>
-      </section>
-    </div>
-  </div>
-  </section>
+  <div id="view-period"></div>
+  <div id="view-month" hidden></div>
 
   <div class="section-title"><h2>Reading the numbers</h2></div>
-  <section class="card legend-card" aria-label="How figures are marked">
-    <div class="legend-item"><div class="sym" style="color:var(--warn-fill)">≈</div><div><b>Estimate</b><span>At least one input is estimated, such as a pay deposit not yet seen.</span></div></div>
-    <div class="legend-item"><div class="sym">$</div><div><b>No mark</b><span>Published without an estimate flag. Nothing on this page is marked verified.</span></div></div>
-    <div class="legend-item"><div class="sym"><span class="unk" style="padding:0 6px;font-size:11px">?</span></div><div><b>Unknown</b><span>Not published yet. Never counted as $0.</span></div></div>
-    <div class="legend-item"><div class="sym"><span class="sdot check" style="width:10px;height:10px"></span></div><div><b>Not confirmed</b><span>Due date passed with no payment seen. That doesn't mean it's unpaid.</span></div></div>
-  </section>
+  <section class="card legend-card" aria-label="How figures are marked" id="legend"></section>
 
   <p class="page-foot">Private. No account numbers, card numbers or addresses appear on this page. Atlas is read-only — nothing here moves money, and no changes have been made to any account. Forecast assumptions are documented in Records.</p>
 </main>
@@ -759,386 +598,729 @@ details[open] > summary .chev { transform:rotate(180deg); }
 <script>
 'use strict';
 
-/* Published values, copied as shown on the live Budget page (2026-10-02).
-   trust: 'est' = published with ≈ estimated; 'calc' = published calculated;
-   null = published without a tag. Unknown amounts are null, never 0. */
-const D = {
-  period: { day: 8, days: 14 },
+/* Published values, copied as shown on the live Budget page (2026-10-03).
+   t: 'est' = published "≈ estimated"/"estimate"; 'calc' = published
+   "calculated"; null = published without a tag. A missing figure is never a
+   number: { v:null, state, reason } where state is one of
+   unknown | withheld | pending | check | setup | none. */
+const SNAPSHOT = {
+  asOf: 'Oct 3',
+  period: { label: 'Sep 25 – Oct 8', day: 9, days: 14, payday: 'Fri, Oct 9', daysToPayday: 6 },
   today: {
+    date: 'Sat, Oct 3',
     cash: { v: 2408.27, t: 'est' },
-    billsAccount: { v: 2914.67, t: null },
+    billsAccount: { v: 2914.67 },
     bills: { v: 1047.74, t: 'est' },
-    needs: { v: 236.07, t: 'est' },
+    needs: { v: 227.51, t: 'est' },
     floor: { v: 500.00, t: 'calc' },
-    required: { v: 1783.81, t: 'est' },
-    free: { v: 624.46, t: 'est' },
+    required: { v: 1775.25, t: 'est' },
+    free: { v: 633.02, t: 'est' },
     futureIncome: { v: 0.00, t: 'est' },
+    withheld: null,
   },
   waterfall: {
     income: { v: 6652.00, t: 'est' },
     bills: { v: 2536.33, t: 'est' },
     afterBills: { v: 4115.67, t: 'est' },
-    budget: { v: 2543.60, t: null },
-    savings: { v: null, t: null },
-    final: { v: 1572.07, t: 'est' },
+    budget: { v: 2535.04 },
+    savings: { v: null, state: 'unknown', reason: 'This period has no original funding snapshot, and it has not been reconstructed.' },
+    final: { v: 1580.63, t: 'est', note: 'Before savings' },
   },
   income: [
     { name: 'Dale salary', date: 'Sep 25', state: 'Received', v: 4264.00 },
-    { name: 'Amanda salary', date: 'Sep 30', state: 'Deposit not confirmed', v: 2387.99, warn: true },
+    { name: 'Amanda salary', date: 'Sep 30', state: 'Deposit not confirmed', v: 2387.99, pending: true },
     { name: 'Other income', date: 'Sep 29', state: 'Received', v: 0.01 },
   ],
   budget: {
-    total: { v: 2543.60, t: null },
+    total: { v: 2535.04 },
     categories: [
-      { id: 'groceries', name: 'Groceries', planned: 900.00, spent: 1008.90, remaining: -108.90, n: 6 },
-      { id: 'fuel', name: 'Fuel', planned: 325.00, spent: 452.75, remaining: -127.75, n: 6 },
-      { id: 'dog', name: 'Dog food', planned: 100.00, spent: 0.00, remaining: 100.00, n: 0 },
-      { id: 'eating', name: 'Eating out', planned: 200.00, spent: 63.93, remaining: 136.07, n: 5 },
-      { id: 'dale', name: 'Dale guilt-free spending', planned: 150.00, spent: 150.00, remaining: 0.00, n: 1 },
-      { id: 'amanda', name: 'Amanda guilt-free spending', planned: 150.00, spent: 259.80, remaining: -109.80, n: 3 },
-      { id: 'other', name: 'Other spending', planned: null, spent: 372.15, remaining: null, n: 13, unassigned: true },
+      { id: 'groceries', name: 'Groceries', planned: 900.00, spent: 1008.90, remaining: -108.90 },
+      { id: 'fuel', name: 'Fuel', planned: 325.00, spent: 400.00, remaining: -75.00 },
+      { id: 'dog', name: 'Dog food', planned: 100.00, spent: 0.00, remaining: 100.00 },
+      { id: 'eating', name: 'Eating out', planned: 200.00, spent: 72.49, remaining: 127.51 },
+      { id: 'dale', name: 'Dale guilt-free spending', planned: 150.00, spent: 194.19, remaining: -44.19 },
+      { id: 'amanda', name: 'Amanda guilt-free spending', planned: 150.00, spent: 259.80, remaining: -109.80 },
+      { id: 'other', name: 'Other spending', planned: null, spent: 372.15, remaining: null, unassigned: true },
     ],
   },
   bills: {
     total: 2554.33, paid: 1663.54, left: 890.79, deduct: { v: 2536.33, t: 'est' },
     rows: [
-      { id: 'fit4less', name: 'Fit4Less membership', mon: 'Sep', day: 25, iso: '2026-09-25', state: 'paid', planned: 11.54, actual: 11.54, remaining: 0, est: false, evidence: 'Payment seen Sep 25 · posted' },
-      { id: 'mortgage', name: 'Mortgage', mon: 'Sep', day: 25, iso: '2026-09-25', state: 'paid', planned: 1600.00, actual: 1600.00, remaining: 0, est: false, evidence: 'Payment seen Sep 25 · posted' },
-      { id: 'travelvisa', name: 'Travel Visa minimum', mon: 'Sep', day: 26, iso: '2026-09-26', state: 'paid', planned: 17.00, actual: 35.00, remaining: 0, est: true, evidence: 'Payment seen Sep 29 · posted' },
-      { id: 'mbna', name: 'Amazon.ca Mastercard minimum (MBNA)', mon: 'Sep', day: 30, iso: '2026-09-30', state: 'check', planned: 158.27, actual: null, remaining: 158.27, est: true },
-      { id: 'google', name: 'Google storage — 100 GB', mon: 'Sep', day: 30, iso: '2026-09-30', state: 'check', planned: 3.13, actual: null, remaining: 3.13, est: false },
-      { id: 'tdfees', name: 'TD account fees (two accounts)', mon: 'Sep', day: 30, iso: '2026-09-30', state: 'check', planned: 35.90, actual: null, remaining: 35.90, est: false },
-      { id: 'hydro', name: 'BC Hydro equal payment', mon: 'Oct', day: 1, iso: '2026-10-01', state: 'check', planned: 145.92, actual: null, remaining: 145.92, est: true },
-      { id: 'tdcb', name: 'TD Cash Back Visa minimum', mon: 'Oct', day: 1, iso: '2026-10-01', state: 'check', planned: 170.00, actual: null, remaining: 170.00, est: true },
-      { id: 'youtube', name: 'YouTube Premium', mon: 'Oct', day: 2, iso: '2026-10-02', state: 'paid', planned: 17.00, actual: 17.00, remaining: 0, est: false, evidence: 'Marked paid by Forecast · no transaction linked' },
-      { id: 'fortis', name: 'FortisBC gas', mon: 'Oct', day: 3, iso: '2026-10-03', state: 'due', planned: 124.00, actual: 0, remaining: 124.00, est: false, when: 'tomorrow' },
-      { id: 'triangle', name: 'Triangle Mastercard minimum', mon: 'Oct', day: 7, iso: '2026-10-07', state: 'due', planned: 253.57, actual: 0, remaining: 253.57, est: true, when: 'Wed' },
+      { id: 'fit4less', name: 'Fit4Less membership', mon: 'Sep', day: 25, state: 'paid', planned: 11.54, actual: 11.54, remaining: 0, evidence: 'Linked payment Sep 25 · posted.' },
+      { id: 'mortgage', name: 'Mortgage', mon: 'Sep', day: 25, state: 'paid', planned: 1600.00, actual: 1600.00, remaining: 0, evidence: 'Linked payment Sep 25 · posted.' },
+      { id: 'travelvisa', name: 'Travel Visa minimum', mon: 'Sep', day: 26, state: 'paid', planned: 17.00, actual: 35.00, remaining: 0, est: true, evidence: 'Linked payment Sep 29 · posted. Paid more than the planned minimum.' },
+      { id: 'mbna', name: 'Amazon.ca Mastercard minimum (MBNA)', mon: 'Sep', day: 30, state: 'check', planned: 158.27, actual: null, remaining: 158.27, est: true },
+      { id: 'google', name: 'Google storage — 100 GB', mon: 'Sep', day: 30, state: 'check', planned: 3.13, actual: null, remaining: 3.13 },
+      { id: 'tdfees', name: 'TD account fees (two accounts)', mon: 'Sep', day: 30, state: 'check', planned: 35.90, actual: null, remaining: 35.90 },
+      { id: 'hydro', name: 'BC Hydro equal payment', mon: 'Oct', day: 1, state: 'check', planned: 145.92, actual: null, remaining: 145.92, est: true },
+      { id: 'tdcb', name: 'TD Cash Back Visa minimum', mon: 'Oct', day: 1, state: 'check', planned: 170.00, actual: null, remaining: 170.00, est: true },
+      { id: 'youtube', name: 'YouTube Premium', mon: 'Oct', day: 2, state: 'paid', planned: 17.00, actual: 17.00, remaining: 0, evidence: 'Marked paid by Forecast. No transaction is linked — that doesn’t make it less paid.' },
+      { id: 'fortis', name: 'FortisBC gas', mon: 'Oct', day: 3, state: 'pending', planned: 124.00, actual: 0, remaining: 124.00, evidence: 'Forecast shows this payment as pending — due today, not yet settled.' },
+      { id: 'triangle', name: 'Triangle Mastercard minimum', mon: 'Oct', day: 7, state: 'due', planned: 253.57, actual: 0, remaining: 253.57, est: true, when: 'Wed' },
     ],
   },
-  costs: {
-    stillToFund: { v: 22213.05, t: 'est' },
-    proposedNow: { v: 624.46, t: 'est' },
-    gap: { v: 3458.38, t: 'est', through: 'Jan 15' },
-    rows: [
-      { id: 'logan1', name: 'Logan Burrards team fee — instalment 1', month: 'Oct', year: 2026, date: 'Oct 16', cost: 202.88, costEst: false, proposed: 202.88, remaining: 0.00, gap: true },
-      { id: 'fusion10', name: 'Fusion season — October', month: 'Oct', year: 2026, date: 'Oct 31', dateEst: true, cost: 1200.00, costEst: true, proposed: 421.58, remaining: 778.42, gap: true },
-      { id: 'logan2', name: 'Logan Burrards team fee — instalment 2', month: 'Nov', year: 2026, date: 'Nov 1', cost: 202.87, costEst: false, proposed: 0, remaining: 202.87, gap: true },
-      { id: 'seattle11', name: 'Seattle — November', month: 'Nov', year: 2026, date: 'Nov 15', cost: 1500.00, costEst: false, proposed: 0, remaining: 1500.00, gap: true },
-      { id: 'fusion11', name: 'Fusion season — November', month: 'Nov', year: 2026, date: 'Nov 30', dateEst: true, cost: 1200.00, costEst: true, proposed: 0, remaining: 1200.00, gap: true },
-      { id: 'seattle12', name: 'Seattle — December', month: 'Dec', year: 2026, date: 'Dec 9', cost: 1500.00, costEst: false, proposed: 0, remaining: 1500.00, gap: true },
-      { id: 'linden', name: 'Linden birthday', month: 'Dec', year: 2026, date: 'Dec 9', cost: 500.00, costEst: false, proposed: 0, remaining: 500.00, gap: true },
-      { id: 'xmas', name: 'Christmas', month: 'Dec', year: 2026, date: 'Dec 25', dateEst: true, cost: 3500.00, costEst: true, proposed: 0, remaining: 3500.00, gap: true },
-      { id: 'fusion12', name: 'Fusion season — December', month: 'Dec', year: 2026, date: 'Dec 31', dateEst: true, cost: 900.00, costEst: true, proposed: 0, remaining: 900.00, gap: true },
-      { id: 'sandiego', name: 'San Diego', month: 'Jan', year: 2027, date: 'Jan 15', cost: 3000.00, costEst: false, proposed: 0, remaining: 3000.00, gap: true },
-      { id: 'insurance', name: 'Square One home insurance', month: 'Feb', year: 2027, date: 'Feb 10', dateEst: true, cost: 3131.76, costEst: true, proposed: 0, remaining: 3131.76 },
-      { id: 'proptax', name: 'Property tax', month: 'Jul', year: 2027, date: 'Jul 1', dateEst: true, cost: 6000.00, costEst: true, proposed: 0, remaining: 6000.00 },
-    ],
-    undated: [
-      { id: 'provincials', name: 'Provincials', cost: 1500.00, costEst: false },
-      { id: 'linden-fee', name: 'Linden Burrards team fee', cost: 340.00, costEst: true },
-    ],
+  costs: [
+    { id: 'logan1', name: 'Logan Burrards team fee — instalment 1', month: 'Oct', year: 2026, date: 'Oct 16', cost: 202.88 },
+    { id: 'fusion10', name: 'Fusion season — October', month: 'Oct', year: 2026, date: 'Oct 31', dateEst: true, cost: 1200.00, costEst: true },
+    { id: 'logan2', name: 'Logan Burrards team fee — instalment 2', month: 'Nov', year: 2026, date: 'Nov 1', cost: 202.87 },
+    { id: 'seattle11', name: 'Seattle — November', month: 'Nov', year: 2026, date: 'Nov 15', cost: 1500.00 },
+    { id: 'fusion11', name: 'Fusion season — November', month: 'Nov', year: 2026, date: 'Nov 30', dateEst: true, cost: 1200.00, costEst: true },
+    { id: 'seattle12', name: 'Seattle — December', month: 'Dec', year: 2026, date: 'Dec 9', cost: 1500.00 },
+    { id: 'linden', name: 'Linden birthday', month: 'Dec', year: 2026, date: 'Dec 9', cost: 500.00 },
+    { id: 'xmas', name: 'Christmas', month: 'Dec', year: 2026, date: 'Dec 25', dateEst: true, cost: 3500.00, costEst: true },
+    { id: 'fusion12', name: 'Fusion season — December', month: 'Dec', year: 2026, date: 'Dec 31', dateEst: true, cost: 900.00, costEst: true },
+    { id: 'sandiego', name: 'San Diego', month: 'Jan', year: 2027, date: 'Jan 15', cost: 3000.00 },
+    { id: 'insurance', name: 'Square One home insurance', month: 'Feb', year: 2027, date: 'Feb 10', dateEst: true, cost: 3131.76, costEst: true },
+    { id: 'proptax', name: 'Property tax', month: 'Jul', year: 2027, date: 'Jul 1', dateEst: true, cost: 6000.00, costEst: true },
+  ],
+  undated: [
+    { id: 'provincials', name: 'Provincials', cost: 1500.00 },
+    { id: 'linden-fee', name: 'Linden Burrards team fee', cost: 340.00, costEst: true },
+  ],
+  /* Two separate Forecast proposals for the same costs. Never combined. */
+  lenses: {
+    today: {
+      status: 'ready',
+      proposed: { v: 633.02, t: 'est' },
+      stillToFund: { v: 22204.49, t: 'est' },
+      gap: { v: 3449.82, t: 'est', label: 'the 10 costs through Jan 15' },
+      gapIds: ['logan1', 'fusion10', 'logan2', 'seattle11', 'fusion11', 'seattle12', 'linden', 'xmas', 'fusion12', 'sandiego'],
+      alloc: { logan1: 202.88, fusion10: 430.14 },
+    },
+    payday: {
+      status: 'ready',
+      proposed: { v: 1750.87, t: 'est' },
+      stillToFund: { v: 21086.64, t: 'est' },
+      gap: { v: 869.70, t: 'est', label: '7 costs, first on Nov 15' },
+      gapIds: ['seattle11', 'fusion11', 'seattle12', 'linden', 'xmas', 'fusion12', 'sandiego'],
+      alloc: { logan1: 202.88, fusion10: 1200.00, logan2: 202.87, seattle11: 145.12 },
+      next: { fusion11: { v: 294.70, on: 'Oct 23' } },
+      floor: { v: 500.00, t: 'calc' },
+      otherProtected: { v: null, state: 'unknown', reason: 'This figure was not published.' },
+      focusExtra: { v: 0.00, t: 'calc' },
+      unassigned: { v: 62.82, t: 'calc' },
+    },
   },
-  payday: {
-    nest: { v: 1376.37, t: 'est' },
-    lines: [
-      { name: 'Logan Burrards team fee — instalment 1', by: 'Needed by Oct 16', v: 202.88 },
-      { name: 'Fusion season — October', by: 'Needed by Oct 31 (estimated date)', v: 1173.49 },
+  month: {
+    label: 'October 2026',
+    components: [
+      { id: 'income', label: 'Total income', f: { v: 6652.30, t: 'est' }, cls: 'fl-income', dir: 'in' },
+      { id: 'household', label: 'Regular household spending', f: { v: 2528.57, t: 'calc' }, cls: 'fl-household', dir: 'out' },
+      { id: 'bills', label: 'Bills', f: { v: 1080.38, t: 'est' }, cls: 'fl-bills', dir: 'out' },
+      { id: 'debt', label: 'Required debt payments', f: { v: 3090.05, t: 'est' }, cls: 'fl-debt', dir: 'out' },
+      { id: 'planned', label: 'Planned spending', f: { v: 1402.88, t: 'est' }, cls: 'fl-planned', dir: 'out' },
+      { id: 'extra', label: 'Planned extra debt payment', f: { v: 0.00, t: 'calc' }, cls: 'fl-extra', dir: 'out' },
     ],
-    short: { v: 568.06, t: 'est', when: 'Oct 31', affected: 10 },
-    floor: { v: 500.00, t: 'calc' },
-    focusExtra: { v: 0.00, t: 'calc' },
-    unassigned: { v: 0.53, t: 'calc' },
+    ladder: [
+      { label: 'Normal life', note: 'Income less household spending, bills and required debt', f: { v: -46.70, t: 'est' } },
+      { label: 'After planned spending', note: 'Then the month’s named costs', f: { v: -1449.58, t: 'est' } },
+      { label: 'After debt strategy', note: 'Then any planned extra debt payment', f: { v: -1449.58, t: 'est' } },
+    ],
+    result: { v: -1449.58, t: 'est' },
+    costs: [
+      { name: 'Logan Burrards team fee — instalment 1', by: 'October 16', amount: { v: 202.88 }, state: 'On track', next: { v: 202.88, t: 'est', on: 'October 9' }, funded: 'October 9' },
+      { name: 'Fusion season — October', by: 'October 31', amount: { v: 1200.00, t: 'est' }, state: 'On track', next: { v: 1200.00, t: 'est', on: 'October 9' }, funded: 'October 9' },
+    ],
   },
 };
 
+const REFRESH_ACTION = 'Refresh account and transaction evidence so Atlas can check again.';
+
+/* Illustrative degraded copy: the same page when evidence is missing. Reasons
+   reuse Forecast's own failure wording. */
+function missingVariant(src) {
+  const d = JSON.parse(JSON.stringify(src));
+  d.today.cash = { v: null, state: 'withheld' };
+  d.today.withheld = {
+    reasons: [
+      { msg: 'This chequing balance is not current for the proposal date.', ctx: 'Chequing B — daily spending' },
+      { msg: 'The household allowance or observed spending is unavailable for this category.', ctx: 'Groceries' },
+    ],
+    action: REFRESH_ACTION,
+  };
+  d.waterfall.budget = { v: null, state: 'unknown', reason: 'Groceries spending is unavailable, so the household budget can’t be counted.' };
+  d.waterfall.final = { v: null, state: 'unknown', reason: 'Can’t be worked out while the household budget is unknown.' };
+  d.budget.total = { v: null, state: 'unknown' };
+  d.today.needs = { v: null, state: 'unknown' };
+  const g = d.budget.categories.find(c => c.id === 'groceries');
+  g.spent = null; g.remaining = null; g.unknown = true;
+  d.lenses.today = { status: 'withheld', reasons: d.today.withheld.reasons, action: REFRESH_ACTION };
+  d.month.ladder[1].f = { v: null, state: 'unknown', reason: 'Forecast did not publish this stage result.' };
+  d.month.ladder[2].f = { v: null, state: 'unknown', reason: 'Forecast did not publish this stage result.' };
+  d.month.result = { v: null, state: 'unknown', reason: 'Forecast did not publish a monthly result.' };
+  d.month.components.find(c => c.id === 'planned').f = { v: null, state: 'unknown', reason: 'Forecast did not publish this figure.' };
+  return d;
+}
+
+/* ---------- Formatting (no arithmetic on money) ---------- */
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fmt = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/* Formatting only: sign, ≈ mark, cents styling. */
-function money(v, opts = {}) {
-  if (v == null) return '<span class="unk">Unknown</span>';
-  const est = opts.t === 'est' || opts.est === true;
-  const neg = v < 0 || opts.minus;
-  const abs = Math.abs(v);
-  const [whole, cents] = fmt.format(abs).split('.');
-  const sign = neg ? '−' : (opts.plus ? '+' : '');
-  const label = `${neg ? 'minus ' : ''}${fmt.format(abs)}${est ? ', estimated' : ''}`;
-  const body = opts.cents === false ? `${whole}.${cents}` : `${whole}<span class="c">.${cents}</span>`;
-  return `<span class="m" aria-label="${label}">${est ? '<span class="approx" aria-hidden="true">≈</span>' : ''}<span aria-hidden="true">${sign}${opts.small ? `${whole}.${cents}` : body}</span></span>`;
-}
-const small = (v, o = {}) => money(v, Object.assign({ small: true }, o));
-const pct = (part, whole) => whole > 0 ? Math.max(0, Math.min(100, (part / whole) * 100)) : 0;
-
+const NF = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ICON = {
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><path d="M7.5 7.5h.01"/></svg>',
-  piggy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17h.01"/></svg>',
-  chev: '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>',
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17h.01"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3.5M4 5v3h3M4 13a8 8 0 0 0 14.9 3.5M20 19v-3h-3"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+  chevR: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>',
+  chevD: '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>',
+  piggy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7h-1.5A5.5 5.5 0 0 0 7 9.5H5a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2h1.2A6.5 6.5 0 0 0 9 18v2h3v-1.5h2V20h3v-2.6A6 6 0 0 0 19.5 13H21v-3h-2z"/></svg>',
 };
-
-/* ---------- Period strip ---------- */
-$('days').innerHTML = Array.from({ length: D.period.days }, (_, i) =>
-  `<span class="${i + 1 < D.period.day ? 'past' : i + 1 === D.period.day ? 'today' : ''}"></span>`).join('');
-
-/* ---------- Today ---------- */
-const T = D.today;
-$('today-cash').innerHTML = money(T.cash.v, T.cash);
-$('bills-acct').innerHTML = small(T.billsAccount.v, T.billsAccount);
-const allocParts = [
-  { cls: 'seg-bills', label: 'Bills & debt payments to Oct 8', f: T.bills, sheet: 'today' },
-  { cls: 'seg-needs', label: 'Household spending still planned', f: T.needs, sheet: 'wf-budget' },
-  { cls: 'seg-floor', label: 'Cash floor — always kept', f: T.floor, sheet: 'today' },
-  { cls: 'seg-free', label: 'Proposed for upcoming costs', f: T.free, sheet: 'upcoming' },
-];
-$('alloc-bar').innerHTML = allocParts.map(p =>
-  `<span class="${p.cls}" style="width:${pct(p.f.v, T.cash.v)}%" title="${esc(p.label)}"></span>`).join('');
-$('alloc-legend').innerHTML = allocParts.map(p =>
-  `<div class="leg"><span class="leg-sw ${p.cls}" aria-hidden="true"></span><div class="leg-label">${esc(p.label)}<span class="leg-value">${small(p.f.v, p.f)}</span></div></div>`).join('');
-$('today-answer').innerHTML = `<b>${small(T.required.v, T.required)}</b> is spoken for until payday. The plan proposes setting aside <b>${small(T.free.v, T.free)}</b> for upcoming costs.`;
-
-$('next-pay-d').innerHTML = `Payday plan proposes ${small(D.payday.nest.v, D.payday.nest)} for ${D.payday.lines.length} costs · shortfall ahead`;
-
-/* ---------- Waterfall ---------- */
-const W = D.waterfall;
-$('bad-figure').innerHTML = money(W.final.v, W.final);
-const scale = W.income.v;
-const wfRows = [
-  { op: '+', cls: 'income', name: 'Income', note: '1 deposit not confirmed', from: 0, to: W.income.v, f: W.income, sheet: 'wf-income' },
-  { op: '−', cls: 'minus', name: 'Bills', note: 'Includes required debt minimums', from: W.afterBills.v, to: W.income.v, f: W.bills, sheet: 'wf-bills', minus: true },
-  { op: '=', cls: 'sub', name: 'Balance after bills', from: 0, to: W.afterBills.v, f: W.afterBills, sheet: 'wf-afterbills' },
-  { op: '−', cls: 'minus', name: 'Household budget', note: 'Plans, spending & unassigned', from: W.final.v, to: W.afterBills.v, f: W.budget, sheet: 'wf-budget', minus: true },
-  { op: '−', cls: 'unavail', name: 'Proposed savings', note: 'Not available this period', from: 0, to: 0, f: W.savings, sheet: 'wf-savings' },
-];
-$('waterfall').innerHTML = wfRows.map(r => `
-  <button class="wf-row ${r.cls}" type="button" data-sheet="${r.sheet}">
-    <span class="wf-op" aria-hidden="true">${r.op}</span>
-    <span class="wf-name">${esc(r.name)}${r.note ? `<small>${esc(r.note)}</small>` : ''}</span>
-    <span class="wf-track" aria-hidden="true">${r.f.v != null ? `<span class="wf-bar" style="left:${pct(r.from, scale)}%;width:${pct(r.to - r.from, scale)}%"></span>` : ''}</span>
-    <span class="wf-val">${r.f.v == null ? '<span class="unk">Unknown</span>' : small(r.f.v, Object.assign({ minus: r.minus }, r.f))}</span>
-  </button>`).join('') + `
-  <button class="wf-row final" type="button" data-sheet="wf-final">
-    <span class="wf-op" aria-hidden="true">=</span>
-    <span class="wf-name">Balance After Deductions<small>Before savings</small></span>
-    <span class="wf-track" aria-hidden="true"><span class="wf-bar" style="left:0;width:${pct(W.final.v, scale)}%"></span></span>
-    <span class="wf-val">${small(W.final.v, W.final)}</span>
-  </button>`;
-
-/* ---------- Attention ---------- */
-const checkBills = D.bills.rows.filter(b => b.state === 'check');
-const attention = [
-  { kind: 'bad', icon: ICON.alert, t: `Upcoming costs are ${small(D.costs.gap.v, D.costs.gap)} short`, d: `Today's cash can't protect every cost through ${D.costs.gap.through}.`, target: 'upcoming' },
-  { kind: 'warn', icon: ICON.clock, t: `${checkBills.length} bills past due, not confirmed`, d: 'No payment seen yet. That doesn\u2019t mean they\u2019re unpaid.', target: 'bills' },
-  { kind: 'warn', icon: ICON.tag, t: `${small(372.15)} of spending has no category`, d: 'Counted in full until it\u2019s assigned.', target: 'cat-other' },
-  { kind: 'info', icon: ICON.piggy, t: 'Amanda\u2019s Sep 30 pay not confirmed', d: 'Counted as expected income, so period totals are estimates.', target: 'wf-income' },
-];
-$('att-count').textContent = `${attention.length} items`;
-$('attention').innerHTML = attention.map(a => `
-  <button class="att ${a.kind}" type="button" data-go="${a.target}">
-    <span class="att-ico" aria-hidden="true">${a.icon}</span>
-    <span><span class="att-t">${a.t}</span><span class="att-d" style="display:block">${a.d}</span></span>
-  </button>`).join('');
-
-/* ---------- Spending ---------- */
-const B = D.budget;
-const over = B.categories.filter(c => c.remaining != null && c.remaining < 0);
-$('budget-summary').innerHTML = `
-  <div><div class="stat-label">Counted this period</div><div class="stat-value">${small(B.total.v, B.total)}</div></div>
-  <div><div class="stat-label">Left to spend</div><div class="stat-value">${small(T.needs.v, T.needs)}</div></div>
-  <div><div class="stat-label">Over plan</div><div class="stat-value bad">${over.length} of ${B.categories.filter(c => !c.unassigned).length}</div></div>`;
-const pace = pct(D.period.day, D.period.days);
-$('cats').innerHTML = B.categories.map(c => {
-  let kind, status;
-  if (c.unassigned) { kind = 'unassigned'; status = `<span class="cat-status used">${small(c.spent)}</span>`; }
-  else if (c.remaining < 0) { kind = 'over'; status = `<span class="cat-status over">${small(-c.remaining)} over</span>`; }
-  else if (c.remaining === 0) { kind = 'used'; status = '<span class="cat-status used">All used</span>'; }
-  else { kind = 'left'; status = `<span class="cat-status left">${small(c.remaining)} left</span>`; }
-  const meta = c.unassigned ? 'Not yet assigned to a category'
-    : `${small(c.spent)} of ${small(c.planned)}`;
-  /* Bar geometry only: an over-plan bar is drawn on a longer track so the
-     overspend is visible as its own red run past the plan marker. */
-  const track = c.unassigned ? 1 : Math.max(c.planned, c.spent);
-  const within = c.unassigned ? 0 : pct(Math.min(c.spent, c.planned), track);
-  const planAt = c.unassigned ? 0 : pct(c.planned, track);
-  const overW = kind === 'over' ? pct(c.spent, track) - planAt : 0;
-  return `<button class="cat ${kind}" type="button" data-sheet="cat-${c.id}" id="cat-row-${c.id}">
-    <span class="cat-name">${esc(c.name)}</span>${status}
-    <span class="cat-meta" style="grid-column:1/-1;margin-top:-4px">${meta}</span>
-    <span class="cat-bar" aria-hidden="true"><span class="cat-fill" style="width:${within}%"></span>${overW ? `<span class="cat-over" style="left:${planAt}%;width:${overW}%"></span><span class="plan-mark" style="left:${planAt}%"></span>` : ''}${c.unassigned ? '' : `<span class="pace" style="left:${pace * planAt / 100}%"></span>`}</span>
-  </button>`;
-}).join('');
-
-/* ---------- Bills ---------- */
-const BL = D.bills;
-$('bills-left').innerHTML = money(BL.left);
-$('bills-sub').innerHTML = `${BL.rows.filter(r => r.state !== 'paid').length} still to pay or confirm`;
-$('bills-paid-bar').style.width = pct(BL.paid, BL.total) + '%';
-$('bills-paid-fig').innerHTML = `${small(BL.paid)} paid`;
-$('bills-total-fig').innerHTML = `${small(BL.total)} this period`;
-$('bills-deduct').innerHTML = small(BL.deduct.v, BL.deduct);
-const STATE = {
-  paid: { dot: 'paid', label: 'Paid' },
-  due: { dot: 'due', label: 'To pay' },
-  check: { dot: 'check', label: 'Not confirmed' },
-};
-const billRow = b => `
-  <button class="bill ${b.state === 'paid' ? 'is-paid' : ''}" type="button" data-sheet="bill-${b.id}">
-    <span class="date-chip"><small>${b.mon}</small><b>${b.day}</b></span>
-    <span style="min-width:0"><span class="bill-name" style="display:block">${esc(b.name)}</span>
-      <span class="bill-state"><span class="sdot ${STATE[b.state].dot}"></span>${b.state === 'due' && b.when ? `Due ${esc(b.when)}` : STATE[b.state].label}</span></span>
-    <span class="bill-amt">${small(b.state === 'paid' ? b.actual : b.remaining, { est: b.est })}</span>
-  </button>`;
-const due = BL.rows.filter(b => b.state === 'due');
-const paid = BL.rows.filter(b => b.state === 'paid');
-$('bill-groups').innerHTML = `
-  <div class="group"><div class="group-head"><h3><span class="sdot due"></span>Coming up</h3></div>${due.map(billRow).join('')}</div>
-  <div class="group"><div class="group-head"><h3><span class="sdot check"></span>Due date passed · not confirmed</h3></div>
-    <p class="group-note">No payment seen yet. That doesn't mean they're unpaid.</p>${checkBills.map(billRow).join('')}</div>
-  <details class="group paid-group"><summary class="group-head"><h3><span class="sdot paid"></span>Paid · ${paid.length}</h3>${ICON.chev}</summary>${paid.map(billRow).join('')}</details>`;
-
-/* ---------- Upcoming costs ---------- */
-const C = D.costs;
-$('up-summary').innerHTML = `
-  <div><div class="stat-label">Proposed now</div><div class="stat-value">${small(C.proposedNow.v, C.proposedNow)}</div></div>
-  <div><div class="stat-label">Still to set aside</div><div class="stat-value">${small(C.stillToFund.v, C.stillToFund)}</div></div>
-  <div><div class="stat-label">Dated costs</div><div class="stat-value">${C.rows.length} <span class="fine">+ ${C.undated.length} undated</span></div></div>`;
-$('gap-text').innerHTML = `<b>${small(C.gap.v, C.gap)} short</b> across the ${C.rows.filter(r => r.gap).length} costs through ${C.gap.through}.`;
-const months = [];
-for (const r of C.rows) {
-  const key = `${r.month} ${r.year}`;
-  let m = months.find(x => x.key === key);
-  if (!m) months.push(m = { key, month: r.month, year: r.year, rows: [] });
-  m.rows.push(r);
+const STATE_LABEL = { unknown: 'Unknown', withheld: 'Withheld', pending: 'Pending', check: 'Not confirmed', setup: 'Not set up', none: 'None scheduled' };
+const STATE_ICON = { unknown: ICON.help, withheld: ICON.lock, pending: ICON.clock, check: ICON.alert, setup: ICON.piggy, none: '' };
+function stateChip(state, label) {
+  return `<span class="st st-${state}">${STATE_ICON[state] || ''}${esc(label || STATE_LABEL[state])}</span>`;
 }
-const costRow = r => {
-  const covered = r.proposed > 0 && r.remaining === 0;
-  const partial = r.proposed > 0 && r.remaining > 0;
-  const state = covered ? `<span class="cost-state covered">Covered by today's proposal</span>`
-    : partial ? `<span class="cost-state">${small(r.proposed, { est: true })} proposed · ${small(r.remaining, { est: true })} to go</span>`
-    : `<span class="cost-state">Nothing proposed yet</span>`;
-  return `<button class="cost ${r.gap ? 'in-gap' : ''}" type="button" data-sheet="cost-${r.id}">
-    <span><span class="cost-name" style="display:block">${esc(r.name)}</span><span class="cost-when" style="display:block">${esc(r.date)}${r.dateEst ? ' · estimated date' : ''}</span></span>
-    <span class="cost-amt">${small(r.cost, { est: r.costEst })}</span>
-    <span class="cost-progress"><span class="cost-track"><span style="width:${pct(r.proposed, r.cost)}%"></span></span>${state}</span>
-  </button>`;
-};
-$('timeline').innerHTML = months.map(m => `
-  <div class="month"><div class="month-label">${m.month}<small>${m.year}</small></div><div class="month-items">${m.rows.map(costRow).join('')}</div></div>`).join('') + `
-  <div class="month"><div class="month-label">No date<small>yet</small></div><div class="month-items">${C.undated.map(r => `
-    <button class="cost undated" type="button" data-sheet="undated-${r.id}">
-      <span><span class="cost-name" style="display:block">${esc(r.name)}</span><span class="cost-when" style="display:block">Date not set · still reserved</span></span>
-      <span class="cost-amt">${small(r.cost, { est: r.costEst })}</span>
-      <span class="cost-progress"><span class="cost-track"></span><span class="cost-state">Contribution unknown</span></span>
-    </button>`).join('')}</div></div>`;
 
-/* ---------- Payday plan ---------- */
-const P = D.payday;
-$('nest-figure').innerHTML = money(P.nest.v, P.nest);
-$('nest-lines').innerHTML = P.lines.map(l => `<div class="plan-line"><span>${esc(l.name)}<small>${esc(l.by)}</small></span>${small(l.v, { est: true })}</div>`).join('');
-$('nest-short').innerHTML = `Even with this plan, <b>${P.short.when}</b> is projected <b>${small(P.short.v, P.short)} short</b>, affecting ${P.short.affected} costs.`;
-$('payday-kv').innerHTML = `
-  <div class="kv-row"><span>Keep in chequing<small>A floor, not spending money</small></span><span>at least ${small(P.floor.v)}</span></div>
-  <div class="kv-row"><span>Extra on focus debt<small>TD Cash Back Visa · minimums already in bills</small></span>${small(P.focusExtra.v)}</div>
-  <div class="kv-row"><span>Truly unassigned<small>2 planned costs unresolved — not free money</small></span>${small(P.unassigned.v)}</div>`;
+/* f: number or { v, t, state }. opts: minus, plus, cents (big styling). */
+function money(f, opts = {}) {
+  const fig = (f !== null && typeof f === 'object') ? f : { v: f };
+  if (fig.v == null) return stateChip(fig.state || 'unknown');
+  const est = fig.t === 'est' || opts.est === true;
+  const neg = fig.v < 0 || opts.minus;
+  const abs = Math.abs(fig.v);
+  const [whole, cents] = NF.format(abs).split('.');
+  const sign = neg ? '−' : (opts.plus ? '+' : '');
+  const body = opts.cents ? `${whole}<span class="c">.${cents}</span>` : `${whole}.${cents}`;
+  const label = `${neg ? 'minus ' : ''}${NF.format(abs)}${est ? ', estimated' : ''}`;
+  return `<span class="m" aria-label="${label}">${est ? '<span class="approx" aria-hidden="true">≈</span>' : ''}<span aria-hidden="true">${sign}${body}</span></span>`;
+}
+const big = (f, o = {}) => money(f, Object.assign({ cents: true }, o));
+const known = f => f != null && (typeof f !== 'object' || f.v != null);
+const val = f => (f !== null && typeof f === 'object') ? f.v : f;
+/* Bar geometry only. */
+const pct = (part, whole) => whole > 0 && part != null ? Math.max(0, Math.min(100, (part / whole) * 100)) : 0;
+
+/* ---------- State ---------- */
+const params = new URLSearchParams(location.search);
+const ui = {
+  view: params.get('view') === 'month' ? 'month' : 'period',
+  lens: params.get('lens') === 'payday' ? 'payday' : 'today',
+  missing: params.get('missing') === '1',
+};
+if (params.get('theme') === 'dark' || params.get('theme') === 'light') document.documentElement.dataset.theme = params.get('theme');
+let D = SNAPSHOT;
+const sheets = {};
+
+/* ---------- Header ---------- */
+function renderHeader() {
+  document.body.classList.toggle('is-missing', ui.missing);
+  $('missing-strip').hidden = !ui.missing;
+  $('fresh-label').innerHTML = ui.missing
+    ? 'Some data missing'
+    : `Updated ${D.asOf}<span class="fresh-long"> · Lunch Money</span>`;
+  document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === ui.view)));
+  const P = D.period;
+  if (ui.view === 'period') {
+    $('window-eyebrow').innerHTML = 'Pay period <span class="pill accent" style="margin-left:6px">Current</span>';
+    $('window-title').textContent = P.label;
+    $('progress-top').innerHTML = `<span><b>Day ${P.day}</b> of ${P.days}</span><span>Next payday <b>${P.payday}</b> · in ${P.daysToPayday} days</span>`;
+    $('days').style.gridTemplateColumns = `repeat(${P.days}, 1fr)`;
+    $('days').innerHTML = Array.from({ length: P.days }, (_, i) =>
+      `<span class="${i + 1 < P.day ? 'past' : i + 1 === P.day ? 'today' : ''}"></span>`).join('');
+  } else {
+    $('window-eyebrow').innerHTML = 'Calendar month <span class="pill accent" style="margin-left:6px">Current</span>';
+    $('window-title').textContent = D.month.label;
+    $('progress-top').innerHTML = '<span><b>Day 3</b> of 31</span><span>Paydays <b>Oct 9</b> and <b>Oct 23</b></span>';
+    $('days').style.gridTemplateColumns = 'repeat(31, 1fr)';
+    $('days').innerHTML = Array.from({ length: 31 }, (_, i) =>
+      `<span class="${i + 1 < 3 ? 'past' : i + 1 === 3 ? 'today' : ''}${i + 1 === 9 || i + 1 === 23 ? ' payday' : ''}"></span>`).join('');
+  }
+  const chips = ui.view === 'period'
+    ? [['overview', 'Overview'], ['spending', 'Spending'], ['bills', 'Bills'], ['upcoming', 'Upcoming costs']]
+    : [['month-result', 'Result'], ['month-flow', 'In & out'], ['month-costs', 'Costs this month']];
+  $('jump').innerHTML = chips.map(([id, l], i) => `<a href="#${id}"${i === 0 ? ' class="active"' : ''}>${l}</a>`).join('');
+  spy();
+}
+
+/* ---------- Pay-period view ---------- */
+function todayCard() {
+  const T = D.today;
+  const parts = [
+    { cls: 'seg-bills', label: 'Bills & debt payments to Oct 8', f: T.bills },
+    { cls: 'seg-needs', label: 'Household spending still planned', f: T.needs },
+    { cls: 'seg-floor', label: 'Cash floor — always kept', f: T.floor },
+    { cls: 'seg-free', label: 'Proposed for upcoming costs', f: T.free },
+  ];
+  const body = T.withheld ? `
+      <div class="withheld">
+        <h3>${ICON.lock}Today's proposal is withheld</h3>
+        <p>Forecast won't show what's spoken for until it can trust today's evidence. Nothing is assumed in the meantime.</p>
+        <ul class="reasons">${T.withheld.reasons.map(r => `<li><span>${esc(r.msg)}<small>${esc(r.ctx)}</small></span></li>`).join('')}</ul>
+        <div class="action">${ICON.refresh}<span>${esc(T.withheld.action)}</span></div>
+      </div>` : `
+      <div class="alloc">
+        <div class="alloc-bar" role="img" aria-label="How today's chequing cash is spoken for">${parts.map(p =>
+          `<span class="${p.cls}" style="width:${pct(val(p.f), val(T.cash))}%"></span>`).join('')}</div>
+        <div class="alloc-legend">${parts.map(p =>
+          `<div class="leg"><span class="leg-sw ${p.cls}" aria-hidden="true"></span><div class="leg-label">${esc(p.label)}<span class="leg-value">${money(p.f)}</span></div></div>`).join('')}</div>
+      </div>
+      <div class="answer">${ICON.check}<div>
+        <p><b>${money(T.required)}</b> is spoken for until payday. Today's proposal sets aside <b>${money(T.free)}</b> for upcoming costs.</p>
+        <p>No more pay lands before Oct 8. Whatever is left is not extra spending money.</p>
+      </div></div>`;
+  return `
+    <article class="card today" aria-labelledby="today-h">
+      <div class="card-head">
+        <div><div class="eyebrow">Today · ${T.date}</div><h2 id="today-h">Cash in chequing</h2></div>
+        <button class="link-btn" type="button" data-sheet="today">How this works ${ICON.chevR}</button>
+      </div>
+      <div class="big">${big(T.cash)}</div>
+      <div class="today-sub"><span>Both chequing accounts · credit is not counted</span><span>Bills account alone <b>${money(T.billsAccount)}</b></span></div>
+      ${body}
+      <div class="card-foot">
+        <button class="next-pay" type="button" data-action="lens-payday">
+          <span class="date-badge"><small>Oct</small><b>9</b></span>
+          <span><span class="np-t">Next payday · Friday</span><span class="np-d">Has its own funding plan — view it separately</span></span>
+          ${ICON.chevR}
+        </button>
+      </div>
+    </article>`;
+}
+
+function periodCard() {
+  const W = D.waterfall;
+  const scale = val(W.income);
+  const row = (op, cls, name, note, from, to, f, sheet, minus) => {
+    const unknown = !known(f);
+    return `<button class="wf-row ${cls}" type="button" data-sheet="${sheet}">
+      <span class="wf-op" aria-hidden="true">${op}</span>
+      <span class="wf-name">${esc(name)}${note ? `<small>${esc(note)}</small>` : ''}</span>
+      <span class="wf-track ${unknown ? 'is-unknown-bar' : ''}" aria-hidden="true">${unknown ? '' : `<span class="wf-bar" style="left:${pct(from, scale)}%;width:${pct(to - from, scale)}%"></span>`}</span>
+      <span class="wf-val">${money(f, { minus })}</span>
+    </button>`;
+  };
+  return `
+    <article class="card" aria-labelledby="plan-h">
+      <div class="card-head">
+        <div><div class="eyebrow">This pay period · ${D.period.label}</div><h2 id="plan-h">Balance After Deductions</h2></div>
+        ${known(W.final) ? '<span class="pill warn">≈ Estimate</span>' : ''}
+      </div>
+      <div class="big">${big(W.final)}</div>
+      <div class="today-sub"><span>${known(W.final) ? 'Before savings — this period\u2019s savings step is unknown.' : esc(W.final.reason)}</span></div>
+      <div class="wf">
+        ${row('+', 'income', 'Income', '1 deposit not confirmed', 0, val(W.income), W.income, 'wf-income')}
+        ${row('−', 'minus', 'Bills', 'Includes required debt minimums', val(W.afterBills), val(W.income), W.bills, 'wf-bills', true)}
+        ${row('=', 'sub', 'Balance after bills', '', 0, val(W.afterBills), W.afterBills, 'wf-afterbills')}
+        ${row('−', 'minus', 'Household budget', 'Plans, spending & unassigned', val(W.final), val(W.afterBills), W.budget, 'wf-budget', true)}
+        ${row('−', 'unavail', 'Proposed savings', 'No funding snapshot', 0, 0, W.savings, 'wf-savings')}
+        ${row('=', 'final', 'Balance After Deductions', W.final.note || 'Before savings', 0, val(W.final), W.final, 'wf-final')}
+      </div>
+      <div class="card-foot"><span class="fine">A positive balance may be needed for a later short period. It is not permission to spend.</span></div>
+    </article>`;
+}
+
+function attentionCard() {
+  const checks = D.bills.rows.filter(b => b.state === 'check');
+  const L = D.lenses.today;
+  const items = [];
+  if (L.status === 'ready') items.push({ kind: 'bad', icon: ICON.alert, t: `Upcoming costs are ${money(L.gap)} short`, d: `Today's cash can't protect ${L.gap.label}.`, go: 'upcoming' });
+  else items.push({ kind: 'warn', icon: ICON.lock, t: 'Today\u2019s proposal is withheld', d: 'Chequing evidence isn\u2019t current. Refresh to check again.', go: 'overview' });
+  items.push({ kind: 'warn', icon: ICON.clock, t: `${checks.length} bills to confirm`, d: 'Due date passed, no linked payment yet. They may already be paid.', go: 'bills' });
+  items.push({ kind: 'warn', icon: ICON.tag, t: `${money(372.15)} of spending has no category`, d: 'Counted in full until it\u2019s assigned.', go: 'cat-other' });
+  items.push({ kind: 'info', icon: ICON.help, t: 'Amanda\u2019s Sep 30 pay not confirmed', d: 'Counted as expected income, so period totals are estimates.', go: 'wf-income' });
+  return `
+    <article class="card attention" aria-labelledby="att-h">
+      <div class="attention-head"><h2 id="att-h">Worth a look</h2><span class="pill muted">${items.length} items</span></div>
+      <div class="attention-list">${items.map(a => `
+        <button class="att ${a.kind}" type="button" data-go="${a.go}">
+          <span class="att-ico" aria-hidden="true">${a.icon}</span>
+          <span><span class="att-t">${a.t}</span><span class="att-d">${a.d}</span></span>
+        </button>`).join('')}</div>
+    </article>`;
+}
+
+function spendingCard() {
+  const B = D.budget;
+  const planned = B.categories.filter(c => !c.unassigned);
+  const over = planned.filter(c => c.remaining != null && c.remaining < 0);
+  const pace = pct(D.period.day, D.period.days);
+  const rows = B.categories.map(c => {
+    let kind, status;
+    if (c.unknown) { kind = 'unknown'; status = stateChip('unknown', 'Spending unknown'); }
+    else if (c.unassigned) { kind = 'unassigned'; status = `<span class="cat-status used">${money(c.spent)}</span>`; }
+    else if (c.remaining < 0) { kind = 'over'; status = `<span class="cat-status over">${money(-c.remaining)} over</span>`; }
+    else if (c.remaining === 0) { kind = 'used'; status = '<span class="cat-status used">All used</span>'; }
+    else { kind = 'left'; status = `<span class="cat-status left">${money(c.remaining)} left</span>`; }
+    const meta = c.unknown ? `Plan ${money(c.planned)} · spending not available`
+      : c.unassigned ? 'Not yet assigned to a category'
+      : `${money(c.spent)} of ${money(c.planned)}`;
+    const track = c.unassigned || c.unknown ? 1 : Math.max(c.planned, c.spent);
+    const within = c.unassigned || c.unknown ? 0 : pct(Math.min(c.spent, c.planned), track);
+    const planAt = c.unassigned || c.unknown ? 0 : pct(c.planned, track);
+    const overW = kind === 'over' ? pct(c.spent, track) - planAt : 0;
+    const hint = c.unknown ? '' : `<span class="tx-hint">Transactions ${ICON.chevR}</span>`;
+    return `<button class="cat ${kind}" type="button" data-sheet="cat-${c.id}" id="cat-row-${c.id}">
+      <span class="cat-name">${esc(c.name)}</span>${status}
+      <span class="cat-meta"><span>${meta}</span>${hint}</span>
+      <span class="cat-bar" aria-hidden="true"><span class="cat-fill" style="width:${within}%"></span>${overW ? `<span class="cat-over" style="left:${planAt}%;width:${overW}%"></span><span class="plan-mark" style="left:${planAt}%"></span>` : ''}${c.unassigned || c.unknown ? '' : `<span class="pace" style="left:${pace * planAt / 100}%"></span>`}</span>
+    </button>`;
+  }).join('');
+  return `
+    <section class="card" id="spending" aria-labelledby="spend-h">
+      <div class="card-head">
+        <div><div class="eyebrow">Spending this period</div><h2 id="spend-h">Household budget</h2><div class="sub">Tap a category to see its transactions.</div></div>
+        <span class="fine pace-key"><i aria-hidden="true"></i>Today</span>
+      </div>
+      <div class="summary3">
+        <div><div class="stat-label">Counted this period</div><div class="stat-value">${money(B.total)}</div></div>
+        <div><div class="stat-label">Left to spend</div><div class="stat-value">${money(D.today.needs)}</div></div>
+        <div><div class="stat-label">Over plan</div><div class="stat-value bad">${over.length} of ${planned.length}</div></div>
+      </div>
+      <div class="cats">${rows}</div>
+      <div class="note-box"><p>The plan counts each category at its plan or its spending, whichever is higher, plus anything not yet assigned.</p><button class="link-btn" type="button" data-sheet="wf-budget">Details</button></div>
+    </section>`;
+}
+
+const BILL_STATE = {
+  paid: { dot: 'paid', label: 'Paid', pill: '<span class="pill good">Paid</span>' },
+  due: { dot: 'due', label: 'To pay', pill: '<span class="pill muted">To pay</span>' },
+  pending: { dot: 'pending', label: 'Payment pending', pill: stateChip('pending') },
+  check: { dot: 'check', label: 'Not confirmed', pill: stateChip('check') },
+};
+function billRow(b) {
+  const st = BILL_STATE[b.state];
+  const label = b.state === 'due' && b.when ? `Due ${esc(b.when)}` : st.label;
+  return `<button class="bill ${b.state === 'paid' ? 'is-paid' : ''}" type="button" data-sheet="bill-${b.id}">
+    <span class="date-chip"><small>${b.mon}</small><b>${b.day}</b></span>
+    <span style="min-width:0"><span class="bill-name">${esc(b.name)}</span><span class="bill-state"><span class="sdot ${st.dot}"></span>${label}</span></span>
+    <span class="bill-amt">${money(b.state === 'paid' ? b.actual : b.remaining, { est: b.est })}</span>
+  </button>`;
+}
+function billsCard() {
+  const BL = D.bills;
+  const by = s => BL.rows.filter(b => b.state === s);
+  const upcoming = BL.rows.filter(b => b.state === 'due' || b.state === 'pending');
+  return `
+    <section class="card" id="bills" aria-labelledby="bills-h">
+      <div class="card-head"><div>
+        <div class="eyebrow">Bills this period</div>
+        <h2 id="bills-h">${money(BL.left)} left to pay or confirm</h2>
+        <div class="bill-counts">
+          <span class="pill muted"><span class="sdot due"></span>${by('due').length} to pay</span>
+          <span class="pill accent"><span class="sdot pending"></span>${by('pending').length} pending</span>
+          <span class="pill warn"><span class="sdot check"></span>${by('check').length} to confirm</span>
+        </div>
+      </div></div>
+      <div class="bills-progress" aria-hidden="true"><span style="width:${pct(BL.paid, BL.total)}%"></span></div>
+      <div class="bills-figs"><span>${money(BL.paid)} paid</span><span>${money(BL.total)} this period</span></div>
+      <div class="group"><div class="group-head"><h3>Coming up</h3></div>${upcoming.map(billRow).join('')}</div>
+      <div class="group"><div class="group-head"><h3><span class="sdot check"></span>Due date passed · to confirm</h3></div>
+        <p class="group-note">No payment linked yet. They may already be paid — check before paying again.</p>${by('check').map(billRow).join('')}</div>
+      <details class="group paid-group"><summary class="group-head"><h3><span class="sdot paid"></span>Paid · ${by('paid').length}</h3>${ICON.chevD}</summary>${by('paid').map(billRow).join('')}</details>
+      <div class="note-box"><p>The plan deducts ${money(BL.deduct)} — assigned amounts, excluding bills settled before the period opened.</p><button class="link-btn" type="button" data-sheet="wf-bills">Why</button></div>
+    </section>`;
+}
+
+function upcomingSection() {
+  const L = D.lenses[ui.lens];
+  const isToday = ui.lens === 'today';
+  const lensBar = `
+    <div class="seg wide" role="group" aria-label="Which funding proposal">
+      <button type="button" data-lens="today" aria-pressed="${isToday}">From today's cash · ${D.asOf}</button>
+      <button type="button" data-lens="payday" aria-pressed="${!isToday}">Oct 9 payday plan</button>
+    </div>
+    <div class="lens-intro">${ICON.info}<span>${isToday
+      ? 'What today\u2019s chequing can protect right now. The Oct 9 payday plan is a separate proposal for the same costs — view one at a time, never add them together.'
+      : 'What Forecast plans to set aside when the Oct 9 pay lands. Today\u2019s proposal is a separate proposal for the same costs — view one at a time, never add them together.'}</span></div>`;
+  let body;
+  if (L.status !== 'ready') {
+    body = `<div class="withheld"><h3>${ICON.lock}Today's proposal is withheld</h3>
+      <p>No amounts are shown for this proposal until the evidence below is resolved. Costs are still listed with nothing proposed.</p>
+      <ul class="reasons">${L.reasons.map(r => `<li><span>${esc(r.msg)}<small>${esc(r.ctx)}</small></span></li>`).join('')}</ul>
+      <div class="action">${ICON.refresh}<span>${esc(L.action)}</span></div></div>`;
+  } else {
+    body = `
+      <div class="summary-row">
+        <div><div class="stat-label">${isToday ? 'Proposed now' : 'From this payday'}</div><div class="stat-value">${money(L.proposed)}</div></div>
+        <div><div class="stat-label">Still to set aside</div><div class="stat-value">${money(L.stillToFund)}</div></div>
+        <div><div class="stat-label">Dated costs</div><div class="stat-value">${D.costs.length} <span class="fine">+ ${D.undated.length} undated</span></div></div>
+      </div>
+      <div class="gap-callout" role="note">${ICON.alert}<div>
+        <p><b>${money(L.gap)} short</b> across ${esc(L.gap.label)}.</p>
+        <p>${isToday ? 'Later proposals pause until that gap is covered.' : 'Even if this plan is followed.'} Proposed earmarks only — not transfers, and not money already saved.</p>
+      </div></div>`;
+  }
+  const months = [];
+  for (const r of D.costs) {
+    const key = `${r.month} ${r.year}`;
+    let m = months.find(x => x.key === key);
+    if (!m) months.push(m = { key, month: r.month, year: r.year, rows: [] });
+    m.rows.push(r);
+  }
+  const ready = L.status === 'ready';
+  const costRow = r => {
+    const a = ready ? L.alloc[r.id] : undefined;
+    const next = ready && L.next ? L.next[r.id] : null;
+    const full = a != null && a === r.cost;
+    let state;
+    if (!ready) state = stateChip('withheld');
+    else if (full) state = `<span class="cost-state covered">${isToday ? 'Covered by today\u2019s proposal' : 'Fully funded from Oct 9'}</span>`;
+    else if (a != null) state = `<span class="cost-state">${money(a, { est: true })} ${isToday ? 'proposed now' : 'from Oct 9'}</span>`;
+    else if (next) state = `<span class="cost-state">Next: ${money(next.v, { est: true })} on ${esc(next.on)}</span>`;
+    else state = isToday ? '<span class="cost-state">Nothing proposed yet</span>' : stateChip('none');
+    const inGap = ready && L.gapIds.includes(r.id);
+    return `<button class="cost ${inGap ? 'in-gap' : ''}" type="button" data-sheet="cost-${r.id}">
+      <span><span class="cost-name">${esc(r.name)}</span><span class="cost-when">${esc(r.date)}${r.dateEst ? ' · estimated date' : ''}</span></span>
+      <span class="cost-amt">${money(r.cost, { est: r.costEst })}</span>
+      <span class="cost-progress"><span class="cost-track"><span style="width:${pct(a, r.cost)}%"></span></span>${state}</span>
+    </button>`;
+  };
+  const timeline = months.map(m => `<div class="month"><div class="month-label">${m.month}<small>${m.year}</small></div><div class="month-items">${m.rows.map(costRow).join('')}</div></div>`).join('')
+    + `<div class="month"><div class="month-label">No date<small>yet</small></div><div class="month-items">${D.undated.map(r => `
+      <button class="cost" type="button" data-sheet="undated-${r.id}">
+        <span><span class="cost-name">${esc(r.name)}</span><span class="cost-when">Date not set · still reserved in the plan</span></span>
+        <span class="cost-amt">${money(r.cost, { est: r.costEst })}</span>
+        <span class="cost-progress"><span class="cost-track is-unknown-bar"></span>${stateChip('unknown', 'Contribution unknown')}</span>
+      </button>`).join('')}</div></div>`;
+
+  const P = D.lenses.payday;
+  const side = isToday ? `
+    <section class="card">
+      <div class="eyebrow">Today's proposal</div>
+      <h2 style="margin:4px 0 6px;font-size:17px">Where it comes from</h2>
+      <p class="fine" style="margin:0">The ${ready ? money(L.proposed) : 'proposed amount'} is what's left of today's chequing after bills, planned spending and the cash floor — see <button class="link-btn" type="button" data-sheet="today">How this works</button>.</p>
+    </section>` : `
+    <section class="card">
+      <div class="eyebrow">Rest of the Oct 9 payday</div>
+      <div class="kv">
+        <div class="kv-row"><span>Keep in chequing<small>A floor, not spending money</small></span><span>at least ${money(P.floor)}</span></div>
+        <div class="kv-row"><span>Other protected cash<small>${esc(P.otherProtected.reason)}</small></span>${money(P.otherProtected)}</div>
+        <div class="kv-row"><span>Extra on focus debt<small>TD Cash Back Visa · minimums already in bills</small></span>${money(P.focusExtra)}</div>
+        <div class="kv-row"><span>Truly unassigned<small>2 planned costs unresolved — not free money</small></span>${money(P.unassigned)}</div>
+      </div>
+      <p class="fine" style="margin:12px 0 0">A planning amount only. Atlas can't see money already moved to Nest Money, and nothing here is a transfer.</p>
+    </section>`;
+  return `
+    <section id="upcoming" aria-label="Upcoming costs and savings">
+      <div class="section-title"><h2>Upcoming costs &amp; savings</h2><p>Named costs the plan is setting money aside for.</p></div>
+      <div class="grid split-upcoming">
+        <section class="card lens-${ui.lens}" aria-labelledby="costs-h">
+          <div class="card-head"><div><div class="eyebrow">Funding proposal</div><h2 id="costs-h">Costs ahead</h2></div>
+            ${ready ? '<span class="gap-key"><i aria-hidden="true"></i>Inside the shortfall</span>' : ''}</div>
+          ${lensBar}${body}
+          <div class="timeline">${timeline}</div>
+        </section>
+        <div class="stack">
+          ${side}
+          <section class="card empty-state" aria-labelledby="sav-h">
+            <div class="ico" aria-hidden="true">${ICON.piggy}</div>
+            <div class="eyebrow">Savings assigned to goals</div>
+            <h3 id="sav-h">${stateChip('setup')}</h3>
+            <p>The two savings accounts and their starting goal assignments haven't been confirmed. Until they are, saved balances show as ${stateChip('unknown')} — never $0.</p>
+          </section>
+        </div>
+      </div>
+    </section>`;
+}
+
+function renderPeriod() {
+  $('view-period').innerHTML = `
+    <div class="grid hero" id="overview">${todayCard()}${periodCard()}</div>
+    ${attentionCard()}
+    <div class="grid split">${spendingCard()}${billsCard()}</div>
+    ${upcomingSection()}`;
+}
+
+/* ---------- Month view ---------- */
+function renderMonth() {
+  const M = D.month;
+  const R = M.result;
+  const ins = M.components.filter(c => c.dir === 'in');
+  const outs = M.components.filter(c => c.dir === 'out');
+  const flowScale = Math.max(...M.components.filter(c => known(c.f)).map(c => val(c.f)), 1);
+  const outScale = outs.filter(c => known(c.f)).reduce((s, c) => s + val(c.f), 0);
+  const scale = Math.max(flowScale, outScale);
+  /* Steps share one fixed scale (the month's income) so a lone known step
+     can't look larger just because its neighbours are unknown. */
+  const incomeF = M.components.find(c => c.id === 'income').f;
+  const ladderScale = known(incomeF) ? val(incomeF) / 2
+    : Math.max(...M.ladder.filter(r => known(r.f)).map(r => Math.abs(val(r.f))), 1);
+  const rung = (r, i) => {
+    const v = val(r.f);
+    const w = known(r.f) ? pct(Math.abs(v), ladderScale) / 2 : 0;
+    const bar = known(r.f)
+      ? `<span class="${v < 0 ? 'neg-b' : 'pos-b'}" style="${v < 0 ? `right:50%` : `left:50%`};width:${w}%"></span>`
+      : '';
+    const word = !known(r.f) ? `<small>${esc(r.f.reason)}</small>` : `<small>${v < 0 ? 'projected deficit' : v > 0 ? 'projected surplus' : 'break-even'}</small>`;
+    return `<button class="rung" type="button" data-sheet="rung-${i}">
+      <span class="rung-n">${i + 1}</span>
+      <span class="rung-l">${esc(r.label)}<small>${esc(r.note)}</small></span>
+      <span class="rung-v ${known(r.f) && v < 0 ? 'neg' : ''}">${money(r.f, { plus: known(r.f) && v > 0 })}${word}</span>
+      <span class="rung-bar ${known(r.f) ? '' : 'is-unknown-bar'}" aria-hidden="true">${bar}<span class="zero"></span></span>
+    </button>`;
+  };
+  const flowBar = list => list.map(c => known(c.f) && val(c.f) > 0
+    ? `<i class="${c.cls}" style="width:${pct(val(c.f), scale)}%" title="${esc(c.label)}"></i>`
+    : (!known(c.f) ? `<i class="is-unknown-bar" style="width:6%" title="${esc(c.label)} unknown"></i>` : '')).join('');
+  const resultKnown = known(R);
+  $('view-month').innerHTML = `
+    <div class="month-hero" id="month-result">
+      <article class="card">
+        <div class="card-head"><div><div class="eyebrow">${esc(M.label)} · whole month</div><h2>${resultKnown ? (val(R) < 0 ? 'Monthly deficit' : 'Monthly surplus') : 'Monthly result'}</h2></div>
+          ${resultKnown ? '<span class="pill warn">≈ Estimate</span>' : ''}</div>
+        <div class="big ${resultKnown && val(R) < 0 ? 'neg' : ''}">${big(R, { plus: resultKnown && val(R) > 0 })}</div>
+        <p class="verdict-note">${resultKnown
+          ? 'Forecast projects October falling short of what it\u2019s asked to pay for. Each month funds itself — September\u2019s leftover isn\u2019t carried in.'
+          : esc(R.reason) + ' Shown as unknown — not $0.'}</p>
+        <div class="windows" style="margin-top:18px">
+          <div class="window"><div class="eyebrow">This pay period</div><div class="mid">${money(D.waterfall.final)}</div><p>Sep 25 – Oct 8 · before savings</p></div>
+          <span class="vs">vs</span>
+          <div class="window"><div class="eyebrow">October</div><div class="mid ${resultKnown && val(R) < 0 ? 'neg' : ''}">${money(R, { plus: resultKnown && val(R) > 0 })}</div><p>Oct 1 – 31 · after planned spending and debt strategy</p></div>
+        </div>
+        <p class="fine" style="margin:12px 0 0">Different windows and different steps, published separately by Forecast — they don't have to agree. <button class="link-btn" type="button" data-sheet="windows">Why</button></p>
+      </article>
+      <article class="card">
+        <div class="card-head"><div><div class="eyebrow">How ${esc(M.label)} holds together</div><h2>Three steps, in order</h2></div></div>
+        <div class="ladder">${M.ladder.map(rung).join('')}</div>
+        <p class="fine" style="margin:12px 0 0">Each step is one Forecast-published monthly result. The page doesn't add or compare them.</p>
+      </article>
+    </div>
+
+    <div class="grid split">
+      <section class="card" id="month-flow">
+        <div class="card-head"><div><div class="eyebrow">${esc(M.label)}</div><h2>Money in and out</h2><div class="sub">Bar lengths are to scale. Totals stay with Forecast.</div></div></div>
+        <div class="flow">
+          <div class="flow-row"><span>In</span><div class="flow-bar">${flowBar(ins)}</div></div>
+          <div class="flow-row"><span>Out</span><div class="flow-bar">${flowBar(outs)}</div></div>
+        </div>
+        <div class="comp-list">${M.components.map(c => `
+          <div class="comp"><i class="${known(c.f) ? c.cls : 'is-unknown-bar'}"></i><span>${esc(c.label)}${!known(c.f) ? `<small>${esc(c.f.reason)}</small>` : ''}</span>${money(c.f, { minus: c.dir === 'out' && known(c.f) && val(c.f) > 0 })}</div>`).join('')}</div>
+      </section>
+      <section class="card" id="month-costs">
+        <div class="card-head"><div><div class="eyebrow">Cash-dated in ${esc(M.label)}</div><h2>Planned costs this month</h2><div class="sub">Costs outside the month can still affect its result.</div></div></div>
+        ${M.costs.map(c => `
+          <div class="kv" style="margin-top:6px">
+            <div class="kv-row" style="border-top:0"><span style="color:var(--ink);font-weight:620">${esc(c.name)}<small>Needed by ${esc(c.by)}</small></span>${money(c.amount)}</div>
+            <div class="kv-row"><span>Funding state</span><span class="pill good">${esc(c.state)}</span></div>
+            <div class="kv-row"><span>Next scheduled contribution</span><span>${money(c.next)} on ${esc(c.next.on)}</span></div>
+            <div class="kv-row"><span>Forecast projects fully funded by</span><span><span class="approx" style="color:var(--warn-fill);font-weight:650">≈</span> ${esc(c.funded)}</span></div>
+          </div>`).join('<div style="height:14px"></div>')}
+        <div class="note-box"><p>These follow the Oct 9 payday plan. Today's separate proposal is under Pay period → Upcoming costs.</p><button class="link-btn" type="button" data-action="to-upcoming">Open</button></div>
+      </section>
+    </div>`;
+}
+
+/* ---------- Legend: one vocabulary for missing or uncertain figures ---------- */
+function renderLegend() {
+  const items = [
+    ['<span class="m"><span class="approx">≈</span>$1,200.00</span>', 'Estimate', 'A figure exists, but at least one input is estimated — like a pay deposit not yet seen.'],
+    ['<span class="m">$500.00</span>', 'No mark', 'Published without an estimate flag. Nothing on this page is marked verified.'],
+    [stateChip('pending'), 'Pending', 'Under way but not settled — a payment in flight.'],
+    [stateChip('check'), 'Not confirmed', 'Due date passed with no linked payment. It may already be paid.'],
+    [stateChip('unknown'), 'Unknown', 'Forecast didn\u2019t publish it. Never shown as $0, and bars are hatched.'],
+    [stateChip('withheld'), 'Withheld', 'Forecast refuses to show a number until evidence is fixed. The reasons and next step are listed.'],
+    [stateChip('setup'), 'Not set up', 'Needs a one-time household setup before Atlas can show it.'],
+    [stateChip('none'), 'None scheduled', 'A real answer, not a gap: nothing is planned here.'],
+  ];
+  $('legend').innerHTML = items.map(([sym, t, d]) => `<div class="legend-item">${sym}<b>${t}</b><span class="d">${d}</span></div>`).join('')
+    + `<div class="legend-foot"><span class="fine">See how every card degrades when evidence is missing or withheld.</span>
+       <button class="btn" type="button" data-action="missing-toggle" aria-pressed="${ui.missing}">${ui.missing ? 'Back to Oct 3 figures' : 'Preview missing data'}</button></div>`;
+}
 
 /* ---------- Sheets ---------- */
-const sheetEl = $('sheet'), scrim = $('scrim');
-let lastFocus = null;
 const kvs = rows => `<div class="kv">${rows.map(([k, v]) => `<div class="kv-row"><span>${k}</span><span>${v}</span></div>`).join('')}</div>`;
 const SAMPLE_TX = {
   groceries: [['Sep 25', 'Supermarket', 264.20], ['Sep 28', 'Warehouse club', 391.87], ['Sep 28', 'Supermarket', 30.88], ['Sep 29', 'Supermarket', 90.27], ['Oct 1', 'Grocer', 58.12], ['Oct 2', 'Supermarket', 173.56]],
-  fuel: [['Sep 28', 'Gas station', 44.19], ['Sep 28', 'Gas station', 100.00], ['Sep 28', 'Gas station', 100.00], ['Oct 1', 'Gas station', 8.56], ['Oct 1', 'Gas station', 100.00], ['Oct 1', 'Gas station', 100.00]],
+  fuel: [['Sep 28', 'Gas station', 100.00], ['Sep 28', 'Gas station', 100.00], ['Oct 1', 'Gas station', 100.00], ['Oct 1', 'Gas station', 100.00]],
   dog: [],
-  eating: [['Sep 25', 'Convenience store', 14.85], ['Sep 28', 'Convenience store', 11.49], ['Sep 28', 'Fast food', 22.21], ['Sep 28', 'Café', 8.99], ['Sep 29', 'Coffee shop', 6.39]],
-  dale: [['Sep 25', 'e-Transfer', 150.00]],
+  eating: [['Sep 25', 'Convenience store', 14.85], ['Sep 28', 'Convenience store', 11.49], ['Sep 28', 'Fast food', 22.21], ['Sep 28', 'Café', 8.99], ['Sep 29', 'Coffee shop', 6.39], ['Oct 1', 'Gas station snack', 8.56]],
+  dale: [['Sep 25', 'e-Transfer', 150.00], ['Sep 28', 'Convenience store', 44.19]],
   amanda: [['Sep 28', 'Shoe store', 170.00], ['Sep 29', 'Online retailer', 34.92], ['Sep 30', 'Online shop', 54.88]],
   other: [['Sep 25', 'PayPal', 27.99], ['Sep 28', 'Dollar store', 29.27], ['Sep 28', 'Bike shop', 48.28], ['Sep 28', 'Shoe store', 62.03], ['Sep 29', 'Google', 3.13], ['Sep 29', 'Overdraft fee', 5.00], ['Sep 29', 'Overdraft interest', 8.26], ['Sep 29', 'PayPal', 11.75], ['Sep 29', 'PayPal', 19.03], ['Sep 30', 'Event registration', 29.12], ['Oct 1', 'Party store', 62.50], ['Oct 1', 'PayPal', 14.80], ['Oct 2', 'Liquor store', 50.99]],
 };
-const sheets = {
-  freshness: () => ({ eyebrow: 'Data', title: 'Updated Oct 2', body: `
-    <p>Balances and spending come from Lunch Money, observed and reconciled on Fri, Oct 2. Forecast turns that into the plan on this page.</p>
-    ${kvs([['Chequing balances', 'Oct 2'], ['Spending observed through', 'Oct 2'], ['Bills needing confirmation', `${checkBills.length}`], ['Spending without a category', small(372.15)]])}
-    <p class="fine">Atlas is read-only: it never moves money or changes an account.</p>` }),
-  today: () => ({ eyebrow: 'Today · Fri, Oct 2', title: 'How today\u2019s cash is spoken for', body: `
-    <p>A fresh proposal from today's chequing cash. It's separate from the payday plan and doesn't reconstruct anything already saved.</p>
-    ${kvs([
-      ['Cash in chequing', small(T.cash.v, T.cash)],
-      ['Bills & debt payments to Oct 8', small(T.bills.v, Object.assign({ minus: true }, T.bills))],
-      ['Household spending still planned', small(T.needs.v, Object.assign({ minus: true }, T.needs))],
-      ['Cash floor', small(T.floor.v, { minus: true })],
-      ['<b>Spoken for until payday</b>', `<b>${small(T.required.v, T.required)}</b>`],
-      ['<b>Proposed for upcoming costs</b>', `<b>${small(T.free.v, T.free)}</b>`],
-    ])}
+function buildSheets() {
+  for (const k of Object.keys(sheets)) delete sheets[k];
+  const T = D.today, W = D.waterfall, B = D.budget, BL = D.bills;
+  sheets.freshness = () => ({ eyebrow: 'Data', title: ui.missing ? 'Some data missing' : `Updated ${D.asOf}`, body: `
+    <p>Balances and spending come from Lunch Money, observed and reconciled on Sat, Oct 3. Forecast turns that into the plan on this page.</p>
+    ${kvs([['Chequing balances', ui.missing ? stateChip('check', 'Chequing B not current') : 'Oct 3'], ['Spending observed through', 'Oct 3'], ['Bills to confirm', `${BL.rows.filter(b => b.state === 'check').length}`], ['Spending without a category', money(372.15)]])}
+    <p class="fine">Atlas is read-only: it never moves money or changes an account.</p>` });
+  sheets.today = () => ({ eyebrow: `Today · ${T.date}`, title: 'How today\u2019s cash is spoken for', body: T.withheld ? `
+    <p>Forecast is withholding today's proposal. Each reason has to be resolved before an amount can be shown.</p>
+    <ul class="reasons">${T.withheld.reasons.map(r => `<li><span>${esc(r.msg)}<small>${esc(r.ctx)}</small></span></li>`).join('')}</ul>
+    <p>${esc(T.withheld.action)}</p>` : `
+    <p>A fresh proposal from today's chequing cash. It's separate from the Oct 9 payday plan and doesn't reconstruct anything already saved.</p>
+    ${kvs([['Cash in chequing', money(T.cash)], ['Bills & debt payments to Oct 8', money(T.bills, { minus: true })], ['Household spending still planned', money(T.needs, { minus: true })], ['Cash floor', money(T.floor, { minus: true })], ['<b>Spoken for until payday</b>', `<b>${money(T.required)}</b>`], ['<b>Proposed for upcoming costs</b>', `<b>${money(T.free)}</b>`]])}
     <h3>Why bills differ from the Bills list</h3>
     <p>This figure comes from Forecast's day-by-day cash walk to Oct 8 — every scheduled payment out of chequing. The Bills card lists this period's bill schedule. They're built differently, so they don't have to match.</p>
-    <p class="fine">More pay arriving before Oct 8: ${small(T.futureIncome.v, T.futureIncome)}. Shared savings and silver are never added to chequing cash.</p>` }),
-  'wf-income': () => ({ eyebrow: 'This pay period', title: 'Income', body: `
-    <div class="sheet-hero"><span class="mid">${money(W.income.v, W.income)}</span><span class="pill warn">≈ Estimate</span></div>
-    ${D.income.map(i => `<div class="tx"><span>${esc(i.name)}<small>${esc(i.date)} · ${i.warn ? `<span style="color:var(--warn)">${esc(i.state)}</span>` : esc(i.state)}</small></span>${small(i.v, { plus: true })}</div>`).join('')}
-    <p>The total is an estimate because Amanda's Sep 30 deposit hasn't been seen yet.</p>` }),
-  'wf-bills': () => ({ eyebrow: 'This pay period', title: 'Bills deduction', body: `
-    <div class="sheet-hero"><span class="mid">${money(W.bills.v, W.bills)}</span><span class="pill warn">≈ Estimate</span></div>
+    <p class="fine">More pay arriving before Oct 8: ${money(T.futureIncome)}. Shared savings and silver are never added to chequing cash.</p>` });
+  sheets['wf-income'] = () => ({ eyebrow: 'This pay period', title: 'Income', body: `
+    <div class="sheet-hero"><span class="mid">${big(W.income)}</span><span class="pill warn">≈ Estimate</span></div>
+    ${D.income.map(i => `<div class="tx"><span>${esc(i.name)}<small>${esc(i.date)} · ${i.pending ? stateChip('pending', i.state) : esc(i.state)}</small></span>${money(i.v, { plus: true })}</div>`).join('')}
+    <p>The total is an estimate because Amanda's Sep 30 deposit hasn't been seen yet.</p>` });
+  sheets['wf-bills'] = () => ({ eyebrow: 'This pay period', title: 'Bills deduction', body: `
+    <div class="sheet-hero"><span class="mid">${big(W.bills)}</span><span class="pill warn">≈ Estimate</span></div>
     <p>The plan deducts each bill's assigned amount, including required debt minimums. Bills already settled before the period opened aren't deducted again.</p>
-    ${kvs([['All bills this period', small(BL.total)], ['Paid so far (actual amounts)', small(BL.paid)], ['Left to pay', small(BL.left)]])}
-    <p class="fine">Paid amounts can differ from planned ones — the Travel Visa minimum was planned at ${small(17)} and paid at ${small(35)}.</p>` }),
-  'wf-afterbills': () => ({ eyebrow: 'This pay period', title: 'Balance after bills', body: `
-    <div class="sheet-hero"><span class="mid">${money(W.afterBills.v, W.afterBills)}</span><span class="pill warn">≈ Estimate</span></div>
-    <p>Period income after the bill deduction — what's available for the household budget and savings.</p>` }),
-  'wf-budget': () => ({ eyebrow: 'This pay period', title: 'Household budget', body: `
-    <div class="sheet-hero"><span class="mid">${money(W.budget.v, W.budget)}</span></div>
-    <p>Each category counts at its plan or its actual spending, whichever is higher. Spending that isn't in a category yet counts in full. That keeps the plan honest when a category runs over.</p>
-    ${kvs(B.categories.map(c => [esc(c.name), c.unassigned ? `${small(c.spent)} spent` : `${small(c.spent)} of ${small(c.planned)}`]))}
-    <p class="fine">${small(T.needs.v, T.needs)} is still planned in categories that aren't used up.</p>` }),
-  'wf-savings': () => ({ eyebrow: 'This pay period', title: 'Proposed savings', body: `
-    <div class="sheet-hero"><span class="unk">Unknown</span></div>
-    <p>This period has no original funding snapshot, and Atlas won't reconstruct one. So the savings step is shown as unknown — not $0 — and Balance After Deductions is shown before savings.</p>
-    <p>Today's proposal for upcoming costs is under <b>Upcoming costs</b>.</p>` }),
-  'wf-final': () => ({ eyebrow: 'This pay period', title: 'Balance After Deductions', body: `
-    <div class="sheet-hero"><span class="mid">${money(W.final.v, W.final)}</span><span class="pill warn">≈ Estimate</span></div>
-    ${kvs([['Income', small(W.income.v, W.income)], ['Bills', small(W.bills.v, Object.assign({ minus: true }, W.bills))], ['Household budget', small(W.budget.v, { minus: true })], ['Proposed savings', '<span class="unk">Unknown</span>']])}
-    <p>A positive balance may be needed for a later short period. It is not permission to spend.</p>` }),
-  upcoming: () => null,
-};
-for (const c of B.categories) {
-  sheets[`cat-${c.id}`] = () => {
+    ${kvs([['All bills this period', money(BL.total)], ['Paid so far (actual amounts)', money(BL.paid)], ['Left to pay or confirm', money(BL.left)]])}
+    <p class="fine">Paid amounts can differ from planned ones — the Travel Visa minimum was planned at ${money(17)} and paid at ${money(35)}.</p>` });
+  sheets['wf-afterbills'] = () => ({ eyebrow: 'This pay period', title: 'Balance after bills', body: `
+    <div class="sheet-hero"><span class="mid">${big(W.afterBills)}</span></div><p>Period income after the bill deduction — what's available for the household budget and savings.</p>` });
+  sheets['wf-budget'] = () => ({ eyebrow: 'This pay period', title: 'Household budget', body: `
+    <div class="sheet-hero"><span class="mid">${big(W.budget)}</span></div>
+    ${known(W.budget) ? '' : `<p>${esc(W.budget.reason)}</p>`}
+    <p>Each category counts at its plan or its actual spending, whichever is higher. Spending that isn't in a category yet counts in full.</p>
+    ${kvs(B.categories.map(c => [esc(c.name), c.unknown ? stateChip('unknown') : c.unassigned ? `${money(c.spent)} spent` : `${money(c.spent)} of ${money(c.planned)}`]))}` });
+  sheets['wf-savings'] = () => ({ eyebrow: 'This pay period', title: 'Proposed savings', body: `
+    <div class="sheet-hero"><span class="mid">${stateChip('unknown')}</span></div>
+    <p>${esc(W.savings.reason)} So the savings step is unknown — not $0 — and Balance After Deductions is shown before savings.</p>
+    <p>Funding proposals for upcoming costs are under <b>Upcoming costs</b>.</p>` });
+  sheets['wf-final'] = () => ({ eyebrow: 'This pay period', title: 'Balance After Deductions', body: `
+    <div class="sheet-hero"><span class="mid">${big(W.final)}</span></div>
+    ${known(W.final) ? '' : `<p>${esc(W.final.reason)}</p>`}
+    ${kvs([['Income', money(W.income)], ['Bills', money(W.bills, { minus: true })], ['Household budget', money(W.budget, { minus: true })], ['Proposed savings', money(W.savings)]])}
+    <p>A positive balance may be needed for a later short period. It is not permission to spend.</p>` });
+  sheets.windows = () => ({ eyebrow: 'Pay period vs month', title: 'Why the two can disagree', body: `
+    <p><b>The pay period</b> (Sep 25 – Oct 8) follows the paydays. Its Balance After Deductions is shown before savings, because this period's savings step is unknown.</p>
+    <p><b>October</b> (Oct 1 – 31) follows the calendar. It covers different paydays and bills, and it counts the month's planned spending — Fusion October and the team fee.</p>
+    <p>Forecast publishes each one separately. Atlas doesn't convert one into the other, and neither is carried into the next window.</p>` });
+  for (const c of B.categories) sheets[`cat-${c.id}`] = () => {
     const tx = SAMPLE_TX[c.id] || [];
+    if (c.unknown) return { eyebrow: 'Household budget', title: c.name, body: `<p>Spending for this category is unavailable, so its transactions and remaining amount can't be shown. Nothing is assumed spent.</p>${kvs([['Planned', money(c.planned)], ['Spent', stateChip('unknown')]])}<p>${esc(REFRESH_ACTION)}</p>` };
     return { eyebrow: 'Household budget', title: c.name, body: `
       ${c.unassigned ? '<p>Spending that hasn\u2019t been given a budget category yet. It counts in full against the household budget until it\u2019s assigned.</p>' : ''}
-      ${kvs(c.unassigned ? [['Spent', small(c.spent)], ['Planned', '<span class="unk">No plan</span>']]
-        : [['Planned', small(c.planned)], ['Spent', small(c.spent)], [c.remaining < 0 ? 'Over plan' : 'Remaining', `<span style="color:${c.remaining < 0 ? 'var(--bad)' : 'inherit'}">${small(Math.abs(c.remaining))}</span>`]])}
+      ${kvs(c.unassigned ? [['Spent', money(c.spent)], ['Planned', stateChip('none', 'No plan')]]
+        : [['Planned', money(c.planned)], ['Spent', money(c.spent)], [c.remaining < 0 ? 'Over plan' : 'Remaining', `<span style="color:${c.remaining < 0 ? 'var(--bad)' : 'inherit'}">${money(Math.abs(c.remaining))}</span>`]])}
       <h3>${tx.length ? `Transactions · ${tx.length}` : 'Transactions'}</h3>
-      ${tx.length ? tx.map(([d, n, v]) => `<div class="tx"><span>${esc(n)}<small>${esc(d)}</small></span>${small(v)}</div>`).join('') : '<p>Nothing spent yet this period.</p>'}
+      ${tx.length ? tx.map(([d, n, v]) => `<div class="tx"><span>${esc(n)}<small>${esc(d)}</small></span>${money(v)}</div>`).join('') : '<p>Nothing spent yet this period.</p>'}
       <p class="fine">Merchant names in this mockup are illustrative.</p>` };
   };
-}
-for (const b of BL.rows) {
-  sheets[`bill-${b.id}`] = () => {
-    const status = b.state === 'paid' ? '<span class="pill good">Paid</span>'
-      : b.state === 'due' ? '<span class="pill accent">To pay</span>' : '<span class="pill warn">Not confirmed</span>';
-    const evidence = b.evidence || 'No payment seen yet. Missing evidence doesn\u2019t mean unpaid.';
+  for (const b of BL.rows) sheets[`bill-${b.id}`] = () => {
+    const evidence = b.evidence || 'No payment is linked to this bill yet.';
     return { eyebrow: `Bill · due ${b.mon} ${b.day}`, title: b.name, body: `
-      <div class="sheet-hero"><span class="mid">${money(b.state === 'paid' ? b.actual : b.remaining, { est: b.est })}</span>${status}</div>
-      ${kvs([['Planned', small(b.planned, { est: b.est })], ['Actual', b.actual == null ? '<span class="unk">Unknown</span>' : small(b.actual)], ['Remaining', small(b.remaining)], ['Paid from', 'Bills account']])}
+      <div class="sheet-hero"><span class="mid">${big(b.state === 'paid' ? b.actual : b.remaining, { est: b.est })}</span>${BILL_STATE[b.state].pill}</div>
+      ${kvs([['Planned', money(b.planned, { est: b.est })], ['Actual', b.actual == null ? stateChip('unknown') : money(b.actual)], ['Remaining', money(b.remaining)], ['Paid from', 'Bills account']])}
       <h3>Payment evidence</h3><p>${esc(evidence)}</p>
-      ${b.state === 'check' ? '<p class="fine">The due date has passed. Atlas only marks a bill paid when it sees the payment, so this is a prompt to check — not a warning that it was missed.</p>' : ''}` };
+      ${b.state === 'check' ? '<p class="fine">The due date has passed and no payment is linked yet. That doesn\u2019t mean it\u2019s unpaid — check before paying it again.</p>' : ''}` };
   };
-}
-for (const r of C.rows) {
-  sheets[`cost-${r.id}`] = () => ({ eyebrow: `Upcoming · ${r.date}${r.dateEst ? ' (estimated)' : ''}`, title: r.name, body: `
-    <div class="sheet-hero"><span class="mid">${money(r.cost, { est: r.costEst })}</span>${r.gap ? '<span class="pill bad">In the shortfall</span>' : ''}</div>
-    ${kvs([['Proposed from today', small(r.proposed, { est: true })], ['Still to set aside', small(r.remaining, { est: true })], ['Actually saved', '<span class="unk">Unknown</span>'], ['Destination account', '<span class="unk">Unknown</span>']])}
-    <p class="fine">A proposed earmark — not a transfer, and not money already saved.</p>` });
-}
-for (const r of C.undated) {
-  sheets[`undated-${r.id}`] = () => ({ eyebrow: 'Upcoming · date not set', title: r.name, body: `
-    <div class="sheet-hero"><span class="mid">${money(r.cost, { est: r.costEst })}</span></div>
+  for (const r of D.costs) sheets[`cost-${r.id}`] = () => {
+    const t = D.lenses.today, p = D.lenses.payday;
+    const todayV = t.status === 'ready' ? money(t.alloc[r.id] || 0, { est: true }) : stateChip('withheld');
+    const payV = p.alloc[r.id] != null ? money(p.alloc[r.id], { est: true })
+      : p.next && p.next[r.id] ? `next ${money(p.next[r.id].v, { est: true })} on ${p.next[r.id].on}` : stateChip('none');
+    const shown = ui.lens === 'today' ? ['From today\u2019s cash', todayV] : ['From the Oct 9 payday', payV];
+    return { eyebrow: `Upcoming · ${r.date}${r.dateEst ? ' (estimated)' : ''}`, title: r.name, body: `
+      <div class="sheet-hero"><span class="mid">${big(r.cost, { est: r.costEst })}</span></div>
+      ${kvs([shown, ['Actually saved', stateChip('unknown')], ['Destination account', stateChip('unknown')]])}
+      <p class="fine">Showing the ${ui.lens === 'today' ? 'today' : 'Oct 9 payday'} proposal. The other proposal covers the same cost and isn't added to this one. Proposed earmarks only — not transfers or money already saved.</p>` };
+  };
+  for (const r of D.undated) sheets[`undated-${r.id}`] = () => ({ eyebrow: 'Upcoming · date not set', title: r.name, body: `
+    <div class="sheet-hero"><span class="mid">${big(r.cost, { est: r.costEst })}</span></div>
     <p>No planning date has been set, so no contribution can be scheduled. Its amount stays reserved in the plan.</p>` });
+  D.month.ladder.forEach((r, i) => { sheets[`rung-${i}`] = () => ({ eyebrow: `${D.month.label} · step ${i + 1}`, title: r.label, body: `
+    <div class="sheet-hero"><span class="mid">${big(r.f)}</span></div><p>${esc(r.note)}.</p>
+    ${known(r.f) ? '' : `<p>${esc(r.f.reason)} Shown as unknown — not $0.</p>`}
+    <p class="fine">One Forecast-published monthly result. The page doesn't work out the difference between steps.</p>` }); });
 }
 
+/* ---------- Sheet mechanics ---------- */
+const sheetEl = $('sheet'), scrim = $('scrim');
+let lastFocus = null;
 function openSheet(key, trigger) {
-  const make = sheets[key];
-  const s = make && make();
+  const s = sheets[key] && sheets[key]();
   if (!s) return;
   $('sheet-eyebrow').textContent = s.eyebrow;
   $('sheet-title').textContent = s.title;
@@ -1151,50 +1333,76 @@ function openSheet(key, trigger) {
 function closeSheet() {
   sheetEl.classList.remove('open'); scrim.classList.remove('open');
   sheetEl.setAttribute('aria-hidden', 'true');
-  if (lastFocus) lastFocus.focus({ preventScroll: true });
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
 }
-document.addEventListener('click', e => {
-  const s = e.target.closest('[data-sheet]');
-  if (s) {
-    const key = s.getAttribute('data-sheet');
-    if (key === 'upcoming') { $('upcoming').scrollIntoView(); return; }
-    openSheet(key, s); return;
-  }
-  const g = e.target.closest('[data-go]');
-  if (g) {
-    const key = g.getAttribute('data-go');
-    if (key === 'upcoming' || key === 'bills') $(key).scrollIntoView();
-    else if (key.startsWith('cat-')) { const row = $(`cat-row-${key.slice(4)}`); row.scrollIntoView({ block: 'center' }); setTimeout(() => openSheet(key, row), 350); }
-    else openSheet(key, g);
-    return;
-  }
-  const p = e.target.closest('[data-period]');
-  if (p) toast(p.getAttribute('data-period') === 'prev' ? 'Sep 11 – 24 would open here — same layout, that period\u2019s figures.' : 'Oct 9 – 22 would open here as a projection.');
-});
-scrim.addEventListener('click', closeSheet);
-$('sheet-close').addEventListener('click', closeSheet);
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && sheetEl.classList.contains('open')) closeSheet(); });
-
 let toastTimer;
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
-/* Theme */
-$('theme-toggle').addEventListener('click', () => {
-  const root = document.documentElement;
-  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  root.dataset.theme = dark ? 'light' : 'dark';
-});
-const qTheme = new URLSearchParams(location.search).get('theme');
-if (qTheme === 'dark' || qTheme === 'light') document.documentElement.dataset.theme = qTheme;
+/* ---------- Render + events ---------- */
+function render() {
+  D = ui.missing ? missingVariant(SNAPSHOT) : SNAPSHOT;
+  $('view-period').hidden = ui.view !== 'period';
+  $('view-month').hidden = ui.view !== 'month';
+  if (ui.view === 'period') renderPeriod(); else renderMonth();
+  renderLegend();
+  buildSheets();
+  renderHeader();
+}
 
-/* Jump chips scroll-spy (phone) */
-const chips = Array.from(document.querySelectorAll('#jump a'));
-const targets = chips.map(a => document.querySelector(a.getAttribute('href')));
-if ('IntersectionObserver' in window) {
-  const io = new IntersectionObserver(entries => {
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-sheet],[data-go],[data-view],[data-lens],[data-action],[data-step]');
+  if (!t) return;
+  if (t.dataset.sheet) { openSheet(t.dataset.sheet, t); return; }
+  if (t.dataset.view) { if (ui.view !== t.dataset.view) { ui.view = t.dataset.view; render(); window.scrollTo({ top: 0 }); } return; }
+  if (t.dataset.lens) {
+    if (ui.lens !== t.dataset.lens) {
+      const y = window.scrollY; ui.lens = t.dataset.lens; render(); window.scrollTo({ top: y, behavior: 'instant' });
+      const btn = document.querySelector(`[data-lens="${ui.lens}"]`); if (btn) btn.focus({ preventScroll: true });
+    }
+    return;
+  }
+  if (t.dataset.step) {
+    const prev = t.dataset.step === 'prev';
+    toast(ui.view === 'period'
+      ? (prev ? 'Sep 11 – 24 would open here — same layout, that period\u2019s figures.' : 'Oct 9 – 22 would open here as a projection.')
+      : (prev ? 'September 2026 would load Forecast\u2019s row for that month.' : 'November 2026 would load Forecast\u2019s row for that month.'));
+    return;
+  }
+  if (t.dataset.go) {
+    const key = t.dataset.go;
+    if (key.startsWith('cat-')) { const row = $(`cat-row-${key.slice(4)}`); row.scrollIntoView({ block: 'center' }); setTimeout(() => openSheet(key, row), 350); }
+    else if ($(key)) $(key).scrollIntoView();
+    else openSheet(key, t);
+    return;
+  }
+  const a = t.dataset.action;
+  if (a === 'theme') {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+  } else if (a === 'lens-payday' || a === 'to-upcoming') {
+    ui.view = 'period'; if (a === 'lens-payday') ui.lens = 'payday';
+    render(); $('upcoming').scrollIntoView();
+  } else if (a === 'missing-toggle' || a === 'missing-off') {
+    ui.missing = a === 'missing-toggle' ? !ui.missing : false;
+    render(); window.scrollTo({ top: 0 });
+    toast(ui.missing ? 'Previewing missing data — illustrative only.' : 'Back to the Oct 3 figures.');
+  }
+});
+scrim.addEventListener('click', closeSheet);
+$('sheet-close').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && sheetEl.classList.contains('open')) closeSheet(); });
+
+let io = null;
+function spy() {
+  if (!('IntersectionObserver' in window)) return;
+  if (io) io.disconnect();
+  const chips = Array.from(document.querySelectorAll('#jump a'));
+  const targets = chips.map(a => document.querySelector(a.getAttribute('href')));
+  io = new IntersectionObserver(entries => {
     for (const en of entries) if (en.isIntersecting) {
       const i = targets.indexOf(en.target);
       chips.forEach((c, j) => c.classList.toggle('active', i === j));
@@ -1202,6 +1410,8 @@ if ('IntersectionObserver' in window) {
   }, { rootMargin: '-45% 0px -50% 0px' });
   targets.forEach(t => t && io.observe(t));
 }
+
+render();
 </script>
 </body>
 </html>
