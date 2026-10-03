@@ -129,9 +129,22 @@ function withheldSavings(data) {
 // The served /data.json packet, through the real observation and overlay.
 // opts.unavailablePlan: the server's fail-closed packet for a refresh it
 // could not trust — the dated Aug 13 opening, observed Aug 20.
+// Independently invented deductions above period income: a confirmed levy
+// in the Aug 14–27 window. Forecast must publish negative after-bills and
+// after-household/final balances; the surface must not treat those as unknown.
+function deficitPeriod(data) {
+  data.plan.bills.push({
+    id: 'levy', label: 'Synthetic levy', frequency: 'monthly', day: 16,
+    amount: 5000, confidence: 'confirmed', payingAccount: 'chequing-a',
+  });
+  return data;
+}
+
 function served(opts = {}) {
   const Live = require('../../scripts/live-plan');
-  const data = opts.withheldSavings ? withheldSavings(canonical()) : canonical();
+  const data = opts.withheldSavings ? withheldSavings(canonical())
+    : opts.deficitPeriod ? deficitPeriod(canonical())
+    : canonical();
   const overlay = Live.fromObservation({ data, payload: payload(), accountMap: map, identity });
   if (opts.unavailablePlan) {
     return Live.failedOverlay(canonical(), 'Synthetic refresh could not be trusted.', { report: overlay.report });

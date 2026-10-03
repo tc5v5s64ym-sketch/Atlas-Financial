@@ -106,8 +106,24 @@ async function geometry(page) {
       assert.match(await page.locator('[data-budget-surface="unavailable"]').innerText(), /Last trusted opening/);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await page.screenshot({ path: path.join(screenshots, `unavailable-${width}.png`), fullPage: true });
+      data = fx.served({ deficitPeriod: true }); await boot(); await geometry(page);
+      assert.match(await page.locator('[data-budget-period-result]').innerText(), /3,367\.99/);
+      assert.match(await page.locator('[data-operating-question="07"] .budget-step-value').innerText(), /estimated/);
+      const trackState = id => page.locator(`[data-operating-question="${id}"] .budget-waterfall-track`)
+        .evaluate(el => ({ deficit: el.classList.contains('is-deficit'), unknown: el.classList.contains('is-unknown'),
+          hatch: getComputedStyle(el).backgroundImage }));
+      const householdTrack = await trackState('06');
+      const finalTrack = await trackState('07');
+      const savingsTrack = await trackState('savings');
+      assert.deepEqual({ deficit: householdTrack.deficit, unknown: householdTrack.unknown }, { deficit: true, unknown: false });
+      assert.deepEqual({ deficit: finalTrack.deficit, unknown: finalTrack.unknown }, { deficit: true, unknown: false });
+      assert.ok(!finalTrack.hatch.includes('repeating-linear-gradient'), 'known deficit is not the unknown hatch');
+      assert.deepEqual({ deficit: savingsTrack.deficit, unknown: savingsTrack.unknown }, { deficit: false, unknown: true });
+      assert.ok(savingsTrack.hatch.includes('repeating-linear-gradient'), 'unavailable savings keep the hatch');
+      await page.screenshot({ path: path.join(screenshots, `deficit-${width}.png`), fullPage: true });
+      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `deficit-period-${width}.png`) });
       await page.close();
-      console.log(`PASS ${width}px: financial hero, geometry, evidence, keyboard reachability, focus restoration, unknown assignments and unavailable plan`);
+      console.log(`PASS ${width}px: financial hero, geometry, evidence, keyboard reachability, focus restoration, unknown assignments, unavailable plan and known deficit`);
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
     console.log('PASS actual App.boot → Forecast → active Budget renderer; no external requests or page errors');

@@ -91,6 +91,32 @@ const unavailable = f.calendarWaterfallHtml(Object.assign({}, rows[1], { operati
 assert.doesNotMatch(unavailable, /class="budget-step-details"/);
 assert.match(unavailable, /data-current-waterfall="unavailable"/);
 
+const deficitInputs = require('./fixtures/budget-layout-data')();
+deficitInputs.plan.bills[0].amount = 5000;
+const deficitPeriod = F.recommend(deficitInputs.plan, deficitInputs.meta.asOf, { debts: [] })
+  .payPeriodViews.find(p => p.start === '2027-01-01');
+assert.ok(deficitPeriod);
+// 2027 estimated payroll is the incumbent published 3,849.40; bills and hold
+// are this invented levy plus the fixture hydro and grocery target.
+const independentIncome = 3849.40;
+const independentBills = 5000 + 199;
+const independentHold = 100;
+assert.equal(deficitPeriod.available, independentIncome);
+assert.equal(deficitPeriod.periodBillLoad, independentBills);
+assert.equal(deficitPeriod.afterBills, Math.round((independentIncome - independentBills) * 100) / 100);
+assert.equal(deficitPeriod.afterHouseholdBudget,
+  Math.round((independentIncome - independentBills - independentHold) * 100) / 100);
+assert.ok(deficitPeriod.afterBills < 0 && deficitPeriod.afterHouseholdBudget < 0);
+const deficitHtml = f.calendarWaterfallHtml(deficitPeriod, null, null, deficitInputs.plan);
+assert.match(summary(deficitHtml, '06'), /is-deficit/);
+assert.doesNotMatch(summary(deficitHtml, '06'), /is-unknown/);
+assert.match(summary(deficitHtml, '07'), /is-deficit/);
+assert.doesNotMatch(summary(deficitHtml, '07'), /is-unknown/);
+assert.match(summary(deficitHtml, '07'), /\$\-1449\.60/);
+assert.match(summary(deficitHtml, '07'), /≈ estimated/);
+assert.match(summary(deficitHtml, 'savings'), /is-unknown/);
+assert.doesNotMatch(summary(deficitHtml, 'savings'), /is-deficit|style="left:/);
+
 // Exercise the incumbent 2027 payroll regime, rather than stamping a mock row.
 const financialData = require('./fixtures/budget-layout-data')();
 const financialAdvice = F.recommend(financialData.plan, financialData.meta.asOf, { debts: [] });

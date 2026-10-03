@@ -4043,13 +4043,17 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
       // Never derive another financial total or read a formatted HTML value.
       const scaleKnown = typeof period.available === 'number' && Number.isFinite(period.available)
         && period.available > 0 && ['calculated', 'estimated'].includes(period.incomeTrust);
-      const barKnown = known && scaleKnown && typeof summary.barStart === 'number'
-        && Number.isFinite(summary.barStart) && summary.barStart >= 0 && summary.amount >= 0;
+      const geometryKnown = known && scaleKnown && typeof summary.barStart === 'number'
+        && Number.isFinite(summary.barStart);
+      const overflow = geometryKnown && (summary.barStart < 0 || summary.amount < 0);
+      const barKnown = geometryKnown && !overflow;
       const percent = value => Math.max(0, Math.min(100, value / period.available * 100));
       const barStart = barKnown ? percent(summary.barStart) : 0;
-      const barWidth = barKnown ? Math.min(100 - barStart, percent(summary.amount)) : 0;
-      const graph = `<span class="budget-waterfall-track${barKnown ? '' : ' is-unknown'}" aria-hidden="true">${barKnown
-        ? `<span class="budget-waterfall-bar" style="left:${barStart}%;width:${barWidth}%"></span>` : ''}</span>`;
+      const barWidth = barKnown ? Math.min(100 - barStart, percent(summary.amount))
+        : overflow ? percent(Math.abs(summary.amount)) : 0;
+      const trackClass = barKnown ? '' : overflow ? ' is-deficit' : ' is-unknown';
+      const graph = `<span class="budget-waterfall-track${trackClass}" aria-hidden="true">${barKnown || overflow
+        ? `<span class="budget-waterfall-bar" style="left:${overflow ? 0 : barStart}%;width:${barWidth}%"></span>` : ''}</span>`;
       return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
         <details class="budget-step-details">
           <summary class="budget-step-summary">
