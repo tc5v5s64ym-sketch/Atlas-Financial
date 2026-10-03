@@ -750,7 +750,12 @@
         && (event.jointCash !== false || event.cardPaid);
   }
   function applyReserveFunding(events, plan, start, end, opts) {
-    const funding = reserveFundingState(plan, start, opts);
+    // The funding state is as-of scoped (observations are proven at one
+    // date), while the payment pairing is window scoped. A sub-window view
+    // (week / next period) must reuse the recommend as-of funding state;
+    // the window start alone cannot prove the backing.
+    const fundingAsOf = (opts && opts.reserveFundingAsOf) || start;
+    const funding = reserveFundingState(plan, fundingAsOf, opts);
     if (funding.status !== 'ready') return events;
     const relevant = funding.payments.filter(payment => payment.date >= start && payment.date <= end);
     // One matched expense is necessary for every in-window seed. A missing,
@@ -761,7 +766,7 @@
     return events.map(event => {
       const payment = relevant.find(row => reservePaymentEventMatch(event, row));
       return payment ? Object.assign({}, event, { reserveFunding: {
-        amount: payment.backed, parts: payment.parts, asOf: start, revision: funding.revision,
+        amount: payment.backed, parts: payment.parts, asOf: fundingAsOf, revision: funding.revision,
         source: funding.source, projected: true,
       } }) : event;
     });
@@ -5496,7 +5501,10 @@
       if (!isJointCashOutflow(e) && !e.cardPaid) continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
       if (e.id && skipOnce.has(e.id)) continue;
-      const amt = -e.amount;
+      // Reserve-adjusted outflow: a backed expense costs operating cash
+      // only its unfinanced remainder, exactly as the cash walk books it.
+      // Display rows (layoutGlanceFrom) keep the gross requirement.
+      const amt = -operatingEventAmount(e);
       if (amt > EPSILON) sum += amt;
     }
     return roundCent(sum);
@@ -9360,7 +9368,10 @@
     const opening = startOfDayCash(sim, nextPayday);
     if (opening == null) return null;
     const available = roundCent(opening + incomeOnDate(plan, nextPayday, opts));
-    const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts);
+    // Operating-cash leftover uses the reserve-adjusted outflow, exactly as
+    // the cash walk books it; the funding state stays as-of scoped.
+    const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast,
+      Object.assign({}, opts, { reserveFundingAsOf: asOf }));
     const days = Math.max(1, diffDays(nextPayday, periodLast) + 1);
     const householdBudget = householdBudgetScaled(plan, days, nextPayday, periodLast);
     const leftover = runningLeftoverFromAlloc(
@@ -9394,7 +9405,10 @@
     const opening = week.opening != null && isFinite(Number(week.opening))
       ? roundCent(week.opening) : null;
     if (opening == null) return null;
-    const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts);
+    // Operating-cash leftover uses the reserve-adjusted outflow, exactly as
+    // the cash walk books it; the funding state stays as-of scoped.
+    const unpaid = unpaidJointCashInRange(plan, week.start, week.end,
+      Object.assign({}, opts, { reserveFundingAsOf: asOf }));
     const householdBudget = householdBudgetScaled(plan, 7, week.start, week.end);
     const leftover = runningLeftoverFromAlloc(
       opening, unpaid, budgetAmountTotal(householdBudget), 0, 0);

@@ -151,4 +151,24 @@ for (const alias of [
   }
 }
 assert.deepEqual(run(data), advice, 'repeat refresh is deterministic');
+// PR #482 P1 regression: week and next-period views must subtract the
+// reserve-adjusted outflow for a backed expense, exactly as the cash walk
+// books it. Display rows keep the gross requirement.
+{
+  const d = backedFixture();
+  const a = run(d);
+  const week = a.weekViews.find(w => w.periodStart === '2026-09-04');
+  assert.ok(week, 'the week containing the backed payment is published');
+  assert.equal(week.periodEnd, '2026-09-10');
+  assert.equal(cents(week.currentBalance) - cents(week.afterBills), 43063n,
+    'week view deducts the reserve-adjusted outflow, not the gross requirement');
+  const row = week.bills.find(b => b.id === 'named-cost');
+  assert.equal(cents(row.planned), 60000n, 'display keeps the gross requirement');
+  assert.equal(cents(row.remaining), 60000n, 'display keeps the gross remaining');
+  const next = a.nextPeriodView;
+  assert.ok(next, 'the next-period view is published');
+  assert.equal(next.periodStart, '2026-08-28');
+  assert.equal(cents(next.currentBalance) - cents(next.afterBills), 78063n,
+    'next-period view deducts the reserve-adjusted outflow');
+}
 console.log('PASS reserve-aware funding controls: stocks/flows, groups, both pools, annual/tax, evidence gates, exact cents, repeat and no mutation');
