@@ -8,7 +8,7 @@ const F = require('../public/forecast');
 const O = require('../scripts/provider-observe');
 const UI = require('../public/savings-inventory');
 const { withServer } = require('./test-savings-evidence-integration');
-const { AS_OF, fixture, clone } = require('./fixtures/savings-earmarks');
+const { AS_OF, fixture, propertyTaxFixture, clone } = require('./fixtures/savings-earmarks');
 const ROOT = path.join(__dirname, '..');
 function renderSurfaces(served) {
   const build = script => {
@@ -87,6 +87,27 @@ async function main() {
     assert.deepEqual(refunded.plan.savingsEarmarks, refund.data.plan.savingsEarmarks);
     const empty = fixture(); delete empty.data.plan.savingsEarmarks; empty.map.mappings.pop(); empty.payload.accounts.pop();
     server.write(empty); assert.equal(renderSurfaces(await server.get()).advice.savingsInventory.status, 'setup-unknown');
+    const propertyTax = propertyTaxFixture(); server.write(propertyTax);
+    const taxServed = await server.get(), taxRendered = renderSurfaces(taxServed);
+    assert.equal(taxServed.liveOverlay.applied, true);
+    assert.deepEqual(taxServed.plan.savingsEarmarks, propertyTax.data.plan.savingsEarmarks);
+    assert.deepEqual(taxServed.plan.budget.categories, propertyTax.data.plan.budget.categories);
+    const taxGoal = taxRendered.advice.savingsInventory.goals.find(g => g.goalRef.kind === 'budget-reserve');
+    assert.equal(taxGoal.target, 487.63); assert.equal(taxGoal.targetTrust, 'estimated');
+    assert.equal(taxGoal.intent, 103.27); assert.equal(taxGoal.backed, 103.27);
+    assert.equal(taxRendered.advice.savingsInventory.pools[1].unallocated, 29.68);
+    assert.match(taxRendered.html, /Synthetic property tax/);
+    assert.equal(taxRendered.advice.planSpendPaydayFunding.status, 'unavailable');
+    const taxEvents = F.expandEvents(taxServed.plan, AS_OF, '2026-11-18')
+      .filter(e => e.id === 'synthetic-property-tax');
+    assert.equal(taxEvents.length, 1); assert.equal(taxEvents[0].kind, 'reserve');
+    assert.equal(taxEvents[0].amount, -487.63); assert.equal(taxEvents[0].date, '2026-10-21');
+    const unknownTax = propertyTaxFixture(); unknownTax.data.plan.savingsEarmarks.history = [];
+    server.write(unknownTax);
+    const unknownTaxOut = renderSurfaces(await server.get()).advice.savingsInventory;
+    assert.equal(unknownTaxOut.pools[1].status, 'intent-unknown');
+    assert.equal(unknownTaxOut.pools[1].intent, null); assert.equal(unknownTaxOut.pools[1].unallocated, null);
+    assert.deepEqual(unknownTaxOut.goals, []);
     const map = clone(fixture().map); map.scope = 'local'; O.assertLiveMap(map, { data: fixture().data });
     map.mappings.find(row => row.canonical.id === 'synthetic-reserve-b').atlasRole = 'household-cash';
     assert.throws(() => O.assertLiveMap(map, { data: fixture().data }), /unsupported-atlas-role/);

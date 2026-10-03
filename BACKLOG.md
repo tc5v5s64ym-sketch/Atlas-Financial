@@ -8,9 +8,10 @@ pending states on Budget and Plan Spend. Authority is recorded in
 savings earmark suites. The 2026-10-03 owner role selection is recorded in
 `ARCHITECTURE.md`, superseded by the 03:16:39 UTC selection: ending 3074 is for
 Fusion and related sports; ending 8420 is for property tax and home insurance,
-with deliberate legacy staging reconciliation still pending. The current
-earmark reference kinds cannot address the incumbent property-tax reserve;
-configuration must consume that requirement without duplicating it. The exact
+with deliberate legacy staging reconciliation still pending. A `budget-reserve`
+earmark reference consumes the incumbent property-tax reserve without another
+obligation or cash event; synthetic unit and authenticated integration proof
+cover this path. The exact
 ending 3074 identity link is
 the remaining immediate owner question. Starting assignments and the new
 baseline remain unset pending the owner's later funding confirmation. Runtime

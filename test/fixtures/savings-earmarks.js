@@ -36,4 +36,14 @@ function observedPlan() {
   ] };
   return input.data.plan;
 }
-module.exports = { AS_OF, fixture, observedPlan, clone };
+function propertyTaxFixture() {
+  const input = fixture();
+  input.data.plan.budget.categories.push({ id: 'synthetic-property-tax', label: 'Synthetic property tax',
+    class: 'reserve', plannedAmount: 487.63, planningDate: '2026-10-21', confidence: 'estimated' });
+  input.data.plan.savingsEarmarks.history[0].pools[1].allocations = [
+    { goalRef: { kind: 'budget-reserve', id: 'synthetic-property-tax' }, amount: 103.27 },
+    { goalRef: { kind: 'yearly-bill', id: 'annual-a' }, amount: 11.13 },
+  ];
+  return input;
+}
+module.exports = { AS_OF, fixture, observedPlan, propertyTaxFixture, clone };

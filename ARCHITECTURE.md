@@ -769,11 +769,12 @@ neither an empty confirmed allocation snapshot nor a dated balance is inferred.
 Fusion and other existing sports requirements can use commitment or group
 references; home insurance can use the existing yearly `square-one` bill.
 Property tax remains the incumbent `plan.budget.categories` row `propertytax`
-(class `reserve`), which the current
-earmark reference kinds cannot address. Recording its approved pool purpose
-does not fabricate a duplicate commitment, amount or due date. Representing a
-property-tax goal earmark requires a narrowly reviewed extension that consumes
-that incumbent reserve. The two-pool inventory itself does not require a
+(class `reserve`). A `budget-reserve` earmark reference consumes its
+`plannedAmount` and confidence without creating a duplicate commitment,
+amount, date or cash event. This kind resolves only one reserve category with
+no competing commitment or bill id; missing or ambiguous identity withholds
+backing while retaining intent. A planning date does not prove settlement or
+release intent. The two-pool inventory itself does not require a
 shortfall role. Goal requirements keep their existing Plan homes. Forecast
 remains the sole
 planner; role selection authorizes no automatic allocator broadening, transfer,

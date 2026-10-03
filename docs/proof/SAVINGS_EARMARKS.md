@@ -115,7 +115,11 @@ The optional block has `version: 1`, `currency: CAD`, exactly two distinct
 entry is a full confirmation snapshot with `revision`, `confirmedAt`, `source`
 and supplied pool snapshots. Each supplied pool has `poolId` and `allocations`
 of `{ goalRef: { kind, id }, amount }`; allowed reference kinds are commitment,
-yearly-bill and group. A missing pool snapshot means unknown assignments; an
+yearly-bill, group and budget-reserve. A budget-reserve reference reads one
+existing `plan.budget.categories` row with class `reserve`, using its
+`plannedAmount` and confidence. Competing bill/commitment ids or duplicate
+category ids withhold backing. It adds no cash event, recurrence, payment
+settlement or automatic release. A missing pool snapshot means unknown assignments; an
 explicit empty allocation array means confirmed no assignments. Amounts are
 nonnegative whole cents. Balance and target fields are rejected.
 
@@ -127,6 +131,26 @@ compatible. Reserve aliases cannot become operating cash or repurpose excluded
 staging, held business cash or debt identities. No new persistent writer,
 database, ledger, bank action, Lunch Money write, authentication, signing,
 credential or network setting is introduced.
+
+## Property-tax reference acceptance
+
+`test/test-savings-property-tax.js` reproduces unsupported reference rejection
+on immutable main `0c15c462bfbc2c6559eb4a580660ab682bec4699`. The new path reads
+a synthetic estimated Budget reserve requirement of 487.63 and confirmed intent
+of 103.27. In a pool with observed cash 144.08 and separate insurance intent
+11.13, the independent cents partition is 14,408 = 10,327 + 1,113 + 2,968.
+The requirement remains estimated, and unknown starting assignments publish
+null intent and residual, not zero funded.
+
+An isolated 1,000 chequing opening still emits exactly one unchanged reserve
+event for -487.63, on its incumbent planning date; ending cash is 512.37.
+Entire event and simulation packets match with and without the earmark reference.
+Alias, missing/wrong-class/duplicate category, malformed target, reduction and
+past-date controls preserve intent and prevent duplicate pledges or inferred
+settlement. The authenticated integration reaches GET observation, overlay,
+Forecast and both actual page mounts with the same synthetic property-tax goal,
+and confirms unknown assignments stay unknown. No production configuration,
+identity or starting balance is supplied by this reference support.
 
 ## Platform limits
 
