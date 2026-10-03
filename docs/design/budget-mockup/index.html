@@ -90,6 +90,7 @@ a { color:var(--accent-ink); }
 .m { font-variant-numeric:tabular-nums; white-space:nowrap; }
 [hidden] { display:none !important; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+section[tabindex="-1"]:focus, article[tabindex="-1"]:focus { outline:none; }
 
 /* Strips */
 .mock-strip { background:var(--ink); color:var(--bg); font-size:12px; text-align:center; padding:6px 14px; }
@@ -347,6 +348,15 @@ details[open] > summary .chev { transform:rotate(180deg); }
 .lens-intro { display:flex; gap:10px; align-items:flex-start; margin:14px 0 18px; font-size:13px; color:var(--ink-2); }
 .lens-intro svg { width:16px; height:16px; flex:none; margin-top:1px; color:var(--ink-3); }
 .summary-row { display:flex; gap:28px; flex-wrap:wrap; margin:2px 0 16px; }
+.over-line { display:flex; flex-wrap:wrap; gap:6px; padding:12px 0 14px; border-bottom:1px solid var(--line); margin-bottom:6px; }
+.over-line .st { white-space:normal; }
+.note-box .link-btn, .card-head .link-btn { white-space:nowrap; flex:none; }
+.how-icon { display:none; }
+.how-icon svg { width:18px; height:18px; }
+.summary3:has(+ .over-line) { border-bottom:0; padding-bottom:0; margin-bottom:0; }
+.rung-reason { grid-column:2 / -1; font-size:12px; color:var(--ink-3); }
+.lens-short { display:none; }
+.card-head.wrap { flex-wrap:wrap; }
 .gap-callout { display:flex; gap:12px; align-items:flex-start; padding:14px 16px; border-radius:var(--r-lg); background:var(--bad-soft); margin-bottom:16px; }
 .gap-callout svg { width:20px; height:20px; color:var(--bad); flex:none; margin-top:1px; }
 .gap-callout p { margin:0; font-size:14px; }
@@ -491,7 +501,8 @@ details[open] > summary .chev { transform:rotate(180deg); }
   .attention-list { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; gap:8px; padding-right:16px; scrollbar-width:none; }
   .attention-list::-webkit-scrollbar { display:none; }
   .att { flex:0 0 78%; scroll-snap-align:start; }
-  .summary3, .summary-row { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; }
+  .summary3 { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+  .summary-row { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
   .stat-value { font-size:17px; }
   .bill-name { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; line-height:1.3; }
   .section-title { margin:26px 4px 10px; flex-direction:column; gap:2px; }
@@ -512,6 +523,17 @@ details[open] > summary .chev { transform:rotate(180deg); }
   .dock a { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; text-decoration:none; color:var(--ink-2); font-size:10.5px; font-weight:560; padding:7px 0; border-radius:20px; }
   .dock a svg { width:21px; height:21px; }
   .dock a[aria-current="page"] { color:var(--accent-ink); background:var(--accent-soft); }
+}
+@media (max-width: 400px) {
+  .lens-long { display:none; }
+  .lens-short { display:inline; }
+  .stat-value { font-size:15.5px; }
+  .summary3 { gap:8px; }
+  .card { padding:16px; }
+  .seg.wide button { padding:9px 4px; }
+  .gap-key { width:100%; }
+  .how-text, .how-link > svg:last-child { display:none; }
+  .how-icon { display:inline-flex; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
 </style>
@@ -866,7 +888,7 @@ function todayCard() {
     <article class="card today" aria-labelledby="today-h">
       <div class="card-head">
         <div><div class="eyebrow">Today · ${T.date}</div><h2 id="today-h">Cash in chequing</h2></div>
-        <button class="link-btn" type="button" data-sheet="today">How this works ${ICON.chevR}</button>
+        <button class="link-btn how-link" type="button" data-sheet="today" aria-label="How this works"><span class="how-text">How this works</span><span class="how-icon">${ICON.info}</span>${ICON.chevR}</button>
       </div>
       <div class="big">${big(T.cash)}</div>
       <div class="today-sub"><span>Both chequing accounts · credit is not counted</span><span>Bills account alone <b>${money(T.billsAccount)}</b></span></div>
@@ -936,7 +958,15 @@ function attentionCard() {
 function spendingCard() {
   const B = D.budget;
   const planned = B.categories.filter(c => !c.unassigned);
-  const over = planned.filter(c => c.remaining != null && c.remaining < 0);
+  const knownPlanned = planned.filter(c => !c.unknown);
+  const unknownCount = planned.length - knownPlanned.length;
+  const over = knownPlanned.filter(c => c.remaining < 0);
+  /* A category with unknown spending is neither over nor within plan, so it
+     is counted apart instead of being folded into "not over". */
+  const overLine = `<div class="over-line">
+      <span class="pill ${over.length ? 'bad' : 'good'}">${over.length} of ${knownPlanned.length}${unknownCount ? ' known' : ''} categories over plan</span>
+      ${unknownCount ? stateChip('unknown', `${unknownCount} unknown, not counted`) : ''}
+    </div>`;
   const pace = pct(D.period.day, D.period.days);
   const rows = B.categories.map(c => {
     let kind, status;
@@ -968,8 +998,8 @@ function spendingCard() {
       <div class="summary3">
         <div><div class="stat-label">Counted this period</div><div class="stat-value">${money(B.total)}</div></div>
         <div><div class="stat-label">Left to spend</div><div class="stat-value">${money(D.today.needs)}</div></div>
-        <div><div class="stat-label">Over plan</div><div class="stat-value bad">${over.length} of ${planned.length}</div></div>
       </div>
+      ${overLine}
       <div class="cats">${rows}</div>
       <div class="note-box"><p>The plan counts each category at its plan or its spending, whichever is higher, plus anything not yet assigned.</p><button class="link-btn" type="button" data-sheet="wf-budget">Details</button></div>
     </section>`;
@@ -1020,12 +1050,12 @@ function upcomingSection() {
   const isToday = ui.lens === 'today';
   const lensBar = `
     <div class="seg wide" role="group" aria-label="Which funding proposal">
-      <button type="button" data-lens="today" aria-pressed="${isToday}">From today's cash · ${D.asOf}</button>
-      <button type="button" data-lens="payday" aria-pressed="${!isToday}">Oct 9 payday plan</button>
+      <button type="button" data-lens="today" aria-pressed="${isToday}"><span class="lens-long">From today's cash · ${D.asOf}</span><span class="lens-short">Today's cash</span></button>
+      <button type="button" data-lens="payday" aria-pressed="${!isToday}"><span class="lens-long">Oct 9 payday plan</span><span class="lens-short">Oct 9 payday</span></button>
     </div>
     <div class="lens-intro">${ICON.info}<span>${isToday
-      ? 'What today\u2019s chequing can protect right now. The Oct 9 payday plan is a separate proposal for the same costs — view one at a time, never add them together.'
-      : 'What Forecast plans to set aside when the Oct 9 pay lands. Today\u2019s proposal is a separate proposal for the same costs — view one at a time, never add them together.'}</span></div>`;
+      ? 'What today\u2019s chequing can set aside now.'
+      : 'What the Oct 9 pay is planned to set aside.'} Two proposals for the same costs — <b>never add them together</b>.</span></div>`;
   let body;
   if (L.status !== 'ready') {
     body = `<div class="withheld"><h3>${ICON.lock}Today's proposal is withheld</h3>
@@ -1037,11 +1067,10 @@ function upcomingSection() {
       <div class="summary-row">
         <div><div class="stat-label">${isToday ? 'Proposed now' : 'From this payday'}</div><div class="stat-value">${money(L.proposed)}</div></div>
         <div><div class="stat-label">Still to set aside</div><div class="stat-value">${money(L.stillToFund)}</div></div>
-        <div><div class="stat-label">Dated costs</div><div class="stat-value">${D.costs.length} <span class="fine">+ ${D.undated.length} undated</span></div></div>
       </div>
       <div class="gap-callout" role="note">${ICON.alert}<div>
         <p><b>${money(L.gap)} short</b> across ${esc(L.gap.label)}.</p>
-        <p>${isToday ? 'Later proposals pause until that gap is covered.' : 'Even if this plan is followed.'} Proposed earmarks only — not transfers, and not money already saved.</p>
+        <p>${isToday ? 'Later proposals pause until it\u2019s covered.' : 'Even if this plan is followed.'} Earmarks only — not transfers or saved money.</p>
       </div></div>`;
   }
   const months = [];
@@ -1099,7 +1128,8 @@ function upcomingSection() {
       <div class="section-title"><h2>Upcoming costs &amp; savings</h2><p>Named costs the plan is setting money aside for.</p></div>
       <div class="grid split-upcoming">
         <section class="card lens-${ui.lens}" aria-labelledby="costs-h">
-          <div class="card-head"><div><div class="eyebrow">Funding proposal</div><h2 id="costs-h">Costs ahead</h2></div>
+          <div class="card-head wrap"><div><div class="eyebrow">Funding proposal</div><h2 id="costs-h">Costs ahead</h2>
+            <div class="sub">${D.costs.length} dated · ${D.undated.length} without a date</div></div>
             ${ready ? '<span class="gap-key"><i aria-hidden="true"></i>Inside the shortfall</span>' : ''}</div>
           ${lensBar}${body}
           <div class="timeline">${timeline}</div>
@@ -1145,11 +1175,12 @@ function renderMonth() {
     const bar = known(r.f)
       ? `<span class="${v < 0 ? 'neg-b' : 'pos-b'}" style="${v < 0 ? `right:50%` : `left:50%`};width:${w}%"></span>`
       : '';
-    const word = !known(r.f) ? `<small>${esc(r.f.reason)}</small>` : `<small>${v < 0 ? 'projected deficit' : v > 0 ? 'projected surplus' : 'break-even'}</small>`;
+    const word = known(r.f) ? `<small>${v < 0 ? 'projected deficit' : v > 0 ? 'projected surplus' : 'break-even'}</small>` : '';
     return `<button class="rung" type="button" data-sheet="rung-${i}">
       <span class="rung-n">${i + 1}</span>
       <span class="rung-l">${esc(r.label)}<small>${esc(r.note)}</small></span>
       <span class="rung-v ${known(r.f) && v < 0 ? 'neg' : ''}">${money(r.f, { plus: known(r.f) && v > 0 })}${word}</span>
+      ${known(r.f) ? '' : `<span class="rung-reason">${esc(r.f.reason)}</span>`}
       <span class="rung-bar ${known(r.f) ? '' : 'is-unknown-bar'}" aria-hidden="true">${bar}<span class="zero"></span></span>
     </button>`;
   };
@@ -1199,7 +1230,7 @@ function renderMonth() {
             <div class="kv-row"><span>Next scheduled contribution</span><span>${money(c.next)} on ${esc(c.next.on)}</span></div>
             <div class="kv-row"><span>Forecast projects fully funded by</span><span><span class="approx" style="color:var(--warn-fill);font-weight:650">≈</span> ${esc(c.funded)}</span></div>
           </div>`).join('<div style="height:14px"></div>')}
-        <div class="note-box"><p>These follow the Oct 9 payday plan. Today's separate proposal is under Pay period → Upcoming costs.</p><button class="link-btn" type="button" data-action="to-upcoming">Open</button></div>
+        <div class="note-box"><p>These contributions come from the Oct 9 payday plan, not today's proposal.</p><button class="link-btn" type="button" data-action="lens-payday">See the Oct 9 plan ${ICON.chevR}</button></div>
       </section>
     </div>`;
 }
@@ -1318,23 +1349,53 @@ function buildSheets() {
 
 /* ---------- Sheet mechanics ---------- */
 const sheetEl = $('sheet'), scrim = $('scrim');
+const OVERLAY = new Set([sheetEl, scrim, $('toast')]);
+const backgroundEls = () => Array.from(document.body.children).filter(el => !OVERLAY.has(el) && el.tagName !== 'SCRIPT');
+const FOCUSABLE = 'button, [href], summary, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 let lastFocus = null;
+sheetEl.inert = true;
+
+function focusEl(el) {
+  if (!el) return;
+  if (!el.matches(FOCUSABLE)) el.setAttribute('tabindex', '-1');
+  el.focus({ preventScroll: true });
+}
+const sheetOpen = () => sheetEl.classList.contains('open');
 function openSheet(key, trigger) {
   const s = sheets[key] && sheets[key]();
   if (!s) return;
   $('sheet-eyebrow').textContent = s.eyebrow;
   $('sheet-title').textContent = s.title;
   $('sheet-body').innerHTML = s.body;
-  lastFocus = trigger || document.activeElement;
+  if (!sheetOpen()) lastFocus = trigger || document.activeElement;
+  backgroundEls().forEach(el => { el.inert = true; });
+  document.documentElement.style.overflow = 'hidden';
+  sheetEl.inert = false;
   sheetEl.classList.add('open'); scrim.classList.add('open');
   sheetEl.setAttribute('aria-hidden', 'false');
+  $('sheet-body').scrollTop = 0;
   $('sheet-close').focus({ preventScroll: true });
 }
 function closeSheet() {
+  if (!sheetOpen()) return;
   sheetEl.classList.remove('open'); scrim.classList.remove('open');
   sheetEl.setAttribute('aria-hidden', 'true');
+  sheetEl.inert = true;
+  backgroundEls().forEach(el => { el.inert = false; });
+  document.documentElement.style.overflow = '';
   if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
+  lastFocus = null;
 }
+/* inert already keeps Tab out of the page; this wraps Tab at the sheet's
+   edges so focus never falls through to the browser chrome mid-sheet. */
+sheetEl.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  const items = Array.from(sheetEl.querySelectorAll(FOCUSABLE)).filter(el => el.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
 let toastTimer;
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -1374,7 +1435,7 @@ document.addEventListener('click', e => {
   if (t.dataset.go) {
     const key = t.dataset.go;
     if (key.startsWith('cat-')) { const row = $(`cat-row-${key.slice(4)}`); row.scrollIntoView({ block: 'center' }); setTimeout(() => openSheet(key, row), 350); }
-    else if ($(key)) $(key).scrollIntoView();
+    else if ($(key)) { $(key).scrollIntoView(); focusEl($(key)); }
     else openSheet(key, t);
     return;
   }
@@ -1383,12 +1444,14 @@ document.addEventListener('click', e => {
     const root = document.documentElement;
     const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
     root.dataset.theme = dark ? 'light' : 'dark';
-  } else if (a === 'lens-payday' || a === 'to-upcoming') {
-    ui.view = 'period'; if (a === 'lens-payday') ui.lens = 'payday';
+  } else if (a === 'lens-payday') {
+    ui.view = 'period'; ui.lens = 'payday';
     render(); $('upcoming').scrollIntoView();
+    focusEl(document.querySelector('[data-lens="payday"]'));
   } else if (a === 'missing-toggle' || a === 'missing-off') {
     ui.missing = a === 'missing-toggle' ? !ui.missing : false;
     render(); window.scrollTo({ top: 0 });
+    focusEl(ui.missing ? document.querySelector('[data-action="missing-off"]') : document.querySelector('[data-view][aria-pressed="true"]'));
     toast(ui.missing ? 'Previewing missing data — illustrative only.' : 'Back to the Oct 3 figures.');
   }
 });
