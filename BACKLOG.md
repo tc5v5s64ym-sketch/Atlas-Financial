@@ -6,8 +6,12 @@ reserve pools, with unallocated cash, pool deficits and honest unknown/stale/
 pending states on Budget and Plan Spend. Authority is recorded in
 `ARCHITECTURE.md`; proof is in `docs/proof/SAVINGS_EARMARKS.md` and the synthetic
 savings earmark suites. The 2026-10-03 owner role selection is recorded in
-`ARCHITECTURE.md`: ending 8420 has a planned-cost role with deliberate legacy
-staging reconciliation still pending. The exact ending 3074 identity link is
+`ARCHITECTURE.md`, superseded by the 03:16:39 UTC selection: ending 3074 is for
+Fusion and related sports; ending 8420 is for property tax and home insurance,
+with deliberate legacy staging reconciliation still pending. The current
+earmark reference kinds cannot address the incumbent property-tax reserve;
+configuration must consume that requirement without duplicating it. The exact
+ending 3074 identity link is
 the remaining immediate owner question. Starting assignments and the new
 baseline remain unset pending the owner's later funding confirmation. Runtime
 activation is not complete. Incremental savings instructions stay withheld when

@@ -15,8 +15,11 @@ the site may hold evidence about a question. They do not close it.
 
 ### Savings pool setup - prove ending 3074 identity, then confirm the new baseline
 **Status:** OPEN · **Owner:** Dale
-The convention and the 2026-10-03 owner-selected roles live in `ARCHITECTURE.md`.
-Role choice is answered. Ending 8420 is proven as `cash:savings-dont-touch`;
+The convention and the current 2026-10-03 03:16:39 UTC owner-selected roles live
+in `ARCHITECTURE.md`: ending 3074 for Fusion/related sports; ending 8420 for
+property tax/home insurance. Role choice is answered. The owner screenshot
+confirms both TD labels and suffixes but not the provider identity link.
+Ending 8420 is proven as `cash:savings-dont-touch`;
 its deliberate staging reconciliation is implementation work, not another
 request for role approval.
 
