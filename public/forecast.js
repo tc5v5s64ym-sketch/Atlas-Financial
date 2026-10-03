@@ -5486,9 +5486,9 @@
     return roundCent(sum);
   }
 
-  function unpaidJointCashInRange(plan, start, end, opts) {
+  function unpaidJointCashInRange(plan, start, end, opts, walkEvents) {
     if (!start || !end) return 0;
-    const events = expandEvents(plan, start, end, opts);
+    const events = walkEvents || expandEvents(plan, start, end, opts);
     const skipOnce = onceBillIdsBeforePayday(plan, start);
     let sum = 0;
     for (const e of events || []) {
@@ -5496,7 +5496,7 @@
       if (!isJointCashOutflow(e) && !e.cardPaid) continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
       if (e.id && skipOnce.has(e.id)) continue;
-      const amt = -e.amount;
+      const amt = -operatingEventAmount(e);
       if (amt > EPSILON) sum += amt;
     }
     return roundCent(sum);
@@ -9360,7 +9360,8 @@
     const opening = startOfDayCash(sim, nextPayday);
     if (opening == null) return null;
     const available = roundCent(opening + incomeOnDate(plan, nextPayday, opts));
-    const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts);
+    const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts,
+      sim && sim.events);
     const days = Math.max(1, diffDays(nextPayday, periodLast) + 1);
     const householdBudget = householdBudgetScaled(plan, days, nextPayday, periodLast);
     const leftover = runningLeftoverFromAlloc(
@@ -9394,7 +9395,8 @@
     const opening = week.opening != null && isFinite(Number(week.opening))
       ? roundCent(week.opening) : null;
     if (opening == null) return null;
-    const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts);
+    const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts,
+      week.events);
     const householdBudget = householdBudgetScaled(plan, 7, week.start, week.end);
     const leftover = runningLeftoverFromAlloc(
       opening, unpaid, budgetAmountTotal(householdBudget), 0, 0);
