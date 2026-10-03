@@ -10,12 +10,22 @@ const vm = require('vm');
 const F = require('../public/forecast.js');
 const root = path.join(__dirname, '..');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8');
-const data = JSON.parse(read('data.json'));
+const production = JSON.parse(read('data.json'));
+// Keep the incumbent no-earmark allocator proof explicit. Production purpose
+// savings intentionally withhold new proposals until the funding path exists;
+// the real configured GET/page path is covered by test-purpose-savings.js.
+const data = JSON.parse(JSON.stringify(production));
+delete data.plan.savingsEarmarks;
 const periods = JSON.parse(read('public/periods.json'));
 const cent = x => Math.round(Number(x) * 100);
 const near = (a, b) => Math.abs(a - b) <= 1;
 let checks = 0;
 function ok(value, label) { assert.ok(value, label); checks++; }
+const configured = F.recommend(production.plan, production.meta.asOf, { debts: production.debts,
+  extraFacilities: production.revolvingExtra, periods });
+ok(configured.planSpendPaydayFunding.status === 'unavailable', 'configured production withholds incremental funding proposals');
+ok(configured.savingsInventory.pools.every(pool => pool.intent === null && pool.unallocated === null),
+  'production starting assignments and residual stay unknown, never zero funded');
 function isoAdd(date, days) {
   const value = new Date(date + 'T00:00:00Z');
   value.setUTCDate(value.getUTCDate() + days);
@@ -127,7 +137,7 @@ const serialNamed = twoCostPayday.planSpendPaydayFunding.paydays[0].allocations
   .map(row => row.id + ':' + cent(row.amount)).sort().join(',');
 ok(serialNamed === incumbentNamed,
   'current-payday serial named allocations exactly reuse the incumbent payday authority');
-ok(schedule && schedule.status === 'ready', 'canonical dated opening publishes a complete schedule');
+ok(schedule && schedule.status === 'ready', 'explicit no-earmark fixture preserves the incumbent complete schedule');
 const horizon = advice.knowledge.days;
 const sim = F.simulate(data.plan, asOf, Object.assign({}, advice.simOptions, {
   weeklyVariable: advice.weekly, horizonDays: horizon, viewDays: horizon,
@@ -307,7 +317,7 @@ ok(page.list.includes('Funding schedule unavailable — cash date not establishe
   'undated card fails closed in household language');
 
 if (process.argv.includes('--review')) {
-  console.log('Review artifact: canonical opening ' + asOf);
+  console.log('Review artifact: legacy no-earmark fixture opening ' + asOf + '; not the active configured household funding plan');
   const reviewRemaining = new Map(schedule.costs.map(cost => [cost.id, cent(cost.baseRequirement)]));
   for (const row of schedule.paydays) {
     for (const allocation of row.allocations) reviewRemaining.set(allocation.id,
