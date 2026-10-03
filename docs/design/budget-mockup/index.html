@@ -1239,7 +1239,7 @@ function renderMonth() {
 function renderLegend() {
   const items = [
     ['<span class="m"><span class="approx">≈</span>$1,200.00</span>', 'Estimate', 'A figure exists, but at least one input is estimated — like a pay deposit not yet seen.'],
-    ['<span class="m">$500.00</span>', 'No mark', 'Published without an estimate flag. Nothing on this page is marked verified.'],
+    ['<span class="m">$500.00</span>', 'No mark', 'Forecast labels it calculated, or publishes it with no tag. Each figure keeps the label its source publishes; nothing here is marked verified.'],
     [stateChip('pending'), 'Pending', 'Under way but not settled — a payment in flight.'],
     [stateChip('check'), 'Not confirmed', 'Due date passed with no linked payment. It may already be paid.'],
     [stateChip('unknown'), 'Unknown', 'Forecast didn\u2019t publish it. Never shown as $0, and bars are hatched.'],
