@@ -484,17 +484,26 @@
     if (ref.kind === 'commitment') rows = commitments.filter(c => c && c.id === ref.id);
     if (ref.kind === 'yearly-bill') rows = ((plan && plan.bills) || [])
       .filter(b => b && b.id === ref.id && b.frequency === 'yearly');
+    if (ref.kind === 'budget-reserve') rows = ((plan && plan.budget && plan.budget.categories) || [])
+      .filter(c => c && c.id === ref.id);
     if (ref.kind === 'group') rows = commitments.filter(c => c && c.group === ref.id);
     const group = ((plan && plan.groups) || []).filter(g => g && g.id === ref.id);
     const resolved = rows.length > 0 && (ref.kind === 'group' || rows.length === 1)
       && (ref.kind !== 'yearly-bill' || !commitments.some(c => c && c.id === ref.id))
+      && (ref.kind !== 'budget-reserve' || rows[0]?.class === 'reserve'
+        && !commitments.some(c => c && c.id === ref.id)
+        && !((plan && plan.bills) || []).some(b => b && b.id === ref.id))
       && group.length <= 1 && new Set(rows.map(r => r.id)).size === rows.length;
     const members = rows.map(row => 'goal:' + row.id);
     let targetCents = 0, ceilingCents = 0, targetKnown = resolved, estimated = false;
     for (const row of rows) {
-      const settled = ref.kind !== 'yearly-bill' && commitmentSettledBy(row, asOf);
-      const low = settled ? 0 : (row.amount != null ? row.amount : row.amountMin);
-      const high = settled ? 0 : (row.amount != null ? row.amount : row.amountMax);
+      const settled = ['commitment', 'group'].includes(ref.kind) && commitmentSettledBy(row, asOf);
+      // Reserve requirements retain their existing Budget home. Reading the
+      // target never emits another event or treats the planning date as paid.
+      const low = ref.kind === 'budget-reserve' ? row.plannedAmount
+        : settled ? 0 : (row.amount != null ? row.amount : row.amountMin);
+      const high = ref.kind === 'budget-reserve' ? row.plannedAmount
+        : settled ? 0 : (row.amount != null ? row.amount : row.amountMax);
       const a = savingsCents(low), b = savingsCents(high);
       if (a == null || b == null || b < a) targetKnown = false;
       else {
@@ -508,7 +517,7 @@
       target: targetKnown ? targetCents / 100 : null,
       targetMax: targetKnown ? ceilingCents / 100 : null,
       targetTrust: targetKnown ? (estimated ? 'estimated' : 'calculated') : 'unknown',
-      settled: resolved && ref.kind !== 'yearly-bill' && rows.every(r => commitmentSettledBy(r, asOf)),
+      settled: resolved && ['commitment', 'group'].includes(ref.kind) && rows.every(r => commitmentSettledBy(r, asOf)),
     };
   }
   function savingsEarmarksState(plan, asOf) {
@@ -552,7 +561,7 @@
           const ref = allocation && allocation.goalRef;
           const cents = savingsCents(allocation && allocation.amount);
           if (!savingsKeys(allocation, ['goalRef', 'amount']) || !savingsKeys(ref, ['kind', 'id'])
-              || !['commitment', 'yearly-bill', 'group'].includes(ref.kind) || !SAVINGS_ALIAS.test(ref.id || '')
+              || !['commitment', 'yearly-bill', 'group', 'budget-reserve'].includes(ref.kind) || !SAVINGS_ALIAS.test(ref.id || '')
               || cents == null) return invalid('An earmark must reference an existing goal and contain a nonnegative whole-cent confirmed amount.');
           const goal = savingsGoal(plan, ref, asOf);
           if (seenGoals.has(goal.key)) return invalid('A goal is repeated inside one pool.');
