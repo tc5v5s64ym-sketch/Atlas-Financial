@@ -108,6 +108,8 @@ function loadComposer() {
     grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
     grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
+    grab(planSrc, /^function budgetPayPeriodContentHtml\([\s\S]*?\n\}$/m, 'budgetPayPeriodContentHtml'),
+    grab(planSrc, /^function currentPaydayShellHtml\([\s\S]*?\n\}$/m, 'currentPaydayShellHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
     // AMANDA SLICE 14 — the same-input schedule chain read by operatingSurfaceHtml.
     grab(planSrc, /^function budgetMonthPlanSpendSchedule\([\s\S]*?\n\}$/m, 'budgetMonthPlanSpendSchedule'),
@@ -495,7 +497,7 @@ console.log('\n=== the composed page remains a renderer ===');
     'the composed formatter calls no Forecast function');
   ok(fn && !/\.reduce\(|monthlyFromWeekly|projectDebts|fundingSequence/.test(fn[0]),
     'the composed formatter contains no page-side totals, conversions, or debt walk');
-  ok(/operatingSurfaceHtml\(surfaceCtx\)/.test(planSrc)
+  ok(/operatingMount\.innerHTML = budgetSurfaceHtml\(surfaceCtx\)/.test(planSrc)
     && /refreshTrust: d\.refreshTrust/.test(planSrc),
   'renderPlan wires the incumbent recommendation and refresh-trust packet');
 }

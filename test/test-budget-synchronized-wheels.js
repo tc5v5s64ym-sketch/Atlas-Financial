@@ -20,7 +20,7 @@ vm.runInContext(source, context);
 vm.runInContext(`
   calendarWaterfallHtml = row => '<article data-proof-row="' + row.id + '">' + JSON.stringify(row) + '</article>';
   liveCurrentBalanceHtml = () => '<div data-live-current-balance>cash</div>';
-  operatingSurfaceHtml = ctx => payPeriodTimelineHtml(ctx.advice, ctx.planPayPeriodId, null, null, '', null);
+  budgetSurfaceHtml = ctx => payPeriodTimelineHtml(ctx.advice, ctx.planPayPeriodId, null, null, '', null);
   selectedPlanView = advice => advice.defaultView;
 `, context);
 const row = (id, start, end, role) => Object.freeze({

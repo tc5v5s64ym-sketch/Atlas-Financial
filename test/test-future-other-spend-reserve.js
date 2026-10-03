@@ -80,6 +80,8 @@ function loadComposer() {
     'payPeriodWheelSelection',
     'budgetPlanSpendEarmarkHtml',
     'payPeriodTimelineHtml',
+    'budgetPayPeriodContentHtml',
+    'currentPaydayShellHtml',
     'operatingSurfaceHtml',
     // AMANDA SLICE 9 — the drilldown predicate called by operatingSurfaceHtml.
     'budgetInPayPeriodDrilldown',

@@ -4742,7 +4742,7 @@ function wireBudgetGranularity(mount, ctx) {
         budgetPayPeriodAnchorMonth = budgetSelectedMonth;
       }
       budgetGranularity = next;
-      mount.innerHTML = operatingSurfaceHtml(ctx);
+      mount.innerHTML = budgetSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
     });
   });
@@ -4750,7 +4750,7 @@ function wireBudgetGranularity(mount, ctx) {
   if (picker) {
     picker.addEventListener('change', () => {
       budgetSelectedMonth = picker.value || budgetSelectedMonth;
-      mount.innerHTML = operatingSurfaceHtml(ctx);
+      mount.innerHTML = budgetSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
     });
   }
@@ -4760,10 +4760,21 @@ function wireBudgetGranularity(mount, ctx) {
   if (drilldown) {
     drilldown.addEventListener('change', () => {
       budgetDrilldownPayPeriod = drilldown.value || null;
-      mount.innerHTML = operatingSurfaceHtml(ctx);
+      mount.innerHTML = budgetSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
     });
   }
+  // Leaving the month-anchored drilldown returns to the current pay period.
+  mount.querySelectorAll('[data-budget-drilldown-exit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      budgetPayPeriodAnchorMonth = null;
+      budgetDrilldownPayPeriod = null;
+      mount.innerHTML = budgetSurfaceHtml(ctx);
+      wirePlanLookPicker(mount, ctx);
+      const focus = mount.querySelector('[data-budget-granularity="pay-period"]');
+      if (focus) focus.focus({ preventScroll: true });
+    });
+  });
 }
 
 function wirePlanLookPicker(mount, ctx) {
@@ -4788,7 +4799,7 @@ function wirePlanLookPicker(mount, ctx) {
         planCalendarShow,
         planView: selectedPlanView(ctx.advice, planLook),
       });
-      mount.innerHTML = operatingSurfaceHtml(nextCtx);
+      mount.innerHTML = budgetSurfaceHtml(nextCtx);
       wirePlanLookPicker(mount, nextCtx);
     });
   }
@@ -4804,7 +4815,7 @@ function wirePlanLookPicker(mount, ctx) {
         planCalendarShow,
         planView: selectedPlanView(ctx.advice, planLook),
       });
-      mount.innerHTML = operatingSurfaceHtml(nextCtx);
+      mount.innerHTML = budgetSurfaceHtml(nextCtx);
       wirePlanLookPicker(mount, nextCtx);
     });
   }
@@ -4827,7 +4838,7 @@ function wirePlanLookPicker(mount, ctx) {
         planPayPeriodId,
         planView: selectedPlanView(ctx.advice, planLook),
       });
-      mount.innerHTML = operatingSurfaceHtml(nextCtx);
+      mount.innerHTML = budgetSurfaceHtml(nextCtx);
       mount.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
         const track = wheel.querySelector('.budget-wheel-track');
         const from = offsets[wheel.getAttribute('data-budget-wheel')];
@@ -5029,11 +5040,11 @@ function unavailableOperatingSurfaceHtml(ctx) {
   </div>`;
 }
 
-function operatingSurfaceHtml(ctx) {
+/* The selected pay-period sheet: the pay-period timeline by default, or the
+ * week / lookback / carryover printouts when a caller sets planLook. Shared
+ * by the active Budget surface and the retained operatingSurfaceHtml. */
+function budgetPayPeriodContentHtml(ctx) {
   const advice = ctx.advice || {};
-  if (liveOperatingPlanUnavailable(advice, ctx.liveOverlay)) {
-    return unavailableOperatingSurfaceHtml(ctx);
-  }
   const alloc = advice.paydayAllocation || null;
 
   const question = (number, prompt, answer, kind) => `
@@ -5098,6 +5109,28 @@ function operatingSurfaceHtml(ctx) {
     ${question('04', 'Household budget', householdBudgetHtml(view))}
     ${question('05', 'Balance after household budget', runningLeftoverHtml(view.afterHouseholdBudget), 'ending')}
     ${budgetDigestHtml(view.budgetDigest)}`;
+  return defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
+}
+
+/* Today's money: the payday instruction shell for the current payday. It
+ * always describes the current payday, never a selected lookback/future
+ * period. AMANDA SLICE 14: its planned-cost funding block reads the
+ * same-input regenerated schedule (active knobs included) — never the
+ * advice copy alone. */
+function currentPaydayShellHtml(ctx) {
+  const advice = ctx.advice || {};
+  const payPeriodViews = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
+  const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
+  return paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx, true));
+}
+
+function operatingSurfaceHtml(ctx) {
+  const advice = ctx.advice || {};
+  if (liveOperatingPlanUnavailable(advice, ctx.liveOverlay)) {
+    return unavailableOperatingSurfaceHtml(ctx);
+  }
+  const alloc = advice.paydayAllocation || null;
+  const look = ctx.planLook || 'this-period';
 
   // The usable Plan print stops at Balance After Deductions. Forecast
 
@@ -5128,14 +5161,9 @@ function operatingSurfaceHtml(ctx) {
   const drilldownView = look === 'this-period' && budgetInPayPeriodDrilldown()
     ? budgetPayPeriodDrilldownHtml(ctx)
     : '';
-  const payPeriodViews = Array.isArray(advice.payPeriodViews) ? advice.payPeriodViews : [];
-  const currentPeriod = payPeriodViews.find(entry => entry && entry.timelineRole === 'current') || null;
   const instructionShell = look === 'this-period' && budgetGranularity !== 'month' && !drilldownView
-    // AMANDA SLICE 14: the shell's planned-cost funding block reads the
-    // same-input regenerated schedule (active knobs included) — never the
-    // advice copy alone.
-    ? paydayInstructionShellHtml(advice, currentPeriod, budgetMonthPlanSpendSchedule(ctx, true)) : '';
-  const payPeriodContent = defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`;
+    ? currentPaydayShellHtml(ctx) : '';
+  const payPeriodContent = budgetPayPeriodContentHtml(ctx);
   const reportedShortfall = [alloc && alloc.obligations, alloc && alloc.essentials]
     .some(bucket => bucket && typeof bucket.shortfall === 'number' && bucket.shortfall > 0);
   const paydayDetails = instructionShell
@@ -5144,6 +5172,29 @@ function operatingSurfaceHtml(ctx) {
     ${monthView || drilldownView || `${payPeriodContent}${paydayDetails}`}
     ${granularityToggle ? `<details class="budget-secondary-details" data-budget-more-views><summary>More Budget views</summary>${granularityToggle}</details>` : ''}
   </div>`;
+}
+
+/* The one active Budget renderer for #operating-surface-body. Layout lives
+ * in public/budget-surface.js; every section is an incumbent component
+ * here, rendered whole. operatingSurfaceHtml above is retained only until
+ * its helper tests move to this surface. */
+function budgetSurfaceParts() {
+  return {
+    planUnavailable: ctx => liveOperatingPlanUnavailable(ctx.advice || {}, ctx.liveOverlay),
+    unavailableHtml: ctx => unavailableOperatingSurfaceHtml(ctx),
+    granularity: () => budgetGranularity,
+    granularityToggleHtml: () => budgetGranularityToggleHtml(),
+    inDrilldown: () => budgetInPayPeriodDrilldown(),
+    todayHtml: ctx => currentPaydayShellHtml(ctx),
+    periodHtml: ctx => budgetPayPeriodContentHtml(ctx),
+    monthHtml: ctx => budgetMonthViewHtml(ctx),
+    selectedMonthLabel: () => (budgetSelectedMonth && budgetMonthName(budgetSelectedMonth)) || null,
+    drilldownHtml: ctx => budgetPayPeriodDrilldownHtml(ctx),
+  };
+}
+
+function budgetSurfaceHtml(ctx) {
+  return BudgetSurface.html(ctx, budgetSurfaceParts());
 }
 
 function paydayAnswerHtml(ctx) {
@@ -6276,7 +6327,7 @@ function renderPlan(d, periods, history) {
       revolvingExtra: d.revolvingExtra,
       planLook, planCalendarShow, planPayPeriodId, planView,
     };
-    operatingMount.innerHTML = operatingSurfaceHtml(surfaceCtx);
+    operatingMount.innerHTML = budgetSurfaceHtml(surfaceCtx);
     wirePlanLookPicker(operatingMount, surfaceCtx);
     applyUnavailableOperatingChrome(planUnavailable, asOf, d.liveOverlay);
   }
