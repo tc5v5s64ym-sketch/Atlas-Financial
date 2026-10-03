@@ -812,9 +812,15 @@ minimum once as Required debt. For **debt**, capitalised interest still
 grows the balance; the cash minimum is the coupled repayment of that
 planned amount.
 
-### SAVINGS-DONT TOUCH *(…6478420)* — **a staging account, not savings**
-Balance $74.20. Despite the name, nothing is saved here. Money arrives from
-Chequing A and leaves within hours or days, mostly to the HELOC and credit cards.
+### SAVINGS-DONT TOUCH *(…6478420)* — **historical staging; planned-cost role selected**
+The following is the historical account reading, not a current funding claim.
+Owner-selected future purpose and the pending runtime reconciliation are owned
+by `ARCHITECTURE.md`, under "Confirmed savings purpose". That decision does not
+replace this dated evidence or establish a new baseline.
+
+Historical balance $74.20. Despite the name, nothing was saved in this window.
+Money arrived from Chequing A and left within hours or days, mostly to the HELOC
+and credit cards.
 
 54 transactions over the window: **$17,745.11 in, $17,758.98 out, net −$13.87.**
 Opening balance $88.07, closing $74.20 — it ends where it started.

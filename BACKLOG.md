@@ -5,8 +5,12 @@ One outcome: show confirmed goal intent backed by observed cash in two explicit
 reserve pools, with unallocated cash, pool deficits and honest unknown/stale/
 pending states on Budget and Plan Spend. Authority is recorded in
 `ARCHITECTURE.md`; proof is in `docs/proof/SAVINGS_EARMARKS.md` and the synthetic
-savings earmark suites. Real account identities and starting amounts remain the
-open setup question. Incremental savings instructions stay withheld when
+savings earmark suites. The 2026-10-03 owner role selection is recorded in
+`ARCHITECTURE.md`: ending 8420 has a planned-cost role with deliberate legacy
+staging reconciliation still pending. The exact ending 3074 identity link is
+the remaining immediate owner question. Starting assignments and the new
+baseline remain unset pending the owner's later funding confirmation. Runtime
+activation is not complete. Incremental savings instructions stay withheld when
 configured until allocator seeding and corresponding reserve-backed payment
 flows are integrated and independently proved. This PR does not implement that
 integration, change fuel/currency/classification policy, write to a provider or

@@ -726,11 +726,42 @@ This authorizes the optional `plan.savingsEarmarks` purpose block and the
 existing owner-authorized input-update / PR path. It grants no in-app writer,
 new store, bank action, provider write, authentication or signing boundary.
 
-The two account identities and starting goal allocations were **not supplied**.
-Examples in that conversation are illustrations, not household inputs. No real
-mapping, amount or target is inferred. The legacy excluded
-`savings-dont-touch` staging identity is not repurposed. Synthetic fixtures prove
-the optional path; absent configuration publishes setup unknown.
+At that approval, the two account identities and starting goal allocations were
+**not supplied**. Examples in that conversation are illustrations, not household
+inputs. Synthetic fixtures prove the optional path; absent configuration
+publishes setup unknown.
+
+**Owner role selection, 2026-10-03 02:56:30 UTC.** Dale replied "ok configure"
+after the decision desk proposed DEFICIT PLANNING (ending 3074) for upcoming
+cash shortfalls and SAVINGS-DONT TOUCH (ending 8420) for planned costs such as
+lacrosse, insurance and property tax, with individual goal earmarks inside it.
+The proposal disclosed that 8420 was a legacy staging account requiring
+reconciliation. This authorizes those role intents and a deliberate reviewed
+reconciliation; it does not establish funded amounts or a new opening.
+
+Ending 8420 is the existing `cash:savings-dont-touch` identity established by
+`docs/ACCOUNT_FACTS.md` and `docs/reconciliation/balance-map.json`. Its approved
+future purpose is planned-cost reserve. Historical staging evidence remains
+historical evidence. Runtime still excludes this identity as staging, and the
+existing validator rejects it as a savings pool. No alias may bypass that
+boundary. Activation requires an explicit atomic reconciliation of the canonical
+classification, provider mapping, Forecast exclusion and non-additive inventory,
+with proof that cash is counted once. This documentation records intent only;
+it does not perform that cutover.
+
+Ending 3074 has no proven link to the incumbent `cash:savings` / EMERGENCY SAVING
+identity. A display name without the suffix is insufficient. Its intended
+shortfall role cannot activate until the owner or account evidence proves the
+exact identity. The precise remaining question lives in
+`docs/01_OPEN_QUESTIONS.md`.
+
+Dale explicitly rejected screenshot balances as setup inputs. He will move
+funds himself after amounts are chosen and then confirm the new baseline.
+Starting assignments and that baseline remain **unset**, not zero funded;
+neither an empty confirmed allocation snapshot nor a dated balance is inferred.
+Goal requirements keep their existing Plan homes. Forecast remains the sole
+planner; role selection authorizes no automatic allocator broadening, transfer,
+Lunch Money transaction write or future proposal that assumes funding exists.
 
 Forecast owns observed cash/trust, backed amounts, unallocated cash and pool
 deficit. Stale, missing, currency-conflicting or pending evidence changes backing,
