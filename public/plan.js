@@ -4837,6 +4837,11 @@ function wireBudgetGranularity(mount, ctx) {
 }
 
 function wirePlanLookPicker(mount, ctx) {
+  mount.addEventListener('focusin', event => {
+    if (event.target.matches('.budget-step-summary')) {
+      event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  });
   mount.querySelectorAll('.budget-period-info').forEach(info => {
     info.addEventListener('keydown', event => {
       if (event.key === 'Escape' && info.open) {

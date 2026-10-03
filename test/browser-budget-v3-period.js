@@ -67,11 +67,18 @@ async function geometry(page) {
       assert.equal(await page.locator('[data-from-today-proposal]').isVisible(), false);
       assert.equal(await page.locator('.budget-surface-today').evaluate(el => getComputedStyle(el).position), 'static');
       await page.screenshot({ path: path.join(screenshots, `current-${width}.png`), fullPage: true });
-      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `period-${width}.png`) });
+      const periodCropStyle = '.sitenav-household { visibility:hidden !important; }';
+      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `period-${width}.png`), style: periodCropStyle });
       // Native disclosures remain reachable, keep focus, and expose the real evidence.
       for (const id of ['02', '04', '05', '06', 'savings', '07']) {
         const summary = page.locator(`[data-operating-question="${id}"] > details > summary`);
         await summary.focus();
+        const focusBounds = await summary.evaluate(el => {
+          const r = el.getBoundingClientRect(), dock = document.querySelector('.sitenav-household');
+          const dockTop = dock && getComputedStyle(dock).position === 'fixed' ? dock.getBoundingClientRect().top : innerHeight;
+          return {top:r.top,bottom:r.bottom,limit:dockTop};
+        });
+        assert.ok(focusBounds.top >= 0 && focusBounds.bottom <= focusBounds.limit, `period focus clear of dock: ${JSON.stringify(focusBounds)}`);
         await page.keyboard.press('Enter');
         assert.equal(await summary.evaluate(el => el.parentElement.open), true);
         assert.equal(await summary.evaluate(el => el === document.activeElement), true);
@@ -169,7 +176,7 @@ async function geometry(page) {
           assert.equal(await page.locator('.budget-waterfall-bar').count(), 0);
         }
         await page.screenshot({ path: path.join(screenshots, `${name}-${width}.png`), fullPage: true });
-        await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `${name}-period-${width}.png`) });
+        await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `${name}-period-${width}.png`), style: periodCropStyle });
       }
       // Configured pools with unknown assignments must retain the withholding reason.
       data = fx.served({ withheldSavings: true }); await boot(); await geometry(page);
@@ -211,7 +218,7 @@ async function geometry(page) {
       assert.deepEqual({ deficit: savingsTrack.deficit, unknown: savingsTrack.unknown }, { deficit: false, unknown: true });
       assert.ok(savingsTrack.hatch.includes('repeating-linear-gradient'), 'unavailable savings keep the hatch');
       await page.screenshot({ path: path.join(screenshots, `levy-deficit-${width}.png`), fullPage: true });
-      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `levy-deficit-period-${width}.png`) });
+      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `levy-deficit-period-${width}.png`), style: periodCropStyle });
       // Preserve the concurrent no-observation zero-income regression separately
       // from the observation/overlay fixture, which retains actual Other Spend.
       data = fx.served({ zeroIncomeWithoutSpend: true }); await boot(); await geometry(page);
@@ -230,7 +237,7 @@ async function geometry(page) {
       assert.equal((await trackState('savings')).unknown, true);
       assert.ok((await trackState('savings')).hatch.includes('repeating-linear-gradient'));
       await page.screenshot({ path: path.join(screenshots, `zero-income-no-observations-${width}.png`), fullPage: true });
-      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `zero-income-no-observations-period-${width}.png`) });
+      await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `zero-income-no-observations-period-${width}.png`), style: periodCropStyle });
       await page.close();
       console.log(`PASS ${width}px: financial hero, geometry, evidence, keyboard reachability, focus restoration, unknown assignments, unavailable plan and known deficit`);
     }

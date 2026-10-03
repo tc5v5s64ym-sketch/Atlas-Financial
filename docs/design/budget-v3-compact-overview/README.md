@@ -78,9 +78,15 @@ Actual approved-reference comparisons for the compact period card:
 [1440px](comparison-1440.png), [390px](comparison-390.png),
 [320px](comparison-320.png). Remaining header/navigation differences remain
 visible in the full overview captures and are not claimed complete.
+Comparison crops hide the fixed Pages dock to show the complete card, matching
+the reference crop. Full runtime captures keep the actual navigation. Browser
+checks prove keyboard-focused period rows scroll clear of the real dock.
 Additional narrow-mobile proof: [unknown assignments](withheld-320.png),
 [negative spending account](negative-spending-320.png),
 [observed grocery overrun](overspending-320.png).
+Inherited signed-state proof with the compact styling:
+[deficit](deficit-320.png), [signed overflow](overflow-320.png),
+[known zero income](zero-income-320.png).
 
 The captures load production `index.html`, App.boot, Forecast and the active
 Budget renderer. All requests are intercepted with independent invented data;

@@ -169,6 +169,7 @@
 .budget-period-info[open] { margin-top:36px; padding:12px; border:1px solid var(--border); border-radius:12px; }
 .budget-surface .budget-period-info .operating-note { text-transform:none; letter-spacing:0; font-weight:400; color:var(--text-secondary); font-size:13px; }
 .budget-surface .budget-step-value .est { display:inline; }
+.budget-surface .budget-step-summary { scroll-margin-block:90px; }
 .budget-surface .budget-period-result-value { font-size:clamp(34px,4vw,48px); }
 .budget-surface .budget-period-result-value .est { display:inline; font-size:.65em; }
 
