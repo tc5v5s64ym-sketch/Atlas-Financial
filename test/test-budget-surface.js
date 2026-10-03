@@ -99,6 +99,21 @@ ok(p.context.__retainedCalls === 0, 'the retained operatingSurfaceHtml is not ca
 ok(!/data-budget-more-views|data-current-payday-details/.test(html),
   'the old "More Budget views" and "Current payday details" disclosures are not rendered');
 ok((html.match(/data-calendar-waterfall="/g) || []).length === 1, 'exactly one pay-period waterfall is printed');
+const hero = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(html)?.[0] || '');
+ok(hero.includes(money(EXPECT.final)) && /estimated/.test(hero) && /Before savings/.test(hero),
+  'the overview republishes the independently reconciled final balance and its estimate/before-savings qualifier');
+const bar = id => /style="left:([^%]+)%;width:([^%]+)%"/.exec(
+  html.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '');
+ok(bar('02') && Number(bar('02')[1]) === 0 && Number(bar('02')[2]) === 100,
+  'income fills the fixed income scale');
+ok(bar('04') && Math.abs(Number(bar('04')[1]) - EXPECT.afterBills / EXPECT.income * 100) < 1e-9
+  && Math.abs(Number(bar('04')[2]) - EXPECT.bills / EXPECT.income * 100) < 1e-9,
+  'the bill deduction occupies its independently derived segment on the same scale');
+ok(bar('07') && Math.abs(Number(bar('07')[2]) - EXPECT.final / EXPECT.income * 100) < 1e-9,
+  'the final bar keeps the income scale rather than rescaling the ending balance');
+ok(!bar('savings') && /budget-waterfall-track is-unknown/.test(
+  html.split('data-operating-question="savings"')[1]?.split('</summary>')[0] || ''),
+  'unavailable savings are hatched with no invented zero-length numeric bar');
 
 console.log('\n=== pay-period waterfall on the active surface ===');
 ok(step(html, '02').includes(money(EXPECT.income)) && /≈ estimated/.test(step(html, '02')),
@@ -188,6 +203,7 @@ ok(text(downHtml).includes(`Last trusted opening ${money(15 + 604.49)}`) && /As 
   'the last trusted opening is the dated Aug 13 balance, labelled as dated', text(downHtml).slice(0, 400));
 ok(!downHtml.includes(money(EXPECT.final)) && !/data-calendar-waterfall="/.test(downHtml),
   'no pay-period figures are printed when the plan is unavailable');
+ok(!/data-budget-period-result/.test(downHtml), 'the overview is withheld with the unavailable operating plan');
 
 console.log('\n=== the layout module stays a layout module ===');
 {

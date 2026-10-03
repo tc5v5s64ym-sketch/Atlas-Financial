@@ -4039,11 +4039,23 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
         && summary.trust !== 'unavailable' && summary.trust !== 'unknown'
         && (!summary.trustRequired || summary.trust === 'calculated' || summary.trust === 'estimated');
       const estimate = summary.trust === 'estimated' ? '<span class="est">≈ estimated</span> ' : '';
+      // Geometry only: size each already-published step against period income.
+      // Never derive another financial total or read a formatted HTML value.
+      const scaleKnown = typeof period.available === 'number' && Number.isFinite(period.available)
+        && period.available > 0 && ['calculated', 'estimated'].includes(period.incomeTrust);
+      const barKnown = known && scaleKnown && typeof summary.barStart === 'number'
+        && Number.isFinite(summary.barStart) && summary.barStart >= 0 && summary.amount >= 0;
+      const percent = value => Math.max(0, Math.min(100, value / period.available * 100));
+      const barStart = barKnown ? percent(summary.barStart) : 0;
+      const barWidth = barKnown ? Math.min(100 - barStart, percent(summary.amount)) : 0;
+      const graph = `<span class="budget-waterfall-track${barKnown ? '' : ' is-unknown'}" aria-hidden="true">${barKnown
+        ? `<span class="budget-waterfall-bar" style="left:${barStart}%;width:${barWidth}%"></span>` : ''}</span>`;
       return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
         <details class="budget-step-details">
           <summary class="budget-step-summary">
             <span class="operating-number" aria-hidden="true">${number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
             <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span><span class="budget-step-caption">${summary.note}</span></span>
+            ${graph}
             <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>
           </summary>
@@ -4109,6 +4121,16 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
   const finalAmount = fundedBalanceKnown ? funding.afterProposedFunding
     : (period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget);
   const finalTrust = fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
+  const finalKnown = numeric(finalAmount) && !['unavailable', 'unknown'].includes(finalTrust);
+  const finalCaption = fundedBalanceKnown
+    ? 'After bills, household and proposed funding — retain any future carry'
+    : 'Before savings — the funding deduction is unavailable';
+  const finalHero = !planUnavailable ? `<div class="budget-period-result" data-budget-period-result>
+    <h2>Balance After Deductions</h2>
+    <p class="budget-period-result-value"${finalKnown && finalAmount < 0 ? ' data-sign="negative"' : ''}>${finalKnown
+      ? `${finalTrust === 'estimated' ? '<span class="est">≈ estimated</span> ' : ''}${money2(finalAmount)}` : 'Unavailable'}</p>
+    <p class="budget-period-result-caption">${finalCaption}</p>
+  </div>` : '';
   const today = period.fromTodayFunding;
   const todayKnown = !planUnavailable && today && today.basis === 'Budget-from-today'
     && (today.status === 'ready' || today.status === 'funding-gap')
@@ -4163,25 +4185,26 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan) {
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
     ${today ? '<p class="operating-note">The pay-period view below uses the full period income. It is separate from the dated current-cash proposal above.</p>' : ''}
     ${lookbackNote}${projectedNote}${openingUnknownNote}
+    ${finalHero}
     ${opening}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period), null,
-      { amount: period.available, trust: period.incomeTrust, trustRequired: true, note: 'Receipts and dates — planned or received' })}
+      { amount: period.available, trust: period.incomeTrust, trustRequired: true, barStart: 0, note: 'Receipts and dates — planned or received' })}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period), null,
-      { amount: period.periodBillLoad, trust: period.periodBillLoadTrust, trustRequired: true, note: 'Period deduction, including required debt minimums' })}
+      { amount: period.periodBillLoad, trust: period.periodBillLoadTrust, trustRequired: true, barStart: period.afterBills, note: 'Period deduction, including required debt minimums' })}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance',
-      { amount: period.afterBills != null ? period.afterBills : period.afterRemainingBills, trust: period.afterBillsTrust, trustRequired: true, note: 'Period income after the bill deduction' })}
+      { amount: period.afterBills != null ? period.afterBills : period.afterRemainingBills, trust: period.afterBillsTrust, trustRequired: true, barStart: 0, note: 'Period income after the bill deduction' })}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan), null,
-      { amount: period.budgetHold, trust: period.budgetHoldTrust, note: 'Targets, actual spending and the period reserve' })}
+      { amount: period.budgetHold, trust: period.budgetHoldTrust, barStart: period.afterHouseholdBudget, note: 'Targets, actual spending and the period reserve' })}
     ${q('savings', 'Proposed savings', planUnavailable ? unavailable : fundingBody, null,
-      { amount: fundingKnown ? funding.contribution : null, trust: fundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, note: 'Named costs — proposed funding, separate from actual saved cash' })}
+      { amount: fundingKnown ? funding.contribution : null, trust: fundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, barStart: fundedBalanceKnown ? funding.afterProposedFunding : null, note: 'Named costs — proposed funding, separate from actual saved cash' })}
     ${fundingKnown && numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0
       ? q('reserve-use', 'Earlier proposed funding for bills',
         '<p class="operating-note">Projected use of earlier earmarks for costs already included in Bills above. This offsets that bill deduction once; it is not extra income, observed saved cash or an actual withdrawal.</p>', 'credit',
-        { amount: funding.proposedFundingForBillPayments, trust: funding.trust, trustRequired: true,
+        { amount: funding.proposedFundingForBillPayments, trust: funding.trust, trustRequired: true, barStart: 0,
           note: 'Planning only — bill payment offset, not new income' }) : ''}
     ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(finalAmount, finalTrust)
       + '<p class="operating-note">A positive period balance may be needed for a later short period. It is not permission to spend.</p>', 'balance',
-      { amount: finalAmount, trust: finalTrust, note: fundedBalanceKnown
+      { amount: finalAmount, trust: finalTrust, barStart: 0, note: fundedBalanceKnown
         ? 'After bills, household and proposed funding — retain any future carry'
         : 'Before savings — the funding deduction is unavailable' })}
   </section>`;
@@ -4744,6 +4767,7 @@ function wireBudgetGranularity(mount, ctx) {
       budgetGranularity = next;
       mount.innerHTML = budgetSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
+      mount.querySelector(`[data-budget-granularity="${next}"]`)?.focus({ preventScroll: true });
     });
   });
   const picker = mount.querySelector('[data-budget-month-picker]');
@@ -4752,6 +4776,7 @@ function wireBudgetGranularity(mount, ctx) {
       budgetSelectedMonth = picker.value || budgetSelectedMonth;
       mount.innerHTML = budgetSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
+      mount.querySelector('[data-budget-month-picker]')?.focus({ preventScroll: true });
     });
   }
   // AMANDA SLICE 9: the drilldown cycle picker. Period selection never
@@ -4762,6 +4787,7 @@ function wireBudgetGranularity(mount, ctx) {
       budgetDrilldownPayPeriod = drilldown.value || null;
       mount.innerHTML = budgetSurfaceHtml(ctx);
       wirePlanLookPicker(mount, ctx);
+      mount.querySelector('[data-budget-drilldown-picker]')?.focus({ preventScroll: true });
     });
   }
   // Leaving the month-anchored drilldown returns to the current pay period.
