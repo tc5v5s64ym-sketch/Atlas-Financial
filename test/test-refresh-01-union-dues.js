@@ -172,8 +172,14 @@ const afterById = new Map((plan.bills || [])
   .filter(bill => bill.id !== outstandingId)
   .map(bill => [bill.id, billKey(bill)]));
 ok(beforeOther.every(key => {
-  const id = JSON.parse(key).id;
-  return afterById.get(id) === key;
+  const parsed = JSON.parse(key);
+  if (parsed.id === 'fortis') {
+    // Authorized later: retained Fortis placeholders stay 124/monthly/day 3,
+    // but publish estimated trust after the annual-review evidence.
+    parsed.confidence = 'estimated';
+    return afterById.get('fortis') === JSON.stringify(parsed);
+  }
+  return afterById.get(parsed.id) === key;
 }),
   'every pre-existing non-CMAW bill identity/amount/cadence is unchanged');
 function obligationKey(row) {
