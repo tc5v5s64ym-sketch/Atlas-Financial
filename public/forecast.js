@@ -3814,7 +3814,7 @@
   const BILL_CATEGORY_LABELS = new Set([
     'mortgage', 'bills', 'bill', 'subscription', 'subscriptions',
     'insurance', 'telecom',
-    'natural gas', 'other bank fees',
+    'natural gas',
   ]);
   const REFUND_LABELS = new Set(['refund', 'refunds', 'reimbursement']);
   const OTHER_INCOME_INFLOW_LABELS = new Set([
@@ -4511,7 +4511,10 @@
       }
       return spendResult('fuel', 'fuel-merchant');
     }
-    if (BILL_CATEGORY_LABELS.has(label)) {
+    // Keep the incumbent issuer-fee classification on revolving cards.
+    // A cash-account fee label alone does not identify a scheduled bill.
+    if (BILL_CATEGORY_LABELS.has(label)
+        || (label === 'other bank fees' && isRevolvingCardAccount(tx))) {
       return {
         kind: 'bill', categoryId: null, householdSpending: false,
         reason: 'bill-label', includeReason: 'bill-label',
@@ -4690,13 +4693,19 @@
     // Collect the same checks for savings disclosure without changing the
     // incumbent first-failure coverage state or its remaining-claim decision.
     const checks = [
+      [Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length > 0,
+        'actuals-currency-unconfirmed', 'incomplete',
+        'Transaction currency is unconfirmed for bill evidence. Current remaining amounts unavailable.'],
       [!coverageThrough || coverageThrough < asOf, 'actuals-stale', 'stale',
         'Transaction actuals are not current through the financial as-of.'],
       [coverageStart && periodStart && coverageStart > periodStart, 'actuals-period-coverage', 'incomplete',
         'Transaction coverage starts after the current period origin.'],
       [hasUnresolvedAccountActuals(packet), 'actuals-unmapped-account', 'incomplete',
         'Current-period transactions include an unresolved provider account. Remaining amounts unavailable.'],
-      [transactionCoverageStatus(packet) === 'truncated', 'actuals-posted-incomplete', 'incomplete',
+      [transactionCoverageStatus(packet) === 'truncated'
+        && !(packet.transactionCoverage === 'incomplete'
+          && Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length),
+        'actuals-posted-incomplete', 'incomplete',
         'Posted transaction coverage is truncated. Current remaining amounts unavailable.'],
       [pendingStatus !== 'complete', 'actuals-pending-incomplete', 'current',
         'Pending coverage is not complete. Observed pending still constrains remaining; additional unknown pending may exist.'],
@@ -4789,7 +4798,9 @@
         observationAsOf,
         coverageStart,
         coverageThrough,
-        reason: 'Posted transaction coverage is truncated. Historical spent withheld.',
+        reason: Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length
+          ? 'Transaction currency is unconfirmed for bill evidence. Historical spent withheld.'
+          : 'Posted transaction coverage is truncated. Historical spent withheld.',
       };
     }
     if (pendingStatus === 'complete') {
@@ -8707,11 +8718,22 @@
     const bills = (plan.startingCash?.breakdown || []).filter(row => row.id === 'chequing-a');
     if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
       || bills[0].unknown === true || bills[0].value < knownReserve) issue('coverage-bills-backing-unconfirmed');
+    // Publish local presentation keys, never provider or owner-supplied
+    // transaction references. Pair verification above uses the original identities.
+    const publishedPurchases = ledger.map(({ ref, accountId, audit, ...row }, index) => ({
+      ...row, id: 'coverage-purchase-' + (index + 1),
+      audit: audit.map(({ ref, id, ...entry }) => entry),
+    }));
+    const publishedPayments = payments.map(({ id, purchases, ...row }, index) => ({
+      ...row, id: 'coverage-payment-' + (index + 1),
+      purchases: purchases.map(({ ref, ...purchase }) => purchase),
+    }));
     return { status: issues.length ? 'unavailable' : 'ready', asOf,
       source: 'Forecast.visaPaymentReconciliation', currency: 'cad', fundingAccountId: 'chequing-a',
       reason: issues.length ? 'Confirm the card-coverage opening, transaction units and explicit purchase/payment links before using available cash.' : null,
       reservedCash: issues.length ? null : knownReserve, knownObservedReserve: knownReserve,
-      purchases: ledger, active: ledger.filter(row => row.remaining > 0), payments, issues,
+      purchases: publishedPurchases, active: publishedPurchases.filter(row => row.remaining > 0),
+      payments: publishedPayments, issues: issues.map(({ code }) => ({ code })),
       carryForward: 'uncovered-purchases-carry-until-confirmed-coverage-or-refund' };
   }
 

@@ -1187,6 +1187,30 @@ function ruleMatchesTransactionIdentity(tx, rule) {
   return payeeMatchesRule(tx, rule);
 }
 
+// A mapped CAD account does not qualify an individual transaction's units.
+// These opt-in rules accept native plan-currency evidence only. Provider FX
+// amounts (to_base) are not an authorized conversion/settlement contract.
+function ruleCurrencyQualified(tx, rule) {
+  if (!rule.requiredCurrency) return true;
+  return tx.currencySettlementUnconfirmed !== true
+    && typeof tx.currency === 'string'
+    && tx.currency.trim().toLowerCase() === rule.requiredCurrency;
+}
+
+function currencyRulesForTransaction(tx, accountMap, rules, plan) {
+  // The standalone sanitizer permits an absent map. That caller cannot
+  // establish a mapped settlement identity; preserve its incomplete packet.
+  if (!accountMap) return [];
+  const mapping = mappingFor(accountMap, tx && tx.providerAccountId);
+  const accountId = mapping && mapping.canonical && mapping.canonical.id;
+  return (rules || []).filter(rule => rule.requiredCurrency
+    && (!rule.atlasAccountId || rule.atlasAccountId === accountId)
+    // Reuse the incumbent matcher for direction and occurrence eligibility.
+    // Removing this one guard tests candidacy; it never qualifies settlement.
+    && collectIdentityHits(tx, { accountMap, plan },
+      [{ ...rule, requiredCurrency: null }]).length > 0);
+}
+
 function ruleIdentityLabel(rule) {
   if (rule && rule.transactionKind === 'transfer') {
     return ruleCounterpartExternalId(rule)
@@ -2044,6 +2068,7 @@ function collectIdentityHits(tx, input, rules) {
     if (cardMinimumNeedsConfirmation(input.plan, rule.eventId, mapDoc)) continue;
     if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
     if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
+    if (!ruleCurrencyQualified(tx, rule)) continue;
     if (rule.direction === 'credit' && !(amount < 0)) continue;
     if (rule.direction === 'debit' && !(amount > 0)) continue;
     for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
@@ -2166,6 +2191,13 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
     if (!link.pending.currency || !link.posted.currency || link.pending.currency !== link.posted.currency) {
       survivors[0].coverageCurrencyConflict = true;
     }
+    const currencyRules = currencyRulesForTransaction(link.pending, input.accountMap, rules, input.plan)
+      .concat(currencyRulesForTransaction(link.posted, input.accountMap, rules, input.plan));
+    if (currencyRules.some(rule => !ruleCurrencyQualified(link.pending, rule)
+      || !ruleCurrencyQualified(link.posted, rule))) {
+      survivors[0].currencySettlementUnconfirmed = true;
+      continue;
+    }
     if (Forecast.classifyCurrentPeriodTransaction.ownerConfirmedFuel(
       transactionWithMappedAccount(link.pending, input.accountMap)
     )) {
@@ -2210,6 +2242,7 @@ function representedEventHitGroups(input) {
     for (const rule of rules) {
       if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
       if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
+      if (!ruleCurrencyQualified(tx, rule)) continue;
       if (rule.direction === 'credit' && !(amount < 0)) continue;
       if (rule.direction === 'debit' && !(amount > 0)) continue;
       for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
@@ -3799,7 +3832,15 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     return localByProvider.get(String(providerId)) || null;
   };
   const txs = [];
+  const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
+  // Collapse omits undated rows; keep their mapped-card evidence unknown.
+  for (const tx of report && report.transactions || []) {
+    if (tx && !tx.date && atlasAccountRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null) === 'revolving-credit') {
+      cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: null,
+        reason: 'transaction-amount-or-date-unconfirmed' });
+    }
+  }
   for (const tx of collapsed) {
     if (!tx) continue;
     const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
@@ -3811,6 +3852,13 @@ function sanitizedCurrentPeriodActuals(report, opts) {
         cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx),
           date: tx.date || null, reason: 'transaction-amount-or-date-unconfirmed' });
       }
+      continue;
+    }
+    const currencyRules = currencyRulesForTransaction(tx, mapDoc, opts.identityRules,
+      opts.planForIdentity || opts.plan);
+    if (tx.currencySettlementUnconfirmed === true
+      || currencyRules.some(rule => !ruleCurrencyQualified(tx, rule))) {
+      currencyUnconfirmed.push({ id: localIdFor(tx.providerTransactionId), currency: tx.currency || null });
       continue;
     }
     const treatment = pendingForecastTreatment(tx, asOf, {
@@ -3875,6 +3923,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       currency: tx.currency || null,
       coverageCurrencyConflict: tx.coverageCurrencyConflict === true,
       pending: tx.pending === true,
+      currency: tx.currency || null,
       pendingTreatment: treatment.treatment,
       categoryLabel: tx.categoryLabel || null,
       displayedPayee: sanitizedMerchantIdentity(tx.payee),
@@ -3975,7 +4024,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   let transactionCoverage = 'complete';
   if (window.truncated === true || window.complete === false || window.hasMore === true) {
     transactionCoverage = 'truncated';
-  } else if (cardCoverageUnconfirmed.length || txs.some(tx => tx && tx.accountRole === 'unmapped')) {
+  } else if (cardCoverageUnconfirmed.length || currencyUnconfirmed.length || txs.some(tx => tx && tx.accountRole === 'unmapped')) {
     transactionCoverage = 'incomplete';
   }
   let coverageStart = window.startDate || null;
@@ -3996,6 +4045,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     transactionCoverage,
     cardCoverageUnconfirmed,
     cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
+    currencyUnconfirmed,
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
       asOf,
