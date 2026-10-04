@@ -56,6 +56,18 @@ async function geometry(page) {
       };
       await boot();
       await geometry(page);
+      const reserveInfo=page.locator('[data-budget-browse="spending"] [data-budget-browse-evidence="06"]');
+      assert.match(await reserveInfo.innerText(),/^Info$/);
+      assert.doesNotMatch(await page.locator('[data-budget-browse="spending"]').innerText(),/whichever is higher/,
+        'actual/original-plan browse does not carry the reserve explanation by default');
+      assert.equal(await page.locator('[data-budget-reserve-rule]').isVisible(),false);
+      await reserveInfo.focus();await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-budget-detail-body]').innerText(),/Reserve calculation:[\s\S]*whichever is higher[\s\S]*unassigned spending/);
+      assert.match(await page.locator('[data-budget-detail-body] [data-household-budget-total-amount]').innerText(),/752\.99/);
+      await screenshot({path:path.join(screenshots,`reserve-info-${width}.png`),fullPage:false});
+      await page.keyboard.press('Escape');
+      assert.equal(await reserveInfo.evaluate(node=>node===document.activeElement),true,'Info returns to its exact spending trigger');
+      await page.evaluate(()=>window.scrollTo(0,0));
       const trackBounds = await page.locator('[data-calendar-waterfall] .budget-waterfall-track').evaluateAll(rows => rows.filter(row => getComputedStyle(row).display !== 'none').map(row => {
         const r = row.getBoundingClientRect(); return [r.left, r.width];
       }));
@@ -224,8 +236,12 @@ async function geometry(page) {
         assert.equal(await page.locator(`[data-budget-detail-body] > ${sourceSelector}`).evaluate(node => node !== window.__beforeRerender && node.isConnected), true,
           'sheet reopens the refreshed incumbent evidence, not a cached financial node');
         if (width === 390) {
+          await page.locator('[data-budget-detail-sheet]').evaluate(node => { window.__beforeViewportDialog = node; });
           await page.setViewportSize({width:1440,height:1000});
-          await page.waitForFunction(() => document.querySelector('[data-budget-detail-sheet]')?.open && !!document.activeElement.closest('[data-budget-detail-sheet]'));
+          await page.waitForFunction(() => {
+            const dialog = document.querySelector('[data-budget-detail-sheet]');
+            return dialog !== window.__beforeViewportDialog && dialog?.open && !!document.activeElement.closest('[data-budget-detail-sheet]');
+          });
           if (name !== 'bill') assert.equal(await focusVisible(page.locator('[data-budget-detail-body] .household-budget-spent-summary')), true);
           await screenshot({path:path.join(screenshots,`${name}-resized-1440.png`),fullPage:false});
         }
@@ -233,8 +249,14 @@ async function geometry(page) {
         assert.equal(await trigger.evaluate(el => el === document.activeElement), true, `${name}: exact trigger after refresh/resize`);
         assert.equal(await focusVisible(trigger), true, `${name}: refreshed/resized Back target is visible`);
         if (width === 390) {
+          await page.locator('[data-budget-detail-sheet]').evaluate(node => { window.__beforeViewportDialog = node; });
           await page.setViewportSize({width:390,height:1000});
-          await page.waitForFunction(() => matchMedia('(max-width:640px)').matches && !document.querySelector('[data-budget-detail-sheet]')?.open);
+          // matchMedia changes before App's change listener remounts the page.
+          // Require that real remount before opening the next evidence sheet.
+          await page.waitForFunction(() => {
+            const dialog = document.querySelector('[data-budget-detail-sheet]');
+            return matchMedia('(max-width:640px)').matches && dialog !== window.__beforeViewportDialog && dialog && !dialog.open;
+          });
         }
       }
       if (width === 320) {

@@ -535,6 +535,25 @@ body.budget-detail-open { overflow:hidden; }
 .budget-detail-body > .budget-step-body, .budget-detail-body > .budget-today-evidence { margin:0; padding:0; border:0; background:none; }
 .budget-detail-body .budget-cash-back { display:none; }
 .budget-detail-body .operating-line { overflow-wrap:anywhere; }
+/* Compact native sheets. Keep every source, reason, amount and disclosure in
+   its existing node; only the reading rhythm changes inside this dialog. */
+.budget-detail-body { font-size:14px; line-height:1.45; }
+.budget-detail-body :is(h3,h4) { margin:14px 0 6px; font-size:14px; line-height:1.35; }
+.budget-detail-body > :is(h3,h4):first-child,
+.budget-detail-body .household-budget-name { margin-top:0; }
+.budget-detail-body :is(p,.operating-note,.household-budget-context) { margin:6px 0; font-size:13px; line-height:1.45; }
+.budget-detail-body .operating-line { padding-block:7px; font-size:13px; line-height:1.4; }
+.budget-detail-body .household-budget-metrics { margin-top:6px; }
+.budget-detail-body .household-budget-metrics :is(dt,dd) { font-size:13px; line-height:1.45; }
+.budget-detail-body .household-budget-spent-summary { min-height:44px; }
+.budget-detail-body .bill-detail-body { padding:4px 0 12px; }
+.budget-detail-body .bill-detail-body p { font-size:13px; }
+.budget-detail-body .bill-detail-body dl > div { gap:10px; padding-block:6px; font-size:13px; }
+.budget-detail-body .budget-progress-evidence { margin-top:12px; padding-top:10px; border-top:1px solid var(--border); }
+.budget-detail-body .budget-progress-evidence > h3 { margin-top:0; }
+.budget-month-shortcuts { margin:0 0 10px; }
+[data-budget-month-section-target] { scroll-margin-top:60px; }
+[data-budget-month-section-heading]:focus-visible { outline:2px solid var(--s1); outline-offset:4px; border-radius:3px; }
 .budget-detail-body button:focus-visible, .budget-detail-body summary:focus-visible, .budget-detail-sheet [data-budget-detail-close]:focus-visible { outline:2px solid var(--s1); outline-offset:2px; }
 @media (max-width:959px) {
   .budget-window-header { gap:12px; margin:8px 4px 0; }
