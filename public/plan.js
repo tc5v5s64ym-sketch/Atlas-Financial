@@ -6510,7 +6510,7 @@ function renderPlan(d, periods, history) {
   }));
   const fundingPlan = advice.funding || null;
   const inventoryMount = $('savings-inventory');
-  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = `<details class="budget-savings-accounts"><summary>Savings accounts &amp; evidence</summary>${SavingsInventory.html(advice.savingsInventory)}</details>`;
+  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = SavingsInventory.html(advice.savingsInventory);
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   const capView = weeklyCapView(advice, state.weeklyVariable);
