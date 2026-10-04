@@ -1,4 +1,5 @@
 'use strict';
+require('./test-confirmed-card-payment-transfer');
 const assert = require('node:assert/strict');
 const F = require('../public/forecast');
 const Live = require('../scripts/live-plan');

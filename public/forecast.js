@@ -8655,8 +8655,22 @@
     }
     const byRef = new Map(), purchases = new Map(), used = new Set(), payments = [];
     const rows = input.filter(tx => tx && tx.date >= origin && tx.date <= asOf && !skipSplitParent(tx, packet));
+    // Broader movement labels identify a leg only after an explicit household
+    // confirmation names that reference. Category/hint alone never pairs a
+    // transfer, assigns purchase coverage, or settles a minimum.
+    const confirmedMovementRefs = new Set();
+    for (const record of [].concat(policy?.payments || [], policy?.reversals || [])) {
+      if (record?.confirmed !== true) continue;
+      for (const key of ['debitRef', 'creditRef', 'cardDebitRef', 'cashCreditRef']) {
+        if (typeof record[key] === 'string') confirmedMovementRefs.add(record[key]);
+      }
+    }
     const paymentLike = tx => tx.cardPaymentIdentity === true || tx.kindHint === 'card-payment'
-      || normalizeCategoryLabel(tx.categoryLabel) === 'credit card payment';
+      || normalizeCategoryLabel(tx.categoryLabel) === 'credit card payment'
+      || (confirmedMovementRefs.has(tx.coverageRef)
+        && (TRANSFER_CATEGORY_LABELS.has(normalizeCategoryLabel(tx.categoryLabel))
+          || ['payment', 'card-payment', 'bill-payment', 'transfer', 'internal-transfer']
+            .includes(normalizeCategoryLabel(tx.kindHint))));
     for (const tx of input) {
       if (tx && (cardLike(tx) || paymentLike(tx)) && !savingsDate(tx.date)) issue('coverage-date-unconfirmed');
       if (tx && cardLike(tx) && tx.pending === true && tx.date < origin
