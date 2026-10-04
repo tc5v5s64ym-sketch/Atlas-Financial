@@ -80,9 +80,19 @@ function regenerateComputedRows(data, csvText, opts) {
   const homeDerivedAsOf = laterIsoDate(data.meta.asOf, homeAsOf);
 
   const periods = opts.periods !== undefined ? opts.periods : loadPeriods(opts.periodsPath);
+  const periodsAsOf = periods && (periods.source && periods.source.coverageThrough || periods.asOf) || '';
+  const ownerTargetAsOf = ((data.plan && data.plan.budget && data.plan.budget.categories) || [])
+    .reduce((latest, c) => {
+      const m = String(c && c.targetSource || '').match(/owner-stated-(\d{4}-\d{2}-\d{2})/);
+      return laterIsoDate(latest, m ? m[1] : '');
+    }, '');
+  const essentialsAsOf = laterIsoDate(laterIsoDate(data.meta.asOf, periodsAsOf), ownerTargetAsOf);
+  // These planning rows disclose the latest input date. Evaluate owner
+  // targets on that same date, keeping the financial opening/settlement
+  // context separate so a newer policy does not rewrite historical evidence.
   const budget = periods ? F.budgetBreakdown(data.plan, periods,
     { paypalPerMonth: data.paypal ? data.paypal.perMonth : 0,
-      asOf: data.meta.asOf }) : null;
+      asOf: data.meta.asOf, budgetTargetAsOf: essentialsAsOf }) : null;
   const essentialsMonthly = budget ? budget.requiredMonthly : null;
 
   const W = (type, label, side, ccy, value, extra) => {
@@ -163,13 +173,6 @@ function regenerateComputedRows(data, csvText, opts) {
         + `summed all five TD accounts. Most of what is left is borrowed` }));
 
   if (essentialsMonthly != null) {
-    const periodsAsOf = periods && (periods.source && periods.source.coverageThrough || periods.asOf) || '';
-    const ownerTargetAsOf = ((data.plan && data.plan.budget && data.plan.budget.categories) || [])
-      .reduce((latest, c) => {
-        const m = String(c && c.targetSource || '').match(/owner-stated-(\d{4}-\d{2}-\d{2})/);
-        return laterIsoDate(latest, m ? m[1] : '');
-      }, '');
-    const essentialsAsOf = laterIsoDate(laterIsoDate(data.meta.asOf, periodsAsOf), ownerTargetAsOf);
     const mixedBits = [];
     if (data.meta.asOf) mixedBits.push(`Financial-account opening ${data.meta.asOf}`);
     if (periodsAsOf) mixedBits.push(`historical actuals through ${periodsAsOf}`);

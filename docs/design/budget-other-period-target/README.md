@@ -45,9 +45,21 @@ suites. Historical authority suites retain their original $800/$400 assertions
 using explicitly bounded configuration, while active-policy contracts require
 the approved $450 shape/source/effective date. The post-boundary timeline's
 independent deduction uses 450 once; prior $400 timeline proof remains intact.
-The authority invariant now requires the new Oct 4 source date. Earlier derived
-essentials amounts return to their original values; only the two reporting
-rows' later policy-input metadata differs from main.
+The authority invariant now requires the new Oct 4 source date. Earlier
+Forecast opening/trajectory amounts retain the retired policy. The current
+planning report is separately evaluated on its disclosed latest input date.
+
+The later blocking report-provenance review found that positions had been
+stamped Oct 4 while its target query still used the Aug 19 opening. The writer
+now passes the disclosed report date as `budgetTargetAsOf` to the same Forecast
+breakdown, while retaining the original financial `asOf` for historical
+settlement evidence. The generated current planning rows therefore include
+the authorized target rather than retired quantities with advanced metadata.
+Only the two derived essentials rows change; canonical inputs and historical
+Forecast figures are unchanged. An independent invented-input regression drives
+the actual CLI: `--check` rejects retired quantities falsely stamped with the
+new target date, regeneration writes current quantities, and the corrected
+report then passes. Captured rows and canonical fixture inputs stay immutable.
 
 All observation amounts, transaction identities and account IDs in fixtures
 and screenshots are invented independently. $450 is the expressly approved
