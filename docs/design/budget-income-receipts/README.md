@@ -28,6 +28,23 @@ planned contribution; ordinary unconfirmed plan fallback remains the incumbent
 Forecast behavior. Original planned row amounts and ratio denominators stay
 unchanged. The interface computes no financial totals.
 
+### Systems B1: received detail must use actual receipts
+
+Review [5407130262](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/496#pullrequestreview-5407130262)
+blocked head `91e9661`: the correct received total coexisted with individual
+received lines showing their original planned movements. Every received-income
+detail consumer now reads `Forecast.incomeReceivedAmount`, also used by the
+progress receipt total. Original plan amounts remain explicitly labeled
+`Original plan`; missing actuals print `Unavailable`. The represented-actual
+map rejects null and malformed amounts instead of coercing them to zero.
+
+The browser opens Info and independently sums only its received line amounts,
+then compares those cents with its printed Actual total. Fifteen views cover
+current, completed, absent-source, truncated and missing-actual evidence at
+1440/390/320px, with unequal plan and actual amounts. Unit coverage additionally
+checks contradictory settlement/trust, numeric zero and malformed actuals.
+The review outcome for the replacement head remains pending independent review.
+
 ## Independent reconciliation
 
 All amounts, dates, provider IDs and employer aliases in fixtures and captures
@@ -65,12 +82,19 @@ settlement status, reserve semantics and unavailable explanations.
 | Received Info, 320px | [Evidence](comparison-received-info-320.png) |
 | Missing salary source, 320px | [Partial evidence](comparison-partial-320.png) |
 | Truncated evidence, 320px | [Unknown evidence](comparison-unknown-320.png) |
+| Completed-period received Info, 320px | [Historical receipt lines](history-info-320.png) |
+| Missing actual Info, 320px | [Unavailable receipt amount](missing-actual-info-320.png) |
 
 The PR records the frozen exact head, required suite outcome, browser results,
 artifact hashes and independent Systems review. Screenshots alone are not a
 passing-head claim. Active App.boot tests cover 1440/390/320px, compact numerics,
 Info opening by keyboard, exact focus restoration above the dock, no overflow,
 missing data and the independent deduction identity.
+
+Current and completed received Info list `$2,493.18` and `$1,733.18`, separately
+labeling the `$2,520.25` and `$1,800.25` original plans. Missing-actual Info lists
+the known `$2,493.18` receipt, an unavailable salary receipt and a partial actual
+subtotal of `$2,493.18`, without replacing the unknown with its plan.
 
 ## Remaining evidence gaps
 

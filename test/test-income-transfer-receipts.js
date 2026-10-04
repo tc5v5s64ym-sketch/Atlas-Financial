@@ -18,6 +18,30 @@ assert.equal(period.balanceAfterDeductions,3834.08,'actual receipts 4226.36 minu
 assert.equal(period.income.filter(x=>x.id==='amandaSalaryMonthEnd').length,1);
 assert.ok(!period.income.some(x=>x.otherIncome),'transfer and external coaching are not new Other Income');
 assert.equal(period.income.find(x=>x.id==='payroll').actual,-2493.18,'native payroll cents stay exact');
+assert.deepEqual(period.income.map(row=>F.incomeReceivedAmount(row)),[2493.18,1733.18],
+ 'received detail reuses receipt contribution, ignoring the planned movement');
+const receipt={status:'received',settlement:'represented',actual:-73.19,amount:95,movement:95};
+assert.equal(F.incomeReceivedAmount(receipt),73.19);
+for(const actual of [null,undefined,NaN,'73.19'])assert.equal(F.incomeReceivedAmount({...receipt,actual}),null,'missing or malformed receipt amount never falls back to plan');
+for(const settlement of ['unverified','pending','unknown','unavailable','not-relied-upon','relied-upon'])
+ assert.equal(F.incomeReceivedAmount({...receipt,settlement}),null,'contradictory settlement is not a received-amount claim');
+assert.equal(F.incomeReceivedAmount({...receipt,actualTrust:'unavailable'}),null);
+assert.equal(F.incomeReceivedAmount({...receipt,actual:0}),0,'confirmed zero does not become the original plan');
+assert.equal(F.incomeReceivedAmount({...receipt,otherIncome:true,actual:73.19}),73.19,'normalized Other receipt uses the same selector');
+for(const actual of [null,undefined,'1733.18']){
+ const malformed=fx.build();malformed.packet.representedActuals.find(row=>row.id==='amandaSalaryMonthEnd').actual=actual;
+ const published=F.recommend(malformed.data.plan,fx.AS_OF,{...malformed.data.plan.defaults,debts:[],currentPeriodActuals:malformed.packet})
+  .payPeriodViews.find(row=>row.timelineRole==='current');
+ assert.equal(F.incomeReceivedAmount(published.income.find(row=>row.id==='amandaSalaryMonthEnd')),null);
+ assert.equal(published.budgetProgress.income.actual.amount,2493.18,'malformed represented amount cannot become zero or the plan');
+ assert.equal(published.budgetProgress.income.actual.completeness,'partial');
+}
+const historical=fx.build(fx.transactions(),fx.rules,O,'2026-07-20');
+const historicPeriod=F.recommend(historical.data.plan,'2026-07-20',{...historical.data.plan.defaults,debts:[],currentPeriodActuals:historical.packet})
+ .payPeriodViews.find(x=>x.start===fx.START);
+assert.equal(historicPeriod.timelineRole,'past');
+assert.deepEqual(historicPeriod.income.map(row=>F.incomeReceivedAmount(row)),[2493.18,1733.18]);
+assert.equal(historicPeriod.budgetProgress.income.actual.amount,4226.36,'completed income retains the same proven receipt total');
 assert.deepEqual([period.budgetProgress.household.actual.amount,period.budgetProgress.household.planned.amount],
  [345.94,365],'independent current-cycle eligible debits 21531+10265+1835+963; current plans 22000+8500+6000');
 assert.equal(period.budgetHold,392.28,'independent reserve max(220,215.31)+max(85,102.65)+max(60,18.35)+9.63');

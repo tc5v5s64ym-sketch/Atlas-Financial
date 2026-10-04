@@ -40,14 +40,15 @@ function transactions(){return [
  tx('refund','fixture-weekly','2026-07-03',-11.07,'Invented refund','Refund',{kind:'refund'}),
  tx('old','fixture-weekly','2026-06-25',51.08,'Invented prior-period grocer','Groceries'),
  tx('later','fixture-weekly','2026-07-05',82.17,'Invented future grocer','Groceries')];}
-function build(rows=transactions(),ruleRows=rules,provider=O){const d=data();
+function build(rows=transactions(),ruleRows=rules,provider=O,observationDate=AS_OF){const d=data();
+ d.meta.asOf=observationDate;d.plan.opening.asOf=observationDate;
  const input={plan:d.plan,accountMap,identityRules:ruleRows,transactions:rows,
-   transactionWindow:{startDate:'2026-06-25',endDate:AS_OF,complete:true,hasMore:false,truncated:false}};
+   transactionWindow:{startDate:'2026-06-25',endDate:observationDate,complete:true,hasMore:false,truncated:false}};
  const candidates=provider.representedEventCandidates(input);
  const report={transactions:rows,representedEventCandidates:candidates,transactionWindow:input.transactionWindow,
-   fetchedAt:AS_OF+'T18:00:00.000Z',pendingCoverage:{complete:true}};
- const packet=provider.sanitizedCurrentPeriodActuals(report,{asOf:AS_OF,plan:d.plan,accountMap,identityRules:ruleRows});
+   fetchedAt:observationDate+'T18:00:00.000Z',pendingCoverage:{complete:true}};
+ const packet=provider.sanitizedCurrentPeriodActuals(report,{asOf:observationDate,plan:d.plan,accountMap,identityRules:ruleRows});
  d.plan.opening.representedEvents=candidates.map(({id,date})=>({id,date}));
- d.liveOverlay={applied:true,operatingPlan:'live',asOf:AS_OF,currentPeriodActuals:packet};
+ d.liveOverlay={applied:true,operatingPlan:'live',asOf:observationDate,currentPeriodActuals:packet};
  return {data:d,input,report,candidates,packet};}
 module.exports={AS_OF,START,END,accountMap,rules,data,transactions,build};

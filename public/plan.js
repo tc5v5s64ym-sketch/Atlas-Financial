@@ -1705,6 +1705,7 @@ function glanceSignedMoney(n) {
 
 function glanceMoney(row, kind) {
   if (!row) return null;
+  if (kind === 'in' && row.status === 'received') return Forecast.incomeReceivedAmount(row);
   if (row.movement != null && isFinite(Number(row.movement))) return Number(row.movement);
   let raw = null;
   if (kind === 'paid' || kind === 'in' || kind === 'planned') {
@@ -2004,8 +2005,11 @@ function calendarIncomeHtml(period) {
     const receiptDate = (daleSalary || amandaSalary) && row.date
       && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
       ? `<time class="budget-receipt-date" datetime="${row.date}">${fmtDate(row.date)} · ${receiptStatus}</time>` : '';
+    const original = row.planned ?? row.amount;
+    const originalPlan = row.status === 'received' && typeof original === 'number' && Number.isFinite(original)
+      ? `<span class="budget-receipt-date" data-income-original-plan>Original plan ${money2(original)}</span>` : '';
     return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}"${extra}>
-      <span>${displayName}${receiptDate}</span><span>${amount != null ? estimateMark + about + amount : '—'}</span>
+      <span>${displayName}${receiptDate}${originalPlan}</span><span data-income-line-amount>${amount != null ? estimateMark + about + amount : row.status === 'received' ? 'Unavailable' : '-'}</span>
     </div>`;
   };
   const namedLines = named.map(row => line(row)).join('');
@@ -2042,10 +2046,11 @@ function calendarIncomeHtml(period) {
         : row.status === 'unknown' ? 'unknown'
         : row.alreadyInCash ? 'already in balance' : 'arriving';
       const about = !isReceived && row.confidence === 'estimated' ? 'about ' : '';
+      const receiptAmount = isReceived ? Forecast.incomeReceivedAmount(row) : row.amount;
       return `<li class="other-income-tx"${idAttr} data-income-status="${status}">
         <time${dateAttr}>${esc(dateText)}</time>
         <span class="other-income-tx-payee">${esc(payeeRaw)}${received}${pending}</span>
-        <span class="other-income-tx-amount">${about}${money2(row.amount)}</span>
+        <span class="other-income-tx-amount" data-income-line-amount>${receiptAmount != null ? about + money2(receiptAmount) : 'Unavailable'}</span>
       </li>`;
     }).join('');
     otherHtml = `<div class="other-income-openable" data-other-income>
