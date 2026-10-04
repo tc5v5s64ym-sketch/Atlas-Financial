@@ -5746,8 +5746,8 @@
     return d === 14 ? payday : null;
   }
 
-  // Crossing spans apply the retired monthly scale only before Sep 25 and
-  // the whole payday target only on authorized starts from Sep 25 onward.
+  // Named spans apply each dated policy only within its effective bounds:
+  // retired monthly days first, then authorized whole payday starts.
   function datedOtherHoldAcrossBoundary(cat, plan, start, end) {
     if (!cat || cat.id !== OTHER_SPEND_ID || !financialDate(cat.targetEffectiveFrom)
         || !financialDate(start) || !financialDate(end)
