@@ -515,15 +515,20 @@ async function geometry(page) {
       await geometry(page);
       await revisedHistory.screenshot({path:path.join(screenshots,`history-target-edit-${width}.png`),animations:'disabled',style:'.sitenav-household{visibility:hidden!important}'});
       const revisedGrocery=revisedHistory.locator('[data-budget-category-open="groceries"]');
-      const assertHistorySheet=async () => {
+      const assertHistorySheet=async (withTotal=false) => {
         const sheetBody=page.locator('[data-budget-detail-body]');
         assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open),true);
         assert.match(await sheetBody.innerText(),/Historical original plan unavailable/);
         assert.match(await sheetBody.innerText(),/Synthetic historical grocer[\s\S]*47\.25/);
         assert.doesNotMatch(await sheetBody.innerText(),/450\.00|613\.27|402\.75|566\.02|\/week/);
-        assert.doesNotMatch(await sheetBody.locator('[data-budget-category] dt').allTextContents().then(labels=>labels.join(' ')),/Planned|Remaining/,
+        assert.equal(await sheetBody.locator('[data-budget-category]').count(),withTotal?3:1);
+        const categoryTerms=sheetBody.locator('[data-budget-category] dt');
+        assert.ok(await categoryTerms.count()>0,'native category terms are present');
+        assert.doesNotMatch(await categoryTerms.allTextContents().then(labels=>labels.join(' ')),/Planned|Remaining/,
           'native historical categories do not print current targets or remaining amounts');
-        assert.match(await sheetBody.locator('[data-household-budget-progress-total] [data-budget-ratio-plan]').innerText(),/Unknown/,
+        const total=sheetBody.locator('[data-household-budget-progress-total]');
+        assert.equal(await total.count(),withTotal?1:0);
+        if(withTotal)assert.match(await total.locator('[data-budget-ratio-plan]').innerText(),/Unknown/,
           'the total retains a truthful Actual / Planned label with its original plan explicitly unknown');
         assert.equal(await sheetBody.locator('.budget-category-fill,.budget-category-pace').count(),0);
       };
@@ -549,7 +554,7 @@ async function geometry(page) {
       // unavailable original-plan meaning; opening transactions cannot lose it.
       const fullDetails=revisedHistory.locator('[data-budget-browse-evidence="06"]');
       await fullDetails.focus();await page.keyboard.press('Enter');
-      await assertHistorySheet();
+      await assertHistorySheet(true);
       assert.equal(await page.locator('[data-budget-detail-body] [data-budget-historical-original-plan="unavailable"]').count(),3);
       await page.keyboard.press('Escape');assert.equal(await fullDetails.evaluate(el=>el===document.activeElement),true);
       await page.locator('[data-budget-window-step="1"]').click();
