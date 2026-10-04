@@ -159,6 +159,9 @@ function served(opts = {}) {
   if (typeof opts.periodInternet === 'number') {
     data.plan.bills.find(row => row.id === 'internet').amount = opts.periodInternet;
   }
+  if (typeof opts.historicalHydroDay === 'number') {
+    data.plan.bills.find(row => row.id === 'hydro').day = opts.historicalHydroDay;
+  }
   if (opts.zeroIncome) {
     data.plan.income.forEach(row => { row.amount = 0; });
     observed.transactions = observed.transactions.filter(row => row.id !== 92001);
@@ -186,4 +189,33 @@ function served(opts = {}) {
   return overlay.data;
 }
 
-module.exports = { AS_OF, OPENING, canonical, payload, map, identity, served };
+// Completed Jul 31-Aug 13 period: independently invented groceries $47.25,
+// fuel $19.50 and a $105 bill on Aug 7. Current Aug 14-27 inputs stay unchanged.
+// Coverage variants are observation evidence, not renderer fault injections.
+function historical(coverage = 'missing', settlement = 'unverified') {
+  const data = served();
+  data.plan.bills.push({ id: 'historical-service', label: 'Synthetic historical service',
+    frequency: 'once', date: '2026-08-07', amount: 105, confidence: 'confirmed', payingAccount: 'chequing-a' });
+  const packet = data.liveOverlay.currentPeriodActuals;
+  packet.transactions.push(
+    { id: 'history-grocery', date: '2026-08-04', amount: 47.25, pending: false,
+      categoryLabel: 'Groceries', accountRole: 'household-cash', atlasAccountId: 'chequing-b',
+      displayedPayee: 'Synthetic historical grocer' },
+    { id: 'history-fuel', date: '2026-08-05', amount: 19.50, pending: false,
+      categoryLabel: 'Gas', accountRole: 'household-cash', atlasAccountId: 'chequing-b',
+      displayedPayee: 'Synthetic historical fuel' });
+  if (coverage === 'full' || coverage === 'truncated' || coverage === 'posted-only') packet.coverageStart = '2026-07-31';
+  if (coverage === 'partial') packet.coverageStart = '2026-08-04';
+  if (coverage === 'truncated') packet.transactionCoverage = 'truncated';
+  if (coverage === 'posted-only') packet.pendingCoverage = 'unknown';
+  if (settlement === 'paid') {
+    packet.representedActuals.push({ id: 'historical-service', date: '2026-08-07', actual: 105,
+      postedOn: '2026-08-07', transactionId: 'history-service-payment' });
+    packet.transactions.push({ id: 'history-service-payment', date: '2026-08-07', amount: 105,
+      pending: false, representedBill: true, categoryLabel: 'Bills', accountRole: 'household-cash',
+      atlasAccountId: 'chequing-a', displayedPayee: 'Synthetic historical service payment' });
+  }
+  return data;
+}
+
+module.exports = { AS_OF, OPENING, canonical, payload, map, identity, served, historical };
