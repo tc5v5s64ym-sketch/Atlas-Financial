@@ -1,8 +1,7 @@
 'use strict';
 
 // A posted PAYMENT - THANK YOU credit on the mapped TD, Cash Back, or
-// Travel Visa account settles that card's minimum once, through the
-// incumbent payee + account + credit + due-date + amount-at-least path.
+// Travel Visa account is a balance movement with unconfirmed minimum intent.
 // Synthetic cents (L-006). Fixture account ids 3001–3011 are not live ids.
 
 const fs = require('fs');
@@ -358,7 +357,7 @@ console.log('=== shared incumbent identity, one new posted alias ===');
     'Surrey Meat stays Dog food');
 }
 
-console.log('\n=== PAYMENT - THANK YOU on the mapped card settles that minimum once ===');
+console.log('\n=== PAYMENT - THANK YOU leaves minimum intent unconfirmed ===');
 for (const card of CARDS) {
   const data = planFixture();
   const scheduled = Number(obligation(data.plan, card.eventId).amount);
@@ -373,17 +372,11 @@ for (const card of CARDS) {
   const hit = hitsFor(report, card.eventId, card.due);
   const sameTx = candidates(report).filter(row =>
     String(row.providerTransactionId) === String(posted.id));
-  ok(hit.length === 1 && sameTx.length === 1
-      && sameTx[0].id === card.eventId
-      && sameTx[0].date === card.due
-      && sameTx[0].atlasAccountId === card.atlas
-      && sameTx[0].direction === 'credit'
-      && sameTx[0].amountNotUsed === true
-      && near(sameTx[0].observedAmount, -card.min),
-    card.eventId + ' PAYMENT - THANK YOU credit settles that due once');
+  ok(hit.length === 0 && sameTx.length === 0,
+    card.eventId + ' PAYMENT - THANK YOU credit does not confirm minimum intent');
   ok(!hitsFor(report, card.eventId, card.laterDue).length
-      && candidates(report).filter(row => row.id === card.eventId).length === 1,
-    card.eventId + ' payment does not also settle the next minimum');
+      && candidates(report).filter(row => row.id === card.eventId).length === 0,
+    card.eventId + ' payment settles neither this nor the next minimum automatically');
   for (const other of CARDS) {
     if (other.eventId === card.eventId) continue;
     ok(!candidates(report).some(row => row.id === other.eventId),
@@ -391,17 +384,17 @@ for (const card of CARDS) {
   }
   const later = credit(card, card.laterDue, card.min);
   const laterReport = observe(data, [later], card.laterDue);
-  ok(hitsFor(laterReport, card.eventId, card.laterDue).length === 1
+  ok(hitsFor(laterReport, card.eventId, card.laterDue).length === 0
       && !hitsFor(laterReport, card.eventId, card.due).length,
-    card.eventId + ' later payment covers only the latest due on or before posting');
+    card.eventId + ' later posting is still unconfirmed minimum intent');
   const pair = [
     credit(card, card.due, card.min),
     credit(card, card.due, card.extra),
   ];
   const paired = observe(data, pair, card.due);
-  ok(hitsFor(paired, card.eventId, card.due).length === 1
-      && candidates(paired).filter(row => row.id === card.eventId).length === 1,
-    'two ' + card.eventId + ' credits on the same due still settle that minimum once');
+  ok(hitsFor(paired, card.eventId, card.due).length === 0
+      && candidates(paired).filter(row => row.id === card.eventId).length === 0,
+    'two ' + card.eventId + ' credits on the same due do not establish intent');
 }
 
 console.log('\n=== wrong card, wrong direction, wrong date, short payment, amount-only ===');
@@ -437,8 +430,8 @@ for (const card of CARDS) {
   ok(!hitsFor(afterClose, card.eventId, card.upcomingAfterClose).length,
     card.eventId + ' payment after statement close and before the due does not settle the upcoming minimum');
   if (card.coveredOnOrBeforeClose) {
-    ok(hitsFor(afterClose, card.eventId, card.coveredOnOrBeforeClose).length === 1,
-      card.eventId + ' payment still covers the latest due on or before posting');
+    ok(hitsFor(afterClose, card.eventId, card.coveredOnOrBeforeClose).length === 0,
+      card.eventId + ' previous due is not settlement intent');
   } else {
     ok(!candidates(afterClose).some(row => row.id === card.eventId),
       card.eventId + ' has no earlier due for that posting to cover');
@@ -448,8 +441,8 @@ for (const card of CARDS) {
     card.eventId + ' credit below the scheduled minimum does not settle it');
   const extra = observe(data, [credit(card, card.due, card.extra)], card.due);
   const extraHit = hitsFor(extra, card.eventId, card.due);
-  ok(extraHit.length === 1 && near(extraHit[0].observedAmount, -card.extra),
-    card.eventId + ' credit above the minimum still settles; the extra cents are coverage');
+  ok(extraHit.length === 0,
+    card.eventId + ' credit above the minimum does not confirm minimum intent');
   const amountOnly = tx({
     account: card.provider,
     date: card.due,
@@ -509,18 +502,18 @@ console.log('\n=== refunds and reversals do not settle; chequing TFR-TO C/C does
   }
 }
 
-console.log('\n=== existing accepted aliases still settle the mapped card ===');
+console.log('\n=== existing payment aliases do not establish minimum intent ===');
 for (const alias of ['PAYMENT-THANKYOU', 'PAYMENT THANK YOU', 'TFR-TO C/C']) {
   for (const card of CARDS) {
     const data = planFixture();
     const report = observe(data, [credit(card, card.due, card.min, alias)], card.due);
     const hit = hitsFor(report, card.eventId, card.due);
-    ok(hit.length === 1 && hit[0].atlasAccountId === card.atlas,
-      alias + ' on ' + card.atlas + ' still settles ' + card.eventId);
+    ok(hit.length === 0,
+      alias + ' on ' + card.atlas + ' leaves ' + card.eventId + ' unconfirmed');
   }
 }
 
-console.log('\n=== represented card payments stay out of Other Spending ===');
+console.log('\n=== unconfirmed card payments stay out of Other Spending ===');
 for (const card of CARDS) {
   const unrelated = tx({
     account: CHEQUING_A,
@@ -540,8 +533,8 @@ for (const card of CARDS) {
       && both.data.liveOverlay && both.data.liveOverlay.applied === true,
     card.eventId + ' overlay applies for the Other Spending comparison');
   ok(!candidates(debitOnly.report).some(row => row.id === card.eventId)
-      && hitsFor(both.report, card.eventId, card.due).length === 1,
-    card.eventId + ' minimum is represented only when the card credit is present');
+      && hitsFor(both.report, card.eventId, card.due).length === 0,
+    card.eventId + ' card credit does not manufacture minimum settlement');
   ok(near(otherSpent(debitAdvice), UNRELATED)
       && near(otherSpent(bothAdvice), UNRELATED)
       && near(roundCent(otherSpent(bothAdvice) - otherSpent(debitAdvice)), 0),
@@ -558,10 +551,10 @@ for (const card of CARDS) {
       currentPeriodActuals: packet,
     })
     : null;
-  ok(published && published.representedBill === true
+  ok(published && published.representedBill !== true
       && cls && cls.householdSpending === false
       && cls.kind !== 'spend',
-    'the represented ' + card.eventId + ' credit is not household spend',
+    'the unconfirmed ' + card.eventId + ' credit is not household spend',
     cls && JSON.stringify(cls));
   ok(representedRows(both.data, 'tdcc', '2026-09-17').length === 1,
     'in-memory opening still names tdcc@2026-09-17 once after the ' + card.eventId + ' overlay');

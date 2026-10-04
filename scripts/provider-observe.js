@@ -2015,6 +2015,21 @@ function isBillOrObligationEvent(plan, eventId) {
     .some(row => row && row.id === eventId);
 }
 
+// A posted card payment proves a balance movement, not the household's
+// purpose for it. Purchase backfills can have the same payee, date and amount
+// as a minimum payment. No approved machine-readable intent convention exists;
+// leave these occurrences unconfirmed. Exact owner/statement confirmations
+// already on plan.opening.representedEvents remain Forecast inputs unchanged.
+function cardMinimumNeedsConfirmation(plan, eventId, accountMap) {
+  const row = ((plan && plan.obligations) || []).find(item => item && item.id === eventId);
+  if (!row || row.effect !== 'payment' || !row.debtId) return false;
+  const mappedCard = ((accountMap && accountMap.mappings) || []).some(mapping =>
+    mapping && CREDIT_ROLES.has(mapping.atlasRole) && mapping.canonical
+    && mapping.canonical.collection === 'debts' && mapping.canonical.id === row.debtId);
+  const debt = ((plan && plan.debts) || []).find(item => item && item.id === row.debtId);
+  return mappedCard || !!(debt && !debt.secured && /^Revolving\b/i.test(debt.structure || ''));
+}
+
 function collectIdentityHits(tx, input, rules) {
   if (!tx || tx.contradictoryEvidence === true) return [];
   const mapDoc = input && input.accountMap;
@@ -2023,6 +2038,7 @@ function collectIdentityHits(tx, input, rules) {
   const amount = lunchMoneyDebitAmount(tx.amount);
   const hits = [];
   for (const rule of rules || []) {
+    if (cardMinimumNeedsConfirmation(input.plan, rule.eventId, mapDoc)) continue;
     if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
     if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
     if (rule.direction === 'credit' && !(amount < 0)) continue;
@@ -2174,7 +2190,8 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
 function representedEventHitGroups(input) {
   const empty = { unique: [], ambiguous: [] };
   if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
-  const rules = (input.identityRules || []).filter(ruleHasIdentity);
+  const rules = (input.identityRules || []).filter(rule => ruleHasIdentity(rule)
+    && !cardMinimumNeedsConfirmation(input.plan, rule.eventId, input.accountMap));
   if (!rules.length) return empty;
   const mapDoc = input.accountMap;
   const eventHits = new Map();
@@ -2245,6 +2262,7 @@ function representedEventHitGroups(input) {
   for (const tx of input.transactions || []) {
     const inherited = tx && tx.pendingReplacementHit;
     if (!inherited || !inherited.id || !inherited.date || tx.pending === true) continue;
+    if (cardMinimumNeedsConfirmation(input.plan, inherited.id, input.accountMap)) continue;
     const key = inherited.id + '@' + inherited.date;
     const list = eventHits.get(key) || [];
     if (list.some(hit => String(hit.providerTransactionId) === String(inherited.providerTransactionId))) {
@@ -2257,6 +2275,7 @@ function representedEventHitGroups(input) {
     input.transactions, input.accountMap
   );
   for (const hit of scheduleTrustCandidates(input)) {
+    if (cardMinimumNeedsConfirmation(input.plan, hit.id, input.accountMap)) continue;
     const key = hit.id + '@' + hit.date;
     if (eventHits.has(key)) continue;
     if (spotifyEvidence && hit.id === 'spotify' && hit.date === '2026-09-23') {

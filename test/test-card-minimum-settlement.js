@@ -1,8 +1,8 @@
 'use strict';
 
-// Focused proof that Triangle and MBNA/Amazon Mastercard minima settle from
-// incumbent provider identity + statement-cycle posting, without hard-coding
-// those rows PAID. Synthetic cents (L-006). Fixture account ids only.
+// Payment aliases and statement-cycle timing cannot establish household
+// minimum-payment intent. Explicit occurrence confirmations remain authoritative.
+// Synthetic cents (L-006). Fixture account ids only.
 
 const fs = require('fs');
 const path = require('path');
@@ -365,31 +365,30 @@ console.log('\n=== prepaid helper ===');
     'a future commitment is not a prepaid card-minimum candidate');
 }
 
-console.log('\n=== Triangle payment after statement close, before due ===');
+console.log('\n=== Triangle payment after statement close still needs confirmation ===');
 {
   const data = planFixture();
   const report = observe(data, [triangleChequing('2026-09-02', TRIANGLE_MIN)]);
-  ok(hasCandidate(report, 'triangle', TRIANGLE_DUE),
-    'observer matches Triangle after 17 Aug close and before 7 Sep due');
+  ok(!hasCandidate(report, 'triangle', TRIANGLE_DUE),
+    'statement close and payment alias do not confirm Triangle minimum intent');
   const hit = candidates(report).find(row => row.id === 'triangle' && row.date === TRIANGLE_DUE);
-  ok(hit && hit.postingDate === '2026-09-02' && hit.postingDateRelation === CYCLE,
-    'Triangle match uses statement-cycle posting, not due-on-or-before');
+  ok(!hit, 'no Triangle settlement is manufactured from statement-cycle timing');
   const result = overlay(data, [triangleChequing('2026-09-02', TRIANGLE_MIN)]);
   ok(result.data.liveOverlay && result.data.liveOverlay.applied === true,
     'live overlay applies on freshness-qualified cash');
-  ok(represented(result.data, 'triangle', TRIANGLE_DUE),
-    'overlay represents the Sep 7 Triangle minimum');
+  ok(!represented(result.data, 'triangle', TRIANGLE_DUE),
+    'overlay does not represent an unconfirmed Triangle minimum');
   const bill = billRow(result.data, 'triangle', TRIANGLE_DUE);
-  ok(bill && bill.status === 'PAID' && near(bill.remaining, 0),
-    'Plan Bills row is PAID with remaining 0',
+  ok(bill && bill.status !== 'PAID' && near(bill.remaining, TRIANGLE_MIN),
+    'Plan Bills retains the existing Triangle reserve pending confirmation',
     bill && JSON.stringify({ status: bill.status, remaining: bill.remaining, settlement: bill.settlement }));
   const reserved = Forecast.expandEvents(result.data.plan, LIVE_AS_OF, '2026-09-10', {})
     .filter(event => event.id === 'triangle' && event.date === TRIANGLE_DUE);
-  ok(reserved.length === 0, 'Forecast does not reserve the represented Triangle minimum again');
+  ok(reserved.length === 1, 'Forecast reserves the existing Triangle minimum once');
   const action = Forecast.currentPeriodAction(result.data.plan, LIVE_AS_OF, {});
   const actionBill = (action.bills || []).find(row => row.id === 'triangle' && row.date === TRIANGLE_DUE);
-  ok(actionBill && actionBill.settlement === 'represented' && near(actionBill.remaining, 0),
-    'currentPeriodAction remaining is 0 once represented');
+  ok(actionBill && actionBill.settlement !== 'represented' && near(actionBill.remaining, TRIANGLE_MIN),
+    'currentPeriodAction keeps the unconfirmed minimum reserve');
 }
 
 console.log('\n=== Triangle payment before statement close does not settle Sep 7 ===');
@@ -441,24 +440,24 @@ console.log('\n=== wrong card / account does not settle Triangle ===');
     'an unrelated TFR-TO C/C debit does not settle Triangle');
 }
 
-console.log('\n=== MBNA payment in the August statement cycle settles mbna-aug31 ===');
+console.log('\n=== MBNA statement cycle is not payment intent ===');
 {
   const data = planFixture();
   const report = observe(data, [mbnaChequing('2026-09-02', MBNA_MIN)]);
-  ok(hasCandidate(report, 'mbna-aug31', MBNA_AUG31),
-    'MBNA payment after 6 Aug close covers the outstanding Aug 31 occurrence');
+  ok(!hasCandidate(report, 'mbna-aug31', MBNA_AUG31),
+    'MBNA payment after statement close leaves minimum intent unconfirmed');
   ok(!hasCandidate(report, 'mbna', '2026-09-30'),
     'the same payment does not also consume the Sep 30 recurring minimum');
   const result = overlay(data, [mbnaChequing('2026-09-02', MBNA_MIN)]);
-  ok(represented(result.data, 'mbna-aug31', MBNA_AUG31),
-    'overlay represents mbna-aug31');
+  ok(!represented(result.data, 'mbna-aug31', MBNA_AUG31),
+    'overlay does not represent mbna-aug31 without confirmation');
   const bill = billRow(result.data, 'mbna-aug31', MBNA_AUG31);
-  ok(bill && bill.status === 'PAID' && near(bill.remaining, 0),
-    'Aug 31 MBNA Bills row is PAID with remaining 0',
+  ok(bill && bill.status !== 'PAID' && near(bill.remaining, MBNA_MIN),
+    'Aug 31 MBNA remains unconfirmed with its existing reserve',
     bill && JSON.stringify({ status: bill.status, remaining: bill.remaining }));
   const reserved = Forecast.expandEvents(result.data.plan, LIVE_AS_OF, LIVE_AS_OF, {})
     .filter(event => event.id === 'mbna-aug31');
-  ok(reserved.length === 0, 'Forecast does not reserve mbna-aug31 again');
+  ok(reserved.length === 1, 'Forecast carries the unconfirmed once reserve exactly once');
 }
 
 console.log('\n=== MBNA on the wrong card does not settle ===');
@@ -519,7 +518,7 @@ console.log('\n=== refund / merchant credit is not a payment ===');
     'an Amazon refund credit is not payee payment identity');
 }
 
-console.log('\n=== observed MBNA card alias payment still settles when present ===');
+console.log('\n=== observed MBNA card alias payment is not intent ===');
 {
   const data = planFixture();
   const report = observe(data, [tx({
@@ -529,8 +528,8 @@ console.log('\n=== observed MBNA card alias payment still settles when present =
     payee: 'payment',
     original: 'payment',
   })]);
-  ok(hasCandidate(report, 'mbna-aug31', MBNA_AUG31),
-    'mapped-MBNA payee "payment" after 6 Aug close covers mbna-aug31');
+  ok(!hasCandidate(report, 'mbna-aug31', MBNA_AUG31),
+    'mapped-MBNA payee payment does not establish minimum intent');
 }
 
 console.log('\n=== PAYMENT REVERSAL cannot settle MBNA minima ===');
@@ -557,8 +556,8 @@ console.log('\n=== PAYMENT REVERSAL cannot settle MBNA minima ===');
       && !hasCandidate(protectionRefund, 'mbna-aug31', MBNA_AUG31),
     'PAYMENT PROTECTION REFUND cannot settle mbna or mbna-aug31');
   const chequingStillSettles = observe(data, [mbnaChequing('2026-09-02', MBNA_MIN)]);
-  ok(hasCandidate(chequingStillSettles, 'mbna-aug31', MBNA_AUG31),
-    'explicit MBNA M/C chequing identity still settles mbna-aug31');
+  ok(!hasCandidate(chequingStillSettles, 'mbna-aug31', MBNA_AUG31),
+    'MBNA M/C chequing alias does not establish minimum intent');
 }
 
 console.log('\n=== Travel Visa / Cash Back / TD posting rule unchanged ===');
@@ -573,8 +572,8 @@ console.log('\n=== Travel Visa / Cash Back / TD posting rule unchanged ===');
   })]);
   ok(!hasCandidate(earlyTravel, 'travel', TRAVEL_SEP26),
     'Travel Visa payment on 28 Aug still cannot settle the Sep 26 minimum');
-  ok(hasCandidate(earlyTravel, 'travel', TRAVEL_AUG26),
-    'Travel Visa payment on 28 Aug still covers the latest due on or before posting');
+  ok(!hasCandidate(earlyTravel, 'travel', TRAVEL_AUG26),
+    'Travel Visa payment on 28 Aug leaves the prior minimum unconfirmed');
   const onDueTravel = observe(data, [tx({
     account: TRAVEL_CARD,
     date: TRAVEL_AUG26,
@@ -582,8 +581,8 @@ console.log('\n=== Travel Visa / Cash Back / TD posting rule unchanged ===');
     payee: 'PAYMENT-THANKYOU',
     original: 'PAYMENT-THANKYOU',
   })]);
-  ok(hasCandidate(onDueTravel, 'travel', TRAVEL_AUG26),
-    'Travel Visa payment on the due date still settles that occurrence');
+  ok(!hasCandidate(onDueTravel, 'travel', TRAVEL_AUG26),
+    'Travel Visa payment on the due date leaves its intent unconfirmed');
   ok(rulesFor('cashback').some(rule => (rule.payeePatterns || []).includes('PAYMENT-THANKYOU')),
     'Cash Back identity aliases are unchanged');
   ok(rulesFor('tdcc').some(rule => (rule.payeePatterns || []).includes('TFR-TO C/C')),

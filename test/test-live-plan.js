@@ -1557,7 +1557,7 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
   filesUnchanged('unposted same-day bill overlay');
 }
 
-console.log('\n=== 19. extra payment onto a mapped card covers that card min; chequing TFR-TO C/C does not ===');
+console.log('\n=== 19. card and chequing payment movements leave minimum intent unconfirmed ===');
 {
   const SYNTHETIC_CARD_PAY = 40.4;
   const SYNTHETIC_SHORT = 5.05;
@@ -1633,13 +1633,10 @@ console.log('\n=== 19. extra payment onto a mapped card covers that card min; ch
     'identified card credit below the min does not settle it');
   const hit = (identified.report.representedEventCandidates || [])
     .find(c => c.id === 'travel');
-  ok(hit && hit.date === '2026-08-26' && hit.postingDate === PAYDAY_AS_OF
-      && hit.identity === 'payee+account+date' && hit.amountNotUsed === true
-      && near(hit.observedAmount, -SYNTHETIC_CARD_PAY),
-    'Travel Visa identity is payee + mapped card + credit covering Aug 26, not the $17');
-  ok((identified.data.plan.opening.representedEvents || [])
+  ok(!hit, 'Travel Visa credit proves a movement, not minimum-payment intent');
+  ok(!(identified.data.plan.opening.representedEvents || [])
       .some(e => e.id === 'travel' && e.date === '2026-08-26'),
-    'in-memory opening names the covered min on its scheduled date');
+    'in-memory opening does not name an unconfirmed card minimum');
 
   const advice = Forecast.recommend(identified.data.plan, NEXT_DAY_AS_OF, {
     currentPeriodActuals: identified.data.liveOverlay.currentPeriodActuals,
@@ -1657,11 +1654,11 @@ console.log('\n=== 19. extra payment onto a mapped card covers that card min; ch
   const due = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayDue) || [];
   const controlDue = (controlAdvice.currentPeriodAction
     && controlAdvice.currentPeriodAction.thisPaydayDue) || [];
-  ok((paid.bills || []).some(row => row.id === 'travel' && row.date === PAYDAY_AS_OF
+  ok(!(paid.bills || []).some(row => row.id === 'travel' && row.date === PAYDAY_AS_OF
       && near(row.movement, -SYNTHETIC_CARD_PAY)),
-    'already paid this payday shows the extra card payment as money out');
-  ok(!due.some(row => row.id === 'travel'),
-    'covered Travel Visa min is not still due');
+    'already paid this payday does not relabel a backfill as a minimum payment');
+  ok(due.some(row => row.id === 'travel'),
+    'Travel Visa minimum remains unconfirmed');
   ok(controlDue.some(row => row.id === 'travel'),
     'chequing TFR-TO C/C leaves the min still due');
   ok(due.some(row => row.id === 'tdfees') || controlDue.some(row => row.id === 'tdfees'),
