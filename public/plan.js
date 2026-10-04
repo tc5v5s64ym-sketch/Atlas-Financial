@@ -2202,7 +2202,8 @@ function householdBudgetCategoryHtml(row, opts = {}) {
   const recon = Array.isArray(row.recon) ? row.recon : [];
   const metrics = [];
   if ((!other && !historicalPlanUnknown || datedOtherPlan) && row.planned != null) {
-    metrics.push(householdBudgetMetric(historicalPlanUnknown ? 'Configured target' : 'Planned', row.planned, { estimated }));
+    if (historicalPlanUnknown) metrics.push(householdBudgetMetric('Configured target', row.planned, { estimated }));
+    else metrics.push(householdBudgetMetric('Planned', row.planned, { estimated }));
   }
   if (row.spent != null || recon.length || datedOtherPlan) {
     metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id, unavailableText: datedOtherPlan ? 'Unavailable' : null }));
