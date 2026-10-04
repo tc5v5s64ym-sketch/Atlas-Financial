@@ -65,6 +65,12 @@ const dates=['2026-08-20','2026-08-17','2026-08-16','2026-08-21',null,'2026-02-3
       await bills.screenshot({path:path.join(output,'bill-filters-'+theme+'-'+width+'.png'),animations:'disabled',style:'.sitenav-household { visibility:hidden !important; }'});
       const savings=page.locator('[data-budget-savings-goals]');
       assert.match(await savings.innerText(),/School trip[\s\S]*Not confirmed[\s\S]*Winter tires/);
+      const goal=savings.locator('[data-budget-goal-open="school-trip"]');
+      await goal.focus();await page.keyboard.press('Enter');
+      assert.equal(await page.locator('[data-budget-detail-title]').innerText(),'School trip');
+      assert.match(await page.locator('[data-budget-detail-body]').innerText(),/unknown|unavailable|not reconstructed/i);
+      await page.keyboard.press('Escape');
+      assert.equal(await goal.evaluate(node=>node===document.activeElement),true,'goal evidence restores the exact named row');
       await savings.screenshot({path:path.join(output,'savings-goals-'+theme+'-'+width+'.png'),animations:'disabled',style:'.sitenav-household { visibility:hidden !important; }'});
       const accounts=page.locator('.budget-savings-accounts');
       assert.equal(await accounts.evaluate(node=>node.open),false,'technical accounts start behind evidence');

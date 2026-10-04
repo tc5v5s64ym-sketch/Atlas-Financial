@@ -4900,7 +4900,7 @@ function budgetDetailSheetController(mount) {
     }
     if (source && node.hasAttribute('data-budget-category')) return `[data-budget-category="${CSS.escape(node.getAttribute('data-budget-category'))}"]`;
     for (const key of source ? ['data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
-      : ['data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence']) {
+      : ['data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-granularity', 'data-budget-window-step']) {
       if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
     }
     if (!source && node.matches('.budget-period-info > summary')) return '.budget-period-info > summary';
@@ -4965,16 +4965,20 @@ function budgetDetailSheetController(mount) {
   const snapshot = () => held && held.sourceSelector && held.triggerSelector
     ? { sourceSelector: held.sourceSelector, triggerSelector: held.triggerSelector,
       label: held.label, focusSelector: held.focusSelector } : null;
-  dialog.budgetSheet = { open, close, snapshot };
+  dialog.budgetSheet = { open, close, snapshot, focusIdentity: node => identity(node, false) };
   return dialog.budgetSheet;
 }
 
 function budgetRemount(mount, ctx) {
   const sheet = budgetDetailSheetController(mount);
   const restore = sheet?.snapshot();
+  const focused = document.activeElement;
+  const focusRestore = !restore && focused && mount.contains?.(focused)
+    ? sheet?.focusIdentity(focused) : null;
   sheet?.close(false);
   mount.innerHTML = budgetSurfaceHtml(ctx);
   mount.budgetSheetRestore = restore;
+  mount.budgetFocusRestore = focusRestore;
 }
 
 function wireBudgetWindow(mount, ctx, sheet) {
@@ -5415,12 +5419,20 @@ function wirePlanLookPicker(mount, ctx) {
   }
   const restore = mount.budgetSheetRestore;
   mount.budgetSheetRestore = null;
+  const focusRestore = mount.budgetFocusRestore;
+  mount.budgetFocusRestore = null;
   if (restore) {
     const source = mount.querySelector(restore.sourceSelector);
     const trigger = mount.querySelector(restore.triggerSelector);
     if (source && trigger && sheet) sheet.open(source, trigger, restore.label, restore.focusSelector);
     else if (trigger) trigger.focus({ preventScroll: true });
     else if (typeof mount.focus === 'function') { mount.tabIndex = -1; mount.focus({ preventScroll: true }); }
+  } else if (focusRestore) {
+    const trigger = mount.querySelector(focusRestore);
+    if (trigger) {
+      trigger.focus({ preventScroll: true });
+      trigger.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
   }
 }
 
@@ -6008,7 +6020,7 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
     const label = typeof row.label === 'string' && row.label.trim() && row.label !== row.id
       ? row.label : 'Goal name not confirmed';
     const proposal = ready && published.includes(row) && budgetV3Known(row.contribution, funding.trust);
-    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"><div><strong>${budgetV3Escape(label)}</strong><span class="budget-goal-state">Not confirmed</span></div><p>${proposal ? `${budgetV3Money(row.contribution, funding.trust)} proposed this period` : 'Period contribution unavailable'}</p></li>`;
+    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"><button type="button" data-budget-goal-open="${budgetV3Escape(row.id)}" aria-haspopup="dialog"><div><strong>${budgetV3Escape(label)}</strong><span class="budget-goal-state">Not confirmed</span></div><p>${proposal ? `${budgetV3Money(row.contribution, funding.trust)} proposed this period` : 'Period contribution unavailable'}</p></button></li>`;
   }).join('');
   return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>
     <ul>${named || '<li>Goal contributions unavailable for this period.</li>'}</ul>
@@ -6129,10 +6141,11 @@ function wireBudgetFunding(mount, sheet) {
     });
   });
   if (!sheet) return;
-  mount.querySelectorAll('[data-budget-funding-evidence], [data-budget-funding-how], [data-budget-funding-inventory], [data-budget-month-funding-open]').forEach(button => {
+  mount.querySelectorAll('[data-budget-funding-evidence], [data-budget-funding-how], [data-budget-funding-inventory], [data-budget-month-funding-open], [data-budget-goal-open]').forEach(button => {
     button.addEventListener('click', () => {
       const key = button.getAttribute('data-budget-funding-evidence');
-      const selector = button.hasAttribute('data-budget-month-funding-open') ? '[data-budget-month-funding-evidence]'
+      const selector = button.hasAttribute('data-budget-goal-open') ? '[data-operating-question="savings"] .budget-step-body'
+        : button.hasAttribute('data-budget-month-funding-open') ? '[data-budget-month-funding-evidence]'
         : button.hasAttribute('data-budget-funding-inventory') ? '[data-budget-funding-savings]'
         : key === 'today' ? '[data-from-today-proposal]' : key === 'payday'
           ? '[data-payday-breakdown="planned-cost-funding"]' : '[data-budget-today-evidence]';
@@ -6140,7 +6153,8 @@ function wireBudgetFunding(mount, sheet) {
       if (!source) return;
       const disclosure = source.matches('details') ? source : source.querySelector('details');
       if (disclosure) disclosure.open = true;
-      sheet.open(source, button, button.hasAttribute('data-budget-month-funding-open') ? 'Month-input exact funding plan' : key === 'today' ? 'Today: complete funding evidence'
+      sheet.open(source, button, button.hasAttribute('data-budget-goal-open') ? button.querySelector('strong')?.textContent || 'Goal contribution evidence'
+        : button.hasAttribute('data-budget-month-funding-open') ? 'Month-input exact funding plan' : key === 'today' ? 'Today: complete funding evidence'
         : key === 'payday' ? 'Exact payday funding plan' : button.hasAttribute('data-budget-funding-inventory') ? 'Savings assignments and backing' : 'Current cash and funding scopes');
     });
   });
