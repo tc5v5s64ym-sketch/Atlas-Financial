@@ -1198,6 +1198,9 @@ function ruleCurrencyQualified(tx, rule) {
 }
 
 function currencyRulesForTransaction(tx, accountMap, rules) {
+  // The standalone sanitizer permits an absent map. That caller cannot
+  // establish a mapped settlement identity; preserve its incomplete packet.
+  if (!accountMap) return [];
   const mapping = mappingFor(accountMap, tx && tx.providerAccountId);
   const accountId = mapping && mapping.canonical && mapping.canonical.id;
   return (rules || []).filter(rule => rule.requiredCurrency
