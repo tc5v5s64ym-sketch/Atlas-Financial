@@ -235,6 +235,7 @@ function tx(id, date, amount, payee, accountId, extra) {
   return Object.assign({
     id,
     account_id: accountId,
+    currency: 'cad',
     date,
     amount,
     is_pending: false,

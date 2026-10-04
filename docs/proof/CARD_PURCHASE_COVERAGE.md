@@ -8,14 +8,20 @@ account, canonical amount, baseline or credential was changed.
 ## State and coordination boundary
 
 The takeover began at #491 head 3f805ee19467f0bbb5dae84b2314170e4e738fec.
-Main ce97abdd3aa6b0000b5f06271e729fd7ff332783 was merged locally without
-conflicts, preserving the #490 UI. Local merge head is
-f127cffc66f021ff74280348f5ddb236fe8914b4. The repair remains uncommitted.
+Both that history and the later remote head
+83eda4aa7b3ba561f56e12ab472235980c19f1d9 are preserved in the local candidate.
+Checkpoint 72024e5715745908937d307cff43ae0e8245f4ad implemented the explicit
+ledger; merge a1a5a77 reconciled the changed remote. Local merge
+c7276c5edc5cb046b1fa471bd52db48e676aee7a incorporated main
+feb40019a931fe93ab18fccf6290886920c41d7a, including #492 native-unit guards.
+Subsequent consumer/fixture repairs are recorded in the next commit. The
+exact tested head and results belong in the evidence manifest and PR record;
+this document cannot embed its own future commit SHA.
 
-During work the remote was force-updated to
-83eda4aa7b3ba561f56e12ab472235980c19f1d9 at 06:56 UTC. No replacement was
-pushed over that changed head. Parent must coordinate the handoff before
-publication resumes. No competing coverage PR was created.
+Parent has held publication while coordinating the changed remote. Nothing
+has been pushed over it, no competing PR was created, and no merge is
+requested. Parent owns the separate UI follow-up and independent Systems
+review.
 
 ## Independent supplied-dollar oracle
 
@@ -35,10 +41,11 @@ posted Bills debit/card credit, precise funding is unavailable and no split
 is published. The scheduled minimum stays reserved. Existing exact
 represented-events confirmation can separately prove issuer settlement.
 
-The prior original #491 head independently labels an unconfirmed $10 as
-backfill and drops the remaining $20 before labeling the next $25 as card
-payment. The local red control is ../pr491-intent-red.log. It does not certify
-the subsequently changed remote 83eda4a.
+Both original #491 and the changed 83eda4a remote label an unconfirmed $10
+as backfill and drop the remaining $20 before labeling the next $25 as card
+payment. Independent red controls are ../pr491-intent-red.log and
+../pr491-83-intent-red.log. The latter exercises the exact changed remote
+using invented CAD rows, with no Bills pair or intent supplied.
 
 ## Proposed input contract, exercised only in fixtures
 
@@ -79,7 +86,11 @@ explicit coverage allocation or linked refund changes them.
 
 Unknown coverage withholds precise capacity, funding, weekly permission and
 extra-debt instructions. Known bill facts, named costs and observed cash are
-retained. With no card evidence/configuration, the incumbent publication is
+retained. Forecast alone withholds usable money; OperatingAnswer and
+RefreshTrust copy that publication. Known spending-category facts remain
+available. Calendar extra-debt rows and their existing printer preserve
+unavailable rather than displaying an invented zero. With no card
+evidence/configuration, the incumbent publication is
 unchanged; its independent immutable savings before/after proof passes.
 
 BillDetail prints this ledger only. public/plan.js passes the active coverage
@@ -88,18 +99,35 @@ or goal-fulfillment selector is implemented here. Expected UI-follow-up
 overlap is calendarPeriodWaterfalls, paydayAllocation and selected-period
 funding/withheld state; parent owns sequencing.
 
-## Verification limits
+## Verification and remaining gates
 
-Focused proofs pass: test-card-purchase-coverage.js (actual observer/overlay/
-Forecast), test-visa-payment-backfill.js (explicit cents/pairs), and incumbent
-minimum-intent and pending-card funding tests after explicit synthetic unit
-and opening declarations. The annual-card-fee assertion is unchanged.
+Independent synthetic tests cover observed cash/debt/category reconciliation,
+partial and combined allocations, refund/reversal conservation, pending
+purchases and legs, missing intent/pair/opening/identity/date, native units,
+privacy and separate issuer minimum evidence. The annual-card-fee financial
+assertion remains unchanged. Legacy synthetic observations declare CAD units
+where their fixtures intend CAD; declarations do not supply payment intent.
+Old funding expectations were adjusted only where they released an uncovered
+purchase hold or claimed usable cash without confirmation. No real financial
+fixture, amount or account has been edited.
 
-The first full sweep had 31 failures in 285 suites. Subsequent fixes preserve
-known bill facts and the complete incumbent no-card publication. Twelve
-legacy synthetic observation suites now declare their native CAD fixture
-units without assigning intent or changing financial assertions; their
-focused reruns pass. The full sweep has not been rerun on these later edits.
-Remaining legacy funding fixtures, exact-head full verification, browser
-checks and independent Systems review are unfinished. This is not a green
-or merge-ready candidate.
+The full run frozen at c7276c5 passed 272/287 suites. Fifteen failures were
+triaged into consumer/fixture mismatches, the omitted authority printer name,
+and four Windows execution constraints. Focused fixes preserve known
+category/bill facts while withholding precise permission. Windows checks use
+process-only Git Bash and core.autocrlf=false; CurrentUser encryption checks
+need unsandboxed execution. The reference snapshot harness now uses a Windows
+directory junction rather than a privileged file symlink, keeping the same
+financial oracle. No suites are skipped or assertions weakened to pass the
+platform. A fresh exact-head full run is required after these changes.
+
+Authenticated headless Edge exercised the actual Budget consumer on c7276c5
+with fully synthetic server data. It printed the $80 purchase hold from the
+Forecast ledger. Local evidence: ../491-browser-proof.json,
+../491-browser-coverage.png and ../491-browser-dom.txt. Repeat on the frozen
+final candidate; earlier evidence does not certify a later head.
+
+Production remains unconfirmed until the household supplies the opening and
+explicit links recorded in docs/01_OPEN_QUESTIONS.md. Independent Systems
+review and parent publication coordination remain separate gates. No claim
+of deployment, production reconciliation or lender non-payment is made.

@@ -1497,8 +1497,9 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
     revolvingExtra: result.data.revolvingExtra,
     targetBuffer: canonical.plan.defaults.targetBuffer,
   });
-  ok(near(advice.paydayAllocation.available, independentLeftover),
-    'payday leftover copies live chequing cash, not the dated opening');
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentLeftover)
+      && advice.paydayAllocation.available === null && advice.cardCoverageUnavailable === true,
+    'observed cash is unchanged; unknown card coverage withholds usable payday money');
   const due = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayDue) || [];
   const paid = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayPaid) || {};
   ok(due.some(row => row.id === 'tdfees' && row.date === FEE_DAY_AS_OF),

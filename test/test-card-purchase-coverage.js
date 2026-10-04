@@ -4,6 +4,7 @@ const F = require('../public/forecast');
 const Live = require('../scripts/live-plan');
 const O = require('../scripts/provider-observe');
 const OA = require('../scripts/operating-answer');
+const RT = require('../scripts/refresh-trust');
 const Assistant = require('../scripts/assistant-packet');
 const fixture = require('./fixtures/card-purchase-coverage-data');
 function run(x) {
@@ -109,6 +110,22 @@ const noIntent=structuredClone(x); noIntent.data.plan.cardPurchaseCoverage.payme
 const unknownState=run(noIntent).data;
 const operational=OA.fromRefreshedState(unknownState,{mode:'live-overlay'});
 assert.equal(operational.moneyAvailable.value,null);
+const unknownAdvice = run(noIntent).advice;
+assert.equal(unknownAdvice.paydayAllocation.available,null);
+assert.equal(unknownAdvice.paydayAllocation.paydayShellTrust.available,'unknown');
+assert.equal(run(noIntent).period.extraDebt.status,'unavailable');
+assert.equal(run(noIntent).period.extraDebt.allocated,null);
+const printerSource=require('fs').readFileSync(require.resolve('../public/plan.js'),'utf8');
+const extraPrinter=require('vm').runInNewContext('('+printerSource.match(/^function extraRepaymentHtml\([\s\S]*?\n\}/m)[0]+')');
+const unknownPrint=extraPrinter(run(noIntent).period);
+assert(unknownPrint.includes('data-extra-debt="unavailable"'));
+assert(!unknownPrint.includes('No extra'));
+assert.equal(run(noIntent).advice.currentPeriodAction.categories[0].committed,30,
+  'unknown earmarking cannot erase known spending');
+const trust=RT.fromIncumbent({data:unknownState,mode:'live-overlay'});
+assert.equal(trust.exactFiguresAvailable,false);
+assert.equal(trust.displayState,'attention-needed');
+assert(trust.coverageLimits.some(row=>row.id==='card-purchase-coverage-unconfirmed'));
 assert.equal(operational.currentSpendingPermission.weekly,null);
 const assistant=Assistant.buildPacket({data:unknownState,periods:null,questionsMarkdown:''});
 assert.equal(assistant.forecast.status,'unavailable');

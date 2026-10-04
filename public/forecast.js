@@ -8760,6 +8760,7 @@
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
     if (!windows.length) return { calendarPeriods: [], activeCalendarPeriodId: null };
     const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
+    const cardCoverage = cardCoverageState(plan, asOf, opts);
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
     const liveCurrentBalance = publishedCurrentBalanceAmount(plan, alloc);
@@ -8953,13 +8954,14 @@
         ? roundCent(cashAfterBills - budget.hold) : null;
       let extraAllocated = 0;
       let extraDebt;
-      if (planUnavailable) {
+      if (planUnavailable || (!lookback && cardCoverage.status === 'unavailable')) {
         extraDebt = {
           allocated: null,
           target: null,
           status: 'unavailable',
-          reason: opts.operatingPlanNote
-            || 'Current plan unavailable. The dated opening is stale.',
+          reason: planUnavailable
+            ? opts.operatingPlanNote || 'Current plan unavailable. The dated opening is stale.'
+            : cardCoverage.reason,
         };
       } else {
         if (!lookback && afterHouseholdBudget != null) {
@@ -8973,7 +8975,7 @@
           reason: priority.reason,
         };
       }
-      const afterDebtRepayment = afterHouseholdBudget != null
+      const afterDebtRepayment = afterHouseholdBudget != null && extraDebt.allocated != null
         ? roundCent(afterHouseholdBudget - extraAllocated) : null;
       const purchaseRoom = !lookback && afterDebtRepayment != null
         ? roundCent(Math.max(0, afterDebtRepayment - buffer)) : 0;
@@ -9836,8 +9838,7 @@
       todayActions,
       noMovementToday: !cal.todayIsPayday && !moneyMovementRequired,
       currentShortfall,
-      remainingClaim: alloc.cardPurchaseCoverage?.status === 'unavailable'
-        ? 'unavailable' : coverage.remainingClaim,
+      remainingClaim: coverage.remainingClaim,
       categoryRemainingClaim: categoryRemainingClaimFrom(
         coverage.remainingClaim, actuals.unclassified),
       ...(alloc.cardPurchaseCoverage?.status === 'unavailable'
@@ -10957,6 +10958,8 @@
       actualsCoverage: coverage,
     };
     if (cardCoverage.status === 'unavailable') {
+      if (opts.operatingPlan !== 'unavailable') result.available = null;
+      result.paydayShellTrust.available = 'unknown';
       result.extraDebt = { status: 'unavailable', allocated: null, absorbable: null,
         target: null, consequence: null, reason: cardCoverage.reason };
       result.protectedPath = protectedPathUnavailable(cardCoverage.reason);
@@ -11087,8 +11090,9 @@
   function withholdCurrentOperatingClaims(result, opts) {
     const cardUnknown = result && result.cardPurchaseCoverage?.status === 'unavailable';
     if (!result || !opts || (opts.operatingPlan !== 'unavailable' && !cardUnknown)) return result;
-    const note = cardUnknown ? result.cardPurchaseCoverage.reason : opts.operatingPlanNote
-      || 'Current plan unavailable. The dated opening is stale.';
+    const note = opts.operatingPlan === 'unavailable'
+      ? opts.operatingPlanNote || 'Current plan unavailable. The dated opening is stale.'
+      : result.cardPurchaseCoverage.reason;
     if (opts.operatingPlan === 'unavailable') result.operatingPlanUnavailable = true;
     if (cardUnknown) result.cardCoverageUnavailable = true;
     result.operatingPlanNote = note;
@@ -11096,7 +11100,8 @@
     result.currentPeriodAction = {
       ...(cardUnknown && opts.operatingPlan !== 'unavailable' ? result.currentPeriodAction : {}),
       unavailable: true,
-      remainingClaim: 'unavailable',
+      remainingClaim: cardUnknown && opts.operatingPlan !== 'unavailable'
+        ? result.currentPeriodAction?.remainingClaim || 'unavailable' : 'unavailable',
       reason: note,
     };
     if (result.paydayAllocation) {

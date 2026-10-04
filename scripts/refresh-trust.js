@@ -137,6 +137,7 @@ function operatingLimits(data, opts) {
         || permission.categoryRemainingClaim
         || null,
       coverage: limits.coverage || null,
+      cardPurchaseCoverage: limits.cardPurchaseCoverage || null,
     };
   } catch (err) {
     return {
@@ -157,6 +158,9 @@ function coverageLimitsFrom(parts) {
     out.push({ id, text });
   }
   const coverage = parts.coverage;
+  if (parts.cardPurchaseCoverage?.status === 'unavailable') {
+    add('card-purchase-coverage-unconfirmed', parts.cardPurchaseCoverage.reason);
+  }
   if (coverage && coverage.reason) add('forecast-coverage', coverage.reason);
   if (coverage && coverage.status === 'stale') {
     add('forecast-stale', coverage.reason || 'Transaction actuals are not current through the financial as-of.');
@@ -269,6 +273,7 @@ function displayStateFrom(parts) {
   const reconciliation = parts.reconciliation;
   const unresolved = parts.unresolvedMaterial || [];
   const attention = remaining === 'unavailable'
+    || parts.cardPurchaseCoverage?.status === 'unavailable'
     || coverage.status === 'stale'
     || coverage.status === 'incomplete'
     || coverage.status === 'absent'
@@ -327,6 +332,7 @@ function fromIncumbent(opts) {
     preview,
     remainingClaim,
     categoryRemainingClaim: limits.categoryRemainingClaim,
+    cardPurchaseCoverage: limits.cardPurchaseCoverage,
     coverage: limits.coverage,
   };
   parts.unresolvedMaterial = unresolvedFrom(parts, data);
@@ -347,7 +353,8 @@ function fromIncumbent(opts) {
     reconciledAsOf,
     remainingClaim,
     categoryRemainingClaim: limits.categoryRemainingClaim,
-    exactFiguresAvailable: remainingClaim !== 'unavailable',
+    exactFiguresAvailable: remainingClaim !== 'unavailable'
+      && parts.cardPurchaseCoverage?.status !== 'unavailable',
     coverageLimits: coverageLimitsFrom(parts),
     unresolvedMaterial: parts.unresolvedMaterial,
     canonicalProposalWaiting: proposedCount > 0,

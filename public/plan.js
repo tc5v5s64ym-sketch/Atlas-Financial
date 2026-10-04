@@ -2367,6 +2367,11 @@ function extraRepaymentHtml(period) {
     </div>`;
   }
   const extra = (period && period.extraDebt) || {};
+  if (extra.status === 'unavailable') {
+    return `<div class="payday-extra-repay" data-calendar-extra data-extra-debt="unavailable">
+      <p class="operating-lead">Extra credit-card repayment is unavailable until cash coverage is confirmed.</p>
+    </div>`;
+  }
   const card = period && period.firstCard;
   const allocated = extra.allocated != null ? Number(extra.allocated) : 0;
   const target = (extra.target && extra.target.label)

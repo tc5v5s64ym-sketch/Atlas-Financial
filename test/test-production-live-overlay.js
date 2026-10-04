@@ -757,8 +757,8 @@ function independentGroceryRemaining(plan, asOf) {
     ok(fuel && near(fuel.remaining, round2(fuelPlanned - FUEL_POSTED)),
       'fuel remaining matches independent payday-cycle Planned minus committed',
       fuel ? `${fuel.remaining} vs ${round2(fuelPlanned - FUEL_POSTED)}` : 'missing');
-    ok(action.remainingClaim === 'unavailable' && action.unavailable === true,
-      'complete category observations cannot establish missing card-coverage intent',
+    ok(action.remainingClaim === 'precise' || action.remainingClaim === 'posted-only',
+      'Forecast remaining claim is available on complete coverage',
       action.remainingClaim);
   });
 
