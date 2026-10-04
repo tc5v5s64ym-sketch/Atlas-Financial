@@ -1794,6 +1794,10 @@
     return roundCent(n);
   }
   function billOccurrenceCashAmount(bill, date) {
+    // An owner-confirmed no-pay statement removes only its named modeled
+    // occurrence. It is not a payment, bank credit or future credit application.
+    if (date && Array.isArray(bill && bill.noPaymentRequiredOn)
+        && bill.noPaymentRequiredOn.includes(date)) return 0;
     const scheduled = Number(bill && bill.amount);
     if (!isFinite(scheduled) || scheduled <= 0) return scheduled;
     const credit = billUtilityAccountCreditAmount(bill);

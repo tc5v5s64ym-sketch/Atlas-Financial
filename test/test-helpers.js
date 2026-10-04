@@ -108,6 +108,9 @@ function independentlyRoundCent(n) {
 // (L-002): the arithmetic is scheduled amount minus the encoded credit
 // on that date, not a second call into expandEvents.
 function independentlyBillOccurrenceAmount(bill, date) {
+  if (date && Array.isArray(bill && bill.noPaymentRequiredOn)) {
+    for (const noPayDate of bill.noPaymentRequiredOn) if (noPayDate === date) return 0;
+  }
   const scheduled = Number(bill && bill.amount || 0);
   if (!isFinite(scheduled)) return 0;
   const raw = bill && bill.utilityAccountCredit;
