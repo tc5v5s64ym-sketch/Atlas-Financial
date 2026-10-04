@@ -13,36 +13,64 @@ the site may hold evidence about a question. They do not close it.
 
 ## Tier 1 - Changes what the numbers mean
 
-### Visa payment backfill — window, leftover purchases, fees, and whose spend
+### Visa payment backfill — window, same-day payments, fees, and whose spend
 **Status:** OPEN · **Owner:** Dale
 **What we know:** Dale, 2026-10-03 9:04 PM PT, via Atlas Coordinator: when Amanda
 spends on a Visa, she moves the same amount from Bills to the card. The matched
 portion is backfill, not a minimum payment and not extra debt paydown. The
-unmatched remainder keeps today's card-payment treatment. The implementation
-uses these defaults until Dale confirms or replaces them. They are not
-household facts.
-1. The window is posted purchases on that card dated strictly after the
-   previous posted payment, through this payment date. If complete evidence
-   contains no earlier payment, the window is every supplied posted purchase
-   on or before the payment date.
-2. A payment smaller than the net purchases is entirely backfill. Uncovered
-   purchases do not carry into the next payment. A later same-day payment
-   starts strictly after the earlier payment's date.
-3. Truncated or incomplete evidence is `unreconciled` and does not settle the
-   minimum. A completed bounded fetch is treated as complete.
-4. The split does not separate Amanda's spend from Dale's. Every posted
-   purchase in the window matches, including a posted fee that is not an
-   interest or finance charge.
-5. On current `main`, a posted card payment does not automatically confirm
+unmatched remainder keeps today's card-payment treatment. Where the evidence
+does not identify one window, the payment is `unreconciled` and Budget does
+not publish a split. These points are not household facts.
+1. The window, when a split is published, is posted purchases on that card
+   dated strictly after the previous posted payment, through this payment
+   date. A payment with no earlier posted payment is `unreconciled`
+   (`no-previous-payment`). It is not matched to every supplied purchase.
+   One option Dale has not approved, and which is not implemented, is to
+   bound that first window with the fetch `coverageStart` instead of
+   failing closed.
+2. Several posted payments on the same card and the same date are all
+   `unreconciled` (`same-day-multiple-payments`). None of them is published
+   as a genuine card payment. Live Travel Visa examples of that shape are
+   2026-08-11, 2026-08-14, 2026-09-04, 2026-09-08, and 2026-09-21 (about
+   $1,000 of payments against about $993.73 of purchases). A later payment
+   on another day still starts strictly after that date. Dale has not
+   decided how a same-day group should be split.
+3. A payment smaller than the net purchases is entirely backfill. Uncovered
+   purchases do not carry into the next payment.
+4. Truncated or incomplete evidence is `unreconciled` and does not settle the
+   minimum. A completed bounded fetch is treated as complete for the rows it
+   contains. Completeness does not invent a previous payment.
+5. The split does not separate Amanda's spend from Dale's. Engine recommends
+   excluding category Fees and "Other bank fees" from the purchase total.
+   That exclusion is not implemented. A posted fee that is not an interest
+   or finance charge still matches.
+6. Engine recommends dropping the TD credit card (`tdcc`, Emerald Visa) from
+   the Visa backfill set. Membership is unchanged: `tdcc` is still split
+   when a previous payment bounds the window. Dale has not decided.
+7. On current `main`, a posted card payment does not automatically confirm
    the scheduled minimum (`cardMinimumNeedsConfirmation`). This split
-   publishes the genuine remainder and does not turn that confirmation
-   back on. Whether a genuine remainder should confirm the minimum is a
-   separate decision from the split itself.
+   publishes a genuine remainder only when the payment is reconciled, and
+   it does not turn that confirmation back on. Whether a genuine remainder
+   should confirm the minimum is a separate decision from the split itself.
+8. A payment is identified only by the merchant alias `PAYMENT THANK YOU`,
+   `PAYMENT THANKYOU`, or `TFR TO C C`, after `txMerchantExact`
+   (original merchant, then displayed payee, then payee) and then
+   original name. Refund and reversal text is excluded. A read-only
+   Lunch Money fetch for the live history window 2026-08-06 through
+   2026-10-03 found a non-empty payee and a non-empty original name on
+   all 28 posted credits on those three cards. 26 matched the alias on
+   either field alone and are published. 2 matched neither field and are
+   not published. Detection was not widened to category, notes, or an
+   empty payee. Household packet transactions have the payee removed
+   after the split is stored; the Budget lines come from that stored
+   split, not from a second pass over the stripped rows.
 **What the answer changes:** which cents Budget labels backfill and which
-cents it labels a card payment. It does not, by itself, mark a card minimum
-paid. Canadian Tire, MBNA, the HELOC, and the mortgage stay unchanged.
-**How to answer:** Confirm these four defaults, or name the replacement for
-the one that is wrong.
+cents it labels a card payment, and whether `tdcc` or fee rows enter that
+split. It does not, by itself, mark a card minimum paid. Canadian Tire,
+MBNA, the HELOC, and the mortgage stay unchanged.
+**How to answer:** Decide the same-day group, the first-payment window
+(`coverageStart` or another bound, or keep `no-previous-payment`), whether
+`tdcc` stays in the set, and whether Fees and Other bank fees are purchases.
 
 ### Savings pool setup - confirm assignments and the new baseline after funding
 **Status:** OPEN · **Owner:** Dale
