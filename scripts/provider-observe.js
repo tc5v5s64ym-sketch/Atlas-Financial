@@ -2225,6 +2225,68 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
   }
 }
 
+// A salary receipt and its uniquely paired transfer prove more than a generic
+// transfer of the expected amount. Keep source-account business cash excluded:
+// only configured employer payroll aliases, native CAD and a single scheduled
+// salary occurrence bracketed by deposit and transfer can earn this identity.
+function salaryReceiptTransferHits(input, rules) {
+  const window = input && input.transactionWindow;
+  if (!window || window.complete !== true || !parseIsoDate(window.startDate)
+      || !parseIsoDate(window.endDate) || window.startDate > window.endDate) return [];
+  const salaryRules = (rules || []).filter(rule => rule
+    && ['amandaSalary15', 'amandaSalaryMonthEnd'].includes(rule.eventId)
+    && rule.transactionKind === 'transfer' && rule.direction === 'credit'
+    && rule.atlasAccountId === 'chequing-a' && ruleCounterpartExternalId(rule)
+    && Array.isArray(rule.salaryReceiptPayeePatterns) && rule.salaryReceiptPayeePatterns.length);
+  if (!salaryRules.length) return [];
+  const eligibleIds = new Set(salaryRules.map(rule => rule.eventId));
+  const nativePosted = tx => tx && tx.pending !== true && tx.contradictoryEvidence !== true
+    && tx.currencySettlementUnconfirmed !== true && tx.currency === 'cad'
+    && parseIsoDate(tx.date) && tx.date >= window.startDate && tx.date <= window.endDate
+    && tx.providerTransactionId != null;
+  const hits = [];
+  for (const credit of input.transactions || []) {
+    if (!nativePosted(credit) || !(lunchMoneyDebitAmount(credit.amount) < 0)) continue;
+    const mapping = mappingFor(input.accountMap, credit.providerAccountId);
+    if (!mapping || mapping.atlasRole !== 'household-cash'
+        || !mapping.canonical || mapping.canonical.id !== 'chequing-a') continue;
+    for (const rule of salaryRules) {
+      if (!ruleMatchesTransactionIdentity(credit, rule)) continue;
+      const counterpart = uniqueTransferCounterpart(credit, rule, input, credit.amount);
+      if (!nativePosted(counterpart)) continue;
+      const sources = [];
+      for (const source of input.transactions || []) {
+        if (!nativePosted(source) || source.isIncome !== true
+            || !(lunchMoneyDebitAmount(source.amount) < 0) || source.date > credit.date
+            || !amountsMatchExactly(source.amount, credit.amount)) continue;
+        const sourceMap = mappingFor(input.accountMap, source.providerAccountId);
+        if (!sourceMap || sourceMap.atlasRole !== EXTERNAL_LIVE_ROLE
+            || mappingExternalId(sourceMap) !== ruleCounterpartExternalId(rule)
+            || String(source.providerAccountId) !== String(counterpart.providerAccountId)) continue;
+        if (!payeeMatchesRule(source, { payeePatterns: rule.salaryReceiptPayeePatterns,
+          payeeMatchMode: 'exact', payeeExcludePatterns: ['REFUND', 'REVERSAL', 'REIMBURSEMENT'] })) continue;
+        // The nominal date is bracketed by actual receipt and actual transfer.
+        // Multiple eligible occurrences cannot borrow the same salary packet.
+        const occurrences = scheduledEventsOnRange(input.plan, source.date, credit.date)
+          .filter(event => event.kind === 'income' && eligibleIds.has(event.id));
+        if (occurrences.length !== 1 || occurrences[0].id !== rule.eventId) continue;
+        sources.push({ source, occurrence: occurrences[0] });
+      }
+      if (sources.length !== 1) continue;
+      const { source, occurrence } = sources[0];
+      hits.push({ id: rule.eventId, date: occurrence.date, postingDate: credit.date,
+        postingDateRelation: 'salary-receipt-to-paired-transfer', direction: 'credit',
+        providerTransactionId: credit.providerTransactionId,
+        providerTransactionIds: [credit.providerTransactionId, counterpart.providerTransactionId, source.providerTransactionId],
+        providerAccountId: credit.providerAccountId, payee: credit.payee,
+        identity: 'employer-payroll+external-account+paired-transfer+occurrence',
+        amountNotUsed: false, observedAmount: lunchMoneyDebitAmount(source.amount),
+        atlasAccountId: 'chequing-a', settlesWhen: 'salary-receipt-and-paired-transfer' });
+    }
+  }
+  return hits;
+}
+
 function representedEventHitGroups(input) {
   const empty = { unique: [], ambiguous: [] };
   if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
@@ -2234,6 +2296,12 @@ function representedEventHitGroups(input) {
   const mapDoc = input.accountMap;
   const eventHits = new Map();
   const counterpartAmbiguous = new Map();
+  for (const hit of salaryReceiptTransferHits(input, rules)) {
+    const key = hit.id + '@' + hit.date;
+    const list = eventHits.get(key) || [];
+    list.push(hit);
+    eventHits.set(key, list);
+  }
   for (const tx of input.transactions || []) {
     if (tx.pending === true || tx.contradictoryEvidence === true) continue;
     const mapping = mappingFor(mapDoc, tx.providerAccountId);
@@ -2278,6 +2346,9 @@ function representedEventHitGroups(input) {
         }
         const key = rule.eventId + '@' + scheduledDate;
         const list = eventHits.get(key) || [];
+        // The stronger salary packet and its legacy same-day transfer are
+        // one credit, not two compatible receipts for the same occurrence.
+        if (list.some(hit => String(hit.providerTransactionId) === String(tx.providerTransactionId))) continue;
         list.push({
           id: rule.eventId,
           date: scheduledDate,

@@ -617,32 +617,30 @@ console.log('\n=== Live reconstruction: leftover follows named income facts, nev
 
 console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recur ===');
 {
-  // Named reconstruction of the 2026-09-21 live defect. These cents are
-  // the broken equation, not a specification of a desired household leftover
-  // (L-006). Independent arithmetic, then a Forecast fixture with the
-  // same structural facts.
-  const PROD_OPENING = 310.47;
-  const DALE_LM_SIGNED = -4274.98;
-  const DALE_INFLOW = 4274.98;
-  const AMANDA_PLANNED = 2168.85;
-  const CHILD_AMT = 219.45;
-  const PROD_BILLS = 3413.07;
-  const PROD_HOLD = 2287.17;
+  // Independently invented signed-credit regression. No household receipt values.
+  // Actual receipts replace planned contributions; unproven salary retains its plan.
+  const PROD_OPENING = 281.36;
+  const DALE_LM_SIGNED = -1937.28;
+  const DALE_INFLOW = 1937.28;
+  const AMANDA_PLANNED = 1033.44;
+  const CHILD_AMT = 147.62;
+  const PROD_BILLS = 1147.35;
+  const PROD_HOLD = 817.26;
   const BROKEN_INCOME = roundCent(DALE_LM_SIGNED + CHILD_AMT);
   const BROKEN_AFTER_BILLS = roundCent(PROD_OPENING + BROKEN_INCOME - PROD_BILLS);
   const BROKEN_PEB = roundCent(BROKEN_AFTER_BILLS - PROD_HOLD);
-  ok(near(BROKEN_INCOME, -4055.53) && near(BROKEN_AFTER_BILLS, -7158.13)
-      && near(BROKEN_PEB, -9445.3),
+  ok(near(BROKEN_INCOME, -1789.66) && near(BROKEN_AFTER_BILLS, -2655.65)
+      && near(BROKEN_PEB, -3472.91),
     'independent reconstruction of the published broken equation must not recur');
 
   const plan = fixturePlan({
     openingAmount: PROD_OPENING,
     startingCash: {
-      amount: 190.24,
+      amount: 163.24,
       breakdown: [
-        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: 593.29 },
-        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: -403.05 },
-        { id: 'savings', label: 'EMERGENCY SAVING', value: 772.58 },
+        { id: 'chequing-a', label: 'BILLS ACCOUNT', value: 351.28 },
+        { id: 'chequing-b', label: 'WEEKLY SPENDING', value: -188.04 },
+        { id: 'savings', label: 'EMERGENCY SAVING', value: 562.82 },
       ],
     },
     opening: {
@@ -660,7 +658,7 @@ console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recu
     income: [
       {
         id: 'payroll', label: 'Dale income', frequency: 'biweekly',
-        anchor: '2026-08-14', amount: 4264, confidence: 'confirmed',
+        anchor: '2026-08-14', amount: 1900, confidence: 'confirmed',
       },
       {
         id: 'amandaSalary15', label: 'Amanda income', frequency: 'once',
@@ -698,18 +696,19 @@ console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recu
       ],
     },
   }));
-  const displayedIncome = roundCent(4264 + AMANDA_PLANNED + CHILD_AMT);
-  const absActualIncome = roundCent(DALE_INFLOW + AMANDA_PLANNED + CHILD_AMT);
+  const plannedIncome = roundCent(1900 + AMANDA_PLANNED + CHILD_AMT);
+  const displayedIncome = roundCent(DALE_INFLOW + AMANDA_PLANNED + CHILD_AMT);
   const correctAfterBills = roundCent(displayedIncome - PROD_BILLS);
   const correctBad = independentBad(displayedIncome, PROD_BILLS, PROD_HOLD);
   ok(row && near(row.opening, PROD_OPENING) && row.openingSource === 'snapshot'
       && row.paydayBoundaryOpening === true,
     'payday-boundary opening stays the Sep 11 snapshot, not live cash');
-  ok(!near(row.opening, 190.24) && !near(row.opening, 593.29),
+  ok(!near(row.opening, 163.24) && !near(row.opening, 351.28),
     'today\'s Current Balance / Bills-only cash is not the payday-boundary opening');
   ok(near(row.incomeTotal, displayedIncome) && near(row.available, displayedIncome)
-      && !near(row.incomeTotal, absActualIncome),
-    'displayed income is Payday balance (planned Dale + Amanda + Child), not a silent abs-actual rewrite',
+      && !near(row.incomeTotal, plannedIncome)
+      && near(row.income.find(x => x.id === 'payroll').amount, 1900),
+    'income uses positive confirmed payroll receipt plus unproven salary/child plans; original payroll plan stays intact',
     `${row && row.incomeTotal} vs ${displayedIncome}`);
   ok(row.incomeAdded != null && row.incomeAdded > 0
       && !near(row.incomeAdded, BROKEN_INCOME),
@@ -719,8 +718,8 @@ console.log('\n=== Production signed-actual regression: −$7,158.13 cannot recu
     'Balance after bills is not the production −$7,158.13');
   ok(near(row.afterHouseholdBudget, correctBad) && !near(row.afterHouseholdBudget, BROKEN_PEB),
     'BAD is not the production −$9,445.30');
-  ok(!near(row.afterHouseholdBudget, 593.29) && !near(row.predictedEndingBalance, 593.29),
-    'leftover is not the hub Current Balance 593.29');
+  ok(!near(row.afterHouseholdBudget, 351.28) && !near(row.predictedEndingBalance, 351.28),
+    'leftover is not the hub Current Balance 351.28');
   ok(row.predictedEndingBalanceTerms
       && row.predictedEndingBalanceTerms.identity === 'balance-after-deductions'
       && row.predictedEndingBalanceTerms.closes === true

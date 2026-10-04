@@ -8911,7 +8911,10 @@
       const otherAmount = roundCent(otherItems.reduce((s, r) => s + (Number(r.amount) || 0), 0));
       const incomeTotal = planUnavailable
         ? null
-        : roundCent(income.reduce((s, r) => s + (Number(r.amount) || 0), 0));
+        : roundCent(income.reduce((s, r) => s + calendarIncomeContribution(r), 0));
+      // The shared selector uses observed receipt dollars when present and
+      // retains ordinary Forecast income otherwise. Original planned dollars
+      // remain on row.planned; they are not substituted for a known receipt.
       // Payday balance is the income identity, including a salary that
       // remains visibly unproven for settlement. Opening cash is not added
       // to Payday balance.

@@ -4242,7 +4242,6 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         + `${overflowStart ? ' is-overflow-start' : ''}${overflowEnd ? ' is-overflow-end' : ''}`;
       const ratioKey = compactOverview ? ({ '02': 'income', '04': 'bills', '06': 'household', savings: 'savings' })[number] : null;
       const progress = ratioKey ? budgetProgressFor(period)?.[ratioKey] : null;
-      const ratioCaption = ({ income: 'Received / planned', bills: 'Paid / scheduled plan', household: 'Spent / planned', savings: 'Fulfilled / Forecast requirement' })[ratioKey];
       const graph = ratioKey ? budgetProgressBarHtml(progress, ratioKey) : `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
         ${bars}${signedScale ? '<span class="budget-waterfall-zero">0</span>' : ''}${state === 'zero-income'
           ? '<span class="budget-waterfall-scale-note">Zero income</span>' : state === 'unscaled'
@@ -4253,7 +4252,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         <details class="budget-step-details">
           <summary class="budget-step-summary">
             <span class="operating-number" aria-hidden="true">${number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
-            <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span><span class="budget-step-caption">${ratioCaption || (compactOverview ? number === '07' ? fundedBalanceKnown ? 'After proposed funding' : 'Before savings' : '' : summary.note)}</span></span>
+            <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span>${compactOverview ? '' : `<span class="budget-step-caption">${summary.note}</span>`}</span>
             ${graph}
             <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${ratioKey ? budgetProgressValueHtml(progress, ratioKey) : known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>
@@ -5942,9 +5941,11 @@ function budgetProgressAmountKnown(field) {
 
 function budgetProgressValueHtml(pair, key) {
   const amount = (field, planned = false) => budgetProgressAmountKnown(field) && (!planned || field.amount >= 0)
-    ? budgetBrowseMoney(field.amount, field.trust) : '<span class="budget-v3-unknown">Unavailable</span>';
+    ? budgetBrowseMoney(field.amount, field.trust) : '<span class="budget-v3-unknown">Unknown</span>';
   const partial = pair?.actual?.completeness === 'partial';
-  return `<span data-budget-ratio="${key}"><span data-budget-ratio-actual>${amount(pair?.actual)}</span><span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span><span data-budget-ratio-plan>${amount(pair?.planned, true)}</span></span><small class="budget-progress-note" data-budget-progress-coverage>${partial ? 'Partial actuals' : !budgetProgressAmountKnown(pair?.actual) ? 'Actual unavailable' : pair.actual.includesPending ? 'Includes observed pending' : ''}</small>`;
+  const actualKnown = budgetProgressAmountKnown(pair?.actual), plannedKnown = budgetProgressAmountKnown(pair?.planned);
+  if (!actualKnown && !plannedKnown) return `<span data-budget-ratio="${key}"><span data-budget-ratio-actual>${amount(null)}</span><span class="budget-cash-sr" data-budget-ratio-plan>Actual and plan unknown</span></span>`;
+  return `<span data-budget-ratio="${key}"><span data-budget-ratio-actual>${amount(pair?.actual)}${partial && actualKnown ? '<span data-budget-progress-partial aria-hidden="true">*</span><span class="budget-cash-sr"> partial evidence</span>' : ''}</span><span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span><span data-budget-ratio-plan>${amount(pair?.planned, true)}</span></span>`;
 }
 
 function budgetProgressBarHtml(pair, key) {
@@ -6003,7 +6004,7 @@ function budgetSpendingSectionHtml(period, ctx) {
   return `<section class="budget-browse-card budget-browse-spending" data-budget-browse="spending" data-budget-spending-evidence="${historyEvidence}" aria-labelledby="budget-spending-heading">
     <header><div><p class="budget-browse-eyebrow">Spending this period</p><h2 id="budget-spending-heading" tabindex="-1">Household budget</h2><p class="budget-browse-sub">Tap a category to see its transactions.</p></div>${pace != null ? '<span class="budget-pace-key">│ Today</span>' : ''}</header>
     ${householdBudgetCycleText(period) ? `<p class="budget-browse-cycle">${budgetBrowseEscape(householdBudgetCycleText(period))}</p>` : ''}
-    <div class="budget-browse-stats"><div><span>Spent / original plan</span><strong data-budget-browse-hold>${budgetProgressValueHtml(progress, 'household')}</strong></div>
+    <div class="budget-browse-stats"><div><strong data-budget-browse-hold>${budgetProgressValueHtml(progress, 'household')}</strong></div>
       ${period.timelineRole === 'current' ? `<div><span>Still planned</span><strong data-budget-browse-remaining>${budgetBrowseMoney(remainingKnown ? funding.remainingHousehold : null, remainingKnown ? funding.trust : null)}</strong><small>From today</small></div>` : ''}</div>
     <div class="budget-browse-counts">${count}</div><div class="budget-category-list">${cards || '<p class="budget-browse-note">Category data unavailable.</p>'}</div>
     <footer>${historical ? `<p>${observedHold ? 'Completed periods show observed spending, not a spending reserve.' : 'Missing or incomplete history is not treated as observed spending. Missing amounts are unavailable, not zero; open Info for the published evidence.'}</p>` : ''}<button type="button" data-budget-browse-evidence="06" aria-label="Household spending and reserve evidence">Info</button></footer>
@@ -6045,7 +6046,7 @@ function budgetBillsSectionHtml(period, ctx) {
     ? 'Completed-period bills'
     : `<span data-budget-browse-bills-remaining>${budgetBrowseMoney(period.remainingBills)}</span> left to pay or confirm`;
   return `<section class="budget-browse-card budget-browse-bills" data-budget-browse="bills" data-budget-bills-remaining-scope="${historical ? withholdActionableRemaining ? 'historical-unconfirmed' : 'historical-settlement' : 'actionable'}" aria-labelledby="budget-bills-heading">
-    <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : historical ? ' · completed' : ''}</p><h2 id="budget-bills-heading" tabindex="-1">${budgetProgressValueHtml(progress, 'bills')}</h2><p class="budget-browse-sub">Paid / original scheduled plan</p><p class="budget-browse-sub">${remainingHeading}</p>${historical ? `<p class="budget-browse-sub">${withholdActionableRemaining ? 'Settlement not fully confirmed. ' : ''}Historical settlement evidence, not an amount due now. Unconfirmed entries may already be paid.</p>` : ''}</div></header>
+    <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : historical ? ' · completed' : ''}</p><h2 id="budget-bills-heading" tabindex="-1">${budgetProgressValueHtml(progress, 'bills')}</h2><p class="budget-browse-sub">${remainingHeading}</p>${historical ? `<p class="budget-browse-sub">${withholdActionableRemaining ? 'Settlement not fully confirmed. ' : ''}Historical settlement evidence, not an amount due now. Unconfirmed entries may already be paid.</p>` : ''}</div></header>
     <div class="budget-browse-counts budget-bill-filters" role="group" aria-label="Filter bills by confirmed payment">
       ${[['paid', 'PAID', groups.paid.length], ['not-paid', 'NOT PAID', rows.length - groups.paid.length]].map(([key, label, count]) => `<button type="button" class="budget-browse-pill is-${key}" data-budget-bill-filter="${key}" aria-pressed="false" aria-controls="budget-bill-bucket-${key}" aria-label="${label === 'PAID' ? 'Paid' : 'Not confirmed paid'} bills: ${count}. Click again to show all bills.">${label}<span>${count}</span></button>`).join('')}
     </div><p class="budget-cash-sr" data-budget-bill-filter-status role="status">Showing all bills.</p>

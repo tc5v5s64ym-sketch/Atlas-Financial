@@ -79,7 +79,7 @@ function page() {
 }
 
 const text = html => html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
-const householdActualUnknown = html => /data-budget-browse-hold[\s\S]*?data-budget-ratio-actual><span class="budget-v3-unknown">Unavailable/.test(html);
+const householdActualUnknown = html => /data-budget-browse-hold[\s\S]*?data-budget-ratio-actual><span class="budget-v3-unknown">Unknown/.test(html);
 const householdActualContains = (html, amount) => new RegExp('data-budget-browse-hold[\\s\\S]*?data-budget-ratio-actual>[^<]*\\$'+amount.replace('.', '\\.')+'<').test(html);
 const step = (html, n) => {
   const m = new RegExp(`data-operating-question="${n}"[\\s\\S]*?</summary>`).exec(html);
@@ -131,13 +131,13 @@ ok(!/data-budget-more-views|data-current-payday-details/.test(html),
   'the old "More Budget views" and "Current payday details" disclosures are not rendered');
 ok((html.match(/data-calendar-waterfall="/g) || []).length === 1, 'exactly one pay-period waterfall is printed');
 const hero = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(html)?.[0] || '');
-ok(hero.includes(money(EXPECT.final)) && /estimated/.test(hero) && /Before savings/.test(hero),
-  'the overview republishes the independently reconciled final balance and its estimate/before-savings qualifier');
+ok(hero.includes(money(EXPECT.final)) && /estimated/.test(hero) && !/Before savings|After proposed funding/.test(step(html, '07')),
+  'the overview republishes the independently reconciled final balance and its estimate qualifier without a visible subtitle');
 const bar = id => /style="left:([^%]+)%;width:([^%]+)%"/.exec(
   html.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '');
 ok(bar('02') && Number(bar('02')[1]) === 0 && Math.abs(Number(bar('02')[2]) - 2600 / 4050 * 100) < 1e-9,
   'income progress uses confirmed received 2600 / original planned 4050');
-ok(!bar('04') && /Partial actuals/.test(step(html, '04')) && /1,400\.00[\s\S]*?1,665\.00/.test(step(html, '04')),
+ok(!bar('04') && /partial evidence/.test(step(html, '04')) && /1,400\.00[\s\S]*?1,665\.00/.test(step(html, '04')),
   'paid 1400 / original bill plan 1665 stays partial with unverified Hydro; no complete bar');
 ok(bar('07') && Math.abs(Number(bar('07')[2]) - EXPECT.final / EXPECT.income * 100) < 1e-9,
   'the final bar keeps the income scale rather than rescaling the ending balance');

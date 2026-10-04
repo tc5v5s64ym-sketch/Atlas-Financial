@@ -78,7 +78,9 @@ async function geometry(page) {
       const hero = page.locator('[data-budget-period-result]');
       assert.match(await hero.innerText(), /1,632\.01/); // 4050 - 1665 - 752.99
       assert.match(await hero.innerText(), /estimated/);
-      assert.match(await hero.innerText(), /Before savings/);
+      assert.doesNotMatch(await hero.locator('summary').innerText(), /Before savings|After proposed funding/);
+      for (const id of ['02','04','06','savings','07']) assert.equal(await page.locator(`[data-operating-question="${id}"] > details > summary .budget-step-caption`).count(),0,
+        'owner-requested totals have no descriptive subtitles');
       const overview = page.locator('.budget-surface-grid > .budget-surface-card');
       assert.equal(await overview.count(), 1, 'one primary current-balance-to-deductions overview');
       assert.equal(await overview.locator('[data-live-current-balance-amount]').count(), 1);
@@ -112,7 +114,7 @@ async function geometry(page) {
       assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
       assert.match(await page.locator('[data-budget-savings-goals]').innerText(), /195\.00 required by the current Forecast[\s\S]*Fulfillment not confirmed/);
       assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-plan]').innerText(), /195\.00/);
-      assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-actual]').innerText(), /Unavailable/);
+      assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-actual]').innerText(), /Unknown/);
       assert.match(await page.locator('[data-budget-browse="spending"]').innerText(), /Projected plan.*spending not observed/);
       assert.equal(await page.locator('[data-budget-browse-remaining]').count(), 0, 'future selection does not borrow current remaining spending');
       assert.equal(await periodWheel.evaluate(el => el === document.activeElement), true);
@@ -155,7 +157,8 @@ async function geometry(page) {
       assert.ok(hatch.width > 0 && hatch.height > 0, `unassigned track visible: ${JSON.stringify(hatch)}`);
       assert.match(hatch.image, /repeating-linear-gradient/);
       assert.match(await page.locator('[data-budget-browse="bills"] [data-budget-ratio]').innerText(), /1,400\.00[\s\S]*1,665\.00/);
-      assert.match(await page.locator('[data-budget-browse="bills"] [data-budget-progress-coverage]').innerText(), /Partial actuals/);
+      assert.equal(await page.locator('[data-budget-browse="bills"] [data-budget-progress-partial]').innerText(), '*');
+      assert.doesNotMatch(await page.locator('[data-budget-browse="bills"]').innerText(), /Partial actuals|Paid \/ original scheduled plan/);
       assert.equal(await page.locator('.budget-bills-progress-wrapper .budget-waterfall-bar').count(), 0,'unverified Hydro prevents a complete paid progress bar');
       assert.match(await page.locator('[data-budget-browse-hold]').innerText(), /444\.49[\s\S]*730\.00/);
       assert.match(await page.locator('[data-operating-question="02"] .budget-step-value').innerText(), /2,600\.00[\s\S]*4,050\.00/);
@@ -450,11 +453,11 @@ async function geometry(page) {
         const observed = ['full', 'posted-only'].includes(coverage);
         assert.match(await spending.locator('.budget-browse-counts').innerText(), observed
           ? /Observed spending.*completed period/ : /Spending unavailable.*completed period/);
-        assert.match(await spending.locator('[data-budget-browse-hold]').innerText(), observed ? /66\.75/ : /Unavailable/);
+        assert.match(await spending.locator('[data-budget-browse-hold]').innerText(), observed ? /66\.75/ : /Unknown/);
         const groceries = spending.locator('[data-budget-category-open="groceries"]');
         assert.match(await groceries.innerText(), observed ? /47\.25/ : /Spending unavailable/);
         assert.equal(await groceries.locator('.budget-category-fill').count(),0,'historical original target is unknown even with complete spending coverage');
-        assert.match(await spending.locator('[data-budget-ratio-plan]').innerText(),/Unavailable/);
+        assert.match(await spending.locator('[data-budget-ratio-plan]').innerText(),/unknown/i);
         assert.equal(await bills.locator('[data-budget-browse-bills-remaining]').count(), 0);
         assert.match(await bills.locator('h2').innerText(), /105\.00/,'historical original bill plan remains available');
         assert.match(await bills.innerText(), /Completed-period bills/);
@@ -499,7 +502,7 @@ async function geometry(page) {
       await boot();await page.locator('[data-budget-window-step="-1"]').click();
       const revisedHistory=page.locator('[data-budget-browse="spending"]');
       assert.match(await revisedHistory.locator('[data-budget-ratio-actual]').innerText(),/66\.75/);
-      assert.match(await revisedHistory.locator('[data-budget-ratio-plan]').innerText(),/Unavailable/);
+      assert.match(await revisedHistory.locator('[data-budget-ratio-plan]').innerText(),/Unknown/);
       assert.doesNotMatch(await revisedHistory.innerText(),/613\.27|450\.00|402\.75 left|566\.02 left/);
       assert.equal(await revisedHistory.locator('.budget-category-fill').count(),0);
       await geometry(page);

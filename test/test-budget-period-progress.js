@@ -177,7 +177,7 @@ context.progressPeriod=current;context.progressCtx={asOf,advice,plan:served.plan
 const primary=vm.runInContext('calendarWaterfallHtml(progressPeriod,null,null,progressCtx.plan,true)',context);
 assert.match(primary,/data-budget-ratio="income"[\s\S]*?2,600\.00[\s\S]*?4,050\.00/);
 assert.match(primary,/data-budget-ratio="household"[\s\S]*?444\.49[\s\S]*?730\.00/);
-assert.match(primary,/data-budget-ratio="bills"[\s\S]*?1,400\.00[\s\S]*?1,665\.00[\s\S]*?Partial actuals/);
+assert.match(primary,/data-budget-ratio="bills"[\s\S]*?1,400\.00[\s\S]*?1,665\.00[\s\S]*?partial evidence/);
 assert.match(primary,/data-budget-goal-fulfillment-evidence="school-trip"/);
 const primaryIncome=primary.split('data-operating-question="02"')[1].split('</summary>')[0];
 assert.ok(primaryIncome.includes('width:'+2600/4050*100+'%'));
@@ -206,7 +206,7 @@ for(const [data,published] of [[historicalData,historicalAdvice],[revisedData,re
   context.historyPeriod=history;context.historyCtx={asOf,advice:published,plan:data.plan};
   const historyHtml=vm.runInContext('budgetSpendingSectionHtml(historyPeriod,historyCtx)',context);
   assert.match(historyHtml,/data-budget-ratio-actual[\s\S]*?66\.75/);
-  assert.match(historyHtml,/data-budget-ratio-plan><span class="budget-v3-unknown">Unavailable/);
+  assert.match(historyHtml,/data-budget-ratio-plan><span class="budget-v3-unknown">Unknown/);
   assert.doesNotMatch(historyHtml,/\$450\.00|\$613\.27|budget-category-fill|budget-category-pace|\$402\.75 left|\$566\.02 left/,
     'current targets, remaining estimates and target-based geometry do not pose as historical original plans');
   const nativeHistory=vm.runInContext('calendarBudgetHtml(historyPeriod)',context);
@@ -243,7 +243,7 @@ assert.match(vm.runInContext('budgetBillsSectionHtml(earlyPeriod,earlyCtx)',cont
   /data-budget-ratio="bills"[\s\S]*?1,485\.00[\s\S]*?1,665\.00/);
 assert.equal(JSON.stringify(realEarly),realEarlyBefore);
 current.budgetProgress.household.actual.trust=null;
-assert.match(vm.runInContext('budgetSpendingSectionHtml(progressPeriod,progressCtx)',context),/data-budget-ratio-actual><span class="budget-v3-unknown">Unavailable/);
+assert.match(vm.runInContext('budgetSpendingSectionHtml(progressPeriod,progressCtx)',context),/data-budget-ratio-actual><span class="budget-v3-unknown">Unknown/);
 current.budgetProgress.asOf='2026-08-19';
 assert.equal(vm.runInContext('budgetProgressFor(progressPeriod,progressCtx.asOf)',context),null,'stale publication cannot be reused');
 current.budgetProgress.asOf=asOf;
@@ -263,6 +263,6 @@ for(const trust of [null,'unknown','unavailable','untrusted']){
   assert.doesNotMatch(vm.runInContext("budgetProgressBarHtml(progressPair,'household')",context),/budget-progress-over|width:/);
 }
 context.progressPair={actual:{amount:-12,trust:'calculated',completeness:'complete'},planned:{amount:-1,trust:'calculated',completeness:'complete'}};
-assert.match(vm.runInContext("budgetProgressValueHtml(progressPair,'household')",context),/data-budget-ratio-plan><span class="budget-v3-unknown">Unavailable/);
+assert.match(vm.runInContext("budgetProgressValueHtml(progressPair,'household')",context),/data-budget-ratio-plan><span class="budget-v3-unknown">Unknown/);
 assert.match(vm.runInContext("budgetProgressValueHtml(progressPair,'household')",context),/[\u2212-]\$12\.00/,'signed actual remains known while original plan is invalid');
 console.log('PASS Budget period progress: independent original plans and actuals, coverage/strict nulls, historical/future scope, pending, unknown contributions, immutable financial deductions and active consumers');
