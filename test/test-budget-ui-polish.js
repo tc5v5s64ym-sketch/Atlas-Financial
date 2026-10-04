@@ -42,6 +42,13 @@ console.log('\n=== approved bill status language is calm and explicit ===');
     'settled bill maps to Paid');
   ok(toPay && toPay.label === 'Not paid' && toPay.kind === 'to-pay',
     'published unpaid bill maps to Not paid');
+  ok(UI.billStatePresentation('planned', 'upcoming').label === 'Not paid'
+    && UI.billStatePresentation('planned', 'upcoming').kind === 'to-pay',
+    'future planned/upcoming matches browse Not paid without date inference');
+  ok(UI.billStatePresentation('planned', 'unverified').kind === 'check'
+    && UI.billStatePresentation('planned', 'unknown').kind === 'unknown'
+    && UI.billStatePresentation('planned', null).kind === 'unknown',
+    'planned status alone cannot promote absent, unknown or unverified settlement');
   ok(pending && pending.label === 'Pending',
     'pending keeps its incumbent meaning rather than being relabelled paid/unpaid');
   ok(check && check.label === 'To confirm',

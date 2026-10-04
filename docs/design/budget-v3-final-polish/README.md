@@ -61,10 +61,17 @@ presentation slice, not a completed actual/planned or goal-fulfillment contract.
 
 All captured browser traffic is intercepted. Values, names, dates and status
 matrices are independently invented; no deployed data, scaled real values or
-credentials are used. The native Bills sheet matrix covers eight evidence states
-across six dates at 1440, 390 and 320px in light and dark themes (288 combinations).
+credentials are used. The native Bills sheet matrix covers nine evidence states
+across six dates at 1440, 390 and 320px in light and dark themes (324 combinations).
 Its injected rows prove presentation and raw-status preservation; the active
 App/Forecast/Budget contracts separately prove financial semantics.
+
+The bounded #493 review repair also covers Forecast's actual normalization of
+an independently prepaid future occurrence to `planned` / `upcoming`: native
+and browse both say Not paid, without changing the published settlement. A
+trusted $25 actual against an invented zero plan retains its red over-plan
+marker without percentage division. Missing plan, actual or trust stays unknown.
+The browser captures these cases at all three widths in both themes.
 
 The active tests cover filters, source counts, unknown and contradictory status,
 no settlement writes, empty groups, named savings evidence, unknown period

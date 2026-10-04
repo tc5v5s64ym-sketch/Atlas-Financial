@@ -10,6 +10,7 @@ const output=process.env.ATLAS_BUDGET_SCREENSHOTS_DIR||path.join(require('node:o
 const states=[
   ['PAID','represented','Paid','paid'],
   ['still due','upcoming','Not paid','to-pay'],
+  ['planned','upcoming','Not paid','to-pay'],
   ['still due','unverified','To confirm','check'],
   ['still due',null,'Unknown','unknown'],
   ['pending','pending','Pending','pending'],
@@ -24,12 +25,13 @@ const dates=['2026-08-20','2026-08-17','2026-08-16','2026-08-21',null,'2026-02-3
   const errors=[],external=[];
   try{
     for(const width of [1440,390,320]) for(const theme of ['light','dark']){
+      const served=fx.served();
       const page=await browser.newPage({viewport:{width,height:1000},colorScheme:theme,reducedMotion:'reduce'});
       page.on('pageerror',error=>errors.push(error.message));
       await page.route('**/*',route=>{
         const url=new URL(route.request().url());
         if(url.origin!=='http://budget.test'){external.push(url.origin);return route.abort();}
-        if(url.pathname==='/data.json')return route.fulfill({json:fx.served()});
+        if(url.pathname==='/data.json')return route.fulfill({json:served});
         if(['/periods.json','/balance-history.json','/running-build.json'].includes(url.pathname))return route.fulfill({json:null});
         const file=path.join(root,'public',url.pathname==='/'?'index.html':decodeURIComponent(url.pathname.slice(1)));
         if(!file.startsWith(path.join(root,'public'))||!fs.existsSync(file))return route.fulfill({status:404,body:''});
@@ -112,6 +114,43 @@ const dates=['2026-08-20','2026-08-17','2026-08-16','2026-08-21',null,'2026-02-3
       await page.locator('[data-budget-detail-sheet]').screenshot({path:path.join(output,'bill-status-'+theme+'-'+width+'.png'),animations:'disabled'});
       await page.keyboard.press('Escape');
       assert.equal(await page.locator('[data-operating-question="04"] .budget-step-details > summary').evaluate(node=>node===document.activeElement),true,'Back restores the native Bills trigger');
+      await page.evaluate(()=>{
+        const mount=document.querySelector('[data-budget-browse="spending"] .budget-category-list');
+        const row={id:'invented-zero',planned:0,spent:25,overspend:25,remaining:-25,trust:'calculated'};
+        const proof=document.createElement('div');proof.setAttribute('data-budget-review-zero','');
+        proof.style.padding='12px 0';
+        proof.innerHTML='<p>Invented zero plan: $25.00 spent / $0.00 planned</p>'+budgetCategoryBarHtml(row,budgetCategoryPresentation(row),.5);mount.append(proof);
+      });
+      const zero=page.locator('[data-budget-review-zero]');
+      assert.equal(await zero.locator('.budget-category-bar.is-over-plan').count(),1);
+      assert.equal(await zero.locator('.budget-category-over-limit').innerText(),'!');
+      assert.equal(await zero.locator('.budget-category-fill').count(),0,'zero plan never divides by zero');
+      assert.equal(await zero.locator('.budget-category-over-limit').evaluate(node=>{
+        const reference=document.createElement('span');reference.style.color='var(--critical)';node.parentElement.append(reference);
+        const same=getComputedStyle(reference).color===getComputedStyle(node).backgroundColor;reference.remove();return same;
+      }),true,'zero-plan marker uses the current theme red');
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'zero-plan marker stays within 320px');
+      await zero.screenshot({path:path.join(output,'category-zero-plan-'+theme+'-'+width+'.png'),animations:'disabled'});
+      await zero.evaluate(node=>{const row={planned:null,spent:25,trust:'calculated'};node.innerHTML=budgetCategoryBarHtml(row,budgetCategoryPresentation(row),null);});
+      assert.equal(await zero.locator('.budget-category-over-limit,.budget-category-fill').count(),0,'missing plan remains unknown, not zero-plan overspending');
+      await zero.evaluate(node=>node.remove());
+      // Reload an independently prepaid future occurrence through Forecast.
+      // The engine itself must normalize represented/PAID to planned/upcoming.
+      served.plan.opening.representedEvents.push({id:'mortgage',date:'2026-09-15'});
+      await page.reload();
+      await page.locator('[data-budget-surface]').waitFor();
+      await page.evaluate(theme=>{document.documentElement.setAttribute('data-theme',theme);document.body.setAttribute('data-theme',theme);},theme);
+      await page.locator('[data-budget-window-step="1"]').click();
+      await page.locator('[data-budget-window-step="1"]').click();
+      assert.match(await page.locator('[data-budget-bill-open="mortgage"]').first().innerText(),/Not paid/,'browse agrees with the native future occurrence');
+      await page.locator('[data-operating-question="04"] .budget-step-details > summary').click();
+      await page.locator('[data-budget-detail-sheet]').waitFor({state:'visible'});
+      const future=page.locator('[data-budget-detail-body] [data-bill-status="planned"][data-bill-settlement="upcoming"]');
+      assert.ok(await future.count()>0,'actual future Forecast rows are planned/upcoming');
+      await page.waitForFunction(()=>[...document.querySelectorAll('[data-budget-detail-body] [data-bill-status="planned"][data-bill-settlement="upcoming"]')].every(node=>node.querySelector('[data-atlas-bill-state="to-pay"]')));
+      assert.equal(await future.locator('[data-atlas-bill-state="unknown"],[data-atlas-bill-state="paid"]').count(),0);
+      await page.locator('[data-budget-detail-sheet]').screenshot({path:path.join(output,'future-upcoming-'+theme+'-'+width+'.png'),animations:'disabled'});
+      await page.keyboard.press('Escape');
       await page.close();
       console.log('PASS '+width+'px '+theme+': '+states.length*dates.length+' status/date combinations in the real Bills sheet; distinct colours, checkmarks, raw statuses, keyboard return');
     }

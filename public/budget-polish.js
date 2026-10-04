@@ -26,7 +26,7 @@
     }
     if (evidence === 'unknown' || ['unknown', 'unavailable'].includes(key)) return { label: 'Unknown', kind: 'unknown' };
     if (key === 'paid') return { label: 'Paid', kind: 'paid' };
-    if (['not paid', 'unpaid'].includes(key) || key === 'still due' && evidence === 'upcoming') {
+    if (['not paid', 'unpaid'].includes(key) || ['still due', 'planned'].includes(key) && evidence === 'upcoming') {
       return { label: 'Not paid', kind: 'to-pay' };
     }
     return { label: 'Unknown', kind: 'unknown' };

@@ -5864,7 +5864,7 @@ function budgetCategoryBarHtml(row, state, pace) {
     ? row.planned : null;
   const numeric = !state.other && scale > 0;
   const fill = numeric ? Math.max(0, Math.min(row.spent, row.planned)) / scale * 100 : 0;
-  const overPlan = numeric && row.spent > row.planned;
+  const overPlan = !state.other && scale != null && row.spent > row.planned;
   const unavailable = state.other || !state.spentKnown || !budgetBrowseKnown(row.planned);
   return `<span class="budget-category-bar${unavailable ? ' is-hatched' : ''}${overPlan ? ' is-over-plan' : ''}" aria-hidden="true" data-budget-category-scale="${numeric ? 'numeric' : unavailable ? 'unavailable' : 'no-scale'}">
     ${numeric ? `<span class="budget-category-fill" style="width:${fill}%"></span>` : ''}
