@@ -16,7 +16,16 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const F = require('../public/forecast.js');
-const live = require('../data.json');
+// Preserve these retired-policy regression assertions against the explicitly
+// dated historical policy. The active 450 policy has its own independent suite.
+const canonical = require('../data.json');
+const live = JSON.parse(JSON.stringify(canonical));
+const retiredOther = live.plan.budget.categories.find(row => row.id === 'other-spend');
+const historicalOther = retiredOther.targetHistory?.find(row => row.effectiveThrough === '2026-09-24');
+if (!historicalOther) throw new Error('missing dated retired Other policy');
+Object.assign(retiredOther, historicalOther);
+delete retiredOther.plannedPayday; delete retiredOther.targetEffectiveFrom; delete retiredOther.targetHistory;
+if (!(live.meta.asOf <= historicalOther.effectiveThrough)) throw new Error('retired policy cannot stand in for an active-period assertion');
 const periods = require('../public/periods.json');
 
 let failures = 0;
@@ -492,13 +501,13 @@ console.log('\n=== 9. Budget breakdown shows the target-only Other spend row ===
       out.push(cur); return out;
     });
     const csvRow = label => csv.find(c => c[2] === label) || [];
-    const ownerDates = cats(live.plan)
+    const ownerDates = cats(canonical.plan)
       .map(c => (/owner-stated-(\d{4}-\d{2}-\d{2})/.exec(String(c.targetSource || '')) || [])[1])
       .filter(Boolean)
       .sort();
     const latestOwner = ownerDates[ownerDates.length - 1] || '';
-    ok(latestOwner === '2026-09-22',
-      'independent latest owner-stated date on the live plan is the 2026-09-22 groceries instruction',
+    ok(latestOwner === '2026-10-04',
+      'independent latest owner-stated date is the 2026-10-04 Other instruction',
       latestOwner);
     ok(String(csvRow('Essential spending estimate')[19] || '') >= latestOwner,
       'positions.csv essential-spending as_of is not earlier than the owner target',

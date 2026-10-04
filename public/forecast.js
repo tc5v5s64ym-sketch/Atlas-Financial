@@ -5066,14 +5066,31 @@
   // futurePayPeriodReserve is a future pay-period Household Budget hold.
   // It is not plannedMonthly, not plannedPayday, and not a historical
   // average. Absent, non-finite, or non-positive publishes nothing.
-  function futurePayPeriodOtherSpend(plan) {
+  // Owner 2026-10-04: one dated, every-Seaspan Other target. The existing
+  // Other reconciliation remains its actual; a budget does not assign merchants.
+  function otherSpendPayPeriodTarget(plan, periodStart) {
+    const cat = ((plan && plan.budget && plan.budget.categories) || []).find(row => row && row.id === OTHER_SPEND_ID);
+    if (!cat || !savingsDate(cat.targetEffectiveFrom) || !savingsDate(periodStart)
+        || periodStart < cat.targetEffectiveFrom || cat.plannedPayday == null) return null;
+    const amount = cat.plannedPayday;
+    return typeof amount === 'number' && isFinite(amount) && amount >= 0 ? roundCent(amount) : null;
+  }
+
+  function futurePayPeriodOtherSpend(plan, periodStart) {
     const cats = (plan && plan.budget && plan.budget.categories) || [];
     let cat = null;
     for (let i = 0; i < cats.length; i++) {
       if (cats[i] && cats[i].id === OTHER_SPEND_ID) cat = cats[i];
     }
-    if (!cat || cat.futurePayPeriodReserve == null) return null;
-    const amount = Number(cat.futurePayPeriodReserve);
+    if (!cat) return null;
+    const current = otherSpendPayPeriodTarget(plan, periodStart);
+    if (current != null) return current;
+    // Retired targets are dated history only; they are never added to the new target.
+    const prior = Array.isArray(cat.targetHistory) && cat.targetHistory.find(row => row
+      && savingsDate(periodStart) && savingsDate(row.effectiveThrough) && periodStart <= row.effectiveThrough);
+    const reserve = prior ? prior.futurePayPeriodReserve : cat.futurePayPeriodReserve;
+    if (reserve == null) return null;
+    const amount = Number(reserve);
     if (!isFinite(amount) || !(amount > 0)) return null;
     return roundCent(amount);
   }
@@ -8023,24 +8040,32 @@
     // eligible debit whose Lunch Money category is exactly Uncategorised.
     // This is unassigned current-cycle household spend, not a total of
     // every dollar outside the planned category rows (named non-calendar
-    // ids such as health/sport stay omitted). No planned reserve.
-    // Owner 2026-09-04: its current-period actual is deducted once.
+    // ids such as health/sport stay omitted). Before a dated Other target,
+    // owner 2026-09-04 deducts its current-period actual once. The dated
+    // 2026-10-04 target reserves max(plan, actual) without changing membership.
     // Classifier reasons stay on recon.includeReason.
     // Visibility follows unresolved confirmation recon, not confirmed-spend
     // dollars: a pending possible-replacement twin can remain unclassified
     // after its posted mate classifies into a named row. That pending stays
     // recon-visible at $0 confirmed spent rather than disappearing.
-    if (actualsReady && confirmationRecon.length > 0) {
+    const otherTarget = cycleResolved ? otherSpendPayPeriodTarget(plan, windowStart) : null;
+    if ((actualsReady && confirmationRecon.length > 0) || otherTarget != null) {
+      const observed = actualsReady ? confirmationSpent : null;
+      const targetKnown = otherTarget != null;
       items.push({
         id: OTHER_SPENDING_ID,
         label: 'Other spending',
         note: 'Not yet assigned to a budget category',
         monthly: null,
-        planned: null,
-        spent: confirmationSpent,
-        remaining: null,
-        overspend: null,
-        hold: roundCent(confirmationSpent),
+        plannedPayday: targetKnown ? otherTarget : null,
+        planned: otherTarget,
+        spent: observed,
+        remaining: lookback ? null : targetKnown
+          ? observed != null ? roundCent(otherTarget - observed) : role === 'future' ? otherTarget : null : null,
+        overspend: lookback ? null : targetKnown && observed != null ? roundCent(Math.max(0, observed - otherTarget)) : null,
+        hold: lookback ? roundCent(observed || 0) : targetKnown ? roundCent(Math.max(otherTarget, observed || 0)) : roundCent(observed || 0),
+        targetEffectiveFrom: targetKnown ? byId.get(OTHER_SPEND_ID).targetEffectiveFrom : null,
+        ...(role === 'future' && targetKnown ? { confidence: 'estimated', trust: 'estimated' } : {}),
         needsConfirmation: true,
         otherSpending: true,
         projected: role === 'future',
@@ -8048,15 +8073,16 @@
         pendingRecon: confirmationRecon.filter(r => r.pending === true),
       });
     }
-    // Future pay periods only. Current and lookback keep incumbent
-    // evidence. The reserve is the owner field, included once in hold.
+    // Retired future-only policy, before the new dated target. The current
+    // owner target already entered its same reconciliation row once above.
     // Do not route it through paydayCyclePlanned: that would smear the
     // $800/month target or apply it to the current period.
     // The amount is an owner planning estimate. confidence/trust are
     // the stamp. They do not change the cents.
     let holdTrust = null;
     if (role === 'future') {
-      const reserve = futurePayPeriodOtherSpend(plan);
+      if (otherTarget != null) holdTrust = 'estimated';
+      const reserve = otherTarget == null ? futurePayPeriodOtherSpend(plan, windowStart) : null;
       if (reserve != null) {
         holdTrust = 'estimated';
         items.push({
@@ -11254,7 +11280,8 @@
     const cycle = period && period.spendingCycle;
     const householdScope = scope && cycle && cycle.start === period.start && cycle.end === period.end;
     const plannedCategories = Array.isArray(categories) ? categories.filter(row => row && !row.informational
-      && !row.otherSpending && !row.needsConfirmation) : null;
+      && ((!row.otherSpending && !row.needsConfirmation) || (row.otherSpending
+        && savingsDate(row.targetEffectiveFrom) && period.start >= row.targetEffectiveFrom && finite(row.planned)))) : null;
     // Historical category rows are regenerated from today's authored targets.
     // Their date scope establishes spending, not an original-plan snapshot.
     // No dated historical category-plan publication currently exists.

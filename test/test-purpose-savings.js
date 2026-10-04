@@ -10,6 +10,9 @@ const { propertyTaxFixture, AS_OF, clone } = require('./fixtures/savings-earmark
 const { withServer } = require('./test-savings-evidence-integration');
 const { renderSurfaces } = require('./test-savings-earmarks-integration');
 const BASE = 'ffe46ebe8201a130ed80843d489a91dc9f033d01';
+// Freeze the original purpose-savings canonical change, including its dated
+// reconciliation correction. Later owner budget instructions are independent.
+const PURPOSE_CANONICAL_HEAD = '6be56cd32cd887c85c9f15b26769afa641d9002c';
 function purposeFixture() {
   const x = propertyTaxFixture(), pools = x.data.plan.savingsEarmarks.pools;
   Object.assign(pools[0], { role: 'purpose-reserve', purpose: 'Synthetic sports',
@@ -171,7 +174,7 @@ async function main() {
   });
   // Production input diff oracle: no opening, balance, requirement or event edit.
   const before = JSON.parse(execFileSync('git', ['show', BASE + ':data.json'], { encoding: 'utf8' }));
-  const after = require('../data.json');
+    const after = JSON.parse(execFileSync('git', ['show', PURPOSE_CANONICAL_HEAD + ':data.json'], { encoding: 'utf8' }));
   const normalize = d => {
     const copy = clone(d); delete copy.plan.savingsEarmarks;
     for (const row of [...copy.plan.startingCash.breakdown, ...copy.plan.startingCash.heldElsewhere]) {

@@ -2098,7 +2098,7 @@ function householdBudgetMetric(label, amount, opts) {
     ? 'household-budget-metric household-budget-remaining'
     : 'household-budget-metric';
   const knownAmount = amount != null && isFinite(Number(amount));
-  const plain = knownAmount ? money2(amount) : '—';
+  const plain = knownAmount ? money2(amount) : (opts && opts.unavailableText) || '—';
   const estimated = !!(opts && opts.estimated) && knownAmount;
   const value = estimated
     ? `<span class="est">≈ estimated</span> ${plain}`
@@ -2189,7 +2189,10 @@ function householdBudgetCategoryHtml(row, opts = {}) {
   // evidence. That is not a dated original plan. Carry the period context into
   // the same node that moves into an individual category/transaction sheet.
   const historicalPlanUnknown = opts.historicalOriginalPlanUnavailable === true;
-  const estimated = !other && (row.confidence === 'estimated' || row.trust === 'estimated');
+  const datedOtherPlan = other && typeof row.targetEffectiveFrom === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(row.targetEffectiveFrom)
+    && typeof row.planned === 'number' && Number.isFinite(row.planned);
+  const estimated = (!other || datedOtherPlan) && (row.confidence === 'estimated' || row.trust === 'estimated');
   const name = row.label || '';
   const context = other
     ? (row.note || 'Not yet assigned to a budget category')
@@ -2198,21 +2201,23 @@ function householdBudgetCategoryHtml(row, opts = {}) {
     ? `<p class="household-budget-context">${context}</p>` : '';
   const recon = Array.isArray(row.recon) ? row.recon : [];
   const metrics = [];
-  if (!other && !historicalPlanUnknown && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned, { estimated }));
-  if (row.spent != null || recon.length) {
-    metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id }));
+  if ((!other && !historicalPlanUnknown || datedOtherPlan) && row.planned != null) {
+    metrics.push(householdBudgetMetric(historicalPlanUnknown ? 'Configured target' : 'Planned', row.planned, { estimated }));
+  }
+  if (row.spent != null || recon.length || datedOtherPlan) {
+    metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id, unavailableText: datedOtherPlan ? 'Unavailable' : null }));
   }
   if (!other && !historicalPlanUnknown && row.remaining != null) {
     metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true, estimated }));
   }
   const kind = other ? 'other' : 'category';
-  const projected = !other && !historicalPlanUnknown && row.projected && row.remaining != null
+  const projected = (!other || datedOtherPlan) && !historicalPlanUnknown && row.projected && row.remaining != null
     ? '<p class="household-budget-context">Projected.</p>' : '';
   const trustAttr = estimated ? ' data-budget-trust="estimated"' : '';
   return `<div class="household-budget-${kind}" data-budget-category="${row.id || ''}"${other ? ' data-other-spending' : ''}${trustAttr}>
     <h3 class="household-budget-name">${name}</h3>
     ${contextHtml}
-    ${historicalPlanUnknown && !other ? '<p class="household-budget-context" data-budget-historical-original-plan="unavailable">Historical original plan unavailable. No dated plan snapshot confirms this period\'s target or remaining amount. Today\'s configured target does not establish the historical plan.</p>' : ''}
+    ${historicalPlanUnknown && (!other || datedOtherPlan) ? '<p class="household-budget-context" data-budget-historical-original-plan="unavailable">Historical original plan unavailable. No dated plan snapshot confirms this period\'s target or remaining amount. Today\'s configured target does not establish the historical plan.</p>' : ''}
     <dl class="household-budget-metrics">${metrics.join('')}</dl>
     ${projected}
   </div>`;
@@ -2230,7 +2235,7 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
   const categoryContext = { historicalOriginalPlanUnavailable:
     period?.timelineRole === 'past' || period?.lookback === true };
   const reserveRule = categoryContext.historicalOriginalPlanUnavailable ? ''
-    : '<p class="operating-note" data-budget-reserve-rule>Reserve calculation: Each category counts at its plan or observed spending, whichever is higher, plus unassigned spending.</p>';
+    : '<p class="operating-note" data-budget-reserve-rule>Reserve calculation: Each planned category, including Other when it has a dated target, counts at its plan or observed spending, whichever is higher. Any unassigned spending without a target counts once.</p>';
   const cycleText = householdBudgetCycleText(period);
   const cycle = period && period.cycleUnresolved
       ? `<p class="household-budget-cycle">Spending cycle unavailable. Household Budget reserve is held.</p>`
@@ -5880,7 +5885,7 @@ function budgetCategoryPresentation(row) {
   const spentKnown = budgetBrowseKnown(row.spent) && !['unavailable', 'unknown', 'untrusted'].includes(row.trust);
   const other = row.otherSpending === true || row.needsConfirmation === true;
   const trust = row.confidence === 'estimated' || row.trust === 'estimated' ? 'estimated' : null;
-  if (other) return { kind: 'unassigned', label: budgetBrowseMoney(row.spent, row.trust), spentKnown, other, trust };
+  if (other && !budgetBrowseKnown(row.planned)) return { kind: 'unassigned', label: budgetBrowseMoney(row.spent, row.trust), spentKnown, other, trust };
   if (!spentKnown) return { kind: 'unknown', label: row.projected ? 'Not observed' : 'Spending unavailable', spentKnown, other, trust };
   if (budgetBrowseKnown(row.overspend) && row.overspend > 0)
     return { kind: 'over', label: `${budgetBrowseMoney(row.overspend, trust)} over`, spentKnown, other, trust };
@@ -5918,10 +5923,10 @@ function budgetCategoryBarHtml(row, state, pace) {
   // Dimensionless geometry from published amounts; never a new money total.
   const scale = state.spentKnown && budgetBrowseKnown(row.planned) && row.planned >= 0
     ? row.planned : null;
-  const numeric = !state.other && scale > 0;
+  const numeric = scale > 0;
   const fill = numeric ? Math.max(0, Math.min(row.spent, row.planned)) / scale * 100 : 0;
-  const overPlan = !state.other && scale != null && row.spent > row.planned;
-  const unavailable = state.other || !state.spentKnown || !budgetBrowseKnown(row.planned);
+  const overPlan = scale != null && row.spent > row.planned;
+  const unavailable = !state.spentKnown || !budgetBrowseKnown(row.planned);
   return `<span class="budget-category-bar${unavailable ? ' is-hatched' : ''}${overPlan ? ' is-over-plan' : ''}" aria-hidden="true" data-budget-category-scale="${numeric ? 'numeric' : unavailable ? 'unavailable' : 'no-scale'}">
     ${numeric ? `<span class="budget-category-fill" style="width:${fill}%"></span>` : ''}
     ${overPlan ? '<span class="budget-category-over-limit">!</span>' : ''}
@@ -5970,7 +5975,8 @@ function budgetProgressEvidenceHtml(pair, key) {
 
 function budgetSpendingSectionHtml(period, ctx) {
   const rows = (period.householdBudget || []).filter(Boolean);
-  const planned = rows.filter(row => !row.informational && !row.otherSpending && !row.needsConfirmation);
+  const planned = rows.filter(row => !row.informational && ((!row.otherSpending && !row.needsConfirmation)
+    || (row.otherSpending && isValidIsoCalendarDate(row.targetEffectiveFrom) && budgetBrowseKnown(row.planned))));
   const classified = planned.filter(row => budgetCategoryPresentation(row).spentKnown && budgetBrowseKnown(row.remaining));
   const over = classified.filter(row => budgetBrowseKnown(row.overspend) && row.overspend > 0);
   const model = budgetWindowModel(ctx), cycle = period.spendingCycle;
@@ -5995,10 +6001,10 @@ function budgetSpendingSectionHtml(period, ctx) {
     // Forecast withholds the historical original-plan denominator. Keep the
     // native row/evidence intact, but do not relabel today's category targets
     // as historical plans, remaining amounts or progress geometry here.
-    const displayRow = historicalPlanUnknown && !row.otherSpending
+    const displayRow = historicalPlanUnknown && (!row.otherSpending || budgetBrowseKnown(row.planned))
       ? { ...row, planned: null, plannedTrust: 'unavailable', remaining: null, overspend: null } : row;
     const state = budgetCategoryPresentation(displayRow);
-    const meta = state.other ? budgetBrowseEscape(row.note || 'Not yet assigned to a category')
+    const meta = state.other && !budgetBrowseKnown(displayRow.planned) ? budgetBrowseEscape(row.note || 'Not yet assigned to a category')
       : `<span class="budget-cash-sr">Spent </span>${budgetBrowseMoney(row.spent, row.trust)}<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>${budgetBrowseMoney(displayRow.planned, state.trust)}`;
     return `<button type="button" class="budget-category-row is-${state.kind}" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="spending" aria-haspopup="dialog">
       <span class="budget-category-name">${budgetBrowseEscape(row.label || 'Category')}</span><span class="budget-category-status">${state.label}</span>

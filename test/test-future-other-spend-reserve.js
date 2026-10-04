@@ -17,7 +17,16 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const F = require('../public/forecast.js');
-const live = require('../data.json');
+// Preserve these retired-policy regression assertions against the explicitly
+// dated historical policy. The active 450 policy has its own independent suite.
+const canonical = require('../data.json');
+const live = JSON.parse(JSON.stringify(canonical));
+const retiredOther = live.plan.budget.categories.find(row => row.id === 'other-spend');
+const historicalOther = retiredOther.targetHistory?.find(row => row.effectiveThrough === '2026-09-24');
+if (!historicalOther) throw new Error('missing dated retired Other policy');
+Object.assign(retiredOther, historicalOther);
+delete retiredOther.plannedPayday; delete retiredOther.targetEffectiveFrom; delete retiredOther.targetHistory;
+if (!(live.meta.asOf <= historicalOther.effectiveThrough)) throw new Error('retired policy cannot stand in for an active-period assertion');
 const periods = require('../public/periods.json');
 const { sourceText } = require('./test-source-text');
 
