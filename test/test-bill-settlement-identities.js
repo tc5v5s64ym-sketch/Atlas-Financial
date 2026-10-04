@@ -297,14 +297,14 @@ function spotifyTx(extra) {
 
 function feeTxA(extra) {
   return Object.assign({
-    id: 9602, account_id: 1001, date: FEE_DUE, amount: FEE_LEG,
+    id: 9602, account_id: 1001, date: FEE_DUE, amount: FEE_LEG, currency: 'cad',
     is_pending: false, payee: 'MONTHLY ACCOUNT FEE', original_name: 'MONTHLY ACCOUNT FEE',
   }, extra || {});
 }
 
 function feeTxB(extra) {
   return Object.assign({
-    id: 9603, account_id: 1002, date: FEE_DUE, amount: FEE_LEG,
+    id: 9603, account_id: 1002, date: FEE_DUE, amount: FEE_LEG, currency: 'cad',
     is_pending: false, payee: 'MONTHLY ACCOUNT FEE', original_name: 'MONTHLY ACCOUNT FEE',
   }, extra || {});
 }
@@ -322,7 +322,7 @@ console.log('\n=== 1. standing identities are encoded ===');
   ok(feeRules.length === 2
       && feeRules.every(r => r.settlesWhen === TWO_LEG
         && r.direction === 'debit'
-        && r.postingDateRule === 'covers-due-on-or-before-posting'
+        && r.postingDateRule === EARLY_RULE && r.earlyPayLookaheadDays === 1
         && (r.payeePatterns || []).includes('MONTHLY ACCOUNT FEE'))
       && feeRules.some(r => r.atlasAccountId === 'chequing-a')
       && feeRules.some(r => r.atlasAccountId === 'chequing-b'),
