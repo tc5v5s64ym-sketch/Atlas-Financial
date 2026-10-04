@@ -94,6 +94,14 @@ are not shipped.
 
 ## Captures
 
+Historical category evidence carries its own unavailable-original-plan note into
+the individual sheet and transaction drilldown. Completed-period native rows are
+presented without today's planned, weekly-target or remaining metrics; sealed
+Forecast rows and observed transaction evidence are untouched. Target-edit
+regressions cover both authored targets, all categories, full Household details,
+open-sheet refresh, current/history navigation, reopen and exact keyboard return
+at 1440, 390 and 320px. Historical target-based overrun attention is withheld too.
+
 All images below use independently invented fixtures. Reference amounts differ
 intentionally; they are a hierarchy/layout comparison, not a financial equality
 claim. The owner's later actual/planned and compact-goal directions supersede
@@ -106,4 +114,5 @@ the reference's deduction-bar interpretation.
 | Category original-plan ratios | — | [Spending](spending-320.png) |
 | Paid/original-plan headline with partial evidence | — | [Bills](bills-320.png) |
 | Exact future requirements and unavailable actuals | — | [Future period](future-requirements-320.png) |
-| Named requirements; fulfillment Not confirmed | — | [Goals](goal-requirements-320.png) |
+| Named requirements; fulfillment Not confirmed | - | [Goals](goal-requirements-320.png) |
+| Open historical category; original plan unavailable | [Sheet](history-category-target-edit-1440.png) | [Sheet](history-category-target-edit-320.png) |

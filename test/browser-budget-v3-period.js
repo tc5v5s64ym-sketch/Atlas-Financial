@@ -446,6 +446,8 @@ async function geometry(page) {
         if (coverage === 'partial' && width === 320) await screenshot({path:path.join(screenshots,'history-partial-320.png'),fullPage:true});
         await groceries.focus(); await page.keyboard.press('Enter');
         assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open), true);
+        assert.match(await page.locator('[data-budget-detail-body]').innerText(),/Historical original plan unavailable/);
+        assert.doesNotMatch(await page.locator('[data-budget-detail-body]').innerText(),/450\.00|613\.27|Planned|Remaining|\/week/);
         if (observed) assert.match(await page.locator('[data-budget-detail-body]').innerText(), /Synthetic historical grocer[\s\S]*47\.25/);
         await page.keyboard.press('Escape');
         assert.equal(await groceries.evaluate(el=>el===document.activeElement), true);
@@ -468,8 +470,10 @@ async function geometry(page) {
         assert.match(await page.locator('[data-budget-browse="spending"] .budget-browse-counts').innerText(), /Projected plan.*spending not observed/);
       }
       // P1: editing today's target cannot reconstruct an original history plan.
+      for (const target of [450,613.27]) {
       data=fx.fundingHistorical('full','paid');
-      data.plan.budget.categories.find(row=>row.id==='groceries').plannedPayday=613.27;
+      data.plan.budget.categories.find(row=>row.id==='groceries').plannedPayday=target;
+      const sealedInputs=JSON.stringify(data);
       await boot();await page.locator('[data-budget-window-step="-1"]').click();
       const revisedHistory=page.locator('[data-budget-browse="spending"]');
       assert.match(await revisedHistory.locator('[data-budget-ratio-actual]').innerText(),/66\.75/);
@@ -479,9 +483,50 @@ async function geometry(page) {
       await geometry(page);
       await revisedHistory.screenshot({path:path.join(screenshots,`history-target-edit-${width}.png`),animations:'disabled',style:'.sitenav-household{visibility:hidden!important}'});
       const revisedGrocery=revisedHistory.locator('[data-budget-category-open="groceries"]');
+      const assertHistorySheet=async () => {
+        const sheetBody=page.locator('[data-budget-detail-body]');
+        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open),true);
+        assert.match(await sheetBody.innerText(),/Historical original plan unavailable/);
+        assert.match(await sheetBody.innerText(),/Synthetic historical grocer[\s\S]*47\.25/);
+        assert.doesNotMatch(await sheetBody.innerText(),/450\.00|613\.27|402\.75|566\.02|Planned|Remaining|\/week/);
+        assert.equal(await sheetBody.locator('.budget-category-fill,.budget-category-pace').count(),0);
+      };
+      for (const id of ['groceries','fuel','restaurants']) {
+        const trigger=revisedHistory.locator(`[data-budget-category-open="${id}"]`);
+        await page.locator(`[data-budget-category="${id}"]`).evaluate(node=>{window.__historicalCategorySource=node;});
+        await trigger.focus();await page.keyboard.press('Enter');
+        const sheetBody=page.locator('[data-budget-detail-body]');
+        assert.match(await sheetBody.innerText(),/Historical original plan unavailable/);
+        assert.doesNotMatch(await sheetBody.innerText(),/450\.00|613\.27|160\.00|120\.00|Planned|Remaining|\/week/);
+        assert.equal(await sheetBody.locator('[data-budget-category]').evaluate(node=>node===window.__historicalCategorySource),true,
+          'context travels with the same native category node');
+        if(id==='groceries') {
+          await assertHistorySheet();
+          await page.evaluate(()=>App.rerender());
+          await page.waitForFunction(()=>document.querySelector('[data-budget-detail-sheet]')?.open);
+          await assertHistorySheet();
+          if(target===613.27) await screenshot({path:path.join(screenshots,`history-category-target-edit-${width}.png`),fullPage:false});
+        }
+        await page.keyboard.press('Escape');assert.equal(await trigger.evaluate(el=>el===document.activeElement),true);
+      }
+      // Full Household details and the individual sheet must carry the same
+      // unavailable original-plan meaning; opening transactions cannot lose it.
+      const fullDetails=revisedHistory.locator('[data-budget-browse-evidence="06"]');
+      await fullDetails.focus();await page.keyboard.press('Enter');
+      await assertHistorySheet();
+      assert.equal(await page.locator('[data-budget-detail-body] [data-budget-historical-original-plan="unavailable"]').count(),3);
+      await page.keyboard.press('Escape');assert.equal(await fullDetails.evaluate(el=>el===document.activeElement),true);
+      await page.locator('[data-budget-window-step="1"]').click();
       await revisedGrocery.focus();await page.keyboard.press('Enter');
-      assert.match(await page.locator('[data-budget-detail-body]').innerText(),/Synthetic historical grocer[\s\S]*47\.25/);
+      assert.match(await page.locator('[data-budget-detail-body]').innerText(),new RegExp(`Planned[\\s\\S]*${target.toFixed(2).replace('.','\\.')}`),
+        'current authored target remains available after historical navigation');
+      assert.equal(await page.locator('[data-budget-detail-body] [data-budget-historical-original-plan]').count(),0);
+      await page.keyboard.press('Escape');
+      await page.locator('[data-budget-window-step="-1"]').click();
+      await revisedGrocery.focus();await page.keyboard.press('Enter');await assertHistorySheet();
       await page.keyboard.press('Escape');assert.equal(await revisedGrocery.evaluate(el=>el===document.activeElement),true);
+      assert.equal(JSON.stringify(data),sealedInputs,'presentation never modifies sealed fixture rows');
+      }
       // P2: a valid typed receipt precedes its scheduled occurrence date.
       // This is Forecast -> active UI proof, not provider identity matching.
       data=fx.served({earlyInternet:true});await boot();

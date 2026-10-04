@@ -199,6 +199,7 @@ const revisedBefore=JSON.stringify(revisedData);
 const revisedAdvice=F.recommend(revisedData.plan,asOf,{...revisedData.plan.defaults,debts:revisedData.debts,
   currentPeriodActuals:revisedData.liveOverlay.currentPeriodActuals});
 for(const [data,published] of [[historicalData,historicalAdvice],[revisedData,revisedAdvice]]){
+  const sealedPublication=JSON.stringify(published);
   const history=published.payPeriodViews.find(r=>r.start==='2026-07-31');
   assert.equal(history.budgetProgress.household.actual.amount,47.25+19.50);
   assert.equal(history.budgetProgress.household.planned.amount,null);
@@ -208,7 +209,25 @@ for(const [data,published] of [[historicalData,historicalAdvice],[revisedData,re
   assert.match(historyHtml,/data-budget-ratio-plan><span class="budget-v3-unknown">Unavailable/);
   assert.doesNotMatch(historyHtml,/\$450\.00|\$613\.27|budget-category-fill|budget-category-pace|\$402\.75 left|\$566\.02 left/,
     'current targets, remaining estimates and target-based geometry do not pose as historical original plans');
+  const nativeHistory=vm.runInContext('calendarBudgetHtml(historyPeriod)',context);
+  assert.match(nativeHistory,/data-budget-historical-original-plan="unavailable"/);
+  assert.match(nativeHistory,/Historical original plan unavailable/);
+  assert.doesNotMatch(nativeHistory,/<dt>Planned<|<dt>Remaining<|\$450\.00|\$613\.27|\/week/,
+    'full native evidence and its movable individual nodes do not print current targets as historical plans');
+  assert.match(nativeHistory,/Synthetic historical grocer[\s\S]*?47\.25/);
+  assert.match(nativeHistory,/Synthetic historical fuel[\s\S]*?19\.50/);
+  context.categoryProbe={...history.householdBudget.find(r=>r.id==='groceries'),remaining:566.02,overspend:42,plannedWeekly:306.64,projected:true};
+  const categoryEvidence=vm.runInContext('householdBudgetCategoryHtml(categoryProbe,{historicalOriginalPlanUnavailable:true})',context);
+  assert.doesNotMatch(categoryEvidence,/<dt>Planned<|<dt>Remaining<|613\.27|450\.00|566\.02|306\.64|Projected\./);
+  assert.match(categoryEvidence,/Historical original plan unavailable[\s\S]*Synthetic historical grocer[\s\S]*47\.25/);
+  context.attentionProbe={...history,householdBudget:[context.categoryProbe]};
+  assert.equal(vm.runInContext('budgetBrowseAttentionHtml(attentionProbe)',context),'',
+    'historical current-target overrun does not become an over-plan attention claim');
+  assert.equal(JSON.stringify(published),sealedPublication,'context-specific native presentation preserves sealed Forecast publications');
 }
+const currentNative=vm.runInContext('calendarBudgetHtml(progressPeriod)',context);
+assert.match(currentNative,/<dt>Planned<\/dt>[\s\S]*?450\.00/,'current authored targets retain native evidence');
+assert.doesNotMatch(currentNative,/data-budget-historical-original-plan/);
 assert.equal(JSON.stringify(historicalData),historicalBefore);assert.equal(JSON.stringify(revisedData),revisedBefore);
 const realEarly=fx.served({earlyInternet:true}),realEarlyBefore=JSON.stringify(realEarly);
 const earlyAdvice=F.recommend(realEarly.plan,asOf,{...realEarly.plan.defaults,debts:realEarly.debts,

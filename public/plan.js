@@ -2168,7 +2168,7 @@ function householdBudgetMetric(label, amount, opts) {
   return `<div class="${cls}"><dt>${label}</dt><dd>${value}</dd></div>`;
 }
 
-function householdBudgetCategoryHtml(row) {
+function householdBudgetCategoryHtml(row, opts = {}) {
   if (!row) return '';
   if (row.informational) {
     return paydayBucketRow(
@@ -2180,29 +2180,34 @@ function householdBudgetCategoryHtml(row) {
     );
   }
   const other = row.otherSpending === true || row.needsConfirmation === true;
+  // Completed-period rows retain today's configured targets in sealed native
+  // evidence. That is not a dated original plan. Carry the period context into
+  // the same node that moves into an individual category/transaction sheet.
+  const historicalPlanUnknown = opts.historicalOriginalPlanUnavailable === true;
   const estimated = !other && (row.confidence === 'estimated' || row.trust === 'estimated');
   const name = row.label || '';
   const context = other
     ? (row.note || 'Not yet assigned to a budget category')
-    : (row.plannedWeekly != null ? `${money2(row.plannedWeekly)}/week` : '');
+    : (!historicalPlanUnknown && row.plannedWeekly != null ? `${money2(row.plannedWeekly)}/week` : '');
   const contextHtml = context
     ? `<p class="household-budget-context">${context}</p>` : '';
   const recon = Array.isArray(row.recon) ? row.recon : [];
   const metrics = [];
-  if (!other && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned, { estimated }));
+  if (!other && !historicalPlanUnknown && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned, { estimated }));
   if (row.spent != null || recon.length) {
     metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id }));
   }
-  if (!other && row.remaining != null) {
+  if (!other && !historicalPlanUnknown && row.remaining != null) {
     metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true, estimated }));
   }
   const kind = other ? 'other' : 'category';
-  const projected = !other && row.projected && row.remaining != null
+  const projected = !other && !historicalPlanUnknown && row.projected && row.remaining != null
     ? '<p class="household-budget-context">Projected.</p>' : '';
   const trustAttr = estimated ? ' data-budget-trust="estimated"' : '';
   return `<div class="household-budget-${kind}" data-budget-category="${row.id || ''}"${other ? ' data-other-spending' : ''}${trustAttr}>
     <h3 class="household-budget-name">${name}</h3>
     ${contextHtml}
+    ${historicalPlanUnknown && !other ? '<p class="household-budget-context" data-budget-historical-original-plan="unavailable">Historical original plan unavailable. No dated plan snapshot confirms this period\'s target or remaining amount. Today\'s configured target does not establish the historical plan.</p>' : ''}
     <dl class="household-budget-metrics">${metrics.join('')}</dl>
     ${projected}
   </div>`;
@@ -2215,6 +2220,10 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
     </div>`;
   }
   const rows = (period && period.householdBudget) || [];
+  // Forecast has no original-category-plan snapshot for completed periods.
+  // Context changes presentation only; never rewrite the sealed native rows.
+  const categoryContext = { historicalOriginalPlanUnavailable:
+    period?.timelineRole === 'past' || period?.lookback === true };
   const cycleText = householdBudgetCycleText(period);
   const cycle = period && period.cycleUnresolved
       ? `<p class="household-budget-cycle">Spending cycle unavailable. Household Budget reserve is held.</p>`
@@ -2313,10 +2322,10 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
   const blocks = rows.map(row => {
     const recon = overlayReconForRow(row);
     if (recon === row.recon || (Array.isArray(row.recon) && row.recon.length)) {
-      return householdBudgetCategoryHtml(row);
+      return householdBudgetCategoryHtml(row, categoryContext);
     }
-    if (!recon.length) return householdBudgetCategoryHtml(row);
-    return householdBudgetCategoryHtml(Object.assign({}, row, { recon }));
+    if (!recon.length) return householdBudgetCategoryHtml(row, categoryContext);
+    return householdBudgetCategoryHtml(Object.assign({}, row, { recon }), categoryContext);
   }).join('');
   return `<div class="payday-household-budget" data-payday-household-budget>
     ${cycle}
@@ -6017,9 +6026,11 @@ function budgetBillsSectionHtml(period, ctx) {
 
 function budgetBrowseAttentionHtml(period) {
   const items = [];
+  const historicalPlanUnknown = budgetBrowseHistorical(period)
+    && !budgetProgressAmountKnown(budgetProgressFor(period)?.household?.planned);
   (period.householdBudget || []).filter(Boolean).forEach(row => {
     const unassigned = row.otherSpending === true || row.needsConfirmation === true;
-    const over = budgetBrowseKnown(row.spent) && budgetBrowseKnown(row.overspend) && row.overspend > 0;
+    const over = !historicalPlanUnknown && budgetBrowseKnown(row.spent) && budgetBrowseKnown(row.overspend) && row.overspend > 0;
     if (!unassigned && !over) return;
     items.push(`<button type="button" class="budget-attention-item" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="attention" aria-haspopup="dialog"><span aria-hidden="true">${over ? '!' : '?'}</span><span><strong>${budgetBrowseEscape(row.label)} · ${over ? `${budgetBrowseMoney(row.overspend, budgetCategoryPresentation(row).trust)} over plan` : 'needs a category'}</strong><small>${over ? 'The published reserve includes the overrun.' : 'Open the included transactions, including any pending evidence.'}</small></span></button>`);
   });
