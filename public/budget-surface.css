@@ -272,6 +272,30 @@
   .budget-surface [data-operating-question="07"] .budget-step-value { font-size:15px; }
 }
 .budget-surface .budget-step-caption:empty { display:none; }
+.budget-bill-filters button { cursor:pointer; border:1px solid currentColor; gap:8px; display:inline-flex; align-items:center; padding:7px 12px; font:inherit; font-size:12px; font-weight:700; }
+.budget-bill-filters .is-paid { color:var(--good); background:color-mix(in srgb, var(--good) 9%, var(--surface-1)); }
+.budget-bill-filters .is-not-paid { color:var(--critical); background:color-mix(in srgb, var(--critical) 9%, var(--surface-1)); }
+.budget-bill-filters button[aria-pressed="true"] { box-shadow:inset 0 0 0 1px currentColor; }
+.budget-bill-filters button:focus-visible { outline:2px solid var(--s1); outline-offset:3px; }
+[data-budget-bill-bucket][hidden] { display:none; }
+.budget-category-bar.is-over-plan .budget-category-fill { background:var(--critical); }
+.budget-category-over-limit { position:absolute; right:-3px; top:-5px; border-radius:50%; width:18px; height:18px; text-align:center; line-height:18px; font-size:12px; font-weight:750; color:var(--surface-1); background:var(--critical); }
+.budget-savings-goals ul { list-style:none; margin:14px 0; padding:0; }
+.budget-savings-goals li { padding:12px 0; border-bottom:1px solid var(--border); }
+.budget-savings-goals li > div { display:flex; align-items:start; justify-content:space-between; gap:12px; }
+.budget-savings-goals li strong { font-size:13px; overflow-wrap:anywhere; }
+.budget-savings-goals li p,.budget-goal-notice { font-size:12px; color:var(--text-secondary); margin:6px 0 0; }
+.budget-goal-state { color:var(--warning); font-size:11px; font-weight:650; white-space:nowrap; padding:3px 7px; border-radius:99px; background:color-mix(in srgb,var(--warning) 9%,var(--surface-1)); }
+.budget-savings-accounts { margin:20px 0; padding:16px; border:1px solid var(--border); border-radius:14px; }
+.budget-savings-accounts > summary { cursor:pointer; color:var(--text-secondary); font-size:13px; }
+.budget-savings-accounts > summary:focus-visible { outline:2px solid var(--s1); outline-offset:4px; }
+.budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-waterfall-track { display:none; }
+.budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-value { grid-column:4; }
+.budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-chevron { grid-column:5; }
+@media(max-width:1100px) {
+  .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-value { grid-column:3; }
+  .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-chevron { grid-column:4; }
+}
 .budget-surface-period .calendar-waterfall { position:relative; }
 .budget-period-info > summary { position:absolute; right:0; top:8px; padding:6px; color:var(--s1); cursor:pointer; font-size:20px; list-style:none; }
 .budget-period-info > summary::-webkit-details-marker { display:none; }
@@ -466,7 +490,10 @@
 .budget-bill-state { display:block; margin-top:4px; color:var(--text-secondary); font-size:11px; }
 .budget-bill-state i { display:inline-block; width:6px; height:6px; border-radius:99px; background:var(--text-secondary); margin-right:6px; }
 .is-check .budget-bill-state i { background:var(--warning); }
+.is-due .budget-bill-state { color:var(--critical); }
+.is-due .budget-bill-state i { background:var(--critical); }
 .is-paid .budget-bill-state i { background:var(--good); }
+.is-paid .budget-bill-state { color:var(--good); }
 .is-pending .budget-bill-state i { background:var(--s1); }
 .budget-bill-amount { text-align:right; font-size:14px; font-weight:650; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; max-width:120px; }
 .budget-browse-paid > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; list-style:none; cursor:pointer; padding:8px 4px; }

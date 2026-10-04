@@ -2735,6 +2735,9 @@ function budgetMonthPlanSpendSchedule(src, operatingRate = false) {
     const alloc = Forecast.paydayAllocation(src.plan, asOf,
       Object.assign({}, resolvedOpts, { majorPlans: plans }));
     schedule = Forecast.planSpendPaydayFunding(src.plan, asOf, sim, seq, plans, alloc);
+    // Names remain evidence even when savings/funding calculations are withheld.
+    // This is Forecast's original ordered roster, not a page-derived goal plan.
+    if (schedule) schedule = Object.assign({}, schedule, { fundingRoster: seq });
     // Enrich only the schedule's own published undated roster with the
     // matching fundingSequence metadata. Today may be withheld independently;
     // its roster is not authority for the exact payday. No amount is summed,
@@ -5037,6 +5040,19 @@ function wireBudgetWindow(mount, ctx, sheet) {
 
 function wireBudgetBrowse(mount, ctx, sheet) {
   if (!sheet) return;
+  mount.querySelectorAll('[data-budget-bill-filter]').forEach(button => button.addEventListener('click', () => {
+    const section = button.closest('[data-budget-browse="bills"]');
+    const choice = button.getAttribute('data-budget-bill-filter');
+    const selected = button.getAttribute('aria-pressed') !== 'true' ? choice : null;
+    section.querySelectorAll('[data-budget-bill-filter]').forEach(control =>
+      control.setAttribute('aria-pressed', String(control.getAttribute('data-budget-bill-filter') === selected)));
+    section.querySelectorAll('[data-budget-bill-bucket]').forEach(bucket => {
+      bucket.hidden = !!selected && bucket.getAttribute('data-budget-bill-bucket') !== selected;
+    });
+    section.querySelector('[data-budget-bill-filter-status]').textContent = selected === 'paid'
+      ? 'Showing confirmed paid bills.' : selected === 'not-paid'
+        ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.';
+  }));
   mount.querySelectorAll('[data-budget-category-open]').forEach(button => button.addEventListener('click', () => {
     const source = mount.querySelector(`[data-budget-category="${CSS.escape(button.getAttribute('data-budget-category-open'))}"]`);
     if (source) sheet.open(source, button, source.querySelector('h3')?.textContent || 'Category evidence', '.household-budget-spent-summary');
@@ -5833,17 +5849,15 @@ function budgetSpendingHistoryLabel(period) {
 function budgetCategoryBarHtml(row, state, pace) {
   // Dimensionless geometry from published amounts; never a new money total.
   const scale = state.spentKnown && budgetBrowseKnown(row.planned) && row.planned >= 0
-    ? Math.max(row.planned, row.spent) : null;
+    ? row.planned : null;
   const numeric = !state.other && scale > 0;
   const fill = numeric ? Math.max(0, Math.min(row.spent, row.planned)) / scale * 100 : 0;
-  const planAt = numeric ? row.planned / scale * 100 : null;
-  const overWidth = numeric && state.kind === 'over' && budgetBrowseKnown(row.overspend)
-    ? Math.min(100 - planAt, row.overspend / scale * 100) : 0;
+  const overPlan = numeric && row.spent > row.planned;
   const unavailable = state.other || !state.spentKnown || !budgetBrowseKnown(row.planned);
-  return `<span class="budget-category-bar${unavailable ? ' is-hatched' : ''}" aria-hidden="true" data-budget-category-scale="${numeric ? 'numeric' : unavailable ? 'unavailable' : 'no-scale'}">
+  return `<span class="budget-category-bar${unavailable ? ' is-hatched' : ''}${overPlan ? ' is-over-plan' : ''}" aria-hidden="true" data-budget-category-scale="${numeric ? 'numeric' : unavailable ? 'unavailable' : 'no-scale'}">
     ${numeric ? `<span class="budget-category-fill" style="width:${fill}%"></span>` : ''}
-    ${overWidth > 0 ? `<span class="budget-category-over" style="left:${planAt}%;width:${overWidth}%"></span><span class="budget-category-plan-mark" style="left:${planAt}%"></span>` : ''}
-    ${numeric && pace != null ? `<span class="budget-category-pace" style="left:${pace * planAt}%"></span>` : ''}
+    ${overPlan ? '<span class="budget-category-over-limit">!</span>' : ''}
+    ${numeric && pace != null ? `<span class="budget-category-pace" style="left:${pace * 100}%"></span>` : ''}
   </span>`;
 }
 
@@ -5871,7 +5885,7 @@ function budgetSpendingSectionHtml(period, ctx) {
     if (row.informational) return `<p class="budget-browse-note">${budgetBrowseEscape(row.label)} · ${budgetBrowseEscape(row.note || 'Included in Bills')}</p>`;
     const state = budgetCategoryPresentation(row);
     const meta = state.other ? budgetBrowseEscape(row.note || 'Not yet assigned to a category')
-      : `${budgetBrowseMoney(row.spent, row.trust)} of ${budgetBrowseMoney(row.planned, state.trust)}`;
+      : `<span class="budget-cash-sr">Spent </span>${budgetBrowseMoney(row.spent, row.trust)}<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>${budgetBrowseMoney(row.planned, state.trust)}`;
     return `<button type="button" class="budget-category-row is-${state.kind}" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="spending" aria-haspopup="dialog">
       <span class="budget-category-name">${budgetBrowseEscape(row.label || 'Category')}</span><span class="budget-category-status">${state.label}</span>
       <span class="budget-category-meta">${meta}</span><span class="budget-category-link">Transactions <span aria-hidden="true">›</span></span>
@@ -5889,11 +5903,12 @@ function budgetSpendingSectionHtml(period, ctx) {
 }
 
 function budgetBillPresentation(row) {
-  if (row.status === 'PAID') return { kind: 'paid', label: row.settlement === 'opening' ? 'Included in opening' : 'Paid' };
   if (row.status === 'pending' || row.settlement === 'pending') return { kind: 'pending', label: 'Payment pending' };
-  if (row.needsDate || row.status === 'needs-date') return { kind: 'check', label: 'Needs a date' };
   if (row.settlement === 'unverified') return { kind: 'check', label: 'Not confirmed' };
-  if (row.settlement === 'upcoming') return { kind: 'due', label: 'To pay' };
+  if (row.settlement === 'unknown' || row.status === 'unknown') return { kind: 'unknown', label: 'Status unavailable' };
+  if (row.status === 'PAID' || row.settlement === 'represented') return { kind: 'paid', label: 'Paid' };
+  if (row.needsDate || row.status === 'needs-date') return { kind: 'check', label: 'Needs a date' };
+  if (row.settlement === 'upcoming') return { kind: 'due', label: 'Not paid' };
   return { kind: 'unknown', label: 'Status unavailable' };
 }
 
@@ -5925,13 +5940,19 @@ function budgetBillsSectionHtml(period, ctx) {
     : `<span data-budget-browse-bills-remaining>${budgetBrowseMoney(period.remainingBills)}</span> left to pay or confirm`;
   return `<section class="budget-browse-card budget-browse-bills" data-budget-browse="bills" data-budget-bills-remaining-scope="${historical ? withholdActionableRemaining ? 'historical-unconfirmed' : 'historical-settlement' : 'actionable'}" aria-labelledby="budget-bills-heading">
     <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : historical ? ' · completed' : ''}</p><h2 id="budget-bills-heading" tabindex="-1">${remainingHeading}</h2>${historical ? `<p class="budget-browse-sub">${withholdActionableRemaining ? 'Settlement not fully confirmed. ' : ''}Historical settlement evidence, not an amount due now. Unconfirmed entries may already be paid.</p>` : ''}</div></header>
-    <div class="budget-browse-counts">${[['due', 'to pay'], ['pending', 'pending'], ['check', 'to confirm'], ['unknown', 'unavailable']].filter(([key]) => groups[key].length).map(([key, label]) => `<span class="budget-browse-pill is-${key}">${groups[key].length} ${label}</span>`).join('')}</div>
+    <div class="budget-browse-counts budget-bill-filters" role="group" aria-label="Filter bills by confirmed payment">
+      ${[['paid', 'PAID', groups.paid.length], ['not-paid', 'NOT PAID', rows.length - groups.paid.length]].map(([key, label, count]) => `<button type="button" class="budget-browse-pill is-${key}" data-budget-bill-filter="${key}" aria-pressed="false" aria-controls="budget-bill-bucket-${key}" aria-label="${label === 'PAID' ? 'Paid' : 'Not confirmed paid'} bills: ${count}. Click again to show all bills.">${label}<span>${count}</span></button>`).join('')}
+    </div><p class="budget-cash-sr" data-budget-bill-filter-status role="status">Showing all bills.</p>
     <div class="budget-bills-progress${ratioKnown ? '' : zeroKnown ? ' is-no-scale' : ' is-hatched'}" aria-hidden="true">${ratioKnown ? `<span style="width:${period.paidBills / period.totalBillsThisPeriod * 100}%"></span>` : ''}</div>
     <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} paid or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
-    ${section('Coming up', rows.filter(row => ['due', 'pending'].includes(budgetBillPresentation(row).kind)))}
-    ${section('To confirm', groups.check, 'No confirmed settlement is shown. The bill may already be paid — check before paying again.')}
-    ${section('Status unavailable', groups.unknown, 'No paid or due claim is inferred for these entries.')}
-    ${groups.paid.length ? `<details class="budget-bill-group budget-browse-paid"><summary><h3>Paid or included in opening · ${groups.paid.length}</h3><span aria-hidden="true">⌄</span></summary>${groups.paid.map(budgetBillBrowseRowHtml).join('')}</details>` : ''}
+    <div id="budget-bill-bucket-not-paid" data-budget-bill-bucket="not-paid">
+      ${section('Not paid', groups.due)}${section('Pending', groups.pending)}
+      ${section('To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
+      ${section('Status unavailable', groups.unknown)}
+      ${rows.length === groups.paid.length ? '<p class="budget-browse-note">No bills awaiting payment confirmation.</p>' : ''}
+    </div><div id="budget-bill-bucket-paid" class="budget-browse-paid" data-budget-bill-bucket="paid">
+      ${section('Paid', groups.paid)}${!groups.paid.length ? '<p class="budget-browse-note">No confirmed paid bills in this period.</p>' : ''}
+    </div>
     ${!rows.length ? '<p class="budget-browse-note">No bill occurrences published for this period.</p>' : ''}
     <footer><p>The plan deducts ${budgetBrowseMoney(period.periodBillLoad, period.periodBillLoadTrust)} — assigned amounts, excluding bills settled in the opening. Payment evidence remains available for each bill.</p><button type="button" data-budget-browse-evidence="04">Why</button></footer>
   </section>`;
@@ -5967,6 +5988,34 @@ const budgetV3Known = (amount, trust) => typeof amount === 'number' && Number.is
 const budgetV3Money = (amount, trust) => budgetV3Known(amount, trust)
   ? `${trust === 'estimated' ? '<span class="budget-v3-est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="budget-cash-sr">calculated </span>'}${money2(amount)}`
   : '<span class="budget-v3-unknown">Unavailable</span>';
+
+function budgetSavingsGoalsHtml(ctx, period, schedule) {
+  const funding = period?.plannedCostFunding;
+  // A proposal is not fulfillment. Incumbent actualSaved is a balance, not
+  // a confirmed contribution for this period. Until Forecast publishes that
+  // distinction, every goal's fulfillment remains explicitly not confirmed.
+  const ready = funding?.basis === 'selected-Budget-period' && funding.asOf === ctx.asOf
+    && funding.start === period?.start && funding.end === period?.end
+    && ['ready', 'funding-gap'].includes(funding.status);
+  const published = [...(Array.isArray(funding?.items) ? funding.items : []),
+    ...(Array.isArray(funding?.unscheduled) ? funding.unscheduled : [])];
+  const fallback = [...(Array.isArray(schedule?.fundingRoster) ? schedule.fundingRoster : []),
+    ...(Array.isArray(schedule?.costs) ? schedule.costs : []),
+    ...(Array.isArray(schedule?.unscheduled) ? schedule.unscheduled : [])];
+  const seen = new Set();
+  const rows = [...published, ...fallback].filter(row => row && row.id && !seen.has(row.id) && seen.add(row.id));
+  const named = rows.map(row => {
+    const label = typeof row.label === 'string' && row.label.trim() && row.label !== row.id
+      ? row.label : 'Goal name not confirmed';
+    const proposal = ready && published.includes(row) && budgetV3Known(row.contribution, funding.trust);
+    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"><div><strong>${budgetV3Escape(label)}</strong><span class="budget-goal-state">Not confirmed</span></div><p>${proposal ? `${budgetV3Money(row.contribution, funding.trust)} proposed this period` : 'Period contribution unavailable'}</p></li>`;
+  }).join('');
+  return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>
+    <ul>${named || '<li>Goal contributions unavailable for this period.</li>'}</ul>
+    <p class="budget-goal-notice">Saved contributions are not confirmed.</p>
+    <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
+    <div data-budget-funding-savings hidden>${typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(ctx.advice?.savingsInventory) : '<p>Savings inventory unavailable. Saved balances and assignments are unknown.</p>'}</div></div>`;
+}
 
 function budgetUpcomingFundingHtml(ctx) {
   const current = (ctx.advice?.payPeriodViews || []).find(row => row?.timelineRole === 'current');
@@ -6047,7 +6096,7 @@ function budgetUpcomingFundingHtml(ctx) {
         <div class="budget-funding-context" data-budget-funding-context="today"${budgetFundingLens === 'today' ? '' : ' hidden'}><div><span>Capacity to propose now</span><strong>${budgetV3Money(todayReady ? today.availableNow : null, today?.trust)}</strong></div><p>Capacity is separate from the proposed contribution. Future receipts are not current cash.</p></div>
         <div class="budget-funding-context" data-budget-funding-context="payday"${budgetFundingLens === 'payday' ? '' : ' hidden'}><div><span>Projected protected after payday</span><strong>${budgetV3Money(paydayReady ? payday.protectedAfterPayday : null, schedule?.fundingTrust)}</strong></div><p>This is projected protection for the funding schedule, not a Bills-only period carryover or a saved balance.</p></div>
         <p>Proposals do not mean money is saved or moved.</p><button type="button" class="budget-surface-link" data-budget-funding-how aria-haspopup="dialog">How this works</button></div>
-        <div class="budget-surface-card"><p class="budget-surface-eyebrow">Savings assigned to goals</p><h3>Assignments need evidence</h3><p>Unconfirmed assignments remain unknown. See the evidence for saved balances and destinations.</p><button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Savings evidence</button><div data-budget-funding-savings hidden>${typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(ctx.advice?.savingsInventory) : '<p>Savings inventory unavailable. Actual saved balances and assignments are unknown.</p>'}</div></div></aside>
+        ${budgetSavingsGoalsHtml(ctx, selected, schedule)}</aside>
     </div>${currentEvidence}</section>`;
 }
 
@@ -6447,7 +6496,7 @@ function renderPlan(d, periods, history) {
   }));
   const fundingPlan = advice.funding || null;
   const inventoryMount = $('savings-inventory');
-  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = SavingsInventory.html(advice.savingsInventory);
+  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = `<details class="budget-savings-accounts"><summary>Savings accounts &amp; evidence</summary>${SavingsInventory.html(advice.savingsInventory)}</details>`;
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   const capView = weeklyCapView(advice, state.weeklyVariable);

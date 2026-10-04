@@ -56,11 +56,13 @@ async function geometry(page) {
       };
       await boot();
       await geometry(page);
-      const trackBounds = await page.locator('.budget-waterfall-track').evaluateAll(rows => rows.map(row => {
+      const trackBounds = await page.locator('.budget-waterfall-track').evaluateAll(rows => rows.filter(row => getComputedStyle(row).display !== 'none').map(row => {
         const r = row.getBoundingClientRect(); return [r.left, r.width];
       }));
       assert.ok(trackBounds.every(([left, width]) => Math.abs(left - trackBounds[0][0]) < .01
-        && Math.abs(width - trackBounds[0][1]) < .01), 'all waterfall rows share the same rendered track origin and width');
+        && Math.abs(width - trackBounds[0][1]) < .01), 'visible deduction tracks share the same rendered origin and width');
+      for (const id of ['05', '07']) assert.equal(await page.locator(`[data-operating-question="${id}"] .budget-waterfall-track`).isVisible(), false,
+        'derived balance rows show their numeric value without a progress claim');
       const hero = page.locator('[data-budget-period-result]');
       assert.match(await hero.innerText(), /1,632\.01/); // 4050 - 1665 - 752.99
       assert.match(await hero.innerText(), /estimated/);
@@ -119,7 +121,8 @@ async function geometry(page) {
         return r.top >= (modalBody ? modalBody.getBoundingClientRect().top : 0) && r.bottom <= limit;
       });
       const grocery = page.locator('[data-budget-category-open="groceries"][data-budget-browse-origin="spending"]');
-      assert.match(await grocery.innerText(), /308\.55 of \$450\.00[\s\S]*141\.45 left|141\.45 left[\s\S]*308\.55 of \$450\.00/);
+      assert.match(await grocery.locator('.budget-category-meta').innerText(), /308\.55[\s\S]*\/[\s\S]*450\.00/);
+      assert.match(await grocery.locator('.budget-category-status').innerText(), /141\.45 left/);
       const fill = await grocery.locator('.budget-category-fill').evaluate(el => parseFloat(el.style.width));
       assert.ok(Math.abs(fill - 308.55 / 450 * 100) < .001, 'independent category ratio within CSS percentage serialization precision');
       const hatch = await page.locator('[data-budget-category-open="other-spending"][data-budget-browse-origin="spending"] .budget-category-bar').evaluate(el => {
@@ -148,8 +151,17 @@ async function geometry(page) {
         assert.equal(await focusVisible(trigger), true, 'category Back focus is visible above the dock');
         assert.equal(await page.locator(`[data-budget-category="${id}"]`).evaluate(node => node === window.__browseSource), true, `${width}px ${id}: original evidence node restored after Back`);
       }
-      const paid = page.locator('.budget-browse-paid > summary');
+      const paid = page.locator('[data-budget-bill-filter="paid"]');
       await paid.focus(); await page.keyboard.press('Enter');
+      assert.equal(await paid.getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('[data-budget-bill-bucket="not-paid"]').isVisible(), false);
+      assert.equal(await page.locator('[data-budget-bill-bucket="paid"]').isVisible(), true);
+      await page.keyboard.press('Enter');
+      const notPaid = page.locator('[data-budget-bill-filter="not-paid"]');
+      await notPaid.focus(); await page.keyboard.press('Enter');
+      assert.equal(await page.locator('[data-budget-bill-bucket="paid"]').isVisible(), false);
+      assert.match(await page.locator('[data-budget-bill-bucket="not-paid"]').innerText(), /Not paid[\s\S]*Not confirmed/);
+      await page.keyboard.press('Enter');
       for (const id of ['card-minimum', 'internet', 'hydro', 'mortgage']) {
         const trigger = page.locator(`[data-budget-bill-open="${id}"][data-budget-browse-origin="bills"]`);
         await page.locator(`[data-period-bill="${id}"]`).evaluate(node => { window.__browseBill = node.closest('[data-bill-detail]'); });
@@ -165,7 +177,7 @@ async function geometry(page) {
         assert.equal(await focusVisible(trigger), true, 'bill Back focus is visible above the dock');
         assert.equal(await page.locator(`[data-period-bill="${id}"]`).evaluate(node => node.closest('[data-bill-detail]') === window.__browseBill), true);
       }
-      await paid.click();
+      assert.equal(await notPaid.getAttribute('aria-pressed'), 'false', 'clicking a selected filter restores all bills');
       // Capture separately from original-node identity checks: Chromium's
       // full-page capture can dispatch a phone media-query rerender.
       for (const [trigger, name] of [[grocery, 'category'], [page.locator('[data-budget-bill-open="hydro"][data-budget-browse-origin="bills"]'), 'bill']]) {
@@ -406,7 +418,7 @@ async function geometry(page) {
         assert.equal((await bills.locator('h2').innerText()), 'Completed-period bills');
         assert.match(await bills.innerText(), /Historical settlement evidence, not an amount due now/);
         if (settlement === 'unverified') assert.match(await bills.innerText(), /To confirm[\s\S]*Synthetic historical service/);
-        else await bills.locator('.budget-browse-paid > summary').click();
+        else assert.equal(await bills.locator('[data-budget-bill-bucket="paid"]').isVisible(), true);
         assert.equal((await bills.innerText()).includes('left to pay or confirm'), false);
         await geometry(page);
         if (['missing', 'full'].includes(coverage)) await screenshot({
@@ -417,10 +429,10 @@ async function geometry(page) {
         if (observed) assert.match(await page.locator('[data-budget-detail-body]').innerText(), /Synthetic historical grocer[\s\S]*47\.25/);
         await page.keyboard.press('Escape');
         assert.equal(await groceries.evaluate(el=>el===document.activeElement), true);
-        if (settlement === 'paid' && !await bills.locator('.budget-browse-paid').evaluate(el=>el.open)) {
-          await bills.locator('.budget-browse-paid > summary').focus();
+        if (settlement === 'paid') {
+          await bills.locator('[data-budget-bill-filter="paid"]').focus();
           await page.keyboard.press('Enter');
-          assert.equal(await bills.locator('.budget-browse-paid').evaluate(el=>el.open), true);
+          assert.equal(await bills.locator('[data-budget-bill-bucket="paid"]').isVisible(), true);
         }
         const bill = bills.locator('[data-budget-bill-open="historical-service"]');
         await bill.focus();
@@ -440,7 +452,11 @@ async function geometry(page) {
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');
       assert.equal(await page.locator('[data-budget-cash-withheld]').isVisible(), true);
       assert.equal(await page.locator('.budget-cash-chart').count(), 0);
+      const accounts = page.locator('.budget-savings-accounts');
+      assert.equal(await accounts.evaluate(node => node.open), false);
+      await accounts.locator('summary').focus(); await page.keyboard.press('Enter');
       assert.match(await page.locator('#savings-inventory').innerText(), /Assignments unknown/);
+      await page.keyboard.press('Enter');
       await page.locator('.budget-period-info > summary').click();
       await page.locator('[data-from-today-proposal] summary').click();
       assert.match(await page.locator('[data-budget-detail-body]').innerText(), /withheld|withholding/);
