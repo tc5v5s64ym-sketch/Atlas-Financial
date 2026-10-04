@@ -56,7 +56,12 @@ async function geometry(page) {
         && Math.abs(width - trackBounds[0][1]) < .01), 'all waterfall rows share the same rendered track origin and width');
       const hero = page.locator('[data-budget-period-result]');
       assert.match(await hero.innerText(), /1,632\.01/); // 4050 - 1665 - 752.99
-      assert.match(await hero.innerText(), /estimated[\s\S]*Before savings/);
+      assert.match(await hero.innerText(), /estimated/);
+      assert.match(await hero.innerText(), /Before savings/);
+      assert.equal(await page.locator('.budget-surface-card').count(), 1);
+      assert.equal(await page.locator('[data-budget-period-result]').count(), 1);
+      assert.equal(await page.locator('[data-operating-question="07"] .budget-step-body').innerText().then(text => text.includes('$1,632.01')), false,
+        'expanded result explains scope without repeating the final amount');
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');
       assert.match(await page.locator('.budget-cash-sub').innerText(), /Bills account only/);
       assert.equal(await page.locator('[data-live-current-balance-amount]').count(), 1);
@@ -66,12 +71,54 @@ async function geometry(page) {
       assert.equal(await page.locator('[data-budget-cash-keep]').isVisible(), false);
       assert.equal(await page.locator('[data-from-today-proposal]').isVisible(), false);
       assert.equal(await page.locator('.budget-surface-today').evaluate(el => getComputedStyle(el).position), 'static');
+      assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 14.*Aug 27/);
+      assert.match(await page.locator('[data-budget-window-progress]').innerText(), /Day 7 of 14[\s\S]*Aug 28.*8 days/);
+      assert.equal(await page.locator('.budget-window-days > span').count(), 14);
+      assert.equal(await page.locator('.budget-window-days > .is-today').count(), 1);
+      assert.equal(await page.locator('[data-budget-wheel="period"]').isVisible(), false);
+      const selectedId = await page.locator('[data-pay-period-swipe]').getAttribute('data-selected-pay-period');
+      const choosePeriod = page.locator('[data-budget-window-choose]');
+      await choosePeriod.focus(); await page.keyboard.press('Enter');
+      assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
+      const periodWheel = page.locator('[data-budget-wheel="period"] [aria-current="true"]');
+      assert.equal(await periodWheel.evaluate(el => el === document.activeElement), true);
+      if (width === 390) await page.screenshot({ path: path.join(screenshots, 'period-picker-390.png'), fullPage: true });
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
+      assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
+      assert.equal(await periodWheel.evaluate(el => el === document.activeElement), true);
+      assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.locator('[data-pay-period-swipe]').getAttribute('data-selected-pay-period'), selectedId);
+      await page.keyboard.press('Escape');
+      assert.equal(await choosePeriod.evaluate(el => el === document.activeElement), true);
+      const nextWindow = page.locator('[data-budget-window-step="1"]');
+      await nextWindow.focus(); await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
+      assert.equal(await nextWindow.evaluate(el => el === document.activeElement), true);
+      assert.equal(await page.locator('.budget-window-days > .is-today').count(), 0);
+      await page.locator('[data-budget-window-step="-1"]').click();
+      assert.equal(await page.locator('[data-pay-period-swipe]').getAttribute('data-selected-pay-period'), selectedId);
+      if (width < 960) for (const section of ['spending', 'bills', 'upcoming']) {
+        const trigger = page.locator(`[data-budget-section="${section}"]`);
+        await trigger.focus(); await page.keyboard.press('Enter');
+        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
+        const detail = await page.locator('[data-budget-detail-body]').innerText();
+        assert.match(detail, section === 'spending' ? /Synthetic grocer|Groceries/
+          : section === 'bills' ? /1,400\.00|Mortgage/ : /August 28 payday/);
+        if (width === 390) await page.screenshot({ path: path.join(screenshots, `${section}-sheet-390.png`), fullPage: true });
+        await page.keyboard.press('Escape');
+        assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+      }
+      if (width < 960) await page.locator('[data-budget-section="overview"]').click();
       await page.screenshot({ path: path.join(screenshots, `current-${width}.png`), fullPage: true });
       const periodCropStyle = '.sitenav-household { visibility:hidden !important; }';
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `period-${width}.png`), style: periodCropStyle });
-      // Native disclosures remain reachable, keep focus, and expose the real evidence.
+      // The compact sheet moves the incumbent evidence node, keeps the page
+      // inert, and returns to the exact summary without duplicating its figures.
       for (const id of ['02', '04', '05', '06', 'savings', '07']) {
         const summary = page.locator(`[data-operating-question="${id}"] > details > summary`);
+        await page.locator(`[data-operating-question="${id}"] .budget-step-body`).evaluate(node => { window.__originalBudgetEvidence = node; });
         await summary.focus();
         const focusBounds = await summary.evaluate(el => {
           const r = el.getBoundingClientRect(), dock = document.querySelector('.sitenav-household');
@@ -80,13 +127,20 @@ async function geometry(page) {
         });
         assert.ok(focusBounds.top >= 0 && focusBounds.bottom <= focusBounds.limit, `period focus clear of dock: ${JSON.stringify(focusBounds)}`);
         await page.keyboard.press('Enter');
-        assert.equal(await summary.evaluate(el => el.parentElement.open), true);
-        assert.equal(await summary.evaluate(el => el === document.activeElement), true);
+        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
+        assert.equal(await page.locator('[data-budget-detail-body] > .budget-step-body').evaluate(el => el === window.__originalBudgetEvidence), true);
+        assert.equal(await page.locator('[data-budget-detail-close]').evaluate(el => el === document.activeElement), true);
+        assert.equal(await page.evaluate(() => document.body.classList.contains('budget-detail-open')), true);
         await geometry(page);
-        if (id === '04') assert.match(await page.locator('[data-operating-question="04"]').innerText(), /1,400\.00|Mortgage/);
-        if (id === '06') assert.match(await page.locator('[data-operating-question="06"]').innerText(), /Synthetic grocer|Groceries/);
-        await page.keyboard.press('Space');
+        if (id === '04') assert.match(await page.locator('[data-budget-detail-body]').innerText(), /1,400\.00|Mortgage/);
+        if (id === '06') assert.match(await page.locator('[data-budget-detail-body]').innerText(), /Synthetic grocer|Groceries/);
+        await page.keyboard.press('Escape');
         assert.equal(await summary.evaluate(el => el.parentElement.open), false);
+        assert.equal(await summary.evaluate(el => el === document.activeElement), true);
+        assert.equal(await page.locator(`[data-operating-question="${id}"] .budget-step-body`).evaluate(el => el === window.__originalBudgetEvidence), true);
+        await page.keyboard.press('Space');
+        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
+        await page.keyboard.press('Escape');
       }
       // Compact overview: ⓘ opens the whole incumbent evidence, with exact
       // return focus. Next payday opens the exact published funding row.
@@ -99,7 +153,14 @@ async function geometry(page) {
       assert.match(await page.locator('[data-budget-cash-answer]').innerText(), /873\.50[\s\S]*501\.50/);
       assert.match(await page.locator('.budget-cash-plan-scope').innerText(), /Across chequing accounts/);
       await page.locator('[data-budget-cash-detail]').screenshot({ path: path.join(screenshots, `today-details-${width}.png`) });
-      assert.equal(await page.locator('[data-budget-cash-back]').evaluate(el => el === document.activeElement), true);
+      assert.equal(await page.locator('[data-budget-detail-close]').evaluate(el => el === document.activeElement), true);
+      await page.keyboard.press('Shift+Tab');
+      assert.equal(await page.evaluate(() => !!document.activeElement.closest('[data-budget-detail-sheet]')), true);
+      await page.keyboard.press('Tab');
+      assert.equal(await page.locator('[data-budget-detail-close]').evaluate(el => el === document.activeElement), true);
+      // Native modal background is inert, including programmatic focus.
+      await page.locator('[data-budget-granularity="month"]').evaluate(el => el.focus());
+      assert.equal(await page.evaluate(() => !!document.activeElement.closest('[data-budget-detail-sheet]')), true);
       await page.keyboard.press('Escape');
       assert.equal(await page.locator('[data-budget-today-evidence]').isVisible(), false);
       assert.equal(await how.evaluate(el => el === document.activeElement), true);
@@ -115,8 +176,20 @@ async function geometry(page) {
       assert.equal(await funding.evaluate(el => el.open), true);
       assert.equal(await funding.locator('summary').evaluate(el => el === document.activeElement), true);
       assert.match(await funding.innerText(), /August 28 payday/);
+      if (width === 390) {
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.waitForFunction(() => document.querySelector('[data-budget-detail-sheet]')?.open
+          && !!document.activeElement.closest('[data-budget-detail-sheet]'));
+        await page.screenshot({ path: path.join(screenshots, 'next-payday-resized-1440.png'), fullPage: true });
+        await page.locator('[data-budget-detail-close]').click();
+        assert.equal(await nextPayday.evaluate(el => el === document.activeElement), true,
+          '390-to-1440 resize returns to Next payday, never Info or body');
+        await page.setViewportSize({ width: 390, height: 1000 });
+        await nextPayday.focus(); await page.keyboard.press('Enter');
+        assert.equal(await funding.locator('summary').evaluate(el => el === document.activeElement), true);
+      }
       await geometry(page);
-      await page.locator('[data-budget-cash-back]').click();
+      await page.locator('[data-budget-detail-close]').click();
       assert.equal(await nextPayday.evaluate(el => el === document.activeElement), true);
       await how.click();
       const todaySummaries = page.locator('.budget-surface-today [data-payday-breakdown] > summary');
@@ -131,7 +204,7 @@ async function geometry(page) {
         await page.keyboard.press('Enter');
         await geometry(page);
       }
-      await page.locator('[data-budget-cash-back]').click();
+      await page.locator('[data-budget-detail-close]').click();
       assert.equal(await how.evaluate(el => el === document.activeElement), true);
       // Rerender restores the switch or picker instead of falling back to body.
       const month = page.locator('[data-budget-granularity="month"]');
@@ -186,7 +259,7 @@ async function geometry(page) {
       assert.match(await page.locator('#savings-inventory').innerText(), /Assignments unknown/);
       await page.locator('.budget-period-info > summary').click();
       await page.locator('[data-from-today-proposal] summary').click();
-      assert.match(await page.locator('[data-from-today-proposal]').innerText(), /withheld|withholding/);
+      assert.match(await page.locator('[data-budget-detail-body]').innerText(), /withheld|withholding/);
       await page.screenshot({ path: path.join(screenshots, `withheld-${width}.png`), fullPage: true });
       data = fx.served({ spendingCash: -50, savingsCash: 8000 }); await boot(); await geometry(page);
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');

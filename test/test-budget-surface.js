@@ -84,8 +84,10 @@ const step = (html, n) => {
   return m ? text(m[0]) : '';
 };
 const section = (html, kind) => {
+  if (kind === 'period') return html.slice(html.indexOf('<!--budget-current-position-end-->'));
   const start = html.indexOf(`data-budget-surface-section="${kind}"`);
   if (start < 0) return '';
+  if (kind === 'today') return html.slice(start, html.indexOf('<!--budget-current-position-end-->', start));
   const next = html.indexOf('data-budget-surface-section="', start + 10);
   return html.slice(start, next < 0 ? html.length : next);
 };
@@ -93,6 +95,33 @@ const section = (html, kind) => {
 console.log('\n=== one active renderer ===');
 const p = page();
 const html = p.render(fx.served());
+console.log('\n=== published window above the compact overview ===');
+ok(html.indexOf('data-budget-window-header') < html.indexOf('data-live-current-balance'),
+  'the selected window precedes Current balance in the one primary section');
+ok((html.match(/class="budget-surface-card /g) || []).length === 1,
+  'Current balance and period deductions share one overview card');
+ok((html.match(/data-budget-period-result/g) || []).length === 1
+  && (html.match(/\$1,632\.01/g) || []).length === 1,
+  'the final result is published once at the end, including its expanded evidence');
+ok(/data-budget-window-range>Aug 14 – Aug 27</.test(html),
+  'the title uses the actual published bounds rather than the This payday label');
+ok(/<b>Day 7<\/b> of 14/.test(html) && /Next payday <b>Aug 28<\/b> · in 8 days/.test(html),
+  'independent date identity: Aug 20 is day seven of Aug 14–27; Aug 28 is eight days later');
+ok((html.match(/data-budget-wheel="period"/g) || []).length === 1
+  && /data-budget-window-picker hidden/.test(html), 'one real period wheel is available on demand');
+ok(/data-budget-detail-sheet/.test(html) && ['overview', 'spending', 'bills', 'upcoming'].every(key =>
+  html.includes(`data-budget-section="${key}"`)), 'the compact section controls and one shared sheet are present');
+const dateContext = vm.runInContext(`({ advice: { defaultView: {asOf: '2026-08-20'}, payPeriodViews: [
+  {id: 'invented-invalid-dates', start: '2026-02-30', end: '2026-03-12', timelineRole: 'current'}] } })`, p.context);
+p.context.dateContext = dateContext;
+const missingDates = vm.runInContext('budgetWindowHeaderHtml(dateContext)', p.context);
+ok(/Date progress unavailable/.test(missingDates) && !/<b>Day /.test(missingDates),
+  'invalid dates withhold progress rather than normalizing into a fictitious day');
+const missingAsOf = vm.runInContext(`dateContext.advice.payPeriodViews[0].start = '2026-08-14';
+  dateContext.advice.payPeriodViews[0].end = '2026-08-27'; dateContext.asOf = '2026-08-20';
+  dateContext.advice.defaultView.asOf = null; budgetWindowHeaderHtml(dateContext)`, p.context);
+ok(/Date progress unavailable/.test(missingAsOf) && !/<b>Day /.test(missingAsOf),
+  'an explicitly missing published as-of does not fall back to another date');
 ok(/data-budget-surface="pay-period"/.test(html), 'renderPlan mounts the active Budget surface in pay-period view');
 ok(p.context.__retainedCalls === 0, 'the retained operatingSurfaceHtml is not called on the page path',
   `${p.context.__retainedCalls} call(s)`);
@@ -316,8 +345,10 @@ p.rerender('planPayPeriodId = null; __ctx.planPayPeriodId = null');
 console.log('\n=== month view and month-to-pay-period drilldown ===');
 const monthHtml = p.rerender("budgetGranularity = 'month'");
 ok(/data-budget-surface="month"/.test(monthHtml), 'the Month switch shows the month view');
-const monthComponent = vm.runInContext('budgetMonthViewHtml(__ctx)', p.context);
-ok(monthHtml.includes(monthComponent), 'the month section is the incumbent Month view, whole');
+const monthComponent = vm.runInContext('budgetMonthViewHtml(__ctx, true)', p.context);
+ok(monthHtml.includes(monthComponent), 'the incumbent Month financial body stays whole while its picker moves to the header');
+ok((monthHtml.match(/data-budget-month-picker/g) || []).length === 1,
+  'the active Month path has exactly one real picker');
 ok(/See the pay periods in August 2026/.test(text(monthHtml)), 'the month offers its pay-period drilldown');
 const drillHtml = p.rerender("budgetPayPeriodAnchorMonth = budgetSelectedMonth; budgetGranularity = 'pay-period'");
 ok(/data-budget-surface="drilldown"/.test(drillHtml) && /data-budget-drilldown="2026-08"/.test(drillHtml),
