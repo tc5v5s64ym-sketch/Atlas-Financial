@@ -13,36 +13,33 @@ the site may hold evidence about a question. They do not close it.
 
 ## Tier 1 - Changes what the numbers mean
 
-### Visa payment backfill — window, leftover purchases, fees, and whose spend
-**Status:** OPEN · **Owner:** Dale
-**What we know:** Dale, 2026-10-03 9:04 PM PT, via Atlas Coordinator: when Amanda
-spends on a Visa, she moves the same amount from Bills to the card. The matched
-portion is backfill, not a minimum payment and not extra debt paydown. The
-unmatched remainder keeps today's card-payment treatment. The implementation
-uses these defaults until Dale confirms or replaces them. They are not
-household facts.
-1. The window is posted purchases on that card dated strictly after the
-   previous posted payment, through this payment date. If complete evidence
-   contains no earlier payment, the window is every supplied posted purchase
-   on or before the payment date.
-2. A payment smaller than the net purchases is entirely backfill. Uncovered
-   purchases do not carry into the next payment. A later same-day payment
-   starts strictly after the earlier payment's date.
-3. Truncated or incomplete evidence is `unreconciled` and does not settle the
-   minimum. A completed bounded fetch is treated as complete.
-4. The split does not separate Amanda's spend from Dale's. Every posted
-   purchase in the window matches, including a posted fee that is not an
-   interest or finance charge.
-5. On current `main`, a posted card payment does not automatically confirm
-   the scheduled minimum (`cardMinimumNeedsConfirmation`). This split
-   publishes the genuine remainder and does not turn that confirmation
-   back on. Whether a genuine remainder should confirm the minimum is a
-   separate decision from the split itself.
-**What the answer changes:** which cents Budget labels backfill and which
-cents it labels a card payment. It does not, by itself, mark a card minimum
-paid. Canadian Tire, MBNA, the HELOC, and the mortgage stay unchanged.
-**How to answer:** Confirm these four defaults, or name the replacement for
-the one that is wrong.
+### Card purchase coverage - confirmed opening and explicit payment intent
+**Status:** OPEN - **Owner:** Dale
+**What is answered:** Dale says that when Amanda uses the credit card she
+needs to move money from Bills, and those backfills must not count as a
+scheduled minimum payment. Purchase spending counts once in its appropriate
+category; bank cash and card debt already reflect posted transfers. The
+household allocation and the lender's statement treatment are separate facts.
+
+**Remaining owner evidence:** Confirm the coverage cutover date and any
+already-uncovered purchases carried at that date, including their native CAD
+amounts and previously confirmed covered amounts. For a payment to receive a
+household split, identify its Bills debit and card credit and explicitly name
+the purchase amounts covered; identify any nonpurchase remainder's purpose.
+A refund or backfill reversal also needs an explicit link. Existing issuer
+statement evidence can separately confirm a minimum occurrence through the
+existing represented-events path.
+
+**Runtime boundary:** The proposed synthetic-only cardPurchaseCoverage
+contract has no approved production opening or allocations. Missing opening,
+currency, pairing or intent remains unconfirmed and withholds precise
+available-cash/funding claims. A completed bounded fetch is not a confirmed
+zero opening. Equal amount or nearby date is not intent. Partial coverage
+carries forward. No default previous-payment window, FIFO assignment, excess
+payment purpose or owner-specific spending attribution is assumed.
+**What the answer changes:** Which purchases remain protected in Bills and
+which payment amounts have a confirmed household allocation. It does not
+create debt, add expense or by itself mark the lender minimum paid.
 
 ### Savings pool setup - confirm assignments and the new baseline after funding
 **Status:** OPEN · **Owner:** Dale

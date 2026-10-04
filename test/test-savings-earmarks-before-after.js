@@ -14,6 +14,8 @@ const prior = new Module(path.join(ROOT, 'public', 'forecast-before-savings.cjs'
 prior.filename = path.join(ROOT, 'public', 'forecast-before-savings.cjs');
 prior.paths = Module._nodeModulePaths(path.dirname(prior.filename)); prior._compile(source, prior.filename);
 const before = prior.exports, { data } = fixture(); data.plan = observedPlan();
+// This immutable no-card-evidence probe isolates savings configuration.
+delete data.plan.cardPurchaseCoverage;
 const opts = { debts: data.debts, extraFacilities: data.revolvingExtra };
 const old = before.recommend(data.plan, AS_OF, opts), current = F.recommend(data.plan, AS_OF, opts);
 assert.equal(typeof before.savingsInventory, 'undefined'); assert.equal(old.savingsInventory, undefined);

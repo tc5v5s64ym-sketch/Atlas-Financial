@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
-const O = require('../scripts/provider-observe.js');
+const O = require('./fixtures/native-cad-observation')(require('../scripts/provider-observe.js'));
 const R = require('../scripts/reconcile.js');
 const F = require('../public/forecast.js');
 

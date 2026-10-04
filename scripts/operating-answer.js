@@ -195,7 +195,8 @@ function projectFromAdvice(advice, data, opts, asOf) {
   const remainingClaim = action.remainingClaim || 'unavailable';
   const mode = (opts && opts.mode) || 'live-overlay';
   const applied = overlayApplied(data, opts);
-  const planUnavailable = overlay && overlay.operatingPlan === 'unavailable';
+  const planUnavailable = (overlay && overlay.operatingPlan === 'unavailable')
+    || advice?.cardCoverageUnavailable === true;
   const unavailableNote = (overlay && overlay.operatingPlanNote)
     || (advice && advice.operatingPlanNote)
     || 'Current plan unavailable. The dated opening is stale.';

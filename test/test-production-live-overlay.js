@@ -198,7 +198,7 @@ function startMockProvider(mode) {
     if (url.pathname === '/v2/transactions') {
       const pendingUniverse = url.searchParams.get('is_pending') === 'true';
       const offset = Number(url.searchParams.get('offset') || 0);
-      const txs = currentPeriodTransactions().concat(extraTransactions);
+      const txs = currentPeriodTransactions().concat(extraTransactions).map(row => ({ currency: 'cad', ...row }));
       if (pendingUniverse) {
         const pending = txs.filter(tx => tx.is_pending === true);
         send(200, { has_more: false, transactions: pending });
@@ -757,8 +757,8 @@ function independentGroceryRemaining(plan, asOf) {
     ok(fuel && near(fuel.remaining, round2(fuelPlanned - FUEL_POSTED)),
       'fuel remaining matches independent payday-cycle Planned minus committed',
       fuel ? `${fuel.remaining} vs ${round2(fuelPlanned - FUEL_POSTED)}` : 'missing');
-    ok(action.remainingClaim === 'precise' || action.remainingClaim === 'posted-only',
-      'Forecast remaining claim is available on complete coverage',
+    ok(action.remainingClaim === 'unavailable' && action.unavailable === true,
+      'complete category observations cannot establish missing card-coverage intent',
       action.remainingClaim);
   });
 

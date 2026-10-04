@@ -24,7 +24,13 @@ function state(pending = true, account = 'travelvisa', role = 'revolving-credit'
   return { data, debts, packet };
 }
 function run(s) {
-  return F.recommend(s.data.plan, AS_OF, { debts: s.debts, currentPeriodActuals: s.packet });
+  const x=structuredClone(s);
+  // This independent pending-exposure fixture has a confirmed empty opening
+  // at Aug 14 and native CAD records. Do not alter its backing assertions.
+  x.data.plan.cardPurchaseCoverage={ opening:{asOf:'2026-08-14',confirmed:true,
+    currency:'cad',fundingAccountId:'chequing-a',purchases:[]},payments:[],refunds:[],reversals:[] };
+  for (const tx of x.packet.transactions || []) { tx.currency='cad';tx.coverageRef='synthetic-ref-'+tx.id; }
+  return F.recommend(x.data.plan, AS_OF, { debts: x.debts, currentPeriodActuals: x.packet });
 }
 const period = (advice, start) => advice.payPeriodViews.find(p => p.start === start);
 const nextFunding = advice => period(advice, '2026-08-28').plannedCostFunding;

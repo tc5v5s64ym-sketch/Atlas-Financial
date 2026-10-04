@@ -182,7 +182,7 @@ function payloadFrom(data, extra) {
       ? completePendingCoverage()
       : extraPayload.pendingCoverage,
     accounts: matchingAccounts(data, extraPayload.tweaks),
-    transactions: extraPayload.transactions || [],
+    transactions: (extraPayload.transactions || []).map(row => ({ currency: 'cad', ...row })),
   };
   if (extraPayload.categories) payload.categories = extraPayload.categories;
   if (extraPayload.transactionWindow) payload.transactionWindow = extraPayload.transactionWindow;
@@ -2317,10 +2317,10 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && !(trustedAdvice.currentPeriodAction && trustedAdvice.currentPeriodAction.unavailable),
     'trusted control still publishes weekly permission and current-period action');
   const trustedOperating = OA.fromRefreshedState(trustedServed, { mode: 'live-overlay' });
-  ok(trustedOperating.currentSpendingPermission.weekly != null
-      && trustedOperating.moneyAvailable.value != null
-      && trustedOperating.extraDebtAllocation.status !== 'unavailable',
-    'trusted operating-answer still publishes current money available and spend permission');
+  ok(trustedOperating.currentSpendingPermission.weekly === null
+      && trustedOperating.moneyAvailable.value === null
+      && trustedOperating.extraDebtAllocation.status === 'unavailable',
+    'trusted balances without a confirmed card-coverage opening withhold spend permission');
   const trustedPacket = Assistant.buildPacket({
     data: trustedServed,
     periods: Assistant.loadPeriods(),
@@ -2328,11 +2328,10 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
     now: LIVE_FAILURE_AT,
     env: {},
   });
-  ok(trustedPacket.forecast.status === 'ok'
-      && trustedPacket.forecast.recommendation.weekly != null
-      && trustedPacket.forecast.currentPeriodAction.status === 'ok'
-      && trustedPacket.current.spendableHouseholdCash.status === 'ok',
-    'trusted get_atlas_current still publishes current cash, recommendation, and current-period action');
+  ok(trustedPacket.forecast.status === 'unavailable'
+      && trustedPacket.forecast.currentPeriodAction.status === 'unavailable'
+      && trustedPacket.current.spendableHouseholdCash.status === 'unavailable',
+    'assistant keeps unconfirmed card coverage separate from trusted observed cash');
   const trustedPayday = browser.paydayAnswerHtml({
     plan: trustedServed.plan,
     asOf: trustedServed.meta.asOf,
@@ -2683,8 +2682,9 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     operatingPlan: observed.data.liveOverlay.operatingPlan,
     operatingPlanNote: observed.data.liveOverlay.operatingPlanNote,
   });
-  ok(advice.operatingPlanUnavailable !== true && advice.weekly != null,
-    'Forecast publishes a current operating plan once the named paycheck is proven');
+  ok(advice.operatingPlanUnavailable !== true && advice.cardCoverageUnavailable === true
+      && advice.weekly === null && advice.currentPeriodAction.inflows.some(r => r.id === 'payroll'),
+    'proven income remains factual while missing card-coverage confirmation withholds spending');
   const action = advice.currentPeriodAction || Forecast.currentPeriodAction(
     observed.data.plan, LIVE_DAY, {
       currentPeriodActuals: actuals,

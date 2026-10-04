@@ -54,7 +54,7 @@ function assertHousehold(served, result, e) {
   assert.equal(p.actualSaved, null, 'an earmark does not establish actual savings');
   if (e.hold) {
     assert.equal(p.status, 'unavailable');
-    assert.deepEqual(p.evidenceFailures.map(f => f.code), [e.hold]);
+    assert.deepEqual(p.evidenceFailures.map(f => f.code), ['card-purchase-coverage-unconfirmed', e.hold]);
     assert.equal(packet.transactions.filter(t => t.pendingPostedDuplicate).length, 2,
       'both unresolved identities survive; no invented match');
     assert.doesNotMatch(result.todayHtml, /\$|data-from-today-cost/);
@@ -63,7 +63,7 @@ function assertHousehold(served, result, e) {
     assert.equal(p.currentCash, e.cash);
     assert.equal(p.operatingBills, e.operatingBills);
     assert.equal(p.remainingHousehold, e.remainingHousehold);
-    assert.equal(p.requiredOperatingCash, e.operatingBills + e.remainingHousehold + 50);
+    assert.equal(p.requiredOperatingCash, e.operatingBills + e.remainingHousehold + 50 + e.uncoveredCard);
     assert.equal(p.availableNow, e.availableNow);
     assert.equal(p.cashAfterProposal, e.cash - 420);
     assert.equal(p.futureIncomeThisPeriod, 0);
@@ -84,13 +84,13 @@ function assertVariant(result, mode) {
   if (mode === 'floor') {
     assert.equal(p.status, 'funding-gap');
     assert.equal(p.currentCash, 1155);
-    assert.equal(p.requiredOperatingCash, 1000 + 215 + 50);
-    assert.equal(p.operatingShortfall, 110);
+    assert.equal(p.requiredOperatingCash, 1000 + 215 + 50 + 75);
+    assert.equal(p.operatingShortfall, 185);
     assert.equal(p.availableNow, 0); assert.equal(p.contribution, 0);
     assert.equal(p.items[0].remainingGap, 900);
-    assert.equal(p.gap.shortBy, 110);
+    assert.equal(p.gap.shortBy, 185);
     assert.ok(p.periods.slice(1).every(r => r.status === 'unavailable' && r.contribution === null));
-    assert.match(result.todayHtml, /\$110\.00 short|\$110\.00.*short/);
+    assert.match(result.todayHtml, /\$185\.00 short|\$185\.00.*short/);
   } else {
     assert.equal(p.status, 'unavailable'); assert.equal(p.contribution, null);
     assert.ok(p.evidenceFailures.some(r => r.code === (mode === 'missing' ? 'cash-observation-account' : 'actuals-stale')));
@@ -121,7 +121,7 @@ async function main() {
     }
     for (const mode of ['missing', 'stale', 'floor']) {
       server.write(variant(mode)); assertVariant(render(await server.get()), mode);
-      console.log('PASS household ' + mode + ': savings fail closed with the specific evidence or $110 operating shortfall.');
+      console.log('PASS household ' + mode + ': savings fail closed with the specific evidence or $185 operating shortfall.');
     }
   });
   // A new authenticated process, not a renderer reset or a retained packet.

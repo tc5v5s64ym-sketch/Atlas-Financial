@@ -394,6 +394,7 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     providerAccountId: accountId != null ? String(accountId) : null,
     date: raw.date || null,
     amount: raw.amount != null ? Number(raw.amount) : null,
+    currency: typeof raw.currency === 'string' ? raw.currency.trim().toLowerCase() : null,
     payee: raw.payee || null,
     originalName: raw.original_name || raw.originalName || null,
     notes: raw.notes || raw.note || null,
@@ -2032,26 +2033,6 @@ function cardMinimumNeedsConfirmation(plan, eventId, accountMap) {
   return mappedCard || !!(debt && !debt.secured && /^Revolving\b/i.test(debt.structure || ''));
 }
 
-function providerTxForVisaBackfill(tx, mapDoc) {
-  const mapping = mapDoc ? mappingFor(mapDoc, tx && tx.providerAccountId) : null;
-  const atlas = mapping && mapping.canonical && mapping.canonical.id;
-  return {
-    id: tx && tx.providerTransactionId != null ? String(tx.providerTransactionId) : null,
-    date: tx && tx.date || null,
-    amount: lunchMoneyDebitAmount(tx && tx.amount),
-    pending: tx && tx.pending === true,
-    pendingPostedAmbiguous: tx && tx.pendingPostedAmbiguous === true,
-    pendingPostedDuplicate: tx && tx.pendingPostedDuplicate === true,
-    atlasAccountId: atlas || null,
-    account: atlas || null,
-    payee: tx && tx.payee || null,
-    originalName: tx && tx.originalName || null,
-    categoryLabel: tx && tx.categoryLabel || null,
-    displayedPayee: tx && tx.payee || null,
-    originalMerchant: tx && (tx.originalName || tx.payee) || null,
-  };
-}
-
 function collectIdentityHits(tx, input, rules) {
   if (!tx || tx.contradictoryEvidence === true) return [];
   const mapDoc = input && input.accountMap;
@@ -2182,6 +2163,9 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
     if (postedId == null || postedId === '') continue;
     const survivors = byPostedId.get(String(postedId)) || [];
     if (survivors.length !== 1) continue;
+    if (!link.pending.currency || !link.posted.currency || link.pending.currency !== link.posted.currency) {
+      survivors[0].coverageCurrencyConflict = true;
+    }
     if (Forecast.classifyCurrentPeriodTransaction.ownerConfirmedFuel(
       transactionWithMappedAccount(link.pending, input.accountMap)
     )) {
@@ -2580,6 +2564,11 @@ function postedHistoryDaysForCarriedSettlement(opts) {
   const priorCycleStart = previousSeaspanCycleStart(plan, asOf);
   if (priorCycleStart && priorCycleStart < ordinaryStart) {
     if (!earliest || priorCycleStart < earliest) earliest = priorCycleStart;
+  }
+  const coverageOpening = plan.cardPurchaseCoverage && plan.cardPurchaseCoverage.opening;
+  if (coverageOpening && coverageOpening.confirmed === true && parseIsoDate(coverageOpening.asOf)
+    && coverageOpening.asOf < ordinaryStart && (!earliest || coverageOpening.asOf < earliest)) {
+    earliest = coverageOpening.asOf;
   }
   if (!earliest) return ordinary;
   let span = calendarDaysBetween(earliest, asOf);
@@ -3769,6 +3758,14 @@ function pendingOnlyBillActuals(collapsed, opts, representedActuals, existingLoc
   return rows;
 }
 
+function cardCoverageReference(tx) {
+  if (!tx || !tx.providerAccountId || !tx.providerTransactionId) return null;
+  const native = plaidPendingTransactionIdOf(tx) || plaidTransactionIdOf(tx);
+  const source = native ? 'plaid:' + native : 'lunchmoney:' + tx.providerTransactionId;
+  return 'pc-' + require('crypto').createHash('sha256')
+    .update('atlas-card-coverage/v1|' + tx.providerAccountId + '|' + source).digest('hex').slice(0, 24);
+}
+
 function sanitizedCurrentPeriodActuals(report, opts) {
   opts = opts || {};
   const asOf = dateOnly(opts.asOf || (report && report.fetchedAt));
@@ -3802,11 +3799,20 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     return localByProvider.get(String(providerId)) || null;
   };
   const txs = [];
+  const cardCoverageUnconfirmed = [];
   for (const tx of collapsed) {
-    if (!tx || !tx.date) continue;
-    const amount = lunchMoneyDebitAmount(tx.amount);
-    if (amount == null) continue;
+    if (!tx) continue;
     const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
+    const amount = lunchMoneyDebitAmount(tx.amount);
+    if (!tx.date || amount == null) {
+      if (atlasAccountRole(mapping) === 'revolving-credit'
+        || (atlasAccountRole(mapping) === 'household-cash'
+          && (kindHintFromTransaction(tx) === 'card-payment' || isMbnaCardPayment(tx)))) {
+        cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx),
+          date: tx.date || null, reason: 'transaction-amount-or-date-unconfirmed' });
+      }
+      continue;
+    }
     const treatment = pendingForecastTreatment(tx, asOf, {
       plan: opts.plan,
       billPaymentPayees: opts.billPaymentPayees,
@@ -3839,6 +3845,14 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
+    const coverageRelevant = atlasAccountRole(mapping) === 'revolving-credit'
+      || (atlasAccountRole(mapping) === 'household-cash'
+        && (kindHint === 'card-payment' || flags.cardPaymentIdentity === true));
+    if (coverageRelevant && (tx.currency !== 'cad' || tx.coverageCurrencyConflict === true)) {
+      cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: tx.date,
+        reason: 'native-plan-currency-unconfirmed' });
+      continue;
+    }
     const ownerFuel = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedFuel(derivedInput) === true;
     const ownerSpotify = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedSpotify(derivedInput) === true;
     const ownerNoble = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedNoble(derivedInput) === true;
@@ -3855,8 +3869,11 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const localId = localIdFor(tx.providerTransactionId);
     txs.push({
       id: localId,
+      coverageRef: cardCoverageReference(tx),
       date: tx.date,
       amount,
+      currency: tx.currency || null,
+      coverageCurrencyConflict: tx.coverageCurrencyConflict === true,
       pending: tx.pending === true,
       pendingTreatment: treatment.treatment,
       categoryLabel: tx.categoryLabel || null,
@@ -3958,7 +3975,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   let transactionCoverage = 'complete';
   if (window.truncated === true || window.complete === false || window.hasMore === true) {
     transactionCoverage = 'truncated';
-  } else if (txs.some(tx => tx && tx.accountRole === 'unmapped')) {
+  } else if (cardCoverageUnconfirmed.length || txs.some(tx => tx && tx.accountRole === 'unmapped')) {
     transactionCoverage = 'incomplete';
   }
   let coverageStart = window.startDate || null;
@@ -3970,16 +3987,6 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       if (!coverageThrough || tx.date > coverageThrough) coverageThrough = tx.date;
     }
   }
-  const visaPaymentBackfill = (Forecast.visaPaymentReconciliation(
-    (collapsed || []).filter(Boolean).map(tx => providerTxForVisaBackfill(tx, mapDoc)),
-    {
-      evidence: {
-        coverageStart: window.startDate || null,
-        coverageThrough: window.endDate || null,
-        complete: window.complete !== false,
-      },
-    }
-  ).payments || []).map(Forecast.visaPaymentPublication);
   const packet = {
     schema: 'atlas-current-period-actuals/v1',
     observationAsOf: asOf,
@@ -3987,7 +3994,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     coverageThrough,
     pendingCoverage,
     transactionCoverage,
-    visaPaymentBackfill,
+    cardCoverageUnconfirmed,
+    cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
       asOf,
@@ -4083,6 +4091,7 @@ async function run(argv) {
 }
 
 const api = {
+  cardCoverageReference,
   TOKEN_ENV,
   MAP_JSON_ENV,
   MAP_PATH_ENV,

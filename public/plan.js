@@ -2333,7 +2333,7 @@ function calendarPeriodBillsHtml(period) {
   }
   const rows = (period && period.bills) || [];
   const visaPayments = typeof BillDetail !== 'undefined' && BillDetail.visaPaymentsHtml
-    ? BillDetail.visaPaymentsHtml(period && period.visaPaymentBackfill)
+    ? BillDetail.visaPaymentsHtml(period && period.visaPaymentBackfill, period && period.cardPurchaseCoverage)
     : '';
   if (!rows.length) {
     return `<div class="payday-period-bills" data-payday-period-bills>

@@ -241,7 +241,7 @@ function payload(data, transactions, asOf) {
     source: 'Synthetic PAYMENT - THANK YOU card-minimum fixture. Fixture IDs 3001–3011 are not live provider IDs.',
     pendingCoverage: completePendingCoverage(),
     accounts: matchingAccounts(data, asOf),
-    transactions: transactions || [],
+    transactions: (transactions || []).map(row => ({ currency: 'cad', ...row })),
     transactionWindow: {
       startDate: '2026-07-01',
       endDate: asOf,

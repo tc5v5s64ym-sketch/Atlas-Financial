@@ -32,7 +32,7 @@ function fixture(sameDate = false) {
       { id: 1003, type: 'cash', balance: 5000 }, { id: 2001, type: 'credit', balance: 400, credit_limit: 1000 }]
       .map(a => ({ ...a, currency: 'cad', updated_at: AS_OF + 'T17:55:00.000Z' })),
     categories: [{ id: 11, name: 'Groceries', is_income: false, exclude_from_totals: false }],
-    transactions: [{ id: 91001, account_id: 2001, date: '2026-08-19', amount: 50,
+    transactions: [{ id: 91001, account_id: 2001, date: '2026-08-19', amount: 50, currency: 'cad',
       payee: 'Synthetic grocer', category_id: 11, is_pending: true, status: 'unreviewed',
       plaid_metadata: { transaction_id: 'synthetic-pending-identity' } }],
   };
@@ -127,7 +127,7 @@ async function main() {
       assert.ok(O.currentPeriodActualsLooksSanitized(complete.liveOverlay.currentPeriodActuals));
       const control = render(complete);
       assert.equal(control.proposal.status, 'ready');
-      assert.equal(control.proposal.availableNow, 1000 - 200 - 150 - 25 - (300 - 50) - 50);
+      assert.equal(control.proposal.availableNow, 1000 - 200 - 150 - 25 - (300 - 50) - 50 - 50);
       assert.equal(control.proposal.contribution, 250);
       assert.match(control.todayHtml, /Proposed to set aside now<\/span><span>\$250\.00/);
       addPair(input.payload); server.write(input);
@@ -137,7 +137,7 @@ async function main() {
       assert.ok(held.liveOverlay.currentPeriodActuals.transactions.some(t => t.pendingPostedDuplicate));
       assert.equal(shown.proposal.status, 'unavailable');
       assert.equal(shown.proposal.contribution, null);
-      assert.deepEqual(shown.proposal.evidenceFailures.map(r => r.code), ['pending-possible-replacement']);
+      assert.deepEqual(shown.proposal.evidenceFailures.map(r => r.code), ['card-purchase-coverage-unconfirmed', 'pending-possible-replacement']);
       assert.match(shown.todayHtml, /Synthetic card.*Groceries.*2026-08-19/);
       assert.match(shown.todayHtml, /one purchase or two/);
       assert.doesNotMatch(shown.todayHtml, /\$|synthetic-pending-identity|synthetic-posted-identity|Synthetic grocer|data-from-today-cost/);

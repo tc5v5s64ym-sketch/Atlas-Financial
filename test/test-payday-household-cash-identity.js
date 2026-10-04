@@ -31,7 +31,7 @@ function plan(cash = 5000, mixed = false) {
   };
 }
 function tx(amount, extra = {}) {
-  return { id: 'grocery', date: '2026-09-01', amount, pending: false,
+  return { id: 'grocery', coverageRef: 'grocery', currency: 'cad', date: '2026-09-01', amount, pending: false,
     categoryLabel: 'Groceries', confirmedGrocery: true,
     accountRole: 'household-cash', atlasAccountId: 'chequing-a', ...extra };
 }
@@ -149,22 +149,28 @@ for (const state of ['pending', 'posted']) {
   const card = { id: 'card', label: 'Card', structure: 'Revolving',
     rate: 20, balance: state === 'posted' ? 600 : 0,
     pending: state === 'pending' ? 600 : 0, limit: 2000 };
-  const a = F.paydayAllocation(plan(), AS_OF, options([
+  const p = plan(); p.startingCash.breakdown = [{ id: 'chequing-a', value: 5000 }];
+  p.cardPurchaseCoverage = require('./fixtures/card-coverage-opening')(START);
+  const a = F.paydayAllocation(p, AS_OF, options([
     tx(600, { accountRole: 'revolving-credit', atlasAccountId: 'card',
       pending: state === 'pending', pendingTreatment: state === 'pending' ? 'unresolved' : 'confirmed-settled' }),
   ], { debts: [card] }));
   assert.equal(a.available, 5000);
   assert.equal(a.essentials.wanted, 300);
-  assert.equal(a.protectedPath.allocated, 0);
+  assert.equal(a.protectedPath.allocated, 600, 'uncovered card principal protects Bills cash once');
+  assert.equal(a.extraDebt.allocated + a.unallocated, 5000 - 300 - 600);
   assert.equal(card.balance + card.pending, 600);
   assert.equal(F.utilisation([card]).rows[0].used, 600);
 }
-const cardOther = F.paydayAllocation(plan(), AS_OF, options([
+const cardOtherPlan = plan();
+cardOtherPlan.startingCash.breakdown = [{ id: 'chequing-a', value: 5000 }];
+cardOtherPlan.cardPurchaseCoverage = require('./fixtures/card-coverage-opening')(START);
+const cardOther = F.paydayAllocation(cardOtherPlan, AS_OF, options([
   { ...other, pending: true, accountRole: 'revolving-credit', atlasAccountId: 'card' },
 ], { debts: [{ id: 'card', structure: 'Revolving', balance: 0, pending: 250, rate: 20, limit: 2000 }] }));
-assert.equal(cardOther.protectedPath.allocated, 0, '$250 card Other is not cash principal');
+assert.equal(cardOther.protectedPath.allocated, 250, '$250 uncovered card Other protects cash, without replaying principal');
 assert.equal(cardOther.essentials.wanted, 900);
-assert.equal(cardOther.extraDebt.allocated + cardOther.unallocated, 4100);
+assert.equal(cardOther.extraDebt.allocated + cardOther.unallocated, 5000 - 900 - 250);
 
 // Same master-path floor must hold after pending settlement. $5,000 - $250
 // leaves $4,750; retaining the existing $4,500 floor allows only $250 out.
@@ -264,7 +270,7 @@ check('split parent is not a second pending debit', 5000, [
 ], 300, 4100, false, 600);
 for (const extra of [
   { accountRole: 'household-external' }, { kindHint: 'transfer' },
-  { kindHint: 'card-payment' }, { representedBill: true },
+  { representedBill: true },
   { amount: -600 }, { isIncome: true }, { date: '2026-09-05' },
 ]) {
   const a = F.paydayAllocation(plan(), AS_OF, options([{ ...pending, ...extra }]));

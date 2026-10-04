@@ -1531,8 +1531,8 @@
       shortfall: additionalCashRequiredFromWalkMin(min.balance),
       additionalCashRequired: additionalCashRequiredFromWalkMin(min.balance),
       breachesBuffer: min.balance < buffer,
-      endingSurplus: ending - buffer,
-      extraDebtCapacity: Math.max(0, ending - buffer),
+      endingSurplus: full.cardPurchaseCoverage?.status === 'unavailable' ? null : ending - simulationCashFloor(full),
+      extraDebtCapacity: full.cardPurchaseCoverage?.status === 'unavailable' ? null : Math.max(0, ending - simulationCashFloor(full)),
       knowledge: {
         start: full.start, end: full.end, days: full.daily.length,
         min: full.min, ending: full.ending, events: full.events, totals: full.totals,
@@ -1595,15 +1595,15 @@
     }
     weeks.forEach((w, i) => {
       const next = (i + 1) * 7;
-      w.requiredClosing = next < viewDays ? buffer - Math.min(0, suffixMin[next]) : buffer;
+      w.requiredClosing = next < viewDays ? simulationCashFloor(full) - Math.min(0, suffixMin[next]) : simulationCashFloor(full);
     });
     return Object.assign({}, full, {
       start: asOf, end, daily, weeks, events, totals, min, ending,
       shortfall: additionalCashRequiredFromWalkMin(min.balance),
       additionalCashRequired: additionalCashRequiredFromWalkMin(min.balance),
       breachesBuffer: min.balance < buffer,
-      endingSurplus: ending - buffer,
-      extraDebtCapacity: Math.max(0, ending - buffer),
+      endingSurplus: full.cardPurchaseCoverage?.status === 'unavailable' ? null : ending - simulationCashFloor(full),
+      extraDebtCapacity: full.cardPurchaseCoverage?.status === 'unavailable' ? null : Math.max(0, ending - simulationCashFloor(full)),
       knowledge: {
         start: full.start, end: full.end, days: full.daily.length,
         min: full.min, ending: full.ending, events: full.events, totals: full.totals,
@@ -2156,6 +2156,7 @@
   // chequing identities exist. Designated savings is not spent here.
   function simulate(plan, asOf, opts) {
     opts = opts || {};
+    const coverage = cardCoverageState(plan, asOf, opts);
     const days = walkDays(plan, asOf, opts);
     const viewDays = (opts.viewDays != null && opts.horizonDays != null)
       ? Math.min(opts.viewDays, days)
@@ -2278,6 +2279,7 @@
     }
 
     const buffer = opts.targetBuffer != null ? opts.targetBuffer : (plan.defaults.targetBuffer || 0);
+    const cashFloor = buffer + (coverage.status === 'ready' ? coverage.reservedCash : 0);
     for (const w of weeks) {
       const seed = w.measuredOpening != null ? w.measuredOpening : w.opening;
       const low = Math.min(seed, ...daily.filter(d => d.date >= w.start && d.date <= w.end).map(d => d.balance));
@@ -2299,7 +2301,7 @@
     }
     weeks.forEach((w, i) => {
       const next = (i + 1) * 7;
-      w.requiredClosing = next < days ? buffer - Math.min(0, suffixMin[next]) : buffer;
+      w.requiredClosing = next < days ? cashFloor - Math.min(0, suffixMin[next]) : cashFloor;
     });
 
     const totals = {
@@ -2320,13 +2322,14 @@
     const full = {
       start, end, daily, weeks, events, totals,
       min, ending: balance, buffer,
+      ...(coverage.status !== 'incumbent' ? { requiredCashFloor: cashFloor, cardPurchaseCoverage: coverage } : {}),
       shortfall: additionalCashRequiredFromWalkMin(min.balance),
       additionalCashRequired: additionalCashRequiredFromWalkMin(min.balance),
       breachesBuffer: min.balance < buffer,
-      endingSurplus: balance - buffer,
+      endingSurplus: coverage.status === 'unavailable' ? null : balance - cashFloor,
       // Room for extra repayment, measured at the end of the window — cash
       // above the buffer once everything has cleared. Bounded by zero.
-      extraDebtCapacity: Math.max(0, balance - buffer),
+      extraDebtCapacity: coverage.status === 'unavailable' ? null : Math.max(0, balance - cashFloor),
     };
     if (savingsEarmarksEnabled(plan) && Array.isArray(plan.savingsEarmarks.pools)
         && plan.savingsEarmarks.pools.some(pool => pool && pool.role === 'purpose-reserve')) {
@@ -2542,7 +2545,7 @@
   }
 
   function leftoverAfterBuffer(sim) {
-    return (sim && sim.ending != null && sim.buffer != null) ? sim.ending - sim.buffer : 0;
+    return (sim && sim.ending != null && sim.buffer != null) ? sim.ending - simulationCashFloor(sim) : 0;
   }
 
   function isCashEventItem(item) {
@@ -2579,7 +2582,7 @@
     if (!sim || !date) return null;
     const day = (sim.daily || []).find(d => d.date === date);
     if (!day) return null;
-    return day.balance - sim.buffer;
+    return day.balance - simulationCashFloor(sim);
   }
 
   function datedReserveBy(seq, date) {
@@ -2647,11 +2650,15 @@
     const enc = protectedEncumbered(seq, asOf);
     const failures = [];
 
-    if (!atLeast(sim.min.balance, buffer)) {
+    if (sim.cardPurchaseCoverage && sim.cardPurchaseCoverage.status === 'unavailable') {
+      failures.push({ kind: 'card-coverage', date: asOf, shortfall: null, id: null,
+        label: sim.cardPurchaseCoverage.reason });
+    }
+    if (!atLeast(sim.min.balance, simulationCashFloor(sim))) {
       failures.push({
-        kind: 'buffer',
+        kind: simulationCashFloor(sim) > buffer ? 'card-coverage' : 'buffer',
         date: sim.min.date,
-        shortfall: buffer - sim.min.balance,
+        shortfall: simulationCashFloor(sim) - sim.min.balance,
         id: null,
         label: 'cash buffer',
       });
@@ -2989,6 +2996,19 @@
         || !Array.isArray(sim.events) || !Array.isArray(seq)) {
       return unavailable('The Forecast master cash path is unavailable.');
     }
+    if (sim.cardPurchaseCoverage && sim.cardPurchaseCoverage.status === 'unavailable') {
+      return { ...unavailable(sim.cardPurchaseCoverage.reason),
+        // A coverage hold rejects allocation, not the independently known
+        // price/date roster. Every funding amount stays unconfirmed.
+        costs: seq.filter(row => row && row.date && row.flexibility !== 'optional')
+          .map(row => ({ id: row.id, label: row.label, date: row.date,
+            baseRequirement: Number.isFinite(row.bounds?.floor) ? row.bounds.floor : null,
+            confidence: row.confidence || null, nextContribution: null,
+            projectedFullyFunded: null, protectedNow: null, contributions: [] })),
+        unscheduled: seq.filter(row => row && !row.date && row.flexibility !== 'optional')
+          .map(row => ({ id: row.id, reason: 'cash-date-not-established' })),
+      };
+    }
     const reserves = savingsEarmarksEnabled(plan) ? sim.reserveFunding : null;
     if (savingsEarmarksEnabled(plan) && (!reserves || reserves.status !== 'ready' || reserves.asOf !== asOf)) {
       return unavailable(reserves && reserves.reason || SAVINGS_INSTRUCTIONS_HELD);
@@ -3062,7 +3082,7 @@
       const tail = sim.daily.filter(day => day.date < paydayDates[0]);
       const boundary = tail.at(-1);
       if (!boundary || !Number.isFinite(boundary.balance)
-          || tail.some(day => !Number.isFinite(day.balance) || day.balance < sim.buffer - EPSILON)) {
+          || tail.some(day => !Number.isFinite(day.balance) || day.balance < simulationCashFloor(sim) - EPSILON)) {
         return unavailable('Cash before the next payday needs an unestablished bridge.');
       }
       // The partial current cycle has already consumed cash. Its change is
@@ -3085,13 +3105,13 @@
         // S is cumulative contributions; S - paidCumulative is the
         // protection still held on this day. Reserve protection has no
         // economic payment and therefore is never added to paidCumulative.
-        const dayUpper = floorCents(day.balance - sim.buffer) + paidCumulative;
+        const dayUpper = floorCents(day.balance - simulationCashFloor(sim)) + paidCumulative;
         if (dayUpper < upper) { upper = dayUpper; upperDate = day.date; }
       }
       const endCash = cents(days[days.length - 1].balance);
       const fresh = endCash - before + paidHere;
       period.capacity = Math.max(0, i === 0
-        ? fresh + before - cents(sim.buffer) : fresh);
+        ? fresh + before - cents(simulationCashFloor(sim)) : fresh);
       if (periodBasis) {
         const basis = periodBasis.get(period.date);
         if (!basis || basis.end !== period.end || !Number.isFinite(basis.capacity)
@@ -3117,7 +3137,7 @@
       && row.flexibility !== 'optional').reduce((sum, row) =>
       sum + cents(row.bounds && row.bounds.floor || 0), 0);
     const lastPeriod = periods[periods.length - 1];
-    const endingUpper = floorCents(sim.ending - sim.buffer) + paidCumulative - undatedFloor;
+    const endingUpper = floorCents(sim.ending - simulationCashFloor(sim)) + paidCumulative - undatedFloor;
     if (endingUpper < lastPeriod.cashUpper) {
       lastPeriod.cashUpper = endingUpper;
       lastPeriod.cashUpperDate = sim.end;
@@ -3158,7 +3178,7 @@
       if (operatingBarrier) return unavailable(
         'Known operating cash needs on ' + operatingBarrier.cashUpperDate + ' leave earlier proposals $'
         + dollars(cumulative + contribution - operatingBarrier.cashUpper).toFixed(2)
-        + ' short of the existing $' + Number(sim.buffer).toFixed(2)
+        + ' short of the protected $' + Number(simulationCashFloor(sim)).toFixed(2)
         + ' cash floor. From-today contributions are unavailable until this operating gap is resolved.');
       if (cumulative > period.cashUpper && !gap) {
         gap = { payday: period.date, required: dollars(cumulative),
@@ -8483,307 +8503,235 @@
     return postedBillsAccountCash(plan);
   }
 
-  // Visa payment backfill (Dale, 2026-10-03). Sole calculator for the split.
-  // A posted credit on Travel Visa, Cash Back Visa, or the TD credit card
-  // (Emerald Visa, canonical tdcc) whose payee is PAYMENT - THANK YOU /
-  // PAYMENT THANKYOU / TFR-TO C/C is a payment onto that card. It is
-  // reconciled against that card's posted purchases dated strictly after
-  // the previous posted payment on the same card, through this payment
-  // date. With no earlier payment inside complete evidence, the window is
-  // every supplied posted purchase on or before the payment date.
-  //
-  // Matched cents are backfill: they do not satisfy the card minimum and
-  // they are not extra debt paydown. The unmatched remainder is the
-  // genuine card payment. It is published for Budget and does not reopen
-  // automatic minimum settlement: cardMinimumNeedsConfirmation still
-  // leaves those occurrences unconfirmed. A payment smaller than the net
-  // purchases is entirely backfill. Uncovered purchases do not carry
-  // into the next payment:
-  // the next window starts strictly after this payment date (FIFO by
-  // date, then id). Posted refunds in the window reduce the purchase
-  // total and the total is floored at zero. Pending purchases are not
-  // matched. A pending/posted twin counts the posted side once. An
-  // ambiguous credit, a pendingPostedAmbiguous row, contradictory
-  // account identity, or incomplete evidence fails closed as
-  // unreconciled. Canadian Tire, MBNA, HELOC, and the mortgage are not
-  // this split.
-  const VISA_BACKFILL_CARDS = {
-    travelvisa: 'Travel Visa',
-    cashback: 'TD Cash Back Visa',
-    tdcc: 'TD credit card',
-  };
-
-  function visaAccountToken(value) {
-    if (value == null || value === '') return '';
-    return String(value).trim().toLowerCase().replace(/[\s_-]+/g, '');
-  }
-
-  function visaCardIdentity(tx) {
-    if (!tx) return null;
-    const tokens = [tx.atlasAccountId, tx.accountId, tx.account]
-      .filter(value => value != null && value !== '')
-      .map(visaAccountToken);
-    if (!tokens.length) return null;
-    if (tokens.some(token => token !== tokens[0])) return { contradictory: true };
-    if (!Object.prototype.hasOwnProperty.call(VISA_BACKFILL_CARDS, tokens[0])) return null;
-    return { card: tokens[0] };
-  }
-
-  function visaPayeeKey(tx) {
-    return normalizeMerchantKey(
-      txMerchantExact(tx) || (tx && (tx.originalName || tx.original_name || tx.payee)) || '');
-  }
-
-  function visaPaymentPayee(tx) {
-    const key = visaPayeeKey(tx);
-    if (!key) return false;
-    if (/\bREFUND\b/.test(key) || /\bREVERSAL\b/.test(key)) return false;
-    if (key === 'PAYMENT THANK YOU' || key.startsWith('PAYMENT THANK YOU ')) return true;
-    if (key === 'PAYMENT THANKYOU' || key.startsWith('PAYMENT THANKYOU ')) return true;
-    return key === 'TFR TO C C' || key.startsWith('TFR TO C C ');
-  }
-
-  function visaCreditClass(tx) {
-    if (!tx || transactionPendingState(tx) === 'pending') return 'pending';
-    const cents = amountCents(tx.amount);
-    if (visaPaymentPayee(tx) && (cents == null || cents < 0)) {
-      return cents == null ? 'payment-missing-amount' : 'payment';
+  // One evidence-qualified purchase/payment ledger. The historical API name
+  // is retained for #491's consumer; it now covers mapped revolving cards.
+  // A provider payment proves movement, never household allocation intent.
+  function visaPaymentReconciliation(transactions, opts) {
+    opts = opts || {};
+    const plan = opts.plan || {};
+    const packet = opts.packet || opts.currentPeriodActuals || {};
+    const asOf = opts.asOf || packet.observationAsOf;
+    const input = Array.isArray(transactions) ? transactions : [];
+    const policy = plan.cardPurchaseCoverage;
+    const cardLike = tx => tx && tx.accountRole !== 'household-external'
+      && (tx.accountRole === 'revolving-credit' || [tx.atlasAccountId, tx.accountId, tx.account]
+        .some(id => id && isRevolvingCardAccount({ account: id })));
+    const cardId = tx => {
+      const ids = [tx.atlasAccountId, tx.accountId, tx.account].filter(Boolean);
+      return ids.length && ids.every(id => id === ids[0])
+        && isRevolvingCardAccount(tx) && tx.accountRole !== 'household-external' ? ids[0] : null;
+    };
+    const required = !!policy || packet.cardCoverageRequired === true || input.some(cardLike);
+    if (!required) return { status: 'incumbent', reservedCash: 0, purchases: [], active: [], payments: [], issues: [] };
+    const issues = [];
+    const issue = (code, ref) => issues.push({ code, ...(ref ? { ref } : {}) });
+    const opening = policy && policy.opening;
+    const validOpening = opening && opening.confirmed === true && savingsDate(opening.asOf)
+      && opening.asOf <= asOf && opening.currency === 'cad'
+      && opening.fundingAccountId === 'chequing-a' && Array.isArray(opening.purchases);
+    if (!validOpening) issue('coverage-opening-unconfirmed');
+    const origin = validOpening ? opening.asOf : packet.coverageStart;
+    if (!savingsDate(asOf) || !savingsDate(origin) || packet.observationAsOf !== asOf
+      || !packet.coverageStart || packet.coverageStart > origin || !packet.coverageThrough
+      || packet.coverageThrough < asOf || packet.transactionCoverage !== 'complete'
+      || packet.pendingCoverage !== 'complete') issue('coverage-history-incomplete');
+    const unit = tx => tx.coverageCurrencyConflict !== true
+      && typeof tx.currency === 'string' && tx.currency.trim().toLowerCase() === 'cad';
+    const money = tx => savingsCents(tx.amount, true);
+    const debtRows = (opts.debts || plan.debts || []).filter(d => d && /^Revolving\b/i.test(d.structure || ''));
+    const label = account => debtRows.find(d => d.id === account)?.label || 'Credit card';
+    if (Array.isArray(packet.cardCoverageUnconfirmed) && packet.cardCoverageUnconfirmed.length) {
+      issue('coverage-currency-or-amount-unconfirmed');
     }
-    if (cents == null || cents >= 0) return null;
-    if (visaPayeeKey(tx)) return 'refund';
-    return 'ambiguous';
-  }
-
-  function visaPurchaseCategoryLabel(tx) {
-    const label = tx && typeof tx.categoryLabel === 'string' ? tx.categoryLabel.trim() : '';
-    return label || 'Category unavailable';
-  }
-
-  function visaEvidenceState(opts) {
-    const packet = opts && (opts.packet || opts.currentPeriodActuals);
-    const evidence = (opts && opts.evidence) || {};
-    let complete = evidence.complete;
-    if (complete == null && packet) {
-      complete = transactionCoverageStatus(packet) !== 'truncated';
+    const byRef = new Map(), purchases = new Map(), used = new Set(), payments = [];
+    const rows = input.filter(tx => tx && tx.date >= origin && tx.date <= asOf && !skipSplitParent(tx, packet));
+    const paymentLike = tx => tx.cardPaymentIdentity === true || tx.kindHint === 'card-payment'
+      || normalizeCategoryLabel(tx.categoryLabel) === 'credit card payment';
+    for (const tx of input) {
+      if (tx && (cardLike(tx) || paymentLike(tx)) && !savingsDate(tx.date)) issue('coverage-date-unconfirmed');
+      if (tx && cardLike(tx) && tx.pending === true && tx.date < origin
+        && (classifyCurrentPeriodTransaction(tx, plan, { packet }).householdSpending
+          || tx.representedBill === true)
+        && !(validOpening && opening.purchases.some(p => p && p.ref === tx.coverageRef))) {
+        issue('coverage-pending-before-opening-unconfirmed', tx.coverageRef);
+      }
     }
-    if (complete == null) complete = true;
-    return { complete: complete !== false };
+    for (const tx of rows) {
+      const relevant = cardLike(tx) || (tx.accountRole !== 'household-external' && paymentLike(tx));
+      if (!relevant) continue;
+      if (cardLike(tx) && !cardId(tx)) issue('coverage-account-unconfirmed', tx.coverageRef);
+      if (!tx.coverageRef || byRef.has(tx.coverageRef)) { issue('coverage-identity-ambiguous', tx.coverageRef); continue; }
+      byRef.set(tx.coverageRef, tx);
+      if (!unit(tx) || money(tx) == null) issue('coverage-currency-or-amount-unconfirmed', tx.coverageRef);
+      if (tx.pendingPostedAmbiguous || tx.pendingPostedDuplicate || tx.contradictoryEvidence) {
+        issue('coverage-replacement-ambiguous', tx.coverageRef);
+      }
+      const account = cardId(tx), amount = money(tx);
+      if (!unit(tx) || amount == null) continue;
+      if (!account || !(amount > 0) || paymentLike(tx)) continue;
+      const cls = classifyCurrentPeriodTransaction(tx, plan, { packet });
+      if (cls.householdSpending || tx.representedBill === true) {
+        purchases.set(tx.coverageRef, { ref: tx.coverageRef, accountId: account,
+          accountLabel: label(account), date: tx.date, amount: amount / 100,
+          categoryLabel: tx.categoryLabel || 'Category unavailable',
+          pending: transactionPendingState(tx) === 'pending', covered: 0, refunded: 0, audit: [] });
+      } else if (!['business', 'interest'].includes(cls.kind)
+        && !(cls.kind === 'transfer' && tx.excludeFromTotals === true)
+        && !(cls.kind === 'bill' && normalizeCategoryLabel(tx.categoryLabel) === 'other bank fees')) {
+        issue('coverage-purchase-purpose-unconfirmed', tx.coverageRef);
+      }
+    }
+    for (const row of validOpening ? opening.purchases : []) {
+      if (!row || !row.ref || purchases.has(row.ref) || byRef.has(row.ref)
+        || !savingsDate(row.date) || row.date >= origin || !row.accountId
+        || (!isRevolvingCardAccount({ account: row.accountId })
+          && debtRows.filter(d => d.id === row.accountId).length !== 1)
+        || savingsCents(row.amount) == null || savingsCents(row.covered) == null
+        || row.covered > row.amount) { issue('coverage-opening-entry-invalid'); continue; }
+      purchases.set(row.ref, { ref: row.ref, accountId: row.accountId,
+        accountLabel: label(row.accountId), date: row.date, amount: row.amount,
+        categoryLabel: row.categoryLabel || 'Category unavailable', pending: false,
+        covered: row.covered, refunded: 0, audit: [{ kind: 'confirmed-opening', amount: row.covered }] });
+    }
+    const checkedRow = (ref, sign, account) => {
+      const tx = byRef.get(ref);
+      const amount = tx && money(tx);
+      if (!tx || !unit(tx) || amount == null || amount * sign <= 0 || used.has(ref)
+        || tx.pending === true || tx.pendingPostedAmbiguous || tx.pendingPostedDuplicate
+        || (account && tx.atlasAccountId !== account)) return null;
+      return tx;
+    };
+    const records = policy && policy.payments;
+    if (policy && (!Array.isArray(records) || !Array.isArray(policy.refunds) || !Array.isArray(policy.reversals))) {
+      issue('coverage-records-invalid');
+    }
+    for (const refund of policy && Array.isArray(policy.refunds) ? policy.refunds : []) {
+      const row = purchases.get(refund && refund.purchaseRef);
+      const tx = refund && checkedRow(refund.refundRef, -1, row && row.accountId);
+      const amount = tx && -money(tx);
+      if (!refund || refund.confirmed !== true || !row || !tx || paymentLike(tx)
+        || tx.date < row.date || amount + savingsCents(row.refunded) > savingsCents(row.amount)) {
+        issue('coverage-refund-unconfirmed', refund && refund.refundRef); continue;
+      }
+      row.refunded = (savingsCents(row.refunded) + amount) / 100;
+      row.audit.push({ kind: 'confirmed-refund', ref: tx.coverageRef, amount: amount / 100 });
+      used.add(tx.coverageRef);
+    }
+    const paymentIds = new Set(), accepted = new Map();
+    for (const record of Array.isArray(records) ? records : []) {
+      const credit = record && checkedRow(record.creditRef, -1);
+      const debit = record && checkedRow(record.debitRef, 1, 'chequing-a');
+      const account = credit && cardId(credit);
+      const amount = credit && -money(credit);
+      const parts = record && Array.isArray(record.allocations) ? record.allocations : [];
+      const other = record && savingsCents(record.otherAmount);
+      const split = new Map();
+      let valid = record && record.id && !paymentIds.has(record.id) && record.confirmed === true
+        && credit && debit && account && paymentLike(credit) && paymentLike(debit)
+        && debit.accountRole === 'household-cash'
+        && money(debit) === amount && other != null
+        && (!other || ['prior-debt', 'required-payment', 'other'].includes(record.otherPurpose));
+      for (const part of parts) {
+        const row = purchases.get(part && part.purchaseRef), cents = part && savingsCents(part.amount);
+        if (!row || row.accountId !== account || cents == null || cents <= 0
+          || split.has(part.purchaseRef) || row.date > credit?.date
+          || savingsCents(row.covered) + cents > savingsCents(row.amount)) valid = false;
+        else split.set(part.purchaseRef, cents);
+      }
+      const backfill = Array.from(split.values()).reduce((a,b) => a+b, 0);
+      if (!valid || backfill + other !== amount) {
+        issue('coverage-payment-intent-or-pair-unconfirmed', record && record.creditRef); continue;
+      }
+      paymentIds.add(record.id); used.add(record.creditRef); used.add(record.debitRef);
+      const covered = [];
+      for (const [ref, cents] of split) {
+        const row = purchases.get(ref);
+        row.covered = (savingsCents(row.covered) + cents) / 100;
+        row.audit.push({ kind: 'confirmed-backfill', id: record.id, amount: cents / 100 });
+        covered.push({ ref, date: row.date, amount: cents / 100, categoryLabel: row.categoryLabel });
+      }
+      accepted.set(record.id, { account, amount, split, reversed: new Map(), other, otherReversed: 0,
+        date: credit.date, cashDate: debit.date });
+      payments.push({ id: record.id, date: credit.date, accountLabel: label(account),
+        status: 'reconciled', amount: amount / 100, backfill: backfill / 100,
+        cardPayment: other / 100, otherPurpose: record.otherPurpose || null,
+        purchases: covered, satisfiesMinimum: false });
+    }
+    for (const reversal of policy && Array.isArray(policy.reversals) ? policy.reversals : []) {
+      const payment = accepted.get(reversal && reversal.paymentId);
+      const cardDebit = reversal && checkedRow(reversal.cardDebitRef, 1, payment && payment.account);
+      const cashCredit = reversal && checkedRow(reversal.cashCreditRef, -1, 'chequing-a');
+      const amount = cardDebit && money(cardDebit), split = new Map();
+      const other = reversal && savingsCents(reversal.otherAmount);
+      let valid = reversal && reversal.confirmed === true && payment && cardDebit && cashCredit
+        && paymentLike(cardDebit) && paymentLike(cashCredit) && amount === -money(cashCredit)
+        && cashCredit.accountRole === 'household-cash'
+        && cardDebit.date >= payment.date && cashCredit.date >= payment.cashDate
+        && other != null && other + payment.otherReversed <= payment.other;
+      for (const part of reversal && Array.isArray(reversal.allocations) ? reversal.allocations : []) {
+        const cents = part && savingsCents(part.amount), ref = part && part.purchaseRef;
+        if (!payment || cents == null || cents <= 0 || split.has(ref)
+          || cents + (payment.reversed.get(ref) || 0) > (payment.split.get(ref) || 0)) valid = false;
+        else split.set(ref, cents);
+      }
+      if (!valid || Array.from(split.values()).reduce((a,b) => a+b, 0) + other !== amount) {
+        issue('coverage-reversal-unconfirmed'); continue;
+      }
+      for (const [ref, cents] of split) {
+        const row = purchases.get(ref);
+        row.covered = (savingsCents(row.covered) - cents) / 100;
+        row.audit.push({ kind: 'confirmed-backfill-reversal', id: reversal.paymentId, amount: cents / 100 });
+        payment.reversed.set(ref, (payment.reversed.get(ref) || 0) + cents);
+      }
+      payment.otherReversed += other;
+      used.add(reversal.cardDebitRef); used.add(reversal.cashCreditRef);
+    }
+    for (const tx of rows) {
+      const account = cardId(tx), amount = money(tx);
+      // An identified issuer interest credit moves debt; it does not refund
+      // a purchase or create a cash-coverage allocation.
+      if (isRevolvingCardFinanceCharge(tx) && !paymentLike(tx)) continue;
+      if (!used.has(tx.coverageRef) && ((account && amount < 0) || paymentLike(tx))) {
+        issue('coverage-payment-or-credit-purpose-unconfirmed', tx.coverageRef);
+        if (account && paymentLike(tx) && amount < 0) payments.push({
+          id: tx.coverageRef, date: tx.date, accountLabel: label(account),
+          status: 'unreconciled', reason: 'payment-intent-unconfirmed',
+          amount: unit(tx) ? -amount / 100 : null, backfill: null, cardPayment: null,
+          purchases: [], satisfiesMinimum: false });
+      }
+    }
+    const ledger = Array.from(purchases.values()).sort((a,b) => a.date.localeCompare(b.date) || a.ref.localeCompare(b.ref))
+      .map(row => ({ ...row, remaining: Math.max(0, savingsCents(row.amount)
+        - savingsCents(row.refunded) - savingsCents(row.covered)) / 100 }));
+    const knownReserve = ledger.reduce((sum,row) => sum + savingsCents(row.remaining), 0) / 100;
+    const bills = (plan.startingCash?.breakdown || []).filter(row => row.id === 'chequing-a');
+    if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
+      || bills[0].unknown === true || bills[0].value < knownReserve) issue('coverage-bills-backing-unconfirmed');
+    return { status: issues.length ? 'unavailable' : 'ready', asOf,
+      source: 'Forecast.visaPaymentReconciliation', currency: 'cad', fundingAccountId: 'chequing-a',
+      reason: issues.length ? 'Confirm the card-coverage opening, transaction units and explicit purchase/payment links before using available cash.' : null,
+      reservedCash: issues.length ? null : knownReserve, knownObservedReserve: knownReserve,
+      purchases: ledger, active: ledger.filter(row => row.remaining > 0), payments, issues,
+      carryForward: 'uncovered-purchases-carry-until-confirmed-coverage-or-refund' };
   }
 
   function visaPaymentPublication(row) {
-    if (!row) return null;
-    return {
-      id: row.id == null ? null : String(row.id),
-      date: row.date || null,
-      accountLabel: row.accountLabel || null,
-      amount: row.amount == null ? null : roundCent(row.amount),
-      status: row.status,
-      reason: row.reason || null,
-      backfill: row.backfill == null ? null : roundCent(row.backfill),
-      cardPayment: row.cardPayment == null ? null : roundCent(row.cardPayment),
-      purchases: (row.purchases || []).map(item => ({
-        date: item.date,
-        amount: roundCent(item.amount),
-        categoryLabel: item.categoryLabel,
-      })),
-      window: row.window || null,
-    };
+    return row ? { id: row.id, date: row.date, accountLabel: row.accountLabel,
+      status: row.status, reason: row.reason || null, amount: row.amount,
+      backfill: row.backfill, cardPayment: row.cardPayment, otherPurpose: row.otherPurpose || null,
+      purchases: (row.purchases || []).map(p => ({ date: p.date, amount: p.amount, categoryLabel: p.categoryLabel })) } : null;
+  }
+  function cardCoverageState(plan, asOf, opts) {
+    const packet = currentPeriodActualsPacket(opts) || {};
+    return visaPaymentReconciliation(packet.transactions, { plan, asOf, packet, debts: opts && opts.debts });
+  }
+  function simulationCashFloor(sim) {
+    return sim.requiredCashFloor != null ? sim.requiredCashFloor : sim.buffer;
+  }
+  function publishedVisaPayments(plan, asOf, opts) {
+    return cardCoverageState(plan, asOf, opts).payments.map(visaPaymentPublication);
   }
 
-  function visaUnreconciled(tx, card, reason) {
-    const cents = amountCents(tx && tx.amount);
-    return {
-      id: tx && tx.id != null ? String(tx.id) : null,
-      date: tx && tx.date || null,
-      card,
-      accountLabel: VISA_BACKFILL_CARDS[card] || 'Visa',
-      amount: cents == null ? null : roundCent(Math.abs(cents) / 100),
-      status: 'unreconciled',
-      reason,
-      backfill: null,
-      cardPayment: null,
-      purchases: [],
-      window: null,
-      satisfiesMinimum: false,
-      extraPaydown: 0,
-    };
-  }
-
-  function reconcileVisaCard(card, rows, evidence, packet) {
-    const duplicateIds = pendingPostedDuplicateIdSet({ transactions: rows });
-    const payments = [];
-    const activity = [];
-    for (const tx of rows) {
-      if (!tx || !tx.date) {
-        if (visaCreditClass(tx) === 'payment' || (tx && visaPaymentPayee(tx))) {
-          payments.push(visaUnreconciled(tx, card, tx && tx.date ? 'missing-amount' : 'missing-date'));
-        }
-        continue;
-      }
-      const kind = visaCreditClass(tx);
-      if (kind === 'payment-missing-amount') {
-        payments.push(visaUnreconciled(tx, card, 'missing-amount'));
-      } else if (kind === 'payment') payments.push(tx);
-      else if (kind === 'pending') {
-        if (tx.pendingPostedAmbiguous === true) activity.push({ tx, kind: 'pending' });
-        continue;
-      } else activity.push({ tx, kind });
-    }
-    const postedPayments = payments.filter(tx => tx && tx.status !== 'unreconciled' && tx.date)
-      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1
-        : String(a.id).localeCompare(String(b.id)));
-    const closed = new Set();
-    const out = payments.filter(tx => tx && tx.status === 'unreconciled');
-    postedPayments.forEach((tx, index) => {
-      const cents = amountCents(tx.amount);
-      if (cents == null || cents >= 0) {
-        out.push(visaUnreconciled(tx, card, 'missing-amount'));
-        return;
-      }
-      if (tx.id == null || tx.id === '') {
-        out.push(visaUnreconciled(tx, card, 'missing-identity'));
-        return;
-      }
-      if (visaCardIdentity(tx) && visaCardIdentity(tx).contradictory) {
-        out.push(visaUnreconciled(tx, card, 'contradictory-account'));
-        return;
-      }
-      if (!evidence.complete) {
-        out.push(visaUnreconciled(tx, card, 'incomplete-evidence'));
-        return;
-      }
-      const previous = index > 0 ? postedPayments[index - 1] : null;
-      const previousDate = previous && previous.date || null;
-      const inWindow = item => item && item.tx && item.tx.date
-        && item.tx.date <= tx.date
-        && (!previousDate || item.tx.date > previousDate);
-      const windowRows = activity.filter(inWindow);
-      if (windowRows.some(item => item.tx && item.tx.pendingPostedAmbiguous === true)) {
-        out.push(visaUnreconciled(tx, card, 'pending-possible-replacement'));
-        return;
-      }
-      if (windowRows.some(item => item.kind === 'ambiguous')) {
-        out.push(visaUnreconciled(tx, card, 'ambiguous-credit'));
-        return;
-      }
-      const purchases = windowRows.filter(item => {
-        if (!item || item.kind !== null) return false;
-        const purchase = item.tx;
-        if (transactionPendingState(purchase) === 'pending') return false;
-        if (skipSplitParent(purchase, packet)) return false;
-        if (isRevolvingCardFinanceCharge(purchase)) return false;
-        if (closed.has(String(purchase.id))) return false;
-        const purchaseCents = amountCents(purchase.amount);
-        return purchaseCents != null && purchaseCents > 0;
-      });
-      let purchaseCents = 0;
-      const ordered = purchases.slice().sort((a, b) => a.tx.date < b.tx.date ? -1
-        : a.tx.date > b.tx.date ? 1 : String(a.tx.id).localeCompare(String(b.tx.id)));
-      for (const item of ordered) purchaseCents += amountCents(item.tx.amount);
-      let refundCents = 0;
-      for (const item of windowRows) {
-        if (!item || item.kind !== 'refund') continue;
-        if (skipSplitParent(item.tx, packet)) continue;
-        const refund = amountCents(item.tx.amount);
-        if (refund != null && refund < 0) refundCents += -refund;
-      }
-      const net = Math.max(0, purchaseCents - refundCents);
-      const paymentCents = -cents;
-      const backfillCents = Math.min(paymentCents, net);
-      const covered = [];
-      let left = backfillCents;
-      for (const item of ordered) {
-        const face = amountCents(item.tx.amount);
-        const take = Math.min(left, face);
-        if (take > 0) {
-          covered.push({
-            date: item.tx.date,
-            amount: roundCent(take / 100),
-            categoryLabel: visaPurchaseCategoryLabel(item.tx),
-          });
-          left -= take;
-        }
-        if (item.tx.id != null) closed.add(String(item.tx.id));
-      }
-      for (const item of ordered) {
-        if (item.tx.id != null) closed.add(String(item.tx.id));
-      }
-      let reason = 'no-posted-purchases';
-      if (backfillCents > 0 && backfillCents === paymentCents && net > paymentCents) {
-        reason = 'payment-within-purchases';
-      } else if (backfillCents > 0 && backfillCents === paymentCents) {
-        reason = 'exact-backfill';
-      } else if (backfillCents > 0) {
-        reason = 'partial-backfill';
-      }
-      out.push({
-        id: String(tx.id),
-        date: tx.date,
-        card,
-        accountLabel: VISA_BACKFILL_CARDS[card],
-        amount: roundCent(paymentCents / 100),
-        status: 'reconciled',
-        reason,
-        backfill: roundCent(backfillCents / 100),
-        cardPayment: roundCent((paymentCents - backfillCents) / 100),
-        purchases: covered,
-        window: {
-          previousPaymentDate: previousDate,
-          through: tx.date,
-          rule: previousDate
-            ? 'posted-purchases-after-previous-payment-through-payment-date'
-            : 'posted-purchases-on-or-before-payment-date',
-        },
-        satisfiesMinimum: false,
-        extraPaydown: 0,
-        duplicateIdsNoted: ordered.some(item => item.tx && item.tx.id != null
-          && duplicateIds.has(String(item.tx.id))),
-      });
-    });
-    return out;
-  }
-
-  function visaPaymentReconciliation(transactions, opts) {
-    opts = opts || {};
-    const txs = Array.isArray(transactions) ? transactions : [];
-    const packet = { transactions: txs };
-    const evidence = visaEvidenceState(opts);
-    const buckets = new Map();
-    for (const tx of txs) {
-      const identity = visaCardIdentity(tx);
-      if (!identity || identity.contradictory || !identity.card) continue;
-      const list = buckets.get(identity.card) || [];
-      list.push(tx);
-      buckets.set(identity.card, list);
-    }
-    const payments = [];
-    for (const tx of txs) {
-      const identity = visaCardIdentity(tx);
-      if (identity && identity.contradictory && visaCreditClass(tx) === 'payment') {
-        payments.push(visaUnreconciled(tx, null, 'contradictory-account'));
-      }
-    }
-    for (const card of Object.keys(VISA_BACKFILL_CARDS)) {
-      if (!buckets.has(card)) continue;
-      payments.push(...reconcileVisaCard(card, buckets.get(card), evidence, packet));
-    }
-    payments.sort((a, b) => String(a.date).localeCompare(String(b.date))
-      || String(a.accountLabel).localeCompare(String(b.accountLabel))
-      || String(a.id).localeCompare(String(b.id)));
-    return {
-      calculator: 'Forecast.visaPaymentReconciliation',
-      carryForward: 'uncovered-purchases-do-not-carry',
-      payments,
-    };
-  }
-
-  function publishedVisaPayments(opts) {
-    const packet = currentPeriodActualsPacket(opts);
-    if (packet && Array.isArray(packet.visaPaymentBackfill)) return packet.visaPaymentBackfill;
-    if (!packet || !Array.isArray(packet.transactions)) return [];
-    return visaPaymentReconciliation(packet.transactions, { packet }).payments
-      .map(visaPaymentPublication);
-  }
 
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
@@ -9018,7 +8966,7 @@
         afterDebtRepayment,
         afterBigPurchases,
       };
-      const visaPaymentBackfill = planUnavailable ? [] : publishedVisaPayments(opts).filter(row =>
+      const visaPaymentBackfill = planUnavailable ? [] : publishedVisaPayments(plan, asOf, opts).filter(row =>
         row && row.date && row.date >= window.start && row.date <= window.end);
       if (planUnavailable) {
         previousEnding = null;
@@ -9054,6 +9002,8 @@
         available,
         bills: planUnavailable ? [] : bills,
         ...(visaPaymentBackfill.length ? { visaPaymentBackfill } : {}),
+        ...(role === 'active' && cardCoverageState(plan, asOf, opts).status !== 'incumbent'
+          ? { cardPurchaseCoverage: cardCoverageState(plan, asOf, opts) } : {}),
         totalBillsThisPeriod: planUnavailable ? null : totalBillsThisPeriod,
         paidBills,
         remainingBills: planUnavailable ? null : remainingBills,
@@ -9864,9 +9814,12 @@
       todayActions,
       noMovementToday: !cal.todayIsPayday && !moneyMovementRequired,
       currentShortfall,
-      remainingClaim: coverage.remainingClaim,
+      remainingClaim: alloc.cardPurchaseCoverage?.status === 'unavailable'
+        ? 'unavailable' : coverage.remainingClaim,
       categoryRemainingClaim: categoryRemainingClaimFrom(
         coverage.remainingClaim, actuals.unclassified),
+      ...(alloc.cardPurchaseCoverage?.status === 'unavailable'
+        ? { unavailable: true, reason: alloc.cardPurchaseCoverage.reason } : {}),
       internalMovements: householdInternalMovements(plan, opts),
     };
   }
@@ -10371,6 +10324,7 @@
 
   function paydayAllocation(plan, asOf, opts) {
     opts = opts || {};
+    const cardCoverage = cardCoverageState(plan, asOf, opts);
     const priority = debtPriority(plan, opts.debts || []);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
@@ -10666,7 +10620,8 @@
     // Future income cannot release cash already promised to a merchant.
     // Both this current-cash ceiling and the master path must hold; these
     // are constraints on the same dollars, not additive reservation buckets.
-    const hiBound = roundCent(leftoverAfterOE - pendingCash);
+    const cardCash = cardCoverage.status === 'ready' ? cardCoverage.reservedCash : 0;
+    const hiBound = roundCent(leftoverAfterOE - pendingCash - cardCash);
     const deltaAll = maxFeasiblePaydayRemoval(
       plan, asOf, masterOpts, loBound, hiBound, []);
     const movable = roundCent(Math.max(0, Math.min(leftoverAfterOE, deltaAll)));
@@ -10687,7 +10642,7 @@
       });
       currentDelta = deltaWithout;
     }
-    const pathWanted = roundCent(Math.max(pendingCash, leftoverAfterOE - Math.max(0, currentDelta)));
+    const pathWanted = roundCent(Math.max(pendingCash + cardCash, leftoverAfterOE - Math.max(0, currentDelta)));
     const allocatedPath = take(pathWanted);
     const pathShortfall = Math.max(0, roundCent(pathWanted - allocatedPath));
 
@@ -10867,8 +10822,8 @@
       && openingRow.priorAsOf < asOf ? openingRow.priorAsOf : null;
     const represented = representedKeySet(plan, opts, asOf);
 
-    return {
-      asOf,
+    const result = {
+      asOf, ...(cardCoverage.status !== 'incumbent' ? { cardPurchaseCoverage: cardCoverage } : {}),
       mode: cal.mode,
       payday: subsequent,
       periodStart: asOf,
@@ -10979,6 +10934,19 @@
       identity: roundCent(allocatedTotal + unallocated),
       actualsCoverage: coverage,
     };
+    if (cardCoverage.status === 'unavailable') {
+      result.extraDebt = { status: 'unavailable', allocated: null, absorbable: null,
+        target: null, consequence: null, reason: cardCoverage.reason };
+      result.protectedPath = protectedPathUnavailable(cardCoverage.reason);
+      result.weeklyCap = result.spendPermission = result.supportedAllowance = null;
+      result.movable = result.unallocated = result.remainder = null;
+      result.optional = [];
+      result.lines = result.lines.filter(row => ['obligations', 'essentials'].includes(row.kind));
+      result.allocatedTotal = result.identity = null;
+      result.runningLeftover = null;
+      result.paydayShellTrust.extraDebt = result.paydayShellTrust.optional = result.paydayShellTrust.remainder = 'unknown';
+    }
+    return result;
   }
 
   /* ---------------------------------------------------- budget recommender */
@@ -11095,13 +11063,16 @@
   // Dated-opening cash may remain as lookback. Do not mix live observedCash
   // into this walk.
   function withholdCurrentOperatingClaims(result, opts) {
-    if (!result || !opts || opts.operatingPlan !== 'unavailable') return result;
-    const note = opts.operatingPlanNote
+    const cardUnknown = result && result.cardPurchaseCoverage?.status === 'unavailable';
+    if (!result || !opts || (opts.operatingPlan !== 'unavailable' && !cardUnknown)) return result;
+    const note = cardUnknown ? result.cardPurchaseCoverage.reason : opts.operatingPlanNote
       || 'Current plan unavailable. The dated opening is stale.';
-    result.operatingPlanUnavailable = true;
+    if (opts.operatingPlan === 'unavailable') result.operatingPlanUnavailable = true;
+    if (cardUnknown) result.cardCoverageUnavailable = true;
     result.operatingPlanNote = note;
     result.weekly = null;
     result.currentPeriodAction = {
+      ...(cardUnknown && opts.operatingPlan !== 'unavailable' ? result.currentPeriodAction : {}),
       unavailable: true,
       remainingClaim: 'unavailable',
       reason: note,
@@ -11122,7 +11093,10 @@
     if (result.planSpendPaydayFunding) {
       result.planSpendPaydayFunding = {
         status: 'unavailable', source: 'Forecast.planSpendPaydayFunding',
-        reason: note, paydays: [], costs: [], gap: null,
+        reason: note, paydays: [], gap: null,
+        costs: cardUnknown ? result.planSpendPaydayFunding.costs || [] : [],
+        ...(cardUnknown && Array.isArray(result.planSpendPaydayFunding.unscheduled)
+          ? { unscheduled: result.planSpendPaydayFunding.unscheduled } : {}),
       };
     }
     if (result.defaultView) {
@@ -11146,13 +11120,15 @@
   // estimate substitutes for those holds. This is a projection, not saved cash
   // or a reconstruction of the original payday plan.
   function publishBudgetPeriodFunding(plan, asOf, periods, opts) {
+    const coverage = cardCoverageState(plan, asOf, opts);
     const reserves = savingsEarmarksEnabled(plan) ? reserveFundingState(plan, asOf, opts) : null;
     if (reserves && reserves.status !== 'ready') {
+      const reason = reserves.reason;
       for (const period of periods || []) {
-        period.plannedCostFunding = { status: 'unavailable', reason: reserves.reason,
+        period.plannedCostFunding = { status: 'unavailable', reason,
           contribution: null, trust: 'unavailable', actualSaved: null, items: [] };
         if (period.start <= asOf && period.end >= asOf) period.fromTodayFunding = {
-          status: 'unavailable', reason: reserves.reason, asOf,
+          status: 'unavailable', reason, asOf,
           basis: 'Budget-from-today', contribution: null, trust: 'unavailable',
           actualSaved: null, items: [], periods: [], evidenceFailures: [],
         };
@@ -11186,7 +11162,8 @@
     const todayUnavailable = (reason, failures = []) => ({ status: 'unavailable', asOf,
       source: 'Forecast.planSpendPaydayFunding', basis: 'Budget-from-today',
       reason, contribution: null, trust: 'unavailable', actualSaved: null,
-      originalPaydayPlan: null, items: roster, periods: [],
+      originalPaydayPlan: null,
+      ...(coverage.status === 'unavailable' ? { availableNow: null } : {}), items: roster, periods: [],
       evidenceFailures: orderedFailures([...(current ? spendingFailures(current, true) : []),
         ...cashFailures(), ...failures]),
     });
@@ -11352,6 +11329,9 @@
       }
       return issues;
     };
+    if (coverage.status === 'unavailable') return unavailable(coverage.reason,
+      [failure('card-purchase-coverage-unconfirmed', coverage.reason, {},
+        'Confirm the opening and explicit purchase/payment allocations; amount and timing alone cannot establish intent.')]);
     if (!full.length) return unavailable('No complete future Budget pay period is available.',
       [failure('funding-periods-unavailable', 'No complete future Budget pay period is available.')]);
     // The incumbent sequence omits absent amounts and accepts legacy numeric
@@ -11523,7 +11503,7 @@
           const closing = forwardSim.daily.find(d => d.date === current.end).balance;
           const walkCapacity = roundCent(closing - cash + costPayments);
           // Later deposits protect the walk but cannot be set aside now.
-          const capacity = roundCent(cash + walkCapacity - income - forwardSim.buffer);
+          const capacity = roundCent(cash + walkCapacity - income - simulationCashFloor(forwardSim));
           const deductions = roundCent(income - walkCapacity);
           const bills = roundCent(deductions - remaining);
           forwardBasis.set(asOf, { fromToday: true, end: current.end,
@@ -11562,7 +11542,8 @@
               through: end, currentThrough: current.end, observationAsOf: actuals.observationAsOf,
               cashAsOf: plan.opening.asOf, currentCash: cash,
               operatingBills: bills, remainingHousehold: remaining,
-              requiredOperatingCash: roundCent(deductions + forwardSim.buffer),
+              requiredOperatingCash: roundCent(deductions + simulationCashFloor(forwardSim)),
+              ...(coverage.status !== 'incumbent' ? { cardPurchaseCoverageReserve: coverage.reservedCash } : {}),
               operatingShortfall: roundCent(Math.max(0, -capacity)),
               availableNow: Math.max(0, Math.min(first.capacity, first.cashCapacity)),
               contribution: first.contribution,
@@ -11928,6 +11909,8 @@
         pastPeriodViews, defaultView.calendarPeriods, timelineFuturePeriods, timelineBound);
       publishBudgetPeriodFunding(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
       return withholdCurrentOperatingClaims({
+        ...(cardCoverageState(plan, asOf, paydayOpts).status !== 'incumbent'
+          ? { cardPurchaseCoverage: cardCoverageState(plan, asOf, paydayOpts) } : {}),
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
         knowledge: {

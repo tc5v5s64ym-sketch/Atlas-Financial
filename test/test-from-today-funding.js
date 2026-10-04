@@ -7,6 +7,7 @@ const fixture = require('./fixtures/budget-funding-data');
 const AS_OF = '2026-08-20';
 function state() {
   const data = fixture();
+  data.plan.cardPurchaseCoverage = require('./fixtures/card-coverage-opening')('2026-08-14');
   data.meta.asOf = data.plan.opening.asOf = AS_OF;
   data.plan.opening.priorAsOf = '2026-08-13';
   data.plan.startingCash.breakdown[0].value = 1000;
@@ -30,7 +31,7 @@ function state() {
   return { data, packet };
 }
 const run = (s, opts = {}) => F.recommend(s.data.plan, AS_OF,
-  { debts: s.data.debts, currentPeriodActuals: s.packet, ...opts });
+  { debts: s.data.debts, currentPeriodActuals: require('./fixtures/card-coverage-opening').packet(s.packet), ...opts });
 const current = a => a.payPeriodViews.find(p => p.start === '2026-08-14');
 const today = s => current(run(s)).fromTodayFunding;
 const s = state(), before = JSON.stringify(s), a = run(s), f = current(a).fromTodayFunding;
@@ -38,8 +39,8 @@ assert.equal(f.status, 'ready');
 assert.equal(f.currentCash, 1000, 'payroll is already in the observed opening, not another 1000');
 assert.equal(f.operatingBills, 200 + 150 + 25);
 assert.equal(f.remainingHousehold, 300 - 50, 'pending card purchase fulfills consumption once');
-assert.equal(f.requiredOperatingCash, 200 + 150 + 25 + 250 + 50);
-assert.equal(f.availableNow, 1000 - 200 - 150 - 25 - 250 - 50);
+assert.equal(f.requiredOperatingCash, 200 + 150 + 25 + 250 + 50 + 50);
+assert.equal(f.availableNow, 1000 - 200 - 150 - 25 - 250 - 50 - 50);
 assert.equal(f.contribution, 600 - (1000 - 200 - 150 - 300));
 assert.equal(f.cashAfterProposal, 1000 - 250);
 assert.equal(f.items[0].cumulativeProposed, 250);
@@ -129,17 +130,17 @@ assert.equal(paydayFunding.contribution, 250);
 const poor = state(); poor.data.plan.startingCash.breakdown[0].value = 750;
 const gap = today(poor);
 assert.equal(gap.status, 'funding-gap');
-assert.equal(gap.contribution, 750 - 675);
-assert.equal(gap.gap.shortBy, 250 - 75);
-assert.equal(gap.items[0].remainingGap, 600 - 75);
+assert.equal(gap.contribution, 750 - 725);
+assert.equal(gap.gap.shortBy, 250 - 25);
+assert.equal(gap.items[0].remainingGap, 600 - 25);
 assert.equal(gap.periods[1].contribution, null);
-assert.match(gap.periods[1].reason, /2026-08-20.*175.00.*Named cost/);
+assert.match(gap.periods[1].reason, /2026-08-20.*225.00.*Named cost/);
 const insufficient = state(); insufficient.data.plan.startingCash.breakdown[0].value = 100;
 assert.equal(today(insufficient).contribution, 0);
-assert.equal(today(insufficient).operatingShortfall, 675 - 100);
+assert.equal(today(insufficient).operatingShortfall, 725 - 100);
 
 // Systems Review #470 P1: no unreceived credit, including the purpose-debt
-// path, may turn $75 of current capacity into a $250 instruction. Same-day
+// path, may turn $25 of current capacity into a $250 instruction. Same-day
 // modelled draws are not evidence of receipt either. Later repayment remains
 // an outflow; it must not disappear along with the proposed credit.
 for (const date of [AS_OF, '2026-08-25']) {
@@ -150,10 +151,10 @@ for (const date of [AS_OF, '2026-08-25']) {
     const got = current(run(poor, opts)).fromTodayFunding;
     assert.equal(got.status, 'funding-gap');
     assert.equal(got.operatingBills, 375);
-    assert.equal(got.requiredOperatingCash, 675);
-    assert.equal(got.availableNow, 75);
-    assert.equal(got.contribution, 75);
-    assert.equal(got.gap.shortBy, 175);
+    assert.equal(got.requiredOperatingCash, 725);
+    assert.equal(got.availableNow, 25);
+    assert.equal(got.contribution, 25);
+    assert.equal(got.gap.shortBy, 225);
   }
 }
 const repayment = current(run(poor, { plannedFlows: [
@@ -161,12 +162,12 @@ const repayment = current(run(poor, { plannedFlows: [
   { date: '2026-08-26', amount: -25, id: 'synthetic-repayment', debtId: 'heloc' },
 ] })).fromTodayFunding;
 assert.equal(repayment.operatingBills, 400);
-assert.equal(repayment.availableNow, 50);
-assert.equal(repayment.contribution, 50);
+assert.equal(repayment.availableNow, 0);
+assert.equal(repayment.contribution, 0);
 
 // P1: an independent daily operating ledger disproves the old $250 + $350
-// instruction. The named $600 payment leaves $25 on Sep 24, below the $50
-// floor. Only $575 of that cost is compatible with all known operations.
+// instruction. The named $600 payment leaves $25 on Sep 24, below the $100
+// floor ($50 buffer + $50 uncovered purchase). Only $525 of that cost is compatible with all known operations.
 // Withholding is intentional: this repair does not invent a new allocation
 // priority or alter the established future-payday publication.
 const laterBill = state();
@@ -196,23 +197,23 @@ const unsafeCarry = independentCarry(600);
 for (const [date, dollars] of [['2026-08-27', 375], ['2026-09-10', 125], ['2026-09-24', 25]]) {
   assert.equal(unsafeCarry.find(d => d.day === date).cash, dollars);
 }
-assert.equal(Math.min(...independentCarry(575).map(d => d.cash)), 50);
+assert.equal(Math.min(...independentCarry(525).map(d => d.cash)), 100);
 const blockedCarry = today(laterBill);
 assert.equal(blockedCarry.status, 'unavailable');
 assert.equal(blockedCarry.contribution, null);
 assert.equal(blockedCarry.items[0].cumulativeProposed, null);
 assert.equal(blockedCarry.items[0].projectedFullyFunded, undefined);
 assert.equal(blockedCarry.periods.length, 0, 'no earlier unsafe proposals survive the operating barrier');
-assert.match(blockedCarry.reason, /operating.*2026-09-24.*25.00.*50.00/i);
+assert.match(blockedCarry.reason, /operating.*2026-09-24.*75.00.*100.00/i);
 const boundary = structuredClone(laterBill);
-boundary.data.plan.bills.at(-1).amount = 575;
+boundary.data.plan.bills.at(-1).amount = 525;
 assert.equal(today(boundary).status, 'ready', 'exactly meeting the floor must remain available');
 assert.equal(today(boundary).periods[1].items[0].remainingGap, 0);
 const earlyGapWithLaterBreach = structuredClone(laterBill);
 earlyGapWithLaterBreach.data.plan.startingCash.breakdown[0].value = 750;
 earlyGapWithLaterBreach.data.plan.bills.at(-1).amount = 1000;
 assert.equal(today(earlyGapWithLaterBreach).contribution, null,
-  'a first protected-cost gap must not hide a known later operating barrier to today\'s $75');
+  'a first protected-cost gap must not hide a known later operating barrier to today\'s $25');
 
 const overdue = state(); overdue.data.plan.commitments[0].date = '2026-08-19';
 assert.match(today(overdue).reason, /overdue/);
@@ -225,8 +226,8 @@ assert.equal(today(undated).unscheduled.find(r => r.id === 'unknown-date').date,
 assert.equal(today(undated).trust, 'estimated');
 const beforePayday = state(); beforePayday.data.plan.commitments[0].date = '2026-08-26';
 const near = today(beforePayday);
-assert.equal(near.contribution, 325, 'near deadline cannot wait for the next payroll');
-assert.equal(near.gap.shortBy, 600 - 325);
+assert.equal(near.contribution, 275, 'near deadline cannot wait for the next payroll');
+assert.equal(near.gap.shortBy, 600 - 275);
 
 for (const [name, change] of [
   ['missing actuals', x => { x.packet = null; }],
