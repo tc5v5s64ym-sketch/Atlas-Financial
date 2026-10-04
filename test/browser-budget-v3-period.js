@@ -520,7 +520,11 @@ async function geometry(page) {
         assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open),true);
         assert.match(await sheetBody.innerText(),/Historical original plan unavailable/);
         assert.match(await sheetBody.innerText(),/Synthetic historical grocer[\s\S]*47\.25/);
-        assert.doesNotMatch(await sheetBody.innerText(),/450\.00|613\.27|402\.75|566\.02|Planned|Remaining|\/week/);
+        assert.doesNotMatch(await sheetBody.innerText(),/450\.00|613\.27|402\.75|566\.02|\/week/);
+        assert.doesNotMatch(await sheetBody.locator('[data-budget-category] dt').allTextContents().then(labels=>labels.join(' ')),/Planned|Remaining/,
+          'native historical categories do not print current targets or remaining amounts');
+        assert.match(await sheetBody.locator('[data-household-budget-progress-total] [data-budget-ratio-plan]').innerText(),/Unknown/,
+          'the total retains a truthful Actual / Planned label with its original plan explicitly unknown');
         assert.equal(await sheetBody.locator('.budget-category-fill,.budget-category-pace').count(),0);
       };
       for (const id of ['groceries','fuel','restaurants']) {
