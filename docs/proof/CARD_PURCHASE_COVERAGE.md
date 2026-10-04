@@ -131,3 +131,27 @@ Production remains unconfirmed until the household supplies the opening and
 explicit links recorded in docs/01_OPEN_QUESTIONS.md. Independent Systems
 review and parent publication coordination remain separate gates. No claim
 of deployment, production reconciliation or lender non-payment is made.
+
+## Local Systems review B1 repair
+
+Independent review blocked 1036127 because the active funding legend/chart
+showed only $95 of components against $175 needed after an invented $80
+purchase. The partial $20 backfill omitted the remaining $60; full coverage
+resolved the discrepancy. Capacity arithmetic was already correct.
+
+The printer now copies Forecast's cardPurchaseCoverageReserve into the Today
+legend/chart and detailed from-today evidence. Copy names this cash protection
+separately from the minimum and category. No new page money calculation is
+introduced. The existing chart percentage calculation uses the published hold.
+
+The supplied-cent oracle checks before/purchase/partial/full at 1440px and
+390px: required cash 175/175/155/95, card hold 0/80/60/0, cash
+500/500/480/420, and capacity 325 throughout. Minimum 25 and original
+groceries 150 remain separate; spending is 80 once after purchase. The standard
+card-coverage suite executes the real printer and totals its printed cents
+independently. test/browser-card-purchase-coverage.js exercises authenticated
+Budget click paths at both widths and records visible parts, chart geometry,
+copy, no overflow/runtime errors and screenshots. Run it with CHROME_PATH
+and optional ATLAS_CARD_COVERAGE_EVIDENCE_DIR. Exact-head browser results and
+review belong in their evidence manifests; the earlier blocking verdict does
+not transfer to this repair. Publication remains held by parent coordination.

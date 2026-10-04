@@ -149,4 +149,55 @@ assert.equal(history,60,'confirmed opening extends bounded history by independen
 assert.equal(O.postedHistoryDaysForCarriedSettlement({now:'2026-09-20T18:00:00Z',
  plan:{cardPurchaseCoverage:{opening:{confirmed:true,asOf:'2026-01-01'}}}}),120,
  'the existing observation cap is retained; ledger rejects incomplete cutover coverage');
+
+// B1: independent supplied-cent totals must reconcile the actual Today printer,
+// detailed evidence and chart, before/after partial/full purchase backfill.
+const fs = require('node:fs'), vm = require('node:vm');
+const fundingCases = [
+  { stage:'before', cash:50000, spent:0, remaining:15000, reserve:0, needed:17500, chart:0 },
+  { stage:'purchase', cash:50000, spent:8000, remaining:7000, reserve:8000, needed:17500, chart:16 },
+  { stage:'partial', cash:48000, spent:8000, remaining:7000, reserve:6000, needed:15500, chart:12.5 },
+  { stage:'full', cash:42000, spent:8000, remaining:7000, reserve:0, needed:9500, chart:0 },
+];
+for (const width of [1440,390]) for (const expected of fundingCases) {
+  const input=fixture(['partial','full'].includes(expected.stage)?'backfill':expected.stage);
+  if(expected.stage==='partial') {
+    input.payload.transactions[1].amount=20; input.payload.transactions[2].amount=-20;
+    input.payload.accounts[0].balance=480; input.payload.accounts[3].balance=460;
+    fixture.confirm(input,'partial-ui',80002,80003,[[80001,20]]);
+  }
+  if(expected.stage==='full') fixture.confirm(input,'full-ui',80002,80003,[[80001,80]]);
+  const state=run(input), today=state.period.fromTodayFunding;
+  const cents=n=>Math.round(n*100);
+  assert.equal(cents(today.currentCash),expected.cash);
+  assert.equal(cents(today.requiredOperatingCash),expected.needed);
+  assert.equal(cents(today.availableNow),32500);
+  assert.equal(cents(today.operatingBills),2500,'the separate minimum is still reserved');
+  assert.equal(cents(state.period.householdBudget[0].spent),expected.spent);
+  assert.equal(cents(state.period.householdBudget[0].hold),15000,'original category unchanged');
+  const context=vm.createContext({Forecast:F,console,innerWidth:width,addEventListener(){},
+    document:{addEventListener(){},querySelectorAll(){return[];},getElementById(){return null;},
+      documentElement:{dataset:{},style:{}}},
+    window:{innerWidth:width,addEventListener(){},matchMedia(){return{matches:width<600,addEventListener(){}};}},
+    localStorage:{getItem(){return null;},setItem(){}},location:{pathname:'/'}});
+  vm.runInContext(fs.readFileSync(require.resolve('../public/app.js'),'utf8'),context);
+  vm.runInContext('App.boot=()=>{};',context);
+  vm.runInContext(fs.readFileSync(require.resolve('../public/plan.js'),'utf8'),context);
+  context.ctx={advice:state.advice,plan:state.data.plan,liveOverlay:state.data.liveOverlay,
+    planPayPeriodId:state.period.id};
+  const html=vm.runInContext('budgetTodayCashCardHtml(ctx)',context);
+  const publishedParts=Object.fromEntries([...html.matchAll(/data-budget-cash-part="([^"]+)"[\s\S]*?<strong>([\s\S]*?)<\/strong>/g)]
+    .map(m=>[m[1],Math.round(Number(m[2].match(/\$([\d,.]+)/)[1].replace(/,/g,''))*100)]));
+  assert.deepEqual(publishedParts,{bills:2500,household:expected.remaining,
+    'card-coverage':expected.reserve,floor:0,proposed:0},expected.stage+'/'+width);
+  // A second method: total the printed cents, not Forecast's total function.
+  assert.equal(Object.values(publishedParts).reduce((sum,n)=>sum+n,0),expected.needed);
+  assert.equal(expected.cash-expected.needed,32500,'independent cash-minus-holds capacity');
+  assert(html.includes('budget-cash-card-coverage" style="width:'+expected.chart+'%"'));
+  assert.match(html,/Cash needed protects remaining bills, household spending, uncovered card purchases and the existing floor/);
+  context.row=state.period;context.plan=state.data.plan;
+  const evidence=vm.runInContext('calendarFromTodayEvidenceHtml(row,plan)',context);
+  assert.match(evidence,new RegExp('data-from-today-card-coverage[^>]*><span>Uncovered card purchases - keep in Bills<\\/span><span>\\$'+(expected.reserve/100).toFixed(2).replace('.','\\.')));
+}
+
 console.log('PASS independent observed cash/debt/spending ledger: purchase, partial and combined backfill, pending, intent/currency unknown and directed replacement');
