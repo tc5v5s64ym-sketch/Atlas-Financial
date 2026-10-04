@@ -40,6 +40,7 @@ const paydayDisclosuresOpen = new Set();
  * computed lazily and cached per input key; the page never computes
  * financial figures itself. */
 let budgetGranularity = 'pay-period';
+let budgetFundingLens = 'today';
 let budgetSelectedMonth = null;
 /* AMANDA SLICE 9 — SAME-MONTH PAY-PERIOD DRILLDOWN.
  * Toggling Month -> Pay Period keeps the selected calendar month as the
@@ -1909,6 +1910,7 @@ function periodBillLine(row) {
     : row.status === 'unknown' ? 'unknown'
     : row.status === 'pending' ? 'pending'
     : row.status === 'needs-date' ? 'needs confirmation'
+    : row.settlement === 'unverified' ? 'to confirm'
     : 'still due';
   const amount = glanceSignedMoney(glanceMoney(row, kind));
   const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
@@ -2528,7 +2530,7 @@ function budgetMonthTrustTag(status) {
   return null;
 }
 
-function budgetMonthComponentRow(label, component) {
+function budgetMonthComponentRow(label, component, outflow = false) {
   if (!component || component.status === 'unavailable') {
     const reason = component && component.reason ? component.reason : 'Forecast did not publish this figure.';
     return `<div class="budget-month-row unavailable" data-budget-month-component="unavailable">`
@@ -2549,7 +2551,7 @@ function budgetMonthComponentRow(label, component) {
   const tag = budgetMonthTrustTag(component.status) || '';
   return `<div class="budget-month-row" data-budget-month-component="${label}">`
     + `<span class="budget-month-label">${label}</span>`
-    + `<span class="budget-month-amount">${money2(amount)}${tag}</span></div>`;
+    + `<span class="budget-month-amount">${outflow && amount >= 0 ? '<span aria-label="outflow">− </span>' : ''}${money2(amount)}${tag}</span></div>`;
 }
 
 /* AMANDA SLICE 7 — MONTHLY FUNDING LADDER.
@@ -2738,6 +2740,18 @@ function budgetMonthPlanSpendSchedule(src, operatingRate = false) {
     const alloc = Forecast.paydayAllocation(src.plan, asOf,
       Object.assign({}, resolvedOpts, { majorPlans: plans }));
     schedule = Forecast.planSpendPaydayFunding(src.plan, asOf, sim, seq, plans, alloc);
+    // Enrich only the schedule's own published undated roster with the
+    // matching fundingSequence metadata. Today may be withheld independently;
+    // its roster is not authority for the exact payday. No amount is summed,
+    // allocated, or inferred, and an undated contribution remains unknown.
+    if (schedule && Array.isArray(schedule.unscheduled)) schedule = Object.assign({}, schedule, {
+      unscheduled: schedule.unscheduled.map(row => {
+        const source = seq.find(cost => cost.id === row.id);
+        return Object.assign({}, row, { reason: row.reason === 'cash-date-not-established'
+          ? 'Planning date not established.' : row.reason, label: source?.label, cost: source?.need,
+          confidence: source?.confidence, date: source?.date, contribution: null });
+      }),
+    });
   } catch (e) {
     schedule = null;
   }
@@ -2906,6 +2920,60 @@ function budgetMonthViewHtml(src, headerOwnsPicker = false) {
     + budgetMonthVerdictHtml(month)
     + budgetMonthFundingPressureHtml(month, budgetMonthPlanSpendSchedule(src))
     + `<p class="operating-note">${standaloneNote}</p></div>`;
+}
+
+function budgetMonthSurfaceHtml(ctx) {
+  const trajectory = budgetTrajectoryFor(ctx);
+  const months = trajectory?.status === 'ready' && Array.isArray(trajectory.months) ? trajectory.months : [];
+  if (!months.length) return budgetMonthViewHtml(ctx, true);
+  if (!months.some(month => month.month === budgetSelectedMonth)) budgetSelectedMonth = months[0].month;
+  const month = months.find(row => row.month === budgetSelectedMonth);
+  const monthSchedule = budgetMonthPlanSpendSchedule(ctx);
+  const monthPayday = monthSchedule?.asOf === ctx.asOf && isValidIsoCalendarDate(monthSchedule?.paydays?.[0]?.payday)
+    && monthSchedule.paydays[0].payday >= ctx.asOf ? monthSchedule.paydays[0].payday : null;
+  const label = budgetMonthName(month.month) || month.month;
+  const result = month.stage3?.dateOrderResult;
+  const known = budgetV3Known(result?.amount, result?.status);
+  const signed = (amount, trust) => budgetV3Known(amount, trust)
+    ? (amount > 0 ? '+' : '') + budgetV3Money(amount, trust) : budgetV3Money(null, trust);
+  const components = [ ['Total income', month.stage1?.income], ['Regular household spending', month.stage1?.householdBudget],
+    ['Bills', month.stage1?.bills], ['Required debt payments', month.stage1?.obligations], ['Planned spending', month.stage2?.commitments] ];
+  if (month.stage3?.extras && month.stage3.extras.status !== 'unavailable') components.push(['Planned extra debt payment', month.stage3.extras]);
+  const scale = month.stage1?.income;
+  const scaleKnown = budgetV3Known(scale?.amount, scale?.status) && scale.amount > 0;
+  const rungs = [1, 2, 3].map((stage, index) => {
+    const rung = budgetMonthLadderStage(month, stage);
+    const amount = rung.result?.amount, trust = rung.result?.status;
+    const valid = budgetV3Known(amount, trust);
+    const sign = valid ? amount < 0 ? 'deficit' : amount > 0 ? 'surplus' : 'neutral' : 'unavailable';
+    return `<div class="budget-v3-month-rung" data-budget-month-ladder="${sign}"><span class="budget-v3-month-step">${stage}</span><div><div class="budget-v3-month-rung-head"><strong>${budgetV3Escape(rung.label)}</strong><b>${signed(amount, trust)}</b></div><p>${['Income less household spending, bills and required debt', "Then the month's named costs", 'Then any planned extra debt payment'][index]}</p><div class="budget-v3-month-axis${!valid || !scaleKnown ? ' is-unknown' : ''}" aria-hidden="true">${valid && scaleKnown ? `<i class="${sign}" style="width:${Math.min(50, Math.abs(amount) / scale.amount * 50)}%"></i>` : ''}</div><p>${valid ? amount < 0 ? 'Projected deficit' : amount > 0 ? 'Projected surplus' : 'Break-even' : budgetV3Escape(rung.reason || rung.result?.reason || 'Forecast did not publish a trusted result. Not $0.')}</p></div></div>`;
+  }).join('');
+  const current = (ctx.advice?.payPeriodViews || []).find(row => row?.timelineRole === 'current');
+  // This incumbent field publishes explicit null for fully calculated results.
+  // Missing/undefined trust still withholds; the generic money guard stays strict.
+  const currentTrust = current?.balanceAfterDeductionsTrust === null
+    ? 'calculated' : current?.balanceAfterDeductionsTrust;
+  const compare = current ? `<div class="budget-v3-month-compare"><div><span>Current pay period · before funding</span><strong>${budgetV3Money(current.afterHouseholdBudget, currentTrust)}</strong><p>${budgetV3Escape(current.rangeLabel || `${current.start} — ${current.end}`)}</p></div><span aria-hidden="true">vs</span><div><span>${budgetV3Escape(label)} · after debt strategy</span><strong>${signed(result?.amount, result?.status)}</strong><p>${budgetV3Escape(month.start)} — ${budgetV3Escape(month.end)}</p></div></div><p>Separate windows and steps.</p>` : '';
+  // Each outflow has its own ratio to published income. No combined outflow
+  // total/denominator is calculated; overflow is visible rather than normalized.
+  const flow = `<div class="budget-v3-month-flow" aria-hidden="true"><span>IN</span><div><i class="flow-0${!scaleKnown ? ' is-unknown' : ''}" style="width:${scaleKnown ? 100 : 0}%"></i></div><span>OUT</span><div>${components.slice(1).map(([name, component], index) => `<i class="flow-${index + 1}${!scaleKnown || !budgetV3Known(component?.amount, component?.status) ? ' is-unknown' : ''}" style="width:${scaleKnown && budgetV3Known(component?.amount, component?.status) ? Math.min(100, Math.max(0, component.amount) / Math.abs(scale.amount) * 100) : 0}%"></i>`).join('')}</div></div>`;
+  const reading = [
+    ['≈ Estimate', 'At least one input is estimated. Each amount keeps its published trust.'],
+    ['Calculated', 'A Forecast label, not independent verification. No estimate mark is added.'],
+    ['Pending', 'A payment in flight, not settled. Its evidence stays in the details.'],
+    ['Not confirmed', 'Settlement is not established. It may already be paid; check before paying again.'],
+    ['Unknown / unavailable', 'Forecast did not publish a trusted figure. Never shown as $0; bars are hatched.'],
+    ['Withheld', 'The proposal waits for evidence. Open the complete funding evidence for reasons and next steps.'],
+    ['Not set up', 'Starting savings assignments need household evidence. Unknown balances remain unknown.'],
+    ['None scheduled', 'A published answer for that schedule, not permission to spend.'],
+  ].map(([name, explanation]) => `<p><b>${budgetV3Escape(name)}</b><span>${budgetV3Escape(explanation)}</span></p>`).join('');
+  return `<div class="budget-month-view budget-v3-month" data-budget-month-view="${month.month}">
+    <div class="budget-v3-month-top"><section class="budget-surface-card"><p class="budget-surface-eyebrow">${budgetV3Escape(label)} · Published projection window</p><div class="budget-month-verdict" data-budget-month-verdict="${known ? result.amount < 0 ? 'deficit' : result.amount > 0 ? 'surplus' : 'neutral' : 'unavailable'}"><h2>${known ? result.amount < 0 ? 'Monthly deficit' : result.amount > 0 ? 'Monthly surplus' : 'Monthly balance' : 'Monthly result unavailable'}</h2><p class="budget-v3-month-hero">${signed(result?.amount, result?.status)}</p></div><p>${known ? 'After planned spending and debt strategy.' : budgetV3Escape(result?.reason || 'Forecast did not publish a trusted result. This is not $0.')}</p>${compare}<p>Each month funds itself. No prior-month surplus carries into this result.</p></section>
+    <section class="budget-surface-card" data-budget-month-ladder-view="${month.month}"><p class="budget-surface-eyebrow">How ${budgetV3Escape(label)} holds together</p><h2>Three steps, in order</h2>${rungs}<p>Three separate results published by Forecast.</p></section></div>
+    <div class="budget-v3-month-bottom"><section class="budget-surface-card"><p class="budget-surface-eyebrow">${budgetV3Escape(label)}</p><h2>Money in and out</h2><p>Bars are scaled to published income.</p>${flow}<div class="budget-month-rows">${components.map(([name, component], index) => `<div class="budget-v3-month-component flow-${index}">${budgetMonthComponentRow(name, component, index > 0)}</div>`).join('')}</div></section>
+    <section class="budget-surface-card"><p class="budget-surface-eyebrow">Cash-dated in ${budgetV3Escape(label)}</p><h2>Planned costs this month</h2>${budgetMonthFundingPressureHtml(month, monthSchedule)}<footer class="budget-month-funding-link"><p>The Month-input funding schedule starts at the current opening. It is separate from today's proposal.</p><button type="button" class="budget-surface-link" data-budget-month-funding-open aria-haspopup="dialog">${monthPayday ? 'See ' + budgetV3Escape(fmtDate(monthPayday)) + ' funding plan' : 'Complete Month funding evidence'}</button></footer><div data-budget-month-funding-evidence hidden>${budgetPayPeriodFundingPlanHtml(monthPayday ? { payday: monthPayday } : null, ctx)}</div></section></div>
+    <details class="budget-v3-reading" data-budget-reading-info><summary>Reading the numbers <span aria-hidden="true">ⓘ</span></summary><div class="budget-surface-card">${reading}</div></details>
+  </div>`;
 }
 
 /* AMANDA SLICE 9 — SAME-MONTH PAY-PERIOD DRILLDOWN.
@@ -4022,6 +4090,68 @@ function paydayInstructionShellHtml(advice, period, schedule) {
     <p class="operating-note">The ${periodRangeLabel} pay-period detail above shows this period's Payday balance, bills, and Balance After Deductions — a different window from today's position here.</p>
   </section>`;
 }
+function calendarFromTodayEvidenceHtml(period, plan) {
+  if (!period) return '';
+  const confirmedSavings = plan && Forecast.savingsEarmarksState(plan, period.start).status !== 'setup-unknown';
+  const planUnavailable = period.operatingPlanUnavailable === true;
+  const numeric = value => typeof value === 'number' && Number.isFinite(value);
+  const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const costMoney = row => numeric(row.cost) && row.confidence === 'confirmed' ? money2(row.cost)
+    : numeric(row.cost) && row.confidence === 'estimated' ? money2(row.cost) + ' · estimated' : 'Unavailable';
+  const today = period.fromTodayFunding;
+  const todayKnown = !planUnavailable && today && today.basis === 'Budget-from-today'
+    && (today.status === 'ready' || today.status === 'funding-gap')
+    && (today.trust === 'calculated' || today.trust === 'estimated') && numeric(today.contribution);
+  const todayMoney = amount => todayKnown && numeric(amount)
+    ? money2(amount) + (today.trust === 'estimated' ? ' ≈ estimated' : '') : 'Unavailable';
+  const forwardItems = rows => (rows || []).map(row => `<div class="budget-funding-item" data-from-today-cost="${escape(row.id)}">
+    <h3>${escape(row.label)}</h3>
+    <div class="operating-line"><span>Proposed contribution</span><span>${todayMoney(row.contribution)}</span></div>
+    <div class="operating-line"><span>Cumulative proposed / cost</span><span>${todayMoney(row.cumulativeProposed)} / ${costMoney(row)}</span></div>
+    <div class="operating-line"><span>Remaining requirement</span><span>${todayMoney(row.remainingGap)}</span></div>
+    <p class="operating-note">Planning date: ${escape(row.date || 'Unknown')}${row.confidence === 'estimated' ? ' · estimated' : ''}${numeric(row.ceiling) && row.ceiling > row.cost ? ` · upper estimate ${money2(row.ceiling)}` : ''}. ${numeric(row.actualSaved) ? 'Actual saved: ' + money2(row.actualSaved) + ' calculated backing. Destination account: ' + (row.reserveParts && row.reserveParts.length ? row.reserveParts.map(part => escape(part.label || part.accountId)).join(' · ') : 'unknown') + '.' : 'Actual saved and destination account: unknown.'}</p>
+  </div>`).join('');
+  const fromTodayBody = today ? `<div data-from-today="${escape(today.asOf)}">
+    <p class="operating-note">${todayKnown ? 'A new proposal dated' : 'Evidence checked for'} ${escape(today.asOf)}. ${confirmedSavings ? todayKnown ? 'Backed assignments are included once; additional contributions remain proposals.' : 'Additional contributions are withheld. Confirmed assignments and backing are shown in the savings inventory.' : todayKnown ? 'Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.' : 'No savings proposal is available. The original payday allocation and actual saved balance have not been reconstructed.'}</p>
+    ${todayKnown ? `<p class="operating-note">Chequing evidence: ${escape(today.cashAsOf)}. Spending observed through ${escape(today.observationAsOf)}. Budget targets and actuals supply the remaining household needs.</p>
+      <div class="operating-line"><span>Current chequing cash</span><span>${todayMoney(today.currentCash)}</span></div>
+      <div class="operating-line"><span>Remaining bills and debt payments</span><span>${todayMoney(today.operatingBills)}</span></div>
+      <div class="operating-line"><span>Remaining household needs</span><span>${todayMoney(today.remainingHousehold)}</span></div>
+      <div class="operating-line"><span>Required operating cash through ${escape(today.currentThrough)}, including the existing cash floor</span><span>${todayMoney(today.requiredOperatingCash)}</span></div>
+      <div class="operating-line"><span>Capacity for proposed funding now</span><span>${todayMoney(today.availableNow)}</span></div>
+      <div class="operating-line"><span>Proposed to set aside now</span><span>${todayMoney(today.contribution)}</span></div>
+      <div class="operating-line"><span>Chequing left after this proposal</span><span>${todayMoney(today.cashAfterProposal)}</span></div>
+      ${today.operatingShortfall > 0 ? `<p class="operating-note crit">Current cash is ${todayMoney(today.operatingShortfall)} short of remaining operating needs.</p>` : ''}
+      <p class="operating-note">Future receipts in this period: ${todayMoney(today.futureIncomeThisPeriod)}. They are not money available to set aside now. Remaining chequing may be needed later; it is not spending permission.</p>
+      ${forwardItems(today.items)}
+      ${today.reason ? `<p class="operating-note crit">${escape(today.reason)}</p>` : ''}
+      <details><summary>Forward proposals through ${escape(today.through)}</summary>
+      ${(today.periods || []).map(row => `<details data-from-today-period="${escape(row.payday)}"><summary>${escape(row.payday)} · ${todayMoney(row.contribution)} proposed</summary>
+        ${row.status === 'unavailable' ? `<p class="operating-note">${escape(row.reason)}</p>` : `${forwardItems(row.items)}<p class="operating-note">Proposed funds still held after scheduled payments: ${todayMoney(row.protectedAfterPayments)}. Remaining requirement: ${todayMoney(row.stillToFund)}.</p>`}
+      </details>`).join('')}</details>
+      ${(today.unscheduled || []).map(row => `<p class="operating-note">${escape(row.label)} · ${costMoney(row)} · ${escape(row.date || 'Date unknown')}. ${escape(row.reason)} Contribution unavailable.</p>`).join('')}`
+      : Array.isArray(today.evidenceFailures) && today.evidenceFailures.length
+        ? `<p class="operating-note">Forecast is withholding the proposal for the following reasons. Each needs to be resolved before an amount can be shown.</p>
+          <ul class="from-today-evidence">${today.evidenceFailures.map(issue => `<li data-savings-evidence-reason="${escape(issue.code)}">
+            <p>${escape(issue.message)}</p>
+            ${issue.accountLabel || issue.categoryLabel || issue.date ? `<p class="operating-note">${[issue.accountLabel, issue.categoryLabel, issue.date].filter(Boolean).map(escape).join(' · ')}</p>` : ''}
+            ${issue.periodStart || issue.requiredThrough ? `<p class="operating-note">Needed: ${escape(issue.periodStart || today.asOf)} through ${escape(issue.requiredThrough || today.asOf)}.${issue.coverageStart || issue.coverageThrough ? ` Coverage supplied: ${escape(issue.coverageStart || 'unknown start')} through ${escape(issue.coverageThrough || 'unknown end')}.` : ''}</p>` : ''}
+            <p class="operating-note">${escape(issue.action)}</p>
+          </li>`).join('')}</ul>`
+        : `<p class="operating-note">${escape(today.reason || 'Current funding evidence is unavailable.')}</p>`}
+    <p class="operating-note">${confirmedSavings ? 'The savings inventory is a breakdown of pool cash, not extra chequing cash. No silver purpose is inferred.' : 'These are proposed earmarks, not transfers or balances already saved. Shared savings and silver are not added to chequing cash. Bucket ownership, silver attribution and actual saved balances remain unknown.'}</p>
+  </div>` : '';
+  const todayHtml = today && !planUnavailable ? `<div class="budget-step" data-from-today-proposal>
+    <details class="budget-step-details"><summary class="budget-step-summary">
+      <span class="operating-number" aria-hidden="true">↳</span>
+      <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">From today · ${escape(today.asOf)}</span><span class="budget-step-caption">${todayKnown ? 'Current cash proposal · open for needs, costs and the forward schedule' : 'Proposal unavailable · open for the evidence needed'}</span></span>
+      <span class="budget-step-value">${todayMoney(today.contribution)}</span><span class="budget-step-chevron" aria-hidden="true">⌄</span>
+    </summary><div class="operating-answer budget-step-body">${fromTodayBody}</div></details>
+  </div>` : '';
+  return todayHtml;
+}
+
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview = false) {
   if (!period) return '';
   const confirmedSavings = plan && Forecast.savingsEarmarksState(plan, period.start).status !== 'setup-unknown';
@@ -4173,55 +4303,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     <p class="budget-period-result-caption">${compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
   </div>` : '';
   const today = period.fromTodayFunding;
-  const todayKnown = !planUnavailable && today && today.basis === 'Budget-from-today'
-    && (today.status === 'ready' || today.status === 'funding-gap')
-    && (today.trust === 'calculated' || today.trust === 'estimated') && numeric(today.contribution);
-  const todayMoney = amount => todayKnown && numeric(amount)
-    ? money2(amount) + (today.trust === 'estimated' ? ' ≈ estimated' : '') : 'Unavailable';
-  const forwardItems = rows => (rows || []).map(row => `<div class="budget-funding-item" data-from-today-cost="${escape(row.id)}">
-    <h3>${escape(row.label)}</h3>
-    <div class="operating-line"><span>Proposed contribution</span><span>${todayMoney(row.contribution)}</span></div>
-    <div class="operating-line"><span>Cumulative proposed / cost</span><span>${todayMoney(row.cumulativeProposed)} / ${costMoney(row)}</span></div>
-    <div class="operating-line"><span>Remaining requirement</span><span>${todayMoney(row.remainingGap)}</span></div>
-    <p class="operating-note">Planning date: ${escape(row.date || 'Unknown')}${row.confidence === 'estimated' ? ' · estimated' : ''}${numeric(row.ceiling) && row.ceiling > row.cost ? ` · upper estimate ${money2(row.ceiling)}` : ''}. ${numeric(row.actualSaved) ? 'Actual saved: ' + money2(row.actualSaved) + ' calculated backing. Destination account: ' + (row.reserveParts && row.reserveParts.length ? row.reserveParts.map(part => escape(part.label || part.accountId)).join(' · ') : 'unknown') + '.' : 'Actual saved and destination account: unknown.'}</p>
-  </div>`).join('');
-  const fromTodayBody = today ? `<div data-from-today="${escape(today.asOf)}">
-    <p class="operating-note">${todayKnown ? 'A new proposal dated' : 'Evidence checked for'} ${escape(today.asOf)}. ${confirmedSavings ? todayKnown ? 'Backed assignments are included once; additional contributions remain proposals.' : 'Additional contributions are withheld. Confirmed assignments and backing are shown in the savings inventory.' : todayKnown ? 'Separate from the original payday allocation; no starting snapshot or actual saved balance has been reconstructed.' : 'No savings proposal is available. The original payday allocation and actual saved balance have not been reconstructed.'}</p>
-    ${todayKnown ? `<p class="operating-note">Chequing evidence: ${escape(today.cashAsOf)}. Spending observed through ${escape(today.observationAsOf)}. Budget targets and actuals supply the remaining household needs.</p>
-      <div class="operating-line"><span>Current chequing cash</span><span>${todayMoney(today.currentCash)}</span></div>
-      <div class="operating-line"><span>Remaining bills and debt payments</span><span>${todayMoney(today.operatingBills)}</span></div>
-      <div class="operating-line"><span>Remaining household needs</span><span>${todayMoney(today.remainingHousehold)}</span></div>
-      <div class="operating-line"><span>Required operating cash through ${escape(today.currentThrough)}, including the existing cash floor</span><span>${todayMoney(today.requiredOperatingCash)}</span></div>
-      <div class="operating-line"><span>Capacity for proposed funding now</span><span>${todayMoney(today.availableNow)}</span></div>
-      <div class="operating-line"><span>Proposed to set aside now</span><span>${todayMoney(today.contribution)}</span></div>
-      <div class="operating-line"><span>Chequing left after this proposal</span><span>${todayMoney(today.cashAfterProposal)}</span></div>
-      ${today.operatingShortfall > 0 ? `<p class="operating-note crit">Current cash is ${todayMoney(today.operatingShortfall)} short of remaining operating needs.</p>` : ''}
-      <p class="operating-note">Future receipts in this period: ${todayMoney(today.futureIncomeThisPeriod)}. They are not money available to set aside now. Remaining chequing may be needed later; it is not spending permission.</p>
-      ${forwardItems(today.items)}
-      ${today.reason ? `<p class="operating-note crit">${escape(today.reason)}</p>` : ''}
-      <details><summary>Forward proposals through ${escape(today.through)}</summary>
-      ${(today.periods || []).map(row => `<details data-from-today-period="${escape(row.payday)}"><summary>${escape(row.payday)} · ${todayMoney(row.contribution)} proposed</summary>
-        ${row.status === 'unavailable' ? `<p class="operating-note">${escape(row.reason)}</p>` : `${forwardItems(row.items)}<p class="operating-note">Proposed funds still held after scheduled payments: ${todayMoney(row.protectedAfterPayments)}. Remaining requirement: ${todayMoney(row.stillToFund)}.</p>`}
-      </details>`).join('')}</details>
-      ${(today.unscheduled || []).map(row => `<p class="operating-note">${escape(row.label)} · ${costMoney(row)} · ${escape(row.date || 'Date unknown')}. ${escape(row.reason)} Contribution unavailable.</p>`).join('')}`
-      : Array.isArray(today.evidenceFailures) && today.evidenceFailures.length
-        ? `<p class="operating-note">Forecast is withholding the proposal for the following reasons. Each needs to be resolved before an amount can be shown.</p>
-          <ul class="from-today-evidence">${today.evidenceFailures.map(issue => `<li data-savings-evidence-reason="${escape(issue.code)}">
-            <p>${escape(issue.message)}</p>
-            ${issue.accountLabel || issue.categoryLabel || issue.date ? `<p class="operating-note">${[issue.accountLabel, issue.categoryLabel, issue.date].filter(Boolean).map(escape).join(' · ')}</p>` : ''}
-            ${issue.periodStart || issue.requiredThrough ? `<p class="operating-note">Needed: ${escape(issue.periodStart || today.asOf)} through ${escape(issue.requiredThrough || today.asOf)}.${issue.coverageStart || issue.coverageThrough ? ` Coverage supplied: ${escape(issue.coverageStart || 'unknown start')} through ${escape(issue.coverageThrough || 'unknown end')}.` : ''}</p>` : ''}
-            <p class="operating-note">${escape(issue.action)}</p>
-          </li>`).join('')}</ul>`
-        : `<p class="operating-note">${escape(today.reason || 'Current funding evidence is unavailable.')}</p>`}
-    <p class="operating-note">${confirmedSavings ? 'The savings inventory is a breakdown of pool cash, not extra chequing cash. No silver purpose is inferred.' : 'These are proposed earmarks, not transfers or balances already saved. Shared savings and silver are not added to chequing cash. Bucket ownership, silver attribution and actual saved balances remain unknown.'}</p>
-  </div>` : '';
-  const todayHtml = today && !planUnavailable ? `<div class="budget-step" data-from-today-proposal>
-    <details class="budget-step-details"><summary class="budget-step-summary">
-      <span class="operating-number" aria-hidden="true">↳</span>
-      <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">From today · ${escape(today.asOf)}</span><span class="budget-step-caption">${todayKnown ? 'Current cash proposal · open for needs, costs and the forward schedule' : 'Proposal unavailable · open for the evidence needed'}</span></span>
-      <span class="budget-step-value">${todayMoney(today.contribution)}</span><span class="budget-step-chevron" aria-hidden="true">⌄</span>
-    </summary><div class="operating-answer budget-step-body">${fromTodayBody}</div></details>
-  </div>` : '';
+  const todayHtml = calendarFromTodayEvidenceHtml(period, plan);
   return `${compactOverview ? "" : todayHtml}<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
     ${compactOverview ? `<p class="budget-period-flow-heading">Full-period projection</p><details class="budget-period-info"><summary aria-label="About the selected period figures">ⓘ</summary><div data-budget-period-info-body>
@@ -4819,8 +4901,8 @@ function budgetDetailSheetController(mount) {
       return `[${key}="${CSS.escape(node.getAttribute(key))}"][data-budget-browse-origin="${CSS.escape(node.getAttribute('data-budget-browse-origin') || '')}"]${node.hasAttribute('data-budget-bill-date') ? `[data-budget-bill-date="${CSS.escape(node.getAttribute('data-budget-bill-date'))}"]` : ''}`;
     }
     if (source && node.hasAttribute('data-budget-category')) return `[data-budget-category="${CSS.escape(node.getAttribute('data-budget-category'))}"]`;
-    for (const key of source ? ['data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
-      : ['data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence']) {
+    for (const key of source ? ['data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
+      : ['data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence']) {
       if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
     }
     if (!source && node.matches('.budget-period-info > summary')) return '.budget-period-info > summary';
@@ -4929,7 +5011,8 @@ function wireBudgetWindow(mount, ctx, sheet) {
     const section = button.getAttribute('data-budget-section');
     if (!['overview', 'spending', 'bills', 'upcoming'].includes(section)) return;
     button.addEventListener('click', () => {
-      const target = mount.querySelector(`[data-budget-browse="${CSS.escape(section)}"]`);
+      const target = mount.querySelector(section === 'upcoming' ? '[data-budget-funding-section]'
+        : `[data-budget-browse="${CSS.escape(section)}"]`);
       if (target || section === 'overview') mount.querySelectorAll('[data-budget-section]').forEach(control => {
         if (control === button) control.setAttribute('aria-current', 'location');
         else control.removeAttribute('aria-current');
@@ -5042,6 +5125,7 @@ function wirePlanLookPicker(mount, ctx) {
   const sheet = budgetDetailSheetController(mount);
   wireBudgetWindow(mount, ctx, sheet);
   wireBudgetBrowse(mount, ctx, sheet);
+  wireBudgetFunding(mount, sheet);
   mount.querySelectorAll('.budget-period-info').forEach(info => {
     if (sheet) {
       const summary = info.querySelector('summary');
@@ -5878,6 +5962,146 @@ function budgetBrowseSectionsHtml(ctx) {
   return `${budgetBrowseAttentionHtml(period)}<div class="budget-browse-grid">${budgetSpendingSectionHtml(period, ctx)}${budgetBillsSectionHtml(period, ctx)}</div>`;
 }
 
+// Approved v3 presentation. The incumbents are publishBudgetPeriodFunding
+// (dated Today proposal), planSpendPaydayFunding (exact payday schedule),
+// and its exact payday schedule. Geometry uses ratios only; no money totals.
+const budgetV3Escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const budgetV3Known = (amount, trust) => typeof amount === 'number' && Number.isFinite(amount)
+  && ['calculated', 'estimated'].includes(trust);
+const budgetV3Money = (amount, trust) => budgetV3Known(amount, trust)
+  ? `${trust === 'estimated' ? '<span class="budget-v3-est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="budget-cash-sr">calculated </span>'}${money2(amount)}`
+  : '<span class="budget-v3-unknown">Unavailable</span>';
+
+function budgetUpcomingFundingHtml(ctx) {
+  const current = (ctx.advice?.payPeriodViews || []).find(row => row?.timelineRole === 'current');
+  const today = current?.fromTodayFunding;
+  const selected = payPeriodSelection(ctx.advice, ctx.planPayPeriodId).period;
+  const currentEvidence = selected?.id === current?.id && today ? ''
+    : `<div hidden data-budget-funding-current-evidence>${calendarFromTodayEvidenceHtml(current, ctx.plan)
+      || '<div data-from-today-proposal><p>Current-period funding evidence is unavailable. No proposal or saved balance has been established.</p></div>'}</div>`;
+  const schedule = budgetMonthPlanSpendSchedule(ctx, true);
+  const payday = schedule?.status !== 'unavailable' && Array.isArray(schedule?.paydays) ? schedule.paydays[0] : null;
+  const exact = isValidIsoCalendarDate(payday?.payday) ? payday.payday : null;
+  const todayReady = today?.basis === 'Budget-from-today' && ['ready', 'funding-gap'].includes(today.status)
+    && today.asOf === ctx.asOf && today.currentThrough === current?.end
+    && budgetV3Known(today.contribution, today.trust) && Array.isArray(today.items);
+  const paydayTrust = exact === schedule?.asOf ? payday?.trust : schedule?.fundingTrust;
+  const paydayReady = !!exact && schedule?.asOf === ctx.asOf && exact >= ctx.asOf
+    && ['ready', 'funding-gap'].includes(schedule?.status)
+    && budgetV3Known(payday?.contribution, paydayTrust) && Array.isArray(payday.allocations);
+  const nextWord = exact && exact > ctx.asOf ? 'Next payday plan' : 'Payday plan';
+  const lenses = [
+    { key: 'today', label: `From today's cash${isValidIsoCalendarDate(today?.asOf) ? ' · ' + fmtDate(today.asOf) : ''}`,
+      ready: todayReady, trust: today?.trust, fundingTrust: today?.trust, proposal: today?.contribution,
+      remaining: today?.periods?.find(row => row.payday === today.asOf)?.stillToFund,
+      items: Array.isArray(today?.items) ? today.items : [], unscheduled: Array.isArray(today?.unscheduled) ? today.unscheduled : [], gap: today?.gap,
+      reason: today?.reason, when: 'proposed now' },
+    { key: 'payday', label: `${nextWord}${exact ? ' · ' + fmtDate(exact) : ''}`,
+      ready: paydayReady, trust: paydayTrust, fundingTrust: schedule?.fundingTrust, proposal: payday?.contribution,
+      remaining: payday?.stillToFund, gap: schedule?.gap, reason: schedule?.reason,
+      items: (Array.isArray(schedule?.costs) ? schedule.costs : []).map(cost => {
+        const allocation = paydayReady ? payday.allocations.find(part => part.id === cost.id) : null;
+        return { ...cost, cost: cost.baseRequirement,
+          contribution: paydayReady ? allocation ? allocation.amount : 0 : null };
+      }),
+      unscheduled: Array.isArray(schedule?.unscheduled) ? schedule.unscheduled : [], when: 'proposed this payday' },
+  ];
+  const costHtml = (item, lens, undated = false) => {
+    const costTrust = item.confidence === 'confirmed' ? 'calculated' : item.confidence;
+    const costKnown = budgetV3Known(item.cost, costTrust);
+    const contributionKnown = lens.ready && budgetV3Known(item.contribution, lens.trust) && !undated;
+    const scaled = costKnown && item.cost > 0 && contributionKnown && item.contribution >= 0;
+    const gap = lens.ready && ['calculated', 'estimated'].includes(lens.fundingTrust)
+      && Array.isArray(lens.gap?.affected) && lens.gap.affected.includes(item.id);
+    return `<div class="budget-funding-cost${gap ? ' has-gap' : ''}" data-budget-funding-cost="${budgetV3Escape(item.id)}">
+      <div class="budget-funding-cost-head"><strong>${budgetV3Escape(item.label || item.id)}</strong><b>${budgetV3Money(item.cost, costTrust)}</b></div>
+      <p>${isValidIsoCalendarDate(item.date) ? budgetV3Escape(fmtDate(item.date)) : 'Date not established'}${item.confidence === 'estimated' ? ' · estimated date' : ''}${undated ? ' · ' + budgetV3Escape(item.reason || 'Contribution unavailable') : ''}</p>
+      <div class="budget-funding-progress"><span class="budget-funding-track${!scaled && !(costKnown && item.cost === 0 && contributionKnown) ? ' is-unknown' : ''}" aria-hidden="true">${scaled ? `<i style="width:${Math.min(100, item.contribution / item.cost * 100)}%"></i>` : ''}</span><span>${contributionKnown ? budgetV3Money(item.contribution, lens.trust) + ' ' + lens.when : '<span class="budget-v3-unknown">Contribution unknown</span>'}</span></div>
+      ${lens.ready && item.nextContribution && lens.key === 'payday' && budgetV3Known(item.nextContribution.amount, lens.fundingTrust) && isValidIsoCalendarDate(item.nextContribution.payday) && item.nextContribution.payday > exact ? `<p>Next scheduled: ${budgetV3Money(item.nextContribution.amount, lens.fundingTrust)} on ${budgetV3Escape(fmtDate(item.nextContribution.payday))}</p>` : ''}
+    </div>`;
+  };
+  const panelHtml = lens => {
+    // Preserve publication order. A heading marks each published month boundary;
+    // the page never sorts, ranks, adds costs, or manufactures a funding gap.
+    let prior = null;
+    const items = lens.items.map(item => {
+      const month = isValidIsoCalendarDate(item.date) ? item.date.slice(0, 7) : null;
+      const heading = month !== prior || prior === null;
+      prior = month;
+      return `<div class="budget-funding-timeline-row${heading ? ' is-month-boundary' : ''}"><div class="budget-funding-month">${heading ? budgetV3Escape(month ? budgetMonthName(month) : 'Date unknown') : ''}</div>${costHtml(item, lens)}</div>`;
+    }).join('');
+    const gapKnown = lens.ready && budgetV3Known(lens.gap?.shortBy, lens.fundingTrust);
+    const names = gapKnown && Array.isArray(lens.gap.affected) ? lens.gap.affected.map(id => lens.items.find(item => item.id === id)?.label || id) : [];
+    return `<div id="budget-funding-${lens.key}" data-budget-funding-panel="${lens.key}" role="tabpanel" aria-labelledby="budget-funding-tab-${lens.key}"${lens.key === budgetFundingLens ? '' : ' hidden'}>
+      <p class="budget-funding-scope">${lens.key === 'today' ? "What today's chequing can propose now." : 'The exact published payday schedule.'} Two proposals for the same costs — <b>never add them together.</b></p>
+      <div class="budget-funding-totals"><div><span>${lens.key === 'today' ? 'Proposed now' : 'Proposed this payday'}</span><strong data-budget-funding-proposal>${budgetV3Money(lens.ready ? lens.proposal : null, lens.trust)}</strong></div><div><span>Still to fund after this proposal</span><strong>${budgetV3Money(lens.ready ? lens.remaining : null, lens.fundingTrust)}</strong></div></div>
+      ${gapKnown ? `<div class="budget-funding-gap">${budgetV3Money(lens.gap.shortBy, lens.fundingTrust)} short${isValidIsoCalendarDate(lens.gap.payday) ? ' on ' + budgetV3Escape(fmtDate(lens.gap.payday)) : ''}.${names.length ? '<p>Affected: ' + names.map(budgetV3Escape).join(', ') + '.</p>' : ''}<p>Later proposals pause at this published gap. Earmarks only — not transfers or saved money.</p></div>` : ''}
+      ${!lens.ready || lens.reason ? `<p class="budget-funding-notice">${budgetV3Escape(lens.reason || 'Funding evidence is unavailable. Open the complete evidence for the reasons and next steps.')}</p>` : ''}
+      ${items || `<p>${lens.ready ? 'No dated costs published for this proposal.' : 'Dated cost roster unavailable for this proposal.'}</p>`}
+      ${lens.unscheduled.length ? `<div class="budget-funding-timeline-row"><div class="budget-funding-month">No scheduled contribution</div><div>${lens.unscheduled.map(item => costHtml(item, lens, true)).join('')}</div></div>` : lens.key === 'payday' && !Array.isArray(schedule?.unscheduled) ? '<p>Undated cost roster unavailable for this payday proposal.</p>' : ''}
+      <button type="button" class="budget-surface-link" data-budget-funding-evidence="${lens.key}" aria-haspopup="dialog">${lens.key === 'today' ? 'Today: needs, costs and forward evidence' : 'Complete exact payday funding plan'}</button>
+    </div>`;
+  };
+  return `<section class="budget-funding-section" data-budget-funding-section aria-labelledby="budget-funding-heading">
+    <header class="budget-v3-section-heading"><h2 id="budget-funding-heading" tabindex="-1">Upcoming costs &amp; savings</h2><p>Named costs the plan is proposing to fund.</p></header>
+    <div class="budget-funding-grid"><div class="budget-surface-card budget-funding-card"><p class="budget-surface-eyebrow">Funding proposal</p><h3>Costs ahead</h3>
+      <div class="budget-funding-tabs" role="tablist" aria-label="Upcoming-cost funding proposal">${lenses.map(lens => `<button type="button" id="budget-funding-tab-${lens.key}" data-budget-funding-tab="${lens.key}" role="tab" aria-selected="${lens.key === budgetFundingLens}" aria-controls="budget-funding-${lens.key}" tabindex="${lens.key === budgetFundingLens ? 0 : -1}">${budgetV3Escape(lens.label)}</button>`).join('')}</div>
+      ${lenses.map(panelHtml).join('')}</div>
+      <aside class="budget-funding-sidebar"><div class="budget-surface-card"><p class="budget-surface-eyebrow">Separate funding scopes</p><h3>Where it comes from</h3><p>Today uses current chequing after bills, household needs and the floor. Payday uses projected funding.</p>
+        <div class="budget-funding-context" data-budget-funding-context="today"${budgetFundingLens === 'today' ? '' : ' hidden'}><div><span>Capacity to propose now</span><strong>${budgetV3Money(todayReady ? today.availableNow : null, today?.trust)}</strong></div><p>Capacity is separate from the proposed contribution. Future receipts are not current cash.</p></div>
+        <div class="budget-funding-context" data-budget-funding-context="payday"${budgetFundingLens === 'payday' ? '' : ' hidden'}><div><span>Projected protected after payday</span><strong>${budgetV3Money(paydayReady ? payday.protectedAfterPayday : null, schedule?.fundingTrust)}</strong></div><p>This is projected protection for the funding schedule, not a Bills-only period carryover or a saved balance.</p></div>
+        <p>Proposals do not mean money is saved or moved.</p><button type="button" class="budget-surface-link" data-budget-funding-how aria-haspopup="dialog">How this works</button></div>
+        <div class="budget-surface-card"><p class="budget-surface-eyebrow">Savings assigned to goals</p><h3>Assignments need evidence</h3><p>Unconfirmed assignments remain unknown. See the evidence for saved balances and destinations.</p><button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Savings evidence</button><div data-budget-funding-savings hidden>${typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(ctx.advice?.savingsInventory) : '<p>Savings inventory unavailable. Actual saved balances and assignments are unknown.</p>'}</div></div></aside>
+    </div>${currentEvidence}</section>`;
+}
+
+function wireBudgetFunding(mount, sheet) {
+  const tabs = [...mount.querySelectorAll('[data-budget-funding-tab]')];
+  const select = (button, focus = false) => {
+    const key = button.getAttribute('data-budget-funding-tab');
+    budgetFundingLens = key;
+    tabs.forEach(tab => {
+      const chosen = tab === button;
+      tab.setAttribute('aria-selected', String(chosen));
+      tab.tabIndex = chosen ? 0 : -1;
+    });
+    mount.querySelectorAll('[data-budget-funding-panel]').forEach(panel => {
+      panel.hidden = panel.getAttribute('data-budget-funding-panel') !== key;
+    });
+    mount.querySelectorAll('[data-budget-funding-context]').forEach(panel => {
+      panel.hidden = panel.getAttribute('data-budget-funding-context') !== key;
+    });
+    if (focus) button.focus({ preventScroll: true });
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => select(tab));
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      select(tabs[next], true);
+    });
+  });
+  if (!sheet) return;
+  mount.querySelectorAll('[data-budget-funding-evidence], [data-budget-funding-how], [data-budget-funding-inventory], [data-budget-month-funding-open]').forEach(button => {
+    button.addEventListener('click', () => {
+      const key = button.getAttribute('data-budget-funding-evidence');
+      const selector = button.hasAttribute('data-budget-month-funding-open') ? '[data-budget-month-funding-evidence]'
+        : button.hasAttribute('data-budget-funding-inventory') ? '[data-budget-funding-savings]'
+        : key === 'today' ? '[data-from-today-proposal]' : key === 'payday'
+          ? '[data-payday-breakdown="planned-cost-funding"]' : '[data-budget-today-evidence]';
+      const source = mount.querySelector(selector);
+      if (!source) return;
+      const disclosure = source.matches('details') ? source : source.querySelector('details');
+      if (disclosure) disclosure.open = true;
+      sheet.open(source, button, button.hasAttribute('data-budget-month-funding-open') ? 'Month-input exact funding plan' : key === 'today' ? 'Today: complete funding evidence'
+        : key === 'payday' ? 'Exact payday funding plan' : button.hasAttribute('data-budget-funding-inventory') ? 'Savings assignments and backing' : 'Current cash and funding scopes');
+    });
+  });
+}
+
 function budgetSurfaceParts() {
   return {
     planUnavailable: ctx => liveOperatingPlanUnavailable(ctx.advice || {}, ctx.liveOverlay),
@@ -5890,7 +6114,8 @@ function budgetSurfaceParts() {
     todayHtml: ctx => budgetTodayCashCardHtml(ctx),
     periodHtml: ctx => budgetPayPeriodContentHtml(Object.assign({}, ctx, { budgetCompactOverview: true })),
     browseHtml: ctx => budgetBrowseSectionsHtml(ctx),
-    monthHtml: ctx => budgetMonthViewHtml(ctx, true),
+    monthHtml: ctx => budgetMonthSurfaceHtml(ctx),
+    fundingHtml: ctx => budgetUpcomingFundingHtml(ctx),
     selectedMonthLabel: () => (budgetSelectedMonth && budgetMonthName(budgetSelectedMonth)) || null,
     drilldownHtml: ctx => budgetPayPeriodDrilldownHtml(ctx),
   };
