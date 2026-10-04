@@ -297,6 +297,7 @@ const suites = [
   ['automatic-payment settlement reconciliation', 'test-automatic-payment-settlement.js'],
   ['Triangle and MBNA card-minimum settlement', 'test-card-minimum-settlement.js'],
   ['TD / Cash Back / Travel Visa PAYMENT - THANK YOU card-minimum identity', 'test-payment-thank-you-card-minimum.js'],
+  ['purchase backfills cannot confirm scheduled card minima', 'test-card-backfill-intent.js'],
   ['Dale-gated Noble / HELOC / TDCC represented settles', 'test-dale-gated-represented-settles.js'],
   ['Noble pending→posted identity survives replacement', 'test-noble-pending-posted-identity.js'],
   ['owner-confirmed September fuel, Spotify, and Noble rows', 'test-owner-confirmed-september-spend.js'],
