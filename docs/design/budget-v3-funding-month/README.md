@@ -1,7 +1,10 @@
 # Budget v3: upcoming funding and Month
 
-This slice starts from actual main
-`fdf948d2ffee2dfad8b34d3b476ec23224446fb4`, including merged #488.
+Implementation began from actual main
+`fdf948d2ffee2dfad8b34d3b476ec23224446fb4`, including merged #488, and was
+rebased onto `96010f360c5022623ad404554565db8356f026b2`, including merged #489.
+The backfill observer, minimum-settlement, Forecast and UI contracts are
+rechecked after that integration; the UI makes no settlement decision.
 The reference remains open #480 at
 `ad910ac2da1ac2f83d5de6aed983cff6bb275be5`. Its actual desktop, mobile,
 and 320px funding/Month pixels were inspected before this implementation.

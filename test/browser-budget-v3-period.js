@@ -235,6 +235,7 @@ async function geometry(page) {
         assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), false);
         const heading = page.locator(section === 'upcoming' ? '#budget-funding-heading' : `[data-budget-browse="${section}"] h2`);
         assert.equal(await heading.evaluate(el => el === document.activeElement), true);
+        assert.equal(await focusVisible(heading), true, 'section heading is keyboard reachable above the dock');
         assert.equal(await trigger.getAttribute('aria-current'), 'location');
       }
       if (width < 960) await page.locator('[data-budget-section="overview"]').click();
