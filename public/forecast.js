@@ -3794,7 +3794,7 @@
   const BILL_CATEGORY_LABELS = new Set([
     'mortgage', 'bills', 'bill', 'subscription', 'subscriptions',
     'insurance', 'telecom',
-    'natural gas', 'other bank fees',
+    'natural gas',
   ]);
   const REFUND_LABELS = new Set(['refund', 'refunds', 'reimbursement']);
   const OTHER_INCOME_INFLOW_LABELS = new Set([
@@ -4491,7 +4491,10 @@
       }
       return spendResult('fuel', 'fuel-merchant');
     }
-    if (BILL_CATEGORY_LABELS.has(label)) {
+    // Keep the incumbent issuer-fee classification on revolving cards.
+    // A cash-account fee label alone does not identify a scheduled bill.
+    if (BILL_CATEGORY_LABELS.has(label)
+        || (label === 'other bank fees' && isRevolvingCardAccount(tx))) {
       return {
         kind: 'bill', categoryId: null, householdSpending: false,
         reason: 'bill-label', includeReason: 'bill-label',
@@ -4670,13 +4673,19 @@
     // Collect the same checks for savings disclosure without changing the
     // incumbent first-failure coverage state or its remaining-claim decision.
     const checks = [
+      [Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length > 0,
+        'actuals-currency-unconfirmed', 'incomplete',
+        'Transaction currency is unconfirmed for bill evidence. Current remaining amounts unavailable.'],
       [!coverageThrough || coverageThrough < asOf, 'actuals-stale', 'stale',
         'Transaction actuals are not current through the financial as-of.'],
       [coverageStart && periodStart && coverageStart > periodStart, 'actuals-period-coverage', 'incomplete',
         'Transaction coverage starts after the current period origin.'],
       [hasUnresolvedAccountActuals(packet), 'actuals-unmapped-account', 'incomplete',
         'Current-period transactions include an unresolved provider account. Remaining amounts unavailable.'],
-      [transactionCoverageStatus(packet) === 'truncated', 'actuals-posted-incomplete', 'incomplete',
+      [transactionCoverageStatus(packet) === 'truncated'
+        && !(packet.transactionCoverage === 'incomplete'
+          && Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length),
+        'actuals-posted-incomplete', 'incomplete',
         'Posted transaction coverage is truncated. Current remaining amounts unavailable.'],
       [pendingStatus !== 'complete', 'actuals-pending-incomplete', 'current',
         'Pending coverage is not complete. Observed pending still constrains remaining; additional unknown pending may exist.'],
@@ -4769,7 +4778,9 @@
         observationAsOf,
         coverageStart,
         coverageThrough,
-        reason: 'Posted transaction coverage is truncated. Historical spent withheld.',
+        reason: Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length
+          ? 'Transaction currency is unconfirmed for bill evidence. Historical spent withheld.'
+          : 'Posted transaction coverage is truncated. Historical spent withheld.',
       };
     }
     if (pendingStatus === 'complete') {
