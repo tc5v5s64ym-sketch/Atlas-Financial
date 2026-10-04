@@ -18,10 +18,9 @@ Subsequent consumer/fixture repairs are recorded in the next commit. The
 exact tested head and results belong in the evidence manifest and PR record;
 this document cannot embed its own future commit SHA.
 
-Parent has held publication while coordinating the changed remote. Nothing
-has been pushed over it, no competing PR was created, and no merge is
-requested. Parent owns the separate UI follow-up and independent Systems
-review.
+Through the local B1 checkpoint, parent held publication while coordinating
+the changed remote. Nothing was pushed at those checkpoints and no competing
+PR was created. Parent owns independent Systems review and any merge.
 
 ## Independent supplied-dollar oracle
 
@@ -154,4 +153,29 @@ Budget click paths at both widths and records visible parts, chart geometry,
 copy, no overflow/runtime errors and screenshots. Run it with CHROME_PATH
 and optional ATLAS_CARD_COVERAGE_EVIDENCE_DIR. Exact-head browser results and
 review belong in their evidence manifests; the earlier blocking verdict does
-not transfer to this repair. Publication remains held by parent coordination.
+not transfer to this repair. Publication was held at that local checkpoint.
+
+## Authorized integration after publication hold
+
+Dale explicitly resumed work on 2026-10-04 at 14:33 UTC. Integration preserves
+remote PR head d3cb2ce3935ae842a19e04616421872530b17deb and current main
+9c4601bafe82297fd7984dd81135452c19261b9c as ancestors, retaining the reviewed
+local ledger and B1 repair. The rebase's legitimate #492 changes were already
+present; its inferred previous-payment split and observer-side split are
+superseded by the sole evidence-qualified ledger. No remote commit is deleted.
+
+Current main's original-plan/actual-progress, exact-period goal evidence and
+newer native Budget UI are preserved. Their scope and unconfirmed fulfillment
+remain distinct from available cash. A fresh independent current-main fixture
+reproduces $405 capacity without purchase coverage against the supplied-dollar
+$325 oracle; an $80 purchase reduced remaining groceries to $70 without moving
+$500 Bills cash, and the $25 minimum remains separate.
+
+Fourteen focused suites and eight authenticated desktop/mobile states passed
+on the integration before this documentation update. Both revisions generated
+their own canonical snapshots; all 568 figures matched current main. Exact
+final-head tests, browser manifests, full CI and review status belong in the
+PR/evidence record. The earlier local Systems PASS applies only to 143ea01,
+not this newer integration. Publication is authorized only after fresh remote
+head checks and by normal fast-forward push; concurrent movement stops it.
+No production opening/intent or provider write is authorized by this repair.
