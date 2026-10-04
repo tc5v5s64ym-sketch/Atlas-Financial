@@ -155,5 +155,45 @@ assert.equal(cr.other.spent,7);assert.equal(cr.p.fromTodayFunding.availableNow,4
 const pendingForeign=fixture();const pf=pendingForeign.payload.transactions.find(t=>t.id===82006);
 pf.is_pending=true;pf.currency='usd';pf.to_base=5.50;
 assertCurrencyBlocked(pendingForeign,'google-storage-100gb',4,'tdfees',24);
+// A scoped settlement currency guard does not declare unrelated foreign
+// credits or absent occurrences to be failed settlement evidence.
+for (const mutate of [
+  t=>{t.amount=-4;t.category_name='Refund';},
+  t=>{t.amount=0;},
+  t=>{t.payee='Google Play';},
+  t=>{t.account_id=3001;},
+  t=>{t.original_name='Unrelated product';},
+]) {
+  const x=fixture(),t=x.payload.transactions.find(t=>t.id===82006);
+  t.currency='usd';mutate(t);const r=run(x);
+  assert.equal(r.packet.currencyUnconfirmed.length,0,'noncandidate is not a scoped currency failure');
+  assert.equal(r.packet.transactionCoverage,'complete');
+  assert.notEqual(bill(r,'google-storage-100gb').status,'PAID');
+  assert.equal(r.p.fromTodayFunding.status,'ready','unrelated row cannot withhold qualified funding');
+}
+const absentOccurrence=fixture();
+absentOccurrence.data.plan.bills=absentOccurrence.data.plan.bills.filter(b=>b.id!=='google-storage-100gb');
+absentOccurrence.payload.transactions.find(t=>t.id===82006).currency='usd';
+assert.equal(run(absentOccurrence).packet.currencyUnconfirmed.length,0,
+  'matching merchant/account without a scheduled occurrence is not settlement evidence');
+const onceExpired=fixture();
+Object.assign(onceExpired.data.plan.bills.find(b=>b.id==='google-storage-100gb'),
+  {frequency:'once',date:'2026-08-01'});
+onceExpired.payload.transactions.find(t=>t.id===82006).currency='usd';
+assert.equal(run(onceExpired).packet.currencyUnconfirmed.length,0,'expired occurrence is not a candidate');
+for (const id of [82001,82002]) {
+  const x=fixture();const t=x.payload.transactions.find(t=>t.id===id);
+  t.currency='usd';t.amount=-12;
+  assert.equal(run(x).packet.currencyUnconfirmed.length,0,'fee credit cannot settle a debit occurrence');
+}
+for (const keepPostedIdentity of [false,true]) {
+  const x=fixture(),t=x.payload.transactions.find(t=>t.id===82006);
+  t.amount=-4;t.category_name='Refund';
+  addReplacement(x,82006,'usd','cad',keepPostedIdentity);
+  const r=run(x);
+  assert.equal(r.packet.currencyUnconfirmed.length,0,'noncandidate replacement cannot stamp a currency failure');
+  assert.equal(r.packet.transactionCoverage,'complete');
+  assert.equal(r.p.fromTodayFunding.status,'ready');
+}
 assert.deepEqual(fs.readFileSync(require.resolve('../data.json')),beforeBytes);
 console.log('PASS independent month-end fee/storage identity, ledger, extras, pending, refunds and coverage');

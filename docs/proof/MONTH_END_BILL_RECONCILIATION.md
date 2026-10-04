@@ -118,6 +118,25 @@ independent 465 cash / 7 Other / 465 capacity oracle. Existing supported-CAD
 fee and storage fixtures now state their units explicitly; their financial
 assertions are unchanged, including the annual-card-fee proof.
 
+## Noncandidate currency boundary (Codex P2)
+
+Exact head 97a26fd fails the added independent regression: a USD Google /
+SERVICE _V Refund credit yields one currency failure despite being unable
+to satisfy the debit rule, and withholds otherwise qualified current funding.
+The observer now reuses collectIdentityHits with only the currency guard
+temporarily absent to test candidate eligibility. The real settlement path
+still requires native CAD. Direction, mapped account, descriptor, exclusion,
+scheduled occurrence and its permitted posting relation all remain incumbent
+matcher decisions; this helper neither represents nor settles anything.
+
+The additional controls cover credits, zero, wrong account, excluded product,
+wrong descriptor, an absent scheduled occurrence, an expired once occurrence,
+negative fee legs and directed pending replacements of noncandidate refunds.
+These rows cannot create the scoped settlement-currency failure. Existing
+foreign/missing/mixed candidate and native replacement safety assertions are
+unchanged and pass. This remains a three-rule settlement boundary, not a
+global foreign transaction conversion or classification policy.
+
 ## Separate finding: card-purchase cash protection
 
 A separate invented purchase/backfill snapshot proves no duplicate expense

@@ -1197,7 +1197,7 @@ function ruleCurrencyQualified(tx, rule) {
     && tx.currency.trim().toLowerCase() === rule.requiredCurrency;
 }
 
-function currencyRulesForTransaction(tx, accountMap, rules) {
+function currencyRulesForTransaction(tx, accountMap, rules, plan) {
   // The standalone sanitizer permits an absent map. That caller cannot
   // establish a mapped settlement identity; preserve its incomplete packet.
   if (!accountMap) return [];
@@ -1205,7 +1205,10 @@ function currencyRulesForTransaction(tx, accountMap, rules) {
   const accountId = mapping && mapping.canonical && mapping.canonical.id;
   return (rules || []).filter(rule => rule.requiredCurrency
     && (!rule.atlasAccountId || rule.atlasAccountId === accountId)
-    && ruleMatchesTransactionIdentity(tx, rule));
+    // Reuse the incumbent matcher for direction and occurrence eligibility.
+    // Removing this one guard tests candidacy; it never qualifies settlement.
+    && collectIdentityHits(tx, { accountMap, plan },
+      [{ ...rule, requiredCurrency: null }]).length > 0);
 }
 
 function ruleIdentityLabel(rule) {
@@ -2183,8 +2186,8 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
     if (postedId == null || postedId === '') continue;
     const survivors = byPostedId.get(String(postedId)) || [];
     if (survivors.length !== 1) continue;
-    const currencyRules = currencyRulesForTransaction(link.pending, input.accountMap, rules)
-      .concat(currencyRulesForTransaction(link.posted, input.accountMap, rules));
+    const currencyRules = currencyRulesForTransaction(link.pending, input.accountMap, rules, input.plan)
+      .concat(currencyRulesForTransaction(link.posted, input.accountMap, rules, input.plan));
     if (currencyRules.some(rule => !ruleCurrencyQualified(link.pending, rule)
       || !ruleCurrencyQualified(link.posted, rule))) {
       survivors[0].currencySettlementUnconfirmed = true;
@@ -3816,7 +3819,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     if (!tx || !tx.date) continue;
     const amount = lunchMoneyDebitAmount(tx.amount);
     if (amount == null) continue;
-    const currencyRules = currencyRulesForTransaction(tx, mapDoc, opts.identityRules);
+    const currencyRules = currencyRulesForTransaction(tx, mapDoc, opts.identityRules,
+      opts.planForIdentity || opts.plan);
     if (tx.currencySettlementUnconfirmed === true
       || currencyRules.some(rule => !ruleCurrencyQualified(tx, rule))) {
       // Preserve a unit diagnostic, never publish an unqualified raw number
