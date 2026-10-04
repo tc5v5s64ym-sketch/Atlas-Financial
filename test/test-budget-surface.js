@@ -145,6 +145,56 @@ ok(!bar('savings') && /budget-waterfall-track is-unknown/.test(
   'unavailable savings are hatched with no invented zero-length numeric bar');
 
 console.log('\n=== pay-period waterfall on the active surface ===');
+console.log('\n=== published category bars and grouped bills ===');
+const categoryBrowse = (output, id) => output.split(`data-budget-category-open="${id}" data-budget-browse-origin="spending"`)[1]?.split('</button>')[0] || '';
+ok(text(categoryBrowse(html, 'groceries')).includes('$308.55 of $450.00')
+  && text(categoryBrowse(html, 'groceries')).includes('$141.45 left'),
+  'the default grocery row uses independently observed 212.40 + 96.15 and published remaining 141.45');
+const categoryFill = /budget-category-fill" style="width:([^%]+)%/.exec(categoryBrowse(html, 'groceries'));
+ok(categoryFill && Math.abs(Number(categoryFill[1]) - 308.55 / 450 * 100) < 1e-9,
+  'category geometry uses spent/plan rather than a new reserve amount');
+ok(/data-budget-browse-hold[\s\S]*?752\.99/.test(html)
+  && /data-budget-browse-remaining[\s\S]*?308\.50/.test(html),
+  'the reserve is the selected-period publication; current remaining is the matching dated from-today publication');
+ok(/budget-bill-group[\s\S]*?Coming up[\s\S]*?data-budget-bill-open="card-minimum"/.test(html)
+  && /To confirm[\s\S]*?data-budget-bill-open="hydro"/.test(html),
+  'upcoming and unverified bill occurrences remain separate without inferring unpaid status');
+ok(/budget-browse-paid[\s\S]*?data-budget-bill-open="mortgage"/.test(html)
+  && /data-budget-browse-bills-remaining[\s\S]*?265\.00/.test(html),
+  'paid occurrence is folded while the header reprints Forecast remaining bills 265');
+const noSpent = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').householdBudget[0].spent = null");
+ok(/Spending unavailable/.test(categoryBrowse(noSpent, 'groceries'))
+  && !/141\.45 left|budget-category-fill/.test(categoryBrowse(noSpent, 'groceries')),
+  'unavailable spending is not classified within plan, replaced by zero or given a numeric bar');
+p.render(fx.served());
+const noPlan = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').householdBudget[0].planned = null");
+ok(/is-hatched/.test(categoryBrowse(noPlan, 'groceries')) && /data-budget-category-scale="unavailable"/.test(categoryBrowse(noPlan, 'groceries'))
+  && !/budget-category-fill/.test(categoryBrowse(noPlan, 'groceries')) && /308\.55/.test(categoryBrowse(noPlan, 'groceries')),
+  'missing category plan withholds only ratio geometry while observed spending stays known');
+p.render(fx.served());
+const noHoldTrust = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetHoldTrust = 'unavailable'");
+ok(/data-budget-browse-hold[^>]*><span class="budget-browse-unknown">Unavailable/.test(noHoldTrust),
+  'an explicitly unavailable reserve stays unavailable in the new secondary summary');
+p.render(fx.served());
+const zeroBills = p.rerender("Object.assign(__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current'), {totalBillsThisPeriod:0,paidBills:0,remainingBills:0})");
+ok(/budget-bills-progress is-no-scale/.test(zeroBills) && !/budget-bills-progress is-hatched/.test(zeroBills),
+  'known zero bills use an explicit no-scale track rather than an unavailable hatch or a division by zero');
+p.render(fx.served());
+const unknownBill = p.rerender("Object.assign(__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').bills.find(row=>row.id==='hydro'), {status:null,settlement:null})");
+ok(/Status unavailable[\s\S]*?data-budget-bill-open="hydro"/.test(unknownBill),
+  'a bill with no published settlement remains in the unknown group rather than being inferred due or paid');
+p.render(fx.served());
+const stampedHold = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetHold = 612.34");
+ok(/data-budget-browse-hold[^>]*>\$612\.34</.test(stampedHold),
+  'the new reserve summary selects the publication without summing category rows');
+for (const change of ["remainingHousehold = null", "currentThrough = '2026-09-10'", "asOf = '2026-08-19'", "trust = 'unavailable'"]) {
+  p.render(fx.served());
+  const result = p.rerender(`__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').fromTodayFunding.${change}`);
+  ok(/data-budget-browse-remaining[^>]*><span class="budget-browse-unknown">Unavailable/.test(result),
+    `${change}: matching current remaining is withheld, never recomputed from categories`);
+}
+p.render(fx.served());
+
 ok(step(html, '02').includes(money(EXPECT.income)) && /≈ estimated/.test(step(html, '02')),
   `Income is ${money(EXPECT.income)} with Forecast's estimated tag`, step(html, '02'));
 ok(step(html, '04').includes(money(EXPECT.bills)), `Bills deduction is ${money(EXPECT.bills)}`, step(html, '04'));

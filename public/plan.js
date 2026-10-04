@@ -4804,8 +4804,18 @@ function budgetDetailSheetController(mount) {
   const closeButton = dialog.querySelector('[data-budget-detail-close]');
   let held = null;
   const identity = (node, source) => {
+    if (source && node.matches('[data-bill-detail]')) {
+      const summary = node.querySelector('[data-period-bill]');
+      if (!summary) return null;
+      return `[data-bill-detail]:has(> summary[data-period-bill="${CSS.escape(summary.getAttribute('data-period-bill'))}"]${summary.hasAttribute('data-bill-date') ? `[data-bill-date="${CSS.escape(summary.getAttribute('data-bill-date'))}"]` : ':not([data-bill-date])'})`;
+    }
+    if (!source && (node.hasAttribute('data-budget-category-open') || node.hasAttribute('data-budget-bill-open'))) {
+      const key = node.hasAttribute('data-budget-category-open') ? 'data-budget-category-open' : 'data-budget-bill-open';
+      return `[${key}="${CSS.escape(node.getAttribute(key))}"][data-budget-browse-origin="${CSS.escape(node.getAttribute('data-budget-browse-origin') || '')}"]${node.hasAttribute('data-budget-bill-date') ? `[data-budget-bill-date="${CSS.escape(node.getAttribute('data-budget-bill-date'))}"]` : ''}`;
+    }
+    if (source && node.hasAttribute('data-budget-category')) return `[data-budget-category="${CSS.escape(node.getAttribute('data-budget-category'))}"]`;
     for (const key of source ? ['data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
-      : ['data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section']) {
+      : ['data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence']) {
       if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
     }
     if (!source && node.matches('.budget-period-info > summary')) return '.budget-period-info > summary';
@@ -4821,7 +4831,10 @@ function budgetDetailSheetController(mount) {
     if (item.expanded != null) item.trigger.setAttribute('aria-expanded', item.expanded);
     dialog.close();
     document.body.classList.remove('budget-detail-open');
-    if (restoreFocus && item.trigger.isConnected) item.trigger.focus({ preventScroll: true });
+    if (restoreFocus && item.trigger.isConnected) {
+      item.trigger.focus({ preventScroll: true });
+      item.trigger.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
   };
   const open = (source, trigger, label, focusSelector) => {
     if (!source || !trigger) return;
@@ -4834,12 +4847,18 @@ function budgetDetailSheetController(mount) {
     dialog.classList.toggle('budget-surface-period', !source.closest('.budget-surface-today'));
     body.appendChild(source);
     source.hidden = false;
+    if (source.matches('[data-bill-detail]')) source.open = true;
+    if (source.hasAttribute('data-budget-category')) {
+      const spending = source.querySelector('[data-budget-spent]');
+      if (spending) spending.open = true;
+    }
     if (held.expanded != null) trigger.setAttribute('aria-expanded', 'true');
     document.body.classList.add('budget-detail-open');
     dialog.showModal();
     const first = focusSelector ? source.querySelector(focusSelector) : null;
-    (first || closeButton).focus({ preventScroll: true });
     body.scrollTop = 0;
+    (first || closeButton).focus({ preventScroll: true });
+    if (first) first.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   };
   closeButton.addEventListener('click', () => close());
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
@@ -4905,6 +4924,16 @@ function wireBudgetWindow(mount, ctx, sheet) {
     const section = button.getAttribute('data-budget-section');
     if (!['overview', 'spending', 'bills', 'upcoming'].includes(section)) return;
     button.addEventListener('click', () => {
+      const target = mount.querySelector(`[data-budget-browse="${CSS.escape(section)}"]`);
+      if (target || section === 'overview') mount.querySelectorAll('[data-budget-section]').forEach(control => {
+        if (control === button) control.setAttribute('aria-current', 'location');
+        else control.removeAttribute('aria-current');
+      });
+      if (target) {
+        target.querySelector('h2').focus({ preventScroll: true });
+        target.scrollIntoView({ block: 'start' });
+        return;
+      }
       if (section === 'overview') {
         mount.querySelector('.budget-surface-grid')?.scrollIntoView({ block: 'start' });
         return;
@@ -4921,6 +4950,29 @@ function wireBudgetWindow(mount, ctx, sheet) {
       sheet.open(source, button, title);
     });
   });
+}
+
+function wireBudgetBrowse(mount, ctx, sheet) {
+  if (!sheet) return;
+  mount.querySelectorAll('[data-budget-category-open]').forEach(button => button.addEventListener('click', () => {
+    const source = mount.querySelector(`[data-budget-category="${CSS.escape(button.getAttribute('data-budget-category-open'))}"]`);
+    if (source) sheet.open(source, button, source.querySelector('h3')?.textContent || 'Category evidence', '.household-budget-spent-summary');
+  }));
+  mount.querySelectorAll('[data-budget-bill-open]').forEach(button => button.addEventListener('click', () => {
+    const date = button.getAttribute('data-budget-bill-date');
+    const selector = `[data-period-bill="${CSS.escape(button.getAttribute('data-budget-bill-open'))}"]${date ? `[data-bill-date="${CSS.escape(date)}"]` : ':not([data-bill-date])'}`;
+    const matches = mount.querySelectorAll(selector);
+    // A missing/ambiguous occurrence must still expose the complete incumbent
+    // evidence; never choose an arbitrary payment or turn the button into a no-op.
+    const source = matches.length === 1 ? matches[0].closest('[data-bill-detail]') || matches[0]
+      : mount.querySelector('[data-operating-question="04"] .budget-step-body');
+    sheet.open(source, button, button.querySelector('strong')?.textContent || 'Bill evidence');
+  }));
+  mount.querySelectorAll('[data-budget-browse-evidence]').forEach(button => button.addEventListener('click', () => {
+    const question = button.getAttribute('data-budget-browse-evidence');
+    const source = mount.querySelector(`[data-operating-question="${CSS.escape(question)}"] .budget-step-body`);
+    if (source) sheet.open(source, button, question === '06' ? 'Household budget evidence' : 'Bills deduction evidence');
+  }));
 }
 
 function wireBudgetGranularity(mount, ctx) {
@@ -4984,6 +5036,7 @@ function wirePlanLookPicker(mount, ctx) {
   };
   const sheet = budgetDetailSheetController(mount);
   wireBudgetWindow(mount, ctx, sheet);
+  wireBudgetBrowse(mount, ctx, sheet);
   mount.querySelectorAll('.budget-period-info').forEach(info => {
     if (sheet) {
       const summary = info.querySelector('summary');
@@ -5627,7 +5680,7 @@ function budgetWindowHeaderHtml(ctx) {
   const chooser = model.period ? `<div data-budget-window-picker hidden>${payPeriodNavigatorHtml(model)}</div>` : '';
   const shortcuts = model.kind === 'pay-period' && model.period ? `<nav class="budget-section-nav" aria-label="Budget sections">
       ${[['overview', 'Overview'], ['spending', 'Spending'], ['bills', 'Bills'], ['upcoming', 'Upcoming']].map(([key, label]) =>
-        `<button type="button" data-budget-section="${key}"${key === 'overview' ? ' aria-current="page"' : ' aria-haspopup="dialog"'}>${label}</button>`).join('')}
+        `<button type="button" data-budget-section="${key}"${key === 'overview' ? ' aria-current="location"' : key === 'upcoming' ? ' aria-haspopup="dialog"' : ''}>${label}</button>`).join('')}
     </nav>` : '';
   return `<header class="budget-window-header" data-budget-window-header>
     <div class="budget-window-left">${budgetGranularityToggleHtml(true)}
@@ -5646,6 +5699,147 @@ function budgetDetailSheetHtml() {
   </dialog>`;
 }
 
+const budgetBrowseKnown = value => typeof value === 'number' && Number.isFinite(value);
+const budgetBrowseEscape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function budgetBrowseMoney(value, trust) {
+  return budgetBrowseKnown(value) && !['unavailable', 'unknown', 'untrusted'].includes(trust)
+    ? `${trust === 'estimated' ? '<span class="est"><span aria-hidden="true">≈</span><span class="budget-cash-sr">estimated </span></span> ' : ''}${money2(value)}`
+    : '<span class="budget-browse-unknown">Unavailable</span>';
+}
+
+function budgetCategoryPresentation(row) {
+  const spentKnown = budgetBrowseKnown(row.spent);
+  const other = row.otherSpending === true || row.needsConfirmation === true;
+  const trust = row.confidence === 'estimated' || row.trust === 'estimated' ? 'estimated' : null;
+  if (other) return { kind: 'unassigned', label: budgetBrowseMoney(row.spent), spentKnown, other, trust };
+  if (!spentKnown) return { kind: 'unknown', label: row.projected ? 'Not observed' : 'Spending unavailable', spentKnown, other, trust };
+  if (budgetBrowseKnown(row.overspend) && row.overspend > 0)
+    return { kind: 'over', label: `${budgetBrowseMoney(row.overspend, trust)} over`, spentKnown, other, trust };
+  if (budgetBrowseKnown(row.remaining)) return { kind: row.remaining > 0 ? 'left' : row.remaining === 0 ? 'used' : 'over',
+    label: row.remaining === 0 ? 'All used' : `${budgetBrowseMoney(row.remaining, trust)} ${row.remaining > 0 ? 'left' : 'remaining'}`,
+    spentKnown, other, trust };
+  return { kind: 'observed', label: 'Observed spending', spentKnown, other, trust };
+}
+
+function budgetCategoryBarHtml(row, state, pace) {
+  // Dimensionless geometry from published amounts; never a new money total.
+  const scale = state.spentKnown && budgetBrowseKnown(row.planned) && row.planned >= 0
+    ? Math.max(row.planned, row.spent) : null;
+  const numeric = !state.other && scale > 0;
+  const fill = numeric ? Math.max(0, Math.min(row.spent, row.planned)) / scale * 100 : 0;
+  const planAt = numeric ? row.planned / scale * 100 : null;
+  const overWidth = numeric && state.kind === 'over' && budgetBrowseKnown(row.overspend)
+    ? Math.min(100 - planAt, row.overspend / scale * 100) : 0;
+  const unavailable = state.other || !state.spentKnown || !budgetBrowseKnown(row.planned);
+  return `<span class="budget-category-bar${unavailable ? ' is-hatched' : ''}" aria-hidden="true" data-budget-category-scale="${numeric ? 'numeric' : unavailable ? 'unavailable' : 'no-scale'}">
+    ${numeric ? `<span class="budget-category-fill" style="width:${fill}%"></span>` : ''}
+    ${overWidth > 0 ? `<span class="budget-category-over" style="left:${planAt}%;width:${overWidth}%"></span><span class="budget-category-plan-mark" style="left:${planAt}%"></span>` : ''}
+    ${numeric && pace != null ? `<span class="budget-category-pace" style="left:${pace * planAt}%"></span>` : ''}
+  </span>`;
+}
+
+function budgetSpendingSectionHtml(period, ctx) {
+  const rows = (period.householdBudget || []).filter(Boolean);
+  const planned = rows.filter(row => !row.informational && !row.otherSpending && !row.needsConfirmation);
+  const classified = planned.filter(row => budgetBrowseKnown(row.spent) && budgetBrowseKnown(row.remaining));
+  const over = classified.filter(row => budgetBrowseKnown(row.overspend) && row.overspend > 0);
+  const model = budgetWindowModel(ctx), cycle = period.spendingCycle;
+  const datesKnown = cycle && isValidIsoCalendarDate(cycle.start) && isValidIsoCalendarDate(cycle.end)
+    && isValidIsoCalendarDate(model.asOf) && model.asOf >= cycle.start && model.asOf <= cycle.end;
+  const days = datesKnown ? Forecast.diffDays(cycle.start, cycle.end) + 1 : null;
+  const pace = days > 0 ? (Forecast.diffDays(cycle.start, model.asOf) + 1) / days : null;
+  const funding = period.timelineRole === 'current' ? period.fromTodayFunding : null;
+  const remainingKnown = funding?.basis === 'Budget-from-today' && ['ready', 'funding-gap'].includes(funding.status)
+    && ['estimated', 'calculated'].includes(funding.trust) && isValidIsoCalendarDate(model.asOf) && funding.asOf === model.asOf
+    && funding.currentThrough === period.end && budgetBrowseKnown(funding.remainingHousehold);
+  const count = period.timelineRole === 'current'
+    ? `<span class="budget-browse-pill${over.length ? ' is-warn' : !classified.length ? ' is-muted' : ''}">${over.length} of ${classified.length} known categories over plan</span>${planned.length > classified.length ? `<span class="budget-browse-pill is-muted">${planned.length - classified.length} without a remaining estimate</span>` : ''}`
+    : `<span class="budget-browse-pill is-muted">${period.projected ? 'Projected plan · spending not observed' : 'Observed spending · completed period'}</span>`;
+  const cards = rows.map(row => {
+    if (row.informational) return `<p class="budget-browse-note">${budgetBrowseEscape(row.label)} · ${budgetBrowseEscape(row.note || 'Included in Bills')}</p>`;
+    const state = budgetCategoryPresentation(row);
+    const meta = state.other ? budgetBrowseEscape(row.note || 'Not yet assigned to a category')
+      : `${budgetBrowseMoney(row.spent)} of ${budgetBrowseMoney(row.planned, state.trust)}`;
+    return `<button type="button" class="budget-category-row is-${state.kind}" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="spending" aria-haspopup="dialog">
+      <span class="budget-category-name">${budgetBrowseEscape(row.label || 'Category')}</span><span class="budget-category-status">${state.label}</span>
+      <span class="budget-category-meta">${meta}</span><span class="budget-category-link">Transactions <span aria-hidden="true">›</span></span>
+      ${budgetCategoryBarHtml(row, state, pace)}
+    </button>`;
+  }).join('');
+  return `<section class="budget-browse-card budget-browse-spending" data-budget-browse="spending" aria-labelledby="budget-spending-heading">
+    <header><div><p class="budget-browse-eyebrow">Spending this period</p><h2 id="budget-spending-heading" tabindex="-1">Household budget</h2><p class="budget-browse-sub">Tap a category to see its transactions.</p></div>${pace != null ? '<span class="budget-pace-key">│ Today</span>' : ''}</header>
+    ${householdBudgetCycleText(period) ? `<p class="budget-browse-cycle">${budgetBrowseEscape(householdBudgetCycleText(period))}</p>` : ''}
+    <div class="budget-browse-stats"><div><span>Counted this period</span><strong data-budget-browse-hold>${budgetBrowseMoney(period.budgetHold, period.budgetHoldTrust)}</strong></div>
+      ${period.timelineRole === 'current' ? `<div><span>Still planned</span><strong data-budget-browse-remaining>${budgetBrowseMoney(remainingKnown ? funding.remainingHousehold : null, remainingKnown ? funding.trust : null)}</strong><small>From today</small></div>` : ''}</div>
+    <div class="budget-browse-counts">${count}</div><div class="budget-category-list">${cards || '<p class="budget-browse-note">Category data unavailable.</p>'}</div>
+    <footer><p>Each category counts at its plan or observed spending, whichever is higher, plus unassigned spending. Completed periods show observed spending.</p><button type="button" data-budget-browse-evidence="06">Details</button></footer>
+  </section>`;
+}
+
+function budgetBillPresentation(row) {
+  if (row.status === 'PAID') return { kind: 'paid', label: row.settlement === 'opening' ? 'Included in opening' : 'Paid' };
+  if (row.status === 'pending' || row.settlement === 'pending') return { kind: 'pending', label: 'Payment pending' };
+  if (row.needsDate || row.status === 'needs-date') return { kind: 'check', label: 'Needs a date' };
+  if (row.settlement === 'unverified') return { kind: 'check', label: 'Not confirmed' };
+  if (row.settlement === 'upcoming') return { kind: 'due', label: 'To pay' };
+  return { kind: 'unknown', label: 'Status unavailable' };
+}
+
+function budgetBillBrowseRowHtml(row) {
+  const state = budgetBillPresentation(row);
+  const knownDate = isValidIsoCalendarDate(row.date);
+  const amount = budgetBrowseKnown(row.movement) ? Math.abs(row.movement) : null;
+  const month = knownDate ? new Date(row.date + 'T12:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : '?';
+  return `<button type="button" class="budget-bill-row is-${state.kind}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
+    <span class="budget-bill-date" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
+    <span class="budget-bill-label"><strong>${budgetBrowseEscape(row.label || 'Bill')}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}</span>` : ''}</span></span>
+    <span class="budget-bill-amount">${budgetBrowseMoney(amount, row.confidence === 'estimated' ? 'estimated' : null)}</span>
+  </button>`;
+}
+
+function budgetBillsSectionHtml(period, ctx) {
+  const rows = (period.bills || []).filter(Boolean);
+  const groups = { due: [], pending: [], check: [], paid: [], unknown: [] };
+  rows.forEach(row => groups[budgetBillPresentation(row).kind].push(row));
+  const section = (title, list, note = '') => list.length ? `<div class="budget-bill-group"><h3>${title}</h3>${note ? `<p>${note}</p>` : ''}${list.map(budgetBillBrowseRowHtml).join('')}</div>` : '';
+  const ratioKnown = budgetBrowseKnown(period.totalBillsThisPeriod) && period.totalBillsThisPeriod > 0
+    && budgetBrowseKnown(period.paidBills) && period.paidBills >= 0 && period.paidBills <= period.totalBillsThisPeriod;
+  const zeroKnown = period.totalBillsThisPeriod === 0 && period.paidBills === 0;
+  return `<section class="budget-browse-card budget-browse-bills" data-budget-browse="bills" aria-labelledby="budget-bills-heading">
+    <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : ''}</p><h2 id="budget-bills-heading" tabindex="-1"><span data-budget-browse-bills-remaining>${budgetBrowseMoney(period.remainingBills)}</span> left to pay or confirm</h2></div></header>
+    <div class="budget-browse-counts">${[['due', 'to pay'], ['pending', 'pending'], ['check', 'to confirm'], ['unknown', 'unavailable']].filter(([key]) => groups[key].length).map(([key, label]) => `<span class="budget-browse-pill is-${key}">${groups[key].length} ${label}</span>`).join('')}</div>
+    <div class="budget-bills-progress${ratioKnown ? '' : zeroKnown ? ' is-no-scale' : ' is-hatched'}" aria-hidden="true">${ratioKnown ? `<span style="width:${period.paidBills / period.totalBillsThisPeriod * 100}%"></span>` : ''}</div>
+    <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} paid or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
+    ${section('Coming up', rows.filter(row => ['due', 'pending'].includes(budgetBillPresentation(row).kind)))}
+    ${section('To confirm', groups.check, 'No confirmed settlement is shown. The bill may already be paid — check before paying again.')}
+    ${section('Status unavailable', groups.unknown, 'No paid or due claim is inferred for these entries.')}
+    ${groups.paid.length ? `<details class="budget-bill-group budget-browse-paid"><summary><h3>Paid or included in opening · ${groups.paid.length}</h3><span aria-hidden="true">⌄</span></summary>${groups.paid.map(budgetBillBrowseRowHtml).join('')}</details>` : ''}
+    ${!rows.length ? '<p class="budget-browse-note">No bill occurrences published for this period.</p>' : ''}
+    <footer><p>The plan deducts ${budgetBrowseMoney(period.periodBillLoad, period.periodBillLoadTrust)} — assigned amounts, excluding bills settled in the opening. Payment evidence remains available for each bill.</p><button type="button" data-budget-browse-evidence="04">Why</button></footer>
+  </section>`;
+}
+
+function budgetBrowseAttentionHtml(period) {
+  const items = [];
+  (period.householdBudget || []).filter(Boolean).forEach(row => {
+    const unassigned = row.otherSpending === true || row.needsConfirmation === true;
+    const over = budgetBrowseKnown(row.spent) && budgetBrowseKnown(row.overspend) && row.overspend > 0;
+    if (!unassigned && !over) return;
+    items.push(`<button type="button" class="budget-attention-item" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="attention" aria-haspopup="dialog"><span aria-hidden="true">${over ? '!' : '?'}</span><span><strong>${budgetBrowseEscape(row.label)} · ${over ? `${budgetBrowseMoney(row.overspend, budgetCategoryPresentation(row).trust)} over plan` : 'needs a category'}</strong><small>${over ? 'The published reserve includes the overrun.' : 'Open the included transactions, including any pending evidence.'}</small></span></button>`);
+  });
+  (period.bills || []).filter(row => row && budgetBillPresentation(row).kind === 'check').forEach(row => {
+    items.push(`<button type="button" class="budget-attention-item" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(isValidIsoCalendarDate(row.date) ? row.date : '')}" data-budget-browse-origin="attention" aria-haspopup="dialog"><span aria-hidden="true">?</span><span><strong>${budgetBrowseEscape(row.label)} · to confirm</strong><small>It may already be paid. Check the evidence before paying again.</small></span></button>`);
+  });
+  return items.length ? `<section class="budget-browse-card budget-browse-attention" data-budget-browse="attention" aria-labelledby="budget-attention-heading"><header><h2 id="budget-attention-heading">Worth a look</h2><span class="budget-browse-pill is-muted">${items.length} items</span></header><div>${items.join('')}</div></section>` : '';
+}
+
+function budgetBrowseSectionsHtml(ctx) {
+  const period = payPeriodSelection(ctx.advice || {}, ctx.planPayPeriodId).period;
+  if (!period || period.operatingPlanUnavailable) return '';
+  return `${budgetBrowseAttentionHtml(period)}<div class="budget-browse-grid">${budgetSpendingSectionHtml(period, ctx)}${budgetBillsSectionHtml(period, ctx)}</div>`;
+}
+
 function budgetSurfaceParts() {
   return {
     planUnavailable: ctx => liveOperatingPlanUnavailable(ctx.advice || {}, ctx.liveOverlay),
@@ -5657,6 +5851,7 @@ function budgetSurfaceParts() {
     inDrilldown: () => budgetInPayPeriodDrilldown(),
     todayHtml: ctx => budgetTodayCashCardHtml(ctx),
     periodHtml: ctx => budgetPayPeriodContentHtml(Object.assign({}, ctx, { budgetCompactOverview: true })),
+    browseHtml: ctx => budgetBrowseSectionsHtml(ctx),
     monthHtml: ctx => budgetMonthViewHtml(ctx, true),
     selectedMonthLabel: () => (budgetSelectedMonth && budgetMonthName(budgetSelectedMonth)) || null,
     drilldownHtml: ctx => budgetPayPeriodDrilldownHtml(ctx),
