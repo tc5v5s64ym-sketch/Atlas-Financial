@@ -291,6 +291,24 @@
 .budget-savings-accounts { margin:20px 0; padding:16px; border:1px solid var(--border); border-radius:14px; }
 .budget-savings-accounts > summary { cursor:pointer; color:var(--text-secondary); font-size:13px; }
 .budget-savings-accounts > summary:focus-visible { outline:2px solid var(--s1); outline-offset:4px; }
+.budget-progress-note { display:block; color:var(--text-secondary); font-size:10px; font-weight:450; margin-top:3px; }
+.budget-progress-note:empty { display:none; }
+.budget-surface .budget-step-value:has([data-budget-ratio]) { min-width:0; white-space:normal; overflow-wrap:anywhere; }
+.budget-step-value [data-budget-ratio] { display:block; font-size:12px; }
+.budget-step-value [data-budget-ratio-actual],.budget-step-value [data-budget-ratio-plan] { white-space:nowrap; }
+@media(max-width:360px) {
+  .budget-step-value [data-budget-ratio] { font-size:11px; }
+  .budget-step-value [data-budget-ratio-plan] { display:block; }
+}
+.budget-progress-track { display:block; position:relative; min-width:0; }
+.budget-progress-track.is-over-plan .budget-waterfall-bar { background:var(--critical); }
+.budget-progress-over { position:absolute; right:0; top:-4px; color:var(--critical); font-size:11px; font-weight:750; }
+.budget-bills-progress-wrapper { margin:16px 0 9px; }
+.budget-bills-progress-wrapper .budget-progress-track { height:8px; border-radius:99px; background:var(--surface-3); }
+.budget-bills-progress-wrapper .budget-waterfall-bar { position:absolute; height:100%; background:var(--good); border-radius:inherit; }
+.budget-progress-evidence { border-top:1px solid var(--border); margin-top:16px; padding-top:14px; font-size:13px; }
+.budget-progress-evidence h3 { font-size:14px; }
+.budget-browse-bills h2 [data-budget-ratio] { white-space:normal; }
 .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-waterfall-track { display:none; }
 .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-value { grid-column:4; }
 .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-chevron { grid-column:5; }
