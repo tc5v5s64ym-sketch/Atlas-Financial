@@ -65,7 +65,10 @@ async function geometry(page) {
       assert.match(await hero.innerText(), /1,632\.01/); // 4050 - 1665 - 752.99
       assert.match(await hero.innerText(), /estimated/);
       assert.match(await hero.innerText(), /Before savings/);
-      assert.equal(await page.locator('.budget-surface-card').count(), 1);
+      const overview = page.locator('.budget-surface-grid > .budget-surface-card');
+      assert.equal(await overview.count(), 1, 'one primary current-balance-to-deductions overview');
+      assert.equal(await overview.locator('[data-live-current-balance-amount]').count(), 1);
+      assert.equal(await overview.locator('[data-budget-period-result]').count(), 1);
       assert.equal(await page.locator('[data-budget-period-result]').count(), 1);
       assert.equal(await page.locator('[data-operating-question="07"] .budget-step-body').innerText().then(text => text.includes('$1,632.01')), false,
         'expanded result explains scope without repeating the final amount');
@@ -226,23 +229,14 @@ async function geometry(page) {
       }
       await page.evaluate(() => document.activeElement.blur()); await page.mouse.move(0,0);
       for (const part of ['spending','bills','attention']) await page.locator(`[data-budget-browse="${part}"]`).screenshot({path:path.join(screenshots,`${part}-${width}.png`),animations:'disabled',style:'.sitenav-household{visibility:hidden!important}'});
-      if (width < 960) for (const section of ['spending', 'bills']) {
+      if (width < 960) for (const section of ['spending', 'bills', 'upcoming']) {
         const trigger = page.locator(`[data-budget-section="${section}"]`);
         await trigger.focus(); await page.keyboard.press('Enter');
         assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), false);
-        assert.equal(await page.locator(`[data-budget-browse="${section}"] h2`).evaluate(el => el === document.activeElement), true);
+        const heading = page.locator(section === 'upcoming' ? '#budget-funding-heading' : `[data-budget-browse="${section}"] h2`);
+        assert.equal(await heading.evaluate(el => el === document.activeElement), true);
+        assert.equal(await focusVisible(heading), true, 'section heading is keyboard reachable above the dock');
         assert.equal(await trigger.getAttribute('aria-current'), 'location');
-      }
-      if (width < 960) for (const section of ['upcoming']) {
-        const trigger = page.locator(`[data-budget-section="${section}"]`);
-        await trigger.focus(); await page.keyboard.press('Enter');
-        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
-        const detail = await page.locator('[data-budget-detail-body]').innerText();
-        assert.match(detail, section === 'spending' ? /Synthetic grocer|Groceries/
-          : section === 'bills' ? /1,400\.00|Mortgage/ : /August 28 payday/);
-        if (width === 390) await screenshot({ path: path.join(screenshots, `${section}-sheet-390.png`), fullPage: true });
-        await page.keyboard.press('Escape');
-        assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
       }
       if (width < 960) await page.locator('[data-budget-section="overview"]').click();
       await screenshot({ path: path.join(screenshots, `current-${width}.png`), fullPage: true });

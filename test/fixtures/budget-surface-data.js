@@ -156,6 +156,18 @@ function served(opts = {}) {
   const data = opts.withheldSavings ? withheldSavings(canonical())
     : opts.deficitPeriod ? deficitPeriod(canonical()) : canonical();
   const observed = payload();
+  const observationIdentity = opts.fundingHistory ? { ...identity, rules: [...identity.rules,
+    { eventId: 'historical-service', payeePattern: 'Synthetic historical service', atlasAccountId: 'chequing-a', direction: 'debit' }] } : identity;
+  if (opts.fundingHistory) {
+    data.plan.bills.push({ id: 'historical-service', label: 'Synthetic historical service', frequency: 'once',
+      date: '2026-08-07', amount: 105, confidence: 'confirmed', payingAccount: 'chequing-a' });
+    observed.transactionWindow.startDate = '2026-07-31';
+    observed.transactions.push(tx(92101, 1002, '2026-08-04', 47.25, 'Synthetic historical grocer', 11),
+      tx(92102, 1002, '2026-08-05', 19.50, 'Synthetic historical fuel', 12));
+    if (opts.fundingHistory === 'paid') observed.transactions.push(tx(92103, 1001, '2026-08-07', 105, 'Synthetic historical service', 16));
+  }
+  if (opts.withUndatedCost) data.plan.commitments.push({ id: 'fixture-undated', label: 'Synthetic undated cost',
+    amount: 275, confidence: 'confirmed' });
   if (typeof opts.periodInternet === 'number') {
     data.plan.bills.find(row => row.id === 'internet').amount = opts.periodInternet;
   }
@@ -182,7 +194,7 @@ function served(opts = {}) {
     observed.accounts.find(row => row.id === providerId).balance = opts[key];
     data.plan.startingCash.breakdown.find(row => row.id === canonicalId).value += opts[key] - original;
   }
-  const overlay = Live.fromObservation({ data, payload: observed, accountMap: map, identity });
+  const overlay = Live.fromObservation({ data, payload: observed, accountMap: map, identity: observationIdentity });
   if (opts.unavailablePlan) {
     return Live.failedOverlay(canonical(), 'Synthetic refresh could not be trusted.', { report: overlay.report });
   }
@@ -218,4 +230,17 @@ function historical(coverage = 'missing', settlement = 'unverified') {
   return data;
 }
 
-module.exports = { AS_OF, OPENING, canonical, payload, map, identity, served, historical };
+// The funding walk also consumes Live's operating plan. Earn the historical
+// payment through that observation boundary before adjusting coverage, so its
+// settlement agrees across lookback and current-cash publications.
+function fundingHistorical(coverage = 'missing', settlement = 'unverified') {
+  const data = served({ fundingHistory: settlement });
+  const packet = data.liveOverlay.currentPeriodActuals;
+  if (coverage === 'missing') packet.coverageStart = '2026-08-13';
+  if (coverage === 'partial') packet.coverageStart = '2026-08-04';
+  if (coverage === 'truncated') packet.transactionCoverage = 'truncated';
+  if (coverage === 'posted-only') packet.pendingCoverage = 'unknown';
+  return data;
+}
+
+module.exports = { AS_OF, OPENING, canonical, payload, map, identity, served, historical, fundingHistorical };

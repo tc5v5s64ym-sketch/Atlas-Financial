@@ -194,8 +194,8 @@ ok(incomeHtml.includes('data-period-income="past-salary" data-income-status="not
     && incomeHtml.includes('not relied upon'), 'page prints elapsed salary as not relied upon');
 ok(!incomeHtml.includes('data-period-income="past-salary" data-income-status="received"'),
   'page never labels unproven elapsed salary received');
-ok(['bill-a', 'bill-b'].every(id => billsHtml.includes(`data-period-bill="${id}" data-bill-status="still due"`)),
-  'page keeps both unverified bills actionable');
+ok(['bill-a', 'bill-b'].every(id => billsHtml.includes(`data-period-bill="${id}" data-bill-status="to confirm"`)),
+  'page keeps both unverified bills to confirm without asserting confirmed unpaid');
 ok(billsHtml.includes(`<span>Remaining bills to pay</span><span>${page.money2(LOAD)}</span>`),
   'page prints independently expected remaining bills $100');
 ok(page.runningLeftoverHtml(unverified.afterHouseholdBudget).includes(

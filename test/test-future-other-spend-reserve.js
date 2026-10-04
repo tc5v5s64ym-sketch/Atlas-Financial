@@ -69,6 +69,7 @@ function loadComposer() {
     'calendarPeriodBillsHtml',
     'periodBillsHtml',
     'extraRepaymentHtml',
+    'calendarFromTodayEvidenceHtml',
     'calendarWaterfallHtml',
     'payPeriodSelection',
     'payPeriodMoveSelection',

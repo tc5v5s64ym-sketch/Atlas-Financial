@@ -31,7 +31,7 @@
       ${card('period', `${parts.headerHtml ? parts.headerHtml(ctx) : ''}
         <div class="budget-surface-today" data-budget-surface-section="today">${today}</div><!--budget-current-position-end-->${period}`,
         { label: 'Selected pay period and current Bills position' })}
-    </div>${parts.browseHtml ? parts.browseHtml(ctx) : ''}`;
+    </div>${parts.browseHtml ? parts.browseHtml(ctx) : ''}${parts.fundingHtml ? parts.fundingHtml(ctx) : ''}`;
   }
 
   function monthView(ctx, parts) {
