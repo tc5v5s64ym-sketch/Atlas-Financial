@@ -88,6 +88,24 @@ const past=fixture();Object.assign(past,{start:'2026-07-31',end:'2026-08-13',rol
 assert.equal(publish(past).household.actual.amount,null,'current-only coverage does not prove history');
 const oldPacket={...observed,coverageStart:'2026-07-31',coverageThrough:asOf};
 assert.equal(publish(past,oldPacket).household.actual.amount,172,'exact historical coverage');
+assert.equal(publish(past,oldPacket).household.planned.amount,null,'current category targets do not prove a historical original plan');
+const revisedPast=clone(past);revisedPast.householdBudget[0].planned=613.27;
+assert.equal(publish(revisedPast,oldPacket).household.planned.amount,null,'a later target edit cannot rewrite a completed period denominator');
+assert.equal(publish(revisedPast,oldPacket).household.actual.amount,172,'target edits do not change the observed historical numerator');
+const earlyPaid=fixture();Object.assign(earlyPaid.bills[1],{actual:70,status:'PAID',settlement:'represented'});
+assert.equal(publish(earlyPaid).bills.actual.amount,55+70,'confirmed early payment counts in its selected-period occurrence before the scheduled due date');
+assert.equal(publish(earlyPaid).bills.planned.amount,40+70,'early actual never replaces the original denominator');
+for(const contradiction of ['pending','unverified','unknown','not-relied-upon']){
+  const badEarly=clone(earlyPaid);badEarly.bills[1].settlement=contradiction;
+  assert.equal(publish(badEarly).bills.actual.amount,55,'early '+contradiction+' cannot become confirmed paid');
+  assert.equal(publish(badEarly).bills.actual.completeness,'partial');
+}
+const unknownEarly=clone(earlyPaid);unknownEarly.bills[1].actual=null;
+assert.equal(publish(unknownEarly).bills.actual.amount,55,'unknown early actual never falls back to its scheduled amount');
+unknownEarly.bills[1].actual=70;unknownEarly.bills[1].actualTrust=null;
+assert.equal(publish(unknownEarly).bills.actual.amount,55,'invalid early-payment trust stays withheld');
+const futurePaid=clone(earlyPaid);Object.assign(futurePaid,{start:'2026-08-28',end:'2026-09-10',projected:true,timelineRole:'next'});
+assert.equal(publish(futurePaid).bills.actual.amount,null,'future-period projections cannot become actuals even with paid-shaped input');
 const changedCycle=fixture();changedCycle.spendingCycle.start='2026-08-15';
 assert.equal(publish(changedCycle).household.actual.amount,null,'mismatched category cycle is not selected period');
 for(const amount of [0,9999]){
@@ -171,6 +189,40 @@ assert.match(bills,/data-budget-progress-kind="bills"/);
 assert.match(bills,/data-budget-progress-kind="bills"[^>]*aria-hidden="true"><\/span>/,'partial paid evidence has no progress fill');
 const goals=vm.runInContext('budgetSavingsGoalsHtml(progressCtx,progressPeriod,null)',context);
 assert.match(goals,/School trip/);assert.match(goals,/Not confirmed/);assert.doesNotMatch(goals,/>Funded<|>Still to fund</);
+// Active Forecast plus active renderer: old target 450 is revised to an
+// independently invented 613.27 today, with no dated original-plan snapshot.
+const historicalData=fx.fundingHistorical('full','paid'),historicalBefore=JSON.stringify(historicalData);
+const historicalAdvice=F.recommend(historicalData.plan,asOf,{...historicalData.plan.defaults,debts:historicalData.debts,
+  currentPeriodActuals:historicalData.liveOverlay.currentPeriodActuals});
+const revisedData=clone(historicalData);revisedData.plan.budget.categories.find(r=>r.id==='groceries').plannedPayday=613.27;
+const revisedBefore=JSON.stringify(revisedData);
+const revisedAdvice=F.recommend(revisedData.plan,asOf,{...revisedData.plan.defaults,debts:revisedData.debts,
+  currentPeriodActuals:revisedData.liveOverlay.currentPeriodActuals});
+for(const [data,published] of [[historicalData,historicalAdvice],[revisedData,revisedAdvice]]){
+  const history=published.payPeriodViews.find(r=>r.start==='2026-07-31');
+  assert.equal(history.budgetProgress.household.actual.amount,47.25+19.50);
+  assert.equal(history.budgetProgress.household.planned.amount,null);
+  context.historyPeriod=history;context.historyCtx={asOf,advice:published,plan:data.plan};
+  const historyHtml=vm.runInContext('budgetSpendingSectionHtml(historyPeriod,historyCtx)',context);
+  assert.match(historyHtml,/data-budget-ratio-actual[\s\S]*?66\.75/);
+  assert.match(historyHtml,/data-budget-ratio-plan><span class="budget-v3-unknown">Unavailable/);
+  assert.doesNotMatch(historyHtml,/\$450\.00|\$613\.27|budget-category-fill|budget-category-pace|\$402\.75 left|\$566\.02 left/,
+    'current targets, remaining estimates and target-based geometry do not pose as historical original plans');
+}
+assert.equal(JSON.stringify(historicalData),historicalBefore);assert.equal(JSON.stringify(revisedData),revisedBefore);
+const realEarly=fx.served({earlyInternet:true}),realEarlyBefore=JSON.stringify(realEarly);
+const earlyAdvice=F.recommend(realEarly.plan,asOf,{...realEarly.plan.defaults,debts:realEarly.debts,
+  currentPeriodActuals:realEarly.liveOverlay.currentPeriodActuals});
+const earlyPeriod=earlyAdvice.payPeriodViews.find(r=>r.timelineRole==='current');
+assert.equal(earlyPeriod.bills.find(r=>r.id==='internet').settlement,'represented','typed receipt earns native occurrence settlement');
+assert.equal(earlyPeriod.bills.find(r=>r.id==='internet').date,'2026-08-24','scheduled occurrence remains after as-of');
+assert.equal(earlyPeriod.budgetProgress.bills.actual.amount,1400+85);
+assert.equal(earlyPeriod.budgetProgress.bills.planned.amount,1400+120+60+85);
+assert.equal(earlyPeriod.paidBills,1400+85,'shared native paid authority agrees');
+context.earlyPeriod=earlyPeriod;context.earlyCtx={asOf,advice:earlyAdvice,plan:realEarly.plan};
+assert.match(vm.runInContext('budgetBillsSectionHtml(earlyPeriod,earlyCtx)',context),
+  /data-budget-ratio="bills"[\s\S]*?1,485\.00[\s\S]*?1,665\.00/);
+assert.equal(JSON.stringify(realEarly),realEarlyBefore);
 current.budgetProgress.household.actual.trust=null;
 assert.match(vm.runInContext('budgetSpendingSectionHtml(progressPeriod,progressCtx)',context),/data-budget-ratio-actual><span class="budget-v3-unknown">Unavailable/);
 current.budgetProgress.asOf='2026-08-19';

@@ -5929,6 +5929,7 @@ function budgetSpendingSectionHtml(period, ctx) {
     && funding.currentThrough === period.end && budgetBrowseKnown(funding.remainingHousehold);
   const historical = budgetBrowseHistorical(period);
   const progress = budgetProgressFor(period, ctx.asOf)?.household;
+  const historicalPlanUnknown = historical && !budgetProgressAmountKnown(progress?.planned);
   const historyEvidence = historical ? budgetHistoricalSpendingEvidence(period) : (period.projected ? 'projected' : 'current');
   const observedHold = !historical || historyEvidence === 'observed';
   const count = period.timelineRole === 'current'
@@ -5936,13 +5937,18 @@ function budgetSpendingSectionHtml(period, ctx) {
     : `<span class="budget-browse-pill is-muted">${budgetSpendingHistoryLabel(period)}</span>`;
   const cards = rows.map(row => {
     if (row.informational) return `<p class="budget-browse-note">${budgetBrowseEscape(row.label)} · ${budgetBrowseEscape(row.note || 'Included in Bills')}</p>`;
-    const state = budgetCategoryPresentation(row);
+    // Forecast withholds the historical original-plan denominator. Keep the
+    // native row/evidence intact, but do not relabel today's category targets
+    // as historical plans, remaining amounts or progress geometry here.
+    const displayRow = historicalPlanUnknown && !row.otherSpending
+      ? { ...row, planned: null, plannedTrust: 'unavailable', remaining: null, overspend: null } : row;
+    const state = budgetCategoryPresentation(displayRow);
     const meta = state.other ? budgetBrowseEscape(row.note || 'Not yet assigned to a category')
-      : `<span class="budget-cash-sr">Spent </span>${budgetBrowseMoney(row.spent, row.trust)}<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>${budgetBrowseMoney(row.planned, state.trust)}`;
+      : `<span class="budget-cash-sr">Spent </span>${budgetBrowseMoney(row.spent, row.trust)}<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>${budgetBrowseMoney(displayRow.planned, state.trust)}`;
     return `<button type="button" class="budget-category-row is-${state.kind}" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="spending" aria-haspopup="dialog">
       <span class="budget-category-name">${budgetBrowseEscape(row.label || 'Category')}</span><span class="budget-category-status">${state.label}</span>
       <span class="budget-category-meta">${meta}</span><span class="budget-category-link">Transactions <span aria-hidden="true">›</span></span>
-      ${budgetCategoryBarHtml(row, state, pace)}
+      ${budgetCategoryBarHtml(displayRow, state, pace)}
     </button>`;
   }).join('');
   return `<section class="budget-browse-card budget-browse-spending" data-budget-browse="spending" data-budget-spending-evidence="${historyEvidence}" aria-labelledby="budget-spending-heading">

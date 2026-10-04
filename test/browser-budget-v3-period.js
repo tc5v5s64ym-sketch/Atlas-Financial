@@ -431,7 +431,8 @@ async function geometry(page) {
         assert.match(await spending.locator('[data-budget-browse-hold]').innerText(), observed ? /66\.75/ : /Unavailable/);
         const groceries = spending.locator('[data-budget-category-open="groceries"]');
         assert.match(await groceries.innerText(), observed ? /47\.25/ : /Spending unavailable/);
-        assert.equal(await groceries.locator('.budget-category-fill').count(), observed ? 1 : 0);
+        assert.equal(await groceries.locator('.budget-category-fill').count(),0,'historical original target is unknown even with complete spending coverage');
+        assert.match(await spending.locator('[data-budget-ratio-plan]').innerText(),/Unavailable/);
         assert.equal(await bills.locator('[data-budget-browse-bills-remaining]').count(), 0);
         assert.match(await bills.locator('h2').innerText(), /105\.00/,'historical original bill plan remains available');
         assert.match(await bills.innerText(), /Completed-period bills/);
@@ -466,6 +467,34 @@ async function geometry(page) {
         await page.locator('[data-budget-window-step="1"]').click();
         assert.match(await page.locator('[data-budget-browse="spending"] .budget-browse-counts').innerText(), /Projected plan.*spending not observed/);
       }
+      // P1: editing today's target cannot reconstruct an original history plan.
+      data=fx.fundingHistorical('full','paid');
+      data.plan.budget.categories.find(row=>row.id==='groceries').plannedPayday=613.27;
+      await boot();await page.locator('[data-budget-window-step="-1"]').click();
+      const revisedHistory=page.locator('[data-budget-browse="spending"]');
+      assert.match(await revisedHistory.locator('[data-budget-ratio-actual]').innerText(),/66\.75/);
+      assert.match(await revisedHistory.locator('[data-budget-ratio-plan]').innerText(),/Unavailable/);
+      assert.doesNotMatch(await revisedHistory.innerText(),/613\.27|450\.00|402\.75 left|566\.02 left/);
+      assert.equal(await revisedHistory.locator('.budget-category-fill').count(),0);
+      await geometry(page);
+      await revisedHistory.screenshot({path:path.join(screenshots,`history-target-edit-${width}.png`),animations:'disabled',style:'.sitenav-household{visibility:hidden!important}'});
+      const revisedGrocery=revisedHistory.locator('[data-budget-category-open="groceries"]');
+      await revisedGrocery.focus();await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-budget-detail-body]').innerText(),/Synthetic historical grocer[\s\S]*47\.25/);
+      await page.keyboard.press('Escape');assert.equal(await revisedGrocery.evaluate(el=>el===document.activeElement),true);
+      // P2: a valid typed receipt precedes its scheduled occurrence date.
+      // This is Forecast -> active UI proof, not provider identity matching.
+      data=fx.served({earlyInternet:true});await boot();
+      const earlyBills=page.locator('[data-budget-browse="bills"]');
+      assert.match(await earlyBills.locator('h2').innerText(),/1,485\.00[\s\S]*1,665\.00/);
+      assert.match(await earlyBills.locator('[data-budget-bill-filter="paid"]').innerText(),/2/);
+      const earlyInternet=earlyBills.locator('[data-budget-bill-open="internet"]');
+      assert.match(await earlyInternet.innerText(),/Paid/);
+      await geometry(page);
+      await earlyBills.screenshot({path:path.join(screenshots,`early-paid-bill-${width}.png`),animations:'disabled',style:'.sitenav-household{visibility:hidden!important}'});
+      await earlyInternet.focus();await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-budget-detail-body]').innerText(),/Internet[\s\S]*85\.00/);
+      await page.keyboard.press('Escape');assert.equal(await earlyInternet.evaluate(el=>el===document.activeElement),true);
       // Configured pools with unknown assignments must retain the withholding reason.
       data = fx.served({ withheldSavings: true }); await boot(); await geometry(page);
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');

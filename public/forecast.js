@@ -10915,7 +10915,11 @@
           || row.notReliedUpon === true || ['unresolved', 'pending', 'unknown'].includes(row.status);
         const settled = direction === 'income' ? row.status === 'received' : rowIsSettledBill(row);
         const rowTrust = fieldTrust(row, 'actualTrust', 'calculated');
-        const observed = !contradiction && settled && row.date <= through && finite(row.actual) && trusted(rowTrust);
+        // A bill's date is its scheduled occurrence, not its payment date.
+        // Native represented settlement can confirm an early payment while
+        // that occurrence remains inside the current selected period.
+        const observed = !contradiction && settled && (direction === 'bills' || row.date <= through)
+          && finite(row.actual) && trusted(rowTrust);
         if (observed) {
           // Reuse incumbent receipt semantics: raw credits and normalized
           // benefit/Other Income actuals have different provider signs.
@@ -10943,7 +10947,11 @@
     const householdScope = scope && cycle && cycle.start === period.start && cycle.end === period.end;
     const plannedCategories = Array.isArray(categories) ? categories.filter(row => row && !row.informational
       && !row.otherSpending && !row.needsConfirmation) : null;
-    const householdPlan = householdScope ? originalPlan(plannedCategories, row => row.planned,
+    // Historical category rows are regenerated from today's authored targets.
+    // Their date scope establishes spending, not an original-plan snapshot.
+    // No dated historical category-plan publication currently exists.
+    const householdPlan = past ? unknown('The original household plan for this completed period has no dated snapshot. Native target figures use current configuration, not confirmed historical plans.')
+      : householdScope ? originalPlan(plannedCategories, row => row.planned,
       row => fieldTrust(row, 'plannedTrust', fieldTrust(row, 'trust', row.confidence === 'estimated' ? 'estimated' : 'calculated')))
       : unknown('The household spending cycle does not establish this exact period.');
     let householdActual = unknown(actualReason || 'Household observations are unavailable.');

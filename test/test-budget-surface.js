@@ -401,6 +401,8 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
       `${coverage}/${settlement}: actual Forecast publishes the completed Jul 31-Aug 13 identity`);
     if (!historicalPeriod) continue;
     const out = historyPage.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(historicalPeriod.id)}`);
+    ok(historicalPeriod.budgetProgress.household.planned.amount === null,
+      `${coverage}/${settlement}: current category targets are not original historical plans`);
     const spending = browseSection(out, 'spending'), bills = browseSection(out, 'bills');
     const ready = coverage === 'full' || coverage === 'posted-only';
     const grocery = historicalPeriod.householdBudget.find(row => row.id === 'groceries');

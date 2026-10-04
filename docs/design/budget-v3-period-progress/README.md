@@ -13,10 +13,17 @@ rules are unchanged. No canonical amount or savings assignment changes.
 - Bills: confirmed settled paid / original scheduled occurrence plan. An actual
   payment cannot replace the original denominator. Contradictory, unverified or
   missing settlement makes the observed subtotal explicitly partial.
+  A confirmed early payment counts for its occurrence inside the current period;
+  its scheduled due date is not used as a payment-date cutoff. Future periods
+  still cannot claim actual payments.
 - Household: incurred category and Other spending / original authored category
   plan. Refunds retain their sign; observed pending spending is included and
   labeled. The reserve deduction remains the incumbent higher-of-plan-and-spend
   calculation, separately preserved in native evidence and the final balance.
+  Completed periods have no dated original category-plan snapshot, so their
+  original denominator is unavailable. Today's targets cannot rewrite history.
+  Historical category rows also withhold target/remaining amounts and target-based
+  bars, retaining observed spending and native transaction evidence.
 - Savings: an exact future/payday period can reprint the existing allocator's
   minimum-now requirement when the full requirement has complete goal attribution.
   This is the **current Forecast requirement**, not an original payday snapshot.
