@@ -89,7 +89,10 @@ function block(html, id) {
   if (at < 0) return '';
   const from = html.lastIndexOf('<div', at);
   const next = html.indexOf('data-budget-category="', at + marker.length);
-  if (next < 0) return html.slice(from);
+  if (next < 0) {
+    const reserve = html.indexOf('<details class="household-budget-reserve-info"', at);
+    return html.slice(from, reserve < 0 ? undefined : reserve);
+  }
   const to = html.lastIndexOf('<div', next);
   return html.slice(from, to > from ? to : next);
 }
@@ -292,7 +295,10 @@ console.log('\n=== 4. Forecast recon wins; empty overlay keeps the row flat ==='
   const future = withheldPeriod();
   future.role = 'future';
   const futureHtml = composer.calendarBudgetHtml(future, overlay(overlayTxs), plan);
-  ok(!/<details/.test(futureHtml),
+  // A reserve Info disclosure is not a transaction disclosure. Prove the
+  // original membership boundary directly, including absence of tx evidence.
+  ok(!/data-budget-spent=/.test(futureHtml) && !/household-budget-spent-detail/.test(futureHtml)
+      && txIds(futureHtml).length === 0,
     'next-period rows do not inherit this-period overlay txs');
 }
 

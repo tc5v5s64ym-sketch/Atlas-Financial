@@ -308,6 +308,10 @@
 .budget-bills-progress-wrapper .budget-waterfall-bar { position:absolute; height:100%; background:var(--good); border-radius:inherit; }
 .budget-progress-evidence { border-top:1px solid var(--border); margin-top:16px; padding-top:14px; font-size:13px; }
 .budget-progress-evidence h3 { font-size:14px; }
+.budget-household-total-label { color:var(--text-secondary); margin-bottom:4px; }
+.budget-household-total > strong { display:block; font-size:20px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.household-budget-reserve-info { margin-top:12px; font-size:13px; }
+.household-budget-reserve-info > summary { cursor:pointer; color:var(--text-secondary); }
 .budget-browse-bills h2 [data-budget-ratio] { white-space:normal; }
 .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-waterfall-track { display:none; }
 .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-value { grid-column:4; }

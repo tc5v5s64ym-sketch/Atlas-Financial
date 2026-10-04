@@ -2208,8 +2208,8 @@ function householdBudgetCategoryHtml(row, opts = {}) {
   if (row.spent != null || recon.length || datedOtherPlan) {
     metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id, unavailableText: datedOtherPlan ? 'Unavailable' : null }));
   }
-  if (!other && !historicalPlanUnknown && row.remaining != null) {
-    metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true, estimated }));
+  if ((!other || datedOtherPlan) && !historicalPlanUnknown && (row.remaining != null || datedOtherPlan)) {
+    metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true, estimated, unavailableText: datedOtherPlan ? 'Unavailable' : null }));
   }
   const kind = other ? 'other' : 'category';
   const projected = (!other || datedOtherPlan) && !historicalPlanUnknown && row.projected && row.remaining != null
@@ -2255,20 +2255,26 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
   // The mark sits in the same flex child as the Forecast cents so the
   // total stays label | figure. Current rows omit the wrapper entirely.
   const value = estimatedHold ? `<span>${holdMark}${amount}</span>` : amount;
+  const deductionLabel = categoryContext.historicalOriginalPlanUnavailable
+    ? 'Completed-period spending deduction' : 'Protective spending reserve';
   const total = amount
     ? `<div class="payday-totals household-budget-total">
       <p class="payday-qual payday-total payday-total-strong" data-household-budget-total${estimatedHold ? ' data-budget-hold-trust="estimated"' : ''}>
-        <span>Household Budget Total</span>
+        <span>${deductionLabel}</span>
         ${value}
       </p>
     </div>`
     : '';
+  // The reserve is the unchanged Forecast deduction, not actual spending or
+  // the original plan. Keep its amount and rule behind an explicit disclosure.
+  const reserveInfo = total ? `<details class="household-budget-reserve-info" data-budget-reserve-info>
+    <summary>Info: ${deductionLabel.toLowerCase()}</summary>${total}${reserveRule}
+  </details>` : reserveRule;
   if (!rows.length) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${cycle}
       <p class="operating-lead">No household budget lines on this plan.</p>
-      ${total}
-      ${reserveRule}
+      ${reserveInfo}
     </div>`;
   }
   // Presentation only: when Forecast withheld Spent (`row.spent == null`)
@@ -2344,8 +2350,7 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
   return `<div class="payday-household-budget" data-payday-household-budget>
     ${cycle}
     <div class="household-budget-list">${blocks}</div>
-    ${total}
-    ${reserveRule}
+    ${reserveInfo}
   </div>`;
 }
 
@@ -5970,6 +5975,18 @@ function budgetProgressBarHtml(pair, key) {
 
 function budgetProgressEvidenceHtml(pair, key) {
   const line = (label, field) => `<p>${label}: ${budgetProgressAmountKnown(field) ? budgetBrowseMoney(field.amount, field.trust) : 'Unavailable'}${field?.completeness === 'partial' ? ' - partial evidence' : ''}.</p>${field?.reason ? `<p>${budgetBrowseEscape(field.reason)}</p>` : ''}`;
+  if (key === 'household') {
+    // The sealed progress publication owns actual spending and original plan.
+    // Neither is the protective reserve used by the deduction waterfall.
+    return `<section class="budget-progress-evidence budget-household-total" data-budget-progress-evidence="household">
+      <h3>Household Budget Total</h3><p class="budget-household-total-label">Actual / Planned</p>
+      <strong data-household-budget-progress-total>${budgetProgressValueHtml(pair, key)}</strong>
+      <p>${budgetBrowseEscape(pair?.semantics || 'Exact-period amounts and their evidence are unavailable.')}</p>
+      ${pair?.planned?.reason ? `<p>${budgetBrowseEscape(pair.planned.reason)}</p>` : ''}
+      ${pair?.actual?.reason ? `<p>${budgetBrowseEscape(pair.actual.reason)}</p>` : ''}
+      ${pair?.actual?.includesPending ? '<p>Incurred spending includes observed pending transactions. Their settlement remains pending.</p>' : ''}
+    </section>`;
+  }
   const goals = key === 'savings' && Array.isArray(pair?.goals) ? pair.goals.map(row => `<section data-budget-goal-fulfillment-evidence="${budgetBrowseEscape(row.id)}"><h3>${budgetBrowseEscape(row.label || 'Goal name not confirmed')}</h3>${line('Required this period', row.required)}${line('Confirmed fulfilled this period', row.fulfilled)}${line('Remaining this period', row.remaining)}<p>Not confirmed. ${budgetBrowseEscape(row.reason)}</p></section>`).join('') : '';
   return `<section class="budget-progress-evidence" data-budget-progress-evidence="${key}"><h3>${key === 'savings' ? 'Period contribution evidence' : 'Actual and original plan'}</h3>${line(key === 'savings' ? 'Current Forecast requirement' : 'Original plan', pair?.planned)}${line('Actual', pair?.actual)}<p>${budgetBrowseEscape(pair?.semantics || 'Exact-period amounts and their evidence are unavailable.')}</p>${pair?.actual?.includesPending ? '<p>Incurred spending includes observed pending transactions. Their settlement remains pending.</p>' : ''}${goals}</section>`;
 }
