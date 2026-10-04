@@ -2200,6 +2200,7 @@ function householdBudgetCategoryHtml(row, opts = {}) {
   const contextHtml = context
     ? `<p class="household-budget-context">${context}</p>` : '';
   const recon = Array.isArray(row.recon) ? row.recon : [];
+  const remainingUnavailable = opts.remainingEvidenceIncomplete === true;
   const metrics = [];
   if ((!other && !historicalPlanUnknown || datedOtherPlan) && row.planned != null) {
     if (historicalPlanUnknown) metrics.push(householdBudgetMetric('Configured target', row.planned, { estimated }));
@@ -2209,7 +2210,7 @@ function householdBudgetCategoryHtml(row, opts = {}) {
     metrics.push(householdBudgetMetric('Spent', row.spent, { recon, id: row.id, unavailableText: datedOtherPlan ? 'Unavailable' : null }));
   }
   if ((!other || datedOtherPlan) && !historicalPlanUnknown && (row.remaining != null || datedOtherPlan)) {
-    metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true, estimated, unavailableText: datedOtherPlan ? 'Unavailable' : null }));
+    metrics.push(householdBudgetMetric('Remaining', remainingUnavailable ? null : row.remaining, { remaining: true, estimated, unavailableText: datedOtherPlan || remainingUnavailable ? 'Unavailable' : null }));
   }
   const kind = other ? 'other' : 'category';
   const projected = (!other || datedOtherPlan) && !historicalPlanUnknown && row.projected && row.remaining != null
@@ -2220,11 +2221,12 @@ function householdBudgetCategoryHtml(row, opts = {}) {
     ${contextHtml}
     ${historicalPlanUnknown && (!other || datedOtherPlan) ? '<p class="household-budget-context" data-budget-historical-original-plan="unavailable">Historical original plan unavailable. No dated plan snapshot confirms this period\'s target or remaining amount. Today\'s configured target does not establish the historical plan.</p>' : ''}
     <dl class="household-budget-metrics">${metrics.join('')}</dl>
+    ${remainingUnavailable && !historicalPlanUnknown && (!other || datedOtherPlan) ? `<details class="household-budget-remaining-info" data-budget-remaining-info><summary>Info</summary><p>${budgetBrowseEscape(opts.remainingEvidenceReason || 'Exact remaining spending is unavailable because period evidence is incomplete.')}</p></details>` : ''}
     ${projected}
   </div>`;
 }
 
-function calendarBudgetHtml(period, liveOverlay, plan) {
+function calendarBudgetHtml(period, liveOverlay, plan, opts = {}) {
   if (period && period.operatingPlanUnavailable) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${calendarCurrentUnavailableHtml(period)}
@@ -2234,7 +2236,9 @@ function calendarBudgetHtml(period, liveOverlay, plan) {
   // Forecast has no original-category-plan snapshot for completed periods.
   // Context changes presentation only; never rewrite the sealed native rows.
   const categoryContext = { historicalOriginalPlanUnavailable:
-    period?.timelineRole === 'past' || period?.lookback === true };
+    period?.timelineRole === 'past' || period?.lookback === true,
+    remainingEvidenceIncomplete: opts.remainingEvidenceIncomplete === true,
+    remainingEvidenceReason: opts.remainingEvidenceReason };
   const reserveRule = categoryContext.historicalOriginalPlanUnavailable ? ''
     : '<p class="operating-note" data-budget-reserve-rule>Reserve calculation: Each planned category, including Other when it has a dated target, counts at its plan or observed spending, whichever is higher. Any unassigned spending without a target counts once.</p>';
   const cycleText = householdBudgetCycleText(period);
@@ -4363,7 +4367,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
       { amount: period.periodBillLoad, trust: period.periodBillLoadTrust, trustRequired: true, barStart: period.afterBills, note: 'Period deduction, including required debt minimums' })}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance',
       { amount: period.afterBills != null ? period.afterBills : period.afterRemainingBills, trust: period.afterBillsTrust, trustRequired: true, barStart: 0, note: 'Period income after the bill deduction' })}
-    ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan), null,
+    ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan,
+      compactOverview ? budgetRemainingEvidenceContext(period) : {}), null,
       { amount: period.budgetHold, trust: period.budgetHoldTrust, barStart: period.afterHouseholdBudget, note: 'Targets, actual spending and the period reserve' })}
     ${q('savings', compactOverview ? 'Savings' : 'Proposed savings', planUnavailable ? unavailable : fundingBody, null,
       { amount: fundingKnown ? funding.contribution : null, trust: fundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, barStart: fundedBalanceKnown ? funding.afterProposedFunding : null, note: 'Named costs — proposed funding, separate from actual saved cash' })}
@@ -5955,6 +5960,16 @@ function budgetProgressAmountKnown(field) {
     && typeof field.amount === 'number' && Number.isFinite(field.amount);
 }
 
+function budgetRemainingEvidenceContext(period, asOf) {
+  // A projected allowance is labeled as such, and historical original plans
+  // are already withheld. Current Remaining requires complete actual evidence.
+  if (period?.projected || budgetBrowseHistorical(period)) return {};
+  const publication = arguments.length > 1 ? budgetProgressFor(period, asOf) : budgetProgressFor(period);
+  const actual = publication?.household?.actual;
+  return { remainingEvidenceIncomplete: !budgetProgressAmountKnown(actual) || actual.completeness !== 'complete',
+    remainingEvidenceReason: actual?.reason || 'Exact remaining spending is unavailable because period evidence is incomplete.' };
+}
+
 function budgetProgressValueHtml(pair, key) {
   const amount = (field, planned = false) => budgetProgressAmountKnown(field) && (!planned || field.amount >= 0)
     ? budgetBrowseMoney(field.amount, field.trust) : '<span class="budget-v3-unknown">Unknown</span>';
@@ -5993,9 +6008,11 @@ function budgetProgressEvidenceHtml(pair, key) {
 
 function budgetSpendingSectionHtml(period, ctx) {
   const rows = (period.householdBudget || []).filter(Boolean);
+  const remainingEvidence = budgetRemainingEvidenceContext(period, ctx.asOf);
   const planned = rows.filter(row => !row.informational && ((!row.otherSpending && !row.needsConfirmation)
     || (row.otherSpending && isValidIsoCalendarDate(row.targetEffectiveFrom) && budgetBrowseKnown(row.planned))));
-  const classified = planned.filter(row => budgetCategoryPresentation(row).spentKnown && budgetBrowseKnown(row.remaining));
+  const classified = planned.filter(row => !remainingEvidence.remainingEvidenceIncomplete
+    && budgetCategoryPresentation(row).spentKnown && budgetBrowseKnown(row.remaining));
   const over = classified.filter(row => budgetBrowseKnown(row.overspend) && row.overspend > 0);
   const model = budgetWindowModel(ctx), cycle = period.spendingCycle;
   const datesKnown = cycle && isValidIsoCalendarDate(cycle.start) && isValidIsoCalendarDate(cycle.end)
@@ -6020,8 +6037,10 @@ function budgetSpendingSectionHtml(period, ctx) {
     // native row/evidence intact, but do not relabel today's category targets
     // as historical plans, remaining amounts or progress geometry here.
     const displayRow = historicalPlanUnknown && (!row.otherSpending || budgetBrowseKnown(row.planned))
-      ? { ...row, planned: null, plannedTrust: 'unavailable', remaining: null, overspend: null } : row;
+      ? { ...row, planned: null, plannedTrust: 'unavailable', remaining: null, overspend: null }
+      : remainingEvidence.remainingEvidenceIncomplete ? { ...row, remaining: null, overspend: null } : row;
     const state = budgetCategoryPresentation(displayRow);
+    if (remainingEvidence.remainingEvidenceIncomplete && state.spentKnown) state.label = 'Remaining unavailable';
     const meta = state.other && !budgetBrowseKnown(displayRow.planned) ? budgetBrowseEscape(row.note || 'Not yet assigned to a category')
       : `<span class="budget-cash-sr">Spent </span>${budgetBrowseMoney(row.spent, row.trust)}<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>${budgetBrowseMoney(displayRow.planned, state.trust)}`;
     return `<button type="button" class="budget-category-row is-${state.kind}" data-budget-category-open="${budgetBrowseEscape(row.id)}" data-budget-browse-origin="spending" aria-haspopup="dialog">

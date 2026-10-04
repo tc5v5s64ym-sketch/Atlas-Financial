@@ -39,6 +39,33 @@ const mp=publish(missing).payPeriodViews.find(p=>p.timelineRole==='current'),mh=
 assert.match(total(mh),/data-budget-ratio-actual><span class="budget-v3-unknown">Unknown/);
 assert.ok(total(mh).includes(money(925)),'unknown actual retains original plan');
 assert.match(mh.split('data-budget-category="other-spending"')[1],/<dt>Remaining<\/dt><dd>Unavailable<\/dd>/);
+// Real provider sanitization -> recommend -> sealed publication -> active
+// native household sheet. Do not inject or substitute a progress publication.
+for(const pendingCoverage of ['partial','unknown']){
+ const f=fx.build(137.26,fx.asOf,{pendingCoverage}),input=JSON.stringify(f),p=publish(f).payPeriodViews.find(p=>p.timelineRole==='current');
+ assert.equal(f.packet.pendingCoverage,pendingCoverage);
+ assert.equal(p.budgetProgress.coverage.remainingClaim,'posted-only');
+ assert.equal(p.budgetProgress.household.actual.completeness,'partial');
+ assert.equal(p.budgetProgress.household.actual.amount,247.63);
+ assert.equal(p.householdBudget.find(r=>r.id==='other-spending').remaining,312.74,'engine publication stays unchanged; display must qualify completeness');
+ assert.equal(p.budgetHold,925);assert.equal(p.balanceAfterDeductions,475);
+ const sealed=JSON.stringify(p),html=sheet(render(p,f.plan)),other=html.split('data-budget-category="other-spending"')[1].split('</dl>')[0];
+ assert.match(total(html),/247\.63[\s\S]*partial evidence/);
+ assert.ok(total(html).includes(money(925)));assert.match(other,/<dt>Remaining<\/dt><dd>Unavailable<\/dd>/);
+ assert.doesNotMatch(other,/312\.74/);
+ assert.equal((html.match(/<dt>Remaining<\/dt><dd>Unavailable<\/dd>/g)||[]).length,7,'all native household Remaining rows carry the incomplete period context');
+ assert.match(html,/data-budget-remaining-info/,'explanation stays behind Info in the same movable category node');
+ context.period=p;context.displayCtx={asOf:f.date,plan:f.plan,advice:publish(f)};
+ const browse=vm.runInContext('budgetSpendingSectionHtml(period,displayCtx)',context);
+ assert.doesNotMatch(browse,/312\.74 left|All used/,'browse cannot retain an unqualified remaining claim beside the repaired native sheet');
+ assert.match(browse,/Remaining unavailable/);
+ assert.equal(JSON.stringify(p),sealed);assert.equal(JSON.stringify(f),input);
+}
+const completePending=fx.build(137.26,fx.asOf,{pendingOther:17.43}),cp=publish(completePending).payPeriodViews.find(p=>p.timelineRole==='current');
+assert.equal(cp.budgetProgress.household.actual.completeness,'complete');assert.equal(cp.budgetProgress.household.actual.includesPending,true);
+assert.equal(cp.budgetProgress.household.actual.amount,265.06);assert.equal(cp.householdBudget.find(r=>r.id==='other-spending').remaining,295.31);
+const ch=sheet(render(cp,completePending.plan));assert.match(ch.split('data-budget-category="other-spending"')[1],/<dt>Remaining<\/dt>[\s\S]*295\.31/);
+assert.doesNotMatch(ch,/data-budget-remaining-info/,'fully covered observed pending does not lose its known Remaining');
 const historical=fx.build(137.26,'2026-10-18'),hp=publish(historical).payPeriodViews.find(p=>p.start===fx.effective);
 const hh=sheet(render(hp,historical.plan));
 assert.ok(total(hh).includes(money(247.63)));assert.match(total(hh),/data-budget-ratio-plan><span class="budget-v3-unknown">Unknown/);

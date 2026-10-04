@@ -3,12 +3,15 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const fx=require('./fixtures/other-period-target'),root=process.env.ATLAS_HOUSEHOLD_TOTAL_ROOT||path.join(__dirname,'..');
 const out=process.env.ATLAS_BUDGET_SCREENSHOTS_DIR||path.join(require('node:os').tmpdir(),'household-total-browser');fs.mkdirSync(out,{recursive:true});
 const baseline=process.env.ATLAS_HOUSEHOLD_TOTAL_BASELINE==='1';
+const beforeP1=process.env.ATLAS_HOUSEHOLD_TOTAL_BASELINE==='5b';
 // Invented published observations: six plans = 475, groceries spent = 110.37.
 const actuals={0:'110.37',137.26:'247.63',450:'560.37',618.73:'729.10',1034.19:'1,144.56'};
 const remaining={0:'450.00',137.26:'312.74',450:'0.00',618.73:'−$168.73',1034.19:'−$584.19'};
 (async()=>{const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true});
-try{for(const width of [1440,390,320])for(const state of width===320?[0,137.26,450,618.73,1034.19,null,'history','next']:width===390?[137.26,450,618.73]:[137.26,618.73]){
- const historical=state==='history',future=state==='next',f=fx.build(typeof state==='number'?state:137.26,historical?'2026-10-18':fx.asOf);
+try{for(const width of [1440,390,320])for(const state of width===320?[0,137.26,450,618.73,1034.19,null,'history','next','pending-partial','pending-unknown','complete-pending']:width===390?[137.26,450,618.73,'pending-unknown']:[137.26,618.73,'pending-partial']){
+ const historical=state==='history',future=state==='next',incompletePending=state==='pending-partial'||state==='pending-unknown',completePending=state==='complete-pending';
+ const f=fx.build(typeof state==='number'?state:137.26,historical?'2026-10-18':fx.asOf,
+  {pendingCoverage:incompletePending?state.slice(8):'complete',pendingOther:completePending?17.43:undefined});
  if(state===null)f.packet.transactionCoverage='truncated';
  const page=await browser.newPage({viewport:{width,height:1000},colorScheme:'light',reducedMotion:'reduce'}),errors=[],external=[];
  page.on('pageerror',e=>errors.push(e.message));
@@ -31,7 +34,14 @@ try{for(const width of [1440,390,320])for(const state of width===320?[0,137.26,4
   assert.match(await body.innerText(),/Actual \/ Planned/);
   const total=body.locator('[data-household-budget-progress-total]');
   const a=await total.locator('[data-budget-ratio-actual]').innerText(),p=await total.locator('[data-budget-ratio-plan]').innerText();
-  assert.match(a,state===null||future?/Unknown/:new RegExp((historical?'247.63':actuals[state]).replace('.','\\.')));
+  assert.match(a,state===null||future?/Unknown/:new RegExp((completePending?'265.06':historical||incompletePending?'247.63':actuals[state]).replace('.','\\.')));
+  if(incompletePending){
+   assert.equal(f.packet.pendingCoverage,state.slice(8),'actual provider sanitized coverage, not a substituted publication');
+   assert.equal(await total.locator('[data-budget-progress-partial]').count(),1);
+   const nativeOther=body.locator('[data-budget-category="other-spending"] .household-budget-remaining dd');
+   assert.match(await nativeOther.innerText(),beforeP1?/312\.74/:/Unavailable/,'opened household sheet propagates the same actual completeness to Other');
+   if(!beforeP1)assert.equal(await body.locator('.household-budget-remaining dd').filter({hasText:/^Unavailable$/}).count(),7);
+  }
   assert.match(p,historical?/Unknown/:/925\.00/,'original plan survives overspending and missing actuals');
   const info=body.locator('[data-budget-reserve-info]'),reserve=info.locator('[data-household-budget-total-amount]');
   assert.equal(await info.evaluate(el=>el.open),false);assert.equal(await reserve.isVisible(),false,'reserve is withheld from default visible totals');
@@ -54,16 +64,24 @@ try{for(const width of [1440,390,320])for(const state of width===320?[0,137.26,4
  if(!baseline&&!historical){
   const metric=other.locator('.household-budget-remaining');
   assert.equal(await metric.locator('dt').innerText(),'Remaining');
-  assert.match(await metric.locator('dd').innerText(),state===null?/Unavailable/:future?/450\.00/:new RegExp(remaining[state].replace('$','\\$').replace('.','\\.')));
+  assert.match(await metric.locator('dd').innerText(),state===null||incompletePending&&!beforeP1?/Unavailable/:incompletePending?/312\.74/:completePending?/295\.31/:future?/450\.00/:new RegExp(remaining[state].replace('$','\\$').replace('.','\\.')));
   if(future){assert.match(await other.innerText(),/Projected/);assert.match(await metric.locator('dd').innerText(),/estimated/);}
  }else assert.equal(await other.locator('.household-budget-remaining').count(),0,'historical original remaining stays unknown');
  if(historical)assert.match(await other.innerText(),/Historical original plan unavailable/);
  if(!future&&state!==null&&state!==0)assert.match(await other.innerText(),/invented-other/);
  if(state===0)assert.match(await other.innerText(),/Spent[\s\S]*\$0\.00/,'complete zero spending needs no invented merchant');
  await page.screenshot({path:path.join(out,`other-remaining-${state}-${width}.png`),animations:'disabled'});
+ if(incompletePending&&!baseline&&!beforeP1){
+  const info=other.locator('[data-budget-remaining-info]'),control=info.locator(':scope > summary');
+  assert.equal(await info.evaluate(el=>el.open),false);await control.focus();await page.keyboard.press('Enter');
+  assert.equal(await info.locator('p').isVisible(),true);assert.match(await info.innerText(),/pending|coverage/i);
+  if(state==='pending-partial'&&width===320)await page.screenshot({path:path.join(out,'other-remaining-pending-partial-info-320.png'),animations:'disabled'});
+  await control.focus();await page.keyboard.press('Enter');assert.equal(await info.locator('p').isVisible(),false);
+ }
  await page.keyboard.press('Escape');assert.equal(await otherTrigger.evaluate(el=>el===document.activeElement),true);
  assert.equal(await otherTrigger.evaluate(el=>{const r=el.getBoundingClientRect(),dock=document.querySelector('.sitenav-household');
   const limit=dock&&getComputedStyle(dock).position==='fixed'?dock.getBoundingClientRect().top:innerHeight;return r.top>=0&&r.bottom<=limit;}),true);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await page.close();console.log(`PASS ${width}px ${state}: opened native actual/planned total, reserve Info, Other remaining, keyboard/focus and unavailable/history scope${baseline?' BASELINE':''}`);
+ if(incompletePending&&!baseline&&!beforeP1)assert.doesNotMatch(await otherTrigger.innerText(),/312\.74 left/);
+ assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await page.close();console.log(`PASS ${width}px ${state}: opened native actual/planned total, reserve Info, Other remaining, keyboard/focus and unavailable/history scope${baseline?' BASELINE':beforeP1?' P1 BASELINE':''}`);
 }}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

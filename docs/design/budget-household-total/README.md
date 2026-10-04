@@ -33,6 +33,16 @@ stays unknown and is omitted; a future remaining estimate keeps its estimated
 marker and **Projected** context. Existing transaction nodes and focus
 restoration remain on the same native sheet path.
 
+P1 review found that complete posted coverage with partial or unknown pending
+coverage still printed an exact Remaining. The current renderer now carries
+the sealed household actual's completeness into every current category's
+Remaining, including the standalone native Other sheet. Incomplete evidence
+shows **Unavailable**, with the existing publication reason behind closed
+**Info**. The spending browse rows also withhold exact remaining amounts.
+Known posted spending, original plans, transaction evidence and the engine's
+protective deductions remain unchanged. Complete evidence preserves signed
+and zero Remaining; historical and projected contexts retain their semantics.
+
 No Forecast, policy, canonical input, deduction chain, generated report or
 transaction membership changes. Existing reserve tests retain their numerical
 assertions; only the reserve's user-facing label expectations change.
@@ -55,13 +65,23 @@ composer, independent cents, immutable captured inputs/publications, preserved
 deductions, current / missing / history / future and pending trust.
 It is registered in the 293-suite `npm test` runner.
 
+The P1 regressions use real provider sanitization, recommendation, publication
+and the active native composer. Partial and unknown pending coverage produce
+posted-only evidence and a partial household actual of 247.63; Remaining is
+withheld on both native paths. No publication is substituted in these pipeline
+cases. A fully observed pending Other transaction of 17.43 produces complete
+actual 265.06 and known Remaining 295.31. Publications and inputs stay immutable.
+
 `test/browser-budget-household-total.js` uses actual `App.boot` with intercepted
-HTTP and invented inputs at 1440, 390 and 320px. Thirteen views open the native
+HTTP and invented inputs at 1440, 390 and 320px. Eighteen views open the native
 household and Other sheets. They verify the one total, unchanged original plan,
 hidden reserve until keyboard opening, signed/missing Remaining, historical
 unknown plan, projected trust, Escape focus restoration, visible restored
 focus above the mobile dock, and no horizontal overflow. No production
 credentials or live observations are accessed.
+Partial/unknown pending coverage is checked on both sheets, including keyboard
+opening and closing of Remaining Info. Before-P1 captures against exact head
+`5b7191b` reproduce the misleading exact amount through the same pipeline.
 
 | View | Artifact |
 |---|---|
@@ -73,6 +93,9 @@ credentials or live observations are accessed.
 | Completed period, original plan unknown | [Native sheet](household-history-320.png) |
 | Future period, actual unknown | [Native sheet](household-next-320.png) |
 | Unchanged reserve behind opened Info | [Native sheet](household-reserve-info-320.png) |
+| Partial pending coverage, household before/after | [Comparison](comparison-p1-household-pending-partial-320.png) |
+| Partial pending coverage, Other before/after | [Comparison](comparison-p1-other-remaining-pending-partial-320.png) |
+| Other Remaining reason behind keyboard-opened Info | [Native sheet](other-remaining-pending-partial-info-320.png) |
 
 ## Finite acceptance checklist
 
@@ -81,6 +104,7 @@ credentials or live observations are accessed.
 - Unchanged original plan, reserve and financial deductions.
 - Other Remaining: positive, zero, negative and unknown without fabricated history.
 - Pending, partial, projected and unavailable evidence remain labeled.
+- Partial/unknown pending coverage withholds exact Remaining on both native paths; complete pending preserves it.
 - Desktop / mobile / 320px; native transactions and restored focus remain reachable.
 - Exact-head unit, authority/financial-contract, full required CI and screenshot audit recorded in the PR.
 
