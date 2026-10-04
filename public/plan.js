@@ -4991,7 +4991,8 @@ function wireBudgetWindow(mount, ctx, sheet) {
     const section = button.getAttribute('data-budget-section');
     if (!['overview', 'spending', 'bills', 'upcoming'].includes(section)) return;
     button.addEventListener('click', () => {
-      const target = mount.querySelector(`[data-budget-browse="${CSS.escape(section)}"]`);
+      const target = mount.querySelector(section === 'upcoming' ? '[data-budget-funding-section]'
+        : `[data-budget-browse="${CSS.escape(section)}"]`);
       if (target || section === 'overview') mount.querySelectorAll('[data-budget-section]').forEach(control => {
         if (control === button) control.setAttribute('aria-current', 'location');
         else control.removeAttribute('aria-current');
@@ -5003,12 +5004,6 @@ function wireBudgetWindow(mount, ctx, sheet) {
       }
       if (section === 'overview') {
         mount.querySelector('.budget-surface-grid')?.scrollIntoView({ block: 'start' });
-        return;
-      }
-      if (section === 'upcoming' && mount.querySelector('[data-budget-funding-section]')) {
-        const heading = mount.querySelector('#budget-funding-heading');
-        heading.scrollIntoView({ block: 'start' });
-        heading.focus({ preventScroll: true });
         return;
       }
       const selector = section === 'spending' ? '[data-operating-question="06"] .budget-step-body'

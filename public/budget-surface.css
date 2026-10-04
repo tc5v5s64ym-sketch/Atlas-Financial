@@ -11,6 +11,7 @@
 .budget-v3-section-heading p { margin:0; color:var(--text-secondary); font-size:13px; }
 .budget-funding-grid { display:grid; grid-template-columns:minmax(0,1.8fr) minmax(0,.9fr); gap:16px; align-items:start; }
 .budget-funding-sidebar { display:grid; gap:16px; }
+.budget-funding-section { scroll-margin-top:72px; }
 .budget-funding-grid h3 { margin:0 0 12px; font-size:18px; letter-spacing:-.015em; }
 .budget-funding-grid p,.budget-v3-month p { font-size:12px; line-height:1.55; color:var(--text-secondary); overflow-wrap:anywhere; }
 .budget-funding-tabs { display:flex; border-radius:999px; background:var(--plane); padding:3px; margin:16px 0; }
