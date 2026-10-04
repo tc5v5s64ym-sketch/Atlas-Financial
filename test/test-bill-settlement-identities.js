@@ -297,14 +297,14 @@ function spotifyTx(extra) {
 
 function feeTxA(extra) {
   return Object.assign({
-    id: 9602, account_id: 1001, date: FEE_DUE, amount: FEE_LEG,
+    id: 9602, account_id: 1001, date: FEE_DUE, amount: FEE_LEG, currency: 'cad',
     is_pending: false, payee: 'MONTHLY ACCOUNT FEE', original_name: 'MONTHLY ACCOUNT FEE',
   }, extra || {});
 }
 
 function feeTxB(extra) {
   return Object.assign({
-    id: 9603, account_id: 1002, date: FEE_DUE, amount: FEE_LEG,
+    id: 9603, account_id: 1002, date: FEE_DUE, amount: FEE_LEG, currency: 'cad',
     is_pending: false, payee: 'MONTHLY ACCOUNT FEE', original_name: 'MONTHLY ACCOUNT FEE',
   }, extra || {});
 }

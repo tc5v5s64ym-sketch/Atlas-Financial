@@ -94,5 +94,66 @@ assert.notEqual(bill(run(duplicateGoogle),'google-storage-100gb').status,'PAID',
 const early=run(fixture('2026-09-28'));
 assert.notEqual(bill(early,'tdfees').status,'PAID','two-day early fee posting does not settle September');
 assert.notEqual(bill(early,'google-storage-100gb').status,'PAID','two-day early storage posting does not settle September');
+
+// Native units qualify evidence independently of mapped account currency,
+// numeric similarity, and Lunch Money's separate to_base FX estimate.
+function assertCurrencyBlocked(x, eventId, planned, unrelatedId, unrelatedAmount) {
+  const r=run(x);
+  assert.equal(r.report.representedEventCandidates.some(c=>c.id===eventId),false);
+  assert.equal(r.packet.representedActuals.some(c=>c.id===eventId),false);
+  assert.notEqual(bill(r,eventId).status,'PAID');
+  assert.equal(bill(r,eventId).remaining,planned,'unconfirmed obligation retains its reserve');
+  assert.equal(bill(r,unrelatedId).actual,unrelatedAmount,'unrelated CAD evidence keeps its amount');
+  assert.equal(r.packet.transactionCoverage,'incomplete');
+  assert.ok(r.packet.currencyUnconfirmed.length);
+  assert.ok(r.packet.currencyUnconfirmed.every(d=>!Object.hasOwn(d,'amount')),
+    'unqualified raw money never enters published transaction evidence');
+  assert.equal(r.p.fromTodayFunding.status,'unavailable');
+  assert.equal(r.p.fromTodayFunding.contribution,null);
+  assert.ok(r.p.fromTodayFunding.evidenceFailures.some(f=>f.code==='actuals-currency-unconfirmed'));
+  assert.equal(r.data.plan.startingCash.breakdown.reduce((n,a)=>n+a.value,0),465,
+    'observed cash remains actual cash');
+  assert.deepEqual(run(x).packet,r.packet);
+  return r;
+}
+for (const currency of ['usd','eur',undefined,null,'']) {
+  const storage=fixture();const t=storage.payload.transactions.find(t=>t.id===82006);
+  t.currency=currency;t.amount=2.45;t.to_base=3.49;
+  const s=assertCurrencyBlocked(storage,'google-storage-100gb',4,'tdfees',24);
+  assert.equal(s.packet.transactions.some(t=>t.amount===2.45),false);
+  const fees=fixture();const a=fees.payload.transactions[0],b=fees.payload.transactions[1];
+  a.currency=currency;a.amount=7.23;a.to_base=10.11;b.amount=9.87;
+  assertCurrencyBlocked(fees,'tdfees',24,'google-storage-100gb',4);
+}
+const cadCase=fixture();cadCase.payload.transactions.forEach(t=>{t.currency=' CAD ';t.to_base=999;});
+assert.equal(bill(run(cadCase),'tdfees').actual,24,'CAD native amounts are not replaced by to_base');
+assert.equal(bill(run(cadCase),'google-storage-100gb').actual,4);
+
+function addReplacement(x,id,pendingCurrency,postedCurrency,keepPostedIdentity=false) {
+  const post=x.payload.transactions.find(t=>t.id===id);
+  const pend={...post,id:id+100,is_pending:true,currency:pendingCurrency,
+    plaid_metadata:{transaction_id:'native-pending-'+id}};
+  post.currency=postedCurrency;post.to_base=999;
+  post.plaid_metadata={transaction_id:'native-posted-'+id,pending_transaction_id:'native-pending-'+id};
+  if (!keepPostedIdentity) { post.payee='Invented posted descriptor';delete post.original_name; }
+  x.payload.transactions.push(pend);
+}
+for (const [pendingCurrency,postedCurrency] of [
+  ['cad','usd'],['usd','cad'],['cad',undefined],[undefined,'cad'],['usd','usd']
+]) {
+  for (const keepPostedIdentity of [false,true]) {
+    const x=fixture();addReplacement(x,82006,pendingCurrency,postedCurrency,keepPostedIdentity);
+    assertCurrencyBlocked(x,'google-storage-100gb',4,'tdfees',24);
+  }
+  const fees=fixture();addReplacement(fees,82001,pendingCurrency,postedCurrency,true);
+  assertCurrencyBlocked(fees,'tdfees',24,'google-storage-100gb',4);
+}
+const cadReplacement=fixture();addReplacement(cadReplacement,82006,'cad','cad');
+const cr=run(cadReplacement);assert.equal(bill(cr,'google-storage-100gb').actual,4);
+assert.equal(cr.packet.transactions.length,6,'qualified pending replacement remains one expense');
+assert.equal(cr.other.spent,7);assert.equal(cr.p.fromTodayFunding.availableNow,465);
+const pendingForeign=fixture();const pf=pendingForeign.payload.transactions.find(t=>t.id===82006);
+pf.is_pending=true;pf.currency='usd';pf.to_base=5.50;
+assertCurrencyBlocked(pendingForeign,'google-storage-100gb',4,'tdfees',24);
 assert.deepEqual(fs.readFileSync(require.resolve('../data.json')),beforeBytes);
 console.log('PASS independent month-end fee/storage identity, ledger, extras, pending, refunds and coverage');

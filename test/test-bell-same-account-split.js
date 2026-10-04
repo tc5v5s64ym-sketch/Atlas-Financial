@@ -166,6 +166,7 @@ function feeTx(id, accountId) {
     account_id: accountId,
     date: '2026-08-30',
     amount: 17.95,
+    currency: 'cad',
     is_pending: false,
     payee: 'MONTHLY ACCOUNT FEE',
     original_name: 'MONTHLY ACCOUNT FEE',

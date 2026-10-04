@@ -86,6 +86,38 @@ No UI source, financial amounts, real transactions, provider categories,
 account map, baseline or credentials change. Parent handles independent
 Systems Review and merge; publication is draft only.
 
+## Currency acceptance boundary (Systems B1)
+
+The independent review of e8fd8a9 reproduced foreign storage and mixed fee
+legs incorrectly publishing raw USD numbers as CAD bill actuals. Account
+currency did not qualify those transactions: observer normalization discarded
+their currency before the newly eligible early matching path.
+
+The three changed rules now explicitly require native CAD transaction
+currency. Normalization preserves the unit; each rule qualifies it before
+identity hits, pending-only actuals and representation. A native pending-to-
+posted link checks both rows, including a CAD posted row whose linked pending
+authorization was foreign or missing units. Missing, foreign or conflicting
+units withhold settlement; to_base is never used as a conversion authority.
+No FX policy is introduced.
+
+Such evidence is retained as a sanitized currency diagnostic without a raw
+amount in the published actuals packet. The packet is incomplete and Forecast
+withholds precise remaining/funding claims with a currency reason. Unrelated
+CAD transaction and bill amounts remain unchanged; observed bank cash stays
+the actual balance, and the unconfirmed scheduled obligation retains its
+reserve. This scoped opt-in does not retrofit all incumbent identity rules
+with a global currency contract.
+
+Invented controls cover USD/EUR/missing/empty units, unequal mixed fee legs
+7.23 USD plus 9.87 CAD, storage 2.45 USD with to_base 3.49, native replacements
+with direct or inherited descriptors and currency conflicts in either
+direction, pending-only foreign evidence, replay, CAD case normalization and
+CAD replacements. CAD 12+12 fees and CAD 4 storage still reconcile the
+independent 465 cash / 7 Other / 465 capacity oracle. Existing supported-CAD
+fee and storage fixtures now state their units explicitly; their financial
+assertions are unchanged, including the annual-card-fee proof.
+
 ## Separate finding: card-purchase cash protection
 
 A separate invented purchase/backfill snapshot proves no duplicate expense

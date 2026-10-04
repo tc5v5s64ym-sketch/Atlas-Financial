@@ -225,6 +225,7 @@
     },
     {
       "eventId": "google-storage-100gb",
+      "requiredCurrency": "cad",
       "payeePattern": "Google",
       "payeePatterns": ["Google"],
       "originalNamePattern": "SERVICE _V",
@@ -337,6 +338,7 @@
     },
     {
       "eventId": "tdfees",
+      "requiredCurrency": "cad",
       "payeePattern": "MONTHLY ACCOUNT FEE",
       "payeePatterns": ["MONTHLY ACCOUNT FEE"],
       "payeeMatchMode": "exact",
@@ -349,6 +351,7 @@
     },
     {
       "eventId": "tdfees",
+      "requiredCurrency": "cad",
       "payeePattern": "MONTHLY ACCOUNT FEE",
       "payeePatterns": ["MONTHLY ACCOUNT FEE"],
       "payeeMatchMode": "exact",

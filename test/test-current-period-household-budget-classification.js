@@ -666,7 +666,7 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
     transactions: [
       {
         id: 83, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
-        is_pending: false, payee: 'Google', original_name: 'SERVICE _V',
+        is_pending: false, currency: 'cad', payee: 'Google', original_name: 'SERVICE _V',
         category_id: 33,
       },
       {
@@ -740,7 +740,7 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
   const chequingA = JSON.parse(JSON.stringify(payload));
   chequingA.transactions = [{
     id: 3104, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
-    is_pending: false, payee: 'Google', original_name: 'SERVICE _V',
+    is_pending: false, currency: 'cad', payee: 'Google', original_name: 'SERVICE _V',
     category_id: 33,
   }];
   const wrongAccount = O.observe({

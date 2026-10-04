@@ -25,6 +25,6 @@ module.exports = function fixture(postedOn = '2026-09-29') {
     { id: 82004, account_id: 3005, payee: 'MONTHLY ACCOUNT FEE', amount: 6 },
     { id: 82005, account_id: 3005, payee: 'CHQ RETURN FEE', amount: 3 },
     { id: 82006, account_id: 3002, payee: 'Google', original_name: 'SERVICE _V', amount: 4, category_name: 'Online Purchases' }
-  ].map(t => ({ date: postedOn, is_pending: false, category_name: 'Other bank fees', ...t }));
+  ].map(t => ({ date: postedOn, currency: 'cad', is_pending: false, category_name: 'Other bank fees', ...t }));
   return x;
 };
