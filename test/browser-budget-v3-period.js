@@ -65,7 +65,10 @@ async function geometry(page) {
       assert.match(await hero.innerText(), /1,632\.01/); // 4050 - 1665 - 752.99
       assert.match(await hero.innerText(), /estimated/);
       assert.match(await hero.innerText(), /Before savings/);
-      assert.equal(await page.locator('.budget-surface-card').count(), 1);
+      const overview = page.locator('.budget-surface-grid > .budget-surface-card');
+      assert.equal(await overview.count(), 1, 'one primary current-balance-to-deductions overview');
+      assert.equal(await overview.locator('[data-live-current-balance-amount]').count(), 1);
+      assert.equal(await overview.locator('[data-budget-period-result]').count(), 1);
       assert.equal(await page.locator('[data-budget-period-result]').count(), 1);
       assert.equal(await page.locator('[data-operating-question="07"] .budget-step-body').innerText().then(text => text.includes('$1,632.01')), false,
         'expanded result explains scope without repeating the final amount');
