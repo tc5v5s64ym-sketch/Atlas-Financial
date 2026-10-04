@@ -56,7 +56,7 @@ async function geometry(page) {
       };
       await boot();
       await geometry(page);
-      const trackBounds = await page.locator('.budget-waterfall-track').evaluateAll(rows => rows.filter(row => getComputedStyle(row).display !== 'none').map(row => {
+      const trackBounds = await page.locator('[data-calendar-waterfall] .budget-waterfall-track').evaluateAll(rows => rows.filter(row => getComputedStyle(row).display !== 'none').map(row => {
         const r = row.getBoundingClientRect(); return [r.left, r.width];
       }));
       assert.ok(trackBounds.every(([left, width]) => Math.abs(left - trackBounds[0][0]) < .01
@@ -98,6 +98,9 @@ async function geometry(page) {
       await page.keyboard.press('ArrowRight');
       assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
       assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
+      assert.match(await page.locator('[data-budget-savings-goals]').innerText(), /195\.00 required by the current Forecast[\s\S]*Fulfillment not confirmed/);
+      assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-plan]').innerText(), /195\.00/);
+      assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-actual]').innerText(), /Unavailable/);
       assert.match(await page.locator('[data-budget-browse="spending"]').innerText(), /Projected plan.*spending not observed/);
       assert.equal(await page.locator('[data-budget-browse-remaining]').count(), 0, 'future selection does not borrow current remaining spending');
       assert.equal(await periodWheel.evaluate(el => el === document.activeElement), true);
@@ -111,6 +114,15 @@ async function geometry(page) {
       assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
       assert.equal(await nextWindow.evaluate(el => el === document.activeElement), true);
       assert.equal(await page.locator('.budget-window-days > .is-today').count(), 0);
+      await screenshot({path:path.join(screenshots,`future-requirements-${width}.png`),fullPage:true});
+      const futureGoal=page.locator('[data-budget-goal-open="school-trip"]');
+      assert.match(await futureGoal.innerText(),/Not confirmed[\s\S]*195\.00 required by the current Forecast/);
+      await futureGoal.focus();await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-budget-detail-body] [data-budget-goal-fulfillment-evidence="school-trip"]').innerText(),
+        /Required this period[\s\S]*195\.00[\s\S]*Confirmed fulfilled this period: Unavailable[\s\S]*Remaining this period: Unavailable[\s\S]*Not confirmed/);
+      await page.keyboard.press('Escape');
+      assert.equal(await futureGoal.evaluate(node=>node===document.activeElement),true);
+      await page.locator('[data-budget-savings-goals]').screenshot({path:path.join(screenshots,`goal-requirements-${width}.png`),animations:'disabled',style:'.sitenav-household { visibility:hidden !important; }'});
       await page.locator('[data-budget-window-step="-1"]').click();
       assert.equal(await page.locator('[data-pay-period-swipe]').getAttribute('data-selected-pay-period'), selectedId);
       const focusVisible = locator => locator.evaluate(el => {
@@ -130,9 +142,11 @@ async function geometry(page) {
       });
       assert.ok(hatch.width > 0 && hatch.height > 0, `unassigned track visible: ${JSON.stringify(hatch)}`);
       assert.match(hatch.image, /repeating-linear-gradient/);
-      const paidRatio = await page.locator('.budget-bills-progress > span').evaluate(el => el.getBoundingClientRect().width / el.parentElement.getBoundingClientRect().width);
-      assert.ok(Math.abs(paidRatio - 1400 / 1665) < .001, 'rendered bill progress uses the published paid/total ratio');
-      assert.match(await page.locator('[data-budget-browse-hold]').innerText(), /752\.99/);
+      assert.match(await page.locator('[data-budget-browse="bills"] [data-budget-ratio]').innerText(), /1,400\.00[\s\S]*1,665\.00/);
+      assert.match(await page.locator('[data-budget-browse="bills"] [data-budget-progress-coverage]').innerText(), /Partial actuals/);
+      assert.equal(await page.locator('.budget-bills-progress-wrapper .budget-waterfall-bar').count(), 0,'unverified Hydro prevents a complete paid progress bar');
+      assert.match(await page.locator('[data-budget-browse-hold]').innerText(), /444\.49[\s\S]*730\.00/);
+      assert.match(await page.locator('[data-operating-question="02"] .budget-step-value').innerText(), /2,600\.00[\s\S]*4,050\.00/);
       assert.match(await page.locator('[data-budget-browse-remaining]').innerText(), /308\.50/);
       assert.match(await page.locator('[data-budget-browse-bills-remaining]').innerText(), /265\.00/);
       for (const id of ['groceries', 'fuel', 'restaurants', 'other-spending']) {
@@ -384,15 +398,19 @@ async function geometry(page) {
         assert.equal(await final.locator('.is-unknown').count(), 0);
         assert.equal(await page.locator('[data-operating-question="06"] > details > summary .is-unknown').count(), 0);
         if (name === 'deficit') {
-          assert.equal(await page.locator('[data-operating-question="06"] .budget-waterfall-bar').count(), 2);
+          assert.equal(await page.locator('[data-operating-question="06"] .budget-waterfall-bar').count(), 1,'spent/original plan does not borrow the negative financial balance');
           assert.equal(await final.locator('.budget-waterfall-bar.is-negative').count(), 1);
-          assert.equal(await page.locator('.budget-waterfall-zero').count(), 6);
+          assert.equal(await page.locator('[data-operating-question="05"] .budget-waterfall-zero').count(), 1);
+          assert.equal(await final.locator('.budget-waterfall-zero').count(), 1);
         } else if (name === 'overflow') {
           assert.equal(await final.locator('.is-overflow-start').count(), 1);
         } else {
           assert.match(await page.locator('[data-operating-question="02"] > details > summary').innerText(), /0\.00/);
-          assert.equal(await page.locator('[data-budget-bar-state="zero-income"]').count(), 5);
-          assert.equal(await page.locator('.budget-waterfall-bar').count(), 0);
+          assert.equal(await page.locator('[data-operating-question="02"] [data-budget-bar-state="zero-plan"]').count(), 1);
+          assert.equal(await page.locator('[data-operating-question="02"] .budget-waterfall-bar').count(), 0);
+          assert.equal(await page.locator('[data-operating-question="05"] [data-budget-bar-state="zero-income"]').count(), 1);
+          assert.equal(await final.locator('[data-budget-bar-state="zero-income"]').count(), 1);
+          assert.equal(await page.locator('[data-operating-question="06"] .budget-waterfall-bar').count(), 1);
         }
         await screenshot({ path: path.join(screenshots, `${name}-${width}.png`), fullPage: true });
         await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `${name}-period-${width}.png`), style: periodCropStyle });
@@ -415,7 +433,8 @@ async function geometry(page) {
         assert.match(await groceries.innerText(), observed ? /47\.25/ : /Spending unavailable/);
         assert.equal(await groceries.locator('.budget-category-fill').count(), observed ? 1 : 0);
         assert.equal(await bills.locator('[data-budget-browse-bills-remaining]').count(), 0);
-        assert.equal((await bills.locator('h2').innerText()), 'Completed-period bills');
+        assert.match(await bills.locator('h2').innerText(), /105\.00/,'historical original bill plan remains available');
+        assert.match(await bills.innerText(), /Completed-period bills/);
         assert.match(await bills.innerText(), /Historical settlement evidence, not an amount due now/);
         if (settlement === 'unverified') assert.match(await bills.innerText(), /To confirm[\s\S]*Synthetic historical service/);
         else assert.equal(await bills.locator('[data-budget-bill-bucket="paid"]').isVisible(), true);
@@ -468,7 +487,7 @@ async function geometry(page) {
       await screenshot({ path: path.join(screenshots, `negative-spending-${width}.png`), fullPage: true });
       data = fx.served({ groceriesExtra: 200 }); await boot(); await geometry(page);
       assert.match(await page.locator('[data-budget-period-result]').innerText(), /1,573\.46/);
-      assert.match(await page.locator('[data-operating-question="06"] > details > summary').innerText(), /811\.54/);
+      assert.match(await page.locator('[data-operating-question="06"] > details > summary').innerText(), /644\.49[\s\S]*730\.00/);
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');
       await screenshot({ path: path.join(screenshots, `overspending-${width}.png`), fullPage: true });
       data = fx.served({ unavailablePlan: true }); await boot();
@@ -485,7 +504,7 @@ async function geometry(page) {
       const householdTrack = await trackState('06');
       const finalTrack = await trackState('07');
       const savingsTrack = await trackState('savings');
-      assert.deepEqual({ deficit: householdTrack.deficit, unknown: householdTrack.unknown }, { deficit: true, unknown: false });
+      assert.deepEqual({ deficit: householdTrack.deficit, unknown: householdTrack.unknown }, { deficit: false, unknown: false });
       assert.deepEqual({ deficit: finalTrack.deficit, unknown: finalTrack.unknown }, { deficit: true, unknown: false });
       assert.ok(!finalTrack.hatch.includes('repeating-linear-gradient'), 'known deficit is not the unknown hatch');
       assert.deepEqual({ deficit: savingsTrack.deficit, unknown: savingsTrack.unknown }, { deficit: false, unknown: true });
@@ -501,13 +520,14 @@ async function geometry(page) {
       assert.match(await page.locator('[data-operating-question="02"] .budget-step-value').innerText(), /0\.00/);
       assert.match(await page.locator('[data-operating-question="07"] .budget-step-value').innerText(), /estimated/);
       const zeroIncomeTrack = page.locator('[data-operating-question="02"] .budget-waterfall-track');
-      assert.equal(await zeroIncomeTrack.evaluate(el => el.classList.contains('is-noscale')), true);
+      assert.equal(await zeroIncomeTrack.evaluate(el => el.classList.contains('is-unknown')), true,'missing observations cannot become zero income received');
       for (const id of ['02', '04', '05', '06', '07']) {
         const track = await trackState(id);
-        assert.equal(track.unknown, false);
-        assert.ok(!track.hatch.includes('repeating-linear-gradient'));
+        const actualUnavailable=['02','04','06'].includes(id);
+        assert.equal(track.unknown, actualUnavailable);
+        assert.equal(track.hatch.includes('repeating-linear-gradient'),actualUnavailable);
         assert.equal(await page.locator(`[data-operating-question="${id}"] .budget-waterfall-bar`).count(), 0);
-        if (id !== '02') assert.equal(track.deficit, true);
+        assert.equal(track.deficit,['05','07'].includes(id));
       }
       assert.equal((await trackState('savings')).unknown, true);
       assert.ok((await trackState('savings')).hatch.includes('repeating-linear-gradient'));
