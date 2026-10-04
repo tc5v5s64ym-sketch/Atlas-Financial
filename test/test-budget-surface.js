@@ -195,6 +195,113 @@ for (const change of ["remainingHousehold = null", "currentThrough = '2026-09-10
 }
 p.render(fx.served());
 
+console.log('\n=== historical spending and bill summaries ===');
+const browseCard = (output, kind) => {
+  const start = output.indexOf(`data-budget-browse="${kind}"`);
+  if (start < 0) return '';
+  const from = output.slice(start);
+  const end = from.indexOf('</section>');
+  return from.slice(0, end < 0 ? from.length : end);
+};
+const selectPublishedPeriod = (pageObj, start) => pageObj.rerender(
+  `planPayPeriodId = String((__ctx.advice.payPeriodViews.find(item => item.start === ${JSON.stringify(start)}) || {}).id || ${JSON.stringify(start)});
+   __ctx.planPayPeriodId = planPayPeriodId`);
+ok(/data-budget-spending-evidence="current"/.test(html)
+  && /0 of 3 known categories over plan/.test(html)
+  && /data-budget-bills-remaining-scope="actionable"/.test(html)
+  && /data-budget-browse-bills-remaining[\s\S]*?265\.00/.test(html)
+  && /left to pay or confirm/.test(browseCard(html, 'bills')),
+  'current remaining 265 and the known-category count stay on the live period');
+const unavailableHistory = selectPublishedPeriod(p, '2026-07-31');
+const unavailableSpend = browseCard(unavailableHistory, 'spending');
+ok(/data-budget-spending-evidence="unavailable"/.test(unavailableSpend)
+  && /Spending unavailable · completed period/.test(unavailableSpend)
+  && !/Observed spending · completed period/.test(unavailableSpend)
+  && /data-budget-browse-hold[^>]*><span class="budget-browse-unknown">Unavailable/.test(unavailableSpend)
+  && /Missing or incomplete history is not treated as observed spending/.test(unavailableSpend)
+  && ['groceries', 'fuel', 'restaurants'].every(id => /Spending unavailable/.test(categoryBrowse(unavailableHistory, id))),
+  'Jul 31–Aug 13 omitted observations stay unavailable, not counted $0 observed history');
+p.render(fx.served());
+const partialHistory = p.rerender(`
+  (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'groceries')).spent = 80;
+  (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'fuel')).spent = null;
+  (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'restaurants')).spent = null;
+  __ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').budgetHold = 80;
+  planPayPeriodId = 'past:2026-07-31'; __ctx.planPayPeriodId = planPayPeriodId`);
+const partialSpend = browseCard(partialHistory, 'spending');
+ok(/data-budget-spending-evidence="partial"/.test(partialSpend)
+  && /Incomplete spending evidence · completed period/.test(partialSpend)
+  && !/Observed spending · completed period/.test(partialSpend)
+  && /data-budget-browse-hold[^>]*><span class="budget-browse-unknown">Unavailable/.test(partialSpend)
+  && !/data-budget-browse-hold[^>]*>\$80\.00</.test(partialSpend)
+  && /80\.00 of/.test(categoryBrowse(partialHistory, 'groceries')),
+  'partial history keeps the observed grocery 80 and withholds an incomplete counted total');
+p.render(fx.served());
+const knownHistory = p.rerender(`
+  (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'groceries')).spent = 80;
+  (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'fuel')).spent = 20;
+  (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'restaurants')).spent = 10;
+  __ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').budgetHold = 110;
+  planPayPeriodId = 'past:2026-07-31'; __ctx.planPayPeriodId = planPayPeriodId`);
+const knownSpend = browseCard(knownHistory, 'spending');
+ok(/data-budget-spending-evidence="observed"/.test(knownSpend)
+  && /Observed spending · completed period/.test(knownSpend)
+  && /data-budget-browse-hold[^>]*>\$110\.00</.test(knownSpend)
+  && /Completed periods show observed spending/.test(knownSpend),
+  'complete lookback 80 + 20 + 10 reprints the published 110 counted total');
+const hydroPage = page();
+hydroPage.render(fx.served({ historicalHydroDay: 5 }));
+const hydroLookback = selectPublishedPeriod(hydroPage, '2026-07-31');
+const hydroPeriod = hydroPage.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31');
+ok(hydroPeriod && hydroPeriod.remainingBills === 0 && hydroPeriod.totalBillsThisPeriod === 120
+  && hydroPeriod.bills.some(row => row.id === 'hydro' && row.date === '2026-08-05'
+    && row.settlement === 'unverified' && row.status === 'planned' && row.remaining === 120),
+  'Forecast seals Aug 5 Hydro 120 as planned/unverified and keeps historical remaining 0');
+const hydroBills = browseCard(hydroLookback, 'bills');
+ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(hydroBills)
+  && /Settlement not fully confirmed/.test(hydroBills)
+  && !/left to pay or confirm/.test(hydroBills)
+  && !/\$0\.00/.test(/id="budget-bills-heading"[\s\S]*?<\/h2>/.exec(hydroBills)?.[0] || '')
+  && /1 to confirm/.test(hydroBills)
+  && /To confirm[\s\S]*?data-budget-bill-open="hydro"[\s\S]*?Not confirmed[\s\S]*?120\.00/.test(hydroBills)
+  && /data-period-bill="hydro"[\s\S]*?Missing evidence does not mean unpaid/.test(hydroLookback),
+  'unverified historical Hydro withholds the actionable $0 heading and keeps original evidence');
+const paidHistory = hydroPage.rerender(`
+  Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').bills.find(item => item.id === 'hydro'), {status:'PAID',settlement:'represented',remaining:0});
+  Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31'), {paidBills:120, remainingBills:0});`);
+const paidBills = browseCard(paidHistory, 'bills');
+ok(/data-budget-bills-remaining-scope="actionable"/.test(paidBills)
+  && /data-budget-browse-bills-remaining[\s\S]*?0\.00/.test(paidBills)
+  && /left to pay or confirm/.test(paidBills)
+  && /budget-browse-paid[\s\S]*?data-budget-bill-open="hydro"/.test(paidBills)
+  && !/To confirm[\s\S]*?data-budget-bill-open="hydro"/.test(paidBills),
+  'paid historical Hydro can show the published $0 remaining without a false confirm group');
+const unknownHistory = hydroPage.rerender(`
+  Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').bills.find(item => item.id === 'hydro'), {status:null,settlement:null,remaining:120});
+  Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31'), {paidBills:0, remainingBills:0});`);
+const unknownBills = browseCard(unknownHistory, 'bills');
+ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(unknownBills)
+  && /Settlement not fully confirmed/.test(unknownBills)
+  && !/left to pay or confirm/.test(unknownBills)
+  && /Status unavailable[\s\S]*?data-budget-bill-open="hydro"/.test(unknownBills)
+  && /1 unavailable/.test(unknownBills),
+  'unknown historical settlement withholds the $0 all-clear and does not infer unpaid');
+const restoredCurrent = hydroPage.rerender(`
+  planPayPeriodId = null; __ctx.planPayPeriodId = null`);
+ok(/data-budget-spending-evidence="current"/.test(restoredCurrent)
+  && /data-budget-browse-bills-remaining[\s\S]*?145\.00/.test(restoredCurrent)
+  && /left to pay or confirm/.test(browseCard(restoredCurrent, 'bills'))
+  && /0 of 3 known categories over plan/.test(restoredCurrent),
+  'moving Hydro to Aug 5 leaves current remaining 60+85=145 on the live contract');
+p.render(fx.served());
+const nextProjected = p.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === 'next');
+const nextBrowse = p.rerender(`planPayPeriodId = ${JSON.stringify(String(nextProjected.id || nextProjected.start))}; __ctx.planPayPeriodId = planPayPeriodId`);
+ok(/data-budget-spending-evidence="projected"/.test(nextBrowse)
+  && /Projected plan · spending not observed/.test(browseCard(nextBrowse, 'spending'))
+  && /data-budget-bills-remaining-scope="actionable"/.test(nextBrowse),
+  'the next payday still uses projected spending wording and the published remaining scope');
+p.rerender('planPayPeriodId = null; __ctx.planPayPeriodId = null');
+
 ok(step(html, '02').includes(money(EXPECT.income)) && /≈ estimated/.test(step(html, '02')),
   `Income is ${money(EXPECT.income)} with Forecast's estimated tag`, step(html, '02'));
 ok(step(html, '04').includes(money(EXPECT.bills)), `Bills deduction is ${money(EXPECT.bills)}`, step(html, '04'));

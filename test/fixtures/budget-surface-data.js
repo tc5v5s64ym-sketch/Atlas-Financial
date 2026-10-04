@@ -159,6 +159,9 @@ function served(opts = {}) {
   if (typeof opts.periodInternet === 'number') {
     data.plan.bills.find(row => row.id === 'internet').amount = opts.periodInternet;
   }
+  if (typeof opts.historicalHydroDay === 'number') {
+    data.plan.bills.find(row => row.id === 'hydro').day = opts.historicalHydroDay;
+  }
   if (opts.zeroIncome) {
     data.plan.income.forEach(row => { row.amount = 0; });
     observed.transactions = observed.transactions.filter(row => row.id !== 92001);

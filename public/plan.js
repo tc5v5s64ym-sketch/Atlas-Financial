@@ -5722,6 +5722,28 @@ function budgetCategoryPresentation(row) {
   return { kind: 'observed', label: 'Observed spending', spentKnown, other, trust };
 }
 
+function budgetBrowseHistorical(period) {
+  return !!(period && (period.timelineRole === 'past' || period.lookback === true));
+}
+
+function budgetHistoricalSpendingEvidence(period) {
+  const planned = (period.householdBudget || []).filter(row =>
+    row && !row.informational && !row.otherSpending && !row.needsConfirmation);
+  const known = planned.filter(row => budgetBrowseKnown(row.spent)).length;
+  if (!planned.length || known === 0) return 'unavailable';
+  if (known < planned.length) return 'partial';
+  return 'observed';
+}
+
+function budgetSpendingHistoryLabel(period) {
+  if (period.projected) return 'Projected plan · spending not observed';
+  if (!budgetBrowseHistorical(period)) return 'Observed spending · completed period';
+  const evidence = budgetHistoricalSpendingEvidence(period);
+  if (evidence === 'unavailable') return 'Spending unavailable · completed period';
+  if (evidence === 'partial') return 'Incomplete spending evidence · completed period';
+  return 'Observed spending · completed period';
+}
+
 function budgetCategoryBarHtml(row, state, pace) {
   // Dimensionless geometry from published amounts; never a new money total.
   const scale = state.spentKnown && budgetBrowseKnown(row.planned) && row.planned >= 0
@@ -5753,9 +5775,12 @@ function budgetSpendingSectionHtml(period, ctx) {
   const remainingKnown = funding?.basis === 'Budget-from-today' && ['ready', 'funding-gap'].includes(funding.status)
     && ['estimated', 'calculated'].includes(funding.trust) && isValidIsoCalendarDate(model.asOf) && funding.asOf === model.asOf
     && funding.currentThrough === period.end && budgetBrowseKnown(funding.remainingHousehold);
+  const historical = budgetBrowseHistorical(period);
+  const historyEvidence = historical ? budgetHistoricalSpendingEvidence(period) : (period.projected ? 'projected' : 'current');
+  const observedHold = !historical || historyEvidence === 'observed';
   const count = period.timelineRole === 'current'
     ? `<span class="budget-browse-pill${over.length ? ' is-warn' : !classified.length ? ' is-muted' : ''}">${over.length} of ${classified.length} known categories over plan</span>${planned.length > classified.length ? `<span class="budget-browse-pill is-muted">${planned.length - classified.length} without a remaining estimate</span>` : ''}`
-    : `<span class="budget-browse-pill is-muted">${period.projected ? 'Projected plan · spending not observed' : 'Observed spending · completed period'}</span>`;
+    : `<span class="budget-browse-pill is-muted">${budgetSpendingHistoryLabel(period)}</span>`;
   const cards = rows.map(row => {
     if (row.informational) return `<p class="budget-browse-note">${budgetBrowseEscape(row.label)} · ${budgetBrowseEscape(row.note || 'Included in Bills')}</p>`;
     const state = budgetCategoryPresentation(row);
@@ -5767,13 +5792,13 @@ function budgetSpendingSectionHtml(period, ctx) {
       ${budgetCategoryBarHtml(row, state, pace)}
     </button>`;
   }).join('');
-  return `<section class="budget-browse-card budget-browse-spending" data-budget-browse="spending" aria-labelledby="budget-spending-heading">
+  return `<section class="budget-browse-card budget-browse-spending" data-budget-browse="spending" data-budget-spending-evidence="${historyEvidence}" aria-labelledby="budget-spending-heading">
     <header><div><p class="budget-browse-eyebrow">Spending this period</p><h2 id="budget-spending-heading" tabindex="-1">Household budget</h2><p class="budget-browse-sub">Tap a category to see its transactions.</p></div>${pace != null ? '<span class="budget-pace-key">│ Today</span>' : ''}</header>
     ${householdBudgetCycleText(period) ? `<p class="budget-browse-cycle">${budgetBrowseEscape(householdBudgetCycleText(period))}</p>` : ''}
-    <div class="budget-browse-stats"><div><span>Counted this period</span><strong data-budget-browse-hold>${budgetBrowseMoney(period.budgetHold, period.budgetHoldTrust)}</strong></div>
+    <div class="budget-browse-stats"><div><span>Counted this period</span><strong data-budget-browse-hold>${budgetBrowseMoney(observedHold ? period.budgetHold : null, observedHold ? period.budgetHoldTrust : 'unavailable')}</strong></div>
       ${period.timelineRole === 'current' ? `<div><span>Still planned</span><strong data-budget-browse-remaining>${budgetBrowseMoney(remainingKnown ? funding.remainingHousehold : null, remainingKnown ? funding.trust : null)}</strong><small>From today</small></div>` : ''}</div>
     <div class="budget-browse-counts">${count}</div><div class="budget-category-list">${cards || '<p class="budget-browse-note">Category data unavailable.</p>'}</div>
-    <footer><p>Each category counts at its plan or observed spending, whichever is higher, plus unassigned spending. Completed periods show observed spending.</p><button type="button" data-budget-browse-evidence="06">Details</button></footer>
+    <footer><p>Each category counts at its plan or observed spending, whichever is higher, plus unassigned spending. ${observedHold ? 'Completed periods show observed spending.' : 'Missing or incomplete history is not treated as observed spending.'}</p><button type="button" data-budget-browse-evidence="06">Details</button></footer>
   </section>`;
 }
 
@@ -5806,8 +5831,13 @@ function budgetBillsSectionHtml(period, ctx) {
   const ratioKnown = budgetBrowseKnown(period.totalBillsThisPeriod) && period.totalBillsThisPeriod > 0
     && budgetBrowseKnown(period.paidBills) && period.paidBills >= 0 && period.paidBills <= period.totalBillsThisPeriod;
   const zeroKnown = period.totalBillsThisPeriod === 0 && period.paidBills === 0;
-  return `<section class="budget-browse-card budget-browse-bills" data-budget-browse="bills" aria-labelledby="budget-bills-heading">
-    <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : ''}</p><h2 id="budget-bills-heading" tabindex="-1"><span data-budget-browse-bills-remaining>${budgetBrowseMoney(period.remainingBills)}</span> left to pay or confirm</h2></div></header>
+  const withholdActionableRemaining = budgetBrowseHistorical(period)
+    && (groups.check.length > 0 || groups.unknown.length > 0);
+  const remainingHeading = withholdActionableRemaining
+    ? 'Settlement not fully confirmed'
+    : `<span data-budget-browse-bills-remaining>${budgetBrowseMoney(period.remainingBills)}</span> left to pay or confirm`;
+  return `<section class="budget-browse-card budget-browse-bills" data-budget-browse="bills" data-budget-bills-remaining-scope="${withholdActionableRemaining ? 'historical-unconfirmed' : 'actionable'}" aria-labelledby="budget-bills-heading">
+    <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : ''}</p><h2 id="budget-bills-heading" tabindex="-1">${remainingHeading}</h2></div></header>
     <div class="budget-browse-counts">${[['due', 'to pay'], ['pending', 'pending'], ['check', 'to confirm'], ['unknown', 'unavailable']].filter(([key]) => groups[key].length).map(([key, label]) => `<span class="budget-browse-pill is-${key}">${groups[key].length} ${label}</span>`).join('')}</div>
     <div class="budget-bills-progress${ratioKnown ? '' : zeroKnown ? ' is-no-scale' : ' is-hatched'}" aria-hidden="true">${ratioKnown ? `<span style="width:${period.paidBills / period.totalBillsThisPeriod * 100}%"></span>` : ''}</div>
     <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} paid or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
