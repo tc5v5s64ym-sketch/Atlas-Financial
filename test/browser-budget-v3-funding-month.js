@@ -112,6 +112,22 @@ fs.mkdirSync(output, { recursive: true });
         'future period selection does not relabel current cash as a future receipt');
       await geometry();
       await page.locator('[data-budget-granularity="month"]').click();
+      const shortcuts=page.locator('.budget-month-shortcuts');
+      assert.equal(await shortcuts.isVisible(),width<960,'Month shortcuts add one quiet mobile row only');
+      if(width<960) for(const section of ['result','flow','costs']) {
+        const shortcut=shortcuts.locator(`[data-budget-month-section="${section}"]`);
+        const heading=page.locator(`[data-budget-month-section-heading="${section}"]`);
+        await shortcut.focus();await page.keyboard.press('Enter');
+        assert.equal(await heading.evaluate(node=>node===document.activeElement),true,'shortcut moves keyboard focus to the section heading');
+        assert.equal(await shortcut.getAttribute('aria-current'),'location');
+        const before=await page.locator('[data-budget-month-view]').innerText();
+        await page.evaluate(()=>App.rerender());
+        assert.equal(await heading.evaluate(node=>node===document.activeElement),true,'live refresh restores the selected heading focus');
+        assert.equal(await shortcut.getAttribute('aria-current'),'location','restored heading retains its shortcut location marker');
+        assert.equal(await page.locator('[data-budget-month-view]').innerText(),before,'section navigation cannot change published Month evidence');
+        await visibleFocus(`[data-budget-month-section-heading="${section}"]`);
+      }
+      await page.evaluate(()=>window.scrollTo(0,0));
       assert.equal(await page.locator('[data-budget-month-picker]').count(), 1);
       assert.equal(await page.locator('[data-budget-month-ladder-view]').count(), 1);
       assert.equal(await page.locator('[data-budget-month-ladder]').count(), 3);

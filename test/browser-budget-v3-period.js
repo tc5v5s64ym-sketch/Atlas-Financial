@@ -56,6 +56,18 @@ async function geometry(page) {
       };
       await boot();
       await geometry(page);
+      const reserveInfo=page.locator('[data-budget-browse="spending"] [data-budget-browse-evidence="06"]');
+      assert.match(await reserveInfo.innerText(),/^Info$/);
+      assert.doesNotMatch(await page.locator('[data-budget-browse="spending"]').innerText(),/whichever is higher/,
+        'actual/original-plan browse does not carry the reserve explanation by default');
+      assert.equal(await page.locator('[data-budget-reserve-rule]').isVisible(),false);
+      await reserveInfo.focus();await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-budget-detail-body]').innerText(),/Reserve calculation:[\s\S]*whichever is higher[\s\S]*unassigned spending/);
+      assert.match(await page.locator('[data-budget-detail-body] [data-household-budget-total-amount]').innerText(),/752\.99/);
+      await screenshot({path:path.join(screenshots,`reserve-info-${width}.png`),fullPage:false});
+      await page.keyboard.press('Escape');
+      assert.equal(await reserveInfo.evaluate(node=>node===document.activeElement),true,'Info returns to its exact spending trigger');
+      await page.evaluate(()=>window.scrollTo(0,0));
       const trackBounds = await page.locator('[data-calendar-waterfall] .budget-waterfall-track').evaluateAll(rows => rows.filter(row => getComputedStyle(row).display !== 'none').map(row => {
         const r = row.getBoundingClientRect(); return [r.left, r.width];
       }));
