@@ -244,23 +244,14 @@ body:has(#operating-surface) .site-head-inner {
   border-left-color: var(--good);
   background: var(--atlas-green-soft);
 }
-.atlas-bills-card .atlas-bill-row-planning-cleared {
-  border-color: color-mix(in srgb, var(--good) 18%, var(--border));
-  border-left-color: color-mix(in srgb, var(--good) 70%, var(--axis));
-  background: color-mix(in srgb, var(--good) 7%, var(--surface-1));
-}
 .atlas-bills-card .atlas-bill-row-to-pay {
   border-color: var(--atlas-red-border);
   border-left-color: var(--critical);
   background: var(--atlas-red-soft);
 }
-.atlas-bills-card .atlas-bill-row-pending {
-  border-color: var(--atlas-red-border);
-  border-left-color: color-mix(in srgb, var(--critical) 70%, var(--axis));
-  background: var(--atlas-red-soft);
-}
+.atlas-bills-card .atlas-bill-row-pending,
 .atlas-bills-card .atlas-bill-row-check,
-.atlas-bills-card .atlas-bill-row-double-check {
+.atlas-bills-card .atlas-bill-row-unknown {
   border-color: color-mix(in srgb, var(--warning) 28%, var(--border));
   border-left-color: var(--warning);
   background: var(--atlas-amber-soft);
@@ -295,18 +286,13 @@ body:has(#operating-surface) .site-head-inner {
   font-size: .68rem;
   font-weight: 900;
 }
-.atlas-bill-state-planning-cleared {
-  color: var(--success-text);
-  background: color-mix(in srgb, var(--good) 10%, var(--surface-1));
-  letter-spacing: .03em;
-}
-.atlas-bill-state-to-pay,
-.atlas-bill-state-pending {
+.atlas-bill-state-to-pay {
   color: var(--critical);
   background: color-mix(in srgb, var(--critical) 12%, var(--surface-1));
 }
+.atlas-bill-state-pending,
 .atlas-bill-state-check,
-.atlas-bill-state-double-check {
+.atlas-bill-state-unknown {
   color: color-mix(in srgb, var(--warning) 78%, var(--text-primary));
   background: color-mix(in srgb, var(--warning) 12%, var(--surface-1));
 }

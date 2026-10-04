@@ -219,9 +219,9 @@ console.log('=== 1. representedActuals alone reprints Spotify / Dale ChatGPT as 
   ok(html.includes(`data-period-bill="${SPOTIFY_ID}" data-bill-status="PAID"`)
       && html.includes(`data-period-bill="${DALE_ID}" data-bill-status="PAID"`),
     'periodBillLine reprints Forecast PAID for both representedActuals rows');
-  ok(polish.planningBillChrome('PAID', SPOTIFY_DUE, AS_OF).label === 'PAID'
-      && polish.planningBillChrome('PAID', DALE_DUE, AS_OF).label === 'PAID',
-    'Budget polish reprints PAID rather than TO PAY / ON DATE / DOUBLE-CHECK');
+  ok(polish.planningBillChrome('PAID', SPOTIFY_DUE, AS_OF).label === 'Paid'
+      && polish.planningBillChrome('PAID', DALE_DUE, AS_OF).label === 'Paid',
+    'Budget polish reprints confirmed Paid regardless of schedule dates');
 }
 
 console.log('\n=== 2. Amanda ChatGPT, iCloud, and Netflix stay unpaid without their own actuals ===');

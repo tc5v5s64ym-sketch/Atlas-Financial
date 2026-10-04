@@ -7,8 +7,8 @@
  * hierarchy and adds human-readable status badges. It does not call Forecast,
  * read canonical data, total money, infer settlement, or move an obligation.
  *
- * Bills green-on-date is Dale planning chrome: it does not claim Forecast
- * Paid and does not write representedEvents.
+ * Bill colours reprint published payment states. Dates never clear a bill
+ * or replace pending/unconfirmed evidence with a paid-looking badge.
  */
 
 (function init(factory) {
@@ -17,62 +17,31 @@
   if (typeof document !== 'undefined') api.boot(document);
 })(function buildApi() {
   const APPLIED = 'data-atlas-budget-ui';
-  const PLANNING_CLEAR_GRACE_DAYS = 3;
-
-  function billStatePresentation(status) {
+  function billStatePresentation(status, settlement) {
     const key = String(status == null ? '' : status).trim().toLowerCase();
-    if (key === 'paid') return { label: 'PAID', kind: 'paid' };
-    if (key === 'still due') return { label: 'TO PAY', kind: 'to-pay' };
-    if (key === 'pending') return { label: 'PENDING', kind: 'pending' };
-    if (key === 'needs confirmation') return { label: 'CHECK', kind: 'check' };
-    return null;
+    const evidence = String(settlement == null ? '' : settlement).trim().toLowerCase();
+    if (key === 'pending' || evidence === 'pending') return { label: 'Pending', kind: 'pending' };
+    if (evidence === 'unverified' || ['to confirm', 'not confirmed', 'needs confirmation'].includes(key)) {
+      return { label: 'To confirm', kind: 'check' };
+    }
+    if (evidence === 'unknown' || ['unknown', 'unavailable'].includes(key)) return { label: 'Unknown', kind: 'unknown' };
+    if (key === 'paid') return { label: 'Paid', kind: 'paid' };
+    if (['not paid', 'unpaid'].includes(key) || key === 'still due' && evidence === 'upcoming') {
+      return { label: 'Not paid', kind: 'to-pay' };
+    }
+    return { label: 'Unknown', kind: 'unknown' };
   }
 
-  function isoDaysApart(fromIso, toIso) {
-    const from = String(fromIso || '').split('-').map(Number);
-    const to = String(toIso || '').split('-').map(Number);
-    if (from.length < 3 || to.length < 3) return null;
-    if (!from[0] || !from[1] || !from[2] || !to[0] || !to[1] || !to[2]) return null;
-    const a = Date.UTC(from[0], from[1] - 1, from[2]);
-    const b = Date.UTC(to[0], to[1] - 1, to[2]);
-    return Math.round((b - a) / 86400000);
-  }
-
-  function planningBillChrome(status, dueDate, asOf) {
-    const paid = String(status == null ? '' : status).trim().toLowerCase() === 'paid';
-    if (paid) {
-      return { label: 'PAID', kind: 'paid', planning: false };
-    }
-    const base = billStatePresentation(status);
-    const due = String(dueDate == null ? '' : dueDate).trim();
-    const today = String(asOf == null ? '' : asOf).trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) {
-      return base;
-    }
-    const daysPast = isoDaysApart(due, today);
-    if (daysPast == null || daysPast < 0) return base;
-    if (daysPast > PLANNING_CLEAR_GRACE_DAYS) {
-      return {
-        label: 'DOUBLE-CHECK',
-        kind: 'double-check',
-        planning: true,
-      };
-    }
-    return {
-      label: 'ON DATE',
-      kind: 'planning-cleared',
-      planning: true,
-    };
+  function planningBillChrome(status, dueDate, asOf, settlement) {
+    // Keep the existing caller signature; schedule dates carry no payment evidence.
+    return { ...billStatePresentation(status, settlement), planning: false };
   }
 
   function cleanBillLabel(value, status) {
     let out = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
     const key = String(status == null ? '' : status).trim().toLowerCase();
-    const suffix = key === 'paid' ? 'PAID'
-      : key === 'still due' ? 'still due'
-      : key === 'pending' ? 'pending'
-      : key === 'needs confirmation' ? 'needs confirmation'
-      : null;
+    const suffix = ['paid', 'still due', 'pending', 'needs confirmation', 'to confirm',
+      'not confirmed', 'unknown', 'unavailable', 'not paid', 'unpaid'].includes(key) ? key : null;
     if (!suffix) return out;
     const escaped = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return out.replace(new RegExp(`\\s*·\\s*${escaped}\\s*$`, 'i'), '').trim();
@@ -100,7 +69,7 @@
     if (!line || line.hasAttribute('data-atlas-bill-row')) return false;
     const status = line.getAttribute('data-bill-status');
     const dueDate = line.getAttribute('data-bill-date');
-    const meta = planningBillChrome(status, dueDate, householdAsOf(line));
+    const meta = planningBillChrome(status, dueDate, householdAsOf(line), line.getAttribute('data-bill-settlement'));
     if (!meta) return false;
     const children = directElementChildren(line);
     const label = children[0] || null;
@@ -112,8 +81,8 @@
     badge.className = `atlas-bill-state atlas-bill-state-${meta.kind}`;
     badge.setAttribute('data-atlas-bill-state', meta.kind);
     badge.textContent = meta.label;
-    if (meta.kind === 'double-check') {
-      badge.setAttribute('title', 'No settlement evidence yet — double-check with Dale');
+    if (meta.kind === 'check' || meta.kind === 'unknown') {
+      badge.setAttribute('title', 'Payment is not confirmed. Missing evidence does not mean unpaid.');
     }
     line.insertBefore(badge, amount);
     line.classList.add('atlas-bill-row', `atlas-bill-row-${meta.kind}`);
@@ -296,6 +265,5 @@
     decorateWaterfall,
     enhance,
     boot,
-    PLANNING_CLEAR_GRACE_DAYS,
   };
 });

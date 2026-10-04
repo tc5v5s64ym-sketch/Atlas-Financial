@@ -1924,7 +1924,7 @@ function periodBillLine(row) {
   }
   const dateAttr = row.date && /^\d{4}-\d{2}-\d{2}$/.test(String(row.date))
     ? ` data-bill-date="${row.date}"` : '';
-  return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}"${dateAttr}>
+  return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}" data-bill-settlement="${String(row.settlement || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}"${dateAttr}>
     <span>${glanceLineLabel(row, status)}</span><span>${amount != null ? about + amount : '—'}</span>
   </div>`;
 }
