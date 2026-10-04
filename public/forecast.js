@@ -4953,8 +4953,8 @@
       ? packet.representedActuals : [];
     for (const row of rows) {
       if (!row || !row.id || !row.date) continue;
-      const amt = Number(row.actual);
-      if (!isFinite(amt)) continue;
+      const amt = row.actual;
+      if (typeof amt !== 'number' || !isFinite(amt)) continue;
       const postedOn = row.postedOn && ISO_CALENDAR_DATE.test(String(row.postedOn))
         ? String(row.postedOn) : null;
       map.set(row.id + '@' + row.date, {
@@ -6301,6 +6301,16 @@
     }
     return householdIncomeAmount(row.amount)
       || householdIncomeAmount(row.planned);
+  }
+
+  // Received detail is a receipt claim, so it cannot use the contribution
+  // selector's ordinary planned fallback or a previously authored movement.
+  function incomeReceivedAmount(row) {
+    if (!row || row.status !== 'received' || row.notReliedUpon === true
+        || ['unverified', 'pending', 'unknown', 'unavailable', 'not-relied-upon', 'relied-upon'].includes(row.settlement)
+        || (row.actualTrust != null && !['calculated', 'estimated'].includes(row.actualTrust))
+        || typeof row.actual !== 'number' || !isFinite(row.actual)) return null;
+    return calendarIncomeContribution(row);
   }
 
   // Explicit complete household-cash evidence for (openingAsOf, morningDate).
@@ -8911,7 +8921,10 @@
       const otherAmount = roundCent(otherItems.reduce((s, r) => s + (Number(r.amount) || 0), 0));
       const incomeTotal = planUnavailable
         ? null
-        : roundCent(income.reduce((s, r) => s + (Number(r.amount) || 0), 0));
+        : roundCent(income.reduce((s, r) => s + calendarIncomeContribution(r), 0));
+      // The shared selector uses observed receipt dollars when present and
+      // retains ordinary Forecast income otherwise. Original planned dollars
+      // remain on row.planned; they are not substituted for a known receipt.
       // Payday balance is the income identity, including a salary that
       // remains visibly unproven for settlement. Opening cash is not added
       // to Payday balance.
@@ -11219,7 +11232,7 @@
           // Reuse incumbent receipt semantics: raw credits and normalized
           // benefit/Other Income actuals have different provider signs.
           // The numeric actual guard above forbids its planned fallback.
-          const actual = direction === 'income' ? calendarIncomeContribution(row) : row.actual;
+          const actual = direction === 'income' ? incomeReceivedAmount(row) : row.actual;
           amount = roundCent(amount + actual); known++;
           if (rowTrust === 'estimated') trust = 'estimated';
           evidence.push({ id: row.id || null, date: row.date, actual,
@@ -19143,7 +19156,7 @@
   const Forecast = { savingsInventory, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
-    spendingCycle,
+    spendingCycle, incomeReceivedAmount,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts, baselineTrajectory, baselineTrajectoryScenario, daleEstimatedPayrollDeposits, projectedDalePayroll,

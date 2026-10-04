@@ -90,7 +90,7 @@ console.log('=== 1. Income labels and Dale exact dollars ===');
     'Dale payroll prints as Dale salary only');
   ok(/data-period-income="payroll"/.test(html),
     'Dale salary keeps the Forecast payroll identity');
-  const daleAmt = html.match(/data-period-income="payroll"[\s\S]*?<span>Dale salary<time[^>]*>[^<]*<\/time><\/span>\s*<span>([^<]*)<\/span>/);
+  const daleAmt = html.match(/data-period-income="payroll"[\s\S]*?<span>Dale salary<time[^>]*>[^<]*<\/time><\/span>\s*<span data-income-line-amount>([^<]*)<\/span>/);
   ok(daleAmt && daleAmt[1] === '+' + composer.money2(4264)
       && !/about/i.test(daleAmt[0]),
     'Dale salary prints exact $4,264.00 with no about prefix',
