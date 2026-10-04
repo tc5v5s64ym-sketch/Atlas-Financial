@@ -22,14 +22,18 @@ unmatched remainder keeps today's card-payment treatment. Where the evidence
 does not identify one window, the payment is `unreconciled` and Budget does
 not publish a split. These points are not household facts.
 1. The window, when a split is published, is posted purchases on that card
-   dated strictly after the previous posted payment, through this payment
-   date. A payment with no earlier posted payment is `unreconciled`
-   (`no-previous-payment`). It is not matched to every supplied purchase.
+   dated strictly after the previous payment credit, through this payment
+   date. That credit may be pending, unreconciled, or posted. A payment
+   with no earlier payment credit is `unreconciled` (`no-previous-payment`).
+   It is not matched to every supplied purchase. A later payment is also
+   `unreconciled` when a pending or unreconciled credit is that boundary
+   or falls inside the window.
    One option Dale has not approved, and which is not implemented, is to
    bound that first window with the fetch `coverageStart` instead of
    failing closed.
-2. Several posted payments on the same card and the same date are all
-   `unreconciled` (`same-day-multiple-payments`). None of them is published
+2. Several payment credits on the same card and the same date, including
+   a pending credit beside a posted one, are all `unreconciled`
+   (`same-day-multiple-payments`). None of them is published
    as a genuine card payment. Live Travel Visa examples of that shape are
    2026-08-11, 2026-08-14, 2026-09-04, 2026-09-08, and 2026-09-21 (about
    $1,000 of payments against about $993.73 of purchases). A later payment
@@ -40,13 +44,16 @@ not publish a split. These points are not household facts.
 4. Truncated or incomplete evidence is `unreconciled` and does not settle the
    minimum. A completed bounded fetch is treated as complete for the rows it
    contains. Completeness does not invent a previous payment.
-5. The split does not separate Amanda's spend from Dale's. Engine recommends
-   excluding category Fees and "Other bank fees" from the purchase total.
-   That exclusion is not implemented. A posted fee that is not an interest
-   or finance charge still matches.
-6. Engine recommends dropping the TD credit card (`tdcc`, Emerald Visa) from
-   the Visa backfill set. Membership is unchanged: `tdcc` is still split
-   when a previous payment bounds the window. Dale has not decided.
+5. The split does not separate Amanda's spend from Dale's. Engine review
+   recommends excluding category Fees and "Other bank fees" from the
+   purchase total. That exclusion is not implemented. A posted fee that is
+   not an interest or finance charge still matches.
+6. Engine review recommends dropping the TD credit card (`tdcc`, Emerald
+   Visa) from the Visa backfill set. Dale's 2026-08-29 answer says "Two TD
+   Visas" means Cash Back + Travel. Emerald/personal is the third TD
+   credit-card product, not one of those two Visas. Membership is unchanged:
+   `tdcc` is still split when a previous payment bounds the window. Dale
+   has not decided.
 7. On current `main`, a posted card payment does not automatically confirm
    the scheduled minimum (`cardMinimumNeedsConfirmation`). This split
    publishes a genuine remainder only when the payment is reconciled, and
@@ -59,9 +66,11 @@ not publish a split. These points are not household facts.
    Lunch Money fetch for the live history window 2026-08-06 through
    2026-10-03 found a non-empty payee and a non-empty original name on
    all 28 posted credits on those three cards. 26 matched the alias on
-   either field alone and are published. 2 matched neither field and are
-   not published. Detection was not widened to category, notes, or an
-   empty payee. Household packet transactions have the payee removed
+   either field alone and are published. The 2 that matched neither field
+   are merchant refunds on Travel Visa, 2026-08-07 -$55.98 and 2026-09-07
+   -$44.99. They are not payments, and they are not published. Detection
+   was not widened to category, notes, or an empty payee. Household packet
+   transactions have the payee removed
    after the split is stored; the Budget lines come from that stored
    split, not from a second pass over the stripped rows.
 **What the answer changes:** which cents Budget labels backfill and which

@@ -308,26 +308,57 @@ console.log('the split is published and does not reopen automatic minimum settle
   assert.equal(hits(partial).length, 0);
   const genuine = observe([creditOn(7, '2026-07-15', 1), credit(5, 40)]);
   assert.equal(hits(genuine).length, 0);
-  const published = backfill.currentPeriodActuals.visaPaymentBackfill.filter(row => row.id === '2');
+  function servedPayment(report, date, amount) {
+    return (report.currentPeriodActuals.visaPaymentBackfill || []).filter(row =>
+      row && row.date === date && row.amount === amount);
+  }
+  const published = servedPayment(backfill, due, 40);
   assert.equal(published.length, 1);
+  assert.match(String(published[0].id), /^tx-\d+$/);
   assert.equal(published[0].status, 'reconciled');
   assert.equal(published[0].backfill, 40);
   assert.equal(published[0].cardPayment, 0);
   assert.equal(Object.prototype.hasOwnProperty.call(published[0], 'card'), false);
-  const partialPublished = partial.currentPeriodActuals.visaPaymentBackfill.filter(row => row.id === '4');
+  assert.equal((published[0].purchases || []).some(item => item && Object.prototype.hasOwnProperty.call(item, 'id')), false);
+  const partialPublished = servedPayment(partial, due, 40);
   assert.equal(partialPublished.length, 1);
+  assert.match(String(partialPublished[0].id), /^tx-\d+$/);
   assert.equal(partialPublished[0].backfill, 10);
   assert.equal(partialPublished[0].cardPayment, 30);
-  const genuinePublished = genuine.currentPeriodActuals.visaPaymentBackfill.filter(row => row.id === '5');
+  const genuinePublished = servedPayment(genuine, due, 40);
   assert.equal(genuinePublished.length, 1);
+  assert.match(String(genuinePublished[0].id), /^tx-\d+$/);
   assert.equal(genuinePublished[0].backfill, 0);
   assert.equal(genuinePublished[0].cardPayment, 40);
   const unbounded = observe([bought(11, 35), credit(12, 35)]);
   assert.equal(hits(unbounded).length, 0);
-  const unboundedRow = unbounded.currentPeriodActuals.visaPaymentBackfill.find(row => row.id === '12');
+  const unboundedRow = servedPayment(unbounded, due, 35)[0];
   assert.equal(unboundedRow.status, 'unreconciled');
   assert.equal(unboundedRow.reason, 'no-previous-payment');
   assert.equal(unboundedRow.backfill, null);
+
+  const rawAnchor = 'lm-provider-77009';
+  const rawBuy = 'lm-provider-77001';
+  const rawPay = 'lm-provider-77002';
+  const privateReport = observe([
+    creditOn(rawAnchor, '2026-07-15', 1),
+    bought(rawBuy, 40),
+    credit(rawPay, 40),
+  ]);
+  const packet = privateReport.currentPeriodActuals;
+  const blob = JSON.stringify(packet);
+  assert.equal(blob.includes(rawAnchor), false, 'anchor provider id');
+  assert.equal(blob.includes(rawBuy), false, 'purchase provider id');
+  assert.equal(blob.includes(rawPay), false, 'payment provider id');
+  const privateRow = packet.visaPaymentBackfill.find(item => item && item.date === due && item.amount === 40);
+  assert.match(String(privateRow.id), /^tx-\d+$/);
+  assert.equal(JSON.stringify(privateRow.purchases).includes(rawBuy), false);
+  for (const item of privateRow.purchases || []) {
+    assert.equal(Object.prototype.hasOwnProperty.call(item, 'id'), false);
+  }
+  const privateHtml = Detail.visaPaymentsHtml(packet.visaPaymentBackfill);
+  assert.equal(privateHtml.includes(rawPay), false);
+  assert.equal(privateHtml.includes(rawBuy), false);
 }
 
 console.log('Budget prints the engine split and does no money math');
@@ -387,7 +418,7 @@ console.log('Budget prints the engine split and does no money math');
     status: 'unreconciled', reason: 'same-day-multiple-payments', backfill: null,
     cardPayment: null, purchases: [],
   })]);
-  assert.match(sameDayHtml, /same day/);
+  assert.match(sameDayHtml, /share this date/);
   assert.doesNotMatch(sameDayHtml, /backfill \$/);
   const noPriorHtml = Detail.visaPaymentsHtml([Object.assign({}, published[0], {
     status: 'unreconciled', reason: 'no-previous-payment', backfill: null,
@@ -455,6 +486,66 @@ console.log('no earlier posted payment stays unreconciled, including coverageSta
     purchase('recent', '2026-09-28', 34.92, 'travelvisa', 'Shopping'),
     pay('pay', '2026-09-29', 35, 'travelvisa'),
   ]).payments, 'earlier').reason, 'no-previous-payment');
+}
+
+console.log('an unreconciled payment blocks the later window');
+{
+  const rows = F.visaPaymentReconciliation([
+    prior('travelvisa'),
+    purchase('p80', '2026-09-02', 80, 'travelvisa', 'Groceries'),
+    tx({
+      date: '2026-09-05', amount: -80, atlasAccountId: 'travelvisa', account: 'travelvisa',
+      payee: 'PAYMENT - THANK YOU',
+    }),
+    purchase('p30', '2026-09-08', 30, 'travelvisa', 'Fuel'),
+    pay('later', '2026-09-12', 110, 'travelvisa'),
+  ]).payments;
+  const later = byId(rows, 'later');
+  assert.equal(later.status, 'unreconciled');
+  assert.equal(later.reason, 'unreconciled-payment-in-window');
+  assert.equal(later.backfill, null);
+  assert.equal(later.cardPayment, null);
+  assert.deepEqual(later.purchases, []);
+  const pendingBetween = pay('pend-between', '2026-09-05', 80, 'travelvisa');
+  pendingBetween.pending = true;
+  const blocked = byId(F.visaPaymentReconciliation([
+    prior('travelvisa'),
+    purchase('p80', '2026-09-02', 80, 'travelvisa', 'Groceries'),
+    pendingBetween,
+    purchase('p30', '2026-09-08', 30, 'travelvisa', 'Fuel'),
+    pay('later', '2026-09-12', 110, 'travelvisa'),
+  ]).payments, 'later');
+  assert.equal(blocked.status, 'unreconciled');
+  assert.equal(blocked.reason, 'unreconciled-payment-in-window');
+  assert.equal(blocked.backfill, null);
+}
+
+console.log('a pending and posted payment on the same day stay unreconciled');
+{
+  const pendingPay = pay('pend-pay', '2026-09-21', 40, 'travelvisa');
+  pendingPay.pending = true;
+  const whilePending = F.visaPaymentReconciliation([
+    prior('travelvisa'),
+    purchase('p', '2026-09-20', 40, 'travelvisa', 'Groceries'),
+    pendingPay,
+    pay('posted-pay', '2026-09-21', 50, 'travelvisa'),
+  ]).payments;
+  const posted = byId(whilePending, 'posted-pay');
+  assert.equal(posted.status, 'unreconciled');
+  assert.equal(posted.reason, 'same-day-multiple-payments');
+  assert.equal(posted.backfill, null);
+  assert.equal(posted.cardPayment, null);
+  assert.deepEqual(posted.purchases, []);
+  const afterPost = F.visaPaymentReconciliation([
+    prior('travelvisa'),
+    purchase('p', '2026-09-20', 40, 'travelvisa', 'Groceries'),
+    pay('was-pending', '2026-09-21', 40, 'travelvisa'),
+    pay('posted-pay', '2026-09-21', 50, 'travelvisa'),
+  ]).payments;
+  assert.equal(byId(afterPost, 'posted-pay').reason, 'same-day-multiple-payments');
+  assert.equal(byId(afterPost, 'was-pending').reason, 'same-day-multiple-payments');
+  assert.equal(byId(afterPost, 'posted-pay').backfill, null);
+  assert.equal(byId(afterPost, 'posted-pay').cardPayment, null);
 }
 
 console.log('visa payment backfill ok');

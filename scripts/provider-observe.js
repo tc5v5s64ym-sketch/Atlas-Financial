@@ -2032,11 +2032,14 @@ function cardMinimumNeedsConfirmation(plan, eventId, accountMap) {
   return mappedCard || !!(debt && !debt.secured && /^Revolving\b/i.test(debt.structure || ''));
 }
 
-function providerTxForVisaBackfill(tx, mapDoc) {
+function providerTxForVisaBackfill(tx, mapDoc, localId) {
   const mapping = mapDoc ? mappingFor(mapDoc, tx && tx.providerAccountId) : null;
   const atlas = mapping && mapping.canonical && mapping.canonical.id;
+  // The served packet uses the local tx-N alias. The provider transaction
+  // id stays off visaPaymentBackfill, including covered purchases.
+  const publishedId = /^tx-\d+$/.test(String(localId || '')) ? String(localId) : null;
   return {
-    id: tx && tx.providerTransactionId != null ? String(tx.providerTransactionId) : null,
+    id: publishedId,
     date: tx && tx.date || null,
     amount: lunchMoneyDebitAmount(tx && tx.amount),
     pending: tx && tx.pending === true,
@@ -3971,7 +3974,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     }
   }
   const visaPaymentBackfill = (Forecast.visaPaymentReconciliation(
-    (collapsed || []).filter(Boolean).map(tx => providerTxForVisaBackfill(tx, mapDoc)),
+    (collapsed || []).filter(Boolean).map(tx => providerTxForVisaBackfill(
+      tx, mapDoc, existingLocalId(tx && tx.providerTransactionId))),
     {
       evidence: {
         coverageStart: window.startDate || null,
