@@ -343,7 +343,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
       ok(/about /.test(q4),
         `Q4 marks estimated ${item.id} as about`);
     }
-    ok(!/unverified/.test(q4),
+    ok(!/unverified/.test(q4.replace(/<[^>]*>/g, '')),
       `Q4 does not print settlement code words for ${item.id}`);
   }
   ok(requiredItems.length >= 1,

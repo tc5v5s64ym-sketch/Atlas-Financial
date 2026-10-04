@@ -87,6 +87,8 @@ const suites = [
   ['decision-first payday operating surface (AF-OPERATE-02)', 'test-operating-surface.js'],
   ['plain-language household homepage', 'test-household-view.js'],
   ['approved Budget UI presentation', 'test-budget-ui-polish.js'],
+  ['Budget review future settlement and zero-plan markers', 'test-budget-review-regressions.js'],
+  ['Budget exact-period original plans and observed progress', 'test-budget-period-progress.js'],
   ['active Budget surface: one renderer, Forecast figures, drilldown and withheld states', 'test-budget-surface.js'],
   ['Budget owner-voice presentation', 'test-budget-owner-voice.js'],
   ['Plan homepage decision desk', 'test-plan-decision-desk.js'],

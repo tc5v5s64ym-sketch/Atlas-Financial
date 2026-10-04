@@ -130,7 +130,8 @@
     const dateAttr = date(row.date) ? ' data-bill-date="' + escape(row.date) + '"' : '';
     return '<details class="bill-detail" data-bill-detail><summary class="operating-line"'
       + ' data-period-bill="' + escape(row.id) + '" data-bill-status="'
-      + escape(text(summary.status) || text(row.status)) + '"' + dateAttr + '>'
+      + escape(text(summary.status) || text(row.status)) + '"' + dateAttr
+      + ' data-bill-settlement="' + escape(text(row.settlement)) + '">'
       + '<span>' + escape(text(summary.label) || text(row.label) || 'Bill details') + '</span>'
       + '<span>' + escape(summary.amount) + '</span>'
       + '</summary>'

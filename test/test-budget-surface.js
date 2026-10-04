@@ -79,6 +79,8 @@ function page() {
 }
 
 const text = html => html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+const householdActualUnknown = html => /data-budget-browse-hold[\s\S]*?data-budget-ratio-actual><span class="budget-v3-unknown">Unavailable/.test(html);
+const householdActualContains = (html, amount) => new RegExp('data-budget-browse-hold[\\s\\S]*?data-budget-ratio-actual>[^<]*\\$'+amount.replace('.', '\\.')+'<').test(html);
 const step = (html, n) => {
   const m = new RegExp(`data-operating-question="${n}"[\\s\\S]*?</summary>`).exec(html);
   return m ? text(m[0]) : '';
@@ -133,11 +135,10 @@ ok(hero.includes(money(EXPECT.final)) && /estimated/.test(hero) && /Before savin
   'the overview republishes the independently reconciled final balance and its estimate/before-savings qualifier');
 const bar = id => /style="left:([^%]+)%;width:([^%]+)%"/.exec(
   html.split(`data-operating-question="${id}"`)[1]?.split('</summary>')[0] || '');
-ok(bar('02') && Number(bar('02')[1]) === 0 && Number(bar('02')[2]) === 100,
-  'income fills the fixed income scale');
-ok(bar('04') && Math.abs(Number(bar('04')[1]) - EXPECT.afterBills / EXPECT.income * 100) < 1e-9
-  && Math.abs(Number(bar('04')[2]) - EXPECT.bills / EXPECT.income * 100) < 1e-9,
-  'the bill deduction occupies its independently derived segment on the same scale');
+ok(bar('02') && Number(bar('02')[1]) === 0 && Math.abs(Number(bar('02')[2]) - 2600 / 4050 * 100) < 1e-9,
+  'income progress uses confirmed received 2600 / original planned 4050');
+ok(!bar('04') && /Partial actuals/.test(step(html, '04')) && /1,400\.00[\s\S]*?1,665\.00/.test(step(html, '04')),
+  'paid 1400 / original bill plan 1665 stays partial with unverified Hydro; no complete bar');
 ok(bar('07') && Math.abs(Number(bar('07')[2]) - EXPECT.final / EXPECT.income * 100) < 1e-9,
   'the final bar keeps the income scale rather than rescaling the ending balance');
 ok(!bar('savings') && /budget-waterfall-track is-unknown/.test(
@@ -147,22 +148,49 @@ ok(!bar('savings') && /budget-waterfall-track is-unknown/.test(
 console.log('\n=== pay-period waterfall on the active surface ===');
 console.log('\n=== published category bars and grouped bills ===');
 const categoryBrowse = (output, id) => output.split(`data-budget-category-open="${id}" data-budget-browse-origin="spending"`)[1]?.split('</button>')[0] || '';
-ok(text(categoryBrowse(html, 'groceries')).includes('$308.55 of $450.00')
+ok(/308\.55[\s\S]*?\/[\s\S]*?450\.00/.test(categoryBrowse(html, 'groceries'))
   && text(categoryBrowse(html, 'groceries')).includes('$141.45 left'),
   'the default grocery row uses independently observed 212.40 + 96.15 and published remaining 141.45');
 const categoryFill = /budget-category-fill" style="width:([^%]+)%/.exec(categoryBrowse(html, 'groceries'));
 ok(categoryFill && Math.abs(Number(categoryFill[1]) - 308.55 / 450 * 100) < 1e-9,
   'category geometry uses spent/plan rather than a new reserve amount');
-ok(/data-budget-browse-hold[\s\S]*?752\.99/.test(html)
+ok(/data-budget-browse-hold[\s\S]*?444\.49[\s\S]*?730\.00/.test(html)
   && /data-budget-browse-remaining[\s\S]*?308\.50/.test(html),
-  'the reserve is the selected-period publication; current remaining is the matching dated from-today publication');
-ok(/budget-bill-group[\s\S]*?Coming up[\s\S]*?data-budget-bill-open="card-minimum"/.test(html)
+  'spent 444.49 / original plan 730 includes Other once; dated remaining stays separate');
+ok(/budget-bill-group[\s\S]*?Not paid[\s\S]*?data-budget-bill-open="card-minimum"/.test(html)
   && /To confirm[\s\S]*?data-budget-bill-open="hydro"/.test(html),
   'upcoming and unverified bill occurrences remain separate without inferring unpaid status');
 ok(/budget-browse-paid[\s\S]*?data-budget-bill-open="mortgage"/.test(html)
   && /data-budget-browse-bills-remaining[\s\S]*?265\.00/.test(html),
-  'paid occurrence is folded while the header reprints Forecast remaining bills 265');
+  'paid occurrence stays in its bucket while the header reprints Forecast remaining bills 265');
+ok((html.match(/data-budget-bill-filter=/g) || []).length === 2
+  && /data-budget-bill-filter="paid"[\s\S]*?PAID<span>1<\/span>/.test(html)
+  && /data-budget-bill-filter="not-paid"[\s\S]*?NOT PAID<span>3<\/span>/.test(html),
+  'two filters count the same four published occurrences: one confirmed paid and three not confirmed paid');
 const noSpent = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').householdBudget[0].spent = null");
+{
+  const bp = page(); bp.render(fx.served());
+  const source = JSON.stringify([
+    { id: 'synthetic-paid', label: 'Synthetic paid', status: 'PAID', settlement: 'represented', date: '2026-08-15' },
+    { id: 'synthetic-due', label: 'Synthetic due', status: 'still due', settlement: 'upcoming', date: '2026-08-21' },
+    { id: 'synthetic-pending', label: 'Synthetic pending', status: 'pending', settlement: 'pending', date: '2026-08-19' },
+    { id: 'synthetic-unverified', label: 'Synthetic unverified', status: 'planned', settlement: 'unverified', date: '2026-08-18' },
+    { id: 'synthetic-unknown', label: 'Synthetic unknown', status: null, settlement: null, date: '2026-08-17' },
+    { id: 'synthetic-contradiction', label: 'Synthetic contradiction', status: 'PAID', settlement: 'unverified', date: '2026-08-16' },
+  ]);
+  const out = vm.runInContext(`globalThis.__filterRows = ${source}; globalThis.__beforeRows = JSON.stringify(__filterRows);
+    budgetBillsSectionHtml({bills: __filterRows}, __ctx)`, bp.context);
+  ok(/PAID<span>1<\/span>/.test(out) && /NOT PAID<span>5<\/span>/.test(out),
+    'filter counts use the exact published roster; pending, unknown and contradictory confirmation never become paid');
+  const notPaid = out.split('data-budget-bill-bucket="not-paid"')[1]?.split('id="budget-bill-bucket-paid"')[0] || '';
+  ok(['synthetic-due', 'synthetic-pending', 'synthetic-unverified', 'synthetic-unknown', 'synthetic-contradiction'].every(id => notPaid.includes(`data-budget-bill-open="${id}"`))
+    && /Payment pending/.test(notPaid) && /Not confirmed/.test(notPaid) && /Status unavailable/.test(notPaid),
+    'NOT PAID groups all not-confirmed-paid occurrences while retaining their distinct row statuses and dates');
+  ok(vm.runInContext('JSON.stringify(__filterRows) === __beforeRows', bp.context), 'filter presentation never rewrites settlement evidence');
+  const empty = vm.runInContext('budgetBillsSectionHtml({bills: []}, __ctx)', bp.context);
+  ok(/PAID<span>0<\/span>/.test(empty) && /NOT PAID<span>0<\/span>/.test(empty)
+    && /No confirmed paid bills/.test(empty) && /No bill occurrences published/.test(empty), 'both empty filters remain usable and disclose their empty roster');
+}
 ok(/Spending unavailable/.test(categoryBrowse(noSpent, 'groceries'))
   && !/141\.45 left|budget-category-fill/.test(categoryBrowse(noSpent, 'groceries')),
   'unavailable spending is not classified within plan, replaced by zero or given a numeric bar');
@@ -172,21 +200,21 @@ ok(/is-hatched/.test(categoryBrowse(noPlan, 'groceries')) && /data-budget-catego
   && !/budget-category-fill/.test(categoryBrowse(noPlan, 'groceries')) && /308\.55/.test(categoryBrowse(noPlan, 'groceries')),
   'missing category plan withholds only ratio geometry while observed spending stays known');
 p.render(fx.served());
-const noHoldTrust = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetHoldTrust = 'unavailable'");
-ok(/data-budget-browse-hold[^>]*><span class="budget-browse-unknown">Unavailable/.test(noHoldTrust),
-  'an explicitly unavailable reserve stays unavailable in the new secondary summary');
+const noHoldTrust = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetProgress.household.actual.trust = 'unavailable'");
+ok(householdActualUnknown(noHoldTrust),
+  'an explicitly unavailable published actual stays unavailable in the new secondary summary');
 p.render(fx.served());
-const zeroBills = p.rerender("Object.assign(__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current'), {totalBillsThisPeriod:0,paidBills:0,remainingBills:0})");
-ok(/budget-bills-progress is-no-scale/.test(zeroBills) && !/budget-bills-progress is-hatched/.test(zeroBills),
+const zeroBills = p.rerender("const zero = __ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetProgress.bills; zero.planned = {amount:0,trust:'calculated',completeness:'complete'}; zero.actual = {amount:0,trust:'calculated',completeness:'complete'}");
+ok(/data-budget-bar-state="zero-plan"/.test(zeroBills) && /data-budget-progress-kind="bills"[^>]*aria-hidden="true"><\/span>/.test(zeroBills),
   'known zero bills use an explicit no-scale track rather than an unavailable hatch or a division by zero');
 p.render(fx.served());
 const unknownBill = p.rerender("Object.assign(__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').bills.find(row=>row.id==='hydro'), {status:null,settlement:null})");
 ok(/Status unavailable[\s\S]*?data-budget-bill-open="hydro"/.test(unknownBill),
   'a bill with no published settlement remains in the unknown group rather than being inferred due or paid');
 p.render(fx.served());
-const stampedHold = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetHold = 612.34");
-ok(/data-budget-browse-hold[^>]*>\$612\.34</.test(stampedHold),
-  'the new reserve summary selects the publication without summing category rows');
+const stampedHold = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetProgress.household.actual.amount = 612.34");
+ok(householdActualContains(stampedHold, '612.34'),
+  'the actual summary selects its publication without summing category rows or borrowing the reserve');
 for (const change of ["remainingHousehold = null", "currentThrough = '2026-09-10'", "asOf = '2026-08-19'", "trust = 'unavailable'"]) {
   p.render(fx.served());
   const result = p.rerender(`__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').fromTodayFunding.${change}`);
@@ -217,7 +245,7 @@ const unavailableSpend = browseCard(unavailableHistory, 'spending');
 ok(/data-budget-spending-evidence="unavailable"/.test(unavailableSpend)
   && /Spending unavailable · completed period/.test(unavailableSpend)
   && !/Observed spending · completed period/.test(unavailableSpend)
-  && /data-budget-browse-hold[^>]*><span class="budget-browse-unknown">Unavailable/.test(unavailableSpend)
+  && householdActualUnknown(unavailableSpend)
   && /Missing or incomplete history is not treated as observed spending/.test(unavailableSpend)
   && ['groceries', 'fuel', 'restaurants'].every(id => /Spending unavailable/.test(categoryBrowse(unavailableHistory, id))),
   'Jul 31–Aug 13 omitted observations stay unavailable, not counted $0 observed history');
@@ -232,9 +260,9 @@ const partialSpend = browseCard(partialHistory, 'spending');
 ok(/data-budget-spending-evidence="partial"/.test(partialSpend)
   && /Incomplete spending evidence · completed period/.test(partialSpend)
   && !/Observed spending · completed period/.test(partialSpend)
-  && /data-budget-browse-hold[^>]*><span class="budget-browse-unknown">Unavailable/.test(partialSpend)
+  && householdActualUnknown(partialSpend)
   && !/data-budget-browse-hold[^>]*>\$80\.00</.test(partialSpend)
-  && /80\.00 of/.test(categoryBrowse(partialHistory, 'groceries')),
+  && /80\.00[\s\S]*?\//.test(categoryBrowse(partialHistory, 'groceries')),
   'partial history keeps the observed grocery 80 and withholds an incomplete counted total');
 p.render(fx.served());
 const knownHistory = p.rerender(`
@@ -242,11 +270,13 @@ const knownHistory = p.rerender(`
   (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'fuel')).spent = 20;
   (__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').householdBudget.find(item => item.id === 'restaurants')).spent = 10;
   __ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').budgetHold = 110;
+  // Independently stamped publication-boundary identity, not an observation proof.
+  __ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').budgetProgress.household.actual = {amount:110,trust:'calculated',completeness:'complete'};
   planPayPeriodId = 'past:2026-07-31'; __ctx.planPayPeriodId = planPayPeriodId`);
 const knownSpend = browseCard(knownHistory, 'spending');
 ok(/data-budget-spending-evidence="observed"/.test(knownSpend)
   && /Observed spending · completed period/.test(knownSpend)
-  && /data-budget-browse-hold[^>]*>\$110\.00</.test(knownSpend)
+  && householdActualContains(knownSpend, '110.00')
   && /Completed periods show observed spending/.test(knownSpend),
   'complete lookback 80 + 20 + 10 reprints the published 110 counted total');
 const hydroPage = page();
@@ -262,7 +292,7 @@ ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(hydroBills)
   && /Settlement not fully confirmed/.test(hydroBills)
   && !/left to pay or confirm/.test(hydroBills)
   && !/\$0\.00/.test(/id="budget-bills-heading"[\s\S]*?<\/h2>/.exec(hydroBills)?.[0] || '')
-  && /1 to confirm/.test(hydroBills)
+  && /NOT PAID<span>1<\/span>/.test(hydroBills)
   && /To confirm[\s\S]*?data-budget-bill-open="hydro"[\s\S]*?Not confirmed[\s\S]*?120\.00/.test(hydroBills)
   && /data-period-bill="hydro"[\s\S]*?Missing evidence does not mean unpaid/.test(hydroLookback),
   'unverified historical Hydro withholds the actionable $0 heading and keeps original evidence');
@@ -285,7 +315,7 @@ ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(unknownBill
   && /Settlement not fully confirmed/.test(unknownBills)
   && !/left to pay or confirm/.test(unknownBills)
   && /Status unavailable[\s\S]*?data-budget-bill-open="hydro"/.test(unknownBills)
-  && /1 unavailable/.test(unknownBills),
+  && /NOT PAID<span>1<\/span>/.test(unknownBills),
   'unknown historical settlement withholds the $0 all-clear and does not infer unpaid');
 const restoredCurrent = hydroPage.rerender(`
   planPayPeriodId = null; __ctx.planPayPeriodId = null`);
@@ -307,10 +337,11 @@ ok(step(html, '02').includes(money(EXPECT.income)) && /≈ estimated/.test(step(
   `Income is ${money(EXPECT.income)} with Forecast's estimated tag`, step(html, '02'));
 ok(step(html, '04').includes(money(EXPECT.bills)), `Bills deduction is ${money(EXPECT.bills)}`, step(html, '04'));
 ok(step(html, '05').includes(money(EXPECT.afterBills)), `Balance after bills is ${money(EXPECT.afterBills)}`, step(html, '05'));
-ok(step(html, '06').includes(money(EXPECT.household)), `Household budget is ${money(EXPECT.household)}`, step(html, '06'));
+ok(step(html, '06').includes('$444.49') && step(html, '06').includes('$730.00'), 'Household actual/original plan is 444.49 / 730.00', step(html, '06'));
+ok(p.context.__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').budgetHold === EXPECT.household, 'native financial reserve remains independently reconciled 752.99');
 ok(step(html, '07').includes(money(EXPECT.final)) && /≈ estimated/.test(step(html, '07')),
   `Balance After Deductions is ${money(EXPECT.final)}, estimated`, step(html, '07'));
-ok(/Proposed savings[\s\S]*?Unavailable/.test(text(html)) && !/Proposed savings[^$]*\$0\.00/.test(step(html, 'savings')),
+ok(/Savings[\s\S]*?Unavailable/.test(text(html)) && !/Savings[^$]*\$0\.00/.test(step(html, 'savings')),
   'the period savings step with no funding snapshot reads Unavailable, never $0');
 
 console.log('\n=== bills, evidence and spending on the active surface ===');
@@ -337,16 +368,15 @@ ok(step(deficitHtml, '04').includes(money(3380)) && step(deficitHtml, '05').incl
   'synthetic observations produce the independent 3,380 bill load and 670 after bills');
 ok(/data-sign="negative"/.test(summaryHtml(deficitHtml, '07')) && /82\.99/.test(step(deficitHtml, '07'))
   && /estimated/.test(step(deficitHtml, '07')), 'the -82.99 final balance keeps its sign and Forecast estimate');
-for (const id of ['06', '07']) ok(/data-budget-bar-state="deficit"/.test(summaryHtml(deficitHtml, id))
+for (const id of ['07']) ok(/data-budget-bar-state="deficit"/.test(summaryHtml(deficitHtml, id))
   && !/is-unknown/.test(summaryHtml(deficitHtml, id)), `${id}: a known negative start or amount is a deficit, never unknown`);
 const incomeSegments = segments(summaryHtml(deficitHtml, '02'));
-ok(incomeSegments.length === 1 && incomeSegments[0].left === 50 && incomeSegments[0].width === 50,
-  'every signed-period row uses zero at the shared midpoint and the same income units');
+ok(incomeSegments.length === 1 && incomeSegments[0].left === 0 && Math.abs(incomeSegments[0].width - 2600 / 4050 * 100) < 1e-9,
+  'received/original-plan income progress remains independent of a deficit balance');
 const householdSegments = segments(summaryHtml(deficitHtml, '06'));
-ok(householdSegments.length === 2 && householdSegments[0].negative && !householdSegments[1].negative
-  && Math.abs(householdSegments[0].width - 82.99 / 4050 * 50) < 1e-9
-  && Math.abs(householdSegments[1].width - 670 / 4050 * 50) < 1e-9,
-  'the household deduction crosses zero: 82.99 below zero and 670 above, without losing either signed portion');
+ok(householdSegments.length === 1 && householdSegments[0].left === 0 && !householdSegments[0].negative
+  && Math.abs(householdSegments[0].width - 444.49 / 730 * 100) < 1e-9,
+  'incurred/original-plan household progress stays independent of the reserve deduction and balance sign');
 const overflowHtml = page().render(fx.served({ periodInternet: 10000 }));
 ok(/is-overflow-start/.test(summaryHtml(overflowHtml, '07')) && /8,282\.99/.test(step(overflowHtml, '07'))
   && !/is-unknown/.test(summaryHtml(overflowHtml, '07')),
@@ -354,7 +384,7 @@ ok(/is-overflow-start/.test(summaryHtml(overflowHtml, '07')) && /8,282\.99/.test
 const zeroIncomeHtml = page().render(fx.served({ zeroIncome: true }));
 ok(step(zeroIncomeHtml, '02').includes(money(0)) && !/Unavailable/.test(step(zeroIncomeHtml, '02')),
   'no invented salary receipt: zero income remains a published known zero');
-for (const id of ['02', '04', '06', '07']) ok(/data-budget-bar-state="zero-income"/.test(summaryHtml(zeroIncomeHtml, id))
+for (const id of ['05', '07']) ok(/data-budget-bar-state="zero-income"/.test(summaryHtml(zeroIncomeHtml, id))
   && !/is-unknown/.test(summaryHtml(zeroIncomeHtml, id)) && segments(summaryHtml(zeroIncomeHtml, id)).length === 0,
   `${id}: zero income disables ratio geometry explicitly, without dividing by zero or changing trust`);
 ok(/data-sign="negative"/.test(summaryHtml(zeroIncomeHtml, '07')) && /2,417\.99/.test(step(zeroIncomeHtml, '07')),
@@ -371,6 +401,8 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
       `${coverage}/${settlement}: actual Forecast publishes the completed Jul 31-Aug 13 identity`);
     if (!historicalPeriod) continue;
     const out = historyPage.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(historicalPeriod.id)}`);
+    ok(historicalPeriod.budgetProgress.household.planned.amount === null,
+      `${coverage}/${settlement}: current category targets are not original historical plans`);
     const spending = browseSection(out, 'spending'), bills = browseSection(out, 'bills');
     const ready = coverage === 'full' || coverage === 'posted-only';
     const grocery = historicalPeriod.householdBudget.find(row => row.id === 'groceries');
@@ -380,13 +412,13 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
       `${coverage}/${settlement}: real observation coverage publishes independent $47.25 + $19.50 = $66.75, or omits unproven spending`);
     ok(ready ? /Observed spending · completed period/.test(spending) && /\$66\.75/.test(spending)
       : /Spending unavailable · completed period/.test(spending) && !/Observed spending · completed period|Completed periods show observed spending/.test(spending)
-        && /data-budget-browse-hold><span class="budget-browse-unknown">Unavailable/.test(spending),
+        && householdActualUnknown(spending),
       `${coverage}/${settlement}: completed label and historical amount agree with actual coverage, without invented zero spending`);
     const bill = historicalPeriod.bills.find(row => row.id === 'historical-service');
     ok(bill?.status === (settlement === 'paid' ? 'PAID' : 'planned') && historicalPeriod.remainingBills === 0,
       `${coverage}/${settlement}: Forecast historical actionable $0 is retained, with ${settlement} row identity`);
     ok(/Completed-period bills/.test(bills) && !/left to pay or confirm|data-budget-browse-bills-remaining/.test(bills)
-      && (settlement === 'paid' ? /Paid or included in opening/.test(bills) : /To confirm[\s\S]*?Synthetic historical service/.test(bills))
+      && (settlement === 'paid' ? /data-budget-bill-bucket="paid"[\s\S]*?Synthetic historical service/.test(bills) : /To confirm[\s\S]*?Synthetic historical service/.test(bills))
       && /Historical settlement evidence, not an amount due now/.test(bills),
       `${coverage}/${settlement}: history is settlement evidence, never a zero due/confirmation all-clear`);
     ok(/data-period-bill="historical-service"/.test(out) && /data-budget-category-open="groceries"/.test(out),
@@ -407,9 +439,10 @@ for (const trust of ['unavailable', 'unknown', 'untrusted']) {
   const hp = page(); hp.render(fx.historical('full'));
   const hist = hp.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31');
   const out = hp.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(hist.id)};
-    __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').householdBudget.find(row => row.id === 'groceries').trust = ${JSON.stringify(trust)}`);
+    __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').householdBudget.find(row => row.id === 'groceries').trust = ${JSON.stringify(trust)};
+    __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').budgetProgress.household.actual.trust = ${JSON.stringify(trust)}`);
   ok(/Incomplete spending evidence · completed period/.test(browseSection(out, 'spending'))
-    && /data-budget-browse-hold><span class="budget-browse-unknown">Unavailable/.test(out)
+    && householdActualUnknown(out)
     && /Spending unavailable/.test(categoryBrowse(out, 'groceries'))
     && !/budget-category-fill|\$47\.25/.test(categoryBrowse(out, 'groceries')),
     `${trust}: partial historical publication withholds the aggregate and affected row geometry; trusted other observations remain`);
@@ -419,17 +452,19 @@ for (const trust of ['unavailable', 'unknown', 'untrusted']) {
 const historicalZero = page(); historicalZero.render(fx.historical('full'));
 const withheldOther = historicalZero.rerender(`__ctx.planPayPeriodId = __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').id;
   __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').householdBudget.push({ id:'other-spending',
-    label:'Synthetic unknown historical other spending', otherSpending:true, needsConfirmation:true, spent:null, planned:null })`);
+    label:'Synthetic unknown historical other spending', otherSpending:true, needsConfirmation:true, spent:null, planned:null });
+  __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').budgetProgress.household.actual = {amount:null,trust:'unavailable',completeness:'unavailable'}`);
 ok(/data-budget-spending-evidence="partial"/.test(browseSection(withheldOther, 'spending'))
-  && /data-budget-browse-hold><span class="budget-browse-unknown">Unavailable/.test(withheldOther)
+  && householdActualUnknown(withheldOther)
   && /Unavailable/.test(categoryBrowse(withheldOther, 'other-spending')),
   'missing Other spending evidence cannot be omitted to promote the full historical hold to observed');
 historicalZero.render(fx.historical('full'));
 const allZero = historicalZero.rerender(`__ctx.planPayPeriodId = __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').id;
   const histZero = __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31');
-  histZero.householdBudget.forEach(row => row.spent = 0); histZero.budgetHold = 0`);
+  histZero.householdBudget.forEach(row => row.spent = 0); histZero.budgetHold = 0;
+  histZero.budgetProgress.household.actual = {amount:0,trust:'calculated',completeness:'complete'}`);
 ok(/Observed spending · completed period/.test(browseSection(allZero, 'spending'))
-  && /data-budget-browse-hold>\$0\.00/.test(allZero),
+  && householdActualContains(allZero, '0.00'),
   'published known zero observations stay known; missing evidence never fills them');
 for (const role of ['current', 'next']) for (const trust of ['unknown', 'unavailable', 'untrusted']) {
   const tp = page(); tp.render(fx.served());
@@ -451,16 +486,18 @@ matrixPage.render(fx.served());
 const publishedRow = '__ctx.advice.payPeriodViews.find(row => row.start === "2026-08-14")';
 const matrix = (amount, amountTrust, income, incomeTrust, position = 0) => matrixPage.rerender(`
   Object.assign(${publishedRow}, { budgetHold: ${amount}, budgetHoldTrust: ${JSON.stringify(amountTrust)},
+    afterBills: ${amount}, afterBillsTrust: ${JSON.stringify(amountTrust)},
     predictedEndingBalance: ${amount}, afterHouseholdBudget: ${position},
     balanceAfterDeductionsTrust: ${JSON.stringify(amountTrust)},
     available: ${income}, incomeTrust: ${JSON.stringify(incomeTrust)} })`);
 for (const trust of ['calculated', 'estimated', null]) for (const amount of [100, 0, -100]) {
   for (const income of [4050, 0]) {
     const result = matrix(amount, trust, income, trust || 'calculated', amount < 0 ? -100 : 0);
-    for (const id of ['06', '07']) {
+    for (const id of ['05', '07']) {
       const row = summaryHtml(result, id);
-      ok(!/is-unknown|Unavailable/.test(row) && /data-budget-bar-state=/.test(row)
-        && (income !== 0 || /data-budget-bar-state="zero-income"/.test(row)),
+      ok(trust === null && id === '05' ? /is-unknown|Unavailable/.test(row) && segments(row).length === 0
+        : !/is-unknown|Unavailable/.test(row) && /data-budget-bar-state=/.test(row)
+          && (income !== 0 || /data-budget-bar-state="zero-income"/.test(row)),
       `${trust} amount ${amount}, income ${income}, row ${id}: known money survives scale availability`);
     }
     const hero = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(result)?.[0] || '');
@@ -470,13 +507,14 @@ for (const trust of ['calculated', 'estimated', null]) for (const amount of [100
   for (const [income, incomeTrust] of [['null', 'unavailable'], ['NaN', 'calculated'],
     ['Infinity', 'estimated'], [4050, 'unknown'], [4050, 'untrusted'], [-4050, 'calculated']]) {
     const result = matrix(amount, trust, income, incomeTrust);
-    for (const id of ['06', '07']) ok(/data-budget-bar-state="unscaled"/.test(summaryHtml(result, id))
-      && !/is-unknown|Unavailable/.test(summaryHtml(result, id)),
+    for (const id of ['05', '07']) ok(trust === null && id === '05'
+      ? /is-unknown|Unavailable/.test(summaryHtml(result, id)) && segments(summaryHtml(result, id)).length === 0
+      : /data-budget-bar-state="unscaled"/.test(summaryHtml(result, id)) && !/is-unknown|Unavailable/.test(summaryHtml(result, id)),
     `${trust} amount ${amount}, denominator ${income}/${incomeTrust}, row ${id}: scale unavailable, money known`);
   }
   for (const position of ['null', 'NaN', 'Infinity']) {
     const result = matrix(amount, trust, 4050, 'calculated', position);
-    ok(/data-budget-bar-state="unscaled"/.test(summaryHtml(result, '06'))
+    ok(/data-budget-bar-state="known"/.test(summaryHtml(result, '06'))
       && !/is-unknown|Unavailable/.test(summaryHtml(result, '06')),
     `${trust} amount ${amount}, position ${position}: missing chart position cannot withhold known money`);
   }
@@ -484,7 +522,7 @@ for (const trust of ['calculated', 'estimated', null]) for (const amount of [100
 for (const amount of [100, 0, -100, 'null', 'NaN', 'Infinity', '"100"']) {
   for (const trust of ['unavailable', 'unknown', 'untrusted']) {
     const result = matrix(amount, trust, 4050, 'calculated');
-    for (const id of ['06', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
+    for (const id of ['05', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
       && /Unavailable/.test(summaryHtml(result, id)) && segments(summaryHtml(result, id)).length === 0,
     `${amount}/${trust}, row ${id}: unpublished money is withheld with no numeric bar`);
     ok(/Unavailable/.test(text(/data-budget-period-result[\s\S]*?<\/div>/.exec(result)?.[0] || '')),
@@ -493,7 +531,7 @@ for (const amount of [100, 0, -100, 'null', 'NaN', 'Infinity', '"100"']) {
 }
 for (const amount of ['NaN', 'Infinity', '"100"']) {
   const result = matrix(amount, 'calculated', 0, 'calculated');
-  for (const id of ['06', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
+  for (const id of ['05', '07']) ok(/is-unknown/.test(summaryHtml(result, id))
     && /Unavailable/.test(summaryHtml(result, id)), `${amount}/calculated, row ${id}: nonnumeric money stays unknown at zero income`);
 }
 
@@ -568,7 +606,8 @@ const overspendPeriod = overspendPage.context.__ctx.advice.payPeriodViews.find(r
 // 212.40 + 96.15 + 200 = 508.55 groceries, above the 450 target.
 // Hold = 508.55 + 160 + 120 + 22.99 = 811.54; final = 4050 - 1665 - 811.54.
 ok(overspendPeriod.budgetHold === 811.54 && overspendPeriod.balanceAfterDeductions === 1573.46
-  && step(overspendHtml, '06').includes(money(811.54)) && step(overspendHtml, '07').includes(money(1573.46)),
+  && step(overspendHtml, '06').includes(money(644.49)) && step(overspendHtml, '06').includes(money(730))
+  && step(overspendHtml, '07').includes(money(1573.46)),
   'observed grocery overrun raises the published household reserve and reduces the final balance by 58.55');
 ok(overspendPeriod.fromTodayFunding.remainingHousehold === 167.05
   && /data-budget-spent="groceries"[\s\S]*?Synthetic extra grocer[\s\S]*?200\.00/.test(overspendHtml),
@@ -684,6 +723,24 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
         `${coverage}/${settlement}/${role}: Today evidence remains available without a duplicate or selected-period substitution`);
     }
   }
+}
+
+console.log('\n=== compact savings contribution evidence ===');
+{
+  const sp = page(); const out = sp.render(fx.served());
+  const goals = out.split('data-budget-savings-goals')[1]?.split('data-budget-funding-savings')[0] || '';
+  ok(/School trip/.test(goals) && /Winter tires/.test(goals) && /Not confirmed/.test(goals),
+    'the default savings card lists published names with unconfirmed period fulfillment');
+  ok(!/Confirmed assigned|Unallocated cash|Currently backed|goalKey/.test(goals),
+    'technical account inventory remains behind complete evidence rather than becoming default goal rows');
+  const stamped = sp.rerender(`const funding = __ctx.advice.payPeriodViews.find(row => row.timelineRole === 'current').plannedCostFunding;
+    funding.items.forEach(row => { row.actualSaved = 9999; row.cumulativeProposed = 9999; row.contribution = 0; });`);
+  const stillUnknown = stamped.split('data-budget-savings-goals')[1]?.split('data-budget-funding-savings')[0] || '';
+  ok(!/>Funded<|>Still to fund</.test(stillUnknown) && /Not confirmed/.test(stillUnknown),
+    'a saved balance or cumulative proposal cannot become this period\'s confirmed fulfillment');
+  const inventoryPage = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
+  ok(/<details class="budget-savings-accounts">\s*<summary>Savings accounts &amp; evidence<\/summary>\s*<div id="savings-inventory"><\/div>\s*<\/details>/.test(inventoryPage),
+    'complete inventory is keyboard-accessible through a collapsed native evidence disclosure');
 }
 
 console.log('\n=== independent payday undated roster ===');
@@ -823,16 +880,15 @@ console.log('\n=== known deficit is not unknown ===');
   const heroText = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(deficitHtml)?.[0] || '');
   ok(heroText.includes(signed(DEFICIT.final)) && /estimated/.test(heroText),
     'the hero keeps the published negative final and its estimate qualifier', heroText);
-  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('06')) && !/is-unknown/.test(summaryHtml('06'))
-    && step(deficitHtml, '06').includes(money(DEFICIT.household)),
-    'Household Budget with a negative start uses the deficit track, not the unknown hatch');
+  ok(/data-budget-bar-state="known"/.test(summaryHtml('06')) && step(deficitHtml, '06').includes('$444.49')
+    && step(deficitHtml, '06').includes('$730.00'), 'Household actual progress remains 444.49 / 730 independently of the known negative financial balance');
   ok(/budget-waterfall-track is-deficit/.test(summaryHtml('07')) && !/is-unknown/.test(summaryHtml('07'))
     && step(deficitHtml, '07').includes(signed(DEFICIT.final)) && /≈ estimated/.test(step(deficitHtml, '07')),
     'the final negative amount uses the deficit track and keeps its published dollars and estimate');
   ok(/budget-waterfall-track is-deficit/.test(summaryHtml('05')) && step(deficitHtml, '05').includes(signed(DEFICIT.afterBills)),
     'the negative after-bills row keeps its published deficit and is not hatched unknown');
   ok(!/style="left:/.test(summaryHtml('savings')) && /budget-waterfall-track is-unknown/.test(summaryHtml('savings'))
-    && /Proposed savings[\s\S]*?Unavailable/.test(text(deficitHtml)),
+    && /Savings[\s\S]*?Unavailable/.test(text(deficitHtml)),
     'unavailable savings stay hatched with no invented zero-length numeric bar');
 }
 
@@ -865,24 +921,21 @@ console.log('\n=== known zero income is not unknown ===');
   const heroText = text(/data-budget-period-result[\s\S]*?<\/div>/.exec(zeroHtml)?.[0] || '');
   ok(heroText.includes(signed(ZERO.final)) && /estimated/.test(heroText),
     'the hero keeps the published negative final and its estimate qualifier', heroText);
-  ok(/budget-waterfall-track is-noscale/.test(summaryHtml('02')) && !/is-unknown/.test(summaryHtml('02'))
-    && !/style="left:/.test(summaryHtml('02')) && step(zeroHtml, '02').includes(money(ZERO.income)),
-    'known $0 income uses the no-scale track, not the unknown hatch or an invented bar');
-  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('04')) && !/is-unknown/.test(summaryHtml('04'))
-    && !/style="left:/.test(summaryHtml('04')) && step(zeroHtml, '04').includes(money(ZERO.bills)),
-    'bills with a negative remaining start stay a known deficit with no invented scale');
+  ok(/budget-waterfall-track is-unknown/.test(summaryHtml('02')) && !/style="left:/.test(summaryHtml('02'))
+    && /data-budget-ratio-plan>[\s\S]*?\$0\.00/.test(summaryHtml('02')), 'known zero original income plan survives while unobserved actual stays unavailable');
+  ok(/budget-waterfall-track is-unknown/.test(summaryHtml('04')) && !/style="left:/.test(summaryHtml('04'))
+    && step(zeroHtml, '04').includes(money(ZERO.bills)), 'original bill plan survives while absent actual evidence has no invented paid bar');
   ok(/budget-waterfall-track is-deficit/.test(summaryHtml('05')) && !/is-unknown/.test(summaryHtml('05'))
     && !/style="left:/.test(summaryHtml('05')) && step(zeroHtml, '05').includes(signed(ZERO.afterBills)),
     'the negative after-bills row keeps its published deficit and is not hatched unknown');
-  ok(/budget-waterfall-track is-deficit/.test(summaryHtml('06')) && !/is-unknown/.test(summaryHtml('06'))
-    && !/style="left:/.test(summaryHtml('06')) && step(zeroHtml, '06').includes(money(ZERO.household)),
-    'Household Budget with a negative start uses the deficit track, not the unknown hatch');
+  ok(/budget-waterfall-track is-unknown/.test(summaryHtml('06')) && !/style="left:/.test(summaryHtml('06'))
+    && step(zeroHtml, '06').includes(money(ZERO.household)), 'original household plan survives while no observations cannot become zero actual spending');
   ok(/budget-waterfall-track is-deficit/.test(summaryHtml('07')) && !/is-unknown/.test(summaryHtml('07'))
     && !/style="left:/.test(summaryHtml('07'))
     && step(zeroHtml, '07').includes(signed(ZERO.final)) && /≈ estimated/.test(step(zeroHtml, '07')),
     'the final negative amount uses the deficit track and keeps its published dollars and estimate');
   ok(!/style="left:/.test(summaryHtml('savings')) && /budget-waterfall-track is-unknown/.test(summaryHtml('savings'))
-    && /Proposed savings[\s\S]*?Unavailable/.test(text(zeroHtml)),
+    && /Savings[\s\S]*?Unavailable/.test(text(zeroHtml)),
     'unavailable savings stay hatched with no invented zero-length numeric bar');
 }
 

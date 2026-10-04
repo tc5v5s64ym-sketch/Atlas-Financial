@@ -196,6 +196,17 @@ function served(opts = {}) {
     data.plan.startingCash.breakdown.find(row => row.id === canonicalId).value += opts[key] - original;
   }
   const overlay = Live.fromObservation({ data, payload: observed, accountMap: map, identity: observationIdentity });
+  if (opts.earlyInternet) {
+    // Typed occurrence-receipt boundary fixture, not a provider-matcher or
+    // current-cash reconciliation test. Forecast earns its native PAID row
+    // from this observed receipt before Budget consumes that publication.
+    const packet=overlay.data.liveOverlay.currentPeriodActuals;
+    packet.representedActuals.push({id:'internet',date:'2026-08-24',actual:85,
+      postedOn:'2026-08-19',transactionId:'invented-early-service'});
+    packet.transactions.push({id:'invented-early-service',date:'2026-08-19',amount:85,
+      pending:false,representedBill:true,categoryLabel:'Bills',accountRole:'household-cash',
+      atlasAccountId:'chequing-a',displayedPayee:'Invented early service payment'});
+  }
   if (opts.unavailablePlan) {
     return Live.failedOverlay(canonical(), 'Synthetic refresh could not be trusted.', { report: overlay.report });
   }

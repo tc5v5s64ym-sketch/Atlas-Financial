@@ -11142,6 +11142,190 @@
     return result;
   }
 
+  // Read-only progress from incumbent calendar rows and coverage. Settlement,
+  // classification, funding, deductions and the cash walk remain unchanged.
+  function budgetPeriodProgress(plan, asOf, period, opts) {
+    opts = opts || {};
+    const own = (row, key) => !!row && Object.prototype.hasOwnProperty.call(row, key);
+    const finite = n => typeof n === 'number' && Number.isFinite(n);
+    const trusted = t => t === 'calculated' || t === 'estimated';
+    const fieldTrust = (row, key, fallback) => own(row, key)
+      ? trusted(row[key]) ? row[key] : 'unavailable' : fallback;
+    const stamp = (amount, trust, completeness, reason) => ({ amount, trust, completeness, reason: reason || null });
+    const unknown = reason => stamp(null, 'unavailable', 'unavailable', reason);
+    const scope = !!(period && savingsDate(asOf) && savingsDate(period.start) && savingsDate(period.end)
+      && period.start <= period.end);
+    const future = scope && (period.start > asOf || period.projected === true
+      || ['next', 'future'].includes(period.timelineRole));
+    const past = scope && period.end < asOf;
+    const unavailable = !scope || period.operatingPlanUnavailable === true;
+    const packet = currentPeriodActualsPacket(opts);
+    const coverage = scope && !future && !unavailable
+      ? past ? lookbackActualsCoverageState(period.start, period.end, opts)
+        : actualsCoverageState(asOf, period.start, opts)
+      : { remainingClaim: 'unavailable', reason: future
+        ? 'Future actuals are unavailable; projections are not receipts or spending.'
+        : 'The selected operating period is unavailable.' };
+    const through = scope ? past ? period.end : asOf : null;
+    // Existing coverage tolerates absent coverageStart. A complete new
+    // aggregate needs bounded evidence; missing transactions are not [].
+    const bounded = !!(scope && packet && Array.isArray(packet.transactions)
+      && savingsDate(coverage.coverageStart) && savingsDate(coverage.coverageThrough)
+      && savingsDate(packet.observationAsOf) && packet.observationAsOf >= through && packet.observationAsOf <= asOf
+      && coverage.coverageStart <= period.start && coverage.coverageThrough >= through && coverage.coverageThrough <= asOf);
+    const readable = !future && !unavailable && bounded
+      && ['precise', 'posted-only'].includes(coverage.remainingClaim);
+    const invalidEvidence = readable && packet.transactions.some(tx => tx
+      && (!savingsDate(tx.date) || tx.date >= period.start && tx.date <= through && !finite(tx.amount)));
+    const complete = readable && !invalidEvidence && coverage.remainingClaim === 'precise';
+    const actualReason = future || unavailable ? coverage.reason
+      : !bounded ? 'Bounded transaction evidence for this exact period is unavailable.'
+        : invalidEvidence ? 'Transaction dates or amounts are not established.' : coverage.reason;
+    const originalPlan = (rows, amountOf, trustOf) => {
+      if (unavailable || !Array.isArray(rows)) return unknown('Original planned amounts are unavailable.');
+      let amount = 0, trust = 'calculated';
+      for (const row of rows) {
+        const value = amountOf(row), rowTrust = trustOf(row);
+        if (!finite(value) || value < 0 || !trusted(rowTrust)) return unknown('An original planned amount or its trust is unavailable.');
+        amount = roundCent(amount + value);
+        if (!finite(amount)) return unknown('Original planned total is not finite.');
+        if (rowTrust === 'estimated') trust = 'estimated';
+      }
+      return stamp(amount, trust, 'complete');
+    };
+    // Explicit planned:null is unknown. Only absent legacy planned follows
+    // the incumbent amount fallback. Neither null nor strings become zero.
+    const plannedAmount = row => own(row, 'planned') ? row.planned : row && row.amount;
+    const plannedTrust = row => fieldTrust(row, 'plannedTrust',
+      row && ['unknown', 'unavailable'].includes(row.confidence) ? 'unavailable'
+        : row && row.confidence === 'confirmed' ? 'calculated' : 'estimated');
+    const settledActual = (rows, direction) => {
+      if (!readable || invalidEvidence || !Array.isArray(rows)) return unknown(actualReason || 'Actual evidence unavailable.');
+      let amount = 0, missing = 0, known = 0, trust = 'calculated';
+      const evidence = [];
+      for (const row of rows) {
+        if (!row || !savingsDate(row.date) || row.needsDate
+          || row.date < period.start || row.date > period.end) { missing++; continue; }
+        const contradiction = ['unverified', 'pending', 'unknown', 'unavailable', 'not-relied-upon', 'relied-upon'].includes(row.settlement)
+          || row.notReliedUpon === true || ['unresolved', 'pending', 'unknown'].includes(row.status);
+        const settled = direction === 'income' ? row.status === 'received' : rowIsSettledBill(row);
+        const rowTrust = fieldTrust(row, 'actualTrust', 'calculated');
+        // A bill's date is its scheduled occurrence, not its payment date.
+        // Native represented settlement can confirm an early payment while
+        // that occurrence remains inside the current selected period.
+        const observed = !contradiction && settled && (direction === 'bills' || row.date <= through)
+          && finite(row.actual) && trusted(rowTrust);
+        if (observed) {
+          // Reuse incumbent receipt semantics: raw credits and normalized
+          // benefit/Other Income actuals have different provider signs.
+          // The numeric actual guard above forbids its planned fallback.
+          const actual = direction === 'income' ? calendarIncomeContribution(row) : row.actual;
+          amount = roundCent(amount + actual); known++;
+          if (rowTrust === 'estimated') trust = 'estimated';
+          evidence.push({ id: row.id || null, date: row.date, actual,
+            settlement: row.settlement, status: row.status });
+        } else if (!contradiction && row.date > through && !settled) {
+          known++; // no actual receipt/payment after the observation boundary
+        } else missing++;
+      }
+      if (!finite(amount)) return unknown('Actual total is not finite.');
+      return { ...stamp(!known && missing ? null : amount, !known && missing ? 'unavailable' : trust,
+        complete && !missing ? 'complete' : 'partial',
+        missing ? 'Some occurrence settlement amounts are not confirmed.' : actualReason), evidence };
+    };
+    const income = { planned: originalPlan(period && period.income, plannedAmount, plannedTrust),
+      actual: settledActual(period && period.income, 'income'), semantics: 'confirmed received / original scheduled plan' };
+    const bills = { planned: originalPlan(period && period.bills, plannedAmount, plannedTrust),
+      actual: settledActual(period && period.bills, 'bills'), semantics: 'confirmed settled paid / original scheduled plan' };
+    const categories = period && period.householdBudget;
+    const cycle = period && period.spendingCycle;
+    const householdScope = scope && cycle && cycle.start === period.start && cycle.end === period.end;
+    const plannedCategories = Array.isArray(categories) ? categories.filter(row => row && !row.informational
+      && !row.otherSpending && !row.needsConfirmation) : null;
+    // Historical category rows are regenerated from today's authored targets.
+    // Their date scope establishes spending, not an original-plan snapshot.
+    // No dated historical category-plan publication currently exists.
+    const householdPlan = past ? unknown('The original household plan for this completed period has no dated snapshot. Native target figures use current configuration, not confirmed historical plans.')
+      : householdScope ? originalPlan(plannedCategories, row => row.planned,
+      row => fieldTrust(row, 'plannedTrust', fieldTrust(row, 'trust', row.confidence === 'estimated' ? 'estimated' : 'calculated')))
+      : unknown('The household spending cycle does not establish this exact period.');
+    let householdActual = unknown(actualReason || 'Household observations are unavailable.');
+    if (readable && !invalidEvidence && householdScope && Array.isArray(categories)) {
+      let amount = 0, missing = false, pending = false, trust = 'calculated';
+      const evidence = [];
+      for (const row of categories.filter(row => row && !row.informational)) {
+        const rowTrust = fieldTrust(row, 'trust', 'calculated');
+        if (!finite(row.spent) || !trusted(rowTrust)) { missing = true; continue; }
+        amount = roundCent(amount + row.spent);
+        const recon = Array.isArray(row.recon) ? row.recon : [];
+        pending ||= recon.some(tx => tx.pending === true && tx.pendingPostedDuplicate !== true);
+        if (rowTrust === 'estimated') trust = 'estimated';
+        evidence.push({ id: row.id, spent: row.spent, otherSpending: row.otherSpending === true, recon });
+      }
+      if (!finite(amount)) missing = true;
+      householdActual = { ...stamp(missing ? null : amount, missing ? 'unavailable' : pending ? 'estimated' : trust,
+        missing ? 'unavailable' : complete ? 'complete' : 'partial',
+        missing ? 'A category observation or its trust is unavailable.' : actualReason), includesPending: pending, evidence };
+    }
+    const household = { planned: householdPlan, actual: householdActual,
+      semantics: 'incurred category and Other spending / original category plan; observed pending is included' };
+    // No incumbent records attributable contributions made in a period.
+    // Balances, assignment revisions, cost payments and proposals cannot fill
+    // that gap. Preserve names/proposals while fulfillment stays unknown.
+    const funding = period && period.plannedCostFunding;
+    // Only a complete, attributed minimum-now schedule supplies a requirement.
+    // It is the current Forecast plan, never a reconstructed original payday
+    // snapshot or proof that the projected contribution actually happened.
+    const requiredKnown = scope && !unavailable && period.start >= asOf
+      && funding && funding.source === 'Forecast.planSpendPaydayFunding'
+      && funding.basis === 'selected-Budget-period' && funding.asOf === asOf
+      && funding.start === period.start && funding.end === period.end
+      && trusted(funding.trust) && funding.minimumRequiredAttribution === 'complete'
+      && finite(funding.minimumRequiredContribution) && funding.minimumRequiredContribution >= 0
+      && funding.minimumRequiredContribution === funding.contribution
+      && Array.isArray(funding.items) && funding.items.every(row => row && row.id
+        && finite(row.minimumRequiredContribution) && row.minimumRequiredContribution >= 0);
+    const requiredUnknown = () => unknown(period && period.start < asOf
+      ? 'No original payday contribution snapshot exists for this period.'
+      : 'A complete attributed period contribution requirement is unavailable.');
+    const roster = [...(Array.isArray(funding && funding.items) ? funding.items : []),
+      ...(Array.isArray(funding && funding.unscheduled) ? funding.unscheduled : []), ...fundingSequence(plan, asOf, opts)];
+    const seen = new Set();
+    const goals = roster.filter(row => row && row.id && !seen.has(row.id) && seen.add(row.id)).map(row => ({
+      id: row.id, label: typeof row.label === 'string' && row.label.trim() && row.label !== row.id ? row.label : null,
+      required: requiredKnown && Array.isArray(funding.items) && funding.items.includes(row)
+        && finite(row.minimumRequiredContribution) && row.minimumRequiredContribution >= 0
+          ? { ...stamp(row.minimumRequiredContribution, funding.trust, 'complete'), basis: 'current-Forecast-minimum-now' }
+          : requiredUnknown(),
+      fulfilled: unknown(future ? 'Future contributions are not confirmed actuals.' : 'Attributable contributions for this period have not been established.'),
+      remaining: unknown('Required and fulfilled period contributions are not established.'),
+      status: 'not-confirmed', reason: 'Account cash, saved balances and assignments do not establish period contributions.',
+      proposal: funding && funding.basis === 'selected-Budget-period' && funding.asOf === asOf
+        && funding.start === period.start && funding.end === period.end
+        && ['ready', 'funding-gap'].includes(funding.status) && trusted(funding.trust)
+        && Array.isArray(funding.items) && funding.items.includes(row) && finite(row.contribution)
+          ? stamp(row.contribution, funding.trust, 'proposal') : unknown('Period proposal unavailable.'),
+      evidenceRef: { kind: 'selected-period-funding', id: row.id },
+    }));
+    return { source: 'Forecast.budgetPeriodProgress', asOf, start: scope ? period.start : null,
+      end: scope ? period.end : null, currency: 'CAD', role: future ? 'future' : past ? 'past' : 'current',
+      coverage: { ...coverage, complete, includesPending: householdActual.includesPending === true },
+      income, bills, household,
+      savings: { planned: requiredKnown
+          ? { ...stamp(funding.minimumRequiredContribution, funding.trust, 'complete'), basis: 'current-Forecast-minimum-now' }
+          : requiredUnknown(),
+        actual: unknown('Attributable period contributions have not been established.'), goals,
+        semantics: 'current Forecast minimum-now requirement / unconfirmed period contribution; not an original payday snapshot' },
+      billsCarryover: unknown('Bills-only carryover for this period is not established.') };
+  }
+
+  function publishBudgetPeriodProgress(plan, asOf, periods, opts) {
+    for (const period of periods || []) {
+      period.budgetProgressAsOf = asOf;
+      period.budgetProgress = budgetPeriodProgress(plan, asOf, period, opts);
+    }
+  }
+
   // Selected Budget funding evolves the incumbent allocator on Budget's own
   // income / bill-load / category-hold publications. No cap or recent-spend
   // estimate substitutes for those holds. This is a projection, not saved cash
@@ -11607,6 +11791,7 @@
           return { id: cost.id, label: cost.label, date: cost.date,
             cost: cost.baseRequirement, ceiling: cost.ceiling, confidence: cost.confidence || 'estimated',
             contribution: part ? part.amount : 0, cumulativeProposed: proposed,
+            minimumRequiredContribution: row.required === row.contribution ? part ? part.amount : 0 : null,
             remainingGap: roundCent(cost.baseRequirement - (cost.actualSaved || 0) - proposed), actualSaved: cost.actualSaved ?? null,
             ...(reserves ? { reserveParts: cost.reserveParts } : {}),
             projectedFullyFunded: cost.projectedFullyFunded };
@@ -11617,6 +11802,8 @@
         byDate.set(row.payday, { status: schedule.status, asOf,
           source: 'Forecast.planSpendPaydayFunding', basis: 'selected-Budget-period',
           start: row.payday, end: row.through, contribution: row.contribution,
+          minimumRequiredContribution: row.required,
+          minimumRequiredAttribution: row.required === row.contribution ? 'complete' : 'unavailable',
           trust: periodWaterfallCombinedTrust(schedule.fundingTrust, basisTrust), items, gap: schedule.gap,
           actualSaved: null, originalPaydayPlan: null,
           // This is projected consumption of earlier earmarks, not receipt
@@ -11935,6 +12122,7 @@
       const payPeriodTimelinePack = composePayPeriodTimeline(
         pastPeriodViews, defaultView.calendarPeriods, timelineFuturePeriods, timelineBound);
       publishBudgetPeriodFunding(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
+      publishBudgetPeriodProgress(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
       return withholdCurrentOperatingClaims({
         ...(cardCoverageState(plan, asOf, paydayOpts).status !== 'incumbent'
           ? { cardPurchaseCoverage: cardCoverageState(plan, asOf, paydayOpts) } : {}),
@@ -18953,7 +19141,7 @@
   }
 
   const Forecast = { savingsInventory, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
-    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, plannedDebt, debtPriority, paydayAllocation,
+    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
