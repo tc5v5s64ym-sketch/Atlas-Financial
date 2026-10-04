@@ -8496,12 +8496,19 @@
 
   // Visa payment backfill (Dale, 2026-10-03). Sole calculator for the split.
   // A posted credit on Travel Visa, Cash Back Visa, or the TD credit card
-  // (Emerald Visa, canonical tdcc) whose payee is PAYMENT - THANK YOU /
-  // PAYMENT THANKYOU / TFR-TO C/C is a payment onto that card. It is
-  // reconciled against that card's posted purchases dated strictly after
-  // the previous posted payment on the same card, through this payment
-  // date. With no earlier payment inside complete evidence, the window is
-  // every supplied posted purchase on or before the payment date.
+  // (Emerald Visa, canonical tdcc) whose merchant identity is PAYMENT -
+  // THANK YOU / PAYMENT THANKYOU / TFR-TO C/C is a payment onto that card.
+  // Identity is txMerchantExact (originalMerchant, then displayedPayee,
+  // then payee), then originalName. It is reconciled against that card's
+  // posted purchases dated strictly after the previous posted payment on
+  // the same card, through this payment date.
+  //
+  // With no earlier posted payment, the payment is unreconciled
+  // (no-previous-payment). coverageStart is not a window bound. Several
+  // posted payments on the same card and the same date are all
+  // unreconciled (same-day-multiple-payments). That date still bounds a
+  // later payment on another day: the next window starts strictly after
+  // the previous posted payment date.
   //
   // Matched cents are backfill: they do not satisfy the card minimum and
   // they are not extra debt paydown. The unmatched remainder is the
@@ -8509,12 +8516,10 @@
   // automatic minimum settlement: cardMinimumNeedsConfirmation still
   // leaves those occurrences unconfirmed. A payment smaller than the net
   // purchases is entirely backfill. Uncovered purchases do not carry
-  // into the next payment:
-  // the next window starts strictly after this payment date (FIFO by
-  // date, then id). Posted refunds in the window reduce the purchase
-  // total and the total is floored at zero. Pending purchases are not
-  // matched. A pending/posted twin counts the posted side once. An
-  // ambiguous credit, a pendingPostedAmbiguous row, contradictory
+  // into the next payment. Posted refunds in the window reduce the
+  // purchase total and the total is floored at zero. Pending purchases
+  // are not matched. A pending/posted twin counts the posted side once.
+  // An ambiguous credit, a pendingPostedAmbiguous row, contradictory
   // account identity, or incomplete evidence fails closed as
   // unreconciled. Canadian Tire, MBNA, HELOC, and the mortgage are not
   // this split.
@@ -8645,7 +8650,8 @@
         : String(a.id).localeCompare(String(b.id)));
     const closed = new Set();
     const out = payments.filter(tx => tx && tx.status === 'unreconciled');
-    postedPayments.forEach((tx, index) => {
+    const eligible = [];
+    postedPayments.forEach(tx => {
       const cents = amountCents(tx.amount);
       if (cents == null || cents >= 0) {
         out.push(visaUnreconciled(tx, card, 'missing-amount'));
@@ -8663,11 +8669,27 @@
         out.push(visaUnreconciled(tx, card, 'incomplete-evidence'));
         return;
       }
-      const previous = index > 0 ? postedPayments[index - 1] : null;
+      eligible.push(tx);
+    });
+    const sameDayCount = new Map();
+    for (const tx of eligible) {
+      sameDayCount.set(tx.date, (sameDayCount.get(tx.date) || 0) + 1);
+    }
+    eligible.forEach((tx, index) => {
+      const cents = amountCents(tx.amount);
+      if (sameDayCount.get(tx.date) > 1) {
+        out.push(visaUnreconciled(tx, card, 'same-day-multiple-payments'));
+        return;
+      }
+      const previous = index > 0 ? eligible[index - 1] : null;
       const previousDate = previous && previous.date || null;
+      if (!previousDate) {
+        out.push(visaUnreconciled(tx, card, 'no-previous-payment'));
+        return;
+      }
       const inWindow = item => item && item.tx && item.tx.date
         && item.tx.date <= tx.date
-        && (!previousDate || item.tx.date > previousDate);
+        && item.tx.date > previousDate;
       const windowRows = activity.filter(inWindow);
       if (windowRows.some(item => item.tx && item.tx.pendingPostedAmbiguous === true)) {
         out.push(visaUnreconciled(tx, card, 'pending-possible-replacement'));
@@ -8741,9 +8763,7 @@
         window: {
           previousPaymentDate: previousDate,
           through: tx.date,
-          rule: previousDate
-            ? 'posted-purchases-after-previous-payment-through-payment-date'
-            : 'posted-purchases-on-or-before-payment-date',
+          rule: 'posted-purchases-after-previous-payment-through-payment-date',
         },
         satisfiesMinimum: false,
         extraPaydown: 0,
