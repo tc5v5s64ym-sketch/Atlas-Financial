@@ -236,8 +236,12 @@ async function geometry(page) {
         assert.equal(await page.locator(`[data-budget-detail-body] > ${sourceSelector}`).evaluate(node => node !== window.__beforeRerender && node.isConnected), true,
           'sheet reopens the refreshed incumbent evidence, not a cached financial node');
         if (width === 390) {
+          await page.locator('[data-budget-detail-sheet]').evaluate(node => { window.__beforeViewportDialog = node; });
           await page.setViewportSize({width:1440,height:1000});
-          await page.waitForFunction(() => document.querySelector('[data-budget-detail-sheet]')?.open && !!document.activeElement.closest('[data-budget-detail-sheet]'));
+          await page.waitForFunction(() => {
+            const dialog = document.querySelector('[data-budget-detail-sheet]');
+            return dialog !== window.__beforeViewportDialog && dialog?.open && !!document.activeElement.closest('[data-budget-detail-sheet]');
+          });
           if (name !== 'bill') assert.equal(await focusVisible(page.locator('[data-budget-detail-body] .household-budget-spent-summary')), true);
           await screenshot({path:path.join(screenshots,`${name}-resized-1440.png`),fullPage:false});
         }
@@ -245,8 +249,14 @@ async function geometry(page) {
         assert.equal(await trigger.evaluate(el => el === document.activeElement), true, `${name}: exact trigger after refresh/resize`);
         assert.equal(await focusVisible(trigger), true, `${name}: refreshed/resized Back target is visible`);
         if (width === 390) {
+          await page.locator('[data-budget-detail-sheet]').evaluate(node => { window.__beforeViewportDialog = node; });
           await page.setViewportSize({width:390,height:1000});
-          await page.waitForFunction(() => matchMedia('(max-width:640px)').matches && !document.querySelector('[data-budget-detail-sheet]')?.open);
+          // matchMedia changes before App's change listener remounts the page.
+          // Require that real remount before opening the next evidence sheet.
+          await page.waitForFunction(() => {
+            const dialog = document.querySelector('[data-budget-detail-sheet]');
+            return matchMedia('(max-width:640px)').matches && dialog !== window.__beforeViewportDialog && dialog && !dialog.open;
+          });
         }
       }
       if (width === 320) {
