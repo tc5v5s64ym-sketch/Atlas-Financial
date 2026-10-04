@@ -18,7 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const F = require('../public/forecast.js');
-const live = require('../data.json');
+const live = require('./fixtures/retired-other-policy')(require('../data.json'));
 const periods = require('../public/periods.json');
 
 let failures = 0;

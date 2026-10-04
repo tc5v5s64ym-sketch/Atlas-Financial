@@ -25,6 +25,21 @@ try{for(const width of [1440,390,320])for(const spent of width===320?[137.26,450
  assert.equal(await row.locator('[data-budget-category-scale="numeric"]').count(),spent===null||historical||future?0:1);
  const household=await page.locator('[data-operating-question="06"] > details > summary').innerText();
  assert.match(household,historical?/Unknown/:/925\.00/,'unconfirmed original historical denominator stays unknown');
+ if(!historical&&!future&&spent!==null){
+  // Posted cash already incorporates consumed spend. This independent DOM
+  // oracle protects against reserving a second 450 in Today's money.
+  const unusedCents=Math.max(0,45000-Math.round(spent*100));
+  const expected=((36463+unusedCents)/100).toFixed(2);
+  const cashInfo=page.locator('[data-budget-cash-how]');
+  await cashInfo.focus();await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>document.querySelector('[data-budget-detail-sheet]')?.open);
+  const cashRow=page.locator('[data-budget-detail-body] [data-payday-breakdown="Current household spending"] > summary');
+  assert.equal(await cashRow.isVisible(),true,'the native cash evidence is actually visible');
+  const today=await cashRow.innerText();
+  assert.match(today,new RegExp(expected.replace('.','\\.')),'Today reserves named remaining 364.63 plus unused Other only');
+  await page.screenshot({path:path.join(out,`other-${spent}-cash-${width}.png`),animations:'disabled'});
+  await page.keyboard.press('Escape');assert.equal(await cashInfo.evaluate(el=>el===document.activeElement),true);
+ }
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
  await page.screenshot({path:path.join(out,`other-${spent}-${width}.png`),fullPage:true,animations:'disabled'});

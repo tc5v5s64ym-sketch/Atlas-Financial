@@ -3689,7 +3689,7 @@
       if (!c || c.class !== 'essential') continue;
       let amount = 0;
       let source = null;
-      const targetMonthly = ownerTargetMonthly(c);
+      const targetMonthly = ownerTargetMonthly(c, opts && (opts.budgetTargetAsOf || opts.asOf) || plan.opening && plan.opening.asOf);
       if (targetMonthly != null) {
         amount = targetMonthly;
         source = 'owner-target';
@@ -4883,6 +4883,7 @@
     if (!packet || !Array.isArray(packet.transactions)) return out;
     const classifyOpts = Object.assign({}, opts || {}, { packet, currentPeriodActuals: packet });
     const duplicateIds = pendingPostedDuplicateIdSet(packet);
+    const datedOtherTarget = otherSpendPayPeriodTarget(plan, periodStart);
     const add = (row, state, amt) => {
       if (state === 'pending') row.pending = roundCent(row.pending + amt);
       else row.posted = roundCent(row.posted + amt);
@@ -4920,6 +4921,20 @@
       // and pending/posted identity rules as consumption above.
       if (state === 'pending' && tx.accountRole === 'household-cash') {
         out.pendingCash = roundCent(out.pendingCash + amt);
+      }
+      // This is the same residual evidence shown by Household Budget, not
+      // a merchant classifier. The dated owner target consumes that evidence
+      // once under its policy identity; unresolved purpose stays unresolved.
+      if (datedOtherTarget != null && otherSpendingEvidenceEligible(cls)) {
+        if (!out.byId.has(OTHER_SPEND_ID)) out.byId.set(OTHER_SPEND_ID, { posted: 0, pending: 0, count: 0 });
+        const row = out.byId.get(OTHER_SPEND_ID);
+        row.count += 1;
+        add(row, state, confirmedHouseholdAmount(tx, duplicateIds));
+        if (cls.needsConfirmation || classificationIncompleteHouseholdSpend(cls)) {
+          out.unclassified.count += 1;
+          add(out.unclassified, state, amt);
+        }
+        continue;
       }
       if (cls.needsConfirmation) {
         out.unclassified.count += 1;
@@ -5044,6 +5059,11 @@
     if (isUncategorisedRemainderSpend(cls)) return true;
     const catId = cls.atlasRow || cls.categoryId;
     return !!(catId && CALENDAR_PERIOD_BUDGET_IDS.indexOf(catId) >= 0);
+  }
+  function otherSpendingEvidenceEligible(cls) {
+    return householdBudgetSupportingSpendEligible(cls)
+      && (cls.needsConfirmation || cls.kind === 'unclassified'
+        || isUncategorisedRemainderSpend(cls));
   }
   const DEFAULT_VIEW_BUDGET_LABELS = {
     groceries: 'Groceries',
@@ -5395,7 +5415,7 @@
       if (cat.plannedMonthly == null && cat.plannedWeekly == null
         && cat.plannedPayday == null && !cat.ownerLine) continue;
       const hold = byId.get(cat.id);
-      const monthly = ownerTargetMonthly(cat);
+      const monthly = ownerTargetMonthly(cat, alloc && alloc.asOf);
       const amount = hold && hold.required != null
         ? hold.required
         : (monthly != null ? monthly : null);
@@ -5709,6 +5729,7 @@
   // each calendar month, so a later payday week does not hold another
   // $100 obligation. every-other-seaspan counts only ON period starts.
   function paydayHoldForSpan(cat, plan, days, start, end) {
+    cat = ownerTargetCategoryAt(cat, start);
     if (!cat || cat.plannedPayday == null) return null;
     const payday = roundCent(Number(cat.plannedPayday) || 0);
     if (start && end) {
@@ -5725,13 +5746,28 @@
     return d === 14 ? payday : null;
   }
 
+  // Crossing spans apply the retired monthly scale only before Sep 25 and
+  // the whole payday target only on authorized starts from Sep 25 onward.
+  function datedOtherHoldAcrossBoundary(cat, plan, start, end) {
+    if (!cat || cat.id !== OTHER_SPEND_ID || !financialDate(cat.targetEffectiveFrom)
+        || !financialDate(start) || !financialDate(end)
+        || !(start < cat.targetEffectiveFrom && end >= cat.targetEffectiveFrom)) return null;
+    const priorMonthly = ownerTargetMonthly(cat, start);
+    const target = otherSpendPayPeriodTarget(plan, cat.targetEffectiveFrom);
+    if (priorMonthly == null || target == null) return null;
+    const priorDays = diffDays(start, cat.targetEffectiveFrom);
+    const futureCount = seaspanPaydaysInSpan(plan, cat.targetEffectiveFrom, end).length;
+    return roundCent(priorMonthly * priorDays / CALENDAR_MONTH_DAYS + target * futureCount);
+  }
+
   function householdBudgetScaled(plan, days, spanStart, spanEnd) {
     const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (!cat || DEFAULT_VIEW_BUDGET_IDS.indexOf(cat.id) < 0) continue;
-      const weekly = cat.plannedWeekly != null ? Number(cat.plannedWeekly) : null;
-      const monthly = ownerTargetMonthly(cat);
+      const target = ownerTargetCategoryAt(cat, spanStart);
+      const weekly = target.plannedWeekly != null ? Number(target.plannedWeekly) : null;
+      const monthly = ownerTargetMonthly(cat, spanStart);
       if (weekly != null) {
         items.push({
           id: cat.id,
@@ -5742,7 +5778,7 @@
         });
         continue;
       }
-      if (cat.plannedPayday != null) {
+      if (target.plannedPayday != null) {
         const amount = paydayHoldForSpan(cat, plan, days, spanStart, spanEnd);
         if (amount == null) continue;
         items.push({
@@ -5775,8 +5811,15 @@
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (!cat || !cat.id) continue;
-      const weekly = cat.plannedWeekly != null ? Number(cat.plannedWeekly) : null;
-      const monthly = ownerTargetMonthly(cat);
+      const target = ownerTargetCategoryAt(cat, spanStart);
+      const weekly = target.plannedWeekly != null ? Number(target.plannedWeekly) : null;
+      const monthly = ownerTargetMonthly(cat, spanStart);
+      const boundaryAmount = datedOtherHoldAcrossBoundary(cat, plan, spanStart, spanEnd);
+      if (boundaryAmount != null) {
+        items.push({ id: cat.id, label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          planned: boundaryAmount, monthly });
+        continue;
+      }
       if (weekly != null) {
         items.push({
           id: cat.id,
@@ -5786,7 +5829,7 @@
         });
         continue;
       }
-      if (cat.plannedPayday != null) {
+      if (target.plannedPayday != null) {
         const planned = paydayHoldForSpan(cat, plan, days, spanStart, spanEnd);
         if (planned == null) continue;
         items.push({
@@ -7654,7 +7697,25 @@
     return 'future';
   }
 
-  function ownerTargetMonthly(cat) {
+  // A dated restatement is not retroactive. Keep the retired policy bounded
+  // and select it before reading any cadence/monthly/payday target. Without
+  // a valid date the new target cannot be asserted.
+  function ownerTargetCategoryAt(cat, date) {
+    if (!cat || cat.id !== OTHER_SPEND_ID || !cat.targetEffectiveFrom) return cat;
+    if (!financialDate(cat.targetEffectiveFrom)) return Object.assign({}, cat,
+      { plannedWeekly: null, plannedPayday: null, plannedMonthly: null });
+    const day = financialDate(date);
+    if (day && day >= cat.targetEffectiveFrom) return cat;
+    const prior = (cat.targetHistory || []).find(row => row
+      && row.effectiveThrough < cat.targetEffectiveFrom
+      && (!day || day <= row.effectiveThrough)
+      && (!row.effectiveFrom || !day || day >= row.effectiveFrom));
+    return Object.assign({}, cat, { plannedWeekly: null, plannedPayday: null,
+      plannedMonthly: null }, prior || {});
+  }
+
+  function ownerTargetMonthly(cat, date) {
+    cat = ownerTargetCategoryAt(cat, date);
     if (!cat) return null;
     if (cat.plannedWeekly != null) {
       return roundCent(Number(cat.plannedWeekly) * CALENDAR_MONTH_DAYS / 7);
@@ -7692,6 +7753,7 @@
   // not print a this-cycle hold. Missing cycle identity fails closed
   // rather than inventing a second copy.
   function paydayCyclePlanned(cat, cycleStart, plan) {
+    cat = ownerTargetCategoryAt(cat, cycleStart);
     if (!cat) return null;
     if (cat.plannedWeekly != null) return roundCent(Number(cat.plannedWeekly) * 2);
     if (cat.plannedPayday != null) {
@@ -7736,6 +7798,7 @@
   // plannedWeekly / plannedMonthly-only keep the smear so incomplete-coverage
   // remaining-days and monthly-only fixtures are not rewritten.
   function essentialPeriodPlanned(plan, cat, monthly, cycleStart, periodScale) {
+    cat = ownerTargetCategoryAt(cat, cycleStart);
     const cadencePlanned = essentialCadencePeriodPlanned(plan, cat, cycleStart);
     if (cadencePlanned != null) return cadencePlanned;
     if (cat && cat.plannedPayday != null) {
@@ -7746,6 +7809,7 @@
   }
 
   function essentialPeriodUsesCyclePlanned(plan, cat, cycleStart) {
+    cat = ownerTargetCategoryAt(cat, cycleStart);
     if (essentialCadencePeriodPlanned(plan, cat, cycleStart) != null) return true;
     if (!(cat && cat.plannedPayday != null)) return false;
     return paydayCyclePlanned(cat, cycleStart, plan) != null;
@@ -7970,8 +8034,7 @@
         if (!householdBudgetSupportingSpendEligible(cls)) continue;
         const isDuplicate = tx.id != null && duplicateIds.has(String(tx.id));
         const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate });
-        if (cls.needsConfirmation || cls.kind === 'unclassified'
-            || isUncategorisedRemainderSpend(cls)) {
+        if (otherSpendingEvidenceEligible(cls)) {
           confirmationRecon.push(row);
           confirmationSpent = roundCent(
             confirmationSpent + confirmedHouseholdAmount(tx, duplicateIds)
@@ -8023,7 +8086,7 @@
       items.push({
         id,
         label: DEFAULT_VIEW_BUDGET_LABELS[id] || cat.ownerLine || cat.label,
-        monthly: ownerTargetMonthly(cat),
+        monthly: ownerTargetMonthly(cat, windowStart),
         plannedWeekly: weekly,
         plannedPayday: cat.plannedPayday != null ? roundCent(Number(cat.plannedPayday)) : null,
         planned,
@@ -9769,7 +9832,7 @@
       : emptyCategoryActuals();
     const needStart = useActuals ? origin : asOf;
     const needDays = Math.max(1, diffDays(needStart, periodLast) + 1);
-    const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
+    const essentialNeed = essentialNeedBreakdown(plan, opts.periods, Object.assign({}, opts, { budgetTargetAsOf: asOf }));
     const categories = [];
     const seenCat = new Set();
     const cycleStart = (() => {
@@ -9804,7 +9867,7 @@
       });
     };
     if (opts.periods) {
-      const bd = budgetBreakdown(plan, opts.periods, opts);
+      const bd = budgetBreakdown(plan, opts.periods, Object.assign({}, opts, { budgetTargetAsOf: asOf }));
       if (bd && Array.isArray(bd.categories)) {
         for (const c of bd.categories) {
           const monthly = roundCent((Number(c.planned) || 0) + (Number(c.reserved) || 0));
@@ -10456,7 +10519,7 @@
     // still controls category remaining; missing pending is never invented.
     const pendingCash = sumCategoryActuals(plan, asOf, null, opts).pendingCash;
 
-    const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
+    const essentialNeed = essentialNeedBreakdown(plan, opts.periods, Object.assign({}, opts, { budgetTargetAsOf: asOf }));
     const essentialMonthly = essentialNeed.monthly;
     const periodScale = needDays / CALENDAR_MONTH_DAYS;
     const cycleStart = cycle && cycle.start;
@@ -12569,6 +12632,7 @@
     // Sinking-fund commitments are therefore tracked apart, not subtracted.
     const sinking = { total: 0, items: [] };
     const asOf = opts.asOf || opts.start || null;
+    const targetAsOf = opts.budgetTargetAsOf || asOf || periods.asOf || plan.opening && plan.opening.asOf || null;
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
       if (commitmentSettledBy(c, asOf)) continue;
@@ -12593,7 +12657,7 @@
       // services outrank a blended historical average. The household's
       // next 90 days are better described by what it intends to spend,
       // then by what it currently pays, than by the last eighteen months.
-      const target = ownerTargetMonthly(c);
+      const target = ownerTargetMonthly(c, targetAsOf);
       // currentMonthly is the undated current-regime amount — services
       // already on the calendar stay in dated and are not added again.
       // Dated card-paid bills are also current-regime: they occupy dated

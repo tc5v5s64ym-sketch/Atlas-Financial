@@ -11,8 +11,8 @@ function build(other=137.26,date=asOf){
   income:[{id:'payroll',label:'Invented salary',frequency:'biweekly',anchor:effective,amount:1400,confidence:'confirmed'}],
   bills:[],obligations:[],commitments:[],groups:[],funding:{options:[]},
   budget:{categories:[
-   ...[['groceries',220],['fuel',85],['restaurants',60],['dale-guilt-free',35],['amanda-guilt-free',45],['pets',30]].map(([id,amount])=>({id,label:id,plannedPayday:amount,confidence:'confirmed',from:[]})),
-   {id:'other-spend',label:'Other spend',plannedPayday:450,plannedMonthly:null,targetEffectiveFrom:effective,
+   ...[['groceries',220],['fuel',85],['restaurants',60],['dale-guilt-free',35],['amanda-guilt-free',45],['pets',30]].map(([id,amount])=>({id,label:id,class:'essential',plannedPayday:amount,confidence:'confirmed',from:[]})),
+   {id:'other-spend',label:'Other spend',class:'essential',plannedPayday:450,plannedMonthly:null,targetEffectiveFrom:effective,
     targetHistory:[{effectiveThrough:'2026-09-24',plannedMonthly:800,futurePayPeriodReserve:400}],from:[]}]}};
  let packet={schema:'atlas-current-period-actuals/v1',asOf:date,transactionWindow:{startDate:'2026-09-10',endDate:date},
   transactionCoverage:'complete',pendingCoverageComplete:true,balances:{asOf:date,complete:true,

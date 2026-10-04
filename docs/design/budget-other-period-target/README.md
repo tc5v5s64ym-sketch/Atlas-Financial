@@ -23,6 +23,32 @@ plan snapshots.
 
 ## Independent proof
 
+Independent Systems review blocked head `2bf14a2` (also applicable to label-only
+`e13275b`) because cash allocation reserved another $450 after Other was spent,
+and undated non-calendar target readers changed figures before Sep 25. The
+replacement shares the existing residual-evidence predicate between calendar
+reconciliation and category cash consumption. It keeps unresolved classification
+and pending cash protection, while consuming the evidence once under the dated
+Other policy identity. All target readers select bounded retired configuration
+before reading monthly/payday cadence; cash paths pass their dated asOf. Named
+spans crossing Sep 25 apply each policy only on its side of the boundary.
+
+The fixture now declares essential classifications, so it exercises the actual
+cash allocator. Cash-required Other is 450 / 312.74 / 0 / 0 for observed
+0 / 137.26 / 450 / 618.73. Today's money is named remaining 364.63 plus unused
+Other, checked in actual App.boot at all three widths. Sep 24 cash/current-action
+planned is 367.97 (`800 * 14 / (365.25 / 12)`), then 450 on Sep 25. Invented
+August month publications are compared in full with the retired-policy walk.
+
+Old-head required CI also exposed unbounded legacy-policy assertions in six
+suites. Historical authority suites retain their original $800/$400 assertions
+using explicitly bounded configuration, while active-policy contracts require
+the approved $450 shape/source/effective date. The post-boundary timeline's
+independent deduction uses 450 once; prior $400 timeline proof remains intact.
+The authority invariant now requires the new Oct 4 source date. Earlier derived
+essentials amounts return to their original values; only the two reporting
+rows' later policy-input metadata differs from main.
+
 All observation amounts, transaction identities and account IDs in fixtures
 and screenshots are invented independently. $450 is the expressly approved
 policy value. All browser requests are intercepted. Future row, reserve and
@@ -66,6 +92,7 @@ the new Other contract independently checks the full current canonical delta.
 | Native target and transaction Info | [Detail](comparison-other-137.26-info-320.png) |
 | Completed-period configured target, original plan unknown | [Historical Info](history-info-320.png) |
 | Next-period target, actual unavailable and estimated trust | [Future Info](next-info-320.png) |
+| Other fully used; actual visible Today's money reserves only named 364.63 | [Current cash Info](used-other-cash-info-320.png) |
 
 The active browser covers below/at/above at 1440/390/320px plus missing evidence
 and completed/next-period Info at 320px (12 views), numeric-bar availability, target in Info, no horizontal
