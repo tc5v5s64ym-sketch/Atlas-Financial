@@ -713,7 +713,6 @@ console.log('\n=== T. Household UI ends at BAD and hides the reconciliation fluf
     'waterfall prints Balance After Deductions');
   ok(!/data-operating-cash-explanation/.test(html)
       && !/operatingCashExplanationHtml\(period\.operatingCashExplanation\)/.test(
-        grab(planSrc, /^function calendarFromTodayEvidenceHtml\([\s\S]*?\n\}$/m, 'calendarFromTodayEvidenceHtml')),
         grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml')),
     'active household waterfall does not print the operating-cash explanation');
   ok(!/data-operating-prompt="Opening balance"/.test(html),
