@@ -1,5 +1,13 @@
 # Budget v3: upcoming funding and Month
 
+The review repair preserves Forecast's explicit-null calculated marker only
+for the incumbent current-period comparison field; missing trust remains
+unavailable. The exact-payday undated roster now comes from its own schedule,
+with matching published funding-sequence metadata, even when Today is withheld
+by truncated or posted-only observations. Known prices remain visible and
+undated contributions stay unknown. Active-path and real-browser proofs cover
+both withheld observation modes at desktop, mobile and 320px.
+
 Implementation began from actual main
 `fdf948d2ffee2dfad8b34d3b476ec23224446fb4`, including merged #488, and was
 rebased onto `96010f360c5022623ad404554565db8356f026b2`, including merged #489.

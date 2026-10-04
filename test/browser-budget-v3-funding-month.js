@@ -152,6 +152,18 @@ fs.mkdirSync(output, { recursive: true });
       assert.match(await undated.innerText(), /275\.00[\s\S]*Date not established[\s\S]*Contribution unknown/);
       assert.equal(await undated.locator('.budget-funding-track i').count(), 0);
       await geometry(); await capture('upcoming-undated', '[data-budget-funding-section]');
+      for (const coverage of ['truncated', 'posted-only']) {
+        data = fx.served({ withUndatedCost: true });
+        if (coverage === 'truncated') data.liveOverlay.currentPeriodActuals.transactionCoverage = 'truncated';
+        else data.liveOverlay.currentPeriodActuals.pendingCoverage = 'unknown';
+        await boot();
+        assert.match(await page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]').innerText(), /Unavailable/);
+        await page.locator('[data-budget-funding-tab="payday"]').click();
+        const cost = page.locator('[data-budget-funding-panel="payday"] [data-budget-funding-cost="fixture-undated"]');
+        assert.match(await cost.innerText(), /Synthetic undated cost[\s\S]*275\.00[\s\S]*Contribution unknown/);
+        assert.equal(await cost.locator('.budget-funding-track i').count(), 0);
+        await geometry(); await capture(`upcoming-undated-${coverage}`, '[data-budget-funding-section]');
+      }
       data = fx.served({ withheldSavings: true }); await boot();
       assert.match(await page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]').innerText(), /Unavailable/);
       assert.match(await page.locator('[data-budget-funding-section]').innerText(), /unconfirmed|unknown|await confirmation/i);

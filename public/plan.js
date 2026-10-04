@@ -2735,6 +2735,18 @@ function budgetMonthPlanSpendSchedule(src, operatingRate = false) {
     const alloc = Forecast.paydayAllocation(src.plan, asOf,
       Object.assign({}, resolvedOpts, { majorPlans: plans }));
     schedule = Forecast.planSpendPaydayFunding(src.plan, asOf, sim, seq, plans, alloc);
+    // Enrich only the schedule's own published undated roster with the
+    // matching fundingSequence metadata. Today may be withheld independently;
+    // its roster is not authority for the exact payday. No amount is summed,
+    // allocated, or inferred, and an undated contribution remains unknown.
+    if (schedule && Array.isArray(schedule.unscheduled)) schedule = Object.assign({}, schedule, {
+      unscheduled: schedule.unscheduled.map(row => {
+        const source = seq.find(cost => cost.id === row.id);
+        return Object.assign({}, row, { reason: row.reason === 'cash-date-not-established'
+          ? 'Planning date not established.' : row.reason, label: source?.label, cost: source?.need,
+          confidence: source?.confidence, date: source?.date, contribution: null });
+      }),
+    });
   } catch (e) {
     schedule = null;
   }
@@ -2932,7 +2944,10 @@ function budgetMonthSurfaceHtml(ctx) {
     return `<div class="budget-v3-month-rung" data-budget-month-ladder="${sign}"><span class="budget-v3-month-step">${stage}</span><div><div class="budget-v3-month-rung-head"><strong>${budgetV3Escape(rung.label)}</strong><b>${signed(amount, trust)}</b></div><p>${['Income less household spending, bills and required debt', "Then the month's named costs", 'Then any planned extra debt payment'][index]}</p><div class="budget-v3-month-axis${!valid || !scaleKnown ? ' is-unknown' : ''}" aria-hidden="true">${valid && scaleKnown ? `<i class="${sign}" style="width:${Math.min(50, Math.abs(amount) / scale.amount * 50)}%"></i>` : ''}</div><p>${valid ? amount < 0 ? 'Projected deficit' : amount > 0 ? 'Projected surplus' : 'Break-even' : budgetV3Escape(rung.reason || rung.result?.reason || 'Forecast did not publish a trusted result. Not $0.')}</p></div></div>`;
   }).join('');
   const current = (ctx.advice?.payPeriodViews || []).find(row => row?.timelineRole === 'current');
-  const currentTrust = current?.balanceAfterDeductionsTrust;
+  // This incumbent field publishes explicit null for fully calculated results.
+  // Missing/undefined trust still withholds; the generic money guard stays strict.
+  const currentTrust = current?.balanceAfterDeductionsTrust === null
+    ? 'calculated' : current?.balanceAfterDeductionsTrust;
   const compare = current ? `<div class="budget-v3-month-compare"><div><span>Current pay period · before funding</span><strong>${budgetV3Money(current.afterHouseholdBudget, currentTrust)}</strong><p>${budgetV3Escape(current.rangeLabel || `${current.start} — ${current.end}`)}</p></div><span aria-hidden="true">vs</span><div><span>${budgetV3Escape(label)} · after debt strategy</span><strong>${signed(result?.amount, result?.status)}</strong><p>${budgetV3Escape(month.start)} — ${budgetV3Escape(month.end)}</p></div></div><p>Separate windows and steps.</p>` : '';
   // Each outflow has its own ratio to published income. No combined outflow
   // total/denominator is calculated; overflow is visible rather than normalized.
@@ -5985,7 +6000,7 @@ function budgetUpcomingFundingHtml(ctx) {
         return { ...cost, cost: cost.baseRequirement,
           contribution: paydayReady ? allocation ? allocation.amount : 0 : null };
       }),
-      unscheduled: Array.isArray(today?.unscheduled) ? today.unscheduled : [], when: 'proposed this payday' },
+      unscheduled: Array.isArray(schedule?.unscheduled) ? schedule.unscheduled : [], when: 'proposed this payday' },
   ];
   const costHtml = (item, lens, undated = false) => {
     const costTrust = item.confidence === 'confirmed' ? 'calculated' : item.confidence;
@@ -6019,7 +6034,7 @@ function budgetUpcomingFundingHtml(ctx) {
       ${gapKnown ? `<div class="budget-funding-gap">${budgetV3Money(lens.gap.shortBy, lens.fundingTrust)} short${isValidIsoCalendarDate(lens.gap.payday) ? ' on ' + budgetV3Escape(fmtDate(lens.gap.payday)) : ''}.${names.length ? '<p>Affected: ' + names.map(budgetV3Escape).join(', ') + '.</p>' : ''}<p>Later proposals pause at this published gap. Earmarks only — not transfers or saved money.</p></div>` : ''}
       ${!lens.ready || lens.reason ? `<p class="budget-funding-notice">${budgetV3Escape(lens.reason || 'Funding evidence is unavailable. Open the complete evidence for the reasons and next steps.')}</p>` : ''}
       ${items || `<p>${lens.ready ? 'No dated costs published for this proposal.' : 'Dated cost roster unavailable for this proposal.'}</p>`}
-      ${lens.unscheduled.length ? `<div class="budget-funding-timeline-row"><div class="budget-funding-month">No scheduled contribution</div><div>${lens.unscheduled.map(item => costHtml(item, lens, true)).join('')}</div></div>` : ''}
+      ${lens.unscheduled.length ? `<div class="budget-funding-timeline-row"><div class="budget-funding-month">No scheduled contribution</div><div>${lens.unscheduled.map(item => costHtml(item, lens, true)).join('')}</div></div>` : lens.key === 'payday' && !Array.isArray(schedule?.unscheduled) ? '<p>Undated cost roster unavailable for this payday proposal.</p>' : ''}
       <button type="button" class="budget-surface-link" data-budget-funding-evidence="${lens.key}" aria-haspopup="dialog">${lens.key === 'today' ? 'Today: needs, costs and forward evidence' : 'Complete exact payday funding plan'}</button>
     </div>`;
   };

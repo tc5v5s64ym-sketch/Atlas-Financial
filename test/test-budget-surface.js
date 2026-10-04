@@ -686,7 +686,44 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
   }
 }
 
+console.log('\n=== independent payday undated roster ===');
+for (const coverage of ['full', 'truncated', 'posted-only']) {
+  const up = page();
+  const data = fx.served({ withUndatedCost: true });
+  if (coverage === 'truncated') data.liveOverlay.currentPeriodActuals.transactionCoverage = 'truncated';
+  if (coverage === 'posted-only') data.liveOverlay.currentPeriodActuals.pendingCoverage = 'unknown';
+  const out = up.render(data);
+  const schedule = vm.runInContext('budgetMonthPlanSpendSchedule(__ctx, true)', up.context);
+  const current = up.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === 'current');
+  ok(['ready', 'funding-gap'].includes(schedule.status), `${coverage}: operating payday schedule remains published`);
+  if (coverage !== 'full') ok(current.fromTodayFunding.status === 'unavailable', `${coverage}: Today is independently withheld`);
+  const panel = out.split('data-budget-funding-panel="payday"')[1]?.split('data-budget-funding-evidence="payday"')[0] || '';
+  const undated = panel.split('data-budget-funding-cost="fixture-undated"')[1] || '';
+  ok(/Synthetic undated cost/.test(undated) && /\$275\.00/.test(undated),
+    `${coverage}: payday retains the independent invented undated price, not Today's roster`);
+  ok(/Contribution unknown/.test(undated) && /is-unknown/.test(undated)
+    && !/275\.00 proposed|style="width:100%"/.test(undated), `${coverage}: an undated proposal is never an allocation or fulfillment`);
+}
+
 console.log('\n=== v3 Month projection publication guards ===');
+for (const trust of ['null', 'undefined', "'unknown'", "'unavailable'", "'calculated'", "'estimated'"]) {
+  const mp = page(); mp.render(fx.served());
+  const out = mp.rerender(`const current = __ctx.advice.payPeriodViews.find(row => row.timelineRole === 'current');
+    current.afterHouseholdBudget = 351.20; current.balanceAfterDeductionsTrust = ${trust};
+    budgetGranularity = 'month'`);
+  const compare = out.split('budget-v3-month-compare')[1]?.split('aria-hidden="true">vs')[0] || '';
+  const known = ['null', "'calculated'", "'estimated'"].includes(trust);
+  ok(known ? /\$351\.20/.test(compare) : /Unavailable/.test(compare) && !/351\.20|\$0\.00/.test(compare),
+    `${trust}: comparison honors the incumbent explicit-null calculated marker without repairing missing or untrusted fields`);
+  ok(trust === "'estimated'" ? /budget-v3-est/.test(compare) : !/budget-v3-est/.test(compare), `${trust}: comparison retains its estimate qualifier`);
+}
+{
+  const mp = page(); mp.render(fx.served());
+  const out = mp.rerender(`const current = __ctx.advice.payPeriodViews.find(row => row.timelineRole === 'current');
+    delete current.balanceAfterDeductionsTrust; budgetGranularity = 'month'`);
+  ok(/Unavailable/.test(out.split('budget-v3-month-compare')[1]?.split('aria-hidden="true">vs')[0] || ''),
+    'absent comparison trust remains unavailable');
+}
 for (const monthKey of ['2026-08', '2026-09', '2026-10']) {
   const mp = page(); mp.render(fx.served());
   const month = vm.runInContext(`budgetTrajectoryFor(__ctx).months.find(row => row.month === '${monthKey}')`, mp.context);

@@ -236,10 +236,12 @@ console.log('\n=== 2. Amanda ChatGPT, iCloud, and Netflix stay unpaid without th
   ok(isUnpaid(calendarBill(paid, NETFLIX_ID, NETFLIX_DUE).row),
     'Netflix identity-plus-evidence is unchanged: empty actuals do not mark Netflix PAID');
   const html = page.calendarPeriodBillsHtml(calendarBill(paid, AMANDA_ID).period);
-  ok(html.includes(`data-period-bill="${AMANDA_ID}" data-bill-status="still due"`)
-      && html.includes(`data-period-bill="${ICLOUD_ID}" data-bill-status="still due"`)
-      && html.includes(`data-period-bill="${NETFLIX_ID}" data-bill-status="still due"`),
-    'page still prints Amanda ChatGPT, iCloud, and Netflix as still due');
+  ok([AMANDA_ID, ICLOUD_ID, NETFLIX_ID].every(id => calendarBill(paid, id).row.settlement === 'unverified'),
+    'each unmatched occurrence retains Forecast unverified settlement');
+  ok(html.includes(`data-period-bill="${AMANDA_ID}" data-bill-status="to confirm"`)
+      && html.includes(`data-period-bill="${ICLOUD_ID}" data-bill-status="to confirm"`)
+      && html.includes(`data-period-bill="${NETFLIX_ID}" data-bill-status="to confirm"`),
+    'page labels each unmatched occurrence to confirm rather than claiming confirmed unpaid');
 }
 
 console.log('\n=== 3. Netflix identity-plus-evidence still pays only from its own actual ===');
