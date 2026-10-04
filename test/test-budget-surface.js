@@ -147,7 +147,7 @@ ok(!bar('savings') && /budget-waterfall-track is-unknown/.test(
 console.log('\n=== pay-period waterfall on the active surface ===');
 console.log('\n=== published category bars and grouped bills ===');
 const categoryBrowse = (output, id) => output.split(`data-budget-category-open="${id}" data-budget-browse-origin="spending"`)[1]?.split('</button>')[0] || '';
-ok(text(categoryBrowse(html, 'groceries')).includes('$308.55 of $450.00')
+ok(/308\.55[\s\S]*?\/[\s\S]*?450\.00/.test(categoryBrowse(html, 'groceries'))
   && text(categoryBrowse(html, 'groceries')).includes('$141.45 left'),
   'the default grocery row uses independently observed 212.40 + 96.15 and published remaining 141.45');
 const categoryFill = /budget-category-fill" style="width:([^%]+)%/.exec(categoryBrowse(html, 'groceries'));
@@ -156,13 +156,40 @@ ok(categoryFill && Math.abs(Number(categoryFill[1]) - 308.55 / 450 * 100) < 1e-9
 ok(/data-budget-browse-hold[\s\S]*?752\.99/.test(html)
   && /data-budget-browse-remaining[\s\S]*?308\.50/.test(html),
   'the reserve is the selected-period publication; current remaining is the matching dated from-today publication');
-ok(/budget-bill-group[\s\S]*?Coming up[\s\S]*?data-budget-bill-open="card-minimum"/.test(html)
+ok(/budget-bill-group[\s\S]*?Not paid[\s\S]*?data-budget-bill-open="card-minimum"/.test(html)
   && /To confirm[\s\S]*?data-budget-bill-open="hydro"/.test(html),
   'upcoming and unverified bill occurrences remain separate without inferring unpaid status');
 ok(/budget-browse-paid[\s\S]*?data-budget-bill-open="mortgage"/.test(html)
   && /data-budget-browse-bills-remaining[\s\S]*?265\.00/.test(html),
-  'paid occurrence is folded while the header reprints Forecast remaining bills 265');
+  'paid occurrence stays in its bucket while the header reprints Forecast remaining bills 265');
+ok((html.match(/data-budget-bill-filter=/g) || []).length === 2
+  && /data-budget-bill-filter="paid"[\s\S]*?PAID<span>1<\/span>/.test(html)
+  && /data-budget-bill-filter="not-paid"[\s\S]*?NOT PAID<span>3<\/span>/.test(html),
+  'two filters count the same four published occurrences: one confirmed paid and three not confirmed paid');
 const noSpent = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').householdBudget[0].spent = null");
+{
+  const bp = page(); bp.render(fx.served());
+  const source = JSON.stringify([
+    { id: 'synthetic-paid', label: 'Synthetic paid', status: 'PAID', settlement: 'represented', date: '2026-08-15' },
+    { id: 'synthetic-due', label: 'Synthetic due', status: 'still due', settlement: 'upcoming', date: '2026-08-21' },
+    { id: 'synthetic-pending', label: 'Synthetic pending', status: 'pending', settlement: 'pending', date: '2026-08-19' },
+    { id: 'synthetic-unverified', label: 'Synthetic unverified', status: 'planned', settlement: 'unverified', date: '2026-08-18' },
+    { id: 'synthetic-unknown', label: 'Synthetic unknown', status: null, settlement: null, date: '2026-08-17' },
+    { id: 'synthetic-contradiction', label: 'Synthetic contradiction', status: 'PAID', settlement: 'unverified', date: '2026-08-16' },
+  ]);
+  const out = vm.runInContext(`globalThis.__filterRows = ${source}; globalThis.__beforeRows = JSON.stringify(__filterRows);
+    budgetBillsSectionHtml({bills: __filterRows}, __ctx)`, bp.context);
+  ok(/PAID<span>1<\/span>/.test(out) && /NOT PAID<span>5<\/span>/.test(out),
+    'filter counts use the exact published roster; pending, unknown and contradictory confirmation never become paid');
+  const notPaid = out.split('data-budget-bill-bucket="not-paid"')[1]?.split('id="budget-bill-bucket-paid"')[0] || '';
+  ok(['synthetic-due', 'synthetic-pending', 'synthetic-unverified', 'synthetic-unknown', 'synthetic-contradiction'].every(id => notPaid.includes(`data-budget-bill-open="${id}"`))
+    && /Payment pending/.test(notPaid) && /Not confirmed/.test(notPaid) && /Status unavailable/.test(notPaid),
+    'NOT PAID groups all not-confirmed-paid occurrences while retaining their distinct row statuses and dates');
+  ok(vm.runInContext('JSON.stringify(__filterRows) === __beforeRows', bp.context), 'filter presentation never rewrites settlement evidence');
+  const empty = vm.runInContext('budgetBillsSectionHtml({bills: []}, __ctx)', bp.context);
+  ok(/PAID<span>0<\/span>/.test(empty) && /NOT PAID<span>0<\/span>/.test(empty)
+    && /No confirmed paid bills/.test(empty) && /No bill occurrences published/.test(empty), 'both empty filters remain usable and disclose their empty roster');
+}
 ok(/Spending unavailable/.test(categoryBrowse(noSpent, 'groceries'))
   && !/141\.45 left|budget-category-fill/.test(categoryBrowse(noSpent, 'groceries')),
   'unavailable spending is not classified within plan, replaced by zero or given a numeric bar');
@@ -234,7 +261,7 @@ ok(/data-budget-spending-evidence="partial"/.test(partialSpend)
   && !/Observed spending · completed period/.test(partialSpend)
   && /data-budget-browse-hold[^>]*><span class="budget-browse-unknown">Unavailable/.test(partialSpend)
   && !/data-budget-browse-hold[^>]*>\$80\.00</.test(partialSpend)
-  && /80\.00 of/.test(categoryBrowse(partialHistory, 'groceries')),
+  && /80\.00[\s\S]*?\//.test(categoryBrowse(partialHistory, 'groceries')),
   'partial history keeps the observed grocery 80 and withholds an incomplete counted total');
 p.render(fx.served());
 const knownHistory = p.rerender(`
@@ -262,7 +289,7 @@ ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(hydroBills)
   && /Settlement not fully confirmed/.test(hydroBills)
   && !/left to pay or confirm/.test(hydroBills)
   && !/\$0\.00/.test(/id="budget-bills-heading"[\s\S]*?<\/h2>/.exec(hydroBills)?.[0] || '')
-  && /1 to confirm/.test(hydroBills)
+  && /NOT PAID<span>1<\/span>/.test(hydroBills)
   && /To confirm[\s\S]*?data-budget-bill-open="hydro"[\s\S]*?Not confirmed[\s\S]*?120\.00/.test(hydroBills)
   && /data-period-bill="hydro"[\s\S]*?Missing evidence does not mean unpaid/.test(hydroLookback),
   'unverified historical Hydro withholds the actionable $0 heading and keeps original evidence');
@@ -285,7 +312,7 @@ ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(unknownBill
   && /Settlement not fully confirmed/.test(unknownBills)
   && !/left to pay or confirm/.test(unknownBills)
   && /Status unavailable[\s\S]*?data-budget-bill-open="hydro"/.test(unknownBills)
-  && /1 unavailable/.test(unknownBills),
+  && /NOT PAID<span>1<\/span>/.test(unknownBills),
   'unknown historical settlement withholds the $0 all-clear and does not infer unpaid');
 const restoredCurrent = hydroPage.rerender(`
   planPayPeriodId = null; __ctx.planPayPeriodId = null`);
@@ -386,7 +413,7 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
     ok(bill?.status === (settlement === 'paid' ? 'PAID' : 'planned') && historicalPeriod.remainingBills === 0,
       `${coverage}/${settlement}: Forecast historical actionable $0 is retained, with ${settlement} row identity`);
     ok(/Completed-period bills/.test(bills) && !/left to pay or confirm|data-budget-browse-bills-remaining/.test(bills)
-      && (settlement === 'paid' ? /Paid or included in opening/.test(bills) : /To confirm[\s\S]*?Synthetic historical service/.test(bills))
+      && (settlement === 'paid' ? /data-budget-bill-bucket="paid"[\s\S]*?Synthetic historical service/.test(bills) : /To confirm[\s\S]*?Synthetic historical service/.test(bills))
       && /Historical settlement evidence, not an amount due now/.test(bills),
       `${coverage}/${settlement}: history is settlement evidence, never a zero due/confirmation all-clear`);
     ok(/data-period-bill="historical-service"/.test(out) && /data-budget-category-open="groceries"/.test(out),
@@ -684,6 +711,24 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
         `${coverage}/${settlement}/${role}: Today evidence remains available without a duplicate or selected-period substitution`);
     }
   }
+}
+
+console.log('\n=== compact savings contribution evidence ===');
+{
+  const sp = page(); const out = sp.render(fx.served());
+  const goals = out.split('data-budget-savings-goals')[1]?.split('data-budget-funding-savings')[0] || '';
+  ok(/School trip/.test(goals) && /Winter tires/.test(goals) && /Not confirmed/.test(goals),
+    'the default savings card lists published names with unconfirmed period fulfillment');
+  ok(!/Confirmed assigned|Unallocated cash|Currently backed|goalKey/.test(goals),
+    'technical account inventory remains behind complete evidence rather than becoming default goal rows');
+  const stamped = sp.rerender(`const funding = __ctx.advice.payPeriodViews.find(row => row.timelineRole === 'current').plannedCostFunding;
+    funding.items.forEach(row => { row.actualSaved = 9999; row.cumulativeProposed = 9999; row.contribution = 0; });`);
+  const stillUnknown = stamped.split('data-budget-savings-goals')[1]?.split('data-budget-funding-savings')[0] || '';
+  ok(!/>Funded<|>Still to fund</.test(stillUnknown) && /Not confirmed/.test(stillUnknown),
+    'a saved balance or cumulative proposal cannot become this period\'s confirmed fulfillment');
+  const inventoryPage = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
+  ok(/<details class="budget-savings-accounts">\s*<summary>Savings accounts &amp; evidence<\/summary>\s*<div id="savings-inventory"><\/div>\s*<\/details>/.test(inventoryPage),
+    'complete inventory is keyboard-accessible through a collapsed native evidence disclosure');
 }
 
 console.log('\n=== independent payday undated roster ===');

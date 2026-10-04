@@ -134,44 +134,43 @@ console.log('\n=== 3. Paycheck chrome: no strikethrough, no arriving green ===')
     'Budget polish does not restyle income as strikethrough');
 }
 
-console.log('\n=== 4. Bills planning chrome is not Forecast Paid ===');
+console.log('\n=== 4. Payment evidence owns bill wording and colour; dates do not ===');
 {
-  const paid = UI.planningBillChrome('PAID', '2026-09-11', '2026-09-15');
-  ok(paid && paid.kind === 'paid' && paid.label === 'PAID' && paid.planning === false,
-    'Forecast Paid stays verified Paid even after the due date');
-  const onDate = UI.planningBillChrome('still due', '2026-09-11', '2026-09-11');
-  ok(onDate && onDate.kind === 'planning-cleared' && onDate.label === 'ON DATE'
-      && onDate.planning === true && onDate.label !== 'PAID',
-    'a still-due bill is planning-cleared green on its due date without claiming Paid');
-  const grace = UI.planningBillChrome('pending', '2026-09-11', '2026-09-14');
-  ok(grace && grace.kind === 'planning-cleared' && grace.label === 'ON DATE',
-    'three days past due without settlement still uses planning-cleared chrome');
-  const late = UI.planningBillChrome('still due', '2026-09-11', '2026-09-15');
-  ok(late && late.kind === 'double-check' && late.label === 'DOUBLE-CHECK'
-      && late.planning === true,
-    'four days past due without settlement surfaces DOUBLE-CHECK, not forever-green');
-  const upcoming = UI.planningBillChrome('still due', '2026-09-20', '2026-09-11');
-  ok(upcoming && upcoming.kind === 'to-pay' && upcoming.label === 'TO PAY',
-    'a bill before its date stays TO PAY rather than planning-green');
-  const noDate = UI.planningBillChrome('needs confirmation', null, '2026-09-11');
-  ok(noDate && noDate.kind === 'check' && noDate.label === 'CHECK',
-    'undated needs-confirmation stays CHECK; planning chrome does not invent a date');
-  ok(/atlas-bill-row-planning-cleared/.test(polishCss)
-      && /atlas-bill-state-planning-cleared/.test(polishCss)
-      && /atlas-bill-row-double-check/.test(polishCss)
-      && /ON DATE/.test(polishSrc)
-      && /DOUBLE-CHECK/.test(polishSrc)
-      && !/Forecast\s*\./.test(polishSrc),
-    'planning-cleared and double-check are distinct CSS/chrome, not a Forecast Paid write');
-  ok(/data-bill-date/.test(planSrc) && /data-household-as-of/.test(planSrc),
-    'plan.js stamps bill dates and household as-of for presentation chrome');
+  // Owner's latest Paid/Not paid wording supersedes the old date-grace chrome.
+  const states = [
+    ['PAID', 'represented', 'Paid', 'paid'],
+    ['still due', 'upcoming', 'Not paid', 'to-pay'],
+    ['still due', 'unverified', 'To confirm', 'check'],
+    ['still due', null, 'Unknown', 'unknown'],
+    ['pending', 'pending', 'Pending', 'pending'],
+    ['unknown', 'unknown', 'Unknown', 'unknown'],
+    ['needs confirmation', null, 'To confirm', 'check'],
+    ['PAID', 'unverified', 'To confirm', 'check'],
+  ];
+  for (const [status, settlement, label, kind] of states) {
+    for (const due of ['2026-08-20', '2026-08-17', '2026-08-16', '2026-08-21', null, '2026-02-30']) {
+      const badge = UI.planningBillChrome(status, due, '2026-08-20', settlement);
+      ok(badge.label === label && badge.kind === kind && badge.planning === false,
+        status + '/' + settlement + ' remains ' + label + ' with due date ' + due);
+    }
+  }
+  ok(!/ON DATE|DOUBLE-CHECK|planning-cleared|PLANNING_CLEAR_GRACE/.test(polishSrc + polishCss)
+      && !/Date\.UTC|daysPast/.test(polishSrc),
+    'date-based bill clearing is removed entirely');
+  const styles = [...polishCss.matchAll(/\.atlas-bill-state-([\w-]+)\s*\{([\s\S]*?)\}/g)];
+  ok(styles.filter(([, , body]) => /var\(--good\)/.test(body)).every(([, name]) => name === 'paid')
+      && /\.atlas-bill-state-paid::before/.test(polishCss),
+    'green and the payment checkmark are reserved for Paid');
+  ok(/\.atlas-bill-state-to-pay\s*\{[^}]*var\(--critical\)/.test(polishCss)
+      && /\.atlas-bill-state-pending,[\s\S]*?var\(--warning\)/.test(polishCss),
+    'Not paid uses red; pending, unconfirmed and unknown use theme-adaptive amber');
   const billHtml = composer.periodBillLine({
-    id: 'mortgage', label: 'Mortgage', status: 'still due',
-    date: '2026-09-11', amount: 1600, glanceKind: 'still-due',
+    id: 'synthetic-service', label: 'Synthetic service', status: 'still due',
+    date: '2026-08-18', amount: 99, glanceKind: 'still-due', settlement: 'unverified',
   });
-  ok(/data-bill-date="2026-09-11"/.test(billHtml)
-      && /data-bill-status="still due"/.test(billHtml),
-    'bill rows keep Forecast still-due status and expose the ISO date');
+  ok(/data-bill-date="2026-08-18"/.test(billHtml)
+      && /data-bill-settlement="unverified"/.test(billHtml),
+    'the fallback row preserves the published settlement independently of date and legacy status');
 }
 
 console.log('\n=== 5. Current Balance reprints Forecast A+B ===');

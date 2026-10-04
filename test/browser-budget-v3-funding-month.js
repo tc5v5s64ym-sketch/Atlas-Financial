@@ -166,7 +166,8 @@ fs.mkdirSync(output, { recursive: true });
       }
       data = fx.served({ withheldSavings: true }); await boot();
       assert.match(await page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]').innerText(), /Unavailable/);
-      assert.match(await page.locator('[data-budget-funding-section]').innerText(), /unconfirmed|unknown|await confirmation/i);
+      assert.match(await page.locator('[data-budget-funding-section]').innerText(), /unconfirmed|not confirmed|unknown|await confirmation/i);
+      assert.match(await page.locator('[data-budget-savings-goals]').innerText(), /School trip[\s\S]*Not confirmed[\s\S]*Winter tires/);
       await page.locator('[data-budget-funding-tab="payday"]').click();
       assert.match(await page.locator('[data-budget-funding-panel="payday"] [data-budget-funding-proposal]').innerText(), /Unavailable/);
       await geometry(); await capture('upcoming-withheld', '[data-budget-funding-section]');

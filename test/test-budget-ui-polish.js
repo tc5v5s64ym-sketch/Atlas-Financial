@@ -35,16 +35,23 @@ console.log('=== Budget polish stays downstream of Forecast ===');
 console.log('\n=== approved bill status language is calm and explicit ===');
 {
   const paid = UI.billStatePresentation('PAID');
-  const toPay = UI.billStatePresentation('still due');
+  const toPay = UI.billStatePresentation('still due', 'upcoming');
   const pending = UI.billStatePresentation('pending');
   const check = UI.billStatePresentation('needs confirmation');
-  ok(paid && paid.label === 'PAID' && paid.kind === 'paid',
-    'settled bill maps to PAID');
-  ok(toPay && toPay.label === 'TO PAY' && toPay.kind === 'to-pay',
-    'unpaid bill maps to TO PAY, not due/late wording');
-  ok(pending && pending.label === 'PENDING',
+  ok(paid && paid.label === 'Paid' && paid.kind === 'paid',
+    'settled bill maps to Paid');
+  ok(toPay && toPay.label === 'Not paid' && toPay.kind === 'to-pay',
+    'published unpaid bill maps to Not paid');
+  ok(UI.billStatePresentation('planned', 'upcoming').label === 'Not paid'
+    && UI.billStatePresentation('planned', 'upcoming').kind === 'to-pay',
+    'future planned/upcoming matches browse Not paid without date inference');
+  ok(UI.billStatePresentation('planned', 'unverified').kind === 'check'
+    && UI.billStatePresentation('planned', 'unknown').kind === 'unknown'
+    && UI.billStatePresentation('planned', null).kind === 'unknown',
+    'planned status alone cannot promote absent, unknown or unverified settlement');
+  ok(pending && pending.label === 'Pending',
     'pending keeps its incumbent meaning rather than being relabelled paid/unpaid');
-  ok(check && check.label === 'CHECK',
+  ok(check && check.label === 'To confirm',
     'needs-confirmation remains distinct from unpaid');
   ok(!/[!]/.test([paid, toPay, pending, check].map(x => x.label).join(' ')),
     'normal bill states use no alarm icon or exclamation wording');
@@ -72,9 +79,10 @@ console.log('\n=== approved hierarchy and app navigation are present ===');
     'Income, Bills and Household Budget remain first-class distinct cards');
   ok(/atlas-bill-row-paid/.test(css)
     && /atlas-bill-row-to-pay/.test(css)
-    && /atlas-bill-row-planning-cleared/.test(css)
-    && /atlas-bill-row-double-check/.test(css),
-    'paid, to-pay, planning-cleared, and double-check bill rows have separate visual states');
+    && /atlas-bill-row-pending/.test(css)
+    && /atlas-bill-row-check/.test(css)
+    && /atlas-bill-row-unknown/.test(css),
+    'paid, not-paid, pending, unconfirmed and unknown rows retain distinct status classes');
   ok(!/atlas-period-summary/.test(polishJs) && !/atlas-payday-summary/.test(polishJs)
       && !/atlas-period-summary/.test(css),
     'polish no longer lifts Payday balance into a top-glance summary');
