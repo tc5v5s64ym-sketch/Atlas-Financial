@@ -189,6 +189,90 @@ assert.match(bills,/data-budget-progress-kind="bills"/);
 assert.match(bills,/data-budget-progress-kind="bills"[^>]*aria-hidden="true"><\/span>/,'partial paid evidence has no progress fill');
 const goals=vm.runInContext('budgetSavingsGoalsHtml(progressCtx,progressPeriod,null)',context);
 assert.match(goals,/School trip/);assert.match(goals,/Not confirmed/);assert.doesNotMatch(goals,/>Funded<|>Still to fund</);
+// Actual incumbent Forecast -> active savings renderer, with a second-method
+// reconciliation from independently invented salary/bills/category/goal rows.
+const contributionData=require('./fixtures/savings-contribution-display-data')();
+const contributionBefore=JSON.stringify(contributionData);
+const contributionAdvice=F.recommend(contributionData.plan,contributionData.meta.asOf,{});
+const contributionPublicationBefore=JSON.stringify(contributionAdvice);
+for(const [date,amount] of [['2026-08-14',875 - (1300 - 240 - 160 - 310)],['2026-08-28',590]]) {
+  context.contributionPeriod=contributionAdvice.payPeriodViews.find(row=>row.start===date);
+  context.contributionCtx={asOf:contributionData.meta.asOf,advice:contributionAdvice,plan:contributionData.plan};
+  assert.equal(context.contributionPeriod.budgetProgress.savings.goals.find(row=>row.id==='garden-course').required.amount,amount);
+  const html=vm.runInContext('budgetSavingsGoalsHtml(contributionCtx,contributionPeriod,null)',context);
+  assert.match(html,/data-budget-goal-fulfilled><span class="budget-v3-unknown">Unknown/);
+  assert.match(html,new RegExp('data-budget-goal-required>[\\s\\S]*?'+amount.toFixed(2).replace('.','\\.')));
+  assert.match(html,/Fulfilled[\s\S]*Required this period[\s\S]*Current Forecast requirement/);
+  assert.match(html,/Reading nook with a deliberately long goal name/);
+  assert.doesNotMatch(html,/>Funded<|>Still to fund<|type="checkbox"|original planned|width:/);
+}
+assert.equal(JSON.stringify(contributionData),contributionBefore);
+assert.equal(JSON.stringify(contributionAdvice),contributionPublicationBefore,'presentation does not mutate any publication');
+// Explicitly sealed presenter-only future probes. The current engine does
+// NOT publish confirmed goal fulfillment; these are not attribution evidence.
+const sealedField=amount=>({amount,trust:'calculated',completeness:'complete'});
+function probe(goal,publication={}) {
+  context.goalProbe=clone(context.contributionPeriod);
+  context.goalProbe.budgetProgress={...context.goalProbe.budgetProgress,...publication,
+    savings:{goals:[goal]}};
+  return vm.runInContext('budgetSavingsGoalsHtml(contributionCtx,goalProbe,null)',context);
+}
+const sealedGoal={id:'presenter-only',label:'Sealed presentation probe',required:sealedField(71.25),
+  fulfilled:sealedField(31.25),remaining:sealedField(40),status:'still-to-fund',reason:'Invented sealed presenter-only evidence.'};
+for(const [status,fulfilled,remaining] of [['still-to-fund',31.25,40],['funded',71.25,0],['funded',0,0]]) {
+  const goal={...sealedGoal,status,required:sealedField(status==='funded'&&fulfilled===0?0:71.25),fulfilled:sealedField(fulfilled),remaining:sealedField(remaining)};
+  const html=probe(goal);
+  assert.match(html,new RegExp('is-'+status));
+  assert.match(html,new RegExp('data-budget-goal-fulfilled>[\\s\\S]*?'+fulfilled.toFixed(2).replace('.','\\.')));
+  context.goalEvidencePair={goals:[goal]};
+  const detail=vm.runInContext("budgetProgressEvidenceHtml(goalEvidencePair,'savings')",context);
+  assert.doesNotMatch(detail,/Not confirmed\./);
+  assert.match(detail,new RegExp('Remaining this period:[\\s\\S]*?'+remaining.toFixed(2).replace('.','\\.')));
+}
+for(const key of ['required','fulfilled','remaining'])for(const bad of [null,'71.25',NaN,Infinity,...(key==='remaining'?[]:[-1])]) {
+  const goal={...sealedGoal,[key]:sealedField(bad)};
+  assert.doesNotMatch(probe(goal),/is-funded|is-still-to-fund/);
+}
+for(const key of ['required','fulfilled','remaining'])for(const completeness of ['partial','proposal','unavailable']) {
+  assert.doesNotMatch(probe({...sealedGoal,[key]:{...sealedGoal[key],completeness}}),/is-funded|is-still-to-fund/);
+}
+for(const key of ['required','fulfilled','remaining'])for(const trust of [null,'unknown','unavailable','verified']) {
+  assert.doesNotMatch(probe({...sealedGoal,[key]:{...sealedGoal[key],trust}}),/is-funded|is-still-to-fund/);
+}
+for(const status of ['not-confirmed','pending','unknown',null])assert.doesNotMatch(probe({...sealedGoal,status}),/is-funded|is-still-to-fund/);
+for(const publication of [{asOf:'2026-08-15'},{start:'2026-08-29'},{end:'2026-09-11'},
+  {currency:'USD'},{source:'Presentation'}, {asOf:'2026-02-30'}]) {
+  const html=probe({...sealedGoal,status:'funded'},publication);
+  assert.doesNotMatch(html,/is-funded|is-still-to-fund|71\.25|31\.25/,'out-of-scope publications are withheld');
+}
+const proposalOnly={...sealedGoal,status:'not-confirmed',required:null,fulfilled:null,remaining:null,
+  proposal:{amount:29.75,trust:'estimated',completeness:'proposal'}};
+assert.match(probe(proposalOnly),/29\.75[\s\S]*proposed; requirement unavailable/);
+assert.match(probe(proposalOnly),/data-budget-goal-required><span class="budget-v3-unknown">Unknown/);
+assert.match(probe({...proposalOnly,proposal:{...proposalOnly.proposal,amount:-1}}),/Required contribution unavailable/);
+const mixedGoal={...sealedGoal,status:'not-confirmed',
+  required:{amount:null,trust:'unavailable',completeness:'unavailable',reason:'Invented missing required evidence.'},
+  remaining:{amount:null,trust:'unavailable',completeness:'unavailable',reason:'Invented missing remaining evidence.'}};
+const mixedHtml=probe(mixedGoal);
+assert.match(mixedHtml,/data-budget-goal-fulfilled>[\s\S]*?31\.25/,'known fulfilled survives unknown requirement');
+assert.match(mixedHtml,/data-budget-goal-required><span class="budget-v3-unknown">Unknown/);
+assert.doesNotMatch(mixedHtml,/is-funded|is-still-to-fund/);
+context.goalEvidencePair={goals:[mixedGoal]};
+const mixedDetail=vm.runInContext("budgetProgressEvidenceHtml(goalEvidencePair,'savings')",context);
+assert.match(mixedDetail,/Required this period: Unavailable[\s\S]*Invented missing required evidence/);
+assert.match(mixedDetail,/Confirmed fulfilled this period:[\s\S]*31\.25/);
+assert.match(mixedDetail,/Remaining this period: Unavailable[\s\S]*Invented missing remaining evidence/);
+const signedRemaining={...sealedGoal,remaining:sealedField(-8.75)};
+assert.match(probe(signedRemaining),/[\u2212-]\$8\.75[\s\S]*remaining/,'signed published remainder is not silently clamped');
+context.goalEvidencePair={goals:[signedRemaining]};
+assert.match(vm.runInContext("budgetProgressEvidenceHtml(goalEvidencePair,'savings')",context),/Remaining this period:[\s\S]*?[\u2212-]\$8\.75/);
+for(const [key,label] of [['required','Required'],['fulfilled','Confirmed fulfilled'],['remaining','Remaining']]) {
+  const partialGoal={...sealedGoal,[key]:{...sealedGoal[key],completeness:'partial',reason:'Invented partial '+key+' evidence.'}};
+  assert.doesNotMatch(probe(partialGoal),/is-funded|is-still-to-fund/);
+  context.goalEvidencePair={goals:[partialGoal]};
+  const detail=vm.runInContext("budgetProgressEvidenceHtml(goalEvidencePair,'savings')",context);
+  assert.match(detail,new RegExp(label+' this period:[\\s\\S]*?'+partialGoal[key].amount.toFixed(2).replace('.','\\.')+'[\\s\\S]*?- partial evidence[\\s\\S]*?Invented partial '+key+' evidence'));
+}
 // Active Forecast plus active renderer: old target 450 is revised to an
 // independently invented 613.27 today, with no dated original-plan snapshot.
 const historicalData=fx.fundingHistorical('full','paid'),historicalBefore=JSON.stringify(historicalData);

@@ -4277,7 +4277,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
             <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${ratioKey ? budgetProgressValueHtml(progress, ratioKey) : known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>
           </summary>
-          <div class="operating-answer budget-step-body">${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}${ratioKey ? budgetProgressEvidenceHtml(progress, ratioKey) : ''}</div>
+          <div class="operating-answer budget-step-body">${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}${ratioKey ? budgetProgressEvidenceHtml(progress, ratioKey, period) : ''}</div>
         </details>
       </div>`;
     }
@@ -4951,7 +4951,7 @@ function budgetDetailSheetController(mount) {
       return `[${key}="${CSS.escape(node.getAttribute(key))}"][data-budget-browse-origin="${CSS.escape(node.getAttribute('data-budget-browse-origin') || '')}"]${node.hasAttribute('data-budget-bill-date') ? `[data-budget-bill-date="${CSS.escape(node.getAttribute('data-budget-bill-date'))}"]` : ''}`;
     }
     if (source && node.hasAttribute('data-budget-category')) return `[data-budget-category="${CSS.escape(node.getAttribute('data-budget-category'))}"]`;
-    for (const key of source ? ['data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
+    for (const key of source ? ['data-budget-goal-fulfillment-evidence', 'data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
       : ['data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-month-section', 'data-budget-month-section-heading', 'data-budget-granularity', 'data-budget-window-step']) {
       if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
     }
@@ -5960,6 +5960,18 @@ function budgetProgressAmountKnown(field) {
     && typeof field.amount === 'number' && Number.isFinite(field.amount);
 }
 
+function budgetGoalContributionKnown(field) {
+  return budgetProgressAmountKnown(field) && field.completeness === 'complete' && field.amount >= 0;
+}
+
+function budgetGoalPresentation(goal) {
+  const confirmed = goal && ['funded', 'still-to-fund'].includes(goal.status)
+    && [goal.required, goal.fulfilled].every(budgetGoalContributionKnown)
+    && budgetProgressAmountKnown(goal.remaining) && goal.remaining.completeness === 'complete';
+  return { confirmed, kind: confirmed ? goal.status : 'not-confirmed',
+    label: confirmed ? goal.status === 'funded' ? 'Funded' : 'Still to fund' : 'Not confirmed' };
+}
+
 function budgetRemainingEvidenceContext(period, asOf) {
   // A projected allowance is labeled as such, and historical original plans
   // are already withheld. Current Remaining requires complete actual evidence.
@@ -5988,7 +6000,7 @@ function budgetProgressBarHtml(pair, key) {
   return `<span class="budget-waterfall-track${!known ? ' is-unknown' : state === 'deficit' ? ' is-deficit' : !positiveScale ? ' is-noscale' : ''} budget-progress-track${over ? ' is-over-plan' : ''}" data-budget-bar-state="${state}" data-budget-progress-kind="${key}" aria-hidden="true">${positiveScale ? `<span class="budget-waterfall-bar" style="left:0%;width:${Math.min(100, pair.actual.amount / pair.planned.amount * 100)}%"></span>` : ''}${over ? '<span class="budget-progress-over">!</span>' : ''}</span>`;
 }
 
-function budgetProgressEvidenceHtml(pair, key) {
+function budgetProgressEvidenceHtml(pair, key, period) {
   const line = (label, field) => `<p>${label}: ${budgetProgressAmountKnown(field) ? budgetBrowseMoney(field.amount, field.trust) : 'Unavailable'}${field?.completeness === 'partial' ? ' - partial evidence' : ''}.</p>${field?.reason ? `<p>${budgetBrowseEscape(field.reason)}</p>` : ''}`;
   if (key === 'household') {
     // The sealed progress publication owns actual spending and original plan.
@@ -6002,7 +6014,12 @@ function budgetProgressEvidenceHtml(pair, key) {
       ${pair?.actual?.includesPending ? '<p>Incurred spending includes observed pending transactions. Their settlement remains pending.</p>' : ''}
     </section>`;
   }
-  const goals = key === 'savings' && Array.isArray(pair?.goals) ? pair.goals.map(row => `<section data-budget-goal-fulfillment-evidence="${budgetBrowseEscape(row.id)}"><h3>${budgetBrowseEscape(row.label || 'Goal name not confirmed')}</h3>${line('Required this period', row.required)}${line('Confirmed fulfilled this period', row.fulfilled)}${line('Remaining this period', row.remaining)}<p>Not confirmed. ${budgetBrowseEscape(row.reason)}</p></section>`).join('') : '';
+  const goals = key === 'savings' && Array.isArray(pair?.goals) ? pair.goals.map(row => {
+    const state = budgetGoalPresentation(row);
+    const contribution = (field, signed = false) => budgetProgressAmountKnown(field) && (signed || field.amount >= 0)
+      ? field : { ...field, amount: null, completeness: 'unavailable' };
+    return `<section data-budget-goal-fulfillment-evidence="${budgetBrowseEscape(row.id)}"><h3>${budgetBrowseEscape(row.label || 'Goal name not confirmed')}</h3><p>${period ? budgetBrowseEscape(payPeriodRangeLabel(period)) : 'Selected pay period'}. Required is the current Forecast requirement, not an original payday snapshot.</p>${line('Required this period', contribution(row.required))}${line('Confirmed fulfilled this period', contribution(row.fulfilled))}${line('Remaining this period', contribution(row.remaining, true))}<p>${state.label}. ${budgetBrowseEscape(row.reason || '')}</p></section>`;
+  }).join('') : '';
   return `<section class="budget-progress-evidence" data-budget-progress-evidence="${key}"><h3>${key === 'savings' ? 'Period contribution evidence' : 'Actual and original plan'}</h3>${line(key === 'savings' ? 'Current Forecast requirement' : 'Original plan', pair?.planned)}${line('Actual', pair?.actual)}<p>${budgetBrowseEscape(pair?.semantics || 'Exact-period amounts and their evidence are unavailable.')}</p>${pair?.actual?.includesPending ? '<p>Incurred spending includes observed pending transactions. Their settlement remains pending.</p>' : ''}${goals}</section>`;
 }
 
@@ -6158,21 +6175,28 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
     ...(Array.isArray(schedule?.costs) ? schedule.costs : []),
     ...(Array.isArray(schedule?.unscheduled) ? schedule.unscheduled : [])];
   const seen = new Set();
-  const rows = [...published, ...fallback].filter(row => row && row.id && !seen.has(row.id) && seen.add(row.id));
+  const rows = [...(Array.isArray(fulfillment?.goals) ? fulfillment.goals : []), ...published, ...fallback]
+    .filter(row => row && row.id && !seen.has(row.id) && seen.add(row.id));
   const named = rows.map(row => {
     const goal = Array.isArray(fulfillment?.goals) ? fulfillment.goals.find(goal => goal.id === row.id) : null;
     const label = typeof row.label === 'string' && row.label.trim() && row.label !== row.id
       ? row.label : 'Goal name not confirmed';
-    const confirmed = goal && ['funded', 'still-to-fund'].includes(goal.status)
-      && [goal.required, goal.fulfilled, goal.remaining].every(field => budgetProgressAmountKnown(field) && field.completeness === 'complete');
-    const proposal = goal?.proposal?.completeness === 'proposal' && budgetV3Known(goal.proposal.amount, goal.proposal.trust);
-    const required = budgetProgressAmountKnown(goal?.required) && goal.required.completeness === 'complete';
-    const state = confirmed ? goal.status === 'funded' ? 'Funded' : 'Still to fund' : 'Not confirmed';
-    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"><button type="button" data-budget-goal-open="${budgetV3Escape(row.id)}" aria-haspopup="dialog"><div><strong>${budgetV3Escape(goal?.label || label)}</strong><span class="budget-goal-state">${state}</span></div><p>${confirmed ? `${budgetV3Money(goal.fulfilled.amount, goal.fulfilled.trust)} fulfilled / ${budgetV3Money(goal.required.amount, goal.required.trust)} required; ${budgetV3Money(goal.remaining.amount, goal.remaining.trust)} remaining` : required ? `${budgetV3Money(goal.required.amount, goal.required.trust)} required by the current Forecast for this period. Fulfillment not confirmed.` : proposal ? `${budgetV3Money(goal.proposal.amount, goal.proposal.trust)} proposed this period. Fulfillment not confirmed.` : 'Required contribution unavailable. Fulfillment not confirmed.'}</p></button></li>`;
+    const state = budgetGoalPresentation(goal);
+    const proposal = goal?.proposal?.completeness === 'proposal' && budgetV3Known(goal.proposal.amount, goal.proposal.trust)
+      && goal.proposal.amount >= 0;
+    const required = budgetGoalContributionKnown(goal?.required);
+    const fulfilled = budgetGoalContributionKnown(goal?.fulfilled);
+    const remaining = budgetProgressAmountKnown(goal?.remaining) && goal.remaining.completeness === 'complete';
+    const unknown = '<span class="budget-v3-unknown">Unknown</span>';
+    return `<li data-budget-savings-goal="${budgetV3Escape(row.id)}"><button type="button" class="budget-goal-row is-${state.kind}" data-budget-goal-open="${budgetV3Escape(row.id)}" aria-haspopup="dialog">
+      <div class="budget-goal-heading"><strong>${budgetV3Escape(goal?.label || label)}</strong><span class="budget-goal-state">${state.label}</span></div>
+      <div class="budget-goal-amounts"><span><span class="budget-goal-amount" data-budget-goal-fulfilled>${fulfilled ? budgetV3Money(goal.fulfilled.amount, goal.fulfilled.trust) : unknown}</span><small>Fulfilled</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount" data-budget-goal-required>${required ? budgetV3Money(goal.required.amount, goal.required.trust) : unknown}</span><small>Required this period</small></span></div>
+      <p class="budget-goal-context">${remaining ? `${budgetV3Money(goal.remaining.amount, goal.remaining.trust)} remaining` : required ? 'Current Forecast requirement' : proposal ? `${budgetV3Money(goal.proposal.amount, goal.proposal.trust)} proposed; requirement unavailable` : 'Required contribution unavailable'}<span class="budget-goal-evidence">Evidence <span aria-hidden="true">></span></span></p>
+    </button></li>`;
   }).join('');
   return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3>
     <ul>${named || '<li>Goal contributions unavailable for this period.</li>'}</ul>
-    <p class="budget-goal-notice">Saved contributions are not confirmed.</p>
+    <p class="budget-goal-notice">Balances and proposals do not confirm period contributions.</p>
     <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
     <div data-budget-funding-savings hidden>${typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(ctx.advice?.savingsInventory) : '<p>Savings inventory unavailable. Saved balances and assignments are unknown.</p>'}</div></div>`;
 }
@@ -6297,11 +6321,14 @@ function wireBudgetFunding(mount, sheet) {
         : button.hasAttribute('data-budget-funding-inventory') ? '[data-budget-funding-savings]'
         : key === 'today' ? '[data-from-today-proposal]' : key === 'payday'
           ? '[data-payday-breakdown="planned-cost-funding"]' : '[data-budget-today-evidence]';
-      const source = mount.querySelector(selector);
+      const periodSource = mount.querySelector(selector);
+      const goalId = button.getAttribute('data-budget-goal-open');
+      const goalSource = goalId && periodSource?.querySelector(`[data-budget-goal-fulfillment-evidence="${CSS.escape(goalId)}"]`);
+      const source = goalSource || periodSource;
       if (!source) return;
       const disclosure = source.matches('details') ? source : source.querySelector('details');
       if (disclosure) disclosure.open = true;
-      sheet.open(source, button, button.hasAttribute('data-budget-goal-open') ? button.querySelector('strong')?.textContent || 'Goal contribution evidence'
+      sheet.open(source, button, button.hasAttribute('data-budget-goal-open') ? goalSource ? button.querySelector('strong')?.textContent || 'Goal contribution evidence' : 'Period contribution evidence'
         : button.hasAttribute('data-budget-month-funding-open') ? 'Month-input exact funding plan' : key === 'today' ? 'Today: complete funding evidence'
         : key === 'payday' ? 'Exact payday funding plan' : button.hasAttribute('data-budget-funding-inventory') ? 'Savings assignments and backing' : 'Current cash and funding scopes');
     });
