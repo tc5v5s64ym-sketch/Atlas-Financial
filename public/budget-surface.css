@@ -362,6 +362,7 @@
 .budget-cash-segment { flex-shrink:0; height:100%; }
 .budget-cash-bills { background:var(--text-primary); }
 .budget-cash-household { background:var(--s1); }
+.budget-cash-card-coverage { background:var(--s2); }
 .budget-cash-floor { background:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--text-primary) 15%,transparent) 3px 5px),color-mix(in srgb,var(--text-primary) 12%,var(--surface-1)); }
 .budget-cash-proposed { background:var(--good); }
 .budget-cash-legend { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 18px; margin:18px 0 0; }

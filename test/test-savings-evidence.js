@@ -13,6 +13,7 @@ const AS_OF = '2026-08-20';
 const ROOT = path.join(__dirname, '..');
 function state() {
   const data = fixture();
+  data.plan.cardPurchaseCoverage = require('./fixtures/card-coverage-opening')('2026-08-14');
   data.meta.asOf = data.plan.opening.asOf = AS_OF;
   data.plan.opening.priorAsOf = '2026-08-13';
   data.plan.startingCash.breakdown = [{ id: 'chequing-a', label: 'Synthetic Bills', value: 1000 },
@@ -34,7 +35,8 @@ function state() {
     ] };
   return { data, packet, asOf: AS_OF, opts: {} };
 }
-const options = s => ({ ...s.data.plan.defaults, debts: s.data.debts, currentPeriodActuals: s.packet, ...s.opts });
+const options = s => ({ ...s.data.plan.defaults, debts: s.data.debts,
+  currentPeriodActuals: require('./fixtures/card-coverage-opening').packet(s.packet), ...s.opts });
 const current = a => a.payPeriodViews.find(p => p.fromTodayFunding);
 const run = (s, engine = F) => engine.recommend(s.data.plan, s.asOf, options(s));
 const withoutDiagnostics = value => JSON.parse(JSON.stringify(value, (key, v) => key === 'evidenceFailures' ? undefined : v));
@@ -132,7 +134,7 @@ function main() {
   }
   const complete = state(), control = check(complete);
   // A second, supplied-dollar method. No call to the allocator as oracle.
-  assert.equal(control.availableNow, 1000 - (200 + 150 + 25) - (300 - 50) - 50);
+  assert.equal(control.availableNow, 1000 - (200 + 150 + 25) - (300 - 50) - 50 - 50);
   assert.equal(control.contribution, 600 - (1000 - 200 - 150 - 300));
   assert.equal(control.status, 'ready');
   assert.equal(control.evidenceFailures, undefined);

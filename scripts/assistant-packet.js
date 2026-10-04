@@ -125,7 +125,8 @@ function effectiveAsOf(data) {
 function operatingPlanUnavailable(data, advice) {
   const overlay = data && data.liveOverlay;
   return (overlay && overlay.operatingPlan === 'unavailable')
-    || (advice && advice.operatingPlanUnavailable === true);
+    || (advice && (advice.operatingPlanUnavailable === true
+      || advice.cardCoverageUnavailable === true));
 }
 
 function operatingPlanNote(data, advice) {
@@ -579,7 +580,12 @@ function currentBlock(data, asOf, advice, used) {
     })
     : null;
   return {
-    spendableHouseholdCash: Number.isFinite(spendable)
+    spendableHouseholdCash: advice?.cardCoverageUnavailable === true
+      && !(data.liveOverlay && data.liveOverlay.operatingPlan === 'unavailable')
+      ? { status: 'unavailable', value: null, reason: unavailableReason,
+        observedCash: Number.isFinite(spendable) ? money(spendable) : null,
+        asOf, source: 'Forecast.recommend' }
+      : Number.isFinite(spendable)
       ? (planUnavailable
         ? {
           status: 'dated-opening',

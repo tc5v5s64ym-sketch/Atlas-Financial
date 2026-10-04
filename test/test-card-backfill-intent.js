@@ -6,7 +6,15 @@ const F = require('../public/forecast');
 const O = require('../scripts/provider-observe');
 const Live = require('../scripts/live-plan');
 const Detail = require('../public/bill-detail');
-const fixture = require('./fixtures/card-backfill-data');
+const source = require('./fixtures/card-backfill-data');
+const coverageFixture = require('./fixtures/card-purchase-coverage-data');
+function fixture(...args) {
+  const x=source(...args);
+  x.data.plan.cardPurchaseCoverage=coverageFixture('before').data.plan.cardPurchaseCoverage;
+  x.payload.transactions.forEach(t=>{t.currency='cad';});
+  coverageFixture.confirm(x,'confirmed-invented-backfill',80002,80003,[[80001,80]]);
+  return x;
+}
 const canonicalBefore = fs.readFileSync(require.resolve('../data.json'), 'utf8');
 const cards = [['travelvisa', 'travel'], ['cashback', 'cashback'], ['tdcc', 'tdcc'],
   ['triangle', 'triangle'], ['mbna', 'mbna']];
@@ -28,7 +36,10 @@ function unconfirmed(x) {
   assert.equal(r.data.plan.opening.representedEvents.filter(row => row.id === x.eventId).length, 0);
   assert.notEqual(r.bill.status, 'PAID');
   assert.equal(r.bill.remaining, 25, 'only the existing scheduled minimum remains reserved');
-  assert.equal(r.period.fromTodayFunding.operatingBills, 25);
+  if (r.advice.cardCoverageUnavailable) {
+    assert.equal(r.period.fromTodayFunding.status,'unavailable');
+    assert.equal(r.period.fromTodayFunding.contribution,null,'ambiguous coverage cannot authorize funding');
+  } else assert.equal(r.period.fromTodayFunding.operatingBills, 25);
   return r;
 }
 for (const [card, event] of cards) {
@@ -84,7 +95,7 @@ for (const payee of ['PAYMENT - THANK YOU REFUND', 'PAYMENT - THANK YOU REVERSAL
 }
 const refund = fixture();
 refund.payload.transactions.push({ id: 80004, account_id: 3004, date: refund.asOf,
-  amount: -20, payee: 'Invented grocer', category_name: 'Groceries', is_pending: false });
+  amount: -20, currency: 'cad', payee: 'Invented grocer', category_name: 'Groceries', is_pending: false });
 refund.payload.accounts[3].balance = 380;
 const refunded = unconfirmed(refund);
 assert.equal(refunded.period.householdBudget[0].spent, 80,

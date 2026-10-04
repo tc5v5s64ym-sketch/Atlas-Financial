@@ -266,6 +266,9 @@ function projectFromAdvice(advice, data, opts, asOf) {
         : clone(alloc.extraDebt && alloc.extraDebt.consequence ? alloc.extraDebt.consequence : null),
     },
     limitations: {
+      ...(advice?.cardPurchaseCoverage ? { cardPurchaseCoverage: {
+        status: advice.cardPurchaseCoverage.status, reason: advice.cardPurchaseCoverage.reason,
+      } } : {}),
       source: 'Forecast.currentPeriodAction / Forecast.paydayAllocation.risks',
       remainingClaim: planUnavailable ? 'unavailable' : remainingClaim,
       categoryRemainingClaim: planUnavailable ? null : (action.categoryRemainingClaim || null),

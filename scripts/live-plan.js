@@ -527,7 +527,7 @@ function applyPendingOverlay(data, change) {
 }
 
 function assertOwnerPolicyUntouched(before, after) {
-  const keys = ['income', 'bills', 'obligations', 'commitments', 'budget', 'actions', 'nextDollar', 'savingsEarmarks'];
+  const keys = ['income', 'bills', 'obligations', 'commitments', 'budget', 'actions', 'nextDollar', 'savingsEarmarks', 'cardPurchaseCoverage'];
   for (const key of keys) {
     if (JSON.stringify((before.plan || {})[key]) !== JSON.stringify((after.plan || {})[key])) {
       fail(`Live overlay must not rewrite plan.${key}.`);

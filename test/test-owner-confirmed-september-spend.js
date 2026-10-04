@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const F = require('../public/forecast.js');
-const O = require('../scripts/provider-observe.js');
+const O = require('./fixtures/native-cad-observation')(require('../scripts/provider-observe.js'));
 
 const ROOT = path.join(__dirname, '..');
 const AS_OF = '2026-09-23';

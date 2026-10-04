@@ -40,15 +40,16 @@ function expected(row) {
   const postedDebits = row.billPaid ? 120 + 80 + 30 + 35 : 0;
   const refund = ['refund-transfer', 'ambiguous', 'resolved'].includes(row.key) ? 20 : 0;
   const cash = 300 + 100 + 1000 - postedDebits + refund;
+  const uncoveredCard = row.card + row.pending; // No backfill in this invented ledger.
   const remainingHousehold = 300 - row.groceries + 100 - row.dining;
   const operatingBills = row.billPaid ? 0 : 120;
-  return { ...row, cash, remainingHousehold, operatingBills,
+  return { ...row, cash, uncoveredCard, remainingHousehold, operatingBills,
     spent: row.groceries + row.dining + row.other,
     budgetHold: 300 + 100 + row.other,
     // The full-period Budget result does not include the $400 opening.
     periodIncome: 1000, afterBills: 1000 - 120,
     periodResult: 1000 - 120 - 300 - 100 - row.other,
-    availableNow: cash - operatingBills - remainingHousehold - 50,
+    availableNow: cash - operatingBills - remainingHousehold - 50 - uncoveredCard,
     contribution: row.hold ? null : 420,
   };
 }
@@ -81,7 +82,8 @@ function fixture(key = 'payday') {
     { providerAccountId: '2001', canonical: { collection: 'debts', id: 'travelvisa' }, atlasRole: 'revolving-credit' },
   ] };
   const tx = (id, date, account, amount, category, payee, extra = {}) => ({ id, date, account_id: account,
-    amount, category_id: category, payee, is_pending: false, status: 'cleared', ...extra });
+    amount, currency: 'cad', category_id: category, payee, is_pending: false, status: 'cleared', ...extra });
+  data.plan.cardPurchaseCoverage = require('./card-coverage-opening')('2026-08-13');
   const transactions = [tx(91001, '2026-08-14', 1001, -1000, 14, 'SEASPAN synthetic payroll')];
   if (index >= 1) transactions.push(
     tx(91002, '2026-08-16', 1001, 120, null, 'Shaw Cable synthetic bill'),
@@ -128,7 +130,7 @@ function variant(mode) {
     input.payload.transactionWindow.endDate = '2026-08-20';
   } else if (mode === 'floor') {
     // $1,155 current cash - $1,000 unpaid bill - $215 remaining targets
-    // = -$60, which is $110 below the existing $50 floor. Future payday
+    // = -$60, which is $185 below the $125 floor ($50 buffer plus $75 uncovered card). Future payday
     // income cannot fund an Aug 24 bill. No proposal is affordable now.
     input.data.plan.bills.push({ id: 'extra-operating', label: 'Synthetic extra bill',
       amount: 1000, date: '2026-08-24', frequency: 'once', confidence: 'confirmed' });

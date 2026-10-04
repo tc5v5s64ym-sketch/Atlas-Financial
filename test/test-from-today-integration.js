@@ -11,6 +11,7 @@ const F = require('../public/forecast');
 const fixture = require('./fixtures/budget-funding-data');
 const AS_OF = '2026-08-20';
 const data = fixture();
+data.plan.cardPurchaseCoverage = require('./fixtures/card-coverage-opening')('2026-08-14');
 data.plan.bills.push({ id: 'synthetic-due', label: 'Synthetic due bill', frequency: 'once',
   date: '2026-08-19', amount: 100, confidence: 'confirmed' });
 data.plan.startingCash.breakdown = [
@@ -37,7 +38,7 @@ const payload = { provider: 'lunchmoney', fetchedAt: AS_OF + 'T18:00:00.000Z',
   categories: [{ id: 11, name: 'Groceries', is_income: false, exclude_from_totals: false },
     { id: 12, name: 'Income', is_income: true, exclude_from_totals: false }],
   transactions: [
-    { id: 91001, account_id: 2001, date: '2026-08-19', amount: 50,
+    { id: 91001, account_id: 2001, date: '2026-08-19', amount: 50, currency: 'cad',
       payee: 'Synthetic grocer', category_id: 11, is_pending: true, status: 'unreviewed' },
     { id: 91002, account_id: 1001, date: '2026-08-14', amount: -1000,
       payee: 'Synthetic payroll', category_id: 12, is_pending: false, status: 'cleared' },
@@ -171,6 +172,7 @@ async function budgetRefresh(canonical, source, extraOpts = {}) {
 }
 function reviewFixture() {
   const canonical = fixture();
+  canonical.plan.cardPurchaseCoverage = require('./fixtures/card-coverage-opening')('2026-08-14');
   canonical.meta.asOf = canonical.plan.opening.asOf = '2026-08-13';
   canonical.plan.defaults.targetBuffer = 50;
   canonical.plan.startingCash.breakdown = structuredClone(data.plan.startingCash.breakdown);
@@ -189,12 +191,12 @@ const control = reviewFixture();
 const complete = await budgetRefresh(control.canonical, control.source);
 assert.equal(complete.proposal.currentCash, 1000);
 assert.equal(complete.proposal.operatingBills, 375);
-assert.equal(complete.proposal.availableNow, 325);
+assert.equal(complete.proposal.availableNow, 275);
 assert.equal(complete.proposal.contribution, 250);
 assert.equal(complete.proposal.periods[1].contribution, 350);
 assert.deepEqual((await budgetRefresh(control.canonical, control.source)).proposal, complete.proposal);
 
-// P1: supplied-dollar $750 - $375 - $250 - $50 = $75 through recommend
+// P1: supplied-dollar $750 - $375 - $250 - $50 buffer - $50 uncovered card = $25 through recommend
 // and the real rendered instruction, with both modelled credit paths.
 const poor = reviewFixture(); poor.source.accounts[0].balance = 750;
 for (const date of [AS_OF, '2026-08-25']) {
@@ -204,10 +206,10 @@ for (const date of [AS_OF, '2026-08-25']) {
     });
     assert.equal(result.proposal.status, 'funding-gap');
     assert.equal(result.proposal.operatingBills, 375);
-    assert.equal(result.proposal.availableNow, 75);
-    assert.equal(result.proposal.contribution, 75);
-    assert.match(result.todayHtml, /Proposed to set aside now<\/span><span>\$75\.00/);
-    assert.match(result.todayHtml, /2026-08-20.*175.00.*Named cost/);
+    assert.equal(result.proposal.availableNow, 25);
+    assert.equal(result.proposal.contribution, 25);
+    assert.match(result.todayHtml, /Proposed to set aside now<\/span><span>\$25\.00/);
+    assert.match(result.todayHtml, /2026-08-20.*225.00.*Named cost/);
     assert.doesNotMatch(result.todayHtml, /Proposed to set aside now<\/span><span>\$250\.00/);
   }
 }
@@ -223,18 +225,18 @@ carry.canonical.plan.bills.push({ id: 'later-operations', label: 'Later operatin
 const blocked = await budgetRefresh(carry.canonical, carry.source);
 assert.equal(blocked.proposal.contribution, null);
 assert.equal(blocked.proposal.items.find(r => r.id === 'named-cost').cumulativeProposed, null);
-assert.match(blocked.todayHtml, /operating.*2026-09-24.*25.00.*50.00/i);
+assert.match(blocked.todayHtml, /operating.*2026-09-24.*75.00.*100.00/i);
 assert.doesNotMatch(blocked.todayHtml, /Cumulative proposed \/ cost|data-from-today-cost/,
   'a withheld proposal shows the reason, not a table of unavailable allocations');
 assert.doesNotMatch(blocked.todayHtml, /Proposed to set aside now|\$250\.00|\$350\.00|data-from-today-period/);
-carry.canonical.plan.bills.at(-1).amount = 575;
+carry.canonical.plan.bills.at(-1).amount = 525;
 assert.equal((await budgetRefresh(carry.canonical, carry.source)).proposal.status, 'ready');
 carry.canonical.plan.bills.at(-1).amount = 1000;
 carry.source.accounts[0].balance = 750;
 const blockedBeyondFirstGap = await budgetRefresh(carry.canonical, carry.source);
 assert.equal(blockedBeyondFirstGap.proposal.contribution, null);
 assert.match(blockedBeyondFirstGap.todayHtml, /operating.*2026-09-24/i);
-assert.doesNotMatch(blockedBeyondFirstGap.todayHtml, /Proposed to set aside now|\$75\.00/);
+assert.doesNotMatch(blockedBeyondFirstGap.todayHtml, /Proposed to set aside now|\$25\.00/);
 
 // P1: either missing canonical stock and either missing provider stock must
 // withhold same-date and date-advancing instructions. An actual observed zero

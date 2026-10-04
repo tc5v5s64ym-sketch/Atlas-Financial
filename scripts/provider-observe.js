@@ -2045,6 +2045,8 @@ function isBillOrObligationEvent(plan, eventId) {
 // as a minimum payment. No approved machine-readable intent convention exists;
 // leave these occurrences unconfirmed. Exact owner/statement confirmations
 // already on plan.opening.representedEvents remain Forecast inputs unchanged.
+// Visa purchase reconciliation publishes the backfill split for Budget. It
+// does not reopen this gate.
 function cardMinimumNeedsConfirmation(plan, eventId, accountMap) {
   const row = ((plan && plan.obligations) || []).find(item => item && item.id === eventId);
   if (!row || row.effect !== 'payment' || !row.debtId) return false;
@@ -2186,6 +2188,9 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
     if (postedId == null || postedId === '') continue;
     const survivors = byPostedId.get(String(postedId)) || [];
     if (survivors.length !== 1) continue;
+    if (!link.pending.currency || !link.posted.currency || link.pending.currency !== link.posted.currency) {
+      survivors[0].coverageCurrencyConflict = true;
+    }
     const currencyRules = currencyRulesForTransaction(link.pending, input.accountMap, rules, input.plan)
       .concat(currencyRulesForTransaction(link.posted, input.accountMap, rules, input.plan));
     if (currencyRules.some(rule => !ruleCurrencyQualified(link.pending, rule)
@@ -2592,6 +2597,11 @@ function postedHistoryDaysForCarriedSettlement(opts) {
   const priorCycleStart = previousSeaspanCycleStart(plan, asOf);
   if (priorCycleStart && priorCycleStart < ordinaryStart) {
     if (!earliest || priorCycleStart < earliest) earliest = priorCycleStart;
+  }
+  const coverageOpening = plan.cardPurchaseCoverage && plan.cardPurchaseCoverage.opening;
+  if (coverageOpening && coverageOpening.confirmed === true && parseIsoDate(coverageOpening.asOf)
+    && coverageOpening.asOf < ordinaryStart && (!earliest || coverageOpening.asOf < earliest)) {
+    earliest = coverageOpening.asOf;
   }
   if (!earliest) return ordinary;
   let span = calendarDaysBetween(earliest, asOf);
@@ -3781,6 +3791,14 @@ function pendingOnlyBillActuals(collapsed, opts, representedActuals, existingLoc
   return rows;
 }
 
+function cardCoverageReference(tx) {
+  if (!tx || !tx.providerAccountId || !tx.providerTransactionId) return null;
+  const native = plaidPendingTransactionIdOf(tx) || plaidTransactionIdOf(tx);
+  const source = native ? 'plaid:' + native : 'lunchmoney:' + tx.providerTransactionId;
+  return 'pc-' + require('crypto').createHash('sha256')
+    .update('atlas-card-coverage/v1|' + tx.providerAccountId + '|' + source).digest('hex').slice(0, 24);
+}
+
 function sanitizedCurrentPeriodActuals(report, opts) {
   opts = opts || {};
   const asOf = dateOnly(opts.asOf || (report && report.fetchedAt));
@@ -3815,21 +3833,34 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   };
   const txs = [];
   const currencyUnconfirmed = [];
+  const cardCoverageUnconfirmed = [];
+  // Collapse omits undated rows; keep their mapped-card evidence unknown.
+  for (const tx of report && report.transactions || []) {
+    if (tx && !tx.date && atlasAccountRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null) === 'revolving-credit') {
+      cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: null,
+        reason: 'transaction-amount-or-date-unconfirmed' });
+    }
+  }
   for (const tx of collapsed) {
-    if (!tx || !tx.date) continue;
+    if (!tx) continue;
+    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
     const amount = lunchMoneyDebitAmount(tx.amount);
-    if (amount == null) continue;
+    if (!tx.date || amount == null) {
+      if (atlasAccountRole(mapping) === 'revolving-credit'
+        || (atlasAccountRole(mapping) === 'household-cash'
+          && (kindHintFromTransaction(tx) === 'card-payment' || isMbnaCardPayment(tx)))) {
+        cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx),
+          date: tx.date || null, reason: 'transaction-amount-or-date-unconfirmed' });
+      }
+      continue;
+    }
     const currencyRules = currencyRulesForTransaction(tx, mapDoc, opts.identityRules,
       opts.planForIdentity || opts.plan);
     if (tx.currencySettlementUnconfirmed === true
       || currencyRules.some(rule => !ruleCurrencyQualified(tx, rule))) {
-      // Preserve a unit diagnostic, never publish an unqualified raw number
-      // as CAD spend. Unrelated qualified transactions retain their amounts.
-      currencyUnconfirmed.push({ id: localIdFor(tx.providerTransactionId),
-        currency: tx.currency || null });
+      currencyUnconfirmed.push({ id: localIdFor(tx.providerTransactionId), currency: tx.currency || null });
       continue;
     }
-    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
     const treatment = pendingForecastTreatment(tx, asOf, {
       plan: opts.plan,
       billPaymentPayees: opts.billPaymentPayees,
@@ -3862,6 +3893,14 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
+    const coverageRelevant = atlasAccountRole(mapping) === 'revolving-credit'
+      || (atlasAccountRole(mapping) === 'household-cash'
+        && (kindHint === 'card-payment' || flags.cardPaymentIdentity === true));
+    if (coverageRelevant && (tx.currency !== 'cad' || tx.coverageCurrencyConflict === true)) {
+      cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: tx.date,
+        reason: 'native-plan-currency-unconfirmed' });
+      continue;
+    }
     const ownerFuel = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedFuel(derivedInput) === true;
     const ownerSpotify = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedSpotify(derivedInput) === true;
     const ownerNoble = Forecast.classifyCurrentPeriodTransaction.ownerConfirmedNoble(derivedInput) === true;
@@ -3878,8 +3917,11 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const localId = localIdFor(tx.providerTransactionId);
     txs.push({
       id: localId,
+      coverageRef: cardCoverageReference(tx),
       date: tx.date,
       amount,
+      currency: tx.currency || null,
+      coverageCurrencyConflict: tx.coverageCurrencyConflict === true,
       pending: tx.pending === true,
       currency: tx.currency || null,
       pendingTreatment: treatment.treatment,
@@ -3982,7 +4024,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   let transactionCoverage = 'complete';
   if (window.truncated === true || window.complete === false || window.hasMore === true) {
     transactionCoverage = 'truncated';
-  } else if (currencyUnconfirmed.length || txs.some(tx => tx && tx.accountRole === 'unmapped')) {
+  } else if (cardCoverageUnconfirmed.length || currencyUnconfirmed.length || txs.some(tx => tx && tx.accountRole === 'unmapped')) {
     transactionCoverage = 'incomplete';
   }
   let coverageStart = window.startDate || null;
@@ -4001,6 +4043,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     coverageThrough,
     pendingCoverage,
     transactionCoverage,
+    cardCoverageUnconfirmed,
+    cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
     currencyUnconfirmed,
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
@@ -4097,6 +4141,7 @@ async function run(argv) {
 }
 
 const api = {
+  cardCoverageReference,
   TOKEN_ENV,
   MAP_JSON_ENV,
   MAP_PATH_ENV,

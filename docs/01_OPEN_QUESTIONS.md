@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-30.** Every unanswered question in one place, ranked by what
+**Updated 2026-10-04.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -12,6 +12,34 @@ the site may hold evidence about a question. They do not close it.
 ---
 
 ## Tier 1 - Changes what the numbers mean
+
+### Card purchase coverage - confirmed opening and explicit payment intent
+**Status:** OPEN - **Owner:** Dale
+**What is answered:** Dale says that when Amanda uses the credit card she
+needs to move money from Bills, and those backfills must not count as a
+scheduled minimum payment. Purchase spending counts once in its appropriate
+category; bank cash and card debt already reflect posted transfers. The
+household allocation and the lender's statement treatment are separate facts.
+
+**Remaining owner evidence:** Confirm the coverage cutover date and any
+already-uncovered purchases carried at that date, including their native CAD
+amounts and previously confirmed covered amounts. For a payment to receive a
+household split, identify its Bills debit and card credit and explicitly name
+the purchase amounts covered; identify any nonpurchase remainder's purpose.
+A refund or backfill reversal also needs an explicit link. Existing issuer
+statement evidence can separately confirm a minimum occurrence through the
+existing represented-events path.
+
+**Runtime boundary:** The proposed synthetic-only cardPurchaseCoverage
+contract has no approved production opening or allocations. Missing opening,
+currency, pairing or intent remains unconfirmed and withholds precise
+available-cash/funding claims. A completed bounded fetch is not a confirmed
+zero opening. Equal amount or nearby date is not intent. Partial coverage
+carries forward. No default previous-payment window, FIFO assignment, excess
+payment purpose or owner-specific spending attribution is assumed.
+**What the answer changes:** Which purchases remain protected in Bills and
+which payment amounts have a confirmed household allocation. It does not
+create debt, add expense or by itself mark the lender minimum paid.
 
 ### Savings pool setup - confirm assignments and the new baseline after funding
 **Status:** OPEN · **Owner:** Dale

@@ -2345,9 +2345,13 @@ function calendarPeriodBillsHtml(period) {
     </div>`;
   }
   const rows = (period && period.bills) || [];
+  const visaPayments = typeof BillDetail !== 'undefined' && BillDetail.visaPaymentsHtml
+    ? BillDetail.visaPaymentsHtml(period && period.visaPaymentBackfill, period && period.cardPurchaseCoverage)
+    : '';
   if (!rows.length) {
     return `<div class="payday-period-bills" data-payday-period-bills>
       <p class="operating-lead">No bills in this period.</p>
+      ${visaPayments}
     </div>`;
   }
   const lines = rows.map(periodBillLine).join('');
@@ -2363,6 +2367,7 @@ function calendarPeriodBillsHtml(period) {
   }
   return `<div class="payday-period-bills" data-payday-period-bills>
     <div class="operating-lines">${lines}</div>
+    ${visaPayments}
     <p class="operating-note">The Bills deduction uses assigned amounts, excluding bills already settled in the opening. Paid bills shows the settled amounts displayed above.</p>
     ${totals.length ? `<div class="payday-totals">${totals.join('')}</div>` : ''}
   </div>`;
@@ -2375,6 +2380,11 @@ function extraRepaymentHtml(period) {
     </div>`;
   }
   const extra = (period && period.extraDebt) || {};
+  if (extra.status === 'unavailable') {
+    return `<div class="payday-extra-repay" data-calendar-extra data-extra-debt="unavailable">
+      <p class="operating-lead">Extra credit-card repayment is unavailable until cash coverage is confirmed.</p>
+    </div>`;
+  }
   const card = period && period.firstCard;
   const allocated = extra.allocated != null ? Number(extra.allocated) : 0;
   const target = (extra.target && extra.target.label)
@@ -4134,6 +4144,7 @@ function calendarFromTodayEvidenceHtml(period, plan) {
       <div class="operating-line"><span>Current chequing cash</span><span>${todayMoney(today.currentCash)}</span></div>
       <div class="operating-line"><span>Remaining bills and debt payments</span><span>${todayMoney(today.operatingBills)}</span></div>
       <div class="operating-line"><span>Remaining household needs</span><span>${todayMoney(today.remainingHousehold)}</span></div>
+      ${Object.prototype.hasOwnProperty.call(today, 'cardPurchaseCoverageReserve') ? `<div class="operating-line" data-from-today-card-coverage><span>Uncovered card purchases - keep in Bills</span><span>${todayMoney(today.cardPurchaseCoverageReserve)}</span></div>` : ''}
       <div class="operating-line"><span>Required operating cash through ${escape(today.currentThrough)}, including the existing cash floor</span><span>${todayMoney(today.requiredOperatingCash)}</span></div>
       <div class="operating-line"><span>Capacity for proposed funding now</span><span>${todayMoney(today.availableNow)}</span></div>
       <div class="operating-line"><span>Proposed to set aside now</span><span>${todayMoney(today.contribution)}</span></div>
@@ -5659,6 +5670,9 @@ function budgetTodayCashCardHtml(ctx) {
     { key: 'bills', label: 'Bills & debt payments',
       value: ready ? today.operatingBills : null, trust: today?.trust },
     { key: 'household', label: 'Household spending remaining', value: ready ? today.remainingHousehold : null, trust: today?.trust },
+    ...(Object.prototype.hasOwnProperty.call(today || {}, 'cardPurchaseCoverageReserve')
+      ? [{ key: 'card-coverage', label: 'Uncovered card purchases - keep in Bills',
+        value: ready ? today.cardPurchaseCoverageReserve : null, trust: today?.trust }] : []),
     { key: 'floor', label: 'Cash floor', value: advice.buffer, trust: floorTrust },
     { key: 'proposed', label: 'Upcoming costs · proposed', value: ready ? today.contribution : null, trust: today?.trust },
   ];
@@ -5706,7 +5720,7 @@ function budgetTodayCashCardHtml(ctx) {
       ${keep}
       <p>This is the current allocation's future cash protection after bills and essential spending. It is not a Bills-account-only balance or the selected period's required carryover.</p>
       ${publication?.note ? `<p>${escape(publication.note)}</p>` : ''}
-      <p>This funding plan uses both chequing accounts. Cash needed protects remaining bills, household spending and the existing floor. Available to fund is capacity, separate from the proposed contribution for upcoming costs. Savings and credit are excluded.</p>
+      <p>This funding plan uses both chequing accounts. Cash needed protects remaining bills, household spending${Object.prototype.hasOwnProperty.call(today || {}, 'cardPurchaseCoverageReserve') ? ', uncovered card purchases' : ''} and the existing floor. Available to fund is capacity, separate from the proposed contribution for upcoming costs. Savings and credit are excluded.</p>
       ${ready && strict(today.futureIncomeThisPeriod) ? `<p>Future receipts in this period: ${print(today.futureIncomeThisPeriod, today.trust)}. These are not cash available now.</p>` : ''}
       ${today?.evidenceFailures?.length ? `<ul>${today.evidenceFailures.map(issue => `<li data-budget-cash-reason="${escape(issue.code)}">${escape(issue.message)}${issue.action ? `<small>${escape(issue.action)}</small>` : ''}</li>`).join('')}</ul>` : !ready ? `<p>${escape(today?.reason || 'Current funding evidence is unavailable.')}</p>` : ''}
       <div class="budget-today-evidence-body">${paydayInstructionShellHtml(advice, current, schedule)}</div>

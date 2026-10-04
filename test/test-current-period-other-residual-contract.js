@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { sourceText } = require('./test-source-text');
 const F = require('../public/forecast.js');
-const O = require('../scripts/provider-observe.js');
+const O = require('./fixtures/native-cad-observation')(require('../scripts/provider-observe.js'));
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {

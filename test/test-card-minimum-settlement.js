@@ -237,7 +237,7 @@ function observe(data, transactions, extra) {
       source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001–3011 are not live provider IDs.',
       pendingCoverage: completePendingCoverage(),
       accounts: matchingAccounts(data),
-      transactions: transactions || [],
+      transactions: (transactions || []).map(row => ({ currency: 'cad', ...row })),
       transactionWindow: {
         startDate: '2026-08-01',
         endDate: LIVE_AS_OF,
@@ -261,7 +261,7 @@ function overlay(data, transactions, extra) {
       source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001–3011 are not live provider IDs.',
       pendingCoverage: completePendingCoverage(),
       accounts: matchingAccounts(data),
-      transactions: transactions || [],
+      transactions: (transactions || []).map(row => ({ currency: 'cad', ...row })),
       transactionWindow: {
         startDate: '2026-08-01',
         endDate: LIVE_AS_OF,

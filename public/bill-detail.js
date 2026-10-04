@@ -145,5 +145,55 @@
       + fact('Published confidence', text(row.confidence) || 'Unavailable')
       + '</dl><h4>Payment evidence</h4>' + proof + '</div></details>';
   }
-  return { html, evidence };
+  const VISA_REASONS = {
+    'payment-intent-unconfirmed': 'Link the Bills debit and confirm which purchases this payment covers. Amount and timing do not prove its purpose.',
+    'incomplete-evidence': 'The purchase window is incomplete, so this payment is not split.',
+    'ambiguous-credit': 'A credit in the window is neither a payment nor a refund.',
+    'pending-possible-replacement': 'Pending and posted entries do not establish one purchase.',
+    'pending-settlement-ambiguous': 'Pending and posted entries do not establish one purchase.',
+    'missing-amount': 'The payment amount is missing.',
+    'missing-date': 'The payment date is missing.',
+    'missing-account': 'The card account is missing.',
+    'contradictory-account': 'The card account is contradictory.',
+    'missing-identity': 'The payment has no transaction identity.',
+  };
+
+  // Formats Forecast.visaPaymentPublication rows. No addition, comparison,
+  // or other money math: backfill and card payment are printed as supplied.
+  function visaPaymentsHtml(rows, coverage) {
+    const payments = Array.isArray(rows) ? rows : [];
+    if (!payments.length && (!coverage || coverage.status === 'incumbent')) return '';
+    const blocks = payments.map(row => {
+      if (!row || typeof row !== 'object') return '';
+      const label = text(row.accountLabel) || 'Visa';
+      const when = date(row.date) ? row.date : 'Date unavailable';
+      const split = row.status === 'reconciled'
+        && typeof row.backfill === 'number' && typeof row.cardPayment === 'number'
+        ? 'Confirmed backfill ' + money(row.backfill) + ' / other allocation ' + money(row.cardPayment)
+        : 'Unreconciled — ' + (VISA_REASONS[row.reason] || 'This payment could not be reconciled.');
+      const covered = (Array.isArray(row.purchases) ? row.purchases : []).map(item =>
+        '<li>' + escape(date(item && item.date) ? item.date : 'Date unavailable')
+        + ' · ' + escape(money(item && item.amount))
+        + ' · ' + escape(text(item && item.categoryLabel) || 'Category unavailable')
+        + '</li>').join('');
+      return '<div class="operating-line" data-visa-payment="' + escape(text(row.status) || 'unreconciled')
+        + '"><span>' + escape(label) + ' · ' + escape(when) + '</span><span>'
+        + escape(split) + '</span></div>'
+        + (covered ? '<ul class="visa-payment-purchases">' + covered + '</ul>' : '');
+    }).join('');
+    const active = (Array.isArray(coverage && coverage.active) ? coverage.active : []).map(row =>
+      '<li>' + escape(text(row.accountLabel) || 'Credit card') + ' · '
+      + escape(date(row.date) ? row.date : 'Date unavailable') + ' · '
+      + escape(text(row.categoryLabel) || 'Category unavailable') + ' · '
+      + escape(money(row.remaining)) + ' to cover</li>').join('');
+    const summary = coverage && coverage.status === 'ready'
+      ? 'Keep ' + money(coverage.reservedCash) + ' in Bills for uncovered purchases.'
+      : coverage && coverage.reason || 'Coverage is unconfirmed.';
+    return '<div class="visa-payment-backfill" data-visa-payment-backfill><h4>Card purchases to cover</h4>'
+      + '<p>' + escape(summary) + '</p>' + (active ? '<ul>' + active + '</ul>' : '')
+      + (payments.length ? '<h4>Card payment allocations</h4>' + blocks
+        + '<p>Household allocation and issuer minimum confirmation are separate.</p>' : '') + '</div>';
+  }
+
+  return { html, evidence, visaPaymentsHtml };
 });

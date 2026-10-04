@@ -60,7 +60,7 @@ function cardObservation(mode = 'posted') {
       { providerAccountId: '8001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
       { providerAccountId: '8002', canonical: { collection: 'debts', id: 'travelvisa' }, atlasRole: 'revolving-credit' },
     ] };
-  const tx = { id: 8101, account_id: 8002, date: '2026-08-19', amount: -250,
+  const tx = { id: 8101, account_id: 8002, date: '2026-08-19', amount: -250, currency: 'cad',
     is_pending: mode === 'pending', payee: 'Synthetic card payment', notes: 'Synthetic private note' };
   if (mode === 'refund' || mode === 'reversal') tx.payee += ' ' + mode.toUpperCase();
   const rule = { eventId: 'bill', payeePattern: 'Synthetic card payment', atlasAccountId: 'travelvisa',

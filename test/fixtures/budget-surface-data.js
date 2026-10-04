@@ -27,6 +27,7 @@ function canonical() {
     plan: {
       windowDays: 91,
       opening: { asOf: OPENING },
+      cardPurchaseCoverage: require('./card-coverage-opening')(OPENING),
       startingCash: { breakdown: [
         { id: 'chequing-a', label: 'Synthetic bills account', value: 15 },
         { id: 'chequing-b', label: 'Synthetic spending account', value: 604.49 },
@@ -79,7 +80,7 @@ const map = { schema: 'atlas-provider-account-map/v1', provider: 'lunchmoney', s
   ] };
 
 const tx = (id, account, date, amount, payee, category, extra = {}) => ({
-  id, account_id: account, date, amount, payee, category_id: category,
+  id, account_id: account, date, amount, currency: 'cad', payee, category_id: category,
   is_pending: false, status: 'cleared', ...extra,
 });
 
