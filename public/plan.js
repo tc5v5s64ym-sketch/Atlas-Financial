@@ -4972,7 +4972,7 @@ function budgetDetailSheetController(mount) {
 function budgetRemount(mount, ctx) {
   const sheet = budgetDetailSheetController(mount);
   const restore = sheet?.snapshot();
-  const focused = document.activeElement;
+  const focused = mount.ownerDocument?.activeElement;
   const focusRestore = !restore && focused && mount.contains?.(focused)
     ? sheet?.focusIdentity(focused) : null;
   sheet?.close(false);
