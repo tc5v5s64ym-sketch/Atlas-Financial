@@ -1034,12 +1034,21 @@
                     "label": "Other spend",
                     "class": "essential",
                     "from": [],
-                    "plannedMonthly": 800,
-                    "futurePayPeriodReserve": 400,
-                    "futurePayPeriodReserveSource": "owner-stated-2026-09-26",
+                    "plannedMonthly": null,
                     "ownerLine": "Other spend",
-                    "targetSource": "owner-stated-2026-09-18",
-                    "why": "OWNER TARGET WINS. Owner-stated 2026-09-18: Forecast assumes $800/month of other spend as a Household Budget owner target. Cadence is plannedMonthly 800 (calendar month). Not a payday hold, not extraDebtMonthly, not targetBuffer, and not a bill or commitment. Distinct from Forecast Other spending confirmation actuals (other-spending). Uncategorised remains the unmatched-merchant remainder, not this planning home. Does not change Groceries, Fuel, Eating out, or guilt-free amounts. Owner-stated 2026-09-26: futurePayPeriodReserve 400 reserves exactly $400 Other Spend on every future pay period only. Forecast calendarHouseholdBudget includes that amount once in the future Household Budget hold and Balance After Deductions. It is an owner planning assumption, not a historical estimate, not an average, and not the $800/month smear. Current and completed periods do not receive it. Road Ahead and budgetBreakdown keep plannedMonthly 800 and do not read futurePayPeriodReserve."
+                    "targetSource": "owner-stated-2026-10-04",
+                    "why": "OWNER TARGET WINS. Owner 2026-10-04: budget Other spend $450 EVERY pay period and show actual/planned; starting THIS pay period. Effective Seaspan period Sep 25–Oct 8 2026 onward, every Seaspan payday. Earlier periods retain their dated policy. Current authority is plannedPayday 450 only; no active $800/month or future-only $400 reserve. targetHistory records retired policy solely for periods before 2026-09-25. Existing Other transaction membership is unchanged. Current/future hold is max(planned, actual); remaining is planned minus actual, not a second $450 added to consumption. Completed-period hold remains observed spending only. No bank transaction is changed.",
+                    "targetHistory": [
+                        {
+                            "effectiveThrough": "2026-09-24",
+                            "plannedMonthly": 800,
+                            "futurePayPeriodReserve": 400,
+                            "futurePayPeriodReserveSource": "owner-stated-2026-09-26",
+                            "targetSource": "owner-stated-2026-09-18"
+                        }
+                    ],
+                    "plannedPayday": 450,
+                    "targetEffectiveFrom": "2026-09-25"
                 },
                 {
                     "id": "travel",

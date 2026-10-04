@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const F = require('../public/forecast.js');
-const data = require('../data.json');
+const data = require('./fixtures/retired-other-policy')(require('../data.json'));
 const { execFileSync } = require('child_process');
 const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
 function gitJson(spec) {

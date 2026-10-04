@@ -502,14 +502,14 @@ console.log('\n=== 5c. live plan keeps the bill load and moves only the paid dis
     targetBuffer: data.plan.defaults && data.plan.defaults.targetBuffer,
   });
   const next = (shifted.defaultView.calendarPeriods || [])[1];
-  const hand = roundCent(6652.30 - 3145.07 - 1725 - 400);
-  ok(hand === 1382.23, 'hand Next BAD is 6652.30 − 3145.07 − 1725 − 400 = 1382.23', String(hand));
+  const hand = roundCent(6652.30 - 3145.07 - 1725 - 450);
+  ok(hand === 1332.23, 'hand Next BAD is 6652.30 - 3145.07 - 1725 - 450 = 1332.23', String(hand));
   ok(next && next.id === 'next-pay-period' && next.start === '2026-10-09' && next.end === '2026-10-22'
       && next === rowByRole(shifted, 'next'),
     'at Sep 25, Oct 9–22 is Budget Next Pay Period');
   ok(next && near(next.incomeTotal, 6652.30) && near(next.periodBillLoad, 3145.07)
-      && near(next.budgetHold, roundCent(1725 + 400)) && near(next.balanceAfterDeductions, hand),
-    'that Next row keeps income − bill load − household budget, including the $400 future reserve once',
+      && near(next.budgetHold, roundCent(1725 + 450)) && near(next.balanceAfterDeductions, hand),
+    'that Next row keeps income - bill load - household budget, including the dated $450 Other target once',
     next && [next.incomeTotal, next.periodBillLoad, next.budgetHold, next.balanceAfterDeductions].join(' / '));
   ok(next && near(roundCent(next.paidBills + next.remainingBills), next.totalBillsThisPeriod)
       && near(next.periodBillLoad, next.totalBillsThisPeriod),

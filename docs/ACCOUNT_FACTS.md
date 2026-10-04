@@ -2483,3 +2483,26 @@ verified home value. Q2 (TFR-TO C/C destination) is ANSWERED 2026-08-29:
 only three TD credit cards exist; the transfers are payments to the known
 cards, not a missing fourth TD Visa. Q5 (why the monthly spousal transfer
 stopped after May 2026) is ANSWERED — the garage/lab income ended.
+
+
+## Other spend — owner change effective September 25, 2026
+
+Owner decision relayed verbatim in the 2026-10-04 ChatGPT dispatch:
+“budget Other spend $450 EVERY pay period and show actual/planned”
+(source Sentinel_8b30e788a4008191a5c451764d0bdaad), followed by
+“starting THIS pay period”
+(source Sentinel_5689eed276dc8191a1ca47b10a076311).
+The dispatch resolves that period as September 25–October 8, 2026.
+
+Other spend is $450 on every Seaspan pay period starting September 25, 2026.
+Earlier periods retain their dated policy. This authorizes the canonical budget
+target, not a bank transaction or a new receipt classification. Other actuals
+retain the existing reconciliation membership and drilldowns. Active/future
+hold is max($450, actual); the unused portion is max(0, $450 − actual). Actual
+above target is consumed once, with no second $450 added. Completed-period hold
+remains observed spending. Missing actual evidence remains unknown.
+
+The former $800/month target and $400 future-only reserve are retired from
+active category fields. Their explicitly bounded targetHistory entry applies
+only before September 25; it never adds either amount to the new payday target.
+Other category amounts and baseline assignments are unchanged.

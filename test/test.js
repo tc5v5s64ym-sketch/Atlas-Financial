@@ -25,6 +25,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
+  ['dated owner Other payday target and once-only reserve', 'test-other-period-target.js'],
   ['purpose-reserve funding seed and independent payment conservation', 'test-reserve-aware-funding.js'],
   ['purpose-reserve authenticated funding and both page consumers', 'test-reserve-aware-funding-integration.js'],
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
