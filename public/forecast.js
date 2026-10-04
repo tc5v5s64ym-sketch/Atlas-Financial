@@ -3794,7 +3794,7 @@
   const BILL_CATEGORY_LABELS = new Set([
     'mortgage', 'bills', 'bill', 'subscription', 'subscriptions',
     'insurance', 'telecom',
-    'natural gas', 'other bank fees',
+    'natural gas',
   ]);
   const REFUND_LABELS = new Set(['refund', 'refunds', 'reimbursement']);
   const OTHER_INCOME_INFLOW_LABELS = new Set([
@@ -4491,7 +4491,10 @@
       }
       return spendResult('fuel', 'fuel-merchant');
     }
-    if (BILL_CATEGORY_LABELS.has(label)) {
+    // Keep the incumbent issuer-fee classification on revolving cards.
+    // A cash-account fee label alone does not identify a scheduled bill.
+    if (BILL_CATEGORY_LABELS.has(label)
+        || (label === 'other bank fees' && isRevolvingCardAccount(tx))) {
       return {
         kind: 'bill', categoryId: null, householdSpending: false,
         reason: 'bill-label', includeReason: 'bill-label',

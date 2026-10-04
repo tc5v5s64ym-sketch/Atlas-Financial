@@ -914,14 +914,14 @@ console.log('\n=== 9. excluded Business Walmart / Meridian Farm stay out of Hous
     'Household Budget Spent stays $68.11; excluded $36.18 does not leak into spent');
 }
 
-console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelvisa is Amanda ===');
+console.log('\n=== 10. Unmatched fees stay visible; Amazon + travelvisa is Amanda ===');
 {
   const forecastSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public/forecast.js'), 'utf8'));
   const billSetStart = forecastSrc.indexOf('const BILL_CATEGORY_LABELS = new Set([');
   const billSetEnd = forecastSrc.indexOf(']);', billSetStart);
   const billSet = forecastSrc.slice(billSetStart, billSetEnd + 3);
-  ok(/'natural gas'/.test(billSet) && /'other bank fees'/.test(billSet),
-    'BILL_CATEGORY_LABELS source includes Natural Gas and Other bank fees');
+  ok(/'natural gas'/.test(billSet) && !/'other bank fees'/.test(billSet),
+    'Other bank fees requires represented transaction linkage, not a blanket label exclusion');
   ok(!/'interest charge'/.test(billSet) && !/'overdraft fees'/.test(billSet)
       && !/'google pets'/.test(billSet),
     'BILL_CATEGORY_LABELS source does not add Interest charge / Overdraft fees / Google Pets');
@@ -963,9 +963,9 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
       && gasCls.reason === 'bill-label' && gasCls.needsConfirmation !== true,
     'Natural Gas classifies as bill, not household spending',
     JSON.stringify(gasCls));
-  ok(feeCls.kind === 'bill' && feeCls.householdSpending === false
-      && feeCls.reason === 'bill-label' && feeCls.needsConfirmation !== true,
-    'Other bank fees classifies as bill, not Other spending',
+  ok(feeCls.kind === 'unclassified' && feeCls.householdSpending === true
+      && feeCls.reason === 'unmapped-label' && feeCls.needsConfirmation === true,
+    'unlinked Other bank fees stays visible in Other spending',
     JSON.stringify(feeCls));
 
   function failClosedAmazon(cls, flags, label) {
@@ -1095,16 +1095,18 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
   const billOther = otherRow(billPeriod);
   const billIds = reconIds(billPeriod);
   const household = budgetRow(billPeriod, 'household');
-  ok(billOther && near(billOther.spent, OTHER_AMT) && near(reconSum(billOther), OTHER_AMT)
-      && !(billOther.recon || []).some(row => row && (row.id === 'tx-natural-gas' || row.id === 'tx-bank-fee')),
-    'Natural Gas and Other bank fees do not enter Other spending');
-  ok(!billIds.includes('tx-natural-gas') && !billIds.includes('tx-bank-fee'),
-    'bill-label txs appear in no Household Budget recon row');
+  ok(billOther && near(billOther.spent, OTHER_AMT + BANK_FEE_AMT)
+      && near(reconSum(billOther), OTHER_AMT + BANK_FEE_AMT)
+      && !(billOther.recon || []).some(row => row && row.id === 'tx-natural-gas')
+      && (billOther.recon || []).some(row => row && row.id === 'tx-bank-fee'),
+    'unlinked fee stays in Other while Natural Gas keeps its incumbent exclusion');
+  ok(!billIds.includes('tx-natural-gas') && billIds.includes('tx-bank-fee'),
+    'only the unlinked fee appears in Household Budget recon');
   ok(!(household && (household.recon || []).some(row => row && row.id === 'tx-natural-gas')),
     'Natural Gas does not enter Household spend');
-  ok(near(householdSpent(billPeriod), OTHER_AMT)
+  ok(near(householdSpent(billPeriod), OTHER_AMT + BANK_FEE_AMT)
       && !near(householdSpent(billPeriod), roundCent(OTHER_AMT + NATURAL_GAS_AMT + BANK_FEE_AMT)),
-    'Household Budget Spent stays the $7.50 residual; $29.50 of bills does not leak');
+    'Household Budget Spent includes the unlinked fee once and excludes Natural Gas');
 
   const amazonPacket = actualsPacket([
     amazonTravel, amazonMbna, primeTravel, otherTx(),

@@ -238,7 +238,9 @@
       ],
       "atlasAccountId": "chequing-b",
       "direction": "debit",
-      "note": "Owner-confirmed 2026-09-02: the current-period Google storage 100 GB debit is displayed Google / original SERVICE _V on WEEKLY (chequing-b) dated 2026-08-31. Identity is payee + mapped account + direction + allowed date. Amount is not identity. Lunch Money Pets is not this bill and is not a Pets mapping. Other Google products remain excluded aliases, not this bill."
+      "postingDateRule": "covers-early-or-due-on-or-before-posting",
+      "earlyPayLookaheadDays": 1,
+      "note": "Owner-confirmed 2026-09-02: Google storage 100 GB is displayed Google / original SERVICE _V on WEEKLY (chequing-b). The owner-reported 2026-09-29 provider posting precedes the September 30 schedule by one day. Use the incumbent nearest-occurrence relation with only one day of early lookahead; retain payee AND original descriptor, mapped account, debit and product exclusions. Amount and notes are not identity. No generic Google product, YouTube, Google Play, another account or missing descriptor settles this bill. Lunch Money Pets is not this bill and is not a Pets mapping."
     },
     {
       "eventId": "hydro-due-sep1",
@@ -337,19 +339,23 @@
       "eventId": "tdfees",
       "payeePattern": "MONTHLY ACCOUNT FEE",
       "payeePatterns": ["MONTHLY ACCOUNT FEE"],
+      "payeeMatchMode": "exact",
       "atlasAccountId": "chequing-a",
       "direction": "debit",
-      "postingDateRule": "covers-due-on-or-before-posting",
+      "postingDateRule": "covers-early-or-due-on-or-before-posting",
+      "earlyPayLookaheadDays": 1,
       "settlesWhen": "two-leg-sum",
-      "note": "Owner 2026-09-09: two x $17.95 MONTHLY ACCOUNT FEE on chequing-a and chequing-b settle the one $35.90 tdfees bill. Identity is that explicit alias + the named account + debit + covers-due. Amount is not identity. Both legs must match before the occurrence is represented. One leg alone stays still-due / unverified. Matching confirmed-settled evidence creates representedActuals and marks PAID. Do not owner-question Dale when both legs match. Do not implement trust-without-evidence."
+      "note": "Owner 2026-09-09: the MONTHLY ACCOUNT FEE pair on chequing-a and chequing-b settles the one tdfees bill. Posted 2026-09-29 evidence precedes the September 30 schedule by one day; the incumbent nearest-occurrence relation with one day of early lookahead prevents consuming September legs as August settlement. Amount is not identity. Both distinct named account legs must match before representation; one leg or partial coverage stays unverified. Only linked legs leave Other Spending; overdraft, NSF, FX, overlimit and unmatched fees are not this bill. No trust-without-evidence."
     },
     {
       "eventId": "tdfees",
       "payeePattern": "MONTHLY ACCOUNT FEE",
       "payeePatterns": ["MONTHLY ACCOUNT FEE"],
+      "payeeMatchMode": "exact",
       "atlasAccountId": "chequing-b",
       "direction": "debit",
-      "postingDateRule": "covers-due-on-or-before-posting",
+      "postingDateRule": "covers-early-or-due-on-or-before-posting",
+      "earlyPayLookaheadDays": 1,
       "settlesWhen": "two-leg-sum",
       "note": "Second TD monthly-account-fee leg on WEEKLY (chequing-b). Same two-leg settlement shape as the BILLS leg. One account alone is not settlement."
     },

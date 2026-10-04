@@ -1,0 +1,98 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const F = require('../public/forecast');
+const Live = require('../scripts/live-plan');
+const fixture = require('./fixtures/month-end-bill-data');
+const beforeBytes = fs.readFileSync(require.resolve('../data.json'));
+function run(x) {
+  const before = JSON.stringify(x);
+  const r = Live.fromObservation(x);
+  assert.equal(JSON.stringify(x), before);
+  const packet = r.report.currentPeriodActuals;
+  const advice = F.recommend(r.data.plan, x.asOf, { debts: r.data.debts, currentPeriodActuals: packet });
+  const p = advice.payPeriodViews.find(p => p.start === '2026-09-18');
+  const other = p.householdBudget.find(b => b.otherSpending);
+  return { ...r, packet, p, other, bills: advice.defaultView.bills };
+}
+function bill(r,id) { return r.bills.find(b => b.id === id); }
+for (const date of ['2026-09-29','2026-09-30']) {
+  const r = run(fixture(date));
+  for (const [id,amount] of [['tdfees',24],['google-storage-100gb',4]]) {
+    const candidates = r.report.representedEventCandidates.filter(c => c.id === id);
+    assert.equal(candidates.length,1);
+    assert.equal(candidates[0].date,'2026-09-30','current fees never settle August instead');
+    assert.equal(bill(r,id).status,'PAID'); assert.equal(bill(r,id).actual,amount);
+    assert.equal(bill(r,id).remaining,0);
+  }
+  const fee = r.packet.representedActuals.find(a => a.id === 'tdfees');
+  assert.equal(new Set(fee.transactionIds).size,2,'equal fee legs remain distinct');
+  assert.equal(r.other.spent,7,'only invented overdraft fee remains');
+  assert.equal(r.other.recon.length,1);
+  // Independent cash ledger: Bills500-12=488; Weekly0-12-7-4=-23.
+  assert.equal(r.p.fromTodayFunding.currentCash,465);
+  assert.equal(r.p.fromTodayFunding.operatingBills,0);
+  assert.equal(r.p.fromTodayFunding.availableNow,465,'posted costs already left observed cash');
+  assert.deepEqual(run(fixture(date)).packet,r.packet,'replay does not duplicate evidence');
+}
+for (const category of ['Other bank fees','Overdraft fees','Insufficient funds','Foreign transaction fees']) {
+  const x=fixture(); x.payload.transactions.push({id:82007,account_id:3001,date:'2026-09-29',amount:5,
+    payee:'Invented extra fee',category_name:category,is_pending:false});
+  x.payload.accounts[0].balance -= 5;
+  const r=run(x); assert.equal(r.other.spent,12,'unmatched '+category+' is retained');
+  assert.equal(r.other.recon.length,2);
+  assert.equal(r.p.fromTodayFunding.currentCash,460);
+}
+for (const mutate of [
+  x=>{x.payload.transactions=x.payload.transactions.filter(t=>t.id!==82002);},
+  x=>{x.payload.transactions[1].account_id=3001;},
+  x=>{x.payload.transactions[1].amount=-12;},
+  x=>{x.payload.transactions[1].is_pending=true;},
+  x=>{x.payload.transactions[1].payee='MONTHLY ACCOUNT FEE REVERSAL';},
+  x=>{x.payload.transactionWindow.complete=false;x.payload.transactionWindow.truncated=true;}
+]) {
+  const x=fixture();mutate(x);const r=run(x);
+  assert.equal(r.report.representedEventCandidates.some(c=>c.id==='tdfees'),false);
+  assert.notEqual(bill(r,'tdfees').status,'PAID','incomplete/ambiguous pair never proves paid');
+  assert.equal(bill(r,'tdfees').remaining,24);
+}
+for (const mutate of [
+  t=>{t.original_name='Invented unrelated product';},
+  t=>{delete t.original_name;},
+  t=>{t.payee='Google Play';},
+  t=>{t.account_id=3001;},
+  t=>{t.amount=-4;t.payee='Google refund';}
+]) {
+  const x=fixture();const t=x.payload.transactions.find(t=>t.id===82006);mutate(t);const r=run(x);
+  assert.equal(r.report.representedEventCandidates.some(c=>c.id==='google-storage-100gb'),false);
+  assert.notEqual(bill(r,'google-storage-100gb').status,'PAID');
+  assert.equal(bill(r,'google-storage-100gb').remaining,4);
+}
+const pending=fixture();pending.payload.transactions.forEach(t=>{if(t.id===82001||t.id===82002)t.is_pending=true;});
+pending.payload.accounts[0].balance+=12;pending.payload.accounts[1].balance+=12;
+const p=run(pending);assert.notEqual(bill(p,'tdfees').status,'PAID');
+assert.equal(p.p.fromTodayFunding.status,'unavailable','unresolved pending cash cannot publish precise funding');
+assert.equal(p.p.fromTodayFunding.contribution,null);
+for (const id of [82001,82002]) {
+  const posted=pending.payload.transactions.find(t=>t.id===id);
+  posted.is_pending=false;
+  posted.plaid_metadata={transaction_id:'posted-'+id,pending_transaction_id:'pending-'+id};
+  pending.payload.transactions.push({...posted,id:id+100,is_pending:true,
+    plaid_metadata:{transaction_id:'pending-'+id}});
+}
+pending.payload.accounts[0].balance-=12;pending.payload.accounts[1].balance-=12;
+const replaced=run(pending);
+assert.equal(bill(replaced,'tdfees').status,'PAID');
+assert.equal(replaced.packet.transactions.length,6,'directed replacements are not extra expenses');
+assert.equal(replaced.other.spent,7);
+const negative=fixture();negative.payload.transactions.forEach(t=>{if(t.id===82001||t.id===82002)t.amount=-12;});
+assert.equal(run(negative).report.representedEventCandidates.some(c=>c.id==='tdfees'),false);
+const external=fixture();external.payload.transactions=external.payload.transactions.filter(t=>t.account_id===3005);
+assert.equal(run(external).other?.spent || 0,0,'external fees are not household spend');
+const duplicateGoogle=fixture();duplicateGoogle.payload.transactions.push({...duplicateGoogle.payload.transactions[5],id:82007});
+assert.notEqual(bill(run(duplicateGoogle),'google-storage-100gb').status,'PAID','multiple compatible Google charges stay unconfirmed');
+const early=run(fixture('2026-09-28'));
+assert.notEqual(bill(early,'tdfees').status,'PAID','two-day early fee posting does not settle September');
+assert.notEqual(bill(early,'google-storage-100gb').status,'PAID','two-day early storage posting does not settle September');
+assert.deepEqual(fs.readFileSync(require.resolve('../data.json')),beforeBytes);
+console.log('PASS independent month-end fee/storage identity, ledger, extras, pending, refunds and coverage');
