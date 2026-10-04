@@ -8483,6 +8483,308 @@
     return postedBillsAccountCash(plan);
   }
 
+  // Visa payment backfill (Dale, 2026-10-03). Sole calculator for the split.
+  // A posted credit on Travel Visa, Cash Back Visa, or the TD credit card
+  // (Emerald Visa, canonical tdcc) whose payee is PAYMENT - THANK YOU /
+  // PAYMENT THANKYOU / TFR-TO C/C is a payment onto that card. It is
+  // reconciled against that card's posted purchases dated strictly after
+  // the previous posted payment on the same card, through this payment
+  // date. With no earlier payment inside complete evidence, the window is
+  // every supplied posted purchase on or before the payment date.
+  //
+  // Matched cents are backfill: they do not satisfy the card minimum and
+  // they are not extra debt paydown. The unmatched remainder is the
+  // genuine card payment. It is published for Budget and does not reopen
+  // automatic minimum settlement: cardMinimumNeedsConfirmation still
+  // leaves those occurrences unconfirmed. A payment smaller than the net
+  // purchases is entirely backfill. Uncovered purchases do not carry
+  // into the next payment:
+  // the next window starts strictly after this payment date (FIFO by
+  // date, then id). Posted refunds in the window reduce the purchase
+  // total and the total is floored at zero. Pending purchases are not
+  // matched. A pending/posted twin counts the posted side once. An
+  // ambiguous credit, a pendingPostedAmbiguous row, contradictory
+  // account identity, or incomplete evidence fails closed as
+  // unreconciled. Canadian Tire, MBNA, HELOC, and the mortgage are not
+  // this split.
+  const VISA_BACKFILL_CARDS = {
+    travelvisa: 'Travel Visa',
+    cashback: 'TD Cash Back Visa',
+    tdcc: 'TD credit card',
+  };
+
+  function visaAccountToken(value) {
+    if (value == null || value === '') return '';
+    return String(value).trim().toLowerCase().replace(/[\s_-]+/g, '');
+  }
+
+  function visaCardIdentity(tx) {
+    if (!tx) return null;
+    const tokens = [tx.atlasAccountId, tx.accountId, tx.account]
+      .filter(value => value != null && value !== '')
+      .map(visaAccountToken);
+    if (!tokens.length) return null;
+    if (tokens.some(token => token !== tokens[0])) return { contradictory: true };
+    if (!Object.prototype.hasOwnProperty.call(VISA_BACKFILL_CARDS, tokens[0])) return null;
+    return { card: tokens[0] };
+  }
+
+  function visaPayeeKey(tx) {
+    return normalizeMerchantKey(
+      txMerchantExact(tx) || (tx && (tx.originalName || tx.original_name || tx.payee)) || '');
+  }
+
+  function visaPaymentPayee(tx) {
+    const key = visaPayeeKey(tx);
+    if (!key) return false;
+    if (/\bREFUND\b/.test(key) || /\bREVERSAL\b/.test(key)) return false;
+    if (key === 'PAYMENT THANK YOU' || key.startsWith('PAYMENT THANK YOU ')) return true;
+    if (key === 'PAYMENT THANKYOU' || key.startsWith('PAYMENT THANKYOU ')) return true;
+    return key === 'TFR TO C C' || key.startsWith('TFR TO C C ');
+  }
+
+  function visaCreditClass(tx) {
+    if (!tx || transactionPendingState(tx) === 'pending') return 'pending';
+    const cents = amountCents(tx.amount);
+    if (visaPaymentPayee(tx) && (cents == null || cents < 0)) {
+      return cents == null ? 'payment-missing-amount' : 'payment';
+    }
+    if (cents == null || cents >= 0) return null;
+    if (visaPayeeKey(tx)) return 'refund';
+    return 'ambiguous';
+  }
+
+  function visaPurchaseCategoryLabel(tx) {
+    const label = tx && typeof tx.categoryLabel === 'string' ? tx.categoryLabel.trim() : '';
+    return label || 'Category unavailable';
+  }
+
+  function visaEvidenceState(opts) {
+    const packet = opts && (opts.packet || opts.currentPeriodActuals);
+    const evidence = (opts && opts.evidence) || {};
+    let complete = evidence.complete;
+    if (complete == null && packet) {
+      complete = transactionCoverageStatus(packet) !== 'truncated';
+    }
+    if (complete == null) complete = true;
+    return { complete: complete !== false };
+  }
+
+  function visaPaymentPublication(row) {
+    if (!row) return null;
+    return {
+      id: row.id == null ? null : String(row.id),
+      date: row.date || null,
+      accountLabel: row.accountLabel || null,
+      amount: row.amount == null ? null : roundCent(row.amount),
+      status: row.status,
+      reason: row.reason || null,
+      backfill: row.backfill == null ? null : roundCent(row.backfill),
+      cardPayment: row.cardPayment == null ? null : roundCent(row.cardPayment),
+      purchases: (row.purchases || []).map(item => ({
+        date: item.date,
+        amount: roundCent(item.amount),
+        categoryLabel: item.categoryLabel,
+      })),
+      window: row.window || null,
+    };
+  }
+
+  function visaUnreconciled(tx, card, reason) {
+    const cents = amountCents(tx && tx.amount);
+    return {
+      id: tx && tx.id != null ? String(tx.id) : null,
+      date: tx && tx.date || null,
+      card,
+      accountLabel: VISA_BACKFILL_CARDS[card] || 'Visa',
+      amount: cents == null ? null : roundCent(Math.abs(cents) / 100),
+      status: 'unreconciled',
+      reason,
+      backfill: null,
+      cardPayment: null,
+      purchases: [],
+      window: null,
+      satisfiesMinimum: false,
+      extraPaydown: 0,
+    };
+  }
+
+  function reconcileVisaCard(card, rows, evidence, packet) {
+    const duplicateIds = pendingPostedDuplicateIdSet({ transactions: rows });
+    const payments = [];
+    const activity = [];
+    for (const tx of rows) {
+      if (!tx || !tx.date) {
+        if (visaCreditClass(tx) === 'payment' || (tx && visaPaymentPayee(tx))) {
+          payments.push(visaUnreconciled(tx, card, tx && tx.date ? 'missing-amount' : 'missing-date'));
+        }
+        continue;
+      }
+      const kind = visaCreditClass(tx);
+      if (kind === 'payment-missing-amount') {
+        payments.push(visaUnreconciled(tx, card, 'missing-amount'));
+      } else if (kind === 'payment') payments.push(tx);
+      else if (kind === 'pending') {
+        if (tx.pendingPostedAmbiguous === true) activity.push({ tx, kind: 'pending' });
+        continue;
+      } else activity.push({ tx, kind });
+    }
+    const postedPayments = payments.filter(tx => tx && tx.status !== 'unreconciled' && tx.date)
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1
+        : String(a.id).localeCompare(String(b.id)));
+    const closed = new Set();
+    const out = payments.filter(tx => tx && tx.status === 'unreconciled');
+    postedPayments.forEach((tx, index) => {
+      const cents = amountCents(tx.amount);
+      if (cents == null || cents >= 0) {
+        out.push(visaUnreconciled(tx, card, 'missing-amount'));
+        return;
+      }
+      if (tx.id == null || tx.id === '') {
+        out.push(visaUnreconciled(tx, card, 'missing-identity'));
+        return;
+      }
+      if (visaCardIdentity(tx) && visaCardIdentity(tx).contradictory) {
+        out.push(visaUnreconciled(tx, card, 'contradictory-account'));
+        return;
+      }
+      if (!evidence.complete) {
+        out.push(visaUnreconciled(tx, card, 'incomplete-evidence'));
+        return;
+      }
+      const previous = index > 0 ? postedPayments[index - 1] : null;
+      const previousDate = previous && previous.date || null;
+      const inWindow = item => item && item.tx && item.tx.date
+        && item.tx.date <= tx.date
+        && (!previousDate || item.tx.date > previousDate);
+      const windowRows = activity.filter(inWindow);
+      if (windowRows.some(item => item.tx && item.tx.pendingPostedAmbiguous === true)) {
+        out.push(visaUnreconciled(tx, card, 'pending-possible-replacement'));
+        return;
+      }
+      if (windowRows.some(item => item.kind === 'ambiguous')) {
+        out.push(visaUnreconciled(tx, card, 'ambiguous-credit'));
+        return;
+      }
+      const purchases = windowRows.filter(item => {
+        if (!item || item.kind !== null) return false;
+        const purchase = item.tx;
+        if (transactionPendingState(purchase) === 'pending') return false;
+        if (skipSplitParent(purchase, packet)) return false;
+        if (isRevolvingCardFinanceCharge(purchase)) return false;
+        if (closed.has(String(purchase.id))) return false;
+        const purchaseCents = amountCents(purchase.amount);
+        return purchaseCents != null && purchaseCents > 0;
+      });
+      let purchaseCents = 0;
+      const ordered = purchases.slice().sort((a, b) => a.tx.date < b.tx.date ? -1
+        : a.tx.date > b.tx.date ? 1 : String(a.tx.id).localeCompare(String(b.tx.id)));
+      for (const item of ordered) purchaseCents += amountCents(item.tx.amount);
+      let refundCents = 0;
+      for (const item of windowRows) {
+        if (!item || item.kind !== 'refund') continue;
+        if (skipSplitParent(item.tx, packet)) continue;
+        const refund = amountCents(item.tx.amount);
+        if (refund != null && refund < 0) refundCents += -refund;
+      }
+      const net = Math.max(0, purchaseCents - refundCents);
+      const paymentCents = -cents;
+      const backfillCents = Math.min(paymentCents, net);
+      const covered = [];
+      let left = backfillCents;
+      for (const item of ordered) {
+        const face = amountCents(item.tx.amount);
+        const take = Math.min(left, face);
+        if (take > 0) {
+          covered.push({
+            date: item.tx.date,
+            amount: roundCent(take / 100),
+            categoryLabel: visaPurchaseCategoryLabel(item.tx),
+          });
+          left -= take;
+        }
+        if (item.tx.id != null) closed.add(String(item.tx.id));
+      }
+      for (const item of ordered) {
+        if (item.tx.id != null) closed.add(String(item.tx.id));
+      }
+      let reason = 'no-posted-purchases';
+      if (backfillCents > 0 && backfillCents === paymentCents && net > paymentCents) {
+        reason = 'payment-within-purchases';
+      } else if (backfillCents > 0 && backfillCents === paymentCents) {
+        reason = 'exact-backfill';
+      } else if (backfillCents > 0) {
+        reason = 'partial-backfill';
+      }
+      out.push({
+        id: String(tx.id),
+        date: tx.date,
+        card,
+        accountLabel: VISA_BACKFILL_CARDS[card],
+        amount: roundCent(paymentCents / 100),
+        status: 'reconciled',
+        reason,
+        backfill: roundCent(backfillCents / 100),
+        cardPayment: roundCent((paymentCents - backfillCents) / 100),
+        purchases: covered,
+        window: {
+          previousPaymentDate: previousDate,
+          through: tx.date,
+          rule: previousDate
+            ? 'posted-purchases-after-previous-payment-through-payment-date'
+            : 'posted-purchases-on-or-before-payment-date',
+        },
+        satisfiesMinimum: false,
+        extraPaydown: 0,
+        duplicateIdsNoted: ordered.some(item => item.tx && item.tx.id != null
+          && duplicateIds.has(String(item.tx.id))),
+      });
+    });
+    return out;
+  }
+
+  function visaPaymentReconciliation(transactions, opts) {
+    opts = opts || {};
+    const txs = Array.isArray(transactions) ? transactions : [];
+    const packet = { transactions: txs };
+    const evidence = visaEvidenceState(opts);
+    const buckets = new Map();
+    for (const tx of txs) {
+      const identity = visaCardIdentity(tx);
+      if (!identity || identity.contradictory || !identity.card) continue;
+      const list = buckets.get(identity.card) || [];
+      list.push(tx);
+      buckets.set(identity.card, list);
+    }
+    const payments = [];
+    for (const tx of txs) {
+      const identity = visaCardIdentity(tx);
+      if (identity && identity.contradictory && visaCreditClass(tx) === 'payment') {
+        payments.push(visaUnreconciled(tx, null, 'contradictory-account'));
+      }
+    }
+    for (const card of Object.keys(VISA_BACKFILL_CARDS)) {
+      if (!buckets.has(card)) continue;
+      payments.push(...reconcileVisaCard(card, buckets.get(card), evidence, packet));
+    }
+    payments.sort((a, b) => String(a.date).localeCompare(String(b.date))
+      || String(a.accountLabel).localeCompare(String(b.accountLabel))
+      || String(a.id).localeCompare(String(b.id)));
+    return {
+      calculator: 'Forecast.visaPaymentReconciliation',
+      carryForward: 'uncovered-purchases-do-not-carry',
+      payments,
+    };
+  }
+
+  function publishedVisaPayments(opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    if (packet && Array.isArray(packet.visaPaymentBackfill)) return packet.visaPaymentBackfill;
+    if (!packet || !Array.isArray(packet.transactions)) return [];
+    return visaPaymentReconciliation(packet.transactions, { packet }).payments
+      .map(visaPaymentPublication);
+  }
+
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -8716,6 +9018,8 @@
         afterDebtRepayment,
         afterBigPurchases,
       };
+      const visaPaymentBackfill = planUnavailable ? [] : publishedVisaPayments(opts).filter(row =>
+        row && row.date && row.date >= window.start && row.date <= window.end);
       if (planUnavailable) {
         previousEnding = null;
         unavailableOpeningLost = true;
@@ -8749,6 +9053,7 @@
           : { amount: otherAmount, items: otherItems },
         available,
         bills: planUnavailable ? [] : bills,
+        ...(visaPaymentBackfill.length ? { visaPaymentBackfill } : {}),
         totalBillsThisPeriod: planUnavailable ? null : totalBillsThisPeriod,
         paidBills,
         remainingBills: planUnavailable ? null : remainingBills,
@@ -18647,7 +18952,8 @@
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel, hypotheticalExtraPayment, hypotheticalExtraPaymentComparison,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,
-    householdBills, householdSubscriptions, billIsSubscription };
+    householdBills, householdSubscriptions, billIsSubscription,
+    visaPaymentReconciliation, visaPaymentPublication };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

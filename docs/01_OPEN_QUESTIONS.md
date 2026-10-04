@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-30.** Every unanswered question in one place, ranked by what
+**Updated 2026-10-04.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -12,6 +12,37 @@ the site may hold evidence about a question. They do not close it.
 ---
 
 ## Tier 1 - Changes what the numbers mean
+
+### Visa payment backfill — window, leftover purchases, fees, and whose spend
+**Status:** OPEN · **Owner:** Dale
+**What we know:** Dale, 2026-10-03 9:04 PM PT, via Atlas Coordinator: when Amanda
+spends on a Visa, she moves the same amount from Bills to the card. The matched
+portion is backfill, not a minimum payment and not extra debt paydown. The
+unmatched remainder keeps today's card-payment treatment. The implementation
+uses these defaults until Dale confirms or replaces them. They are not
+household facts.
+1. The window is posted purchases on that card dated strictly after the
+   previous posted payment, through this payment date. If complete evidence
+   contains no earlier payment, the window is every supplied posted purchase
+   on or before the payment date.
+2. A payment smaller than the net purchases is entirely backfill. Uncovered
+   purchases do not carry into the next payment. A later same-day payment
+   starts strictly after the earlier payment's date.
+3. Truncated or incomplete evidence is `unreconciled` and does not settle the
+   minimum. A completed bounded fetch is treated as complete.
+4. The split does not separate Amanda's spend from Dale's. Every posted
+   purchase in the window matches, including a posted fee that is not an
+   interest or finance charge.
+5. On current `main`, a posted card payment does not automatically confirm
+   the scheduled minimum (`cardMinimumNeedsConfirmation`). This split
+   publishes the genuine remainder and does not turn that confirmation
+   back on. Whether a genuine remainder should confirm the minimum is a
+   separate decision from the split itself.
+**What the answer changes:** which cents Budget labels backfill and which
+cents it labels a card payment. It does not, by itself, mark a card minimum
+paid. Canadian Tire, MBNA, the HELOC, and the mortgage stay unchanged.
+**How to answer:** Confirm these four defaults, or name the replacement for
+the one that is wrong.
 
 ### Savings pool setup - confirm assignments and the new baseline after funding
 **Status:** OPEN · **Owner:** Dale

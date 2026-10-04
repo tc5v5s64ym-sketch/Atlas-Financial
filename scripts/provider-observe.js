@@ -2020,6 +2020,8 @@ function isBillOrObligationEvent(plan, eventId) {
 // as a minimum payment. No approved machine-readable intent convention exists;
 // leave these occurrences unconfirmed. Exact owner/statement confirmations
 // already on plan.opening.representedEvents remain Forecast inputs unchanged.
+// Visa purchase reconciliation publishes the backfill split for Budget. It
+// does not reopen this gate.
 function cardMinimumNeedsConfirmation(plan, eventId, accountMap) {
   const row = ((plan && plan.obligations) || []).find(item => item && item.id === eventId);
   if (!row || row.effect !== 'payment' || !row.debtId) return false;
@@ -2028,6 +2030,26 @@ function cardMinimumNeedsConfirmation(plan, eventId, accountMap) {
     && mapping.canonical.collection === 'debts' && mapping.canonical.id === row.debtId);
   const debt = ((plan && plan.debts) || []).find(item => item && item.id === row.debtId);
   return mappedCard || !!(debt && !debt.secured && /^Revolving\b/i.test(debt.structure || ''));
+}
+
+function providerTxForVisaBackfill(tx, mapDoc) {
+  const mapping = mapDoc ? mappingFor(mapDoc, tx && tx.providerAccountId) : null;
+  const atlas = mapping && mapping.canonical && mapping.canonical.id;
+  return {
+    id: tx && tx.providerTransactionId != null ? String(tx.providerTransactionId) : null,
+    date: tx && tx.date || null,
+    amount: lunchMoneyDebitAmount(tx && tx.amount),
+    pending: tx && tx.pending === true,
+    pendingPostedAmbiguous: tx && tx.pendingPostedAmbiguous === true,
+    pendingPostedDuplicate: tx && tx.pendingPostedDuplicate === true,
+    atlasAccountId: atlas || null,
+    account: atlas || null,
+    payee: tx && tx.payee || null,
+    originalName: tx && tx.originalName || null,
+    categoryLabel: tx && tx.categoryLabel || null,
+    displayedPayee: tx && tx.payee || null,
+    originalMerchant: tx && (tx.originalName || tx.payee) || null,
+  };
 }
 
 function collectIdentityHits(tx, input, rules) {
@@ -3948,6 +3970,16 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       if (!coverageThrough || tx.date > coverageThrough) coverageThrough = tx.date;
     }
   }
+  const visaPaymentBackfill = (Forecast.visaPaymentReconciliation(
+    (collapsed || []).filter(Boolean).map(tx => providerTxForVisaBackfill(tx, mapDoc)),
+    {
+      evidence: {
+        coverageStart: window.startDate || null,
+        coverageThrough: window.endDate || null,
+        complete: window.complete !== false,
+      },
+    }
+  ).payments || []).map(Forecast.visaPaymentPublication);
   const packet = {
     schema: 'atlas-current-period-actuals/v1',
     observationAsOf: asOf,
@@ -3955,6 +3987,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     coverageThrough,
     pendingCoverage,
     transactionCoverage,
+    visaPaymentBackfill,
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
       asOf,
