@@ -959,6 +959,10 @@ function applyUnavailableOperatingChrome(unavailable, asOf, liveOverlay, doc) {
   doc = doc || (typeof document !== 'undefined' ? document : null);
   if (!doc || typeof doc.getElementById !== 'function') return;
   const surface = doc.getElementById('operating-surface');
+  // The active v3 header owns the selected published date range. Legacy
+  // operating chrome must not relabel it as This payday after rendering.
+  if (surface && typeof surface.querySelector === 'function'
+    && surface.querySelector('[data-budget-window-header]')) return;
   const openingAsOf = (liveOverlay && liveOverlay.historicalOpeningAsOf) || asOf || null;
   if (surface && typeof surface.querySelector === 'function') {
     const kicker = surface.querySelector('.kicker');
@@ -2504,11 +2508,12 @@ function budgetTrajectoryFor(src) {
   return traj;
 }
 
-function budgetGranularityToggleHtml() {
+function budgetGranularityToggleHtml(payPeriodFirst = false) {
   const monthOn = budgetGranularity === 'month';
+  const choices = payPeriodFirst ? [['pay-period', 'Pay period'], ['month', 'Month']]
+    : [['month', 'Month'], ['pay-period', 'Pay Period']];
   return `<div class="budget-granularity" role="group" aria-label="Budget planning granularity">`
-    + `<button type="button" class="budget-granularity-btn" data-budget-granularity="month" aria-pressed="${monthOn ? 'true' : 'false'}">Month</button>`
-    + `<button type="button" class="budget-granularity-btn" data-budget-granularity="pay-period" aria-pressed="${monthOn ? 'false' : 'true'}">Pay Period</button>`
+    + choices.map(([key, label]) => `<button type="button" class="budget-granularity-btn" data-budget-granularity="${key}" aria-pressed="${(key === 'month') === monthOn}">${label}</button>`).join('')
     + `</div>`;
 }
 
@@ -2842,7 +2847,7 @@ function budgetMonthFundingPressureHtml(month, schedule) {
   return open(monthKey) + scopeNote + `<div class="operating-lines">${lines}</div></div>`;
 }
 
-function budgetMonthViewHtml(src) {
+function budgetMonthViewHtml(src, headerOwnsPicker = false) {
   const traj = budgetTrajectoryFor(src);
   if (!traj || traj.status !== 'ready') {
     const reason = (traj && traj.reason) || 'Forecast could not publish the baseline trajectory.';
@@ -2889,7 +2894,7 @@ function budgetMonthViewHtml(src) {
   }
   const standaloneNote = 'Each month funds itself — Forecast does not carry a prior month\u2019s surplus into this month\u2019s result.';
   return `<div class="budget-month-view" data-budget-month-view="${month.month}">`
-    + `<div class="budget-month-head">${picker}</div>`
+    + (headerOwnsPicker ? '' : `<div class="budget-month-head">${picker}</div>`)
     + `<p class="operating-note">How we are planning ${monthLabel}, copied from Forecast. This page does not calculate these figures.</p>`
     + `<div class="budget-month-rows">${rows.join('')}</div>`
     + budgetMonthLadderHtml(month)
@@ -4079,7 +4084,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
             ? '<span class="budget-waterfall-scale-note">Scale unavailable</span>' : ''}
         ${overflowStart ? '<span class="budget-waterfall-overflow at-start">←</span>' : ''}${overflowEnd ? '<span class="budget-waterfall-overflow at-end">→</span>' : ''}
       </span>`;
-      return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
+      return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}"${compactOverview && number === '07' ? ' data-budget-period-result' : ''}>
         <details class="budget-step-details">
           <summary class="budget-step-summary">
             <span class="operating-number" aria-hidden="true">${number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
@@ -4214,12 +4219,12 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   </div>` : '';
   return `${compactOverview ? "" : todayHtml}<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
-    ${compactOverview ? `<details class="budget-period-info"><summary aria-label="About the selected period figures">ⓘ</summary>
+    ${compactOverview ? `<p class="budget-period-flow-heading">Full-period projection</p><details class="budget-period-info"><summary aria-label="About the selected period figures">ⓘ</summary><div data-budget-period-info-body>
       ${today ? '<p class="operating-note">This view uses full period income. The dated current-cash proposal is separate.</p>' : ''}${lookbackNote}${projectedNote}${openingUnknownNote}
-      <p class="operating-note">Values marked ≈ are estimates. Opening and current balances are context, not extra income. Period results include Forecast's household spending reserve and any recorded overspending. Future funding and required protection are planning amounts; they are not transfers already made.</p>${todayHtml}</details>`
+      <p class="operating-note">Values marked ≈ are estimates. Opening and current balances are context, not extra income. Period results include Forecast's household spending reserve and any recorded overspending. Future funding and required protection are planning amounts; they are not transfers already made.</p>${opening}${todayHtml}</div></details>`
       : `${today ? '<p class="operating-note">The pay-period view below uses the full period income. It is separate from the dated current-cash proposal above.</p>' : ''}${lookbackNote}${projectedNote}${openingUnknownNote}`}
-    ${finalHero}
-    ${opening}
+    ${compactOverview ? '' : finalHero}
+    ${compactOverview ? '' : opening}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period), null,
       { amount: period.available, trust: period.incomeTrust, trustRequired: true, barStart: 0, note: 'Receipts and dates — planned or received' })}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period), null,
@@ -4235,7 +4240,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         '<p class="operating-note">Projected use of earlier earmarks for costs already included in Bills above. This offsets that bill deduction once; it is not extra income, observed saved cash or an actual withdrawal.</p>', 'credit',
         { amount: funding.proposedFundingForBillPayments, trust: funding.trust, trustRequired: true, barStart: 0,
           note: 'Planning only — bill payment offset, not new income' }) : ''}
-    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : runningLeftoverHtml(finalAmount, finalTrust)
+    ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : (compactOverview
+      ? `<p class="operating-note">Full-period projection: ${finalCaption}. Current Bills cash is context and is not added to period income.</p>`
+      : runningLeftoverHtml(finalAmount, finalTrust))
       + '<p class="operating-note">A positive period balance may be needed for a later short period. It is not permission to spend.</p>', 'balance',
       { amount: finalAmount, trust: finalTrust, barStart: 0, note: fundedBalanceKnown
         ? 'After bills, household and proposed funding — retain any future carry'
@@ -4556,7 +4563,7 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
       data-selected-pay-period="${periodId}" data-pay-period-index="${selection.index}"
       aria-label="Pay-period navigation">
     ${current && !compactOverview ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
-    ${payPeriodNavigatorHtml(selection)}
+    ${compactOverview ? '' : payPeriodNavigatorHtml(selection)}
     ${extraControls || ''}
     ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview)}
     ${budgetPlanSpendEarmarkHtml(advice, period)}
@@ -4785,6 +4792,137 @@ function selectedPlanView(advice, look) {
 /* AMANDA SLICE 3 — wire the Month <-> Pay Period toggle and the month
  * picker. Switching granularity re-renders the Budget surface; it never
  * recomputes Forecast figures. */
+// One native modal owns the displayed evidence node. No copied HTML, parsed
+// amount, duplicate renderer or cached financial packet is introduced.
+function budgetDetailSheetController(mount) {
+  if (!mount || typeof mount.querySelector !== 'function') return null;
+  const dialog = mount.querySelector('[data-budget-detail-sheet]');
+  if (!dialog || typeof dialog.showModal !== 'function') return null;
+  if (dialog.budgetSheet) return dialog.budgetSheet;
+  const body = dialog.querySelector('[data-budget-detail-body]');
+  const title = dialog.querySelector('[data-budget-detail-title]');
+  const closeButton = dialog.querySelector('[data-budget-detail-close]');
+  let held = null;
+  const identity = (node, source) => {
+    for (const key of source ? ['data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
+      : ['data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section']) {
+      if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
+    }
+    if (!source && node.matches('.budget-period-info > summary')) return '.budget-period-info > summary';
+    const question = node.closest('[data-operating-question]');
+    return question ? `[data-operating-question="${CSS.escape(question.getAttribute('data-operating-question'))}"] ${source ? '.budget-step-body' : '.budget-step-summary'}` : null;
+  };
+  const close = (restoreFocus = true) => {
+    if (!held) return;
+    const item = held;
+    held = null;
+    item.parent.insertBefore(item.source, item.next?.parentNode === item.parent ? item.next : null);
+    item.source.hidden = item.hidden;
+    if (item.expanded != null) item.trigger.setAttribute('aria-expanded', item.expanded);
+    dialog.close();
+    document.body.classList.remove('budget-detail-open');
+    if (restoreFocus && item.trigger.isConnected) item.trigger.focus({ preventScroll: true });
+  };
+  const open = (source, trigger, label, focusSelector) => {
+    if (!source || !trigger) return;
+    close(false);
+    held = { source, trigger, sourceSelector: identity(source, true), triggerSelector: identity(trigger, false), label, focusSelector,
+      parent: source.parentNode, next: source.nextSibling,
+      hidden: source.hidden, expanded: trigger.getAttribute('aria-expanded') };
+    title.textContent = label;
+    dialog.classList.toggle('budget-surface-today', !!source.closest('.budget-surface-today'));
+    dialog.classList.toggle('budget-surface-period', !source.closest('.budget-surface-today'));
+    body.appendChild(source);
+    source.hidden = false;
+    if (held.expanded != null) trigger.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('budget-detail-open');
+    dialog.showModal();
+    const first = focusSelector ? source.querySelector(focusSelector) : null;
+    (first || closeButton).focus({ preventScroll: true });
+    body.scrollTop = 0;
+  };
+  closeButton.addEventListener('click', () => close());
+  dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+  dialog.addEventListener('close', () => { if (!dialog.open) close(); });
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right
+      || event.clientY < bounds.top || event.clientY > bounds.bottom) close();
+  });
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const nodes = [...dialog.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]')]
+      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  const snapshot = () => held && held.sourceSelector && held.triggerSelector
+    ? { sourceSelector: held.sourceSelector, triggerSelector: held.triggerSelector,
+      label: held.label, focusSelector: held.focusSelector } : null;
+  dialog.budgetSheet = { open, close, snapshot };
+  return dialog.budgetSheet;
+}
+
+function budgetRemount(mount, ctx) {
+  const sheet = budgetDetailSheetController(mount);
+  const restore = sheet?.snapshot();
+  sheet?.close(false);
+  mount.innerHTML = budgetSurfaceHtml(ctx);
+  mount.budgetSheetRestore = restore;
+}
+
+function wireBudgetWindow(mount, ctx, sheet) {
+  if (!sheet) return;
+  const choose = mount.querySelector('[data-budget-window-choose]');
+  const picker = mount.querySelector('[data-budget-window-picker]');
+  if (choose && picker) choose.addEventListener('click', () =>
+    sheet.open(picker, choose, 'Choose pay period', '[data-budget-wheel="period"] [aria-current="true"]'));
+  mount.querySelectorAll('[data-budget-window-step]').forEach(button => {
+    const step = Number(button.getAttribute('data-budget-window-step'));
+    if (step !== -1 && step !== 1) return;
+    button.addEventListener('click', () => {
+      if (button.getAttribute('aria-disabled') === 'true') return;
+      if (budgetGranularity === 'month') {
+        const months = budgetTrajectoryFor(ctx)?.months || [];
+        const index = months.findIndex(month => month.month === budgetSelectedMonth);
+        const next = months[index + step];
+        if (!next) return;
+        budgetSelectedMonth = next.month;
+      } else {
+        const selection = payPeriodMoveSelection(ctx.advice, planPayPeriodId, step);
+        if (!selection.period) return;
+        planPayPeriodId = selection.period.id || selection.period.start;
+      }
+      const nextCtx = Object.assign({}, ctx, { planPayPeriodId });
+      budgetRemount(mount, nextCtx);
+      wirePlanLookPicker(mount, nextCtx);
+      mount.querySelector(`[data-budget-window-step="${step}"]`)?.focus({ preventScroll: true });
+    });
+  });
+  mount.querySelectorAll('[data-budget-section]').forEach(button => {
+    const section = button.getAttribute('data-budget-section');
+    if (!['overview', 'spending', 'bills', 'upcoming'].includes(section)) return;
+    button.addEventListener('click', () => {
+      if (section === 'overview') {
+        mount.querySelector('.budget-surface-grid')?.scrollIntoView({ block: 'start' });
+        return;
+      }
+      const selector = section === 'spending' ? '[data-operating-question="06"] .budget-step-body'
+        : section === 'bills' ? '[data-operating-question="04"] .budget-step-body'
+          : '[data-payday-breakdown="planned-cost-funding"]';
+      const source = mount.querySelector(selector);
+      if (!source) return;
+      const range = mount.querySelector('[data-budget-window-range]')?.textContent || '';
+      const title = section === 'upcoming' ? 'Upcoming costs — exact payday plan'
+        : `${section === 'spending' ? 'Spending' : 'Bills'} · ${range}`;
+      if (section === 'upcoming') source.open = true;
+      sheet.open(source, button, title);
+    });
+  });
+}
+
 function wireBudgetGranularity(mount, ctx) {
   if (!mount || typeof mount.querySelector !== 'function') return;
   mount.querySelectorAll('[data-budget-granularity]').forEach(btn => {
@@ -4798,7 +4936,7 @@ function wireBudgetGranularity(mount, ctx) {
         budgetPayPeriodAnchorMonth = budgetSelectedMonth;
       }
       budgetGranularity = next;
-      mount.innerHTML = budgetSurfaceHtml(ctx);
+      budgetRemount(mount, ctx);
       wirePlanLookPicker(mount, ctx);
       mount.querySelector(`[data-budget-granularity="${next}"]`)?.focus({ preventScroll: true });
     });
@@ -4807,7 +4945,7 @@ function wireBudgetGranularity(mount, ctx) {
   if (picker) {
     picker.addEventListener('change', () => {
       budgetSelectedMonth = picker.value || budgetSelectedMonth;
-      mount.innerHTML = budgetSurfaceHtml(ctx);
+      budgetRemount(mount, ctx);
       wirePlanLookPicker(mount, ctx);
       mount.querySelector('[data-budget-month-picker]')?.focus({ preventScroll: true });
     });
@@ -4818,7 +4956,7 @@ function wireBudgetGranularity(mount, ctx) {
   if (drilldown) {
     drilldown.addEventListener('change', () => {
       budgetDrilldownPayPeriod = drilldown.value || null;
-      mount.innerHTML = budgetSurfaceHtml(ctx);
+      budgetRemount(mount, ctx);
       wirePlanLookPicker(mount, ctx);
       mount.querySelector('[data-budget-drilldown-picker]')?.focus({ preventScroll: true });
     });
@@ -4828,7 +4966,7 @@ function wireBudgetGranularity(mount, ctx) {
     btn.addEventListener('click', () => {
       budgetPayPeriodAnchorMonth = null;
       budgetDrilldownPayPeriod = null;
-      mount.innerHTML = budgetSurfaceHtml(ctx);
+      budgetRemount(mount, ctx);
       wirePlanLookPicker(mount, ctx);
       const focus = mount.querySelector('[data-budget-granularity="pay-period"]');
       if (focus) focus.focus({ preventScroll: true });
@@ -4844,7 +4982,17 @@ function wirePlanLookPicker(mount, ctx) {
       event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   };
+  const sheet = budgetDetailSheetController(mount);
+  wireBudgetWindow(mount, ctx, sheet);
   mount.querySelectorAll('.budget-period-info').forEach(info => {
+    if (sheet) {
+      const summary = info.querySelector('summary');
+      summary.setAttribute('aria-haspopup', 'dialog');
+      summary.addEventListener('click', event => {
+        event.preventDefault();
+        sheet.open(info.querySelector('[data-budget-period-info-body]'), summary, 'Selected period figures');
+      });
+    }
     info.addEventListener('keydown', event => {
       if (event.key === 'Escape' && info.open) {
         event.preventDefault();
@@ -4860,7 +5008,16 @@ function wirePlanLookPicker(mount, ctx) {
     ? mount.querySelector('[data-budget-today-evidence]') : null;
   const how = evidence ? mount.querySelector('[data-budget-cash-how]') : null;
   const nextPayday = evidence ? mount.querySelector('[data-budget-cash-next]') : null;
-  if (evidence && how) {
+  if (evidence && how && sheet) {
+    how.setAttribute('aria-haspopup', 'dialog');
+    how.addEventListener('click', () => sheet.open(evidence, how, 'Current balance and funding'));
+    nextPayday?.addEventListener('click', () => {
+      const plan = evidence.querySelector('[data-payday-breakdown="planned-cost-funding"]');
+      if (plan) plan.open = true;
+      sheet.open(evidence, nextPayday, 'Exact payday funding plan', '[data-payday-breakdown="planned-cost-funding"] > summary');
+    });
+    evidence.querySelector('[data-budget-cash-back]')?.addEventListener('click', () => sheet.close());
+  } else if (evidence && how) {
     let returnFocus = how;
     const close = () => {
       evidence.hidden = true;
@@ -4897,6 +5054,18 @@ function wirePlanLookPicker(mount, ctx) {
       }
     });
   }
+  if (sheet) mount.querySelectorAll('.budget-step-details').forEach(details => {
+    // The dated proposal lives inside period info. Keep its native disclosure
+    // inside that sheet rather than opening a second sheet over hidden info.
+    if (details.closest('[data-from-today-proposal]')) return;
+    const summary = details.querySelector('summary');
+    summary.setAttribute('aria-haspopup', 'dialog');
+    summary.addEventListener('click', event => {
+      event.preventDefault();
+      const prompt = summary.querySelector('.operating-prompt')?.textContent || 'Period evidence';
+      sheet.open(details.querySelector('.budget-step-body'), summary, prompt);
+    });
+  });
   mount.querySelectorAll('[data-current-payday-details], [data-payday-breakdown]').forEach(details => {
     details.addEventListener('toggle', () => {
       if (!details.isConnected) return;
@@ -4918,7 +5087,7 @@ function wirePlanLookPicker(mount, ctx) {
         planCalendarShow,
         planView: selectedPlanView(ctx.advice, planLook),
       });
-      mount.innerHTML = budgetSurfaceHtml(nextCtx);
+      budgetRemount(mount, nextCtx);
       wirePlanLookPicker(mount, nextCtx);
     });
   }
@@ -4934,17 +5103,18 @@ function wirePlanLookPicker(mount, ctx) {
         planCalendarShow,
         planView: selectedPlanView(ctx.advice, planLook),
       });
-      mount.innerHTML = budgetSurfaceHtml(nextCtx);
+      budgetRemount(mount, nextCtx);
       wirePlanLookPicker(mount, nextCtx);
     });
   }
   const timeline = mount.querySelector('[data-pay-period-swipe]');
   if (timeline) {
+    const wheelScope = mount.querySelector('[data-budget-window-picker]') || timeline;
     const selectPeriod = (moved, kind, focus) => {
       const selection = payPeriodSelection(ctx.advice, planPayPeriodId);
       if (moved.index === selection.index) return;
       const offsets = {};
-      timeline.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
+      wheelScope.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
         const track = wheel.querySelector('.budget-wheel-track');
         const offset = track.style.getPropertyValue('--wheel-offset');
         const drag = track.style.getPropertyValue('--wheel-drag');
@@ -4957,7 +5127,7 @@ function wirePlanLookPicker(mount, ctx) {
         planPayPeriodId,
         planView: selectedPlanView(ctx.advice, planLook),
       });
-      mount.innerHTML = budgetSurfaceHtml(nextCtx);
+      budgetRemount(mount, nextCtx);
       mount.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
         const track = wheel.querySelector('.budget-wheel-track');
         const from = offsets[wheel.getAttribute('data-budget-wheel')];
@@ -4972,7 +5142,7 @@ function wirePlanLookPicker(mount, ctx) {
         if (target) target.focus({ preventScroll: true });
       }
     };
-    timeline.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
+    wheelScope.querySelectorAll('[data-budget-wheel]').forEach(wheel => {
       const kind = wheel.getAttribute('data-budget-wheel');
       const selection = payPeriodSelection(ctx.advice, planPayPeriodId);
       const index = kind === 'month'
@@ -5089,6 +5259,15 @@ function wirePlanLookPicker(mount, ctx) {
         if (start && !wheel.hasPointerCapture(event.pointerId)) reset();
       });
     });
+  }
+  const restore = mount.budgetSheetRestore;
+  mount.budgetSheetRestore = null;
+  if (restore) {
+    const source = mount.querySelector(restore.sourceSelector);
+    const trigger = mount.querySelector(restore.triggerSelector);
+    if (source && trigger && sheet) sheet.open(source, trigger, restore.label, restore.focusSelector);
+    else if (trigger) trigger.focus({ preventScroll: true });
+    else if (typeof mount.focus === 'function') { mount.tabIndex = -1; mount.focus({ preventScroll: true }); }
   }
 }
 
@@ -5252,6 +5431,7 @@ function budgetTodayCashCardHtml(ctx) {
   const alloc = advice.paydayAllocation || {};
   const current = (advice.payPeriodViews || []).find(row => row && row.timelineRole === 'current');
   const today = current && current.fromTodayFunding;
+  const selected = payPeriodSelection(advice, ctx.planPayPeriodId).period;
   const strict = value => typeof value === 'number' && Number.isFinite(value);
   const trusted = trust => trust === 'calculated' || trust === 'estimated';
   const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
@@ -5315,7 +5495,7 @@ function budgetTodayCashCardHtml(ctx) {
     <header><p class="budget-cash-eyebrow">Today${asOf ? ' · ' + escape(fmtDateLong(asOf)) : ''}</p>
       <button type="button" class="budget-cash-how" data-budget-cash-how aria-controls="budget-today-evidence" aria-expanded="${evidenceOpen}"><span aria-hidden="true">ⓘ</span><span class="budget-cash-sr">Current balance and funding details</span></button><h2>Current balance</h2></header>
     <p class="budget-cash-hero" data-budget-cash-hero data-live-current-balance-amount${balanceKnown && publication.amount < 0 ? ' data-sign="negative"' : ''}>${balanceKnown ? `${publication.trust === 'planned-unconfirmed' ? '<span class="budget-cash-est" aria-hidden="true">≈</span> ' : ''}${money2(publication.amount)}` : 'Unavailable'}</p>
-    <p class="budget-cash-sub">Bills account only${balanceKnown && publication.trust === 'planned-unconfirmed' ? ' · payday receipt unconfirmed' : ''}</p>
+    <p class="budget-cash-sub">Bills account only${balanceKnown && publication.trust === 'planned-unconfirmed' ? ' · payday receipt unconfirmed' : ''}${selected && selected.timelineRole !== 'current' ? ' · current position, not the selected period opening' : ''}</p>
     ${notice}${next}
     <section class="budget-today-evidence" id="budget-today-evidence" data-budget-today-evidence aria-label="Current balance and funding evidence"${evidenceOpen ? '' : ' hidden'}>
       <button type="button" class="budget-cash-back" data-budget-cash-back>‹ Back to overview</button>
@@ -5385,16 +5565,99 @@ function operatingSurfaceHtml(ctx) {
  * in public/budget-surface.js; every section is an incumbent component
  * here, rendered whole. operatingSurfaceHtml above is retained only until
  * its helper tests move to this surface. */
+function budgetWindowModel(ctx) {
+  const advice = ctx.advice || {};
+  const asOf = advice.defaultView && Object.prototype.hasOwnProperty.call(advice.defaultView, 'asOf')
+    ? advice.defaultView.asOf : ctx.asOf;
+  if (budgetGranularity === 'month') {
+    const months = budgetTrajectoryFor(ctx)?.months || [];
+    const index = months.findIndex(month => month.month === budgetSelectedMonth);
+    const month = months[index];
+    return { kind: 'month', rows: months, index, start: month?.start, end: month?.end,
+      label: budgetMonthName(month?.month) || 'Month unavailable', asOf,
+      current: !!month && String(asOf).slice(0, 7) === month.month };
+  }
+  if (budgetInPayPeriodDrilldown()) {
+    return { kind: 'drilldown', rows: [], index: -1, label: `Pay periods in ${budgetMonthName(budgetPayPeriodAnchorMonth) || 'the selected month'}`, asOf };
+  }
+  const selection = payPeriodSelection(advice, ctx.planPayPeriodId);
+  const period = selection.period;
+  return { kind: 'pay-period', ...selection, start: period?.start, end: period?.end,
+    label: isValidIsoCalendarDate(period?.start) && isValidIsoCalendarDate(period?.end)
+      ? `${fmtDate(period.start)} – ${fmtDate(period.end)}${period.start.slice(0, 4) !== period.end.slice(0, 4) ? ` · ${period.start.slice(0, 4)}–${period.end.slice(0, 4)}` : ''}`
+      : 'Pay period dates unavailable', asOf, current: period?.timelineRole === 'current',
+    past: period?.timelineRole === 'past' };
+}
+
+function budgetWindowProgressHtml(model, advice) {
+  // Date chrome only: use Forecast's published bounds and shared date helper.
+  // Browser time, income dates reconstructed from recurrence and money are absent.
+  if (!isValidIsoCalendarDate(model.start) || !isValidIsoCalendarDate(model.end)
+    || !isValidIsoCalendarDate(model.asOf)) return '<p class="budget-window-note">Date progress unavailable</p>';
+  const count = Forecast.diffDays(model.start, model.end) + 1;
+  if (!Number.isInteger(count) || count < 1 || count > 366) return '<p class="budget-window-note">Date progress unavailable</p>';
+  const inside = model.asOf >= model.start && model.asOf <= model.end;
+  const day = inside ? Forecast.diffDays(model.start, model.asOf) + 1 : null;
+  const line = inside ? `<b>Day ${day}</b> of ${count}`
+    : `${model.end < model.asOf ? 'Completed' : 'Upcoming'} · ${count} days`;
+  const action = advice.currentPeriodAction;
+  const payday = action && Object.prototype.hasOwnProperty.call(action, 'nextPayday')
+    ? action.nextPayday : advice.nearBoundary?.payday;
+  const next = model.kind === 'pay-period' && model.current && isValidIsoCalendarDate(payday) && payday >= model.asOf
+    ? `Next payday <b>${fmtDate(payday)}</b> · in ${Forecast.diffDays(model.asOf, payday)} days`
+    : model.kind === 'month' ? 'Published projection window'
+      : model.past ? 'Completed pay period' : 'Selected pay period';
+  return `<div class="budget-window-progress" data-budget-window-progress data-start="${model.start}" data-end="${model.end}" data-as-of="${model.asOf}">
+    <p><span>${line}</span><span>${next}</span></p>
+    <div class="budget-window-days" style="--budget-day-count:${count}" aria-hidden="true">${Array.from({ length: count }, (_, index) =>
+      `<span class="${inside && index + 1 === day ? 'is-today' : model.end < model.asOf || inside && index + 1 < day ? 'is-past' : ''}"></span>`).join('')}</div>
+  </div>`;
+}
+
+function budgetWindowHeaderHtml(ctx) {
+  const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const model = budgetWindowModel(ctx);
+  const month = model.kind === 'month';
+  const picker = month ? `<label class="budget-window-month-picker"><span class="budget-cash-sr">Calendar month for Budget month view</span>
+      <select data-budget-month-picker aria-label="Calendar month for Budget month view">${model.rows.map(row =>
+        `<option value="${escape(row.month)}"${row.month === budgetSelectedMonth ? ' selected' : ''}>${escape(budgetMonthName(row.month))}</option>`).join('')}</select></label>`
+    : model.period ? `<button type="button" class="budget-window-choose" data-budget-window-choose aria-haspopup="dialog" aria-expanded="false">Choose period <span aria-hidden="true">⌄</span></button>` : '';
+  const arrow = step => `<button type="button" class="budget-window-arrow" data-budget-window-step="${step}" aria-label="${step < 0 ? 'Previous' : 'Next'} ${month ? 'calendar month' : 'pay period'}" aria-disabled="${model.index < 0 || model.index + step < 0 || model.index + step >= model.rows.length}"><span aria-hidden="true">${step < 0 ? '‹' : '›'}</span></button>`;
+  const chooser = model.period ? `<div data-budget-window-picker hidden>${payPeriodNavigatorHtml(model)}</div>` : '';
+  const shortcuts = model.kind === 'pay-period' && model.period ? `<nav class="budget-section-nav" aria-label="Budget sections">
+      ${[['overview', 'Overview'], ['spending', 'Spending'], ['bills', 'Bills'], ['upcoming', 'Upcoming']].map(([key, label]) =>
+        `<button type="button" data-budget-section="${key}"${key === 'overview' ? ' aria-current="page"' : ' aria-haspopup="dialog"'}>${label}</button>`).join('')}
+    </nav>` : '';
+  return `<header class="budget-window-header" data-budget-window-header>
+    <div class="budget-window-left">${budgetGranularityToggleHtml(true)}
+      <div class="budget-window-switch">${arrow(-1)}<div class="budget-window-title">
+        <p class="budget-window-eyebrow">${month ? 'Calendar month' : model.kind === 'drilldown' ? 'Calendar month · full pay periods' : 'Pay period'}${model.current ? '<span>Current</span>' : ''}</p>
+        <h1 data-budget-window-range>${escape(model.label)}</h1>${picker}
+      </div>${arrow(1)}</div>
+    </div>${budgetWindowProgressHtml(model, ctx.advice || {})}${chooser}
+  </header>${shortcuts}`;
+}
+
+function budgetDetailSheetHtml() {
+  return `<dialog class="budget-detail-sheet" data-budget-detail-sheet aria-labelledby="budget-detail-title">
+    <header><button type="button" data-budget-detail-close aria-label="Close details">‹ Back</button><h2 id="budget-detail-title" data-budget-detail-title>Details</h2></header>
+    <div class="budget-detail-body" data-budget-detail-body></div>
+  </dialog>`;
+}
+
 function budgetSurfaceParts() {
   return {
     planUnavailable: ctx => liveOperatingPlanUnavailable(ctx.advice || {}, ctx.liveOverlay),
     unavailableHtml: ctx => unavailableOperatingSurfaceHtml(ctx),
     granularity: () => budgetGranularity,
-    granularityToggleHtml: () => budgetGranularityToggleHtml(),
+      granularityToggleHtml: () => budgetGranularityToggleHtml(),
+      headerHtml: ctx => budgetWindowHeaderHtml(ctx),
+      detailSheetHtml: () => budgetDetailSheetHtml(),
     inDrilldown: () => budgetInPayPeriodDrilldown(),
     todayHtml: ctx => budgetTodayCashCardHtml(ctx),
     periodHtml: ctx => budgetPayPeriodContentHtml(Object.assign({}, ctx, { budgetCompactOverview: true })),
-    monthHtml: ctx => budgetMonthViewHtml(ctx),
+    monthHtml: ctx => budgetMonthViewHtml(ctx, true),
     selectedMonthLabel: () => (budgetSelectedMonth && budgetMonthName(budgetSelectedMonth)) || null,
     drilldownHtml: ctx => budgetPayPeriodDrilldownHtml(ctx),
   };
@@ -6534,7 +6797,7 @@ function renderPlan(d, periods, history) {
       revolvingExtra: d.revolvingExtra,
       planLook, planCalendarShow, planPayPeriodId, planView,
     };
-    operatingMount.innerHTML = budgetSurfaceHtml(surfaceCtx);
+    budgetRemount(operatingMount, surfaceCtx);
     wirePlanLookPicker(operatingMount, surfaceCtx);
     applyUnavailableOperatingChrome(planUnavailable, asOf, d.liveOverlay);
   }

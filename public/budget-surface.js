@@ -28,8 +28,9 @@
     const today = parts.todayHtml(ctx);
     const period = parts.periodHtml(ctx);
     return `<div class="budget-surface-grid">
-      ${card('today', today, { label: "Today's money" })}
-      ${card('period', period, { eyebrow: 'Pay period', label: 'Selected pay period' })}
+      ${card('period', `${parts.headerHtml ? parts.headerHtml(ctx) : ''}
+        <div class="budget-surface-today" data-budget-surface-section="today">${today}</div><!--budget-current-position-end-->${period}`,
+        { label: 'Selected pay period and current Bills position' })}
     </div>`;
   }
 
@@ -64,8 +65,9 @@
       : view === 'drilldown' ? drilldownView(ctx, parts)
       : payPeriodView(ctx, parts);
     return `<div class="payday-operating-sheet budget-stepped-sheet budget-surface" data-payday-sheet data-budget-surface="${view}">
-      <div class="budget-surface-bar">${parts.granularityToggleHtml()}</div>
+      ${view === 'pay-period' && parts.headerHtml ? '' : parts.headerHtml ? parts.headerHtml(ctx) : `<div class="budget-surface-bar">${parts.granularityToggleHtml()}</div>`}
       ${body}
+      ${parts.detailSheetHtml ? parts.detailSheetHtml() : ''}
     </div>`;
   }
 

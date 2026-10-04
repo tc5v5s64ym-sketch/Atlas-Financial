@@ -332,10 +332,13 @@ console.log('\n=== page remains a renderer, not a financial authority ===');
     'the formatter calls no Forecast function and consumes the one result passed to it');
   ok(fn && !/\.reduce\(|monthlyFromWeekly|projectDebts|majorPlans|fundingSequence/.test(fn[0]),
     'the formatter contains no page-side totals, conversions, debt walk, or future-plan calculation');
-  ok(/operatingMount\.innerHTML = budgetSurfaceHtml\(surfaceCtx\)/.test(planSrc)
+  const remount = /^function budgetRemount\([\s\S]*?\n\}/m.exec(planSrc);
+  ok(/budgetRemount\(operatingMount, surfaceCtx\)/.test(planSrc)
+    && remount && /mount\.innerHTML = budgetSurfaceHtml\(ctx\)/.test(remount[0])
+    && !/\bForecast\.|\.reduce\(|monthlyFromWeekly|projectDebts|fundingSequence/.test(remount[0])
     && /advice,/.test(planSrc)
     && !/extraDebtTarget: debtProj\.byId/.test(planSrc),
-  'renderPlan wires the incumbent recommendation directly and supplies no page-selected target');
+  'renderPlan passes incumbent context through the active renderer remount without financial calculation or a page-selected target');
 }
 
 if (failures) {

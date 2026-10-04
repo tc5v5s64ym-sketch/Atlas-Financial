@@ -497,9 +497,12 @@ console.log('\n=== the composed page remains a renderer ===');
     'the composed formatter calls no Forecast function');
   ok(fn && !/\.reduce\(|monthlyFromWeekly|projectDebts|fundingSequence/.test(fn[0]),
     'the composed formatter contains no page-side totals, conversions, or debt walk');
-  ok(/operatingMount\.innerHTML = budgetSurfaceHtml\(surfaceCtx\)/.test(planSrc)
+  const remount = /^function budgetRemount\([\s\S]*?\n\}/m.exec(planSrc);
+  ok(/budgetRemount\(operatingMount, surfaceCtx\)/.test(planSrc)
+    && remount && /mount\.innerHTML = budgetSurfaceHtml\(ctx\)/.test(remount[0])
+    && !/\bForecast\.|\.reduce\(|monthlyFromWeekly|projectDebts|fundingSequence/.test(remount[0])
     && /refreshTrust: d\.refreshTrust/.test(planSrc),
-  'renderPlan wires the incumbent recommendation and refresh-trust packet');
+  'renderPlan retains incumbent recommendation and refresh trust through the active renderer remount without page-side financial calculation');
 }
 
 if (failures) {
