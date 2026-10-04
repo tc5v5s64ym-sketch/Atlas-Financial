@@ -185,7 +185,11 @@ async function geometry(page) {
       ]) {
         const trigger = page.locator(selector);
         await trigger.focus(); await page.keyboard.press('Enter');
-        await page.locator(sourceSelector).evaluate(node => { window.__beforeRerender = node; });
+        // Establish the visible, original evidence sheet before forcing a
+        // refresh; an outside hidden source is not proof that Enter opened it.
+        await page.locator('[data-budget-detail-sheet]').waitFor({state:'visible'});
+        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open), true);
+        await page.locator(`[data-budget-detail-body] > ${sourceSelector}`).evaluate(node => { window.__beforeRerender = node; });
         await page.evaluate(() => App.rerender());
         await page.waitForFunction(() => document.querySelector('[data-budget-detail-sheet]')?.open);
         assert.equal(await page.locator(`[data-budget-detail-body] > ${sourceSelector}`).evaluate(node => node !== window.__beforeRerender && node.isConnected), true,
@@ -386,6 +390,56 @@ async function geometry(page) {
         }
         await screenshot({ path: path.join(screenshots, `${name}-${width}.png`), fullPage: true });
         await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `${name}-period-${width}.png`), style: periodCropStyle });
+      }
+      // Both #488 review defects, through actual Forecast historical paths.
+      // Null spent from incomplete coverage is not observed history; sealed
+      // planned bills with historical remaining $0 are not an actionable clear.
+      for (const [coverage, settlement] of [['missing','unverified'], ['partial','unverified'],
+        ['truncated','unverified'], ['full','unverified'], ['full','paid'], ['posted-only','unverified']]) {
+        data = fx.historical(coverage, settlement); await boot();
+        await page.locator('[data-budget-window-step="-1"]').click();
+        assert.match(await page.locator('[data-budget-window-range]').innerText(), /Jul 31.*Aug 13/);
+        const spending = page.locator('[data-budget-browse="spending"]');
+        const bills = page.locator('[data-budget-browse="bills"]');
+        const observed = ['full', 'posted-only'].includes(coverage);
+        assert.match(await spending.locator('.budget-browse-counts').innerText(), observed
+          ? /Observed spending.*completed period/ : /Spending unavailable.*completed period/);
+        assert.match(await spending.locator('[data-budget-browse-hold]').innerText(), observed ? /66\.75/ : /Unavailable/);
+        const groceries = spending.locator('[data-budget-category-open="groceries"]');
+        assert.match(await groceries.innerText(), observed ? /47\.25/ : /Spending unavailable/);
+        assert.equal(await groceries.locator('.budget-category-fill').count(), observed ? 1 : 0);
+        assert.equal(await bills.locator('[data-budget-browse-bills-remaining]').count(), 0);
+        assert.equal((await bills.locator('h2').innerText()), 'Completed-period bills');
+        assert.match(await bills.innerText(), /Historical settlement evidence, not an amount due now/);
+        if (settlement === 'unverified') assert.match(await bills.innerText(), /To confirm[\s\S]*Synthetic historical service/);
+        else await bills.locator('.budget-browse-paid > summary').click();
+        assert.equal((await bills.innerText()).includes('left to pay or confirm'), false);
+        await geometry(page);
+        if (['missing', 'full'].includes(coverage)) await screenshot({
+          path:path.join(screenshots, `history-${coverage}-${settlement}-${width}.png`), fullPage:true });
+        if (coverage === 'partial' && width === 320) await screenshot({path:path.join(screenshots,'history-partial-320.png'),fullPage:true});
+        await groceries.focus(); await page.keyboard.press('Enter');
+        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open), true);
+        if (observed) assert.match(await page.locator('[data-budget-detail-body]').innerText(), /Synthetic historical grocer[\s\S]*47\.25/);
+        await page.keyboard.press('Escape');
+        assert.equal(await groceries.evaluate(el=>el===document.activeElement), true);
+        if (settlement === 'paid' && !await bills.locator('.budget-browse-paid').evaluate(el=>el.open)) {
+          await bills.locator('.budget-browse-paid > summary').focus();
+          await page.keyboard.press('Enter');
+          assert.equal(await bills.locator('.budget-browse-paid').evaluate(el=>el.open), true);
+        }
+        const bill = bills.locator('[data-budget-bill-open="historical-service"]');
+        await bill.focus();
+        assert.equal(await bill.evaluate(el=>el===document.activeElement), true);
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open), true);
+        assert.match(await page.locator('[data-budget-detail-body]').innerText(), /Synthetic historical service[\s\S]*105\.00/);
+        await page.keyboard.press('Escape');
+        assert.equal(await bill.evaluate(el=>el===document.activeElement), true);
+        await page.locator('[data-budget-window-step="1"]').click();
+        assert.match(await page.locator('[data-budget-browse-bills-remaining]').innerText(), settlement === 'paid' ? /265\.00/ : /370\.00/);
+        await page.locator('[data-budget-window-step="1"]').click();
+        assert.match(await page.locator('[data-budget-browse="spending"] .budget-browse-counts').innerText(), /Projected plan.*spending not observed/);
       }
       // Configured pools with unknown assignments must retain the withholding reason.
       data = fx.served({ withheldSavings: true }); await boot(); await geometry(page);

@@ -270,12 +270,13 @@ const paidHistory = hydroPage.rerender(`
   Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').bills.find(item => item.id === 'hydro'), {status:'PAID',settlement:'represented',remaining:0});
   Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31'), {paidBills:120, remainingBills:0});`);
 const paidBills = browseCard(paidHistory, 'bills');
-ok(/data-budget-bills-remaining-scope="actionable"/.test(paidBills)
-  && /data-budget-browse-bills-remaining[\s\S]*?0\.00/.test(paidBills)
-  && /left to pay or confirm/.test(paidBills)
+ok(/data-budget-bills-remaining-scope="historical-settlement"/.test(paidBills)
+  && /Completed-period bills/.test(paidBills)
+  && !/data-budget-browse-bills-remaining|left to pay or confirm/.test(paidBills)
+  && /\$120\.00 paid or included in opening/.test(paidBills)
   && /budget-browse-paid[\s\S]*?data-budget-bill-open="hydro"/.test(paidBills)
   && !/To confirm[\s\S]*?data-budget-bill-open="hydro"/.test(paidBills),
-  'paid historical Hydro can show the published $0 remaining without a false confirm group');
+  'paid historical Hydro keeps its published paid amount and no false confirm group; its header stays historical');
 const unknownHistory = hydroPage.rerender(`
   Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').bills.find(item => item.id === 'hydro'), {status:null,settlement:null,remaining:120});
   Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31'), {paidBills:0, remainingBills:0});`);
@@ -360,6 +361,88 @@ ok(/data-sign="negative"/.test(summaryHtml(zeroIncomeHtml, '07')) && /2,417\.99/
   'zero-income deficit independently reconciles 0 - 1,665 - 752.99 = -2,417.99');
 
 console.log('\n=== published amount trust is independent of chart scaling ===');
+console.log('\n=== real historical Forecast publications never become an actionable all-clear ===');
+const browseSection = (out, kind) => out.split(`data-budget-browse="${kind}"`)[1]?.split('</section>')[0] || '';
+for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only']) {
+  for (const settlement of ['unverified', 'paid']) {
+    const historyPage = page(); historyPage.render(fx.historical(coverage, settlement));
+    const historicalPeriod = historyPage.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31');
+    ok(historicalPeriod?.lookback === true && historicalPeriod.timelineRole === 'past',
+      `${coverage}/${settlement}: actual Forecast publishes the completed Jul 31-Aug 13 identity`);
+    if (!historicalPeriod) continue;
+    const out = historyPage.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(historicalPeriod.id)}`);
+    const spending = browseSection(out, 'spending'), bills = browseSection(out, 'bills');
+    const ready = coverage === 'full' || coverage === 'posted-only';
+    const grocery = historicalPeriod.householdBudget.find(row => row.id === 'groceries');
+    const fuel = historicalPeriod.householdBudget.find(row => row.id === 'fuel');
+    ok(ready ? grocery.spent === 47.25 && fuel.spent === 19.50 && historicalPeriod.budgetHold === 66.75
+      : grocery.spent === null && fuel.spent === null && historicalPeriod.budgetHold === 0,
+      `${coverage}/${settlement}: real observation coverage publishes independent $47.25 + $19.50 = $66.75, or omits unproven spending`);
+    ok(ready ? /Observed spending · completed period/.test(spending) && /\$66\.75/.test(spending)
+      : /Spending unavailable · completed period/.test(spending) && !/Observed spending · completed period|Completed periods show observed spending/.test(spending)
+        && /data-budget-browse-hold><span class="budget-browse-unknown">Unavailable/.test(spending),
+      `${coverage}/${settlement}: completed label and historical amount agree with actual coverage, without invented zero spending`);
+    const bill = historicalPeriod.bills.find(row => row.id === 'historical-service');
+    ok(bill?.status === (settlement === 'paid' ? 'PAID' : 'planned') && historicalPeriod.remainingBills === 0,
+      `${coverage}/${settlement}: Forecast historical actionable $0 is retained, with ${settlement} row identity`);
+    ok(/Completed-period bills/.test(bills) && !/left to pay or confirm|data-budget-browse-bills-remaining/.test(bills)
+      && (settlement === 'paid' ? /Paid or included in opening/.test(bills) : /To confirm[\s\S]*?Synthetic historical service/.test(bills))
+      && /Historical settlement evidence, not an amount due now/.test(bills),
+      `${coverage}/${settlement}: history is settlement evidence, never a zero due/confirmation all-clear`);
+    ok(/data-period-bill="historical-service"/.test(out) && /data-budget-category-open="groceries"/.test(out),
+      `${coverage}/${settlement}: native bill and transaction evidence stays reachable`);
+    const currentOut = historyPage.rerender('__ctx.planPayPeriodId = null');
+    const currentRemaining = settlement === 'paid' ? 265 : 370; // 265 current + 105 unresolved earlier bill
+    ok(browseSection(currentOut, 'bills').includes(`${money(currentRemaining)}</span> left to pay or confirm`)
+      && /known categories over plan/.test(browseSection(currentOut, 'spending')),
+      `${coverage}/${settlement}: current view keeps its own ${money(currentRemaining)} action and actual coverage`);
+    const future = historyPage.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === 'next');
+    const futureOut = historyPage.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(future.id)}`);
+    ok(/Projected plan · spending not observed/.test(browseSection(futureOut, 'spending'))
+      && !/Observed spending · completed period|Completed-period bills/.test(futureOut),
+      `${coverage}/${settlement}: future remains projected and never borrows historical settlement or observations`);
+  }
+}
+for (const trust of ['unavailable', 'unknown', 'untrusted']) {
+  const hp = page(); hp.render(fx.historical('full'));
+  const hist = hp.context.__ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31');
+  const out = hp.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(hist.id)};
+    __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').householdBudget.find(row => row.id === 'groceries').trust = ${JSON.stringify(trust)}`);
+  ok(/Incomplete spending evidence · completed period/.test(browseSection(out, 'spending'))
+    && /data-budget-browse-hold><span class="budget-browse-unknown">Unavailable/.test(out)
+    && /Spending unavailable/.test(categoryBrowse(out, 'groceries'))
+    && !/budget-category-fill|\$47\.25/.test(categoryBrowse(out, 'groceries')),
+    `${trust}: partial historical publication withholds the aggregate and affected row geometry; trusted other observations remain`);
+  ok(/\$19\.50/.test(categoryBrowse(out, 'fuel')) && /\$105\.00/.test(browseSection(out, 'bills')),
+    `${trust}: a category trust failure does not erase separate fuel or bill evidence`);
+}
+const historicalZero = page(); historicalZero.render(fx.historical('full'));
+const withheldOther = historicalZero.rerender(`__ctx.planPayPeriodId = __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').id;
+  __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').householdBudget.push({ id:'other-spending',
+    label:'Synthetic unknown historical other spending', otherSpending:true, needsConfirmation:true, spent:null, planned:null })`);
+ok(/data-budget-spending-evidence="partial"/.test(browseSection(withheldOther, 'spending'))
+  && /data-budget-browse-hold><span class="budget-browse-unknown">Unavailable/.test(withheldOther)
+  && /Unavailable/.test(categoryBrowse(withheldOther, 'other-spending')),
+  'missing Other spending evidence cannot be omitted to promote the full historical hold to observed');
+historicalZero.render(fx.historical('full'));
+const allZero = historicalZero.rerender(`__ctx.planPayPeriodId = __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31').id;
+  const histZero = __ctx.advice.payPeriodViews.find(row => row.start === '2026-07-31');
+  histZero.householdBudget.forEach(row => row.spent = 0); histZero.budgetHold = 0`);
+ok(/Observed spending · completed period/.test(browseSection(allZero, 'spending'))
+  && /data-budget-browse-hold>\$0\.00/.test(allZero),
+  'published known zero observations stay known; missing evidence never fills them');
+for (const role of ['current', 'next']) for (const trust of ['unknown', 'unavailable', 'untrusted']) {
+  const tp = page(); tp.render(fx.served());
+  const period = tp.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === role);
+  const out = tp.rerender(`__ctx.planPayPeriodId = ${JSON.stringify(period.id)};
+    __ctx.advice.payPeriodViews.find(row => row.timelineRole === ${JSON.stringify(role)}).householdBudget.find(row => row.id === 'groceries').trust = ${JSON.stringify(trust)}`);
+  const card = categoryBrowse(out, 'groceries');
+  ok(/Unavailable/.test(card) && !/budget-category-fill|308\.55|141\.45 left/.test(card),
+    `${role}/${trust}: explicit category trust failure keeps amounts and ratio geometry unavailable on every active scope`);
+  ok(role === 'current' ? /0 of 2 known categories over plan/.test(browseSection(out, 'spending'))
+    : /Projected plan · spending not observed/.test(browseSection(out, 'spending')),
+    `${role}/${trust}: truthful known-category count or projected label remains independent of history`);
+}
 // Fault injection at the Forecast publication boundary, through the active
 // composer. The observation/Forecast regressions above reconcile real figures;
 // this matrix checks that a missing ratio denominator cannot change their trust.

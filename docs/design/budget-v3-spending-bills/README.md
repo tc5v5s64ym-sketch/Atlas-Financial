@@ -135,3 +135,49 @@ are recorded separately in the draft's proof.
 
 These are bounded remaining outcomes, not a claim that the approved visual
 target has been completed by this slice. #480 stays open as the reference.
+
+## Historical presentation repair
+
+Review findings [4175917633](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/488#discussion_r4175917633)
+and [4175917638](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/488#discussion_r4175917638)
+were reproduced on `2234446c186a4c04e951cfa02b0480a798376b2d` through real
+Forecast lookback publications, using additional independently invented inputs.
+No engine total or settlement state changes in the repair.
+The final consolidation builds on Cursor's remote repair
+`d7d4a0fb7dd4f14476963513d0c942044b27d581`, preserves its helpers and regression
+coverage, and adds real observation/settlement cases, explicit trust guards and
+historical bill scope for paid and unconfirmed history. The paid-history test
+now requires its published paid amount and paid group while rejecting an
+actionable historical headline; no payment-state assertion was relaxed.
+
+The Jul 31-Aug 13 fixture has groceries $47.25, fuel $19.50 and an Aug 7 bill
+of $105. Full and posted-only coverage publish $66.75 observed spending;
+missing, partial and truncated coverage withhold category spending. The
+historical published hold then omits unproven spending and is $0, which the
+new summary withholds rather than promoting it to zero observed spending.
+An incomplete category publication or explicit unknown trust also withholds
+the summary while preserving separately known evidence. Published known zero
+observations remain zero.
+Other spending is included when checking historical evidence completeness;
+its missing amount cannot silently promote the historical total to observed.
+Current known-category counts likewise exclude explicitly withheld observations.
+
+Forecast seals an unresolved historical bill as `planned`, with `unverified`
+settlement and $105 on its row, while the historical actionable remaining
+total excludes it and is $0. The card now says **Completed-period bills** and
+describes settlement evidence, not an amount due now. The To confirm warning,
+paid group, original BillDetail and transaction sheets remain reachable.
+Current and future views keep their own publications: the invented current
+remaining amount is $370 with the earlier $105 unresolved, or $265 when its
+payment is represented. No historical sum is substituted into either view.
+
+The active-path suite covers missing/partial/truncated/full/posted-only coverage
+crossed with paid/unverified settlement, plus publication trust failures and
+known zero observations. The browser repeats coverage and settlement cases at
+1440, 390 and 320px, exercises keyboard evidence access and restores focus.
+See `history-missing-unverified-*.png`, `history-full-unverified-*.png`,
+`history-full-paid-*.png`, and `history-partial-320.png`. Existing normal-view
+reference comparisons are regenerated on the repaired head.
+The rerender browser proof first establishes the visible original evidence
+sheet before forcing a refresh; it then requires refreshed evidence and exact
+visible focus after resizing. No timed sleep or removed assertion is used.
