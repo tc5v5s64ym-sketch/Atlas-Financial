@@ -29,6 +29,13 @@ async function geometry(page) {
       let data = fx.served();
       const page = await browser.newPage({ viewport: { width, height: 1000 },
         colorScheme: 'light', reducedMotion: 'reduce' });
+      const screenshot = async options => {
+        await page.evaluate(async () => {
+          await document.fonts.ready;
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        });
+        return page.screenshot({ animations: 'disabled', ...options });
+      };
       page.on('pageerror', err => errors.push(err.message));
       await page.route('**/*', route => {
         const u = new URL(route.request().url());
@@ -82,7 +89,7 @@ async function geometry(page) {
       assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
       const periodWheel = page.locator('[data-budget-wheel="period"] [aria-current="true"]');
       assert.equal(await periodWheel.evaluate(el => el === document.activeElement), true);
-      if (width === 390) await page.screenshot({ path: path.join(screenshots, 'period-picker-390.png'), fullPage: true });
+      if (width === 390) await screenshot({ path: path.join(screenshots, 'period-picker-390.png'), fullPage: true });
       await page.keyboard.press('ArrowRight');
       assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
       assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
@@ -106,12 +113,12 @@ async function geometry(page) {
         const detail = await page.locator('[data-budget-detail-body]').innerText();
         assert.match(detail, section === 'spending' ? /Synthetic grocer|Groceries/
           : section === 'bills' ? /1,400\.00|Mortgage/ : /August 28 payday/);
-        if (width === 390) await page.screenshot({ path: path.join(screenshots, `${section}-sheet-390.png`), fullPage: true });
+        if (width === 390) await screenshot({ path: path.join(screenshots, `${section}-sheet-390.png`), fullPage: true });
         await page.keyboard.press('Escape');
         assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
       }
       if (width < 960) await page.locator('[data-budget-section="overview"]').click();
-      await page.screenshot({ path: path.join(screenshots, `current-${width}.png`), fullPage: true });
+      await screenshot({ path: path.join(screenshots, `current-${width}.png`), fullPage: true });
       const periodCropStyle = '.sitenav-household { visibility:hidden !important; }';
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `period-${width}.png`), style: periodCropStyle });
       // The compact sheet moves the incumbent evidence node, keeps the page
@@ -180,7 +187,7 @@ async function geometry(page) {
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.waitForFunction(() => document.querySelector('[data-budget-detail-sheet]')?.open
           && !!document.activeElement.closest('[data-budget-detail-sheet]'));
-        await page.screenshot({ path: path.join(screenshots, 'next-payday-resized-1440.png'), fullPage: true });
+        await screenshot({ path: path.join(screenshots, 'next-payday-resized-1440.png'), fullPage: true });
         await page.locator('[data-budget-detail-close]').click();
         assert.equal(await nextPayday.evaluate(el => el === document.activeElement), true,
           '390-to-1440 resize returns to Next payday, never Info or body');
@@ -248,7 +255,7 @@ async function geometry(page) {
           assert.equal(await page.locator('[data-budget-bar-state="zero-income"]').count(), 5);
           assert.equal(await page.locator('.budget-waterfall-bar').count(), 0);
         }
-        await page.screenshot({ path: path.join(screenshots, `${name}-${width}.png`), fullPage: true });
+        await screenshot({ path: path.join(screenshots, `${name}-${width}.png`), fullPage: true });
         await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `${name}-period-${width}.png`), style: periodCropStyle });
       }
       // Configured pools with unknown assignments must retain the withholding reason.
@@ -260,22 +267,22 @@ async function geometry(page) {
       await page.locator('.budget-period-info > summary').click();
       await page.locator('[data-from-today-proposal] summary').click();
       assert.match(await page.locator('[data-budget-detail-body]').innerText(), /withheld|withholding/);
-      await page.screenshot({ path: path.join(screenshots, `withheld-${width}.png`), fullPage: true });
+      await screenshot({ path: path.join(screenshots, `withheld-${width}.png`), fullPage: true });
       data = fx.served({ spendingCash: -50, savingsCash: 8000 }); await boot(); await geometry(page);
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');
       await how.click();
       assert.match(await page.locator('[data-budget-cash-part="household"]').innerText(), /308\.50/);
-      await page.screenshot({ path: path.join(screenshots, `negative-spending-${width}.png`), fullPage: true });
+      await screenshot({ path: path.join(screenshots, `negative-spending-${width}.png`), fullPage: true });
       data = fx.served({ groceriesExtra: 200 }); await boot(); await geometry(page);
       assert.match(await page.locator('[data-budget-period-result]').innerText(), /1,573\.46/);
       assert.match(await page.locator('[data-operating-question="06"] > details > summary').innerText(), /811\.54/);
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');
-      await page.screenshot({ path: path.join(screenshots, `overspending-${width}.png`), fullPage: true });
+      await screenshot({ path: path.join(screenshots, `overspending-${width}.png`), fullPage: true });
       data = fx.served({ unavailablePlan: true }); await boot();
       assert.equal(await page.locator('[data-budget-period-result]').count(), 0);
       assert.match(await page.locator('[data-budget-surface="unavailable"]').innerText(), /Last trusted opening/);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-      await page.screenshot({ path: path.join(screenshots, `unavailable-${width}.png`), fullPage: true });
+      await screenshot({ path: path.join(screenshots, `unavailable-${width}.png`), fullPage: true });
       data = fx.served({ deficitPeriod: true }); await boot(); await geometry(page);
       assert.match(await page.locator('[data-budget-period-result]').innerText(), /3,367\.99/);
       assert.match(await page.locator('[data-operating-question="07"] .budget-step-value').innerText(), /estimated/);
@@ -290,7 +297,7 @@ async function geometry(page) {
       assert.ok(!finalTrack.hatch.includes('repeating-linear-gradient'), 'known deficit is not the unknown hatch');
       assert.deepEqual({ deficit: savingsTrack.deficit, unknown: savingsTrack.unknown }, { deficit: false, unknown: true });
       assert.ok(savingsTrack.hatch.includes('repeating-linear-gradient'), 'unavailable savings keep the hatch');
-      await page.screenshot({ path: path.join(screenshots, `levy-deficit-${width}.png`), fullPage: true });
+      await screenshot({ path: path.join(screenshots, `levy-deficit-${width}.png`), fullPage: true });
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `levy-deficit-period-${width}.png`), style: periodCropStyle });
       // Preserve the concurrent no-observation zero-income regression separately
       // from the observation/overlay fixture, which retains actual Other Spend.
@@ -309,7 +316,7 @@ async function geometry(page) {
       }
       assert.equal((await trackState('savings')).unknown, true);
       assert.ok((await trackState('savings')).hatch.includes('repeating-linear-gradient'));
-      await page.screenshot({ path: path.join(screenshots, `zero-income-no-observations-${width}.png`), fullPage: true });
+      await screenshot({ path: path.join(screenshots, `zero-income-no-observations-${width}.png`), fullPage: true });
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `zero-income-no-observations-period-${width}.png`), style: periodCropStyle });
       await page.close();
       console.log(`PASS ${width}px: financial hero, geometry, evidence, keyboard reachability, focus restoration, unknown assignments, unavailable plan and known deficit`);

@@ -86,6 +86,15 @@ Full captures retain the real mobile dock; keyboard checks prove focused
 controls scroll clear of it. Comparisons show the intentional owner override
 as well as outstanding design differences. They are not a visual-completion
 claim. All requests in the browser harness are intercepted invented fixtures.
+Unobscured flow crops: [desktop](period-1440.png), [mobile](period-390.png),
+[320px](period-320.png).
+
+Browser captures use reduced motion, disabled capture animations and settled
+font/render frames. Comparisons are reproducible with
+`NODE_PATH=<Playwright> CHROME_PATH=<Chromium> node test/render-budget-v3-comparisons.js <browser-capture-directory> <output-directory>`.
+Financial values, scope, layout and focus are asserted independently of image
+bytes. Raster scaling or focus/backdrop timing differences are inspected
+visually rather than treated as a financial equality test.
 
 Validation commands: `node test/test-budget-surface.js`, the related Budget,
 funding, household, bill evidence, Prepare Ahead and authority suites;
