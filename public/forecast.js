@@ -8500,15 +8500,19 @@
   // THANK YOU / PAYMENT THANKYOU / TFR-TO C/C is a payment onto that card.
   // Identity is txMerchantExact (originalMerchant, then displayedPayee,
   // then payee), then originalName. It is reconciled against that card's
-  // posted purchases dated strictly after the previous posted payment on
-  // the same card, through this payment date.
+  // posted purchases dated strictly after the previous payment credit on
+  // the same card, through this payment date. The boundary date and the
+  // same-day count include every dated payment credit: pending,
+  // unreconciled, or posted.
   //
-  // With no earlier posted payment, the payment is unreconciled
+  // With no earlier payment credit, the payment is unreconciled
   // (no-previous-payment). coverageStart is not a window bound. Several
-  // posted payments on the same card and the same date are all
-  // unreconciled (same-day-multiple-payments). That date still bounds a
-  // later payment on another day: the next window starts strictly after
-  // the previous posted payment date.
+  // payment credits on the same card and the same date are all
+  // unreconciled (same-day-multiple-payments). A later payment is
+  // unreconciled when its previous credit is pending or unreconciled, or
+  // when another pending or unreconciled credit falls inside the window.
+  // A clean posted payment date still bounds a later payment on another
+  // day: the next window starts strictly after that date.
   //
   // Matched cents are backfill: they do not satisfy the card minimum and
   // they are not extra debt paydown. The unmatched remainder is the
@@ -8625,10 +8629,29 @@
     };
   }
 
+  function visaPaymentCredit(tx) {
+    if (!tx || !visaPaymentPayee(tx)) return false;
+    const cents = amountCents(tx.amount);
+    return cents == null || cents < 0;
+  }
+
+  // Pending, missing-identity, and contradictory credits still bound the
+  // next window. Skipping them lets a later payment re-backfill purchases
+  // the skipped credit already covered.
+  function visaBoundaryQuality(tx) {
+    if (!tx || transactionPendingState(tx) === 'pending') return 'pending';
+    if (tx.id == null || tx.id === '') return 'unreconciled';
+    if (visaCardIdentity(tx) && visaCardIdentity(tx).contradictory) return 'unreconciled';
+    const cents = amountCents(tx.amount);
+    if (cents == null || cents >= 0) return 'unreconciled';
+    return 'posted';
+  }
+
   function reconcileVisaCard(card, rows, evidence, packet) {
     const duplicateIds = pendingPostedDuplicateIdSet({ transactions: rows });
     const payments = [];
     const activity = [];
+    const boundary = [];
     for (const tx of rows) {
       if (!tx || !tx.date) {
         if (visaCreditClass(tx) === 'payment' || (tx && visaPaymentPayee(tx))) {
@@ -8636,6 +8659,7 @@
         }
         continue;
       }
+      if (visaPaymentCredit(tx)) boundary.push(tx);
       const kind = visaCreditClass(tx);
       if (kind === 'payment-missing-amount') {
         payments.push(visaUnreconciled(tx, card, 'missing-amount'));
@@ -8645,6 +8669,8 @@
         continue;
       } else activity.push({ tx, kind });
     }
+    boundary.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1
+      : String(a.id).localeCompare(String(b.id)));
     const postedPayments = payments.filter(tx => tx && tx.status !== 'unreconciled' && tx.date)
       .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1
         : String(a.id).localeCompare(String(b.id)));
@@ -8672,19 +8698,29 @@
       eligible.push(tx);
     });
     const sameDayCount = new Map();
-    for (const tx of eligible) {
+    for (const tx of boundary) {
       sameDayCount.set(tx.date, (sameDayCount.get(tx.date) || 0) + 1);
     }
-    eligible.forEach((tx, index) => {
+    eligible.forEach(tx => {
       const cents = amountCents(tx.amount);
-      if (sameDayCount.get(tx.date) > 1) {
+      if ((sameDayCount.get(tx.date) || 0) > 1) {
         out.push(visaUnreconciled(tx, card, 'same-day-multiple-payments'));
         return;
       }
-      const previous = index > 0 ? eligible[index - 1] : null;
+      const index = boundary.indexOf(tx);
+      const previous = index > 0 ? boundary[index - 1] : null;
       const previousDate = previous && previous.date || null;
       if (!previousDate) {
         out.push(visaUnreconciled(tx, card, 'no-previous-payment'));
+        return;
+      }
+      const blocking = visaBoundaryQuality(previous) !== 'posted'
+        || boundary.some(other => other !== tx
+          && other.date > previousDate
+          && other.date <= tx.date
+          && visaBoundaryQuality(other) !== 'posted');
+      if (blocking) {
+        out.push(visaUnreconciled(tx, card, 'unreconciled-payment-in-window'));
         return;
       }
       const inWindow = item => item && item.tx && item.tx.date

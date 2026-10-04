@@ -154,8 +154,9 @@
     'missing-account': 'The card account is missing.',
     'contradictory-account': 'The card account is contradictory.',
     'missing-identity': 'The payment has no transaction identity.',
-    'same-day-multiple-payments': 'Several payments posted on this card the same day, so none of them is split.',
+    'same-day-multiple-payments': 'Several payments on this card share this date, so none of them is split.',
     'no-previous-payment': 'No earlier posted payment bounds the purchase window, so this payment is not split.',
+    'unreconciled-payment-in-window': 'A pending or unreconciled payment bounds this window, so this payment is not split.',
   };
 
   // Formats Forecast.visaPaymentPublication rows. No addition, comparison,
