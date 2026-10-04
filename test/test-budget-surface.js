@@ -726,7 +726,8 @@ console.log('\n=== compact savings contribution evidence ===');
   const stillUnknown = stamped.split('data-budget-savings-goals')[1]?.split('data-budget-funding-savings')[0] || '';
   ok(!/>Funded<|>Still to fund</.test(stillUnknown) && /Not confirmed/.test(stillUnknown),
     'a saved balance or cumulative proposal cannot become this period\'s confirmed fulfillment');
-  ok(/<details class="budget-savings-accounts"><summary>Savings accounts/.test(sp.context.document.getElementById('savings-inventory').innerHTML),
+  const inventoryPage = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
+  ok(/<details class="budget-savings-accounts">\s*<summary>Savings accounts &amp; evidence<\/summary>\s*<div id="savings-inventory"><\/div>\s*<\/details>/.test(inventoryPage),
     'complete inventory is keyboard-accessible through a collapsed native evidence disclosure');
 }
 
