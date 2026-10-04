@@ -520,6 +520,10 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
       || heldElsewhere.includes(r.payingAccount) || debtIds.includes(r.payingAccount)) continue;
     for (const date of dates(r, start, t.horizon.end)) {
       if (prepaid(r.id, date)) continue;
+      // An explicitly confirmed no-pay occurrence has no cash ledger leg.
+      // Other dates keep their nominal/credit arithmetic independently below.
+      if (Array.isArray(r.noPaymentRequiredOn)
+          && r.noPaymentRequiredOn.some(noPayDate => noPayDate === date)) continue;
       const credit = date === r.firstDue && r.utilityAccountCredit
         ? Number(r.utilityAccountCredit.amount ?? r.utilityAccountCredit) : 0;
       ledger.push(event(r, date, 'bills', start, Math.max(0, r.amount - credit)));

@@ -146,15 +146,19 @@ function independentLedger(days) {
     if (rawCredit != null) {
       scope(Number.isFinite(credit) && credit > 0,
         `${row.id}: invalid utility-account credit`);
-      scope(typeof row.firstDue === 'string' && Number.isFinite(time(row.firstDue)),
-        `${row.id}: utility-account credit needs a firstDue`);
+      // A recorded credit may remain unapplied while the next invoice date is
+      // unknown. Only a separately dated firstDue authorizes cash netting.
+      if (row.firstDue) scope(typeof row.firstDue === 'string' && Number.isFinite(time(row.firstDue)),
+        `${row.id}: invalid utility-account credit application date`);
       if (rawCredit && typeof rawCredit === 'object' && rawCredit.asOf) {
-        scope(Number.isFinite(time(rawCredit.asOf)) && rawCredit.asOf <= row.firstDue,
+        scope(Number.isFinite(time(rawCredit.asOf)) && (!row.firstDue || rawCredit.asOf <= row.firstDue),
           `${row.id}: utility-account credit evidence post-dates firstDue`);
       }
     }
     for (const date of dates) {
       if (representedKeys.has(`${row.id}@${date}`)) continue;
+      if (Array.isArray(row.noPaymentRequiredOn)
+          && row.noPaymentRequiredOn.some(noPayDate => noPayDate === date)) continue;
       const amount = date === row.firstDue && credit > 0
         ? Math.max(0, row.amount - credit)
         : row.amount;
