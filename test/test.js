@@ -36,6 +36,7 @@ const suites = [
   ['confirmed savings authenticated observation and both surfaces', 'test-savings-earmarks-integration.js'],
   ['confirmed savings immutable main before/after', 'test-savings-earmarks-before-after.js'],
   ['one household ledger across observed Budget and savings', 'test-household-path.js'],
+  ['Visa payment backfill reconciliation', 'test-visa-payment-backfill.js'],
   ['read-only bill payment evidence and exact sanitized links', 'test-bill-detail.js'],
   ['Budget bill payment evidence integration and hooks', 'test-bill-detail-budget-integration.js'],
   ['from-today Budget savings arithmetic and evidence', 'test-from-today-funding.js'],
