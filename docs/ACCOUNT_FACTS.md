@@ -247,7 +247,8 @@ evidence. Only the October correction is approved for Forecast: the existing
 modeled Oct. 3 $124 cash requirement is removed, without a paid-$0 record.
 The retained utility credit has no application date, so it is not added to
 bank cash or automatically consumed by a future bill. Future forecast inputs
-remain the incumbent placeholders; use the next issued statement to confirm
+remain the incumbent placeholders, explicitly classified **estimated**;
+use the next issued statement to confirm
 the future total/date before changing them or netting credit. The historical
 table above is not a newly confirmed $124 equal-plan amount. Source:
 `docs/source_intake/FORTIS_ANNUAL_REVIEW_2026-09-09.md`.

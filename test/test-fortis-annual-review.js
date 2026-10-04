@@ -3,6 +3,8 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const {sourceText}=require('./test-source-text');
 const F = require('../public/forecast');
 const O = require('./fixtures/native-cad-observation')(require('../scripts/provider-observe'));
 const clone = x => JSON.parse(JSON.stringify(x));
@@ -15,7 +17,7 @@ const data={meta:{asOf:AS_OF},accounts:[],debts:[],revolvingExtra:[],plan:{
   startingCash:{breakdown:[{id:'chequing-a',value:OPENING/100},{id:'chequing-b',value:0}]},
   defaults:{targetBuffer:0,extraDebtMonthly:0},income:[],obligations:[],commitments:[],budget:{categories:[]},
   bills:[{id:'fortis',label:'Synthetic gas',frequency:'monthly',day:3,amount:AMOUNT/100,
-    confidence:'confirmed',payingAccount:'chequing-a',budgetCategory:null,noPaymentRequiredOn:[NO_PAY],
+    confidence:'estimated',payingAccount:'chequing-a',budgetCategory:null,noPaymentRequiredOn:[NO_PAY],
     utilityAccountCredit:{amount:CREDIT/100,asOf:AS_OF}}]
 }};
 const untouched=JSON.stringify(data), plan=data.plan;
@@ -48,6 +50,35 @@ const unrelated=clone(plan);unrelated.bills.push({id:'other-bill',label:'Other s
 assert.deepEqual(F.expandEvents(unrelated,'2026-10-01','2026-10-31').map(e=>[e.id,cents(-e.amount)]),[['other-bill',4219]]);
 console.log('PASS wrong/malformed/issuance dates and same-day unrelated bills are unaffected');
 
+// Unknown next statement total/date retain conservative nominal inputs. Trust
+// travels with that placeholder; observed historical settlement is separate.
+const confirmedPlaceholder=clone(plan);confirmedPlaceholder.bills[0].confidence='confirmed';
+const roster=F.householdBills(plan,AS_OF,{}).bills.find(r=>r.id==='fortis');
+const falseConfirmedRoster=F.householdBills(confirmedPlaceholder,AS_OF,{}).bills.find(r=>r.id==='fortis');
+assert(roster&&falseConfirmedRoster);
+assert.equal(falseConfirmedRoster.confidence,'confirmed','counterfactual reproduces the false-confirmed future roster');
+assert.equal(roster.confidence,'estimated');assert.equal(roster.nextDate,'2026-11-03');assert.equal(cents(roster.amount),AMOUNT);
+const appSource=sourceText(fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8'));
+const formatter=re=>{const match=appSource.match(re);assert(match);return match[0];};
+const renderCard=vm.runInNewContext([
+  formatter(/^const money2 = .*$/m),formatter(/^const fmtDateFull = .*$/m),
+  sourceText(fs.readFileSync(path.join(__dirname,'../public/bills.js'),'utf8')),
+  'billsCardHtml'
+].join('\n'),{Forecast:F,console,App:{register(){},boot(){}}});
+assert(renderCard(falseConfirmedRoster).includes('CONFIRMED'),'counterfactual real card reproduces the false-confirmed disclosure');
+const rendered=renderCard(roster);assert(rendered.includes('ESTIMATED'));assert(!rendered.includes('CONFIRMED'));
+assert(rendered.includes((AMOUNT/100).toFixed(2)),'real standing card retains the synthetic conservative amount');
+const future=F.expandEvents(plan,'2026-11-01','2026-12-31');
+assert.deepEqual(future.map(e=>[e.date,cents(-e.amount),e.confidence]),[
+  ['2026-11-03',AMOUNT,'estimated'],['2026-12-03',AMOUNT,'estimated']]);
+const futureSim=p=>F.simulate(p,'2026-11-01',{horizonDays:61,viewDays:61,weeklyVariable:0,targetBuffer:0});
+const estimatedFuture=futureSim(plan),confirmedFuture=futureSim(confirmedPlaceholder);
+assert.equal(cents(estimatedFuture.ending),OPENING-2*AMOUNT,'independent future ledger retains two nominal debits and no credit application');
+assert.equal(cents(estimatedFuture.totals.bills),2*AMOUNT);
+assert.equal(cents(estimatedFuture.totals.income),0);
+assert.equal(estimatedFuture.ending,confirmedFuture.ending);assert.deepEqual(estimatedFuture.totals,confirmedFuture.totals);
+console.log('PASS future roster/events are estimated; conservative nominal cash ledger is unchanged');
+
 const identity=load('docs/connectivity/transaction-identity.json');
 function observe(asOf,transactions,inputData=data) {
   return O.observe({provider:'lunchmoney',data:inputData,identity,accountMap:load('docs/connectivity/fixtures/provider-account-map.json'),payload:{
@@ -76,6 +107,17 @@ const advice=F.recommend(operating,AS_OF,{currentPeriodActuals:report.currentPer
 const previousOperating=clone(operating);delete previousOperating.bills[0].noPaymentRequiredOn;
 const previousAdvice=F.recommend(previousOperating,AS_OF,{currentPeriodActuals:report.currentPeriodActuals,representedEvents:represented});
 const calendarRows=a=>(a.defaultView.calendarPeriods||[]).flatMap(period=>period.bills||[]);
+const receiptPlan=clone(operating);receiptPlan.opening.asOf='2026-09-04';
+const receiptReport=observe('2026-09-04',[historical]);
+const receiptAdvice=F.recommend(receiptPlan,'2026-09-04',{
+  currentPeriodActuals:receiptReport.currentPeriodActuals,representedEvents:represented});
+const paidHistory=calendarRows(receiptAdvice).find(r=>r.id==='fortis'&&r.date===OLD_DUE);
+assert(paidHistory);assert.equal(paidHistory.status,'PAID');assert.equal(cents(paidHistory.actual),AMOUNT);
+const futureReport=observe('2026-11-01',[historical]);
+const futureAdvice=F.recommend(operating,'2026-11-01',{
+  currentPeriodActuals:futureReport.currentPeriodActuals,representedEvents:represented});
+const futureCalendar=calendarRows(futureAdvice).find(r=>r.id==='fortis'&&r.date==='2026-11-03');
+assert(futureCalendar);assert.equal(futureCalendar.confidence,'estimated');assert.equal(cents(futureCalendar.amount),AMOUNT);
 assert((previousAdvice.currentPeriodAction.bills||[]).some(r=>r.id==='fortis'&&r.date===NO_PAY),'counterfactual action contains the unsupported October requirement');
 assert(calendarRows(previousAdvice).some(r=>r.id==='fortis'&&r.date===NO_PAY),'counterfactual calendar contains the unsupported October requirement');
 assert(!(advice.currentPeriodAction.bills||[]).some(r=>r.id==='fortis'&&r.date===NO_PAY));
@@ -101,6 +143,7 @@ assert(laterActual);assert.equal(cents(laterActual.actual),8123,'incumbent actua
 console.log('PASS existing pending/ambiguity guards, incumbent foreign handling and later actual-payment treatment are preserved');
 
 const live=load('data.json'), gas=live.plan.bills.find(b=>b.id==='fortis');
+assert.equal(gas.confidence,'estimated','canonical future Fortis placeholders cannot claim a confirmed invoice');
 assert.deepEqual(gas.noPaymentRequiredOn,[NO_PAY]);assert(!gas.firstDue);
 assert(gas.utilityAccountCredit&&gas.utilityAccountCredit.asOf===AS_OF);
 assert(!live.plan.bills.some(b=>b.id==='fortis-equal-payment'),'no future series/date is introduced');

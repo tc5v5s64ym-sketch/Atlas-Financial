@@ -280,14 +280,14 @@
                 "frequency": "monthly",
                 "day": 3,
                 "amount": 124,
-                "confidence": "confirmed",
+                "confidence": "estimated",
                 "budgetCategory": "household",
                 "noPaymentRequiredOn": ["2026-10-03"],
                 "utilityAccountCredit": {
                     "amount": 71.15,
                     "asOf": "2026-10-04"
                 },
-                "note": "Historical plan: seventeen charges over fourteen months; $124 in the last four, landing the 2nd-4th; August already paid. Owner-approved October-only correction 2026-10-04: the Sep. 9 annual-review bill due Oct. 1 says DO NOT PAY and leaves $71.15 utility-account credit. noPaymentRequiredOn removes only the incumbent modeled Oct. 3 $124 cash requirement; it does not declare a payment or confirm Oct. 3 as a due date. The Oct. 4 portal corroborates the credit and next bill issuance Oct. 8, not a future due. The retained credit has no application date / firstDue, so Forecast does not turn it into bank cash or automatically net a future occurrence. The new $102 equal plan is documented in ACCOUNT_FACTS and source intake; future forecast inputs remain unchanged pending the next dated statement. The Sep. 1 BILLS $124 payment and its existing early-payment fortis@Sep. 3 identity remain unchanged. The portal's negative Withdrawal label is not bank refund or zero-paid evidence.",
+                "note": "Historical plan: seventeen charges over fourteen months; $124 in the last four, landing the 2nd-4th; August already paid. Owner-approved October-only correction 2026-10-04: the Sep. 9 annual-review bill due Oct. 1 says DO NOT PAY and leaves $71.15 utility-account credit. noPaymentRequiredOn removes only the incumbent modeled Oct. 3 $124 cash requirement; it does not declare a payment or confirm Oct. 3 as a due date. The Oct. 4 portal corroborates the credit and next bill issuance Oct. 8, not a future due. The retained credit has no application date / firstDue, so Forecast does not turn it into bank cash or automatically net a future occurrence. The new $102 equal plan is documented in ACCOUNT_FACTS and source intake; future nominal amount/date inputs remain conservative estimated placeholders pending the next dated statement. The Sep. 1 BILLS $124 payment and its existing early-payment fortis@Sep. 3 identity remain unchanged. The portal's negative Withdrawal label is not bank refund or zero-paid evidence.",
                 "payingAccount": "chequing-a"
             },
             {

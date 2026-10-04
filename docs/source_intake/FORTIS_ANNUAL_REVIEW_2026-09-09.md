@@ -50,7 +50,10 @@ or a new obligation. September's identity/amount/cadence remain intact.
 not net it from any future occurrence. Utility credit stays separate from
 bank cash. Repeated evaluation never changes the credit or cash inputs.
 
-Future forecast inputs retain the incumbent placeholders. The new $102 plan
+Future amount/cadence/date inputs retain the incumbent conservative placeholders,
+with `confidence: estimated`: neither $124 nor the modeled next due is a
+confirmed future invoice fact. This trust correction leaves forecast amounts
+and dates unchanged. The new $102 plan
 is documented; a later explicitly scoped update must use the next issued
 statement to replace the future total/date and decide any credit application.
 This PR does not confirm those legacy placeholders as the new equal plan or
