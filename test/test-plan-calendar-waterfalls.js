@@ -1310,7 +1310,7 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
       && /operatingPlanUnavailable/.test(budgetFn[0])
       && /calendarCurrentUnavailableHtml/.test(budgetFn[0])
       && /period\.budgetHold/.test(budgetFn[0])
-      && /Household Budget Total/.test(budgetFn[0])
+      && /Protective spending reserve/.test(budgetFn[0])
       && !/calendarHalfPlanned|sumCategoryActuals/.test(budgetFn[0]),
     'calendarBudgetHtml prints Forecast cycle text / cycleUnresolved / operatingPlanUnavailable / budgetHold and does not recompute planned');
   const unavailableFn = /function calendarCurrentUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc);

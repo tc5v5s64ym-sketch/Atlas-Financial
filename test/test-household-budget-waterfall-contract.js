@@ -601,7 +601,7 @@ console.log('=== 12. Plan renders Forecast leftovers; it does not recalculate th
     'calendarBudgetHtml does not compute max(planned, spent)');
 }
 
-console.log('=== 13. Household Budget Total is Forecast budgetHold, not a page sum ===');
+console.log('=== 13. Protective spending reserve is Forecast budgetHold, not a page sum ===');
 {
   const grocerySpent = 1000;
   const fuelSpent = 200;
@@ -638,10 +638,10 @@ console.log('=== 13. Household Budget Total is Forecast budgetHold, not a page s
     'Forecast leftover identity: afterBills − budgetHold = afterHouseholdBudget');
   const html = composer.calendarBudgetHtml(active);
   const printed = displayedHouseholdBudgetTotal(html);
-  ok(/Household Budget Total/.test(html)
+  ok(/Protective spending reserve/.test(html)
       && printed === composer.money2(active.budgetHold)
       && printed === composer.money2(expectedHold),
-    'Household Budget Total prints Forecast budgetHold $1,675.00',
+    'protective spending reserve prints Forecast budgetHold $1,675.00',
     printed);
   ok(/data-budget-category="groceries"/.test(html)
       && /data-budget-category="fuel"/.test(html)
@@ -659,7 +659,7 @@ console.log('=== 13. Household Budget Total is Forecast budgetHold, not a page s
   const planSrc = read('public/plan.js');
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /period\.budgetHold/.test(budgetFn[0])
-      && /Household Budget Total/.test(budgetFn[0])
+      && /Protective spending reserve/.test(budgetFn[0])
       && /data-household-budget-total/.test(budgetFn[0])
       && !/\.reduce\s*\(/.test(budgetFn[0])
       && !/row\.hold/.test(budgetFn[0])
