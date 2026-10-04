@@ -98,7 +98,7 @@ const html = p.render(fx.served());
 console.log('\n=== published window above the compact overview ===');
 ok(html.indexOf('data-budget-window-header') < html.indexOf('data-live-current-balance'),
   'the selected window precedes Current balance in the one primary section');
-ok((html.match(/class="budget-surface-card /g) || []).length === 1,
+ok((html.match(/data-budget-surface-section="period"/g) || []).length === 1,
   'Current balance and period deductions share one overview card');
 ok((html.match(/data-budget-period-result/g) || []).length === 1
   && (html.match(/\$1,632\.01/g) || []).length === 1,
@@ -582,11 +582,139 @@ ok(/Projected pay period/.test(text(nextHtml)) && nextHtml.includes(`data-calend
 ok(/Today's money — current position/.test(text(section(nextHtml, 'today'))), 'Today stays on the current payday when another period is selected');
 p.rerender('planPayPeriodId = null; __ctx.planPayPeriodId = null');
 
+console.log('\n=== v3 funding lenses on the active path ===');
+const fundingPage = page();
+const fundingHtml = fundingPage.render(fx.served());
+ok(/data-budget-funding-panel="today"/.test(fundingHtml) && /data-budget-funding-panel="payday"[^>]* hidden/.test(fundingHtml),
+  'one proposal is visible at a time; Today and the payday schedule remain separate');
+ok(/never add them together/.test(fundingHtml) && /data-budget-funding-savings hidden/.test(fundingHtml),
+  'proposal scopes and complete savings inventory remain available without inventing saved balances');
+const fundedCurrent = '__ctx.advice.payPeriodViews.find(row => row.timelineRole === "current")';
+for (const update of ["trust: 'unknown'", "contribution: null", "contribution: false", "contribution: '85'", "asOf: '2026-08-19'", "currentThrough: '2026-09-10'", "basis: 'pooled-other-basis'"]) {
+  const fp = page(); fp.render(fx.served());
+  const out = fp.rerender(`Object.assign(${fundedCurrent}.fromTodayFunding, { ${update} })`);
+  const todayPanel = out.split('data-budget-funding-panel="today"')[1].split('data-budget-funding-panel="payday"')[0];
+  ok(/data-budget-funding-proposal><span class="budget-v3-unknown">Unavailable/.test(todayPanel),
+    `Today refuses unmatched / malformed publication (${update})`);
+}
+const fundingProof = page(); fundingProof.render(fx.served());
+const undatedPage = page(); const undatedHtml = undatedPage.render(fx.served({ withUndatedCost: true }));
+for (const key of ['today', 'payday']) {
+  const tail = undatedHtml.split(`data-budget-funding-panel="${key}"`)[1];
+  const panel = key === 'today' ? tail.split('data-budget-funding-panel="payday"')[0] : tail.split('<aside')[0];
+  const cost = panel.split('data-budget-funding-cost="fixture-undated"')[1];
+  ok((panel.match(/data-budget-funding-cost="fixture-undated"/g) || []).length === 1, `${key}: undated cost appears once in its published scope`);
+  ok(!!cost && /Synthetic undated cost[\s\S]*\$275\.00[\s\S]*Date not established[\s\S]*Contribution unknown/.test(cost),
+    `${key}: undated invented $275 cost preserves its known amount and withholds a contribution/date`);
+  ok(/budget-funding-track is-unknown/.test(cost), `${key}: unscheduled protection never becomes known-zero contribution geometry`);
+}
+const exactHtml = fundingProof.rerender(`budgetMonthPlanSpendSchedule = () => ({ status: 'ready', asOf: '2026-08-20', fundingTrust: 'estimated',
+  paydays: [{ payday: '2026-08-28', contribution: 95, stillToFund: 305, trust: 'calculated', allocations: [{ id: 'fixture-cost', amount: 95 }] }],
+  costs: [{ id: 'fixture-cost', label: 'Independent test cost', date: '2026-09-12', confidence: 'confirmed', baseRequirement: 400 }] })`);
+const exactPanel = exactHtml.split('data-budget-funding-panel="payday"')[1];
+ok(/data-budget-funding-proposal><span class="budget-v3-est">/.test(exactPanel) && /\$95\.00/.test(exactPanel),
+  'future exact-payday contribution carries schedule funding trust, not its calculated live-row stamp');
+ok(/style="width:23\.75%"/.test(exactPanel), 'independent geometry: 95 / 400 = 23.75%, with no new money total');
+const withheldExact = fundingProof.rerender(`budgetMonthPlanSpendSchedule = () => ({ status: 'ready', asOf: '2026-08-20', fundingTrust: 'unknown',
+  paydays: [{ payday: '2026-08-28', contribution: 95, stillToFund: 305, trust: 'calculated', allocations: [{ id: 'fixture-cost', amount: 95 }] }],
+  costs: [{ id: 'fixture-cost', label: 'Independent test cost', date: '2026-09-12', confidence: 'confirmed', baseRequirement: 400 }] })`);
+ok(!/\$95\.00|\$305\.00/.test(withheldExact.split('data-budget-funding-panel="payday"')[1]),
+  'unknown schedule trust withholds future contribution and remaining funding; confirmed cost confidence never repairs projection trust');
+
+for (const change of ["asOf: '2026-08-19'", "asOf: null", "status: 'unavailable'", "fundingTrust: 'unknown'",
+  "paydays: [{ payday: '2026-08-19', contribution: 95, stillToFund: 305, allocations: [{ id: 'fixture-cost', amount: 95 }] }]"]) {
+  const fp = page(); fp.render(fx.served());
+  const out = fp.rerender(`budgetMonthPlanSpendSchedule = () => ({ status: 'ready', asOf: '2026-08-20', fundingTrust: 'estimated',
+    paydays: [{ payday: '2026-08-28', contribution: 95, stillToFund: 305, allocations: [{ id: 'fixture-cost', amount: 95 }] }],
+    costs: [{ id: 'fixture-cost', label: 'Independent test cost', date: '2026-09-12', confidence: 'confirmed', baseRequirement: 400,
+      nextContribution: { payday: '2026-08-28', amount: 95 } }], ${change} })`);
+  const panel = out.split('data-budget-funding-panel="payday"')[1];
+  ok(!/\$95\.00|\$305\.00/.test(panel) && /Contribution unknown/.test(panel),
+    `unmatched payday publication withholds proposal, contribution, next scheduled and protected amounts (${change})`);
+  ok(/\$400\.00/.test(panel), 'independently confirmed cost stays known when the funding projection is withheld');
+}
+for (const value of [null, false, '95', 0]) {
+  const fp = page(); fp.render(fx.served());
+  const out = fp.rerender(`budgetMonthPlanSpendSchedule = () => ({ status: 'ready', asOf: '2026-08-20', fundingTrust: 'estimated',
+    paydays: [{ payday: '2026-08-28', contribution: 95, stillToFund: 305,
+      allocations: [{ id: 'fixture-cost', amount: ${JSON.stringify(value)} }] }],
+    costs: [{ id: 'fixture-cost', label: 'Independent test cost', date: '2026-09-12', confidence: 'confirmed', baseRequirement: 400 }] })`);
+  const cost = out.split('data-budget-funding-panel="payday"')[1].split('data-budget-funding-cost="fixture-cost"')[1];
+  ok(value === 0 ? /\$0\.00[\s\S]*proposed this payday/.test(cost) && !/Contribution unknown/.test(cost)
+    : /Contribution unknown/.test(cost) && !/\$0\.00[\s\S]*proposed this payday/.test(cost),
+  `${JSON.stringify(value)}: explicitly missing/malformed allocation stays unknown; published zero remains known`);
+}
+const scopePage = page(); scopePage.render(fx.served());
+const publishedFunding = vm.runInContext('budgetUpcomingFundingHtml(__ctx)', scopePage.context);
+const publishedTodayPanel = publishedFunding.split('data-budget-funding-panel="today"')[1].split('data-budget-funding-panel="payday"')[0];
+for (const role of ['past', 'current', 'next']) {
+  const period = scopePage.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === role);
+  ok(!!period, `${role}: real Forecast fixture publishes a selectable period`);
+  if (!period) continue;
+  const out = scopePage.rerender(`planPayPeriodId = ${JSON.stringify(period.id || period.start)}; __ctx.planPayPeriodId = planPayPeriodId`);
+  ok(out.includes(publishedTodayPanel), `${role}: period navigation never re-dates Today cash or borrows a selected-period contribution`);
+  ok((out.match(/data-from-today-proposal/g) || []).length === 1,
+    `${role}: the complete dated current funding evidence remains reachable exactly once`);
+}
+const retainedLens = scopePage.rerender("budgetFundingLens = 'payday'");
+ok(/data-budget-funding-panel="today"[^>]* hidden/.test(retainedLens)
+  && /data-budget-funding-panel="payday"[^>]*(?<! hidden)>/.test(retainedLens)
+  && /data-budget-funding-tab="payday"[^>]*aria-selected="true"/.test(retainedLens),
+  'payday lens remains selected after the active surface rerenders, keeping its evidence trigger reachable');
+
+console.log('\n=== funding history / current / future coverage and settlement ===');
+for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only']) {
+  for (const settlement of ['unverified', 'paid']) {
+    const hp = page(); hp.render(fx.fundingHistorical(coverage, settlement));
+    const current = hp.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === 'current');
+    const bills = settlement === 'paid' ? 265 : 370;
+    const capacity = settlement === 'paid' ? 501.50 : 396.50;
+    const ready = !['truncated', 'posted-only'].includes(coverage);
+    ok(current.remainingBills === bills, `${coverage}/${settlement}: actual observation settlement publishes ${bills} remaining bills`);
+    ok(ready ? current.fromTodayFunding.operatingBills === bills && current.fromTodayFunding.availableNow === capacity
+      : current.fromTodayFunding.status === 'unavailable',
+      `${coverage}/${settlement}: independent capacity 1375 - ${bills} - 308.50 - 300 = ${capacity}; incomplete current observations withhold it`);
+    for (const role of ['past', 'current', 'next']) {
+      const period = hp.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === role);
+      const out = hp.rerender(`planPayPeriodId = ${JSON.stringify(period.id || period.start)}; __ctx.planPayPeriodId = planPayPeriodId`);
+      const funding = out.split('data-budget-funding-section')[1];
+      ok(ready ? funding.includes(money(capacity)) : /data-budget-funding-proposal><span class="budget-v3-unknown">Unavailable/.test(funding),
+        `${coverage}/${settlement}/${role}: active funding surface keeps the current-cash evidence scope and trust`);
+      ok((out.match(/data-from-today-proposal/g) || []).length === 1,
+        `${coverage}/${settlement}/${role}: Today evidence remains available without a duplicate or selected-period substitution`);
+    }
+  }
+}
+
+console.log('\n=== v3 Month projection publication guards ===');
+for (const monthKey of ['2026-08', '2026-09', '2026-10']) {
+  const mp = page(); mp.render(fx.served());
+  const month = vm.runInContext(`budgetTrajectoryFor(__ctx).months.find(row => row.month === '${monthKey}')`, mp.context);
+  ok(!!month, `${monthKey}: real Forecast fixture publishes the selected Month`);
+  if (!month) continue;
+  const out = mp.rerender(`budgetGranularity = 'month'; budgetSelectedMonth = '${monthKey}'`);
+  ok(out.includes(`data-budget-month-view="${monthKey}"`), `${monthKey}: active Month is the selected publication`);
+  const figure = /budget-v3-month-hero[\s\S]*?<\/p>/.exec(out)?.[0] || '';
+  ok(month.stage3.dateOrderResult.status === 'unavailable' ? /Unavailable/.test(figure)
+    : figure.includes(money(Math.abs(month.stage3.dateOrderResult.amount)))
+      && (month.stage3.dateOrderResult.amount < 0 ? /data-budget-month-verdict="deficit"/.test(out) : true),
+    `${monthKey}: hero retains exact published date-order result and its sign`);
+}
+for (const status of ['unavailable', 'unknown', 'untrusted']) {
+  const mp = page(); mp.render(fx.served());
+  const out = mp.rerender(`globalThis.__monthFixture = JSON.parse(JSON.stringify(budgetTrajectoryFor(__ctx)));
+    __monthFixture.months[0].stage3.dateOrderResult = { amount: 351.20, status: '${status}', reason: 'Independent withheld fixture' };
+    budgetTrajectoryFor = () => __monthFixture; budgetGranularity = 'month'; budgetSelectedMonth = __monthFixture.months[0].month`);
+  const figure = /budget-v3-month-hero[\s\S]*?<\/p>/.exec(out)?.[0] || '';
+  ok(/Unavailable/.test(figure) && !/351\.20|\$0\.00/.test(figure), `${status}: Month never repairs an untrusted date-order result`);
+  ok(/data-budget-month-ladder="unavailable"/.test(out), `${status}: third rung withholds geometry and preserves unavailable evidence`);
+}
+
 console.log('\n=== month view and month-to-pay-period drilldown ===');
 const monthHtml = p.rerender("budgetGranularity = 'month'");
 ok(/data-budget-surface="month"/.test(monthHtml), 'the Month switch shows the month view');
-const monthComponent = vm.runInContext('budgetMonthViewHtml(__ctx, true)', p.context);
-ok(monthHtml.includes(monthComponent), 'the incumbent Month financial body stays whole while its picker moves to the header');
+const monthEvidence = vm.runInContext('budgetMonthFundingPressureHtml(budgetTrajectoryFor(__ctx).months.find(month => month.month === budgetSelectedMonth), budgetMonthPlanSpendSchedule(__ctx))', p.context);
+ok(monthHtml.includes(monthEvidence), 'the Month presentation preserves complete incumbent cost funding evidence');
 ok((monthHtml.match(/data-budget-month-picker/g) || []).length === 1,
   'the active Month path has exactly one real picker');
 ok(/See the pay periods in August 2026/.test(text(monthHtml)), 'the month offers its pay-period drilldown');
