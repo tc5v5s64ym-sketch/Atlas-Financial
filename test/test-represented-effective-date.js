@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const F = require('../public/forecast');
 const Live = require('../scripts/live-plan');
+const R = require('../scripts/reconcile');
 const source = require('./fixtures/card-backfill-data');
 const clone = value => JSON.parse(JSON.stringify(value));
 const cents = value => Math.round(value * 100);
@@ -400,6 +401,108 @@ for (const tag of INCOME_TAGS) {
     }
   }
 }
+
+// Independent 18-case posting oracle: future/invalid/null retain the debit
+// in Forecast, so receipt/preview classification cannot call them represented.
+const POSTING_AS_OF = '2026-09-20';
+const POSTING_QUALS = [
+  { label: 'future', active: false, entry: { id: 'invented-bill', date: POSTING_AS_OF,
+    effectiveAsOf: '2026-09-21' } },
+  { label: 'invalid-calendar', active: false, entry: { id: 'invented-bill', date: POSTING_AS_OF,
+    effectiveAsOf: '2026-02-30' } },
+  { label: 'invalid-null', active: false, entry: { id: 'invented-bill', date: POSTING_AS_OF,
+    effectiveAsOf: null } },
+  { label: 'applicable', active: true, entry: { id: 'invented-bill', date: POSTING_AS_OF,
+    effectiveAsOf: POSTING_AS_OF } },
+  { label: 'earlier', active: true, entry: { id: 'invented-bill', date: POSTING_AS_OF,
+    effectiveAsOf: '2026-09-19' } },
+  { label: 'legacy', active: true, entry: { id: 'invented-bill', date: POSTING_AS_OF } },
+];
+const POSTING_STATES = [
+  { label: 'posted', extra: { posted: true },
+    inactive: { status: 'CHANGE', derived: 'posted-not-represented' },
+    active: { status: 'MATCH', derived: 'posted-represented' } },
+  { label: 'unposted', extra: { posted: false },
+    inactive: { status: 'MATCH', derived: 'scheduled-unposted' },
+    active: { status: 'CONFLICT', derived: 'unposted-but-represented' } },
+  { label: 'unknown', extra: { unknown: true },
+    inactive: { status: 'MISSING', derived: 'posting-unknown' },
+    active: { status: 'CONFLICT', derived: 'invented-posting' } },
+];
+function postingDocument(kind, entry) {
+  const id = kind === 'receipt' ? 'invented-receipt' : 'invented-bill';
+  const named = { ...entry, id, date: POSTING_AS_OF };
+  return {
+    meta: { asOf: POSTING_AS_OF },
+    plan: {
+      windowDays: 28,
+      defaults: { targetBuffer: 0 },
+      startingCash: { amount: 500 },
+      opening: { asOf: POSTING_AS_OF, representedEvents: [named] },
+      income: kind === 'receipt' ? [{ id, label: 'Invented receipt', frequency: 'once',
+        date: POSTING_AS_OF, amount: 38.47, confidence: 'confirmed' }] : [],
+      obligations: [],
+      bills: kind === 'debit' ? [{ id, label: 'Invented bill', frequency: 'once',
+        date: POSTING_AS_OF, amount: 38.47, confidence: 'confirmed' }] : [],
+      commitments: [],
+    },
+  };
+}
+function classifyPosting(data, extra) {
+  const eventId = data.plan.income[0] ? data.plan.income[0].id : data.plan.bills[0].id;
+  return R.reconcile({
+    data,
+    map: { mappings: [] },
+    observations: [],
+    settlements: { observations: [] },
+    utility: { observations: [] },
+    amanda: { observations: [] },
+    cards: { observations: [] },
+    posting: { observations: [Object.assign({
+      fact: 'posting',
+      observedAsOf: POSTING_AS_OF,
+      eventId,
+      scheduledDate: POSTING_AS_OF,
+    }, extra)] },
+  }).rows[0];
+}
+let postingCases = 0;
+let postingMismatchesPrevented = 0;
+for (const kind of ['debit', 'receipt']) {
+  for (const qual of POSTING_QUALS) {
+    const data = postingDocument(kind, qual.entry);
+    const eventId = kind === 'receipt' ? 'invented-receipt' : 'invented-bill';
+    const forecastRows = F.expandEvents(data.plan, POSTING_AS_OF, POSTING_AS_OF, {})
+      .filter(row => row.id === eventId);
+    assert.equal(forecastRows.length, qual.active ? 0 : 1,
+      `${kind} ${qual.label} Forecast ${qual.active ? 'omits' : 'retains'} the movement`);
+    const onOpening = R.representedOnOpening(data, eventId, POSTING_AS_OF);
+    const preview = R.readCanonical(data, {
+      collection: 'representedEvents', id: eventId, date: POSTING_AS_OF,
+    });
+    assert.equal(onOpening, qual.active,
+      `${kind} ${qual.label} representedOnOpening follows Forecast effective-date`);
+    assert.equal(preview.represented, qual.active,
+      `${kind} ${qual.label} canonical preview follows Forecast effective-date`);
+    assert.equal(preview.found, true, `${kind} ${qual.label} preview still finds the opening`);
+    for (const state of POSTING_STATES) {
+      const expected = qual.active ? state.active : state.inactive;
+      const row = classifyPosting(data, state.extra);
+      assert.equal(row.represented, qual.active,
+        `${kind} ${qual.label} ${state.label} receipt represented flag`);
+      assert.equal(row.status, expected.status,
+        `${kind} ${qual.label} ${state.label} receipt status`);
+      assert.equal(row.derivedStatus, expected.derived,
+        `${kind} ${qual.label} ${state.label} receipt derived status`);
+      postingCases += 1;
+      if (!qual.active) postingMismatchesPrevented += 1;
+    }
+  }
+}
+assert.equal(postingCases, 36,
+  'debit and receipt posting proof covers six qualifications across three posting states');
+assert.equal(postingMismatchesPrevented, 18,
+  'nine inactive debit and nine inactive receipt qualifications stay unpublished as represented');
 
 assert.equal(fs.readFileSync(require.resolve('../data.json'), 'utf8'), canonicalBefore);
 console.log('All represented effective-date synthetic checks passed.');
