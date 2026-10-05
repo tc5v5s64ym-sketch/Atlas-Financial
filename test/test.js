@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
   ['hypothetical savings timeline and independent pool conservation', 'test-savings-funding-timeline.js'],
   ['native utility settlement units and independent holds', 'test-utility-settlement-currency.js'],
   ['paid actual display trust remains separate from estimated schedules', 'test-paid-actual-display-trust.js'],
