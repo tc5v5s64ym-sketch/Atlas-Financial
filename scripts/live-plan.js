@@ -581,6 +581,7 @@ function liveAsOfFrom(report, historicalOpeningAsOf) {
 
 function representedCandidateAllowed(candidate, historicalOpeningAsOf, liveAsOf, plan) {
   if (!candidate || !candidate.id || !candidate.date || !liveAsOf) return false;
+  if (!Forecast.representedEventEffectiveBy(candidate, liveAsOf)) return false;
   const inLiveWindow = !!(historicalOpeningAsOf
     && candidate.date > historicalOpeningAsOf
     && candidate.date <= liveAsOf);
@@ -609,7 +610,9 @@ function mergeRepresented(existing, added) {
     const key = String(row.id) + '@' + String(row.date);
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ id: row.id, date: row.date });
+    out.push({ id: row.id, date: row.date,
+      ...(Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
+        ? { effectiveAsOf: row.effectiveAsOf } : {}) });
   }
   out.sort(sortRepresented);
   return out;
@@ -665,14 +668,14 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
       next.plan, candidate.id, candidate.date, liveAsOf)
       || Forecast.prepaidJointCashOutflow(
         next.plan, candidate.id, candidate.date, liveAsOf)) {
-      represented.push({ id: candidate.id, date: candidate.date });
+      represented.push({ id: candidate.id, date: candidate.date, effectiveAsOf: liveAsOf });
     }
   }
   for (const event of windowEvents) {
     const hit = candidates.find(candidate => candidate.id === event.id
       && candidate.date === event.date);
     if (hit) {
-      represented.push({ id: event.id, date: event.date });
+      represented.push({ id: event.id, date: event.date, effectiveAsOf: liveAsOf });
       continue;
     }
     if (event.date !== liveAsOf || !sameDayUnrepresentedWouldDoubleCount(event)) continue;
@@ -705,13 +708,17 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   // had not rediscovered (tdcc chequing TFR-TO C/C is not identity).
   // Keep existing names that still qualify for this liveAsOf; identity
   // candidates remain additive. Non-qualifying historical names still
-  // drop.
+  // drop. Explicit deferred evidence stays attached but inactive; stripping
+  // its effective date would turn it into an opening-date legacy assertion.
   const keptExisting = advances
     ? existing.filter(row => representedCandidateAllowed(
-      row, historicalOpeningAsOf, liveAsOf, next.plan))
+      row, historicalOpeningAsOf, liveAsOf, next.plan)
+      || (row && Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
+        && !Forecast.representedEventEffectiveBy(row, liveAsOf)))
     : existing;
   const nextRepresented = mergeRepresented(keptExisting, uniqueRepresented);
-  const representedKeys = new Set(nextRepresented.map(row =>
+  const representedKeys = new Set(nextRepresented.filter(row =>
+    Forecast.representedEventEffectiveBy(row, liveAsOf)).map(row =>
     String(row.id) + '@' + String(row.date)));
   const nextNotRelied = notReliedUpon.filter(row =>
     !representedKeys.has(String(row.id) + '@' + String(row.date)));
