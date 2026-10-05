@@ -1307,7 +1307,7 @@ function carriedUnresolvedOutflows(data, requestedAsOf) {
     if (!isJointCashOutflow(event)) continue;
     items.push({
       id: event.id || null,
-      scheduledDate: event.date,
+      scheduledDate: event.scheduledDate || event.date,
       amount: round2(event.amount),
       kind: event.kind || null,
     });
@@ -1523,7 +1523,7 @@ function buildOpeningCutover(data, report, requestedAsOf, balanceMap) {
         kind: event.kind,
         amount: round2(event.amount),
         representation: 'REPRESENTED',
-        representedEventsCandidate: { id: event.id, date: event.date },
+        representedEventsCandidate: { id: event.id, date: event.scheduledDate || event.date },
       };
     }
     return {
@@ -1572,7 +1572,7 @@ function buildOpeningCutover(data, report, requestedAsOf, balanceMap) {
   const postedStates = accountFreshness.map(postedStateFromFreshness).sort(sortByLocator);
   const proposedRepresentedEvents = sameDayEvents
     .filter(event => event && event.representation === 'REPRESENTED' && event.id && event.date)
-    .map(event => ({ id: event.id, date: event.date }))
+    .map(event => event.representedEventsCandidate || ({ id: event.id, date: event.date }))
     .sort(sortRepresented);
   const proposedOpening = {
     requestedAsOf,

@@ -277,6 +277,7 @@ const NEXT_MOVE = {
 // handed the next-dollar summary, which is plan.nextDollar's, not this
 // authority's.
 const UNALLOCATED_NOTE = {
+  unavailable: () => 'Unallocated cash is unavailable until card-payment funding is confirmed.',
   none: () =>
     `There is no free cash at the end of this window. What looks like a surplus is the buffer and the money
        already owed to costs that fall outside the 90 days.`,
@@ -7288,11 +7289,11 @@ function renderPlan(d, periods, history) {
   // picks the verdict from the unrounded remainder.
   const free = Forecast.unallocatedCash(sim, budget, plan);
   $('priorities-ledger').innerHTML =
-    row('Projected cash on ' + fmtDateLong(sim.end), money2(free.ending), 'sum') +
+    row('Projected cash on ' + fmtDateLong(sim.end), free.ending == null ? 'Not established' : money2(free.ending), 'sum') +
     row('− Target buffer', '− ' + money2(free.buffer)) +
     row('− Reserves accrued but not yet due <span class="mutedtext">property tax, CRA</span>',
-      '− ' + est(money2(free.reserves)), '', chipE) +
-    row('<b>= Unallocated</b>', `<b class="${free.negative ? 'neg' : ''}">${money2(free.amount)}</b>`, 'sum');
+      free.reserves == null ? 'Not established' : '- ' + est(money2(free.reserves)), '', chipE) +
+    row('<b>= Unallocated</b>', `<b class="${free.negative ? 'neg' : ''}">${free.amount == null ? 'Not established' : money2(free.amount)}</b>`, 'sum');
   $('priorities-note').innerHTML = UNALLOCATED_NOTE[free.id](
     plan.nextDollar ? plan.nextDollar.summary : '');
 

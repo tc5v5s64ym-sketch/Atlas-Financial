@@ -94,7 +94,7 @@ function planSpendScheduledFacts(cost) {
   if (!cost) return '<p>Funding schedule unavailable for this cost.</p>';
   return `<dl class="plan-spend-facts">
     ${planSpendFact('protected', 'Already saved for this cost', cost.protectedNow != null ? money2(cost.protectedNow) : 'Not established')}
-    ${planSpendFact('remaining', 'Still to fund in this plan', money2(cost.stillToFund))}
+    ${planSpendFact('remaining', 'Still to fund in this plan', cost.stillToFund != null ? money2(cost.stillToFund) : 'Not established')}
     ${planSpendFact('next', 'Next contribution', cost.nextContribution
       ? `${money2(cost.nextContribution.amount)} on ${fmtDateFull(cost.nextContribution.payday)}` : 'No contribution scheduled')}
     ${planSpendFact('fully-funded', 'Projected fully funded', cost.projectedFullyFunded

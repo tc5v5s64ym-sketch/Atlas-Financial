@@ -737,14 +737,14 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
       next.plan, candidate.id, candidate.date, liveAsOf)
       || Forecast.prepaidJointCashOutflow(
         next.plan, candidate.id, candidate.date, liveAsOf)) {
-      represented.push({ id: candidate.id, date: candidate.date, effectiveAsOf: liveAsOf });
+      represented.push({ id: candidate.id, date: Forecast.statementOccurrenceIdentity(next.plan, candidate.id, candidate.date), effectiveAsOf: liveAsOf });
     }
   }
   for (const event of windowEvents) {
     const hit = candidates.find(candidate => candidate.id === event.id
       && candidate.date === event.date);
     if (hit) {
-      represented.push({ id: event.id, date: event.date, effectiveAsOf: liveAsOf });
+      represented.push({ id: event.id, date: event.scheduledDate || event.date, effectiveAsOf: liveAsOf });
       continue;
     }
     if (event.date !== liveAsOf || !sameDayUnrepresentedWouldDoubleCount(event)) continue;

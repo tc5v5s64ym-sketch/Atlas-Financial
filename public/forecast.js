@@ -42,7 +42,7 @@
     const effective = new Set();
     for (const record of records) {
       if (effective.has(record.dueDate) || (occurrences(row, record.dueDate, record.dueDate).length
-          && !used.has(record.dueDate))) throw new Error('Statement due date conflicts with another occurrence.');
+          && record.dueDate !== record.scheduledDate)) throw new Error('Statement due date conflicts with another occurrence.');
       effective.add(record.dueDate);
     }
     return records;
@@ -82,7 +82,10 @@
     if (!rows.some(row => row && row.sentPayments != null)) return {
       status: 'incumbent', asOf, source: 'Forecast.cardMinimumState', payments: [], issues: [], reason: null };
     const payments = [], issues = [], used = new Set();
-    const represented = [].concat(plan?.opening?.representedEvents || [], options?.representedEvents || []);
+    const opening = plan?.opening;
+    // Legacy names assert inclusion in their attached opening, never earlier.
+    const represented = [].concat((opening && date(opening.asOf) && opening.asOf <= asOf
+      ? opening.representedEvents : []) || [], options?.representedEvents || []);
     for (const row of rows) {
       const statements = statementRows(row, occurrences);
       const records = row && row.sentPayments;
@@ -116,7 +119,7 @@
         // Receipt is independent. Existing explicit satisfaction evidence is
         // opening-qualified; a bank debit never manufactures representedEvents.
         const satisfied = represented.some(item => item && item.id === row.id
-          && (item.date === record.scheduledDate || item.date === dueDate)
+          && originalDate(plan, row.id, item.date, occurrences) === record.scheduledDate
           && representedEffectiveBy(item, asOf));
         const cashIncluded = record.cashIncludedAsOf != null && record.cashIncludedAsOf <= asOf;
         payments.push({ id: row.id, scheduledDate: record.scheduledDate, date: dueDate,
@@ -136,7 +139,15 @@
       reason: issues.length ? 'Card payment sent; cash inclusion or issuer minimum satisfaction is unconfirmed. Additional cash is unknown.' : null };
   }
 
-    return { resolveOccurrences, mappedDate, state };
+    function originalDate(plan, id, value, occurrences) {
+    const row = (plan?.obligations || []).find(item => item && item.id === id);
+    if (!row) return value;
+    const records = statementRows(row, occurrences);
+    const original = records.find(item => item.scheduledDate === value);
+    if (original) return original.scheduledDate;
+    return records.find(item => item.dueDate === value)?.scheduledDate || value;
+  }
+    return { resolveOccurrences, mappedDate, originalDate, state };
   })();
   /* --------------------------------------------------------------- dates */
   // ISO date strings throughout; arithmetic in UTC so DST can never shift a
@@ -484,6 +495,14 @@
   function statementOccurrenceDate(plan, id, date) {
     return CardMinimumContract.mappedDate(plan, id, date, occurrences);
   }
+  function statementOccurrenceIdentity(plan, id, date) {
+    return CardMinimumContract.originalDate(plan, id, date, occurrences);
+  }
+  function representedOccurrence(plan, id, date, asOf, opts) {
+    const original = statementOccurrenceIdentity(plan, id, date);
+    const due = statementOccurrenceDate(plan, id, original);
+    return representedKeySet(plan, opts, asOf).has(id + '@' + due);
+  }
   function obligationOccurrences(row, start, end) {
     return CardMinimumContract.resolveOccurrences(row, start, end, occurrences, outflowDates);
   }
@@ -499,7 +518,6 @@
       additionalCashRequired: matches.every(row => row.additionalCashRequired === 0) ? 0 : null };
   }
   function applyMinimumSent(events, plan, start, opts) {
-    if (opts.keepRepresented) return events;
     if (!(plan?.obligations || []).some(row => row?.sentPayments != null)) return events;
     return events.map(event => {
       const sent = minimumPaymentFor(plan, event, start, opts);
@@ -2052,7 +2070,7 @@
         const date = occurrence.date;
         const evidenceEvent = { id: o.id, date, scheduledDate: occurrence.scheduledDate,
           kind: 'obligation', effect: o.effect };
-        const sent = opts.keepRepresented ? null : minimumPaymentFor(plan, evidenceEvent, start, opts);
+        const sent = minimumPaymentFor(plan, evidenceEvent, start, opts);
         // A minimum on a card that has been paid off is not a payment anybody
         // makes — the bank does not take it, because there is nothing to take
         // it against. Capping extras but not these left the two projections
@@ -2989,6 +3007,7 @@
     opts = opts || {};
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const seq = fundingSequence(plan, asOf, opts);
+    const fundingUnknown = cardMinimumState(plan, asOf, opts).status === 'unavailable';
     const weekly = opts.weeklyVariable != null ? opts.weeklyVariable : 0;
     const masterOpts = Object.assign({}, opts, {
       horizonDays: horizon.days, viewDays: horizon.days,
@@ -3126,6 +3145,9 @@
         fundingMargin,
         // Flexible items may yield. Non-flexible dates are never rewritten.
         deferred: !!(item.adjustable && verdict !== 'ON TRACK'),
+        ...(fundingUnknown ? { verdict: null, funded: null, margin: null, remaining: null,
+          fundingMargin: null, remainingIdentity: null, deferred: null,
+          fundingStatus: 'unavailable' } : {}),
       };
     });
   }
@@ -3187,7 +3209,7 @@
         confidence: row.confidence,
         flexibility: row.flexibility,
       })),
-      scheduleRemaining: planSpendScheduleRemaining(members),
+      scheduleRemaining: members.some(row => row.fundingStatus === 'unavailable') ? null : planSpendScheduleRemaining(members),
       scheduleRemainingIdentity: 'sum of Forecast.majorPlans.need for this display group',
       verdict: worstPublishedVerdict(members),
       confidence: samePublishedValue(members, 'confidence'),
@@ -11587,6 +11609,23 @@
     }
     const minimums = result.cardMinimumPayments;
     if (minimums?.status === 'unavailable') {
+      result.majorPlans = (result.majorPlans || []).map(row => ({ ...row, verdict: null,
+        funded: null, margin: null, remaining: null, fundingMargin: null,
+        remainingIdentity: null, deferred: null, fundingStatus: 'unavailable' }));
+      // Contractual prices and observed balances survive. A period cash
+      // remainder cannot assert feasibility while this payment is unresolved.
+      const views = new Set([result.defaultView, ...(result.defaultView?.calendarPeriods || []),
+        ...(result.payPeriodViews || [])]);
+      for (const view of views) {
+        if (!view || view.end < minimums.asOf) continue;
+        view.available = view.balanceAfterDeductions = view.predictedEndingBalance = null;
+        view.balanceAfterDeductionsTrust = 'unavailable';
+        view.predictedEndingBalanceIdentity = null;
+        view.predictedEndingBalanceTerms = null;
+        if (view.leftover) for (const key of ['afterBills', 'afterHouseholdBudget',
+          'afterDebtRepayment', 'afterBigPurchases']) view.leftover[key] = null;
+        view.extraDebt = { ...(view.extraDebt || {}), allocated: null, status: 'unavailable', reason: note };
+      }
       for (const key of ['sim', 'zero']) if (result[key]) result[key] = publishMinimumCashWalk(result[key], minimums);
       if (result.knowledge) result.knowledge = { ...result.knowledge,
         min: { date: null, balance: null }, ending: null, freeCash: null };
@@ -13803,6 +13842,9 @@
     sim = sim || {};
     plan = plan || {};
     const ending = sim.ending;
+    if (typeof ending !== 'number' || !Number.isFinite(ending)) return {
+      ending: null, buffer: sim.buffer, reserves: null, amount: null,
+      id: 'unavailable', negative: null };
     const buffer = sim.buffer;
     const windowDays = plan.windowDays;
     const reserveMonthly = budget && budget.reserveMonthly != null ? budget.reserveMonthly : 0;
@@ -20283,7 +20325,7 @@
     };
   }
 
-  const Forecast = { cardMinimumState, obligationOccurrences, statementOccurrenceDate, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { cardMinimumState, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
