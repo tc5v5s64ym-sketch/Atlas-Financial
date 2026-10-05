@@ -162,7 +162,27 @@
   // or other money math: backfill and card payment are printed as supplied.
   function visaPaymentsHtml(rows, coverage) {
     const payments = Array.isArray(rows) ? rows : [];
-    if (!payments.length && (!coverage || coverage.status === 'incumbent')) return '';
+    const earlier = coverage && coverage.earlierPeriods;
+    const carry = earlier && (earlier.status === 'ready' || earlier.status === 'unconfirmed')
+      ? '<details class="bill-detail" data-card-earlier-periods><summary><span>Earlier periods</span><span>'
+        + escape(earlier.status === 'ready' ? money(earlier.remaining) + ' still to cover' : 'Coverage unconfirmed')
+        + '</span></summary><div class="bill-detail-body">'
+        + (earlier.status === 'ready' ? (Array.isArray(earlier.cards) ? earlier.cards : []).map(card =>
+          '<div class="operating-line"><span>' + escape(text(card.accountLabel) || 'Credit card')
+          + ' · ' + escape(String(card.purchaseCount)) + ' purchase(s) · '
+          + escape(date(card.earliestDate) ? card.earliestDate : 'Date unavailable')
+          + ' – ' + escape(date(card.latestDate) ? card.latestDate : 'Date unavailable')
+          + '</span><span>' + escape(money(card.remaining)) + '</span></div>'
+          + '<ul class="visa-payment-purchases">'
+          + (Array.isArray(card.purchases) ? card.purchases : []).map(purchase =>
+            '<li>' + escape(date(purchase.date) ? purchase.date : 'Date unavailable')
+            + ' · ' + escape(text(purchase.categoryLabel) || 'Category unavailable')
+            + ' · ' + escape(money(purchase.remaining)) + ' still to cover</li>').join('')
+          + '</ul>').join('')
+          + '<p>Opening and earlier purchases carry forward until confirmed coverage or refund. This disclosure does not add them to current-period spending.</p>'
+          : '<p>Confirm the opening and purchase/payment evidence before using available cash. Earlier coverage has not been established.</p>')
+        + '</div></details>' : '';
+    if (!payments.length) return carry;
     const blocks = payments.map(row => {
       if (!row || typeof row !== 'object') return '';
       const label = text(row.accountLabel) || 'Visa';
@@ -181,18 +201,10 @@
         + escape(split) + '</span></div>'
         + (covered ? '<ul class="visa-payment-purchases">' + covered + '</ul>' : '');
     }).join('');
-    const active = (Array.isArray(coverage && coverage.active) ? coverage.active : []).map(row =>
-      '<li>' + escape(text(row.accountLabel) || 'Credit card') + ' · '
-      + escape(date(row.date) ? row.date : 'Date unavailable') + ' · '
-      + escape(text(row.categoryLabel) || 'Category unavailable') + ' · '
-      + escape(money(row.remaining)) + ' to cover</li>').join('');
-    const summary = coverage && coverage.status === 'ready'
-      ? 'Keep ' + money(coverage.reservedCash) + ' in Bills for uncovered purchases.'
-      : coverage && coverage.reason || 'Coverage is unconfirmed.';
-    return '<div class="visa-payment-backfill" data-visa-payment-backfill><h4>Card purchases to cover</h4>'
-      + '<p>' + escape(summary) + '</p>' + (active ? '<ul>' + active + '</ul>' : '')
-      + (payments.length ? '<h4>Card payment allocations</h4>' + blocks
-        + '<p>Household allocation and issuer minimum confirmation are separate.</p>' : '') + '</div>';
+    // Purchases live in their original category transaction rows. Keep this
+    // drawer for payment allocation evidence, without a second purchase list.
+    return carry + '<div class="visa-payment-backfill" data-visa-payment-backfill><h4>Card payment allocations</h4>'
+      + blocks + '<p>Household allocation and issuer minimum confirmation are separate.</p></div>';
   }
 
   return { html, evidence, visaPaymentsHtml };

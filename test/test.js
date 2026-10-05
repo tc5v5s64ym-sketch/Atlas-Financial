@@ -43,6 +43,7 @@ const suites = [
   ['one household ledger across observed Budget and savings', 'test-household-path.js'],
   ['Visa payment backfill reconciliation', 'test-visa-payment-backfill.js'],
   ['immediate evidence-qualified card purchase coverage', 'test-card-purchase-coverage.js'],
+  ['card purchase markers retain expense and whole-ledger trust', 'test-card-purchase-tracker.js'],
   ['read-only bill payment evidence and exact sanitized links', 'test-bill-detail.js'],
   ['Budget bill payment evidence integration and hooks', 'test-bill-detail-budget-integration.js'],
   ['from-today Budget savings arithmetic and evidence', 'test-from-today-funding.js'],

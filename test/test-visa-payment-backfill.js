@@ -104,7 +104,7 @@ for(const amount of [NaN,Infinity,30.001,'30']) {s=seed();s.packet.transactions[
 // Renderer prints the ledger, escapes labels and does not expose canonical account IDs.
 s=seed();s.packet.transactions[0].categoryLabel='<img onerror=alert(1)>';
 r=run(s);const html=Detail.visaPaymentsHtml([],r);
-assert(html.includes('Card purchases to cover'));assert(html.includes('$30.00'));
+assert.equal(html,'','purchase coverage stays in the original category rows, not a second Bills list');
 assert(!html.includes('<img'));assert(!html.includes('travelvisa'));
 r=run(confirmed);const done=Detail.visaPaymentsHtml(r.payments.map(F.visaPaymentPublication),r);
 assert(done.includes('Confirmed backfill'));assert(!done.includes('genuine card payment'));

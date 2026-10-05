@@ -7991,7 +7991,34 @@
       unexpectedStatus: (cls && cls.unexpectedStatus) || null,
       cancelledServiceId: (cls && cls.cancelledServiceId) || null,
       cancelledServiceLabel: (cls && cls.cancelledServiceLabel) || null,
+      ...(extra && extra.cardPurchaseCoverage ? { cardPurchaseCoverage: extra.cardPurchaseCoverage } : {}),
     };
+  }
+
+  // The category recon and the card-carry fallback use one membership rule.
+  // A transaction merely present in the provider packet is not necessarily
+  // printed: its period, split status and published category must qualify.
+  function householdBudgetSupportingRows(plan, packet, windowStart, through, opts) {
+    if (!windowStart || !packet || !Array.isArray(packet.transactions)) return [];
+    const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
+    const categories = new Map(((plan && plan.budget && plan.budget.categories) || [])
+      .filter(cat => cat && cat.id).map(cat => [cat.id, cat]));
+    const visibleCategories = new Set(Array.from(categories.values()).filter(cat =>
+      CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) >= 0
+      && paydayCyclePlanned(cat, windowStart, plan) != null).map(cat => cat.id));
+    const result = [];
+    for (const tx of packet.transactions) {
+      if (!tx || !tx.date || tx.date < windowStart || (through && tx.date > through)
+        || skipSplitParent(tx, packet)) continue;
+      const amount = Number(tx.amount);
+      if (!isFinite(amount) || amount === 0) continue;
+      const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
+      if (!householdBudgetSupportingSpendEligible(cls)) continue;
+      if (otherSpendingEvidenceEligible(cls) || visibleCategories.has(cls.atlasRow || cls.categoryId)) {
+        result.push({ tx, cls, amount });
+      }
+    }
+    return result;
   }
 
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
@@ -8021,23 +8048,20 @@
       ? (cycle && cycle.end)
       : (cycle && cycle.end && asOf && asOf < cycle.end ? asOf : (cycle && cycle.end));
     const packet = currentPeriodActualsPacket(opts);
-    const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
     const duplicateIds = pendingPostedDuplicateIdSet(packet);
+    // Resolve coverage against the complete ledger, before selecting a category
+    // or cycle. Older/ambiguous liabilities still govern the trust of each row.
+    const cardCoverage = useActuals && packet
+      ? reconcileCardPurchases(packet.transactions, { plan, asOf, packet, debts: opts.debts }) : null;
     const reconById = new Map();
     const confirmationRecon = [];
     let confirmationSpent = 0;
     if (actualsReady && windowStart && packet && Array.isArray(packet.transactions)) {
-      for (const tx of packet.transactions) {
-        if (!tx || !tx.date) continue;
-        if (tx.date < windowStart) continue;
-        if (through && tx.date > through) continue;
-        if (skipSplitParent(tx, packet)) continue;
-        const amt = Number(tx.amount);
-        if (!isFinite(amt) || amt === 0) continue;
-        const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
-        if (!householdBudgetSupportingSpendEligible(cls)) continue;
+      for (const { tx, cls, amount: amt } of householdBudgetSupportingRows(plan, packet, windowStart, through, opts)) {
         const isDuplicate = tx.id != null && duplicateIds.has(String(tx.id));
-        const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate });
+        const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate,
+          cardPurchaseCoverage: amt > 0 && isRevolvingCardAccount(tx)
+            ? cardCoverageAnnotation(tx, cardCoverage) : null });
         if (otherSpendingEvidenceEligible(cls)) {
           confirmationRecon.push(row);
           confirmationSpent = roundCent(
@@ -8620,7 +8644,7 @@
   // One evidence-qualified purchase/payment ledger. The historical API name
   // is retained for #491's consumer; it now covers mapped revolving cards.
   // A provider payment proves movement, never household allocation intent.
-  function visaPaymentReconciliation(transactions, opts) {
+  function reconcileCardPurchases(transactions, opts) {
     opts = opts || {};
     const plan = opts.plan || {};
     const packet = opts.packet || opts.currentPeriodActuals || {};
@@ -8636,7 +8660,8 @@
         && isRevolvingCardAccount(tx) && tx.accountRole !== 'household-external' ? ids[0] : null;
     };
     const required = !!policy || packet.cardCoverageRequired === true || input.some(cardLike);
-    if (!required) return { status: 'incumbent', reservedCash: 0, purchases: [], active: [], payments: [], issues: [] };
+    if (!required) return { publication: { status: 'incumbent', reservedCash: 0,
+      purchases: [], active: [], payments: [], issues: [] }, annotations: new Map() };
     const issues = [];
     const issue = (code, ref) => issues.push({ code, ...(ref ? { ref } : {}) });
     const opening = policy && policy.opening;
@@ -8835,6 +8860,39 @@
     const bills = (plan.startingCash?.breakdown || []).filter(row => row.id === 'chequing-a');
     if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
       || bills[0].unknown === true || bills[0].value < knownReserve) issue('coverage-bills-backing-unconfirmed');
+    // Opening carry can fall inside a cycle. Only a corresponding visible
+    // category row replaces its fallback, never a date boundary, equal amount
+    // or mere presence in the provider packet. Forecast owns both selections.
+    const activeCycle = spendingCycle(plan, asOf);
+    const categoryCoverage = activeCycle ? actualsCoverageState(asOf, activeCycle.start,
+      Object.assign({}, opts, { currentPeriodActuals: packet })) : null;
+    const categoryReady = categoryCoverage && ['precise', 'posted-only'].includes(categoryCoverage.remainingClaim);
+    const visibleRefs = new Set(categoryReady
+      ? householdBudgetSupportingRows(plan, packet, activeCycle.start, asOf, opts)
+        .filter(({ tx, amount }) => amount > 0 && isRevolvingCardAccount(tx)).map(({ tx }) => tx.coverageRef)
+      : []);
+    const carryBoundary = activeCycle?.start || origin;
+    const carryCards = new Map();
+    for (const row of ledger) {
+      const openingCarry = row.audit.some(entry => entry.kind === 'confirmed-opening');
+      if (!(row.remaining > 0) || visibleRefs.has(row.ref)
+        || !(openingCarry || row.date < carryBoundary)) continue;
+      let group = carryCards.get(row.accountId);
+      if (!group) {
+        group = { accountLabel: row.accountLabel, purchaseCount: 0,
+          earliestDate: row.date, latestDate: row.date, remaining: 0, purchases: [] };
+        carryCards.set(row.accountId, group);
+      }
+      group.purchaseCount += 1;
+      group.latestDate = row.date;
+      group.remaining = (savingsCents(group.remaining) + savingsCents(row.remaining)) / 100;
+      group.purchases.push({ date: row.date, categoryLabel: row.categoryLabel, remaining: row.remaining });
+    }
+    const carryRows = Array.from(carryCards.values());
+    const earlierPeriods = issues.length ? { status: 'unconfirmed', remaining: null, cards: [] }
+      : carryRows.length ? { status: 'ready',
+        remaining: carryRows.reduce((sum,row) => sum + savingsCents(row.remaining), 0) / 100,
+        cards: carryRows } : null;
     // Publish local presentation keys, never provider or owner-supplied
     // transaction references. Pair verification above uses the original identities.
     const publishedPurchases = ledger.map(({ ref, accountId, audit, ...row }, index) => ({
@@ -8845,13 +8903,31 @@
       ...row, id: 'coverage-payment-' + (index + 1),
       purchases: purchases.map(({ ref, ...purchase }) => purchase),
     }));
-    return { status: issues.length ? 'unavailable' : 'ready', asOf,
+    const publication = { status: issues.length ? 'unavailable' : 'ready', asOf,
       source: 'Forecast.visaPaymentReconciliation', currency: 'cad', fundingAccountId: 'chequing-a',
       reason: issues.length ? 'Confirm the card-coverage opening, transaction units and explicit purchase/payment links before using available cash.' : null,
       reservedCash: issues.length ? null : knownReserve, knownObservedReserve: knownReserve,
       purchases: publishedPurchases, active: publishedPurchases.filter(row => row.remaining > 0),
+      earlierPeriods,
       payments: publishedPayments, issues: issues.map(({ code }) => ({ code })),
       carryForward: 'uncovered-purchases-carry-until-confirmed-coverage-or-refund' };
+    const annotations = new Map(ledger.map(row => [row.ref, {
+      status: issues.length ? 'unconfirmed' : row.remaining > 0 ? 'awaiting-coverage' : 'resolved',
+      remaining: issues.length ? null : row.remaining,
+      accountLabel: row.accountLabel,
+    }]));
+    return { publication, annotations };
+  }
+
+  function visaPaymentReconciliation(transactions, opts) {
+    return reconcileCardPurchases(transactions, opts).publication;
+  }
+
+  // The private identity bridge never leaves Forecast. No merchant, amount,
+  // date or page-side comparison is allowed to assign coverage to a purchase.
+  function cardCoverageAnnotation(tx, coverage) {
+    const row = coverage && coverage.annotations.get(tx.coverageRef);
+    return row || { status: 'unconfirmed', remaining: null, accountLabel: 'Credit card' };
   }
 
   function visaPaymentPublication(row) {
