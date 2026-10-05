@@ -111,9 +111,9 @@ function independentLedger(days) {
     const end = iso(time(start) + (days - 1) * DAY);
     for (const statement of row.statementOccurrences || []) {
       scope(statement.confidence === 'confirmed' && statement.currency === 'cad'
-        && Number.isFinite(statement.minimum), `${row.id}: unsupported statement fact`);
+        && Number.isFinite(statement.minimum), row.id + ': unsupported statement fact');
       if (statement.dueDate < start || statement.dueDate > end
-        || representedKeys.has(`${row.id}@${statement.scheduledDate}`)) continue;
+        || representedKeys.has(row.id + '@' + statement.scheduledDate)) continue;
       rows.push({ id: row.id, date: statement.dueDate, kind, amount: statement.minimum, debtId: row.debtId });
     }
   };

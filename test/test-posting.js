@@ -1,5 +1,5 @@
 'use strict';
-/* B91 D7 ΓÇö schedule is not proof of posting.
+/* B91 D7 — schedule is not proof of posting.
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
  * Live canonical state is unchanged. Synthetic amounts prove the cutover
@@ -7,7 +7,7 @@
  * data.json.
  *
  * Independent proof: occurrence dates from Forecast.occurrences, plus a
- * hand walk of opening ┬▒ named amounts. That is not a second call to
+ * hand walk of opening ± named amounts. That is not a second call to
  * the representedEvents filter.
  */
 const fs = require('fs');
@@ -22,7 +22,7 @@ const posting = require('../docs/reconciliation/posting-observations.json');
 let failures = 0;
 const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
-  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  ΓÇö ' + detail : ''}`);
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const money = n => '$' + Number(n).toFixed(2);
@@ -131,7 +131,7 @@ console.log('=== A. independent schedule still names payroll and mortgage on Aug
     'later payroll remains on the biweekly grid');
 }
 
-console.log('\n=== B. posted payroll named on representedEvents ΓåÆ MATCH ===');
+console.log('\n=== B. posted payroll named on representedEvents → MATCH ===');
 {
   const data = fixture();
   const result = runPosting(data, [postingObs({
@@ -153,7 +153,7 @@ console.log('\n=== B. posted payroll named on representedEvents ΓåÆ MATCH ===
     'Forecast does not replay the represented Aug. 14 payroll');
 }
 
-console.log('\n=== C. unposted mortgage absent from representedEvents ΓåÆ MATCH ===');
+console.log('\n=== C. unposted mortgage absent from representedEvents → MATCH ===');
 {
   const data = fixture();
   const result = runPosting(data, [postingObs({
@@ -165,7 +165,7 @@ console.log('\n=== C. unposted mortgage absent from representedEvents ΓåÆ MAT
   const row = result.rows.find(r => r.observationId === 'synth-mortgage-unposted');
   ok(row && row.status === 'MATCH', 'unposted mortgage that is not represented is MATCH');
   ok(row && row.represented === false && row.derivedStatus === 'scheduled-unposted',
-    'derived status is scheduled-unposted ΓÇö schedule is not proof of posting');
+    'derived status is scheduled-unposted — schedule is not proof of posting');
 
   const events = F.expandEvents(data.plan, AS_OF, END, {});
   const mortgage = events.find(e => e.id === 'mortgage' && e.date === AS_OF);
@@ -173,7 +173,7 @@ console.log('\n=== C. unposted mortgage absent from representedEvents ΓåÆ MAT
     'Forecast still deducts the unposted Aug. 14 mortgage');
 }
 
-console.log('\n=== D. posted payroll missing from representedEvents ΓåÆ CHANGE + double-count ===');
+console.log('\n=== D. posted payroll missing from representedEvents → CHANGE + double-count ===');
 {
   const data = fixture({ representedEvents: [] });
   const result = runPosting(data, [postingObs({
@@ -191,7 +191,7 @@ console.log('\n=== D. posted payroll missing from representedEvents ΓåÆ CHANG
   const events = F.expandEvents(data.plan, AS_OF, END, {});
   const payroll = events.find(e => e.id === 'payroll' && e.date === AS_OF);
   ok(!!payroll && near(payroll.amount, PAYROLL),
-    'Forecast still emits the unrepresented payroll ΓÇö the defect the CHANGE is about');
+    'Forecast still emits the unrepresented payroll — the defect the CHANGE is about');
   const independentOldNet = PAYROLL - MORTGAGE - OTHER_BILL - FIT;
   const day0Net = events.filter(e => e.date === AS_OF).reduce((s, e) => s + e.amount, 0);
   ok(near(day0Net, independentOldNet),
@@ -199,7 +199,7 @@ console.log('\n=== D. posted payroll missing from representedEvents ΓåÆ CHANG
     money(day0Net));
 }
 
-console.log('\n=== E. unposted mortgage wrongly represented ΓåÆ CONFLICT + skipped cash ===');
+console.log('\n=== E. unposted mortgage wrongly represented → CONFLICT + skipped cash ===');
 {
   const data = fixture({
     representedEvents: [
@@ -221,7 +221,7 @@ console.log('\n=== E. unposted mortgage wrongly represented ΓåÆ CONFLICT + sk
 
   const events = F.expandEvents(data.plan, AS_OF, END, {});
   ok(!events.some(e => e.id === 'mortgage' && e.date === AS_OF),
-    'Forecast would skip the unposted mortgage ΓÇö the defect the CONFLICT is about');
+    'Forecast would skip the unposted mortgage — the defect the CONFLICT is about');
   const independentSkipped = OPENING - OTHER_BILL - FIT;
   const sim = F.simulate(data.plan, AS_OF, { weeklyVariable: 0 });
   ok(near(sim.daily[0].balance, independentSkipped),
@@ -262,7 +262,7 @@ console.log('\n=== F. unknown posting is not posted and is not unposted ===');
   })]);
   const inventedRow = invented.rows.find(r => r.observationId === 'synth-fit-invented');
   ok(inventedRow && inventedRow.status === 'CONFLICT',
-    'unknown posting named on representedEvents is CONFLICT ΓÇö posting was invented');
+    'unknown posting named on representedEvents is CONFLICT — posting was invented');
 }
 
 console.log('\n=== G. same-time posted vs unposted is CONFLICT, not guessed ===');
@@ -354,9 +354,9 @@ console.log('\n=== J. live 16 August opening does not invent representedEvents =
     'live representedEvents are the Dale-gated prepaid settles and as-of is not the 14 August payday');
   ok(live.meta.asOf === live.plan.opening.asOf, 'live canonical as-of agrees with the opening');
   ok(byId('payday-payroll-posted') && byId('payday-payroll-posted').status === 'CHANGE',
-    '14 August payroll posting vs empty representedEvents is CHANGE ΓÇö asOf is not that date');
+    '14 August payroll posting vs empty representedEvents is CHANGE — asOf is not that date');
   ok(byId('payday-mortgage-posted') && byId('payday-mortgage-posted').status === 'CHANGE',
-    '14 August mortgage posting vs empty representedEvents is CHANGE ΓÇö asOf is not that date');
+    '14 August mortgage posting vs empty representedEvents is CHANGE — asOf is not that date');
   ok(byId('payday-bcaa-posting-unknown').status === 'MISSING'
     && byId('payday-icbc-posting-unknown').status === 'MISSING'
     && byId('payday-resp-posting-unknown').status === 'MISSING'
@@ -368,7 +368,7 @@ console.log('\n=== J. live 16 August opening does not invent representedEvents =
 
   const heloc = (live.plan.obligations || []).find(o => o.id === 'heloc');
   ok(heloc && heloc.nonCash === true,
-    'Q19 HELOC cash treatment is untouched ΓÇö still nonCash, not claimed zero');
+    'Q19 HELOC cash treatment is untouched — still nonCash, not claimed zero');
 }
 
 console.log('\n=== K. no-write CLI + Forecast remains the schedule authority ===');
@@ -493,7 +493,7 @@ console.log('\n=== M. Forecast occurrence is date-aware; nonCash/settled are not
   })]);
   const helocRow = helocPosted.rows.find(r => r.observationId === 'synth-heloc-posted');
   ok(helocRow && helocRow.status === 'MISSING' && helocRow.scheduledExists === false,
-    'nonCash HELOC is not a cash posting occurrence ΓÇö MISSING, not CHANGE');
+    'nonCash HELOC is not a cash posting occurrence — MISSING, not CHANGE');
 
   const settledData = fixture();
   settledData.plan.commitments.push({
@@ -515,7 +515,7 @@ console.log('\n=== M. Forecast occurrence is date-aware; nonCash/settled are not
   })]);
   const campRow = campPosted.rows.find(r => r.observationId === 'synth-camp-posted');
   ok(campRow && campRow.status === 'MISSING' && campRow.scheduledExists === false,
-    'settled commitment is not a scheduled cash occurrence ΓÇö MISSING, not CHANGE');
+    'settled commitment is not a scheduled cash occurrence — MISSING, not CHANGE');
 
   const openData = fixture();
   openData.plan.commitments.push({

@@ -46,7 +46,7 @@ const EARLY_RULE = 'covers-early-or-due-on-or-before-posting';
 let failures = 0;
 const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
-  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' ΓÇö ' + detail : ''}`);
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
 };
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const clone = value => JSON.parse(JSON.stringify(value));

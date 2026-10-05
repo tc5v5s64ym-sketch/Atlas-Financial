@@ -49,11 +49,11 @@ function near(actual, expected) {
 
 function ok(condition, label, detail) {
   if (condition) {
-    console.log(`\x1b[32mΓ£ô\x1b[0m ${label}`);
+    console.log(`\x1b[32m✓\x1b[0m ${label}`);
     return;
   }
   failures += 1;
-  console.log(`\x1b[31mΓ£ù\x1b[0m ${label}${detail ? ` ΓÇö ${detail}` : ''}`);
+  console.log(`\x1b[31m✗\x1b[0m ${label}${detail ? ` — ${detail}` : ''}`);
 }
 
 function load(file) {
@@ -238,7 +238,7 @@ function observe(data, transactions, extra) {
     payload: {
       provider: 'lunchmoney',
       fetchedAt: FETCHED_AT,
-      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001ΓÇô3011 are not live provider IDs.',
+      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001–3011 are not live provider IDs.',
       pendingCoverage: completePendingCoverage(),
       accounts: matchingAccounts(data),
       transactions: (transactions || []).map(row => ({ currency: 'cad', ...row })),
@@ -262,7 +262,7 @@ function overlay(data, transactions, extra) {
     payload: {
       provider: 'lunchmoney',
       fetchedAt: FETCHED_AT,
-      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001ΓÇô3011 are not live provider IDs.',
+      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001–3011 are not live provider IDs.',
       pendingCoverage: completePendingCoverage(),
       accounts: matchingAccounts(data),
       transactions: (transactions || []).map(row => ({ currency: 'cad', ...row })),
@@ -669,7 +669,7 @@ console.log('\n=== cash is not reserved twice; canonical is not rewritten ===');
 }
 
 if (failures) {
-  console.log(`\nFAILED ΓÇö ${failures} check(s)`);
+  console.log(`\nFAILED — ${failures} check(s)`);
   process.exit(1);
 }
 console.log('\ntest-card-minimum-settlement: all checks passed');
