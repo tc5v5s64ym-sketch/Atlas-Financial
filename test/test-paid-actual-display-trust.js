@@ -44,6 +44,7 @@ for (const [label, change] of [
   ['stale observation', p => { p.observationAsOf = '2026-08-19'; }],
   ['incomplete posted', p => { p.transactionCoverage = 'truncated'; }],
   ['unknown posted coverage', p => { p.transactionCoverage = 'unknown'; }],
+  ['partial posted coverage', p => { p.transactionCoverage = 'partial'; }],
   ['malformed posted coverage', p => { p.transactionCoverage = {}; }],
   ['contradictory posted coverage', p => { p.transactionCoverage = { complete: true, status: 'unknown' }; }],
   ['unknown pending', p => { p.pendingCoverage = 'unknown'; }],
