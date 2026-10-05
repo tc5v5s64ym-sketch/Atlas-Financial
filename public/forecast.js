@@ -7991,6 +7991,7 @@
       unexpectedStatus: (cls && cls.unexpectedStatus) || null,
       cancelledServiceId: (cls && cls.cancelledServiceId) || null,
       cancelledServiceLabel: (cls && cls.cancelledServiceLabel) || null,
+      ...(extra && extra.cardPurchaseCoverage ? { cardPurchaseCoverage: extra.cardPurchaseCoverage } : {}),
     };
   }
 
@@ -8023,6 +8024,10 @@
     const packet = currentPeriodActualsPacket(opts);
     const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
     const duplicateIds = pendingPostedDuplicateIdSet(packet);
+    // Resolve coverage against the complete ledger, before selecting a category
+    // or cycle. Older/ambiguous liabilities still govern the trust of each row.
+    const cardCoverage = useActuals && packet
+      ? reconcileCardPurchases(packet.transactions, { plan, asOf, packet, debts: opts.debts }) : null;
     const reconById = new Map();
     const confirmationRecon = [];
     let confirmationSpent = 0;
@@ -8037,7 +8042,9 @@
         const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
         if (!householdBudgetSupportingSpendEligible(cls)) continue;
         const isDuplicate = tx.id != null && duplicateIds.has(String(tx.id));
-        const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate });
+        const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate,
+          cardPurchaseCoverage: amt > 0 && isRevolvingCardAccount(tx)
+            ? cardCoverageAnnotation(tx, cardCoverage) : null });
         if (otherSpendingEvidenceEligible(cls)) {
           confirmationRecon.push(row);
           confirmationSpent = roundCent(
@@ -8620,7 +8627,7 @@
   // One evidence-qualified purchase/payment ledger. The historical API name
   // is retained for #491's consumer; it now covers mapped revolving cards.
   // A provider payment proves movement, never household allocation intent.
-  function visaPaymentReconciliation(transactions, opts) {
+  function reconcileCardPurchases(transactions, opts) {
     opts = opts || {};
     const plan = opts.plan || {};
     const packet = opts.packet || opts.currentPeriodActuals || {};
@@ -8636,7 +8643,8 @@
         && isRevolvingCardAccount(tx) && tx.accountRole !== 'household-external' ? ids[0] : null;
     };
     const required = !!policy || packet.cardCoverageRequired === true || input.some(cardLike);
-    if (!required) return { status: 'incumbent', reservedCash: 0, purchases: [], active: [], payments: [], issues: [] };
+    if (!required) return { publication: { status: 'incumbent', reservedCash: 0,
+      purchases: [], active: [], payments: [], issues: [] }, annotations: new Map() };
     const issues = [];
     const issue = (code, ref) => issues.push({ code, ...(ref ? { ref } : {}) });
     const opening = policy && policy.opening;
@@ -8845,13 +8853,30 @@
       ...row, id: 'coverage-payment-' + (index + 1),
       purchases: purchases.map(({ ref, ...purchase }) => purchase),
     }));
-    return { status: issues.length ? 'unavailable' : 'ready', asOf,
+    const publication = { status: issues.length ? 'unavailable' : 'ready', asOf,
       source: 'Forecast.visaPaymentReconciliation', currency: 'cad', fundingAccountId: 'chequing-a',
       reason: issues.length ? 'Confirm the card-coverage opening, transaction units and explicit purchase/payment links before using available cash.' : null,
       reservedCash: issues.length ? null : knownReserve, knownObservedReserve: knownReserve,
       purchases: publishedPurchases, active: publishedPurchases.filter(row => row.remaining > 0),
       payments: publishedPayments, issues: issues.map(({ code }) => ({ code })),
       carryForward: 'uncovered-purchases-carry-until-confirmed-coverage-or-refund' };
+    const annotations = new Map(ledger.map(row => [row.ref, {
+      status: issues.length ? 'unconfirmed' : row.remaining > 0 ? 'awaiting-coverage' : 'resolved',
+      remaining: issues.length ? null : row.remaining,
+      accountLabel: row.accountLabel,
+    }]));
+    return { publication, annotations };
+  }
+
+  function visaPaymentReconciliation(transactions, opts) {
+    return reconcileCardPurchases(transactions, opts).publication;
+  }
+
+  // The private identity bridge never leaves Forecast. No merchant, amount,
+  // date or page-side comparison is allowed to assign coverage to a purchase.
+  function cardCoverageAnnotation(tx, coverage) {
+    const row = coverage && coverage.annotations.get(tx.coverageRef);
+    return row || { status: 'unconfirmed', remaining: null, accountLabel: 'Credit card' };
   }
 
   function visaPaymentPublication(row) {

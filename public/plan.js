@@ -2144,9 +2144,19 @@ function householdBudgetMetric(label, amount, opts) {
       const dateAttr = tx.date ? ` datetime="${esc(tx.date)}"` : '';
       const dateText = tx.date ? fmtDate(tx.date) : '—';
       const idAttr = tx.id ? ` data-tx-id="${esc(tx.id)}"` : '';
-      return `<li class="household-budget-tx"${idAttr} data-tx-pending="${tx.pending === true ? 'true' : 'false'}">
+      // Forecast owns this marker and its cents. A payment or a similar-looking
+      // transaction never lets the renderer infer household purchase coverage.
+      const coverage = tx.cardPurchaseCoverage;
+      const coverageKnown = coverage && ['awaiting-coverage', 'resolved'].includes(coverage.status)
+        && typeof coverage.remaining === 'number' && Number.isFinite(coverage.remaining);
+      const coverageState = coverage ? coverageKnown ? coverage.status : 'unconfirmed' : null;
+      const cardText = coverageState === 'awaiting-coverage'
+        ? `${money2(coverage.remaining)} still to cover`
+        : coverageState === 'resolved' ? 'Coverage resolved' : 'Coverage unconfirmed';
+      const card = coverageState ? `<span class="household-budget-tx-card"><svg aria-hidden="true" viewBox="0 0 20 16" focusable="false"><rect x="1" y="1" width="18" height="14" rx="2"/><path d="M1 5h18M4 11h4"/></svg>Card purchase${coverage.accountLabel ? ` · ${esc(coverage.accountLabel)}` : ''} · ${esc(cardText)}</span>` : '';
+      return `<li class="household-budget-tx${coverageState && coverageState !== 'resolved' ? ' is-card-coverage-open' : ''}"${idAttr}${coverageState ? ` data-card-coverage="${coverageState}"` : ''} data-tx-pending="${tx.pending === true ? 'true' : 'false'}">
         <time${dateAttr}>${esc(dateText)}</time>
-        <span class="household-budget-tx-payee">${esc(payeeRaw)}${pending}${unexpected}</span>
+        <span class="household-budget-tx-payee">${esc(payeeRaw)}${pending}${unexpected}${card}</span>
         <span class="household-budget-tx-amount">${money2(tx.amount)}</span>
       </li>`;
     }).join('');

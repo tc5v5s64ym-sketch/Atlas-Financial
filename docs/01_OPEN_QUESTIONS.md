@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-10-04.** Every unanswered question in one place, ranked by what
+**Updated 2026-10-05.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -20,9 +20,19 @@ needs to move money from Bills, and those backfills must not count as a
 scheduled minimum payment. Purchase spending counts once in its appropriate
 category; bank cash and card debt already reflect posted transfers. The
 household allocation and the lender's statement treatment are separate facts.
+On 2026-10-05 Dale chose purple markers on credit-card purchases inside their
+existing Household Budget category transaction rows. Partial coverage keeps
+the marker and remaining coverage amount; verified full coverage removes the
+purple while the original category expense remains. Uncertain coverage must
+be labelled unconfirmed. Dale can report a card payment and its purpose;
+declared intent still needs verified posted debit/credit evidence. Mentioning
+another bot is not provenance for owner confirmation or an integration request.
+The owner says "starting points are pay periods": Forecast's selected pay-period
+boundaries own transaction display, while earlier uncovered purchases carry
+forward until explicitly reconciled. A new period is not a zero coverage opening.
 
-**Remaining owner evidence:** Confirm the coverage cutover date and any
-already-uncovered purchases carried at that date, including their native CAD
+**Remaining owner evidence:** Confirm which pay period establishes the coverage
+opening and any already-uncovered purchases carried at that boundary, including their native CAD
 amounts and previously confirmed covered amounts. For a payment to receive a
 household split, identify its Bills debit and card credit and explicitly name
 the purchase amounts covered; identify any nonpurchase remainder's purpose.

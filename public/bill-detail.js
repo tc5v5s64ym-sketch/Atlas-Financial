@@ -162,7 +162,7 @@
   // or other money math: backfill and card payment are printed as supplied.
   function visaPaymentsHtml(rows, coverage) {
     const payments = Array.isArray(rows) ? rows : [];
-    if (!payments.length && (!coverage || coverage.status === 'incumbent')) return '';
+    if (!payments.length) return '';
     const blocks = payments.map(row => {
       if (!row || typeof row !== 'object') return '';
       const label = text(row.accountLabel) || 'Visa';
@@ -181,18 +181,10 @@
         + escape(split) + '</span></div>'
         + (covered ? '<ul class="visa-payment-purchases">' + covered + '</ul>' : '');
     }).join('');
-    const active = (Array.isArray(coverage && coverage.active) ? coverage.active : []).map(row =>
-      '<li>' + escape(text(row.accountLabel) || 'Credit card') + ' · '
-      + escape(date(row.date) ? row.date : 'Date unavailable') + ' · '
-      + escape(text(row.categoryLabel) || 'Category unavailable') + ' · '
-      + escape(money(row.remaining)) + ' to cover</li>').join('');
-    const summary = coverage && coverage.status === 'ready'
-      ? 'Keep ' + money(coverage.reservedCash) + ' in Bills for uncovered purchases.'
-      : coverage && coverage.reason || 'Coverage is unconfirmed.';
-    return '<div class="visa-payment-backfill" data-visa-payment-backfill><h4>Card purchases to cover</h4>'
-      + '<p>' + escape(summary) + '</p>' + (active ? '<ul>' + active + '</ul>' : '')
-      + (payments.length ? '<h4>Card payment allocations</h4>' + blocks
-        + '<p>Household allocation and issuer minimum confirmation are separate.</p>' : '') + '</div>';
+    // Purchases live in their original category transaction rows. Keep this
+    // drawer for payment allocation evidence, without a second purchase list.
+    return '<div class="visa-payment-backfill" data-visa-payment-backfill><h4>Card payment allocations</h4>'
+      + blocks + '<p>Household allocation and issuer minimum confirmation are separate.</p></div>';
   }
 
   return { html, evidence, visaPaymentsHtml };

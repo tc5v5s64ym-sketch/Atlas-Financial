@@ -36,6 +36,7 @@
   --road-gap:var(--critical);
   --road-surplus:var(--good);
   --road-pressure:var(--serious);
+  --card-coverage-bg:#f3e8ff; --card-coverage-accent:#6b21a8;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -53,6 +54,7 @@
     --hypo-border:rgba(166,126,232,.48);
     --hypo-bg:rgba(120,72,190,.14);
     --hypo-banner-bg:rgba(120,72,190,.2);
+    --card-coverage-bg:#302039; --card-coverage-accent:#d8b4fe;
   }
 }
 :root[data-theme="dark"] {
@@ -70,6 +72,7 @@
   --hypo-border:rgba(166,126,232,.48);
   --hypo-bg:rgba(120,72,190,.14);
   --hypo-banner-bg:rgba(120,72,190,.2);
+  --card-coverage-bg:#302039; --card-coverage-accent:#d8b4fe;
 }
 
 * { box-sizing: border-box; }
@@ -988,6 +991,19 @@ footer strong { color:var(--text-secondary); font-weight:600; }
   color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap;
 }
 .household-budget-tx-payee { min-width:0; overflow-wrap:anywhere; }
+.household-budget-tx.is-card-coverage-open {
+  background:var(--card-coverage-bg); border-inline-start:3px solid var(--card-coverage-accent);
+  border-radius:4px; padding-inline:7px; margin-block:3px;
+}
+.household-budget-tx-card {
+  display:block; margin-top:3px; font-size:.78rem; line-height:1.45;
+  color:var(--text-secondary); overflow-wrap:anywhere;
+}
+.is-card-coverage-open .household-budget-tx-card { color:var(--card-coverage-accent); }
+.household-budget-tx-card svg {
+  display:inline-block; width:1em; height:.8em; margin-right:.3em;
+  fill:none; stroke:currentColor; stroke-width:1.5; vertical-align:-.05em;
+}
 .household-budget-tx-pending {
   margin-left:.35em; color:var(--text-secondary); font-size:.78rem; font-weight:500;
 }
