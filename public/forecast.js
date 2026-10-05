@@ -8843,6 +8843,29 @@
     const bills = (plan.startingCash?.breakdown || []).filter(row => row.id === 'chequing-a');
     if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
       || bills[0].unknown === true || bills[0].value < knownReserve) issue('coverage-bills-backing-unconfirmed');
+    // Earlier purchase cash remains protected even when its transaction is
+    // outside the current category window. Publish a compact per-card source,
+    // not a second purchase history. Only Forecast partitions and totals it.
+    const carryBoundary = spendingCycle(plan, asOf)?.start || origin;
+    const carryCards = new Map();
+    for (const row of ledger) {
+      if (!(row.remaining > 0) || !(row.date < carryBoundary)) continue;
+      let group = carryCards.get(row.accountId);
+      if (!group) {
+        group = { accountLabel: row.accountLabel, purchaseCount: 0,
+          earliestDate: row.date, latestDate: row.date, remaining: 0, purchases: [] };
+        carryCards.set(row.accountId, group);
+      }
+      group.purchaseCount += 1;
+      group.latestDate = row.date;
+      group.remaining = (savingsCents(group.remaining) + savingsCents(row.remaining)) / 100;
+      group.purchases.push({ date: row.date, categoryLabel: row.categoryLabel, remaining: row.remaining });
+    }
+    const carryRows = Array.from(carryCards.values());
+    const earlierPeriods = issues.length ? { status: 'unconfirmed', remaining: null, cards: [] }
+      : carryRows.length ? { status: 'ready',
+        remaining: carryRows.reduce((sum,row) => sum + savingsCents(row.remaining), 0) / 100,
+        cards: carryRows } : null;
     // Publish local presentation keys, never provider or owner-supplied
     // transaction references. Pair verification above uses the original identities.
     const publishedPurchases = ledger.map(({ ref, accountId, audit, ...row }, index) => ({
@@ -8858,6 +8881,7 @@
       reason: issues.length ? 'Confirm the card-coverage opening, transaction units and explicit purchase/payment links before using available cash.' : null,
       reservedCash: issues.length ? null : knownReserve, knownObservedReserve: knownReserve,
       purchases: publishedPurchases, active: publishedPurchases.filter(row => row.remaining > 0),
+      earlierPeriods,
       payments: publishedPayments, issues: issues.map(({ code }) => ({ code })),
       carryForward: 'uncovered-purchases-carry-until-confirmed-coverage-or-refund' };
     const annotations = new Map(ledger.map(row => [row.ref, {

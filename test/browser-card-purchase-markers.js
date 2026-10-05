@@ -10,7 +10,13 @@ const root = path.join(__dirname, '..');
 const screenshots = process.env.ATLAS_BUDGET_SCREENSHOTS_DIR || path.join(os.tmpdir(), 'atlas-card-purchase-markers');
 fs.mkdirSync(screenshots, { recursive: true });
 function served(stage) {
-  const x = fixture(['partial', 'full', 'ambiguous'].includes(stage) ? 'backfill' : 'purchase');
+  const x = fixture(stage.startsWith('carry') && stage !== 'carry-current' ? 'before' : ['partial', 'full', 'ambiguous'].includes(stage) ? 'backfill' : 'purchase');
+  if (stage.startsWith('carry')) {
+    x.data.plan.cardPurchaseCoverage.opening.purchases = [{ ref: 'synthetic-opening-only',
+      accountId: 'travelvisa', date: '2026-09-10', amount: 30, covered: stage === 'carry-covered' ? 30 : 0,
+      categoryLabel: 'Groceries' }];
+    if (stage === 'carry-unknown') x.data.plan.cardPurchaseCoverage.opening.confirmed = false;
+  }
   if (stage === 'unknown') delete x.data.plan.cardPurchaseCoverage;
   if (stage === 'pending') x.payload.transactions[0].is_pending = true;
   if (['partial', 'full', 'ambiguous'].includes(stage)) {
@@ -66,9 +72,49 @@ function served(stage) {
         assert.equal(await trigger.evaluate(el => el === document.activeElement), true, 'keyboard focus returns to category');
         assert.doesNotMatch(await page.locator('body').innerText(), /Card purchases to cover/);
       }
+      for (const stage of ['carry', 'carry-current', 'carry-unknown', 'carry-covered']) {
+        data = served(stage);
+        await page.goto('http://budget.test/');
+        await page.locator('[data-budget-surface]').waitFor();
+        const trigger = page.locator('[data-budget-browse-evidence="04"]');
+        await trigger.focus(); await page.keyboard.press('Enter');
+        const sheet = page.locator('[data-budget-detail-body]');
+        const carry = sheet.locator('[data-card-earlier-periods]');
+        if (stage === 'carry-covered') {
+          assert.equal(await carry.count(), 0);
+        } else {
+          assert.equal(await carry.count(), 1);
+          const bills = carry.locator('xpath=ancestor::details[1]');
+          if (await bills.count() && !(await bills.evaluate(el => el.open))) {
+            await bills.locator(':scope > summary').focus(); await page.keyboard.press('Enter');
+          }
+          await carry.locator(':scope > summary').focus(); await page.keyboard.press('Enter');
+          assert.equal(await carry.evaluate(el => el.open), true);
+          assert.match(await carry.innerText(), stage !== 'carry-unknown' ? /30\.00 still to cover/ : /Coverage unconfirmed/);
+          if (stage !== 'carry-unknown') {
+            assert.match(await carry.innerText(), /2026-09-10/);
+            assert.match(await carry.innerText(), /Groceries/);
+            assert.doesNotMatch(await carry.innerText(), /80\.00/);
+          }
+          else assert.doesNotMatch(await carry.innerText(), /30\.00|still to cover/);
+          assert.ok(await carry.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+        }
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: path.join(screenshots, `${stage}-${width}-${colorScheme}.png`), animations: 'disabled' });
+        await page.keyboard.press('Escape');
+        assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+        if (stage === 'carry-current') {
+          const category = page.locator('[data-budget-category-open="groceries"][data-budget-browse-origin="spending"]');
+          await category.focus(); await page.keyboard.press('Enter');
+          const row = page.locator('[data-budget-detail-body] .household-budget-tx');
+          assert.equal(await row.count(), 1);
+          assert.match(await row.innerText(), /80\.00 still to cover/);
+          await page.keyboard.press('Escape');
+        }
+      }
       await page.close();
     }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ result: 'PASS', cases: 24, widths: [1440, 390, 320], themes: ['light', 'dark'], screenshots }));
+    console.log(JSON.stringify({ result: 'PASS', cases: 40, widths: [1440, 390, 320], themes: ['light', 'dark'], screenshots }));
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

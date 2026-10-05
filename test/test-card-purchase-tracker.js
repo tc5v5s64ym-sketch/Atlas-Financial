@@ -129,6 +129,36 @@ const carried = run(older);
 assert.equal(carried.advice.cardPurchaseCoverage.reservedCash, 102.45);
 assert.equal(carried.category.spent, 80, 'earlier purchase is not current category spending');
 assert.equal(carried.category.recon.length, 1);
+assert.equal(carried.advice.cardPurchaseCoverage.earlierPeriods.remaining, 22.45);
+assert.doesNotMatch(Detail.visaPaymentsHtml([], carried.advice.cardPurchaseCoverage), /\$80\.00/);
+// Opening carry predates the provider window and has no category transaction
+// or new payment. Its protected cash still needs an explainable source.
+const openingOnly = fixture('before');
+openingOnly.data.plan.cardPurchaseCoverage.opening.purchases = [{ ref: 'invented-opening-only',
+  accountId: 'travelvisa', date: '2026-09-10', amount: 30, covered: 0, categoryLabel: 'Groceries' }];
+const openingResult = run(openingOnly), openingCoverage = openingResult.advice.cardPurchaseCoverage;
+assert.equal(openingCoverage.status, 'ready');
+assert.equal(openingCoverage.reservedCash, 30);
+assert.equal(openingCoverage.payments.length, 0);
+assert.equal(openingResult.category.spent, 0);
+assert.equal(openingResult.category.recon.length, 0);
+const openingHtml = Detail.visaPaymentsHtml([], openingCoverage);
+assert.match(openingHtml, /Earlier periods/);
+assert.match(openingHtml, /\$30\.00 still to cover/);
+assert.match(openingHtml, /2026-09-10/);
+assert.match(openingHtml, /Groceries/);
+assert.doesNotMatch(openingHtml, /Card purchases to cover|invented-opening-only|travelvisa/);
+const openingUnknown = structuredClone(openingOnly);
+openingUnknown.data.plan.cardPurchaseCoverage.opening.confirmed = false;
+const unknownCarry = run(openingUnknown).advice.cardPurchaseCoverage;
+assert.equal(unknownCarry.status, 'unavailable');
+assert.equal(unknownCarry.reservedCash, null);
+assert.match(Detail.visaPaymentsHtml([], unknownCarry), /Coverage unconfirmed/);
+assert.doesNotMatch(Detail.visaPaymentsHtml([], unknownCarry), /\$30\.00|still to cover|Coverage resolved/);
+const openingCovered = structuredClone(openingOnly);
+openingCovered.data.plan.cardPurchaseCoverage.opening.purchases[0].covered = 30;
+assert.equal(run(openingCovered).advice.cardPurchaseCoverage.reservedCash, 0);
+assert.equal(Detail.visaPaymentsHtml([], run(openingCovered).advice.cardPurchaseCoverage), '');
 const olderUnknown = transfer(41.35);
 olderUnknown.payload.transactions.push({ ...olderUnknown.payload.transactions[0], id: 80007,
   date: '2026-09-19', amount: -7.15, category_name: 'Refund' });
@@ -156,6 +186,23 @@ assert.equal(newCategory.recon.length, 1);
 assert.equal(newCategory.recon[0].cardPurchaseCoverage.remaining, 9.80);
 assert.equal(acrossPeriods.advice.cardPurchaseCoverage.reservedCash, 39.05,
   '2925 carried cents plus 980 current cents; a new period never resets coverage');
+assert.equal(acrossPeriods.advice.cardPurchaseCoverage.earlierPeriods.remaining, 29.25);
+assert.equal(acrossPeriods.advice.cardPurchaseCoverage.earlierPeriods.cards[0].purchaseCount, 1,
+  'current purchase is excluded from the earlier-period source');
+const multipleCarry = structuredClone(openingOnly);
+multipleCarry.data.plan.cardPurchaseCoverage.opening.purchases.push({ ref: 'invented-second-opening',
+  accountId: 'travelvisa', date: '2026-09-12', amount: 22.45, covered: 12.10, categoryLabel: 'Groceries' });
+const multipleCoverage = run(multipleCarry).advice.cardPurchaseCoverage;
+assert.equal(multipleCoverage.earlierPeriods.remaining, 40.35, '3000 + 2245 - 1210 = 4035 cents');
+assert.equal(multipleCoverage.earlierPeriods.cards.length, 1, 'one compact source per card, not a purchase list');
+assert.equal(multipleCoverage.earlierPeriods.cards[0].purchaseCount, 2);
+assert.equal(multipleCoverage.earlierPeriods.cards[0].latestDate, '2026-09-12');
+assert.equal(multipleCoverage.earlierPeriods.cards[0].purchases[1].remaining, 10.35);
+assert.match(Detail.visaPaymentsHtml([], multipleCoverage), /\$10\.35 still to cover/);
+assert.equal(run(multipleCarry).category.spent, 0);
+assert.equal(blocked.advice.cardPurchaseCoverage.earlierPeriods.remaining, null);
+assert.equal(blocked.advice.cardPurchaseCoverage.earlierPeriods.cards.length, 0,
+  'whole-ledger ambiguity withholds all precise carry claims');
 
 // Cash transactions have no card marker; labels stay escaped, refs private.
 const cash = fixture(); cash.payload.transactions[0].account_id = 3002;
