@@ -319,8 +319,12 @@ function postedReplacement(linkKind) {
   const reserved = F.expandEvents(live.data.plan, OPENING, '2026-09-22', {
     representedEvents: (live.data.plan.opening && live.data.plan.opening.representedEvents) || [],
   }).filter(event => event && event.id === NOBLE && event.date === DUE);
-  ok(reserved.length === 0,
-    `${linkKind}: naming the posted survivor omits the bill from the cash walk`);
+  ok(reserved.length === 1,
+    `${linkKind}: later posted evidence cannot erase the debit from the older opening`);
+  const liveReserved = F.expandEvents(live.data.plan, live.data.plan.opening.asOf, '2026-09-22', {})
+    .filter(event => event && event.id === NOBLE && event.date === DUE);
+  ok(liveReserved.length === 0,
+    `${linkKind}: fresh live cash already includes the posted debit and does not replay it`);
   const balance = cashValue(live.data, 'chequing-b');
   ok(near(balance, reduced),
     `${linkKind}: observed chequing-b still shows the posted debit`,

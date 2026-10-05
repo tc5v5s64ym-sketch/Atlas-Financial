@@ -196,9 +196,10 @@ function readCanonical(data, target) {
   if (target.collection === 'representedEvents') {
     const opening = (((data || {}).plan) || {}).opening || null;
     const date = target.date || null;
-    const events = (opening && opening.representedEvents) || [];
-    const represented = !!(opening && date && opening.asOf === date
-      && events.some(e => e && e.id === target.id && e.date === date));
+    // Membership still requires the opening as-of and id/date class match.
+    // representedOnOpening adds Forecast.representedEventEffectiveBy so a
+    // later or invalid effectiveAsOf cannot preview as represented.
+    const represented = representedOnOpening(data, target.id, date);
     return {
       found: !!(opening && opening.asOf),
       value: represented ? 1 : 0,
@@ -1239,7 +1240,8 @@ function scheduledEventExists(data, eventId, scheduledDate) {
 function representedOnOpening(data, eventId, date) {
   const opening = (((data || {}).plan) || {}).opening || null;
   if (!opening || !eventId || !date || opening.asOf !== date) return false;
-  return (opening.representedEvents || []).some(e => e && e.id === eventId && e.date === date);
+  return (opening.representedEvents || []).some(e => e && e.id === eventId && e.date === date
+    && Forecast.representedEventEffectiveBy(e, opening.asOf));
 }
 
 function openingAsOf(data) {
