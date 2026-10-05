@@ -41,7 +41,7 @@ const head = execFileSync('git', ['-c', 'safe.directory=' + root.split(path.sep)
       const summaryText = await summary.innerText();
       if (estimated) assert.match(summaryText, /about/); else assert.doesNotMatch(summaryText, /about|≈|estimated/);
       assert.match(await sheet.innerText(), /Payment evidence/);
-      if (name !== 'future') assert.match(await sheet.innerText(), /Posted|Pending - not a posted payment|evidence is unavailable/);
+      if (name !== 'future') assert.match(await sheet.innerText(), /Posted|Pending [—-] not a posted payment|evidence is unavailable/);
       await page.screenshot({ path: path.join(out, `${name}-sheet-${width}.png`), animations: 'disabled' });
       await page.keyboard.press('Escape');
       assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
