@@ -5,6 +5,7 @@ const fs = require('node:fs'), path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const fixture = require('./fixtures/planned-savings-clarity-data');
+const fundingFixture = require('./fixtures/savings-funding-timeline');
 const captureOnly = process.env.ATLAS_SAVINGS_CAPTURE_ONLY === '1';
 const assets = process.env.ATLAS_SAVINGS_ASSETS_DIR || path.join(__dirname, '../public');
 const output = process.env.ATLAS_SAVINGS_CLARITY_DIR || path.join(require('node:os').tmpdir(), 'atlas-planned-savings-clarity');
@@ -33,6 +34,28 @@ fs.mkdirSync(output, { recursive: true });
       const summary = page.locator('[data-calendar-waterfall] [data-operating-question="savings"] > details > summary').first();
       await summary.waitFor();
       assert.equal(await page.evaluate(() => App.data.meta.title), data.meta.title);
+      if (!captureOnly) {
+        const publication = await page.evaluate(({ plan, asOf }) => {
+          const packet = Forecast.baselineTrajectory(plan, [], asOf, { weeklyVariable: 35 }).savingsFundingTimeline;
+          return { source: packet.source, status: packet.status, permission: packet.actionPermission,
+            actual: packet.actualContributions, contribution: packet.payPeriods[0].contribution,
+            combined: packet.daily.find(row => row.date === packet.payPeriods[0].end).combined,
+            undated: packet.payPeriods[0].goals.find(goal => goal.key === 'commitment:undated-a').projectedContribution };
+        }, { plan: fundingFixture.fixture(), asOf: fundingFixture.AS_OF });
+        assert.deepEqual(publication, { source: 'Forecast.savingsFundingTimeline', status: 'ready',
+          permission: 'not-granted', actual: null, contribution: 310, combined: 465, undated: null },
+        'actual loaded Forecast publishes the independently reconciled packet');
+        const cashBoundary = await page.evaluate(({ plan, asOf }) => {
+          delete plan.startingCash.breakdown[0].value;
+          const missing = Forecast.baselineTrajectory(plan, [], asOf, { weeklyVariable: 35 }).savingsFundingTimeline;
+          plan.startingCash.breakdown[0].value = 0; plan.startingCash.breakdown[1].value = 0;
+          const zero = Forecast.baselineTrajectory(plan, [], asOf, { weeklyVariable: 35 }).savingsFundingTimeline;
+          return { missing: { status: missing.status, days: missing.daily.length, periods: missing.payPeriods.length },
+            zero: { status: zero.status, combined: zero.daily[0].combined } };
+        }, { plan: fundingFixture.fixture(), asOf: fundingFixture.AS_OF });
+        assert.deepEqual(cashBoundary, { missing: { status: 'unavailable', days: 0, periods: 0 },
+          zero: { status: 'ready', combined: 575 } }, 'active publication distinguishes unknown operating cash from explicit zero');
+      }
       const inputs = await page.evaluate(() => JSON.stringify(App.data));
       await summary.focus(); await page.keyboard.press('Enter');
       const dialog = page.locator('[data-budget-detail-sheet]');
