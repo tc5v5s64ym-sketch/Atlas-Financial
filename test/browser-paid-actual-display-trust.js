@@ -69,6 +69,9 @@ const head = execFileSync('git', ['-c', 'safe.directory=' + root.split(path.sep)
       ['pending', p => { currentReceipt(p).pending = true; }],
       ['missing', p => { delete p.representedActuals.find(r => r.id === 'invented-current-utility').transactionId; }],
       ['conflict', p => { p.transactions.push({ ...currentReceipt(p), amount: 99 }); }],
+      ['unknown-coverage', p => { p.transactionCoverage = 'unknown'; }],
+      ['partial-coverage', p => { p.transactionCoverage = 'partial'; }],
+      ['missing-coverage', p => { delete p.transactionCoverage; }],
     ]) {
       data = fixture.served(); change(data.liveOverlay.currentPeriodActuals);
       await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await boot();
@@ -78,6 +81,6 @@ const head = execFileSync('git', ['-c', 'safe.directory=' + root.split(path.sep)
   }
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   fs.writeFileSync(path.join(out, 'verification.json'), JSON.stringify({ head, before, syntheticOnly: true, results, errors, external }, null, 2) + '\n');
-  console.log(`PASS ${head}: actual Budget current/history/future${before ? ' baseline' : ', pending/missing/conflicting'}, keyboard filters/focus and overflow at 1440/390/320`);
+  console.log(`PASS ${head}: actual Budget current/history/future${before ? ' baseline' : ', pending/missing/conflicting and unknown/partial/missing coverage'}, keyboard filters/focus and overflow at 1440/390/320`);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });
