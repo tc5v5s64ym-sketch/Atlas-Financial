@@ -185,7 +185,7 @@ const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, {
 });
 ok(near(expected.totals.bills, wantBills), '90-day named bills net utility-account credit once', expected.totals.bills.toFixed(2));
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
-ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);
+ok(fortisDates === '2026-09-03,2026-11-03', 'Fortis preserves September and the incumbent future schedule while the confirmed October no-pay bill emits no cash', fortisDates);
 const wantCommit = (plan.commitments || [])
   .filter(c => c.date >= asOf && c.date <= windowEnd
     && !(typeof c.settledOn === 'string'

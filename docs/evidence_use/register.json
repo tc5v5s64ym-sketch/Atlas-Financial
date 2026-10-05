@@ -880,6 +880,15 @@
         "path": "data.json",
         "json_pointer": "/plan/commitments"
       }
+    },
+    {
+      "id": "BILL-FOR-004",
+      "source": "docs/source_intake/FORTIS_ANNUAL_REVIEW_2026-09-09.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills/0"
+      }
     }
   ]
 }

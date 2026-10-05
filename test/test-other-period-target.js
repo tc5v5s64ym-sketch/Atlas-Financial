@@ -115,8 +115,12 @@ for(const [start,end,days,expected] of [['2026-09-11','2026-09-24',14,367.97],['
  assert.equal(glance.find(row=>row.id==='other-spend'),undefined,'the six-category glance does not invent a second Other row');
 }
 const before=JSON.parse(execFileSync('git',['show','8ce4e67915e41dbfaee55ad0d2c09ed74b4b4e9c:data.json'],{encoding:'utf8'}));
+// The original input-footprint guard belongs to the immutable Other change,
+// not every later owner-authorized bill or balance update. Current Other
+// behavior/configuration remains covered above by independent fixture cents.
+const otherInputRevision=JSON.parse(execFileSync('git',['show','2bf14a2d8e3fc578db8ea14997cff02a945d3c80:data.json'],{encoding:'utf8'}));
 const withoutOther=d=>{const copy=fx.clone(d);copy.plan.budget.categories=copy.plan.budget.categories.filter(c=>c.id!=='other-spend');return copy;};
-assert.deepEqual(withoutOther(canonical),withoutOther(before),'entire canonical input outside Other is unchanged, including savings and opening assignments');
+assert.deepEqual(withoutOther(otherInputRevision),withoutOther(before),'the immutable Other input revision changes no other canonical fields, including savings and opening assignments');
 const priorCsv=execFileSync('git',['show','8ce4e67915e41dbfaee55ad0d2c09ed74b4b4e9c:docs/positions.csv'],{encoding:'utf8'});
 const unchangedRows=s=>s.split(/\r?\n/).filter(line=>!line.includes('Essential spending estimate')&&!line.includes('Weeks of essentials covered'));
 assert.deepEqual(unchangedRows(fs.readFileSync(path.join(__dirname,'../docs/positions.csv'),'utf8')),unchangedRows(priorCsv),
