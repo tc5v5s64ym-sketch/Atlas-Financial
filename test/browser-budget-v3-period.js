@@ -62,6 +62,12 @@ async function geometry(page) {
         'actual/original-plan browse does not carry the reserve explanation by default');
       assert.equal(await page.locator('[data-budget-reserve-rule]').isVisible(),false);
       await reserveInfo.focus();await page.keyboard.press('Enter');
+      const reserveDisclosure=page.locator('[data-budget-detail-body] [data-budget-reserve-info]');
+      assert.equal(await reserveDisclosure.evaluate(node=>node.open),false,'protective reserve Info starts closed');
+      assert.equal(await reserveDisclosure.locator('[data-household-budget-total-amount]').isVisible(),false);
+      const reserveDisclosureTrigger=reserveDisclosure.locator(':scope > summary');
+      await reserveDisclosureTrigger.focus();await page.keyboard.press('Enter');
+      assert.equal(await reserveDisclosure.locator('[data-household-budget-total-amount]').isVisible(),true,'reserve remains keyboard reachable');
       assert.match(await page.locator('[data-budget-detail-body]').innerText(),/Reserve calculation:[\s\S]*whichever is higher[\s\S]*unassigned spending/);
       assert.match(await page.locator('[data-budget-detail-body] [data-household-budget-total-amount]').innerText(),/752\.99/);
       await screenshot({path:path.join(screenshots,`reserve-info-${width}.png`),fullPage:false});
@@ -112,7 +118,8 @@ async function geometry(page) {
       await page.keyboard.press('ArrowRight');
       assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
       assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
-      assert.match(await page.locator('[data-budget-savings-goals]').innerText(), /195\.00 required by the current Forecast[\s\S]*Fulfillment not confirmed/);
+      assert.match(await page.locator('[data-budget-goal-open="school-trip"] [data-budget-goal-required]').innerText(), /195\.00/);
+      assert.match(await page.locator('[data-budget-goal-open="school-trip"] [data-budget-goal-fulfilled]').innerText(), /Unknown/);
       assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-plan]').innerText(), /195\.00/);
       assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-actual]').innerText(), /Unknown/);
       assert.match(await page.locator('[data-budget-browse="spending"]').innerText(), /Projected plan.*spending not observed/);
@@ -130,7 +137,7 @@ async function geometry(page) {
       assert.equal(await page.locator('.budget-window-days > .is-today').count(), 0);
       await screenshot({path:path.join(screenshots,`future-requirements-${width}.png`),fullPage:true});
       const futureGoal=page.locator('[data-budget-goal-open="school-trip"]');
-      assert.match(await futureGoal.innerText(),/Not confirmed[\s\S]*195\.00 required by the current Forecast/);
+      assert.match(await futureGoal.innerText(),/Not confirmed[\s\S]*Unknown[\s\S]*195\.00[\s\S]*Required this period[\s\S]*Current Forecast requirement/);
       await futureGoal.focus();await page.keyboard.press('Enter');
       assert.match(await page.locator('[data-budget-detail-body] [data-budget-goal-fulfillment-evidence="school-trip"]').innerText(),
         /Required this period[\s\S]*195\.00[\s\S]*Confirmed fulfilled this period: Unavailable[\s\S]*Remaining this period: Unavailable[\s\S]*Not confirmed/);
@@ -508,12 +515,21 @@ async function geometry(page) {
       await geometry(page);
       await revisedHistory.screenshot({path:path.join(screenshots,`history-target-edit-${width}.png`),animations:'disabled',style:'.sitenav-household{visibility:hidden!important}'});
       const revisedGrocery=revisedHistory.locator('[data-budget-category-open="groceries"]');
-      const assertHistorySheet=async () => {
+      const assertHistorySheet=async (withTotal=false) => {
         const sheetBody=page.locator('[data-budget-detail-body]');
         assert.equal(await page.locator('[data-budget-detail-sheet]').evaluate(el=>el.open),true);
         assert.match(await sheetBody.innerText(),/Historical original plan unavailable/);
         assert.match(await sheetBody.innerText(),/Synthetic historical grocer[\s\S]*47\.25/);
-        assert.doesNotMatch(await sheetBody.innerText(),/450\.00|613\.27|402\.75|566\.02|Planned|Remaining|\/week/);
+        assert.doesNotMatch(await sheetBody.innerText(),/450\.00|613\.27|402\.75|566\.02|\/week/);
+        assert.equal(await sheetBody.locator('[data-budget-category]').count(),withTotal?3:1);
+        const categoryTerms=sheetBody.locator('[data-budget-category] dt');
+        assert.ok(await categoryTerms.count()>0,'native category terms are present');
+        assert.doesNotMatch(await categoryTerms.allTextContents().then(labels=>labels.join(' ')),/Planned|Remaining/,
+          'native historical categories do not print current targets or remaining amounts');
+        const total=sheetBody.locator('[data-household-budget-progress-total]');
+        assert.equal(await total.count(),withTotal?1:0);
+        if(withTotal)assert.match(await total.locator('[data-budget-ratio-plan]').innerText(),/Unknown/,
+          'the total retains a truthful Actual / Planned label with its original plan explicitly unknown');
         assert.equal(await sheetBody.locator('.budget-category-fill,.budget-category-pace').count(),0);
       };
       for (const id of ['groceries','fuel','restaurants']) {
@@ -538,7 +554,7 @@ async function geometry(page) {
       // unavailable original-plan meaning; opening transactions cannot lose it.
       const fullDetails=revisedHistory.locator('[data-budget-browse-evidence="06"]');
       await fullDetails.focus();await page.keyboard.press('Enter');
-      await assertHistorySheet();
+      await assertHistorySheet(true);
       assert.equal(await page.locator('[data-budget-detail-body] [data-budget-historical-original-plan="unavailable"]').count(),3);
       await page.keyboard.press('Escape');assert.equal(await fullDetails.evaluate(el=>el===document.activeElement),true);
       await page.locator('[data-budget-window-step="1"]').click();

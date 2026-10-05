@@ -284,10 +284,18 @@
 .budget-savings-goals li { padding:12px 0; border-bottom:1px solid var(--border); }
 .budget-savings-goals li > button { width:100%; padding:0; text-align:left; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer; }
 .budget-savings-goals li > button:focus-visible { outline:2px solid var(--s1); outline-offset:4px; border-radius:4px; }
-.budget-savings-goals li > button > div { display:flex; align-items:start; justify-content:space-between; gap:12px; }
+.budget-goal-heading { display:flex; align-items:start; justify-content:space-between; gap:12px; }
 .budget-savings-goals li strong { font-size:13px; overflow-wrap:anywhere; }
 .budget-savings-goals li p,.budget-goal-notice { font-size:12px; color:var(--text-secondary); margin:6px 0 0; }
 .budget-goal-state { color:var(--warning); font-size:11px; font-weight:650; white-space:nowrap; padding:3px 7px; border-radius:99px; background:color-mix(in srgb,var(--warning) 9%,var(--surface-1)); }
+.budget-goal-row.is-funded .budget-goal-state { color:var(--success-text); background:color-mix(in srgb,var(--good) 9%,var(--surface-1)); }
+.budget-goal-amounts { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:start; gap:10px; margin-top:10px; }
+.budget-goal-amounts > span { min-width:0; }
+.budget-goal-amounts > span:nth-child(2) { color:var(--muted); }
+.budget-goal-amount { display:block; font-size:14px; font-weight:650; overflow-wrap:anywhere; }
+.budget-goal-amounts small { display:block; margin-top:3px; color:var(--text-secondary); font-size:11px; }
+.budget-savings-goals li .budget-goal-context { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; font-size:11px; margin-top:10px; }
+.budget-goal-evidence { color:var(--s1); white-space:nowrap; margin-left:auto; }
 .budget-savings-accounts { margin:20px 0; padding:16px; border:1px solid var(--border); border-radius:14px; }
 .budget-savings-accounts > summary { cursor:pointer; color:var(--text-secondary); font-size:13px; }
 .budget-savings-accounts > summary:focus-visible { outline:2px solid var(--s1); outline-offset:4px; }
