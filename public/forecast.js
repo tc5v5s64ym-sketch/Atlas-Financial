@@ -751,13 +751,47 @@
     const latest = block.history[block.history.length - 1] || null;
     return { status: 'ready', currency: block.currency, pools: block.pools, history: block.history, latest };
   }
+  // Observed stock is context, never another operating balance or assignment.
+  // Independently verify account identities even though configuration also
+  // rejects aliases. No partial sum, opening fallback or inferred allocation.
+  function savingsObservedStock(config, observation, asOf) {
+    const result = { status: 'unavailable', asOf, currency: config.currency || 'CAD',
+      basis: 'observed-savings-stock', nonAdditive: true, amount: null,
+      trust: 'unknown', evidenceTrust: 'unknown', accountIds: [], pendingState: 'unknown',
+      reason: 'Current observations for both distinct savings accounts are required.' };
+    if (config.status !== 'ready' || !savingsDate(asOf) || !observation
+        || typeof observation !== 'object' || Array.isArray(observation)
+        || observation.asOf !== asOf || !Array.isArray(observation.accounts)
+        || !Array.isArray(config.pools) || config.pools.length !== 2) return result;
+    const accounts = new Set();
+    let totalCents = 0, pendingClear = true;
+    for (const pool of config.pools) {
+      if (!pool || typeof pool.accountId !== 'string' || !SAVINGS_ALIAS.test(pool.accountId)
+          || accounts.has(pool.accountId)) return result;
+      accounts.add(pool.accountId);
+      const rows = observation.accounts.filter(row => row && row.accountId === pool.accountId);
+      const cash = rows.length === 1 ? rows[0] : null;
+      const cents = savingsCents(cash && cash.value, true);
+      if (!cash || typeof cash !== 'object' || Array.isArray(cash)
+          || cash.source !== 'provider-observe:lunchmoney' || cash.currency !== config.currency
+          || cash.evidenceDate !== asOf || cents == null
+          || config.latest && config.latest.confirmedAt > cash.evidenceDate) return result;
+      totalCents += cents;
+      if (!Number.isSafeInteger(totalCents)) return result;
+      pendingClear = pendingClear && cash.pendingState === 'clear';
+    }
+    return { ...result, status: 'ready', amount: totalCents / 100, trust: 'calculated',
+      evidenceTrust: 'verified', accountIds: Array.from(accounts),
+      pendingState: pendingClear ? 'clear' : 'unresolved', reason: null };
+  }
   function savingsInventory(plan, asOf) {
     const config = savingsEarmarksState(plan, asOf);
     const packet = { status: config.status, asOf, currency: config.currency || 'CAD', reason: config.reason || null,
       source: 'Forecast.savingsInventory', nonAdditive: true, intentSource: 'plan.savingsEarmarks',
       incrementalInstructions: savingsEarmarksEnabled(plan) ? 'withheld' : 'incumbent',
       instructionReason: savingsEarmarksEnabled(plan) ? SAVINGS_INSTRUCTIONS_HELD : null,
-      revision: config.latest && config.latest.revision || null, pools: [], goals: [] };
+      revision: config.latest && config.latest.revision || null, pools: [], goals: [],
+      observedStock: savingsObservedStock(config, plan && plan.savingsPoolObservation, asOf) };
     if (config.status !== 'ready') return packet;
     const observation = plan.savingsPoolObservation;
     const observationDate = observation && observation.asOf;
@@ -768,7 +802,8 @@
       const intentKnown = !!snapshot;
       const allocations = (snapshot && snapshot.allocations) || [];
       const total = allocations.reduce((sum, row) => sum + savingsCents(row.amount), 0);
-      const observed = (observation && observation.accounts || []).filter(r => r && r.accountId === pool.accountId);
+      const observed = (observation && Array.isArray(observation.accounts) ? observation.accounts : [])
+        .filter(r => r && r.accountId === pool.accountId);
       const cash = observed.length === 1 ? observed[0] : null;
       const valueCents = savingsCents(cash && cash.value, true);
       const trusted = cash && cash.source === 'provider-observe:lunchmoney' && cash.currency === config.currency
