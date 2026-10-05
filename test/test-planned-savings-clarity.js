@@ -48,7 +48,7 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
     if (mode === 'range') assert.match(trip, /403\.21[\s\S]*500\.00/, 'both published range bounds stay visible');
   }
   if (mode === 'backed-ready') {
-    assert.match(glance, /215\.04[\s\S]*600\.00[\s\S]*177\.96[\s\S]*Put away this period/);
+    assert.match(glance, /215\.04[\s\S]*600\.00[\s\S]*177\.96[\s\S]*Proposed this period/);
     assert.equal(Math.round(period.plannedCostFunding.contribution * 100), 60000 + 13 * 1100 - (16937 + 4567) - 35000,
       'existing pool stock is used once; period contribution funds only the remaining requirement');
     const summary = html.split('data-operating-question="savings"')[1].split('</summary>')[0];
@@ -82,4 +82,80 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
   assert.equal(JSON.stringify(data), original);
   assert.equal(JSON.stringify(advice), published, 'renderer does not alter any financial publication');
 }
-console.log('PASS Planned Savings: total pool-backed saved/needed distinct from period proposal, grouped targets/shared stock once, unknown/stale/deficit withholding, compact Info and immutable financial outputs');
+for (const mode of ['projection', 'projection-remaining', 'projection-missing-cash', 'projection-stale']) {
+  const data = fixture(mode), original = JSON.stringify(data);
+  const advice = F.recommend(data.plan, data.meta.asOf, {});
+  const timeline = F.savingsFundingTimeline(data.plan, [], data.meta.asOf, { weeklyVariable: 35 });
+  const current = advice.payPeriodViews.find(row => row.timelineRole === 'current');
+  const render = (period = current, packet = timeline, inventory = advice.savingsInventory) => {
+    ctx.probe = period; ctx.plan = data.plan;
+    ctx.savings = { inventory, timeline: packet, asOf: data.meta.asOf };
+    return vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx);
+  };
+  const publication = JSON.stringify({ advice, timeline });
+  const html = render(), section = html.split('data-budget-planned-savings-summary>')[1].split('<details')[0];
+  assert.equal((section.match(/data-budget-savings-total-goal=/g) || []).length, 3);
+  assert.equal((section.match(/data-budget-savings-total-saved><span class="budget-v3-unknown">Unknown/g) || []).length, 3,
+    'observed pool cash and projected location never become saved goal assignments');
+  assert.match(section, /Funding plan not confirmed/);
+  assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], /Unavailable/,
+    'hypothetical contributions do not replace the incumbent Savings deduction');
+  if (['projection', 'projection-remaining'].includes(mode)) {
+    assert.match(section, /Hypothetical projection/);
+    assert.match(section, /Actual contributions unknown/);
+    const camp = section.split('data-budget-savings-total-goal="group:camp-a"')[1].split('</li>')[0];
+    const annual = section.split('data-budget-savings-total-goal="yearly-bill:annual-a"')[1].split('</li>')[0];
+    assert.match(camp, /280\.00/, 'two invented dated needs, 80 + 200, grouped by Forecast once');
+    assert.match(camp, mode === 'projection' ? /270\.00/ : /0\.00/,
+      'independent first ledger: 70 advance + 200 close; remaining fixture has zero capacity');
+    assert.match(annual, mode === 'projection' ? /40\.00/ : /0\.00/, '70 need less 30 observed pool is a 40 hypothetical contribution');
+    const undated = section.split('data-budget-savings-total-goal="commitment:undated-a"')[1].split('</li>')[0];
+    assert.match(undated, /data-budget-savings-projection><span class="budget-v3-unknown">Unknown/);
+    assert.match(section, mode === 'projection' ? /Projected this period/ : /Projected remaining period/);
+    if (mode === 'projection-remaining') {
+      assert.match(section, /data-budget-savings-projection-gap/);
+      assert.match(html, /data-budget-savings-projection-gap-detail/);
+    }
+    assert.doesNotMatch(render({ ...current, operatingPlanUnavailable: true }), /data-budget-savings-projection/);
+    assert.doesNotMatch(render({ ...current, timelineRole: 'past', lookback: true }), /data-budget-savings-projection/);
+    const staleInventory = structuredClone(advice.savingsInventory);
+    staleInventory.pools[0].observedTrust = 'unknown';
+    assert.doesNotMatch(render(current, timeline, staleInventory), /data-budget-savings-projection/);
+    const next = advice.payPeriodViews.find(row => row.timelineRole === 'next');
+    const nextHtml = render(next);
+    assert.match(nextHtml, /Projected this period/);
+    assert.doesNotMatch(nextHtml, /Projected remaining period/);
+    const past = advice.payPeriodViews.find(row => row.timelineRole === 'past');
+    assert.doesNotMatch(render(past), /data-budget-savings-projection/);
+    for (const mutate of [
+      p => { p.source = 'Other'; }, p => { p.asOf = '2026-09-09'; }, p => { p.currency = 'USD'; },
+      p => { p.status = 'unavailable'; }, p => { p.trust = 'calculated'; },
+      p => { p.nature = 'confirmed'; }, p => { p.actionPermission = 'granted'; },
+      p => { p.incrementalInstructions = 'ready'; }, p => { p.actualContributions = 0; },
+      p => { p.payPeriods[0].cycleEnd = '2026-09-24'; }, p => { p.payPeriods[0].end = '2026-09-22'; },
+      p => { p.payPeriods[0].windowKind = 'unsupported'; },
+      p => { p.payPeriods.push(p.payPeriods[0]); },
+    ]) {
+      const changed = JSON.parse(JSON.stringify(timeline)); mutate(changed);
+      assert.doesNotMatch(render(current, changed), /data-budget-savings-projection/, 'mismatched source, trust, permission or window withheld');
+    }
+    for (const mutate of [
+      g => { g.actualSaved = 0; }, g => { g.actualContribution = 0; }, g => { g.trust = 'calculated'; },
+      g => { g.projectedContribution = '270'; }, g => { g.projectedContribution = NaN; },
+    ]) {
+      const changed = structuredClone(timeline); mutate(changed.payPeriods[0].goals[0]);
+      const row = render(current, changed).split('data-budget-savings-total-goal="group:camp-a"')[1].split('</li>')[0];
+      assert.match(row, /data-budget-savings-projection><span class="budget-v3-unknown">Unknown/);
+    }
+  } else assert.doesNotMatch(html, /data-budget-savings-projection/, 'unknown cash and stale evidence do not supply a projection');
+  assert.equal(JSON.stringify({ advice, timeline }), publication);
+  assert.equal(JSON.stringify(data), original);
+}
+// Same-date reserve refresh must read current evidence rather than an older Month cache.
+const refreshed = fixture('projection');
+ctx.source = { plan: refreshed.plan, debts: [], asOf: refreshed.meta.asOf, weekly: 35, weeklyOverride: 35,
+  advice: F.recommend(refreshed.plan, refreshed.meta.asOf, {}), revolvingExtra: [] };
+assert.equal(vm.runInContext('budgetSavingsTimelineFor(source).status', ctx), 'ready');
+delete ctx.source.plan.startingCash.breakdown[0].value;
+assert.equal(vm.runInContext('budgetSavingsTimelineFor(source).status', ctx), 'unavailable');
+console.log('PASS Planned Savings: independent grouped projection amounts, remaining/future/historical windows, unknown actuals, strict packet boundaries, same-date evidence refresh, incumbent deduction and immutable outputs');
