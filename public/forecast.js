@@ -17340,6 +17340,19 @@
     if (!day || plan?.opening?.asOf !== day || opts.operatingPlan === 'unavailable') {
       return unavailable('A matching, available operating opening is required; older cash is not substituted.');
     }
+    // Validate the two required operating inputs before the incumbent helper
+    // can coerce missing/nonnumeric values to zero or omit an absent account.
+    const cash = plan.startingCash, cashRows = cash?.breakdown;
+    if (!cash || typeof cash !== 'object' || Array.isArray(cash)
+        || !Array.isArray(cashRows) || HOUSEHOLD_CHEQUING_IDS.some(id => {
+      const rows = cashRows.filter(row => row?.id === id);
+      return rows.length !== 1 || !Object.prototype.hasOwnProperty.call(rows[0], 'value')
+        || savingsCents(rows[0].value, true) == null;
+    })) {
+      return unavailable('Both operating accounts require one explicit finite numeric cash value in cents; unknown cash is not zero.');
+    }
+    const opening = savingsCents(startingCashAmount(plan), true);
+    if (opening == null) return unavailable('The validated operating opening is outside supported cents.');
     const coverage = cardCoverageState(plan, day, opts);
     if (!['incumbent', 'ready'].includes(coverage.status)) return unavailable(coverage.reason);
     const inventory = savingsInventory(plan, day);
@@ -17357,7 +17370,6 @@
     if (inventory.revision != null) return unavailable('Confirmed assignments require the existing purpose allocator; this projection does not reassign them.');
     const ctx = prepareBaselineTrajectoryWalk(plan, debts, day, opts, true);
     if (ctx.status !== 'ready') return unavailable(ctx.reason);
-    const opening = savingsCents(startingCashAmount(plan), true);
     const targetBuffer = savingsCents(ctx.walkOpts.targetBuffer ?? 0);
     const cardHold = savingsCents(coverage.reservedCash);
     if (opening == null || targetBuffer == null || cardHold == null) return unavailable('Opening cash or the existing cash/card hold is not established in cents.');

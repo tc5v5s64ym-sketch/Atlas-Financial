@@ -166,6 +166,59 @@ assert.equal(F.savingsFundingTimeline(legacyBonus, [], AS_OF, options).status, '
 // identical against immutable merged main. Projection is a separate packet.
 const base = { module: { exports: {} }, console };
 vm.runInNewContext(execFileSync('git', ['show', 'b754ae1901609fce4b49a1bb3e0ad14ea17d1427:public/forecast.js'], { encoding: 'utf8' }), base);
+// Required operating values are checked before any zero-coercing aggregate.
+// Conservation alone cannot detect a fabricated opening on both ledger sides.
+const cashCases = [
+  ['missing cash object', q => delete q.startingCash],
+  ['null cash object', q => q.startingCash = null],
+  ['string cash object', q => q.startingCash = 'unknown'],
+  ['array cash object', q => q.startingCash = Object.assign([], q.startingCash)],
+  ['missing breakdown key', q => delete q.startingCash.breakdown],
+  ['null breakdown', q => q.startingCash.breakdown = null],
+  ['malformed breakdown', q => q.startingCash.breakdown = {}],
+  ['empty breakdown', q => q.startingCash.breakdown = []],
+  ['both operating accounts absent', q => q.startingCash.breakdown = q.startingCash.breakdown.filter(row => row.id === 'savings')],
+  ...['chequing-a', 'chequing-b'].flatMap(id => [
+    [id + ' absent', q => q.startingCash.breakdown = q.startingCash.breakdown.filter(row => row.id !== id)],
+    [id + ' missing value', q => delete q.startingCash.breakdown.find(row => row.id === id).value],
+    ...[null, undefined, '0', '23.45', 'unknown', NaN, Infinity, -Infinity, false, 0.001].map(value =>
+      [id + ' invalid ' + String(value), q => q.startingCash.breakdown.find(row => row.id === id).value = value]),
+    [id + ' duplicate', q => q.startingCash.breakdown.push(clone(q.startingCash.breakdown.find(row => row.id === id)))],
+  ]),
+];
+for (const [name, edit] of cashCases) {
+  const q = fixture(); edit(q);
+  const result = F.savingsFundingTimeline(q, [], AS_OF, options);
+  assert.equal(result.status, 'unavailable', name);
+  assert.match(result.reason, /operating accounts/);
+  assert.deepEqual(result.daily, [], name + ' publishes no fabricated cash ledger');
+  assert.deepEqual(result.payPeriods, [], name + ' publishes no fabricated contribution');
+  assert.equal(result.actualContributions, null);
+  assert.equal(result.actionPermission, 'not-granted');
+  // The legacy aggregate is deliberately not changed in this narrow repair.
+  // Where its input shape is supported, all incumbent baseline fields remain
+  // identical; malformed shapes retain the same legacy failure outside here.
+  if (q.startingCash?.breakdown && !Array.isArray(q.startingCash.breakdown)) continue;
+  assert.equal(Object.is(F.startingCashAmount(q), base.module.exports.startingCashAmount(q)), true, name + ' incumbent cash helper unchanged');
+  const oldPublication = base.module.exports.baselineTrajectory(q, [], AS_OF, options);
+  const newPublication = F.baselineTrajectory(q, [], AS_OF, options);
+  if (newPublication.savingsFundingTimeline) {
+    assert.equal(newPublication.savingsFundingTimeline.status, 'unavailable', name + ' active baseline withholds new packet');
+    delete newPublication.savingsFundingTimeline;
+  }
+  assert.equal(JSON.stringify(newPublication), JSON.stringify(oldPublication), name + ' incumbent publications unchanged');
+}
+for (const values of [[0, 0], [0, -10], [100, 0], [12.34, -5.67]]) {
+  const q = fixture(); q.startingCash.breakdown[0].value = values[0]; q.startingCash.breakdown[1].value = values[1];
+  const result = F.savingsFundingTimeline(q, [], AS_OF, options);
+  assert.equal(result.status, 'ready', 'explicit zero or valid signed cash stays available: ' + values);
+  assert.equal(cents(result.daily[0].combined), cents(values[0]) + cents(values[1]) + 50000 - 500 + 8000,
+    'independent valid opening and first daily cash ledger');
+  const publication = F.baselineTrajectory(q, [], AS_OF, options);
+  assert.deepEqual(publication.savingsFundingTimeline, result);
+  delete publication.savingsFundingTimeline;
+  assert.equal(JSON.stringify(publication), JSON.stringify(base.module.exports.baselineTrajectory(q, [], AS_OF, options)), 'valid controls preserve incumbent publications');
+}
 const current = F.baselineTrajectory(p, [], AS_OF, options);
 assert.deepEqual(current.savingsFundingTimeline, timeline);
 delete current.savingsFundingTimeline;

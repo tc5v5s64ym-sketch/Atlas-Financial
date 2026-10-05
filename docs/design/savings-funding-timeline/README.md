@@ -18,6 +18,15 @@ counted once; silver already inside a balance is not another input. Existing
 goal references own requirements. No PDF targets, household amounts or inferred
 historical assignments are stored in this change.
 
+The new timeline validates both incumbent operating account identities before
+calling the cash aggregator. Each requires exactly one explicit finite numeric
+cent value; signed values and numeric zero are valid. Missing cash/breakdown,
+absent or duplicate account rows, missing/null/string/nonfinite values and
+unsupported fractional cents withhold the packet. The legacy cash helpers and
+incumbent publications retain their existing behavior. This repairs the exact
+`06cb895` Systems blocker: conservation is insufficient when an unknown opening
+has already been coerced to zero on both sides of the comparison.
+
 The incumbent coupled Forecast walk supplies daily changes after normal life,
 required payments, card gravity and extra-debt deductions. Only uniquely matched
 planned-cost cash components move to pool draws. A dated draw is counted once.

@@ -45,6 +45,16 @@ fs.mkdirSync(output, { recursive: true });
         assert.deepEqual(publication, { source: 'Forecast.savingsFundingTimeline', status: 'ready',
           permission: 'not-granted', actual: null, contribution: 310, combined: 465, undated: null },
         'actual loaded Forecast publishes the independently reconciled packet');
+        const cashBoundary = await page.evaluate(({ plan, asOf }) => {
+          delete plan.startingCash.breakdown[0].value;
+          const missing = Forecast.baselineTrajectory(plan, [], asOf, { weeklyVariable: 35 }).savingsFundingTimeline;
+          plan.startingCash.breakdown[0].value = 0; plan.startingCash.breakdown[1].value = 0;
+          const zero = Forecast.baselineTrajectory(plan, [], asOf, { weeklyVariable: 35 }).savingsFundingTimeline;
+          return { missing: { status: missing.status, days: missing.daily.length, periods: missing.payPeriods.length },
+            zero: { status: zero.status, combined: zero.daily[0].combined } };
+        }, { plan: fundingFixture.fixture(), asOf: fundingFixture.AS_OF });
+        assert.deepEqual(cashBoundary, { missing: { status: 'unavailable', days: 0, periods: 0 },
+          zero: { status: 'ready', combined: 575 } }, 'active publication distinguishes unknown operating cash from explicit zero');
       }
       const inputs = await page.evaluate(() => JSON.stringify(App.data));
       await summary.focus(); await page.keyboard.press('Enter');
