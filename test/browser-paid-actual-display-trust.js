@@ -63,10 +63,12 @@ const head = execFileSync('git', ['-c', 'safe.directory=' + root.split(path.sep)
     await changePeriod('ArrowRight'); await changePeriod('ArrowRight');
     await inspect('invented-past-utility', '183\\.61', 'future', true);
     assert.equal(await page.evaluate(() => JSON.stringify(App.data)), inputBefore, 'navigation leaves the served packet unchanged');
+    const currentReceipt = p => p.transactions.find(t => t.id ===
+      p.representedActuals.find(r => r.id === 'invented-current-utility').transactionId);
     if (!before) for (const [name, change] of [
-      ['pending', p => { p.transactions.find(t => t.date === '2026-08-19').pending = true; }],
+      ['pending', p => { currentReceipt(p).pending = true; }],
       ['missing', p => { delete p.representedActuals.find(r => r.id === 'invented-current-utility').transactionId; }],
-      ['conflict', p => { p.transactions.push({ ...p.transactions.find(t => t.date === '2026-08-19'), amount: 99 }); }],
+      ['conflict', p => { p.transactions.push({ ...currentReceipt(p), amount: 99 }); }],
     ]) {
       data = fixture.served(); change(data.liveOverlay.currentPeriodActuals);
       await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await boot();
