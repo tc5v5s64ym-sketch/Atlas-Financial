@@ -16732,7 +16732,7 @@
     }
     return null;
   }
-  function daleEstimatedPayrollDeposits(plan, start, end) {
+  function daleEstimatedPayrollDeposits(plan, start, end, savingsProjectionBonusMonthEnd) {
     const rows = (plan && plan.income) || [];
     const stream = rows.find(row => row
       && isSeaspanPayrollEvidenceStream(row)
@@ -16771,6 +16771,11 @@
     const bonusByDate = new Map();
     for (const y of years) {
       const bonus = bonusGrossForYear(Number(y), assumptions);
+      // Read-only savings projection timing. Move the estimate before payroll
+      // statutory accumulation so later regular nets use the same dated walk.
+      if (bonus && bonus.trust === 'estimated' && y === '2027' && savingsProjectionBonusMonthEnd === true) {
+        bonus.date = '2027-02-28';
+      }
       if (bonus && bonus.date >= walkStart && bonus.date <= end) bonusByDate.set(bonus.date, bonus);
     }
     const dates = Array.from(new Set(paydays.concat(Array.from(bonusByDate.keys())))).sort();
@@ -16865,7 +16870,7 @@
   // result, so the walk's published regime object stays the same object
   // the calculator returned.
   function projectedDalePayroll(plan, start, end, opts) {
-    const regime = daleEstimatedPayrollDeposits(plan, start, end);
+    const regime = daleEstimatedPayrollDeposits(plan, start, end, opts && opts.savingsProjectionBonusMonthEnd);
     const regimeReady = !!(regime && regime.status === 'ready');
     const planning = regimeReady ? regime.planningAssumptions : null;
     const estimatedThrough = planning && planning.estimatedThrough;
@@ -17165,7 +17170,7 @@
   // Seaspan windows are covered; otherwise the incumbent planned
   // Household Budget weeklyVariable. Not a second engine and not
   // exported. Fail closed: unavailable, not $0.
-  function prepareBaselineTrajectoryWalk(plan, debts, asOf, opts) {
+  function prepareBaselineTrajectoryWalk(plan, debts, asOf, opts, savingsProjectionBonusMonthEnd) {
     opts = opts || {};
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
       return { status: 'unavailable', reason: 'A plan baseline is required.' };
@@ -17204,7 +17209,8 @@
     }
 
     const projectedPayroll = projectedDalePayroll(
-      plan, horizon.start, horizon.end, Object.assign({}, opts, { asOf: day }));
+      plan, horizon.start, horizon.end, Object.assign({}, opts, { asOf: day,
+        savingsProjectionBonusMonthEnd: savingsProjectionBonusMonthEnd === true }));
     const regime = projectedPayroll.regime;
     const regimeReady = projectedPayroll.status === 'ready';
     const estimatedThrough = projectedPayroll.estimatedThrough;
@@ -17218,7 +17224,10 @@
     for (const s of (plan && plan.income) || []) {
       if (!isDaleBonusStream(s)) continue;
       for (const date of occurrences(s, horizon.start, horizon.end)) {
-        if (date >= DALE_PAYROLL_REGIME_FROM) planDaleBonusDates.add(date);
+        if (date >= DALE_PAYROLL_REGIME_FROM
+            && !(savingsProjectionBonusMonthEnd === true && date.slice(0, 4) === '2027' && s.confidence !== 'confirmed')) {
+          planDaleBonusDates.add(date);
+        }
       }
     }
 
@@ -17252,7 +17261,8 @@
       periods,
       incomeOccurrenceAdjust: (stream, date) => {
         if (!isDalePayrollStream(stream) || date < DALE_PAYROLL_REGIME_FROM) return null;
-        if (isDaleBonusStream(stream)) return null;
+        if (isDaleBonusStream(stream)) return savingsProjectionBonusMonthEnd === true
+          && date.slice(0, 4) === '2027' && stream.confidence !== 'confirmed' ? { omit: true } : null;
         if (!isSeaspanPayrollEvidenceStream(stream) || !regimeReady) return null;
         const dep = estimatedByDate.get('regular:' + date);
         if (!dep) return { omit: true };
@@ -17314,6 +17324,194 @@
       estimatedThrough,
       unavailableAfter,
     };
+  }
+
+  // Hypothetical pool locations on the incumbent Forecast walk. Neither
+  // observed balances nor these projected transfers establish actual purpose.
+  function savingsFundingTimeline(plan, debts, asOf, opts) {
+    opts = opts || {};
+    const day = financialDate(asOf);
+    const shell = { source: 'Forecast.savingsFundingTimeline', asOf: day, currency: 'CAD',
+      nature: 'hypothetical-projection', trust: 'estimated', actualContributions: null,
+      actionPermission: 'not-granted', incrementalInstructions: 'withheld',
+      recommendation: null, ranking: null, affordability: null,
+      writesCanonicalState: false, productionWrite: false, pools: [], goals: [], payPeriods: [], daily: [] };
+    const unavailable = reason => ({ ...shell, status: 'unavailable', reason });
+    if (!day || plan?.opening?.asOf !== day || opts.operatingPlan === 'unavailable') {
+      return unavailable('A matching, available operating opening is required; older cash is not substituted.');
+    }
+    const coverage = cardCoverageState(plan, day, opts);
+    if (!['incumbent', 'ready'].includes(coverage.status)) return unavailable(coverage.reason);
+    const inventory = savingsInventory(plan, day);
+    if (inventory.status !== 'ready' || plan.savingsPoolObservation?.asOf !== day
+        || !Array.isArray(plan.savingsPoolObservation?.accounts)
+        || plan.savingsPoolObservation.accounts.some(row => row?.pendingState !== 'clear')
+        || plan.savingsEarmarks.pools.some(pool => pool.role !== 'purpose-reserve')
+        || inventory.pools.some(pool => pool.observedTrust !== 'verified'
+          || savingsCents(pool.observedCash) == null || pool.observedAsOf !== day
+          || !['intent-unknown', 'backed'].includes(pool.status))) {
+      return unavailable('Both pools require current, clear observed cash. Unknown or pending cash is not zero.');
+    }
+    // Deliberately bounded to the owner's still-unconfirmed setup. The next
+    // reconciliation slice must preserve confirmed intent, not reallocate it.
+    if (inventory.revision != null) return unavailable('Confirmed assignments require the existing purpose allocator; this projection does not reassign them.');
+    const ctx = prepareBaselineTrajectoryWalk(plan, debts, day, opts, true);
+    if (ctx.status !== 'ready') return unavailable(ctx.reason);
+    const opening = savingsCents(startingCashAmount(plan), true);
+    const targetBuffer = savingsCents(ctx.walkOpts.targetBuffer ?? 0);
+    const cardHold = savingsCents(coverage.reservedCash);
+    if (opening == null || targetBuffer == null || cardHold == null) return unavailable('Opening cash or the existing cash/card hold is not established in cents.');
+    const buffer = targetBuffer + cardHold;
+    if (!Number.isSafeInteger(buffer)) return unavailable('The combined cash/card hold is outside supported cents.');
+    // Owner timing is end February; Forecast's payroll helper applies that
+    // assumption before the coupled cash/debt walk, leaving the base untouched.
+    const bonus = ctx.events.filter(e => e.kind === 'income' && e.date.slice(0, 4) === '2027'
+      && (e.id === 'payrollBonus' || isDaleBonusStream(incomeStreamFor(plan, e))));
+    if (bonus.length > 1 || bonus.some(e => e.confidence !== 'estimated'
+        || e.date < day || e.date > '2027-02-28')) {
+      return unavailable('The future bonus lacks one supported end-February estimated occurrence.');
+    }
+    if (bonus.some(e => e.date !== '2027-02-28')) return unavailable('The future bonus has not been deferred to end February.');
+    const end = ctx.regimeReady ? ctx.estimatedThrough || ctx.horizon.end : '2026-12-31';
+    const walkDays = ctx.sim.daily.filter(row => row.date <= end);
+    if (!walkDays.length) return unavailable('No supported projected income horizon is available.');
+    const spans = seaspanPayPeriodsIntersecting(plan, day, walkDays[walkDays.length - 1].date);
+    if (!spans.length) return unavailable('A selected-pay-period calendar is required.');
+    const pools = inventory.pools.map(pool => ({ ...pool, balance: savingsCents(pool.observedCash), protection: 0 }));
+    const payments = [], goals = [], claimed = new Set(), gaps = [];
+    for (const pool of pools) {
+      for (const ref of plan.savingsEarmarks.pools.find(row => row.id === pool.id).goalRefs || []) {
+        const goal = savingsGoal(plan, ref, day);
+        const requirement = savingsCents(goal.targetMax);
+        if (!goal.resolved || requirement == null) return unavailable('A configured goal requirement is unknown; the projection is withheld.');
+        if (goal.members.some(id => claimed.has(id))) return unavailable('A goal belongs to more than one pool; projected location is ambiguous.');
+        goal.members.forEach(id => claimed.add(id));
+        const matches = ctx.events.filter(e => goal.members.includes('goal:' + e.id)
+          && ['commitment', 'bill', 'reserve'].includes(e.kind));
+        const seen = new Set();
+        let dated = 0;
+        for (const event of matches) {
+          const date = cashWalkDate(event, day), amount = savingsCents(-event.amount);
+          const key = event.id + '@' + event.date;
+          if (amount == null || seen.has(key) || (event.jointCash === false && !event.cardPaid)) {
+            return unavailable('A planned cost lacks one uniquely matched walk cash component.');
+          }
+          seen.add(key);
+          if (date < day || date > walkDays[walkDays.length - 1].date) continue;
+          dated += amount;
+          if (!Number.isSafeInteger(dated)) return unavailable('Planned costs are outside supported cents.');
+          payments.push({ key, id: event.id, label: event.label, date, scheduledDate: event.date,
+            amount, poolId: pool.id, goalKey: goal.key });
+        }
+        const protection = Math.max(0, requirement - dated);
+        pool.protection += protection;
+        if (!Number.isSafeInteger(pool.protection)) return unavailable('Protected requirements are outside supported cents.');
+        if (protection) gaps.push({ goalKey: goal.key, reason: 'Requirement without an in-horizon cash component stays protected; no payment date is invented.' });
+        goals.push({ key: goal.key, label: goal.label, poolId: pool.id, requirement: goal.target,
+          requirementMax: goal.targetMax, requirementTrust: goal.targetTrust,
+          actualSaved: null, actualContribution: null, actualTrust: 'unknown', protectedRequirement: protection / 100 });
+      }
+    }
+    payments.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
+    const dueOn = date => payments.filter(p => p.date === date);
+    // Native changes retain every ordinary deduction. Remove only these
+    // matched draws, then pay them from their pool exactly once.
+    let priorNative = opening;
+    const movements = walkDays.map(row => {
+      const native = Math.round(row.balance * 100);
+      const movement = native - priorNative + dueOn(row.date).reduce((sum, p) => sum + p.amount, 0);
+      priorNative = native;
+      return { date: row.date, native, movement };
+    });
+    const routineHold = (after, through) => {
+      let cumulative = 0, required = 0;
+      for (const row of movements.filter(row => row.date > after && row.date <= through)) {
+        cumulative += row.movement; required = Math.max(required, -cumulative);
+      }
+      return buffer + required;
+    };
+    const openingPools = pools.reduce((sum, pool) => sum + pool.balance, 0);
+    if (!Number.isSafeInteger(openingPools) || !Number.isSafeInteger(opening + openingPools)) {
+      return unavailable('Combined observed cash is outside supported cents.');
+    }
+    let operating = opening, normal = 0, draws = 0, contributed = 0;
+    let periodOpening = pools.map(pool => ({ id: pool.id, amount: pool.balance / 100 }));
+    const transfers = [], daily = [], payPeriods = [], fundingGaps = [];
+    const transfer = (date, pool, amount, goalKey, timing) => {
+      if (amount <= 0) return;
+      pool.balance += amount; operating -= amount; contributed += amount;
+      transfers.push({ date, poolId: pool.id, goalKey, amount: amount / 100, timing,
+        nature: 'hypothetical', trust: 'estimated', actionPermission: 'not-granted' });
+    };
+    for (const row of movements) {
+      const span = spans.find(span => span.start <= row.date && span.end >= row.date);
+      operating += row.movement; normal += row.movement;
+      for (const payment of dueOn(row.date)) {
+        const pool = pools.find(pool => pool.id === payment.poolId);
+        const need = Math.max(0, pool.protection + payment.amount - pool.balance);
+        transfer(row.date, pool, Math.min(need, Math.max(0, operating - routineHold(row.date, span.end))),
+          payment.goalKey, 'before-dated-draw');
+        pool.balance -= payment.amount; draws += payment.amount;
+        if (pool.balance < pool.protection) fundingGaps.push({ date: row.date, poolId: pool.id,
+          amount: (pool.protection - pool.balance) / 100, goalKey: payment.goalKey });
+      }
+      if (span.end === row.date) {
+        const next = spans.find(other => other.start > row.date);
+        // Horizon-clipped cycles have not closed. Advance contributions count
+        // once; future-period surplus is not today's contribution capacity.
+        let available = span.end === span.cycleEnd ? Math.min(Math.max(0, normal - contributed),
+          Math.max(0, operating - routineHold(row.date, next ? next.end : row.date))) : 0;
+        const deficits = [];
+        for (const pool of pools) {
+          let backing = pool.balance - pool.protection;
+          for (const payment of payments.filter(p => p.poolId === pool.id && p.date > row.date)) {
+            const need = Math.max(0, payment.amount - backing);
+            if (need) deficits.push({ pool, payment, need });
+            backing = Math.max(0, backing - payment.amount);
+          }
+        }
+        deficits.sort((a, b) => a.payment.date.localeCompare(b.payment.date) || a.payment.key.localeCompare(b.payment.key));
+        for (const deficit of deficits) {
+          const amount = Math.min(available, deficit.need);
+          transfer(row.date, deficit.pool, amount, deficit.payment.goalKey, 'pay-period-close'); available -= amount;
+        }
+        const within = item => item.date >= span.start && item.date <= span.end;
+        payPeriods.push({ id: span.payday, start: span.start, end: span.end, cycleStart: span.cycleStart,
+          cycleEnd: span.cycleEnd, windowKind: span.windowKind, nature: 'hypothetical-projection', trust: 'estimated',
+          normalResidual: normal / 100, afterKnownDeductions: (normal - draws) / 100,
+          contribution: contributed / 100, plannedDraws: draws / 100, operatingClose: operating / 100,
+          pools: pools.map(pool => ({ id: pool.id, opening: periodOpening.find(p => p.id === pool.id).amount,
+            contribution: transfers.filter(t => t.poolId === pool.id && within(t)).reduce((sum, t) => sum + savingsCents(t.amount), 0) / 100,
+            draws: payments.filter(p => p.poolId === pool.id && within(p)).reduce((sum, p) => sum + p.amount, 0) / 100,
+            closing: pool.balance / 100 })),
+          goals: goals.map(goal => ({ key: goal.key, actualSaved: null, actualContribution: null,
+            projectedContribution: goal.protectedRequirement > 0 ? null
+              : transfers.filter(t => t.goalKey === goal.key && within(t)).reduce((sum, t) => sum + savingsCents(t.amount), 0) / 100,
+            trust: goal.protectedRequirement > 0 ? 'unknown' : 'estimated',
+            reason: goal.protectedRequirement > 0 ? 'A complete proposal requires the missing dated cash component.' : null })) });
+        periodOpening = pools.map(pool => ({ id: pool.id, amount: pool.balance / 100 }));
+        normal = 0; draws = 0; contributed = 0;
+      }
+      const combined = operating + pools.reduce((sum, pool) => sum + pool.balance, 0);
+      if (![row.native, operating, combined, row.native + openingPools, ...pools.map(pool => pool.balance)].every(Number.isSafeInteger)
+          || combined !== row.native + openingPools) return unavailable('The projected cash ledger does not conserve supported household cents.');
+      if (operating < 0) fundingGaps.push({ date: row.date, poolId: null, amount: -operating / 100 });
+      daily.push({ date: row.date, operating: operating / 100,
+        pools: pools.map(pool => ({ id: pool.id, amount: pool.balance / 100 })), combined: combined / 100,
+        nativeOperating: row.native / 100, reconciliationDelta: 0 });
+    }
+    return { ...shell, status: 'ready', horizon: { start: day, end: daily[daily.length - 1].date },
+      completeness: gaps.length ? 'partial' : 'known-dated-inputs', gaps, fundingGaps,
+      pools: pools.map(pool => ({ id: pool.id, label: pool.label, observedOpening: pool.observedCash,
+        openingTrust: 'verified', observedAsOf: pool.observedAsOf, projectedClosing: pool.balance / 100,
+        actualAssignments: 'unknown', protectedRequirement: pool.protection / 100 })),
+      goals, payPeriods, daily, transfers,
+      payments: payments.map(p => ({ ...p, amount: p.amount / 100, nature: 'projected-draw', trust: 'estimated' })),
+      assumptions: { bonus: bonus.length ? { date: '2027-02-28', amount: bonus[0].amount, trust: 'estimated' } : null,
+        cashBaseline: 'prepareBaselineTrajectoryWalk', savingsOpening: 'observed-pools-once', silver: 'already-inside-observed-cash',
+        contributionBasis: 'walk-residual-after-routine-holds', protectedOperatingFloor: buffer / 100,
+        residualWithoutKnownNeed: 'retained-in-operating',
+        actualAssignments: 'not-inferred', historicalContributions: 'not-inferred', transferSafety: 'unchanged' } };
   }
 
   // Weaker of calculated / estimated / unavailable. Missing confidence
@@ -18684,6 +18882,7 @@
           reason: 'After the owner-authorized payroll year, Dale/Seaspan payroll and bonus remain unmodelled until a later regime is authorized and independently proved. Not $0 and not the authorized estimated raise, bonus, or last-published statutory carry-forward.',
         },
       ],
+      savingsFundingTimeline: savingsFundingTimeline(plan, debts, day, opts),
       months: series,
       payPeriods,
       pressure,
@@ -19423,7 +19622,7 @@
     };
   }
 
-  const Forecast = { savingsInventory, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { savingsInventory, savingsFundingTimeline, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
