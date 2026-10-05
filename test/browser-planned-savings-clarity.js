@@ -17,7 +17,7 @@ fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
   const errors = [], external = [], cases = [];
   try {
-    for (const width of [1440, 390, 320]) for (const mode of ['unconfirmed', 'ready', 'gap', 'backed', 'pool-deficit', 'stale', 'backed-ready', 'range', 'projection', 'projection-remaining', 'projection-missing-cash', 'projection-stale']) {
+    for (const width of [1440, 390, 320]) for (const mode of ['unconfirmed', 'ready', 'gap', 'backed', 'pool-deficit', 'stale', 'backed-ready', 'range', 'projection', 'projection-remaining', 'projection-missing-cash', 'projection-stale', 'stock-zero', 'stock-missing', 'stock-duplicate', 'stock-pending']) {
       const data = fixture(mode);
       const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
       if (mode.startsWith('projection')) await page.addInitScript(() => {
@@ -62,7 +62,50 @@ fs.mkdirSync(output, { recursive: true });
           zero: { status: 'ready', combined: 575 } }, 'active publication distinguishes unknown operating cash from explicit zero');
       }
       const inputs = await page.evaluate(() => JSON.stringify(App.data));
-      await summary.focus(); await page.keyboard.press('Enter');
+      const todayCard = page.locator('[data-budget-today-cash]');
+      await todayCard.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 120));
+      await todayCard.screenshot({ path: path.join(output, `${mode}-today-${width}.png`), animations: 'disabled' });
+      if (!captureOnly) {
+        assert.equal(await page.locator('[data-budget-cash-withheld]').count(), 0, 'marked duplicate callout removed');
+        const how = page.locator('[data-budget-cash-how]');
+        await how.focus(); await page.keyboard.press('Enter');
+        await page.locator('[data-budget-today-evidence]').waitFor({ state: 'visible' });
+        assert.match(await page.locator('[data-budget-today-evidence]').innerText(), /funding|allocation|evidence/i);
+        await page.locator('[data-budget-cash-back]').focus(); await page.keyboard.press('Enter');
+        assert.equal(await how.evaluate(el => el === document.activeElement), true, 'current funding Info retains keyboard focus restoration');
+      }
+      const overview = page.locator('[data-calendar-waterfall]').first();
+      const resultSummary = overview.locator('[data-operating-question="07"] > details > summary');
+      const resultText = await resultSummary.innerText();
+      if (!captureOnly) {
+        assert.equal(await summary.evaluate(el => Boolean(el.closest('[data-budget-savings-stock]'))), true);
+        assert.equal(await overview.evaluate(el => {
+          const result = el.querySelector('[data-operating-question="07"]');
+          const stock = el.querySelector('[data-operating-question="savings"]');
+          return Boolean(result.compareDocumentPosition(stock) & Node.DOCUMENT_POSITION_FOLLOWING);
+        }), true, 'stock follows Balance After Deductions');
+        assert.equal(await summary.locator('.budget-waterfall-track,.budget-waterfall-bar,.budget-progress-track').count(), 0);
+        assert.equal(await summary.locator('.operating-number').innerText(), '•');
+        const stockText = await summary.locator('.budget-step-value').innerText();
+        if (['projection', 'projection-remaining', 'projection-missing-cash'].includes(mode)) assert.equal(stockText, '$80.00');
+        if (mode === 'backed-ready' || mode === 'stock-pending') assert.equal(stockText, '$500.03');
+        if (mode === 'stock-zero') assert.equal(stockText, '$0.00', 'known zero is not unknown');
+        if (['projection-stale', 'stale', 'stock-missing', 'stock-duplicate'].includes(mode)) assert.equal(stockText, 'Unavailable');
+        if (mode === 'backed-ready') assert.match(resultText, /322\.04/, 'observed stock is neither added nor subtracted');
+        if (['stock-zero', 'stock-missing', 'stock-duplicate', 'stock-pending'].includes(mode)) assert.match(resultText, /500\.00/);
+      }
+      await overview.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 120));
+      if (!captureOnly) assert.equal(await summary.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom < innerHeight - 80;
+      }), true, 'stock row is visible above the fixed mobile navigation');
+      await overview.screenshot({ path: path.join(output, `${mode}-overview-${width}.png`), animations: 'disabled' });
+      if (!captureOnly) {
+        await resultSummary.focus(); await page.keyboard.press('Tab');
+        assert.equal(await summary.evaluate(el => el === document.activeElement), true,
+          'the stock disclosure follows the final result in keyboard order');
+      } else await summary.focus();
+      await page.keyboard.press('Enter');
       const dialog = page.locator('[data-budget-detail-sheet]');
       const body = dialog.locator('[data-budget-detail-body]');
       await dialog.waitFor({ state: 'visible' });
@@ -74,15 +117,16 @@ fs.mkdirSync(output, { recursive: true });
         if (mode.startsWith('projection')) {
           assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 3);
           assert.equal(await body.locator('[data-budget-savings-total-saved]').filter({ hasText: 'Unknown' }).count(), 3);
-          assert.match(await summary.innerText(), /Unavailable/, 'hypothetical proposals cannot replace the Savings deduction');
+          assert.match(await summary.innerText(), mode === 'projection-stale' ? /Unavailable/ : /80\.00/,
+            'observed account stock stays distinct from hypothetical proposals');
           const camp = body.locator('[data-budget-savings-total-goal="group:camp-a"]');
           const annual = body.locator('[data-budget-savings-total-goal="yearly-bill:annual-a"]');
           assert.match(await camp.innerText(), /280\.00/);
           if (['projection', 'projection-remaining'].includes(mode)) {
-            assert.match(text, /Hypothetical projection/);
+            assert.doesNotMatch(text, /projected|projection/i);
             assert.match(await camp.locator('[data-budget-savings-projection]').innerText(), mode === 'projection' ? /270\.00/ : /0\.00/);
             assert.match(await annual.locator('[data-budget-savings-projection]').innerText(), mode === 'projection' ? /40\.00/ : /0\.00/);
-            assert.match(text, mode === 'projection' ? /Projected this period/ : /Projected remaining period/);
+            assert.match(text, mode === 'projection' ? /This period/ : /Remaining this period/);
             assert.equal(await body.locator('[data-budget-savings-projection-gap]').count(), mode === 'projection-remaining' ? 1 : 0);
           } else assert.equal(await body.locator('[data-budget-savings-projection]').count(), 0);
           assert.match(await body.locator('[data-budget-savings-total-goal="commitment:undated-a"] [data-budget-savings-proposed]').innerText(), /Unknown/);
@@ -107,11 +151,15 @@ fs.mkdirSync(output, { recursive: true });
           assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 1);
           assert.match(await goal.innerText(), /215\.04[\s\S]*600\.00/);
           assert.match(await goal.locator('[data-budget-savings-proposed]').innerText(), /177\.96/);
-          assert.match(await summary.innerText(), /177\.96/);
+          assert.match(await summary.innerText(), /500\.03/);
+        } else if (mode.startsWith('stock-')) {
+          assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 1);
+          assert.match(await body.locator('[data-budget-savings-total-saved]').innerText(), /Unknown/);
+          assert.match(text, /Funding plan not confirmed/);
         } else {
           assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 0, 'missing total-stock publication does not use period requirements');
           assert.match(text, /Total goal savings not confirmed/);
-          if (mode === 'ready') assert.match(await summary.innerText(), /393\.00/);
+          if (mode === 'ready') assert.match(await summary.innerText(), /Unavailable/, 'proposed period funding is not an observed account balance');
           else assert.match(text, /Funding shortfall:/);
         }
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -125,16 +173,22 @@ fs.mkdirSync(output, { recursive: true });
         assert.ok(await body.locator('[data-budget-goal-fulfillment-evidence]').count() >= 3, 'complete roster retained');
         if (['ready', 'gap', 'unconfirmed'].includes(mode)) assert.match(await body.innerText(), /Invented goal with a deliberately long name/);
         assert.match(await body.innerText(), /Attributable contributions|assignments|current Forecast/i);
+        if (mode === 'stock-pending') assert.match(await body.innerText(), /Pending movement evidence is unresolved/);
+        if (['projection', 'projection-remaining'].includes(mode)) {
+          assert.match(await body.innerText(), /Hypothetical projection/);
+          assert.match(await body.innerText(), /Actual contributions unknown/);
+        }
         await infoSummary.focus(); await page.keyboard.press('Enter');
         assert.equal(await info.evaluate(el => el.open), false);
         await page.keyboard.press('Escape');
         assert.equal(await summary.evaluate(el => el === document.activeElement), true, 'dismissal restores exact summary focus');
+        assert.equal(await resultSummary.innerText(), resultText, 'opening and closing stock details cannot change the result');
         assert.equal(await page.evaluate(() => JSON.stringify(App.data)), inputs, 'disclosures do not mutate financial inputs');
         if (mode === 'projection') {
           await page.locator('[data-budget-window-step="1"]').focus(); await page.keyboard.press('Enter');
           await summary.focus(); await page.keyboard.press('Enter');
           await dialog.waitFor({ state: 'visible' });
-          assert.match(await body.innerText(), /Projected this period/);
+          assert.match(await body.innerText(), /This period/);
           assert.match(await body.locator('[data-budget-savings-total-goal="group:camp-a"] [data-budget-savings-projection]').innerText(), /0\.00/);
           assert.match(await body.locator('[data-budget-savings-total-saved]').first().innerText(), /Unknown/);
           await dialog.screenshot({ path: path.join(output, `projection-next-${width}.png`), animations: 'disabled' });

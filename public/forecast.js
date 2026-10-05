@@ -598,13 +598,47 @@
     const latest = block.history[block.history.length - 1] || null;
     return { status: 'ready', currency: block.currency, pools: block.pools, history: block.history, latest };
   }
+  // Observed stock is context, never another operating balance or assignment.
+  // Independently verify account identities even though configuration also
+  // rejects aliases. No partial sum, opening fallback or inferred allocation.
+  function savingsObservedStock(config, observation, asOf) {
+    const result = { status: 'unavailable', asOf, currency: config.currency || 'CAD',
+      basis: 'observed-savings-stock', nonAdditive: true, amount: null,
+      trust: 'unknown', evidenceTrust: 'unknown', accountIds: [], pendingState: 'unknown',
+      reason: 'Current observations for both distinct savings accounts are required.' };
+    if (config.status !== 'ready' || !savingsDate(asOf) || !observation
+        || typeof observation !== 'object' || Array.isArray(observation)
+        || observation.asOf !== asOf || !Array.isArray(observation.accounts)
+        || !Array.isArray(config.pools) || config.pools.length !== 2) return result;
+    const accounts = new Set();
+    let totalCents = 0, pendingClear = true;
+    for (const pool of config.pools) {
+      if (!pool || typeof pool.accountId !== 'string' || !SAVINGS_ALIAS.test(pool.accountId)
+          || accounts.has(pool.accountId)) return result;
+      accounts.add(pool.accountId);
+      const rows = observation.accounts.filter(row => row && row.accountId === pool.accountId);
+      const cash = rows.length === 1 ? rows[0] : null;
+      const cents = savingsCents(cash && cash.value, true);
+      if (!cash || typeof cash !== 'object' || Array.isArray(cash)
+          || cash.source !== 'provider-observe:lunchmoney' || cash.currency !== config.currency
+          || cash.evidenceDate !== asOf || cents == null
+          || config.latest && config.latest.confirmedAt > cash.evidenceDate) return result;
+      totalCents += cents;
+      if (!Number.isSafeInteger(totalCents)) return result;
+      pendingClear = pendingClear && cash.pendingState === 'clear';
+    }
+    return { ...result, status: 'ready', amount: totalCents / 100, trust: 'calculated',
+      evidenceTrust: 'verified', accountIds: Array.from(accounts),
+      pendingState: pendingClear ? 'clear' : 'unresolved', reason: null };
+  }
   function savingsInventory(plan, asOf) {
     const config = savingsEarmarksState(plan, asOf);
     const packet = { status: config.status, asOf, currency: config.currency || 'CAD', reason: config.reason || null,
       source: 'Forecast.savingsInventory', nonAdditive: true, intentSource: 'plan.savingsEarmarks',
       incrementalInstructions: savingsEarmarksEnabled(plan) ? 'withheld' : 'incumbent',
       instructionReason: savingsEarmarksEnabled(plan) ? SAVINGS_INSTRUCTIONS_HELD : null,
-      revision: config.latest && config.latest.revision || null, pools: [], goals: [] };
+      revision: config.latest && config.latest.revision || null, pools: [], goals: [],
+      observedStock: savingsObservedStock(config, plan && plan.savingsPoolObservation, asOf) };
     if (config.status !== 'ready') return packet;
     const observation = plan.savingsPoolObservation;
     const observationDate = observation && observation.asOf;
@@ -615,7 +649,8 @@
       const intentKnown = !!snapshot;
       const allocations = (snapshot && snapshot.allocations) || [];
       const total = allocations.reduce((sum, row) => sum + savingsCents(row.amount), 0);
-      const observed = (observation && observation.accounts || []).filter(r => r && r.accountId === pool.accountId);
+      const observed = (observation && Array.isArray(observation.accounts) ? observation.accounts : [])
+        .filter(r => r && r.accountId === pool.accountId);
       const cash = observed.length === 1 ? observed[0] : null;
       const valueCents = savingsCents(cash && cash.value, true);
       const trusted = cash && cash.source === 'provider-observe:lunchmoney' && cash.currency === config.currency
@@ -1063,7 +1098,7 @@
   // opts: { scenario, incomeOverrides: {id: monthlyAmount}, disabled: [ids],
   //         injections: [{date, amount}] — one-off cash arriving from outside
   //         the plan, used to model covering an opening gap,
-  //         representedEvents: [{id, date}] — dated occurrences already
+  //         representedEvents: [{id, date, effectiveAsOf?}] — dated occurrences already
   //         inside the opening observation; those are not replayed,
   //         notReliedUponEvents: [{id, date, reason}] — live-overlay
   //         same-day inbound that is not proven represented; omitted from
@@ -1103,13 +1138,26 @@
   // That lives on the commitment as settledOn and is not expressed
   // through representedEvents. Settlement is opening-relative: the cash
   // requirement is already satisfied only when settledOn <= start.
+  // effectiveAsOf is the earliest cash opening proven to include this debit
+  // (or receipt), not the scheduled due date or the date intent was confirmed.
+  // Explicit later/invalid dates cannot settle an older opening. Legacy
+  // id+date rows retain their contract: already inside the attached opening.
+  // This guard qualifies evidence only; the existing occurrence/class rules
+  // below still decide whether that evidence can suppress replay.
+  function representedEventEffectiveBy(item, start) {
+    if (!item || !Object.prototype.hasOwnProperty.call(item, 'effectiveAsOf')) return true;
+    const date = item.effectiveAsOf;
+    return typeof date === 'string' && ISO_CALENDAR_DATE.test(date)
+      && new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date
+      && typeof start === 'string' && ISO_CALENDAR_DATE.test(start) && date <= start;
+  }
   function representedKeySet(plan, opts, start) {
     const keys = new Set();
     const opening = plan && plan.opening;
     const prior = opening && opening.asOf === start && opening.priorAsOf
       && opening.priorAsOf < start ? opening.priorAsOf : null;
     const take = item => {
-      if (!item || !item.id || !item.date) return;
+      if (!item || !item.id || !item.date || !representedEventEffectiveBy(item, start)) return;
       if (item.date === start) keys.add(item.id + '@' + item.date);
       else if (prior && item.date > prior && item.date < start) {
         keys.add(item.id + '@' + item.date);
@@ -7369,7 +7417,7 @@
     }
     const opening = plan && plan.opening;
     for (const item of (opening && opening.representedEvents) || []) {
-      if (item && item.id && item.date) {
+      if (item && item.id && item.date && representedEventEffectiveBy(item, opening.asOf)) {
         representedOcc.add(String(item.id) + '@' + String(item.date));
       }
     }
@@ -20011,7 +20059,7 @@
     };
   }
 
-  const Forecast = { savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
