@@ -176,6 +176,15 @@ test('pending savings movement can retain observed headline stock but cannot pro
   const out = run(input); assert.equal(cents(out.stock.amount), 11900);
   assert.equal(out.backing.status, 'unavailable'); assert.equal(row(out, 'group:club').saved, null); fundingUnknown(out);
 });
+test('a pending reserve debit contradicts a clear observation and withholds derived backing', () => {
+  const input = fixture();
+  input.opts.currentPeriodActuals.transactions.push({ id: 'pending-reserve-cost', date: input.asOf,
+    amount: 60, pending: true, currency: 'CAD', atlasAccountId: 'savings',
+    accountRole: 'household-reserve', displayedPayee: 'Invented pending club cost' });
+  const out = run(input);
+  assert.equal(out.stock.amount, 119); assert.equal(out.backing.status, 'unavailable');
+  assert.equal(row(out, 'group:club').saved, null); fundingUnknown(out);
+});
 test('manual confirmed farther-cost assignment stays pinned; only residual stock is derived', () => {
   const input = fixture(); input.plan.savingsEarmarks.history = [{ revision: 1, confirmedAt: input.asOf,
     source: 'Invented manual intent', pools: [{ poolId: 'club-pool', allocations: [

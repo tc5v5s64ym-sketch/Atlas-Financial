@@ -17429,7 +17429,10 @@
       }
       let left = Math.max(0, savingsCents(observed?.observedCash, true) || 0), encumbered = 0;
       const snapshot = manual?.pools.find(p => p.poolId === pool.id);
-      let poolKnown = safeStock && policyKnown && plan.savingsPoolObservation.accounts.find(r => r.accountId === pool.accountId)?.pendingState === 'clear';
+      const pendingDebit = (currentPeriodActualsPacket(opts)?.transactions || []).some(tx => tx?.pending === true
+        && tx.date <= day && String(tx.atlasAccountId || tx.accountId || tx.account) === pool.accountId);
+      let poolKnown = safeStock && policyKnown && !pendingDebit
+        && plan.savingsPoolObservation.accounts.find(r => r.accountId === pool.accountId)?.pendingState === 'clear';
       if (!poolKnown) reason ||= 'Clear current pool movements are required for derived backing.';
       if (manual && !snapshot) { poolKnown = false; reason ||= 'An incomplete manual confirmation remains encumbering.'; }
       for (const allocation of snapshot?.allocations || []) {
