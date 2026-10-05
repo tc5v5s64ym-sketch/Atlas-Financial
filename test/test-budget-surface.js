@@ -141,9 +141,10 @@ ok(!bar('04') && /partial evidence/.test(step(html, '04')) && /1,400\.00[\s\S]*?
   'paid 1400 / original bill plan 1665 stays partial with unverified Hydro; no complete bar');
 ok(bar('07') && Math.abs(Number(bar('07')[2]) - EXPECT.final / EXPECT.income * 100) < 1e-9,
   'the final bar keeps the income scale rather than rescaling the ending balance');
-ok(!bar('savings') && /budget-waterfall-track is-unknown/.test(
-  html.split('data-operating-question="savings"')[1]?.split('</summary>')[0] || ''),
-  'unavailable savings are hatched with no invented zero-length numeric bar');
+ok(!bar('savings') && !/budget-waterfall-track|budget-progress-track/.test(
+  html.split('data-operating-question="savings"')[1]?.split('</summary>')[0] || '')
+  && /Unavailable/.test(step(html, 'savings')),
+  'unavailable savings stock stays unknown with no deduction geometry or invented zero');
 
 console.log('\n=== pay-period waterfall on the active surface ===');
 console.log('\n=== published category bars and grouped bills ===');
@@ -824,6 +825,10 @@ ok(/data-budget-surface="pay-period"/.test(back), 'leaving the drilldown returns
 console.log('\n=== withheld savings proposals ===');
 const withheldPage = page();
 const withheld = withheldPage.render(fx.served({ withheldSavings: true }));
+ok(!/data-budget-cash-withheld|Open info for evidence/.test(withheld),
+  'owner-marked duplicate funding callout is absent from the overview');
+ok(/data-budget-cash-how[\s\S]*data-budget-today-evidence[\s\S]*budget-today-evidence-body/.test(withheld),
+  'the existing Info control still reaches the unavailable funding evidence');
 const inventory = text(withheldPage.context.document.getElementById('savings-inventory').innerHTML);
 // Configured accounts, unknown cash and unknown starting allocations are
 // three different facts; each pool must keep the one that applies to it.
@@ -887,9 +892,9 @@ console.log('\n=== known deficit is not unknown ===');
     'the final negative amount uses the deficit track and keeps its published dollars and estimate');
   ok(/budget-waterfall-track is-deficit/.test(summaryHtml('05')) && step(deficitHtml, '05').includes(signed(DEFICIT.afterBills)),
     'the negative after-bills row keeps its published deficit and is not hatched unknown');
-  ok(!/style="left:/.test(summaryHtml('savings')) && /budget-waterfall-track is-unknown/.test(summaryHtml('savings'))
+  ok(!/style="left:|budget-waterfall-track|budget-progress-track/.test(summaryHtml('savings'))
     && /Savings[\s\S]*?Unavailable/.test(text(deficitHtml)),
-    'unavailable savings stay hatched with no invented zero-length numeric bar');
+    'unavailable savings stock has no deduction geometry and is never invented zero');
 }
 
 console.log('\n=== known zero income is not unknown ===');
@@ -934,9 +939,9 @@ console.log('\n=== known zero income is not unknown ===');
     && !/style="left:/.test(summaryHtml('07'))
     && step(zeroHtml, '07').includes(signed(ZERO.final)) && /≈ estimated/.test(step(zeroHtml, '07')),
     'the final negative amount uses the deficit track and keeps its published dollars and estimate');
-  ok(!/style="left:/.test(summaryHtml('savings')) && /budget-waterfall-track is-unknown/.test(summaryHtml('savings'))
+  ok(!/style="left:|budget-waterfall-track|budget-progress-track/.test(summaryHtml('savings'))
     && /Savings[\s\S]*?Unavailable/.test(text(zeroHtml)),
-    'unavailable savings stay hatched with no invented zero-length numeric bar');
+    'unavailable savings stock has no deduction geometry and is never invented zero');
 }
 
 console.log('\n=== the layout module stays a layout module ===');
