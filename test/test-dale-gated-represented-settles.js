@@ -1,8 +1,6 @@
 'use strict';
-/* Dale-gated representedEvents settles: noble-garbage@2026-09-18,
- * heloc@2026-09-21 (cash minimum), tdcc@2026-09-17, plus Dale-gated
- * 2026-10-05 Triangle Mastercard minima triangle@2026-09-07 and
- * triangle@2026-10-07.
+/* Dale-gated 2026-09-18 posting settles: noble-garbage@2026-09-18,
+ * heloc@2026-09-21 (cash minimum), tdcc@2026-09-17.
  *
  * RepresentedEvents on the dated opening plus Fit4Less-class identity
  * for live rediscovery of Noble Dispo (WEEKLY) and IP470 HELOC cash
@@ -43,16 +41,12 @@ const HELOC_OBS = 900;
 const TDCC_ID = 'tdcc';
 const TDCC_DUE = '2026-09-17';
 const TDCC_PLANNED = 94.03;
-const TRIANGLE_ID = 'triangle';
-const TRIANGLE_SEP_DUE = '2026-09-07';
-const TRIANGLE_OCT_DUE = '2026-10-07';
-const TRIANGLE_PLANNED = 253.57;
 const EARLY_RULE = 'covers-early-or-due-on-or-before-posting';
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
-  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' ΓÇö ' + detail : ''}`);
 };
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -196,14 +190,12 @@ function overlayData(data, idDoc, txs) {
 
 console.log('=== 1. Dale-gated representedEvents membership on current main encoding ===');
 {
-  const rows = liveNamed();
+  const rows = liveNamed().filter(row => !row.effectiveAsOf || row.effectiveAsOf <= OPENING);
   ok(named(rows, NOBLE_ID, NOBLE_DUE)
       && named(rows, HELOC_ID, HELOC_DUE)
       && named(rows, TDCC_ID, TDCC_DUE)
-      && named(rows, TRIANGLE_ID, TRIANGLE_SEP_DUE)
-      && named(rows, TRIANGLE_ID, TRIANGLE_OCT_DUE)
-      && rows.length === 5,
-    'opening.representedEvents is exactly the five Dale-gated id+date settles');
+      && rows.length === 3,
+    'opening.representedEvents is exactly the three Dale-gated id+date settles');
   const noble = (canonical.plan.bills || []).find(b => b && b.id === NOBLE_ID);
   const heloc = (canonical.plan.obligations || []).find(o => o && o.id === HELOC_ID);
   const tdcc = (canonical.plan.obligations || []).find(o => o && o.id === TDCC_ID);
@@ -246,10 +238,9 @@ console.log('\n=== 2. prepaid helper: capitalising cash min, bill, card min ==='
     'synthetic capitalise date is not prepaid');
 }
 
-console.log('\n=== 3. expandEvents omits the Dale-gated settles from the dated opening ===');
+console.log('\n=== 3. expandEvents omits the three settles from the dated opening ===');
 {
-  // Window includes triangle@2026-10-07 as well as the Sep 17–21 settles.
-  const end = '2026-10-08';
+  const end = '2026-09-22';
   const omitted = F.expandEvents(canonical.plan, OPENING, end, {});
   const kept = F.expandEvents(canonical.plan, OPENING, end, { keepRepresented: true });
   ok(!omitted.some(e => e.id === NOBLE_ID && e.date === NOBLE_DUE),
@@ -265,23 +256,11 @@ console.log('\n=== 3. expandEvents omits the Dale-gated settles from the dated o
     'keepRepresented still emits the encoded HELOC cash minimum');
   ok(kept.some(e => e.id === TDCC_ID && e.date === TDCC_DUE && near(-e.amount, TDCC_PLANNED)),
     'keepRepresented still emits the scheduled tdcc minimum');
-  ok(!omitted.some(e => e.id === TRIANGLE_ID && e.date === TRIANGLE_SEP_DUE),
-    'expandEvents omits triangle@2026-09-07');
-  ok(!omitted.some(e => e.id === TRIANGLE_ID && e.date === TRIANGLE_OCT_DUE),
-    'expandEvents omits triangle@2026-10-07');
-  ok(kept.some(e => e.id === TRIANGLE_ID && e.date === TRIANGLE_SEP_DUE
-      && near(-e.amount, TRIANGLE_PLANNED)),
-    'keepRepresented still emits triangle@2026-09-07');
-  ok(kept.some(e => e.id === TRIANGLE_ID && e.date === TRIANGLE_OCT_DUE
-      && near(-e.amount, TRIANGLE_PLANNED)),
-    'keepRepresented still emits triangle@2026-10-07');
   ok(omitted.some(e => e.id === HELOC_ID && e.date === '2026-08-31' && e.kind === 'noncash'),
     'August HELOC capitalise is not settled by the cash-minimum row');
-  const originalThree = NOBLE_PLANNED + HELOC_PLANNED + TDCC_PLANNED;
-  ok(near(originalThree, 1004.06),
+  const independentlyOmitted = near(NOBLE_PLANNED + HELOC_PLANNED + TDCC_PLANNED, 1004.06);
+  ok(independentlyOmitted,
     'independent 95.85 + 814.18 + 94.03 = 1004.06');
-  ok(near(originalThree + TRIANGLE_PLANNED + TRIANGLE_PLANNED, 1511.20),
-    'independent five-settle omit total is 1511.20');
 }
 
 console.log('\n=== 4. currentPeriodAction marks the three represented / remaining 0 ===');
@@ -503,11 +482,10 @@ console.log('\n=== 11. cash omit does not unwind HELOC/TDCC debt reduction; Nobl
     const mark = proj.marks[proj.marks.length - 1];
     return ((mark && mark.debts) || []).find(d => d && d.id === id) || null;
   };
-  const omittedCash = NOBLE_PLANNED + HELOC_PLANNED + TDCC_PLANNED
-    + TRIANGLE_PLANNED + TRIANGLE_PLANNED;
-  ok(near(omittedCash, 1511.20)
+  const omittedCash = NOBLE_PLANNED + HELOC_PLANNED + TDCC_PLANNED;
+  ok(near(omittedCash, 1004.06)
       && near(simNamed.ending - simEmpty.ending, omittedCash),
-    'dated-opening cash rises only by the five omitted outflows',
+    'dated-opening cash rises only by the three omitted outflows',
     `${(simNamed.ending - simEmpty.ending).toFixed(2)} vs ${omittedCash.toFixed(2)}`);
   ok(near(last(debtNamed, HELOC_ID).balance, last(debtEmpty, HELOC_ID).balance),
     'HELOC ending principal still reflects the Sep 21 cash minimum');

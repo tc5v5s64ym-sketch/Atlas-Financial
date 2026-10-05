@@ -9,7 +9,7 @@
  *
  * Does not write data.json. Does not call Lunch Money. Does not move the
  * canonical opening. Posted refresh remains a B81 preview/approve write,
- * not a new cutover — proved by the existing test-b81-refresh.js suite.
+ * not a new cutover ΓÇö proved by the existing test-b81-refresh.js suite.
  */
 const fs = require('fs');
 const path = require('path');
@@ -23,7 +23,7 @@ const posting = require('../docs/reconciliation/posting-observations.json');
 let failures = 0;
 const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
-  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' ΓÇö ' + detail : ''}`);
 };
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const money = n => '$' + Number(n).toFixed(2);
@@ -165,7 +165,7 @@ function lenderDebts() {
   }];
 }
 
-console.log('=== CASE 1 — unresolved once obligation at opening ===');
+console.log('=== CASE 1 ΓÇö unresolved once obligation at opening ===');
 {
   const plan = owedPlan();
   const end = windowEnd(OPENING);
@@ -183,7 +183,7 @@ console.log('=== CASE 1 — unresolved once obligation at opening ===');
     money(sim.daily[0].balance));
 }
 
-console.log('\n=== CASE 2 — merely advance opening; obligation still binds ===');
+console.log('\n=== CASE 2 ΓÇö merely advance opening; obligation still binds ===');
 {
   const plan = owedPlan();
   const end = windowEnd(LATER);
@@ -206,7 +206,7 @@ console.log('\n=== CASE 2 — merely advance opening; obligation still binds ===
     'the $100 did not disappear into the opening cash');
 }
 
-console.log('\n=== CASE 3 — representing the new start is not a rewritten due date ===');
+console.log('\n=== CASE 3 ΓÇö representing the new start is not a rewritten due date ===');
 {
   const plan = owedPlan();
   const end = windowEnd(LATER);
@@ -225,7 +225,7 @@ console.log('\n=== CASE 3 — representing the new start is not a rewritten due 
     money(sim.daily[0].balance));
 }
 
-console.log('\n=== CASE 4 — ordinary historical once items do not become eternal ===');
+console.log('\n=== CASE 4 ΓÇö ordinary historical once items do not become eternal ===');
 {
   const start = LATER;
   const end = windowEnd(start);
@@ -272,7 +272,7 @@ console.log('\n=== CASE 4 — ordinary historical once items do not become etern
   ok(!events.some(e => e.id === 'old-pay'),
     'historical once income dated before start does not replay');
   ok(!events.some(e => e.id === 'monthly-bill' && e.date < '2026-09-15'),
-    'firstDue keeps the August occurrence off the schedule — no leftover once row');
+    'firstDue keeps the August occurrence off the schedule ΓÇö no leftover once row');
   ok(events.some(e => e.id === 'monthly-bill' && e.date === '2026-09-15'),
     'the recurring bill still fires on its next declared date');
   ok(!events.some(e => e.id === 'paid-camp'),
@@ -281,7 +281,7 @@ console.log('\n=== CASE 4 — ordinary historical once items do not become etern
     'a once outflow that is no longer on the plan does not fire');
 }
 
-console.log('\n=== CASE 5 — existing same-day represented payroll cutover remains ===');
+console.log('\n=== CASE 5 ΓÇö existing same-day represented payroll cutover remains ===');
 {
   const plan = cutoverFixture();
   const asOf = plan.opening.asOf;
@@ -298,17 +298,16 @@ console.log('\n=== CASE 5 — existing same-day represented payroll cutover rema
     'next payroll still fires');
 }
 
-console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds on Aug. 18 ===');
+console.log('\n=== CASE 6 ΓÇö live B91 unknown mid-month arithmetic still binds on Aug. 18 ===');
 {
   ok(live.meta.asOf === live.plan.opening.asOf,
-    'canonical opening as-of agrees — this test does not move it');
+    'canonical opening as-of agrees ΓÇö this test does not move it');
   const gated = new Set((live.plan.opening.representedEvents || [])
+    .filter(row => row && (!row.effectiveAsOf || row.effectiveAsOf <= live.plan.opening.asOf))
     .map(row => row && `${row.id}@${row.date}`));
   ok(Array.isArray(live.plan.opening.representedEvents)
     && gated.has('noble-garbage@2026-09-18') && gated.has('heloc@2026-09-21')
-    && gated.has('tdcc@2026-09-17')
-    && gated.has('triangle@2026-09-07') && gated.has('triangle@2026-10-07')
-    && gated.size === 5,
+    && gated.has('tdcc@2026-09-17') && gated.size === 3,
     'live representedEvents are the Dale-gated prepaid settles');
   const unknownPosting = posting.observations.filter(o => o.unknown === true);
   ok(unknownPosting.length >= 4,
@@ -340,7 +339,7 @@ console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds 
     'the published 2026-08-16 path still reserves the same $282.87');
 }
 
-console.log('\n=== CASE 7 — advancing start alone must not manufacture weekly capacity ===');
+console.log('\n=== CASE 7 ΓÇö advancing start alone must not manufacture weekly capacity ===');
 {
   const withOwed = owedPlan();
   const withoutOwed = owedPlan({ bills: [] });
@@ -352,7 +351,7 @@ console.log('\n=== CASE 7 — advancing start alone must not manufacture weekly 
   ok(reservedAmount(recLater.sim.events, 'owed') === OWED,
     'the later recommendation walk still contains the $100 obligation');
   ok(reservedAmount(recDropped.sim.events, 'owed') === 0,
-    'removing the row is the settlement path — that walk has no $100');
+    'removing the row is the settlement path ΓÇö that walk has no $100');
   ok(recDropped.weekly > recLater.weekly,
     'dropping the obligation is what raises the recommendation',
     `${money(recLater.weekly)}/week with it vs ${money(recDropped.weekly)}/week without`);
@@ -369,7 +368,7 @@ console.log('\n=== CASE 7 — advancing start alone must not manufacture weekly 
     'recommend walks keep the same scheduled date for both starts');
 }
 
-console.log('\n=== CASE 8 — nextDue / nextPaymentOut keep the scheduled date ===');
+console.log('\n=== CASE 8 ΓÇö nextDue / nextPaymentOut keep the scheduled date ===');
 {
   const plan = owedPlan();
   const third = '2026-08-19';
@@ -403,7 +402,7 @@ console.log('\n=== CASE 8 — nextDue / nextPaymentOut keep the scheduled date =
     'that walk still carries the original scheduled date');
 }
 
-console.log('\n=== CASE 9 — historical once non-cash is not recapitalised ===');
+console.log('\n=== CASE 9 ΓÇö historical once non-cash is not recapitalised ===');
 {
   const CHARGE = 50;
   const OPENING_DEBT = 1000;
@@ -431,7 +430,7 @@ console.log('\n=== CASE 9 — historical once non-cash is not recapitalised ==='
   const proj = F.projectDebts(plan, debts, LATER, {});
   const heloc = proj.byId && proj.byId.heloc;
   ok(heloc && near(heloc.balance, OPENING_DEBT),
-    'ending debt is unchanged — the historical charge is not capitalised again',
+    'ending debt is unchanged ΓÇö the historical charge is not capitalised again',
     heloc ? money(heloc.balance) : 'missing');
   ok(heloc && near(heloc.opening, OPENING_DEBT) && near(heloc.capitalised || 0, 0),
     'opening debt was not grown by a replayed once charge');
@@ -440,7 +439,7 @@ console.log('\n=== CASE 9 — historical once non-cash is not recapitalised ==='
     'nextDue does not name the historical non-cash charge');
 }
 
-console.log('\n=== CASE 10 — carried once cash debt obligation survives absorption ===');
+console.log('\n=== CASE 10 ΓÇö carried once cash debt obligation survives absorption ===');
 {
   const plan = lenderPlan();
   const debts = lenderDebts();
@@ -448,7 +447,7 @@ console.log('\n=== CASE 10 — carried once cash debt obligation survives absorp
   const independentDebtEnd = DEBT_OPENING - independentPaid;
   const independentCashEnd = CASH - independentPaid;
   ok(near(independentPaid, 100) && near(independentDebtEnd, 400) && near(independentCashEnd, 1900),
-    'independent arithmetic: $500 debt − $100 payment = $400; $2000 cash − $100 = $1900');
+    'independent arithmetic: $500 debt ΓêÆ $100 payment = $400; $2000 cash ΓêÆ $100 = $1900');
   const laterEvents = F.expandEvents(plan, LATER, windowEnd(LATER), {});
   const laterEvent = laterEvents.find(e => e.id === 'lender');
   ok(laterEvent && laterEvent.date === OPENING && near(laterEvent.amount, -OWED),
@@ -464,10 +463,10 @@ console.log('\n=== CASE 10 — carried once cash debt obligation survives absorp
   ok(card && near(card.paid, independentPaid),
     'the named card absorbs the $100 payment', card ? money(card.paid) : 'missing');
   ok(card && near(card.balance, independentDebtEnd),
-    'ending card balance is $400 — opening minus the absorbed payment',
+    'ending card balance is $400 ΓÇö opening minus the absorbed payment',
     card ? money(card.balance) : 'missing');
   ok(near(cashLost, card.paid),
-    'cash lost equals debt absorbed — the two sides of one payment',
+    'cash lost equals debt absorbed ΓÇö the two sides of one payment',
     `${money(cashLost)} cash vs ${money(card.paid)} absorbed`);
   ok(near(proj.obligationAbsorbed[OPENING + ':lender'], independentPaid),
     'absorption still keys 2026-08-16:lender, not the later start');

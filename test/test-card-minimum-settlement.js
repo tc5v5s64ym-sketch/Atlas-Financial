@@ -49,11 +49,11 @@ function near(actual, expected) {
 
 function ok(condition, label, detail) {
   if (condition) {
-    console.log(`\x1b[32m✓\x1b[0m ${label}`);
+    console.log(`\x1b[32mΓ£ô\x1b[0m ${label}`);
     return;
   }
   failures += 1;
-  console.log(`\x1b[31m✗\x1b[0m ${label}${detail ? ` — ${detail}` : ''}`);
+  console.log(`\x1b[31mΓ£ù\x1b[0m ${label}${detail ? ` ΓÇö ${detail}` : ''}`);
 }
 
 function load(file) {
@@ -89,16 +89,13 @@ function planFixture() {
     throw new Error('canonical Triangle/MBNA/Travel obligations missing');
   }
   triangle.amount = TRIANGLE_MIN;
+  // This invented minimum fixture owns its cycle; later approved statement
+  // and sender evidence on the real incumbent must not leak into it.
+  delete triangle.statementOccurrences;
+  delete triangle.sentPayments;
   mbna.amount = MBNA_MIN;
   mbnaOnce.amount = MBNA_MIN;
   travel.amount = TRAVEL_MIN;
-  // Dale-gated triangle@2026-09-07 / triangle@2026-10-07 live on canonical
-  // opening.representedEvents. Strip them here so the unconfirmed-path proofs
-  // still exercise the #489 gate rather than the owner-confirmation channel.
-  if (data.plan.opening && Array.isArray(data.plan.opening.representedEvents)) {
-    data.plan.opening.representedEvents = data.plan.opening.representedEvents
-      .filter(row => !(row && row.id === 'triangle'));
-  }
   return data;
 }
 
@@ -241,7 +238,7 @@ function observe(data, transactions, extra) {
     payload: {
       provider: 'lunchmoney',
       fetchedAt: FETCHED_AT,
-      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001–3011 are not live provider IDs.',
+      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001ΓÇô3011 are not live provider IDs.',
       pendingCoverage: completePendingCoverage(),
       accounts: matchingAccounts(data),
       transactions: (transactions || []).map(row => ({ currency: 'cad', ...row })),
@@ -265,7 +262,7 @@ function overlay(data, transactions, extra) {
     payload: {
       provider: 'lunchmoney',
       fetchedAt: FETCHED_AT,
-      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001–3011 are not live provider IDs.',
+      source: 'Synthetic card-minimum settlement fixture. Fixture IDs 3001ΓÇô3011 are not live provider IDs.',
       pendingCoverage: completePendingCoverage(),
       accounts: matchingAccounts(data),
       transactions: (transactions || []).map(row => ({ currency: 'cad', ...row })),
@@ -316,9 +313,6 @@ function rulesFor(eventId) {
 
 console.log('=== authority homes ===');
 {
-  ok(represented(canonical, 'triangle', '2026-09-07')
-      && represented(canonical, 'triangle', '2026-10-07'),
-    'canonical opening names Dale-gated triangle@2026-09-07 and triangle@2026-10-07');
   ok(debt(canonical, 'triangle') && debt(canonical, 'triangle').statementCloseDay === 17,
     'Triangle close day lives on debts.statementCloseDay');
   ok(debt(canonical, 'mbna') && debt(canonical, 'mbna').statementCloseDay === 6,
@@ -674,7 +668,7 @@ console.log('\n=== cash is not reserved twice; canonical is not rewritten ===');
 }
 
 if (failures) {
-  console.log(`\nFAILED — ${failures} check(s)`);
+  console.log(`\nFAILED ΓÇö ${failures} check(s)`);
   process.exit(1);
 }
 console.log('\ntest-card-minimum-settlement: all checks passed');
