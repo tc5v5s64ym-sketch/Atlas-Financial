@@ -1060,7 +1060,7 @@
   // opts: { scenario, incomeOverrides: {id: monthlyAmount}, disabled: [ids],
   //         injections: [{date, amount}] — one-off cash arriving from outside
   //         the plan, used to model covering an opening gap,
-  //         representedEvents: [{id, date}] — dated occurrences already
+  //         representedEvents: [{id, date, effectiveAsOf?}] — dated occurrences already
   //         inside the opening observation; those are not replayed,
   //         notReliedUponEvents: [{id, date, reason}] — live-overlay
   //         same-day inbound that is not proven represented; omitted from
@@ -1100,13 +1100,26 @@
   // That lives on the commitment as settledOn and is not expressed
   // through representedEvents. Settlement is opening-relative: the cash
   // requirement is already satisfied only when settledOn <= start.
+  // effectiveAsOf is the earliest cash opening proven to include this debit
+  // (or receipt), not the scheduled due date or the date intent was confirmed.
+  // Explicit later/invalid dates cannot settle an older opening. Legacy
+  // id+date rows retain their contract: already inside the attached opening.
+  // This guard qualifies evidence only; the existing occurrence/class rules
+  // below still decide whether that evidence can suppress replay.
+  function representedEventEffectiveBy(item, start) {
+    if (!item || !Object.prototype.hasOwnProperty.call(item, 'effectiveAsOf')) return true;
+    const date = item.effectiveAsOf;
+    return typeof date === 'string' && ISO_CALENDAR_DATE.test(date)
+      && new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date
+      && typeof start === 'string' && ISO_CALENDAR_DATE.test(start) && date <= start;
+  }
   function representedKeySet(plan, opts, start) {
     const keys = new Set();
     const opening = plan && plan.opening;
     const prior = opening && opening.asOf === start && opening.priorAsOf
       && opening.priorAsOf < start ? opening.priorAsOf : null;
     const take = item => {
-      if (!item || !item.id || !item.date) return;
+      if (!item || !item.id || !item.date || !representedEventEffectiveBy(item, start)) return;
       if (item.date === start) keys.add(item.id + '@' + item.date);
       else if (prior && item.date > prior && item.date < start) {
         keys.add(item.id + '@' + item.date);
@@ -7368,7 +7381,7 @@
     }
     const opening = plan && plan.opening;
     for (const item of (opening && opening.representedEvents) || []) {
-      if (item && item.id && item.date) {
+      if (item && item.id && item.date && representedEventEffectiveBy(item, opening.asOf)) {
         representedOcc.add(String(item.id) + '@' + String(item.date));
       }
     }
@@ -19634,7 +19647,7 @@
     };
   }
 
-  const Forecast = { savingsInventory, savingsFundingTimeline, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { savingsInventory, savingsFundingTimeline, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
