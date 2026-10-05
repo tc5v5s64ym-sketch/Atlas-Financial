@@ -11440,6 +11440,90 @@
       billsCarryover: unknown('Bills-only carryover for this period is not established.') };
   }
 
+  // Display provenance only. Schedule confidence still describes the plan;
+  // an exact posted receipt can supply the displayed movement independently.
+  // Never change settlement, observedActual, bill loads, or cash omission here.
+  function budgetBillHasPostedActual(row, asOf, opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    // Legacy availability selectors accept absent/unrecognized coverage.
+    // Exact actual display needs an explicit complete stamp, without changing
+    // those incumbent selectors or their financial decisions.
+    const complete = coverage => coverage === 'complete' || !!(coverage
+      && typeof coverage === 'object' && coverage.complete === true
+      && coverage.truncated !== true && (coverage.status == null || coverage.status === 'complete'));
+    if (!row || row.status !== 'PAID' || row.settlement !== 'represented'
+      || typeof row.actual !== 'number' || !isFinite(row.actual)
+      || typeof row.movement !== 'number' || !isFinite(row.movement)
+      || Math.abs(roundCent(row.movement)) !== Math.abs(roundCent(row.actual))
+      || !packet || packet.schema !== 'atlas-current-period-actuals/v1'
+      || packet.observationAsOf !== asOf || !savingsDate(packet.coverageStart)
+      || !savingsDate(packet.coverageThrough) || packet.coverageThrough < asOf
+      || transactionCoverageStatus(packet) !== 'complete' || !complete(packet.transactionCoverage)
+      || pendingCoverageStatus(packet) !== 'complete' || !complete(packet.pendingCoverage)
+      || (Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length)
+      || !Array.isArray(packet.representedActuals) || !Array.isArray(packet.transactions)) return false;
+    const links = item => {
+      if (item.transactionIds != null && !Array.isArray(item.transactionIds)) return null;
+      const ids = item.transactionIds ? item.transactionIds.slice() : [];
+      if (item.transactionId != null) {
+        if (item.transactionIds && !ids.includes(item.transactionId)) return null;
+        ids.push(item.transactionId);
+      }
+      return ids.length && ids.every(id => typeof id === 'string' && id)
+        ? [...new Set(ids)].sort() : null;
+    };
+    const matches = packet.representedActuals.filter(item => item
+      && item.id === row.id && item.date === row.date);
+    if (!matches.length) return false;
+    const claim = matches[0], ids = links(claim);
+    const signature = item => JSON.stringify([links(item), item.actual, item.postedOn]);
+    if (!ids || typeof claim.actual !== 'number' || !isFinite(claim.actual)
+      || roundCent(claim.actual) !== roundCent(row.actual)
+      || !savingsDate(claim.postedOn) || claim.postedOn > asOf
+      || matches.some(item => signature(item) !== signature(claim))
+      || packet.representedActuals.some(item => item
+        && (item.id !== row.id || item.date !== row.date)
+        && [item.transactionId, ...(Array.isArray(item.transactionIds) ? item.transactionIds : [])]
+          .some(id => ids.includes(id)))) return false;
+    let totalCents = 0, account = null, lastPosted = null;
+    for (const id of ids) {
+      const found = packet.transactions.filter(tx => tx && tx.id === id);
+      const project = tx => {
+        const txAccount = tx.atlasAccountId || tx.account;
+        if (!savingsDate(tx.date) || tx.date > asOf || tx.date < packet.coverageStart
+          || tx.date > packet.coverageThrough || tx.pending !== false
+          || typeof tx.amount !== 'number' || !isFinite(tx.amount)
+          || typeof tx.currency !== 'string' || tx.currency.trim().toLowerCase() !== 'cad'
+          || tx.coverageCurrencyConflict === true
+          || typeof txAccount !== 'string' || !txAccount || tx.accountRole === 'unmapped'
+          || (tx.atlasAccountId && tx.account && tx.atlasAccountId !== tx.account)
+          || tx.pendingPostedDuplicate || tx.pendingPostedAmbiguous || tx.contradictoryEvidence) return null;
+        return { date: tx.date, amount: tx.amount, account: txAccount };
+      };
+      const projected = found.map(project);
+      if (!projected.length || projected.some(tx => !tx)
+        || projected.some(tx => JSON.stringify(tx) !== JSON.stringify(projected[0]))) return false;
+      const tx = projected[0];
+      if (account && account !== tx.account) return false;
+      account = tx.account;
+      totalCents += Math.round(tx.amount * 100);
+      if (!lastPosted || tx.date > lastPosted) lastPosted = tx.date;
+    }
+    return lastPosted === claim.postedOn
+      && Math.abs(totalCents) === Math.abs(Math.round(row.actual * 100));
+  }
+
+  function publishBudgetBillDisplayTrust(asOf, periods, opts) {
+    for (const period of periods || []) for (const row of period.bills || []) {
+      const observed = row.status === 'PAID' && row.settlement === 'represented'
+        && typeof row.actual === 'number' && isFinite(row.actual);
+      const posted = observed && budgetBillHasPostedActual(row, asOf, opts);
+      row.displayAmountBasis = posted ? 'posted-actual' : observed ? 'unconfirmed-actual' : 'schedule';
+      row.displayAmountTrust = posted ? 'calculated' : observed || row.confidence === 'estimated'
+        ? 'estimated' : row.confidence === 'confirmed' ? 'calculated' : null;
+    }
+  }
+
   function publishBudgetPeriodProgress(plan, asOf, periods, opts) {
     for (const period of periods || []) {
       period.budgetProgressAsOf = asOf;
@@ -12244,6 +12328,7 @@
         pastPeriodViews, defaultView.calendarPeriods, timelineFuturePeriods, timelineBound);
       publishBudgetPeriodFunding(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
       publishBudgetPeriodProgress(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
+      publishBudgetBillDisplayTrust(asOf, payPeriodTimelinePack.views, paydayOpts);
       return withholdCurrentOperatingClaims({
         ...(cardCoverageState(plan, asOf, paydayOpts).status !== 'incumbent'
           ? { cardPurchaseCoverage: cardCoverageState(plan, asOf, paydayOpts) } : {}),

@@ -26,8 +26,10 @@ const empty = clone(data.plan); delete empty.savingsEarmarks; delete empty.savin
 const legacyBefore = before.recommend(empty, AS_OF, opts), legacyAfter = F.recommend(empty, AS_OF, opts);
 // Budget progress deliberately adds a read-only namespace to period records.
 // Validate that namespace on each concrete publication path, then compare
-// every incumbent field to the immutable engine. No money/trust field is
+// every incumbent field to the immutable engine. No incumbent money/trust field is
 // omitted, no baseline moves, and unexpected additions still fail equality.
+// The new bill display-provenance fields are also validated independently
+// against the immutable schedule rows: this probe supplies no actual packet.
 function incumbentPublication(value) {
   const copy = clone(value);
   const periodSets = [copy.defaultView.calendarPeriods, copy.pastPeriodViews, copy.payPeriodViews];
@@ -47,6 +49,17 @@ function incumbentPublication(value) {
     if (progress.role === 'future') for (const name of ['income', 'bills', 'household', 'savings']) {
       assert.equal(progress[name].actual.amount, null, 'future projections never become fulfilled actuals');
     }
+    const original = legacyBefore.payPeriodViews.find(p => p.id === period.id);
+    assert.ok(original, 'every period still has its immutable counterpart');
+    for (const bill of period.bills) {
+      const priorBill = original.bills.find(b => b.id === bill.id && b.date === bill.date);
+      assert.ok(priorBill, 'every bill still has its exact immutable occurrence');
+      assert.equal(bill.displayAmountBasis, 'schedule', 'absent actual packet never earns posted-actual display');
+      assert.equal(bill.displayAmountTrust, priorBill.confidence === 'estimated' ? 'estimated'
+        : priorBill.confidence === 'confirmed' ? 'calculated' : null,
+      'schedule display retains the immutable input confidence');
+      delete bill.displayAmountBasis; delete bill.displayAmountTrust;
+    }
     delete period.budgetProgress; delete period.budgetProgressAsOf; count++;
   }
   assert.ok(count > 0, 'new namespaces are positively validated before comparison');
@@ -64,6 +77,14 @@ assert.throws(() => assert.deepEqual(incumbentPublication(changedTrust), legacyB
 const changedPublisher = clone(legacyAfter); changedPublisher.payPeriodViews[0].budgetProgress.source = 'page';
 assert.throws(() => incumbentPublication(changedPublisher), assert.AssertionError,
   'an unauthorized new publisher is rejected rather than excluded silently');
+const changedDisplayTrust = clone(legacyAfter);
+changedDisplayTrust.payPeriodViews.find(p => p.bills.length).bills[0].displayAmountTrust = 'verified';
+assert.throws(() => incumbentPublication(changedDisplayTrust), assert.AssertionError,
+  'unsupported new display trust is positively rejected before comparison');
+const changedDisplayBasis = clone(legacyAfter);
+changedDisplayBasis.payPeriodViews.find(p => p.bills.length).bills[0].displayAmountBasis = 'posted-actual';
+assert.throws(() => incumbentPublication(changedDisplayBasis), assert.AssertionError,
+  'invented posted-actual provenance without a packet is rejected before comparison');
 empty.savingsEarmarks = { version: 1, currency: 'CAD', pools: [], history: [] };
 const explicitEmpty = F.recommend(empty, AS_OF, opts); delete explicitEmpty.savingsInventory;
 assert.deepEqual(incumbentPublication(explicitEmpty), before.recommend(empty, AS_OF, opts), 'explicitly empty configuration also preserves every incumbent field');
