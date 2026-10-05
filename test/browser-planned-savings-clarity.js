@@ -17,9 +17,14 @@ fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
   const errors = [], external = [], cases = [];
   try {
-    for (const width of [1440, 390, 320]) for (const mode of ['unconfirmed', 'ready', 'gap', 'backed', 'pool-deficit', 'stale', 'backed-ready', 'range']) {
+    for (const width of [1440, 390, 320]) for (const mode of ['unconfirmed', 'ready', 'gap', 'backed', 'pool-deficit', 'stale', 'backed-ready', 'range', 'projection', 'projection-remaining', 'projection-missing-cash', 'projection-stale']) {
       const data = fixture(mode);
       const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+      if (mode.startsWith('projection')) await page.addInitScript(() => {
+        // Select the independent ledger's weekly setting through the incumbent
+        // preference input, rather than comparing a different recommended plan.
+        localStorage.setItem('hfd-plan-knobs-v1', JSON.stringify({ weeklyVariable: 35 }));
+      });
       page.on('pageerror', e => errors.push(e.message));
       await page.route('**/*', route => {
         const url = new URL(route.request().url());
@@ -66,7 +71,22 @@ fs.mkdirSync(output, { recursive: true });
         assert.equal(await info.evaluate(el => el.open), false);
         const text = await body.innerText();
         assert.doesNotMatch(text, /original payday|snapshot|attributable|Confirmed fulfilled|Remaining this period:/);
-        if (['unconfirmed', 'backed', 'pool-deficit', 'stale', 'range'].includes(mode)) {
+        if (mode.startsWith('projection')) {
+          assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 3);
+          assert.equal(await body.locator('[data-budget-savings-total-saved]').filter({ hasText: 'Unknown' }).count(), 3);
+          assert.match(await summary.innerText(), /Unavailable/, 'hypothetical proposals cannot replace the Savings deduction');
+          const camp = body.locator('[data-budget-savings-total-goal="group:camp-a"]');
+          const annual = body.locator('[data-budget-savings-total-goal="yearly-bill:annual-a"]');
+          assert.match(await camp.innerText(), /280\.00/);
+          if (['projection', 'projection-remaining'].includes(mode)) {
+            assert.match(text, /Hypothetical projection/);
+            assert.match(await camp.locator('[data-budget-savings-projection]').innerText(), mode === 'projection' ? /270\.00/ : /0\.00/);
+            assert.match(await annual.locator('[data-budget-savings-projection]').innerText(), mode === 'projection' ? /40\.00/ : /0\.00/);
+            assert.match(text, mode === 'projection' ? /Projected this period/ : /Projected remaining period/);
+            assert.equal(await body.locator('[data-budget-savings-projection-gap]').count(), mode === 'projection-remaining' ? 1 : 0);
+          } else assert.equal(await body.locator('[data-budget-savings-projection]').count(), 0);
+          assert.match(await body.locator('[data-budget-savings-total-goal="commitment:undated-a"] [data-budget-savings-proposed]').innerText(), /Unknown/);
+        } else if (['unconfirmed', 'backed', 'pool-deficit', 'stale', 'range'].includes(mode)) {
           assert.equal((text.match(/Funding plan not confirmed/g) || []).length, 1);
           assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), mode === 'unconfirmed' ? 4 : 3);
           if (mode === 'unconfirmed') {
@@ -110,6 +130,26 @@ fs.mkdirSync(output, { recursive: true });
         await page.keyboard.press('Escape');
         assert.equal(await summary.evaluate(el => el === document.activeElement), true, 'dismissal restores exact summary focus');
         assert.equal(await page.evaluate(() => JSON.stringify(App.data)), inputs, 'disclosures do not mutate financial inputs');
+        if (mode === 'projection') {
+          await page.locator('[data-budget-window-step="1"]').focus(); await page.keyboard.press('Enter');
+          await summary.focus(); await page.keyboard.press('Enter');
+          await dialog.waitFor({ state: 'visible' });
+          assert.match(await body.innerText(), /Projected this period/);
+          assert.match(await body.locator('[data-budget-savings-total-goal="group:camp-a"] [data-budget-savings-projection]').innerText(), /0\.00/);
+          assert.match(await body.locator('[data-budget-savings-total-saved]').first().innerText(), /Unknown/);
+          await dialog.screenshot({ path: path.join(output, `projection-next-${width}.png`), animations: 'disabled' });
+          await page.keyboard.press('Escape');
+          assert.equal(await summary.evaluate(el => el === document.activeElement), true);
+          for (let i = 0; i < 2; i++) {
+            await page.locator('[data-budget-window-step="-1"]').focus(); await page.keyboard.press('Enter');
+          }
+          await summary.focus(); await page.keyboard.press('Enter');
+          await dialog.waitFor({ state: 'visible' });
+          assert.equal(await body.locator('[data-budget-savings-projection]').count(), 0, 'historical selection does not inherit future projected contributions');
+          await page.keyboard.press('Escape');
+          assert.equal(await summary.evaluate(el => el === document.activeElement), true);
+          assert.equal(await page.evaluate(() => JSON.stringify(App.data)), inputs);
+        }
       }
       cases.push({ width, mode, captureOnly }); await page.close();
     }

@@ -2,6 +2,19 @@
 // Independent invented costs. $743 required, with $350 next-period capacity,
 // leaves $393 proposed now. No household or provider observations.
 module.exports = function plannedSavingsClarityData(mode = 'ready') {
+  if (mode.startsWith('projection')) {
+    const fx = require('./savings-funding-timeline'), data = require('./budget-funding-data')();
+    data.plan = fx.fixture(); data.meta.asOf = fx.AS_OF;
+    data.meta.title = 'Synthetic Savings projection review';
+    if (mode === 'projection-remaining') {
+      data.meta.asOf = data.plan.opening.asOf = '2026-09-11';
+      data.plan.savingsPoolObservation.asOf = data.meta.asOf;
+      data.plan.savingsPoolObservation.accounts.forEach(row => { row.evidenceDate = data.meta.asOf; });
+    }
+    if (mode === 'projection-missing-cash') delete data.plan.startingCash.breakdown[0].value;
+    if (mode === 'projection-stale') data.plan.savingsPoolObservation.accounts[0].evidenceDate = '2026-09-09';
+    return data;
+  }
   if (['backed', 'pool-deficit', 'stale', 'range'].includes(mode)) {
     const fx = require('./savings-earmarks'), data = fx.fixture().data;
     data.plan = fx.observedPlan(); data.meta.asOf = fx.AS_OF;

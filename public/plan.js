@@ -4296,26 +4296,56 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
           && typeof field.amount === 'number' && Number.isFinite(field.amount) && field.amount >= 0
           && ['calculated', 'estimated'].includes(field.trust)
           ? budgetBrowseMoney(field.amount, field.trust) : '<span class="budget-v3-unknown">Unknown</span>';
+        // Select an existing Forecast window; never reconstruct contribution
+        // totals, assign observed pool cash, or substitute this projection for
+        // the Savings deduction. A clipped current cycle stays explicitly remaining.
+        const timeline = savingsContext?.timeline;
+        const projectionKnown = !planUnavailable && !period.lookback && period.timelineRole !== 'past'
+          && inventory && timeline?.source === 'Forecast.savingsFundingTimeline'
+          && timeline.status === 'ready' && timeline.currency === 'CAD' && timeline.asOf === savingsContext.asOf
+          && timeline.nature === 'hypothetical-projection' && timeline.trust === 'estimated'
+          && timeline.actionPermission === 'not-granted' && timeline.incrementalInstructions === 'withheld'
+          && timeline.actualContributions === null && Array.isArray(timeline.payPeriods) && Array.isArray(timeline.fundingGaps)
+          && inventory.revision === null && inventory.pools.every(pool => pool.observedTrust === 'verified'
+            && pool.observedAsOf === savingsContext.asOf && pool.status === 'intent-unknown');
+        const matches = projectionKnown ? timeline.payPeriods.filter(row =>
+          row?.cycleStart === period.start && row.cycleEnd === period.end
+          && row.end === period.end && row.nature === 'hypothetical-projection' && row.trust === 'estimated'
+          && Array.isArray(row.goals) && (row.windowKind === 'full-cycle' && row.start === period.start
+            || row.windowKind === 'as-of-residual' && row.start === timeline.asOf && row.start > period.start
+              && row.start <= period.end && period.timelineRole === 'current')) : [];
+        const projection = matches.length === 1 ? matches[0] : null;
+        const projectionGaps = projection ? timeline.fundingGaps.filter(row => isValidIsoCalendarDate(row.date)
+          && row.date >= projection.start && row.date <= projection.end) : [];
+        const projectionLabel = projection?.windowKind === 'as-of-residual'
+          ? 'Projected remaining period' : 'Projected this period';
         const rows = goals.map(goal => {
           const ref = goal.goalRef || goal.ref;
           const contribution = known && ref?.kind !== 'group' && goal.resolved !== false
             ? progress?.goals?.find(row => row.id === ref?.id)?.proposal : null;
+          const projectedGoals = projection?.goals.filter(row => row.key === goal.key) || [];
+          const projectedGoal = projectedGoals.length === 1 && goal.resolved !== false
+            ? projectedGoals[0] : null;
+          const projectedAmount = projectedGoal?.actualSaved === null && projectedGoal.actualContribution === null
+            && projectedGoal.trust === 'estimated' ? projectedGoal.projectedContribution : null;
           const needed = typeof goal.targetMax === 'number' && Number.isFinite(goal.targetMax) && goal.targetMax >= goal.target
             ? amount(goal.target, goal.targetTrust) + (goal.targetMax > goal.target ? ' – ' + amount(goal.targetMax, goal.targetTrust) : '')
             : '<span class="budget-v3-unknown">Unknown</span>';
           return `<li data-budget-savings-total-goal="${budgetBrowseEscape(goal.key)}">
             <span>${budgetBrowseEscape(goal.label || 'Goal name not confirmed')}</span>
             <span><span data-budget-savings-total-saved>${amount(goal.backedTrust === 'calculated' ? goal.backed : null, goal.backedTrust)}</span> / <span data-budget-savings-total-needed>${needed}</span><small>Saved / needed</small></span>
-            <span><span data-budget-savings-proposed>${proposed(contribution)}</span><small>Put away this period</small></span>
+            <span><span data-budget-savings-proposed${projection ? ' data-budget-savings-projection' : ''}>${projection ? amount(projectedAmount, 'estimated') : proposed(contribution)}</span><small>${projection ? projectionLabel : 'Proposed this period'}</small></span>
           </li>`;
         }).join('');
         const gap = known && period.plannedCostFunding?.gap;
         detail = `<section data-budget-planned-savings-summary>
           ${!known ? '<p data-budget-savings-unconfirmed>Funding plan not confirmed</p>' : ''}
+          ${projection ? '<p class="operating-note" data-budget-savings-projection-window>Hypothetical projection · ' + budgetBrowseEscape(fmtDate(projection.start)) + ' – ' + budgetBrowseEscape(fmtDate(projection.end)) + '. Actual contributions unknown.</p>' : ''}
+          ${projectionGaps.length ? '<p class="crit" data-budget-savings-projection-gap>Projected funding shortfall · see Info</p>' : ''}
           ${rows ? '<ul class="budget-savings-contributions">' + rows + '</ul>' : ''}
           ${known && !rows ? '<p>Total goal savings not confirmed</p>' : ''}
           ${gap ? '<p class="crit">Funding shortfall: ' + budgetBrowseMoney(gap.shortBy, period.plannedCostFunding.trust) + '.</p>' : ''}
-          <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>${inventory && typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(inventory) : ''}${answer}${evidence}</div></details>
+          <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>${projection ? '<p class="operating-note">Projected contributions are proposals, not money already saved, confirmed assignments or instructions to transfer. Unknown dated requirements remain unknown.</p>' : ''}${projectionGaps.map(row => '<p class="operating-note crit" data-budget-savings-projection-gap-detail>' + budgetBrowseEscape(fmtDate(row.date)) + ' · ' + budgetBrowseEscape(row.poolId === null ? 'Operating cash' : timeline.pools?.find(pool => pool.id === row.poolId)?.label || 'Pool name unknown') + ' · projected shortfall ' + amount(row.amount, 'estimated') + '</p>').join('')}${inventory && typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(inventory) : ''}${answer}${evidence}</div></details>
         </section>`;
       }
       const graph = ratioKey && ratioKey !== 'savings' ? budgetProgressBarHtml(progress, ratioKey) : `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
@@ -4735,7 +4765,7 @@ function payPeriodWheelSelection(advice, requestedId, kind, index) {
   return payPeriodSelection(advice, item.id || item.start);
 }
 
-function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraControls, plan, compactOverview = false) {
+function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraControls, plan, compactOverview = false, savingsTimeline = null) {
   const selection = payPeriodSelection(advice, requestedId);
   const period = selection.period;
   if (!period) return '';
@@ -4763,10 +4793,21 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
     ${current && !compactOverview ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
     ${compactOverview ? '' : payPeriodNavigatorHtml(selection)}
     ${extraControls || ''}
-    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview, { inventory: advice?.savingsInventory, asOf })}
+    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview, { inventory: advice?.savingsInventory, timeline: savingsTimeline, asOf })}
     ${budgetPlanSpendEarmarkHtml(advice, period)}
     ${undatedBlock}
   </div>`;
+}
+
+function budgetSavingsTimelineFor(ctx) {
+  const asOf = ctx.advice?.defaultView?.asOf || ctx.asOf;
+  // Current reserve evidence can refresh without changing the financial date.
+  // Read the incumbent publication from the current inputs, not the Month cache.
+  try {
+    return Forecast.savingsFundingTimeline(ctx.plan, ctx.debts, asOf, budgetMonthKnobOpts(ctx));
+  } catch (e) {
+    return null;
+  }
 }
 
 function periodBillsHtml(view) {
@@ -5674,7 +5715,8 @@ function budgetPayPeriodContentHtml(ctx) {
       alloc,
       picker,
       ctx.plan,
-      ctx.budgetCompactOverview === true
+      ctx.budgetCompactOverview === true,
+      ctx.budgetCompactOverview === true ? budgetSavingsTimelineFor(ctx) : null
     )
     : (look === 'this-period' && view.calendarPeriods && view.calendarPeriods.length
       ? calendarWaterfallsHtml(
