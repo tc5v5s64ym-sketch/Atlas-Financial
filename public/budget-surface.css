@@ -336,11 +336,11 @@
 .household-budget-reserve-info > summary, .household-budget-remaining-info > summary { cursor:pointer; color:var(--text-secondary); }
 .budget-browse-bills h2 [data-budget-ratio] { white-space:normal; }
 .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-waterfall-track { display:none; }
-.budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-value { grid-column:4; }
-.budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-chevron { grid-column:5; }
+.budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"],[data-budget-savings-stock]) .budget-step-value { grid-column:4; }
+.budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"],[data-budget-savings-stock]) .budget-step-chevron { grid-column:5; }
 @media(max-width:1100px) {
-  .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-value { grid-column:3; }
-  .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"]) .budget-step-chevron { grid-column:4; }
+  .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"],[data-budget-savings-stock]) .budget-step-value { grid-column:3; }
+  .budget-surface-period :is([data-operating-question="05"],[data-operating-question="07"],[data-budget-savings-stock]) .budget-step-chevron { grid-column:4; }
 }
 .budget-surface-period .calendar-waterfall { position:relative; }
 .budget-period-info > summary { position:absolute; right:0; top:8px; padding:6px; color:var(--s1); cursor:pointer; font-size:20px; list-style:none; }
@@ -405,8 +405,6 @@
 .budget-cash-warning strong { color:var(--critical); }
 .budget-cash-notice { margin:12px 0; font-size:13px; color:var(--text-secondary); }
 .budget-cash-notice.has-gap { color:var(--critical); }
-.budget-cash-withheld { display:flex; flex-direction:column; gap:4px; margin-top:16px; padding:10px 12px; border:1px dashed var(--border); border-radius:12px; background:var(--surface-2); font-size:13px; }
-.budget-cash-withheld > span { color:var(--text-secondary); font-size:12px; }
 .budget-cash-next { display:flex; align-items:center; gap:14px; width:100%; padding:12px 14px; margin-top:32px; border:1px solid var(--border); border-radius:16px; background:var(--surface-1); color:var(--text-primary); text-align:left; font:inherit; cursor:pointer; }
 .budget-cash-next > span:nth-child(2) { flex:1; min-width:0; }
 .budget-cash-next strong { display:block; font-size:14px; font-weight:620; }

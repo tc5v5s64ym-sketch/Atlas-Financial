@@ -120,8 +120,9 @@ async function geometry(page) {
       assert.match(await page.locator('[data-budget-window-range]').innerText(), /Aug 28.*Sep 10/);
       assert.match(await page.locator('[data-budget-goal-open="school-trip"] [data-budget-goal-required]').innerText(), /195\.00/);
       assert.match(await page.locator('[data-budget-goal-open="school-trip"] [data-budget-goal-fulfilled]').innerText(), /Unknown/);
-      assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-plan]').innerText(), /195\.00/);
-      assert.match(await page.locator('[data-operating-question="savings"] [data-budget-ratio-actual]').innerText(), /Unknown/);
+      assert.equal(await page.locator('[data-operating-question="savings"] .budget-step-value').innerText(), 'Unavailable',
+        'period requirements cannot substitute for missing observed savings stock');
+      assert.equal(await page.locator('[data-operating-question="savings"] [data-budget-ratio]').count(), 0);
       assert.match(await page.locator('[data-budget-browse="spending"]').innerText(), /Projected plan.*spending not observed/);
       assert.equal(await page.locator('[data-budget-browse-remaining]').count(), 0, 'future selection does not borrow current remaining spending');
       assert.equal(await periodWheel.evaluate(el => el === document.activeElement), true);
@@ -584,7 +585,11 @@ async function geometry(page) {
       // Configured pools with unknown assignments must retain the withholding reason.
       data = fx.served({ withheldSavings: true }); await boot(); await geometry(page);
       assert.equal(await page.locator('[data-budget-cash-hero]').innerText(), '$1,215.00');
-      assert.equal(await page.locator('[data-budget-cash-withheld]').isVisible(), true);
+      assert.equal(await page.locator('[data-budget-cash-withheld]').count(), 0);
+      await how.focus(); await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-budget-today-evidence]').innerText(), /withheld|unavailable|unknown/i);
+      await page.locator('[data-budget-cash-back]').focus(); await page.keyboard.press('Enter');
+      assert.equal(await how.evaluate(el => el === document.activeElement), true);
       assert.equal(await page.locator('.budget-cash-chart').count(), 0);
       const accounts = page.locator('.budget-savings-accounts');
       assert.equal(await accounts.evaluate(node => node.open), false);
@@ -618,12 +623,12 @@ async function geometry(page) {
           hatch: getComputedStyle(el).backgroundImage }));
       const householdTrack = await trackState('06');
       const finalTrack = await trackState('07');
-      const savingsTrack = await trackState('savings');
       assert.deepEqual({ deficit: householdTrack.deficit, unknown: householdTrack.unknown }, { deficit: false, unknown: false });
       assert.deepEqual({ deficit: finalTrack.deficit, unknown: finalTrack.unknown }, { deficit: true, unknown: false });
       assert.ok(!finalTrack.hatch.includes('repeating-linear-gradient'), 'known deficit is not the unknown hatch');
-      assert.deepEqual({ deficit: savingsTrack.deficit, unknown: savingsTrack.unknown }, { deficit: false, unknown: true });
-      assert.ok(savingsTrack.hatch.includes('repeating-linear-gradient'), 'unavailable savings keep the hatch');
+      assert.equal(await page.locator('[data-operating-question="savings"] .budget-waterfall-track').count(), 0);
+      assert.equal(await page.locator('[data-operating-question="savings"] .budget-step-value').innerText(), 'Unavailable',
+        'missing stock remains unavailable in a deficit period without deduction geometry');
       await screenshot({ path: path.join(screenshots, `levy-deficit-${width}.png`), fullPage: true });
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `levy-deficit-period-${width}.png`), style: periodCropStyle });
       // Preserve the concurrent no-observation zero-income regression separately
@@ -644,8 +649,9 @@ async function geometry(page) {
         assert.equal(await page.locator(`[data-operating-question="${id}"] .budget-waterfall-bar`).count(), 0);
         assert.equal(track.deficit,['05','07'].includes(id));
       }
-      assert.equal((await trackState('savings')).unknown, true);
-      assert.ok((await trackState('savings')).hatch.includes('repeating-linear-gradient'));
+      assert.equal(await page.locator('[data-operating-question="savings"] .budget-waterfall-track').count(), 0);
+      assert.equal(await page.locator('[data-operating-question="savings"] .budget-step-value').innerText(), 'Unavailable',
+        'zero income cannot manufacture a zero savings balance');
       await screenshot({ path: path.join(screenshots, `zero-income-no-observations-${width}.png`), fullPage: true });
       await page.locator('[data-calendar-waterfall]').screenshot({ path: path.join(screenshots, `zero-income-no-observations-period-${width}.png`), style: periodCropStyle });
       await page.close();

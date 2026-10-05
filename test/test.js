@@ -214,6 +214,7 @@ const suites = [
   ['Budget synchronized month and pay-period wheels', 'test-budget-synchronized-wheels.js'],
   ['Budget stepped period layout and inline disclosures', 'test-budget-stepped-layout.js'],
   ['Planned Savings compact status and evidence', 'test-planned-savings-clarity.js'],
+  ['combined observed savings stock and unchanged deductions', 'test-savings-observed-stock.js'],
   ['Budget selected-period proposed cost funding', 'test-budget-period-funding.js'],
   ['Budget estimated payroll trust label', 'test-budget-estimated-payroll-label.js'],
   ['Budget Plan Spend earmark on pay periods', 'test-budget-plan-spend-earmark.js'],

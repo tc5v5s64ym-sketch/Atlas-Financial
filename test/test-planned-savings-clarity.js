@@ -48,12 +48,43 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
     if (mode === 'range') assert.match(trip, /403\.21[\s\S]*500\.00/, 'both published range bounds stay visible');
   }
   if (mode === 'backed-ready') {
-    assert.match(glance, /215\.04[\s\S]*600\.00[\s\S]*177\.96[\s\S]*Proposed this period/);
+    assert.match(glance, /215\.04[\s\S]*600\.00[\s\S]*177\.96[\s\S]*This period/);
     assert.equal(Math.round(period.plannedCostFunding.contribution * 100), 60000 + 13 * 1100 - (16937 + 4567) - 35000,
       'existing pool stock is used once; period contribution funds only the remaining requirement');
     const summary = html.split('data-operating-question="savings"')[1].split('</summary>')[0];
-    assert.match(summary, /177\.96/, 'waterfall deduction remains selected-period proposal, not total saved stock');
-    assert.doesNotMatch(summary, /215\.04|600\.00/);
+    assert.match(summary, /500\.03/, 'observed account stock is 30001 + 20002 cents, independent of assignments and proposals');
+    assert.doesNotMatch(summary, /177\.96|215\.04|600\.00/);
+    const originalSavings = ctx.savings;
+    for (const mutate of [
+      s => { delete s.observedStock; },
+      s => { s.observedStock.source = 'ignored-extra-field'; s.observedStock.basis = 'projected'; },
+      s => { s.observedStock.status = 'unavailable'; },
+      s => { s.observedStock.asOf = '2026-08-13'; },
+      s => { s.observedStock.currency = 'USD'; },
+      s => { s.observedStock.trust = 'estimated'; },
+      s => { s.observedStock.evidenceTrust = 'unknown'; },
+      s => { s.observedStock.nonAdditive = false; },
+      s => { s.observedStock.amount = '500.03'; },
+      s => { s.observedStock.amount = NaN; },
+      s => { s.observedStock.accountIds = ['savings', 'savings']; },
+      s => { s.observedStock.accountIds = ['savings']; },
+      s => { s.observedStock.accountIds = ['savings', 'unrelated-account']; },
+      s => { s.pools[1].accountId = s.pools[0].accountId; },
+    ]) {
+      const inventory = structuredClone(originalSavings.inventory); mutate(inventory);
+      ctx.savings = { ...originalSavings, inventory };
+      const withheld = vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx);
+      assert.match(withheld.split('data-operating-question="savings"')[1].split('</summary>')[0], /Unavailable/,
+        'invalid stock cannot fall back to proposals, assignments or partial pool balances');
+      assert.match(withheld.split('data-operating-question="07"')[1].split('</summary>')[0], /322\.04/,
+        'stock withholding never changes the incumbent final result');
+    }
+    ctx.savings = originalSavings;
+    ctx.probe = { ...period, operatingPlanUnavailable: true };
+    assert.match(vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx)
+      .split('data-operating-question="savings"')[1].split('</summary>')[0], /500\.03/,
+    'verified observed reserve stock does not depend on operating plan availability');
+    ctx.probe = period;
     for (const mutate of [
       p => { p.plannedCostFunding.source = 'Unrelated calculator'; },
       p => { p.plannedCostFunding.basis = 'unrelated-period'; },
@@ -66,7 +97,8 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
       mutate(mismatched); ctx.probe = mismatched;
       const before = JSON.stringify(mismatched);
       const withheld = vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx);
-      assert.match(withheld.split('data-operating-question="savings"')[1].split('</summary>')[0], /Unavailable/);
+      assert.match(withheld.split('data-operating-question="savings"')[1].split('</summary>')[0], /500\.03/,
+        'valid observed stock is independent of withheld period proposals');
       const compact = withheld.split('data-budget-planned-savings-summary>')[1].split('<details')[0];
       assert.match(compact, /Funding plan not confirmed/);
       assert.match(compact, /data-budget-savings-proposed><span class="budget-v3-unknown">Unknown/);
@@ -77,6 +109,10 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
   if (mode === 'ready') assert.equal(period.plannedCostFunding.contribution, 600 + 13 * 11 - 350);
   if (mode === 'gap') assert.match(glance, /Funding shortfall:/, 'material gap stays visible without opening Info');
   const inventory = ctx.savings.inventory;
+  assert.ok(html.indexOf('data-operating-question="07"') < html.indexOf('data-operating-question="savings"'), 'stock follows the final result');
+  const stockRow = html.split('data-operating-question="savings"')[1].split('</summary>')[0];
+  assert.doesNotMatch(stockRow, /budget-waterfall-track|budget-progress-track|budget-waterfall-bar/);
+  assert.match(stockRow, /operating-number" aria-hidden="true">\u2022<\/span>/, 'stock has no deduction sign');
   ctx.savings = { inventory, asOf: '2026-08-21' };
   assert.doesNotMatch(vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx), /data-budget-savings-total-goal=/, 'a mismatched inventory cannot supply total stock');
   assert.equal(JSON.stringify(data), original);
@@ -98,11 +134,12 @@ for (const mode of ['projection', 'projection-remaining', 'projection-missing-ca
   assert.equal((section.match(/data-budget-savings-total-saved><span class="budget-v3-unknown">Unknown/g) || []).length, 3,
     'observed pool cash and projected location never become saved goal assignments');
   assert.match(section, /Funding plan not confirmed/);
-  assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], /Unavailable/,
-    'hypothetical contributions do not replace the incumbent Savings deduction');
+  assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], mode === 'projection-stale' ? /Unavailable/ : /80\.00/,
+    'observed stock is independent of hypothetical contributions and operating cash availability');
   if (['projection', 'projection-remaining'].includes(mode)) {
-    assert.match(section, /Hypothetical projection/);
-    assert.match(section, /Actual contributions unknown/);
+    assert.doesNotMatch(section.replace(/<[^>]*>/g, ''), /projected|projection/i);
+    assert.match(html, /Hypothetical projection/);
+    assert.match(html, /Actual contributions unknown/);
     const camp = section.split('data-budget-savings-total-goal="group:camp-a"')[1].split('</li>')[0];
     const annual = section.split('data-budget-savings-total-goal="yearly-bill:annual-a"')[1].split('</li>')[0];
     assert.match(camp, /280\.00/, 'two invented dated needs, 80 + 200, grouped by Forecast once');
@@ -111,7 +148,7 @@ for (const mode of ['projection', 'projection-remaining', 'projection-missing-ca
     assert.match(annual, mode === 'projection' ? /40\.00/ : /0\.00/, '70 need less 30 observed pool is a 40 hypothetical contribution');
     const undated = section.split('data-budget-savings-total-goal="commitment:undated-a"')[1].split('</li>')[0];
     assert.match(undated, /data-budget-savings-projection><span class="budget-v3-unknown">Unknown/);
-    assert.match(section, mode === 'projection' ? /Projected this period/ : /Projected remaining period/);
+    assert.match(section, mode === 'projection' ? /This period/ : /Remaining this period/);
     if (mode === 'projection-remaining') {
       assert.match(section, /data-budget-savings-projection-gap/);
       assert.match(html, /data-budget-savings-projection-gap-detail/);
@@ -123,8 +160,8 @@ for (const mode of ['projection', 'projection-remaining', 'projection-missing-ca
     assert.doesNotMatch(render(current, timeline, staleInventory), /data-budget-savings-projection/);
     const next = advice.payPeriodViews.find(row => row.timelineRole === 'next');
     const nextHtml = render(next);
-    assert.match(nextHtml, /Projected this period/);
-    assert.doesNotMatch(nextHtml, /Projected remaining period/);
+    assert.match(nextHtml, /This period/);
+    assert.doesNotMatch(nextHtml.split('data-budget-planned-savings-summary>')[1].split('<details')[0], /Remaining this period/);
     const past = advice.payPeriodViews.find(row => row.timelineRole === 'past');
     assert.doesNotMatch(render(past), /data-budget-savings-projection/);
     for (const mutate of [
