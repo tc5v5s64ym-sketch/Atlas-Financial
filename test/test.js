@@ -26,6 +26,7 @@ const ROOT = path.join(__dirname, '..');
 
 const suites = [
   ['native utility settlement units and independent holds', 'test-utility-settlement-currency.js'],
+  ['paid actual display trust remains separate from estimated schedules', 'test-paid-actual-display-trust.js'],
   ['one household actual/planned total and Other remaining display', 'test-budget-household-total-display.js'],
   ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
   ['dated owner Other payday target and once-only reserve', 'test-other-period-target.js'],

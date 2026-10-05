@@ -1914,7 +1914,9 @@ function periodBillLine(row) {
     : row.settlement === 'unverified' ? 'to confirm'
     : 'still due';
   const amount = glanceSignedMoney(glanceMoney(row, kind));
-  const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
+  const amountTrust = row.displayAmountTrust === undefined
+    ? (row.confidence === 'estimated' ? 'estimated' : null) : row.displayAmountTrust;
+  const about = amountTrust === 'estimated' && amount != null ? 'about ' : '';
   if (typeof BillDetail !== 'undefined') {
     // App.data is this render's served packet, also used by renderPlan above.
     // The disclosure only reprints Forecast rows and exact sanitized links.
@@ -6088,13 +6090,15 @@ function budgetBillPresentation(row) {
 
 function budgetBillBrowseRowHtml(row) {
   const state = budgetBillPresentation(row);
+  const amountTrust = row.displayAmountTrust === undefined
+    ? (row.confidence === 'estimated' ? 'estimated' : null) : row.displayAmountTrust;
   const knownDate = isValidIsoCalendarDate(row.date);
   const amount = budgetBrowseKnown(row.movement) ? Math.abs(row.movement) : null;
   const month = knownDate ? new Date(row.date + 'T12:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : '?';
   return `<button type="button" class="budget-bill-row is-${state.kind}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
     <span class="budget-bill-date" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
     <span class="budget-bill-label"><strong>${budgetBrowseEscape(row.label || 'Bill')}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}</span>` : ''}</span></span>
-    <span class="budget-bill-amount">${budgetBrowseMoney(amount, row.confidence === 'estimated' ? 'estimated' : null)}</span>
+    <span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span>
   </button>`;
 }
 
