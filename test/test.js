@@ -25,6 +25,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
+  ['hypothetical savings timeline and independent pool conservation', 'test-savings-funding-timeline.js'],
   ['native utility settlement units and independent holds', 'test-utility-settlement-currency.js'],
   ['paid actual display trust remains separate from estimated schedules', 'test-paid-actual-display-trust.js'],
   ['one household actual/planned total and Other remaining display', 'test-budget-household-total-display.js'],
@@ -313,6 +315,7 @@ const suites = [
   ['purchase backfills cannot confirm scheduled card minima', 'test-card-backfill-intent.js'],
   ['month-end bill settlement and unmatched fee visibility', 'test-month-end-bill-reconciliation.js'],
   ['Dale-gated Noble / HELOC / TDCC represented settles', 'test-dale-gated-represented-settles.js'],
+  ['represented settlement effective-date cash conservation', 'test-represented-effective-date.js'],
   ['Noble pending→posted identity survives replacement', 'test-noble-pending-posted-identity.js'],
   ['owner-confirmed September fuel, Spotify, and Noble rows', 'test-owner-confirmed-september-spend.js'],
   ['final Affirm payment owner correction', 'test-affirm-final.js'],

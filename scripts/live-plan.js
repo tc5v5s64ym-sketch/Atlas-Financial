@@ -47,7 +47,10 @@
  * advances: posting/representation evidence names them on in-memory
  * representedEvents. Existing opening names that still qualify as
  * in-window, carried-once, or prepaid for the new liveAsOf are merged
- * into that list; identity rediscovery stays additive. Unrepresented
+ * into that list; identity rediscovery stays additive. A duplicate
+ * id/date prefers currently applicable proof over an inactive deferred
+ * or invalid entry and retains the earlier truthful qualification.
+ * Unrepresented
  * joint-cash outflows stay reserved
  * via plan.opening.priorAsOf so Forecast does not drop them.
  * Unrepresented recurring card-paid reserved bills use that same
@@ -66,8 +69,9 @@
  * opening when a same-day inbound is unproven or ambiguous: Forecast
  * omits that inbound from actionable cash via in-memory
  * opening.notReliedUponEvents without claiming it posted. A later
- * same-date refresh of an already-current opening keeps that
- * liveAsOf suppression; it does not require as-of to advance.
+ * same-date refresh rebuilds those same-day inbound guards independently
+ * of a prior hold and retains the suppression until applicable posting
+ * proof resolves it; it does not require as-of to advance.
  * Incomplete or
  * untrusted current cash still fails closed. Same-day unposted
  * joint-cash bills stay still due and do not fail the overlay. Triangle/MBNA
@@ -546,9 +550,22 @@ function schedulePlan(plan) {
   };
 }
 
+// Same-day inbound guards must see currently held receipts. Forecast
+// omitRepresented treats notReliedUponEvents as absence; that prior
+// suppression cannot be the input to rebuilding the hold.
+function schedulePlanForSameDayGuards(plan) {
+  const scheduled = schedulePlan(plan);
+  if (scheduled.opening) {
+    scheduled.opening = Object.assign({}, scheduled.opening, {
+      notReliedUponEvents: [],
+    });
+  }
+  return scheduled;
+}
+
 function scheduledCashEventsOn(plan, date) {
   if (!plan || !date) return [];
-  return Forecast.expandEvents(schedulePlan(plan), date, date, {})
+  return Forecast.expandEvents(schedulePlanForSameDayGuards(plan), date, date, {})
     .filter(event => event && event.date === date && event.kind !== 'noncash');
 }
 
@@ -581,10 +598,15 @@ function liveAsOfFrom(report, historicalOpeningAsOf) {
 
 function representedCandidateAllowed(candidate, historicalOpeningAsOf, liveAsOf, plan) {
   if (!candidate || !candidate.id || !candidate.date || !liveAsOf) return false;
+  if (!Forecast.representedEventEffectiveBy(candidate, liveAsOf)) return false;
   const inLiveWindow = !!(historicalOpeningAsOf
     && candidate.date > historicalOpeningAsOf
     && candidate.date <= liveAsOf);
+  // Same-date refresh has an empty (prior, live] window, but current-opening
+  // posting proof must still resolve an unproven-income hold.
+  const currentOpeningProof = candidate.date === liveAsOf;
   return inLiveWindow
+    || currentOpeningProof
     || Forecast.carriedOnceJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf)
     || Forecast.prepaidJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf);
 }
@@ -601,16 +623,66 @@ function sortRepresented(a, b) {
     || String(a.id).localeCompare(String(b.id));
 }
 
-function mergeRepresented(existing, added) {
-  const out = [];
-  const seen = new Set();
+function copyRepresented(row) {
+  return { id: row.id, date: row.date,
+    ...(Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
+      ? { effectiveAsOf: row.effectiveAsOf } : {}) };
+}
+
+function representedQualificationDate(row) {
+  if (!row || !Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')) return null;
+  return typeof row.effectiveAsOf === 'string' ? row.effectiveAsOf : null;
+}
+
+function copyNotRelied(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    reason: row.reason,
+    candidateCount: Number(row.candidateCount) > 0 ? Number(row.candidateCount) : 0,
+  };
+}
+
+function mergeSameDayIncomeGuards(existing, rebuilt, representedKeys, liveAsOf) {
+  const byKey = new Map();
+  const take = (row, prefer) => {
+    if (!row || !row.id || !row.date || row.date !== liveAsOf) return;
+    const key = String(row.id) + '@' + String(row.date);
+    if (representedKeys.has(key)) return;
+    if (!prefer && byKey.has(key)) return;
+    byKey.set(key, copyNotRelied(row));
+  };
+  for (const row of existing || []) take(row, false);
+  for (const row of rebuilt || []) take(row, true);
+  const out = Array.from(byKey.values());
+  out.sort(sortRepresented);
+  return out;
+}
+
+function preferRepresented(kept, incoming, liveAsOf) {
+  const keptActive = Forecast.representedEventEffectiveBy(kept, liveAsOf);
+  const incomingActive = Forecast.representedEventEffectiveBy(incoming, liveAsOf);
+  if (incomingActive !== keptActive) return incomingActive ? incoming : kept;
+  if (keptActive && incomingActive) {
+    const keptFrom = representedQualificationDate(kept);
+    const incomingFrom = representedQualificationDate(incoming);
+    if (keptFrom == null) return kept;
+    if (incomingFrom == null) return incoming;
+    if (incomingFrom < keptFrom) return incoming;
+  }
+  return kept;
+}
+
+function mergeRepresented(existing, added, liveAsOf) {
+  const byKey = new Map();
   for (const row of (existing || []).concat(added || [])) {
     if (!row || !row.id || !row.date) continue;
-    const key = String(row.id) + '@' + String(row.date);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ id: row.id, date: row.date });
+    const next = copyRepresented(row);
+    const key = String(next.id) + '@' + String(next.date);
+    const prev = byKey.get(key);
+    byKey.set(key, prev ? preferRepresented(prev, next, liveAsOf) : next);
   }
+  const out = Array.from(byKey.values());
   out.sort(sortRepresented);
   return out;
 }
@@ -665,14 +737,14 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
       next.plan, candidate.id, candidate.date, liveAsOf)
       || Forecast.prepaidJointCashOutflow(
         next.plan, candidate.id, candidate.date, liveAsOf)) {
-      represented.push({ id: candidate.id, date: candidate.date });
+      represented.push({ id: candidate.id, date: candidate.date, effectiveAsOf: liveAsOf });
     }
   }
   for (const event of windowEvents) {
     const hit = candidates.find(candidate => candidate.id === event.id
       && candidate.date === event.date);
     if (hit) {
-      represented.push({ id: event.id, date: event.date });
+      represented.push({ id: event.id, date: event.date, effectiveAsOf: liveAsOf });
       continue;
     }
     if (event.date !== liveAsOf || !sameDayUnrepresentedWouldDoubleCount(event)) continue;
@@ -686,14 +758,15 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
         : 0,
     });
   }
-  const uniqueRepresented = mergeRepresented([], represented);
+  const uniqueRepresented = mergeRepresented([], represented, liveAsOf);
   const advances = !!(historicalOpeningAsOf && liveAsOf > historicalOpeningAsOf);
   if (historicalOpeningAsOf && liveAsOf < historicalOpeningAsOf) {
     return {
       liveAsOf: historicalOpeningAsOf,
       representedEvents: mergeRepresented(
         (next.plan.opening && next.plan.opening.representedEvents) || [],
-        []
+        [],
+        historicalOpeningAsOf
       ),
       notReliedUponEvents: [],
       advanced: false,
@@ -705,16 +778,28 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   // had not rediscovered (tdcc chequing TFR-TO C/C is not identity).
   // Keep existing names that still qualify for this liveAsOf; identity
   // candidates remain additive. Non-qualifying historical names still
-  // drop.
+  // drop. Explicit deferred evidence stays attached but inactive; stripping
+  // its effective date would turn it into an opening-date legacy assertion.
+  // Duplicate id/date cannot let that inactive row shadow fresh applicable
+  // proof, and a later live date cannot overwrite an earlier truthful one.
   const keptExisting = advances
     ? existing.filter(row => representedCandidateAllowed(
-      row, historicalOpeningAsOf, liveAsOf, next.plan))
+      row, historicalOpeningAsOf, liveAsOf, next.plan)
+      || (row && Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
+        && !Forecast.representedEventEffectiveBy(row, liveAsOf)))
     : existing;
-  const nextRepresented = mergeRepresented(keptExisting, uniqueRepresented);
-  const representedKeys = new Set(nextRepresented.map(row =>
+  const nextRepresented = mergeRepresented(keptExisting, uniqueRepresented, liveAsOf);
+  const representedKeys = new Set(nextRepresented.filter(row =>
+    Forecast.representedEventEffectiveBy(row, liveAsOf)).map(row =>
     String(row.id) + '@' + String(row.date)));
-  const nextNotRelied = notReliedUpon.filter(row =>
-    !representedKeys.has(String(row.id) + '@' + String(row.date)));
+  // Rebuild from occurrences still visible without prior holds, then
+  // keep any same-day hold that applicable proof has not resolved.
+  const nextNotRelied = mergeSameDayIncomeGuards(
+    (next.plan.opening && next.plan.opening.notReliedUponEvents) || [],
+    notReliedUpon,
+    representedKeys,
+    liveAsOf
+  );
   const nextOpening = Object.assign({}, next.plan.opening || {}, {
     asOf: liveAsOf,
     representedEvents: nextRepresented,
