@@ -224,7 +224,7 @@ const SHADOWS = [
   { label: 'invalid-calendar', effectiveAsOf: '2026-02-30' },
   { label: 'invalid-null', effectiveAsOf: null },
 ];
-function collisionPacket(kind, existing) {
+function collisionPacket(kind, existing, evidence = 'posted') {
   const x = source('triangle', 'triangle');
   const id = kind === 'income' ? 'invented-receipt' : 'invented-bill';
   x.data.plan.obligations = [];
@@ -236,9 +236,17 @@ function collisionPacket(kind, existing) {
     x.identity = { schema: 'atlas-provider-transaction-identity/v1', rules: [{
       eventId: id, atlasAccountId: 'chequing-a', direction: 'credit',
       payeePatterns: ['INVENTED RECEIPT'] }] };
-    x.payload.transactions = [{ id: 95001, account_id: 3001, date: x.asOf,
-      amount: -MOVE, currency: 'cad', payee: 'INVENTED RECEIPT', is_pending: false,
-      status: 'reviewed', category_name: 'Income' }];
+    if (evidence === 'posted') {
+      x.payload.transactions = [{ id: 95001, account_id: 3001, date: x.asOf,
+        amount: -MOVE, currency: 'cad', payee: 'INVENTED RECEIPT', is_pending: false,
+        status: 'reviewed', category_name: 'Income' }];
+    } else if (evidence === 'pending') {
+      x.payload.transactions = [{ id: 95001, account_id: 3001, date: x.asOf,
+        amount: -MOVE, currency: 'cad', payee: 'INVENTED RECEIPT', is_pending: true,
+        status: 'pending', category_name: 'Income' }];
+    } else {
+      x.payload.transactions = [];
+    }
     x.payload.accounts[0].balance = RECEIPT_OBS / 100;
   } else {
     x.data.plan.bills = [{ id, label: 'Invented bill', frequency: 'once',
@@ -313,6 +321,85 @@ const keptEarlier = earlierLive.data.plan.opening.representedEvents
 assert.deepEqual(keptEarlier, { id: 'invented-bill', date: earlier.x.asOf, effectiveAsOf: '2026-09-19' },
   'a later live packet cannot overwrite an earlier truthful qualification');
 assert.equal(liveEnding(earlierLive.data, earlier.x.asOf), DEBIT_OBS);
+
+// Independent three-refresh income-hold oracle: observed 53,847 stays
+// 53,847. A prior hold cannot hide the receipt from the next enumeration,
+// or cutover would drop the hold and replay 3,847 unsupported cents.
+const INCOME_TAGS = [
+  { label: 'untagged', existing: [] },
+  { label: 'future', existing: [{ id: 'invented-receipt', date: '2026-09-20',
+    effectiveAsOf: '2026-09-21' }] },
+  { label: 'invalid-calendar', existing: [{ id: 'invented-receipt', date: '2026-09-20',
+    effectiveAsOf: '2026-02-30' }] },
+  { label: 'invalid-null', existing: [{ id: 'invented-receipt', date: '2026-09-20',
+    effectiveAsOf: null }] },
+];
+function incomeName(plan) {
+  return (plan.opening.representedEvents || []).find(row => row.id === 'invented-receipt');
+}
+function incomeHold(plan) {
+  return (plan.opening.notReliedUponEvents || []).find(row => row.id === 'invented-receipt');
+}
+let incomeGuardCases = 0;
+for (const tag of INCOME_TAGS) {
+  for (const evidence of ['absent', 'pending', 'posted']) {
+    const seed = collisionPacket('income', tag.existing, evidence);
+    let data = seed.x.data;
+    const ends = [];
+    for (let refresh = 1; refresh <= 3; refresh += 1) {
+      const result = Live.fromObservation({ ...seed.x, data });
+      data = result.data;
+      const end = liveEnding(data, seed.x.asOf);
+      ends.push(end);
+      assert.equal(end, RECEIPT_OBS,
+        `${tag.label} ${evidence} refresh ${refresh} conserves observed 53,847 cents`);
+      const name = incomeName(data.plan);
+      const hold = incomeHold(data.plan);
+      if (evidence === 'posted') {
+        assert.deepEqual(name, { id: seed.id, date: seed.x.asOf, effectiveAsOf: seed.x.asOf },
+          `${tag.label} posted refresh ${refresh} uses live applicable proof`);
+        assert.equal(hold, undefined,
+          `${tag.label} posted refresh ${refresh} does not also hold the receipt`);
+      } else {
+        assert.ok(hold && hold.reason === 'same-day-inbound-unproven',
+          `${tag.label} ${evidence} refresh ${refresh} retains the unproven-income hold`);
+        if (tag.label === 'untagged') {
+          assert.equal(name, undefined,
+            `${tag.label} ${evidence} refresh ${refresh} does not mint represented proof`);
+        } else {
+          assert.deepEqual(name, tag.existing[0],
+            `${tag.label} ${evidence} refresh ${refresh} keeps the inactive tagged entry`);
+        }
+      }
+      incomeGuardCases += 1;
+    }
+    assert.deepEqual(ends, [RECEIPT_OBS, RECEIPT_OBS, RECEIPT_OBS],
+      `${tag.label} ${evidence} three refreshes do not alternate unsupported cents`);
+  }
+}
+assert.equal(incomeGuardCases, 36,
+  'income-hold proof covers untagged plus three tagged entries across absent/pending/posted and three refreshes');
+
+for (const tag of INCOME_TAGS) {
+  let data = collisionPacket('income', tag.existing, 'absent').x.data;
+  for (const evidence of ['absent', 'pending', 'posted', 'posted']) {
+    const step = collisionPacket('income', tag.existing, evidence);
+    const result = Live.fromObservation({ ...step.x, data });
+    data = result.data;
+    assert.equal(liveEnding(data, step.x.asOf), RECEIPT_OBS,
+      `${tag.label} ${evidence} transition conserves observed cash`);
+    if (evidence === 'posted') {
+      assert.deepEqual(incomeName(data.plan),
+        { id: step.id, date: step.x.asOf, effectiveAsOf: step.x.asOf },
+        `${tag.label} posted transition activates applicable proof`);
+      assert.equal(incomeHold(data.plan), undefined,
+        `${tag.label} posted transition drops the hold`);
+    } else {
+      assert.ok(incomeHold(data.plan),
+        `${tag.label} ${evidence} transition retains the hold until posted proof`);
+    }
+  }
+}
 
 assert.equal(fs.readFileSync(require.resolve('../data.json'), 'utf8'), canonicalBefore);
 console.log('All represented effective-date synthetic checks passed.');

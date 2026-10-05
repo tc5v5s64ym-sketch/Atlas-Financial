@@ -69,8 +69,9 @@
  * opening when a same-day inbound is unproven or ambiguous: Forecast
  * omits that inbound from actionable cash via in-memory
  * opening.notReliedUponEvents without claiming it posted. A later
- * same-date refresh of an already-current opening keeps that
- * liveAsOf suppression; it does not require as-of to advance.
+ * same-date refresh rebuilds those same-day inbound guards independently
+ * of a prior hold and retains the suppression until applicable posting
+ * proof resolves it; it does not require as-of to advance.
  * Incomplete or
  * untrusted current cash still fails closed. Same-day unposted
  * joint-cash bills stay still due and do not fail the overlay. Triangle/MBNA
@@ -549,9 +550,22 @@ function schedulePlan(plan) {
   };
 }
 
+// Same-day inbound guards must see currently held receipts. Forecast
+// omitRepresented treats notReliedUponEvents as absence; that prior
+// suppression cannot be the input to rebuilding the hold.
+function schedulePlanForSameDayGuards(plan) {
+  const scheduled = schedulePlan(plan);
+  if (scheduled.opening) {
+    scheduled.opening = Object.assign({}, scheduled.opening, {
+      notReliedUponEvents: [],
+    });
+  }
+  return scheduled;
+}
+
 function scheduledCashEventsOn(plan, date) {
   if (!plan || !date) return [];
-  return Forecast.expandEvents(schedulePlan(plan), date, date, {})
+  return Forecast.expandEvents(schedulePlanForSameDayGuards(plan), date, date, {})
     .filter(event => event && event.date === date && event.kind !== 'noncash');
 }
 
@@ -588,7 +602,11 @@ function representedCandidateAllowed(candidate, historicalOpeningAsOf, liveAsOf,
   const inLiveWindow = !!(historicalOpeningAsOf
     && candidate.date > historicalOpeningAsOf
     && candidate.date <= liveAsOf);
+  // Same-date refresh has an empty (prior, live] window, but current-opening
+  // posting proof must still resolve an unproven-income hold.
+  const currentOpeningProof = candidate.date === liveAsOf;
   return inLiveWindow
+    || currentOpeningProof
     || Forecast.carriedOnceJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf)
     || Forecast.prepaidJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf);
 }
@@ -614,6 +632,31 @@ function copyRepresented(row) {
 function representedQualificationDate(row) {
   if (!row || !Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')) return null;
   return typeof row.effectiveAsOf === 'string' ? row.effectiveAsOf : null;
+}
+
+function copyNotRelied(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    reason: row.reason,
+    candidateCount: Number(row.candidateCount) > 0 ? Number(row.candidateCount) : 0,
+  };
+}
+
+function mergeSameDayIncomeGuards(existing, rebuilt, representedKeys, liveAsOf) {
+  const byKey = new Map();
+  const take = (row, prefer) => {
+    if (!row || !row.id || !row.date || row.date !== liveAsOf) return;
+    const key = String(row.id) + '@' + String(row.date);
+    if (representedKeys.has(key)) return;
+    if (!prefer && byKey.has(key)) return;
+    byKey.set(key, copyNotRelied(row));
+  };
+  for (const row of existing || []) take(row, false);
+  for (const row of rebuilt || []) take(row, true);
+  const out = Array.from(byKey.values());
+  out.sort(sortRepresented);
+  return out;
 }
 
 function preferRepresented(kept, incoming, liveAsOf) {
@@ -749,8 +792,14 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   const representedKeys = new Set(nextRepresented.filter(row =>
     Forecast.representedEventEffectiveBy(row, liveAsOf)).map(row =>
     String(row.id) + '@' + String(row.date)));
-  const nextNotRelied = notReliedUpon.filter(row =>
-    !representedKeys.has(String(row.id) + '@' + String(row.date)));
+  // Rebuild from occurrences still visible without prior holds, then
+  // keep any same-day hold that applicable proof has not resolved.
+  const nextNotRelied = mergeSameDayIncomeGuards(
+    (next.plan.opening && next.plan.opening.notReliedUponEvents) || [],
+    notReliedUpon,
+    representedKeys,
+    liveAsOf
+  );
   const nextOpening = Object.assign({}, next.plan.opening || {}, {
     asOf: liveAsOf,
     representedEvents: nextRepresented,
