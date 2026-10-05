@@ -2,6 +2,14 @@
 // Independent invented costs. $743 required, with $350 next-period capacity,
 // leaves $393 proposed now. No household or provider observations.
 module.exports = function plannedSavingsClarityData(mode = 'ready') {
+  if (mode.startsWith('stock-')) {
+    const data = module.exports('backed-ready');
+    if (mode === 'stock-zero') data.plan.savingsPoolObservation.accounts.forEach(row => { row.value = 0; });
+    if (mode === 'stock-missing') data.plan.savingsPoolObservation.accounts.pop();
+    if (mode === 'stock-duplicate') data.plan.savingsPoolObservation.accounts.push({ ...data.plan.savingsPoolObservation.accounts[0] });
+    if (mode === 'stock-pending') data.plan.savingsPoolObservation.accounts[0].pendingState = 'unknown';
+    return data;
+  }
   if (mode.startsWith('projection')) {
     const fx = require('./savings-funding-timeline'), data = require('./budget-funding-data')();
     data.plan = fx.fixture(); data.meta.asOf = fx.AS_OF;
