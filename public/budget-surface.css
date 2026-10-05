@@ -232,6 +232,20 @@
   background:var(--surface-1); color:var(--text-primary); padding:14px 10px;
   border-top:1px solid var(--border); overflow-wrap:anywhere;
 }
+.budget-savings-contributions { list-style:none; margin:0; padding:0; }
+.budget-savings-contributions li { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:12px; padding:9px 0; border-bottom:1px solid var(--border); }
+.budget-savings-contributions li > span:first-child { overflow-wrap:anywhere; }
+.budget-savings-contributions li > span:not(:first-child) { text-align:right; white-space:nowrap; }
+.budget-savings-contributions small { display:block; color:var(--text-secondary); font-size:11px; }
+@media(max-width:520px) {
+  .budget-savings-contributions li { grid-template-columns:minmax(0,1fr) auto; gap:6px 12px; }
+  .budget-savings-contributions li > span:first-child { grid-column:1 / -1; }
+  .budget-savings-contributions li > span:nth-child(2) { text-align:left; white-space:normal; }
+}
+.budget-savings-info { margin-top:12px; }
+.budget-savings-info > summary { display:list-item; width:fit-content; padding:7px 3px; color:var(--s1); cursor:pointer; }
+.budget-savings-info > summary:focus-visible { outline:2px solid var(--s1); outline-offset:3px; border-radius:4px; }
+.budget-savings-info > div { margin-top:8px; }
 .budget-surface-period .budget-waterfall-track {
   display:block; position:relative; height:10px; border-radius:6px;
   background:color-mix(in srgb, var(--text-primary) 9%, var(--surface-1));

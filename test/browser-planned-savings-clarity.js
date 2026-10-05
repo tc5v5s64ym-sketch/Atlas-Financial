@@ -1,0 +1,94 @@
+'use strict';
+// Real App.boot/Forecast with independent invented HTTP responses only.
+const assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path');
+const { chromium } = require('playwright');
+const fixture = require('./fixtures/planned-savings-clarity-data');
+const captureOnly = process.env.ATLAS_SAVINGS_CAPTURE_ONLY === '1';
+const assets = process.env.ATLAS_SAVINGS_ASSETS_DIR || path.join(__dirname, '../public');
+const output = process.env.ATLAS_SAVINGS_CLARITY_DIR || path.join(require('node:os').tmpdir(), 'atlas-planned-savings-clarity');
+fs.mkdirSync(output, { recursive: true });
+(async () => {
+  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
+  const errors = [], external = [], cases = [];
+  try {
+    for (const width of [1440, 390, 320]) for (const mode of ['unconfirmed', 'ready', 'gap', 'backed', 'pool-deficit', 'stale', 'backed-ready', 'range']) {
+      const data = fixture(mode);
+      const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+      page.on('pageerror', e => errors.push(e.message));
+      await page.route('**/*', route => {
+        const url = new URL(route.request().url());
+        if (url.origin !== 'http://savings-clarity.test') { external.push(url.origin); return route.abort(); }
+        if (url.pathname === '/data.json') return route.fulfill({ json: data });
+        if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(url.pathname)) return route.fulfill({ json: null });
+        const file = path.resolve(assets, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
+        if (!file.startsWith(assets + path.sep) || !fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
+        return route.fulfill({ body: fs.readFileSync(file), contentType: file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'text/html' });
+      });
+      await page.goto('http://savings-clarity.test/');
+      const summary = page.locator('[data-calendar-waterfall] [data-operating-question="savings"] > details > summary').first();
+      await summary.waitFor();
+      assert.equal(await page.evaluate(() => App.data.meta.title), data.meta.title);
+      const inputs = await page.evaluate(() => JSON.stringify(App.data));
+      await summary.focus(); await page.keyboard.press('Enter');
+      const dialog = page.locator('[data-budget-detail-sheet]');
+      const body = dialog.locator('[data-budget-detail-body]');
+      await dialog.waitFor({ state: 'visible' });
+      const info = body.locator('[data-budget-savings-info]');
+      if (!captureOnly) {
+        assert.equal(await info.evaluate(el => el.open), false);
+        const text = await body.innerText();
+        assert.doesNotMatch(text, /original payday|snapshot|attributable|Confirmed fulfilled|Remaining this period:/);
+        if (['unconfirmed', 'backed', 'pool-deficit', 'stale', 'range'].includes(mode)) {
+          assert.equal((text.match(/Funding plan not confirmed/g) || []).length, 1);
+          assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), mode === 'unconfirmed' ? 4 : 3);
+          if (mode === 'unconfirmed') {
+            assert.match(text, /Invented classes[\s\S]*143\.00/);
+            assert.doesNotMatch(text, /\$0\.00/);
+          } else {
+            const trip = body.locator('[data-budget-savings-total-goal="commitment:trip-a"]');
+            assert.match(await trip.innerText(), /403\.21/);
+            assert.match(await trip.locator('[data-budget-savings-total-saved]').innerText(), ['backed', 'range'].includes(mode) ? /215\.04/ : /Unknown/);
+            if (mode === 'range') assert.match(await trip.locator('[data-budget-savings-total-needed]').innerText(), /403\.21[\s\S]*500\.00/);
+          }
+          const rows = body.locator('[data-budget-savings-total-goal]');
+          const heights = await rows.evaluateAll(nodes => nodes.map(el => el.getBoundingClientRect().height));
+          assert.ok(heights.every(height => height <= 110), 'each total/period row stays compact');
+          assert.ok((await body.boundingBox()).height < 140 + heights.length * 110, 'only the short status, goal rows and Info are visible');
+        } else if (mode === 'backed-ready') {
+          const goal = body.locator('[data-budget-savings-total-goal="commitment:named-cost"]');
+          assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 1);
+          assert.match(await goal.innerText(), /215\.04[\s\S]*600\.00/);
+          assert.match(await goal.locator('[data-budget-savings-proposed]').innerText(), /177\.96/);
+          assert.match(await summary.innerText(), /177\.96/);
+        } else {
+          assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 0, 'missing total-stock publication does not use period requirements');
+          assert.match(text, /Total goal savings not confirmed/);
+          if (mode === 'ready') assert.match(await summary.innerText(), /393\.00/);
+          else assert.match(text, /Funding shortfall:/);
+        }
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        assert.equal(await body.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      }
+      await dialog.screenshot({ path: path.join(output, `${mode}-${width}.png`), animations: 'disabled' });
+      if (!captureOnly) {
+        const infoSummary = info.locator(':scope > summary');
+        await infoSummary.focus(); await page.keyboard.press('Enter');
+        assert.equal(await info.evaluate(el => el.open), true, 'Info is keyboard reachable');
+        assert.ok(await body.locator('[data-budget-goal-fulfillment-evidence]').count() >= 3, 'complete roster retained');
+        if (['ready', 'gap', 'unconfirmed'].includes(mode)) assert.match(await body.innerText(), /Invented goal with a deliberately long name/);
+        assert.match(await body.innerText(), /Attributable contributions|assignments|current Forecast/i);
+        await infoSummary.focus(); await page.keyboard.press('Enter');
+        assert.equal(await info.evaluate(el => el.open), false);
+        await page.keyboard.press('Escape');
+        assert.equal(await summary.evaluate(el => el === document.activeElement), true, 'dismissal restores exact summary focus');
+        assert.equal(await page.evaluate(() => JSON.stringify(App.data)), inputs, 'disclosures do not mutate financial inputs');
+      }
+      cases.push({ width, mode, captureOnly }); await page.close();
+    }
+    assert.deepEqual(errors, []); assert.deepEqual(external, []);
+    const receipt = { cases, errors, external, syntheticOnly: true };
+    fs.writeFileSync(path.join(output, 'verification.json'), JSON.stringify(receipt, null, 2) + '\n');
+    console.log((captureOnly ? 'CAPTURE' : 'PASS actual App.boot') + ' Planned Savings: ' + cases.length + ' states, desktop/390/320, Info keyboard/focus and unchanged inputs');
+  } finally { await browser.close(); }
+})().catch(e => { console.error(e); process.exitCode = 1; });
