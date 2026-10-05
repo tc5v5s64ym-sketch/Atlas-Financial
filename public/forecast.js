@@ -680,6 +680,9 @@
   // assigned. Only the next exact payment occurrence may consume a seed.
   function reserveFundingState(plan, asOf, opts, inventory) {
     const unavailable = reason => ({ status: 'unavailable', asOf, reason, payments: [] });
+    // Only the daily publisher can mint this private, derived walk context.
+    // Public options never impersonate confirmed intent or alter other callers.
+    if (savingsDailyReserveContexts.has(plan)) return savingsDailyReserveContexts.get(plan);
     if (!savingsEarmarksEnabled(plan)) return { status: 'incumbent', payments: [] };
     if (!Array.isArray(plan.savingsEarmarks.pools) || plan.savingsEarmarks.pools.some(pool => !pool || pool.role !== 'purpose-reserve')) {
       return unavailable(SAVINGS_INSTRUCTIONS_HELD);
@@ -3294,14 +3297,12 @@
           return unavailable('The current-payday named allocations do not sum to the published contribution.');
         }
       } else {
-        for (const cost of schedulable) {
-          if (!left) break;
-          const amount = Math.min(left, cost.baseRequirement - allocated.get(cost.id));
-          if (amount <= 0) continue;
-          allocated.set(cost.id, allocated.get(cost.id) + amount);
-          active.set(cost.id, active.get(cost.id) + amount);
-          left -= amount;
-          allocations.push({ id: cost.id, label: cost.label, amount: dollars(amount) });
+        const serial = serialFundingAllocations(schedulable, allocated, left);
+        left = serial.remaining;
+        for (const part of serial.allocations) {
+          const cost = schedulable.find(row => row.id === part.id);
+          active.set(cost.id, active.get(cost.id) + cents(part.amount));
+          allocations.push(part);
           if (allocated.get(cost.id) === cost.baseRequirement) fullyFundedOn.set(cost.id, period.date);
         }
       }
@@ -11891,12 +11892,9 @@
         allowance = roundCent(items.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
       }
       const from = p.start < asOf ? asOf : p.start;
-      const days = diffDays(from, p.end) + 1;
-      const cents = Math.round(allowance * 100);
       // Monotonic pennies preserve the exact period allowance, including
       // alternating category targets, without a daily rounding remainder.
-      for (let i = 0; i < days; i++) daily.set(addDays(from, i),
-        (Math.floor(cents * (i + 1) / days) - Math.floor(cents * i / days)) / 100);
+      budgetAllowanceDays(daily, from, p.end, allowance);
       for (const row of p.income || []) {
         if (row.date >= asOf && row.date <= end) incomes.set(row.id + '@' + row.date, row);
       }
@@ -11970,9 +11968,7 @@
           // not replay it, or add today's scheduled salary to observed cash.
           const remaining = roundCent(currentItems.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
           const forwardDaily = new Map(daily);
-          const days = diffDays(asOf, current.end) + 1, pennies = Math.round(remaining * 100);
-          for (let i = 0; i < days; i++) forwardDaily.set(addDays(asOf, i),
-            (Math.floor(pennies * (i + 1) / days) - Math.floor(pennies * i / days)) / 100);
+          budgetAllowanceDays(forwardDaily, asOf, current.end, remaining);
           const forwardOpts = Object.assign({}, walkOpts, {
             injections: [], budgetHouseholdDaily: forwardDaily,
             // Purpose-debt draws are another modelled injection path. Keep
@@ -11984,20 +11980,8 @@
           });
           const forwardSim = simulate(plan, asOf, forwardOpts);
           const forwardBasis = new Map(basis);
-          const events = forwardSim.events.filter(e => cashWalkDate(e, asOf) <= current.end);
-          const costIds = new Set(seq.filter(c => c.date >= asOf && c.date <= current.end
-            && c.need != null && c.flexibility !== 'optional').map(c => c.id));
-          const cash = startingCashAmount(plan);
-          const payments = events.filter(e => costIds.has(e.id)
-            && (e.kind === 'commitment' || e.kind === 'bill' || e.kind === 'reserve'));
-          const costPayments = roundCent(payments.reduce((s, e) => s - operatingEventAmount(e), 0));
-          const income = roundCent(events.filter(e => e.kind === 'income').reduce((s, e) => s + e.amount, 0));
-          const closing = forwardSim.daily.find(d => d.date === current.end).balance;
-          const walkCapacity = roundCent(closing - cash + costPayments);
-          // Later deposits protect the walk but cannot be set aside now.
-          const capacity = roundCent(cash + walkCapacity - income - simulationCashFloor(forwardSim));
-          const deductions = roundCent(income - walkCapacity);
-          const bills = roundCent(deductions - remaining);
+          const { cash, income, walkCapacity, capacity, deductions, bills } =
+            budgetSavingsCashSeed(plan, asOf, current.end, remaining, forwardSim, seq);
           forwardBasis.set(asOf, { fromToday: true, end: current.end,
             capacity, walkCapacity });
           const forward = planSpendPaydayFunding(plan, asOf, forwardSim, seq, [], null, forwardBasis);
@@ -17326,6 +17310,376 @@
     };
   }
 
+  // One serial cents attribution: the incumbent allocator and daily policy
+  // publisher supply their own native capacity, preserving the same order.
+  function serialFundingAllocations(costs, allocated, capacity) {
+    let left = capacity;
+    const allocations = [];
+    for (const cost of costs) {
+      if (!left) break;
+      const amount = Math.min(left, Math.max(0, cost.baseRequirement - allocated.get(cost.id)));
+      if (!amount) continue;
+      allocated.set(cost.id, allocated.get(cost.id) + amount); left -= amount;
+      allocations.push({ id: cost.id, label: cost.label, amount: amount / 100 });
+    }
+    return { remaining: left, allocations };
+  }
+  function budgetAllowanceDays(daily, from, through, amount) {
+    const days = diffDays(from, through) + 1, cents = Math.round(amount * 100);
+    for (let i = 0; i < days; i++) daily.set(addDays(from, i),
+      (Math.floor(cents * (i + 1) / days) - Math.floor(cents * i / days)) / 100);
+  }
+  function budgetSavingsCashSeed(plan, asOf, through, remaining, sim, seq) {
+    const events = sim.events.filter(e => cashWalkDate(e, asOf) <= through);
+    const ids = new Set(seq.filter(c => c.date >= asOf && c.date <= through
+      && c.need != null && c.flexibility !== 'optional').map(c => c.id));
+    const cash = startingCashAmount(plan);
+    const payments = events.filter(e => ids.has(e.id) && ['commitment', 'bill', 'reserve'].includes(e.kind));
+    const paid = roundCent(payments.reduce((s, e) => s - operatingEventAmount(e), 0));
+    const income = roundCent(events.filter(e => e.kind === 'income').reduce((s, e) => s + e.amount, 0));
+    const closing = sim.daily.find(d => d.date === through).balance;
+    const walkCapacity = roundCent(closing - cash + paid);
+    const capacity = roundCent(cash + walkCapacity - income - simulationCashFloor(sim));
+    const deductions = roundCent(income - walkCapacity);
+    return { cash, income, walkCapacity, capacity, deductions, bills: roundCent(deductions - remaining) };
+  }
+  function savingsDailyPolicy(policy, day) {
+    return savingsKeys(policy, ['schema', 'confirmedAt', 'source', 'order', 'periodBasis'])
+      && policy.schema === 'atlas-savings-daily-policy/v1'
+      && savingsDate(policy.confirmedAt) && policy.confirmedAt <= day
+      && typeof policy.source === 'string' && !!policy.source.trim() && policy.source.length <= 200
+      && policy.order === 'due-date-first-within-pool'
+      && policy.periodBasis === 'operating-surplus-before-proposals';
+  }
+  const savingsDailyReserveContexts = new WeakMap();
+  function savingsPolicyBacking(plan, day, opts) {
+    opts = opts || {};
+    const unavailable = reason => ({ status: 'unavailable', reason, items: [], pools: [], rows: [],
+      funding: { status: 'unavailable', asOf: day, reason, payments: [] },
+      stock: { status: 'unavailable', asOf: day, amount: null, trust: 'unknown', evidenceTrust: 'unknown',
+        currency: 'CAD', basis: 'observed-savings-stock', nonAdditive: true } });
+    if (!plan || !savingsDate(day)) return unavailable('A dated plan is required.');
+    const block = plan.savingsEarmarks;
+    if (!block || !Array.isArray(block.pools)) return unavailable('Configured purpose pools are required.');
+    // Redundant direct/group member links are views, not two pledges. Only this
+    // policy normalizes links; incumbent manual validation and inputs stay intact.
+    const pools = block.pools.map(pool => !pool || !Array.isArray(pool.goalRefs) ? pool : ({ ...pool,
+      goalRefs: pool.goalRefs.filter(ref => !(ref?.kind === 'commitment' && pool.goalRefs.some(other =>
+        other?.kind === 'group' && savingsGoal(plan, other, day).members.includes('goal:' + ref.id)))) }));
+    const normalized = { ...plan, savingsEarmarks: { ...block, pools } };
+    const config = savingsEarmarksState(normalized, day);
+    if (config.status !== 'ready' || config.pools.some(pool => pool.role !== 'purpose-reserve')) return unavailable(config.reason || 'Explicit purpose pools are required.');
+    if (!Array.isArray(plan.savingsPoolObservation?.accounts)) return unavailable('Savings observations are unavailable.');
+    const inventory = savingsInventory({ ...normalized, savingsEarmarks: { ...normalized.savingsEarmarks,
+      history: config.history.filter(revision => revision.confirmedAt <= day) } }, day);
+    const stockKnown = plan.savingsPoolObservation.asOf === day && inventory.pools.length === 2
+      && inventory.pools.every(pool => pool.observedAsOf === day && pool.observedTrust === 'verified' && savingsCents(pool.observedCash, true) != null);
+    const stockCents = stockKnown ? inventory.pools.reduce((sum, pool) => sum + savingsCents(pool.observedCash, true), 0) : null;
+    const safeStock = stockKnown && Number.isSafeInteger(stockCents);
+    const stock = { status: safeStock ? 'ready' : 'unavailable', asOf: day, amount: safeStock ? stockCents / 100 : null,
+      trust: safeStock ? 'calculated' : 'unknown', evidenceTrust: safeStock ? 'verified' : 'unknown', currency: 'CAD',
+      basis: 'observed-savings-stock', nonAdditive: true, accountIds: config.pools.map(pool => pool.accountId) };
+    const policyKnown = savingsDailyPolicy(opts.savingsAllocationPolicy, day);
+    const rawOpts = { ...opts, savingsAllocationPolicy: undefined };
+    const horizon = knowledgeHorizon(normalized, day, rawOpts), events = expandEvents(normalized, day, horizon.end, rawOpts);
+    const seq = fundingSequence(normalized, day, rawOpts), disabled = new Set(opts.disabled || []);
+    const byKey = new Map(), rows = [], packetPools = [], claimed = new Set();
+    let identityUnknown = false;
+    let reason = !policyKnown ? 'The approved savings policy is unavailable or not yet effective.'
+      : !safeStock ? 'Both savings accounts require current verified stock.' : null;
+    const compare = (a, b) => (a.date || '\uffff').localeCompare(b.date || '\uffff') || a.rank - b.rank || a.key.localeCompare(b.key);
+    const occurrencesFor = goal => {
+      const result = [];
+      for (const member of goal.members) {
+        const id = member.slice(5), commitment = (plan.commitments || []).find(c => c.id === id);
+        const reserve = (plan.budget?.categories || []).find(c => c.id === id && c.class === 'reserve');
+        const source = commitment || reserve || (plan.bills || []).find(b => b.id === id);
+        const matched = events.filter(e => e.id === id && ['commitment', 'bill', 'reserve'].includes(e.kind));
+        const dates = matched.length ? matched.map(e => e.date) : [commitmentCashDate(commitment) || reserve?.planningDate || null];
+        for (const date of dates) {
+          const key = id + '@' + (date || 'undated');
+          if (byKey.has(key)) { result.push(byKey.get(key)); continue; }
+          const inactive = commitment && commitmentSettledBy(commitment, day) || disabled.has(id);
+          const amount = inactive ? 0 : reserve ? reserve.plannedAmount : source?.amount;
+          const need = savingsCents(amount), low = need ?? savingsCents(source?.amountMin), high = need ?? savingsCents(source?.amountMax);
+          const matches = matched.filter(e => e.date === date);
+          const item = { key, id, label: source?.label || id, date: matches.length === 1 ? cashWalkDate(matches[0], day) : date,
+            scheduledDate: date, rank: seq.find(c => c.id === id)?.rank || Number.MAX_SAFE_INTEGER,
+            needed: need == null ? null : need / 100, neededRange: need == null && low != null && high != null ? { min: low / 100, max: high / 100 } : null,
+            saved: 0, inactive: !!inactive, trust: source?.confidence === 'confirmed' ? 'calculated'
+              : ['unknown', 'unavailable', 'unconfirmed', 'missing'].includes(source?.confidence) ? 'unknown' : 'estimated',
+            needCents: need, savedCents: 0, poolId: null, event: matches[0] || null };
+          byKey.set(key, item); result.push(item);
+        }
+      }
+      return result.sort(compare);
+    };
+    const manual = config.history.filter(r => r.confirmedAt <= day).at(-1);
+    for (const pool of config.pools) {
+      const observed = inventory.pools.find(row => row.id === pool.id), members = new Map();
+      for (const ref of pool.goalRefs || []) {
+        const goal = savingsGoal(normalized, ref, day), items = occurrencesFor(goal);
+        if (!goal.resolved) { identityUnknown = true; reason ||= 'A linked requirement has no unique authoritative identity.'; }
+        for (const item of items) {
+          if (item.poolId && item.poolId !== pool.id) { identityUnknown = true; reason ||= 'A requirement belongs to more than one pool.'; }
+          item.poolId = pool.id; members.set(item.key, item);
+        }
+        rows.push({ key: goal.key, label: goal.label, poolId: pool.id, members: items.map(item => item.key),
+          saved: null, needed: null, thisPeriod: null, remainingThisPeriod: null, trust: goal.targetTrust });
+      }
+      let left = Math.max(0, savingsCents(observed?.observedCash, true) || 0), encumbered = 0;
+      const snapshot = manual?.pools.find(p => p.poolId === pool.id);
+      let poolKnown = safeStock && policyKnown && plan.savingsPoolObservation.accounts.find(r => r.accountId === pool.accountId)?.pendingState === 'clear';
+      if (!poolKnown) reason ||= 'Clear current pool movements are required for derived backing.';
+      if (manual && !snapshot) { poolKnown = false; reason ||= 'An incomplete manual confirmation remains encumbering.'; }
+      for (const allocation of snapshot?.allocations || []) {
+        encumbered += savingsCents(allocation.amount);
+        if (!savingsGoal(normalized, allocation.goalRef, day).resolved || encumbered > left) {
+          poolKnown = false; reason ||= 'Manual earmarks are unresolved or exceed observed stock.';
+        }
+      }
+      if (poolKnown) {
+        for (const allocation of snapshot?.allocations || []) {
+          let pinned = savingsCents(allocation.amount);
+          for (const item of occurrencesFor(savingsGoal(normalized, allocation.goalRef, day))) {
+            if (item.inactive || item.needCents == null) continue;
+            const take = Math.min(pinned, Math.max(0, item.needCents - item.savedCents));
+            item.savedCents += take; pinned -= take;
+          }
+        }
+        left -= encumbered;
+        for (const item of Array.from(members.values()).sort(compare)) {
+          if (item.inactive) continue;
+          if (item.needCents == null || !item.date || item.trust === 'unknown') { poolKnown = false; reason ||= 'Unknown, ranged or undated protected requirements remain encumbering.'; break; }
+          const take = Math.min(left, Math.max(0, item.needCents - item.savedCents));
+          item.savedCents += take; left -= take;
+        }
+      }
+      for (const item of members.values()) { item.saved = poolKnown ? item.savedCents / 100 : null; claimed.add(item.key); }
+      packetPools.push({ id: pool.id, accountId: pool.accountId, status: poolKnown ? 'ready' : 'unavailable',
+        observedCash: observed?.observedCash ?? null, encumberedManual: encumbered / 100,
+        deficit: Math.max(0, -(savingsCents(observed?.observedCash, true) || 0)) / 100, unallocated: poolKnown ? left / 100 : null });
+    }
+    const items = Array.from(byKey.values()).filter(item => claimed.has(item.key));
+    if (identityUnknown) {
+      for (const item of items) item.saved = null;
+      for (const pool of packetPools) { pool.status = 'unavailable'; pool.unallocated = null; }
+    }
+    for (const row of rows) {
+      const members = items.filter(item => row.members.includes(item.key));
+      row.saved = members.every(item => item.saved != null) ? members.reduce((sum, item) => sum + savingsCents(item.saved), 0) / 100 : null;
+      row.needed = members.every(item => item.needCents != null) ? members.reduce((sum, item) => sum + item.needCents, 0) / 100 : null;
+      if (row.needed == null && members.every(item => item.needed != null || item.neededRange)) row.neededRange = {
+        min: members.reduce((sum, item) => sum + Math.round((item.needed ?? item.neededRange.min) * 100), 0) / 100,
+        max: members.reduce((sum, item) => sum + Math.round((item.needed ?? item.neededRange.max) * 100), 0) / 100 };
+    }
+    const payments = items.filter(item => item.saved > 0 && !item.inactive && item.event).map(item => ({
+      id: item.id, date: item.scheduledDate, requirement: item.needed, backed: item.saved,
+      parts: [{ poolId: item.poolId, accountId: config.pools.find(pool => pool.id === item.poolId).accountId,
+        goalKey: rows.find(row => row.members.includes(item.key))?.key, amount: item.saved }] }));
+    return { status: reason ? 'unavailable' : 'ready', reason, stock, items, pools: packetPools, rows,
+      basis: 'policy-derived-observed-backing', trust: reason ? 'unknown' : 'calculated', actualTransferred: null,
+      funding: { status: reason ? 'unavailable' : 'ready', reason, asOf: day, revision: inventory.revision,
+        source: 'Forecast.savingsDailyFunding', payments } };
+  }
+
+  // Replacement funding packet only. An observation/earmark is never transfer
+  // evidence; no canonical history, observations or real money are changed.
+  function savingsDailyFunding(plan, debts, asOf, opts) {
+    opts = { ...(opts || {}), debts: Array.isArray(debts) ? debts : [] };
+    const day = financialDate(asOf), derived = savingsPolicyBacking(plan, day, opts);
+    const shell = { source: 'Forecast.savingsDailyFunding', asOf: day, currency: 'CAD',
+      actionPermission: 'not-granted', moneyMovementPermission: 'not-granted', stock: derived.stock,
+      backing: { status: derived.status, reason: derived.reason, basis: derived.basis, trust: derived.trust,
+        actualTransferred: null, pools: derived.pools,
+        items: derived.items.map(({ needCents, savedCents, event, rank, ...item }) => item) }, rows: derived.rows };
+    const unknown = reason => ({ ...shell, status: 'unavailable', reason,
+      period: { status: 'unavailable', reason, entitlement: null, transferred: null,
+        remainingEntitlement: null, availableNow: null, proposal: null, unassigned: null } });
+    if (derived.status !== 'ready') return unknown(derived.reason);
+    if (derived.pools.some(pool => pool.deficit > 0)) return unknown('Negative savings stock remains a protected deficit.');
+    if (plan.opening?.asOf !== day || opts.operatingPlan === 'unavailable') return unknown('A matching available operating opening is required.');
+    const cashRows = plan.startingCash?.breakdown;
+    const trustedCash = row => savingsCents(row.value, true) != null && row.unknown !== true
+      && [row.confidence, row.status].every(tag => tag == null || ['verified', 'confirmed', 'calculated', 'estimated'].includes(tag))
+      && (row.evidenceDate == null || financialDate(row.evidenceDate) === day);
+    if (!Array.isArray(cashRows) || HOUSEHOLD_CHEQUING_IDS.some(id => {
+      const rows = cashRows.filter(row => row?.id === id);
+      return rows.length !== 1 || !trustedCash(rows[0]);
+    })) return unknown('Both operating cash balances require unique current cents evidence.');
+    if (opts.observedCash || opts.operatingPlan === 'live') {
+      const observed = opts.observedCash;
+      if (!observed || observed.complete !== true || financialDate(observed.asOf) !== day
+          || !Array.isArray(observed.accounts) || HOUSEHOLD_CHEQUING_IDS.some(id => {
+            const matches = observed.accounts.filter(row => row?.id === id);
+            return matches.length !== 1 || !trustedCash(matches[0]) || financialDate(matches[0].evidenceDate) !== day
+              || savingsCents(matches[0].value, true) !== savingsCents(cashRows.find(row => row.id === id).value, true);
+          })) return unknown('Current observations do not uniquely back both operating openings.');
+    }
+    const cycle = spendingCycle(plan, day), packet = currentPeriodActualsPacket(opts);
+    if (!cycle || !packet || packet.observationAsOf !== day || packet.currency != null && String(packet.currency).toUpperCase() !== 'CAD'
+        || !savingsDate(packet.coverageStart) || packet.coverageStart > cycle.start
+        || !savingsDate(packet.coverageThrough) || packet.coverageThrough < day
+        || !(packet.transactionCoverage === 'complete' || packet.transactionCoverage?.complete === true)
+        || transactionCoverageStatus(packet) !== 'complete'
+        || pendingCoverageStatus(packet) !== 'complete' || !Array.isArray(packet.transactions)
+        || !Array.isArray(packet.representedActuals)) return unknown('Explicit complete current-cycle cash and transaction evidence is required.');
+    const unique = new Map();
+    for (const tx of packet.transactions) {
+      if (!tx || tx.id == null || tx.id === '' || !savingsDate(tx.date) || tx.date > day
+          || savingsCents(tx.amount, true) == null || typeof tx.currency !== 'string' || tx.currency.toUpperCase() !== 'CAD'
+          || !['household-cash', 'household-reserve', 'revolving-credit', 'household-external'].includes(tx.accountRole)) return unknown('A transaction has unavailable date, currency, amount or account identity.');
+      const id = String(tx.id), prior = unique.get(id);
+      const identity = tx.atlasAccountId || tx.accountId || tx.account;
+      if (!identity || [tx.atlasAccountId, tx.accountId, tx.account].some(account => account != null
+          && account !== '' && String(account) !== String(identity))) return unknown('Transaction account aliases are missing or contradictory.');
+      const operating = HOUSEHOLD_CHEQUING_IDS.includes(String(identity));
+      const reserve = derived.pools.some(pool => pool.accountId === String(identity));
+      if (operating && tx.accountRole !== 'household-cash'
+          || reserve && !['household-cash', 'household-reserve'].includes(tx.accountRole)
+          || ['household-cash', 'household-reserve'].includes(tx.accountRole) && !operating && !reserve) {
+        return unknown('A cash location has contradictory or unconfigured household purpose.');
+      }
+      if (prior && JSON.stringify(prior) !== JSON.stringify(tx)) return unknown('Repeated transaction identity has contradictory evidence.');
+      unique.set(id, tx);
+    }
+    opts = { ...opts, currentPeriodActuals: { ...packet, transactionCoverage: 'complete', pendingCoverage: 'complete',
+      transactions: Array.from(unique.values()) } };
+    const snapshot = establishPaydaySnapshot(plan, cycle.start, opts);
+    if (!snapshot) return unknown('No original payday cash observation supports the cycle bridge.');
+    let bridgedCash = savingsCents(snapshot.opening, true);
+    for (const tx of unique.values()) if (tx.date >= cycle.start && tx.date <= day && tx.pending !== true
+        && HOUSEHOLD_CHEQUING_IDS.includes(String(tx.atlasAccountId || tx.accountId || tx.account))) {
+      bridgedCash -= savingsCents(tx.amount, true);
+    }
+    if (!Number.isSafeInteger(bridgedCash) || bridgedCash !== savingsCents(startingCashAmount(plan), true)) {
+      return unknown('The original payday opening and posted operating legs do not reconcile to current cash.');
+    }
+    const transfers = householdInternalMovements(plan, opts);
+    const paired = new Set(transfers.flatMap(t => [t.sourceTransactionId, t.destinationTransactionId]));
+    if (opts.currentPeriodActuals.transactions.some(tx => tx.date >= cycle.start
+      && (isInternalHouseholdTransfer(tx) && (!paired.has(String(tx.id)) || tx.pending === true)
+        || tx.accountRole === 'household-cash' && tx.pending === true))) return unknown('A pending or unmatched household transfer/cash movement remains encumbering.');
+    if (transfers.some(t => t.date >= cycle.start && (t.sourceDate !== t.destinationDate
+      || t.sourceDate > day || t.destinationDate > day))) return unknown('Transfer legs do not share compatible settled dates.');
+    const accounts = new Set(derived.pools.map(pool => pool.accountId));
+    const transferred = transfers.filter(t => t.date >= cycle.start && t.date <= day
+      && HOUSEHOLD_CHEQUING_IDS.includes(t.sourceAccountId) && accounts.has(t.destinationAccountId))
+      .reduce((sum, t) => sum + savingsCents(t.amount), 0);
+    if (!Number.isSafeInteger(transferred)) return unknown('Transferred cents exceed exact arithmetic.');
+    const seq = fundingSequence(plan, day, opts);
+    if (seq.some(c => c.flexibility !== 'optional' && c.date && c.date < day && (c.need ?? c.bounds?.floor) > 0)) return unknown('Unpaid past requirements remain protected until evidenced settlement.');
+    const coverage = cardCoverageState(plan, day, opts);
+    if (!['incumbent', 'ready'].includes(coverage.status)) return unknown(coverage.reason);
+    const bound = payPeriodTimelineBound(plan, day, opts);
+    const windows = timelinePayPeriodWindows(plan, day, bound.through).filter(window => window.end <= bound.through);
+    if (!windows.some(window => window.start === cycle.start)) return unknown('The current full cycle lies beyond supported income authority.');
+    const periods = calendarPeriodWaterfalls(plan, day, null, [], opts.debts, { ...opts, periodWindows: windows }).calendarPeriods;
+    const current = periods.find(p => p.start === cycle.start);
+    if (!current || savingsCents(current.balanceAfterDeductions, true) == null
+        || periodWaterfallCombinedTrust(current.incomeTrust, current.periodBillLoadTrust,
+          current.budgetHoldTrust ?? 'calculated', current.balanceAfterDeductionsTrust ?? 'calculated') === 'unavailable') return unknown('The native Budget period basis is unavailable.');
+    if (!periods.every(p => savingsCents(p.incomeTotal, true) != null && savingsCents(p.periodBillLoad) != null
+      && savingsCents(p.budgetHold) != null && p.householdBudget.every(r => (p.start > day || savingsCents(r.spent, true) != null)
+        && savingsCents(r.hold) != null))) return unknown('Native Budget deductions or household spending are unavailable.');
+    if ((plan.bills || []).some(b => b.amount == null || savingsCents(b.amount) == null)) return unknown('A required operating bill amount is unavailable.');
+    if ((plan.obligations || []).some(o => o.amount == null || savingsCents(o.amount) == null)
+        || (plan.commitments || []).some(c => !commitmentSettledBy(c, day) && !(opts.disabled || []).includes(c.id)
+          && c.flexibility !== 'optional' && savingsCents(c.amount) == null
+          && (savingsCents(c.amountMin) == null || savingsCents(c.amountMax) == null || c.amountMax < c.amountMin))) {
+      return unknown('An existing protected obligation has unavailable amount evidence.');
+    }
+    // Native Budget already raises its hold to observed overspending. Receipts
+    // proven to have landed outside operating cash are already located savings,
+    // not a second operating transfer quota. Match native income evidence only.
+    let alreadySavedIncome = 0;
+    for (const row of current.income || []) {
+      const ids = new Set((row.recon || []).map(r => String(r.id)));
+      for (const represented of packet.representedActuals || []) if (represented.id === row.id
+          && represented.date === row.date && represented.transactionId != null) ids.add(String(represented.transactionId));
+      const receipts = Array.from(ids).map(id => unique.get(id)).filter(tx => tx && tx.amount < 0);
+      const saved = receipts.filter(tx => accounts.has(String(tx.atlasAccountId || tx.accountId || tx.account)));
+      if (!saved.length) continue;
+      if (receipts.some(tx => tx.pending === true) || receipts.reduce((sum, tx) => sum - savingsCents(tx.amount, true), 0) !== savingsCents(row.amount)) {
+        return unknown('Income destination evidence does not reconcile to the native period receipt.');
+      }
+      alreadySavedIncome += saved.reduce((sum, tx) => sum - savingsCents(tx.amount, true), 0);
+    }
+    const nativePeriodSurplus = savingsCents(current.balanceAfterDeductions, true);
+    const nativeReceived = (current.income || []).filter(row => row.alreadyInCash === true
+      || ['represented', 'opening'].includes(row.settlement)).reduce((sum, row) => sum + savingsCents(row.amount), 0);
+    const evidencedIncome = Array.from(unique.values()).filter(tx => tx.date >= cycle.start && tx.date <= day
+      && tx.amount < 0 && tx.pending !== true && !isInternalHouseholdTransfer(tx)
+      && ['household-cash', 'household-reserve'].includes(tx.accountRole)
+      && (txMatchesScheduledIncome(tx, plan, opts) || isGenuineOtherIncomeTransaction(tx, plan, opts)))
+      .reduce((sum, tx) => sum - savingsCents(tx.amount, true), 0);
+    if (nativeReceived !== evidencedIncome) return unknown('Native received income does not reconcile to the complete posted receipt evidence.');
+    const entitlement = nativePeriodSurplus - alreadySavedIncome, remainingEntitlement = Math.max(0, entitlement - transferred);
+    if (!Number.isSafeInteger(entitlement) || !Number.isSafeInteger(remainingEntitlement)) return unknown('Period cents exceed exact arithmetic.');
+    const daily = new Map(), incomes = new Map();
+    for (const p of periods) {
+      const remaining = p.start <= day ? p.householdBudget.reduce((sum, row) => sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0) / 100 : p.budgetHold;
+      budgetAllowanceDays(daily, p.start <= day ? day : p.start, p.end, remaining);
+      for (const row of p.income || []) if (row.date >= day) incomes.set(row.id + '@' + row.date, row);
+    }
+    const end = windows.at(-1).end, ordinary = new Set();
+    for (const stream of plan.income || []) for (const date of occurrences(stream, day, end)) ordinary.add(stream.id + '@' + date);
+    const walkOpts = { ...opts, horizonDays: diffDays(day, end) + 1, viewDays: diffDays(day, end) + 1,
+      weeklyVariable: 0, budgetHouseholdDaily: daily, injections: [],
+      plannedFlows: (opts.plannedFlows || []).filter(flow => Number(flow?.amount) < 0),
+      incomeOccurrenceAdjust: (stream, date) => {
+        const row = incomes.get(stream.id + '@' + date);
+        return date === day || row?.alreadyInCash === true || row?.notReliedUpon === true || ['represented', 'opening', 'not-relied-upon'].includes(row?.settlement)
+          ? { amount: 0, confidence: 'confirmed' } : row ? { amount: row.amount, confidence: row.confidence } : null;
+      }, additionalIncomeEvents: Array.from(incomes.entries()).filter(([key, row]) => !ordinary.has(key)
+        && row.date > day && !row.alreadyInCash && !row.notReliedUpon && !['represented', 'opening', 'not-relied-upon'].includes(row.settlement))
+        .map(([, row]) => ({ ...row, kind: 'income' })) };
+    const walkPlan = { ...plan };
+    savingsDailyReserveContexts.set(walkPlan, derived.funding);
+    const sim = simulate(walkPlan, day, walkOpts), linked = new Set(derived.items.map(item => item.id));
+    const linkedSeq = seq.filter(c => linked.has(c.id));
+    const remainingHousehold = current.householdBudget.reduce((sum, row) => sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0) / 100;
+    const seed = budgetSavingsCashSeed(plan, day, current.end, remainingHousehold, sim, linkedSeq);
+    let paid = 0, capacity = savingsCents(seed.capacity, true), laterCapacity = Infinity;
+    const payments = sim.events.filter(e => linked.has(e.id) && ['commitment', 'bill', 'reserve'].includes(e.kind));
+    for (const row of sim.daily) {
+      paid += payments.filter(e => cashWalkDate(e, day) === row.date).reduce((sum, e) => sum + Math.round(-operatingEventAmount(e) * 100), 0);
+      capacity = Math.min(capacity, Math.floor((row.balance - simulationCashFloor(sim)) * 100 + 0.000001) + paid);
+      if (row.date >= current.end) laterCapacity = Math.min(laterCapacity,
+        Math.floor((row.balance - simulationCashFloor(sim)) * 100 + 0.000001) + paid);
+    }
+    const undated = seq.filter(c => !c.date && c.flexibility !== 'optional').reduce((sum, c) => sum + savingsCents(c.bounds?.floor), 0);
+    capacity = Math.min(capacity, Math.floor((sim.ending - simulationCashFloor(sim)) * 100 + 0.000001) + paid - undated);
+    laterCapacity = Math.min(laterCapacity, Math.floor((sim.ending - simulationCashFloor(sim)) * 100 + 0.000001) + paid - undated);
+    const plannedCapacity = Math.max(0, Math.min(remainingEntitlement, Math.round((seed.capacity + seed.income) * 100), laterCapacity));
+    const gap = sim.daily.find(row => below(row.balance, simulationCashFloor(sim)));
+    if (plannedCapacity > 0 && gap) return unknown('Known operating cash on ' + gap.date + ' cannot preserve the existing cash/card floor.');
+    const availableNow = Math.max(0, Math.min(remainingEntitlement, capacity));
+    const costs = derived.items.filter(item => !item.inactive && item.needCents != null && item.saved != null)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.rank - b.rank || a.key.localeCompare(b.key))
+      .map(item => ({ id: item.key, label: item.label, baseRequirement: item.needCents }));
+    const assigned = new Map(derived.items.map(item => [item.key, savingsCents(item.saved) || 0]));
+    const today = serialFundingAllocations(costs, new Map(assigned), availableNow);
+    const planned = serialFundingAllocations(costs, new Map(assigned), plannedCapacity);
+    const fundingTrust = periodWaterfallCombinedTrust(...periods.flatMap(p => [p.incomeTrust, p.periodBillLoadTrust,
+      p.budgetHoldTrust ?? 'calculated']), ...cashRows.filter(r => HOUSEHOLD_CHEQUING_IDS.includes(r.id))
+      .map(r => r.confidence === 'estimated' || r.status === 'estimated' ? 'estimated' : 'calculated'),
+      ...derived.items.map(item => item.trust));
+    if (fundingTrust === 'unavailable') return unknown('The protected funding path has unavailable trust evidence.');
+    const rows = shell.rows.map(row => ({ ...row, savedTrust: row.saved == null ? 'unknown' : row.trust,
+      neededTrust: row.needed == null ? 'unknown' : row.trust, thisPeriodTrust: fundingTrust, remainingThisPeriodTrust: fundingTrust,
+      thisPeriod: planned.allocations.filter(a => row.members.includes(a.id)).reduce((sum, a) => sum + savingsCents(a.amount), 0) / 100,
+      remainingThisPeriod: today.allocations.filter(a => row.members.includes(a.id)).reduce((sum, a) => sum + savingsCents(a.amount), 0) / 100 }));
+    return { ...shell, rows, status: 'ready', period: { status: 'ready', basis: 'operating-surplus-before-proposals',
+      start: cycle.start, end: cycle.end, entitlement: entitlement / 100, transferred: transferred / 100,
+      nativePeriodSurplus: nativePeriodSurplus / 100, alreadySavedIncome: alreadySavedIncome / 100,
+      remainingEntitlement: remainingEntitlement / 100, availableNow: availableNow / 100,
+      proposal: (availableNow - today.remaining) / 100, unassigned: today.remaining / 100,
+      currentCash: seed.cash, futureIncome: seed.income, cashCapacity: Math.max(0, capacity) / 100,
+      trust: fundingTrust, cashThrough: end, incomeAuthorityThrough: bound.through, completeness: 'bounded',
+      allocations: today.allocations, cycleAllocations: planned.allocations, actualSaved: null, originalPaydayPlan: null } };
+  }
+
   // Hypothetical pool locations on the incumbent Forecast walk. Neither
   // observed balances nor these projected transfers establish actual purpose.
   function savingsFundingTimeline(plan, debts, asOf, opts) {
@@ -19634,7 +19988,7 @@
     };
   }
 
-  const Forecast = { savingsInventory, savingsFundingTimeline, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
