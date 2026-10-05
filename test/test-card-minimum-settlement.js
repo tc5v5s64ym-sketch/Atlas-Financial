@@ -289,7 +289,8 @@ function hasCandidate(report, id, date) {
 
 function represented(data, id, date) {
   return ((data.plan && data.plan.opening && data.plan.opening.representedEvents) || [])
-    .some(row => row && row.id === id && row.date === date);
+    .some(row => row && row.id === id && row.date === date
+      && (!Object.hasOwn(row, 'effectiveAsOf') || row.effectiveAsOf <= data.plan.opening.asOf));
 }
 
 function recommend(data) {
