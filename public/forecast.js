@@ -81,7 +81,7 @@
     const rows = plan && plan.obligations || [];
     if (!rows.some(row => row && row.sentPayments != null)) return {
       status: 'incumbent', asOf, source: 'Forecast.cardMinimumState', payments: [], issues: [], reason: null };
-    const payments = [], issues = [], used = new Set();
+    const payments = [], issues = [], used = new Set(), usedProofs = new Set();
     const represented = [].concat(plan?.opening?.representedEvents || [], options?.representedEvents || []);
     for (const row of rows) {
       const statements = statementRows(row, occurrences);
@@ -113,11 +113,21 @@
         if (record.postedOn > asOf) continue;
         const statement = statements.find(item => item.scheduledDate === record.scheduledDate);
         const dueDate = statement ? statement.dueDate : record.scheduledDate;
-        // Receipt is independent. Existing explicit satisfaction evidence is
-        // opening-qualified; a bank debit never manufactures representedEvents.
-        const satisfied = represented.some(item => item && item.id === row.id
-          && (item.date === record.scheduledDate || item.date === dueDate)
-          && representedEffectiveBy(item, asOf));
+        // One proof attributes to exactly one original scheduled identity.
+        // A remapped due date is not a second cycle, and a later opening
+        // date cannot satisfy an earlier as-of.
+        const proof = represented.find(item => {
+          if (!item || item.id !== row.id || usedProofs.has(item)) return false;
+          if (!representedEffectiveBy(item, asOf)) return false;
+          if (item.date === record.scheduledDate) return true;
+          if (item.date !== dueDate) return false;
+          const owners = statements.filter(entry => entry.dueDate === item.date
+            || entry.scheduledDate === item.date);
+          return owners.length <= 1 && (!owners.length
+            || owners[0].scheduledDate === record.scheduledDate);
+        });
+        if (proof) usedProofs.add(proof);
+        const satisfied = !!proof;
         const cashIncluded = record.cashIncludedAsOf != null && record.cashIncludedAsOf <= asOf;
         payments.push({ id: row.id, scheduledDate: record.scheduledDate, date: dueDate,
           occurrenceKey: row.id + '@' + record.scheduledDate,
@@ -1308,14 +1318,16 @@
       && opening.priorAsOf < start ? opening.priorAsOf : null;
     const take = item => {
       if (!item || !item.id || !item.date || !representedEventEffectiveBy(item, start)) return;
-      item = { ...item, date: statementOccurrenceDate(plan, item.id, item.date) };
-      if (item.date === start) keys.add(item.id + '@' + item.date);
-      else if (prior && item.date > prior && item.date < start) {
-        keys.add(item.id + '@' + item.date);
-      } else if (carriedOnceJointCashOutflow(plan, item.id, item.date, start)) {
-        keys.add(item.id + '@' + item.date);
-      } else if (prepaidJointCashOutflow(plan, item.id, item.date, start)) {
-        keys.add(item.id + '@' + item.date);
+      const originalDate = item.date;
+      const effectiveDate = statementOccurrenceDate(plan, item.id, item.date);
+      const add = date => { if (date) keys.add(item.id + '@' + date); };
+      const inWindow = date => date === start
+        || (prior && date > prior && date < start)
+        || carriedOnceJointCashOutflow(plan, item.id, date, start)
+        || prepaidJointCashOutflow(plan, item.id, originalDate, start);
+      if (inWindow(effectiveDate) || inWindow(originalDate)) {
+        add(originalDate);
+        add(effectiveDate);
       }
     };
     for (const item of (opts && opts.representedEvents) || []) take(item);
@@ -1352,13 +1364,25 @@
     }
     return 'same-day-inbound-unproven';
   }
+  function occurrenceIdentityKeys(event) {
+    const keys = [];
+    if (!event || !event.id) return keys;
+    if (event.occurrenceKey) keys.push(event.occurrenceKey);
+    if (event.scheduledDate) keys.push(event.id + '@' + event.scheduledDate);
+    if (event.date) keys.push(event.id + '@' + event.date);
+    return keys;
+  }
+  function representedHasEvent(represented, event) {
+    return !!(represented && occurrenceIdentityKeys(event).some(key => represented.has(key)));
+  }
   function omitRepresented(events, plan, opts, start) {
     if (opts && opts.keepRepresented) return events;
     const represented = representedKeySet(plan, opts, start);
     const notRelied = notReliedUponKeySet(plan, opts, start);
     if (!represented.size && !notRelied.size) return events;
-    return events.filter(e => !represented.has(e.id + '@' + e.date)
-      && !notRelied.has(e.id + '@' + e.date));
+    return events.filter(e => !representedHasEvent(represented, e)
+      && !notRelied.has(e.id + '@' + e.date)
+      && !(e.scheduledDate && notRelied.has(e.id + '@' + e.scheduledDate)));
   }
 
   // Machine-readable settlement fact on a dated commitment. A valid
@@ -1887,8 +1911,12 @@
   // shares that same id and is a joint-cash occurrence on cashDay /
   // cashFirstDue. The non-cash capitalise date is not this path.
   function prepaidJointCashOutflow(plan, id, date, start) {
+    const scheduled = date;
     date = statementOccurrenceDate(plan, id, date);
     if (!plan || !id || !date || !start || date <= start) return false;
+    // A later contractual due date is not prepaid evidence by itself.
+    // The original scheduled identity must still sit after this opening.
+    if (scheduled && scheduled <= start && scheduled !== date) return false;
     const obligation = (plan.obligations || []).find(item => item && item.id === id
       && item.nonCash !== true && Number(item.amount) > 0);
     if (obligation) {
@@ -2074,8 +2102,9 @@
         if (amount <= 0 && !sent) continue;      // nothing left for this payment to pay
         events.push({ date, amount: -amount, kind: 'obligation',
           label: o.label, id: o.id, confidence: occurrence.confidence,
-          ...(occurrence.statement ? { scheduledDate: occurrence.scheduledDate,
-            occurrenceKey: o.id + '@' + occurrence.scheduledDate } : {}),
+          ...(occurrence.statement || occurrence.scheduledDate !== date
+            ? { scheduledDate: occurrence.scheduledDate,
+              occurrenceKey: o.id + '@' + occurrence.scheduledDate } : {}),
           ...(sent ? { minimumAmount: occurrence.amount, minimumPayment: sent } : {}),
           debtId: o.debtId || null, effect: o.effect || null,
           payingAccount: o.payingAccount || null });
@@ -2986,6 +3015,35 @@
     opts = opts || {};
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const seq = fundingSequence(plan, asOf, opts);
+    const minimums = cardMinimumState(plan, asOf, opts);
+    if (minimums.status === 'unavailable') {
+      return seq.map(item => ({
+        id: item.id,
+        label: item.label,
+        date: item.date,
+        scheduledDate: item.date,
+        when: item.when,
+        tripWindow: item.tripWindow || null,
+        group: item.group || null,
+        groupLabel: item.groupLabel || null,
+        planSpendSummary: item.planSpendSummary === true,
+        need: item.need,
+        amountMin: item.amountMin,
+        amountMax: item.amountMax,
+        flexibility: item.flexibility,
+        confidence: item.confidence,
+        adjustable: item.adjustable,
+        rank: item.rank,
+        verdict: null,
+        funded: false,
+        encumbered: null,
+        margin: null,
+        remaining: null,
+        remainingIdentity: null,
+        fundingMargin: null,
+        deferred: false,
+      }));
+    }
     const weekly = opts.weeklyVariable != null ? opts.weeklyVariable : 0;
     const masterOpts = Object.assign({}, opts, {
       horizonDays: horizon.days, viewDays: horizon.days,
@@ -3238,7 +3296,8 @@
           .map(row => ({ id: row.id, label: row.label, date: row.date,
             baseRequirement: Number.isFinite(row.bounds?.floor) ? row.bounds.floor : null,
             confidence: row.confidence || null, nextContribution: null,
-            projectedFullyFunded: null, protectedNow: null, contributions: [] })),
+            projectedFullyFunded: null, protectedNow: null, stillToFund: null,
+            contributions: [] })),
         unscheduled: seq.filter(row => row && !row.date && row.flexibility !== 'optional')
           .map(row => ({ id: row.id, reason: 'cash-date-not-established' })),
       };
@@ -6920,17 +6979,18 @@
   // asOf, the priorAsOf window, or a carried-once stub. Schedule-trust
   // settles in currentPeriodActuals.representedActuals. Do not invent
   // an amount; observedActual still reads the packet row.
-  function calendarOccurrenceRepresented(represented, observed, id, date) {
+  function calendarOccurrenceRepresented(represented, observed, id, date, event) {
     if (!id || !date) return false;
-    const key = id + '@' + date;
-    if (represented && represented.has(key)) return true;
-    return !!(observed && observed.has(key));
+    const keys = occurrenceIdentityKeys(event || { id, date });
+    if (!keys.includes(id + '@' + date)) keys.push(id + '@' + date);
+    if (keys.some(key => represented && represented.has(key))) return true;
+    return keys.some(key => observed && observed.has(key));
   }
 
   function calendarBillRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, scheduleDate, opts) {
     const amt = event.minimumAmount != null ? event.minimumAmount : -event.amount;
     if (!(amt > EPSILON)) return null;
-    const paid = calendarOccurrenceRepresented(represented, observed, event.id, event.date);
+    const paid = calendarOccurrenceRepresented(represented, observed, event.id, event.date, event);
     const inside = recurringInsideOpening(plan, event, cashAsOf);
     const due = scheduleDate || event.date;
     let settlement;
@@ -7048,7 +7108,7 @@
       const overdueOnce = due < span.start
         && carriedOnceJointCashOutflow(plan, event.id, event.date, span.start);
       const paid = calendarOccurrenceRepresented(
-        represented, observed, event.id, event.date);
+        represented, observed, event.id, event.date, event);
       // Passing payday does not drop an unresolved once cash obligation, and
       // does not rewrite its due date onto the new payday. Represented /
       // settled once rows disappear rather than remaining reserved.
@@ -13322,6 +13382,19 @@
   // applies the same scheduled payment. A live-advanced opening overlays
   // posted debt, so those names stay omitted here. Cash-only represented
   // bills never move a facility.
+  function representedReceiptAlreadyInObservedDebt(plan, opts, event, start) {
+    const rows = [].concat(plan?.opening?.representedEvents || [], opts?.representedEvents || []);
+    const scheduled = event && (event.scheduledDate || event.date);
+    const due = event && event.date;
+    const item = rows.find(row => row && event && row.id === event.id
+      && (row.date === scheduled || row.date === due
+        || statementOccurrenceDate(plan, row.id, row.date) === due
+        || statementOccurrenceDate(plan, row.id, row.date) === scheduled));
+    if (!item || !representedEventEffectiveBy(item, start)) return false;
+    const reflectedOn = Object.prototype.hasOwnProperty.call(item, 'effectiveAsOf')
+      ? item.effectiveAsOf : item.date;
+    return typeof reflectedOn === 'string' && reflectedOn <= start;
+  }
   function expandEventsForDebtWalk(plan, start, end, opts) {
     const represented = representedKeySet(plan, opts, start);
     if (!represented.size || liveOpeningAdvanced(plan, start)) {
@@ -13332,9 +13405,12 @@
     }));
     return kept.filter(event => {
       if (!event || !event.id || !event.date) return true;
-      if (!represented.has(event.id + '@' + event.date)) return true;
+      if (!representedHasEvent(represented, event)) return true;
       if (event.kind !== 'obligation' || event.effect === 'capitalise') return false;
-      return prepaidJointCashOutflow(plan, event.id, event.date, start);
+      // Same-date observed stock already includes an effective receipt.
+      // Sender evidence and receipt annotation cannot subtract it again.
+      if (representedReceiptAlreadyInObservedDebt(plan, opts, event, start)) return false;
+      return prepaidJointCashOutflow(plan, event.id, event.scheduledDate || event.date, start);
     });
   }
 

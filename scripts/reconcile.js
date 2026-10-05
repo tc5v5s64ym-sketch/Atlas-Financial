@@ -1228,20 +1228,33 @@ function scheduledEventExists(data, eventId, scheduledDate) {
   const plan = ((data || {}).plan) || {};
   // Forecast decides whether {id, date} is a cash occurrence. Opening
   // cutover is posting, not schedule, so representedEvents is omitted.
-  const events = Forecast.expandEvents(
-    schedulePlanWithoutCutover(plan),
-    scheduledDate,
-    scheduledDate,
-    {}
-  );
-  return events.some(e => e.id === eventId && e.date === scheduledDate && e.kind !== 'noncash');
+  // A statement may move the due date; original scheduled identity still
+  // names the same occurrence.
+  const schedule = schedulePlanWithoutCutover(plan);
+  const dueDate = Forecast.statementOccurrenceDate(schedule, eventId, scheduledDate)
+    || scheduledDate;
+  const start = scheduledDate < dueDate ? scheduledDate : dueDate;
+  const end = scheduledDate > dueDate ? scheduledDate : dueDate;
+  const events = Forecast.expandEvents(schedule, start, end, {});
+  const want = eventId + '@' + scheduledDate;
+  return events.some(e => e && e.id === eventId && e.kind !== 'noncash' && (
+    e.occurrenceKey === want
+    || e.scheduledDate === scheduledDate
+    || e.date === scheduledDate
+  ));
 }
 
 function representedOnOpening(data, eventId, date) {
   const opening = (((data || {}).plan) || {}).opening || null;
-  if (!opening || !eventId || !date || opening.asOf !== date) return false;
-  return (opening.representedEvents || []).some(e => e && e.id === eventId && e.date === date
-    && Forecast.representedEventEffectiveBy(e, opening.asOf));
+  if (!opening || !eventId || !date) return false;
+  const plan = ((data || {}).plan) || {};
+  const mapped = Forecast.statementOccurrenceDate(plan, eventId, date);
+  if (opening.asOf !== date && opening.asOf !== mapped) return false;
+  return (opening.representedEvents || []).some(e => {
+    if (!e || e.id !== eventId || !Forecast.representedEventEffectiveBy(e, opening.asOf)) return false;
+    const proofDate = Forecast.statementOccurrenceDate(plan, e.id, e.date);
+    return e.date === date || e.date === mapped || proofDate === date || proofDate === mapped;
+  });
 }
 
 function openingAsOf(data) {
