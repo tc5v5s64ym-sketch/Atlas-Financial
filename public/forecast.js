@@ -17415,8 +17415,11 @@
       return result.sort(compare);
     };
     const manual = config.history.filter(r => r.confirmedAt <= day).at(-1);
+    // Bind membership and observations by pool/account identity before any
+    // earmark or derived fill so array order cannot move backing between pools.
+    const bound = [];
     for (const pool of config.pools) {
-      const observed = inventory.pools.find(row => row.id === pool.id), members = new Map();
+      const members = new Map();
       for (const ref of pool.goalRefs || []) {
         const goal = savingsGoal(normalized, ref, day), items = occurrencesFor(goal);
         if (!goal.resolved) { identityUnknown = true; reason ||= 'A linked requirement has no unique authoritative identity.'; }
@@ -17427,25 +17430,36 @@
         rows.push({ key: goal.key, label: goal.label, poolId: pool.id, members: items.map(item => item.key),
           saved: null, needed: null, thisPeriod: null, remainingThisPeriod: null, trust: goal.targetTrust });
       }
+      bound.push({ pool, members });
+    }
+    for (const { pool, members } of bound) {
+      const observed = inventory.pools.find(row => row.id === pool.id && row.accountId === pool.accountId);
+      if (safeStock && !observed) { identityUnknown = true; reason ||= 'Observed backing must bind to one pool and account identity.'; }
       let left = Math.max(0, savingsCents(observed?.observedCash, true) || 0), encumbered = 0;
       const snapshot = manual?.pools.find(p => p.poolId === pool.id);
       const pendingDebit = (currentPeriodActualsPacket(opts)?.transactions || []).some(tx => tx?.pending === true
         && tx.date <= day && String(tx.atlasAccountId || tx.accountId || tx.account) === pool.accountId);
-      let poolKnown = safeStock && policyKnown && !pendingDebit
+      let poolKnown = safeStock && policyKnown && !pendingDebit && !!observed
         && plan.savingsPoolObservation.accounts.find(r => r.accountId === pool.accountId)?.pendingState === 'clear';
       if (!poolKnown) reason ||= 'Clear current pool movements are required for derived backing.';
       if (manual && !snapshot) { poolKnown = false; reason ||= 'An incomplete manual confirmation remains encumbering.'; }
       for (const allocation of snapshot?.allocations || []) {
         encumbered += savingsCents(allocation.amount);
-        if (!savingsGoal(normalized, allocation.goalRef, day).resolved || encumbered > left) {
+        const goal = savingsGoal(normalized, allocation.goalRef, day);
+        const goalItems = occurrencesFor(goal);
+        if (!goal.resolved || encumbered > left) {
           poolKnown = false; reason ||= 'Manual earmarks are unresolved or exceed observed stock.';
+        }
+        if (goalItems.some(item => item.poolId !== pool.id)) {
+          poolKnown = false; identityUnknown = true;
+          reason ||= 'Confirmed assignments must bind to the same pool and account identity.';
         }
       }
       if (poolKnown) {
         for (const allocation of snapshot?.allocations || []) {
           let pinned = savingsCents(allocation.amount);
           for (const item of occurrencesFor(savingsGoal(normalized, allocation.goalRef, day))) {
-            if (item.inactive || item.needCents == null) continue;
+            if (item.poolId !== pool.id || item.inactive || item.needCents == null) continue;
             const take = Math.min(pinned, Math.max(0, item.needCents - item.savedCents));
             item.savedCents += take; pinned -= take;
           }
@@ -17457,6 +17471,12 @@
           const take = Math.min(left, Math.max(0, item.needCents - item.savedCents));
           item.savedCents += take; left -= take;
         }
+      }
+      const observedCents = Math.max(0, savingsCents(observed?.observedCash, true) || 0);
+      const assigned = Array.from(members.values()).reduce((sum, item) => sum + item.savedCents, 0);
+      if (poolKnown && assigned > observedCents) {
+        poolKnown = false; identityUnknown = true;
+        reason ||= 'A pool allocation exceeds its observed available stock.';
       }
       for (const item of members.values()) { item.saved = poolKnown ? item.savedCents / 100 : null; claimed.add(item.key); }
       packetPools.push({ id: pool.id, accountId: pool.accountId, status: poolKnown ? 'ready' : 'unavailable',

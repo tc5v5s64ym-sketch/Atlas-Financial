@@ -193,6 +193,79 @@ test('manual confirmed farther-cost assignment stays pinned; only residual stock
   const out = run(input); assert.equal(cents(item(out, 'near@2026-10-21').saved), 4500);
   assert.equal(cents(item(out, 'far@2026-10-28').saved), 5000);
 });
+function homeCostEarmark(amount = 20) {
+  const input = fixture();
+  input.plan.savingsEarmarks.history = [{ revision: 1, confirmedAt: input.asOf,
+    source: 'Invented manual intent', pools: [
+      { poolId: 'club-pool', allocations: [] },
+      { poolId: 'home-pool', allocations: [
+        { goalRef: { kind: 'yearly-bill', id: 'home-cost' }, amount },
+      ] },
+    ] }];
+  return input;
+}
+function poolBacking(out) {
+  return out.backing.pools.map(pool => ({
+    id: pool.id, accountId: pool.accountId, status: pool.status,
+    observed: pool.observedCash, encumberedManual: pool.encumberedManual, unallocated: pool.unallocated,
+    saved: out.rows.filter(row => row.poolId === pool.id)
+      .reduce((sum, row) => sum + (row.saved == null ? null : cents(row.saved)), 0),
+  })).sort((a, b) => a.id.localeCompare(b.id));
+}
+test('per-pool backing is unchanged when pool, snapshot and observation arrays are permuted', () => {
+  const expected = poolBacking(run(homeCostEarmark()));
+  assert.equal(expected.find(pool => pool.id === 'club-pool').saved, 9500);
+  assert.equal(expected.find(pool => pool.id === 'home-pool').encumberedManual, 20);
+  for (const pool of expected) {
+    assert.equal(pool.status, 'ready');
+    assert.ok(pool.saved <= cents(pool.observed), pool.id + ' cannot exceed observed stock');
+  }
+  for (const edit of [
+    input => { input.plan.savingsEarmarks.pools.reverse(); },
+    input => { input.plan.savingsEarmarks.history[0].pools.reverse(); },
+    input => { input.plan.savingsPoolObservation.accounts.reverse(); },
+    input => {
+      input.plan.savingsEarmarks.pools.reverse();
+      input.plan.savingsEarmarks.history[0].pools.reverse();
+      input.plan.savingsPoolObservation.accounts.reverse();
+    },
+  ]) {
+    const input = homeCostEarmark(); edit(input);
+    const out = run(input);
+    assert.equal(out.status, 'ready');
+    assert.deepEqual(poolBacking(out), expected);
+    for (const pool of out.backing.pools) {
+      const saved = out.rows.filter(row => row.poolId === pool.id)
+        .reduce((sum, row) => sum + (row.saved == null ? 0 : cents(row.saved)), 0);
+      assert.ok(saved <= cents(pool.observedCash), pool.id + ' cannot exceed observed stock');
+    }
+  }
+});
+test('a Home earmark of a Club goal cannot move 20 onto Club stock after pool reversal', () => {
+  function crossPool() {
+    const input = fixture();
+    input.plan.savingsEarmarks.history = [{ revision: 1, confirmedAt: input.asOf,
+      source: 'Invented manual intent', pools: [
+        { poolId: 'club-pool', allocations: [] },
+        { poolId: 'home-pool', allocations: [
+          { goalRef: { kind: 'commitment', id: 'far' }, amount: 20 },
+        ] },
+      ] }];
+    return input;
+  }
+  const original = run(crossPool());
+  const reversed = crossPool(); reversed.plan.savingsEarmarks.pools.reverse();
+  const after = run(reversed);
+  for (const out of [original, after]) {
+    const clubSaved = row(out, 'group:club').saved;
+    const club = out.backing.pools.find(pool => pool.id === 'club-pool');
+    if (clubSaved != null) assert.ok(cents(clubSaved) <= cents(club.observedCash));
+    assert.notEqual(clubSaved, 115);
+    assert.equal(out.backing.status, 'unavailable');
+    assert.match(out.backing.reason, /pool and account identity/);
+  }
+  assert.deepEqual(poolBacking(original), poolBacking(after));
+});
 test('unpaid past cost sorts before later needs; crossing its deadline never settles it', () => {
   const input = fixture(); input.plan.commitments[0].date = '2026-10-01';
   const out = run(input); assert.equal(cents(item(out, 'near@2026-10-01').saved), 6000);
