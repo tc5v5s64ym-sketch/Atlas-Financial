@@ -11445,6 +11445,12 @@
   // Never change settlement, observedActual, bill loads, or cash omission here.
   function budgetBillHasPostedActual(row, asOf, opts) {
     const packet = currentPeriodActualsPacket(opts);
+    // Legacy availability selectors accept absent/unrecognized coverage.
+    // Exact actual display needs an explicit complete stamp, without changing
+    // those incumbent selectors or their financial decisions.
+    const complete = coverage => coverage === 'complete' || !!(coverage
+      && typeof coverage === 'object' && coverage.complete === true
+      && coverage.truncated !== true && (coverage.status == null || coverage.status === 'complete'));
     if (!row || row.status !== 'PAID' || row.settlement !== 'represented'
       || typeof row.actual !== 'number' || !isFinite(row.actual)
       || typeof row.movement !== 'number' || !isFinite(row.movement)
@@ -11452,8 +11458,8 @@
       || !packet || packet.schema !== 'atlas-current-period-actuals/v1'
       || packet.observationAsOf !== asOf || !savingsDate(packet.coverageStart)
       || !savingsDate(packet.coverageThrough) || packet.coverageThrough < asOf
-      || transactionCoverageStatus(packet) !== 'complete' || !packet.transactionCoverage
-      || pendingCoverageStatus(packet) !== 'complete'
+      || transactionCoverageStatus(packet) !== 'complete' || !complete(packet.transactionCoverage)
+      || pendingCoverageStatus(packet) !== 'complete' || !complete(packet.pendingCoverage)
       || (Array.isArray(packet.currencyUnconfirmed) && packet.currencyUnconfirmed.length)
       || !Array.isArray(packet.representedActuals) || !Array.isArray(packet.transactions)) return false;
     const links = item => {

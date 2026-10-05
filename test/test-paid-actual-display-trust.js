@@ -43,7 +43,11 @@ for (const [label, change] of [
   ['missing link', p => { delete p.representedActuals.find(r => r.id === 'invented-past-utility').transactionId; }],
   ['stale observation', p => { p.observationAsOf = '2026-08-19'; }],
   ['incomplete posted', p => { p.transactionCoverage = 'truncated'; }],
+  ['unknown posted coverage', p => { p.transactionCoverage = 'unknown'; }],
+  ['malformed posted coverage', p => { p.transactionCoverage = {}; }],
+  ['contradictory posted coverage', p => { p.transactionCoverage = { complete: true, status: 'unknown' }; }],
   ['unknown pending', p => { p.pendingCoverage = 'unknown'; }],
+  ['contradictory pending coverage', p => { p.pendingCoverage = { complete: true, status: 'unknown' }; }],
   ['outside coverage', p => { p.coverageStart = '2026-08-08'; }],
   ['missing coverage', p => { delete p.transactionCoverage; }],
   ['missing posted date', p => { delete p.representedActuals.find(r => r.id === 'invented-past-utility').postedOn; }],
@@ -63,6 +67,10 @@ const duplicates = clone(data), dp = duplicates.liveOverlay.currentPeriodActuals
 dp.transactions.push({ ...dp.transactions.find(t => t.date === '2026-08-07') });
 dp.representedActuals.push({ ...dp.representedActuals.find(r => r.id === 'invented-past-utility') });
 assert.equal(row(duplicates).displayAmountTrust, 'calculated', 'identical repeated records are counted once');
+const explicit = clone(data);
+explicit.liveOverlay.currentPeriodActuals.transactionCoverage = { complete: true, status: 'complete', truncated: false };
+explicit.liveOverlay.currentPeriodActuals.pendingCoverage = { complete: true, status: 'complete' };
+assert.equal(row(explicit).displayAmountTrust, 'calculated', 'explicit object completeness remains supported');
 const split = fixture.served(x => {
   x.payload.transactions.find(t => t.id === 93001).amount = 25.19;
   x.payload.transactions.push({ ...x.payload.transactions.find(t => t.id === 93001), id: 93003, amount: 34.64 });
