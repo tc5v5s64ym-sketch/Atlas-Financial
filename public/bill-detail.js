@@ -179,7 +179,7 @@
             + ' · ' + escape(text(purchase.categoryLabel) || 'Category unavailable')
             + ' · ' + escape(money(purchase.remaining)) + ' still to cover</li>').join('')
           + '</ul>').join('')
-          + '<p>Earlier purchases carry forward until confirmed coverage or refund. They are not new spending in this period.</p>'
+          + '<p>Opening and earlier purchases carry forward until confirmed coverage or refund. This disclosure does not add them to current-period spending.</p>'
           : '<p>Confirm the opening and purchase/payment evidence before using available cash. Earlier coverage has not been established.</p>')
         + '</div></details>' : '';
     if (!payments.length) return carry;

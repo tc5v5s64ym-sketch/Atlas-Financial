@@ -10,7 +10,31 @@ const root = path.join(__dirname, '..');
 const screenshots = process.env.ATLAS_BUDGET_SCREENSHOTS_DIR || path.join(os.tmpdir(), 'atlas-card-purchase-markers');
 fs.mkdirSync(screenshots, { recursive: true });
 function served(stage) {
-  const x = fixture(stage.startsWith('carry') && stage !== 'carry-current' ? 'before' : ['partial', 'full', 'ambiguous'].includes(stage) ? 'backfill' : 'purchase');
+  const cutover = stage.startsWith('cutover');
+  const x = fixture((stage.startsWith('carry') && stage !== 'carry-current')
+    || (cutover && !['cutover-observed', 'cutover-same-day'].includes(stage))
+    ? 'before' : ['partial', 'full', 'ambiguous'].includes(stage) ? 'backfill' : 'purchase');
+  if (cutover) {
+    x.data.plan.cardPurchaseCoverage.opening.asOf = '2026-09-19';
+    x.payload.transactionWindow.startDate = '2026-09-19';
+    x.data.plan.cardPurchaseCoverage.opening.purchases = [{ ref: 'synthetic-mid-cutover',
+      accountId: 'travelvisa', date: '2026-09-18', amount: 21.37,
+      covered: stage === 'cutover-covered' ? 21.37 : 0, categoryLabel: 'Groceries' }];
+    if (stage === 'cutover-unknown') x.data.plan.cardPurchaseCoverage.opening.confirmed = false;
+    if (['cutover-observed', 'cutover-same-day'].includes(stage)) {
+      x.payload.transactionWindow.startDate = '2026-09-18';
+      x.payload.transactions[0].date = stage === 'cutover-observed' ? '2026-09-18' : '2026-09-19';
+      x.data.plan.cardPurchaseCoverage.opening.purchases = stage === 'cutover-observed' ? [{
+        ref: fixture.ref(x, 80001), accountId: 'travelvisa', date: '2026-09-18',
+        amount: 80, covered: 0, categoryLabel: 'Groceries' }] : [];
+    }
+    if (stage === 'cutover-history') {
+      x.asOf = '2026-10-03';
+      x.payload.fetchedAt = x.asOf + 'T18:00:00Z';
+      x.payload.transactionWindow.endDate = x.asOf;
+      x.payload.accounts.forEach(a => { a.updated_at = x.asOf + 'T17:00:00Z'; });
+    }
+  }
   if (stage.startsWith('carry')) {
     x.data.plan.cardPurchaseCoverage.opening.purchases = [{ ref: 'synthetic-opening-only',
       accountId: 'travelvisa', date: '2026-09-10', amount: 30, covered: stage === 'carry-covered' ? 30 : 0,
@@ -112,9 +136,44 @@ function served(stage) {
           await page.keyboard.press('Escape');
         }
       }
+      for (const stage of ['cutover', 'cutover-covered', 'cutover-unknown', 'cutover-observed', 'cutover-same-day', 'cutover-history']) {
+        data = served(stage);
+        await page.goto('http://budget.test/');
+        await page.locator('[data-budget-surface]').waitFor();
+        const trigger = page.locator('[data-budget-browse-evidence="04"]');
+        await trigger.focus(); await page.keyboard.press('Enter');
+        const carry = page.locator('[data-budget-detail-body] [data-card-earlier-periods]');
+        const excluded = ['cutover-covered', 'cutover-observed', 'cutover-same-day'].includes(stage);
+        assert.equal(await carry.count(), excluded ? 0 : 1);
+        if (!excluded) {
+          await carry.locator(':scope > summary').focus(); await page.keyboard.press('Enter');
+          assert.equal(await carry.evaluate(el => el.open), true);
+          if (stage === 'cutover-unknown') {
+            assert.match(await carry.innerText(), /Coverage unconfirmed/);
+            assert.doesNotMatch(await carry.innerText(), /21\.37|still to cover/);
+          } else {
+            assert.match(await carry.innerText(), /2026-09-18/);
+            assert.match(await carry.innerText(), /Groceries/);
+            assert.match(await carry.innerText(), /21\.37 still to cover/);
+          }
+          assert.ok(await carry.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+        }
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: path.join(screenshots, `${stage}-${width}-${colorScheme}.png`), animations: 'disabled' });
+        await page.keyboard.press('Escape');
+        assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+        if (['cutover-observed', 'cutover-same-day'].includes(stage)) {
+          const category = page.locator('[data-budget-category-open="groceries"][data-budget-browse-origin="spending"]');
+          await category.focus(); await page.keyboard.press('Enter');
+          const row = page.locator('[data-budget-detail-body] .household-budget-tx');
+          assert.equal(await row.count(), 1);
+          assert.match(await row.innerText(), /80\.00 still to cover/);
+          await page.keyboard.press('Escape');
+        }
+      }
       await page.close();
     }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ result: 'PASS', cases: 40, widths: [1440, 390, 320], themes: ['light', 'dark'], screenshots }));
+    console.log(JSON.stringify({ result: 'PASS', cases: 64, widths: [1440, 390, 320], themes: ['light', 'dark'], screenshots }));
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

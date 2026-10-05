@@ -7995,6 +7995,32 @@
     };
   }
 
+  // The category recon and the card-carry fallback use one membership rule.
+  // A transaction merely present in the provider packet is not necessarily
+  // printed: its period, split status and published category must qualify.
+  function householdBudgetSupportingRows(plan, packet, windowStart, through, opts) {
+    if (!windowStart || !packet || !Array.isArray(packet.transactions)) return [];
+    const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
+    const categories = new Map(((plan && plan.budget && plan.budget.categories) || [])
+      .filter(cat => cat && cat.id).map(cat => [cat.id, cat]));
+    const visibleCategories = new Set(Array.from(categories.values()).filter(cat =>
+      CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) >= 0
+      && paydayCyclePlanned(cat, windowStart, plan) != null).map(cat => cat.id));
+    const result = [];
+    for (const tx of packet.transactions) {
+      if (!tx || !tx.date || tx.date < windowStart || (through && tx.date > through)
+        || skipSplitParent(tx, packet)) continue;
+      const amount = Number(tx.amount);
+      if (!isFinite(amount) || amount === 0) continue;
+      const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
+      if (!householdBudgetSupportingSpendEligible(cls)) continue;
+      if (otherSpendingEvidenceEligible(cls) || visibleCategories.has(cls.atlasRow || cls.categoryId)) {
+        result.push({ tx, cls, amount });
+      }
+    }
+    return result;
+  }
+
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
     opts = opts || {};
     const lookback = role === 'lookback';
@@ -8022,7 +8048,6 @@
       ? (cycle && cycle.end)
       : (cycle && cycle.end && asOf && asOf < cycle.end ? asOf : (cycle && cycle.end));
     const packet = currentPeriodActualsPacket(opts);
-    const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
     const duplicateIds = pendingPostedDuplicateIdSet(packet);
     // Resolve coverage against the complete ledger, before selecting a category
     // or cycle. Older/ambiguous liabilities still govern the trust of each row.
@@ -8032,15 +8057,7 @@
     const confirmationRecon = [];
     let confirmationSpent = 0;
     if (actualsReady && windowStart && packet && Array.isArray(packet.transactions)) {
-      for (const tx of packet.transactions) {
-        if (!tx || !tx.date) continue;
-        if (tx.date < windowStart) continue;
-        if (through && tx.date > through) continue;
-        if (skipSplitParent(tx, packet)) continue;
-        const amt = Number(tx.amount);
-        if (!isFinite(amt) || amt === 0) continue;
-        const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
-        if (!householdBudgetSupportingSpendEligible(cls)) continue;
+      for (const { tx, cls, amount: amt } of householdBudgetSupportingRows(plan, packet, windowStart, through, opts)) {
         const isDuplicate = tx.id != null && duplicateIds.has(String(tx.id));
         const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate,
           cardPurchaseCoverage: amt > 0 && isRevolvingCardAccount(tx)
@@ -8843,13 +8860,23 @@
     const bills = (plan.startingCash?.breakdown || []).filter(row => row.id === 'chequing-a');
     if (bills.length !== 1 || typeof bills[0].value !== 'number' || !Number.isFinite(bills[0].value)
       || bills[0].unknown === true || bills[0].value < knownReserve) issue('coverage-bills-backing-unconfirmed');
-    // Earlier purchase cash remains protected even when its transaction is
-    // outside the current category window. Publish a compact per-card source,
-    // not a second purchase history. Only Forecast partitions and totals it.
-    const carryBoundary = spendingCycle(plan, asOf)?.start || origin;
+    // Opening carry can fall inside a cycle. Only a corresponding visible
+    // category row replaces its fallback, never a date boundary, equal amount
+    // or mere presence in the provider packet. Forecast owns both selections.
+    const activeCycle = spendingCycle(plan, asOf);
+    const categoryCoverage = activeCycle ? actualsCoverageState(asOf, activeCycle.start,
+      Object.assign({}, opts, { currentPeriodActuals: packet })) : null;
+    const categoryReady = categoryCoverage && ['precise', 'posted-only'].includes(categoryCoverage.remainingClaim);
+    const visibleRefs = new Set(categoryReady
+      ? householdBudgetSupportingRows(plan, packet, activeCycle.start, asOf, opts)
+        .filter(({ tx, amount }) => amount > 0 && isRevolvingCardAccount(tx)).map(({ tx }) => tx.coverageRef)
+      : []);
+    const carryBoundary = activeCycle?.start || origin;
     const carryCards = new Map();
     for (const row of ledger) {
-      if (!(row.remaining > 0) || !(row.date < carryBoundary)) continue;
+      const openingCarry = row.audit.some(entry => entry.kind === 'confirmed-opening');
+      if (!(row.remaining > 0) || visibleRefs.has(row.ref)
+        || !(openingCarry || row.date < carryBoundary)) continue;
       let group = carryCards.get(row.accountId);
       if (!group) {
         group = { accountLabel: row.accountLabel, purchaseCount: 0,

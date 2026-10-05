@@ -159,6 +159,72 @@ const openingCovered = structuredClone(openingOnly);
 openingCovered.data.plan.cardPurchaseCoverage.opening.purchases[0].covered = 30;
 assert.equal(run(openingCovered).advice.cardPurchaseCoverage.reservedCash, 0);
 assert.equal(Detail.visaPaymentsHtml([], run(openingCovered).advice.cardPurchaseCoverage), '');
+// A valid cutover need not align with payday. The period-boundary purchase
+// is protected by the opening but has no observed category evidence.
+const midCutover = fixture('before');
+midCutover.data.plan.cardPurchaseCoverage.opening.asOf = '2026-09-19';
+midCutover.payload.transactionWindow.startDate = '2026-09-19';
+midCutover.data.plan.cardPurchaseCoverage.opening.purchases = [{ ref: 'invented-mid-cutover',
+  accountId: 'travelvisa', date: '2026-09-18', amount: 21.37, covered: 0, categoryLabel: 'Groceries' }];
+const midResult = run(midCutover), midCoverage = midResult.advice.cardPurchaseCoverage;
+assert.equal(midCoverage.status, 'ready');
+assert.equal(midCoverage.reservedCash, 21.37);
+assert.equal(midResult.category.recon.length, 0);
+assert.equal(midResult.category.spent, null, 'incomplete period coverage does not invent zero spend');
+assert.equal(midResult.period.fromTodayFunding.status, 'unavailable');
+assert.match(Detail.visaPaymentsHtml([], midCoverage), /2026-09-18.*Groceries.*\$21\.37 still to cover/);
+// Observed current evidence replaces the fallback only by exact reference.
+const observedOpening = fixture();
+observedOpening.payload.transactions[0].date = '2026-09-18';
+observedOpening.data.plan.cardPurchaseCoverage.opening.asOf = '2026-09-19';
+observedOpening.data.plan.cardPurchaseCoverage.opening.purchases = [{
+  ref: fixture.ref(observedOpening, 80001), accountId: 'travelvisa', date: '2026-09-18',
+  amount: 80, covered: 0, categoryLabel: 'Groceries' }];
+const observedOpeningResult = run(observedOpening);
+assert.equal(observedOpeningResult.category.spent, 80);
+assert.equal(observedOpeningResult.category.recon.length, 1);
+assert.equal(observedOpeningResult.tx.cardPurchaseCoverage.remaining, 80);
+assert.equal(observedOpeningResult.advice.cardPurchaseCoverage.earlierPeriods, null,
+  'opening row already printed in its category is not duplicated');
+const hiddenCategory = structuredClone(observedOpening);
+delete hiddenCategory.data.plan.budget.categories[0].plannedPayday;
+delete hiddenCategory.data.plan.budget.categories[0].plannedWeekly;
+const hiddenLive = Live.fromObservation(hiddenCategory).data;
+const hiddenAdvice = F.recommend(hiddenLive.plan, hiddenCategory.asOf,
+  { debts: hiddenLive.debts, currentPeriodActuals: hiddenLive.liveOverlay.currentPeriodActuals });
+assert.equal(hiddenAdvice.cardPurchaseCoverage.earlierPeriods.remaining, 80,
+  'a provider row without a published category row cannot suppress opening evidence');
+const sameDay = fixture();
+sameDay.data.plan.cardPurchaseCoverage.opening.asOf = '2026-09-19';
+sameDay.payload.transactions[0].date = '2026-09-19';
+assert.equal(run(sameDay).category.spent, 80);
+assert.equal(run(sameDay).advice.cardPurchaseCoverage.earlierPeriods, null,
+  'same-day cutover purchase belongs to its observed current category');
+const equalAmount = structuredClone(midCutover);
+equalAmount.payload.transactionWindow.startDate = '2026-09-18';
+equalAmount.payload.transactions = [ { ...fixture().payload.transactions[0], amount: 21.37 } ];
+const equalResult = run(equalAmount);
+assert.equal(equalResult.category.spent, 21.37);
+assert.equal(equalResult.advice.cardPurchaseCoverage.reservedCash, 42.74);
+assert.equal(equalResult.advice.cardPurchaseCoverage.earlierPeriods.remaining, 21.37,
+  'equal cents and category do not identify the opening purchase');
+const midResolved = structuredClone(midCutover);
+midResolved.data.plan.cardPurchaseCoverage.opening.purchases[0].covered = 21.37;
+assert.equal(Detail.visaPaymentsHtml([], run(midResolved).advice.cardPurchaseCoverage), '');
+const midUnknown = structuredClone(midCutover);
+midUnknown.data.plan.cardPurchaseCoverage.opening.confirmed = false;
+assert.match(Detail.visaPaymentsHtml([], run(midUnknown).advice.cardPurchaseCoverage), /Coverage unconfirmed/);
+assert.doesNotMatch(Detail.visaPaymentsHtml([], run(midUnknown).advice.cardPurchaseCoverage), /\$21\.37|still to cover/);
+const midHistory = structuredClone(midCutover);
+midHistory.asOf = '2026-10-03';
+midHistory.payload.fetchedAt = midHistory.asOf + 'T18:00:00Z';
+midHistory.payload.transactionWindow.endDate = midHistory.asOf;
+midHistory.payload.accounts.forEach(a => { a.updated_at = midHistory.asOf + 'T17:00:00Z'; });
+const historyResult = run(midHistory);
+const historyCurrent = historyResult.advice.payPeriodViews.find(p => p.start === '2026-10-02');
+assert.equal(historyCurrent.householdBudget.find(r => r.id === 'groceries').spent, 0);
+assert.equal(historyResult.advice.cardPurchaseCoverage.reservedCash, 21.37);
+assert.match(Detail.visaPaymentsHtml([], historyResult.advice.cardPurchaseCoverage), /2026-09-18.*Groceries.*\$21\.37/);
 const olderUnknown = transfer(41.35);
 olderUnknown.payload.transactions.push({ ...olderUnknown.payload.transactions[0], id: 80007,
   date: '2026-09-19', amount: -7.15, category_name: 'Refund' });
@@ -212,4 +278,4 @@ assert.doesNotMatch(html(run(malicious)), /<img/);
 for (const r of [purchase, partial, full, unconfirmed]) {
   assert.doesNotMatch(JSON.stringify(r.tx.cardPurchaseCoverage), /coverageRef|purchaseRef|transaction|80001/);
 }
-console.log('PASS card category markers: purchase/partial/full/refund/pending/ambiguity, cash/minimum/expense conservation, older reserve, safe rendering');
+console.log('PASS card category markers: purchase/partial/full/refund/pending/ambiguity, cash/minimum/expense conservation, opening cutover/boundary/same-day/history, safe rendering');
