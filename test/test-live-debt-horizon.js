@@ -36,7 +36,9 @@ const representedKeys = new Set((opening.representedEvents || [])
 scope(representedKeys.has('noble-garbage@2026-09-18')
   && representedKeys.has('heloc@2026-09-21')
   && representedKeys.has('tdcc@2026-09-17')
-  && representedKeys.size === 3
+  && representedKeys.has('triangle@2026-09-07')
+  && representedKeys.has('triangle@2026-10-07')
+  && representedKeys.size === 5
   && !(opening.notReliedUponEvents || []).length,
   'Dale-gated prepaid representedEvents must be reconciled independently');
 scope((plan.defaults.extraDebtMonthly || 0) === 0,

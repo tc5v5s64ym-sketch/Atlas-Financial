@@ -306,7 +306,9 @@ console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds 
     .map(row => row && `${row.id}@${row.date}`));
   ok(Array.isArray(live.plan.opening.representedEvents)
     && gated.has('noble-garbage@2026-09-18') && gated.has('heloc@2026-09-21')
-    && gated.has('tdcc@2026-09-17') && gated.size === 3,
+    && gated.has('tdcc@2026-09-17')
+    && gated.has('triangle@2026-09-07') && gated.has('triangle@2026-10-07')
+    && gated.size === 5,
     'live representedEvents are the Dale-gated prepaid settles');
   const unknownPosting = posting.observations.filter(o => o.unknown === true);
   ok(unknownPosting.length >= 4,

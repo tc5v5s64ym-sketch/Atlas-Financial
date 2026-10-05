@@ -348,7 +348,8 @@ console.log('\n=== J. live 16 August opening does not invent representedEvents =
     .map(row => row && `${row.id}@${row.date}`));
   ok(live.plan.opening && gated.has('noble-garbage@2026-09-18')
       && gated.has('heloc@2026-09-21') && gated.has('tdcc@2026-09-17')
-      && gated.size === 3
+      && gated.has('triangle@2026-09-07') && gated.has('triangle@2026-10-07')
+      && gated.size === 5
       && live.meta.asOf !== '2026-08-14',
     'live representedEvents are the Dale-gated prepaid settles and as-of is not the 14 August payday');
   ok(live.meta.asOf === live.plan.opening.asOf, 'live canonical as-of agrees with the opening');
