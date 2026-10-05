@@ -76,7 +76,9 @@ for (const mode of ['posted', 'split', 'unknown', 'pending', 'refund', 'reversal
   if (mode === 'posted' || mode === 'split' || mode === 'unknown') {
     assert.match(output, mode === 'split' ? /\$-125\.00 \(credit\)/ : /\$-250\.00 \(credit\)/);
     assert.match(output, /Actual<\/dt><dd>\$-250\.00/);
-    assert.match(output, /about −\$250.00<\/span><\/summary>/, 'Forecast movement remains its supplied outflow');
+    assert.match(output, /−\$250.00<\/span><\/summary>/, 'Forecast movement remains its supplied outflow');
+    assert.doesNotMatch(output, /about −\$250.00<\/span><\/summary>/,
+      'linked posted card actual is independent of estimated schedule confidence');
     assert.match(output, /sign alone does not identify a payment, refund or reversal/);
   } else {
     assert.match(output, /Transaction evidence is unavailable/);
