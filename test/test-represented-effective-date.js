@@ -209,5 +209,110 @@ assert.equal(cents(F.simulate(advanced.data.plan, '2026-09-21', { weeklyVariable
 assert.equal(F.expandEvents(automatic.data.plan, '2026-09-18', automatic.asOf,
   { representedEvents: [generatedName] }).filter(row => row.id === 'invented-bill').length, 1,
   'live-generated settlement cannot erase the debit in the older opening');
+
+// Independent invented collision oracle: 50,000 ± 3,847.
+// Observed receipt 53,847 must not become 57,694; observed debit 46,153
+// must not become 42,306. Inactive id/date rows cannot shadow fresh proof.
+const MOVE = 38.47;
+const BASE_CENTS = 50000;
+const MOVE_CENTS = 3847;
+const RECEIPT_OBS = BASE_CENTS + MOVE_CENTS;
+const DEBIT_OBS = BASE_CENTS - MOVE_CENTS;
+const HISTORICAL = '2026-09-18';
+const SHADOWS = [
+  { label: 'future', effectiveAsOf: '2026-09-21' },
+  { label: 'invalid-calendar', effectiveAsOf: '2026-02-30' },
+  { label: 'invalid-null', effectiveAsOf: null },
+];
+function collisionPacket(kind, existing) {
+  const x = source('triangle', 'triangle');
+  const id = kind === 'income' ? 'invented-receipt' : 'invented-bill';
+  x.data.plan.obligations = [];
+  x.data.plan.income = [];
+  x.data.plan.bills = [];
+  if (kind === 'income') {
+    x.data.plan.income = [{ id, label: 'Invented receipt', frequency: 'once',
+      date: x.asOf, amount: MOVE, confidence: 'confirmed' }];
+    x.identity = { schema: 'atlas-provider-transaction-identity/v1', rules: [{
+      eventId: id, atlasAccountId: 'chequing-a', direction: 'credit',
+      payeePatterns: ['INVENTED RECEIPT'] }] };
+    x.payload.transactions = [{ id: 95001, account_id: 3001, date: x.asOf,
+      amount: -MOVE, currency: 'cad', payee: 'INVENTED RECEIPT', is_pending: false,
+      status: 'reviewed', category_name: 'Income' }];
+    x.payload.accounts[0].balance = RECEIPT_OBS / 100;
+  } else {
+    x.data.plan.bills = [{ id, label: 'Invented bill', frequency: 'once',
+      date: x.asOf, amount: MOVE, confidence: 'confirmed' }];
+    x.identity = { schema: 'atlas-provider-transaction-identity/v1', rules: [{
+      eventId: id, atlasAccountId: 'chequing-a', direction: 'debit',
+      payeePatterns: ['INVENTED BILL'] }] };
+    x.payload.transactions = [{ id: 95002, account_id: 3001, date: x.asOf,
+      amount: MOVE, currency: 'cad', payee: 'INVENTED BILL', is_pending: false,
+      status: 'reviewed', category_name: 'Invented bill' }];
+    x.payload.accounts[0].balance = DEBIT_OBS / 100;
+  }
+  x.data.plan.opening.representedEvents = clone(existing);
+  return { x, id, observed: kind === 'income' ? RECEIPT_OBS : DEBIT_OBS,
+    historical: kind === 'income' ? RECEIPT_OBS : DEBIT_OBS };
+}
+function liveEnding(data, asOf) {
+  return cents(F.simulate(data.plan, asOf, { weeklyVariable: 0, horizonDays: 1, viewDays: 1 }).ending);
+}
+function historicalEnding(original, name) {
+  return cents(F.simulate(original.data.plan, HISTORICAL, {
+    weeklyVariable: 0, horizonDays: F.diffDays(HISTORICAL, original.asOf) + 1,
+    viewDays: F.diffDays(HISTORICAL, original.asOf) + 1, representedEvents: [name],
+  }).ending);
+}
+let collisionCases = 0;
+for (const kind of ['income', 'debit']) {
+  const control = collisionPacket(kind, []);
+  const controlLive = Live.fromObservation(control.x);
+  const controlName = controlLive.data.plan.opening.representedEvents.find(row => row.id === control.id);
+  assert.deepEqual(controlName, { id: control.id, date: control.x.asOf, effectiveAsOf: control.x.asOf });
+  assert.equal(liveEnding(controlLive.data, control.x.asOf), control.observed,
+    `${kind} control conserves observed cash`);
+  for (const shadow of SHADOWS) {
+    const id = kind === 'income' ? 'invented-receipt' : 'invented-bill';
+    const { x, observed, historical } = collisionPacket(kind, [{
+      id, date: '2026-09-20', effectiveAsOf: shadow.effectiveAsOf }]);
+    const original = clone(x);
+    const first = Live.fromObservation(x);
+    const name = first.data.plan.opening.representedEvents.find(row => row.id === id);
+    assert.equal(first.data.liveOverlay.applied, true, `${kind} ${shadow.label} overlay applies`);
+    assert.deepEqual(name, { id, date: x.asOf, effectiveAsOf: x.asOf },
+      `${kind} ${shadow.label} inactive entry cannot keep the live name inactive`);
+    assert.equal((first.data.plan.opening.notReliedUponEvents || [])
+      .filter(row => row.id === id).length, 0,
+      `${kind} ${shadow.label} represented proof does not also hold the occurrence`);
+    assert.equal(cents(first.data.plan.startingCash.breakdown[0].value), observed);
+    assert.equal(liveEnding(first.data, x.asOf), observed,
+      `${kind} ${shadow.label} first refresh conserves observed cash`);
+    collisionCases += 1;
+    const second = Live.fromObservation({ ...x, data: first.data });
+    const secondName = second.data.plan.opening.representedEvents.find(row => row.id === id);
+    assert.deepEqual(secondName, name, `${kind} ${shadow.label} repeated refresh keeps the live name`);
+    assert.equal(liveEnding(second.data, x.asOf), observed,
+      `${kind} ${shadow.label} repeated refresh conserves observed cash`);
+    collisionCases += 1;
+    assert.equal(F.expandEvents(original.data.plan, HISTORICAL, x.asOf, { representedEvents: [name] })
+      .filter(row => row.id === id).length, 1,
+      `${kind} ${shadow.label} historical snapshot still includes the movement`);
+    assert.equal(historicalEnding(original, name), historical,
+      `${kind} ${shadow.label} older opening still applies the invented 3,847 cents`);
+    collisionCases += 1;
+  }
+}
+assert.equal(collisionCases, 18, 'income and debit collision proof covers 18 cases');
+
+const earlier = collisionPacket('debit', [{ id: 'invented-bill', date: '2026-09-20',
+  effectiveAsOf: '2026-09-19' }]);
+const earlierLive = Live.fromObservation(earlier.x);
+const keptEarlier = earlierLive.data.plan.opening.representedEvents
+  .find(row => row.id === 'invented-bill');
+assert.deepEqual(keptEarlier, { id: 'invented-bill', date: earlier.x.asOf, effectiveAsOf: '2026-09-19' },
+  'a later live packet cannot overwrite an earlier truthful qualification');
+assert.equal(liveEnding(earlierLive.data, earlier.x.asOf), DEBIT_OBS);
+
 assert.equal(fs.readFileSync(require.resolve('../data.json'), 'utf8'), canonicalBefore);
 console.log('All represented effective-date synthetic checks passed.');
