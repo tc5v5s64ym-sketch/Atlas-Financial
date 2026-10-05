@@ -54,6 +54,25 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
     const summary = html.split('data-operating-question="savings"')[1].split('</summary>')[0];
     assert.match(summary, /177\.96/, 'waterfall deduction remains selected-period proposal, not total saved stock');
     assert.doesNotMatch(summary, /215\.04|600\.00/);
+    for (const mutate of [
+      p => { p.plannedCostFunding.source = 'Unrelated calculator'; },
+      p => { p.plannedCostFunding.basis = 'unrelated-period'; },
+      p => { p.plannedCostFunding.asOf = '2026-08-13'; },
+      p => { p.budgetProgress.currency = 'USD'; },
+      p => { delete p.budgetProgress; },
+      p => { delete p.budgetProgress; delete p.plannedCostFunding.asOf; },
+    ]) {
+      const mismatched = JSON.parse(JSON.stringify(period));
+      mutate(mismatched); ctx.probe = mismatched;
+      const before = JSON.stringify(mismatched);
+      const withheld = vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx);
+      assert.match(withheld.split('data-operating-question="savings"')[1].split('</summary>')[0], /Unavailable/);
+      const compact = withheld.split('data-budget-planned-savings-summary>')[1].split('<details')[0];
+      assert.match(compact, /Funding plan not confirmed/);
+      assert.match(compact, /data-budget-savings-proposed><span class="budget-v3-unknown">Unknown/);
+      assert.equal(JSON.stringify(mismatched), before, 'withholding does not alter the financial publication');
+    }
+    ctx.probe = period;
   }
   if (mode === 'ready') assert.equal(period.plannedCostFunding.contribution, 600 + 13 * 11 - 350);
   if (mode === 'gap') assert.match(glance, /Funding shortfall:/, 'material gap stays visible without opening Info');

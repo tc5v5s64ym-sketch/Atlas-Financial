@@ -2,11 +2,15 @@
 // Real App.boot/Forecast with independent invented HTTP responses only.
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const fixture = require('./fixtures/planned-savings-clarity-data');
 const captureOnly = process.env.ATLAS_SAVINGS_CAPTURE_ONLY === '1';
 const assets = process.env.ATLAS_SAVINGS_ASSETS_DIR || path.join(__dirname, '../public');
 const output = process.env.ATLAS_SAVINGS_CLARITY_DIR || path.join(require('node:os').tmpdir(), 'atlas-planned-savings-clarity');
+const executionHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: path.resolve(__dirname, '..'), encoding: 'utf8',
+}).trim();
 fs.mkdirSync(output, { recursive: true });
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
@@ -87,7 +91,8 @@ fs.mkdirSync(output, { recursive: true });
       cases.push({ width, mode, captureOnly }); await page.close();
     }
     assert.deepEqual(errors, []); assert.deepEqual(external, []);
-    const receipt = { cases, errors, external, syntheticOnly: true };
+    const receipt = { executionHead, assetsCommit: process.env.ATLAS_SAVINGS_ASSETS_COMMIT || executionHead,
+      cases, errors, external, syntheticOnly: true };
     fs.writeFileSync(path.join(output, 'verification.json'), JSON.stringify(receipt, null, 2) + '\n');
     console.log((captureOnly ? 'CAPTURE' : 'PASS actual App.boot') + ' Planned Savings: ' + cases.length + ' states, desktop/390/320, Info keyboard/focus and unchanged inputs');
   } finally { await browser.close(); }

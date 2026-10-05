@@ -4263,7 +4263,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         : state === 'zero-income' || state === 'unscaled' ? ' is-noscale' : ''}${signedScale ? ' is-signed' : ''}`
         + `${overflowStart ? ' is-overflow-start' : ''}${overflowEnd ? ' is-overflow-end' : ''}`;
       const ratioKey = compactOverview ? ({ '02': 'income', '04': 'bills', '06': 'household', savings: 'savings' })[number] : null;
-      const progress = ratioKey ? budgetProgressFor(period)?.[ratioKey] : null;
+      const progress = ratioKey ? (ratioKey === 'savings'
+        ? budgetProgressFor(period, savingsContext?.asOf ?? period.budgetProgressAsOf)
+        : budgetProgressFor(period))?.[ratioKey] : null;
       const evidence = ratioKey ? budgetProgressEvidenceHtml(progress, ratioKey, period) : '';
       let detail = `${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}${evidence}`;
       if (ratioKey === 'savings') {
@@ -4355,6 +4357,11 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     && funding.start === period.start && funding.end === period.end
     && numeric(funding.contribution) && funding.contribution >= 0 && numeric(funding.afterProposedFunding)
     && (funding.trust === 'calculated' || funding.trust === 'estimated');
+  const savingsPublication = compactOverview
+    ? budgetProgressFor(period, savingsContext?.asOf ?? period.budgetProgressAsOf) : null;
+  const savingsFundingKnown = fundingKnown && (!compactOverview
+    || savingsPublication && funding.source === 'Forecast.planSpendPaydayFunding' && funding.basis === 'selected-Budget-period'
+      && funding.asOf === savingsPublication?.asOf);
   const fundingEstimate = fundingKnown && funding.trust === 'estimated' ? ' ≈ estimated' : '';
   const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4415,7 +4422,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
       compactOverview ? budgetRemainingEvidenceContext(period) : {}), null,
       { amount: period.budgetHold, trust: period.budgetHoldTrust, barStart: period.afterHouseholdBudget, note: 'Targets, actual spending and the period reserve' })}
     ${q('savings', compactOverview ? 'Planned Savings' : 'Proposed savings', planUnavailable ? unavailable : fundingBody, null,
-      { amount: fundingKnown ? funding.contribution : null, trust: fundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, barStart: fundedBalanceKnown ? funding.afterProposedFunding : null, note: 'Named costs — proposed funding, separate from actual saved cash' })}
+      { amount: savingsFundingKnown ? funding.contribution : null, trust: savingsFundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, barStart: savingsFundingKnown && fundedBalanceKnown ? funding.afterProposedFunding : null, note: 'Named costs - proposed funding, separate from actual saved cash' })}
     ${fundingKnown && numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0
       ? q('reserve-use', 'Earlier proposed funding for bills',
         '<p class="operating-note">Projected use of earlier earmarks for costs already included in Bills above. This offsets that bill deduction once; it is not extra income, observed saved cash or an actual withdrawal.</p>', 'credit',
