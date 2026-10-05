@@ -77,10 +77,23 @@ const head = execFileSync('git', ['-c', 'safe.directory=' + root.split(path.sep)
       await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await boot();
       await inspect('invented-current-utility', '61\\.27', name, true);
     }
+    if (!before) for (const [name, units, estimated] of [
+      ['replacement-currency-conflict', 'usd', true], ['replacement-native', 'cad', false],
+    ]) {
+      data = fixture.replacement(units);
+      const packet = data.liveOverlay.currentPeriodActuals;
+      const claim = packet.representedActuals.find(r => r.id === 'invented-current-utility');
+      const receipt = packet.transactions.find(t => t.id === claim.transactionId);
+      assert.equal(receipt.currency, 'cad'); assert.equal(receipt.pending, false);
+      assert.equal(receipt.coverageCurrencyConflict, estimated);
+      assert.deepEqual(packet.currencyUnconfirmed, []);
+      await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await boot();
+      await inspect('invented-current-utility', '61\\.27', name, estimated);
+    }
     await page.close();
   }
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   fs.writeFileSync(path.join(out, 'verification.json'), JSON.stringify({ head, before, syntheticOnly: true, results, errors, external }, null, 2) + '\n');
-  console.log(`PASS ${head}: actual Budget current/history/future${before ? ' baseline' : ', pending/missing/conflicting and unknown/partial/missing coverage'}, keyboard filters/focus and overflow at 1440/390/320`);
+  console.log(`PASS ${head}: actual Budget current/history/future${before ? ' baseline' : ', pending/missing/conflicting, unknown/partial/missing coverage and native/conflicting replacement chains'}, both bill summaries, keyboard filters/focus and overflow at 1440/390/320`);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });

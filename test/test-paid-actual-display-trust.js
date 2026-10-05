@@ -31,6 +31,21 @@ assert.equal(cents(row(data).actual) + cents(row(data, 'invented-current-utility
 const future = row(data, 'invented-past-utility', '2026-09-07');
 assert.equal(future.displayAmountTrust, 'estimated'); assert.equal(future.displayAmountBasis, 'schedule');
 assert.equal(cents(future.movement), -18361); assert.equal(future.settlement, 'upcoming');
+const replaced = fixture.replacement(), rp = replaced.liveOverlay.currentPeriodActuals;
+const currentClaim = rp.representedActuals.find(r => r.id === 'invented-current-utility');
+const survivor = rp.transactions.find(t => t.id === currentClaim.transactionId);
+assert.equal(survivor.currency, 'cad'); assert.equal(survivor.pending, false);
+assert.equal(survivor.coverageCurrencyConflict, true, 'raw USD pending to CAD posted retains contradictory units');
+assert.deepEqual(rp.currencyUnconfirmed, [], 'identity has no requiredCurrency; aggregate diagnostic alone cannot protect display');
+const replacedRow = row(replaced, 'invented-current-utility', '2026-08-19');
+assert.equal(replacedRow.status, 'PAID'); assert.equal(replacedRow.settlement, 'represented');
+assert.equal(cents(replacedRow.actual), 6127); assert.equal(cents(replacedRow.movement), -6127);
+assert.equal(cents(replacedRow.planned), 18361); assert.equal(replacedRow.remaining, 0);
+assert.equal(replacedRow.displayAmountTrust, 'estimated', 'contradictory replacement cannot earn exact actual display');
+assert.equal(replacedRow.displayAmountBasis, 'unconfirmed-actual');
+const nativeReplacement = row(fixture.replacement('cad'), 'invented-current-utility', '2026-08-19');
+assert.equal(nativeReplacement.displayAmountTrust, 'calculated', 'native CAD replacement remains exact');
+assert.equal(cents(nativeReplacement.actual), 6127);
 function withheld(label, change) {
   const d = clone(data); change(d.liveOverlay.currentPeriodActuals, d);
   const b = row(d); assert.ok(b, label + ': occurrence retained');

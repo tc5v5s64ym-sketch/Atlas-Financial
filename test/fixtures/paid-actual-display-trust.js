@@ -28,4 +28,13 @@ function served(changeInput) {
   if (changeInput) changeInput(x);
   return Live.fromObservation(x).data;
 }
-module.exports = { input, served };
+function replacement(pendingCurrency = 'usd') {
+  return served(x => {
+    const pending = x.payload.transactions.find(t => t.id === 93002);
+    Object.assign(pending, { date: '2026-08-18', currency: pendingCurrency, is_pending: true,
+      plaid_metadata: { transaction_id: 'invented-utility-pending' } });
+    x.payload.transactions.push({ ...pending, id: 93003, date: '2026-08-19', currency: 'cad', is_pending: false,
+      plaid_metadata: { transaction_id: 'invented-utility-posted', pending_transaction_id: 'invented-utility-pending' } });
+  });
+}
+module.exports = { input, served, replacement };

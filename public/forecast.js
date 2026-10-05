@@ -11494,6 +11494,7 @@
           || tx.date > packet.coverageThrough || tx.pending !== false
           || typeof tx.amount !== 'number' || !isFinite(tx.amount)
           || typeof tx.currency !== 'string' || tx.currency.trim().toLowerCase() !== 'cad'
+          || tx.coverageCurrencyConflict === true
           || typeof txAccount !== 'string' || !txAccount || tx.accountRole === 'unmapped'
           || (tx.atlasAccountId && tx.account && tx.atlasAccountId !== tx.account)
           || tx.pendingPostedDuplicate || tx.pendingPostedAmbiguous || tx.contradictoryEvidence) return null;
