@@ -146,7 +146,8 @@ function observeAt(asOf, txs) {
       categories: [
         { id: 11, name: 'Shopping', is_income: false, exclude_from_totals: false },
       ],
-      transactions: txs,
+      // Legacy invented native CAD rows declare units; explicit overrides survive.
+      transactions: txs.map(tx => ({ currency: 'cad', ...tx })),
     },
     accountMap: fixtureMap(),
     data: liveData(),
