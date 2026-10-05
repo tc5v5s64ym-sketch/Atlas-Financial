@@ -4211,7 +4211,7 @@ function calendarFromTodayEvidenceHtml(period, plan) {
   return todayHtml;
 }
 
-function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview = false) {
+function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview = false, savingsContext = null) {
   if (!period) return '';
   const confirmedSavings = plan && Forecast.savingsEarmarksState(plan, period.start).status !== 'setup-unknown';
   const planUnavailable = period.operatingPlanUnavailable === true;
@@ -4232,9 +4232,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   // `kind` is a presentation hint only (opening / balance) so the
   // running-balance thread can be styled as one sequence.
   const q = (number, prompt, answer, kind, summary) => {
-    if (summary && !planUnavailable) {
+    if (summary && (!planUnavailable || compactOverview && number === 'savings')) {
       // Overview values are published Forecast fields, never sums of details.
-      const known = typeof summary.amount === 'number' && Number.isFinite(summary.amount)
+      const known = !planUnavailable && typeof summary.amount === 'number' && Number.isFinite(summary.amount)
         && (summary.trust === 'calculated' || summary.trust === 'estimated'
           || (!summary.trustRequired && summary.trust == null));
       const estimate = summary.trust === 'estimated' ? compactOverview
@@ -4273,8 +4273,52 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         : state === 'zero-income' || state === 'unscaled' ? ' is-noscale' : ''}${signedScale ? ' is-signed' : ''}`
         + `${overflowStart ? ' is-overflow-start' : ''}${overflowEnd ? ' is-overflow-end' : ''}`;
       const ratioKey = compactOverview ? ({ '02': 'income', '04': 'bills', '06': 'household', savings: 'savings' })[number] : null;
-      const progress = ratioKey ? budgetProgressFor(period)?.[ratioKey] : null;
-      const graph = ratioKey ? budgetProgressBarHtml(progress, ratioKey) : `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
+      const progress = ratioKey ? (ratioKey === 'savings'
+        ? budgetProgressFor(period, savingsContext?.asOf ?? period.budgetProgressAsOf)
+        : budgetProgressFor(period))?.[ratioKey] : null;
+      const evidence = ratioKey ? budgetProgressEvidenceHtml(progress, ratioKey, period) : '';
+      let detail = `${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}${evidence}`;
+      if (ratioKey === 'savings') {
+        // Pool-backed totals and this payday's proposals have distinct sources.
+        // No grouping, allocation or financial total is calculated in the page.
+        const candidate = savingsContext?.inventory;
+        const inventory = candidate?.source === 'Forecast.savingsInventory' && candidate.status === 'ready'
+          && candidate.nonAdditive === true && candidate.currency === 'CAD'
+          && Array.isArray(candidate.goals) && Array.isArray(candidate.pools)
+          && isValidIsoCalendarDate(savingsContext.asOf) && candidate.asOf === savingsContext.asOf ? candidate : null;
+        const seen = new Set();
+        const goals = inventory ? [...inventory.goals, ...inventory.pools.flatMap(pool => pool.plannedGoals || [])]
+          .filter(goal => goal?.key && !seen.has(goal.key) && seen.add(goal.key)) : [];
+        const amount = (value, trust) => typeof value === 'number' && Number.isFinite(value) && value >= 0
+          && ['calculated', 'estimated'].includes(trust)
+          ? budgetBrowseMoney(value, trust) : '<span class="budget-v3-unknown">Unknown</span>';
+        const proposed = field => field?.completeness === 'proposal'
+          && typeof field.amount === 'number' && Number.isFinite(field.amount) && field.amount >= 0
+          && ['calculated', 'estimated'].includes(field.trust)
+          ? budgetBrowseMoney(field.amount, field.trust) : '<span class="budget-v3-unknown">Unknown</span>';
+        const rows = goals.map(goal => {
+          const ref = goal.goalRef || goal.ref;
+          const contribution = known && ref?.kind !== 'group' && goal.resolved !== false
+            ? progress?.goals?.find(row => row.id === ref?.id)?.proposal : null;
+          const needed = typeof goal.targetMax === 'number' && Number.isFinite(goal.targetMax) && goal.targetMax >= goal.target
+            ? amount(goal.target, goal.targetTrust) + (goal.targetMax > goal.target ? ' – ' + amount(goal.targetMax, goal.targetTrust) : '')
+            : '<span class="budget-v3-unknown">Unknown</span>';
+          return `<li data-budget-savings-total-goal="${budgetBrowseEscape(goal.key)}">
+            <span>${budgetBrowseEscape(goal.label || 'Goal name not confirmed')}</span>
+            <span><span data-budget-savings-total-saved>${amount(goal.backedTrust === 'calculated' ? goal.backed : null, goal.backedTrust)}</span> / <span data-budget-savings-total-needed>${needed}</span><small>Saved / needed</small></span>
+            <span><span data-budget-savings-proposed>${proposed(contribution)}</span><small>Put away this period</small></span>
+          </li>`;
+        }).join('');
+        const gap = known && period.plannedCostFunding?.gap;
+        detail = `<section data-budget-planned-savings-summary>
+          ${!known ? '<p data-budget-savings-unconfirmed>Funding plan not confirmed</p>' : ''}
+          ${rows ? '<ul class="budget-savings-contributions">' + rows + '</ul>' : ''}
+          ${known && !rows ? '<p>Total goal savings not confirmed</p>' : ''}
+          ${gap ? '<p class="crit">Funding shortfall: ' + budgetBrowseMoney(gap.shortBy, period.plannedCostFunding.trust) + '.</p>' : ''}
+          <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>${inventory && typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(inventory) : ''}${answer}${evidence}</div></details>
+        </section>`;
+      }
+      const graph = ratioKey && ratioKey !== 'savings' ? budgetProgressBarHtml(progress, ratioKey) : `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
         ${bars}${signedScale ? '<span class="budget-waterfall-zero">0</span>' : ''}${state === 'zero-income'
           ? '<span class="budget-waterfall-scale-note">Zero income</span>' : state === 'unscaled'
             ? '<span class="budget-waterfall-scale-note">Scale unavailable</span>' : ''}
@@ -4286,10 +4330,10 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
             <span class="operating-number" aria-hidden="true">${number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
             <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span>${compactOverview ? '' : `<span class="budget-step-caption">${summary.note}</span>`}</span>
             ${graph}
-            <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${ratioKey ? budgetProgressValueHtml(progress, ratioKey) : known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
+            <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${ratioKey && ratioKey !== 'savings' ? budgetProgressValueHtml(progress, ratioKey) : known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>
           </summary>
-          <div class="operating-answer budget-step-body">${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}${ratioKey ? budgetProgressEvidenceHtml(progress, ratioKey, period) : ''}</div>
+          <div class="operating-answer budget-step-body">${detail}</div>
         </details>
       </div>`;
     }
@@ -4323,6 +4367,11 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     && funding.start === period.start && funding.end === period.end
     && numeric(funding.contribution) && funding.contribution >= 0 && numeric(funding.afterProposedFunding)
     && (funding.trust === 'calculated' || funding.trust === 'estimated');
+  const savingsPublication = compactOverview
+    ? budgetProgressFor(period, savingsContext?.asOf ?? period.budgetProgressAsOf) : null;
+  const savingsFundingKnown = fundingKnown && (!compactOverview
+    || savingsPublication && funding.source === 'Forecast.planSpendPaydayFunding' && funding.basis === 'selected-Budget-period'
+      && funding.asOf === savingsPublication?.asOf);
   const fundingEstimate = fundingKnown && funding.trust === 'estimated' ? ' ≈ estimated' : '';
   const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4382,8 +4431,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period, liveOverlay, plan,
       compactOverview ? budgetRemainingEvidenceContext(period) : {}), null,
       { amount: period.budgetHold, trust: period.budgetHoldTrust, barStart: period.afterHouseholdBudget, note: 'Targets, actual spending and the period reserve' })}
-    ${q('savings', compactOverview ? 'Savings' : 'Proposed savings', planUnavailable ? unavailable : fundingBody, null,
-      { amount: fundingKnown ? funding.contribution : null, trust: fundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, barStart: fundedBalanceKnown ? funding.afterProposedFunding : null, note: 'Named costs — proposed funding, separate from actual saved cash' })}
+    ${q('savings', compactOverview ? 'Planned Savings' : 'Proposed savings', planUnavailable ? unavailable : fundingBody, null,
+      { amount: savingsFundingKnown ? funding.contribution : null, trust: savingsFundingKnown ? funding.trust : 'unavailable', trustRequired: true, discloseUnknown: true, barStart: savingsFundingKnown && fundedBalanceKnown ? funding.afterProposedFunding : null, note: 'Named costs - proposed funding, separate from actual saved cash' })}
     ${fundingKnown && numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0
       ? q('reserve-use', 'Earlier proposed funding for bills',
         '<p class="operating-note">Projected use of earlier earmarks for costs already included in Bills above. This offsets that bill deduction once; it is not extra income, observed saved cash or an actual withdrawal.</p>', 'credit',
@@ -4714,7 +4763,7 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
     ${current && !compactOverview ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
     ${compactOverview ? '' : payPeriodNavigatorHtml(selection)}
     ${extraControls || ''}
-    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview)}
+    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview, { inventory: advice?.savingsInventory, asOf })}
     ${budgetPlanSpendEarmarkHtml(advice, period)}
     ${undatedBlock}
   </div>`;
