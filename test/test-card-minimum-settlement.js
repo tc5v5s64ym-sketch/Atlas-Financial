@@ -92,6 +92,13 @@ function planFixture() {
   mbna.amount = MBNA_MIN;
   mbnaOnce.amount = MBNA_MIN;
   travel.amount = TRAVEL_MIN;
+  // Dale-gated triangle@2026-09-07 / triangle@2026-10-07 live on canonical
+  // opening.representedEvents. Strip them here so the unconfirmed-path proofs
+  // still exercise the #489 gate rather than the owner-confirmation channel.
+  if (data.plan.opening && Array.isArray(data.plan.opening.representedEvents)) {
+    data.plan.opening.representedEvents = data.plan.opening.representedEvents
+      .filter(row => !(row && row.id === 'triangle'));
+  }
   return data;
 }
 
@@ -309,6 +316,9 @@ function rulesFor(eventId) {
 
 console.log('=== authority homes ===');
 {
+  ok(represented(canonical, 'triangle', '2026-09-07')
+      && represented(canonical, 'triangle', '2026-10-07'),
+    'canonical opening names Dale-gated triangle@2026-09-07 and triangle@2026-10-07');
   ok(debt(canonical, 'triangle') && debt(canonical, 'triangle').statementCloseDay === 17,
     'Triangle close day lives on debts.statementCloseDay');
   ok(debt(canonical, 'mbna') && debt(canonical, 'mbna').statementCloseDay === 6,
