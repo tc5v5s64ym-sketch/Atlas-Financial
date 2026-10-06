@@ -4,6 +4,11 @@ const fx = require('./savings-daily-allocation-contract');
 module.exports = function dailyConsumerData(mode = 'ready') {
   const input = fx.fixture();
   if (mode === 'before-policy') fx.advance(input, '2026-10-04');
+  if (mode === 'ranged-need') {
+    delete input.plan.commitments[1].amount;
+    input.plan.commitments[1].amountMin = 170;
+    input.plan.commitments[1].amountMax = 190;
+  }
   if (mode === 'fully-backed') {
     input.plan.savingsPoolObservation.accounts[0].value = 230;
     input.plan.startingCash.breakdown[2].value = 230;

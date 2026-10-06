@@ -10,7 +10,7 @@ for (const script of ['app', 'bill-detail', 'savings-inventory', 'budget-surface
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/' + script + '.js'), 'utf8'), ctx);
 }
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', ctx);
-for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income']) {
+for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income', 'ranged-need']) {
   const data = fixture(mode), before = JSON.stringify(data);
   const advice = F.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, ...data.liveOverlay });
   ctx.src = { plan: data.plan, debts: [], asOf: data.meta.asOf, advice, liveOverlay: data.liveOverlay, weekly: 40, weeklyOverride: 40 };
@@ -39,7 +39,29 @@ for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending
     assert.match(html, /Unassigned capacity[\s\S]*80\.00/);
     assert.doesNotMatch(html, /Unassigned top-up/);
   }
+  if (mode === 'ranged-need') {
+    assert.equal(packet.status, 'unavailable');
+    const home = packet.rows.find(row => row.key === 'yearly-bill:home-cost');
+    assert.equal(home.needed, 24, 'independent exact home requirement');
+    assert.equal(home.trust, 'calculated');
+    assert.equal(home.neededTrust, undefined, 'unavailable packet publishes requirement trust on row');
+    ctx.knownNeed = home;
+    assert.match(vm.runInContext('budgetDailyNeededHtml(knownNeed)', ctx), /24\.00/);
+    const homeHtml = html.split('data-budget-savings-total-goal="yearly-bill:home-cost"')[1].split('</li>')[0];
+    assert.match(homeHtml.split('data-budget-savings-total-needed>')[1], /24\.00/);
+    assert.match(homeHtml.split('data-budget-savings-total-saved>')[1].split('</span>')[0], /Unavailable/);
+    assert.match(homeHtml.split('data-budget-savings-proposed>')[1].split('</span>')[0], /Unavailable/);
+    assert.match(vm.runInContext('budgetSavingsGoalsHtml(src,period,null)', ctx), /24\.00/);
+  }
   assert.equal(JSON.stringify(data), before, 'canonical fixture not mutated');
+}
+
+for (const row of [
+  { needed: null, trust: 'calculated' }, { needed: '24', trust: 'calculated' },
+  { needed: 24, trust: 'unknown' }, { needed: 24, neededTrust: 'unknown', trust: 'calculated' },
+]) {
+  ctx.knownNeed = row;
+  assert.match(vm.runInContext('budgetDailyNeededHtml(knownNeed)', ctx), /Unavailable/, 'no coercion or override of explicit unknown requirement trust');
 }
 
 ctx.Forecast = { ...F, savingsDailyFunding() { throw new Error('Invented unavailable selector'); } };
@@ -49,10 +71,14 @@ assert.match(failed, /data-budget-daily-savings/);
 assert.match(failed.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
 assert.doesNotMatch(failed, /data-operating-question="reserve-use"/);
 ctx.Forecast = F;
+const readyData = fixture('ready');
+ctx.src = { plan: readyData.plan, debts: [], asOf: readyData.meta.asOf,
+  advice: F.recommend(readyData.plan, readyData.meta.asOf, { weeklyVariable: 40, ...readyData.liveOverlay }),
+  liveOverlay: readyData.liveOverlay, weekly: 40, weeklyOverride: 40 };
 const valid = vm.runInContext('budgetDailySavingsFor(src)', ctx);
 for (const mutate of [p => { p.source = 'other'; }, p => { p.asOf = '2026-10-06'; }, p => { p.currency = 'USD'; }, p => { p.period.basis = 'after-proposals'; }, p => { p.period.start = '2026-10-16'; }, p => { p.moneyMovementPermission = 'granted'; }, p => { p.period.allocations = null; }, p => { p.period.allocations[0].amount = null; }, p => { p.period.cycleAllocations[0].amount = '80'; }]) {
   const invalid = JSON.parse(JSON.stringify(valid)); mutate(invalid);
   ctx.Forecast = { ...F, savingsDailyFunding: () => invalid };
   assert.equal(vm.runInContext('budgetDailySavingsFor(src).status', ctx), 'unavailable', 'invalid scope or authority never borrows legacy amounts');
 }
-console.log('PASS active current Budget/Savings consumer: twelve independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, unavailable evidence retained, publication boundary');
+console.log('PASS active current Budget/Savings consumer: thirteen independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, independently known requirement, publication boundary');

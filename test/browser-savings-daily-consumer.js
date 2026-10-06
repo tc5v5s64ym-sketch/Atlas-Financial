@@ -12,7 +12,7 @@ fs.mkdirSync(output, { recursive: true });
  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
  const errors = [], external = [], cases = [];
  try {
-  for (const width of [1440, 390, 320]) for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income']) {
+  for (const width of [1440, 390, 320]) for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income', 'ranged-need']) {
    const data = fixture(mode), page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
    await page.addInitScript(() => localStorage.setItem('hfd-plan-knobs-v1', JSON.stringify({ weeklyVariable: 40 })));
    page.on('pageerror', e => errors.push(e.message));
@@ -42,6 +42,13 @@ fs.mkdirSync(output, { recursive: true });
     if (mode === 'partial') assert.match(await summary.innerText(), /149\.00/);
     if (mode === 'missing-stock') assert.match(await summary.innerText(), /Unavailable/);
     if (mode === 'missing-cash' || mode === 'before-policy') assert.match(await summary.innerText(), /119\.00/);
+    if (mode === 'ranged-need') {
+     const home = body.locator('[data-budget-savings-total-goal="yearly-bill:home-cost"]');
+     assert.match(await home.locator('[data-budget-savings-total-needed]').innerText(), /24\.00/);
+     assert.match(await home.locator('[data-budget-savings-total-saved]').innerText(), /Unavailable/);
+     assert.match(await home.locator('[data-budget-savings-proposed]').innerText(), /Unavailable/);
+     assert.match(await body.locator('[data-budget-savings-total-goal="group:club"] [data-budget-savings-total-needed]').innerText(), /230\.00[\s\S]*250\.00/);
+    }
     const info = body.locator('[data-budget-savings-info] > summary');
     await info.focus(); await page.keyboard.press('Enter');
     assert.match(await body.innerText(), /Only matched settled transfers/);
@@ -72,6 +79,32 @@ fs.mkdirSync(output, { recursive: true });
     const first = await page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]').innerText();
     await page.reload(); await summary.waitFor();
     assert.equal(await page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]').innerText(), first, 'refresh replaces proposal');
+    if (mode === 'ready') {
+     const evidence = page.locator('[data-budget-funding-evidence="today"]');
+     await evidence.focus(); await page.keyboard.press('Enter'); await dialog.waitFor({ state: 'visible' });
+     for (const nextMode of ['partial', 'partial', 'multiple']) {
+      await body.locator('[data-budget-savings-info] > summary').focus();
+      assert.equal(await page.evaluate(next => {
+       App.data.plan = next.plan; App.data.liveOverlay = next.liveOverlay;
+       const before = JSON.stringify(App.data); App.rerender();
+       return JSON.stringify(App.data) === before;
+      }, fixture(nextMode)), true, 'in-place refresh does not mutate financial input');
+      await dialog.waitFor({ state: 'visible' });
+      assert.equal(await dialog.evaluate(el => el.open && el.contains(document.activeElement)), true, 'refresh keeps Today sheet open and keyboard focus inside');
+      assert.match(await page.locator('[data-budget-detail-title]').innerText(), /Today: complete funding evidence/);
+      const amount = nextMode === 'partial' ? '50' : '30';
+      assert.match(await body.locator('[data-budget-daily-proposal]').innerText(), new RegExp(amount + '\\.00'));
+      assert.match(await summary.innerText(), new RegExp((nextMode === 'partial' ? '149' : '169') + '\\.00'));
+      assert.match(await overview.locator('[data-operating-question="07"] > details > summary').innerText(), /80\.00/);
+      const info = body.locator('[data-budget-savings-info] > summary');
+      await info.focus(); await page.keyboard.press('Enter');
+      assert.match(await body.innerText(), /Only matched settled transfers/);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await dialog.screenshot({ path: path.join(output, `refresh-${nextMode}-${width}.png`) });
+     }
+     await page.keyboard.press('Escape');
+     assert.equal(await evidence.evaluate(el => el === document.activeElement), true, 'refreshed sheet restores the new Today trigger');
+    }
    }
    cases.push({ mode, width }); await page.close(); console.log('Verified ' + mode + ' at ' + width + 'px');
   }
