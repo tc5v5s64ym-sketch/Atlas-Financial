@@ -4857,8 +4857,12 @@ function budgetDailySavingsFor(ctx) {
     if (packet?.source !== 'Forecast.savingsDailyFunding' || packet.asOf !== asOf || packet.currency !== 'CAD'
       || packet.actionPermission !== 'not-granted' || packet.moneyMovementPermission !== 'not-granted'
       || !Array.isArray(packet.rows) || !['ready', 'unavailable'].includes(packet.status)
-      || packet.status === 'ready' && (packet.period?.basis !== 'operating-surplus-before-proposals'
-        || packet.period.start !== current?.start || packet.period.end !== current?.end)) throw new Error('Invalid daily publication');
+      || packet.status === 'ready' && (packet.period?.status !== 'ready'
+        || packet.period.basis !== 'operating-surplus-before-proposals'
+        || packet.period.start !== current?.start || packet.period.end !== current?.end
+        || ![packet.period.allocations, packet.period.cycleAllocations].every(parts => Array.isArray(parts)
+          && parts.every(part => typeof part?.id === 'string' && typeof part.amount === 'number'
+            && Number.isFinite(part.amount) && part.amount >= 0)))) throw new Error('Invalid daily publication');
     return packet;
   } catch (e) { return { source: 'Budget.savingsDailyFundingUnavailable', asOf,
     status: 'unavailable', rows: [], period: { reason: 'Daily savings evidence could not be loaded.' } }; }

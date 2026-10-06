@@ -45,7 +45,7 @@ assert.match(failed.split('data-budget-daily-proposal>')[1].split('</strong>')[0
 assert.doesNotMatch(failed, /data-operating-question="reserve-use"/);
 ctx.Forecast = F;
 const valid = vm.runInContext('budgetDailySavingsFor(src)', ctx);
-for (const mutate of [p => { p.source = 'other'; }, p => { p.asOf = '2026-10-06'; }, p => { p.currency = 'USD'; }, p => { p.period.basis = 'after-proposals'; }, p => { p.period.start = '2026-10-16'; }, p => { p.moneyMovementPermission = 'granted'; }]) {
+for (const mutate of [p => { p.source = 'other'; }, p => { p.asOf = '2026-10-06'; }, p => { p.currency = 'USD'; }, p => { p.period.basis = 'after-proposals'; }, p => { p.period.start = '2026-10-16'; }, p => { p.moneyMovementPermission = 'granted'; }, p => { p.period.allocations = null; }, p => { p.period.allocations[0].amount = null; }, p => { p.period.cycleAllocations[0].amount = '80'; }]) {
   const invalid = JSON.parse(JSON.stringify(valid)); mutate(invalid);
   ctx.Forecast = { ...F, savingsDailyFunding: () => invalid };
   assert.equal(vm.runInContext('budgetDailySavingsFor(src).status', ctx), 'unavailable', 'invalid scope or authority never borrows legacy amounts');
