@@ -196,6 +196,31 @@ for (const moved of [false, true]) for (const proof of ['qualified', 'legacy', '
       const html = require('../public/bill-detail').html(bill, data);
       if (!html.includes('Published status</dt><dd>' + (known ? 'PAID' : 'unconfirmed'))) throw Error('disclosure lost issuer status');
     }
+    // A supported canonical proposal must carry the same durable knowledge;
+    // its approval binds the qualifier as well as id/date. No real write.
+    const C = require('../scripts/canonical-refresh'), nextDate = '2035-10-11';
+    x.data = data; x.asOf = nextDate; x.payload.fetchedAt = nextDate + 'T18:00:00Z';
+    x.payload.accounts.forEach(a => { a.updated_at = nextDate + 'T17:00:00Z'; });
+    x.payload.transactionWindow.endDate = nextDate;
+    const report = Live.fromObservation(x).report, cutover = C.buildOpeningCutover(data, report, nextDate, x.accountMap);
+    equal(cutover.cutoverWriteSupported, true, 'synthetic canonical cutover admission');
+    const nextData = structuredClone(data);
+    nextData.meta.asOf = nextData.plan.opening.asOf = nextDate;
+    nextData.plan.opening.representedEvents = cutover.proposedOpening.representedEvents;
+    equal(F.cardMinimumState(nextData.plan, nextDate).payments[0].issuerMinimumStatus,
+      known ? 'satisfied' : 'unconfirmed', 'canonical proposal preserves qualification');
+    C.validateOpeningApplied(data, nextData, { openingCutover: cutover });
+    if (proof !== 'wrong-cycle') {
+      const changed = structuredClone(cutover);
+      changed.proposedOpening.representedEvents[0].effectiveAsOf = '2035-10-12';
+      if (C.openingApprovalIdFrom(changed, x.accountMap) === C.openingApprovalIdFrom(cutover, x.accountMap))
+        throw Error('opening approval does not bind minimum proof qualification');
+      const tampered = structuredClone(nextData);
+      delete tampered.plan.opening.representedEvents[0].effectiveAsOf;
+      let rejected = false;
+      try { C.validateOpeningApplied(data, tampered, { openingCutover: cutover }); } catch { rejected = true; }
+      if (!rejected) throw Error('canonical validation accepted stripped qualification');
+    }
     if (known) {
       equal(F.cardMinimumState(data.plan, '2035-10-04').payments[0].issuerMinimumStatus,
         proof === 'legacy' ? 'unconfirmed' : 'satisfied', 'historical qualification');
