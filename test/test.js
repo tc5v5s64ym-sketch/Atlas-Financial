@@ -110,6 +110,8 @@ const suites = [
   ['Budget review future settlement and zero-plan markers', 'test-budget-review-regressions.js'],
   ['Budget exact-period original plans and observed progress', 'test-budget-period-progress.js'],
   ['Salary receipt and paired transfer actual-income proof', 'test-income-transfer-receipts.js'],
+  ['Bounded salary matcher diagnostic conservation and redaction', 'test-salary-matcher-diagnostic.js'],
+  ['Salary matcher diagnostic existing authenticated readback', 'test-salary-diagnostic-auth.js'],
   ['active Budget surface: one renderer, Forecast figures, drilldown and withheld states', 'test-budget-surface.js'],
   ['Budget owner-voice presentation', 'test-budget-owner-voice.js'],
   ['Plan homepage decision desk', 'test-plan-decision-desk.js'],

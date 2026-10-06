@@ -23,6 +23,7 @@
 const fs = require('fs');
 const path = require('path');
 const Forecast = require('../public/forecast.js');
+const SalaryDiagnostic = require('./salary-match-diagnostic.js');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA = 'atlas-assistant-packet/v1';
@@ -481,6 +482,8 @@ function projectDebtsFromAdvice(data, asOf, advice) {
 }
 
 function metadataBlock(data, opts, advice) {
+  const salaryMatcherDiagnostic = SalaryDiagnostic.project(
+    data?.liveOverlay?.observationReceipt?.salaryMatcherDiagnostic);
   const overlay = data && data.liveOverlay;
   const applied = !!(overlay && overlay.applied === true);
   const liveAsOf = applied
@@ -502,6 +505,7 @@ function metadataBlock(data, opts, advice) {
     liveObservationAsOf: liveAsOf,
     effectiveAsOf: effectiveAsOf(data),
     version: versionIdentifier(opts.env),
+    ...(salaryMatcherDiagnostic ? { observationReceipt: { salaryMatcherDiagnostic } } : {}),
     freshness: {
       liveOverlayApplied: applied,
       liveOverlayReason: overlay && overlay.reason ? overlay.reason : null,
