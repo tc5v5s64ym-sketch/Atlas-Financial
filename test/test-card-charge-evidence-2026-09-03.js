@@ -97,9 +97,12 @@ console.log('\n=== unplanned card candidates are evidence only ===');
 console.log('\n=== plan.bills was not extended from this discovery ===');
 {
   const forbidden = /phoenix|calendly|aichat|shopify/i;
-  const hits = bills.filter(b => forbidden.test(`${b.id} ${b.label}`));
+  // Owner 2026-10-06 later confirmed Phoenix as one monthly card-paid bill (the
+  // promotion CARD-002 deferred to a one-outcome PR); discovery itself added none.
+  const hits = bills.filter(b => forbidden.test(`${b.id} ${b.label}`)
+    && !(b.id === 'phoenix-digital-health' && /^Owner 2026-10-06/.test(b.note || '')));
   ok(hits.length === 0,
-    'no forbidden merchant became a plan.bills id or label',
+    'no forbidden merchant became a plan.bills id or label from this discovery',
     hits.map(b => b.id).join(','));
   const primeRows = bills.filter(b => b && b.id === 'amazon-prime');
   ok(primeRows.length === 1

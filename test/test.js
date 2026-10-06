@@ -76,6 +76,7 @@ const suites = [
   ['quarterly recurrence (every 3 months)', 'test-quarterly-recurrence.js'],
   ['owner-confirmed subscription bills', 'test-owner-subscription-bills.js'],
   ['Amazon Prime membership subscription', 'test-amazon-prime-membership.js'],
+  ['Phoenix Digital Health card-paid bill', 'test-phoenix-digital-health-bill.js'],
   ['income dependency deadline', 'test-income-deadline.js'],
   ['next due obligation', 'test-next-due.js'],
   ['next payment out', 'test-next-payment-out.js'],
