@@ -5331,7 +5331,7 @@ function wireBudgetBrowse(mount, ctx, sheet) {
       bucket.hidden = !!selected && bucket.getAttribute('data-budget-bill-bucket') !== selected;
     });
     section.querySelector('[data-budget-bill-filter-status]').textContent = selected === 'paid'
-      ? 'Showing confirmed paid bills.' : selected === 'not-paid'
+      ? 'Showing paid bills: money sent or settlement confirmed.' : selected === 'not-paid'
         ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.';
   }));
   mount.querySelectorAll('[data-budget-category-open]').forEach(button => button.addEventListener('click', () => {
@@ -6288,12 +6288,24 @@ function budgetSpendingSectionHtml(period, ctx) {
 
 function budgetBillPresentation(row) {
   if (row.status === 'pending' || row.settlement === 'pending') return { kind: 'pending', label: 'Payment pending' };
+  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'paid') return { kind: 'paid', label: 'Paid', qualifier: 'Money sent' };
+  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'partial') return { kind: 'check', label: 'Not paid', qualifier: 'Partial payment sent' };
+  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'sent') return { kind: 'check', label: 'Not confirmed', qualifier: 'Money sent; minimum amount unconfirmed' };
   if (row.settlement === 'unverified') return { kind: 'check', label: 'Not confirmed' };
   if (row.settlement === 'unknown' || row.status === 'unknown') return { kind: 'unknown', label: 'Status unavailable' };
   if (row.status === 'PAID' || row.settlement === 'represented') return { kind: 'paid', label: 'Paid' };
   if (row.needsDate || row.status === 'needs-date') return { kind: 'check', label: 'Needs a date' };
   if (row.settlement === 'upcoming') return { kind: 'due', label: 'Not paid' };
   return { kind: 'unknown', label: 'Status unavailable' };
+}
+
+function budgetBillDisplayLabel(row) {
+  if (row.id === 'mbna-aug31') return 'Amazon Mastercard — earlier August statement';
+  if (row.id === 'mbna' && isValidIsoCalendarDate(row.date)) {
+    const cycle = new Date(row.date + 'T12:00:00Z').toLocaleDateString('en-CA', { month: 'long', timeZone: 'UTC' });
+    return `Amazon Mastercard — ${cycle} minimum`;
+  }
+  return row.label || 'Bill';
 }
 
 function budgetBillBrowseRowHtml(row) {
@@ -6305,7 +6317,7 @@ function budgetBillBrowseRowHtml(row) {
   const month = knownDate ? new Date(row.date + 'T12:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : '?';
   return `<button type="button" class="budget-bill-row is-${state.kind}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
     <span class="budget-bill-date" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
-    <span class="budget-bill-label"><strong>${budgetBrowseEscape(row.label || 'Bill')}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}</span>` : ''}</span></span>
+    <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}</span>` : ''}</span></span>
     <span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span>
   </button>`;
 }
@@ -6324,16 +6336,16 @@ function budgetBillsSectionHtml(period, ctx) {
     : `<span data-budget-browse-bills-remaining>${budgetBrowseMoney(period.remainingBills)}</span> left to pay or confirm`;
   return `<section class="budget-browse-card budget-browse-bills" data-budget-browse="bills" data-budget-bills-remaining-scope="${historical ? withholdActionableRemaining ? 'historical-unconfirmed' : 'historical-settlement' : 'actionable'}" aria-labelledby="budget-bills-heading">
     <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : historical ? ' · completed' : ''}</p><h2 id="budget-bills-heading" tabindex="-1">${budgetProgressValueHtml(progress, 'bills')}</h2><p class="budget-browse-sub">${remainingHeading}</p>${historical ? `<p class="budget-browse-sub">${withholdActionableRemaining ? 'Settlement not fully confirmed. ' : ''}Historical settlement evidence, not an amount due now. Unconfirmed entries may already be paid.</p>` : ''}</div></header>
-    <div class="budget-browse-counts budget-bill-filters" role="group" aria-label="Filter bills by confirmed payment">
+    <div class="budget-browse-counts budget-bill-filters" role="group" aria-label="Filter bills by recorded household payment">
       ${[['paid', 'PAID', groups.paid.length], ['not-paid', 'NOT PAID', rows.length - groups.paid.length]].map(([key, label, count]) => `<button type="button" class="budget-browse-pill is-${key}" data-budget-bill-filter="${key}" aria-pressed="false" aria-controls="budget-bill-bucket-${key}" aria-label="${label === 'PAID' ? 'Paid' : 'Not confirmed paid'} bills: ${count}. Click again to show all bills.">${label}<span>${count}</span></button>`).join('')}
     </div><p class="budget-cash-sr" data-budget-bill-filter-status role="status">Showing all bills.</p>
     <div class="budget-bills-progress-wrapper">${budgetProgressBarHtml(progress, 'bills')}</div>
-    <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} paid or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
+    <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} confirmed settled or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
     <div id="budget-bill-bucket-not-paid" data-budget-bill-bucket="not-paid">
       ${section('Not paid', groups.due)}${section('Pending', groups.pending)}
       ${section('To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
       ${section('Status unavailable', groups.unknown)}
-      ${rows.length === groups.paid.length ? '<p class="budget-browse-note">No bills awaiting payment confirmation.</p>' : ''}
+      ${rows.length === groups.paid.length ? '<p class="budget-browse-note">No bills awaiting a recorded household payment.</p>' : ''}
     </div><div id="budget-bill-bucket-paid" class="budget-browse-paid" data-budget-bill-bucket="paid">
       ${section('Paid', groups.paid)}${!groups.paid.length ? '<p class="budget-browse-note">No confirmed paid bills in this period.</p>' : ''}
     </div>

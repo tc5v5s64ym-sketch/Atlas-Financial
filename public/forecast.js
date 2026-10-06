@@ -127,7 +127,7 @@
         const cashIncluded = record.cashIncludedAsOf != null && record.cashIncludedAsOf <= asOf;
         payments.push({ id: row.id, scheduledDate: record.scheduledDate, date: dueDate,
           occurrenceKey: row.id + '@' + record.scheduledDate,
-          cashPaymentStatus: 'sent', cashPaid: record.amount,
+          cashPaymentStatus: 'sent', cashPaid: record.amount, cashSentOn: record.postedOn,
           cashInclusionStatus: cashIncluded ? 'included' : 'unconfirmed',
           issuerMinimumStatus: satisfied ? 'satisfied' : 'unconfirmed',
           additionalCashRequired: satisfied && cashIncluded ? 0 : null });
@@ -527,7 +527,15 @@
       && row.scheduledDate === (event.scheduledDate || event.date));
     if (!matches.length) return null;
     const amount = roundCent(matches.reduce((sum, row) => sum + row.cashPaid, 0));
+    // Household payment action is separate from issuer satisfaction and cash
+    // inclusion. Only validated, posted minimum-intent allocations reach here.
+    const required = event.minimumAmount != null ? event.minimumAmount : -event.amount;
+    const established = event.confidence === 'confirmed' && Number.isFinite(required) && required > 0;
+    const complete = established
+      && Math.round(amount * 100) >= Math.round(required * 100);
     return { ...matches[0], cashPaid: amount,
+      householdPaymentStatus: !established ? 'sent' : complete ? 'paid' : 'partial',
+      cashSentDates: Array.from(new Set(matches.map(row => row.cashSentOn))).sort(),
       cashInclusionStatus: matches.every(row => row.cashInclusionStatus === 'included') ? 'included' : 'unconfirmed',
       additionalCashRequired: matches.every(row => row.additionalCashRequired === 0) ? 0 : null };
   }

@@ -110,6 +110,19 @@
     summary = summary || {};
     const found = evidence(row, data);
     const paid = row.status === 'PAID';
+    const recorded = row.cashPaymentStatus === 'sent'
+      && ['paid', 'partial', 'sent'].includes(row.householdPaymentStatus);
+    const sentDates = Array.isArray(row.cashSentDates) ? row.cashSentDates.filter(date) : [];
+    const recordedProof = recorded ? '<p>'
+      + (row.householdPaymentStatus === 'paid' ? 'Paid — money sent toward this minimum.'
+        : row.householdPaymentStatus === 'partial' ? 'Partial payment sent toward this minimum.'
+          : 'Money sent toward this minimum; the full required amount is not confirmed.')
+      + ' This records the household payment action, not lender confirmation.</p><dl>'
+      + fact('Money sent', money(row.cashPaid))
+      + fact('Sent on', sentDates.length ? sentDates.join(', ') : 'Unavailable')
+      + fact('Lender minimum confirmation', row.issuerMinimumStatus === 'satisfied' ? 'Confirmed' : 'Not confirmed')
+      + fact('Included in cash opening', row.cashInclusionStatus === 'included' ? 'Confirmed' : 'Not confirmed')
+      + '</dl>' : '';
     const missing = paid
       ? 'This bill is marked PAID by Forecast. Transaction evidence is unavailable.'
       : 'Transaction evidence is unavailable for this bill occurrence.';
@@ -143,7 +156,7 @@
       + fact('Remaining', money(row.remaining))
       + fact('Planned payer', text(row.payerLabel) || 'Unavailable')
       + fact('Published confidence', text(row.confidence) || 'Unavailable')
-      + '</dl><h4>Payment evidence</h4>' + proof + '</div></details>';
+      + '</dl><h4>Payment evidence</h4>' + recordedProof + proof + '</div></details>';
   }
   const VISA_REASONS = {
     'payment-intent-unconfirmed': 'Link the Bills debit and confirm which purchases this payment covers. Amount and timing do not prove its purpose.',
