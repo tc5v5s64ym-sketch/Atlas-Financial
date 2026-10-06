@@ -303,6 +303,7 @@ console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds 
   ok(live.meta.asOf === live.plan.opening.asOf,
     'canonical opening as-of agrees — this test does not move it');
   const gated = new Set((live.plan.opening.representedEvents || [])
+    .filter(row => row && (!row.effectiveAsOf || row.effectiveAsOf <= live.plan.opening.asOf))
     .map(row => row && `${row.id}@${row.date}`));
   ok(Array.isArray(live.plan.opening.representedEvents)
     && gated.has('noble-garbage@2026-09-18') && gated.has('heloc@2026-09-21')

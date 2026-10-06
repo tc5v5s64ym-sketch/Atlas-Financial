@@ -31,7 +31,7 @@ const opening = plan.opening || {};
 scope(opening.asOf === start && !opening.priorAsOf,
   'this suite proves the canonical opening, not an observation overlay');
 const representedKeys = new Set((opening.representedEvents || [])
-  .filter(row => row && row.id && row.date)
+  .filter(row => row && row.id && row.date && (!row.effectiveAsOf || row.effectiveAsOf <= start))
   .map(row => `${row.id}@${row.date}`));
 scope(representedKeys.has('noble-garbage@2026-09-18')
   && representedKeys.has('heloc@2026-09-21')
@@ -103,7 +103,18 @@ function independentLedger(days) {
     scope(Number.isFinite(row.amount) && row.amount >= 0, `${row.id}: nonnumeric amount`);
     for (const date of datesFor(row, days, carryOnce)) {
       if (representedKeys.has(`${row.id}@${date}`)) continue;
+      if ((row.statementOccurrences || []).some(statement => statement.scheduledDate === date)) continue;
       rows.push({ id: row.id, date, kind, amount: row.amount, debtId: row.debtId });
+    }
+    // Dated statement facts are a separate source ledger replacing the
+    // corresponding calendar-generated estimate, independently of Forecast.
+    const end = iso(time(start) + (days - 1) * DAY);
+    for (const statement of row.statementOccurrences || []) {
+      scope(statement.confidence === 'confirmed' && statement.currency === 'cad'
+        && Number.isFinite(statement.minimum), row.id + ': unsupported statement fact');
+      if (statement.dueDate < start || statement.dueDate > end
+        || representedKeys.has(row.id + '@' + statement.scheduledDate)) continue;
+      rows.push({ id: row.id, date: statement.dueDate, kind, amount: statement.minimum, debtId: row.debtId });
     }
   };
   for (const row of plan.income) {

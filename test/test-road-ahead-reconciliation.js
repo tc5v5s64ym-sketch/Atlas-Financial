@@ -56,6 +56,12 @@ function dates(row, start, end) {
   }
   return out;
 }
+function confirmedAtOpening(record, opening) {
+  if (record.effectiveAsOf == null) return true;
+  const value = record.effectiveAsOf;
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(day(value)) && iso(day(value)) === value && value <= opening;
+}
 function event(row, date, kind, start, amount = row.amount) {
   return { id: row.id, label: row.label, date, apply: date < start ? start : date,
     kind, cents: cents(amount), status: row.confidence === 'confirmed' ? 'calculated' : 'estimated' };
@@ -189,7 +195,8 @@ function syntheticLedger(p, end, fortnightCents) {
     ['obligations', p.obligations]]) {
     for (const r of rows) for (const d of dates(r, start, end)) {
       if (kind === 'income' && d < start) continue;
-      if ((p.opening.representedEvents || []).some(x => x.id === r.id && x.date === d)) continue;
+      if ((p.opening.representedEvents || []).some(x => x.id === r.id && x.date === d
+          && confirmedAtOpening(x, start))) continue;
       out.push(event(r, d, kind, start));
     }
   }
@@ -326,6 +333,12 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
   eq(held.start, '2026-02-14', 'first window is residual, not full payday');
   eq(held.end, '2026-02-26', 'residual ends day before next payday');
   eq(held.stage1.bills.amount, 0, 'represented Jan 31 is not replayed');
+  live.opening.representedEvents = [{ id: 'monthly', date: '2026-01-31', effectiveAsOf: '2026-02-20' }];
+  const deferred = ask(live, []);
+  eq(deferred.payPeriods[0].stage1.bills.amount, 19.09, 'future-qualified confirmation cannot erase an earlier opening debit');
+  eq(deferred.payPeriods[0].stage1.bills.lines[0].date, '2026-01-31', 'deferred confirmation retains the one original carried occurrence');
+  const qualified = clone(live); qualified.opening.asOf = '2026-02-20';
+  eq(ask(qualified, []).payPeriods[0].stage1.bills.amount, 0, 'qualification becomes effective only at its bounded opening');
   live.opening.representedEvents = [];
   const unresolved = ask(live, []);
   eq(unresolved.payPeriods[0].stage1.bills.amount, 19.09, 'unresolved Jan 31 applies once at opening');
@@ -507,7 +520,7 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
   const weeklyCents = Math.round(sum(monthlyCents) * 336 / 1461);
   eq(cents(t.weeklyVariable.amount), weeklyCents, 'household fallback independently annualized from owner targets');
   const ledger = spendingLedger(start, t.horizon.end, weeklyCents * 2);
-  const represented = p.opening.representedEvents || [];
+  const represented = (p.opening.representedEvents || []).filter(r => confirmedAtOpening(r, start));
   const prepaid = (id, date) => represented.some(r => r.id === id && r.date === date);
   const scheduledDebt = new Map();
   for (const r of p.income) for (const date of dates(r, start, t.horizon.end)) {
@@ -536,10 +549,30 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
       r = { ...r, frequency: 'monthly', day: r.cashDay, firstDue: r.cashFirstDue,
         amount: r.cashPayment, confidence: r.cashConfidence };
     }
-    for (const date of dates(r, start, t.horizon.end)) {
-      if (prepaid(r.id, date)) continue;
-      ledger.push(event(r, date, 'obligations', start));
-      scheduledDebt.set(r.debtId, (scheduledDebt.get(r.debtId) || 0) + cents(r.amount));
+    // Primary dated statement facts replace their one estimated ledger row.
+    // Membership comes from the independent calendar scan above, never a
+    // Forecast occurrence, settlement or amount helper.
+    const statements = new Map();
+    for (const statement of r.statementOccurrences || []) {
+      assert.ok(statement.currency === 'cad' && statement.confidence === 'confirmed'
+        && Number.isFinite(statement.minimum) && statement.minimum >= 0
+        && dates(r, statement.scheduledDate, statement.scheduledDate).includes(statement.scheduledDate)
+        && !statements.has(statement.scheduledDate), 'unsupported primary statement in independent ledger');
+      statements.set(statement.scheduledDate, statement);
+    }
+    const candidates = new Set(dates(r, start, t.horizon.end));
+    for (const statement of statements.values()) {
+      if (statement.dueDate >= start && statement.dueDate <= t.horizon.end) candidates.add(statement.scheduledDate);
+    }
+    for (const scheduledDate of candidates) {
+      const statement = statements.get(scheduledDate);
+      const date = statement ? statement.dueDate : scheduledDate;
+      if (date > t.horizon.end || date < start && r.frequency !== 'once'
+          || prepaid(r.id, scheduledDate) || prepaid(r.id, date)) continue;
+      const occurrence = statement ? { ...r, amount: statement.minimum, confidence: statement.confidence } : r;
+      if (!(occurrence.amount > 0)) continue;
+      ledger.push(event(occurrence, date, 'obligations', start));
+      scheduledDebt.set(r.debtId, (scheduledDebt.get(r.debtId) || 0) + cents(occurrence.amount));
     }
   }
   eq(p.defaults.extraDebtMonthly, 0, 'current household has no scheduled extra; synthetic proof exercises nonzero');

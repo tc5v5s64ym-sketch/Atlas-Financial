@@ -89,6 +89,10 @@ function planFixture() {
     throw new Error('canonical Triangle/MBNA/Travel obligations missing');
   }
   triangle.amount = TRIANGLE_MIN;
+  // This invented minimum fixture owns its cycle; later approved statement
+  // and sender evidence on the real incumbent must not leak into it.
+  delete triangle.statementOccurrences;
+  delete triangle.sentPayments;
   mbna.amount = MBNA_MIN;
   mbnaOnce.amount = MBNA_MIN;
   travel.amount = TRAVEL_MIN;
@@ -285,7 +289,8 @@ function hasCandidate(report, id, date) {
 
 function represented(data, id, date) {
   return ((data.plan && data.plan.opening && data.plan.opening.representedEvents) || [])
-    .some(row => row && row.id === id && row.date === date);
+    .some(row => row && row.id === id && row.date === date
+      && (!Object.hasOwn(row, 'effectiveAsOf') || row.effectiveAsOf <= data.plan.opening.asOf));
 }
 
 function recommend(data) {
