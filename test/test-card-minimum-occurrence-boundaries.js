@@ -47,21 +47,32 @@ const planSource=fs.readFileSync(path.join(root,'public/plan.js'),'utf8');
 const presentation=vm.runInNewContext(planSource.match(/^function budgetBillPresentation\([\s\S]*?\n\}/m)[0]+'\nbudgetBillPresentation');
 check('qualified early current receipt remains independently satisfied',
  [row.cashPaymentStatus,row.householdPaymentStatus,row.cashInclusionStatus,row.issuerMinimumStatus],['sent','paid','included','satisfied']);
-check('future native/detail state must agree with qualified paid row',
- [row.status,row.settlement,cents(row.remaining)],['PAID','represented',0]);
-check('future browse mapping agrees with actual paid evidence',presentation(row).label,'Paid');
+check('future native/detail publication follows the assigned-period date rule',
+ [row.status,row.settlement,cents(row.remaining)],['planned','upcoming',2317]);
+check('future browse follows planned publication with separate money-sent evidence',
+ [presentation(row).label,presentation(row).qualifier],['Planned','Money sent']);
 const html=Detail.html(row,current,{});
-check('native disclosure does not claim full minimum remains alongside satisfied evidence',
- /<dt>Remaining<\/dt><dd>\$0\.00<\/dd>/.test(html),true);
+check('native disclosure retains the assigned planned minimum separately from payment evidence',
+ /<dt>Remaining<\/dt><dd>\$23\.17<\/dd>/.test(html),true);
 const active=clone(current);active.plan.income[0].anchor='2038-06-04';
 const activeAdvice=F.recommend(active.plan,asOf,{...nowOpts,debts:active.debts});
 const activeRow=activeAdvice.payPeriodViews.flatMap(period=>period.bills||[]).find(row=>row.id==='invented-cycle'&&row.date==='2038-06-17');
 check('same original receipt in active period is correctly paid',
  [activeRow.status,activeRow.settlement,cents(activeRow.remaining)],['PAID','represented',0]);
-check('cycle moved to next period does not change paid evidence',
- [row.status,row.settlement,cents(row.remaining)], [activeRow.status,activeRow.settlement,cents(activeRow.remaining)]);
+check('cycle moved to next period preserves separate payment evidence',
+ [row.cashPaymentStatus,row.householdPaymentStatus,row.cashInclusionStatus,row.issuerMinimumStatus,row.additionalCashRequired],
+ [activeRow.cashPaymentStatus,activeRow.householdPaymentStatus,activeRow.cashInclusionStatus,activeRow.issuerMinimumStatus,activeRow.additionalCashRequired]);
+check('future totals exclude paid and retain full assigned minimum',
+ [cents(next.paidBills),cents(next.remainingBills),cents(next.periodBillLoad)],[0,2317,2317]);
+// Further timeline rows stop at the incumbent 2026 income-regime boundary.
+// These invented amounts exercise that public path inside its allowed dates.
+const further=JSON.parse(JSON.stringify(current).replaceAll('2038-','2026-').replaceAll('2026-06-17','2026-07-17'));
+const furtherOpts=JSON.parse(JSON.stringify(nowOpts).replaceAll('2038-','2026-'));
+const furtherPeriod=F.recommend(further.plan,'2026-06-06',{...furtherOpts,debts:further.debts}).payPeriodViews.find(period=>period.bills.some(bill=>bill.id==='invented-cycle'&&bill.date==='2026-07-17'));
+check('further future row retains planned minimum despite early qualified payment',
+ [furtherPeriod.timelineRole,furtherPeriod.bills.find(bill=>bill.date==='2026-07-17').status,cents(furtherPeriod.paidBills),cents(furtherPeriod.remainingBills)],['future','planned',0,2317]);
 // Plain represented names and invalid/unconfirmed payment actions must retain
-// the incumbent future normalization; an exception needs validated evidence.
+// the incumbent future normalization, as does qualified early evidence.
 for(const [label,change] of [
  ['receipt only',d=>{delete d.plan.obligations[0].sentPayments;}],
  ['pending sender',d=>{d.plan.obligations[0].sentPayments[0].pending=true;}],
@@ -86,8 +97,8 @@ for(const debtId of ['mbna','cashback']){
  const data=clone(current);data.debts[0].id=debtId;data.plan.obligations[0].debtId=debtId;
  const advice=F.recommend(data.plan,asOf,{...nowOpts,debts:data.debts});
  const published=advice.payPeriodViews.flatMap(period=>period.bills||[]).find(bill=>bill.id==='invented-cycle'&&bill.date==='2038-06-17');
- check(debtId+': qualified early paid evidence has one coherent Forecast state',
-  [published.status,published.settlement,cents(published.remaining),published.householdPaymentStatus],['PAID','represented',0,'paid']);
+ check(debtId+': future publication keeps early payment evidence separate',
+  [published.status,published.settlement,cents(published.remaining),published.householdPaymentStatus],['planned','upcoming',2317,'paid']);
  check(debtId+': observed debt is not reduced twice',
   cents(F.projectDebts(data.plan,data.debts,asOf,nowOpts).byId[debtId].balance),73380);
 }

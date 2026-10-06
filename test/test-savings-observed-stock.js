@@ -13,6 +13,12 @@ const assertUnknown = plan => {
   assert.equal(JSON.stringify(plan), before, 'invalid input is not repaired or mutated');
 };
 let plan = base(), before = JSON.stringify(plan), packet = inventory(plan);
+const noObservation = base(); delete noObservation.savingsPoolObservation;
+assert.equal(Object.hasOwn(inventory(noObservation), 'reportedStock'), false,
+  'absent observation preserves the incumbent publication shape');
+const malformedObservation = base(); malformedObservation.savingsPoolObservation = null;
+assert.equal(inventory(malformedObservation).reportedStock.amount, null,
+  'a supplied malformed observation publishes unavailable, never zero');
 assert.deepEqual(packet.observedStock, { status: 'ready', asOf: AS_OF, currency: 'CAD',
   basis: 'observed-savings-stock', nonAdditive: true, amount: 500.03,
   trust: 'calculated', evidenceTrust: 'verified', accountIds: ['savings', 'savings-dont-touch'],

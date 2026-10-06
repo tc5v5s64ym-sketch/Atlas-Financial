@@ -102,6 +102,7 @@
 const fs = require('fs');
 const path = require('path');
 const O = require('./provider-observe.js');
+const SalaryDiagnostic = require('./salary-match-diagnostic.js');
 const C = require('./canonical-refresh.js');
 const OA = require('./operating-answer.js');
 const RT = require('./refresh-trust.js');
@@ -1097,6 +1098,7 @@ function operatingPlanNoteFor(status) {
 }
 
 function overlayMeta(opts) {
+  const salaryMatcherDiagnostic = SalaryDiagnostic.project(opts.observationReceipt?.salaryMatcherDiagnostic);
   const operatingPlan = opts.operatingPlan
     || operatingPlanFromOverlay(
       opts.applied === true,
@@ -1127,6 +1129,7 @@ function overlayMeta(opts) {
     observedCash: opts.observedCash || null,
     fetchedAt: opts.fetchedAt || null,
     observedAt: opts.observedAt || opts.fetchedAt || null,
+    ...(salaryMatcherDiagnostic ? { observationReceipt: { salaryMatcherDiagnostic } } : {}),
   };
 }
 
@@ -1183,6 +1186,7 @@ function overlayLiveState(input) {
       evidenceDate: row.evidenceDate || null,
     })),
     currentPeriodActuals: report.currentPeriodActuals || null,
+    observationReceipt: report.observationReceipt,
     observedCash: collectObservedCash(report, liveAsOf || cutover.liveAsOf),
     fetchedAt: report.fetchedAt || null,
     observedAt: report.fetchedAt || null,
@@ -1290,6 +1294,7 @@ function failedOverlay(canonical, reason, extra) {
       ? 'Live overlay failed closed. Current plan unavailable; dated opening is stale.'
       : 'Live overlay failed closed. Dated opening is unchanged.',
     observedCash: report ? collectObservedCash(report, liveAsOf) : null,
+    observationReceipt: report?.observationReceipt,
     fetchedAt: report && report.fetchedAt || null,
     observedAt: report && report.fetchedAt || null,
   });

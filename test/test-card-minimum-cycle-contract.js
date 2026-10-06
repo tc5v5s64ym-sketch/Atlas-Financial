@@ -338,6 +338,97 @@ eq(/\$NaN/.test(page.lede + page.list), false);
 eq(/STATUS UNAVAILABLE/.test(page.list), true,
   'Plan Spend reprints withheld feasibility instead of an unsupported numeric claim');
 
+{
+  // Retain the external repair's independent amount/date and actual-renderer controls.
+  const amountOnly = structuredClone(p);
+  Object.assign(amountOnly.obligations[0].statementOccurrences[0], {
+    dueDate: '2026-10-07', dateConfidence: 'estimated',
+  });
+  const explicitEstimatedMove = structuredClone(p);
+  explicitEstimatedMove.obligations[0].statementOccurrences[0].dateConfidence = 'estimated';
+  const legacySameDate = structuredClone(p);
+  legacySameDate.obligations[0].statementOccurrences[0].dueDate = '2026-10-07';
+  eq(F.expandEvents(legacySameDate, '2026-10-07', '2026-10-07')[0].dateConfidence,
+    'confirmed', 'omitted legacy trust remains confirmed when the date is unchanged');
+  for (const dueDate of ['2026-10-07', '2026-10-08']) {
+    const unknownDate = structuredClone(p);
+    Object.assign(unknownDate.obligations[0].statementOccurrences[0], { dueDate, dateConfidence: null });
+    assert.throws(() => F.expandEvents(unknownDate, dueDate, dueDate),
+      /Statement must replace/, 'unknown date remains unknown whether retained or moved'); checks++;
+  }
+const amountDebts = [{ id: 'triangle', label: 'Invented card', balance: 400,
+  pending: 0, rate: 19.99, rateConvention: 'card', limit: 2000 }];
+const amountAdvice = F.recommend(amountOnly, '2026-10-02', { debts: amountDebts });
+const amountBill = (amountAdvice.defaultView.bills || []).find(row => row.id === 'triangle');
+eq([amountBill.date, amountBill.planned, amountBill.confidence, amountBill.dateConfidence],
+  ['2026-10-07', 91.23, 'confirmed', 'estimated'],
+  'Plan bill row keeps confirmed amount and estimated retained date');
+const amountPay = (amountAdvice.paydayAllocation.obligations.items || [])
+  .find(row => row.id === 'triangle' && row.date === '2026-10-07');
+eq([amountPay.confidence, amountPay.dateConfidence], ['confirmed', 'estimated'],
+  'payday obligation items propagate separate amount/date trust');
+const amountNext = F.creditAccounts(amountOnly, amountDebts, '2026-10-05', {}).cards
+  .find(row => row.id === 'triangle').nextPayment;
+eq([amountNext.date, amountNext.amount, amountNext.confidence, amountNext.dateConfidence],
+  ['2026-10-07', 91.23, 'confirmed', 'estimated'],
+  'Credit next payment keeps confirmed amount and estimated planning date');
+
+const planSrc = fs.readFileSync(require.resolve('../public/plan.js'), 'utf8');
+const creditSrc = fs.readFileSync(require.resolve('../public/credit.js'), 'utf8');
+const grabFn = (src, re) => { const m = re.exec(src); if (!m) throw new Error(String(re)); return m[0]; };
+const presentCtx = {};
+vm.createContext(presentCtx);
+vm.runInContext([
+  grab(/^const fmtDate = .*$/m),
+  grab(/^const fmtDateFull = .*$/m),
+  grab(/^const money2 = .*$/m),
+  grabFn(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m),
+  grabFn(creditSrc, /^const CREDIT_CONFIDENCE_CHIP = .*$/m),
+  grabFn(creditSrc, /^function creditConfidenceChip\([\s\S]*?\n\}$/m),
+  grabFn(creditSrc, /^function creditFact\([\s\S]*?\n\}$/m),
+  grabFn(creditSrc, /^function creditNextPaymentFacts\([\s\S]*?\n\}$/m),
+].join('\n'), presentCtx);
+eq(presentCtx.glanceLineLabel({
+  label: 'Invented card minimum', date: '2026-10-07',
+  confidence: 'confirmed', dateConfidence: 'estimated',
+}, 'still due'), 'Invented card minimum · Oct 7 · estimated · still due',
+  'Plan keeps estimated on the retained planning date');
+eq(presentCtx.glanceLineLabel({
+  label: 'Invented card minimum', date: '2026-10-08',
+  confidence: 'confirmed', dateConfidence: 'confirmed',
+}, 'still due'), 'Invented card minimum · Oct 8 · still due',
+  'Plan does not mark a confirmed statement due date as estimated');
+const creditHtml = presentCtx.creditNextPaymentFacts(
+  { nextPayment: amountNext }, 'Minimum payment', 'Due date');
+eq(/≈ /.test(creditHtml), false, 'Credit amount is not estimated when the minimum is confirmed');
+eq(/data-credit-date-confidence="estimated"/.test(creditHtml)
+  && /estimated/.test(creditHtml), true,
+  'Credit due date keeps the estimated planning-date indication');
+const movedEstimatedNext = F.creditAccounts(explicitEstimatedMove, amountDebts, '2026-10-05', {}).cards
+  .find(row => row.id === 'triangle').nextPayment;
+eq([movedEstimatedNext.date, movedEstimatedNext.confidence, movedEstimatedNext.dateConfidence],
+  ['2026-10-08', 'confirmed', 'estimated'],
+  'Credit does not confirm a moved date without date evidence');
+const movedEstimatedHtml = presentCtx.creditNextPaymentFacts(
+  { nextPayment: movedEstimatedNext }, 'Minimum payment', 'Due date');
+eq(/data-credit-date-confidence="estimated"/.test(movedEstimatedHtml)
+  && /estimated/.test(movedEstimatedHtml), true,
+  'Credit due date keeps estimated after a moved planning date');
+
+const livePlan = JSON.parse(canonical);
+const liveCashback = livePlan.plan.obligations.find(row => row.id === 'cashback');
+const liveStatement = liveCashback && (liveCashback.statementOccurrences || [])[0];
+eq(!!liveStatement, true, 'canonical Cash Back occurrence exists for date-trust encoding');
+eq(liveStatement.dueDate === liveStatement.scheduledDate, true,
+  'canonical Cash Back retains the original planning date');
+eq(liveStatement.dateConfidence, 'estimated',
+  'canonical Cash Back records estimated date trust on the retained planning date');
+const liveOcc = F.obligationOccurrences(liveCashback, liveStatement.scheduledDate, liveStatement.scheduledDate)[0];
+eq([liveOcc.confidence, liveOcc.dateConfidence], ['confirmed', 'estimated'],
+  'runtime keeps Cash Back amount confirmed and planning date estimated');
+
+}
+
 const context = { console, Date, Map, Set }; vm.createContext(context);
 vm.runInContext(fs.readFileSync(require.resolve('../public/forecast'), 'utf8'), context);
 eq(JSON.parse(JSON.stringify(context.Forecast.expandEvents(p, '2026-10-08', '2026-10-08'))),

@@ -50,11 +50,13 @@ for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface',
   vm.runInContext(fs.readFileSync(path.join(root, 'public/' + name + '.js'), 'utf8'), page);
 }
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
-const known = new Set(['valid-v2', 'legacy-date', 'legacy-over-null', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement']);
+const known = new Set(['valid-v2', 'legacy-date', 'legacy-over-null', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement', 'household-midnight-current']);
+const reported = new Set([...known, 'stale-date', 'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day', 'withdrawal-stale', 'negative-stale', 'zero-stale']);
 for (const mode of ['null-object-update', 'null-legacy-fetch', 'null-v2-sync', 'legacy-over-null',
   'valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown',
   'stale-date', 'future-date', 'malformed-date', 'malformed-type', 'impossible-date',
-  'missing-date', 'sync-only', 'foreign-currency', 'missing-account', 'duplicate-account', 'pending-movement']) {
+  'missing-date', 'sync-only', 'foreign-currency', 'missing-account', 'duplicate-account', 'pending-movement',
+  'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day', 'household-midnight-current', 'withdrawal-stale', 'negative-stale', 'zero-stale']) {
   const original = fx.input(mode), before = JSON.stringify(original);
   const report = O.observe({ provider: 'lunchmoney', ...original });
   eq(JSON.stringify(original), before, mode + ': raw input is unchanged');
@@ -67,17 +69,33 @@ for (const mode of ['null-object-update', 'null-legacy-fetch', 'null-v2-sync', '
   page.period = advice.payPeriodViews.find(row => row.timelineRole === 'current'); page.packet = daily;
   const html = vm.runInContext('budgetSurfaceHtml(src)', page);
   const summary = html.split('data-operating-question="savings"')[1].split('</summary>')[0];
-  assert.match(summary, known.has(mode) ? /119\.00/ : /Unavailable/, mode + ': actual active composer stock headline'); checks++;
+  const stockAmount = mode === 'withdrawal-stale' ? 39.02 : mode === 'negative-stale' ? -3.12 : mode === 'zero-stale' ? 0 : 119;
+  assert.match(summary, reported.has(mode) ? new RegExp(Math.abs(stockAmount).toFixed(2).replace('.', '\\.')) : /Unavailable/, mode + ': actual active composer stock headline'); checks++;
+  eq(inventory.reportedStock.amount, reported.has(mode) ? stockAmount : null, mode + ': independent signed reported stock cents');
+  if (reported.has(mode)) {
+    assert.match(summary, /data-budget-savings-observed-date>Observed /, mode + ': date is visible beside headline'); checks++;
+    eq(inventory.reportedStock.evidenceTrust, 'provider-reported', 'a dated provider report is not promoted to verified current backing');
+  }
   eq(inventory.observedStock.status, known.has(mode) ? 'ready' : 'unavailable', mode + ': independently dated stock gate');
   eq(inventory.observedStock.amount, known.has(mode) ? 95 + 24 : null, mode + ': only the two invented stocks, no partial sum');
   eq(daily.stock.status, known.has(mode) ? 'ready' : 'unavailable', mode + ': daily publisher retains independent stock truth');
+  if (reported.has(mode) && !known.has(mode)) {
+    eq(daily.period.proposal, null, mode + ': old stock cannot release a contribution');
+    eq(inventory.pools.every(pool => pool.observedCash === null), mode !== 'stale-date' && mode !== 'withdrawal-stale' && mode !== 'negative-stale', 'current pool qualification stays separate');
+  }
   eq((html.match(/data-budget-surface="pay-period"/g) || []).length, 1, 'one active Budget renderer');
   eq(inventory.revision, null, 'date recovery never confirms a manual assignment');
-  if (mode === 'sender-unknown') {
+  if (['sender-unknown', 'blocked-prior-day'].includes(mode)) {
     eq(advice.cardMinimumPayments.status, 'unavailable', 'unknown card cash/minimum stays unknown');
     eq(daily.period.proposal, null, 'known savings stock does not recover spending/funding permission');
     assert.match(html.split('data-operating-question="07"')[1].split('</summary>')[0], /Unavailable/); checks++;
   }
+  if (['prior-household-day', 'blocked-prior-day'].includes(mode)) {
+    eq(report.savingsPools.accounts.map(row => row.evidenceDate), ['2026-10-05', '2026-10-05'], 'UTC prefix does not replace Vancouver financial date');
+    assert.match(summary, /Observed 2026-10-05/); checks++;
+    assert.doesNotMatch(summary, /Observed 2026-10-06/); checks++;
+  }
+  if (mode === 'prior-year') { assert.match(summary, /Observed 2025-10-05/); checks++; }
   if (mode === 'pending-movement') {
     eq(inventory.observedStock.pendingState, 'unresolved', 'posted stock and pending movement remain distinct');
     eq(daily.period.proposal, null, 'pending movement never earns a funding proposal');

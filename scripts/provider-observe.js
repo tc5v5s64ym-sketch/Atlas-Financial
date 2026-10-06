@@ -30,6 +30,7 @@ const https = require('https');
 const crypto = require('crypto');
 const R = require('./reconcile.js');
 const Credentials = require('./local-credentials.js');
+const SalaryDiagnostic = require('./salary-match-diagnostic.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
@@ -1149,7 +1150,7 @@ function amountsMatchExactly(left, right) {
     && Math.abs(Math.abs(Number(left)) - Math.abs(Number(right))) <= IDENTITY_AMOUNT_EPSILON;
 }
 
-function transferCounterpartMatches(tx, rule, input, amount) {
+function transferCounterpartMatches(tx, rule, input, amount, diagnostic) {
   const counterpartId = ruleCounterpartExternalId(rule);
   if (!tx || !counterpartId) return [];
   const mapDoc = input && input.accountMap;
@@ -1160,28 +1161,49 @@ function transferCounterpartMatches(tx, rule, input, amount) {
     if (String(other.date || '') !== String(tx.date || '')) continue;
     if (!transactionIsTransfer(other)) continue;
     const mapping = mappingFor(mapDoc, other.providerAccountId);
-    if (!mapping || mapping.atlasRole !== EXTERNAL_LIVE_ROLE) continue;
-    if (mappingExternalId(mapping) !== counterpartId) continue;
+    const roleMatches = !!mapping && mapping.atlasRole === EXTERNAL_LIVE_ROLE;
+    diagnostic?.record(rule.eventId, 'externalRole', roleMatches,
+      roleMatches ? undefined : 'SOURCE_ROLE_MISMATCH');
+    if (!roleMatches) continue;
+    const identityMatches = mappingExternalId(mapping) === counterpartId;
+    diagnostic?.record(rule.eventId, 'externalIdentity', identityMatches,
+      identityMatches ? undefined : 'EXTERNAL_ID_MISMATCH');
+    if (!identityMatches) continue;
     const otherAmount = lunchMoneyDebitAmount(other.amount);
-    if (!(otherAmount > 0) || !amountsMatchExactly(otherAmount, amount)) continue;
+    const amountMatches = otherAmount > 0 && amountsMatchExactly(otherAmount, amount);
+    diagnostic?.record(rule.eventId, 'amountGuard', amountMatches,
+      amountMatches ? undefined : 'AMOUNT_GUARD_MISMATCH');
+    if (!amountMatches) continue;
     matches.push(other);
   }
   return matches;
 }
 
-function uniqueTransferCounterpart(tx, rule, input, amount) {
-  const matches = transferCounterpartMatches(tx, rule, input, amount);
+function uniqueTransferCounterpart(tx, rule, input, amount, diagnostic) {
+  const matches = transferCounterpartMatches(tx, rule, input, amount, diagnostic);
+  diagnostic?.record(rule.eventId, 'counterpart', matches.length === 1,
+    matches.length === 1 ? undefined : matches.length ? 'COUNTERPART_AMBIGUOUS' : 'COUNTERPART_MISSING');
   return matches.length === 1 ? matches[0] : null;
 }
 
-function countTransferCounterparts(tx, rule, input, amount) {
-  return transferCounterpartMatches(tx, rule, input, amount).length;
+function countTransferCounterparts(tx, rule, input, amount, diagnostic) {
+  const count = transferCounterpartMatches(tx, rule, input, amount, diagnostic).length;
+  diagnostic?.record(rule.eventId, 'counterpart', count === 1,
+    count === 1 ? undefined : count ? 'COUNTERPART_AMBIGUOUS' : 'COUNTERPART_MISSING');
+  return count;
 }
 
-function ruleHasIdentity(rule) {
+function ruleHasIdentity(rule, diagnostic) {
+  // Also used directly as Array.filter's predicate, which passes its index.
+  if (typeof diagnostic?.record !== 'function') diagnostic = null;
   if (!rule || !rule.eventId) return false;
   if (rule.settlesWhen === SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE) return true;
-  if (rule.transactionKind === 'transfer') return !!ruleCounterpartExternalId(rule);
+  if (rule.transactionKind === 'transfer') {
+    const present = !!ruleCounterpartExternalId(rule);
+    diagnostic?.record(rule.eventId, 'externalIdentity', present,
+      present ? undefined : 'EXTERNAL_ID_MISSING');
+    return present;
+  }
   return rulePayeePatterns(rule).length > 0;
 }
 
@@ -1706,6 +1728,8 @@ function datedRequiredCash(observations) {
 }
 
 function observationReceiptLooksSanitized(receipt) {
+  if (receipt && Object.hasOwn(receipt, 'salaryMatcherDiagnostic')
+      && !SalaryDiagnostic.project(receipt.salaryMatcherDiagnostic)) return false;
   const blob = JSON.stringify(receipt == null ? {} : receipt);
   return identityProofLooksSanitized(receipt)
     && !/"payee"\s*:/.test(blob)
@@ -1770,6 +1794,8 @@ function householdFinancialDate(input, observations) {
 
 function observationReceipt(report, opts) {
   opts = opts || {};
+  const salaryMatcherDiagnostic = SalaryDiagnostic.project(opts.salaryMatcherDiagnostic
+    || report?.observationReceipt?.salaryMatcherDiagnostic);
   const fetchedAt = (report && report.fetchedAt) || null;
   const householdDate = dateOnly(fetchedAt);
   const pending = (report && report.pendingCoverage) || classifyPendingCoverage({});
@@ -1824,6 +1850,7 @@ function observationReceipt(report, opts) {
     householdDate,
     writesCanonicalState: writeClaimed,
     canonicalStateChanged: false,
+    ...(salaryMatcherDiagnostic ? { salaryMatcherDiagnostic } : {}),
     accountCoverage: {
       status: (cashMissing.length || missingExpected.length) ? 'incomplete' : 'required-cash-observed',
       mappedHouseholdIdentities: mappedIds,
@@ -2245,14 +2272,21 @@ function stampPendingReplacementHits(preTransactions, collapsedTransactions, inp
 // only configured employer payroll aliases, native CAD and a single scheduled
 // salary occurrence bracketed by deposit and transfer can earn this identity.
 function salaryReceiptTransferHits(input, rules) {
+  const diagnostic = input.salaryDiagnostic;
   const window = input && input.transactionWindow;
-  if (!window || window.complete !== true || !parseIsoDate(window.startDate)
-      || !parseIsoDate(window.endDate) || window.startDate > window.endDate) return [];
-  const salaryRules = (rules || []).filter(rule => rule
+  const covered = !!window && window.complete === true && !!parseIsoDate(window.startDate)
+    && !!parseIsoDate(window.endDate) && !(window.startDate > window.endDate);
+  diagnostic?.window(covered, covered ? undefined : window ? 'WINDOW_INCOMPLETE' : 'WINDOW_MISSING');
+  if (!covered) return [];
+  const salaryRules = (rules || []).filter(rule => {
+    const eligible = rule
     && ['amandaSalary15', 'amandaSalaryMonthEnd'].includes(rule.eventId)
     && rule.transactionKind === 'transfer' && rule.direction === 'credit'
     && rule.atlasAccountId === 'chequing-a' && ruleCounterpartExternalId(rule)
-    && Array.isArray(rule.salaryReceiptPayeePatterns) && rule.salaryReceiptPayeePatterns.length);
+    && Array.isArray(rule.salaryReceiptPayeePatterns) && rule.salaryReceiptPayeePatterns.length;
+    diagnostic?.record(rule?.eventId, 'rule', !!eligible, eligible ? undefined : 'RULE_INELIGIBLE');
+    return eligible;
+  });
   if (!salaryRules.length) return [];
   const eligibleIds = new Set(salaryRules.map(rule => rule.eventId));
   const nativePosted = tx => tx && tx.pending !== true && tx.contradictoryEvidence !== true
@@ -2260,33 +2294,113 @@ function salaryReceiptTransferHits(input, rules) {
     && parseIsoDate(tx.date) && tx.date >= window.startDate && tx.date <= window.endDate
     && tx.providerTransactionId != null;
   const hits = [];
-  for (const credit of input.transactions || []) {
-    if (!nativePosted(credit) || !(lunchMoneyDebitAmount(credit.amount) < 0)) continue;
+  // Diagnostic attribution is separate from the native matcher below. A
+  // candidate needs an explicitly mapped external income source and exactly
+  // one native salary occurrence bracketed by that source and this household
+  // transfer. No selected rule date, amount match or final outcome assigns it.
+  // Pending/foreign evidence can be diagnosed only after this association;
+  // absent, malformed or ambiguous association leaves candidate gates unknown.
+  const diagnosticSources = diagnostic ? (input.transactions || []).filter(source => {
+    if (!source || source.isIncome !== true || !(lunchMoneyDebitAmount(source.amount) < 0)
+        || !parseIsoDate(source.date) || source.date < window.startDate || source.date > window.endDate) return false;
+    const mapping = mappingFor(input.accountMap, source.providerAccountId);
+    return !!mapping && (mapping.atlasRole === EXTERNAL_LIVE_ROLE || !!mappingExternalId(mapping));
+  }) : [];
+  const diagnosticBrackets = new Map();
+  function diagnosticCandidate(credit) {
+    if (!diagnostic || !credit || !parseIsoDate(credit.date)
+        || credit.date < window.startDate || credit.date > window.endDate
+        || !(lunchMoneyDebitAmount(credit.amount) < 0) || !transactionIsTransfer(credit)) return undefined;
     const mapping = mappingFor(input.accountMap, credit.providerAccountId);
     if (!mapping || mapping.atlasRole !== 'household-cash'
-        || !mapping.canonical || mapping.canonical.id !== 'chequing-a') continue;
+        || !mapping.canonical || mapping.canonical.id !== 'chequing-a') return undefined;
+    const sources = new Map(), associations = new Map();
+    for (const source of diagnosticSources) {
+      if (source.date > credit.date) continue;
+      const key = source.date + '@' + credit.date;
+      if (!diagnosticBrackets.has(key)) diagnosticBrackets.set(key,
+        scheduledEventsOnRange(input.plan, source.date, credit.date)
+          .filter(event => event.kind === 'income' && eligibleIds.has(event.id)));
+      const occurrences = diagnosticBrackets.get(key);
+      if (occurrences.length !== 1) continue;
+      const occurrence = occurrences[0];
+      const recorder = diagnostic.forDate(source.date)?.forOccurrence(occurrence.id, occurrence.date);
+      if (!recorder) continue;
+      sources.set(source, recorder);
+      associations.set(occurrence.id + '@' + occurrence.date, occurrence);
+    }
+    if (associations.size !== 1) return undefined;
+    const occurrence = associations.values().next().value;
+    return { attempt: diagnostic.forDate(credit.date)?.forOccurrence(occurrence.id, occurrence.date), sources };
+  }
+  for (const credit of input.transactions || []) {
+    const candidate = diagnosticCandidate(credit);
+    const attempt = candidate && candidate.attempt;
+    const posted = !!nativePosted(credit);
+    for (const rule of salaryRules) attempt?.record(rule.eventId, 'nativePostedCad', posted,
+      posted ? undefined : 'CREDIT_UNQUALIFIED');
+    if (!posted || !(lunchMoneyDebitAmount(credit.amount) < 0)) continue;
+    const mapping = mappingFor(input.accountMap, credit.providerAccountId);
+    const householdCredit = !!mapping && mapping.atlasRole === 'household-cash'
+      && !!mapping.canonical && mapping.canonical.id === 'chequing-a';
+    for (const rule of salaryRules) attempt?.record(rule.eventId, 'householdCredit', householdCredit);
+    if (!householdCredit) continue;
     for (const rule of salaryRules) {
-      if (!ruleMatchesTransactionIdentity(credit, rule)) continue;
-      const counterpart = uniqueTransferCounterpart(credit, rule, input, credit.amount);
-      if (!nativePosted(counterpart)) continue;
+      const identityMatches = ruleMatchesTransactionIdentity(credit, rule);
+      attempt?.record(rule.eventId, 'transferIdentity', !!identityMatches);
+      if (!identityMatches) continue;
+      const counterpart = uniqueTransferCounterpart(credit, rule, input, credit.amount, attempt);
+      const counterpartPosted = !!nativePosted(counterpart);
+      attempt?.record(rule.eventId, 'nativePostedCad', counterpartPosted,
+        counterpart && !counterpartPosted ? 'CREDIT_UNQUALIFIED' : undefined);
+      if (!counterpartPosted) continue;
       const sources = [];
       for (const source of input.transactions || []) {
-        if (!nativePosted(source) || source.isIncome !== true
-            || !(lunchMoneyDebitAmount(source.amount) < 0) || source.date > credit.date
-            || !amountsMatchExactly(source.amount, credit.amount)) continue;
+        const sourceAttempt = candidate && candidate.sources.get(source);
+        const sourcePosted = !!nativePosted(source);
+        sourceAttempt?.record(rule.eventId, 'nativePostedCad', sourcePosted,
+          sourcePosted ? undefined : 'CREDIT_UNQUALIFIED');
+        if (!sourcePosted) continue;
+        const sourceIncome = source.isIncome === true && lunchMoneyDebitAmount(source.amount) < 0;
+        sourceAttempt?.record(rule.eventId, 'sourceIncome', sourceIncome);
+        if (!sourceIncome) continue;
+        const sourceTiming = !(source.date > credit.date);
+        sourceAttempt?.record(rule.eventId, 'sourceTiming', sourceTiming);
+        if (!sourceTiming) continue;
+        const amountMatches = amountsMatchExactly(source.amount, credit.amount);
+        sourceAttempt?.record(rule.eventId, 'amountGuard', amountMatches,
+          amountMatches ? undefined : 'AMOUNT_GUARD_MISMATCH');
+        if (!amountMatches) continue;
         const sourceMap = mappingFor(input.accountMap, source.providerAccountId);
-        if (!sourceMap || sourceMap.atlasRole !== EXTERNAL_LIVE_ROLE
-            || mappingExternalId(sourceMap) !== ruleCounterpartExternalId(rule)
-            || String(source.providerAccountId) !== String(counterpart.providerAccountId)) continue;
-        if (!payeeMatchesRule(source, { payeePatterns: rule.salaryReceiptPayeePatterns,
-          payeeMatchMode: 'exact', payeeExcludePatterns: ['REFUND', 'REVERSAL', 'REIMBURSEMENT'] })) continue;
+        const roleMatches = !!sourceMap && sourceMap.atlasRole === EXTERNAL_LIVE_ROLE;
+        sourceAttempt?.record(rule.eventId, 'externalRole', roleMatches,
+          roleMatches ? undefined : 'SOURCE_ROLE_MISMATCH');
+        if (!roleMatches) continue;
+        const externalMatches = mappingExternalId(sourceMap) === ruleCounterpartExternalId(rule);
+        sourceAttempt?.record(rule.eventId, 'externalIdentity', externalMatches,
+          externalMatches ? undefined : 'EXTERNAL_ID_MISMATCH');
+        if (!externalMatches) continue;
+        const accountMatches = String(source.providerAccountId) === String(counterpart.providerAccountId);
+        sourceAttempt?.record(rule.eventId, 'sourceAccount', accountMatches,
+          accountMatches ? undefined : 'SOURCE_ACCOUNT_MISMATCH');
+        if (!accountMatches) continue;
+        const aliasMatches = payeeMatchesRule(source, { payeePatterns: rule.salaryReceiptPayeePatterns,
+          payeeMatchMode: 'exact', payeeExcludePatterns: ['REFUND', 'REVERSAL', 'REIMBURSEMENT'] });
+        sourceAttempt?.record(rule.eventId, 'payrollAlias', !!aliasMatches,
+          aliasMatches ? undefined : 'PAYROLL_ALIAS_MISMATCH');
+        if (!aliasMatches) continue;
         // The nominal date is bracketed by actual receipt and actual transfer.
         // Multiple eligible occurrences cannot borrow the same salary packet.
         const occurrences = scheduledEventsOnRange(input.plan, source.date, credit.date)
           .filter(event => event.kind === 'income' && eligibleIds.has(event.id));
-        if (occurrences.length !== 1 || occurrences[0].id !== rule.eventId) continue;
+        const occurrenceMatches = occurrences.length === 1 && occurrences[0].id === rule.eventId;
+        sourceAttempt?.record(rule.eventId, 'occurrence', occurrenceMatches,
+          occurrenceMatches ? undefined : occurrences.length > 1 ? 'OCCURRENCE_AMBIGUOUS' : 'OCCURRENCE_MISSING');
+        if (!occurrenceMatches) continue;
         sources.push({ source, occurrence: occurrences[0] });
       }
+      attempt?.record(rule.eventId, 'payrollReceipt', sources.length === 1,
+        sources.length === 1 ? undefined : sources.length ? 'RECEIPT_AMBIGUOUS' : 'RECEIPT_MISSING');
       if (sources.length !== 1) continue;
       const { source, occurrence } = sources[0];
       hits.push({ id: rule.eventId, date: occurrence.date, postingDate: credit.date,
@@ -2303,10 +2417,20 @@ function salaryReceiptTransferHits(input, rules) {
 }
 
 function representedEventHitGroups(input) {
+  const diagnostic = input.salaryDiagnostic;
   const empty = { unique: [], ambiguous: [] };
-  if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
-  const rules = (input.identityRules || []).filter(rule => ruleHasIdentity(rule)
-    && !cardMinimumNeedsConfirmation(input.plan, rule.eventId, input.accountMap));
+  if (input.transactionWindow && input.transactionWindow.complete === false) {
+    diagnostic?.window(false, 'WINDOW_INCOMPLETE');
+    return empty;
+  }
+  const rules = (input.identityRules || []).filter(rule => {
+    diagnostic?.rule(rule?.eventId);
+    const eligible = ruleHasIdentity(rule, diagnostic)
+      && !cardMinimumNeedsConfirmation(input.plan, rule.eventId, input.accountMap);
+    diagnostic?.record(rule?.eventId, 'rule', !!eligible, eligible ? undefined : 'RULE_INELIGIBLE');
+    return eligible;
+  });
+  diagnostic?.rulesScanned();
   if (!rules.length) return empty;
   const mapDoc = input.accountMap;
   const eventHits = new Map();
@@ -2345,7 +2469,8 @@ function representedEventHitGroups(input) {
           }
         }
         if (rule.transactionKind === 'transfer') {
-          const counterpartCount = countTransferCounterparts(tx, rule, input, amount);
+          const counterpartCount = countTransferCounterparts(tx, rule, input, amount,
+            diagnostic?.forDate(tx.date)?.forOccurrence(rule.eventId, scheduledDate));
           if (counterpartCount !== 1) {
             if (counterpartCount > 1) {
               const ambKey = rule.eventId + '@' + scheduledDate;
@@ -2517,6 +2642,7 @@ function representedEventHitGroups(input) {
       candidateCount: row.candidateCount,
     });
   }
+  diagnostic?.resolve();
   return { unique: uniqueOnce.map(hit => {
     const original = Forecast.statementOccurrenceIdentity(input.plan, hit.id, hit.date);
     return original === hit.date ? hit : { ...hit, scheduledDate: original };
@@ -3331,6 +3457,18 @@ function observe(input) {
     transactions: normalized.transactions,
   });
   const scheduleTrustAsOf = householdFinancialDate(input, observations);
+  // Observation has no selected current salary identity. Derive a diagnostic
+  // target only if the incumbent native schedule provides one occurrence for
+  // the slot in complete, current household-dated coverage. A broad history
+  // containing several cycles cannot choose a latest one on the user's behalf.
+  const salaryWindow = normalized.transactionWindow;
+  const salaryCoverage = salaryWindow.complete === true && parseIsoDate(salaryWindow.startDate)
+    && parseIsoDate(salaryWindow.endDate) && salaryWindow.startDate <= salaryWindow.endDate
+    && parseIsoDate(scheduleTrustAsOf) && salaryWindow.endDate === scheduleTrustAsOf;
+  const salaryDiagnostic = input.salaryDiagnostic === false ? null : SalaryDiagnostic.create(salaryCoverage
+    ? { startDate: salaryWindow.startDate, endDate: salaryWindow.endDate,
+      occurrences: scheduledEventsOnRange(planForIdentity, salaryWindow.startDate, salaryWindow.endDate) }
+    : undefined);
   const hitGroups = representedEventHitGroups({
     transactions: collapsed.transactions,
     accountMap: mapDoc,
@@ -3338,6 +3476,7 @@ function observe(input) {
     identityRules,
     transactionWindow: normalized.transactionWindow,
     asOf: scheduleTrustAsOf,
+    salaryDiagnostic,
   });
   const represented = hitGroups.unique.map(c => classifyRepresentedCandidate(c, openingAsOf));
   // Historical transaction-identity hits are evidence, not current-opening
@@ -3378,7 +3517,8 @@ function observe(input) {
     reconciliation: result,
   };
   assembled.identityProof = identityFingerprint(assembled);
-  assembled.observationReceipt = observationReceipt(assembled, { accountMap: mapDoc });
+  assembled.observationReceipt = observationReceipt(assembled, { accountMap: mapDoc,
+    salaryMatcherDiagnostic: salaryDiagnostic?.finish(hitGroups) });
   assembled.obligationReconciliationReceipt = reconciliationReceipt(assembled, {
     data: input.data,
     accountMap: mapDoc,

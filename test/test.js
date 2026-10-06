@@ -25,6 +25,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
+  ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
@@ -110,6 +112,8 @@ const suites = [
   ['Budget review future settlement and zero-plan markers', 'test-budget-review-regressions.js'],
   ['Budget exact-period original plans and observed progress', 'test-budget-period-progress.js'],
   ['Salary receipt and paired transfer actual-income proof', 'test-income-transfer-receipts.js'],
+  ['Bounded salary matcher diagnostic conservation and redaction', 'test-salary-matcher-diagnostic.js'],
+  ['Salary matcher diagnostic existing authenticated readback', 'test-salary-diagnostic-auth.js'],
   ['active Budget surface: one renderer, Forecast figures, drilldown and withheld states', 'test-budget-surface.js'],
   ['Budget owner-voice presentation', 'test-budget-owner-voice.js'],
   ['Plan homepage decision desk', 'test-plan-decision-desk.js'],
