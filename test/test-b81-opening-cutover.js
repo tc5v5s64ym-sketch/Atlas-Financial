@@ -980,6 +980,29 @@ console.log('\n=== 23–24. successful opening is Forecast-consumable; live data
   ok(dest !== LIVE_DATA, 'synthetic apply never targeted live data.json');
 }
 
+console.log('\n=== qualified minimum receipt survives synthetic canonical installation ===');
+{
+  const dir = tempDir(), pkt = cleanMatchPacket();
+  pkt.data.plan.obligations = [{ id: 'invented-minimum', label: 'Invented issuer minimum', debtId: 'mortgage',
+    effect: 'payment', frequency: 'once', date: '2026-08-19', amount: 12.34, payingAccount: 'chequing-a',
+    confidence: 'confirmed', sentPayments: [{ scheduledDate: '2026-08-19', confirmed: true, intent: 'minimum',
+      debitId: 'invented-sent-reference', postedOn: '2026-08-16', amount: 12.34, currency: 'cad',
+      fundingAccountId: 'chequing-a', pending: false, cashIncludedAsOf: '2026-08-16' }] }];
+  const proof = { id: 'invented-minimum', date: '2026-08-19', effectiveAsOf: '2026-08-16' };
+  pkt.data.plan.opening.representedEvents = [proof];
+  const { preview } = previewAt(pkt.data, pkt.payload, { accountMap: pkt.map, cutoverAsOf: '2026-08-18' });
+  ok(preview.openingCutover.cutoverWriteSupported === true, 'synthetic minimum opening is supported');
+  const applied = applyOpening(dir, pkt.data, pkt.payload, pkt.map, preview.openingCutover.openingApprovalId);
+  ok(applied.applied.code === 0, 'approved synthetic opening installs', applied.applied.stderr);
+  ok(JSON.stringify(applied.after.plan.opening.representedEvents) === JSON.stringify([proof]),
+    'installed data retains original occurrence and effective qualifier');
+  ok(Forecast.cardMinimumState(applied.after.plan, '2026-08-18').payments[0].issuerMinimumStatus === 'satisfied',
+    'installed opening keeps independently confirmed issuer knowledge');
+  ok(Forecast.cardMinimumState(applied.after.plan, '2026-08-16').payments[0].issuerMinimumStatus === 'satisfied',
+    'earliest confirmed date retains its historical meaning');
+  ok(hashFile(LIVE_DATA) === liveHash, 'only temporary synthetic files were installed');
+}
+
 console.log('\n=== live household figures were not cut over ===');
 {
   ok(liveData.meta.asOf === liveData.plan.opening.asOf,

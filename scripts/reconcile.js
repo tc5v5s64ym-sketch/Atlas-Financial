@@ -1230,18 +1230,18 @@ function scheduledEventExists(data, eventId, scheduledDate) {
   // cutover is posting, not schedule, so representedEvents is omitted.
   const events = Forecast.expandEvents(
     schedulePlanWithoutCutover(plan),
-    scheduledDate,
-    scheduledDate,
-    {}
+    Forecast.statementOccurrenceDate(plan, eventId, scheduledDate),
+    Forecast.statementOccurrenceDate(plan, eventId, scheduledDate),
+    { keepRepresented: true }
   );
-  return events.some(e => e.id === eventId && e.date === scheduledDate && e.kind !== 'noncash');
+  const original = Forecast.statementOccurrenceIdentity(plan, eventId, scheduledDate);
+  return events.some(e => e.id === eventId && (e.scheduledDate || e.date) === original && e.kind !== 'noncash');
 }
 
 function representedOnOpening(data, eventId, date) {
   const opening = (((data || {}).plan) || {}).opening || null;
-  if (!opening || !eventId || !date || opening.asOf !== date) return false;
-  return (opening.representedEvents || []).some(e => e && e.id === eventId && e.date === date
-    && Forecast.representedEventEffectiveBy(e, opening.asOf));
+  if (!opening || !eventId || !date) return false;
+  return Forecast.representedOccurrence(data.plan, eventId, date, opening.asOf);
 }
 
 function openingAsOf(data) {

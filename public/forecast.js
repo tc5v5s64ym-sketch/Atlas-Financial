@@ -16,6 +16,142 @@
 
 (function (root) {
 
+  const CardMinimumContract = (() => {
+  const date = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value + 'T00:00:00Z'))
+    && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
+  const cents = value => typeof value === 'number' && Number.isFinite(value)
+    && value >= 0 && Number.isSafeInteger(Math.round(value * 100))
+    && Math.abs(value * 100 - Math.round(value * 100)) < 1e-7 ? Math.round(value * 100) : null;
+  const paymentRow = row => row && row.effect === 'payment' && row.debtId && !row.nonCash;
+
+  function statementRows(row, occurrences) {
+    const input = row && row.statementOccurrences;
+    if (input == null) return [];
+    if (!paymentRow(row) || !Array.isArray(input)) throw new Error('Invalid statement occurrence input.');
+    const used = new Set();
+    const records = input.map(record => {
+      if (!record || !date(record.scheduledDate) || !date(record.dueDate)
+          || record.currency !== 'cad' || record.confidence !== 'confirmed'
+          || cents(record.minimum) == null
+          || occurrences(row, record.scheduledDate, record.scheduledDate).length !== 1
+          || used.has(record.scheduledDate)) throw new Error('Statement must replace one unique scheduled occurrence.');
+      used.add(record.scheduledDate);
+      return record;
+    });
+    const effective = new Set();
+    for (const record of records) {
+      if (effective.has(record.dueDate) || (occurrences(row, record.dueDate, record.dueDate).length
+          && record.dueDate !== record.scheduledDate)) throw new Error('Statement due date conflicts with another occurrence.');
+      effective.add(record.dueDate);
+    }
+    return records;
+  }
+
+  function resolveOccurrences(row, start, end, occurrences, outflowDates) {
+    if (row.statementOccurrences == null) return outflowDates(row, start, end).map(scheduledDate => ({
+      scheduledDate, date: scheduledDate, amount: row.amount, confidence: row.confidence, statement: false }));
+    const statements = statementRows(row, occurrences);
+    const byScheduled = new Map(statements.map(record => [record.scheduledDate, record]));
+    const candidates = new Set(outflowDates(row, start, end));
+    // Include a moved occurrence even when its original date lies outside the
+    // window. Replacement precedes filtering; no estimated twin is emitted.
+    for (const record of statements) {
+      if (record.dueDate <= end && (record.dueDate >= start || row.frequency === 'once')) {
+        candidates.add(record.scheduledDate);
+      }
+    }
+    return Array.from(candidates).map(scheduledDate => {
+      const statement = byScheduled.get(scheduledDate);
+      return { scheduledDate, date: statement ? statement.dueDate : scheduledDate,
+        amount: statement ? statement.minimum : row.amount,
+        confidence: statement ? statement.confidence : row.confidence,
+        statement: !!statement };
+    }).filter(record => record.date <= end && (record.date >= start || row.frequency === 'once'))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function mappedDate(plan, id, scheduledDate, occurrences) {
+    const row = (plan && plan.obligations || []).find(item => item && item.id === id);
+    return row ? statementRows(row, occurrences).find(item => item.scheduledDate === scheduledDate)?.dueDate
+      || scheduledDate : scheduledDate;
+  }
+
+  function state(plan, asOf, occurrences, representedEffectiveBy, options) {
+    const rows = plan && plan.obligations || [];
+    if (!rows.some(row => row && row.sentPayments != null)) return {
+      status: 'incumbent', asOf, source: 'Forecast.cardMinimumState', payments: [], issues: [], reason: null };
+    const payments = [], issues = [], used = new Set();
+    const opening = plan?.opening;
+    // Legacy names assert inclusion in their attached opening, never earlier.
+    // Explicit qualifiers survive a later opening. Attach legacy names to the
+    // opening that first asserted them so a historical query cannot gain proof.
+    const represented = [].concat((opening && date(opening.asOf)
+      ? (opening.representedEvents || []).map(item => item && !Object.prototype.hasOwnProperty.call(item, 'effectiveAsOf')
+        ? { ...item, effectiveAsOf: opening.asOf } : item) : []), options?.representedEvents || []);
+    for (const row of rows) {
+      const statements = statementRows(row, occurrences);
+      const records = row && row.sentPayments;
+      if (records == null) continue;
+      if (!paymentRow(row) || !Array.isArray(records)) {
+        issues.push('invalid-sent-payment-input'); continue;
+      }
+      for (const record of records) {
+        // Backfill or unknown intent cannot become a minimum allocation.
+        if (record?.intent !== 'minimum') {
+          if (record?.intent !== 'purchase-backfill') issues.push('payment-intent-unconfirmed');
+          continue;
+        }
+        if (!record || record.confirmed !== true || record.pending !== false
+            || !date(record.scheduledDate) || !date(record.postedOn)
+            || !date(asOf) || record.currency !== 'cad' || !(cents(record.amount) > 0)
+            || typeof record.debitId !== 'string' || !record.debitId
+            || !row.payingAccount || record.fundingAccountId !== row.payingAccount
+            || occurrences(row, record.scheduledDate, record.scheduledDate).length !== 1
+            || (record.cashIncludedAsOf != null && (!date(record.cashIncludedAsOf)
+              || record.cashIncludedAsOf < record.postedOn))) {
+          issues.push('sent-payment-evidence-unconfirmed'); continue;
+        }
+        if (used.has(record.debitId)) {
+          issues.push('sent-payment-allocated-more-than-once'); continue;
+        }
+        used.add(record.debitId);
+        if (record.postedOn > asOf) continue;
+        const statement = statements.find(item => item.scheduledDate === record.scheduledDate);
+        const dueDate = statement ? statement.dueDate : record.scheduledDate;
+        // Receipt is independent. Existing explicit satisfaction evidence is
+        // opening-qualified; a bank debit never manufactures representedEvents.
+        const satisfied = represented.some(item => item && item.id === row.id
+          && originalDate(plan, row.id, item.date, occurrences) === record.scheduledDate
+          && representedEffectiveBy(item, asOf));
+        const cashIncluded = record.cashIncludedAsOf != null && record.cashIncludedAsOf <= asOf;
+        payments.push({ id: row.id, scheduledDate: record.scheduledDate, date: dueDate,
+          occurrenceKey: row.id + '@' + record.scheduledDate,
+          cashPaymentStatus: 'sent', cashPaid: record.amount,
+          cashInclusionStatus: cashIncluded ? 'included' : 'unconfirmed',
+          issuerMinimumStatus: satisfied ? 'satisfied' : 'unconfirmed',
+          additionalCashRequired: satisfied && cashIncluded ? 0 : null });
+        if (!cashIncluded) issues.push('sent-payment-cash-inclusion-unconfirmed');
+        if (!satisfied) issues.push('issuer-minimum-satisfaction-unconfirmed');
+      }
+    }
+    // No raw evidence identifiers or source documents in the publication.
+    return { status: issues.length ? 'unavailable' : payments.length ? 'ready' : 'incumbent',
+      asOf, source: 'Forecast.cardMinimumState', payments,
+      issues: Array.from(new Set(issues)),
+      reason: issues.length ? 'Card payment sent; cash inclusion or issuer minimum satisfaction is unconfirmed. Additional cash is unknown.' : null };
+  }
+
+    function originalDate(plan, id, value, occurrences) {
+    const row = (plan?.obligations || []).find(item => item && item.id === id);
+    if (!row) return value;
+    const records = statementRows(row, occurrences);
+    const original = records.find(item => item.scheduledDate === value);
+    if (original) return original.scheduledDate;
+    return records.find(item => item.dueDate === value)?.scheduledDate || value;
+  }
+    return { resolveOccurrences, mappedDate, originalDate, state };
+  })();
   /* --------------------------------------------------------------- dates */
   // ISO date strings throughout; arithmetic in UTC so DST can never shift a
   // payday. A date here is a calendar day, not an instant.
@@ -354,6 +490,55 @@
     return item && item.frequency === 'once'
       ? onceOutflowDates(item, start, end)
       : occurrences(item, start, end);
+  }
+
+  function cardMinimumState(plan, asOf, opts) {
+    return CardMinimumContract.state(plan, asOf, occurrences, representedEventEffectiveBy, opts);
+  }
+  function statementOccurrenceDate(plan, id, date) {
+    return CardMinimumContract.mappedDate(plan, id, date, occurrences);
+  }
+  function statementOccurrenceIdentity(plan, id, date) {
+    return CardMinimumContract.originalDate(plan, id, date, occurrences);
+  }
+  // Durable issuer knowledge is narrower than cash replay eligibility. Only
+  // the optional minimum contract and one valid original occurrence qualify.
+  function cardMinimumReceiptIdentity(plan, item) {
+    const row = (plan?.obligations || []).find(row => row && row.id === item?.id);
+    if (!row || row.effect !== 'payment' || !row.debtId || row.nonCash
+        || (row.sentPayments == null && row.statementOccurrences == null)) return null;
+    const original = statementOccurrenceIdentity(plan, row.id, item.date);
+    return typeof original === 'string' && ISO_CALENDAR_DATE.test(original)
+      && new Date(original + 'T00:00:00Z').toISOString().slice(0, 10) === original
+      && occurrences(row, original, original).length === 1 ? original : null;
+  }
+  function representedOccurrence(plan, id, date, asOf, opts) {
+    const original = statementOccurrenceIdentity(plan, id, date);
+    const due = statementOccurrenceDate(plan, id, original);
+    return representedKeySet(plan, opts, asOf).has(id + '@' + due);
+  }
+  function obligationOccurrences(row, start, end) {
+    return CardMinimumContract.resolveOccurrences(row, start, end, occurrences, outflowDates);
+  }
+  function minimumPaymentFor(plan, event, asOf, opts) {
+    if (!event || event.kind !== 'obligation' || event.effect !== 'payment') return null;
+    if (!(plan?.obligations || []).some(row => row?.sentPayments != null)) return null;
+    const matches = cardMinimumState(plan, asOf, opts).payments.filter(row => row.id === event.id
+      && row.scheduledDate === (event.scheduledDate || event.date));
+    if (!matches.length) return null;
+    const amount = roundCent(matches.reduce((sum, row) => sum + row.cashPaid, 0));
+    return { ...matches[0], cashPaid: amount,
+      cashInclusionStatus: matches.every(row => row.cashInclusionStatus === 'included') ? 'included' : 'unconfirmed',
+      additionalCashRequired: matches.every(row => row.additionalCashRequired === 0) ? 0 : null };
+  }
+  function applyMinimumSent(events, plan, start, opts) {
+    if (!(plan?.obligations || []).some(row => row?.sentPayments != null)) return events;
+    return events.map(event => {
+      const sent = minimumPaymentFor(plan, event, start, opts);
+      return sent ? { ...event, amount: 0,
+        minimumAmount: event.minimumAmount != null ? event.minimumAmount : -event.amount,
+        minimumPayment: sent } : event;
+    });
   }
 
   // The household CASH minimum on a capitalising obligation (the HELOC).
@@ -1158,6 +1343,7 @@
       && opening.priorAsOf < start ? opening.priorAsOf : null;
     const take = item => {
       if (!item || !item.id || !item.date || !representedEventEffectiveBy(item, start)) return;
+      item = { ...item, date: statementOccurrenceDate(plan, item.id, item.date) };
       if (item.date === start) keys.add(item.id + '@' + item.date);
       else if (prior && item.date > prior && item.date < start) {
         keys.add(item.id + '@' + item.date);
@@ -1736,11 +1922,12 @@
   // shares that same id and is a joint-cash occurrence on cashDay /
   // cashFirstDue. The non-cash capitalise date is not this path.
   function prepaidJointCashOutflow(plan, id, date, start) {
+    date = statementOccurrenceDate(plan, id, date);
     if (!plan || !id || !date || !start || date <= start) return false;
     const obligation = (plan.obligations || []).find(item => item && item.id === id
       && item.nonCash !== true && Number(item.amount) > 0);
     if (obligation) {
-      return outflowDates(obligation, date, date).some(d => d === date);
+      return obligationOccurrences(obligation, date, date).some(occ => occ.date === date);
     }
     const capitalising = (plan.obligations || []).find(item => item && item.id === id
       && item.nonCash === true && Number(item.cashPayment) > 0);
@@ -1755,7 +1942,7 @@
   }
 
   function isJointCashOutflow(event) {
-    return !!(event && event.amount < 0 && event.kind !== 'noncash'
+    return !!(event && (event.amount < 0 || event.minimumAmount > 0) && event.kind !== 'noncash'
       && event.jointCash !== false);
   }
   // Past unresolved joint-cash outflows still bind the walk. The scheduled
@@ -1893,7 +2080,11 @@
       });
     }
     for (const o of plan.obligations) {
-      for (const date of outflowDates(o, start, end)) {
+      for (const occurrence of obligationOccurrences(o, start, end)) {
+        const date = occurrence.date;
+        const evidenceEvent = { id: o.id, date, scheduledDate: occurrence.scheduledDate,
+          kind: 'obligation', effect: o.effect };
+        const sent = minimumPaymentFor(plan, evidenceEvent, start, opts);
         // A minimum on a card that has been paid off is not a payment anybody
         // makes — the bank does not take it, because there is nothing to take
         // it against. Capping extras but not these left the two projections
@@ -1905,7 +2096,7 @@
         // there is one rule for "a payment cannot exceed the debt it pays"
         // rather than two that can drift apart.
         const cap = opts.obligationAbsorbed;
-        const amount = cap ? (cap[date + ':' + o.id] || 0) : o.amount;
+        const amount = sent ? 0 : cap ? (cap[date + ':' + o.id] || 0) : occurrence.amount;
         // A non-cash charge (HELOC interest capitalising onto the balance) is
         // shown on the calendar but never deducted from cash. Capping never
         // applies to it — it adds to a balance rather than reducing one.
@@ -1915,9 +2106,12 @@
             debtId: o.debtId || null, effect: o.effect || null });
           continue;
         }
-        if (amount <= 0) continue;      // nothing left for this payment to pay
+        if (amount <= 0 && !sent) continue;      // nothing left for this payment to pay
         events.push({ date, amount: -amount, kind: 'obligation',
-          label: o.label, id: o.id, confidence: o.confidence,
+          label: o.label, id: o.id, confidence: occurrence.confidence,
+          ...(occurrence.statement ? { scheduledDate: occurrence.scheduledDate,
+            occurrenceKey: o.id + '@' + occurrence.scheduledDate } : {}),
+          ...(sent ? { minimumAmount: occurrence.amount, minimumPayment: sent } : {}),
           debtId: o.debtId || null, effect: o.effect || null,
           payingAccount: o.payingAccount || null });
       }
@@ -2096,11 +2290,11 @@
     const kept = omitRepresented(events, plan, opts, start);
     const already = new Set(kept.map(e => e.id + '@' + e.date));
     const carried = carriedUnresolvedJointCashOutflows(plan, start, opts, already);
-    if (!carried.length) return applyReserveFunding(kept, plan, start, end, opts);
+    if (!carried.length) return applyReserveFunding(applyMinimumSent(kept, plan, start, opts), plan, start, end, opts);
     const out = kept.concat(carried);
     out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return applyReserveFunding(out, plan, start, end, opts);
+    return applyReserveFunding(applyMinimumSent(out, plan, start, opts), plan, start, end, opts);
   }
 
   // Additional cash needed to keep this walk's measured trajectory at or
@@ -2209,7 +2403,7 @@
   //                    test the recommendation is answering.
   // Opening cash is startingCashAmount: chequing-only when household
   // chequing identities exist. Designated savings is not spent here.
-  function simulate(plan, asOf, opts) {
+  function simulateModel(plan, asOf, opts) {
     opts = opts || {};
     const coverage = cardCoverageState(plan, asOf, opts);
     const days = walkDays(plan, asOf, opts);
@@ -2410,6 +2604,26 @@
       ? sliceSimulation(full, asOf, viewDays, plan, opts) : full;
   }
 
+  // Internal walks may compute a conditional path to construct the incumbent
+  // result shell. Public cash publications cannot promote that path when a
+  // sent minimum's inclusion or issuer treatment remains unknown.
+  function publishMinimumCashWalk(sim, minimums) {
+    if (minimums.status !== 'unavailable') return sim;
+    const cashFields = ['opening', 'closing', 'low', 'requiredClosing', 'measuredOpening'];
+    return { ...sim, status: 'unavailable', reason: minimums.reason,
+      cardMinimumPayments: minimums, ending: null, min: { date: null, balance: null },
+      shortfall: null, additionalCashRequired: null, breachesBuffer: null,
+      endingSurplus: null, extraDebtCapacity: null,
+      daily: (sim.daily || []).map(row => ({ ...row, balance: null })),
+      weeks: (sim.weeks || []).map(row => {
+        const copy = { ...row, belowBuffer: null, negative: null };
+        for (const key of cashFields) if (Object.hasOwn(copy, key)) copy[key] = null;
+        return copy;
+      }) };
+  }
+  function simulate(plan, asOf, opts) {
+    return publishMinimumCashWalk(simulateModel(plan, asOf, opts), cardMinimumState(plan, asOf, opts));
+  }
   /* ---------------------------------------- funding sequence + verdicts */
   // Presentation order only — not the allocator. Protected items are
   // feasible simultaneously or not at all. Owner priority ranks residual
@@ -2699,7 +2913,7 @@
     opts = opts || {};
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
-    const sim = opts.sim || simulate(plan, asOf, opts);
+    const sim = opts.sim || simulateModel(plan, asOf, opts);
     const seq = opts.seq || fundingSequence(plan, asOf, opts);
     const leftover = leftoverAfterBuffer(sim);
     const enc = protectedEncumbered(seq, asOf);
@@ -2807,11 +3021,12 @@
     opts = opts || {};
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const seq = fundingSequence(plan, asOf, opts);
+    const fundingUnknown = cardMinimumState(plan, asOf, opts).status === 'unavailable';
     const weekly = opts.weeklyVariable != null ? opts.weeklyVariable : 0;
     const masterOpts = Object.assign({}, opts, {
       horizonDays: horizon.days, viewDays: horizon.days,
     });
-    const rec = simulate(plan, asOf, Object.assign({}, masterOpts, { weeklyVariable: weekly }));
+    const rec = simulateModel(plan, asOf, Object.assign({}, masterOpts, { weeklyVariable: weekly }));
     const leftover = leftoverAfterBuffer(rec);
     const enc = protectedEncumbered(seq, asOf);
     const fundingMargin = leftover - enc.floor;
@@ -2944,6 +3159,9 @@
         fundingMargin,
         // Flexible items may yield. Non-flexible dates are never rewritten.
         deferred: !!(item.adjustable && verdict !== 'ON TRACK'),
+        ...(fundingUnknown ? { verdict: null, funded: null, margin: null, remaining: null,
+          fundingMargin: null, remainingIdentity: null, deferred: null,
+          fundingStatus: 'unavailable' } : {}),
       };
     });
   }
@@ -3005,7 +3223,7 @@
         confidence: row.confidence,
         flexibility: row.flexibility,
       })),
-      scheduleRemaining: planSpendScheduleRemaining(members),
+      scheduleRemaining: members.some(row => row.fundingStatus === 'unavailable') ? null : planSpendScheduleRemaining(members),
       scheduleRemainingIdentity: 'sum of Forecast.majorPlans.need for this display group',
       verdict: worstPublishedVerdict(members),
       confidence: samePublishedValue(members, 'confidence'),
@@ -3656,7 +3874,7 @@
       weeklyVariable: opts.weeklyVariable != null ? opts.weeklyVariable : 0,
       injections, plannedFlows,
     });
-    const post = simulate(plan, asOf, walkOpts);
+    const post = simulateModel(plan, asOf, walkOpts);
     const hasCadence = monthlyPayment > 0 && plannedFlows.length > 0;
     const debtWalk = projectDebts(plan, debts, asOf, walkOpts);
     const state = debtWalk.byId && debtWalk.byId[facility.id];
@@ -5186,7 +5404,7 @@
         const row = (plan.commitments || []).find(c => c && c.id === e.id);
         if (row && commitmentSettledBy(row, asOf)) continue;
       }
-      const amt = -e.amount;
+      const amt = e.minimumAmount != null ? e.minimumAmount : -e.amount;
       if (!(amt > EPSILON)) continue;
       const key = (e.id || e.label) + '@' + e.date;
       if (seen.has(key)) continue;
@@ -5208,6 +5426,7 @@
         actual = null;
         remaining = roundCent(amt);
       }
+      const sent = minimumPaymentFor(plan, e, asOf, opts);
       items.push({
         id: e.id,
         label: e.label,
@@ -5219,6 +5438,10 @@
         settlement,
         evidenceDate: paid ? observedPostedOn(observed, e.id, e.date, e.date) : null,
         confidence: e.confidence || null,
+        ...(e.occurrenceKey ? { occurrenceKey: e.occurrenceKey, scheduledDate: e.scheduledDate } : {}),
+        ...(sent ? { ...sent, date: e.date, actual: null,
+          remaining: sent.issuerMinimumStatus === 'satisfied' ? 0 : null,
+          settlement: sent.issuerMinimumStatus === 'satisfied' ? 'represented' : 'unverified' } : {}),
       });
     }
     return items;
@@ -6741,8 +6964,8 @@
     return !!(observed && observed.has(key));
   }
 
-  function calendarBillRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, scheduleDate) {
-    const amt = -event.amount;
+  function calendarBillRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, scheduleDate, opts) {
+    const amt = event.minimumAmount != null ? event.minimumAmount : -event.amount;
     if (!(amt > EPSILON)) return null;
     const paid = calendarOccurrenceRepresented(represented, observed, event.id, event.date);
     const inside = recurringInsideOpening(plan, event, cashAsOf);
@@ -6772,6 +6995,7 @@
       ? 'PAID'
       : glanceBillStatus(settlement, asOf, due);
     const payingAccount = event.payingAccount || null;
+    const sent = minimumPaymentFor(plan, event, asOf, opts);
     return {
       id: event.id,
       label: event.label,
@@ -6792,6 +7016,12 @@
       needsDate: false,
       cardPaid: event.cardPaid === true,
       cashMinimum: event.cashMinimum === true,
+      ...(event.occurrenceKey ? { occurrenceKey: event.occurrenceKey, scheduledDate: event.scheduledDate } : {}),
+      ...(sent ? { ...sent, date: due, actual: null,
+        remaining: sent.issuerMinimumStatus === 'satisfied' ? 0 : null,
+        settlement: sent.issuerMinimumStatus === 'satisfied' ? 'represented' : 'unverified',
+        status: sent.issuerMinimumStatus === 'satisfied' ? 'PAID' : 'unconfirmed',
+        glanceKind: sent.issuerMinimumStatus === 'satisfied' ? 'paid' : 'unconfirmed' } : {}),
     };
   }
 
@@ -6865,7 +7095,7 @@
       if (seen.has(key)) continue;
       seen.add(key);
       const row = calendarBillRowFromEvent(
-        plan, event, asOf, represented, observed, cashAsOf, due);
+        plan, event, asOf, represented, observed, cashAsOf, due, opts);
       // Overdue once-rows stay reserved on the current operating period.
       // Do not dump them onto a completed lookback window.
       if (overdueOnce) {
@@ -8987,7 +9217,13 @@
   }
   function cardCoverageState(plan, asOf, opts) {
     const packet = currentPeriodActualsPacket(opts) || {};
-    return visaPaymentReconciliation(packet.transactions, { plan, asOf, packet, debts: opts && opts.debts });
+    const coverage = visaPaymentReconciliation(packet.transactions, { plan, asOf, packet, debts: opts && opts.debts });
+    const minimums = cardMinimumState(plan, asOf, opts);
+    // Existing operating-cash gates also withhold permission when minimum
+    // funding is unknown. Purchase reconciliation itself is left untouched.
+    return minimums.status !== 'unavailable' ? coverage : { ...coverage,
+      status: 'unavailable', reason: minimums.reason, reservedCash: null,
+      cardMinimumPayments: minimums };
   }
   function simulationCashFloor(sim) {
     return sim.requiredCashFloor != null ? sim.requiredCashFloor : sim.buffer;
@@ -11228,6 +11464,7 @@
   // Monotonic in W, so binary search is exact.
   const STEP = 5;
   function recommendWeekly(plan, asOf, opts) {
+    if (cardMinimumState(plan, asOf, opts).status === 'unavailable') return null;
     opts = Object.assign({}, opts || {});
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const searchOpts = Object.assign({}, opts, {
@@ -11383,6 +11620,32 @@
     const timelineRows = result.payPeriodViews || [];
     for (let i = 0; i < timelineRows.length; i++) {
       if (timelineRows[i]) timelineRows[i].operatingCashExplanation = null;
+    }
+    const minimums = result.cardMinimumPayments;
+    if (minimums?.status === 'unavailable') {
+      result.majorPlans = (result.majorPlans || []).map(row => ({ ...row, verdict: null,
+        funded: null, margin: null, remaining: null, fundingMargin: null,
+        remainingIdentity: null, deferred: null, fundingStatus: 'unavailable' }));
+      // Contractual prices and observed balances survive. A period cash
+      // remainder cannot assert feasibility while this payment is unresolved.
+      const views = new Set([result.defaultView, ...(result.defaultView?.calendarPeriods || []),
+        ...(result.payPeriodViews || [])]);
+      for (const view of views) {
+        if (!view || view.end < minimums.asOf) continue;
+        view.available = view.balanceAfterDeductions = view.predictedEndingBalance = null;
+        view.balanceAfterDeductionsTrust = 'unavailable';
+        view.predictedEndingBalanceIdentity = null;
+        view.predictedEndingBalanceTerms = null;
+        if (view.leftover) for (const key of ['afterBills', 'afterHouseholdBudget',
+          'afterDebtRepayment', 'afterBigPurchases']) view.leftover[key] = null;
+        view.extraDebt = { ...(view.extraDebt || {}), allocated: null, status: 'unavailable', reason: note };
+      }
+      for (const key of ['sim', 'zero']) if (result[key]) result[key] = publishMinimumCashWalk(result[key], minimums);
+      if (result.knowledge) result.knowledge = { ...result.knowledge,
+        min: { date: null, balance: null }, ending: null, freeCash: null };
+      result.binding = null;
+      result.bindingIsReal = result.holds = null;
+      result.gap = null;
     }
     return result;
   }
@@ -11979,7 +12242,7 @@
           .map(([, row]) => ({ kind: 'income', id: row.id, label: row.label,
             date: row.date, amount: row.amount, confidence: row.confidence })),
       });
-      const sim = simulate(plan, asOf, walkOpts);
+      const sim = simulateModel(plan, asOf, walkOpts);
       // Do not borrow cap-based majorPlans verdicts, or ask that printer to
       // extend this bounded Budget walk beyond its payroll/period coverage.
       // Schedule feasibility below is its own earned funding-gap publication.
@@ -12026,7 +12289,7 @@
               ? { amount: 0, confidence: 'confirmed' } : walkOpts.incomeOccurrenceAdjust(stream, date),
             additionalIncomeEvents: walkOpts.additionalIncomeEvents.filter(e => e.date > asOf),
           });
-          const forwardSim = simulate(plan, asOf, forwardOpts);
+          const forwardSim = simulateModel(plan, asOf, forwardOpts);
           const forwardBasis = new Map(basis);
           const { cash, income, walkCapacity, capacity, deductions, bills } =
             budgetSavingsCashSeed(plan, asOf, current.end, remaining, forwardSim, seq);
@@ -12219,7 +12482,7 @@
     // Opening-gap detection stays on the visible opening, not the 12-month
     // walk. A January 2027 commitment must not become an Amanda/HELOC
     // injection today. Future shortfalls bind the weekly search instead.
-    const zero = simulate(plan, asOf, Object.assign({}, base, {
+    const zero = simulateModel(plan, asOf, Object.assign({}, base, {
       weeklyVariable: 0, horizonDays: viewDays, viewDays,
     }));
     // The weekly search must walk the master horizon. Passing the visible
@@ -12376,14 +12639,14 @@
     // must breach the buffer, and where it breaches is the constraint to name.
     function finish(mode, simOptions, weeklyCap, effectiveFrom, gap, zeroSim, infeasible) {
       const view = viewRange(plan, asOf, viewSpec || { days: viewDays }, planOptions);
-      const viewSim = simulate(plan, asOf, Object.assign({}, simOptions, {
+      const viewSim = simulateModel(plan, asOf, Object.assign({}, simOptions, {
         weeklyVariable: weeklyCap, horizonDays: horizon.days,
         viewDays: view.days, viewStart: view.start,
       }));
-      const knowledgeSim = simulate(plan, asOf, Object.assign({}, simOptions, {
+      const knowledgeSim = simulateModel(plan, asOf, Object.assign({}, simOptions, {
         weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays: horizon.days,
       }));
-      const next = simulate(plan, asOf, Object.assign({}, simOptions, {
+      const next = simulateModel(plan, asOf, Object.assign({}, simOptions, {
         weeklyVariable: weeklyCap + STEP, horizonDays: horizon.days, viewDays: horizon.days,
       }));
       const sequence = fundingSequence(plan, asOf, planOptions);
@@ -12438,6 +12701,8 @@
       publishBudgetPeriodProgress(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
       publishBudgetBillDisplayTrust(asOf, payPeriodTimelinePack.views, paydayOpts);
       return withholdCurrentOperatingClaims({
+        ...(cardMinimumState(plan, asOf, paydayOpts).status !== 'incumbent'
+          ? { cardMinimumPayments: cardMinimumState(plan, asOf, paydayOpts) } : {}),
         ...(cardCoverageState(plan, asOf, paydayOpts).status !== 'incumbent'
           ? { cardPurchaseCoverage: cardCoverageState(plan, asOf, paydayOpts) } : {}),
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
@@ -12520,7 +12785,7 @@
         breachesWithout: false, endingWithout: null };
     }
 
-    const noIncome = simulate(plan, asOf, Object.assign({}, base, {
+    const noIncome = simulateModel(plan, asOf, Object.assign({}, base, {
       incomeOverrides: Object.assign({}, base.incomeOverrides || {}, { [incomeId]: 0 }),
     }));
     const notBefore = base.notBefore || asOf;
@@ -13106,6 +13371,13 @@
       if (!event || !event.id || !event.date) return true;
       if (!represented.has(event.id + '@' + event.date)) return true;
       if (event.kind !== 'obligation' || event.effect === 'capitalise') return false;
+      // A receipt identifies a satisfied minimum, not the principal sent.
+      // Replaying the contractual minimum would invent another debt reduction
+      // when the optional contract has no accepted minimum-intent allocation.
+      const original = statementOccurrenceIdentity(plan, event.id, event.scheduledDate || event.date);
+      if ([...(plan?.opening?.representedEvents || []), ...(opts?.representedEvents || [])]
+          .some(item => cardMinimumReceiptIdentity(plan, item) === original && item.id === event.id
+            && representedEventEffectiveBy(item, start))) return false;
       return prepaidJointCashOutflow(plan, event.id, event.date, start);
     });
   }
@@ -13382,6 +13654,12 @@
         if (e.kind === 'obligation') {
           const t = targetFor(e.id);
           if (!t) continue;
+          if (e.minimumPayment) {
+            // Bank-side sent evidence supplies no receiving-side credit or
+            // principal reduction. Keep the occurrence's cash cap separate.
+            obligationAbsorbed[e.date + ':' + e.id] = e.minimumAmount;
+            continue;
+          }
           const amount = -e.amount;
           // A named minimum is a demand against one remaining balance.
           // After that named balance is gone, later scheduled installments
@@ -13585,6 +13863,9 @@
     sim = sim || {};
     plan = plan || {};
     const ending = sim.ending;
+    if (typeof ending !== 'number' || !Number.isFinite(ending)) return {
+      ending: null, buffer: sim.buffer, reserves: null, amount: null,
+      id: 'unavailable', negative: null };
     const buffer = sim.buffer;
     const windowDays = plan.windowDays;
     const reserveMonthly = budget && budget.reserveMonthly != null ? budget.reserveMonthly : 0;
@@ -14788,9 +15069,11 @@
       id: e.id || null,
       label: e.label,
       date: e.date,
-      amount: roundCent(-e.amount),
+      amount: roundCent(e.minimumAmount != null ? e.minimumAmount : -e.amount),
       confidence: e.confidence || null,
       payingAccount: e.payingAccount || null,
+      ...(e.occurrenceKey ? { occurrenceKey: e.occurrenceKey, scheduledDate: e.scheduledDate } : {}),
+      ...(e.minimumPayment || {}),
     } : null;
 
     const shape = d => d.secured ? (d.limit == null ? 'secured-term' : 'secured-revolving') : 'card';
@@ -17209,6 +17492,8 @@
     }
     const day = financialDate(asOf);
     if (!day) return { status: 'unavailable', reason: 'A dated plan baseline is required.' };
+    const minimums = cardMinimumState(plan, day, opts);
+    if (minimums.status === 'unavailable') return { status: 'unavailable', reason: minimums.reason };
     const periods = opts.periods;
     const normalSpending = provisionalRecentNormalSpending(plan, day, opts);
     const plannedWeekly = plannedWeeklyVariable(plan, periods, Object.assign({}, opts, { asOf: day }));
@@ -19709,6 +19994,8 @@
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
       return hypotheticalUnavailable('A plan baseline is required.');
     }
+    const minimums = cardMinimumState(plan, financialDate(asOf));
+    if (minimums.status === 'unavailable') return hypotheticalUnavailable(minimums.reason);
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       return hypotheticalUnavailable('A structured hypothetical extra-payment input is required.');
     }
@@ -20059,7 +20346,7 @@
     };
   }
 
-  const Forecast = { savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
