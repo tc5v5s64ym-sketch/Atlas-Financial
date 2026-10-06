@@ -99,6 +99,7 @@ function planFixture() {
   // statement or sender evidence must not silently change that premise.
   delete mbnaOnce.statementOccurrences;
   delete mbnaOnce.sentPayments;
+  delete mbna.sentPayments;
   travel.amount = TRAVEL_MIN;
   return data;
 }
@@ -674,6 +675,32 @@ console.log('\n=== represented payment is not Household Budget spending ===');
     });
     return cls.householdSpending === false && cls.kind !== 'spend';
   }), 'classified overlay actuals are not Household Budget spending');
+}
+
+console.log('\n=== Owner-confirmed MBNA September minimum settles once; excess is not a later minimum ===');
+{
+  const plan = clone(canonical.plan);
+  const sent = (obligation(plan, 'mbna').sentPayments || []).filter(row => row.scheduledDate === '2026-09-30');
+  ok(sent.length === 1 && sent[0].intent === 'minimum' && near(sent[0].amount, 250)
+      && (plan.opening.representedEvents || []).some(row => row.id === 'mbna' && row.date === '2026-09-30'
+        && row.effectiveAsOf === '2026-10-06'),
+    'canonical names exactly the 2026-09-30 MBNA occurrence, qualified at the 2026-10-06 opening');
+  const early = Forecast.cardMinimumState(plan, '2026-10-05').payments.find(row => row.occurrenceKey === 'mbna@2026-09-30');
+  ok(early && early.issuerMinimumStatus === 'unconfirmed' && early.additionalCashRequired === null,
+    'confirmation cannot settle an opening earlier than its qualification');
+  plan.opening.priorAsOf = HISTORICAL_OPENING;
+  plan.opening.asOf = '2026-10-06';
+  const state = Forecast.cardMinimumState(plan, '2026-10-06');
+  const mbnaPayments = state.payments.filter(row => row.id === 'mbna');
+  ok(mbnaPayments.length === 1 && mbnaPayments[0].scheduledDate === '2026-09-30'
+      && mbnaPayments[0].issuerMinimumStatus === 'satisfied' && mbnaPayments[0].additionalCashRequired === 0,
+    'one send settles one original occurrence');
+  const rows = Forecast.recommend(plan, '2026-10-06', {}).payPeriodViews.flatMap(view => view.bills || []);
+  const sep = rows.filter(row => row.id === 'mbna' && row.scheduledDate === '2026-09-30' || row.occurrenceKey === 'mbna@2026-09-30');
+  const oct = rows.filter(row => row.id === 'mbna' && row.date === '2026-10-31');
+  ok(sep.length > 0 && sep.every(row => row.remaining === 0), 'September minimum carries no remaining cash');
+  ok(oct.length > 0 && oct.every(row => row.status !== 'PAID' && near(row.remaining, 158.27)),
+    'the $91.73 above the minimum does not satisfy or reduce the October minimum');
 }
 
 console.log('\n=== cash is not reserved twice; canonical is not rewritten ===');
