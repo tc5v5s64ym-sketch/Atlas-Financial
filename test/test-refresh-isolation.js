@@ -10,7 +10,8 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { runSuite, isExpectedFailure, failureSummary, failureOutput } =
+  require('./lib/refresh-isolation-runner');
 const F = require('../public/forecast.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -99,19 +100,6 @@ const CASES = [
   },
 ];
 
-function runSuite(file) {
-  try {
-    const out = execFileSync(process.execPath, [path.join(__dirname, file)], {
-      cwd: ROOT, encoding: 'utf8', timeout: 180000,
-    });
-    return { file, ok: true, fails: 0, out };
-  } catch (e) {
-    const out = `${e.stdout || ''}${e.stderr || ''}`;
-    const fails = (out.match(/^\s*FAIL\s/gm) || []).length;
-    return { file, ok: false, fails: fails || 1, out };
-  }
-}
-
 function withMutatedData(mutate, fn) {
   const orig = fs.readFileSync(DATA);
   try {
@@ -134,11 +122,11 @@ for (const c of CASES) {
     const failed = [];
     let asserts = 0;
     for (const file of SUITES) {
-      const r = runSuite(file);
+      const r = runSuite(file, ROOT);
       if (!r.ok) {
         failed.push(r);
         asserts += r.fails;
-        console.log(`  FAIL  ${file} (${r.fails} assertion(s))`);
+        console.log(failureOutput(r));
       }
     }
     return { failed, asserts };
@@ -146,12 +134,12 @@ for (const c of CASES) {
   const after = fs.readFileSync(DATA);
   ok(Buffer.compare(restored, after) === 0,
     `${c.id}: data.json bytes restored after the mutation`);
-  const unexpected = result.failed.filter(f => !c.allow.includes(f.file));
-  const expected = result.failed.filter(f => c.allow.includes(f.file));
+  const unexpected = result.failed.filter(f => !isExpectedFailure(f, c.allow));
+  const expected = result.failed.filter(f => isExpectedFailure(f, c.allow));
   ok(unexpected.length === 0,
     `${c.id}: no unrelated behaviour suite fails`,
     unexpected.length
-      ? unexpected.map(f => `${f.file}×${f.fails}`).join(', ')
+      ? unexpected.map(failureSummary).join(', ')
       : 'none');
   for (const name of c.allow) {
     ok(expected.some(f => f.file === name),
@@ -159,7 +147,7 @@ for (const c of CASES) {
   }
   report.push({
     id: c.id,
-    failed: result.failed.map(f => `${f.file} (${f.fails})`),
+    failed: result.failed.map(failureSummary),
     asserts: result.asserts,
   });
 }
