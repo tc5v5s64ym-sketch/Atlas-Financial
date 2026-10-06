@@ -62,6 +62,7 @@ const suites = [
   ['selected Budget missing-income occurrence funding', 'test-budget-missing-income-funding.js'],
   ['pending-card Budget funding and settlement conservation', 'test-budget-pending-card-funding.js'],
   ['early posted card-bill protection and pending status', 'test-posted-card-bill-protection.js'],
+  ['card-bill protection through confirmed backfill lifecycle', 'test-card-bill-protection-lifecycle.js'],
   ['secondary Budget failed-cap spending basis', 'test-budget-secondary-spending-basis.js'],
   ['owner-approved unpaid Burrards team-fee inputs', 'test-burrards-team-fee-inputs.js'],
   ['exact deployed PR provenance', 'test-build-provenance.js'],

@@ -1043,8 +1043,16 @@
           || savingsCents(tx.amount) !== savingsCents(-event.amount)
           || savingsCents(link.actual) !== savingsCents(-event.amount)) return event;
       const held = coverage.annotations.get(tx.coverageRef);
-      const amount = held && held.status === 'awaiting-coverage'
-        ? roundCent(Math.min(held.remaining, Math.max(0, -operatingEventAmount(event)))) : 0;
+      // A confirmed backfill is already spent only in the current dated
+      // cash opening. Then the whole posted purchase replaces this hold,
+      // including its covered portion. Older/undated cash keeps that portion
+      // reserved; the reconciled remaining coverage still protects the rest.
+      const cashIncluded = plan.opening && plan.opening.asOf === start
+        && cashSnapshotDate(plan, start) === start;
+      const amount = held && ['awaiting-coverage', 'resolved'].includes(held.status)
+        && held.remaining != null
+        ? roundCent(Math.min(cashIncluded ? -event.amount : held.remaining,
+          Math.max(0, -operatingEventAmount(event)))) : 0;
       return amount > 0 ? { ...event, cardPurchaseProtection: {
         amount, asOf: start, source: 'Forecast.visaPaymentReconciliation',
       } } : event;

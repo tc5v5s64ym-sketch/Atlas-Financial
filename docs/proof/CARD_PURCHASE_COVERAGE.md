@@ -35,6 +35,18 @@ never gain settlement from this credit. The independent invented regression is
 leaves 407.42. Currency, account, amount, identity, ambiguity and unavailable
 coverage controls withhold the credit.
 
+The confirmed-backfill lifecycle oracle additionally follows the same invented
+purchase through pending, posted, partial and full backfill, in both current and
+next-period schedules. Observed Bills cash and card debt already include each
+posted transfer once. A current dated cash opening allows the posted purchase
+to replace the full duplicate schedule hold, while coverage retains only the
+actual remaining purchase. Older, missing or future cash-opening dates retain
+the paid portion's cash reservation. Payment intent and mapped posted movement
+qualification remain owned by the existing reconciliation; this credit creates
+no receipt or allocation. `test/test-card-bill-protection-lifecycle.js` also
+covers the following monthly occurrence, repeated refresh, unknown payment
+evidence and pending purchases that must never gain paid settlement.
+
 The fixture supplies Bills 500, prior card debt 400, groceries allowance 150,
 scheduled minimum 25 and a confirmed empty coverage opening.
 

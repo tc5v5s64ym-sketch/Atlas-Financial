@@ -50,3 +50,21 @@ module.exports = function fixture(mode = 'pending', early = false) {
   x.asOf = asOf;
   return x;
 };
+
+module.exports.withBackfill = function withBackfill(amount, early = true) {
+  const x = module.exports('posted', early);
+  const O = require('../../scripts/provider-observe');
+  const ref = id => O.cardCoverageReference(O.normalizeLunchMoneyTransaction(
+    x.payload.transactions.find(row => row.id === id)));
+  const fields = { currency: 'cad', date: x.asOf, is_pending: false,
+    category_name: 'Credit Card Payment' };
+  x.payload.transactions.push(
+    { ...fields, id: 81002, account_id: 3001, amount, payee: 'TFR-TO C/C' },
+    { ...fields, id: 81003, account_id: 3004, amount: -amount, payee: 'PAYMENT - THANK YOU' });
+  x.payload.accounts[0].balance = Math.round((500 - amount) * 100) / 100;
+  x.payload.accounts[3].balance = Math.round((473.21 - amount) * 100) / 100;
+  x.data.plan.cardPurchaseCoverage.payments = [{ id: 'invented-confirmed-backfill',
+    confirmed: true, debitRef: ref(81002), creditRef: ref(81003),
+    allocations: [{ purchaseRef: ref(81001), amount }], otherAmount: 0, otherPurpose: null }];
+  return x;
+};
