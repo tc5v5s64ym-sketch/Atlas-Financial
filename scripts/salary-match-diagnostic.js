@@ -1,15 +1,17 @@
 'use strict';
 // Reports guard evaluations from the incumbent matcher, never matches data.
-// A slot is evaluated only when its covered observation has one native
-// scheduled occurrence. No latest/current salary selection policy lives here.
-// Flags aggregate evaluated attempts for that sole occurrence: passed/rejected
+// Select the latest native scheduled occurrence inside complete current
+// household-dated observation coverage supplied by the incumbent observer.
+// This diagnostic selection is independent of a user-selected pay period;
+// it neither selects financial income nor changes the native matcher.
+// Flags aggregate evaluated attempts for that selected occurrence: passed/rejected
 // may both be true. Candidate records require a native ID/date association;
 // window coverage alone cannot establish one. An unevaluated gate has all flags
 // false. Only normal final
 // representation resolution determines the outcome; reasons are observed
 // rejections, not a claim that one gate was the sole blocker.
-const SCHEMA = 'atlas-salary-matcher-diagnostic/v1';
-const SCOPE = 'single-covered-occurrence';
+const SCHEMA = 'atlas-salary-matcher-diagnostic/v2';
+const SCOPE = 'latest-covered-occurrence';
 const SLOTS = Object.freeze(['midmonth', 'month-end']);
 const IDS = Object.freeze({ amandaSalary15: 'midmonth', amandaSalaryMonthEnd: 'month-end' });
 const GATES = Object.freeze(['window', 'rule', 'externalIdentity', 'householdCredit',
@@ -32,6 +34,8 @@ const exact = (x, keys) => plain(x) && Reflect.ownKeys(x).length === keys.length
 const dense = x => Reflect.ownKeys(x).length === x.length + 1
   && Array.from({ length: x.length }, (_, i) =>
     Object.hasOwn(Object.getOwnPropertyDescriptor(x, i) || {}, 'value')).every(Boolean);
+const isoDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 
 // Rebuild from a closed whitelist. Reject the entire malformed diagnostic,
 // including unknown keys, coercion, duplicates, extra slots and raw values.
@@ -75,13 +79,17 @@ function project(value) {
 function create(context) {
   const dates = new Map();
   const targetFor = id => {
-    if (!context || !Array.isArray(context.occurrences)) return 'unavailable';
+    if (!context || !Array.isArray(context.occurrences) || !isoDate(context.startDate)
+        || !isoDate(context.endDate) || context.startDate > context.endDate) return 'unavailable';
     const occurrences = context.occurrences.filter(event => event && event.kind === 'income' && event.id === id);
-    // Duplicate native scheduled rows are ambiguous too; do not deduplicate
-    // away a conflicting schedule or choose a date by receipt amount/timing.
-    if (occurrences.length !== 1) return occurrences.length ? 'ambiguous' : 'none';
-    if (typeof occurrences[0].date !== 'string') return 'unavailable';
-    dates.set(id, occurrences[0].date);
+    if (occurrences.some(event => !isoDate(event.date))) return 'unavailable';
+    const covered = occurrences.filter(event => event.date >= context.startDate && event.date <= context.endDate);
+    if (!covered.length) return 'none';
+    const latest = covered.reduce((date, event) => event.date > date ? event.date : date, covered[0].date);
+    // A duplicate latest native row stays ambiguous. Earlier occurrences,
+    // receipts, amounts and outcomes never choose or replace this target.
+    if (covered.filter(event => event.date === latest).length !== 1) return 'ambiguous';
+    dates.set(id, latest);
     return 'selected';
   };
   const rows = Object.entries(IDS).map(([id, slot]) => ({ slot, target: targetFor(id), outcome: 'not-evaluated',
