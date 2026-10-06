@@ -31,6 +31,17 @@ function registerRow(id) {
   return (register.items || []).find(row => row.id === id);
 }
 
+function routesPhoenix(row) {
+  if (!row || row.disposition !== 'CONSUMED' || !row.routed_to
+      || row.routed_to.path !== 'data.json') return false;
+  const pointer = row.routed_to.json_pointer;
+  if (typeof pointer !== 'string' || !/^\/plan\/bills\/\d+$/.test(pointer)) return false;
+  const bill = pointer.slice(1).split('/').reduce((cur, part) => (
+    cur == null || !Object.prototype.hasOwnProperty.call(cur, part) ? null : cur[part]
+  ), data);
+  return !!bill && bill.id === 'phoenix-digital-health';
+}
+
 console.log('=== coverage caveat is recorded, not 18–24 months ===');
 {
   ok(/2026-02-02/.test(intake) && /2026-09-03/.test(intake),
@@ -50,7 +61,7 @@ console.log('=== coverage caveat is recorded, not 18–24 months ===');
     'Triangle zero is recorded as not evidence of absence');
 }
 
-console.log('\n=== Phoenix two hits stay unproven and unplanned ===');
+console.log('\n=== Phoenix historical discovery and later owner routing ===');
 {
   ok(/Phoenix Digital Health/.test(intake) && /PHOENIX DIGITAL HEALTH/.test(intake),
     'exact merchant is recorded');
@@ -62,6 +73,16 @@ console.log('\n=== Phoenix two hits stay unproven and unplanned ===');
     '29-day interval is not promoted to a proven monthly bill');
   ok(/Two hits[\s\S]{0,40}not a bill/i.test(intake),
     'two hits are not a bill');
+  const phoenixSection = intake.split('## Phoenix Digital Health')[1].split('\n## ')[0];
+  ok(/As of 2026-09-03/.test(phoenixSection)
+      && /Owner 2026-10-06/.test(phoenixSection)
+      && /Routed to live `plan\.bills` `phoenix-digital-health`/.test(phoenixSection),
+    'Phoenix intake separates historical discovery from the dated owner promotion');
+  ok(/category remains unconfirmed/i.test(phoenixSection),
+    'Phoenix routing leaves its category unconfirmed');
+  ok(/Owner-stated planning assumption: monthly on the 3rd/.test(phoenixSection)
+      && /renewal day is not invoice-verified/i.test(phoenixSection),
+    'Phoenix planning cadence is attributed to the owner, not verified from merchant history');
   ok(!/phoenix/i.test(questions),
     'this pack does not open a Phoenix purpose question');
 }
@@ -97,10 +118,16 @@ console.log('\n=== unplanned card candidates are evidence only ===');
 console.log('\n=== plan.bills was not extended from this discovery ===');
 {
   const forbidden = /phoenix|calendly|aichat|shopify/i;
-  const hits = bills.filter(b => forbidden.test(`${b.id} ${b.label}`));
+  // Owner 2026-10-06 later confirmed Phoenix as one monthly card-paid bill (the
+  // promotion CARD-002 deferred to a one-outcome PR); discovery itself added none.
+  const hits = bills.filter(b => forbidden.test(`${b.id} ${b.label}`)
+    && !(b.id === 'phoenix-digital-health' && /^Owner 2026-10-06/.test(b.note || '')
+      && routesPhoenix(registerRow('CARD-002'))));
   ok(hits.length === 0,
-    'no forbidden merchant became a plan.bills id or label',
+    'no forbidden merchant became a plan.bills id or label from this discovery',
     hits.map(b => b.id).join(','));
+  ok(bills.filter(b => b.id === 'phoenix-digital-health').length === 1,
+    'the owner-confirmed Phoenix bill has one canonical row');
   const primeRows = bills.filter(b => b && b.id === 'amazon-prime');
   ok(primeRows.length === 1
       && primeRows[0].amount === 11.19
@@ -157,8 +184,17 @@ console.log('\n=== register routes the declared CARD ids ===');
     const row = registerRow(id);
     ok(!!row, `${id} has a register row`);
   }
-  ok(registerRow('CARD-002').disposition === 'EXCLUDED',
-    'Phoenix is EXCLUDED from plan.bills');
+  const phoenixRoute = registerRow('CARD-002');
+  ok(routesPhoenix(phoenixRoute),
+    'CARD-002 is CONSUMED onto the named Phoenix bill');
+  ok(!routesPhoenix({ ...phoenixRoute, disposition: 'EXCLUDED' }),
+    'Phoenix routing rejects a stale excluded disposition');
+  ok(!routesPhoenix({ ...phoenixRoute, routed_to: {
+    path: 'data.json', json_pointer: registerRow('CARD-011').routed_to.json_pointer,
+  } }), 'Phoenix routing rejects a pointer to another bill');
+  ok(!routesPhoenix({ ...phoenixRoute, routed_to: {
+    path: 'docs/ACCOUNT_FACTS.md', json_pointer: '/plan/bills/23',
+  } }), 'Phoenix routing rejects a pointer on the wrong incumbent');
   ok(registerRow('CARD-003').disposition === 'EXCLUDED'
       && /shopping/i.test(registerRow('CARD-003').exclusion_reason)
       && /CARD-011/.test(registerRow('CARD-003').exclusion_reason),

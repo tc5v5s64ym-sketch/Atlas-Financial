@@ -799,9 +799,11 @@
     {
       "id": "CARD-002",
       "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
-      "disposition": "EXCLUDED",
-      "exclusion_reason": "Phoenix Digital Health: two Travel Visa hits, amount moved $50, monthly unproven. Two hits are not a bill. Not routed into plan.bills.",
-      "no_review_reason": "Owner 2026-09-03: do not add plan.bills. Promotion would be a later one-outcome PR after owner confirmation, not a register correction."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills/23"
+      }
     },
     {
       "id": "CARD-003",

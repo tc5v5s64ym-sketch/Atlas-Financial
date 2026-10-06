@@ -611,6 +611,19 @@
                 "note": "Owner 2026-09-22: Amazon Prime is an active household subscription. Amount $11.19 and monthly day 19 are the repeated posted Travel Visa charges merchant Amazon Prime / Amazon.ca Prime (2026-02-17, 2026-03-17, and day 19 in June, July, and August 2026). The separate $24.63 Prime-like charge on 2026-02-17 is not this membership. Ordinary Amazon shopping is not this bill. Card-paid Travel Visa reserved gravity: jointCash false, not a BILLS ACCOUNT withdrawal, and budgetCategory null so it is not a subscriptions-category smear or a second household-budget hold. firstDue 2026-09-19 so the 19 August charge is not reserved again on the 2026-08-19 opening. Settlement is the represented-event identity: exact membership alias, Travel Visa, debit, same day, and the exact scheduled amount as a guard. Not schedule-trust."
             },
             {
+                "id": "phoenix-digital-health",
+                "label": "Phoenix Digital Health — Amanda",
+                "frequency": "monthly",
+                "day": 3,
+                "firstDue": "2026-10-03",
+                "amount": 174.99,
+                "confidence": "confirmed",
+                "budgetCategory": null,
+                "payingAccount": "travelvisa",
+                "jointCash": false,
+                "note": "Owner 2026-10-06 (Dale via Atlas Coordinator): $174.99 monthly, Amanda's, paid on the Travel Visa. Category is not stated (owner decision); budgetCategory null so it is not a category smear or a second household-budget hold. Day 3 is the posted 2026-09-03 Travel Visa charge; the 2026-10-03 occurrence fell on a Saturday and the charge is dated Monday 2026-10-05, the next business day. firstDue 2026-10-03 because the 2026-09-03 charge is already inside the observed Travel Visa balance and is not reserved again. Card-paid Travel Visa reserved gravity: jointCash false, not a BILLS ACCOUNT withdrawal. Settlement is the represented-event identity (exact payee, Travel Visa, debit, up to two days early or the latest due on or before posting, exact scheduled amount); observed charges are 2026-08-05 ($124.99, earlier price), 2026-09-03 and 2026-10-05. A later Bills to Travel Visa transfer is card backfill for this purchase, not a second bill or minimum."
+            },
+            {
                 "id": "bell-sep15-2026",
                 "label": "Bell Mobility — 15 September 2026",
                 "frequency": "once",

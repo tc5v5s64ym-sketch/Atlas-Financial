@@ -3838,6 +3838,63 @@ function flagUnresolvedPendingPostedDuplicates(transactions, asOf, opts) {
   }
 }
 
+function isCardPaidPlanBill(plan, eventId) {
+  const bill = ((plan && plan.bills) || []).find(row => row && row.id === eventId);
+  if (!bill || bill.householdObligation === false) return false;
+  const cash = (plan && plan.startingCash) || {};
+  if ((cash.heldElsewhere || []).some(row => row && row.id === bill.payingAccount)) return false;
+  if (bill.jointCash === false) return true;
+  return ((plan && plan.obligations) || []).some(row => row && row.debtId === bill.payingAccount);
+}
+
+// Pending revolving purchases that uniquely match a still-due card-paid bill
+// occupy that occurrence for classification only. They are not represented
+// settlement and do not use the pending provider id as cash-omit evidence.
+function pendingCardPaidBillLocalIds(collapsed, opts, existingLocalId, representedActuals) {
+  const window = opts && opts.transactionWindow;
+  if (window && window.complete === false) return [];
+  const rules = ((opts && opts.identityRules) || []).filter(ruleHasIdentity);
+  if (!rules.length) return [];
+  const plan = (opts && (opts.planForIdentity || opts.plan)) || null;
+  const mapDoc = opts && opts.accountMap;
+  const taken = new Set((representedActuals || [])
+    .filter(row => row && row.id && row.date)
+    .map(row => row.id + '@' + row.date));
+  for (const row of (plan && plan.opening && plan.opening.representedEvents) || []) {
+    if (row && row.id && row.date) taken.add(row.id + '@' + row.date);
+  }
+  const groups = new Map();
+  for (const tx of collapsed || []) {
+    if (!tx || tx.pending !== true || tx.contradictoryEvidence === true) continue;
+    if (tx.pendingPostedDuplicate === true || tx.pendingPostedAmbiguous === true) continue;
+    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
+    if (atlasAccountRole(mapping) !== 'revolving-credit') continue;
+    const hits = collectIdentityHits(tx, {
+      accountMap: mapDoc,
+      plan,
+      identityRules: rules,
+      transactions: collapsed,
+    }, rules).filter(hit => hit
+      && hit.sameAccountSplitLegs !== true
+      && isCardPaidPlanBill(plan, hit.id)
+      && (hit.settlesWhen === SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT || !hit.settlesWhen));
+    if (hits.length !== 1) continue;
+    const key = hits[0].id + '@' + hits[0].date;
+    if (taken.has(key)) continue;
+    const localId = existingLocalId(hits[0].providerTransactionId);
+    if (!localId) continue;
+    const list = groups.get(key) || [];
+    list.push(localId);
+    groups.set(key, list);
+  }
+  const ids = [];
+  for (const list of groups.values()) {
+    if (list.length !== 1) continue;
+    ids.push(list[0]);
+  }
+  return ids;
+}
+
 function pendingOnlyBillActuals(collapsed, opts, representedActuals, existingLocalId) {
   const window = opts && opts.transactionWindow;
   if (window && window.complete === false) return [];
@@ -4098,9 +4155,21 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     representedActuals.push(row);
     if (row.transactionId) linkedLocalIds.add(row.transactionId);
   }
+  const pendingCardPaidIds = new Set(pendingCardPaidBillLocalIds(collapsed, {
+    transactionWindow: window,
+    identityRules: opts.identityRules,
+    planForIdentity: opts.planForIdentity,
+    plan: opts.plan,
+    accountMap: mapDoc,
+  }, existingLocalId, representedActuals));
   for (const tx of txs) {
     if (tx && linkedLocalIds.has(tx.id)) tx.representedBill = true;
     else if (tx) tx.representedBill = false;
+    if (tx) {
+      tx.pendingMatchingCardPaidBill = tx.pending === true
+        && pendingCardPaidIds.has(tx.id)
+        && tx.representedBill !== true;
+    }
     stripRawTransactionMetadata(tx);
   }
   const classifyPacket = { transactions: txs, representedActuals };
