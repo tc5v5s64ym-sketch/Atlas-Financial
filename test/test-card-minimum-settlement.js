@@ -99,6 +99,7 @@ function planFixture() {
   // statement or sender evidence must not silently change that premise.
   delete mbnaOnce.statementOccurrences;
   delete mbnaOnce.sentPayments;
+  delete mbna.statementOccurrences;
   delete mbna.sentPayments;
   travel.amount = TRAVEL_MIN;
   return data;
@@ -677,30 +678,115 @@ console.log('\n=== represented payment is not Household Budget spending ===');
   }), 'classified overlay actuals are not Household Budget spending');
 }
 
-console.log('\n=== Owner-confirmed MBNA September minimum settles once; excess is not a later minimum ===');
+console.log('\n=== Invented variable minimum preserves the prior occurrence and future estimates ===');
 {
-  const plan = clone(canonical.plan);
-  const sent = (obligation(plan, 'mbna').sentPayments || []).filter(row => row.scheduledDate === '2026-09-30');
-  ok(sent.length === 1 && sent[0].intent === 'minimum' && near(sent[0].amount, 250)
-      && (plan.opening.representedEvents || []).some(row => row.id === 'mbna' && row.date === '2026-09-30'
-        && row.effectiveAsOf === '2026-10-06'),
-    'canonical names exactly the 2026-09-30 MBNA occurrence, qualified at the 2026-10-06 opening');
-  const early = Forecast.cardMinimumState(plan, '2026-10-05').payments.find(row => row.occurrenceKey === 'mbna@2026-09-30');
+  const make = () => {
+    const x = require('./fixtures/card-backfill-data')('mbna', 'invented-mbna-minimum');
+    x.asOf = '2026-10-06';
+    x.data.meta.asOf = x.data.plan.opening.asOf = '2026-08-19';
+    x.data.plan.income[0].anchor = '2026-08-21';
+    x.data.plan.income[0].amount = 0;
+    x.data.plan.opening.representedEvents = [
+      { id: 'invented-mbna-august', date: '2026-08-31', effectiveAsOf: '2026-10-05' },
+      { id: 'invented-mbna-minimum', date: '2026-09-30', effectiveAsOf: x.asOf },
+    ];
+    const sender = (scheduledDate, postedOn, amount, debitId, cashIncludedAsOf) => ({
+      scheduledDate, confirmed: true, intent: 'minimum', debitId, postedOn,
+      amount, currency: 'cad', fundingAccountId: 'chequing-a', pending: false,
+      cashIncludedAsOf });
+    x.data.plan.obligations = [
+      { id: 'invented-mbna-august', label: 'Invented August minimum', debtId: 'mbna',
+        effect: 'payment', frequency: 'once', date: '2026-08-31', amount: 11.23,
+        payingAccount: 'chequing-a', confidence: 'confirmed',
+        sentPayments: [sender('2026-08-31', '2026-09-02', 17.31, 'invented-august-debit', '2026-10-05')] },
+      { id: 'invented-mbna-minimum', label: 'Invented monthly minimum', debtId: 'mbna',
+        effect: 'payment', frequency: 'monthly', day: 31, firstDue: '2026-09-30',
+        amount: 37.89, payingAccount: 'chequing-a', confidence: 'estimated',
+        statementOccurrences: [{ scheduledDate: '2026-09-30', dueDate: '2026-09-30',
+          minimum: 49.17, currency: 'cad', confidence: 'confirmed' }],
+        sentPayments: [sender('2026-09-30', '2026-10-05', 83.41, 'invented-september-debit', x.asOf)] },
+    ];
+    x.payload.fetchedAt = x.asOf + 'T18:00:00Z';
+    x.payload.transactionWindow = { startDate: '2026-08-19', endDate: x.asOf,
+      complete: true, hasMore: false, truncated: false };
+    x.payload.accounts.forEach(row => { row.updated_at = x.asOf + 'T17:00:00Z'; });
+    x.payload.accounts[0].balance = 399.28; // 500 - 17.31 - 83.41.
+    x.payload.accounts[3].balance = 326.91; // 400 + 27.63 - 17.31 - 83.41.
+    x.payload.transactions = [
+      [3004, '2026-10-04', 27.63, 'Invented grocer', 'Groceries'],
+      [3001, '2026-09-02', 17.31, 'MBNA M/C', 'Credit Card Payment'],
+      [3004, '2026-09-02', -17.31, 'payment', 'Credit Card Payment'],
+      [3001, '2026-10-05', 83.41, 'MBNA M/C', 'Credit Card Payment'],
+      [3004, '2026-10-05', -83.41, 'payment', 'Credit Card Payment'],
+    ].map(([account_id, date, amount, payee, category_name], i) => ({ id: 82001 + i,
+      account_id, date, amount, payee, category_name, currency: 'cad',
+      is_pending: false, status: 'reviewed', notes: null }));
+    return x;
+  };
+  const x = make(), before = JSON.stringify(x);
+  const augustBefore = JSON.stringify(x.data.plan.obligations[0]);
+  const early = Forecast.cardMinimumState(x.data.plan, '2026-10-05').payments
+    .find(row => row.occurrenceKey === 'invented-mbna-minimum@2026-09-30');
   ok(early && early.issuerMinimumStatus === 'unconfirmed' && early.additionalCashRequired === null,
     'confirmation cannot settle an opening earlier than its qualification');
-  plan.opening.priorAsOf = HISTORICAL_OPENING;
-  plan.opening.asOf = '2026-10-06';
-  const state = Forecast.cardMinimumState(plan, '2026-10-06');
-  const mbnaPayments = state.payments.filter(row => row.id === 'mbna');
-  ok(mbnaPayments.length === 1 && mbnaPayments[0].scheduledDate === '2026-09-30'
-      && mbnaPayments[0].issuerMinimumStatus === 'satisfied' && mbnaPayments[0].additionalCashRequired === 0,
-    'one send settles one original occurrence');
-  const rows = Forecast.recommend(plan, '2026-10-06', {}).payPeriodViews.flatMap(view => view.bills || []);
-  const sep = rows.filter(row => row.id === 'mbna' && row.scheduledDate === '2026-09-30' || row.occurrenceKey === 'mbna@2026-09-30');
-  const oct = rows.filter(row => row.id === 'mbna' && row.date === '2026-10-31');
-  ok(sep.length > 0 && sep.every(row => row.remaining === 0), 'September minimum carries no remaining cash');
-  ok(oct.length > 0 && oct.every(row => row.status !== 'PAID' && near(row.remaining, 158.27)),
-    'the $91.73 above the minimum does not satisfy or reduce the October minimum');
+  const result = Live.fromObservation(x);
+  const state = Forecast.cardMinimumState(result.data.plan, x.asOf);
+  ok(state.payments.length === 2 && state.payments.every(row => row.issuerMinimumStatus === 'satisfied'
+      && row.additionalCashRequired === 0)
+      && near(state.payments.find(row => row.occurrenceKey === 'invented-mbna-minimum@2026-09-30').cashPaid, 83.41)
+      && near(state.payments.find(row => row.occurrenceKey === 'invented-mbna-august@2026-08-31').cashPaid, 17.31),
+    'two separate original occurrences keep their own payments and qualification');
+  const events = Forecast.expandEvents(result.data.plan, '2026-10-01', '2026-11-30')
+    .filter(row => row.id === 'invented-mbna-minimum');
+  ok(events.length === 2 && events.every(row => near(-row.amount, 37.89)
+      && row.confidence === 'estimated')
+      && events.map(row => row.date).join(',') === '2026-10-31,2026-11-30',
+    'one confirmed variable minimum does not change or pay future month-end estimates');
+  const unqualified = clone(x.data.plan);
+  unqualified.opening.representedEvents = [];
+  delete unqualified.obligations[1].sentPayments;
+  const original = Forecast.expandEvents(unqualified, '2026-09-30', '2026-09-30')
+    .find(row => row.id === 'invented-mbna-minimum');
+  ok(original && near(-original.amount, 49.17) && original.confidence === 'confirmed',
+    'the independent current minimum replaces its estimate exactly once');
+  const actuals = result.data.liveOverlay.currentPeriodActuals;
+  const spend = actuals.transactions.reduce((sum, row) => sum
+    + (Forecast.classifyCurrentPeriodTransaction(row, result.data.plan, { currentPeriodActuals: actuals })
+      .householdSpending ? Number(row.amount) : 0), 0);
+  ok(result.data.liveOverlay.applied && near(spend, 27.63)
+      && near(cashValue(result.data, 'chequing-a'), 399.28)
+      && near(Forecast.projectDebts(result.data.plan, result.data.debts, x.asOf,
+        { debtHorizonDays: 2 }).byId.mbna.balance, 326.91),
+    'purchase is spending once; both paired transfers and confirmed payments do not replay cash or principal');
+  ok(JSON.stringify(x) === before
+      && JSON.stringify(result.data.plan.obligations[0]) === augustBefore,
+    'input evidence and the prior August occurrence are unchanged');
+  const replay = Live.fromObservation(x);
+  ok(near(cashValue(replay.data, 'chequing-a'), 399.28)
+      && JSON.stringify(replay.data.debts) === JSON.stringify(result.data.debts),
+    'replaying the same observation does not deduct either payment again');
+  for (const [label, change] of [
+    ['purchase backfill', { intent: 'purchase-backfill' }],
+    ['unknown payment intent', { intent: 'unconfirmed' }],
+    ['pending payment', { pending: true }],
+    ['unconfirmed sender', { confirmed: false }],
+  ]) {
+    const candidate = make();
+    candidate.data.plan.opening.representedEvents.pop();
+    Object.assign(candidate.data.plan.obligations[1].sentPayments[0], change);
+    const candidateBefore = JSON.stringify(candidate);
+    const observed = Live.fromObservation(candidate);
+    const payments = Forecast.cardMinimumState(observed.data.plan, candidate.asOf).payments;
+    ok(!payments.some(row => row.id === 'invented-mbna-minimum'
+        && row.issuerMinimumStatus === 'satisfied')
+        && !(observed.data.plan.opening.representedEvents || [])
+          .some(row => row.id === 'invented-mbna-minimum'),
+      label + ': matching posted transfer pairs do not manufacture current-minimum confirmation');
+    ok(near(cashValue(observed.data, 'chequing-a'), 399.28)
+        && near(observed.data.debts[0].balance, 326.91)
+        && JSON.stringify(candidate) === candidateBefore,
+      label + ': observed stocks remain conserved and evidence remains immutable');
+  }
 }
 
 console.log('\n=== cash is not reserved twice; canonical is not rewritten ===');

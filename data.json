@@ -281,8 +281,17 @@
                 "firstDue": "2026-09-30",
                 "amount": 158.27,
                 "confidence": "estimated",
-                "note": "Future statement minimums after the Aug. 31 confirmed row, estimated at the current level. Day clamps to shorter months. firstDue 2026-09-30 so August is not double-counted with mbna-aug31. Owner-confirmed settlement applies only to the original 2026-09-30 occurrence; receipt and cash inclusion are qualified at the later confirmed opening. The send exceeds the estimated minimum by $91.73; that excess is extra principal and does not satisfy, reduce or confirm any later minimum.",
+                "note": "Future statement minimums after the Aug. 31 confirmed row, estimated at the current level. Day clamps to shorter months. firstDue 2026-09-30 so August is not double-counted with mbna-aug31. Owner confirmation received 2026-10-06 reports a $229 minimum and $250 payment for the original 2026-09-30 occurrence; receipt and cash inclusion remain qualified at the 2026-10-06 opening. The statementOccurrences dueDate retains the existing planning identity, not newly supplied issuer due-date evidence. This confirmation does not establish principal allocation or satisfy, reduce or confirm any later minimum; future amounts remain estimates.",
                 "payingAccount": "chequing-a",
+                "statementOccurrences": [
+                    {
+                        "scheduledDate": "2026-09-30",
+                        "dueDate": "2026-09-30",
+                        "minimum": 229,
+                        "currency": "cad",
+                        "confidence": "confirmed"
+                    }
+                ],
                 "sentPayments": [
                     {
                         "scheduledDate": "2026-09-30",
