@@ -1431,7 +1431,7 @@ function operatingDebtAnswerHtml(alloc) {
   const required = alloc.requiredDebtPayments || { items: [] };
   const extra = alloc.extraDebt || {};
   const requiredRows = (required.items || []).map(row => {
-    const confidence = row.confidence === 'estimated' ? ' · estimated' : '';
+    const confidence = (row.dateConfidence || row.confidence) === 'estimated' ? ' · estimated' : '';
     const settlement = row.settlement === 'unverified'
       ? ' · unverified'
       : row.settlement === 'upcoming' ? ' · upcoming' : '';
@@ -1737,7 +1737,10 @@ function glanceLineLabel(row, tag) {
   if (row && row.needsDate) {
     bits.push(row.dateNote || 'needs confirmation');
   } else {
-    if (row && row.date) bits.push(fmtDate(row.date));
+    if (row && row.date) {
+      bits.push(fmtDate(row.date));
+      if (row.dateConfidence === 'estimated') bits.push('estimated');
+    }
     if (tag && tag !== 'needs-date') bits.push(tag);
   }
   return bits.join(' · ');
