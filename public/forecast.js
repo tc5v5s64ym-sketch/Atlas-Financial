@@ -33,7 +33,7 @@
     const records = input.map(record => {
       if (!record || !date(record.scheduledDate) || !date(record.dueDate)
           || record.currency !== 'cad' || record.confidence !== 'confirmed'
-          || (record.dateConfidence != null && record.dateConfidence !== 'confirmed'
+          || (Object.prototype.hasOwnProperty.call(record, 'dateConfidence') && record.dateConfidence !== 'confirmed'
             && record.dateConfidence !== 'estimated')
           || cents(record.minimum) == null
           || occurrences(row, record.scheduledDate, record.scheduledDate).length !== 1
@@ -68,7 +68,7 @@
       // Amount confirmation is statement.confidence. Date trust is separate:
       // omitted dateConfidence remains a fully confirmed statement-date override.
       const dateConfidence = statement
-        ? (statement.dateConfidence == null ? 'confirmed' : statement.dateConfidence)
+        ? (Object.prototype.hasOwnProperty.call(statement, 'dateConfidence') ? statement.dateConfidence : 'confirmed')
         : null;
       return { scheduledDate, date: statement ? statement.dueDate : scheduledDate,
         amount: statement ? statement.minimum : row.amount,

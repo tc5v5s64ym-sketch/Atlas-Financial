@@ -287,6 +287,35 @@ console.log('\n=== 10–11. Estimated stays estimated; unknown stays unknown ===
   }), 'live: each card\'s minimum carries the confidence of its first schedule occurrence, ≈ only when estimated');
 }
 
+console.log('\n=== Amount confirmation retains a separately estimated planning date ===');
+{
+  const fx = fixture();
+  const statement = { scheduledDate: '2026-03-15', dueDate: '2026-03-15',
+    minimum: 91.37, currency: 'cad', confidence: 'confirmed', dateConfidence: 'estimated' };
+  fx.plan.obligations.find(row => row.id === 'card-a').statementOccurrences = [statement];
+  const before = JSON.stringify(fx);
+  const el = page.render(fx);
+  const card = account(el['credit-cards'].innerHTML, 'card-a');
+  const minimum = fact(card, 'minimum'), due = fact(card, 'due');
+  ok(strip(minimum).includes('$91.37') && /CONFIRMED/.test(minimum) && !/ESTIMATED/.test(minimum),
+    'invented confirmed minimum keeps its amount and confirmed chip');
+  ok(strip(due).includes(longDate('2026-03-15')) && /ESTIMATED/.test(due),
+    'actual Credit renderer visibly qualifies the separate planning date');
+  ok(/data-credit-date-confidence="estimated"/.test(due),
+    'due-date fact retains Forecast date trust separately from amount trust');
+  ok(JSON.stringify(fx) === before, 'rendering date trust does not mutate input');
+  for (const legacy of [true, false]) {
+    if (legacy) delete statement.dateConfidence;
+    else statement.dateConfidence = 'confirmed';
+    const confirmed = account(page.render(fx)['credit-cards'].innerHTML, 'card-a');
+    ok(strip(fact(confirmed, 'due')).includes(longDate('2026-03-15'))
+        && !/ESTIMATED/.test(fact(confirmed, 'due')),
+      `${legacy ? 'omitted legacy' : 'explicit confirmed'} date trust does not acquire an estimated qualifier`);
+    ok(strip(fact(confirmed, 'minimum')).includes('$91.37') && /CONFIRMED/.test(fact(confirmed, 'minimum')),
+      'confirmed statement amount remains unchanged');
+  }
+}
+
 console.log('\n=== 12. HELOC capitalised interest is not a second household cash minimum ===');
 {
   const fx = fixture();

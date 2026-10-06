@@ -71,8 +71,10 @@ function creditNextPaymentFacts(row, amountLabel, dateLabel) {
   }
   const estimated = next.confidence === 'estimated';
   const amount = `${estimated ? '≈ ' : ''}${money2(next.amount)}`;
+  const dateHint = next.dateConfidence === 'estimated' ? ` · ${creditConfidenceChip(next.dateConfidence)}` : '';
+  const dateTrust = next.dateConfidence ? ` data-credit-date-confidence="${next.dateConfidence}"` : '';
   return creditFact(amountLabel, amount, `${creditConfidenceChip(next.confidence)}`, `data-credit-fact="minimum" data-credit-confidence="${next.confidence || 'unknown'}"`)
-    + creditFact(dateLabel, fmtDateFull(next.date), next.label, `data-credit-fact="due" data-credit-due="${next.date}"`);
+    + creditFact(dateLabel, fmtDateFull(next.date), next.label + dateHint, `data-credit-fact="due" data-credit-due="${next.date}"${dateTrust}`);
 }
 
 function creditPendingLine(row) {

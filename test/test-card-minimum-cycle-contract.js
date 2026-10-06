@@ -77,6 +77,14 @@ for (const changes of [{ dueDate: '2026-02-30' }, { minimum: -1 }, { minimum: 1.
   const q = structuredClone(p); Object.assign(q.obligations[0].statementOccurrences[0], changes);
   assert.throws(() => F.expandEvents(q, '2026-10-01', '2026-11-30')); checks++;
 }
+for (const dateConfidence of [null, undefined, '', false, 0, [], {}]) {
+  const q = structuredClone(p);
+  q.obligations[0].statementOccurrences[0].dateConfidence = dateConfidence;
+  assert.throws(() => F.expandEvents(q, '2026-10-01', '2026-11-30'),
+    /Statement must replace/, 'explicit malformed date trust must not become confirmed'); checks++;
+}
+eq(F.expandEvents(p, '2026-10-08', '2026-10-08')[0].dateConfidence, 'confirmed',
+  'omitted legacy date confidence retains confirmed statement-date trust');
 {
   const amountOnly = structuredClone(p);
   amountOnly.obligations[0].statementOccurrences[0].dueDate = '2026-10-07';
