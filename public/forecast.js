@@ -5729,7 +5729,10 @@
         remaining,
         actual: bill && bill.actual != null ? bill.actual : null,
         settlement: (bill && bill.settlement) || item.settlement,
-        confidence: item.confidence || (bill && bill.confidence) || null,
+        ...occurrenceTrustFields({
+          confidence: item.confidence || (bill && bill.confidence) || null,
+          dateConfidence: item.dateConfidence || (bill && bill.dateConfidence)
+        }),
         movement: householdMovement(remaining != null ? remaining : amount, 'out'),
       });
     }

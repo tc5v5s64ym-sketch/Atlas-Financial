@@ -264,6 +264,7 @@ const suites = [
   ['live household reconciliation', 'test-live-household.js'],
   ['duplicate live-fact cleanup (B93)', 'test-dedup-facts.js'],
   ['current-balance conclusions are Forecast-derived', 'test-derive-current-headroom.js'],
+  ['refresh isolation subprocess diagnostics and bounded deadlines', 'test-refresh-isolation-runner.js'],
   ['refresh isolation (B92)', 'test-refresh-isolation.js'],
   ['non-writing reconciliation (B91)', 'test-reconcile.js'],
   ['current-state cutover (B91)', 'test-cutover.js'],

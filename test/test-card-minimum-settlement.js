@@ -85,6 +85,7 @@ function planFixture() {
   const mbna = obligation(data.plan, 'mbna');
   const mbnaOnce = obligation(data.plan, 'mbna-aug31');
   const travel = obligation(data.plan, 'travel');
+  const cashback = obligation(data.plan, 'cashback');
   if (!triangle || !mbna || !mbnaOnce || !travel) {
     throw new Error('canonical Triangle/MBNA/Travel obligations missing');
   }
@@ -101,6 +102,9 @@ function planFixture() {
   delete mbnaOnce.sentPayments;
   delete mbna.statementOccurrences;
   delete mbna.sentPayments;
+  // This historical invented ledger excludes the later owner-confirmed Cash Back cycle.
+  delete cashback.statementOccurrences;
+  delete cashback.sentPayments;
   travel.amount = TRAVEL_MIN;
   return data;
 }
@@ -813,6 +817,111 @@ console.log('\n=== cash is not reserved twice; canonical is not rewritten ===');
   const receipt = result.report && result.report.obligationReconciliationReceipt;
   ok(receipt && O.reconciliationReceiptLooksSanitized(receipt),
     'obligation reconciliation receipt stays sanitized');
+}
+
+console.log('\n=== Generic transfers and matching card reductions leave minimum allocation unknown ===');
+{
+  const make = () => {
+    const x = require('./fixtures/card-backfill-data')('cashback', 'invented-cashback-minimum');
+    const cards = ['cashback', 'travelvisa', 'tdcc'];
+    const opening = [700, 400, 300], sends = [93.14, 61.27, 32.08];
+    x.data.plan.income[0].amount = 0;
+    x.data.plan.budget.categories = [];
+    x.data.debts = cards.map((id, i) => ({ ...clone(x.data.debts[0]), id,
+      label: 'Invented card ' + i, balance: opening[i] }));
+    x.data.plan.obligations = cards.slice(0, 2).map((id, i) => ({
+      ...clone(x.data.plan.obligations[0]), id: 'invented-' + id + '-minimum',
+      debtId: id, amount: [37.89, 12.34][i] }));
+    x.accountMap.mappings.push(...cards.slice(1).map((id, i) => ({
+      providerAccountId: String(3005 + i), canonical: { collection: 'debts', id },
+      atlasRole: 'revolving-credit' })));
+    x.payload.accounts = x.payload.accounts.slice(0, 3).concat(cards.map((id, i) => ({
+      ...clone(x.payload.accounts[3]), id: 3004 + i, name: 'Invented card ' + i,
+      balance: Math.round((opening[i] - sends[i]) * 100) / 100 })));
+    x.payload.accounts[0].balance = 313.51; // 500 - 93.14 - 61.27 - 32.08.
+    x.payload.transactions = sends.map((amount, i) => ({ id: 81001 + i,
+      account_id: 3001, date: x.asOf, amount, currency: 'cad',
+      payee: 'TFR-TO C/C', category_name: 'Credit Card Payment',
+      is_pending: false, status: 'reviewed', notes: null }));
+    return x;
+  };
+  for (const [label, alter] of [
+    ['matching reductions without receiving rows', () => {}],
+    ['free-text minimum purpose without card identity', x => {
+      x.payload.transactions[1].notes = 'This is the minimum payment.';
+    }],
+    ['a receiving card credit without confirmed minimum purpose', x => {
+      x.payload.transactions.push({ id: 81004, account_id: 3005, date: x.asOf,
+        amount: -61.27, currency: 'cad', payee: 'PAYMENT - THANK YOU',
+        category_name: 'Credit Card Payment', is_pending: false, status: 'reviewed' });
+    }],
+    ['a Phoenix purchase backfill on another card', x => {
+      x.data.plan.obligations[1].sentPayments = [{ scheduledDate: x.asOf,
+        confirmed: true, intent: 'purchase-backfill', debitId: 'invented-phoenix-transfer',
+        postedOn: x.asOf, amount: 61.27, currency: 'cad', fundingAccountId: 'chequing-a',
+        pending: false, cashIncludedAsOf: x.asOf }];
+    }],
+  ]) {
+    const x = make();
+    alter(x);
+    const before = JSON.stringify(x);
+    const result = Live.fromObservation(x);
+    const advice = Forecast.recommend(result.data.plan, x.asOf, { debts: result.data.debts,
+      currentPeriodActuals: result.data.liveOverlay.currentPeriodActuals });
+    const rows = advice.defaultView.bills.filter(row => /^invented-/.test(row.id));
+    ok(result.data.liveOverlay.applied && rows.length === 2
+        && rows.every(row => row.status !== 'PAID')
+        && near(rows.find(row => row.id === 'invented-cashback-minimum').remaining, 37.89)
+        && near(rows.find(row => row.id === 'invented-travelvisa-minimum').remaining, 12.34),
+      label + ': both original household minimum reserves remain unconfirmed');
+    ok(!(result.data.plan.opening.representedEvents || []).some(row => /^invented-/.test(row.id))
+        && Forecast.cardMinimumState(result.data.plan, x.asOf).payments.length === 0,
+      label + ': no minimum receipt or allocation is manufactured');
+    ok(near(cashValue(result.data, 'chequing-a'), 313.51)
+        && result.data.debts.every((row, i) => near(row.balance, [606.86, 338.73, 267.92][i])),
+      label + ': observed cash and each card stock include the transfers exactly once');
+    ok(JSON.stringify(x) === before, label + ': evidence remains immutable');
+    const replay = Live.fromObservation(x);
+    ok(near(cashValue(replay.data, 'chequing-a'), 313.51)
+        && JSON.stringify(replay.data.debts) === JSON.stringify(result.data.debts),
+      label + ': replay does not deduct cash or card principal again');
+  }
+  const confirmed = make();
+  const min = confirmed.data.plan.obligations[0];
+  Object.assign(min, { frequency: 'monthly', day: 20, firstDue: confirmed.asOf,
+    amount: 37.89, confidence: 'estimated',
+    statementOccurrences: [{ scheduledDate: confirmed.asOf, dueDate: confirmed.asOf,
+      minimum: 45.67, currency: 'cad', confidence: 'confirmed' }],
+    sentPayments: [{ scheduledDate: confirmed.asOf, confirmed: true, intent: 'minimum',
+      debitId: 'invented-confirmed-minimum', postedOn: confirmed.asOf, amount: 93.14,
+      currency: 'cad', fundingAccountId: 'chequing-a', pending: false,
+      cashIncludedAsOf: confirmed.asOf }] });
+  delete min.date;
+  confirmed.data.plan.opening.representedEvents = [{ id: min.id, date: confirmed.asOf,
+    effectiveAsOf: confirmed.asOf }];
+  confirmed.data.plan.obligations[1].sentPayments = [{ scheduledDate: confirmed.asOf,
+    confirmed: true, intent: 'purchase-backfill', debitId: 'invented-phoenix-transfer',
+    postedOn: confirmed.asOf, amount: 61.27, currency: 'cad', fundingAccountId: 'chequing-a',
+    pending: false, cashIncludedAsOf: confirmed.asOf }];
+  const result = Live.fromObservation(confirmed);
+  const state = Forecast.cardMinimumState(result.data.plan, confirmed.asOf);
+  ok(state.payments.length === 1 && state.payments[0].id === min.id
+      && state.payments[0].cashPaid === 93.14
+      && state.payments[0].issuerMinimumStatus === 'satisfied'
+      && state.payments[0].additionalCashRequired === 0,
+    'independent minimum confirmation uses its own send; Phoenix cannot substitute for it');
+  const early = Forecast.cardMinimumState(confirmed.data.plan, '2026-09-19');
+  ok(early.payments.length === 0, 'neither send nor qualified receipt settles an earlier opening');
+  const events = Forecast.expandEvents(result.data.plan, confirmed.asOf, '2026-11-20', {})
+    .filter(row => row.id === min.id);
+  ok(events.filter(row => row.date === confirmed.asOf).length === 0
+      && events.filter(row => row.date > confirmed.asOf).every(row => near(-row.amount, 37.89)
+        && row.confidence === 'estimated') && events.length === 2,
+    'one variable minimum is replaced once; later cycles retain the independent estimate');
+  ok(near(cashValue(result.data, 'chequing-a'), 313.51)
+      && Forecast.projectDebts(result.data.plan, result.data.debts, confirmed.asOf,
+        { debtHorizonDays: 2 }).byId.cashback.balance === 606.86,
+    'confirmed payment and separate Phoenix backfill do not debit observed cash or principal again');
 }
 
 if (failures) {
