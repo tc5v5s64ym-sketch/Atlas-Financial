@@ -33,6 +33,8 @@
     const records = input.map(record => {
       if (!record || !date(record.scheduledDate) || !date(record.dueDate)
           || record.currency !== 'cad' || record.confidence !== 'confirmed'
+          || (record.dateConfidence != null && record.dateConfidence !== 'confirmed'
+            && record.dateConfidence !== 'estimated')
           || cents(record.minimum) == null
           || occurrences(row, record.scheduledDate, record.scheduledDate).length !== 1
           || used.has(record.scheduledDate)) throw new Error('Statement must replace one unique scheduled occurrence.');
@@ -63,9 +65,15 @@
     }
     return Array.from(candidates).map(scheduledDate => {
       const statement = byScheduled.get(scheduledDate);
+      // Amount confirmation is statement.confidence. Date trust is separate:
+      // omitted dateConfidence remains a fully confirmed statement-date override.
+      const dateConfidence = statement
+        ? (statement.dateConfidence == null ? 'confirmed' : statement.dateConfidence)
+        : null;
       return { scheduledDate, date: statement ? statement.dueDate : scheduledDate,
         amount: statement ? statement.minimum : row.amount,
         confidence: statement ? statement.confidence : row.confidence,
+        ...(dateConfidence ? { dateConfidence } : {}),
         statement: !!statement };
     }).filter(record => record.date <= end && (record.date >= start || row.frequency === 'once'))
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -529,6 +537,13 @@
   }
   function obligationOccurrences(row, start, end) {
     return CardMinimumContract.resolveOccurrences(row, start, end, occurrences, outflowDates);
+  }
+  function occurrenceTrustFields(event) {
+    const fields = { confidence: event && event.confidence || null };
+    if (event && (event.dateConfidence === 'confirmed' || event.dateConfidence === 'estimated')) {
+      fields.dateConfidence = event.dateConfidence;
+    }
+    return fields;
   }
   function minimumPaymentFor(plan, event, asOf, opts) {
     if (!event || event.kind !== 'obligation' || event.effect !== 'payment') return null;
@@ -2127,7 +2142,7 @@
         }
         if (amount <= 0 && !sent) continue;      // nothing left for this payment to pay
         events.push({ date, amount: -amount, kind: 'obligation',
-          label: o.label, id: o.id, confidence: occurrence.confidence,
+          label: o.label, id: o.id, ...occurrenceTrustFields(occurrence),
           ...(occurrence.statement ? { scheduledDate: occurrence.scheduledDate,
             occurrenceKey: o.id + '@' + occurrence.scheduledDate } : {}),
           ...(sent ? { minimumAmount: occurrence.amount, minimumPayment: sent } : {}),
@@ -5456,11 +5471,11 @@
         remaining,
         settlement,
         evidenceDate: paid ? observedPostedOn(observed, e.id, e.date, e.date) : null,
-        confidence: e.confidence || null,
         ...(e.occurrenceKey ? { occurrenceKey: e.occurrenceKey, scheduledDate: e.scheduledDate } : {}),
         ...(sent ? { ...sent, date: e.date, actual: null,
           remaining: sent.issuerMinimumStatus === 'satisfied' ? 0 : null,
           settlement: sent.issuerMinimumStatus === 'satisfied' ? 'represented' : 'unverified' } : {}),
+        ...occurrenceTrustFields(e),
       });
     }
     return items;
@@ -5943,7 +5958,7 @@
         status,
         glanceKind: status === 'PAID' ? 'paid' : 'still-due',
         movement: householdMovement(raw, 'out'),
-        confidence: e.confidence || null,
+        ...occurrenceTrustFields(e),
       });
     }
     items.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
@@ -7029,7 +7044,6 @@
       cardPaid: event.cardPaid === true,
       glanceKind: status === 'PAID' ? 'paid' : 'still-due',
       movement: householdMovement(display, 'out'),
-      confidence: event.confidence || null,
       payingAccount,
       payerLabel: plannedPayerLabel(payingAccount),
       needsDate: false,
@@ -7041,6 +7055,7 @@
         settlement: sent.issuerMinimumStatus === 'satisfied' ? 'represented' : 'unverified',
         status: sent.issuerMinimumStatus === 'satisfied' ? 'PAID' : 'unconfirmed',
         glanceKind: sent.issuerMinimumStatus === 'satisfied' ? 'paid' : 'unconfirmed' } : {}),
+      ...occurrenceTrustFields(event),
     };
   }
 
@@ -10960,7 +10975,7 @@
         date: e.date,
         amount: roundCent(amt),
         ...(e.reserveFunding ? { fullRequirement: -e.amount, reserveFunded: reserveFundedAmount(e) } : {}),
-        confidence: e.confidence || null,
+        ...occurrenceTrustFields(e),
         cardPaid: e.cardPaid === true,
         // Settlement is expandEvents / representedEvents: a represented
         // occurrence is omitted above, not labelled unpaid. A past scheduled
@@ -15089,7 +15104,7 @@
       label: e.label,
       date: e.date,
       amount: roundCent(e.minimumAmount != null ? e.minimumAmount : -e.amount),
-      confidence: e.confidence || null,
+      ...occurrenceTrustFields(e),
       payingAccount: e.payingAccount || null,
       ...(e.occurrenceKey ? { occurrenceKey: e.occurrenceKey, scheduledDate: e.scheduledDate } : {}),
       ...(e.minimumPayment || {}),

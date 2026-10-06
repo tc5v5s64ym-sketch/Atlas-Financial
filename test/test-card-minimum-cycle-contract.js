@@ -57,21 +57,82 @@ function run(x) {
 }
 const x = fixture(), p = x.data.plan;
 eq(F.expandEvents(p, '2026-10-01', '2026-12-31').filter(e => e.id === 'triangle')
-  .map(e => [e.date, -e.amount, e.confidence]), [
-    ['2026-10-08', 91.23, 'confirmed'], ['2026-11-07', 88.88, 'estimated'], ['2026-12-07', 88.88, 'estimated']]);
+  .map(e => [e.date, -e.amount, e.confidence, e.dateConfidence]), [
+    ['2026-10-08', 91.23, 'confirmed', 'confirmed'],
+    ['2026-11-07', 88.88, 'estimated', undefined],
+    ['2026-12-07', 88.88, 'estimated', undefined]]);
 eq(F.expandEvents(p, '2026-10-07', '2026-10-07').filter(e => e.id === 'triangle').length, 0);
 const moved = F.expandEvents(p, '2026-10-08', '2026-10-08').find(e => e.id === 'triangle');
-eq([moved.date, moved.scheduledDate, moved.occurrenceKey],
-  ['2026-10-08', '2026-10-07', 'triangle@2026-10-07'], 'replacement before window filtering, stable identity');
+eq([moved.date, moved.scheduledDate, moved.occurrenceKey, moved.dateConfidence],
+  ['2026-10-08', '2026-10-07', 'triangle@2026-10-07', 'confirmed'],
+  'replacement before window filtering, stable identity, confirmed date override');
 for (const dueDate of ['2026-09-30', '2026-11-01']) {
   const q = structuredClone(p); q.obligations[0].statementOccurrences[0].dueDate = dueDate;
   eq(F.expandEvents(q, dueDate, dueDate).filter(e => e.id === 'triangle').length, 1);
   eq(F.expandEvents(q, '2026-10-07', '2026-10-07').filter(e => e.id === 'triangle').length, 0);
 }
 for (const changes of [{ dueDate: '2026-02-30' }, { minimum: -1 }, { minimum: 1.001 },
-  { currency: 'usd' }, { confidence: 'estimated' }, { scheduledDate: '2026-10-06' }, { dueDate: '2026-11-07' }]) {
+  { currency: 'usd' }, { confidence: 'estimated' }, { dateConfidence: 'verified' },
+  { scheduledDate: '2026-10-06' }, { dueDate: '2026-11-07' }]) {
   const q = structuredClone(p); Object.assign(q.obligations[0].statementOccurrences[0], changes);
   assert.throws(() => F.expandEvents(q, '2026-10-01', '2026-11-30')); checks++;
+}
+{
+  const amountOnly = structuredClone(p);
+  amountOnly.obligations[0].statementOccurrences[0].dueDate = '2026-10-07';
+  amountOnly.obligations[0].statementOccurrences[0].dateConfidence = 'estimated';
+  const original = F.expandEvents(amountOnly, '2026-10-01', '2026-12-31')
+    .filter(e => e.id === 'triangle');
+  eq(original.map(e => [e.date, -e.amount, e.confidence, e.dateConfidence]), [
+    ['2026-10-07', 91.23, 'confirmed', 'estimated'],
+    ['2026-11-07', 88.88, 'estimated', undefined],
+    ['2026-12-07', 88.88, 'estimated', undefined]],
+    'amount confirmation does not promote a retained planning date');
+  const amountOnlyRun = run((() => {
+    const x = fixture();
+    x.data.plan.obligations[0].statementOccurrences[0].dueDate = '2026-10-07';
+    x.data.plan.obligations[0].statementOccurrences[0].dateConfidence = 'estimated';
+    return sent(x, { cashIncludedAsOf: '2026-10-05' });
+  })());
+  eq([amountOnlyRun.bill.date, amountOnlyRun.bill.planned, amountOnlyRun.bill.confidence,
+    amountOnlyRun.bill.dateConfidence, amountOnlyRun.bill.householdPaymentStatus],
+    ['2026-10-07', 91.23, 'confirmed', 'estimated', 'paid'],
+    'settlement uses confirmed amount trust without confirming the planning date');
+  const BillDetail = require('../public/bill-detail');
+  const detail = BillDetail.html(amountOnlyRun.bill, amountOnlyRun.data);
+  eq(/Due date<\/dt><dd>2026-10-07 · estimated/.test(detail), true,
+    'Plan bill detail reprints estimated date trust');
+  eq(/Published confidence<\/dt><dd>confirmed/.test(detail), true,
+    'Plan bill detail keeps confirmed amount trust');
+  const planSrc = fs.readFileSync(require.resolve('../public/plan.js'), 'utf8');
+  const grabPlan = re => { const m = re.exec(planSrc); eq(!!m, true, 'plan helper present'); return m[0]; };
+  const labelCtx = { Date, Intl };
+  vm.createContext(labelCtx);
+  vm.runInContext([
+    fs.readFileSync(require.resolve('../public/app.js'), 'utf8').match(/^const fmtDate = .*$/m)[0],
+    grabPlan(/^function glanceLineLabel\([\s\S]*?\n\}$/m),
+    'this.glanceLineLabel = glanceLineLabel;',
+  ].join('\n'), labelCtx);
+  eq(labelCtx.glanceLineLabel(amountOnlyRun.bill, 'still due'),
+    'Invented card minimum · Oct 7 · estimated · still due',
+    'Plan date line keeps estimated indication after amount confirmation');
+  const debtCtx = { Date };
+  vm.createContext(debtCtx);
+  vm.runInContext([
+    fs.readFileSync(require.resolve('../public/app.js'), 'utf8').match(/^const money2 = .*$/m)[0],
+    fs.readFileSync(require.resolve('../public/app.js'), 'utf8').match(/^const fmtDate = .*$/m)[0],
+    grabPlan(/^function operatingDebtAnswerHtml\([\s\S]*?\n\}$/m),
+    'this.operatingDebtAnswerHtml = operatingDebtAnswerHtml;',
+  ].join('\n'), debtCtx);
+  const debtHtml = debtCtx.operatingDebtAnswerHtml({
+    requiredDebtPayments: { items: [{
+      label: 'Invented card minimum', date: '2026-10-07', amount: 91.23,
+      confidence: 'confirmed', dateConfidence: 'estimated', settlement: 'upcoming',
+    }] },
+    extraDebt: { allocated: 0 },
+  });
+  eq(/Oct 7 · estimated/.test(debtHtml) && /\$91\.23/.test(debtHtml), true,
+    'required-debt date keeps estimated indication while the amount stays confirmed');
 }
 const duplicate = structuredClone(p);
 duplicate.obligations[0].statementOccurrences.push({ ...duplicate.obligations[0].statementOccurrences[0] });
@@ -82,7 +143,8 @@ eq(F.expandEvents(zero, '2026-10-01', '2026-10-31').filter(e => e.id === 'triang
 const base = run(fixture());
 eq([base.data.plan.startingCash.breakdown[0].value, base.data.plan.startingCash.breakdown[1].value], [400, 64.30]);
 eq(base.period.householdBudget.reduce((sum, row) => sum + (row.spent || 0), 0), 35.70, 'purchase once, transfer no expense');
-eq([base.bill.date, base.bill.planned, base.bill.confidence], ['2026-10-08', 91.23, 'confirmed']);
+eq([base.bill.date, base.bill.planned, base.bill.confidence, base.bill.dateConfidence],
+  ['2026-10-08', 91.23, 'confirmed', 'confirmed']);
 eq(base.bill.status === 'PAID', false, 'bank movement alone has no minimum intent');
 eq(base.data.debts[0].balance, 400, 'sender-only bank debit does not change card stock');
 
