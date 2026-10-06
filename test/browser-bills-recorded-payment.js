@@ -12,6 +12,7 @@ const cases = [
   ['exact', [sent({ amount: 47.39 })], true, 'Money sent'],
   ['conflicting-allocation', [sent(), sent({ amount: 1 })], false, 'Payment allocation unconfirmed'],
   ['conflicting-purpose', [sent(), sent({ intent: 'purchase-backfill' })], false, 'Payment allocation unconfirmed'],
+  ['conflicting-settled', [sent({ cashIncludedAsOf: NOW }), sent({ amount: 1 })], true, 'Payment allocation unconfirmed'],
   ['partial', [sent({ amount: 46.38 })], false, 'Partial payment sent'],
   ['pending', [sent({ pending: true })], false, null],
   ['backfill', [sent({ intent: 'purchase-backfill' })], false, null],
@@ -31,6 +32,7 @@ const cases = [
     for (const [name, records, paid, qualifier] of cases) {
       const x = fixture(records);
       if (name === 'estimated-minimum') delete x.data.plan.obligations[0].statementOccurrences;
+      if (name === 'conflicting-settled') x.data.plan.opening.representedEvents.push({ id: 'triangle', date: '2026-10-07', effectiveAsOf: NOW });
       x.map = x.accountMap;
       x.payload.fetchedAt = NOW + 'T18:00:00Z';
       x.payload.accounts.forEach(a => a.updated_at = NOW + 'T17:00:00Z');
@@ -69,6 +71,7 @@ const cases = [
             if (name.startsWith('conflicting-')) {
               ok(/Payment allocation unconfirmed/.test(info));
               ok(!/Paid - money sent|Money sent\s+\$/.test(info));
+              ok(new RegExp('Lender minimum confirmation\\s+' + (name === 'conflicting-settled' ? 'Confirmed' : 'Not confirmed')).test(info));
             } else {
               ok(/Money sent/.test(info));
               ok(/Lender minimum confirmation\s+Not confirmed/.test(info));

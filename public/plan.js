@@ -6288,7 +6288,10 @@ function budgetSpendingSectionHtml(period, ctx) {
 
 function budgetBillPresentation(row) {
   if (row.status === 'pending' || row.settlement === 'pending') return { kind: 'pending', label: 'Payment pending' };
-  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'unconfirmed') return { kind: 'check', label: 'Not confirmed', qualifier: 'Payment allocation unconfirmed' };
+  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'unconfirmed') {
+    const settled = row.status === 'PAID' || row.settlement === 'represented';
+    return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'Not confirmed', qualifier: 'Payment allocation unconfirmed' };
+  }
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'paid') return { kind: 'paid', label: 'Paid', qualifier: 'Money sent' };
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'partial') return { kind: 'check', label: 'Not paid', qualifier: 'Partial payment sent' };
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'sent') return { kind: 'check', label: 'Not confirmed', qualifier: 'Money sent; minimum amount unconfirmed' };

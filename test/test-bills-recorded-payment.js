@@ -142,6 +142,17 @@ for (const receipt of [false, true]) for (const inclusion of [false, true]) {
     eq(Math.round(sim.ending * 100), 170167, 'independent cash: 78517 - 3117 - 5233 + 100000, both unresolved Amazon cycles and no second Triangle debit');
   }
 }
+for (const receipt of [false, true]) for (const inclusion of [false, true]) {
+  const x = fixture([sent(inclusion ? { cashIncludedAsOf: NOW } : {}), sent({ amount: 1 })]);
+  if (receipt) x.data.plan.opening.representedEvents.push({ id: 'triangle', date: '2026-10-07', effectiveAsOf: NOW });
+  const { r, row } = publication(x), html = Detail.html(row, x.data, {});
+  eq(row.householdPaymentStatus, 'unconfirmed', 'conflict always withholds household action assurance');
+  eq(render.presentation(row).kind === 'paid', receipt, 'independent qualified issuer settlement retains existing Paid');
+  eq([row.issuerMinimumStatus, row.cashInclusionStatus], [receipt ? 'satisfied' : 'unconfirmed', inclusion ? 'included' : 'unconfirmed']);
+  ok(html.includes('Payment allocation unconfirmed') && !html.includes('<dt>Money sent</dt>'));
+  ok(html.includes('<dt>Lender minimum confirmation</dt><dd>' + (receipt ? 'Confirmed' : 'Not confirmed') + '</dd>'));
+  eq(numbers(r), numbers(publication(x, oldF).r), 'settled conflict preserves incumbent money and funding holds');
+}
 {
   const x = fixture([sent()]); delete x.data.plan.obligations[0].statementOccurrences;
   const { r, row } = publication(x);

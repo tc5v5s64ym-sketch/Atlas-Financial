@@ -114,7 +114,10 @@
       && ['paid', 'partial', 'sent'].includes(row.householdPaymentStatus);
     const sentDates = Array.isArray(row.cashSentDates) ? row.cashSentDates.filter(date) : [];
     const recordedProof = row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'unconfirmed'
-      ? '<p>Payment allocation unconfirmed. Records reuse the same payment with conflicting or duplicate allocations. The household payment action cannot be confirmed.</p>'
+      ? '<p>Payment allocation unconfirmed. Records reuse the same payment with conflicting or duplicate allocations. The household payment action cannot be confirmed.</p><dl>'
+        + fact('Lender minimum confirmation', row.issuerMinimumStatus === 'satisfied' ? 'Confirmed' : 'Not confirmed')
+        + fact('Included in cash opening', row.cashInclusionStatus === 'included' ? 'Confirmed' : 'Not confirmed')
+        + '</dl>'
       : recorded ? '<p>'
       + (row.householdPaymentStatus === 'paid' ? 'Paid — money sent toward this minimum.'
         : row.householdPaymentStatus === 'partial' ? 'Partial payment sent toward this minimum.'
