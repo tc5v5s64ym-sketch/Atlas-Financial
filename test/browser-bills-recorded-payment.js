@@ -14,6 +14,8 @@ const cases = [
   ['conflicting-purpose', [sent(), sent({ intent: 'purchase-backfill' })], false, 'Payment allocation unconfirmed'],
   ['conflicting-settled', [sent({ cashIncludedAsOf: NOW }), sent({ amount: 1 })], true, 'Payment allocation unconfirmed'],
   ['partial', [sent({ amount: 46.38 })], false, 'Partial payment sent'],
+  ['partial-settled', [sent({ amount: 23.11, cashIncludedAsOf: NOW })], true, 'Partial payment sent'],
+  ['estimated-settled', [sent({ cashIncludedAsOf: NOW })], true, 'minimum amount unconfirmed'],
   ['pending', [sent({ pending: true })], false, null],
   ['backfill', [sent({ intent: 'purchase-backfill' })], false, null],
   ['unknown-intent', [sent({ intent: 'unconfirmed' })], false, null],
@@ -31,8 +33,10 @@ const cases = [
   try {
     for (const [name, records, paid, qualifier] of cases) {
       const x = fixture(records);
-      if (name === 'estimated-minimum') delete x.data.plan.obligations[0].statementOccurrences;
-      if (name === 'conflicting-settled') x.data.plan.opening.representedEvents.push({ id: 'triangle', date: '2026-10-07', effectiveAsOf: NOW });
+      const estimated = name === 'estimated-minimum' || name === 'estimated-settled';
+      const settled = name.endsWith('-settled');
+      if (estimated) delete x.data.plan.obligations[0].statementOccurrences;
+      if (settled) x.data.plan.opening.representedEvents.push({ id: 'triangle', date: '2026-10-07', effectiveAsOf: NOW });
       x.map = x.accountMap;
       x.payload.fetchedAt = NOW + 'T18:00:00Z';
       x.payload.accounts.forEach(a => a.updated_at = NOW + 'T17:00:00Z');
@@ -40,7 +44,7 @@ const cases = [
       x.payload.transactions = [];
       x.payload.transactionWindow = { startDate: '2026-09-25', endDate: NOW, complete: true, hasMore: false, truncated: false };
       await withServer(x, async server => {
-        for (const width of [1440, 390]) {
+        for (const width of [1440, 390, 320]) {
           const context = await browser.newContext({ viewport: { width, height: 1000 }, reducedMotion: 'reduce', colorScheme: width === 390 ? 'dark' : 'light' });
           const [cookieName, cookieValue] = server.cookie.split('=');
           await context.addCookies([{ name: cookieName, value: cookieValue, url: server.base, httpOnly: true }]);
@@ -49,7 +53,7 @@ const cases = [
           await page.goto(server.base + '/');
           await page.locator('[data-budget-surface]').waitFor();
           const bills = page.locator('[data-budget-browse="bills"]');
-          const due = name === 'estimated-minimum' ? '2026-10-07' : '2026-10-08';
+          const due = estimated ? '2026-10-07' : '2026-10-08';
           const row = bills.locator(`[data-budget-bill-open="triangle"][data-budget-bill-date="${due}"]`);
           await row.waitFor({ state: 'attached' });
           if (!await row.isVisible()) {
@@ -74,8 +78,8 @@ const cases = [
               ok(new RegExp('Lender minimum confirmation\\s+' + (name === 'conflicting-settled' ? 'Confirmed' : 'Not confirmed')).test(info));
             } else {
               ok(/Money sent/.test(info));
-              ok(/Lender minimum confirmation\s+Not confirmed/.test(info));
-              ok(/Included in cash opening\s+Not confirmed/.test(info));
+              ok(new RegExp('Lender minimum confirmation\\s+' + (settled ? 'Confirmed' : 'Not confirmed')).test(info));
+              ok(new RegExp('Included in cash opening\\s+' + (settled ? 'Confirmed' : 'Not confirmed')).test(info));
             }
             ok(!/invented-recorded-send/.test(info));
           }

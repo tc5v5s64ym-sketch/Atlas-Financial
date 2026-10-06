@@ -129,6 +129,38 @@ for (const reverse of [false, true]) {
     .some(row => render.presentation(row).kind === 'paid'), false, 'one debit reused across obligations cannot establish either action');
   eq(numbers(r), numbers(publication(x, oldF).r), 'cross-obligation conflict preserves every incumbent monetary field');
 }
+// Independent issuer settlement takes precedence over the household send's
+// partial/estimated classification. The action qualifier and funding holds
+// remain separate across every receipt, inclusion and identity combination.
+for (const mode of ['partial', 'estimated']) for (const receipt of [false, true])
+  for (const inclusion of [false, true]) for (const conflict of [false, true]) {
+  const records = [sent({ ...(mode === 'partial' ? { amount: 23.11 } : {}),
+    ...(inclusion ? { cashIncludedAsOf: NOW } : {}) })];
+  if (conflict) records.push(sent({ amount: 1 }));
+  const x = fixture(records);
+  if (mode === 'estimated') delete x.data.plan.obligations[0].statementOccurrences;
+  if (receipt) x.data.plan.opening.representedEvents.push({ id: 'triangle', date: '2026-10-07', effectiveAsOf: NOW });
+  const immutable = JSON.stringify(x.data), { r, row } = publication(x), baseline = publication(x, oldF);
+  const name = `${mode}: receipt=${receipt}, inclusion=${inclusion}, conflict=${conflict}`;
+  eq(row.householdPaymentStatus, conflict ? 'unconfirmed' : mode === 'partial' ? 'partial' : 'sent', name + ': action remains separate');
+  eq(render.presentation(row).kind === 'paid', receipt, name + ': qualified issuer settlement stays Paid');
+  eq(render.presentation(row).qualifier, conflict ? 'Payment allocation unconfirmed'
+    : mode === 'partial' ? 'Partial payment sent' : 'Money sent; minimum amount unconfirmed', name + ': qualifier retained');
+  eq([row.status, row.settlement, row.remaining, row.issuerMinimumStatus, row.cashInclusionStatus],
+    [baseline.row.status, baseline.row.settlement, baseline.row.remaining, baseline.row.issuerMinimumStatus, baseline.row.cashInclusionStatus], name + ': existing authority unchanged');
+  eq(numbers(r), numbers(baseline.r), name + ': all monetary/null publications unchanged');
+  eq(JSON.stringify(x.data), immutable, name + ': read/render remains immutable');
+  if (conflict || !receipt || !inclusion) eq(r.sim.ending, null, name + ': unresolved funding remains unavailable');
+  else {
+    eq(Math.round(F.simulate(x.data.plan, NOW, { horizonDays: 10, weeklyVariable: 0 }).ending * 100),
+      170167, name + ': independent opening minus two other requirements plus one payroll, no repeated debit');
+    eq(F.projectDebts(x.data.plan, x.data.debts, NOW, { debtHorizonDays: 10 }).byId.triangle.paid, 0,
+      name + ': no repeated principal payment');
+  }
+}
+eq(render.presentation({ status: 'PAID', settlement: 'represented' }).kind, 'paid', 'represented settlement without a send remains Paid');
+eq(render.presentation({ status: 'pending', settlement: 'represented', cashPaymentStatus: 'sent', householdPaymentStatus: 'partial' }).kind,
+  'pending', 'pending evidence retains its existing precedence');
 for (const receipt of [false, true]) for (const inclusion of [false, true]) {
   const x = fixture([sent(inclusion ? { cashIncludedAsOf: NOW } : {})]);
   if (receipt) x.data.plan.opening.representedEvents.push({ id: 'triangle', date: '2026-10-07', effectiveAsOf: NOW });
