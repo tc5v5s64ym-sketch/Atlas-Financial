@@ -877,6 +877,7 @@ function glanceUpdatedNote(asOf, liveOverlay) {
 function paydayObligationNote(item, asOf) {
   if (!item) return '';
   const when = item.date ? fmtDate(item.date) : '';
+  const dateTrust = item.dateConfidence === 'estimated' ? ' · estimated' : '';
   const reserved = item.allocated != null
     && Number(item.allocated) > 0
     && Math.abs(Number(item.allocated) - Number(item.amount)) <= 0.02;
@@ -885,9 +886,9 @@ function paydayObligationNote(item, asOf) {
     const reserveClause = reserved
       ? ' Reserved until current evidence confirms posting.'
       : '';
-    return `${when ? when + ' · ' : ''}settlement unverified${opening}.${reserveClause}`;
+    return `${when ? when + dateTrust + ' · ' : ''}settlement unverified${opening}.${reserveClause}`;
   }
-  if (item.date) return `Due ${fmtDate(item.date)}.`;
+  if (item.date) return `Due ${fmtDate(item.date)}${dateTrust}.`;
   return '';
 }
 
@@ -931,14 +932,15 @@ function paydayCoverageNote(action) {
 
 function paydayBillStatusNote(item) {
   if (!item) return '';
+  const dateTrust = item.dateConfidence === 'estimated' ? ' · estimated' : '';
   if (item.settlement === 'represented') {
-    return item.date ? `Paid ${fmtDate(item.date)}.` : 'Paid.';
+    return item.date ? `Paid ${fmtDate(item.date)}${dateTrust}.` : 'Paid.';
   }
   if (item.settlement === 'unverified') {
-    const when = item.date ? fmtDate(item.date) + ' · ' : '';
+    const when = item.date ? fmtDate(item.date) + dateTrust + ' · ' : '';
     return `${when}settlement not proven. Reserved until current evidence confirms posting.`;
   }
-  if (item.date) return `Due ${fmtDate(item.date)}.`;
+  if (item.date) return `Due ${fmtDate(item.date)}${dateTrust}.`;
   return '';
 }
 
@@ -1067,7 +1069,7 @@ function paydayAllocationSheetHtml(alloc) {
     <div class="allocation-line" data-allocation-key="${line.key}" data-allocation-order="${index + 1}">
       <div class="allocation-step">${index + 1}</div>
       <div class="allocation-copy">
-        <div class="allocation-label"><span class="allocation-action">${PAYDAY_ACTION_KIND[line.kind] || 'Allocate'}</span>${line.label}${line.date ? ` <span class="payday-when${line.confidence && line.confidence !== 'confirmed' ? ' est' : ''}">${fmtDate(line.date)}${line.confidence && line.confidence !== 'confirmed' ? ` · ${line.confidence}` : ''}</span>` : ''}</div>
+        <div class="allocation-label"><span class="allocation-action">${PAYDAY_ACTION_KIND[line.kind] || 'Allocate'}</span>${line.label}${line.date ? ` <span class="payday-when${(line.dateConfidence || line.confidence) && (line.dateConfidence || line.confidence) !== 'confirmed' ? ' est' : ''}">${fmtDate(line.date)}${(line.dateConfidence || line.confidence) && (line.dateConfidence || line.confidence) !== 'confirmed' ? ` · ${line.dateConfidence || line.confidence}` : ''}</span>` : ''}</div>
         <div class="allocation-trust">${paydayAllocationTrustNote(line, alloc)}</div>
       </div>
       <div class="allocation-value">${money2(amount)}</div>
@@ -1737,7 +1739,10 @@ function glanceLineLabel(row, tag) {
   if (row && row.needsDate) {
     bits.push(row.dateNote || 'needs confirmation');
   } else {
-    if (row && row.date) bits.push(fmtDate(row.date));
+    if (row && row.date) {
+      bits.push(fmtDate(row.date));
+      if (row.dateConfidence === 'estimated') bits.push('estimated');
+    }
     if (tag && tag !== 'needs-date') bits.push(tag);
   }
   return bits.join(' · ');
@@ -6319,9 +6324,10 @@ function budgetBillBrowseRowHtml(row) {
   const knownDate = isValidIsoCalendarDate(row.date);
   const amount = budgetBrowseKnown(row.movement) ? Math.abs(row.movement) : null;
   const month = knownDate ? new Date(row.date + 'T12:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : '?';
+  const dateEstimated = row.dateConfidence === 'estimated';
   return `<button type="button" class="budget-bill-row is-${state.kind}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
-    <span class="budget-bill-date" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
-    <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}</span>` : ''}</span></span>
+    <span class="budget-bill-date${dateEstimated ? ' est' : ''}" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
+    <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}${dateEstimated ? ' · estimated' : ''}</span>` : ''}</span></span>
     <span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span>
   </button>`;
 }

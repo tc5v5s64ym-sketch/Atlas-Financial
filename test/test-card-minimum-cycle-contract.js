@@ -57,19 +57,49 @@ function run(x) {
 }
 const x = fixture(), p = x.data.plan;
 eq(F.expandEvents(p, '2026-10-01', '2026-12-31').filter(e => e.id === 'triangle')
-  .map(e => [e.date, -e.amount, e.confidence]), [
-    ['2026-10-08', 91.23, 'confirmed'], ['2026-11-07', 88.88, 'estimated'], ['2026-12-07', 88.88, 'estimated']]);
+  .map(e => [e.date, -e.amount, e.confidence, e.dateConfidence]), [
+    ['2026-10-08', 91.23, 'confirmed', 'confirmed'],
+    ['2026-11-07', 88.88, 'estimated', 'estimated'],
+    ['2026-12-07', 88.88, 'estimated', 'estimated']]);
 eq(F.expandEvents(p, '2026-10-07', '2026-10-07').filter(e => e.id === 'triangle').length, 0);
 const moved = F.expandEvents(p, '2026-10-08', '2026-10-08').find(e => e.id === 'triangle');
-eq([moved.date, moved.scheduledDate, moved.occurrenceKey],
-  ['2026-10-08', '2026-10-07', 'triangle@2026-10-07'], 'replacement before window filtering, stable identity');
+eq([moved.date, moved.scheduledDate, moved.occurrenceKey, moved.dateConfidence],
+  ['2026-10-08', '2026-10-07', 'triangle@2026-10-07', 'confirmed'],
+  'replacement before window filtering, stable identity, confirmed statement date');
+// Independent reconstruction: the original planning date is monthly day 7 /
+// firstDue 2026-10-07. A statement that keeps that same date confirms the
+// amount only — it does not establish an issuer deadline.
+const amountOnly = structuredClone(p);
+amountOnly.obligations[0].statementOccurrences[0].dueDate = '2026-10-07';
+eq(amountOnly.obligations[0].statementOccurrences[0].dueDate,
+  amountOnly.obligations[0].statementOccurrences[0].scheduledDate,
+  'amount-only fixture retains the original scheduled date');
+eq(amountOnly.obligations[0].confidence, 'estimated',
+  'obligation row date trust remains estimated before replacement');
+const replaced = F.expandEvents(amountOnly, '2026-10-07', '2026-10-07').find(e => e.id === 'triangle');
+eq([replaced.date, -replaced.amount, replaced.confidence, replaced.dateConfidence],
+  ['2026-10-07', 91.23, 'confirmed', 'estimated'],
+  'amount confirmation does not promote the retained planning date');
+eq(F.expandEvents(amountOnly, '2026-11-07', '2026-11-07').filter(e => e.id === 'triangle')
+  .map(e => [e.date, -e.amount, e.confidence, e.dateConfidence]),
+  [['2026-11-07', 88.88, 'estimated', 'estimated']],
+  'later cycles stay independent estimates');
+const explicitDate = structuredClone(amountOnly);
+explicitDate.obligations[0].statementOccurrences[0].dateConfidence = 'confirmed';
+eq(F.expandEvents(explicitDate, '2026-10-07', '2026-10-07')[0].dateConfidence, 'confirmed',
+  'explicit confirmed dateConfidence preserves a fully confirmed same-date override');
+const explicitEstimatedMove = structuredClone(p);
+explicitEstimatedMove.obligations[0].statementOccurrences[0].dateConfidence = 'estimated';
+eq(F.expandEvents(explicitEstimatedMove, '2026-10-08', '2026-10-08')[0].dateConfidence, 'estimated',
+  'explicit estimated dateConfidence can keep a moved date estimated');
 for (const dueDate of ['2026-09-30', '2026-11-01']) {
   const q = structuredClone(p); q.obligations[0].statementOccurrences[0].dueDate = dueDate;
   eq(F.expandEvents(q, dueDate, dueDate).filter(e => e.id === 'triangle').length, 1);
   eq(F.expandEvents(q, '2026-10-07', '2026-10-07').filter(e => e.id === 'triangle').length, 0);
 }
 for (const changes of [{ dueDate: '2026-02-30' }, { minimum: -1 }, { minimum: 1.001 },
-  { currency: 'usd' }, { confidence: 'estimated' }, { scheduledDate: '2026-10-06' }, { dueDate: '2026-11-07' }]) {
+  { currency: 'usd' }, { confidence: 'estimated' }, { dateConfidence: 'unknown' },
+  { scheduledDate: '2026-10-06' }, { dueDate: '2026-11-07' }]) {
   const q = structuredClone(p); Object.assign(q.obligations[0].statementOccurrences[0], changes);
   assert.throws(() => F.expandEvents(q, '2026-10-01', '2026-11-30')); checks++;
 }
@@ -82,7 +112,8 @@ eq(F.expandEvents(zero, '2026-10-01', '2026-10-31').filter(e => e.id === 'triang
 const base = run(fixture());
 eq([base.data.plan.startingCash.breakdown[0].value, base.data.plan.startingCash.breakdown[1].value], [400, 64.30]);
 eq(base.period.householdBudget.reduce((sum, row) => sum + (row.spent || 0), 0), 35.70, 'purchase once, transfer no expense');
-eq([base.bill.date, base.bill.planned, base.bill.confidence], ['2026-10-08', 91.23, 'confirmed']);
+eq([base.bill.date, base.bill.planned, base.bill.confidence, base.bill.dateConfidence],
+  ['2026-10-08', 91.23, 'confirmed', 'confirmed']);
 eq(base.bill.status === 'PAID', false, 'bank movement alone has no minimum intent');
 eq(base.data.debts[0].balance, 400, 'sender-only bank debit does not change card stock');
 
@@ -267,6 +298,67 @@ eq(/FEASIBLE IN CURRENT PLAN/.test(page.list), false);
 eq(/\$NaN/.test(page.lede + page.list), false);
 eq(/STATUS UNAVAILABLE/.test(page.list), true,
   'Plan Spend reprints withheld feasibility instead of an unsupported numeric claim');
+
+const amountDebts = [{ id: 'triangle', label: 'Invented card', balance: 400,
+  pending: 0, rate: 19.99, rateConvention: 'card', limit: 2000 }];
+const amountAdvice = F.recommend(amountOnly, '2026-10-02', { debts: amountDebts });
+const amountBill = (amountAdvice.defaultView.bills || []).find(row => row.id === 'triangle');
+eq([amountBill.date, amountBill.planned, amountBill.confidence, amountBill.dateConfidence],
+  ['2026-10-07', 91.23, 'confirmed', 'estimated'],
+  'Plan bill row keeps confirmed amount and estimated retained date');
+const amountPay = (amountAdvice.paydayAllocation.obligations.items || [])
+  .find(row => row.id === 'triangle' && row.date === '2026-10-07');
+eq([amountPay.confidence, amountPay.dateConfidence], ['confirmed', 'estimated'],
+  'payday obligation items propagate separate amount/date trust');
+const amountNext = F.creditAccounts(amountOnly, amountDebts, '2026-10-05', {}).cards
+  .find(row => row.id === 'triangle').nextPayment;
+eq([amountNext.date, amountNext.amount, amountNext.confidence, amountNext.dateConfidence],
+  ['2026-10-07', 91.23, 'confirmed', 'estimated'],
+  'Credit next payment keeps confirmed amount and estimated planning date');
+
+const planSrc = fs.readFileSync(require.resolve('../public/plan.js'), 'utf8');
+const creditSrc = fs.readFileSync(require.resolve('../public/credit.js'), 'utf8');
+const grabFn = (src, re) => { const m = re.exec(src); if (!m) throw new Error(String(re)); return m[0]; };
+const presentCtx = {};
+vm.createContext(presentCtx);
+vm.runInContext([
+  grab(/^const fmtDate = .*$/m),
+  grab(/^const fmtDateFull = .*$/m),
+  grab(/^const money2 = .*$/m),
+  grabFn(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m),
+  grabFn(creditSrc, /^const CREDIT_CONFIDENCE_CHIP = .*$/m),
+  grabFn(creditSrc, /^function creditConfidenceChip\([\s\S]*?\n\}$/m),
+  grabFn(creditSrc, /^function creditFact\([\s\S]*?\n\}$/m),
+  grabFn(creditSrc, /^function creditNextPaymentFacts\([\s\S]*?\n\}$/m),
+].join('\n'), presentCtx);
+eq(presentCtx.glanceLineLabel({
+  label: 'Invented card minimum', date: '2026-10-07',
+  confidence: 'confirmed', dateConfidence: 'estimated',
+}, 'still due'), 'Invented card minimum · Oct 7 · estimated · still due',
+  'Plan keeps estimated on the retained planning date');
+eq(presentCtx.glanceLineLabel({
+  label: 'Invented card minimum', date: '2026-10-08',
+  confidence: 'confirmed', dateConfidence: 'confirmed',
+}, 'still due'), 'Invented card minimum · Oct 8 · still due',
+  'Plan does not mark a confirmed statement due date as estimated');
+const creditHtml = presentCtx.creditNextPaymentFacts(
+  { nextPayment: amountNext }, 'Minimum payment', 'Due date');
+eq(/≈ /.test(creditHtml), false, 'Credit amount is not estimated when the minimum is confirmed');
+eq(/data-credit-date-confidence="estimated"/.test(creditHtml)
+  && /estimated/.test(creditHtml), true,
+  'Credit due date keeps the estimated planning-date indication');
+
+const livePlan = JSON.parse(canonical);
+const liveCashback = livePlan.plan.obligations.find(row => row.id === 'cashback');
+const liveStatement = liveCashback && (liveCashback.statementOccurrences || [])[0];
+eq(!!liveStatement, true, 'canonical Cash Back occurrence exists for date-trust encoding');
+eq(liveStatement.dueDate === liveStatement.scheduledDate, true,
+  'canonical Cash Back retains the original planning date');
+eq(liveStatement.dateConfidence, 'estimated',
+  'canonical Cash Back records estimated date trust on the retained planning date');
+const liveOcc = F.obligationOccurrences(liveCashback, liveStatement.scheduledDate, liveStatement.scheduledDate)[0];
+eq([liveOcc.confidence, liveOcc.dateConfidence], ['confirmed', 'estimated'],
+  'runtime keeps Cash Back amount confirmed and planning date estimated');
 
 const context = { console, Date, Map, Set }; vm.createContext(context);
 vm.runInContext(fs.readFileSync(require.resolve('../public/forecast'), 'utf8'), context);

@@ -33,6 +33,8 @@
     const records = input.map(record => {
       if (!record || !date(record.scheduledDate) || !date(record.dueDate)
           || record.currency !== 'cad' || record.confidence !== 'confirmed'
+          || (record.dateConfidence != null && record.dateConfidence !== 'confirmed'
+            && record.dateConfidence !== 'estimated')
           || cents(record.minimum) == null
           || occurrences(row, record.scheduledDate, record.scheduledDate).length !== 1
           || used.has(record.scheduledDate)) throw new Error('Statement must replace one unique scheduled occurrence.');
@@ -48,9 +50,21 @@
     return records;
   }
 
+  // Amount confirmation is the statement `confidence`. Date trust is separate:
+  // a distinct issuer due date, or an explicit confirmed dateConfidence, is a
+  // statement-date override; a retained original planning date stays estimated.
+  function statementDateConfidence(row, record) {
+    if (record.dateConfidence === 'confirmed' || record.dateConfidence === 'estimated') {
+      return record.dateConfidence;
+    }
+    if (record.dueDate !== record.scheduledDate) return 'confirmed';
+    return row.confidence === 'confirmed' ? 'confirmed' : 'estimated';
+  }
+
   function resolveOccurrences(row, start, end, occurrences, outflowDates) {
     if (row.statementOccurrences == null) return outflowDates(row, start, end).map(scheduledDate => ({
-      scheduledDate, date: scheduledDate, amount: row.amount, confidence: row.confidence, statement: false }));
+      scheduledDate, date: scheduledDate, amount: row.amount, confidence: row.confidence,
+      dateConfidence: row.confidence, statement: false }));
     const statements = statementRows(row, occurrences);
     const byScheduled = new Map(statements.map(record => [record.scheduledDate, record]));
     const candidates = new Set(outflowDates(row, start, end));
@@ -66,6 +80,7 @@
       return { scheduledDate, date: statement ? statement.dueDate : scheduledDate,
         amount: statement ? statement.minimum : row.amount,
         confidence: statement ? statement.confidence : row.confidence,
+        dateConfidence: statement ? statementDateConfidence(row, statement) : row.confidence,
         statement: !!statement };
     }).filter(record => record.date <= end && (record.date >= start || row.frequency === 'once'))
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -2128,6 +2143,7 @@
         if (amount <= 0 && !sent) continue;      // nothing left for this payment to pay
         events.push({ date, amount: -amount, kind: 'obligation',
           label: o.label, id: o.id, confidence: occurrence.confidence,
+          dateConfidence: occurrence.dateConfidence,
           ...(occurrence.statement ? { scheduledDate: occurrence.scheduledDate,
             occurrenceKey: o.id + '@' + occurrence.scheduledDate } : {}),
           ...(sent ? { minimumAmount: occurrence.amount, minimumPayment: sent } : {}),
@@ -5640,6 +5656,8 @@
         actual: bill && bill.actual != null ? bill.actual : null,
         settlement: (bill && bill.settlement) || item.settlement,
         confidence: item.confidence || (bill && bill.confidence) || null,
+        dateConfidence: item.dateConfidence || (bill && bill.dateConfidence)
+          || item.confidence || (bill && bill.confidence) || null,
         movement: householdMovement(remaining != null ? remaining : amount, 'out'),
       });
     }
@@ -7030,6 +7048,7 @@
       glanceKind: status === 'PAID' ? 'paid' : 'still-due',
       movement: householdMovement(display, 'out'),
       confidence: event.confidence || null,
+      dateConfidence: event.dateConfidence || event.confidence || null,
       payingAccount,
       payerLabel: plannedPayerLabel(payingAccount),
       needsDate: false,
@@ -10961,6 +10980,7 @@
         amount: roundCent(amt),
         ...(e.reserveFunding ? { fullRequirement: -e.amount, reserveFunded: reserveFundedAmount(e) } : {}),
         confidence: e.confidence || null,
+        dateConfidence: e.dateConfidence || e.confidence || null,
         cardPaid: e.cardPaid === true,
         // Settlement is expandEvents / representedEvents: a represented
         // occurrence is omitted above, not labelled unpaid. A past scheduled
@@ -15090,6 +15110,7 @@
       date: e.date,
       amount: roundCent(e.minimumAmount != null ? e.minimumAmount : -e.amount),
       confidence: e.confidence || null,
+      dateConfidence: e.dateConfidence || e.confidence || null,
       payingAccount: e.payingAccount || null,
       ...(e.occurrenceKey ? { occurrenceKey: e.occurrenceKey, scheduledDate: e.scheduledDate } : {}),
       ...(e.minimumPayment || {}),

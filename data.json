@@ -250,7 +250,8 @@
                         "dueDate": "2026-10-01",
                         "minimum": 209.37,
                         "currency": "cad",
-                        "confidence": "confirmed"
+                        "confidence": "confirmed",
+                        "dateConfidence": "estimated"
                     }
                 ],
                 "sentPayments": [
