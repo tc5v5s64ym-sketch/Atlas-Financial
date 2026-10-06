@@ -84,8 +84,11 @@
     const payments = [], issues = [], used = new Set();
     const opening = plan?.opening;
     // Legacy names assert inclusion in their attached opening, never earlier.
-    const represented = [].concat((opening && date(opening.asOf) && opening.asOf <= asOf
-      ? opening.representedEvents : []) || [], options?.representedEvents || []);
+    // Explicit qualifiers survive a later opening. Attach legacy names to the
+    // opening that first asserted them so a historical query cannot gain proof.
+    const represented = [].concat((opening && date(opening.asOf)
+      ? (opening.representedEvents || []).map(item => item && !Object.prototype.hasOwnProperty.call(item, 'effectiveAsOf')
+        ? { ...item, effectiveAsOf: opening.asOf } : item) : []), options?.representedEvents || []);
     for (const row of rows) {
       const statements = statementRows(row, occurrences);
       const records = row && row.sentPayments;
@@ -497,6 +500,17 @@
   }
   function statementOccurrenceIdentity(plan, id, date) {
     return CardMinimumContract.originalDate(plan, id, date, occurrences);
+  }
+  // Durable issuer knowledge is narrower than cash replay eligibility. Only
+  // the optional minimum contract and one valid original occurrence qualify.
+  function cardMinimumReceiptIdentity(plan, item) {
+    const row = (plan?.obligations || []).find(row => row && row.id === item?.id);
+    if (!row || row.effect !== 'payment' || !row.debtId || row.nonCash
+        || (row.sentPayments == null && row.statementOccurrences == null)) return null;
+    const original = statementOccurrenceIdentity(plan, row.id, item.date);
+    return typeof original === 'string' && ISO_CALENDAR_DATE.test(original)
+      && new Date(original + 'T00:00:00Z').toISOString().slice(0, 10) === original
+      && occurrences(row, original, original).length === 1 ? original : null;
   }
   function representedOccurrence(plan, id, date, asOf, opts) {
     const original = statementOccurrenceIdentity(plan, id, date);
@@ -13357,6 +13371,13 @@
       if (!event || !event.id || !event.date) return true;
       if (!represented.has(event.id + '@' + event.date)) return true;
       if (event.kind !== 'obligation' || event.effect === 'capitalise') return false;
+      // A receipt identifies a satisfied minimum, not the principal sent.
+      // Replaying the contractual minimum would invent another debt reduction
+      // when the optional contract has no accepted minimum-intent allocation.
+      const original = statementOccurrenceIdentity(plan, event.id, event.scheduledDate || event.date);
+      if ([...(plan?.opening?.representedEvents || []), ...(opts?.representedEvents || [])]
+          .some(item => cardMinimumReceiptIdentity(plan, item) === original && item.id === event.id
+            && representedEventEffectiveBy(item, start))) return false;
       return prepaidJointCashOutflow(plan, event.id, event.date, start);
     });
   }
@@ -20325,7 +20346,7 @@
     };
   }
 
-  const Forecast = { cardMinimumState, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,

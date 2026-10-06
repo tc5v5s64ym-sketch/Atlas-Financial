@@ -777,17 +777,28 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   // hits only. That dropped Dale-gated prepaid names the live packet
   // had not rediscovered (tdcc chequing TFR-TO C/C is not identity).
   // Keep existing names that still qualify for this liveAsOf; identity
-  // candidates remain additive. Non-qualifying historical names still
-  // drop. Explicit deferred evidence stays attached but inactive; stripping
+  // candidates remain additive. Historical cash replay names still drop;
+  // independently qualified minimum receipt knowledge is retained below.
+  // Explicit deferred evidence stays attached but inactive; stripping
   // its effective date would turn it into an opening-date legacy assertion.
   // Duplicate id/date cannot let that inactive row shadow fresh applicable
   // proof, and a later live date cannot overwrite an earlier truthful one.
+  // Minimum receipt knowledge survives its due date; replay eligibility still
+  // belongs to Forecast. Preserve the original identity and earliest attached
+  // opening of a legacy proof before replacing that opening with fresh stock.
+  const durableExisting = existing.map(row => {
+    const original = Forecast.cardMinimumReceiptIdentity(next.plan, row);
+    return original && historicalOpeningAsOf ? { ...row, date: original,
+      ...(!Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
+        ? { effectiveAsOf: historicalOpeningAsOf } : {}) } : row;
+  });
   const keptExisting = advances
-    ? existing.filter(row => representedCandidateAllowed(
+    ? durableExisting.filter(row => Forecast.cardMinimumReceiptIdentity(next.plan, row)
+      || representedCandidateAllowed(
       row, historicalOpeningAsOf, liveAsOf, next.plan)
       || (row && Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
         && !Forecast.representedEventEffectiveBy(row, liveAsOf)))
-    : existing;
+    : durableExisting;
   const nextRepresented = mergeRepresented(keptExisting, uniqueRepresented, liveAsOf);
   const representedKeys = new Set(nextRepresented.filter(row =>
     Forecast.representedEventEffectiveBy(row, liveAsOf)).map(row =>
