@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { snapshotFirstReading } = require('./lib/b20-snapshot-reconciliation');
 
 const live = require('../data.json');
 const map = require('../docs/reconciliation/balance-map.json');
@@ -258,10 +259,10 @@ console.log('\n=== 4. mixed-date source rows cannot become one dated snapshot ==
 console.log('\n=== 5. re-running the same reading produces no duplicate or mutation ===');
 {
   const dir = tmpDir('atlas-b20-idem-');
-  const first = execFileSync(process.execPath, [
+  const first = snapshotFirstReading(() => execFileSync(process.execPath, [
     path.join(__dirname, '..', 'scripts', 'snapshot-balances.js'),
     '--out', dir,
-  ], { encoding: 'utf8' });
+  ], { encoding: 'utf8' }), live, positionsNow, map, ok);
   const dest = path.join(dir, `${live.meta.asOf}.json`);
   const bytes1 = fs.readFileSync(dest);
   const second = execFileSync(process.execPath, [

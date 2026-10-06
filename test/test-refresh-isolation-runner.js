@@ -100,4 +100,73 @@ check('signal and execution failures cannot masquerade as expected assertion fai
     assert.strictEqual(isExpectedFailure(result, ['test-invariants.js']), false);
   }
 });
+console.log('=== B20 deliberate reconciliation rejection ===');
+{
+  const { snapshotFirstReading } = require('./lib/b20-snapshot-reconciliation');
+  const data = { meta: { asOf: '2037-02-03' }, plan: { opening: { asOf: '2037-02-03' } }, debts: [{ id: 'mbna', balance: 600 }] };
+  const positions = [{ account_label: 'Invented card', balance: '100.00', as_of: '2037-02-03' }];
+  const map = { mappings: [{ accountLabel: 'Invented card', canonical: { collection: 'debts', id: 'mbna' } }] };
+  const message = 'mbna: canonical 600 disagrees with positions.csv 100.00 on 2037-02-03\n';
+  const rejection = { status: 1, signal: null, stdout: '', stderr: message };
+  function probe(error, fixture = data, pos = positions, mappings = map) {
+    let output = '', seen;
+    try {
+      snapshotFirstReading(() => { throw error; }, fixture, pos, mappings, (condition, label) => {
+        assert.strictEqual(condition, false); output += '  FAIL  ' + label + '\n';
+      });
+    } catch (caught) { seen = caught; }
+    assert.strictEqual(seen, error, 'the exact original error must still be thrown');
+    const result = runSuite('test-b20-history.js', root, {
+      now: () => 0,
+      execute: () => { throw { ...error, stdout: output + (error.stdout || '') }; },
+    });
+    return { result, output, expected: isExpectedFailure(result, ['test-b20-history.js']) };
+  }
+  check('the exact known rejection emits one real FAIL then preserves the original rejection', () => {
+    const result = probe(rejection);
+    assert.strictEqual(result.result.kind, 'assertion-failure');
+    assert.strictEqual(result.result.fails, 1);
+    assert.strictEqual(result.expected, true);
+  });
+  check('clean command return and output are preserved without a new assertion', () => {
+    let called = false;
+    assert.strictEqual(snapshotFirstReading(() => 'written synthetic', data, positions, map, () => { called = true; }), 'written synthetic');
+    assert.strictEqual(called, false);
+  });
+  for (const [label, error] of [
+    ['arbitrary execution error', { ...rejection, stderr: 'synthetic syntax error\n' }],
+    ['timeout', { ...rejection, code: 'ETIMEDOUT', signal: 'SIGTERM', status: null }],
+    ['signal termination', { ...rejection, signal: 'SIGKILL', status: null }],
+    ['buffer or other execution code', { ...rejection, code: 'ENOBUFS' }],
+    ['wrong exit status', { ...rejection, status: 2 }],
+    ['different account rejection', { ...rejection, stderr: message.replace('mbna:', 'other-card:') }],
+    ['extra stderr output', { ...rejection, stderr: message + 'unrelated error\n' }],
+    ['unexpected child stdout', { ...rejection, stdout: 'unexpected output\n' }],
+  ]) check(label + ' remains an unexpected hard failure', () => {
+    const result = probe(error);
+    assert.strictEqual(result.output, '');
+    assert.strictEqual(result.result.fails, 0);
+    assert.strictEqual(result.expected, false);
+  });
+  check('a different mutation amount cannot use the known-control assertion', () => {
+    const changed = structuredClone(data); changed.debts[0].balance = 601;
+    const result = probe({ ...rejection, stderr: message.replace('canonical 600', 'canonical 601') }, changed);
+    assert.strictEqual(result.expected, false); assert.strictEqual(result.output, '');
+  });
+  check('different date, mapping or duplicate reading cannot use the known-control assertion', () => {
+    for (const [fixture, pos, mappings] of [
+      [{ ...data, meta: { asOf: '2037-02-04' } }, positions, map],
+      [data, positions, { mappings: [] }],
+      [data, positions.concat(positions), map],
+    ]) {
+      const result = probe(rejection, fixture, pos, mappings);
+      assert.strictEqual(result.expected, false); assert.strictEqual(result.output, '');
+    }
+  });
+  check('limits stay 600 seconds for next-move and 180 seconds for B20 and other suites', () => {
+    assert.strictEqual(timeoutForSuite('test-nextmove.js'), 600000);
+    assert.strictEqual(timeoutForSuite('test-b20-history.js'), 180000);
+    assert.strictEqual(timeoutForSuite('test-invariants.js'), 180000);
+  });
+}
 console.log(`ALL ${checks} CHECKS PASSED (synthetic execution; no deadline wait)`);
