@@ -58,10 +58,62 @@ function live(txs) {
 const tx = (id, amount, payee, extra) => Object.assign({ id, account_id: 3006, currency: 'cad', date: POSTED,
   amount, is_pending: false, payee, original_name: 'Phoenix Digital Health', category_id: 11 }, extra || {});
 const withoutBill = plan => Object.assign({}, plan, { bills: plan.bills.filter(b => b.id !== ID) });
-function reservedDelta(plan) {
+function reservedDelta(plan, asOf = LIVE) {
   const opts = { weeklyVariable: 0, viewDays: 1, horizonDays: 1, targetBuffer: 0 };
-  return Math.round(((F.simulate(plan, LIVE, opts).totals.reserved || 0)
-    - (F.simulate(withoutBill(plan), LIVE, opts).totals.reserved || 0)) * 100) / 100;
+  return Math.round(((F.simulate(plan, asOf, opts).totals.reserved || 0)
+    - (F.simulate(withoutBill(plan), asOf, opts).totals.reserved || 0)) * 100) / 100;
+}
+function coverageRemaining(plan, packet, asOf, amount) {
+  const purchases = F.visaPaymentReconciliation(packet.transactions, { plan, asOf, packet }).purchases
+    .filter(p => near(p.amount, amount));
+  return purchases.reduce((sum, p) => sum + Number(p.remaining || 0), 0);
+}
+function protectedMatching(plan, packet, asOf, amount) {
+  return Math.round((reservedDelta(plan, asOf) + coverageRemaining(plan, packet, asOf, amount)) * 100) / 100;
+}
+function liveSynth(txs, extra = {}) {
+  const data = load('data.json');
+  if (extra.omitBill) {
+    data.plan.bills = data.plan.bills.filter(b => !b || b.id !== ID);
+  } else if (extra.amount != null) {
+    data.plan.bills = data.plan.bills.map(b => (
+      b && b.id === ID ? Object.assign({}, b, { amount: extra.amount }) : b
+    ));
+  }
+  data.plan.cardPurchaseCoverage = {
+    opening: { asOf: OPENING, confirmed: true, currency: 'cad',
+      fundingAccountId: 'chequing-a', purchases: [] },
+    payments: [], refunds: [], reversals: [],
+  };
+  const observed = LIVE + 'T17:55:00.000Z';
+  const debt = id => data.debts.find(d => d.id === id) || {};
+  const cash = id => (data.plan.startingCash.breakdown.find(r => r.id === id) || {}).value;
+  const card = (id, name, debtId) => ({ id, name, type: 'credit', subtype: 'credit_card',
+    institution_name: 'TD Canada Trust', currency: 'cad', balance: Number(debt(debtId).balance || 0),
+    credit_limit: debt(debtId).limit, updated_at: observed });
+  return Live.fromObservation({
+    data, accountMap: load('docs/connectivity/fixtures/b81-account-map.json'), identity: load('docs/connectivity/transaction-identity.json'),
+    payload: {
+      provider: 'lunchmoney', fetchedAt: LIVE + 'T18:00:00.000Z',
+      source: 'Synthetic Phoenix Digital Health pending/posted fixture. Not a live institution pull.',
+      pendingCoverage: { complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false },
+      transactionWindow: { startDate: OPENING, endDate: LIVE, complete: true, hasMore: false, truncated: false },
+      accounts: [
+        { id: 3001, name: 'BILLS ACCOUNT', type: 'cash', subtype: 'checking', institution_name: 'TD Canada Trust', currency: 'cad', balance: cash('chequing-a'), updated_at: observed },
+        { id: 3002, name: 'WEEKLY SPENDING', type: 'cash', subtype: 'checking', institution_name: 'TD Canada Trust', currency: 'cad', balance: cash('chequing-b'), updated_at: observed },
+        { id: 3003, name: 'EMERGENCY SAVING', type: 'cash', subtype: 'savings', institution_name: 'TD Canada Trust', currency: 'cad', balance: cash('savings'), updated_at: observed },
+        card(3004, 'PERSONAL CREDIT CARD', 'tdcc'), card(3005, 'TD CASH BACK VISA* CARD', 'cashback'), card(3006, 'TRAVEL VISA', 'travelvisa'),
+        { id: 3007, name: 'LINE OF CREDIT - HOME EQUITY', type: 'loan', subtype: 'line_of_credit', institution_name: 'TD Canada Trust', currency: 'cad', balance: Number(debt('heloc').balance), updated_at: observed },
+        { id: 3008, name: 'MORTGAGE', type: 'loan', subtype: 'mortgage', institution_name: 'TD Canada Trust', currency: 'cad', balance: Number(debt('mortgage').balance), updated_at: observed },
+        card(3010, 'TRIANGLE MASTERCARD', 'triangle'),
+      ],
+      categories: [
+        { id: 11, name: 'Personal Care', is_income: false, exclude_from_totals: false },
+        { id: 12, name: 'Groceries', is_income: false, exclude_from_totals: false },
+      ],
+      transactions: txs,
+    },
+  });
 }
 
 console.log('=== one card-paid monthly bill ===');
@@ -104,6 +156,112 @@ for (const [label, txs] of [
   const plan = live(txs).data.plan;
   ok(!(plan.opening.representedEvents || []).some(e => e.id === ID), `${label} does not settle`);
   ok(near(reservedDelta(plan), AMOUNT), `${label}: exactly one $174.99 reserve`, `Δ=${reservedDelta(plan)}`);
+}
+
+console.log('\n=== pending matching card-paid bill is reserved once ===');
+{
+  const SYNTH = 73.21;
+  const GROCERY = 40;
+  const DOUBLE = Math.round((SYNTH + SYNTH) * 100) / 100;
+  const pendingTxs = [
+    tx(9801, SYNTH, 'Phoenix Digital Corp', { is_pending: true }),
+    tx(9802, GROCERY, 'Synthetic Grocer', {
+      is_pending: true, category_id: 12, original_name: 'Synthetic Grocer',
+    }),
+    tx(9803, 1, 'Phoenix Digital Corp'),
+  ];
+  const pending = liveSynth(pendingTxs, { amount: SYNTH });
+  const pendingPlan = pending.data.plan;
+  const pendingPacket = pending.data.liveOverlay.currentPeriodActuals;
+  const asOf = pendingPlan.opening.asOf;
+  const pendingCharge = pendingPacket.transactions.find(t => near(t.amount, SYNTH) && t.pending === true);
+  const grocery = pendingPacket.transactions.find(t => near(t.amount, GROCERY));
+  const auth = pendingPacket.transactions.find(t => near(t.amount, 1) && t.pending !== true);
+  const pendingCls = F.classifyCurrentPeriodTransaction(pendingCharge, pendingPlan, {
+    currentPeriodActuals: pendingPacket,
+  });
+  const groceryCls = F.classifyCurrentPeriodTransaction(grocery, pendingPlan, {
+    currentPeriodActuals: pendingPacket,
+  });
+  const coverage = F.visaPaymentReconciliation(pendingPacket.transactions, {
+    plan: pendingPlan, asOf, packet: pendingPacket,
+  });
+  ok(asOf === LIVE, 'synthetic overlay uses the live as-of', asOf);
+  ok(coverage.status === 'ready', 'complete card coverage is ready', coverage.status);
+  ok(pendingCharge && pendingCharge.pendingMatchingCardPaidBill === true
+      && pendingCharge.representedBill !== true, 'pending match is tagged, not representedBill');
+  ok(!(pendingPlan.opening.representedEvents || []).some(e => e.id === ID),
+    'pending does not allocate representedEvents');
+  ok(!(pendingPacket.representedActuals || []).some(r => r.id === ID),
+    'pending is not representedActuals, so the calendar stays unpaid');
+  ok(!(pendingPlan.opening.representedEvents || []).some(e => e && e.transactionId === pendingCharge.id),
+    'the pending local id is not cash-omit evidence');
+  ok(F.expandEvents(pendingPlan, asOf, '2026-10-31').some(e => e.id === ID && e.date === DUE),
+    'the occurrence stays still-due until posted');
+  ok(pendingCls.kind === 'bill' && pendingCls.householdSpending === false
+      && pendingCls.reason === 'pending-matching-card-paid-bill',
+    'pending match is the bill, not a Budget spending deduction', JSON.stringify(pendingCls));
+  ok(groceryCls.householdSpending === true, 'unrelated pending grocery remains household spending');
+  ok(auth && auth.pendingMatchingCardPaidBill !== true, '$1 authorization is not the bill');
+  ok(near(reservedDelta(pendingPlan, asOf), SYNTH),
+    'still-due card-paid bill reserves 73.21 once', `Δ=${reservedDelta(pendingPlan, asOf)}`);
+  ok(near(coverageRemaining(pendingPlan, pendingPacket, asOf, SYNTH), 0),
+    'coverage does not also hold the matching pending authorization');
+  ok(near(coverageRemaining(pendingPlan, pendingPacket, asOf, GROCERY), GROCERY),
+    'unrelated pending grocery stays in card coverage');
+  ok(near(protectedMatching(pendingPlan, pendingPacket, asOf, SYNTH), SYNTH)
+      && !near(protectedMatching(pendingPlan, pendingPacket, asOf, SYNTH), DOUBLE),
+    'pending protected is 73.21, not 146.42',
+    `protected=${protectedMatching(pendingPlan, pendingPacket, asOf, SYNTH)}`);
+
+  const posted = liveSynth([
+    tx(9811, SYNTH, 'Phoenix Digital Corp'),
+    tx(9812, GROCERY, 'Synthetic Grocer', { is_pending: true, category_id: 12, original_name: 'Synthetic Grocer' }),
+    tx(9813, 1, 'Phoenix Digital Corp'),
+  ], { amount: SYNTH });
+  const postedPlan = posted.data.plan;
+  const postedPacket = posted.data.liveOverlay.currentPeriodActuals;
+  const postedAsOf = postedPlan.opening.asOf;
+  const postedCharge = postedPacket.transactions.find(t => near(t.amount, SYNTH) && t.pending !== true);
+  const postedCls = F.classifyCurrentPeriodTransaction(postedCharge, postedPlan, {
+    currentPeriodActuals: postedPacket,
+  });
+  ok((postedPlan.opening.representedEvents || []).filter(e => e.id === ID && e.date === DUE).length === 1,
+    'posting represents the occurrence once');
+  ok(postedCharge && postedCharge.representedBill === true
+      && postedCharge.pendingMatchingCardPaidBill !== true,
+    'posted match is representedBill, not a pending tag');
+  ok(postedCls.kind === 'bill' && postedCls.householdSpending === false,
+    'posted match is the bill, not Other spending', JSON.stringify(postedCls));
+  ok(near(reservedDelta(postedPlan, postedAsOf), 0),
+    'posting drops the bill reserve', `Δ=${reservedDelta(postedPlan, postedAsOf)}`);
+  ok(near(coverageRemaining(postedPlan, postedPacket, postedAsOf, SYNTH), SYNTH),
+    'coverage holds the posted charge once, awaiting backfill');
+  ok(near(protectedMatching(postedPlan, postedPacket, postedAsOf, SYNTH), SYNTH),
+    'posted protected is still 73.21 once',
+    `protected=${protectedMatching(postedPlan, postedPacket, postedAsOf, SYNTH)}`);
+  ok(near(coverageRemaining(postedPlan, postedPacket, postedAsOf, GROCERY), GROCERY),
+    'posting the bill does not discard unrelated pending coverage');
+
+  const removed = liveSynth(pendingTxs, { omitBill: true });
+  const removedPlan = removed.data.plan;
+  const removedPacket = removed.data.liveOverlay.currentPeriodActuals;
+  const removedAsOf = removedPlan.opening.asOf;
+  const removedCharge = removedPacket.transactions.find(t => near(t.amount, SYNTH) && t.pending === true);
+  const removedCls = F.classifyCurrentPeriodTransaction(removedCharge, removedPlan, {
+    currentPeriodActuals: removedPacket,
+  });
+  ok(removedCharge && removedCharge.pendingMatchingCardPaidBill !== true,
+    'without the bill, the pending purchase is not tagged as a match');
+  ok(removedCls.householdSpending === true,
+    'removing the bill restores ordinary pending spending classification', JSON.stringify(removedCls));
+  ok(near(reservedDelta(removedPlan, removedAsOf), 0),
+    'removing the bill leaves no card-paid reserve');
+  ok(near(coverageRemaining(removedPlan, removedPacket, removedAsOf, SYNTH), SYNTH),
+    'without the bill, coverage holds the pending 73.21 once');
+  ok(near(protectedMatching(removedPlan, removedPacket, removedAsOf, SYNTH), SYNTH),
+    'removing the bill restores single counting',
+    `protected=${protectedMatching(removedPlan, removedPacket, removedAsOf, SYNTH)}`);
 }
 
 if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1); }

@@ -4740,6 +4740,15 @@
         reason: 'represented-bill', includeReason: 'represented-bill',
       };
     }
+    // A unique pending revolving match of a still-due card-paid bill is
+    // that bill, not household spending. It does not settle representedEvents.
+    if (tx.pending === true && tx.pendingMatchingCardPaidBill === true) {
+      return {
+        kind: 'bill', categoryId: null, householdSpending: false,
+        reason: 'pending-matching-card-paid-bill',
+        includeReason: 'pending-matching-card-paid-bill',
+      };
+    }
     if (isOwnerConfirmedSpotifyTransaction(tx)) {
       return ownerConfirmedBillResult('owner-confirmed-spotify');
     }
@@ -9021,6 +9030,15 @@
       if (!unit(tx) || amount == null) continue;
       if (!account || !(amount > 0) || paymentLike(tx)) continue;
       const cls = classifyCurrentPeriodTransaction(tx, plan, { packet });
+      const pendingMatchingCardPaidBill = tx.pending === true
+        && (tx.pendingMatchingCardPaidBill === true
+          || cls.reason === 'pending-matching-card-paid-bill')
+        && cls.householdSpending !== true;
+      if (pendingMatchingCardPaidBill) {
+        // Still reserved as the unmatched card-paid bill. Do not also hold
+        // the pending authorization as uncovered card spend.
+        continue;
+      }
       if (cls.householdSpending || tx.representedBill === true) {
         purchases.set(tx.coverageRef, { ref: tx.coverageRef, accountId: account,
           accountLabel: label(account), date: tx.date, amount: amount / 100,

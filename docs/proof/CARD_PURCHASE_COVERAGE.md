@@ -76,7 +76,10 @@ to_base is not conversion authority.
 
 ## Financial and publication boundary
 
-Purchases retain existing category classification and count once. Coverage
+Purchases retain existing category classification and count once. A unique
+pending revolving match of a still-due card-paid bill is reserved as that
+bill once; coverage does not also hold the pending authorization as
+uncovered spend. Coverage
 adds protection to the existing simulation cash floor; it does not subtract
 cash again, inject money, add a scheduled expense or create debt. Actual Bills
 cash and card balances remain observer facts. Fully covered rows leave the
