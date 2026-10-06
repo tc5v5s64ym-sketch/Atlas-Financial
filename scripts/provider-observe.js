@@ -2294,9 +2294,48 @@ function salaryReceiptTransferHits(input, rules) {
     && parseIsoDate(tx.date) && tx.date >= window.startDate && tx.date <= window.endDate
     && tx.providerTransactionId != null;
   const hits = [];
-  let householdCreditSeen = false;
+  // Diagnostic attribution is separate from the native matcher below. A
+  // candidate needs an explicitly mapped external income source and exactly
+  // one native salary occurrence bracketed by that source and this household
+  // transfer. No selected rule date, amount match or final outcome assigns it.
+  // Pending/foreign evidence can be diagnosed only after this association;
+  // absent, malformed or ambiguous association leaves candidate gates unknown.
+  const diagnosticSources = diagnostic ? (input.transactions || []).filter(source => {
+    if (!source || source.isIncome !== true || !(lunchMoneyDebitAmount(source.amount) < 0)
+        || !parseIsoDate(source.date) || source.date < window.startDate || source.date > window.endDate) return false;
+    const mapping = mappingFor(input.accountMap, source.providerAccountId);
+    return !!mapping && (mapping.atlasRole === EXTERNAL_LIVE_ROLE || !!mappingExternalId(mapping));
+  }) : [];
+  const diagnosticBrackets = new Map();
+  function diagnosticCandidate(credit) {
+    if (!diagnostic || !credit || !parseIsoDate(credit.date)
+        || credit.date < window.startDate || credit.date > window.endDate
+        || !(lunchMoneyDebitAmount(credit.amount) < 0) || !transactionIsTransfer(credit)) return undefined;
+    const mapping = mappingFor(input.accountMap, credit.providerAccountId);
+    if (!mapping || mapping.atlasRole !== 'household-cash'
+        || !mapping.canonical || mapping.canonical.id !== 'chequing-a') return undefined;
+    const sources = new Map(), associations = new Map();
+    for (const source of diagnosticSources) {
+      if (source.date > credit.date) continue;
+      const key = source.date + '@' + credit.date;
+      if (!diagnosticBrackets.has(key)) diagnosticBrackets.set(key,
+        scheduledEventsOnRange(input.plan, source.date, credit.date)
+          .filter(event => event.kind === 'income' && eligibleIds.has(event.id)));
+      const occurrences = diagnosticBrackets.get(key);
+      if (occurrences.length !== 1) continue;
+      const occurrence = occurrences[0];
+      const recorder = diagnostic.forDate(source.date)?.forOccurrence(occurrence.id, occurrence.date);
+      if (!recorder) continue;
+      sources.set(source, recorder);
+      associations.set(occurrence.id + '@' + occurrence.date, occurrence);
+    }
+    if (associations.size !== 1) return undefined;
+    const occurrence = associations.values().next().value;
+    return { attempt: diagnostic.forDate(credit.date)?.forOccurrence(occurrence.id, occurrence.date), sources };
+  }
   for (const credit of input.transactions || []) {
-    const attempt = parseIsoDate(credit && credit.date) ? diagnostic?.forDate(credit.date) : undefined;
+    const candidate = diagnosticCandidate(credit);
+    const attempt = candidate && candidate.attempt;
     const posted = !!nativePosted(credit);
     for (const rule of salaryRules) attempt?.record(rule.eventId, 'nativePostedCad', posted,
       posted ? undefined : 'CREDIT_UNQUALIFIED');
@@ -2306,7 +2345,6 @@ function salaryReceiptTransferHits(input, rules) {
       && !!mapping.canonical && mapping.canonical.id === 'chequing-a';
     for (const rule of salaryRules) attempt?.record(rule.eventId, 'householdCredit', householdCredit);
     if (!householdCredit) continue;
-    householdCreditSeen = true;
     for (const rule of salaryRules) {
       const identityMatches = ruleMatchesTransactionIdentity(credit, rule);
       attempt?.record(rule.eventId, 'transferIdentity', !!identityMatches);
@@ -2318,7 +2356,7 @@ function salaryReceiptTransferHits(input, rules) {
       if (!counterpartPosted) continue;
       const sources = [];
       for (const source of input.transactions || []) {
-        const sourceAttempt = parseIsoDate(source && source.date) ? attempt?.forDate(source.date) : undefined;
+        const sourceAttempt = candidate && candidate.sources.get(source);
         const sourcePosted = !!nativePosted(source);
         sourceAttempt?.record(rule.eventId, 'nativePostedCad', sourcePosted,
           sourcePosted ? undefined : 'CREDIT_UNQUALIFIED');
@@ -2374,9 +2412,6 @@ function salaryReceiptTransferHits(input, rules) {
         amountNotUsed: false, observedAmount: lunchMoneyDebitAmount(source.amount),
         atlasAccountId: 'chequing-a', settlesWhen: 'salary-receipt-and-paired-transfer' });
     }
-  }
-  if (!householdCreditSeen) for (const rule of salaryRules) {
-    diagnostic?.record(rule.eventId, 'householdCredit', false, 'HOUSEHOLD_CREDIT_MISSING');
   }
   return hits;
 }

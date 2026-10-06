@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['salary diagnostic native candidate attribution and cross-slot conservation', 'test-salary-diagnostic-candidates.js'],
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],

@@ -82,8 +82,11 @@ for (const mode of modes) {
   if (mode === 'wrong-source-account') ok(end.reasons.includes('SOURCE_ACCOUNT_MISMATCH'));
   if (mode === 'duplicate-receipt') ok(end.reasons.includes('RECEIPT_AMBIGUOUS'));
   if (mode === 'duplicate-counterpart') ok(end.reasons.includes('COUNTERPART_AMBIGUOUS'));
-  if (mode === 'multiple-occurrences') ok(end.reasons.includes('OCCURRENCE_AMBIGUOUS'));
-  if (mode === 'no-occurrence') ok(end.reasons.includes('OCCURRENCE_MISSING'));
+  if (['multiple-occurrences', 'no-occurrence'].includes(mode)) {
+    eq(end.gates.occurrence.evaluated, false, 'an unestablished candidate cannot evaluate a target occurrence');
+    ok(!end.reasons.includes('OCCURRENCE_AMBIGUOUS') && !end.reasons.includes('OCCURRENCE_MISSING'),
+      'unbound candidate rejection is not attributed to the selected slot');
+  }
   if (mode === 'final-ambiguity') { eq(end.outcome, 'ambiguous'); ok(end.reasons.includes('REPRESENTATION_AMBIGUOUS')); ok(!end.gates.representation.passed); }
   if (mode === 'incomplete-window') { eq(end.outcome, 'not-evaluated'); eq(end.gates.rule.evaluated, false); }
   if (mode === 'missing-rule') { eq(end.outcome, 'not-evaluated'); ok(end.reasons.includes('RULE_MISSING')); }

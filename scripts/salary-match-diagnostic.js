@@ -3,7 +3,9 @@
 // A slot is evaluated only when its covered observation has one native
 // scheduled occurrence. No latest/current salary selection policy lives here.
 // Flags aggregate evaluated attempts for that sole occurrence: passed/rejected
-// may both be true. An unevaluated gate has all flags false. Only normal final
+// may both be true. Candidate records require a native ID/date association;
+// window coverage alone cannot establish one. An unevaluated gate has all flags
+// false. Only normal final
 // representation resolution determines the outcome; reasons are observed
 // rejections, not a claim that one gate was the sole blocker.
 const SCHEMA = 'atlas-salary-matcher-diagnostic/v1';
@@ -116,10 +118,15 @@ function create(context) {
     }
     return project({ schema: SCHEMA, scope: SCOPE, slots: rows });
   }
-  const api = { record, window, rule, finish,
-    forDate(date) { return typeof date === 'string' && context && date >= context.startDate
-      && date <= context.endDate ? api : undefined; },
-    forOccurrence(id, date) { return dates.get(id) === date ? { record } : undefined; },
+  function forOccurrence(id, date) {
+    if (!dates.has(id) || dates.get(id) !== date) return undefined;
+    return { record(recordId, gate, passed, reason) {
+      return recordId === id ? record(id, gate, passed, reason) : passed;
+    } };
+  }
+  function forDate(date) { return typeof date === 'string' && context && date >= context.startDate
+    && date <= context.endDate ? { forOccurrence } : undefined; }
+  const api = { record, window, rule, finish, forDate, forOccurrence,
     rulesScanned() { scanned = true; }, resolve() { resolved = true; } };
   return api;
 }
