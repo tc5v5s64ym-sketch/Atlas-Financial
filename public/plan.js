@@ -4225,19 +4225,34 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     && inventoryCandidate.currency === 'CAD' && Array.isArray(inventoryCandidate.goals)
     && Array.isArray(inventoryCandidate.pools) && isValidIsoCalendarDate(savingsContext.asOf)
     && inventoryCandidate.asOf === savingsContext.asOf ? inventoryCandidate : null;
-  // A failed daily packet is still truthy and carries no stock. Keep the
-  // independently validated inventory observation and withhold only the proposal.
-  const stock = dailySavings?.stock ?? savingsInventory?.observedStock;
+  // Forecast owns dated reported stock separately from today's backing and
+  // contribution. Neither a held daily packet nor old balance evidence may
+  // grant funding permission or erase a valid, truthfully dated report.
+  const stock = compactOverview ? savingsInventory?.reportedStock : dailySavings?.stock ?? savingsInventory?.observedStock;
   const stockPools = savingsInventory?.pools?.length === 2 ? savingsInventory.pools : dailySavings?.backing?.pools;
-  const stockKnown = stock?.status === 'ready' && stock.basis === 'observed-savings-stock'
+  const stockKnown = stock?.status === 'ready' && stock.basis === (compactOverview ? 'reported-savings-stock' : 'observed-savings-stock')
     && stock.nonAdditive === true && stock.currency === 'CAD' && stock.asOf === savingsContext.asOf
-    && stock.trust === 'calculated' && stock.evidenceTrust === 'verified'
-    && typeof stock.amount === 'number' && Number.isFinite(stock.amount)
+    && stock.trust === 'calculated' && stock.evidenceTrust === (compactOverview ? 'provider-reported' : 'verified')
     && Array.isArray(stock.accountIds) && stock.accountIds.length === 2
     && stock.accountIds.every(id => typeof id === 'string')
-    && new Set(stock.accountIds).size === 2 && stockPools?.length === 2
+    && new Set(stock.accountIds).size === 2
+    && (!compactOverview || isValidIsoCalendarDate(stock.balanceFrom) && isValidIsoCalendarDate(stock.balanceThrough)
+      && stock.balanceFrom <= stock.balanceThrough && stock.balanceThrough <= savingsContext.asOf
+      && Array.isArray(stock.balanceDates) && stock.balanceDates.length === 2
+      && new Set(stock.balanceDates.map(row => row?.accountId)).size === 2
+      && stock.balanceDates.every(row => isValidIsoCalendarDate(row?.date)
+        && row.date >= stock.balanceFrom && row.date <= stock.balanceThrough && stock.accountIds?.includes(row.accountId)))
+    && typeof stock.amount === 'number' && Number.isFinite(stock.amount)
+    && stockPools?.length === 2
     && new Set(stockPools.map(pool => pool?.accountId)).size === 2
     && stockPools.every(pool => stock.accountIds.includes(pool.accountId));
+  const stockDateLabel = stockKnown && compactOverview ? 'Observed ' + stock.balanceFrom
+    + (stock.balanceFrom === stock.balanceThrough ? '' : ' – ' + stock.balanceThrough) : '';
+  const stockEvidence = `<p class="operating-note" data-budget-savings-stock-evidence>${stockKnown
+    ? (compactOverview ? 'Combined provider-reported savings balance. ' + budgetBrowseEscape(stockDateLabel)
+      + '. Balance dates are separate from today\'s observation date.' : 'Combined observed savings balance as of ' + budgetBrowseEscape(stock.asOf) + '.')
+      + ' This is not spendable cash, a period deduction or a confirmed allocation.'
+    : 'Both savings accounts require valid dated reported balances. No partial balance or zero is assumed.'}</p>`;
   // Active period: Current Balance at the top is the hub. Opening is not
   // a Balance After Deductions term, so it is not printed on this
   // household waterfall. Next / lookback periods still show their cash
@@ -4367,9 +4382,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
           ${rows ? '<ul class="budget-savings-contributions">' + rows + '</ul>' : ''}
           ${!rows ? '<p>Total goal savings not confirmed</p>' : ''}
           ${gap ? '<p class="crit">Funding shortfall: ' + budgetBrowseMoney(gap.shortBy, period.plannedCostFunding.trust) + '.</p>' : ''}
-          <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div><p class="operating-note" data-budget-savings-stock-evidence>${stockKnown ? 'The headline is the combined observed balance of the two savings accounts as of ' + budgetBrowseEscape(stock.asOf) + '. It is account stock, not a period deduction, spendable cash or a confirmed item allocation.' + (stock.pendingState !== 'clear' ? ' Pending movement evidence is unresolved; item backing remains separately qualified.' : '') : 'The combined savings balance is unavailable until both accounts have valid current observations. No partial balance or zero has been assumed.'}</p>${projectionWindow}${projection ? '<p class="operating-note">This period and Remaining this period show projected contributions. They are proposals, not money already saved, confirmed assignments or instructions to transfer. Unknown dated requirements remain unknown.</p>' : ''}${projectionGaps.map(row => '<p class="operating-note crit" data-budget-savings-projection-gap-detail>' + budgetBrowseEscape(fmtDate(row.date)) + ' · ' + budgetBrowseEscape(row.poolId === null ? 'Operating cash' : timeline.pools?.find(pool => pool.id === row.poolId)?.label || 'Pool name unknown') + ' · projected shortfall ' + amount(row.amount, 'estimated') + '</p>').join('')}${inventory && typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(inventory) : ''}${answer}${evidence}</div></details>
+          <details class="budget-savings-info" data-budget-savings-info><summary>Info</summary><div>${stockEvidence}${projectionWindow}${projection ? '<p class="operating-note">This period and Remaining this period show projected contributions. They are proposals, not money already saved, confirmed assignments or instructions to transfer. Unknown dated requirements remain unknown.</p>' : ''}${projectionGaps.map(row => '<p class="operating-note crit" data-budget-savings-projection-gap-detail>' + budgetBrowseEscape(fmtDate(row.date)) + ' · ' + budgetBrowseEscape(row.poolId === null ? 'Operating cash' : timeline.pools?.find(pool => pool.id === row.poolId)?.label || 'Pool name unknown') + ' · projected shortfall ' + amount(row.amount, 'estimated') + '</p>').join('')}${inventory && typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(inventory) : ''}${answer}${evidence}</div></details>
         </section>`;
-        if (dailySavings) detail = budgetDailySavingsHtml(dailySavings, `${answer}${evidence}`, inventory);
+        if (dailySavings) detail = budgetDailySavingsHtml(dailySavings, `${stockEvidence}${answer}${evidence}`, inventory);
       }
       const graph = summary.stock ? '' : ratioKey && ratioKey !== 'savings' ? budgetProgressBarHtml(progress, ratioKey) : `<span class="budget-waterfall-track${classes}" data-budget-bar-state="${state}" aria-hidden="true">
         ${bars}${signedScale ? '<span class="budget-waterfall-zero">0</span>' : ''}${state === 'zero-income'
@@ -4381,7 +4396,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         <details class="budget-step-details">
           <summary class="budget-step-summary">
             <span class="operating-number" aria-hidden="true">${summary.stock ? '•' : number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
-            <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span>${compactOverview ? '' : `<span class="budget-step-caption">${summary.note}</span>`}</span>
+            <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span>${compactOverview ? summary.stock && stockDateLabel ? `<span class="budget-step-caption" data-budget-savings-observed-date>${budgetBrowseEscape(stockDateLabel)}</span>` : '' : `<span class="budget-step-caption">${summary.note}</span>`}</span>
             ${graph}
             <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${ratioKey && ratioKey !== 'savings' ? budgetProgressValueHtml(progress, ratioKey) : known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>

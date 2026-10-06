@@ -805,17 +805,21 @@
   // Observed stock is context, never another operating balance or assignment.
   // Independently verify account identities even though configuration also
   // rejects aliases. No partial sum, opening fallback or inferred allocation.
-  function savingsObservedStock(config, observation, asOf) {
+  function savingsObservedStock(config, observation, asOf, reported = false) {
     const result = { status: 'unavailable', asOf, currency: config.currency || 'CAD',
       basis: 'observed-savings-stock', nonAdditive: true, amount: null,
       trust: 'unknown', evidenceTrust: 'unknown', accountIds: [], pendingState: 'unknown',
       reason: 'Current observations for both distinct savings accounts are required.' };
+    if (reported) Object.assign(result, { basis: 'reported-savings-stock',
+      balanceFrom: null, balanceThrough: null, balanceDates: [], freshness: 'unknown',
+      reason: 'Valid dated reported balances for both distinct savings accounts are required.' });
     if (config.status !== 'ready' || !savingsDate(asOf) || !observation
         || typeof observation !== 'object' || Array.isArray(observation)
         || observation.asOf !== asOf || !Array.isArray(observation.accounts)
         || !Array.isArray(config.pools) || config.pools.length !== 2) return result;
     const accounts = new Set();
     let totalCents = 0, pendingClear = true;
+    const balanceDates = [];
     for (const pool of config.pools) {
       if (!pool || typeof pool.accountId !== 'string' || !SAVINGS_ALIAS.test(pool.accountId)
           || accounts.has(pool.accountId)) return result;
@@ -825,14 +829,21 @@
       const cents = savingsCents(cash && cash.value, true);
       if (!cash || typeof cash !== 'object' || Array.isArray(cash)
           || cash.source !== 'provider-observe:lunchmoney' || cash.currency !== config.currency
-          || cash.evidenceDate !== asOf || cents == null
-          || config.latest && config.latest.confirmedAt > cash.evidenceDate) return result;
+          || !(reported ? savingsDate(cash.evidenceDate) && cash.evidenceDate <= asOf : cash.evidenceDate === asOf)
+          || cents == null || !reported && config.latest && config.latest.confirmedAt > cash.evidenceDate) return result;
+      balanceDates.push({ accountId: pool.accountId, date: cash.evidenceDate });
       totalCents += cents;
       if (!Number.isSafeInteger(totalCents)) return result;
       pendingClear = pendingClear && cash.pendingState === 'clear';
     }
-    return { ...result, status: 'ready', amount: totalCents / 100, trust: 'calculated',
-      evidenceTrust: 'verified', accountIds: Array.from(accounts),
+    // Latest reported stock is dated context, never evidence that today's
+    // allocations or operating funding are available. Keep the incumbent
+    // same-day observedStock and pool/backing gates unchanged.
+    const dates = balanceDates.map(row => row.date).sort();
+    return { ...result, ...(reported ? { balanceFrom: dates[0], balanceThrough: dates.at(-1),
+      balanceDates, freshness: dates.every(date => date === asOf) ? 'current' : 'dated' } : {}),
+      status: 'ready', amount: totalCents / 100, trust: 'calculated',
+      evidenceTrust: reported ? 'provider-reported' : 'verified', accountIds: Array.from(accounts),
       pendingState: pendingClear ? 'clear' : 'unresolved', reason: null };
   }
   function savingsInventory(plan, asOf) {
@@ -842,7 +853,10 @@
       incrementalInstructions: savingsEarmarksEnabled(plan) ? 'withheld' : 'incumbent',
       instructionReason: savingsEarmarksEnabled(plan) ? SAVINGS_INSTRUCTIONS_HELD : null,
       revision: config.latest && config.latest.revision || null, pools: [], goals: [],
-      observedStock: savingsObservedStock(config, plan && plan.savingsPoolObservation, asOf) };
+      observedStock: savingsObservedStock(config, plan && plan.savingsPoolObservation, asOf),
+      // Preserve the incumbent publication when no observation was supplied.
+      ...(plan && Object.hasOwn(plan, 'savingsPoolObservation')
+        ? { reportedStock: savingsObservedStock(config, plan.savingsPoolObservation, asOf, true) } : {}) };
     if (config.status !== 'ready') return packet;
     const observation = plan.savingsPoolObservation;
     const observationDate = observation && observation.asOf;

@@ -56,19 +56,26 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
     assert.doesNotMatch(summary, /177\.96|215\.04|600\.00/);
     const originalSavings = ctx.savings;
     for (const mutate of [
-      s => { delete s.observedStock; },
-      s => { s.observedStock.source = 'ignored-extra-field'; s.observedStock.basis = 'projected'; },
-      s => { s.observedStock.status = 'unavailable'; },
-      s => { s.observedStock.asOf = '2026-08-13'; },
-      s => { s.observedStock.currency = 'USD'; },
-      s => { s.observedStock.trust = 'estimated'; },
-      s => { s.observedStock.evidenceTrust = 'unknown'; },
-      s => { s.observedStock.nonAdditive = false; },
-      s => { s.observedStock.amount = '500.03'; },
-      s => { s.observedStock.amount = NaN; },
-      s => { s.observedStock.accountIds = ['savings', 'savings']; },
-      s => { s.observedStock.accountIds = ['savings']; },
-      s => { s.observedStock.accountIds = ['savings', 'unrelated-account']; },
+      s => { delete s.reportedStock; },
+      s => { s.reportedStock.source = 'ignored-extra-field'; s.reportedStock.basis = 'projected'; },
+      s => { s.reportedStock.status = 'unavailable'; },
+      s => { s.reportedStock.asOf = '2026-08-13'; },
+      s => { s.reportedStock.currency = 'USD'; },
+      s => { s.reportedStock.trust = 'estimated'; },
+      s => { s.reportedStock.evidenceTrust = 'unknown'; },
+      s => { s.reportedStock.nonAdditive = false; },
+      s => { s.reportedStock.amount = '500.03'; },
+      s => { s.reportedStock.amount = NaN; },
+      s => { s.reportedStock.accountIds = {}; },
+      s => { s.reportedStock.accountIds = ['savings', 'savings']; },
+      s => { s.reportedStock.accountIds = ['savings']; },
+      s => { s.reportedStock.accountIds = ['savings', 'unrelated-account']; },
+      s => { delete s.reportedStock.balanceFrom; },
+      s => { s.reportedStock.balanceThrough = '2027-01-01'; },
+      s => { s.reportedStock.balanceFrom = '2026-02-30'; },
+      s => { s.reportedStock.balanceDates = null; },
+      s => { s.reportedStock.balanceDates[0].accountId = 'unrelated-account'; },
+      s => { s.reportedStock.balanceDates[0].date = '2027-01-01'; },
       s => { s.pools[1].accountId = s.pools[0].accountId; },
     ]) {
       const inventory = structuredClone(originalSavings.inventory); mutate(inventory);
@@ -134,8 +141,10 @@ for (const mode of ['projection', 'projection-remaining', 'projection-missing-ca
   assert.equal((section.match(/data-budget-savings-total-saved><span class="budget-v3-unknown">Unknown/g) || []).length, 3,
     'observed pool cash and projected location never become saved goal assignments');
   assert.match(section, /Funding plan not confirmed/);
-  assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], mode === 'projection-stale' ? /Unavailable/ : /80\.00/,
+  assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], /80\.00/,
     'observed stock is independent of hypothetical contributions and operating cash availability');
+  if (mode === 'projection-stale') assert.match(html, /Observed 2026-09-09 – 2026-09-10/,
+    'stale valid balances disclose their source dates without restoring the projection');
   if (['projection', 'projection-remaining'].includes(mode)) {
     assert.doesNotMatch(section.replace(/<[^>]*>/g, ''), /projected|projection/i);
     assert.match(html, /Hypothetical projection/);

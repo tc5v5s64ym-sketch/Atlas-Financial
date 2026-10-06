@@ -3,7 +3,15 @@
 const source = require('./savings-daily-consumer-data');
 
 function input(mode = 'valid-v2') {
-  const data = source('ready'), asOf = data.meta.asOf;
+  const data = source('ready');
+  let asOf = data.meta.asOf;
+  if (['prior-household-day', 'blocked-prior-day', 'household-midnight-current'].includes(mode)) {
+    asOf = '2026-10-06';
+    data.meta.asOf = data.plan.opening.asOf = asOf;
+    data.liveOverlay.currentPeriodActuals.observationAsOf = data.liveOverlay.currentPeriodActuals.coverageThrough = asOf;
+    data.liveOverlay.observedCash.asOf = asOf;
+    data.liveOverlay.observedCash.accounts.forEach(row => { row.evidenceDate = asOf; });
+  }
   const stamp = asOf + 'T19:00:00Z';
   const accounts = [
     { id: '9001', accountId: 'chequing-a', value: 200 },
@@ -31,6 +39,13 @@ function input(mode = 'valid-v2') {
   if (mode === 'null-legacy-fetch') { savings.balance_last_update = null; savings.date_last_fetched = stamp; }
   if (mode === 'null-v2-sync') savings.balance_last_update = null;
   if (mode === 'stale-date') { savings.balance_last_update = '2026-10-04T19:00:00Z'; savings.updated_at = stamp; }
+  if (mode === 'stale-both') payload.accounts.slice(2).forEach(row => { row.balance_last_update = '2026-09-30T19:00:00Z'; });
+  if (mode === 'prior-year') payload.accounts.slice(2).forEach(row => { row.balance_last_update = '2025-10-05T19:00:00Z'; });
+  if (['prior-household-day', 'blocked-prior-day'].includes(mode)) payload.accounts.slice(2).forEach(row => { row.balance_last_update = '2026-10-06T04:30:00Z'; });
+  if (mode === 'household-midnight-current') payload.accounts.slice(2).forEach(row => { row.balance_last_update = '2026-10-06T07:00:00Z'; });
+  if (mode === 'withdrawal-stale') { savings.balance = '15.02'; savings.balance_last_update = '2026-10-04T19:00:00Z'; }
+  if (mode === 'negative-stale') { savings.balance = '-27.12'; savings.balance_last_update = '2026-10-04T19:00:00Z'; }
+  if (mode === 'zero-stale') payload.accounts.slice(2).forEach(row => { row.balance = '0'; row.balance_last_update = '2026-10-04T19:00:00Z'; });
   if (mode === 'future-date') { savings.balance_last_update = '2026-10-06T19:00:00Z'; savings.updated_at = stamp; }
   if (mode === 'malformed-date') { savings.balance_last_update = 'not-a-date'; savings.updated_at = stamp; }
   if (mode === 'malformed-type') { savings.balance_last_update = [asOf]; savings.updated_at = stamp; }
@@ -47,7 +62,7 @@ function input(mode = 'valid-v2') {
   if (mode === 'duplicate-account') payload.accounts.push({ ...savings });
   if (mode === 'pending-movement') payload.transactions.push({ id: 'invented-pending-reserve', account_id: '9003',
     date: asOf, amount: '5', currency: 'cad', is_pending: true, payee: 'Invented reserve movement' });
-  if (mode === 'sender-unknown') {
+  if (['sender-unknown', 'blocked-prior-day'].includes(mode)) {
     data.debts = [{ id: 'card', label: 'Invented card', balance: 821.43, pending: 0, rate: 0, limit: 2000 }];
     data.plan.obligations.push({ id: 'card', debtId: 'card', effect: 'payment', label: 'Invented card minimum',
       frequency: 'monthly', day: 7, firstDue: '2026-10-07', amount: 47.39, confidence: 'estimated', payingAccount: 'chequing-a',

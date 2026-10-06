@@ -112,14 +112,14 @@ for (const failure of ['exception', 'currency', 'allocation']) {
   for (const [label, mutate] of [
     ['verified current stock', () => {}],
     ['stale inventory', i => { i.asOf = '2026-10-04'; }],
-    ['stale stock', i => { i.observedStock.asOf = '2026-10-04'; }],
+    ['stale stock', i => { i.reportedStock.asOf = '2026-10-04'; }],
     ['foreign inventory currency', i => { i.currency = 'USD'; }],
-    ['foreign stock currency', i => { i.observedStock.currency = 'USD'; }],
+    ['foreign stock currency', i => { i.reportedStock.currency = 'USD'; }],
     ['wrong inventory source', i => { i.source = 'other'; }],
     ['additive inventory', i => { i.nonAdditive = false; }],
-    ['unknown stock evidence', i => { i.observedStock.evidenceTrust = 'unknown'; }],
-    ['nonnumeric stock', i => { i.observedStock.amount = '119'; }],
-    ['duplicate accounts', i => { i.observedStock.accountIds = ['savings', 'savings']; }],
+    ['unknown stock evidence', i => { i.reportedStock.evidenceTrust = 'unknown'; }],
+    ['nonnumeric stock', i => { i.reportedStock.amount = '119'; }],
+    ['duplicate accounts', i => { i.reportedStock.accountIds = ['savings', 'savings']; }],
     ['missing pool', i => { i.pools.pop(); }],
   ]) {
     ctx.inventory = JSON.parse(JSON.stringify(ctx.src.advice.savingsInventory)); mutate(ctx.inventory);
@@ -139,6 +139,6 @@ ctx.Forecast = { ...F, savingsDailyFunding: () => nativeUnavailable };
 ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
 assert.equal(ctx.packet.source, 'Forecast.savingsDailyFunding', 'accepted native stock uncertainty retains its authority');
 const nativeHtml = vm.runInContext('calendarWaterfallHtml(period,src.liveOverlay,null,src.plan,true,{daily:packet,inventory:src.advice.savingsInventory,asOf:src.asOf})', ctx);
-assert.match(nativeHtml.split('data-operating-question="savings"')[1].split('</summary>')[0], /Unavailable/, 'fallback cannot mask explicitly unavailable native stock');
+assert.match(nativeHtml.split('data-operating-question="savings"')[1].split('</summary>')[0], /119\.00/, 'independently reported stock survives unavailable daily backing');
 assert.match(nativeHtml.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
 console.log('PASS active current Budget/Savings consumer: thirteen independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, independently known requirement, publication boundary and guarded stock fallback');
