@@ -308,11 +308,11 @@ ok(near(sinkNow.get('Linden birthday'), 500 / monthsInWindow)
   'sinking names Linden birthday once at the $500 smear');
 
 console.log('\n=== Plan Spend card is a reprint of Forecast.planSpendCards ===');
-function plansAt(asOf) {
-  return F.majorPlans(data.plan, asOf, {
+function plansAt(asOf, plan = data.plan) {
+  return F.majorPlans(plan, asOf, {
     debts: data.debts,
     periods,
-    fundingSources: data.plan.funding && data.plan.funding.options,
+    fundingSources: plan.funding && plan.funding.options,
   });
 }
 function fusionCard(plans) {
@@ -662,7 +662,15 @@ ok(F.planSpendCards([
   'FUNDING GAP beats AT RISK on a grouped card');
 
 const midNovember = '2026-11-15';
-const midNovPlans = plansAt(midNovember);
+// This grouped-verdict fixture owns a fully calculated funding state. Later
+// incumbent statement/sender records must not inject an unrelated evidence
+// hold into its FUNDING GAP + ON TRACK severity proof.
+const groupingFixture = JSON.parse(JSON.stringify(data.plan));
+for (const row of groupingFixture.obligations || []) {
+  delete row.statementOccurrences;
+  delete row.sentPayments;
+}
+const midNovPlans = plansAt(midNovember, groupingFixture);
 const midNovMembers = midNovPlans.filter(p => p.group === 'fusion-household');
 const midNovCard = fusionCard(midNovPlans);
 const midNovWorst = worstMemberVerdict(midNovMembers.map(m => m.verdict));
@@ -677,6 +685,31 @@ ok(/data-plan-spend-verdict="FUNDING GAP"/.test(midNovGlance)
     && /<span class="chip c">FUNDING SHORTFALL<\/span>/.test(midNovGlance)
     && /class="[^"]*\bfunding-gap\b/.test(article(midNovHtml, 'fusion-household').split('>')[0]),
   'the 2026-11-15 grouped Fusion glance shows FUNDING GAP without opening Details');
+
+// Independent invented sender-only evidence must still withhold both member
+// and grouped verdicts. Removing the unrelated evidence from the grouping
+// fixture above is not permission to publish a verdict on an unknown ledger.
+const heldFixture = JSON.parse(JSON.stringify(groupingFixture));
+heldFixture.obligations = heldFixture.obligations.filter(row => row.debtId !== 'triangle');
+heldFixture.obligations.push({ id: 'invented-held-minimum', label: 'Invented minimum',
+  debtId: 'triangle', effect: 'payment', frequency: 'monthly', day: 7,
+  firstDue: '2035-10-07', amount: 43.21, confidence: 'estimated', payingAccount: 'chequing-a',
+  statementOccurrences: [{ scheduledDate: '2035-10-07', dueDate: '2035-10-09',
+    minimum: 47.39, currency: 'cad', confidence: 'confirmed' }],
+  sentPayments: [{ scheduledDate: '2035-10-07', confirmed: true, intent: 'minimum',
+    debitId: 'invented-roster-send', postedOn: '2035-10-03', amount: 52.67,
+    currency: 'cad', fundingAccountId: 'chequing-a', pending: false }],
+});
+const heldMembers = plansAt('2035-11-15', heldFixture);
+const heldFusion = heldMembers.filter(row => row.group === 'fusion-household');
+const heldCard = fusionCard(heldMembers);
+ok(heldFusion.length === 3 && heldFusion.every(row => row.verdict == null && row.remaining == null),
+  'invented sender-only uncertainty withholds all grouped member funding claims after the due cycle');
+ok(heldCard && heldCard.verdict == null && heldCard.remaining == null,
+  'an unknown member ledger keeps the grouped verdict and remaining funding unknown');
+const heldGlance = article(render(heldMembers), 'fusion-household').split('<details')[0];
+ok(/STATUS UNAVAILABLE/.test(heldGlance) && !/FUNDING SHORTFALL|FEASIBLE|FUNDING GAP/.test(heldGlance),
+  'the grouped glance publishes unavailable rather than an invented funding verdict');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);
