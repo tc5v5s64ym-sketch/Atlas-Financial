@@ -702,6 +702,31 @@ console.log('\n=== cash is not reserved twice; canonical is not rewritten ===');
     'obligation reconciliation receipt stays sanitized');
 }
 
+console.log('\n=== Owner-confirmed TD Cash Back minimum settles once; excess is not a later minimum ===');
+{
+  const plan = clone(canonical.plan);
+  const sent = (obligation(plan, 'cashback').sentPayments || []).filter(row => row.scheduledDate === '2026-10-01');
+  ok(sent.length === 1 && sent[0].intent === 'minimum' && near(sent[0].amount, 180)
+      && (plan.opening.representedEvents || []).some(row => row.id === 'cashback' && row.date === '2026-10-01'
+        && row.effectiveAsOf === '2026-10-06'),
+    'canonical names exactly the 2026-10-01 Cash Back occurrence, qualified at the 2026-10-06 opening');
+  const early = Forecast.cardMinimumState(plan, '2026-10-05').payments.find(row => row.occurrenceKey === 'cashback@2026-10-01');
+  ok(early && early.issuerMinimumStatus === 'unconfirmed' && early.additionalCashRequired === null,
+    'confirmation cannot settle an opening earlier than its qualification');
+  plan.opening.priorAsOf = HISTORICAL_OPENING;
+  plan.opening.asOf = '2026-10-06';
+  const payments = Forecast.cardMinimumState(plan, '2026-10-06').payments.filter(row => row.id === 'cashback');
+  ok(payments.length === 1 && payments[0].scheduledDate === '2026-10-01'
+      && payments[0].issuerMinimumStatus === 'satisfied' && payments[0].additionalCashRequired === 0,
+    'one send settles one original occurrence');
+  const rows = Forecast.recommend(plan, '2026-10-06', {}).payPeriodViews.flatMap(view => view.bills || []);
+  const oct = rows.filter(row => row.id === 'cashback' && row.date === '2026-10-01');
+  const nov = rows.filter(row => row.id === 'cashback' && row.date === '2026-11-01');
+  ok(oct.length > 0 && oct.every(row => row.remaining === 0), 'the 2026-10-01 minimum carries no remaining cash');
+  ok(nov.length > 0 && nov.every(row => row.status !== 'PAID' && near(row.remaining, 170)),
+    'the $10.00 above the minimum does not satisfy or reduce the next minimum');
+}
+
 if (failures) {
   console.log(`\nFAILED — ${failures} check(s)`);
   process.exit(1);
