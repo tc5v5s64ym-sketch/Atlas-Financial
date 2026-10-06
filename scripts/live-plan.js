@@ -47,9 +47,15 @@
  * advances: posting/representation evidence names them on in-memory
  * representedEvents. Existing opening names that still qualify as
  * in-window, carried-once, or prepaid for the new liveAsOf are merged
- * into that list; identity rediscovery stays additive. A duplicate
- * id/date prefers currently applicable proof over an inactive deferred
- * or invalid entry and retains the earlier truthful qualification.
+ * into that list; identity rediscovery stays additive. Explicit
+ * effectiveAsOf names stay attached by original occurrence identity
+ * across repeated and advancing refreshes, including after a statement
+ * due-date replacement; advancing as-of cannot unconfirm them.
+ * Deferred or invalid effective dates stay inactive. Legacy names
+ * without effectiveAsOf still drop when they no longer qualify. A
+ * duplicate id/date prefers currently applicable proof over an inactive
+ * deferred or invalid entry and retains the earlier truthful
+ * qualification.
  * Unrepresented
  * joint-cash outflows stay reserved
  * via plan.opening.priorAsOf so Forecast does not drop them.
@@ -778,15 +784,19 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   // had not rediscovered (tdcc chequing TFR-TO C/C is not identity).
   // Keep existing names that still qualify for this liveAsOf; identity
   // candidates remain additive. Non-qualifying historical names still
-  // drop. Explicit deferred evidence stays attached but inactive; stripping
-  // its effective date would turn it into an opening-date legacy assertion.
-  // Duplicate id/date cannot let that inactive row shadow fresh applicable
-  // proof, and a later live date cannot overwrite an earlier truthful one.
+  // drop. Explicit effectiveAsOf proof stays attached by original
+  // occurrence identity even after the date leaves the live window or
+  // prepaid path — advancing as-of or replacing the due date cannot
+  // unconfirm it. Deferred or invalid effective dates stay inactive;
+  // stripping the date would turn them into an opening-date legacy
+  // assertion. Duplicate id/date cannot let that inactive row shadow
+  // fresh applicable proof, and a later live date cannot overwrite an
+  // earlier truthful one. Legacy names without effectiveAsOf still
+  // drop unless they remain in-window, carried-once, or prepaid.
   const keptExisting = advances
     ? existing.filter(row => representedCandidateAllowed(
       row, historicalOpeningAsOf, liveAsOf, next.plan)
-      || (row && Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
-        && !Forecast.representedEventEffectiveBy(row, liveAsOf)))
+      || (row && Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')))
     : existing;
   const nextRepresented = mergeRepresented(keptExisting, uniqueRepresented, liveAsOf);
   const representedKeys = new Set(nextRepresented.filter(row =>
