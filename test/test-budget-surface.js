@@ -488,7 +488,7 @@ const publishedRow = '__ctx.advice.payPeriodViews.find(row => row.start === "202
 const matrix = (amount, amountTrust, income, incomeTrust, position = 0) => matrixPage.rerender(`
   Object.assign(${publishedRow}, { budgetHold: ${amount}, budgetHoldTrust: ${JSON.stringify(amountTrust)},
     afterBills: ${amount}, afterBillsTrust: ${JSON.stringify(amountTrust)},
-    predictedEndingBalance: ${amount}, afterHouseholdBudget: ${position},
+    predictedEndingBalance: ${amount}, afterHouseholdBudget: ${amount},
     balanceAfterDeductionsTrust: ${JSON.stringify(amountTrust)},
     available: ${income}, incomeTrust: ${JSON.stringify(incomeTrust)} })`);
 for (const trust of ['calculated', 'estimated', null]) for (const amount of [100, 0, -100]) {
@@ -627,7 +627,7 @@ const fundingPage = page();
 const fundingHtml = fundingPage.render(fx.served());
 ok(/data-budget-funding-panel="today"/.test(fundingHtml) && /data-budget-funding-panel="payday"[^>]* hidden/.test(fundingHtml),
   'one proposal is visible at a time; Today and the payday schedule remain separate');
-ok(/never add them together/.test(fundingHtml) && /data-budget-funding-savings hidden/.test(fundingHtml),
+ok(/Keep it separate from today's offer/.test(fundingHtml) && /data-budget-funding-savings hidden/.test(fundingHtml),
   'proposal scopes and complete savings inventory remain available without inventing saved balances');
 const fundedCurrent = '__ctx.advice.payPeriodViews.find(row => row.timelineRole === "current")';
 for (const update of ["trust: 'unknown'", "contribution: null", "contribution: false", "contribution: '85'", "asOf: '2026-08-19'", "currentThrough: '2026-09-10'", "basis: 'pooled-other-basis'"]) {
@@ -718,8 +718,9 @@ for (const coverage of ['missing', 'partial', 'truncated', 'full', 'posted-only'
       const period = hp.context.__ctx.advice.payPeriodViews.find(row => row.timelineRole === role);
       const out = hp.rerender(`planPayPeriodId = ${JSON.stringify(period.id || period.start)}; __ctx.planPayPeriodId = planPayPeriodId`);
       const funding = out.split('data-budget-funding-section')[1];
-      ok(ready ? funding.includes(money(capacity)) : /data-budget-funding-proposal><span class="budget-v3-unknown">Unavailable/.test(funding),
-        `${coverage}/${settlement}/${role}: active funding surface keeps the current-cash evidence scope and trust`);
+      ok(/data-budget-funding-proposal><span class="budget-v3-unknown">Unavailable/.test(funding)
+        && (ready ? out.includes(money(capacity)) : current.fromTodayFunding.status === 'unavailable'),
+        `${coverage}/${settlement}/${role}: policy before confirmation withholds the daily offer while native current-cash evidence retains its scope and trust`);
       ok((out.match(/data-from-today-proposal/g) || []).length === 1,
         `${coverage}/${settlement}/${role}: Today evidence remains available without a duplicate or selected-period substitution`);
     }
@@ -730,15 +731,15 @@ console.log('\n=== compact savings contribution evidence ===');
 {
   const sp = page(); const out = sp.render(fx.served());
   const goals = out.split('data-budget-savings-goals')[1]?.split('data-budget-funding-savings')[0] || '';
-  ok(/School trip/.test(goals) && /Winter tires/.test(goals) && /Not confirmed/.test(goals),
-    'the default savings card lists published names with unconfirmed period fulfillment');
+  ok(/School trip/.test(goals) && /Winter tires/.test(goals) && /Saved/.test(goals) && /Needed/.test(goals) && /Unavailable/.test(goals),
+    'the default savings card retains published names and withholds Saved/Needed before policy confirmation');
   ok(!/Confirmed assigned|Unallocated cash|Currently backed|goalKey/.test(goals),
     'technical account inventory remains behind complete evidence rather than becoming default goal rows');
   const stamped = sp.rerender(`const funding = __ctx.advice.payPeriodViews.find(row => row.timelineRole === 'current').plannedCostFunding;
     funding.items.forEach(row => { row.actualSaved = 9999; row.cumulativeProposed = 9999; row.contribution = 0; });`);
   const stillUnknown = stamped.split('data-budget-savings-goals')[1]?.split('data-budget-funding-savings')[0] || '';
-  ok(!/>Funded<|>Still to fund</.test(stillUnknown) && /Not confirmed/.test(stillUnknown),
-    'a saved balance or cumulative proposal cannot become this period\'s confirmed fulfillment');
+  ok(!/>Funded<|>Still to fund<|9,999/.test(stillUnknown) && /Unavailable/.test(stillUnknown),
+    'legacy saved balances and cumulative proposals cannot populate new daily Saved/Needed or This period');
   const inventoryPage = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
   ok(/<details class="budget-savings-accounts">\s*<summary>Savings accounts &amp; evidence<\/summary>\s*<div id="savings-inventory"><\/div>\s*<\/details>/.test(inventoryPage),
     'complete inventory is keyboard-accessible through a collapsed native evidence disclosure');

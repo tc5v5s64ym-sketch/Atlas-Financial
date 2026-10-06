@@ -188,7 +188,7 @@ assert.match(bills,/data-budget-ratio="bills"[\s\S]*?1,400\.00[\s\S]*?1,665\.00/
 assert.match(bills,/data-budget-progress-kind="bills"/);
 assert.match(bills,/data-budget-progress-kind="bills"[^>]*aria-hidden="true"><\/span>/,'partial paid evidence has no progress fill');
 const goals=vm.runInContext('budgetSavingsGoalsHtml(progressCtx,progressPeriod,null)',context);
-assert.match(goals,/School trip/);assert.match(goals,/Not confirmed/);assert.doesNotMatch(goals,/>Funded<|>Still to fund</);
+assert.match(goals,/School trip/);assert.match(goals,/Saved[\s\S]*Needed[\s\S]*Unavailable/);assert.doesNotMatch(goals,/>Funded<|>Still to fund</);
 // Actual incumbent Forecast -> active savings renderer, with a second-method
 // reconciliation from independently invented salary/bills/category/goal rows.
 const contributionData=require('./fixtures/savings-contribution-display-data')();
@@ -200,9 +200,17 @@ for(const [date,amount] of [['2026-08-14',875 - (1300 - 240 - 160 - 310)],['2026
   context.contributionCtx={asOf:contributionData.meta.asOf,advice:contributionAdvice,plan:contributionData.plan};
   assert.equal(context.contributionPeriod.budgetProgress.savings.goals.find(row=>row.id==='garden-course').required.amount,amount);
   const html=vm.runInContext('budgetSavingsGoalsHtml(contributionCtx,contributionPeriod,null)',context);
-  assert.match(html,/data-budget-goal-fulfilled><span class="budget-v3-unknown">Unknown/);
-  assert.match(html,new RegExp('data-budget-goal-required>[\\s\\S]*?'+amount.toFixed(2).replace('.','\\.')));
-  assert.match(html,/Fulfilled[\s\S]*Required this period[\s\S]*Current Forecast requirement/);
+  if(context.contributionPeriod.timelineRole==='current') {
+    assert.match(html,/Saved[\s\S]*Needed[\s\S]*Unavailable/,'daily policy before confirmation cannot borrow legacy requirement or saved amounts');
+    assert.doesNotMatch(html,/data-budget-goal-fulfilled|data-budget-goal-required/);
+    const retained=vm.runInContext("budgetProgressEvidenceHtml(contributionPeriod.budgetProgress.savings,'savings')",context);
+    assert.match(retained,new RegExp('Required this period:[\\s\\S]*?'+amount.toFixed(2).replace('.','\\.')),'native independently reconciled requirement remains in evidence');
+    assert.match(retained,/Confirmed fulfilled this period: Unavailable/);
+  } else {
+    assert.match(html,/data-budget-goal-fulfilled><span class="budget-v3-unknown">Unknown/);
+    assert.match(html,new RegExp('data-budget-goal-required>[\\s\\S]*?'+amount.toFixed(2).replace('.','\\.')));
+    assert.match(html,/Fulfilled[\s\S]*Required this period[\s\S]*Current Forecast requirement/);
+  }
   assert.match(html,/Reading nook with a deliberately long goal name/);
   assert.doesNotMatch(html,/>Funded<|>Still to fund<|type="checkbox"|original planned|width:/);
 }
