@@ -80,6 +80,9 @@ console.log('\n=== Phoenix historical discovery and later owner routing ===');
     'Phoenix intake separates historical discovery from the dated owner promotion');
   ok(/category remains unconfirmed/i.test(phoenixSection),
     'Phoenix routing leaves its category unconfirmed');
+  ok(/Owner-stated planning assumption: monthly on the 3rd/.test(phoenixSection)
+      && /renewal day is not invoice-verified/i.test(phoenixSection),
+    'Phoenix planning cadence is attributed to the owner, not verified from merchant history');
   ok(!/phoenix/i.test(questions),
     'this pack does not open a Phoenix purpose question');
 }

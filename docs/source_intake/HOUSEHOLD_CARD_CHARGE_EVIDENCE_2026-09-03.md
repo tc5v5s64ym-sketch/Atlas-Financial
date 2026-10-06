@@ -63,8 +63,13 @@ are not a bill. One of the two hits is within ±$15 of $179; that is not
 a proven $179 bill. Do not assume gym, insurance, Amanda, or Dale. Do
 not add `plan.bills`. Do not open a purpose question from this pack.
 
-**Owner 2026-10-06 — later promotion:** Amanda's monthly Phoenix Digital
-Health charge on the Travel Visa is now owner-confirmed.
+**Owner 2026-10-06 — later promotion:** Amanda's Phoenix Digital Health
+bill on the Travel Visa is added at the owner's instruction.
+Owner-stated planning assumption: monthly on the 3rd.
+The renewal day is not invoice-verified. The October invoice is dated
+2026-10-03; the bank charge followed on 2026-10-05 after retries. That
+bank date is not a renewal date. Combined merchant rows can belong to
+different household subscriptions and do not establish Amanda's cadence.
 Routed to live `plan.bills` `phoenix-digital-health`; `CARD-002` is CONSUMED onto that
 named bill. The category remains unconfirmed. This later instruction
 does not change the dated observations above or infer a product or
