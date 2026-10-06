@@ -7150,7 +7150,15 @@
       // do not move. A date on or before asOf, and every active or
       // lookback window, keep the incumbent status. An opening-settled
       // row is not rewritten: that flag is what keeps it out of the load.
-      if (window.role === 'future' && row.date && asOf && row.date > asOf
+      // A posted, opening-included minimum action can already satisfy its
+      // original occurrence before a later planning date. Keep that validated
+      // state coherent across periods; plain future receipt names still plan.
+      const earlyMinimumPaid = row.cashPaymentStatus === 'sent'
+        && row.householdPaymentStatus === 'paid'
+        && row.cashInclusionStatus === 'included'
+        && row.issuerMinimumStatus === 'satisfied'
+        && row.additionalCashRequired === 0;
+      if (!earlyMinimumPaid && window.role === 'future' && row.date && asOf && row.date > asOf
           && row.settlement !== 'opening' && row.settledInOpening !== true
           && (row.status === 'PAID' || row.glanceKind === 'paid'
             || row.settlement === 'represented')) {
@@ -13479,7 +13487,14 @@
       // Replaying the contractual minimum would invent another debt reduction
       // when the optional contract has no accepted minimum-intent allocation.
       const original = statementOccurrenceIdentity(plan, event.id, event.scheduledDate || event.date);
-      if ([...(plan?.opening?.representedEvents || []), ...(opts?.representedEvents || [])]
+      const row = (plan?.obligations || []).find(row => row && row.id === event.id);
+      // Optional records on another cycle must not reclassify an older legacy
+      // prepaid payment. expandEvents has validated statement records; state
+      // supplies only accepted, posted minimum allocations for this as-of.
+      const contracted = (row?.statementOccurrences || []).some(record => record.scheduledDate === original)
+        || cardMinimumState(plan, start, opts).payments.some(payment => payment.id === event.id
+          && payment.scheduledDate === original);
+      if (contracted && [...(plan?.opening?.representedEvents || []), ...(opts?.representedEvents || [])]
           .some(item => cardMinimumReceiptIdentity(plan, item) === original && item.id === event.id
             && representedEventEffectiveBy(item, start))) return false;
       return prepaidJointCashOutflow(plan, event.id, event.date, start);

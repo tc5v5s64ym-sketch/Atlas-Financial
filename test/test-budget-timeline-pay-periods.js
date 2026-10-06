@@ -471,6 +471,12 @@ console.log('\n=== 5c. live plan keeps the bill load and moves only the paid dis
   // This historical bill-load fixture owns a calculated ledger. A later
   // carried sender's cash-inclusion uncertainty is exercised separately.
   delete data.plan.obligations.find(row => row.id === 'mbna-aug31').sentPayments;
+  // This fixed historical MATCH ledger predates Emerald's October amount
+  // confirmation. Keep its original estimated minimum and hand totals;
+  // current typed occurrence behavior has independent boundary coverage.
+  const tdcc = data.plan.obligations.find(row => row.id === 'tdcc');
+  delete tdcc.statementOccurrences;
+  delete tdcc.sentPayments;
   const live = F.recommend(data.plan, data.meta.asOf, { debts: data.debts || [], targetBuffer: data.plan.defaults && data.plan.defaults.targetBuffer });
   const sep = rowByStart(live, '2026-09-11');
   ok(data.meta.asOf === '2026-08-19' && sep && sep.end === '2026-09-24' && sep.timelineRole === 'future',
