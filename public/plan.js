@@ -4252,6 +4252,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     ? (compactOverview ? 'Combined provider-reported savings balance. ' + budgetBrowseEscape(stockDateLabel)
       + '. Balance dates are separate from today\'s observation date.' : 'Combined observed savings balance as of ' + budgetBrowseEscape(stock.asOf) + '.')
       + ' This is not spendable cash, a period deduction or a confirmed allocation.'
+      + (stock.pendingState !== 'clear' ? ' Pending movement evidence is unresolved; item backing remains separately qualified.' : '')
     : 'Both savings accounts require valid dated reported balances. No partial balance or zero is assumed.'}</p>`;
   // Active period: Current Balance at the top is the hub. Opening is not
   // a Balance After Deductions term, so it is not printed on this

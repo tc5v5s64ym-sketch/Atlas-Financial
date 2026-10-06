@@ -198,6 +198,28 @@ for (const mode of ['projection', 'projection-remaining', 'projection-missing-ca
   assert.equal(JSON.stringify(data), original);
 }
 // Same-date reserve refresh must read current evidence rather than an older Month cache.
+// Pending movement qualifies dated stock, including the actual next-period
+// renderer. It never hides independently known stock or grants funding.
+for (const pending of [false, true]) for (const dates of ['current', 'older', 'mixed']) {
+  const data = fixture(pending ? 'stock-pending' : 'backed-ready');
+  if (dates !== 'current') data.plan.savingsPoolObservation.accounts[0].evidenceDate = '2026-08-13';
+  if (dates === 'older') data.plan.savingsPoolObservation.accounts[1].evidenceDate = '2026-08-13';
+  const immutable = JSON.stringify(data), advice = F.recommend(data.plan, data.meta.asOf, {});
+  const publication = JSON.stringify(advice);
+  ctx.plan = data.plan; ctx.savings = { inventory: advice.savingsInventory, asOf: data.meta.asOf };
+  for (const role of ['current', 'next']) {
+    ctx.probe = advice.payPeriodViews.find(row => row.timelineRole === role);
+    assert.ok(ctx.probe, 'use the real ' + role + ' period');
+    const html = vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx);
+    const note = html.match(/data-budget-savings-stock-evidence>([^<]*)<\/p>/)[1];
+    assert.equal(note.includes('Pending movement evidence is unresolved; item backing remains separately qualified.'), pending);
+    assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], /500\.03/,
+      '300.01 + 200.02 dated stock survives pending evidence and future selection');
+    assert.match(note, dates === 'current' ? /Observed 2026-08-14/ : dates === 'older'
+      ? /Observed 2026-08-13\. / : /Observed 2026-08-13 [-\u2013] 2026-08-14/);
+    assert.equal(JSON.stringify(advice), publication); assert.equal(JSON.stringify(data), immutable);
+  }
+}
 const refreshed = fixture('projection');
 ctx.source = { plan: refreshed.plan, debts: [], asOf: refreshed.meta.asOf, weekly: 35, weeklyOverride: 35,
   advice: F.recommend(refreshed.plan, refreshed.meta.asOf, {}), revolvingExtra: [] };
