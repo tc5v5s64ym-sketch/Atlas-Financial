@@ -993,7 +993,10 @@
     return event && event.reserveFunding ? event.reserveFunding.amount : 0;
   }
   function operatingEventAmount(event) {
-    return reserveFundedAmount(event) ? roundCent(event.amount + reserveFundedAmount(event)) : event.amount;
+    const protectedPurchase = event && event.cardPurchaseProtection
+      ? event.cardPurchaseProtection.amount : 0;
+    const funded = reserveFundedAmount(event) + protectedPurchase;
+    return funded ? roundCent(event.amount + funded) : event.amount;
   }
   function residualEventAmount(event) {
     if (event.kind === 'noncash') return 0;
@@ -1021,6 +1024,53 @@
         amount: payment.backed, parts: payment.parts, asOf: start, revision: funding.revision,
         source: funding.source, projected: true,
       } }) : event;
+    });
+  }
+  // Early posted bill evidence may settle after the cash-walk start. Keep
+  // purchase coverage in full and credit only its duplicate scheduled hold.
+  // This changes neither the planned Budget amount nor payment allocations.
+  function applyPostedCardPurchaseProtection(events, plan, start, opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    const actuals = packet && packet.representedActuals;
+    if (!Array.isArray(actuals) || !actuals.length
+        || !events.some(event => event.kind === 'bill' && event.cardPaid
+          && actuals.some(row => row && row.id === event.id
+            && row.date === event.date && row.transactionId))) return events;
+    const transactions = Array.isArray(packet.transactions) ? packet.transactions : [];
+    const coverage = reconcileCardPurchases(transactions, {
+      plan, asOf: start, packet, debts: opts && opts.debts,
+    });
+    if (coverage.publication.status !== 'ready'
+        || cardMinimumState(plan, start, opts).status === 'unavailable') return events;
+    return events.map(event => {
+      if (event.kind !== 'bill' || !event.cardPaid) return event;
+      const links = actuals.filter(row => row && row.id === event.id && row.date === event.date);
+      if (links.length !== 1 || !links[0].transactionId
+          || events.filter(other => other.id === event.id && other.date === event.date).length !== 1) return event;
+      const link = links[0];
+      const matches = transactions.filter(tx => tx && tx.id === link.transactionId);
+      if (matches.length !== 1
+          || actuals.filter(row => row && row.transactionId === link.transactionId).length !== 1) return event;
+      const tx = matches[0];
+      const accountIds = [tx.atlasAccountId, tx.accountId, tx.account].filter(Boolean);
+      if (transactionPendingState(tx) !== 'posted' || !isRevolvingCardAccount(tx)
+          || !accountIds.length || accountIds.some(id => id !== event.payingAccount)
+          || savingsCents(tx.amount) !== savingsCents(-event.amount)
+          || savingsCents(link.actual) !== savingsCents(-event.amount)) return event;
+      const held = coverage.annotations.get(tx.coverageRef);
+      // A confirmed backfill is already spent only in the current dated
+      // cash opening. Then the whole posted purchase replaces this hold,
+      // including its covered portion. Older/undated cash keeps that portion
+      // reserved; the reconciled remaining coverage still protects the rest.
+      const cashIncluded = plan.opening && plan.opening.asOf === start
+        && cashSnapshotDate(plan, start) === start;
+      const amount = held && ['awaiting-coverage', 'resolved'].includes(held.status)
+        && held.remaining != null
+        ? roundCent(Math.min(cashIncluded ? -event.amount : held.remaining,
+          Math.max(0, -operatingEventAmount(event)))) : 0;
+      return amount > 0 ? { ...event, cardPurchaseProtection: {
+        amount, asOf: start, source: 'Forecast.visaPaymentReconciliation',
+      } } : event;
     });
   }
   function postedHouseholdChequingCash(plan) {
@@ -2324,11 +2374,13 @@
     const kept = omitRepresented(events, plan, opts, start);
     const already = new Set(kept.map(e => e.id + '@' + e.date));
     const carried = carriedUnresolvedJointCashOutflows(plan, start, opts, already);
-    if (!carried.length) return applyReserveFunding(applyMinimumSent(kept, plan, start, opts), plan, start, end, opts);
+    if (!carried.length) return applyPostedCardPurchaseProtection(
+      applyReserveFunding(applyMinimumSent(kept, plan, start, opts), plan, start, end, opts), plan, start, opts);
     const out = kept.concat(carried);
     out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return applyReserveFunding(applyMinimumSent(out, plan, start, opts), plan, start, end, opts);
+    return applyPostedCardPurchaseProtection(
+      applyReserveFunding(applyMinimumSent(out, plan, start, opts), plan, start, end, opts), plan, start, opts);
   }
 
   // Additional cash needed to keep this walk's measured trajectory at or
@@ -2497,7 +2549,7 @@
         // payment obligation.
         if (e.cardPaid) {
           balance += operatingEventAmount(e);
-          week.reserved += -e.amount;
+          week.reserved += -e.amount - (e.cardPurchaseProtection ? e.cardPurchaseProtection.amount : 0);
           week.events.push(e);
           continue;
         }
@@ -4753,6 +4805,15 @@
       return {
         kind: 'bill', categoryId: null, householdSpending: false,
         reason: 'represented-bill', includeReason: 'represented-bill',
+      };
+    }
+    // A unique pending revolving match of a still-due card-paid bill is
+    // that bill, not household spending. It does not settle representedEvents.
+    if (tx.pending === true && tx.pendingMatchingCardPaidBill === true) {
+      return {
+        kind: 'bill', categoryId: null, householdSpending: false,
+        reason: 'pending-matching-card-paid-bill',
+        includeReason: 'pending-matching-card-paid-bill',
       };
     }
     if (isOwnerConfirmedSpotifyTransaction(tx)) {
@@ -9039,6 +9100,15 @@
       if (!unit(tx) || amount == null) continue;
       if (!account || !(amount > 0) || paymentLike(tx)) continue;
       const cls = classifyCurrentPeriodTransaction(tx, plan, { packet });
+      const pendingMatchingCardPaidBill = tx.pending === true
+        && (tx.pendingMatchingCardPaidBill === true
+          || cls.reason === 'pending-matching-card-paid-bill')
+        && cls.householdSpending !== true;
+      if (pendingMatchingCardPaidBill) {
+        // Still reserved as the unmatched card-paid bill. Do not also hold
+        // the pending authorization as uncovered card spend.
+        continue;
+      }
       if (cls.householdSpending || tx.representedBill === true) {
         purchases.set(tx.coverageRef, { ref: tx.coverageRef, accountId: account,
           accountLabel: label(account), date: tx.date, amount: amount / 100,

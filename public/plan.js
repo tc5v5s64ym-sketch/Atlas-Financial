@@ -1433,7 +1433,7 @@ function operatingDebtAnswerHtml(alloc) {
   const required = alloc.requiredDebtPayments || { items: [] };
   const extra = alloc.extraDebt || {};
   const requiredRows = (required.items || []).map(row => {
-    const confidence = row.confidence === 'estimated' ? ' · estimated' : '';
+    const confidence = (row.dateConfidence || row.confidence) === 'estimated' ? ' · estimated' : '';
     const settlement = row.settlement === 'unverified'
       ? ' · unverified'
       : row.settlement === 'upcoming' ? ' · upcoming' : '';

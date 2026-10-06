@@ -19,8 +19,8 @@
  * previous Seaspan cycle start. The extension is capped at 120 days.
  * It is settlement lookup plus the two-cycle Road Ahead window, not a
  * historical store. Pending coverage is unchanged.
- * Account timestamps stay distinct: balance_as_of, updated_at,
- * date_last_fetched. Posted-balance evidence prefers balance_as_of.
+ * Account timestamps stay distinct: balance_as_of, balance_last_update,
+ * updated_at, date_last_fetched. Posted evidence prefers semantic balance dates.
  */
 
 const fs = require('fs');
@@ -282,16 +282,29 @@ function normalizeLunchMoneyAccount(raw) {
     limit: firstNumber(raw.credit_limit, raw.limit),
     updatedAt: raw.updated_at || null,
     balanceAsOf: raw.balance_as_of || null,
+    ...(Object.prototype.hasOwnProperty.call(raw, 'balance_last_update')
+      ? { balanceLastUpdate: raw.balance_last_update } : {}),
     dateLastFetched: raw.date_last_fetched || null,
   };
 }
 
-// Posted-balance evidence uses the semantic balance date. Generic object
-// updated_at is not the balance date and must not override an explicit
-// trustworthy balance_as_of. Distinct timestamps stay distinct.
+// Posted evidence keeps legacy balance_as_of precedence, then the v2
+// semantic balance_last_update. An explicitly unknown/malformed v2 date withholds
+// evidence instead of borrowing an object update or sync/fetch timestamp.
+// Preserve absence separately for incumbent legacy timestamp compatibility.
+// Household conversion remains Forecast.financialDate; UTC below only
+// validates calendar identity so impossible dates cannot roll forward.
 function postedBalanceEvidenceInstant(account) {
   if (!account || typeof account !== 'object') return null;
-  return account.balanceAsOf || account.updatedAt || account.dateLastFetched || null;
+  if (account.balanceAsOf) return account.balanceAsOf;
+  if (Object.prototype.hasOwnProperty.call(account, 'balanceLastUpdate')) {
+    const value = account.balanceLastUpdate;
+    if (typeof value !== 'string' || !dateOnly(value)) return null;
+    const day = value.trim().slice(0, 10), instant = Date.parse(day + 'T00:00:00Z');
+    if (!Number.isFinite(instant) || new Date(instant).toISOString().slice(0, 10) !== day) return null;
+    return value;
+  }
+  return account.updatedAt || account.dateLastFetched || null;
 }
 
 // Live cash / mortgage / HELOC keep the prior object-update dating so
@@ -3091,16 +3104,25 @@ function reconciliationReceipt(report, opts) {
 }
 
 function observationsFromMappedAccount(account, mapping, fetchedAt) {
-  const dated = CREDIT_ROLES.has(mapping.atlasRole)
+  const usesPostedDate = CREDIT_ROLES.has(mapping.atlasRole);
+  const dated = usesPostedDate
     ? postedBalanceEvidenceInstant(account)
     : genericAccountEvidenceInstant(account);
-  const observedAt = dated || fetchedAt;
+  // Every posted-credit fact shares the semantic-date boundary. A request
+  // timestamp cannot repair missing/invalid balance evidence. Savings uses
+  // the same helper directly; non-credit generic dating stays incumbent.
+  const observedAt = usesPostedDate ? dated : dated || fetchedAt;
+  const evidenceDate = dateOnly(observedAt);
+  const requestDay = dateOnly(fetchedAt);
+  const unqualifiedPostedDate = usesPostedDate
+    && (!evidenceDate || !requestDay || evidenceDate > requestDay);
   const base = {
     provider: account.provider,
     providerAccountId: account.providerAccountId,
     accountLabel: account.displayName,
-    observedAsOf: dateOnly(observedAt),
-    evidenceDate: dateOnly(observedAt),
+    observedAsOf: evidenceDate,
+    evidenceDate,
+    ...(unqualifiedPostedDate ? { unknown: true } : {}),
     canonical: mapping.canonical,
     source: 'provider-observe:lunchmoney',
   };
@@ -3816,6 +3838,63 @@ function flagUnresolvedPendingPostedDuplicates(transactions, asOf, opts) {
   }
 }
 
+function isCardPaidPlanBill(plan, eventId) {
+  const bill = ((plan && plan.bills) || []).find(row => row && row.id === eventId);
+  if (!bill || bill.householdObligation === false) return false;
+  const cash = (plan && plan.startingCash) || {};
+  if ((cash.heldElsewhere || []).some(row => row && row.id === bill.payingAccount)) return false;
+  if (bill.jointCash === false) return true;
+  return ((plan && plan.obligations) || []).some(row => row && row.debtId === bill.payingAccount);
+}
+
+// Pending revolving purchases that uniquely match a still-due card-paid bill
+// occupy that occurrence for classification only. They are not represented
+// settlement and do not use the pending provider id as cash-omit evidence.
+function pendingCardPaidBillLocalIds(collapsed, opts, existingLocalId, representedActuals) {
+  const window = opts && opts.transactionWindow;
+  if (window && window.complete === false) return [];
+  const rules = ((opts && opts.identityRules) || []).filter(ruleHasIdentity);
+  if (!rules.length) return [];
+  const plan = (opts && (opts.planForIdentity || opts.plan)) || null;
+  const mapDoc = opts && opts.accountMap;
+  const taken = new Set((representedActuals || [])
+    .filter(row => row && row.id && row.date)
+    .map(row => row.id + '@' + row.date));
+  for (const row of (plan && plan.opening && plan.opening.representedEvents) || []) {
+    if (row && row.id && row.date) taken.add(row.id + '@' + row.date);
+  }
+  const groups = new Map();
+  for (const tx of collapsed || []) {
+    if (!tx || tx.pending !== true || tx.contradictoryEvidence === true) continue;
+    if (tx.pendingPostedDuplicate === true || tx.pendingPostedAmbiguous === true) continue;
+    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
+    if (atlasAccountRole(mapping) !== 'revolving-credit') continue;
+    const hits = collectIdentityHits(tx, {
+      accountMap: mapDoc,
+      plan,
+      identityRules: rules,
+      transactions: collapsed,
+    }, rules).filter(hit => hit
+      && hit.sameAccountSplitLegs !== true
+      && isCardPaidPlanBill(plan, hit.id)
+      && (hit.settlesWhen === SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT || !hit.settlesWhen));
+    if (hits.length !== 1) continue;
+    const key = hits[0].id + '@' + hits[0].date;
+    if (taken.has(key)) continue;
+    const localId = existingLocalId(hits[0].providerTransactionId);
+    if (!localId) continue;
+    const list = groups.get(key) || [];
+    list.push(localId);
+    groups.set(key, list);
+  }
+  const ids = [];
+  for (const list of groups.values()) {
+    if (list.length !== 1) continue;
+    ids.push(list[0]);
+  }
+  return ids;
+}
+
 function pendingOnlyBillActuals(collapsed, opts, representedActuals, existingLocalId) {
   const window = opts && opts.transactionWindow;
   if (window && window.complete === false) return [];
@@ -4076,9 +4155,21 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     representedActuals.push(row);
     if (row.transactionId) linkedLocalIds.add(row.transactionId);
   }
+  const pendingCardPaidIds = new Set(pendingCardPaidBillLocalIds(collapsed, {
+    transactionWindow: window,
+    identityRules: opts.identityRules,
+    planForIdentity: opts.planForIdentity,
+    plan: opts.plan,
+    accountMap: mapDoc,
+  }, existingLocalId, representedActuals));
   for (const tx of txs) {
     if (tx && linkedLocalIds.has(tx.id)) tx.representedBill = true;
     else if (tx) tx.representedBill = false;
+    if (tx) {
+      tx.pendingMatchingCardPaidBill = tx.pending === true
+        && pendingCardPaidIds.has(tx.id)
+        && tx.representedBill !== true;
+    }
     stripRawTransactionMetadata(tx);
   }
   const classifyPacket = { transactions: txs, representedActuals };

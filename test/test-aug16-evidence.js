@@ -9,6 +9,11 @@ const fs = require('fs');
 const path = require('path');
 const F = require('../public/forecast.js');
 const data = require('./fixtures/retired-other-policy')(require('../data.json'));
+// The September minimum was confirmed after this historical evidence window.
+// Isolate only that later override in the cloned fixture; retain all August assertions.
+const historicalMbna = data.plan.obligations.find(row => row.id === 'mbna');
+if (historicalMbna?.statementOccurrences) historicalMbna.statementOccurrences =
+  historicalMbna.statementOccurrences.filter(record => record.scheduledDate !== '2026-09-30');
 const { execFileSync } = require('child_process');
 const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
 function gitJson(spec) {

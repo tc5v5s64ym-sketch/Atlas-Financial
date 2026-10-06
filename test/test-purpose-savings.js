@@ -92,16 +92,7 @@ async function main() {
   vm.runInNewContext(execFileSync('git', ['show', BASE + ':public/forecast.js'], { encoding: 'utf8' }), ctx);
   assert.equal(ctx.module.exports.savingsInventory(p, AS_OF).status, 'invalid', 'immutable main rejects the unimplemented cutover');
   const eventsBefore = JSON.stringify(ctx.module.exports.expandEvents(p, AS_OF, '2026-11-18'));
-  const eventsNow = F.expandEvents(p, AS_OF, '2026-11-18').map(event => {
-    const copy = Object.assign({}, event);
-    if (copy.dateConfidence != null) {
-      assert.equal(copy.dateConfidence, copy.confidence,
-        'this fixture has no statement date override, so date trust follows amount confidence');
-      delete copy.dateConfidence;
-    }
-    return copy;
-  });
-  assert.equal(JSON.stringify(eventsNow), eventsBefore, 'purpose references create no new cash events');
+  assert.equal(JSON.stringify(F.expandEvents(p, AS_OF, '2026-11-18')), eventsBefore, 'purpose references create no new cash events');
   const liveMap = clone(x.map); liveMap.scope = 'live';
   O.assertLiveMap(liveMap, { data: x.data });
   const isolated = clone(p);

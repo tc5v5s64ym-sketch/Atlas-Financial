@@ -24,6 +24,29 @@ PR was created. Parent owns independent Systems review and any merge.
 
 ## Independent supplied-dollar oracle
 
+Early posted card-bill identity evidence can leave its future scheduled cash
+reservation in the walk. Forecast credits only that duplicate hold against the
+same uniquely linked, posted purchase's remaining coverage. Full purchase
+coverage, the planned Budget deduction and explicit payment allocations remain
+unchanged. Pending matching bills retain the existing pending exclusion and
+never gain settlement from this credit. The independent invented regression is
+`test/test-posted-card-bill-protection.js`: 500 cash minus one 73.21 purchase is
+426.79 across current and next-period early posting; an unrelated 19.37 purchase
+leaves 407.42. Currency, account, amount, identity, ambiguity and unavailable
+coverage controls withhold the credit.
+
+The confirmed-backfill lifecycle oracle additionally follows the same invented
+purchase through pending, posted, partial and full backfill, in both current and
+next-period schedules. Observed Bills cash and card debt already include each
+posted transfer once. A current dated cash opening allows the posted purchase
+to replace the full duplicate schedule hold, while coverage retains only the
+actual remaining purchase. Older, missing or future cash-opening dates retain
+the paid portion's cash reservation. Payment intent and mapped posted movement
+qualification remain owned by the existing reconciliation; this credit creates
+no receipt or allocation. `test/test-card-bill-protection-lifecycle.js` also
+covers the following monthly occurrence, repeated refresh, unknown payment
+evidence and pending purchases that must never gain paid settlement.
+
 The fixture supplies Bills 500, prior card debt 400, groceries allowance 150,
 scheduled minimum 25 and a confirmed empty coverage opening.
 
@@ -76,7 +99,10 @@ to_base is not conversion authority.
 
 ## Financial and publication boundary
 
-Purchases retain existing category classification and count once. Coverage
+Purchases retain existing category classification and count once. A unique
+pending revolving match of a still-due card-paid bill is reserved as that
+bill once; coverage does not also hold the pending authorization as
+uncovered spend. Coverage
 adds protection to the existing simulation cash floor; it does not subtract
 cash again, inject money, add a scheduled expense or create debt. Actual Bills
 cash and card balances remain observer facts. Fully covered rows leave the

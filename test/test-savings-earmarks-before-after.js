@@ -30,22 +30,6 @@ const legacyBefore = before.recommend(empty, AS_OF, opts), legacyAfter = F.recom
 // omitted, no baseline moves, and unexpected additions still fail equality.
 // The new bill display-provenance fields are also validated independently
 // against the immutable schedule rows: this probe supplies no actual packet.
-function stripValidatedDateConfidence(node) {
-  if (!node || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    node.forEach(stripValidatedDateConfidence);
-    return;
-  }
-  if (Object.prototype.hasOwnProperty.call(node, 'dateConfidence')) {
-    // Amount confirmation is separate from date trust. This probe has no
-    // statement-date override, so dateConfidence must still follow confidence.
-    assert.equal(node.dateConfidence, node.confidence,
-      'absent statement override keeps date trust with amount confidence');
-    delete node.dateConfidence;
-  }
-  for (const value of Object.values(node)) stripValidatedDateConfidence(value);
-}
-
 function incumbentPublication(value) {
   const copy = clone(value);
   const periodSets = [copy.defaultView.calendarPeriods, copy.pastPeriodViews, copy.payPeriodViews];
@@ -79,7 +63,6 @@ function incumbentPublication(value) {
     delete period.budgetProgress; delete period.budgetProgressAsOf; count++;
   }
   assert.ok(count > 0, 'new namespaces are positively validated before comparison');
-  stripValidatedDateConfidence(copy);
   return copy;
 }
 const inventory = legacyAfter.savingsInventory; delete legacyAfter.savingsInventory;
