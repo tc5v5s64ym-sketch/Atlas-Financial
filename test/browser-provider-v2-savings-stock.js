@@ -8,11 +8,13 @@ const fx = require('./fixtures/savings-v2-observation-data');
 const output = process.env.ATLAS_V2_STOCK_PROOF || path.join(require('node:os').tmpdir(), 'atlas-v2-stock');
 const executionHead = cp.execFileSync('git', ['-c', 'safe.directory=' + root.replace(/\\/g, '/'),
   'rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-const known = new Set(['valid-v2', 'legacy-date', 'legacy-over-null', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement']);
+const known = new Set(['valid-v2', 'legacy-date', 'legacy-over-null', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement', 'household-midnight-current']);
+const reported = new Set([...known, 'stale-date', 'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day', 'withdrawal-stale', 'negative-stale', 'zero-stale']);
 const modes = ['null-object-update', 'null-legacy-fetch', 'null-v2-sync', 'legacy-over-null',
   'valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown',
   'stale-date', 'future-date', 'malformed-date', 'malformed-type', 'impossible-date',
-  'missing-date', 'sync-only', 'foreign-currency', 'missing-account', 'duplicate-account', 'pending-movement'];
+  'missing-date', 'sync-only', 'foreign-currency', 'missing-account', 'duplicate-account', 'pending-movement',
+  'stale-both', 'prior-year', 'prior-household-day', 'blocked-prior-day', 'household-midnight-current', 'withdrawal-stale', 'negative-stale', 'zero-stale'];
 fs.mkdirSync(output, { recursive: true });
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
@@ -39,11 +41,18 @@ fs.mkdirSync(output, { recursive: true });
       const stock = summary.locator('.budget-step-value');
       await page.locator('.budget-surface-period').screenshot({ path: path.join(output, mode + '-overview-' + width + '.png'),
         animations: 'disabled', style: '.sitenav-household{visibility:hidden!important}' });
-      assert.equal(await stock.innerText(), known.has(mode) ? '$119.00' : 'Unavailable', mode + ': active observed stock');
+      const amount = mode === 'withdrawal-stale' ? '$39.02' : mode === 'negative-stale' ? '−$3.12' : mode === 'zero-stale' ? '$0.00' : '$119.00';
+      assert.equal(await stock.innerText(), reported.has(mode) ? amount : 'Unavailable', mode + ': active reported stock');
+      if (reported.has(mode)) {
+        const date = summary.locator('[data-budget-savings-observed-date]');
+        assert.equal(await date.isVisible(), true, 'balance date is visible at every viewport');
+        if (['prior-household-day', 'blocked-prior-day'].includes(mode)) assert.equal(await date.innerText(), 'Observed 2026-10-05');
+        if (mode === 'prior-year') assert.equal(await date.innerText(), 'Observed 2025-10-05');
+      }
       assert.equal(await page.locator('[data-budget-period-result]').count(), 1, 'one final balance');
       assert.equal(await page.locator('[data-live-current-balance-amount]').count(), 1, 'one Current Balance');
       const proposal = page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]');
-      if (mode === 'sender-unknown') {
+      if (['sender-unknown', 'blocked-prior-day'].includes(mode)) {
         assert.equal(await page.locator('[data-operating-question="07"] .budget-step-value').innerText(), 'Unavailable');
         assert.equal(await proposal.innerText(), 'Unavailable');
       }
@@ -62,7 +71,7 @@ fs.mkdirSync(output, { recursive: true });
       await page.keyboard.press('Escape');
       assert.equal(await summary.evaluate(el => el === document.activeElement), true, 'exact Savings trigger focus restoration');
       assert.equal(await page.evaluate(() => JSON.stringify(App.data)), before, 'browser input unchanged');
-      cases.push({ mode, width, stockReady: known.has(mode), keyboardFocusRestored: true, noOverflow: true, inputUnchanged: true });
+      cases.push({ mode, width, stockReady: reported.has(mode), currentBacking: known.has(mode), keyboardFocusRestored: true, noOverflow: true, inputUnchanged: true });
       await page.close();
       if (cases.length % modes.length === 0) console.log('PASS v2-stock ' + width + 'px: ' + modes.length + ' raw observer/Forecast/browser cases');
     }

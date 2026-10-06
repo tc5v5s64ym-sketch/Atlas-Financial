@@ -56,19 +56,26 @@ for (const mode of ['ready', 'unconfirmed', 'gap', 'backed', 'pool-deficit', 'st
     assert.doesNotMatch(summary, /177\.96|215\.04|600\.00/);
     const originalSavings = ctx.savings;
     for (const mutate of [
-      s => { delete s.observedStock; },
-      s => { s.observedStock.source = 'ignored-extra-field'; s.observedStock.basis = 'projected'; },
-      s => { s.observedStock.status = 'unavailable'; },
-      s => { s.observedStock.asOf = '2026-08-13'; },
-      s => { s.observedStock.currency = 'USD'; },
-      s => { s.observedStock.trust = 'estimated'; },
-      s => { s.observedStock.evidenceTrust = 'unknown'; },
-      s => { s.observedStock.nonAdditive = false; },
-      s => { s.observedStock.amount = '500.03'; },
-      s => { s.observedStock.amount = NaN; },
-      s => { s.observedStock.accountIds = ['savings', 'savings']; },
-      s => { s.observedStock.accountIds = ['savings']; },
-      s => { s.observedStock.accountIds = ['savings', 'unrelated-account']; },
+      s => { delete s.reportedStock; },
+      s => { s.reportedStock.source = 'ignored-extra-field'; s.reportedStock.basis = 'projected'; },
+      s => { s.reportedStock.status = 'unavailable'; },
+      s => { s.reportedStock.asOf = '2026-08-13'; },
+      s => { s.reportedStock.currency = 'USD'; },
+      s => { s.reportedStock.trust = 'estimated'; },
+      s => { s.reportedStock.evidenceTrust = 'unknown'; },
+      s => { s.reportedStock.nonAdditive = false; },
+      s => { s.reportedStock.amount = '500.03'; },
+      s => { s.reportedStock.amount = NaN; },
+      s => { s.reportedStock.accountIds = {}; },
+      s => { s.reportedStock.accountIds = ['savings', 'savings']; },
+      s => { s.reportedStock.accountIds = ['savings']; },
+      s => { s.reportedStock.accountIds = ['savings', 'unrelated-account']; },
+      s => { delete s.reportedStock.balanceFrom; },
+      s => { s.reportedStock.balanceThrough = '2027-01-01'; },
+      s => { s.reportedStock.balanceFrom = '2026-02-30'; },
+      s => { s.reportedStock.balanceDates = null; },
+      s => { s.reportedStock.balanceDates[0].accountId = 'unrelated-account'; },
+      s => { s.reportedStock.balanceDates[0].date = '2027-01-01'; },
       s => { s.pools[1].accountId = s.pools[0].accountId; },
     ]) {
       const inventory = structuredClone(originalSavings.inventory); mutate(inventory);
@@ -134,8 +141,10 @@ for (const mode of ['projection', 'projection-remaining', 'projection-missing-ca
   assert.equal((section.match(/data-budget-savings-total-saved><span class="budget-v3-unknown">Unknown/g) || []).length, 3,
     'observed pool cash and projected location never become saved goal assignments');
   assert.match(section, /Funding plan not confirmed/);
-  assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], mode === 'projection-stale' ? /Unavailable/ : /80\.00/,
+  assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], /80\.00/,
     'observed stock is independent of hypothetical contributions and operating cash availability');
+  if (mode === 'projection-stale') assert.match(html, /Observed 2026-09-09 – 2026-09-10/,
+    'stale valid balances disclose their source dates without restoring the projection');
   if (['projection', 'projection-remaining'].includes(mode)) {
     assert.doesNotMatch(section.replace(/<[^>]*>/g, ''), /projected|projection/i);
     assert.match(html, /Hypothetical projection/);
@@ -189,6 +198,28 @@ for (const mode of ['projection', 'projection-remaining', 'projection-missing-ca
   assert.equal(JSON.stringify(data), original);
 }
 // Same-date reserve refresh must read current evidence rather than an older Month cache.
+// Pending movement qualifies dated stock, including the actual next-period
+// renderer. It never hides independently known stock or grants funding.
+for (const pending of [false, true]) for (const dates of ['current', 'older', 'mixed']) {
+  const data = fixture(pending ? 'stock-pending' : 'backed-ready');
+  if (dates !== 'current') data.plan.savingsPoolObservation.accounts[0].evidenceDate = '2026-08-13';
+  if (dates === 'older') data.plan.savingsPoolObservation.accounts[1].evidenceDate = '2026-08-13';
+  const immutable = JSON.stringify(data), advice = F.recommend(data.plan, data.meta.asOf, {});
+  const publication = JSON.stringify(advice);
+  ctx.plan = data.plan; ctx.savings = { inventory: advice.savingsInventory, asOf: data.meta.asOf };
+  for (const role of ['current', 'next']) {
+    ctx.probe = advice.payPeriodViews.find(row => row.timelineRole === role);
+    assert.ok(ctx.probe, 'use the real ' + role + ' period');
+    const html = vm.runInContext('calendarWaterfallHtml(probe,null,null,plan,true,savings)', ctx);
+    const note = html.match(/data-budget-savings-stock-evidence>([^<]*)<\/p>/)[1];
+    assert.equal(note.includes('Pending movement evidence is unresolved; item backing remains separately qualified.'), pending);
+    assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], /500\.03/,
+      '300.01 + 200.02 dated stock survives pending evidence and future selection');
+    assert.match(note, dates === 'current' ? /Observed 2026-08-14/ : dates === 'older'
+      ? /Observed 2026-08-13\. / : /Observed 2026-08-13 [-\u2013] 2026-08-14/);
+    assert.equal(JSON.stringify(advice), publication); assert.equal(JSON.stringify(data), immutable);
+  }
+}
 const refreshed = fixture('projection');
 ctx.source = { plan: refreshed.plan, debts: [], asOf: refreshed.meta.asOf, weekly: 35, weeklyOverride: 35,
   advice: F.recommend(refreshed.plan, refreshed.meta.asOf, {}), revolvingExtra: [] };
