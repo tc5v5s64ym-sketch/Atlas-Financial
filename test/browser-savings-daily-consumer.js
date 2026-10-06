@@ -12,8 +12,8 @@ fs.mkdirSync(output, { recursive: true });
  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
  const errors = [], external = [], cases = [];
  try {
-  for (const width of [1440, 390, 320]) for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income', 'ranged-need']) {
-   const data = fixture(mode), page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  for (const width of [1440, 390, 320]) for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income', 'ranged-need', 'selector-exception', 'selector-malformed', 'selector-exception-stale-stock']) {
+   const data = fixture(mode.startsWith('selector-') ? 'ready' : mode), page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
    await page.addInitScript(() => localStorage.setItem('hfd-plan-knobs-v1', JSON.stringify({ weeklyVariable: 40 })));
    page.on('pageerror', e => errors.push(e.message));
    await page.route('**/*', route => {
@@ -23,7 +23,19 @@ fs.mkdirSync(output, { recursive: true });
     if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(url.pathname)) return route.fulfill({ json: null });
     const file = path.resolve(assets, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
     if (!file.startsWith(assets + path.sep) || !fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
-    return route.fulfill({ body: fs.readFileSync(file), contentType: file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'text/html' });
+    let bytes = fs.readFileSync(file);
+    // Faults are injected only into this intercepted synthetic browser response.
+    // The real App.boot, native inventory publisher and active renderer still run.
+    if (url.pathname === '/forecast.js' && mode.startsWith('selector-')) {
+     const fault = mode === 'selector-malformed'
+      ? 'const packet = nativeDaily(...args); packet.currency = "USD"; return packet;'
+      : 'throw new Error("Invented browser selector failure");';
+     const stale = mode === 'selector-exception-stale-stock'
+      ? 'const nativeRecommend = Forecast.recommend; Forecast.recommend = (...args) => { const advice = nativeRecommend(...args); advice.savingsInventory = JSON.parse(JSON.stringify(advice.savingsInventory)); advice.savingsInventory.observedStock.asOf = "2026-10-04"; return advice; };'
+      : '';
+     bytes = Buffer.concat([bytes, Buffer.from(`\n{ const nativeDaily = Forecast.savingsDailyFunding; Forecast.savingsDailyFunding = (...args) => { ${fault} }; ${stale} }\n`)]);
+    }
+    return route.fulfill({ body: bytes, contentType: file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'text/html' });
    });
    await page.goto('http://daily-savings.test/');
    const overview = page.locator('[data-calendar-waterfall]').first();
@@ -42,6 +54,8 @@ fs.mkdirSync(output, { recursive: true });
     if (mode === 'partial') assert.match(await summary.innerText(), /149\.00/);
     if (mode === 'missing-stock') assert.match(await summary.innerText(), /Unavailable/);
     if (mode === 'missing-cash' || mode === 'before-policy') assert.match(await summary.innerText(), /119\.00/);
+    if (mode === 'selector-exception' || mode === 'selector-malformed') assert.match(await summary.innerText(), /119\.00/, 'failed daily publication preserves independently verified stock');
+    if (mode === 'selector-exception-stale-stock') assert.match(await summary.innerText(), /Unavailable/, 'failed daily publication cannot substitute stale stock');
     if (mode === 'ranged-need') {
      const home = body.locator('[data-budget-savings-total-goal="yearly-bill:home-cost"]');
      assert.match(await home.locator('[data-budget-savings-total-needed]').innerText(), /24\.00/);

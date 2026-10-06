@@ -4225,7 +4225,9 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     && inventoryCandidate.currency === 'CAD' && Array.isArray(inventoryCandidate.goals)
     && Array.isArray(inventoryCandidate.pools) && isValidIsoCalendarDate(savingsContext.asOf)
     && inventoryCandidate.asOf === savingsContext.asOf ? inventoryCandidate : null;
-  const stock = dailySavings ? dailySavings.stock : savingsInventory?.observedStock;
+  // A failed daily packet is still truthy and carries no stock. Keep the
+  // independently validated inventory observation and withhold only the proposal.
+  const stock = dailySavings?.stock ?? savingsInventory?.observedStock;
   const stockPools = savingsInventory?.pools?.length === 2 ? savingsInventory.pools : dailySavings?.backing?.pools;
   const stockKnown = stock?.status === 'ready' && stock.basis === 'observed-savings-stock'
     && stock.nonAdditive === true && stock.currency === 'CAD' && stock.asOf === savingsContext.asOf

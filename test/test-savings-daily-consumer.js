@@ -66,9 +66,15 @@ for (const row of [
 
 ctx.Forecast = { ...F, savingsDailyFunding() { throw new Error('Invented unavailable selector'); } };
 ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
+assert.equal(ctx.packet.stock, undefined, 'failed daily publication does not invent stock');
 const failed = vm.runInContext('calendarWaterfallHtml(period,src.liveOverlay,null,src.plan,true,{daily:packet,inventory:src.advice.savingsInventory,asOf:src.asOf})', ctx);
 assert.match(failed, /data-budget-daily-savings/);
 assert.match(failed.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
+const failedStockCents = ctx.src.plan.savingsPoolObservation.accounts
+  .reduce((sum, row) => sum + Math.round(row.value * 100), 0);
+assert.match(failed.split('data-operating-question="savings"')[1].split('</summary>')[0],
+  new RegExp((failedStockCents / 100).toFixed(2).replace('.', '\\.')),
+  'daily publication failure cannot erase independently observed inventory stock');
 assert.doesNotMatch(failed, /data-operating-question="reserve-use"/);
 ctx.Forecast = F;
 const readyData = fixture('ready');
@@ -76,9 +82,63 @@ ctx.src = { plan: readyData.plan, debts: [], asOf: readyData.meta.asOf,
   advice: F.recommend(readyData.plan, readyData.meta.asOf, { weeklyVariable: 40, ...readyData.liveOverlay }),
   liveOverlay: readyData.liveOverlay, weekly: 40, weeklyOverride: 40 };
 const valid = vm.runInContext('budgetDailySavingsFor(src)', ctx);
+ctx.period = ctx.src.advice.payPeriodViews.find(p => p.timelineRole === 'current');
+const rejectedStockCents = ctx.src.plan.savingsPoolObservation.accounts
+  .reduce((sum, row) => sum + Math.round(row.value * 100), 0);
+const rejectedStockRe = new RegExp((rejectedStockCents / 100).toFixed(2).replace('.', '\\.'));
 for (const mutate of [p => { p.source = 'other'; }, p => { p.asOf = '2026-10-06'; }, p => { p.currency = 'USD'; }, p => { p.period.basis = 'after-proposals'; }, p => { p.period.start = '2026-10-16'; }, p => { p.moneyMovementPermission = 'granted'; }, p => { p.period.allocations = null; }, p => { p.period.allocations[0].amount = null; }, p => { p.period.cycleAllocations[0].amount = '80'; }]) {
   const invalid = JSON.parse(JSON.stringify(valid)); mutate(invalid);
   ctx.Forecast = { ...F, savingsDailyFunding: () => invalid };
-  assert.equal(vm.runInContext('budgetDailySavingsFor(src).status', ctx), 'unavailable', 'invalid scope or authority never borrows legacy amounts');
+  ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
+  assert.equal(ctx.packet.status, 'unavailable', 'invalid scope or authority never borrows legacy amounts');
+  assert.equal(ctx.packet.stock, undefined, 'rejected daily packet does not invent stock');
+  const withheld = vm.runInContext('calendarWaterfallHtml(period,src.liveOverlay,null,src.plan,true,{daily:packet,inventory:src.advice.savingsInventory,asOf:src.asOf})', ctx);
+  assert.match(withheld.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
+  assert.match(withheld.split('data-operating-question="savings"')[1].split('</summary>')[0], rejectedStockRe,
+    'rejected daily packet cannot erase independently observed inventory stock');
 }
-console.log('PASS active current Budget/Savings consumer: thirteen independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, independently known requirement, publication boundary');
+// A publication failure may preserve current verified stock, never stale or
+// invalid inventory. These are independent inputs, not derived expected totals.
+for (const failure of ['exception', 'currency', 'allocation']) {
+  const rejected = JSON.parse(JSON.stringify(valid));
+  if (failure === 'currency') rejected.currency = 'USD';
+  if (failure === 'allocation') rejected.period.allocations[0].amount = null;
+  ctx.Forecast = { ...F, savingsDailyFunding() {
+    if (failure === 'exception') throw new Error('Invented selector exception');
+    return rejected;
+  } };
+  ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
+  assert.equal(ctx.packet.source, 'Budget.savingsDailyFundingUnavailable');
+  for (const [label, mutate] of [
+    ['verified current stock', () => {}],
+    ['stale inventory', i => { i.asOf = '2026-10-04'; }],
+    ['stale stock', i => { i.observedStock.asOf = '2026-10-04'; }],
+    ['foreign inventory currency', i => { i.currency = 'USD'; }],
+    ['foreign stock currency', i => { i.observedStock.currency = 'USD'; }],
+    ['wrong inventory source', i => { i.source = 'other'; }],
+    ['additive inventory', i => { i.nonAdditive = false; }],
+    ['unknown stock evidence', i => { i.observedStock.evidenceTrust = 'unknown'; }],
+    ['nonnumeric stock', i => { i.observedStock.amount = '119'; }],
+    ['duplicate accounts', i => { i.observedStock.accountIds = ['savings', 'savings']; }],
+    ['missing pool', i => { i.pools.pop(); }],
+  ]) {
+    ctx.inventory = JSON.parse(JSON.stringify(ctx.src.advice.savingsInventory)); mutate(ctx.inventory);
+    const html = vm.runInContext('calendarWaterfallHtml(period,src.liveOverlay,null,src.plan,true,{daily:packet,inventory,asOf:src.asOf})', ctx);
+    assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0],
+      label === 'verified current stock' ? /119\.00/ : /Unavailable/, failure + ': ' + label);
+    assert.match(html.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
+  }
+  const today = vm.runInContext('budgetUpcomingFundingHtml(src)', ctx).split('data-budget-funding-panel="today"')[1].split('data-budget-funding-panel="payday"')[0];
+  assert.match(today.split('data-budget-funding-proposal>')[1].split('</strong>')[0], /Unavailable/);
+}
+const nativeUnavailable = JSON.parse(JSON.stringify(valid));
+nativeUnavailable.status = nativeUnavailable.period.status = 'unavailable';
+nativeUnavailable.period.proposal = null;
+Object.assign(nativeUnavailable.stock, { status: 'unavailable', amount: null, trust: 'unknown', evidenceTrust: 'unknown' });
+ctx.Forecast = { ...F, savingsDailyFunding: () => nativeUnavailable };
+ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
+assert.equal(ctx.packet.source, 'Forecast.savingsDailyFunding', 'accepted native stock uncertainty retains its authority');
+const nativeHtml = vm.runInContext('calendarWaterfallHtml(period,src.liveOverlay,null,src.plan,true,{daily:packet,inventory:src.advice.savingsInventory,asOf:src.asOf})', ctx);
+assert.match(nativeHtml.split('data-operating-question="savings"')[1].split('</summary>')[0], /Unavailable/, 'fallback cannot mask explicitly unavailable native stock');
+assert.match(nativeHtml.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
+console.log('PASS active current Budget/Savings consumer: thirteen independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, independently known requirement, publication boundary and guarded stock fallback');
