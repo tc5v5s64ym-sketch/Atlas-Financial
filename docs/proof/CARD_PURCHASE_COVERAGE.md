@@ -24,6 +24,17 @@ PR was created. Parent owns independent Systems review and any merge.
 
 ## Independent supplied-dollar oracle
 
+Early posted card-bill identity evidence can leave its future scheduled cash
+reservation in the walk. Forecast credits only that duplicate hold against the
+same uniquely linked, posted purchase's remaining coverage. Full purchase
+coverage, the planned Budget deduction and explicit payment allocations remain
+unchanged. Pending matching bills retain the existing pending exclusion and
+never gain settlement from this credit. The independent invented regression is
+`test/test-posted-card-bill-protection.js`: 500 cash minus one 73.21 purchase is
+426.79 across current and next-period early posting; an unrelated 19.37 purchase
+leaves 407.42. Currency, account, amount, identity, ambiguity and unavailable
+coverage controls withhold the credit.
+
 The fixture supplies Bills 500, prior card debt 400, groceries allowance 150,
 scheduled minimum 25 and a confirmed empty coverage opening.
 
