@@ -1,10 +1,13 @@
 'use strict';
 // Reports guard evaluations from the incumbent matcher, never matches data.
-// Flags aggregate evaluated attempts in this observation: passed/rejected may
-// both be true. An unevaluated gate has all flags false. Only normal final
+// A slot is evaluated only when its covered observation has one native
+// scheduled occurrence. No latest/current salary selection policy lives here.
+// Flags aggregate evaluated attempts for that sole occurrence: passed/rejected
+// may both be true. An unevaluated gate has all flags false. Only normal final
 // representation resolution determines the outcome; reasons are observed
 // rejections, not a claim that one gate was the sole blocker.
 const SCHEMA = 'atlas-salary-matcher-diagnostic/v1';
+const SCOPE = 'single-covered-occurrence';
 const SLOTS = Object.freeze(['midmonth', 'month-end']);
 const IDS = Object.freeze({ amandaSalary15: 'midmonth', amandaSalaryMonthEnd: 'month-end' });
 const GATES = Object.freeze(['window', 'rule', 'externalIdentity', 'householdCredit',
@@ -19,6 +22,7 @@ const REASONS = Object.freeze(['WINDOW_MISSING', 'WINDOW_INCOMPLETE', 'RULE_MISS
   'AMOUNT_GUARD_MISMATCH', 'OCCURRENCE_MISSING', 'OCCURRENCE_AMBIGUOUS',
   'REPRESENTED', 'REPRESENTATION_AMBIGUOUS']);
 const OUTCOMES = new Set(['matched', 'unmatched', 'ambiguous', 'not-evaluated']);
+const TARGETS = new Set(['selected', 'none', 'ambiguous', 'unavailable']);
 const plain = x => x && typeof x === 'object' && !Array.isArray(x)
   && [Object.prototype, null].includes(Object.getPrototypeOf(x));
 const exact = (x, keys) => plain(x) && Reflect.ownKeys(x).length === keys.length
@@ -31,13 +35,14 @@ const dense = x => Reflect.ownKeys(x).length === x.length + 1
 // including unknown keys, coercion, duplicates, extra slots and raw values.
 function project(value) {
   try {
-    if (!exact(value, ['schema', 'slots']) || value.schema !== SCHEMA
+    if (!exact(value, ['schema', 'scope', 'slots']) || value.schema !== SCHEMA || value.scope !== SCOPE
         || !Array.isArray(value.slots) || value.slots.length !== SLOTS.length
         || !dense(value.slots)) return undefined;
     const slots = [];
     for (const [index, slot] of SLOTS.entries()) {
       const row = value.slots[index];
-      if (!exact(row, ['slot', 'outcome', 'gates', 'reasons']) || row.slot !== slot
+      if (!exact(row, ['slot', 'target', 'outcome', 'gates', 'reasons']) || row.slot !== slot
+          || !TARGETS.has(row.target)
           || !OUTCOMES.has(row.outcome) || !exact(row.gates, GATES)
           || !Array.isArray(row.reasons) || row.reasons.length > REASONS.length
           || !dense(row.reasons)
@@ -53,18 +58,31 @@ function project(value) {
         gates[gate] = { evaluated: flags.evaluated, passed: flags.passed, rejected: flags.rejected };
       }
       const final = gates.representation;
+      if (row.target !== 'selected' && (row.outcome !== 'not-evaluated'
+          || row.reasons.length || Object.values(gates).some(flags => flags.evaluated))) return undefined;
       if (row.outcome === 'not-evaluated' ? final.evaluated
         : !final.evaluated || row.outcome === 'matched' && (!final.passed || final.rejected)
           || row.outcome === 'unmatched' && (final.passed || !final.rejected)
           || row.outcome === 'ambiguous' && (!final.rejected || !row.reasons.includes('REPRESENTATION_AMBIGUOUS'))) return undefined;
-      slots.push({ slot, outcome: row.outcome, gates, reasons: REASONS.filter(r => row.reasons.includes(r)) });
+      slots.push({ slot, target: row.target, outcome: row.outcome, gates, reasons: REASONS.filter(r => row.reasons.includes(r)) });
     }
-    return { schema: SCHEMA, slots };
+    return { schema: SCHEMA, scope: SCOPE, slots };
   } catch { return undefined; }
 }
 
-function create() {
-  const rows = SLOTS.map(slot => ({ slot, outcome: 'not-evaluated',
+function create(context) {
+  const dates = new Map();
+  const targetFor = id => {
+    if (!context || !Array.isArray(context.occurrences)) return 'unavailable';
+    const occurrences = context.occurrences.filter(event => event && event.kind === 'income' && event.id === id);
+    // Duplicate native scheduled rows are ambiguous too; do not deduplicate
+    // away a conflicting schedule or choose a date by receipt amount/timing.
+    if (occurrences.length !== 1) return occurrences.length ? 'ambiguous' : 'none';
+    if (typeof occurrences[0].date !== 'string') return 'unavailable';
+    dates.set(id, occurrences[0].date);
+    return 'selected';
+  };
+  const rows = Object.entries(IDS).map(([id, slot]) => ({ slot, target: targetFor(id), outcome: 'not-evaluated',
     gates: Object.fromEntries(GATES.map(gate => [gate, { evaluated: false, passed: false, rejected: false }])), reasons: [] }));
   const rowFor = id => typeof id === 'string' && Object.hasOwn(IDS, id)
     ? rows.find(row => row.slot === IDS[id]) : undefined;
@@ -72,7 +90,7 @@ function create() {
   let scanned = false, resolved = false;
   function record(id, gate, passed, reason) {
     const row = rowFor(id);
-    if (!row || !GATES.includes(gate) || typeof passed !== 'boolean') return passed;
+    if (!row || row.target !== 'selected' || !GATES.includes(gate) || typeof passed !== 'boolean') return passed;
     const flags = row.gates[gate];
     flags.evaluated = true;
     flags[passed ? 'passed' : 'rejected'] = true;
@@ -86,18 +104,24 @@ function create() {
     for (const id of Object.keys(IDS)) {
       const row = rowFor(id);
       if (scanned && !seenRules.has(id)) record(id, 'rule', false, 'RULE_MISSING');
-      if (!resolved || !row.gates.rule.passed) continue;
-      const accepted = (groups.unique || []).some(hit => hit && hit.id === id);
+      if (row.target !== 'selected' || !resolved || !row.gates.rule.passed) continue;
+      const date = dates.get(id);
+      const accepted = (groups.unique || []).some(hit => hit && hit.id === id && hit.date === date);
       const ambiguous = (groups.ambiguous || []).some(group => group &&
-        (group.id === id || (group.hits || []).some(hit => hit && hit.id === id)));
+        (group.id === id && group.date === date
+          || (group.hits || []).some(hit => hit && hit.id === id && hit.date === date)));
       record(id, 'representation', accepted, accepted ? 'REPRESENTED' : undefined);
       if (ambiguous) record(id, 'representation', false, 'REPRESENTATION_AMBIGUOUS');
       row.outcome = ambiguous ? 'ambiguous' : accepted ? 'matched' : 'unmatched';
     }
-    return project({ schema: SCHEMA, slots: rows });
+    return project({ schema: SCHEMA, scope: SCOPE, slots: rows });
   }
-  return { record, window, rule, finish,
+  const api = { record, window, rule, finish,
+    forDate(date) { return typeof date === 'string' && context && date >= context.startDate
+      && date <= context.endDate ? api : undefined; },
+    forOccurrence(id, date) { return dates.get(id) === date ? { record } : undefined; },
     rulesScanned() { scanned = true; }, resolve() { resolved = true; } };
+  return api;
 }
 
-module.exports = { SCHEMA, SLOTS, GATES, REASONS, create, project };
+module.exports = { SCHEMA, SCOPE, SLOTS, GATES, REASONS, create, project };

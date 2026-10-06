@@ -2296,57 +2296,59 @@ function salaryReceiptTransferHits(input, rules) {
   const hits = [];
   let householdCreditSeen = false;
   for (const credit of input.transactions || []) {
+    const attempt = parseIsoDate(credit && credit.date) ? diagnostic?.forDate(credit.date) : undefined;
     const posted = !!nativePosted(credit);
-    for (const rule of salaryRules) diagnostic?.record(rule.eventId, 'nativePostedCad', posted,
+    for (const rule of salaryRules) attempt?.record(rule.eventId, 'nativePostedCad', posted,
       posted ? undefined : 'CREDIT_UNQUALIFIED');
     if (!posted || !(lunchMoneyDebitAmount(credit.amount) < 0)) continue;
     const mapping = mappingFor(input.accountMap, credit.providerAccountId);
     const householdCredit = !!mapping && mapping.atlasRole === 'household-cash'
       && !!mapping.canonical && mapping.canonical.id === 'chequing-a';
-    for (const rule of salaryRules) diagnostic?.record(rule.eventId, 'householdCredit', householdCredit);
+    for (const rule of salaryRules) attempt?.record(rule.eventId, 'householdCredit', householdCredit);
     if (!householdCredit) continue;
     householdCreditSeen = true;
     for (const rule of salaryRules) {
       const identityMatches = ruleMatchesTransactionIdentity(credit, rule);
-      diagnostic?.record(rule.eventId, 'transferIdentity', !!identityMatches);
+      attempt?.record(rule.eventId, 'transferIdentity', !!identityMatches);
       if (!identityMatches) continue;
-      const counterpart = uniqueTransferCounterpart(credit, rule, input, credit.amount, diagnostic);
+      const counterpart = uniqueTransferCounterpart(credit, rule, input, credit.amount, attempt);
       const counterpartPosted = !!nativePosted(counterpart);
-      diagnostic?.record(rule.eventId, 'nativePostedCad', counterpartPosted,
+      attempt?.record(rule.eventId, 'nativePostedCad', counterpartPosted,
         counterpart && !counterpartPosted ? 'CREDIT_UNQUALIFIED' : undefined);
       if (!counterpartPosted) continue;
       const sources = [];
       for (const source of input.transactions || []) {
+        const sourceAttempt = parseIsoDate(source && source.date) ? attempt?.forDate(source.date) : undefined;
         const sourcePosted = !!nativePosted(source);
-        diagnostic?.record(rule.eventId, 'nativePostedCad', sourcePosted,
+        sourceAttempt?.record(rule.eventId, 'nativePostedCad', sourcePosted,
           sourcePosted ? undefined : 'CREDIT_UNQUALIFIED');
         if (!sourcePosted) continue;
         const sourceIncome = source.isIncome === true && lunchMoneyDebitAmount(source.amount) < 0;
-        diagnostic?.record(rule.eventId, 'sourceIncome', sourceIncome);
+        sourceAttempt?.record(rule.eventId, 'sourceIncome', sourceIncome);
         if (!sourceIncome) continue;
         const sourceTiming = !(source.date > credit.date);
-        diagnostic?.record(rule.eventId, 'sourceTiming', sourceTiming);
+        sourceAttempt?.record(rule.eventId, 'sourceTiming', sourceTiming);
         if (!sourceTiming) continue;
         const amountMatches = amountsMatchExactly(source.amount, credit.amount);
-        diagnostic?.record(rule.eventId, 'amountGuard', amountMatches,
+        sourceAttempt?.record(rule.eventId, 'amountGuard', amountMatches,
           amountMatches ? undefined : 'AMOUNT_GUARD_MISMATCH');
         if (!amountMatches) continue;
         const sourceMap = mappingFor(input.accountMap, source.providerAccountId);
         const roleMatches = !!sourceMap && sourceMap.atlasRole === EXTERNAL_LIVE_ROLE;
-        diagnostic?.record(rule.eventId, 'externalRole', roleMatches,
+        sourceAttempt?.record(rule.eventId, 'externalRole', roleMatches,
           roleMatches ? undefined : 'SOURCE_ROLE_MISMATCH');
         if (!roleMatches) continue;
         const externalMatches = mappingExternalId(sourceMap) === ruleCounterpartExternalId(rule);
-        diagnostic?.record(rule.eventId, 'externalIdentity', externalMatches,
+        sourceAttempt?.record(rule.eventId, 'externalIdentity', externalMatches,
           externalMatches ? undefined : 'EXTERNAL_ID_MISMATCH');
         if (!externalMatches) continue;
         const accountMatches = String(source.providerAccountId) === String(counterpart.providerAccountId);
-        diagnostic?.record(rule.eventId, 'sourceAccount', accountMatches,
+        sourceAttempt?.record(rule.eventId, 'sourceAccount', accountMatches,
           accountMatches ? undefined : 'SOURCE_ACCOUNT_MISMATCH');
         if (!accountMatches) continue;
         const aliasMatches = payeeMatchesRule(source, { payeePatterns: rule.salaryReceiptPayeePatterns,
           payeeMatchMode: 'exact', payeeExcludePatterns: ['REFUND', 'REVERSAL', 'REIMBURSEMENT'] });
-        diagnostic?.record(rule.eventId, 'payrollAlias', !!aliasMatches,
+        sourceAttempt?.record(rule.eventId, 'payrollAlias', !!aliasMatches,
           aliasMatches ? undefined : 'PAYROLL_ALIAS_MISMATCH');
         if (!aliasMatches) continue;
         // The nominal date is bracketed by actual receipt and actual transfer.
@@ -2354,12 +2356,12 @@ function salaryReceiptTransferHits(input, rules) {
         const occurrences = scheduledEventsOnRange(input.plan, source.date, credit.date)
           .filter(event => event.kind === 'income' && eligibleIds.has(event.id));
         const occurrenceMatches = occurrences.length === 1 && occurrences[0].id === rule.eventId;
-        diagnostic?.record(rule.eventId, 'occurrence', occurrenceMatches,
+        sourceAttempt?.record(rule.eventId, 'occurrence', occurrenceMatches,
           occurrenceMatches ? undefined : occurrences.length > 1 ? 'OCCURRENCE_AMBIGUOUS' : 'OCCURRENCE_MISSING');
         if (!occurrenceMatches) continue;
         sources.push({ source, occurrence: occurrences[0] });
       }
-      diagnostic?.record(rule.eventId, 'payrollReceipt', sources.length === 1,
+      attempt?.record(rule.eventId, 'payrollReceipt', sources.length === 1,
         sources.length === 1 ? undefined : sources.length ? 'RECEIPT_AMBIGUOUS' : 'RECEIPT_MISSING');
       if (sources.length !== 1) continue;
       const { source, occurrence } = sources[0];
@@ -2432,7 +2434,8 @@ function representedEventHitGroups(input) {
           }
         }
         if (rule.transactionKind === 'transfer') {
-          const counterpartCount = countTransferCounterparts(tx, rule, input, amount, diagnostic);
+          const counterpartCount = countTransferCounterparts(tx, rule, input, amount,
+            diagnostic?.forDate(tx.date)?.forOccurrence(rule.eventId, scheduledDate));
           if (counterpartCount !== 1) {
             if (counterpartCount > 1) {
               const ambKey = rule.eventId + '@' + scheduledDate;
@@ -3419,7 +3422,18 @@ function observe(input) {
     transactions: normalized.transactions,
   });
   const scheduleTrustAsOf = householdFinancialDate(input, observations);
-  const salaryDiagnostic = input.salaryDiagnostic === false ? null : SalaryDiagnostic.create();
+  // Observation has no selected current salary identity. Derive a diagnostic
+  // target only if the incumbent native schedule provides one occurrence for
+  // the slot in complete, current household-dated coverage. A broad history
+  // containing several cycles cannot choose a latest one on the user's behalf.
+  const salaryWindow = normalized.transactionWindow;
+  const salaryCoverage = salaryWindow.complete === true && parseIsoDate(salaryWindow.startDate)
+    && parseIsoDate(salaryWindow.endDate) && salaryWindow.startDate <= salaryWindow.endDate
+    && parseIsoDate(scheduleTrustAsOf) && salaryWindow.endDate === scheduleTrustAsOf;
+  const salaryDiagnostic = input.salaryDiagnostic === false ? null : SalaryDiagnostic.create(salaryCoverage
+    ? { startDate: salaryWindow.startDate, endDate: salaryWindow.endDate,
+      occurrences: scheduledEventsOnRange(planForIdentity, salaryWindow.startDate, salaryWindow.endDate) }
+    : undefined);
   const hitGroups = representedEventHitGroups({
     transactions: collapsed.transactions,
     accountMap: mapDoc,

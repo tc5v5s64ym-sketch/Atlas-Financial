@@ -93,7 +93,7 @@ for (const mutate of [
   p => { p.slots.reverse(); }, p => { p.slots[0].slot = 'private-person'; },
   p => { p.slots[0].outcome = 'verified'; }, p => { p.slots[0].providerAccountId = 'PRIVATE'; },
   p => { p.slots[0].gates.externalIdentity.raw = 'PRIVATE'; },
-  p => { p.slots[0].gates.rule.passed = 1; }, p => { p.slots[0].gates.rule.evaluated = false; },
+  p => { p.slots[0].gates.rule.passed = 1; }, p => { p.slots[1].gates.rule.evaluated = false; },
   p => { p.slots[0].reasons = ['PRIVATE']; }, p => { p.slots[0].reasons = ['RULE_MISSING', 'RULE_MISSING']; },
   p => { delete p.slots[0].reasons[0]; p.slots[0].reasons.length = 1; },
   p => { p.slots[0].reasons.raw = 'PRIVATE'; }, p => { p.slots[0].gates.rule = null; },
