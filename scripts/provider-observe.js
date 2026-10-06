@@ -19,8 +19,8 @@
  * previous Seaspan cycle start. The extension is capped at 120 days.
  * It is settlement lookup plus the two-cycle Road Ahead window, not a
  * historical store. Pending coverage is unchanged.
- * Account timestamps stay distinct: balance_as_of, updated_at,
- * date_last_fetched. Posted-balance evidence prefers balance_as_of.
+ * Account timestamps stay distinct: balance_as_of, balance_last_update,
+ * updated_at, date_last_fetched. Posted evidence prefers semantic balance dates.
  */
 
 const fs = require('fs');
@@ -282,16 +282,29 @@ function normalizeLunchMoneyAccount(raw) {
     limit: firstNumber(raw.credit_limit, raw.limit),
     updatedAt: raw.updated_at || null,
     balanceAsOf: raw.balance_as_of || null,
+    ...(Object.prototype.hasOwnProperty.call(raw, 'balance_last_update')
+      ? { balanceLastUpdate: raw.balance_last_update } : {}),
     dateLastFetched: raw.date_last_fetched || null,
   };
 }
 
-// Posted-balance evidence uses the semantic balance date. Generic object
-// updated_at is not the balance date and must not override an explicit
-// trustworthy balance_as_of. Distinct timestamps stay distinct.
+// Posted evidence keeps legacy balance_as_of precedence, then the v2
+// semantic balance_last_update. An explicitly unknown/malformed v2 date withholds
+// evidence instead of borrowing an object update or sync/fetch timestamp.
+// Preserve absence separately for incumbent legacy timestamp compatibility.
+// Household conversion remains Forecast.financialDate; UTC below only
+// validates calendar identity so impossible dates cannot roll forward.
 function postedBalanceEvidenceInstant(account) {
   if (!account || typeof account !== 'object') return null;
-  return account.balanceAsOf || account.updatedAt || account.dateLastFetched || null;
+  if (account.balanceAsOf) return account.balanceAsOf;
+  if (Object.prototype.hasOwnProperty.call(account, 'balanceLastUpdate')) {
+    const value = account.balanceLastUpdate;
+    if (typeof value !== 'string' || !dateOnly(value)) return null;
+    const day = value.trim().slice(0, 10), instant = Date.parse(day + 'T00:00:00Z');
+    if (!Number.isFinite(instant) || new Date(instant).toISOString().slice(0, 10) !== day) return null;
+    return value;
+  }
+  return account.updatedAt || account.dateLastFetched || null;
 }
 
 // Live cash / mortgage / HELOC keep the prior object-update dating so
@@ -3091,16 +3104,25 @@ function reconciliationReceipt(report, opts) {
 }
 
 function observationsFromMappedAccount(account, mapping, fetchedAt) {
-  const dated = CREDIT_ROLES.has(mapping.atlasRole)
+  const usesPostedDate = CREDIT_ROLES.has(mapping.atlasRole);
+  const dated = usesPostedDate
     ? postedBalanceEvidenceInstant(account)
     : genericAccountEvidenceInstant(account);
-  const observedAt = dated || fetchedAt;
+  // Every posted-credit fact shares the semantic-date boundary. A request
+  // timestamp cannot repair missing/invalid balance evidence. Savings uses
+  // the same helper directly; non-credit generic dating stays incumbent.
+  const observedAt = usesPostedDate ? dated : dated || fetchedAt;
+  const evidenceDate = dateOnly(observedAt);
+  const requestDay = dateOnly(fetchedAt);
+  const unqualifiedPostedDate = usesPostedDate
+    && (!evidenceDate || !requestDay || evidenceDate > requestDay);
   const base = {
     provider: account.provider,
     providerAccountId: account.providerAccountId,
     accountLabel: account.displayName,
-    observedAsOf: dateOnly(observedAt),
-    evidenceDate: dateOnly(observedAt),
+    observedAsOf: evidenceDate,
+    evidenceDate,
+    ...(unqualifiedPostedDate ? { unknown: true } : {}),
     canonical: mapping.canonical,
     source: 'provider-observe:lunchmoney',
   };
