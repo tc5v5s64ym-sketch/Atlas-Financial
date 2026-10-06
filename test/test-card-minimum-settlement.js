@@ -95,6 +95,10 @@ function planFixture() {
   delete triangle.sentPayments;
   mbna.amount = MBNA_MIN;
   mbnaOnce.amount = MBNA_MIN;
+  // This case owns an invented unconfirmed minimum. Canonical owner-approved
+  // statement or sender evidence must not silently change that premise.
+  delete mbnaOnce.statementOccurrences;
+  delete mbnaOnce.sentPayments;
   travel.amount = TRAVEL_MIN;
   return data;
 }
@@ -463,6 +467,36 @@ console.log('\n=== MBNA statement cycle is not payment intent ===');
   const reserved = Forecast.expandEvents(result.data.plan, LIVE_AS_OF, LIVE_AS_OF, {})
     .filter(event => event.id === 'mbna-aug31');
   ok(reserved.length === 1, 'Forecast carries the unconfirmed once reserve exactly once');
+}
+
+console.log('\n=== Confirmed sender alone keeps issuer receipt and remaining unavailable ===');
+{
+  const data = planFixture();
+  const sentAmount = 90.11;
+  obligation(data.plan, 'mbna-aug31').sentPayments = [{
+    scheduledDate: MBNA_AUG31,
+    confirmed: true,
+    intent: 'minimum',
+    debitId: 'invented-mbna-sender-only',
+    postedOn: '2026-09-02',
+    amount: sentAmount,
+    currency: 'cad',
+    fundingAccountId: 'chequing-a',
+    pending: false,
+  }];
+  const result = overlay(data, [mbnaChequing('2026-09-02', sentAmount)]);
+  const bill = billRow(result.data, 'mbna-aug31', MBNA_AUG31);
+  const state = Forecast.cardMinimumState(result.data.plan, LIVE_AS_OF);
+  const payment = state.payments.find(row => row.id === 'mbna-aug31');
+  ok(!represented(result.data, 'mbna-aug31', MBNA_AUG31),
+    'confirmed sender does not manufacture an issuer receipt');
+  ok(bill && bill.status !== 'PAID' && bill.remaining === null,
+    'sender-only uncertainty withholds remaining instead of claiming another full reserve');
+  ok(state.status === 'unavailable' && payment
+      && payment.issuerMinimumStatus === 'unconfirmed'
+      && payment.cashInclusionStatus === 'unconfirmed'
+      && payment.additionalCashRequired === null,
+    'missing cash inclusion and issuer receipt remain unavailable');
 }
 
 console.log('\n=== MBNA on the wrong card does not settle ===');

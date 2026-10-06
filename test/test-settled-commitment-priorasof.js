@@ -173,6 +173,9 @@ function periodsFixture() {
 function liveOverlayPlan() {
   const live = JSON.parse(fs.readFileSync(DATA, 'utf8'));
   const plan = clone(live.plan);
+  // This earlier commitment ledger owns its calculated opening; unrelated
+  // later carried-card sender evidence must not introduce a funding hold.
+  delete plan.obligations.find(row => row.id === 'mbna-aug31').sentPayments;
   plan.opening = Object.assign({}, plan.opening, {
     asOf: OPENING,
     priorAsOf: PRIOR,

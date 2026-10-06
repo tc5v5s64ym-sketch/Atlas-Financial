@@ -97,7 +97,11 @@ const ALREADY = [
 ];
 
 function liveData() {
-  return load('data.json');
+  const data = load('data.json');
+  // The invented September Bell ledger owns its calculated cash premise;
+  // later carried-card sender evidence is outside this settlement fixture.
+  delete data.plan.obligations.find(row => row.id === 'mbna-aug31').sentPayments;
+  return data;
 }
 function identityDoc() {
   return load('docs/connectivity/transaction-identity.json');
