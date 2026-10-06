@@ -10,6 +10,8 @@ const out = process.env.ATLAS_BUDGET_SCREENSHOTS_DIR || path.join(require('node:
 const cases = [
   ['complete', [sent()], true, 'Money sent'],
   ['exact', [sent({ amount: 47.39 })], true, 'Money sent'],
+  ['conflicting-allocation', [sent(), sent({ amount: 1 })], false, 'Payment allocation unconfirmed'],
+  ['conflicting-purpose', [sent(), sent({ intent: 'purchase-backfill' })], false, 'Payment allocation unconfirmed'],
   ['partial', [sent({ amount: 46.38 })], false, 'Partial payment sent'],
   ['pending', [sent({ pending: true })], false, null],
   ['backfill', [sent({ intent: 'purchase-backfill' })], false, null],
@@ -64,9 +66,14 @@ const cases = [
           await row.focus(); await page.keyboard.press('Enter');
           const info = await page.locator('[data-budget-detail-body]').innerText();
           if (qualifier) {
-            ok(/Money sent/.test(info));
-            ok(/Lender minimum confirmation\s+Not confirmed/.test(info));
-            ok(/Included in cash opening\s+Not confirmed/.test(info));
+            if (name.startsWith('conflicting-')) {
+              ok(/Payment allocation unconfirmed/.test(info));
+              ok(!/Paid - money sent|Money sent\s+\$/.test(info));
+            } else {
+              ok(/Money sent/.test(info));
+              ok(/Lender minimum confirmation\s+Not confirmed/.test(info));
+              ok(/Included in cash opening\s+Not confirmed/.test(info));
+            }
             ok(!/invented-recorded-send/.test(info));
           }
           await page.keyboard.press('Escape');

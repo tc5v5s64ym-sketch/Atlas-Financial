@@ -82,6 +82,15 @@
     if (!rows.some(row => row && row.sentPayments != null)) return {
       status: 'incumbent', asOf, source: 'Forecast.cardMinimumState', payments: [], issues: [], reason: null };
     const payments = [], issues = [], used = new Set();
+    // A reused bank debit cannot establish a household payment action. Inspect
+    // all supplied records, including competing purpose or pending evidence;
+    // preserve the incumbent allocation and cash calculations below.
+    const identityCounts = new Map();
+    for (const row of rows) for (const record of Array.isArray(row?.sentPayments) ? row.sentPayments : []) {
+      if (typeof record?.debitId === 'string' && record.debitId) {
+        identityCounts.set(record.debitId, (identityCounts.get(record.debitId) || 0) + 1);
+      }
+    }
     const opening = plan?.opening;
     // Legacy names assert inclusion in their attached opening, never earlier.
     // Explicit qualifiers survive a later opening. Attach legacy names to the
@@ -128,6 +137,7 @@
         payments.push({ id: row.id, scheduledDate: record.scheduledDate, date: dueDate,
           occurrenceKey: row.id + '@' + record.scheduledDate,
           cashPaymentStatus: 'sent', cashPaid: record.amount, cashSentOn: record.postedOn,
+          ...(identityCounts.get(record.debitId) > 1 ? { householdPaymentEvidence: 'conflict' } : {}),
           cashInclusionStatus: cashIncluded ? 'included' : 'unconfirmed',
           issuerMinimumStatus: satisfied ? 'satisfied' : 'unconfirmed',
           additionalCashRequired: satisfied && cashIncluded ? 0 : null });
@@ -534,7 +544,8 @@
     const complete = established
       && Math.round(amount * 100) >= Math.round(required * 100);
     return { ...matches[0], cashPaid: amount,
-      householdPaymentStatus: !established ? 'sent' : complete ? 'paid' : 'partial',
+      householdPaymentStatus: matches.some(row => row.householdPaymentEvidence === 'conflict')
+        ? 'unconfirmed' : !established ? 'sent' : complete ? 'paid' : 'partial',
       cashSentDates: Array.from(new Set(matches.map(row => row.cashSentOn))).sort(),
       cashInclusionStatus: matches.every(row => row.cashInclusionStatus === 'included') ? 'included' : 'unconfirmed',
       additionalCashRequired: matches.every(row => row.additionalCashRequired === 0) ? 0 : null };

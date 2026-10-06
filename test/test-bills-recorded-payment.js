@@ -76,7 +76,18 @@ const cases = [
   ['exact', [sent({ amount: 47.39 })], 'paid', true],
   ['excess', [sent()], 'paid', true],
   ['distinct partials make one full send', [sent({ amount: 20.13 }), sent({ debitId: 'invented-second-send', amount: 27.26 })], 'paid', true],
-  ['duplicate identity cannot make a full send', [sent({ amount: 30.13 }), sent({ amount: 30.13 })], 'partial', false],
+  ['duplicate identity cannot establish payment action', [sent({ amount: 30.13 }), sent({ amount: 30.13 })], 'unconfirmed', false],
+  ...[
+    [sent(), sent({ amount: 1 })],
+    [sent({ amount: 1 }), sent()],
+    [sent(), sent()],
+    [sent(), sent({ scheduledDate: '2026-11-07' })],
+    [sent({ scheduledDate: '2026-11-07' }), sent()],
+    ...[{ intent: 'purchase-backfill' }, { intent: 'unconfirmed' },
+      { pending: true }, { fundingAccountId: 'chequing-b' }]
+      .flatMap(change => [[sent(), sent(change)], [sent(change), sent()]]),
+  ].map((records, index) => ['conflicting identity ' + index, records, index === 4 ? undefined : 'unconfirmed', false]),
+  ['unrelated backfill does not taint minimum', [sent(), sent({ debitId: 'invented-backfill', intent: 'purchase-backfill' })], 'paid', true],
   ...[{ pending: true }, { confirmed: false }, { intent: 'purchase-backfill' },
     { intent: 'unconfirmed' }, { amount: 0 }, { amount: -1 }, { currency: 'usd' },
     { fundingAccountId: 'chequing-b' }, { postedOn: '2026-10-06' },
@@ -99,10 +110,24 @@ for (const [name, records, action, paid] of cases) {
     eq(F.projectDebts(x.data.plan, x.data.debts, NOW, { debtHorizonDays: 10 }).byId.triangle.paid, 0,
       'observed principal is not reduced again');
     const html = Detail.html(row, x.data, {});
-    ok(html.includes('Money sent') && html.includes('Lender minimum confirmation') && html.includes('Not confirmed'));
-    ok(html.includes('2026-10-05') && !html.includes('invented-recorded-send'), 'date shown, audit identity private');
+    if (action === 'unconfirmed') {
+      ok(html.includes('Payment allocation unconfirmed') && !html.includes('Paid - money sent'));
+      ok(!html.includes('invented-recorded-send') && !html.includes('<dt>Money sent</dt>'), 'conflicting send not presented as confirmed evidence');
+    } else {
+      ok(html.includes('Money sent') && html.includes('Lender minimum confirmation') && html.includes('Not confirmed'));
+      ok(html.includes('2026-10-05') && !html.includes('invented-recorded-send'), 'date shown, audit identity private');
+    }
   }
   if (paid) ok(render.html(row).includes('Paid · Money sent'), 'complete posted send has a visible qualifier');
+}
+for (const reverse of [false, true]) {
+  const x = fixture([sent()]);
+  x.data.plan.obligations[2].sentPayments = [sent({ scheduledDate: '2026-09-30' })];
+  if (reverse) x.data.plan.obligations.reverse();
+  const { r, period } = publication(x);
+  eq(period.bills.filter(row => ['triangle', 'mbna'].includes(row.id))
+    .some(row => render.presentation(row).kind === 'paid'), false, 'one debit reused across obligations cannot establish either action');
+  eq(numbers(r), numbers(publication(x, oldF).r), 'cross-obligation conflict preserves every incumbent monetary field');
 }
 for (const receipt of [false, true]) for (const inclusion of [false, true]) {
   const x = fixture([sent(inclusion ? { cashIncludedAsOf: NOW } : {})]);
