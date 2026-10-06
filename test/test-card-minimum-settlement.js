@@ -85,6 +85,7 @@ function planFixture() {
   const mbna = obligation(data.plan, 'mbna');
   const mbnaOnce = obligation(data.plan, 'mbna-aug31');
   const travel = obligation(data.plan, 'travel');
+  const tdcc = obligation(data.plan, 'tdcc');
   if (!triangle || !mbna || !mbnaOnce || !travel) {
     throw new Error('canonical Triangle/MBNA/Travel obligations missing');
   }
@@ -101,6 +102,10 @@ function planFixture() {
   delete mbnaOnce.sentPayments;
   delete mbna.statementOccurrences;
   delete mbna.sentPayments;
+  // This historical synthetic ledger owns an unconfirmed TD minimum; later
+  // owner-approved Emerald occurrence evidence must not change that premise.
+  delete tdcc.statementOccurrences;
+  delete tdcc.sentPayments;
   travel.amount = TRAVEL_MIN;
   return data;
 }

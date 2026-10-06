@@ -325,6 +325,7 @@ const suites = [
   ['automatic-payment settlement reconciliation', 'test-automatic-payment-settlement.js'],
   ['Triangle and MBNA card-minimum settlement', 'test-card-minimum-settlement.js'],
   ['TD / Cash Back / Travel Visa PAYMENT - THANK YOU card-minimum identity', 'test-payment-thank-you-card-minimum.js'],
+  ['Emerald owner-confirmed original October minimum', 'test-emerald-october-minimum.js'],
   ['purchase backfills cannot confirm scheduled card minima', 'test-card-backfill-intent.js'],
   ['month-end bill settlement and unmatched fee visibility', 'test-month-end-bill-reconciliation.js'],
   ['Dale-gated Noble / HELOC / TDCC represented settles', 'test-dale-gated-represented-settles.js'],

@@ -470,13 +470,21 @@ console.log('\n=== 9. live as-of advance keeps qualifying Dale-gated prepaid nam
 
 console.log('\n=== 11. cash omit does not unwind HELOC/TDCC debt reduction; Noble is debt-neutral ===');
 {
-  const emptyPlan = clone(canonical.plan);
+  // This historical fixture exercises legacy prepaid cash-only debt behavior,
+  // before Emerald adopted the optional October minimum/sender contract. Its
+  // old September receipt assertions above still use the complete canonical
+  // plan. Do not let later typed receipt evidence change this fixture's premise.
+  const legacyPlan = clone(canonical.plan);
+  const legacyTdcc = legacyPlan.obligations.find(row => row.id === TDCC_ID);
+  delete legacyTdcc.statementOccurrences;
+  delete legacyTdcc.sentPayments;
+  const emptyPlan = clone(legacyPlan);
   emptyPlan.opening = Object.assign({}, emptyPlan.opening, { representedEvents: [] });
   const simOpts = { weeklyVariable: 0, horizonDays: 91, viewDays: 91 };
   const debtOpts = { debtHorizonDays: 91 };
-  const simNamed = F.simulate(canonical.plan, OPENING, simOpts);
+  const simNamed = F.simulate(legacyPlan, OPENING, simOpts);
   const simEmpty = F.simulate(emptyPlan, OPENING, simOpts);
-  const debtNamed = F.projectDebts(canonical.plan, canonical.debts, OPENING, debtOpts);
+  const debtNamed = F.projectDebts(legacyPlan, canonical.debts, OPENING, debtOpts);
   const debtEmpty = F.projectDebts(emptyPlan, canonical.debts, OPENING, debtOpts);
   const last = (proj, id) => {
     const mark = proj.marks[proj.marks.length - 1];
