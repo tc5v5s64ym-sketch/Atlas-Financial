@@ -242,8 +242,17 @@
                 "firstDue": "2026-10-01",
                 "amount": 170,
                 "confidence": "estimated",
-                "note": "The 2026-08-14 Chequing A TFR-TO C/C $763.00 posted against this card (posted fell $50 + $763 to $4,799.43, under the $5,000 limit). That payment satisfies the previous over-limit September spike of $762.36 (64 cents of rounding); the once row was removed so Forecast does not reserve it again. Future statement minimums are estimated at about $170. firstDue 2026-10-01. Owner-confirmed settlement applies only to the original 2026-10-01 occurrence; receipt and cash inclusion are qualified at the later confirmed opening. The send exceeds the estimated minimum by $10.00; that excess is extra principal and does not satisfy, reduce or confirm any later minimum.",
+                "note": "The 2026-08-14 Chequing A TFR-TO C/C $763.00 posted against this card (posted fell $50 + $763 to $4,799.43, under the $5,000 limit). That payment satisfies the previous over-limit September spike of $762.36 (64 cents of rounding); the once row was removed so Forecast does not reserve it again. Future statement minimums are estimated at about $170. firstDue 2026-10-01. Owner-reported confirmation received 2026-10-06: minimum $209.37 paid $230.00 for the existing October occurrence. The existing scheduled date is retained; no new issuer statement due date is inferred. Receipt and cash inclusion are qualified at the observed 2026-10-06 opening. This occurrence-specific minimum does not replace later estimates, and the payment is not allocated to another cycle. The separate $180.00 Phoenix transfer is not this minimum payment.",
                 "payingAccount": "chequing-a",
+                "statementOccurrences": [
+                    {
+                        "scheduledDate": "2026-10-01",
+                        "dueDate": "2026-10-01",
+                        "minimum": 209.37,
+                        "currency": "cad",
+                        "confidence": "confirmed"
+                    }
+                ],
                 "sentPayments": [
                     {
                         "scheduledDate": "2026-10-01",
@@ -251,7 +260,7 @@
                         "intent": "minimum",
                         "debitId": "cashback-2026-10-bank-sent",
                         "postedOn": "2026-10-05",
-                        "amount": 180,
+                        "amount": 230,
                         "currency": "cad",
                         "fundingAccountId": "chequing-a",
                         "pending": false,
