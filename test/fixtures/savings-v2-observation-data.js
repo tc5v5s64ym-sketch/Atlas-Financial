@@ -26,6 +26,10 @@ function input(mode = 'valid-v2') {
   if (mode === 'legacy-date') {
     for (const row of payload.accounts.slice(2)) { delete row.balance_last_update; row.balance_as_of = stamp; }
   }
+  if (mode === 'legacy-over-null') { savings.balance_last_update = null; savings.balance_as_of = stamp; }
+  if (mode === 'null-object-update') { savings.balance_last_update = null; savings.updated_at = stamp; }
+  if (mode === 'null-legacy-fetch') { savings.balance_last_update = null; savings.date_last_fetched = stamp; }
+  if (mode === 'null-v2-sync') savings.balance_last_update = null;
   if (mode === 'stale-date') { savings.balance_last_update = '2026-10-04T19:00:00Z'; savings.updated_at = stamp; }
   if (mode === 'future-date') { savings.balance_last_update = '2026-10-06T19:00:00Z'; savings.updated_at = stamp; }
   if (mode === 'malformed-date') { savings.balance_last_update = 'not-a-date'; savings.updated_at = stamp; }

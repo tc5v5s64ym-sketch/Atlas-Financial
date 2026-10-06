@@ -21,10 +21,20 @@ eq(O.genericAccountEvidenceInstant(normalized), raw.updated_at, 'generic update 
 eq(normalized.dateLastFetched, null, 'v2 sync timestamp is not silently made legacy balance evidence');
 eq(O.postedBalanceEvidenceInstant(O.normalizeLunchMoneyAccount({ ...raw,
   balance_as_of: '2026-10-03T19:00:00Z' })), '2026-10-03T19:00:00Z', 'existing explicit balance_as_of precedence survives');
-for (const value of ['not-a-date', '2026-02-30', '2026-02-30T19:00:00Z', '', 42, ['2026-10-05'], { date: '2026-10-05' }]) {
+for (const value of [null, undefined, 'not-a-date', '2026-02-30', '2026-02-30T19:00:00Z', '', 42, ['2026-10-05'], { date: '2026-10-05' }]) {
   eq(O.postedBalanceEvidenceInstant(O.normalizeLunchMoneyAccount({ ...raw, balance_last_update: value })), null,
     'malformed v2 date cannot fall back to a different update/sync timestamp');
 }
+const absent = { ...raw }; delete absent.balance_last_update;
+const absentNormalized = O.normalizeLunchMoneyAccount(absent);
+eq(Object.hasOwn(absentNormalized, 'balanceLastUpdate'), false, 'absent v2 field stays absent');
+eq(Object.hasOwn(O.normalizeLunchMoneyAccount({ ...raw, balance_last_update: null }), 'balanceLastUpdate'), true,
+  'explicit null v2 field stays present');
+eq(O.postedBalanceEvidenceInstant(absentNormalized), raw.updated_at, 'absent v2 field preserves incumbent legacy object-date compatibility');
+eq(O.postedBalanceEvidenceInstant(O.normalizeLunchMoneyAccount({ ...absent, updated_at: null,
+  date_last_fetched: raw.updated_at })), raw.updated_at, 'absent v2 field preserves incumbent legacy fetch-date compatibility');
+eq(O.postedBalanceEvidenceInstant(O.normalizeLunchMoneyAccount({ ...raw, balance_last_update: null,
+  balance_as_of: raw.updated_at })), raw.updated_at, 'valid legacy semantic date retains precedence over explicit null v2');
 }
 
 const stub = () => ({ innerHTML: '', value: '', dataset: {}, style: {},
@@ -40,8 +50,9 @@ for (const name of ['app', 'bill-detail', 'savings-inventory', 'budget-surface',
   vm.runInContext(fs.readFileSync(path.join(root, 'public/' + name + '.js'), 'utf8'), page);
 }
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', page);
-const known = new Set(['valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement']);
-for (const mode of ['valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown',
+const known = new Set(['valid-v2', 'legacy-date', 'legacy-over-null', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement']);
+for (const mode of ['null-object-update', 'null-legacy-fetch', 'null-v2-sync', 'legacy-over-null',
+  'valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown',
   'stale-date', 'future-date', 'malformed-date', 'malformed-type', 'impossible-date',
   'missing-date', 'sync-only', 'foreign-currency', 'missing-account', 'duplicate-account', 'pending-movement']) {
   const original = fx.input(mode), before = JSON.stringify(original);

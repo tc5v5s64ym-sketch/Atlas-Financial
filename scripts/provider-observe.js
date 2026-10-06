@@ -282,20 +282,22 @@ function normalizeLunchMoneyAccount(raw) {
     limit: firstNumber(raw.credit_limit, raw.limit),
     updatedAt: raw.updated_at || null,
     balanceAsOf: raw.balance_as_of || null,
-    balanceLastUpdate: raw.balance_last_update ?? null,
+    ...(Object.prototype.hasOwnProperty.call(raw, 'balance_last_update')
+      ? { balanceLastUpdate: raw.balance_last_update } : {}),
     dateLastFetched: raw.date_last_fetched || null,
   };
 }
 
 // Posted evidence keeps legacy balance_as_of precedence, then the v2
-// semantic balance_last_update. An explicitly malformed v2 date withholds
+// semantic balance_last_update. An explicitly unknown/malformed v2 date withholds
 // evidence instead of borrowing an object update or sync/fetch timestamp.
+// Preserve absence separately for incumbent legacy timestamp compatibility.
 // Household conversion remains Forecast.financialDate; UTC below only
 // validates calendar identity so impossible dates cannot roll forward.
 function postedBalanceEvidenceInstant(account) {
   if (!account || typeof account !== 'object') return null;
   if (account.balanceAsOf) return account.balanceAsOf;
-  if (account.balanceLastUpdate != null) {
+  if (Object.prototype.hasOwnProperty.call(account, 'balanceLastUpdate')) {
     const value = account.balanceLastUpdate;
     if (typeof value !== 'string' || !dateOnly(value)) return null;
     const day = value.trim().slice(0, 10), instant = Date.parse(day + 'T00:00:00Z');

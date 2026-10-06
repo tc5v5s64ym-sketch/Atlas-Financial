@@ -8,8 +8,9 @@ const fx = require('./fixtures/savings-v2-observation-data');
 const output = process.env.ATLAS_V2_STOCK_PROOF || path.join(require('node:os').tmpdir(), 'atlas-v2-stock');
 const executionHead = cp.execFileSync('git', ['-c', 'safe.directory=' + root.replace(/\\/g, '/'),
   'rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-const known = new Set(['valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement']);
-const modes = ['valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown',
+const known = new Set(['valid-v2', 'legacy-date', 'legacy-over-null', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown', 'pending-movement']);
+const modes = ['null-object-update', 'null-legacy-fetch', 'null-v2-sync', 'legacy-over-null',
+  'valid-v2', 'legacy-date', 'offset-date', 'calendar-date', 'v2-over-update', 'sender-unknown',
   'stale-date', 'future-date', 'malformed-date', 'malformed-type', 'impossible-date',
   'missing-date', 'sync-only', 'foreign-currency', 'missing-account', 'duplicate-account', 'pending-movement'];
 fs.mkdirSync(output, { recursive: true });
