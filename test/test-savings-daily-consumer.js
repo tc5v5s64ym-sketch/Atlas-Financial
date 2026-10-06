@@ -10,12 +10,12 @@ for (const script of ['app', 'bill-detail', 'savings-inventory', 'budget-surface
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/' + script + '.js'), 'utf8'), ctx);
 }
 vm.runInContext('state.targetBuffer=20;state.extraDebtMonthly=0;state.debts=[];', ctx);
-for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'before-policy', 'saved-income']) {
+for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income']) {
   const data = fixture(mode), before = JSON.stringify(data);
   const advice = F.recommend(data.plan, data.meta.asOf, { weeklyVariable: 40, ...data.liveOverlay });
   ctx.src = { plan: data.plan, debts: [], asOf: data.meta.asOf, advice, liveOverlay: data.liveOverlay, weekly: 40, weeklyOverride: 40 };
   const packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
-  const expected = { ready: 80, partial: 50, full: 0, multiple: 30, returned: 0, 'saved-income': 80 }[mode];
+  const expected = { ready: 80, partial: 50, full: 0, multiple: 30, returned: 0, 'fully-backed': 0, 'saved-income': 80 }[mode];
   assert.equal(packet.period.proposal, expected ?? null);
   assert.deepEqual(vm.runInContext('budgetDailySavingsFor(src)', ctx), packet, 'replace-only refresh');
   ctx.period = advice.payPeriodViews.find(p => p.timelineRole === 'current'); ctx.packet = packet;
@@ -34,6 +34,11 @@ for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending
   if (mode === 'saved-income') { assert.equal(packet.period.nativePeriodSurplus, 160); assert.equal(packet.period.entitlement, 80); assert.equal(ctx.period.afterHouseholdBudget, 160); }
   if (mode === 'missing-cash') assert.equal(packet.stock.amount, 119, 'cash uncertainty cannot erase observed stock');
   if (mode === 'before-policy') assert.match(html.split('data-operating-question="savings"')[1].split('</summary>')[0], /119\.00/, 'policy uncertainty cannot erase observed stock');
+  if (mode === 'fully-backed') {
+    assert.equal(packet.period.unassigned, 80);
+    assert.match(html, /Unassigned capacity[\s\S]*80\.00/);
+    assert.doesNotMatch(html, /Unassigned top-up/);
+  }
   assert.equal(JSON.stringify(data), before, 'canonical fixture not mutated');
 }
 
@@ -50,4 +55,4 @@ for (const mutate of [p => { p.source = 'other'; }, p => { p.asOf = '2026-10-06'
   ctx.Forecast = { ...F, savingsDailyFunding: () => invalid };
   assert.equal(vm.runInContext('budgetDailySavingsFor(src).status', ctx), 'unavailable', 'invalid scope or authority never borrows legacy amounts');
 }
-console.log('PASS active current Budget/Savings consumer: eleven independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, unavailable evidence retained, publication boundary');
+console.log('PASS active current Budget/Savings consumer: twelve independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, unavailable evidence retained, publication boundary');

@@ -4906,7 +4906,7 @@ function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null)
       <p>Income proved already deposited into Savings is excluded from entitlement. These two figures can differ.</p>
       <div class="operating-line"><span>Proved transfers this cycle</span><span>${value(period?.transferred, period?.trust)}</span></div>
       <div class="operating-line"><span>Remaining entitlement</span><span>${value(period?.remainingEntitlement, period?.trust)}</span></div>
-      <div class="operating-line"><span>Unassigned top-up</span><span>${value(period?.unassigned, period?.trust)}</span></div>
+      <div class="operating-line"><span>Unassigned capacity</span><span>${value(period?.unassigned, period?.trust)}</span></div>
       <p>Only matched settled transfers count. Pending or unmatched movement stays unresolved. Proposals grant no permission to move money.</p>
       ${inventory && typeof SavingsInventory !== 'undefined' ? SavingsInventory.html(inventory) : ''}
       <details data-budget-savings-legacy-evidence><summary>Earlier planning calculation &amp; obligation evidence</summary>${retainedEvidence}</details>

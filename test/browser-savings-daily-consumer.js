@@ -12,7 +12,7 @@ fs.mkdirSync(output, { recursive: true });
  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
  const errors = [], external = [], cases = [];
  try {
-  for (const width of [1440, 390, 320]) for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'before-policy', 'saved-income']) {
+  for (const width of [1440, 390, 320]) for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending', 'unmatched', 'missing-stock', 'missing-cash', 'fully-backed', 'before-policy', 'saved-income']) {
    const data = fixture(mode), page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
    await page.addInitScript(() => localStorage.setItem('hfd-plan-knobs-v1', JSON.stringify({ weeklyVariable: 40 })));
    page.on('pageerror', e => errors.push(e.message));
@@ -35,7 +35,7 @@ fs.mkdirSync(output, { recursive: true });
    const dialog = page.locator('[data-budget-detail-sheet]'), body = page.locator('[data-budget-detail-body]');
    await dialog.waitFor({ state: 'visible' });
    if (!captureOnly) {
-    const expected = { ready: 80, partial: 50, full: 0, multiple: 30, returned: 0, 'saved-income': 80 }[mode];
+    const expected = { ready: 80, partial: 50, full: 0, multiple: 30, returned: 0, 'fully-backed': 0, 'saved-income': 80 }[mode];
     const amount = await body.locator('[data-budget-daily-proposal]').innerText();
     if (expected == null) assert.match(amount, /Unavailable/); else assert.match(amount, new RegExp(expected.toFixed(2).replace('.', '\\.')));
     assert.equal(await body.locator('[data-budget-savings-total-goal]').count(), 2);

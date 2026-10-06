@@ -4,6 +4,10 @@ const fx = require('./savings-daily-allocation-contract');
 module.exports = function dailyConsumerData(mode = 'ready') {
   const input = fx.fixture();
   if (mode === 'before-policy') fx.advance(input, '2026-10-04');
+  if (mode === 'fully-backed') {
+    input.plan.savingsPoolObservation.accounts[0].value = 230;
+    input.plan.startingCash.breakdown[2].value = 230;
+  }
   if (mode === 'partial') fx.transfer(input, 30);
   if (mode === 'full') fx.transfer(input, 80);
   if (mode === 'multiple') { fx.transfer(input, 30); fx.transfer(input, 20, 'BB202'); }
