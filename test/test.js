@@ -33,6 +33,7 @@ const suites = [
   ['daily savings incumbent financial probes', 'probe-savings-daily-allocation-incumbent.js'],
   ['active daily Budget Savings consumer contracts', 'test-savings-daily-consumer.js'],
   ['v2 observed savings semantic date and independent Budget stock', 'test-provider-v2-savings-stock.js'],
+  ['v2 semantic credit dates, qualified live stock and active Credit renderer', 'test-provider-v2-credit-date.js'],
   ['native utility settlement units and independent holds', 'test-utility-settlement-currency.js'],
   ['paid actual display trust remains separate from estimated schedules', 'test-paid-actual-display-trust.js'],
   ['one household actual/planned total and Other remaining display', 'test-budget-household-total-display.js'],

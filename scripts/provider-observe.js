@@ -3104,16 +3104,25 @@ function reconciliationReceipt(report, opts) {
 }
 
 function observationsFromMappedAccount(account, mapping, fetchedAt) {
-  const dated = CREDIT_ROLES.has(mapping.atlasRole)
+  const usesPostedDate = CREDIT_ROLES.has(mapping.atlasRole);
+  const dated = usesPostedDate
     ? postedBalanceEvidenceInstant(account)
     : genericAccountEvidenceInstant(account);
-  const observedAt = dated || fetchedAt;
+  // Every posted-credit fact shares the semantic-date boundary. A request
+  // timestamp cannot repair missing/invalid balance evidence. Savings uses
+  // the same helper directly; non-credit generic dating stays incumbent.
+  const observedAt = usesPostedDate ? dated : dated || fetchedAt;
+  const evidenceDate = dateOnly(observedAt);
+  const requestDay = dateOnly(fetchedAt);
+  const unqualifiedPostedDate = usesPostedDate
+    && (!evidenceDate || !requestDay || evidenceDate > requestDay);
   const base = {
     provider: account.provider,
     providerAccountId: account.providerAccountId,
     accountLabel: account.displayName,
-    observedAsOf: dateOnly(observedAt),
-    evidenceDate: dateOnly(observedAt),
+    observedAsOf: evidenceDate,
+    evidenceDate,
+    ...(unqualifiedPostedDate ? { unknown: true } : {}),
     canonical: mapping.canonical,
     source: 'provider-observe:lunchmoney',
   };
