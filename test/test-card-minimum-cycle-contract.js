@@ -59,30 +59,39 @@ const x = fixture(), p = x.data.plan;
 eq(F.expandEvents(p, '2026-10-01', '2026-12-31').filter(e => e.id === 'triangle')
   .map(e => [e.date, -e.amount, e.confidence, e.dateConfidence]), [
     ['2026-10-08', 91.23, 'confirmed', 'confirmed'],
-    ['2026-11-07', 88.88, 'estimated', 'estimated'],
-    ['2026-12-07', 88.88, 'estimated', 'estimated']]);
+    ['2026-11-07', 88.88, 'estimated', undefined],
+    ['2026-12-07', 88.88, 'estimated', undefined]]);
 eq(F.expandEvents(p, '2026-10-07', '2026-10-07').filter(e => e.id === 'triangle').length, 0);
 const moved = F.expandEvents(p, '2026-10-08', '2026-10-08').find(e => e.id === 'triangle');
 eq([moved.date, moved.scheduledDate, moved.occurrenceKey, moved.dateConfidence],
   ['2026-10-08', '2026-10-07', 'triangle@2026-10-07', 'confirmed'],
-  'replacement before window filtering, stable identity, confirmed statement date');
+  'replacement before window filtering, stable identity, confirmed date override');
+eq(moved.dateConfidence, 'confirmed',
+  'omitted legacy date confidence retains confirmed statement-date trust');
+const omittedSameDate = structuredClone(p);
+omittedSameDate.obligations[0].statementOccurrences[0].dueDate = '2026-10-07';
+eq(F.expandEvents(omittedSameDate, '2026-10-07', '2026-10-07')[0].dateConfidence, 'confirmed',
+  'omitted dateConfidence on a retained planning date stays a confirmed statement-date override');
 // Independent reconstruction: the original planning date is monthly day 7 /
-// firstDue 2026-10-07. A statement that keeps that same date confirms the
-// amount only — it does not establish an issuer deadline.
+// firstDue 2026-10-07. Amount confirmation does not establish an issuer deadline
+// unless dateConfidence is explicit; omitted remains the legacy override.
 const amountOnly = structuredClone(p);
 amountOnly.obligations[0].statementOccurrences[0].dueDate = '2026-10-07';
+amountOnly.obligations[0].statementOccurrences[0].dateConfidence = 'estimated';
 eq(amountOnly.obligations[0].statementOccurrences[0].dueDate,
   amountOnly.obligations[0].statementOccurrences[0].scheduledDate,
   'amount-only fixture retains the original scheduled date');
 eq(amountOnly.obligations[0].confidence, 'estimated',
   'obligation row date trust remains estimated before replacement');
+eq(amountOnly.obligations[0].statementOccurrences[0].dateConfidence, 'estimated',
+  'amount-only fixture records estimated date trust explicitly');
 const replaced = F.expandEvents(amountOnly, '2026-10-07', '2026-10-07').find(e => e.id === 'triangle');
 eq([replaced.date, -replaced.amount, replaced.confidence, replaced.dateConfidence],
   ['2026-10-07', 91.23, 'confirmed', 'estimated'],
   'amount confirmation does not promote the retained planning date');
 eq(F.expandEvents(amountOnly, '2026-11-07', '2026-11-07').filter(e => e.id === 'triangle')
   .map(e => [e.date, -e.amount, e.confidence, e.dateConfidence]),
-  [['2026-11-07', 88.88, 'estimated', 'estimated']],
+  [['2026-11-07', 88.88, 'estimated', undefined]],
   'later cycles stay independent estimates');
 const explicitDate = structuredClone(amountOnly);
 explicitDate.obligations[0].statementOccurrences[0].dateConfidence = 'confirmed';
@@ -91,7 +100,7 @@ eq(F.expandEvents(explicitDate, '2026-10-07', '2026-10-07')[0].dateConfidence, '
 const explicitEstimatedMove = structuredClone(p);
 explicitEstimatedMove.obligations[0].statementOccurrences[0].dateConfidence = 'estimated';
 eq(F.expandEvents(explicitEstimatedMove, '2026-10-08', '2026-10-08')[0].dateConfidence, 'estimated',
-  'explicit estimated dateConfidence can keep a moved date estimated');
+  'moving a planning date does not infer confirmation');
 for (const dueDate of ['2026-09-30', '2026-11-01']) {
   const q = structuredClone(p); q.obligations[0].statementOccurrences[0].dueDate = dueDate;
   eq(F.expandEvents(q, dueDate, dueDate).filter(e => e.id === 'triangle').length, 1);
@@ -102,6 +111,12 @@ for (const changes of [{ dueDate: '2026-02-30' }, { minimum: -1 }, { minimum: 1.
   { scheduledDate: '2026-10-06' }, { dueDate: '2026-11-07' }]) {
   const q = structuredClone(p); Object.assign(q.obligations[0].statementOccurrences[0], changes);
   assert.throws(() => F.expandEvents(q, '2026-10-01', '2026-11-30')); checks++;
+}
+for (const dateConfidence of [null, undefined, '', false, 0, [], {}]) {
+  const q = structuredClone(p);
+  q.obligations[0].statementOccurrences[0].dateConfidence = dateConfidence;
+  assert.throws(() => F.expandEvents(q, '2026-10-01', '2026-11-30'),
+    /Statement must replace/, 'explicit malformed date trust must not become confirmed'); checks++;
 }
 const duplicate = structuredClone(p);
 duplicate.obligations[0].statementOccurrences.push({ ...duplicate.obligations[0].statementOccurrences[0] });
@@ -347,6 +362,16 @@ eq(/≈ /.test(creditHtml), false, 'Credit amount is not estimated when the mini
 eq(/data-credit-date-confidence="estimated"/.test(creditHtml)
   && /estimated/.test(creditHtml), true,
   'Credit due date keeps the estimated planning-date indication');
+const movedEstimatedNext = F.creditAccounts(explicitEstimatedMove, amountDebts, '2026-10-05', {}).cards
+  .find(row => row.id === 'triangle').nextPayment;
+eq([movedEstimatedNext.date, movedEstimatedNext.confidence, movedEstimatedNext.dateConfidence],
+  ['2026-10-08', 'confirmed', 'estimated'],
+  'Credit does not confirm a moved date without date evidence');
+const movedEstimatedHtml = presentCtx.creditNextPaymentFacts(
+  { nextPayment: movedEstimatedNext }, 'Minimum payment', 'Due date');
+eq(/data-credit-date-confidence="estimated"/.test(movedEstimatedHtml)
+  && /estimated/.test(movedEstimatedHtml), true,
+  'Credit due date keeps estimated after a moved planning date');
 
 const livePlan = JSON.parse(canonical);
 const liveCashback = livePlan.plan.obligations.find(row => row.id === 'cashback');
