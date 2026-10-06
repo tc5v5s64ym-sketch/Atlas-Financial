@@ -50,6 +50,7 @@ not infer from the empty result.
 `CARD-002`
 
 Exact merchant: `Phoenix Digital Health` → `PHOENIX DIGITAL HEALTH`.
+As of 2026-09-03, the discovery evidence and restrictions below applied.
 Card: Travel Visa only. **Not currently planned.**
 
 | Date | Amount | Status |
@@ -61,6 +62,13 @@ Interval 29 days. Amount moved $50. **Monthly is UNPROVEN.** Two hits
 are not a bill. One of the two hits is within ±$15 of $179; that is not
 a proven $179 bill. Do not assume gym, insurance, Amanda, or Dale. Do
 not add `plan.bills`. Do not open a purpose question from this pack.
+
+**Owner 2026-10-06 — later promotion:** Amanda's monthly Phoenix Digital
+Health charge on the Travel Visa is now owner-confirmed.
+Routed to live `plan.bills` `phoenix-digital-health`; `CARD-002` is CONSUMED onto that
+named bill. The category remains unconfirmed. This later instruction
+does not change the dated observations above or infer a product or
+purpose from the two-hit discovery.
 
 ## Amazon by card
 `CARD-003`
@@ -192,8 +200,10 @@ again on the 2026-08-19 opening.
 
 Not this id: ordinary Amazon shopping, the separate **$24.63**
 Prime-like charge on 2026-02-17, MBNA Amazon, Mailchimp, AICHATAPP,
-Calendly, Phoenix, Shopify, or card interest. Those stay on `CARD-003`,
-`CARD-004`, `CARD-002`, and `CARD-005` as excluded.
+Calendly, Phoenix, Shopify, or card interest. Shopping, Mailchimp,
+AICHATAPP, Calendly, Shopify, and card interest stay on `CARD-003`,
+`CARD-004`, and `CARD-005` as excluded. Phoenix remains outside
+`CARD-011`; its `CARD-002` route follows the owner 2026-10-06 promotion.
 
 ## What this package does not do
 
@@ -202,9 +212,13 @@ Calendly, Phoenix, Shopify, or card interest. Those stay on `CARD-003`,
 - Promote Mailchimp, Calendly, AICHATAPP, Phoenix,
   Shopify, annual fees, or card interest to Forecast bills. The $11.19
   membership is `CARD-011`, routed after the owner 2026-09-22
-  instruction. This pack's remaining CARD ids stay excluded.
+  instruction. Phoenix is `CARD-002`, routed after the separate owner
+  2026-10-06 instruction. Discovery alone authorizes neither promotion;
+  the unrelated exclusions stay in place.
 - Treat AICHATAPP $44.99 on day 2 as ChatGPT Plus.
 - Treat two Phoenix hits as a monthly $179 bill.
 - Claim 18–24 months of card history.
 - Infer Triangle inactivity from a zero-txn window.
-- Answer Phoenix purpose, payer, or product.
+- Answer Phoenix purpose, payer, or product from discovery alone. The
+  later owner 2026-10-06 instruction identifies Amanda and the Travel
+  Visa; it does not confirm a category or infer a product or purpose.
