@@ -147,6 +147,127 @@ const oldOpening = structuredClone(paidInput.data.plan);
 eq(F.expandEvents(oldOpening, '2026-10-02', '2026-10-10').filter(e => e.id === 'triangle').map(e => -e.amount), [91.23],
   'current qualification cannot suppress a historical opening');
 
+const cents = value => Math.round(Number(value) * 100);
+const Reconcile = require('../scripts/reconcile');
+function blockerPlan(changes = {}) {
+  return {
+    opening: { asOf: changes.asOf || '2026-10-05',
+      representedEvents: changes.represented || [] },
+    windowDays: 90,
+    startingCash: { breakdown: [
+      { id: 'chequing-a', value: 5000 }, { id: 'chequing-b', value: 0 },
+      { id: 'savings', value: 0 }] },
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0 },
+    income: [{ id: 'payroll', label: 'Seaspan - invented', frequency: 'biweekly',
+      anchor: '2026-10-02', amount: 2000, confidence: 'confirmed' }],
+    bills: [],
+    commitments: changes.commitments || [],
+    budget: { categories: [] },
+    obligations: [{
+      id: 'card', debtId: 'card', effect: 'payment', label: 'Invented card minimum',
+      frequency: 'monthly', day: 7, firstDue: changes.firstDue || '2026-10-07',
+      amount: 47.39, confidence: 'estimated', payingAccount: 'chequing-a',
+      statementOccurrences: changes.statements === null ? undefined : (changes.statements || [{
+        scheduledDate: '2026-10-07', dueDate: '2026-10-08',
+        minimum: 47.39, currency: 'cad', confidence: 'confirmed' }]),
+      sentPayments: changes.sent,
+    }],
+  };
+}
+const sentOct = {
+  scheduledDate: '2026-10-07', confirmed: true, intent: 'minimum',
+  debitId: 'invented-oct-debit', postedOn: '2026-10-05', amount: 47.39,
+  currency: 'cad', fundingAccountId: 'chequing-a', pending: false,
+  cashIncludedAsOf: '2026-10-05',
+};
+const observedDebts = [{ id: 'card', label: 'Invented card', balance: 821.43,
+  pending: 0, rate: 0, limit: 2000 }];
+
+// 1. Same-date observed debt already includes the posted payment.
+const stockPlan = blockerPlan({
+  sent: [sentOct],
+  represented: [{ id: 'card', date: '2026-10-07', effectiveAsOf: '2026-10-05' }],
+});
+const stockWalk = F.projectDebts(stockPlan, observedDebts, '2026-10-05', { debtHorizonDays: 10 });
+eq(cents(stockWalk.marks[0].debts[0].balance), 82143, 'observed opening stock is the independent input');
+eq([cents(stockWalk.byId.card.paid), cents(stockWalk.byId.card.balance)], [0, 82143],
+  'neither sender evidence nor receipt annotation subtracts an already reflected payment');
+eq(cents(F.projectDebts(blockerPlan({ sent: [sentOct] }), observedDebts, '2026-10-05',
+  { debtHorizonDays: 10 }).byId.card.paid), 0, 'sender-only evidence invents no principal reduction');
+
+// 2. Unique occurrence attribution; later-opening proof does not leak backward.
+const twoCycle = blockerPlan({
+  firstDue: '2026-09-07',
+  sent: [
+    { ...sentOct, scheduledDate: '2026-09-07', debitId: 'invented-sep-debit',
+      postedOn: '2026-09-05', cashIncludedAsOf: '2026-09-05' },
+    sentOct,
+    { ...sentOct, scheduledDate: '2026-11-07', debitId: 'invented-nov-debit',
+      postedOn: '2026-11-05', cashIncludedAsOf: '2026-11-05' },
+  ],
+  represented: [{ id: 'card', date: '2026-10-08', effectiveAsOf: '2026-10-05' }],
+});
+const twoState = F.cardMinimumState(twoCycle, '2026-11-07');
+eq(twoState.payments.map(row => [row.scheduledDate, row.issuerMinimumStatus]), [
+  ['2026-09-07', 'unconfirmed'], ['2026-10-07', 'satisfied'], ['2026-11-07', 'unconfirmed'],
+], 'one issuer proof satisfies exactly one original scheduled occurrence');
+const laterProof = F.cardMinimumState(blockerPlan({ sent: [sentOct] }), '2026-10-05', {
+  representedEvents: [{ id: 'card', date: '2026-10-07', effectiveAsOf: '2026-10-20' }],
+});
+eq(laterProof.payments.map(row => row.issuerMinimumStatus), ['unconfirmed'],
+  'later-opening proof cannot satisfy an earlier as-of');
+eq(F.expandEvents(blockerPlan({
+  asOf: '2026-10-02',
+  sent: [sentOct],
+  represented: [{ id: 'card', date: '2026-10-07', effectiveAsOf: '2026-10-20' }],
+}), '2026-10-02', '2026-10-10').filter(e => e.id === 'card').map(e => [e.date, -e.amount]),
+  [['2026-10-08', 47.39]], 'later-opening proof does not suppress an earlier cash opening');
+const next = F.creditAccounts(stockPlan, observedDebts, '2026-10-05', {}).cards[0].nextPayment;
+eq([next.date, next.amount, next.issuerMinimumStatus],
+  ['2026-11-07', 47.39, undefined],
+  'october proof does not satisfy the later estimated cycle');
+
+// 3. Reconciliation, matching and classification keep original identity.
+const identityPlan = blockerPlan({});
+const movedDue = F.expandEvents(identityPlan, '2026-10-08', '2026-10-08').find(e => e.id === 'card');
+eq([movedDue.date, movedDue.scheduledDate, movedDue.occurrenceKey],
+  ['2026-10-08', '2026-10-07', 'card@2026-10-07']);
+const laterEstimate = F.expandEvents(identityPlan, '2026-11-07', '2026-11-07').find(e => e.id === 'card');
+eq([laterEstimate.date, laterEstimate.scheduledDate || laterEstimate.date, laterEstimate.id],
+  ['2026-11-07', '2026-11-07', 'card'],
+  'an unmoved later cycle keeps its own date identity');
+eq(Reconcile.scheduledEventExists({ plan: identityPlan }, 'card', '2026-10-07'), true,
+  'reconciliation still finds the occurrence by original scheduled date');
+eq(Reconcile.scheduledEventExists({ plan: identityPlan }, 'card', '2026-10-08'), true,
+  'the moved due date remains the same original occurrence');
+
+// 4. Unknown cash cannot publish feasibility or $NaN amount claims.
+const unknownPlan = blockerPlan({
+  sent: [{ ...sentOct, cashIncludedAsOf: undefined }],
+  commitments: [{ id: 'trip', label: 'Invented trip', date: '2026-12-01',
+    amount: 300, flexibility: 'required', confidence: 'confirmed' }],
+});
+const unknownAdvice = F.recommend(unknownPlan, '2026-10-05', { debts: observedDebts });
+eq(unknownAdvice.cardMinimumPayments.status, 'unavailable');
+eq(unknownAdvice.weekly, null);
+const trip = unknownAdvice.majorPlans.find(row => row.id === 'trip');
+eq([trip.verdict, trip.margin, trip.remaining], [null, null, null],
+  'unknown cash withholds Plan Spend feasibility');
+eq(unknownAdvice.planSpendPaydayFunding.status, 'unavailable');
+const appSrc = fs.readFileSync(require.resolve('../public/app.js'), 'utf8');
+const grab = re => re.exec(appSrc)[0];
+const helpers = [grab(/^const money = .*$/m), grab(/^const money2 = .*$/m),
+  grab(/^const pct = .*$/m), grab(/^const fmtDate = .*$/m),
+  grab(/^const fmtDateLong = .*$/m), grab(/^const fmtDateFull = .*$/m)].join('\n');
+const pageCtx = { Forecast: F, App: { register() {}, boot() {} } };
+vm.createContext(pageCtx);
+vm.runInContext(helpers + '\n' + fs.readFileSync(require.resolve('../public/plan-spend.js'), 'utf8'), pageCtx);
+const page = pageCtx.planSpendPageHtml(unknownAdvice, null);
+eq(/FEASIBLE IN CURRENT PLAN/.test(page.list), false);
+eq(/\$NaN/.test(page.lede + page.list), false);
+eq(/STATUS UNAVAILABLE/.test(page.list), true,
+  'Plan Spend reprints withheld feasibility instead of an unsupported numeric claim');
+
 const context = { console, Date, Map, Set }; vm.createContext(context);
 vm.runInContext(fs.readFileSync(require.resolve('../public/forecast'), 'utf8'), context);
 eq(JSON.parse(JSON.stringify(context.Forecast.expandEvents(p, '2026-10-08', '2026-10-08'))),

@@ -1441,8 +1441,10 @@ function settledCommitmentSchedule(plan, eventId, date) {
 }
 
 function scheduledOccurrence(plan, eventId, date) {
-  const expanded = scheduledEventsOn(plan, date)
-    .filter(e => e && e.id === eventId && e.date === date);
+  const due = Forecast.statementOccurrenceDate(plan, eventId,
+    Forecast.statementOccurrenceIdentity(plan, eventId, date));
+  const expanded = scheduledEventsOn(plan, due)
+    .filter(e => e && e.id === eventId && e.date === due);
   if (expanded.length === 1) return expanded;
   const settled = settledCommitmentSchedule(plan, eventId, date);
   return settled.length === 1 ? settled : expanded;
@@ -1475,12 +1477,12 @@ function postingObservationFromCandidate(candidate, fetchedAt) {
     fact: 'posting',
     eventId: candidate.id,
     accountLabel: candidate.payee,
-    scheduledDate: candidate.date,
+    scheduledDate: candidate.scheduledDate || candidate.date,
     posted: true,
     unknown: false,
     observedAsOf: dateOnly(fetchedAt),
     evidenceDate: dateOnly(fetchedAt),
-    canonical: { collection: 'representedEvents', id: candidate.id, date: candidate.date },
+    canonical: { collection: 'representedEvents', id: candidate.id, date: candidate.scheduledDate || candidate.date },
     source: 'provider-observe:lunchmoney-transactions',
     note: candidate && candidate.identity === 'transfer+counterpart+account+date'
       ? 'Identity is a uniquely proven transfer credit into the mapped BILLS account paired to the TENNIS INCOME salary-flow counterpart + direction + allowed scheduled/posting-date relation. Amount is a necessary guard, not identity. Historical candidates are not current-opening posting comparisons.'
@@ -2502,7 +2504,10 @@ function representedEventHitGroups(input) {
       candidateCount: row.candidateCount,
     });
   }
-  return { unique: uniqueOnce, ambiguous };
+  return { unique: uniqueOnce.map(hit => {
+    const original = Forecast.statementOccurrenceIdentity(input.plan, hit.id, hit.date);
+    return original === hit.date ? hit : { ...hit, scheduledDate: original };
+  }), ambiguous };
 }
 
 function sanitizedSameDayInboundAmbiguity(groups) {
