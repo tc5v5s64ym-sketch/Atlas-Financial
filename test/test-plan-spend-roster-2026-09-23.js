@@ -308,7 +308,12 @@ ok(near(sinkNow.get('Linden birthday'), 500 / monthsInWindow)
   'sinking names Linden birthday once at the $500 smear');
 
 console.log('\n=== Plan Spend card is a reprint of Forecast.planSpendCards ===');
-function plansAt(asOf, plan = data.plan) {
+// These historical roster calculations own a fully calculated ledger. A later
+// owner-confirmed carried sender must not replace their funding premise with
+// an unrelated cash-inclusion hold. Keep canonical source assertions above.
+const rosterFundingFixture = JSON.parse(JSON.stringify(data.plan));
+delete rosterFundingFixture.obligations.find(row => row.id === 'mbna-aug31').sentPayments;
+function plansAt(asOf, plan = rosterFundingFixture) {
   return F.majorPlans(plan, asOf, {
     debts: data.debts,
     periods,

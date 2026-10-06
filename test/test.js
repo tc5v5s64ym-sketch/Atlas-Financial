@@ -28,6 +28,7 @@ const suites = [
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
   ['card minimum issuer confirmation across advancing live refreshes', 'test-card-minimum-issuer-lifecycle.js'],
+  ['owner-confirmed carried minimum and later-cycle isolation', 'test-confirmed-carried-card-minimum.js'],
   ['hypothetical savings timeline and independent pool conservation', 'test-savings-funding-timeline.js'],
   ['daily savings backing and transfer-neutral capacity', 'test-savings-daily-allocation-contract.js'],
   ['daily savings incumbent financial probes', 'probe-savings-daily-allocation-incumbent.js'],
