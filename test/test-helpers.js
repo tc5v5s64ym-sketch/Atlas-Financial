@@ -167,7 +167,11 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
 
 function representedEventKeys(plan) {
   return new Set(((plan && plan.opening && plan.opening.representedEvents) || [])
-    .filter(row => row && row.id && row.date)
+    .filter(row => row && row.id && row.date && (!Object.hasOwn(row, 'effectiveAsOf')
+      || typeof row.effectiveAsOf === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.effectiveAsOf)
+        && Number.isFinite(Date.parse(row.effectiveAsOf + 'T00:00:00Z'))
+        && new Date(row.effectiveAsOf + 'T00:00:00Z').toISOString().slice(0, 10) === row.effectiveAsOf
+        && row.effectiveAsOf <= plan.opening.asOf))
     .map(row => String(row.id) + '@' + String(row.date)));
 }
 
@@ -220,11 +224,18 @@ function streamTotal(items, asOf, end, occurrences, opts) {
     const dates = onceOutflowsBind && item.frequency === 'once'
       ? independentlyOnceOutflowDates(item, asOf, end)
       : occurrences(item, asOf, end);
-    return s + dates.reduce((n, d) => {
+    const statements = item.statementOccurrences || [];
+    const recurring = dates.reduce((n, d) => {
       const date = typeof d === 'string' ? d : (d && d.date);
       if (date && represented.has(item.id + '@' + date)) return n;
+      if (statements.some(statement => statement.scheduledDate === date)) return n;
       return n + independentlyBillOccurrenceAmount(item, d);
     }, 0);
+    // Primary statement rows replace dated estimates. Do not call the engine's
+    // occurrence replacement or read its resulting event amounts as the oracle.
+    const stated = statements.reduce((n, statement) => statement.dueDate >= asOf && statement.dueDate <= end
+      && !represented.has(item.id + '@' + statement.scheduledDate) ? n + statement.minimum : n, 0);
+    return s + recurring + stated;
   }, 0);
 }
 

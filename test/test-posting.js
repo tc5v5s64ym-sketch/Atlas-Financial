@@ -345,6 +345,7 @@ console.log('\n=== J. live 16 August opening does not invent representedEvents =
   });
   const byId = id => liveResult.rows.find(r => r.observationId === id);
   const gated = new Set((live.plan.opening.representedEvents || [])
+    .filter(row => row && (!row.effectiveAsOf || row.effectiveAsOf <= live.plan.opening.asOf))
     .map(row => row && `${row.id}@${row.date}`));
   ok(live.plan.opening && gated.has('noble-garbage@2026-09-18')
       && gated.has('heloc@2026-09-21') && gated.has('tdcc@2026-09-17')

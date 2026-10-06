@@ -190,7 +190,7 @@ function overlayData(data, idDoc, txs) {
 
 console.log('=== 1. Dale-gated representedEvents membership on current main encoding ===');
 {
-  const rows = liveNamed();
+  const rows = liveNamed().filter(row => !row.effectiveAsOf || row.effectiveAsOf <= OPENING);
   ok(named(rows, NOBLE_ID, NOBLE_DUE)
       && named(rows, HELOC_ID, HELOC_DUE)
       && named(rows, TDCC_ID, TDCC_DUE)
