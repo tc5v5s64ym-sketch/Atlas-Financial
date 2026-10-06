@@ -1162,6 +1162,12 @@ function sortRepresented(a, b) {
     || String(a && a.id).localeCompare(String(b && b.id));
 }
 
+function copyOpeningRepresentation(row) {
+  return { id: row.id, date: row.date,
+    ...(Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
+      ? { effectiveAsOf: row.effectiveAsOf } : {}) };
+}
+
 function pendingStateFromEval(evaluated, cardId) {
   return {
     locator: evaluated.locator,
@@ -1238,10 +1244,7 @@ function openingFingerprint(cutover, balanceMap) {
       evidenceDate: row.evidenceDate || null,
       proof: row.proof || null,
     })),
-    representedEvents: (proposal.representedEvents || []).slice().sort(sortRepresented).map(row => ({
-      id: row.id,
-      date: row.date,
-    })),
+    representedEvents: (proposal.representedEvents || []).slice().sort(sortRepresented).map(copyOpeningRepresentation),
     openingFields: {
       metaAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
       planOpeningAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
@@ -1307,7 +1310,7 @@ function carriedUnresolvedOutflows(data, requestedAsOf) {
     if (!isJointCashOutflow(event)) continue;
     items.push({
       id: event.id || null,
-      scheduledDate: event.date,
+      scheduledDate: event.scheduledDate || event.date,
       amount: round2(event.amount),
       kind: event.kind || null,
     });
@@ -1523,7 +1526,7 @@ function buildOpeningCutover(data, report, requestedAsOf, balanceMap) {
         kind: event.kind,
         amount: round2(event.amount),
         representation: 'REPRESENTED',
-        representedEventsCandidate: { id: event.id, date: event.date },
+        representedEventsCandidate: { id: event.id, date: event.scheduledDate || event.date },
       };
     }
     return {
@@ -1572,8 +1575,27 @@ function buildOpeningCutover(data, report, requestedAsOf, balanceMap) {
   const postedStates = accountFreshness.map(postedStateFromFreshness).sort(sortByLocator);
   const proposedRepresentedEvents = sameDayEvents
     .filter(event => event && event.representation === 'REPRESENTED' && event.id && event.date)
-    .map(event => ({ id: event.id, date: event.date }))
+    .map(event => event.representedEventsCandidate || ({ id: event.id, date: event.date }))
     .sort(sortRepresented);
+  // Issuer knowledge is not candidate-date cash replay. Preserve only valid
+  // original minimum-contract identities and their earliest qualification.
+  for (const row of (data.plan.opening.representedEvents || [])) {
+    const original = Forecast.cardMinimumReceiptIdentity(data.plan, row);
+    if (!original) continue;
+    const retained = { ...copyOpeningRepresentation(row), date: original,
+      ...(!Object.prototype.hasOwnProperty.call(row, 'effectiveAsOf')
+        ? { effectiveAsOf: openingAsOf } : {}) };
+    const index = proposedRepresentedEvents.findIndex(item => item.id === retained.id && item.date === original);
+    if (index < 0) proposedRepresentedEvents.push(retained);
+    else {
+      const current = proposedRepresentedEvents[index];
+      const retainedActive = Forecast.representedEventEffectiveBy(retained, requestedAsOf);
+      const currentActive = Forecast.representedEventEffectiveBy(current, requestedAsOf);
+      if ((retainedActive && !currentActive) || (retainedActive && currentActive
+          && retained.effectiveAsOf < (current.effectiveAsOf || requestedAsOf))) proposedRepresentedEvents[index] = retained;
+    }
+  }
+  proposedRepresentedEvents.sort(sortRepresented);
   const proposedOpening = {
     requestedAsOf,
     currentMetaAsOf: metaAsOf,
@@ -1816,10 +1838,7 @@ function recoveryFingerprint(cutover, balanceMap, canonicalSha256, artifactPropo
       proof: row.proof || null,
       kind: row.kind || null,
     })),
-    representedEvents: (proposal.representedEvents || []).slice().sort(sortRepresented).map(row => ({
-      id: row.id,
-      date: row.date,
-    })),
+    representedEvents: (proposal.representedEvents || []).slice().sort(sortRepresented).map(copyOpeningRepresentation),
     routing: openingRoutingFingerprint(balanceMap),
     artifacts: {
       surfaces: ['positions.csv', 'snapshots/<date>.json'],
@@ -2705,7 +2724,7 @@ function validateOpeningApplied(before, after, preview) {
   }
   const expectedEvents = (proposal.representedEvents || []).slice().sort(sortRepresented);
   const gotEvents = ((after.plan.opening && after.plan.opening.representedEvents) || [])
-    .map(row => ({ id: row.id, date: row.date }))
+    .map(copyOpeningRepresentation)
     .sort(sortRepresented);
   if (JSON.stringify(gotEvents) !== JSON.stringify(expectedEvents)) {
     fail('representedEvents do not match the approved candidate-date representation.');
@@ -2858,10 +2877,7 @@ function applyOpeningPreview(data, preview, destPath, opts) {
   if (!next.plan.opening || typeof next.plan.opening !== 'object') {
     fail('Canonical plan.opening is missing.');
   }
-  next.plan.opening.representedEvents = (cutover.proposedOpening.representedEvents || []).map(row => ({
-    id: row.id,
-    date: row.date,
-  }));
+  next.plan.opening.representedEvents = (cutover.proposedOpening.representedEvents || []).map(copyOpeningRepresentation);
   next.meta.asOf = cutover.requestedAsOf;
   next.plan.opening.asOf = cutover.requestedAsOf;
   validateOpeningApplied(data, next, preview);
