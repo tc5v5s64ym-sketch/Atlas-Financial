@@ -18,6 +18,13 @@ const AssistantMcp = require('./assistant-mcp.js');
 const { READ_SCOPE, WRITE_SCOPE } = require('./assistant-lunchmoney.js');
 
 const METADATA_PATH = '/.well-known/oauth-protected-resource';
+// WWW-Authenticate challenge advertises packet + ledger-read so MCP clients
+// (SEP-835) request both. Gate still requires only atlas.current.read. Write
+// stays out of the challenge so it is not requested up front.
+const CHALLENGE_SCOPES = Object.freeze([
+  AssistantMcp.REQUIRED_SCOPE,
+  READ_SCOPE,
+]);
 const ASYMMETRIC_JWT_ALGORITHMS = Object.freeze([
   'RS256', 'RS384', 'RS512',
   'PS256', 'PS384', 'PS512',
@@ -145,21 +152,53 @@ function createTokenVerifier(config, deps) {
   };
 }
 
+function rewriteChallengeScope(header, advertisedScope) {
+  if (typeof header !== 'string' || !header) return header;
+  if (/\bscope="/.test(header)) {
+    return header.replace(/\bscope="[^"]*"/, `scope="${advertisedScope}"`);
+  }
+  return header;
+}
+
 function createBearerMiddleware(config, deps) {
-  return requireBearerAuth({
+  const inner = requireBearerAuth({
     verifier: createTokenVerifier(config, deps),
     requiredScopes: [config.requiredScope],
     resourceMetadataUrl: config.metadataUrl,
   });
+  const advertised = CHALLENGE_SCOPES.join(' ');
+  return async function advertiseChallengeScopes(req, res, next) {
+    const originalSet = res.set.bind(res);
+    res.set = function setWithChallengeScopes(field, value) {
+      if (arguments.length >= 2
+          && typeof field === 'string'
+          && field.toLowerCase() === 'www-authenticate') {
+        return originalSet(field, rewriteChallengeScope(value, advertised));
+      }
+      if (arguments.length === 1 && field && typeof field === 'object') {
+        const headers = Object.assign({}, field);
+        for (const key of Object.keys(headers)) {
+          if (key.toLowerCase() === 'www-authenticate') {
+            headers[key] = rewriteChallengeScope(headers[key], advertised);
+          }
+        }
+        return originalSet(headers);
+      }
+      return originalSet.apply(res, arguments);
+    };
+    return inner(req, res, next);
+  };
 }
 
 module.exports = {
   METADATA_PATH,
+  CHALLENGE_SCOPES,
   ASYMMETRIC_JWT_ALGORITHMS,
   safeUrl,
   readConfig,
   protectedResourceMetadata,
   parseScopes,
+  rewriteChallengeScope,
   createTokenVerifier,
   createBearerMiddleware,
 };

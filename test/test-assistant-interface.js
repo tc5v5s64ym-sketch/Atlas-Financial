@@ -279,11 +279,13 @@ async function startOAuthIssuer() {
     overrides = overrides || {};
     const now = Math.floor(Date.now() / 1000);
     const key = overrides.key || pair.privateKey;
-    return new jose.SignJWT({
+    const claims = {
       scope: overrides.scope === undefined ? AssistantMcp.REQUIRED_SCOPE : overrides.scope,
       client_id: 'chatgpt-test-client',
       sub: 'atlas-owner-test',
-    })
+    };
+    if (overrides.permissions !== undefined) claims.permissions = overrides.permissions;
+    return new jose.SignJWT(claims)
       .setProtectedHeader({ alg: 'RS256', kid: 'atlas-test-key' })
       .setIssuer(overrides.issuer || issuer)
       .setAudience(overrides.audience || resource)
@@ -1140,9 +1142,11 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     const none = await mcp({}, initialize);
     const challenge = none.headers.get('www-authenticate') || '';
     ok(none.status === 401, 'unauthenticated MCP access is denied', `status ${none.status}`);
+    const expectedChallengeScope = AssistantOAuth.CHALLENGE_SCOPES.join(' ');
     ok(challenge.includes(`resource_metadata=\"${base}${AssistantOAuth.METADATA_PATH}\"`)
-        && challenge.includes(`scope=\"${AssistantMcp.REQUIRED_SCOPE}\"`),
-      '401 challenge advertises OAuth metadata and the read scope');
+        && challenge.includes(`scope=\"${expectedChallengeScope}\"`)
+        && !challenge.includes(LunchMoney.WRITE_SCOPE),
+      '401 challenge advertises metadata and packet+ledger-read scope without write');
 
     const malformed = await mcp({ authorization: 'Basic invalid' }, initialize);
     ok(malformed.status === 401, 'malformed authorization fails closed', `status ${malformed.status}`);
@@ -1163,9 +1167,16 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     const wrongSignatureToken = await oauth.sign(resource, { key: oauth.otherPrivateKey });
     const wrongSignature = await mcp({ authorization: `Bearer ${wrongSignatureToken}` }, initialize);
     ok(wrongSignature.status === 401, 'invalid signature fails closed', `status ${wrongSignature.status}`);
+    const wrongIssuerToken = await oauth.sign(resource, { issuer: 'https://evil.example/' });
+    const wrongIssuer = await mcp({ authorization: `Bearer ${wrongIssuerToken}` }, initialize);
+    ok(wrongIssuer.status === 401, 'wrong-issuer token fails closed', `status ${wrongIssuer.status}`);
     const noScopeToken = await oauth.sign(resource, { scope: 'profile' });
     const noScope = await mcp({ authorization: `Bearer ${noScopeToken}` }, initialize);
+    const noScopeChallenge = noScope.headers.get('www-authenticate') || '';
     ok(noScope.status === 403, 'missing atlas.current.read scope fails closed', `status ${noScope.status}`);
+    ok(noScopeChallenge.includes(`scope=\"${expectedChallengeScope}\"`)
+        && !noScopeChallenge.includes(LunchMoney.WRITE_SCOPE),
+      '403 insufficient_scope challenge advertises packet+ledger-read without write');
 
     const browser = await login(base);
     const cookieOnly = await mcp({ cookie: browser.cookie }, initialize);
@@ -1267,6 +1278,29 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     } finally {
       await client.close().catch(() => {});
     }
+
+    const permissionsOnlyWiden = await oauth.sign(resource, {
+      scope: AssistantMcp.REQUIRED_SCOPE,
+      permissions: [LunchMoney.READ_SCOPE, LunchMoney.WRITE_SCOPE],
+    });
+    await withOfficialMcp(resource, permissionsOnlyWiden, async widenClient => {
+      lunchMoney.resetHits();
+      const deniedWiden = await widenClient.callTool({
+        name: 'get_lunchmoney_catalog', arguments: {},
+      });
+      ok(deniedWiden.isError === true
+          && deniedWiden.structuredContent.reason === 'transaction-read-scope-required',
+        'permissions claim alone does not widen ledger access beyond JWT scope');
+      ok(lunchMoney.hits() === 0,
+        'permissions-only widening denial never reaches the provider');
+      const deniedWriteWiden = await widenClient.callTool({
+        name: 'prepare_lunchmoney_edit',
+        arguments: { transactionRef: 'tx-' + 'c'.repeat(24), changes: { notes: 'no' } },
+      });
+      ok(deniedWriteWiden.isError === true
+          && deniedWriteWiden.structuredContent.reason === 'transaction-write-scope-required',
+        'read-scope-absent token cannot prepare writes even when permissions list write');
+    });
 
     const readToken = await oauth.sign(resource, {
       scope: `${AssistantMcp.REQUIRED_SCOPE} ${LunchMoney.READ_SCOPE}`,
