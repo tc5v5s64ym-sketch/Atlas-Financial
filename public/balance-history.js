@@ -277,7 +277,7 @@
       const dates = move.prior && move.current
         ? `${fmtDate(move.prior.asOf)} → ${fmtDate(move.current.asOf)}`
         : (move.current ? fmtDate(move.current.asOf) : '—');
-      const note = movementWord(move, r.kind === 'aggregate' ? 'recorded cash total' : r.label);
+      const note = movementWord(move, r.kind === 'aggregate' ? 'recorded cash' : r.label);
       const scope = r.kind === 'aggregate' ? recordedCashScopeHtml(move) : '';
       return `<tr>
         <td>${r.label}${r.kind === 'aggregate' ? ' <span class="chip">sum</span>' : ''}</td>
@@ -290,7 +290,7 @@
       </tr>`;
     }).join('');
     return `${helocLine}
-      <div class="card scroll">
+      <div class="card scroll recorded-balance-history">
         <table>
           <thead><tr>
             <th>Account</th><th>Side</th><th class="num">Latest</th><th class="num">Prior</th>

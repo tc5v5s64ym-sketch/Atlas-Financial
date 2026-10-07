@@ -3381,3 +3381,4 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .recorded-cash-scope { min-width: 15rem; max-width: 30rem; white-space: normal; overflow-wrap: anywhere; }
 .recorded-cash-scope summary { cursor: pointer; }
 .recorded-cash-scope ul { margin: .5rem 0; padding-left: 1.25rem; }
+.recorded-balance-history td:not(.num) { overflow-wrap: anywhere; }
