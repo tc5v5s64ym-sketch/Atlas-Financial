@@ -6922,6 +6922,13 @@ function paydayAnswerHtml(ctx) {
 }
 
 /* ----------------------------------------------------------- rendering */
+// Current planning copy follows Forecast's chequing-only spendable scope.
+// Keep the stored dated observations and external-account evidence unchanged.
+function currentCashScopeNote(note) {
+  return String(note || '').replace(/Chequing A, Chequing B and Savings/g,
+    'Chequing A and Chequing B (designated Savings is reserve evidence, excluded from spendable cash)');
+}
+
 function renderBalanceHistory(history) {
   const mount = $('balance-history');
   if (!mount) return;
@@ -7470,7 +7477,7 @@ function renderPlan(d, periods, history) {
 
   /* ---- how this was calculated ---- */
   if ($('assumption-list')) {
-    $('assumption-list').innerHTML = (plan.assumptions || []).map(a => `<li>${a}</li>`).join('');
+    $('assumption-list').innerHTML = (plan.assumptions || []).map(a => `<li>${currentCashScopeNote(a)}</li>`).join('');
   }
 
   /* ---- the ledger ---- */
@@ -7508,7 +7515,7 @@ function renderPlan(d, periods, history) {
       sim.min.balance < 0 ? 'neg' : '') +
     row('Target emergency buffer', money2(sim.buffer)) +
     row('Room for extra debt repayment', money2(sim.extraDebtCapacity) + ' <span class="mutedtext">at the end of the window</span>');
-  $('hero-note').textContent = plan.startingCash.note;
+  $('hero-note').textContent = currentCashScopeNote(plan.startingCash.note);
 
   /* ---- scenario buttons ---- */
   for (const b of document.querySelectorAll('#scenario-bar .preset')) {
@@ -7895,7 +7902,7 @@ if (typeof App !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     operatingSurfaceHtml, unavailableOperatingSurfaceHtml, betweenPaydaysOperatingHtml, paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
-    paydayCashNote, weeklyCapView, futurePlanRequirement, futurePlanTiming, futureGravityHtml,
+    paydayCashNote, currentCashScopeNote, weeklyCapView, futurePlanRequirement, futurePlanTiming, futureGravityHtml,
     refreshTrustHtml, applyUnavailableOperatingChrome,
     MISSION_PART, NEXT_MOVE, STATUS_BAND,
   };

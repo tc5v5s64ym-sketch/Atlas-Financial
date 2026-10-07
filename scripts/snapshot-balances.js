@@ -20,7 +20,9 @@
  * Spendable completeness for that date is derived from
  * plan.startingCash.breakdown on the same canonical opening and stored as
  * snapshot coverage metadata. The page consumes that metadata; it does
- * not re-declare household spendable membership.
+ * not re-declare that dated membership. The legacy spendableCoverage/pot names
+ * cover the recorded breakdown, including reserves; they do not establish
+ * current Forecast spendable cash. History labels this as recorded balances.
  *
  * Re-running the same dated reading is a no-op. An existing file whose
  * contents disagree with the current reading is a hard failure — this

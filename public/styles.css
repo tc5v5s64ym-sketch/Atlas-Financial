@@ -3377,3 +3377,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .budget-funding-item .operating-line > span:last-child { text-align: right; }
 .from-today-evidence { margin: .75rem 0; padding-inline-start: 1.25rem; overflow-wrap: anywhere; }
 .from-today-evidence li + li { margin-top: 1rem; }
+/* Historical cash membership remains readable inside the scrolling table. */
+.recorded-cash-scope { min-width: 15rem; max-width: 30rem; white-space: normal; overflow-wrap: anywhere; }
+.recorded-cash-scope summary { cursor: pointer; }
+.recorded-cash-scope ul { margin: .5rem 0; padding-left: 1.25rem; }

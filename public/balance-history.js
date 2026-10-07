@@ -165,7 +165,8 @@
 
   // Completeness is historical coverage from the snapshot, not a page-owned
   // identity list. Missing metadata fails closed: an incomplete or undeclared
-  // set is not "Spendable household cash".
+  // set is not a complete recorded cash aggregate. The legacy coverage/pot
+  // names describe captured membership, not Forecast's current spendable scope.
   function coverageExpectedIds(snap) {
     const ids = snap && snap.spendableCoverage && snap.spendableCoverage.expectedIds;
     if (!Array.isArray(ids) || ids.length === 0) return null;
@@ -196,11 +197,12 @@
       pts.push({
         asOf: snap.asOf,
         id: 'spendable-cash',
-        label: 'Spendable household cash',
+        label: 'Recorded cash balances',
         collection: 'cash',
         side: 'asset',
         complete: true,
         ids: expected.slice().sort(),
+        includedAccounts: rows.map(r => ({ id: r.id, label: r.label || r.id })),
         balance: round2(rows.reduce((s, r) => s + Number(r.balance), 0)),
       });
     }
@@ -218,7 +220,7 @@
     const rows = [];
     const spendable = comparableSpendable(spendableSeries(history));
     if (spendable.length) {
-      rows.push({ kind: 'aggregate', id: 'spendable-cash', label: 'Spendable household cash', side: 'asset', move: displayMove(spendable), points: spendable });
+      rows.push({ kind: 'aggregate', id: 'spendable-cash', label: 'Recorded cash balances', side: 'asset', move: displayMove(spendable), points: spendable });
     }
     for (const id of accountIds(history)) {
       const points = seriesFor(history, id);
@@ -275,7 +277,8 @@
       const dates = move.prior && move.current
         ? `${fmtDate(move.prior.asOf)} → ${fmtDate(move.current.asOf)}`
         : (move.current ? fmtDate(move.current.asOf) : '—');
-      const note = movementWord(move, r.label);
+      const note = movementWord(move, r.kind === 'aggregate' ? 'recorded cash total' : r.label);
+      const scope = r.kind === 'aggregate' ? recordedCashScopeHtml(move) : '';
       return `<tr>
         <td>${r.label}${r.kind === 'aggregate' ? ' <span class="chip">sum</span>' : ''}</td>
         <td>${r.side === 'liability' ? 'Liability' : 'Asset'}</td>
@@ -283,7 +286,7 @@
         <td class="num">${prior}</td>
         <td class="num">${delta}</td>
         <td>${dates}</td>
-        <td>${note}</td>
+        <td>${note}${scope}</td>
       </tr>`;
     }).join('');
     return `${helocLine}
@@ -296,6 +299,17 @@
           <tbody id="balance-history-rows">${body}</tbody>
         </table>
       </div>`;
+  }
+
+  function recordedCashScopeHtml(move) {
+    const escape = value => String(value).replace(/[&<>"']/g,
+      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const points = [move.prior, move.current].filter(Boolean);
+    const dates = points.map(point => `<li><time datetime="${escape(point.asOf)}">${fmtDate(point.asOf)}</time>: ${
+      (point.includedAccounts || []).map(account => escape(account.label)).join('; ')}</li>`).join('');
+    return `<details class="recorded-cash-scope"><summary>Included accounts</summary>
+      <p>Recorded balances include any reserve accounts listed here. This total does not show what is safe to spend.</p>
+      <ul>${dates}</ul></details>`;
   }
 
   const BalanceHistory = {
