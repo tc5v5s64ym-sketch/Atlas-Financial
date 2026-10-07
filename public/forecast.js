@@ -1435,6 +1435,7 @@
       && typeof start === 'string' && ISO_CALENDAR_DATE.test(start) && date <= start;
   }
   function representedKeySet(plan, opts, start) {
+    // Occurrence replay remains independent of the reconciliation publication gate.
     const keys = new Set();
     const opening = plan && plan.opening;
     const prior = opening && opening.asOf === start && opening.priorAsOf
@@ -1484,6 +1485,20 @@
       }
     }
     return 'same-day-inbound-unproven';
+  }
+  function incomeReconciliationState(plan, asOf) {
+    const opening = plan && plan.opening, packet = opening && opening.incomeReconciliation;
+    if (!packet || asOf < opening.asOf) return { status: 'incumbent', asOf, issues: [], reason: null };
+    const valid = packet.asOf === opening.asOf && Array.isArray(packet.issues)
+      && packet.issues.every(row => row && ['payroll', 'amandaSalary15', 'amandaSalaryMonthEnd'].includes(row.id)
+        && row.reason === 'posted-income-occurrence-unresolved' && financialDate(row.date) === row.date
+        && row.date > packet.asOf);
+    if (valid && packet.status === 'ready' && !packet.issues.length) {
+      return { status: 'ready', asOf: packet.asOf, issues: [], reason: null };
+    }
+    return { status: 'unavailable', asOf: opening.asOf,
+      issues: valid ? packet.issues.map(row => ({ id: row.id, date: row.date, reason: row.reason })) : [],
+      reason: 'Posted income is already in current cash, but its scheduled occurrence is unresolved. Confirm which receipt it covers before relying on future cash or spending.' };
   }
   function omitRepresented(events, plan, opts, start) {
     if (opts && opts.keepRepresented) return events;
@@ -2707,11 +2722,11 @@
   // Internal walks may compute a conditional path to construct the incumbent
   // result shell. Public cash publications cannot promote that path when a
   // sent minimum's inclusion or issuer treatment remains unknown.
-  function publishMinimumCashWalk(sim, minimums) {
-    if (minimums.status !== 'unavailable') return sim;
+  function publishUnavailableCashWalk(sim, state, field) {
+    if (state.status !== 'unavailable') return sim;
     const cashFields = ['opening', 'closing', 'low', 'requiredClosing', 'measuredOpening'];
-    return { ...sim, status: 'unavailable', reason: minimums.reason,
-      cardMinimumPayments: minimums, ending: null, min: { date: null, balance: null },
+    return { ...sim, status: 'unavailable', reason: state.reason,
+      [field]: state, ending: null, min: { date: null, balance: null },
       shortfall: null, additionalCashRequired: null, breachesBuffer: null,
       endingSurplus: null, extraDebtCapacity: null,
       daily: (sim.daily || []).map(row => ({ ...row, balance: null })),
@@ -2721,8 +2736,13 @@
         return copy;
       }) };
   }
+  function publishMinimumCashWalk(sim, minimums) {
+    return publishUnavailableCashWalk(sim, minimums, 'cardMinimumPayments');
+  }
   function simulate(plan, asOf, opts) {
-    return publishMinimumCashWalk(simulateModel(plan, asOf, opts), cardMinimumState(plan, asOf, opts));
+    return publishUnavailableCashWalk(
+      publishMinimumCashWalk(simulateModel(plan, asOf, opts), cardMinimumState(plan, asOf, opts)),
+      incomeReconciliationState(plan, asOf), 'incomeReconciliation');
   }
   /* ---------------------------------------- funding sequence + verdicts */
   // Presentation order only — not the allocator. Protected items are
@@ -11585,6 +11605,7 @@
   // Monotonic in W, so binary search is exact.
   const STEP = 5;
   function recommendWeekly(plan, asOf, opts) {
+    if (incomeReconciliationState(plan, asOf).status === 'unavailable') return null;
     if (cardMinimumState(plan, asOf, opts).status === 'unavailable') return null;
     opts = Object.assign({}, opts || {});
     const horizon = knowledgeHorizon(plan, asOf, opts);
@@ -11743,16 +11764,18 @@
       if (timelineRows[i]) timelineRows[i].operatingCashExplanation = null;
     }
     const minimums = result.cardMinimumPayments;
-    if (minimums?.status === 'unavailable') {
+    const income = opts.incomeReconciliation;
+    if (income?.status === 'unavailable') result.incomeReconciliation = income;
+    if (minimums?.status === 'unavailable' || income?.status === 'unavailable') {
       result.majorPlans = (result.majorPlans || []).map(row => ({ ...row, verdict: null,
         funded: null, margin: null, remaining: null, fundingMargin: null,
         remainingIdentity: null, deferred: null, fundingStatus: 'unavailable' }));
       // Contractual prices and observed balances survive. A period cash
       // remainder cannot assert feasibility while this payment is unresolved.
       const views = new Set([result.defaultView, ...(result.defaultView?.calendarPeriods || []),
-        ...(result.payPeriodViews || [])]);
+        ...(result.payPeriodViews || []), ...(income ? [result.nextPeriodView, ...(result.weekViews || [])] : [])]);
       for (const view of views) {
-        if (!view || view.end < minimums.asOf) continue;
+        if (!view || view.end < (income?.asOf || minimums.asOf)) continue;
         view.available = view.balanceAfterDeductions = view.predictedEndingBalance = null;
         view.balanceAfterDeductionsTrust = 'unavailable';
         view.predictedEndingBalanceIdentity = null;
@@ -11761,12 +11784,29 @@
           'afterDebtRepayment', 'afterBigPurchases']) view.leftover[key] = null;
         view.extraDebt = { ...(view.extraDebt || {}), allocated: null, status: 'unavailable', reason: note };
       }
-      for (const key of ['sim', 'zero']) if (result[key]) result[key] = publishMinimumCashWalk(result[key], minimums);
+      if (minimums?.status === 'unavailable') for (const key of ['sim', 'zero']) {
+        if (result[key]) result[key] = publishMinimumCashWalk(result[key], minimums);
+      }
       if (result.knowledge) result.knowledge = { ...result.knowledge,
         min: { date: null, balance: null }, ending: null, freeCash: null };
       result.binding = null;
       result.bindingIsReal = result.holds = null;
       result.gap = null;
+    }
+    if (income?.status === 'unavailable') {
+      for (const key of ['sim', 'zero']) if (result[key]) {
+        result[key] = publishUnavailableCashWalk(result[key], income, 'incomeReconciliation');
+      }
+      result.funding = null;
+      result.infeasible = null;
+      const alloc = result.paydayAllocation;
+      if (alloc) {
+        for (const key of ['available', 'movable', 'unallocated', 'remainder', 'allocatedTotal',
+          'identity', 'runningLeftover', 'supportedAllowance']) alloc[key] = null;
+        alloc.optional = [];
+        alloc.lines = (alloc.lines || []).filter(row => ['obligations', 'essentials'].includes(row.kind));
+        for (const key of ['available', 'extraDebt', 'optional', 'remainder']) alloc.paydayShellTrust[key] = 'unknown';
+      }
     }
     return result;
   }
@@ -12541,6 +12581,12 @@
 
   function recommend(plan, asOf, opts) {
     const base = Object.assign({}, opts || {});
+    const income = incomeReconciliationState(plan, asOf);
+    if (income.status === 'unavailable') {
+      base.incomeReconciliation = income;
+      base.operatingPlan = 'unavailable';
+      base.operatingPlanNote = income.reason;
+    }
     const buffer = base.targetBuffer != null ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
     base.targetBuffer = buffer;
 
@@ -12895,6 +12941,10 @@
     const stream = (plan.income || []).find(s => s.id === incomeId);
     const buffer = base.targetBuffer != null
       ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
+    const income = incomeReconciliationState(plan, asOf);
+    if (income.status === 'unavailable') return { incomeId, status: 'unavailable', reason: income.reason,
+      amount: stream ? streamAmount(stream, base) : null, neededBy: null, buffer,
+      breachesWithout: null, endingWithout: null };
     if (!stream) {
       return { incomeId, amount: 0, neededBy: null, buffer,
         breachesWithout: false, endingWithout: null };
@@ -17620,6 +17670,8 @@
     }
     const day = financialDate(asOf);
     if (!day) return { status: 'unavailable', reason: 'A dated plan baseline is required.' };
+    const income = incomeReconciliationState(plan, day);
+    if (income.status === 'unavailable') return { status: 'unavailable', reason: income.reason };
     const minimums = cardMinimumState(plan, day, opts);
     if (minimums.status === 'unavailable') return { status: 'unavailable', reason: minimums.reason };
     const periods = opts.periods;
@@ -20122,6 +20174,8 @@
     if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
       return hypotheticalUnavailable('A plan baseline is required.');
     }
+    const income = incomeReconciliationState(plan, financialDate(asOf));
+    if (income.status === 'unavailable') return hypotheticalUnavailable(income.reason);
     const minimums = cardMinimumState(plan, financialDate(asOf));
     if (minimums.status === 'unavailable') return hypotheticalUnavailable(minimums.reason);
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -20474,7 +20528,7 @@
     };
   }
 
-  const Forecast = { cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { incomeReconciliationState, cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,

@@ -1151,6 +1151,22 @@ function overlayLiveState(input) {
   const next = clone(data);
   if (Forecast.savingsEarmarksState(data.plan, liveAsOf).status !== 'setup-unknown') next.plan.savingsPoolObservation = report.savingsPools || { asOf: liveAsOf, accounts: [] };
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
+  // Rebuild from fresh evidence. Absence on a later fetch is not proof that
+  // a previously observed receipt funds an additional future occurrence.
+  // Retain unresolved future names until their native date is reached; the
+  // incumbent same-day recognition guards then own that day's cash treatment.
+  const priorIncome = Forecast.incomeReconciliationState(data.plan, historicalOpeningAsOf);
+  delete next.plan.opening.incomeReconciliation;
+  if (report.incomeReconciliation?.asOf === cutover.liveAsOf
+      && (report.incomeReconciliation.status !== 'ready' || report.incomeReconciliation.issues?.length)) {
+    next.plan.opening.incomeReconciliation = clone(report.incomeReconciliation);
+  }
+  const retainedIncome = priorIncome.issues.filter(row => row.date > cutover.liveAsOf);
+  if (retainedIncome.length) {
+    const issues = (next.plan.opening.incomeReconciliation?.issues || []).concat(retainedIncome);
+    next.plan.opening.incomeReconciliation = { asOf: cutover.liveAsOf, status: 'unavailable',
+      issues: issues.filter((row, i) => issues.findIndex(other => other.id === row.id && other.date === row.date) === i) };
+  }
   retainPaydaySnapshot(next, data.plan, cutover.liveAsOf || liveAsOf, report);
   retainPaydayAccountObservations(next, data.plan, cutover.liveAsOf || liveAsOf, report);
   retainPrePaydayBillsBase(next, data.plan, cutover.liveAsOf || liveAsOf, report);
@@ -1166,6 +1182,9 @@ function overlayLiveState(input) {
     || String(a.reason).localeCompare(String(b.reason)));
   next.liveOverlay = overlayMeta({
     applied: true,
+    operatingPlan: Forecast.incomeReconciliationState(next.plan, cutover.liveAsOf).status === 'unavailable'
+      ? OPERATING_PLAN_UNAVAILABLE : undefined,
+    operatingPlanNote: Forecast.incomeReconciliationState(next.plan, cutover.liveAsOf).reason || undefined,
     historicalOpeningAsOf,
     effectiveAsOf: cutover.liveAsOf,
     observedAsOf: liveAsOf || historicalOpeningAsOf,

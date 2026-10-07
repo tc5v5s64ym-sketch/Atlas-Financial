@@ -5744,6 +5744,8 @@ function unavailableOperatingSurfaceHtml(ctx) {
   const view = ctx.planView || advice.defaultView || {};
   const alloc = advice.paydayAllocation || null;
   const note = liveOperatingPlanNote(advice, liveOverlay);
+  const incomeUnknown = advice.incomeReconciliation?.status === 'unavailable';
+  const posted = incomeUnknown && alloc && alloc.currentBalancePublication;
   const openingAsOf = (liveOverlay && liveOverlay.historicalOpeningAsOf)
     || view.asOf
     || (alloc && ((alloc.cashBasis && alloc.cashBasis.asOf) || alloc.asOf))
@@ -5756,7 +5758,7 @@ function unavailableOperatingSurfaceHtml(ctx) {
     || (ctx.refreshTrust && ctx.refreshTrust.observedAsOf)
     || null;
   let explanation = note;
-  if (openingAsOf) {
+  if (openingAsOf && !incomeUnknown) {
     explanation += ` Last trusted financial opening is ${fmtDateLong(openingAsOf)}.`;
   }
   if (liveOverlay && liveOverlay.applied === false) {
@@ -5766,7 +5768,14 @@ function unavailableOperatingSurfaceHtml(ctx) {
       explanation += ' A later live refresh could not safely advance the operating plan.';
     }
   }
-  const openingHtml = datedCash != null
+  const openingHtml = posted && posted.providerConfirmed && posted.amount != null
+    ? `<div class="live-current-balance" data-live-current-balance>
+        <p class="live-current-balance-label">Current Balance</p>
+        <p class="live-current-balance-amount" data-live-current-balance-amount>${money2(posted.amount)}</p>
+        <p class="live-current-balance-account">Bills account only</p>
+        <p class="operating-note">Posted balance${posted.effectiveDate ? `. As of ${fmtDateLong(posted.effectiveDate)}` : ''}. Spending permission is unavailable.</p>
+      </div>`
+    : !incomeUnknown && datedCash != null
     ? `<div class="payday-cash" data-last-trusted-opening data-spendable-cash="${money2(datedCash)}">
         <p class="operating-note">Last trusted opening</p>
         <span data-last-trusted-opening-amount>${money2(datedCash)}</span>
@@ -5783,7 +5792,7 @@ function unavailableOperatingSurfaceHtml(ctx) {
         <p class="operating-note">Not part of a current operating plan.</p>
       </div>`
     : '';
-  const datedAccess = openingAsOf
+  const datedAccess = openingAsOf && !incomeUnknown
     ? `<details class="household-inline-details" data-dated-plan>
         <summary>View dated ${fmtDateLong(openingAsOf)} plan</summary>
         <p class="operating-note">This is the last trusted dated opening, not today's operating plan.</p>
