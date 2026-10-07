@@ -16,6 +16,22 @@
 
 (function (root) {
 
+  const CardPeriodMovement = typeof module !== 'undefined' && module.exports && typeof require === 'function'
+    ? require('./forecast-card-period') : root.ForecastCardPeriod;
+
+  function cardPeriodMovements(plan, debts, asOf, window, opts) {
+    opts = opts || {};
+    const cycle = savingsDate(window?.start) ? spendingCycle(plan, window.start) : null;
+    const packet = currentPeriodActualsPacket(opts);
+    return CardPeriodMovement.publish({ plan, debts, asOf, window, packet,
+      windowQualified: cycle?.start === window?.start && cycle?.end === window?.end,
+      balanceEvidence: opts.cardPeriodBalanceEvidence || null, overlay: opts.liveOverlay || null }, {
+      date: savingsDate, cents: savingsCents, skipParent: skipSplitParent,
+      classify: (tx, selectedPlan) => classifyCurrentPeriodTransaction(tx, selectedPlan,
+        Object.assign({}, opts, { currentPeriodActuals: packet, useActuals: true })),
+    });
+  }
+
   const CardMinimumContract = (() => {
   const validateDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && Number.isFinite(Date.parse(value + 'T00:00:00Z'))
@@ -21053,6 +21069,7 @@
   }
 
   const Forecast = { billsAccountPeriodBalance, minimumCategoryAllocationConflict, incomeReconciliationState, cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+    cardPeriodMovements,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,

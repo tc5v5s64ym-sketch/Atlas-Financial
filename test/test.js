@@ -38,6 +38,7 @@ const suites = [
   ['independent Bills closing negative controls', 'test-bills-period-end-negative-controls.js'],
   ['Bills native unknown amounts and account-specific future cash', 'test-bills-period-end-native-requirements.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
+  ['selected Seaspan card movement endpoints, coverage and conservation', 'test-card-period-movements.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
   ['bounded strict card-minimum date validation', 'test-card-minimum-date-cache.js'],
   ['card minimum issuer confirmation across advancing live refreshes', 'test-card-minimum-issuer-lifecycle.js'],
