@@ -371,7 +371,7 @@ async function startLunchMoneyStub() {
     plaid_account_id: 4, manual_account_id: null, is_pending: false, status: 'reviewed',
   };
   const categories = [{ id: 3, name: 'Groceries' }, { id: 8, name: 'Household' }];
-  let hits = 0; let transactionFailure = false;
+  let hits = 0; let writes = 0; let transactionFailure = false;
   const server = http.createServer((req, res) => {
     hits += 1;
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -409,6 +409,7 @@ async function startLunchMoneyStub() {
       } else if (req.method === 'GET' && p.startsWith('/transactions/')) {
         data = tx;
       } else if (req.method === 'PUT' && p.startsWith('/transactions/')) {
+        writes += 1;
         Object.assign(tx, body);
         data = tx;
       } else {
@@ -427,6 +428,7 @@ async function startLunchMoneyStub() {
   return {
     base: `http://127.0.0.1:${server.address().port}/v2`,
     hits: () => hits,
+    writes: () => writes,
     resetHits: () => { hits = 0; },
     failTransactions: value => { transactionFailure = value; },
     close: () => new Promise(done => server.close(() => done())),
@@ -1497,6 +1499,7 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         label, `status ${res.status} challenge ${res.headers.get('www-authenticate')}`);
     }
     lunchMoney.resetHits();
+    const writesBeforeStepUp = lunchMoney.writes();
     await expectStepUp(await mcp(bearer(readToken), toolCall(11, 'prepare_lunchmoney_edit', prepareArgs)),
       'read-only token calling prepare gets HTTP 403 with the exact write step-up challenge');
     await expectStepUp(await mcp(bearer(readToken), toolCall(12, 'apply_lunchmoney_edit', applyArgs)),
@@ -1546,7 +1549,19 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     });
     ok(brokenJson.status === 400, 'malformed JSON naming a write tool fails closed with 400',
       `status ${brokenJson.status}`);
-    ok(lunchMoney.hits() === 0, 'no write step-up denial or malformed body reaches the provider');
+    const writeShaped = [AssistantMcp.REQUIRED_SCOPE, LunchMoney.READ_SCOPE, LunchMoney.WRITE_SCOPE].join(' ');
+    for (const [label, overrides] of [
+      ['wrong signing key', { scope: writeShaped, key: oauth.otherPrivateKey }],
+      ['expired', { scope: writeShaped, expiresAt: Math.floor(Date.now() / 1000) - 30 }],
+      ['wrong audience', { scope: writeShaped, audience: `${base}/not-atlas` }],
+      ['wrong issuer', { scope: writeShaped, issuer: 'https://evil.example/' }],
+    ]) {
+      const forged = await oauth.sign(resource, overrides);
+      const res = await mcp(bearer(forged), toolCall(32, 'apply_lunchmoney_edit', applyArgs));
+      ok(res.status === 401, `unverifiable write-scoped token (${label}) is refused with 401`, `status ${res.status}`);
+    }
+    ok(lunchMoney.hits() === 0 && lunchMoney.writes() === writesBeforeStepUp,
+      'no step-up denial, malformed body or unverifiable token reaches the provider or writes');
 
     const readInit = await mcp(bearer(readToken), initialize);
     ok(readInit.status === 200 && !readInit.headers.get('www-authenticate'),
@@ -1576,7 +1591,7 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
 
     console.log('\n  -- official SDK client: 403 step-up re-authorizes once, then succeeds --');
     function stepUpProvider(initialTokens) {
-      const state = { tokens: initialTokens, redirects: [], verifier: null };
+      const state = { tokens: initialTokens, redirects: [], verifier: null, posts: 0 };
       const redirectUrl = 'http://127.0.0.1/atlas-step-up-callback';
       state.provider = {
         get redirectUrl() { return redirectUrl; },
@@ -1598,6 +1613,11 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       const client = new Client({ name: 'atlas-step-up-proof', version: '1.0.0' });
       const transport = new StreamableHTTPClientTransport(new URL(resource), {
         authProvider: state.provider,
+        // Count every POST the SDK makes to Atlas, to prove retries are bounded.
+        fetch: (url, init) => {
+          if (String(url) === resource && init && init.method === 'POST') state.posts += 1;
+          return fetch(url, init);
+        },
       });
       try {
         await client.connect(transport);
@@ -1621,10 +1641,13 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
           notes: 'Synthetic step-up proof' },
       };
       lunchMoney.resetHits();
+      const writesBefore = lunchMoney.writes();
+      const postsBefore = granted.posts;
       const firstTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: editArgs }));
-      ok(firstTry instanceof UnauthorizedError && granted.redirects.length === 1,
-        'SDK client answers the write 403 with exactly one re-authorization',
-        firstTry && firstTry.message);
+      ok(firstTry instanceof UnauthorizedError && granted.redirects.length === 1
+          && granted.posts - postsBefore === 1,
+        'SDK client answers the write 403 with exactly one re-authorization and no blind retry',
+        firstTry && `${firstTry.message}; posts ${granted.posts - postsBefore}`);
       const authUrl = granted.redirects[0];
       ok(authUrl && authUrl.searchParams.get('scope') === stepUpScope
           && authUrl.searchParams.get('resource') === resource
@@ -1636,7 +1659,8 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       ok(granted.tokens.scope === stepUpScope, 'consented step-up grant carries write');
       const preview = await client.callTool({ name: 'prepare_lunchmoney_edit', arguments: editArgs });
       ok(preview.isError === false && preview.structuredContent.status === 'preview'
-          && preview.structuredContent.providerWrite === false,
+          && preview.structuredContent.providerWrite === false
+          && lunchMoney.writes() === writesBefore,
         'after step-up, the retried prepare returns a preview without writing');
       const unconfirmed = await client.callTool({ name: 'apply_lunchmoney_edit',
         arguments: { previewId: preview.structuredContent.previewId, confirmed: false } }).catch(err => err);
@@ -1646,8 +1670,13 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       const applied = await client.callTool({ name: 'apply_lunchmoney_edit',
         arguments: { previewId: preview.structuredContent.previewId, confirmed: true } });
       ok(applied.isError === false && applied.structuredContent.status === 'applied'
-          && applied.structuredContent.verifiedByReadback === true,
-        'after step-up, a confirmed apply writes and verifies by readback');
+          && applied.structuredContent.verifiedByReadback === true
+          && lunchMoney.writes() === writesBefore + 1,
+        'after step-up, one confirmed apply makes exactly one provider write and verifies by readback');
+      const replay = await client.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: preview.structuredContent.previewId, confirmed: true } }).catch(err => err);
+      ok((replay instanceof Error || replay.isError === true) && lunchMoney.writes() === writesBefore + 1,
+        'replaying a consumed preview is refused and writes nothing');
       ok(granted.redirects.length === 1, 'no further re-authorization once write is granted');
     });
 
@@ -1663,19 +1692,60 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       ok(secondTry && secondTry.code === 403 && notAssigned.redirects.length === 1,
         'issuer-withheld write: retry is bounded (403, no second prompt, no loop)',
         secondTry && secondTry.message);
-      ok(lunchMoney.hits() === 0, 'issuer-withheld write never reaches the provider');
+      ok(lunchMoney.hits() === 0 && notAssigned.tokens.scope === readScope,
+        'issuer-withheld write never reaches the provider and the grant stays narrow');
+    });
+
+    const cancelled = stepUpProvider(await oauth.issueTokens(readScope, resource));
+    await withStepUpClient(cancelled, async (client, transport) => {
+      lunchMoney.resetHits();
+      const writesAtStart = lunchMoney.writes();
+      const firstTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      ok(firstTry instanceof UnauthorizedError && cancelled.redirects.length === 1,
+        'cancelled consent: the write attempt opens exactly one consent request');
+      // The user cancels: no code is issued; a host that still tries to finish gets invalid_grant.
+      const finish = await httpRefusal(transport.finishAuth('synthetic-cancelled-consent'));
+      ok(finish instanceof Error && cancelled.tokens.scope === readScope,
+        'cancelled consent fails clearly and leaves the narrow grant unchanged');
+      const postsBefore = cancelled.posts;
+      const secondTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      const thirdTry = await httpRefusal(client.callTool({ name: 'apply_lunchmoney_edit', arguments: applyArgs }));
+      ok(secondTry && secondTry.code === 403 && thirdTry && thirdTry.code === 403
+          && cancelled.redirects.length === 1 && cancelled.posts - postsBefore === 2,
+        'cancelled consent: repeat write attempts fail at once (one POST each, no new prompt, no loop)',
+        `posts ${cancelled.posts - postsBefore}`);
+      ok(lunchMoney.hits() === 0 && lunchMoney.writes() === writesAtStart,
+        'cancelled consent never reaches the provider or writes');
+      const stillReads = await client.callTool({ name: 'get_lunchmoney_catalog', arguments: {} });
+      ok(stillReads.isError === false && stillReads.structuredContent.status === 'ok',
+        'cancelled consent leaves reads working');
+      const userRetry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      ok(userRetry instanceof UnauthorizedError && cancelled.redirects.length === 2,
+        'a later user-initiated write attempt asks for consent once more (one prompt per attempt)');
+      ok(lunchMoney.writes() === writesAtStart, 'still zero provider writes without a write-scoped token');
     });
 
     const refreshOnly = stepUpProvider(await oauth.issueTokens(readScope, resource, { refresh: true }));
     await withStepUpClient(refreshOnly, async client => {
       lunchMoney.resetHits();
+      const postsAtConnect = refreshOnly.posts;
+      const writesAtConnect = lunchMoney.writes();
       const refreshesBefore = oauth.tokenRequests().filter(grant => grant === 'refresh_token').length;
       const attempt = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
       const refreshes = oauth.tokenRequests().filter(grant => grant === 'refresh_token').length - refreshesBefore;
-      ok(attempt && attempt.code === 403 && refreshes === 1 && refreshOnly.redirects.length === 0,
-        'refresh-token holder: SDK refresh cannot widen scope; step-up is bounded and fails closed',
-        attempt && attempt.message);
-      ok(lunchMoney.hits() === 0, 'refresh-only step-up failure never reaches the provider');
+      ok(attempt && attempt.code === 403 && /after trying upscoping/.test(attempt.message)
+          && refreshes === 1 && refreshOnly.redirects.length === 0 && refreshOnly.posts === 2 + postsAtConnect,
+        'narrow refresh grant: one refresh, one retry, then a clear bounded 403 (no loop)',
+        attempt && `${attempt.message}; posts ${refreshOnly.posts - postsAtConnect}`);
+      ok(refreshOnly.tokens.scope === readScope && typeof refreshOnly.tokens.refresh_token === 'string',
+        'narrow refresh grant stays narrow after the step-up attempt');
+      const again = await httpRefusal(client.callTool({ name: 'apply_lunchmoney_edit', arguments: applyArgs }));
+      const refreshesAgain = oauth.tokenRequests().filter(grant => grant === 'refresh_token').length - refreshesBefore;
+      ok(again && again.code === 403 && refreshesAgain === 1 && refreshOnly.redirects.length === 0
+          && refreshOnly.posts === 3 + postsAtConnect,
+        'narrow refresh grant: a repeat write fails at once without another refresh, prompt or retry');
+      ok(lunchMoney.hits() === 0 && lunchMoney.writes() === writesAtConnect,
+        'narrow refresh grant never reaches the provider or writes without fresh consent');
     });
 
     const getMcp = await fetch(resource, {
