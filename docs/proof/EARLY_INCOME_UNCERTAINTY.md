@@ -81,3 +81,29 @@ this document does not predeclare unrun checks green.
 
 No production fixture, raw ledger, provider credential, configuration write,
 employer calendar assignment or minimum-reversal treatment is introduced.
+
+## Direct public consumers — local blocking-review repair
+
+Independent review reproduced an affirmative standalone `majorPlans` verdict
+and movable `paydayAllocation` cash while `recommend` withheld the identical
+opening. Every public consumer of that unresolved cash must honor the same
+Forecast state without relying on `recommend` having run first. The allocation
+and recommendation share one withholding boundary; observed opening/Bills cash,
+named prices, category actuals and scheduled evidence survive. Funding
+assignments, protected-path capacity, liquidity, future-cost verdicts and
+instructions remain null/unavailable, including nested allocation fields.
+
+Direct controls supply an apparently ready conditional walk, major-plan packet,
+allocation and attributed Budget-period proposal to demonstrate that caller
+options cannot bypass the native marker. Public plan funding, permitted-debt
+feasibility, current action, unallocated cash, status/mission/phases/next-move,
+counterfactual and savings consumers are covered. Pure stock, schedule, price,
+classification and fixed-debt modelling primitives remain their incumbent facts;
+they do not decide income-funded cash permission.
+
+Hand arithmetic reproduces the unsupported conditional Amanda margin 1600.50
+and payroll margin 3000 using an invented 3000 price. Ordinary bracketed,
+same-day and unpaid cases independently retain their correct standalone plan
+margins. The native observer rules and amount/calendar matching are unchanged.
+This local repair is prepared separately while the externally dispatched
+repair owns publication; no push or Systems PASS is implied by preparation.

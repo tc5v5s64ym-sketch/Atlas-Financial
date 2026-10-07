@@ -3141,7 +3141,9 @@
     opts = opts || {};
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const seq = fundingSequence(plan, asOf, opts);
-    const fundingUnknown = cardMinimumState(plan, asOf, opts).status === 'unavailable';
+    const income = incomeReconciliationState(plan, asOf);
+    const fundingUnknown = cardMinimumState(plan, asOf, opts).status === 'unavailable'
+      || income.status === 'unavailable';
     const weekly = opts.weeklyVariable != null ? opts.weeklyVariable : 0;
     const masterOpts = Object.assign({}, opts, {
       horizonDays: horizon.days, viewDays: horizon.days,
@@ -3281,7 +3283,8 @@
         deferred: !!(item.adjustable && verdict !== 'ON TRACK'),
         ...(fundingUnknown ? { verdict: null, funded: null, margin: null, remaining: null,
           fundingMargin: null, remainingIdentity: null, deferred: null,
-          fundingStatus: 'unavailable' } : {}),
+          fundingStatus: 'unavailable',
+          ...(income.status === 'unavailable' ? { fundingReason: income.reason } : {}) } : {}),
       };
     });
   }
@@ -3385,22 +3388,24 @@
   function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation, periodBasis) {
     const unavailable = reason => ({ status: 'unavailable', reason,
       source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
+    const unavailableWithRoster = reason => ({ ...unavailable(reason),
+      costs: (Array.isArray(seq) ? seq : []).filter(row => row && row.date && row.flexibility !== 'optional')
+        .map(row => ({ id: row.id, label: row.label, date: row.date,
+          baseRequirement: Number.isFinite(row.bounds?.floor) ? row.bounds.floor : null,
+          confidence: row.confidence || null, nextContribution: null,
+          projectedFullyFunded: null, protectedNow: null, contributions: [] })),
+      unscheduled: (Array.isArray(seq) ? seq : []).filter(row => row && !row.date && row.flexibility !== 'optional')
+        .map(row => ({ id: row.id, reason: 'cash-date-not-established' })),
+    });
+    const income = incomeReconciliationState(plan, asOf);
+    if (income.status === 'unavailable') return unavailableWithRoster(income.reason);
     if (!plan || !asOf || !sim || sim.start !== asOf || !Array.isArray(sim.daily)
         || !Array.isArray(sim.events) || !Array.isArray(seq)) {
       return unavailable('The Forecast master cash path is unavailable.');
     }
     if (sim.cardPurchaseCoverage && sim.cardPurchaseCoverage.status === 'unavailable') {
-      return { ...unavailable(sim.cardPurchaseCoverage.reason),
-        // A coverage hold rejects allocation, not the independently known
-        // price/date roster. Every funding amount stays unconfirmed.
-        costs: seq.filter(row => row && row.date && row.flexibility !== 'optional')
-          .map(row => ({ id: row.id, label: row.label, date: row.date,
-            baseRequirement: Number.isFinite(row.bounds?.floor) ? row.bounds.floor : null,
-            confidence: row.confidence || null, nextContribution: null,
-            projectedFullyFunded: null, protectedNow: null, contributions: [] })),
-        unscheduled: seq.filter(row => row && !row.date && row.flexibility !== 'optional')
-          .map(row => ({ id: row.id, reason: 'cash-date-not-established' })),
-      };
+      // A hold rejects allocation, not the independently known price/date roster.
+      return unavailableWithRoster(sim.cardPurchaseCoverage.reason);
     }
     const reserves = savingsEarmarksEnabled(plan) ? sim.reserveFunding : null;
     if (savingsEarmarksEnabled(plan) && (!reserves || reserves.status !== 'ready' || reserves.asOf !== asOf)) {
@@ -3872,6 +3877,10 @@
       repayment: null, items: [], draws: [], feasible: false, capacity: 0,
     };
     if (!opts.allowPlannedDebt) return denied;
+    const income = incomeReconciliationState(plan, asOf);
+    if (income.status === 'unavailable') return { ...denied, status: 'unavailable',
+      reason: income.reason, permitted: null, borrowed: null, interest: null,
+      feasible: null, capacity: null };
 
     const facilityId = opts.plannedDebtFacility || null;
     const debts = opts.debts || [];
@@ -10331,6 +10340,7 @@
 
   function currentPeriodAction(plan, asOf, opts) {
     opts = opts || {};
+    const income = incomeReconciliationState(plan, asOf);
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
     const obligationStates = currentPeriodObligationStates(
       plan, asOf, Object.assign({}, opts, { paydayCalendar: cal }));
@@ -10433,7 +10443,7 @@
     const thisPaydayDue = thisPaydayDueFrom(plan, paydayDate, alloc, bills);
     const thisPeriodGlance = thisPeriodGlanceFrom(
       plan, paydayDate, periodLast, asOf, alloc, inflows, bills);
-    return {
+    const result = {
       asOf,
       mode: cal.mode,
       periodStart: origin,
@@ -10467,6 +10477,13 @@
         ? { unavailable: true, reason: alloc.cardPurchaseCoverage.reason } : {}),
       internalMovements: householdInternalMovements(plan, opts),
     };
+    if (income.status !== 'unavailable') return result;
+    for (const row of result.thisPaydayDue.concat(result.thisPeriodGlance)) {
+      if (Object.hasOwn(row, 'allocated')) row.allocated = null;
+    }
+    return { ...result, unavailable: true, reason: income.reason, remainingClaim: 'unavailable',
+      spendPermission: null, weeklyCap: null, moneyMovementRequired: null,
+      noMovementToday: null, todayActions: [], currentShortfall: null };
   }
 
   const OWNER_HIGHEST_INTEREST_POLICY = 'true-surplus-highest-interest';
@@ -11593,7 +11610,46 @@
       result.runningLeftover = null;
       result.paydayShellTrust.extraDebt = result.paydayShellTrust.optional = result.paydayShellTrust.remainder = 'unknown';
     }
-    return result;
+    return withholdIncomeAllocationClaims(result, incomeReconciliationState(plan, asOf));
+  }
+
+  // One publication boundary for the standalone allocation and recommend.
+  // Preserve observed stocks and named price/actual evidence; withhold every
+  // derived funding assignment, future path and spending instruction.
+  function withholdIncomeAllocationClaims(alloc, income) {
+    if (!alloc || income.status !== 'unavailable') return alloc;
+    alloc.status = 'unavailable';
+    alloc.reason = income.reason;
+    alloc.incomeReconciliation = income;
+    for (const key of ['available', 'movable', 'unallocated', 'remainder', 'allocatedTotal',
+      'identity', 'runningLeftover', 'supportedAllowance', 'weeklyCap', 'spendPermission']) alloc[key] = null;
+    alloc.extraDebt = { status: 'unavailable', reason: income.reason, allocated: null,
+      absorbable: null, target: null, consequence: null };
+    alloc.protectedPath = protectedPathUnavailable(income.reason);
+    alloc.liquidity = { ...(alloc.liquidity || {}), wanted: null, allocated: null };
+    alloc.plannedDebt = { status: 'unavailable', reason: income.reason, permitted: null, borrowed: null };
+    alloc.optional = [];
+    alloc.lines = [];
+    for (const key of ['obligations', 'requiredDebtPayments', 'essentials']) {
+      const bucket = alloc[key];
+      if (!bucket) continue;
+      bucket.allocated = bucket.shortfall = bucket.fundedPool = null;
+      bucket.fundingAttribution = 'unavailable';
+      if (Object.hasOwn(bucket, 'spendPermission')) bucket.spendPermission = bucket.weeklyCap = null;
+      for (const row of bucket.items || []) if (Object.hasOwn(row, 'allocated')) row.allocated = null;
+    }
+    for (const row of alloc.futureCosts || []) {
+      for (const key of ['requiredNow', 'allocated', 'projectedByDeadline', 'shortfall', 'funded',
+        'uncertaintyFunded', 'margin', 'remaining', 'fundingMargin', 'deferred']) {
+        if (Object.hasOwn(row, key)) row[key] = null;
+      }
+      row.verdict = null;
+      row.status = 'unavailable';
+      row.reason = income.reason;
+    }
+    alloc.risks = [];
+    for (const key of Object.keys(alloc.paydayShellTrust || {})) alloc.paydayShellTrust[key] = 'unknown';
+    return alloc;
   }
 
   /* ---------------------------------------------------- budget recommender */
@@ -11799,14 +11855,7 @@
       }
       result.funding = null;
       result.infeasible = null;
-      const alloc = result.paydayAllocation;
-      if (alloc) {
-        for (const key of ['available', 'movable', 'unallocated', 'remainder', 'allocatedTotal',
-          'identity', 'runningLeftover', 'supportedAllowance']) alloc[key] = null;
-        alloc.optional = [];
-        alloc.lines = (alloc.lines || []).filter(row => ['obligations', 'essentials'].includes(row.kind));
-        for (const key of ['available', 'extraDebt', 'optional', 'remainder']) alloc.paydayShellTrust[key] = 'unknown';
-      }
+      withholdIncomeAllocationClaims(result.paydayAllocation, income);
     }
     return result;
   }
@@ -11815,6 +11864,8 @@
   // classification, funding, deductions and the cash walk remain unchanged.
   function budgetPeriodProgress(plan, asOf, period, opts) {
     opts = opts || {};
+    const incomeGate = incomeReconciliationState(plan, asOf);
+    const fundingAvailable = incomeGate.status !== 'unavailable';
     const own = (row, key) => !!row && Object.prototype.hasOwnProperty.call(row, key);
     const finite = n => typeof n === 'number' && Number.isFinite(n);
     const trusted = t => t === 'calculated' || t === 'estimated';
@@ -11946,7 +11997,7 @@
     // Only a complete, attributed minimum-now schedule supplies a requirement.
     // It is the current Forecast plan, never a reconstructed original payday
     // snapshot or proof that the projected contribution actually happened.
-    const requiredKnown = scope && !unavailable && period.start >= asOf
+    const requiredKnown = fundingAvailable && scope && !unavailable && period.start >= asOf
       && funding && funding.source === 'Forecast.planSpendPaydayFunding'
       && funding.basis === 'selected-Budget-period' && funding.asOf === asOf
       && funding.start === period.start && funding.end === period.end
@@ -11955,7 +12006,7 @@
       && funding.minimumRequiredContribution === funding.contribution
       && Array.isArray(funding.items) && funding.items.every(row => row && row.id
         && finite(row.minimumRequiredContribution) && row.minimumRequiredContribution >= 0);
-    const requiredUnknown = () => unknown(period && period.start < asOf
+    const requiredUnknown = () => unknown(!fundingAvailable ? incomeGate.reason : period && period.start < asOf
       ? 'No original payday contribution snapshot exists for this period.'
       : 'A complete attributed period contribution requirement is unavailable.');
     const roster = [...(Array.isArray(funding && funding.items) ? funding.items : []),
@@ -11970,11 +12021,11 @@
       fulfilled: unknown(future ? 'Future contributions are not confirmed actuals.' : 'Attributable contributions for this period have not been established.'),
       remaining: unknown('Required and fulfilled period contributions are not established.'),
       status: 'not-confirmed', reason: 'Account cash, saved balances and assignments do not establish period contributions.',
-      proposal: funding && funding.basis === 'selected-Budget-period' && funding.asOf === asOf
+      proposal: fundingAvailable && funding && funding.basis === 'selected-Budget-period' && funding.asOf === asOf
         && funding.start === period.start && funding.end === period.end
         && ['ready', 'funding-gap'].includes(funding.status) && trusted(funding.trust)
         && Array.isArray(funding.items) && funding.items.includes(row) && finite(row.contribution)
-          ? stamp(row.contribution, funding.trust, 'proposal') : unknown('Period proposal unavailable.'),
+          ? stamp(row.contribution, funding.trust, 'proposal') : unknown(!fundingAvailable ? incomeGate.reason : 'Period proposal unavailable.'),
       evidenceRef: { kind: 'selected-period-funding', id: row.id },
     }));
     return { source: 'Forecast.budgetPeriodProgress', asOf, start: scope ? period.start : null,
@@ -13046,6 +13097,9 @@
   // the declared sources, added to the allocation that already exists.
   function counterfactuals(plan, asOf, advice, debtProj, opts) {
     opts = opts || {};
+    const income = incomeReconciliationState(plan, asOf);
+    if (income.status === 'unavailable') return { status: 'unavailable', reason: income.reason,
+      fullGapCoverage: null, gapFundingAlternatives: [] };
     // Both alternatives are measured against a real answer and a real debt
     // walk. Assuming either would publish a comparison against nothing.
     if (!advice || !advice.planOptions) {
@@ -14040,6 +14094,10 @@
   function unallocatedCash(sim, budget, plan) {
     sim = sim || {};
     plan = plan || {};
+    const income = incomeReconciliationState(plan, sim.start || plan.opening?.asOf);
+    if (income.status === 'unavailable') return { status: 'unavailable', reason: income.reason,
+      ending: null, buffer: sim.buffer, reserves: null, amount: null,
+      id: 'unavailable', negative: null };
     const ending = sim.ending;
     if (typeof ending !== 'number' || !Number.isFinite(ending)) return {
       ending: null, buffer: sim.buffer, reserves: null, amount: null,
@@ -14447,6 +14505,14 @@
   // $1,500/week against a −$809 low precisely because only one of the two had
   // been conditioned on whether the gap could be funded. A copy cannot be kept
   // in step by care, so there is no longer a copy.
+  function unavailablePlanIncome(plan, asOf) {
+    const income = incomeReconciliationState(plan, asOf);
+    return income.status === 'unavailable' ? income : null;
+  }
+  function publishedIncomeUncertainty(advice, opts) {
+    return [advice?.incomeReconciliation, advice?.sim?.incomeReconciliation,
+      opts?.sim?.incomeReconciliation].find(row => row?.status === 'unavailable') || null;
+  }
   function planContext(advice, opts) {
     opts = opts || {};
     advice = advice || {};
@@ -14511,6 +14577,8 @@
   // that verdict was decided from. Money, dates, wording, colour and HTML are
   // presentation and stay on the page, exactly as they do for `mission`.
   function planStatus(advice, opts) {
+    const income = publishedIncomeUncertainty(advice, opts);
+    if (income) return { id: 'unavailable', status: 'unavailable', reason: income.reason };
     const { gap, funding, fundingShort, overrideBreaches, weekly, recommended, sim }
       = planContext(advice, opts);
     // Every verdict reads the buffer, the low or the ending off the simulation
@@ -14651,6 +14719,8 @@
   }
 
   function mission(advice, debtProj, opts) {
+    const income = publishedIncomeUncertainty(advice, opts);
+    if (income) return { status: 'unavailable', reason: income.reason, parts: [] };
     debtProj = debtProj || {};
     const { recommended, weekly, sim, gap, funding, fundingShort, overrideBreaches }
       = planContext(advice, opts);
@@ -14734,6 +14804,9 @@
   // `counterfactuals` result already on screen. Re-running either here
   // would be a second decision system.
   function planPhases(plan, advice, debtProj, opts) {
+    const income = publishedIncomeUncertainty(advice, opts)
+      || unavailablePlanIncome(plan, advice?.asOf || advice?.sim?.start || plan?.opening?.asOf);
+    if (income) return { status: 'unavailable', reason: income.reason, phases: [], risks: [] };
     opts = opts || {};
     plan = plan || {};
     debtProj = debtProj || {};
@@ -14916,6 +14989,9 @@
   // Money, dates and sentences are presentation and stay on the page, exactly
   // as they do for `mission` and `planStatus`.
   function nextMove(plan, advice, opts) {
+    const income = publishedIncomeUncertainty(advice, opts)
+      || unavailablePlanIncome(plan, advice?.asOf || advice?.sim?.start || plan?.opening?.asOf);
+    if (income) return { id: 'unavailable', status: 'unavailable', reason: income.reason };
     const action = (resolveActions(plan, opts && opts.debts, opts && opts.extraFacilities)[0]) || null;
     if (!action) return null;
     const { gap, funding, weekly, recommended, sim, overrideBreaches }
@@ -18032,6 +18108,8 @@
     const unknown = reason => ({ ...shell, status: 'unavailable', reason,
       period: { status: 'unavailable', reason, entitlement: null, transferred: null,
         remainingEntitlement: null, availableNow: null, proposal: null, unassigned: null } });
+    const income = incomeReconciliationState(plan, day);
+    if (income.status === 'unavailable') return unknown(income.reason);
     if (derived.status !== 'ready') return unknown(derived.reason);
     if (derived.pools.some(pool => pool.deficit > 0)) return unknown('Negative savings stock remains a protected deficit.');
     if (plan.opening?.asOf !== day || opts.operatingPlan === 'unavailable') return unknown('A matching available operating opening is required.');
@@ -18227,6 +18305,8 @@
       recommendation: null, ranking: null, affordability: null,
       writesCanonicalState: false, productionWrite: false, pools: [], goals: [], payPeriods: [], daily: [] };
     const unavailable = reason => ({ ...shell, status: 'unavailable', reason });
+    const income = incomeReconciliationState(plan, day);
+    if (income.status === 'unavailable') return unavailable(income.reason);
     if (!day || plan?.opening?.asOf !== day || opts.operatingPlan === 'unavailable') {
       return unavailable('A matching, available operating opening is required; older cash is not substituted.');
     }

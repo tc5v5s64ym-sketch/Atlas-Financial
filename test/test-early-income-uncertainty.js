@@ -39,11 +39,103 @@ for (const kind of ['amanda', 'payroll']) {
   eq(out.sim.events.filter(row => row.kind === 'income').map(row => row.amount), [input.amount], kind + ': planned occurrence retained');
   eq(F.recommendWeekly(out.data.plan, input.asOf), null, kind + ': direct spend permission held');
 }
+// Standalone consumers must honor the native opening marker even when a
+// caller supplies an apparently usable conditional walk, plans or allocation.
+// Hand arithmetic reproduces the original affirmative bypass before applying
+// the gate: Amanda 2800.25 + 1800.25 - 3000 = 1600.50; payroll 3500 + 2500
+// - 3000 = 3000. Neither margin is justified by a second observed receipt.
+for (const kind of ['amanda', 'payroll']) {
+  const input = fixture(kind), date = F.addDays(input.asOf, 2);
+  input.data.plan.commitments = [{ id: 'invented-future-price', label: 'Invented future price',
+    date, amount: 3000, flexibility: 'fixed', confidence: 'confirmed' }];
+  const out = run(input), plan = out.data.plan, before = JSON.stringify(out.data);
+  const opts = { ...OA.recommendOpts(out.data, {}), operatingPlan: 'live', weeklyVariable: 0, paydayFloor: 0 };
+  const conditional = clone(plan); delete conditional.opening.incomeReconciliation;
+  const oldPlans = F.majorPlans(conditional, input.asOf, opts);
+  const oldPrice = oldPlans.find(row => row.id === 'invented-future-price');
+  eq(oldPrice.verdict, 'ON TRACK', kind + ': conditional positive-margin control');
+  eq(oldPrice.margin, kind === 'amanda' ? 1600.50 : 3000, kind + ': independent duplicate-dependent margin');
+  const income = F.incomeReconciliationState(plan, input.asOf), reason = income.reason;
+  const plans = F.majorPlans(plan, input.asOf, opts), price = plans.find(row => row.id === 'invented-future-price');
+  eq(price.need, 3000, kind + ': real planned price retained');
+  for (const key of ['verdict', 'funded', 'margin', 'remaining', 'fundingMargin', 'deferred']) {
+    eq(price[key], null, kind + ': standalone major plan ' + key + ' withheld');
+  }
+  eq(price.fundingStatus, 'unavailable', kind + ': standalone major plan unavailable');
+  eq(price.fundingReason, reason, kind + ': same major-plan reason');
+  eq(F.planSpendCards(plans).find(row => row.id === price.id).verdict, null, kind + ': plan card cannot revive verdict');
+  const alloc = F.paydayAllocation(plan, input.asOf, { ...opts, majorPlans: oldPlans });
+  eq(alloc.currentBalancePublication.amount, kind === 'amanda' ? 2800.25 : 3500, kind + ': direct known posted cash survives');
+  eq(alloc.opening, kind === 'amanda' ? 2800.25 : 3500, kind + ': observed opening survives');
+  eq(alloc.status, 'unavailable', kind + ': direct allocation held');
+  eq(alloc.reason, reason, kind + ': direct allocation same reason');
+  for (const key of ['available', 'movable', 'unallocated', 'remainder', 'allocatedTotal', 'identity',
+    'runningLeftover', 'supportedAllowance', 'weeklyCap', 'spendPermission']) {
+    eq(alloc[key], null, kind + ': direct allocation ' + key + ' withheld');
+  }
+  eq(alloc.protectedPath.status, 'unavailable', kind + ': direct Prepare Ahead held');
+  eq(alloc.protectedPath.movable, null, kind + ': direct Prepare Ahead no movable claim');
+  eq(alloc.lines, [], kind + ': no allocation instruction survives');
+  eq(alloc.risks, [], kind + ': no conditional funding verdict survives');
+  eq(Object.values(alloc.paydayShellTrust).every(tag => tag === 'unknown'), true, kind + ': all funding trust withheld');
+  for (const key of ['obligations', 'requiredDebtPayments', 'essentials']) {
+    eq(alloc[key].allocated, null, kind + ': nested ' + key + ' allocation held');
+    eq(alloc[key].items.every(row => !Object.hasOwn(row, 'allocated') || row.allocated === null), true,
+      kind + ': nested ' + key + ' item allocations held');
+  }
+  eq(alloc.essentials.items.map(row => row.planned), F.paydayAllocation(conditional, input.asOf, opts).essentials.items.map(row => row.planned),
+    kind + ': planned category price evidence survives');
+  const conditionalSim = F.simulate(conditional, input.asOf, { horizonDays: 20, weeklyVariable: 0 });
+  const seq = F.fundingSequence(plan, input.asOf, opts);
+  const funding = F.planSpendPaydayFunding(plan, input.asOf, conditionalSim, seq, oldPlans, alloc);
+  eq(funding.status, 'unavailable', kind + ': supplied conditional funding walk cannot bypass');
+  eq(funding.reason, reason, kind + ': funding same reason');
+  eq(funding.gap, null, kind + ': no fabricated funding gap');
+  eq(funding.costs.find(row => row.id === 'invented-future-price').baseRequirement, 3000, kind + ': funding price roster survives');
+  eq(F.unallocatedCash(conditionalSim, { reserveMonthly: 0 }, plan).amount, null, kind + ': supplied conditional leftover held');
+  const debt = F.plannedDebt(plan, input.asOf, { ...opts, allowPlannedDebt: true, majorPlans: oldPlans });
+  eq(debt.status, 'unavailable', kind + ': debt feasibility cannot use supplied affirmative plans');
+  eq(debt.feasible, null, kind + ': debt feasibility unknown, not false/zero');
+  const advice = F.recommend(plan, input.asOf, opts), debtProj = F.projectDebts(plan, out.data.debts, input.asOf, opts);
+  const staleOpts = { ...opts, sim: conditionalSim, weeklyOverride: 0 };
+  const actions = F.currentPeriodAction(plan, input.asOf, { ...opts, paydayAllocation: F.paydayAllocation(conditional, input.asOf, opts) });
+  eq(actions.unavailable, true, kind + ': supplied conditional allocation cannot create action');
+  eq(actions.reason, reason, kind + ': action same reason');
+  eq(actions.todayActions, [], kind + ': no current action instruction');
+  eq(actions.bills, F.currentPeriodObligationStates(plan, input.asOf, opts).bills, kind + ': direct bill evidence survives');
+  eq(actions.categories, F.currentPeriodAction(conditional, input.asOf, opts).categories, kind + ': direct category evidence survives');
+  for (const [name, result] of [
+    ['status', F.planStatus(advice, staleOpts)], ['mission', F.mission(advice, debtProj, staleOpts)],
+    ['phases', F.planPhases(plan, advice, debtProj, staleOpts)], ['next move', F.nextMove(plan, advice, staleOpts)],
+    ['counterfactuals', F.counterfactuals(plan, input.asOf, advice, debtProj, staleOpts)],
+    ['daily savings', F.savingsDailyFunding(plan, out.data.debts, input.asOf, opts)],
+    ['savings timeline', F.savingsFundingTimeline(plan, out.data.debts, input.asOf, opts)]]) {
+    eq(result.status, 'unavailable', kind + ': direct ' + name + ' held');
+    eq(result.reason, reason, kind + ': direct ' + name + ' same reason');
+  }
+  const period = { start: input.asOf, end: date, income: [], bills: [], plannedCostFunding: {
+    source: 'Forecast.planSpendPaydayFunding', basis: 'selected-Budget-period', asOf: input.asOf,
+    start: input.asOf, end: date, status: 'ready', trust: 'calculated', minimumRequiredAttribution: 'complete',
+    minimumRequiredContribution: 100, contribution: 100,
+    items: [{ id: 'invented-future-price', minimumRequiredContribution: 100, contribution: 100 }], unscheduled: [] } };
+  const progress = F.budgetPeriodProgress(plan, input.asOf, period, opts);
+  eq(progress.savings.planned.amount, null, kind + ': stale attributed period requirement held');
+  eq(progress.savings.goals.find(row => row.id === 'invented-future-price').proposal.amount, null, kind + ': stale period proposal held');
+  eq(JSON.stringify(out.data), before, kind + ': all direct consumers leave observed input immutable');
+}
 for (const [kind, control] of [['amanda', 'bracketed'], ['amanda', 'same-day'], ['payroll', 'same-day'], ['payroll', 'unpaid']]) {
   const input = fixture(kind, control), out = run(input);
   eq(Object.hasOwn(out.report, 'incomeReconciliation'), false, kind + ' ' + control + ': conflict-free observer shape unchanged');
   eq(out.data.liveOverlay.operatingPlan, 'live', kind + ' ' + control + ': live availability unchanged');
   eq(out.sim.ending, kind === 'payroll' ? 3500 : 2800.25, kind + ' ' + control + ': independent closing cash');
+  const plan = clone(out.data.plan);
+  plan.commitments = [{ id: 'invented-supported-price', label: 'Invented supported price',
+    date: F.addDays(input.asOf, 2), amount: 1000, flexibility: 'fixed', confidence: 'confirmed' }];
+  const price = F.majorPlans(plan, input.asOf, { weeklyVariable: 0 }).find(row => row.id === 'invented-supported-price');
+  eq(price.verdict, 'ON TRACK', kind + ' ' + control + ': standalone verified plan control');
+  eq(price.margin, kind === 'payroll' ? 2500 : 1800.25, kind + ' ' + control + ': independent standalone margin');
+  eq(F.paydayAllocation(plan, input.asOf, { weeklyVariable: 0 }).status === 'unavailable', false,
+    kind + ' ' + control + ': standalone allocation remains available');
 }
 function negative(name, mutate, kind = 'amanda') {
   const input = fixture(kind); mutate(input);
