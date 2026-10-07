@@ -41,7 +41,10 @@ by owner sender records cannot supply another cycle or obligation's receipt;
 both observation and Forecast enforce this before representation. Explicit
 posted funding-side reversal aliases withhold derived proof even under a generic
 category. The card/payment identity is required; equal amounts alone do not
-identify a reversal. Removing/changing a confirming category,
+identify a reversal. A funding-side return explicitly categorized for a different
+card does not withdraw this card's proof through a shared bank alias. Mapped
+receiving-card reversal identity still applies to that receiving card only.
+Removing/changing a confirming category,
 a posted reversal, or incomplete coverage removes the derived confirmation on
 the next observation. There is no historical observation store or persistent
 receipt accumulation.

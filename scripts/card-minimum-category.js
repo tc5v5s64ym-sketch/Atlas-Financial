@@ -81,6 +81,9 @@ function observe(input) {
       && ((other.minimumCategoryDebt === debtId && other.amount < 0
         && mapping(other)?.canonical?.id === map.canonical.id)
         || (other.amount < 0 && /revers/i.test(`${other.payee || ''} ${other.originalName || ''}`)
+          // Several cards share bank aliases. An explicitly resolved different
+          // card category outranks that alias for a funding-side return.
+          && (!other.minimumCategoryDebt || other.minimumCategoryDebt === debtId)
           && mapping(other)?.canonical?.id === map.canonical.id
           && matchesReversalIdentity?.(other, target.row))
         || (/payment.*revers|revers.*payment/i.test(`${other.payee || ''} ${other.originalName || ''}`)

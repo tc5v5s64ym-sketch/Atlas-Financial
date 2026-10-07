@@ -147,6 +147,34 @@ check('funding reversal uses incumbent card aliases including excluded TD revers
     assert.equal(packet(x).payments.length, 0);
   }
 });
+for (const [card, otherCard] of [['tdcc', 'travelvisa'], ['cashback', 'tdcc'], ['travelvisa', 'cashback']])
+  check(`explicit other-card return preserves confirmation: ${card}/${otherCard}`, () => {
+    const x = fixture(card), name = Object.keys(Category.CATEGORIES).find(k => Category.CATEGORIES[k] === otherCard);
+    x.payload.categories.push({ id: 9002, name, is_income: false, is_group: false,
+      exclude_from_totals: true, exclude_from_budget: true });
+    x.data.debts.push({ ...clone(x.data.debts[0]), id: otherCard, balance: 200 });
+    x.accountMap.mappings.push({ providerAccountId: '3005',
+      canonical: { collection: 'debts', id: otherCard }, atlasRole: 'revolving-credit' });
+    x.payload.accounts.push({ ...clone(x.payload.accounts[3]), id: 3005, balance: 212.19 });
+    x.payload.accounts[0].balance = 962.82;
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98003, date: NOW,
+      amount: -12.19, payee: 'TFR-TO C/C REVERSAL', category_id: 9002 },
+      { ...x.payload.transactions[0], id: 98004, date: NOW, account_id: 3005,
+        amount: 12.19, payee: 'PAYMENT REVERSAL', category_id: 9002 });
+    // Independently balanced stocks: 1000 - 49.37 + 12.19 = 962.82;
+    // target debt 800 - 49.37 = 750.63; other debt 200 + 12.19 = 212.19.
+    const live = Live.fromObservation(x), plan = live.data.plan;
+    assert.equal(live.report.cardMinimumCategoryEvidence.payments.length, 1);
+    assert.equal(F.representedOccurrence(plan, x.eventId, ORIGINAL, NOW), true);
+    const advice = F.recommend(plan, NOW, { debts: live.data.debts,
+      currentPeriodActuals: live.report.currentPeriodActuals });
+    const bill = advice.defaultView.bills.find(b => b.id === x.eventId && b.date === DUE);
+    assert.ok(bill); assert.equal(bill.status, 'PAID'); assert.equal(bill.remaining, 0);
+    assert.equal(F.startingCashAmount(plan), 962.82);
+    assert.equal(F.simulate(plan, NOW, { horizonDays: 5, weeklyVariable: 0 }).ending, 962.82);
+    assert.equal(live.data.debts.find(d => d.id === card).balance, 750.63);
+    assert.equal(live.data.debts.find(d => d.id === otherCard).balance, 212.19);
+  });
 check('pending reversal leaves posted evidence while independent owner receipt survives reversal', () => {
   const x = fixture();
   x.payload.transactions.push({ ...x.payload.transactions[0], id: 98003, date: NOW,
