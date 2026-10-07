@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['scheduled fee actual cost, reserve and bounded bill recognition', 'test-scheduled-fee-routing.js'],
   ['real financial calendar identity and hypothetical conservation', 'test-financial-calendar-identity.js'],
   ['posted income and unresolved future occurrence cash gate', 'test-early-income-uncertainty.js'],
   ['bounded live refresh and client cancellation', 'test-live-refresh-deadline.js'],

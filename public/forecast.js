@@ -7285,6 +7285,33 @@
     };
   }
 
+  // The scheduled two-account fee receipt is already qualified by the
+  // incumbent observer. Keep its authored allowance separate from posted
+  // expense: lower expense leaves a reserve; higher expense raises period
+  // cost. This never recognizes an arbitrary Bank fees category or replays
+  // a cash/debt movement.
+  function scheduledFeeOccurrenceAmounts(row) {
+    if (!row || row.id !== 'tdfees' || row.kind !== 'bill'
+      || row.status !== 'PAID' || row.settlement !== 'represented'
+      || row.settledInOpening === true || row.needsDate
+      || typeof row.planned !== 'number' || !Number.isFinite(row.planned) || row.planned < 0
+      || typeof row.actual !== 'number' || !Number.isFinite(row.actual) || row.actual < 0) return null;
+    const plannedAllowance = roundCent(row.planned);
+    const recordedExpense = roundCent(row.actual);
+    return {
+      source: 'Forecast.scheduledFeeAllowance',
+      plannedAllowance,
+      recordedExpense,
+      remainingAllowance: roundCent(Math.max(0, plannedAllowance - recordedExpense)),
+      periodCost: roundCent(Math.max(plannedAllowance, recordedExpense)),
+    };
+  }
+
+  function scheduledFeeReserve(bills) {
+    return roundCent((bills || []).reduce((sum, row) =>
+      sum + (row && row.scheduledFeeAllowance ? row.scheduledFeeAllowance.remainingAllowance : 0), 0));
+  }
+
   function calendarBillSections(plan, asOf, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -7326,6 +7353,15 @@
           ? Math.abs(Number(row.planned))
           : Math.abs(Number(row.amount) || 0);
         row.remaining = roundCent(assigned);
+      }
+      // Only this active period owns the still-unspent allowance. A paid
+      // historical occurrence cannot reserve it again in a later period.
+      // A qualified receipt may post before its scheduled date; the native
+      // posting date, rather than that future due, owns cash effectiveness.
+      if (window.role === 'active' && row.date >= window.start && row.date <= window.end
+          && observedPostedOn(observed, row.id, row.date, row.date) <= asOf) {
+        const fee = scheduledFeeOccurrenceAmounts(row);
+        if (fee) row.scheduledFeeAllowance = fee;
       }
       buckets[window.id].push(row);
     };
@@ -7477,9 +7513,12 @@
     };
     const sectionFor = window => {
       const rows = sortRows(buckets[window.id] || []);
-      const total = roundCent(rows.reduce((s, r) => s + displayedBillAbs(r), 0));
+      const total = roundCent(rows.reduce((s, r) =>
+        s + (r && r.scheduledFeeAllowance ? r.scheduledFeeAllowance.periodCost : displayedBillAbs(r)), 0));
       const remainingTotal = roundCent(rows.reduce((s, r) => {
-        if (!r || r.status === 'PAID' || r.needsDate) return s;
+        if (!r || r.needsDate) return s;
+        if (r.scheduledFeeAllowance) return s + r.scheduledFeeAllowance.remainingAllowance;
+        if (r.status === 'PAID') return s;
         const raw = r.remaining != null ? Math.abs(Number(r.remaining))
           : Math.abs(Number(r.amount) || 0);
         return s + raw;
@@ -8824,7 +8863,8 @@
   function periodWaterfallBillLoad(bills, openingAsOf, openingSource) {
     return roundCent((bills || []).reduce((sum, row) => {
       if (!billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)) return sum;
-      return sum + billAssignedAmount(row);
+      return sum + (row.scheduledFeeAllowance
+        ? row.scheduledFeeAllowance.periodCost : billAssignedAmount(row));
     }, 0));
   }
 
@@ -12572,7 +12612,7 @@
       const from = p.start < asOf ? asOf : p.start;
       // Monotonic pennies preserve the exact period allowance, including
       // alternating category targets, without a daily rounding remainder.
-      budgetAllowanceDays(daily, from, p.end, allowance);
+      budgetAllowanceDays(daily, from, p.end, allowance, p.bills);
       for (const row of p.income || []) {
         if (row.date >= asOf && row.date <= end) incomes.set(row.id + '@' + row.date, row);
       }
@@ -12646,7 +12686,7 @@
           // not replay it, or add today's scheduled salary to observed cash.
           const remaining = roundCent(currentItems.reduce((s, r) => s + Math.max(0, r.hold - r.spent), 0));
           const forwardDaily = new Map(daily);
-          budgetAllowanceDays(forwardDaily, asOf, current.end, remaining);
+          budgetAllowanceDays(forwardDaily, asOf, current.end, remaining, current.bills);
           const forwardOpts = Object.assign({}, walkOpts, {
             injections: [], budgetHouseholdDaily: forwardDaily,
             // Purpose-debt draws are another modelled injection path. Keep
@@ -18068,8 +18108,8 @@
     }
     return { remaining: left, allocations };
   }
-  function budgetAllowanceDays(daily, from, through, amount) {
-    const days = diffDays(from, through) + 1, cents = Math.round(amount * 100);
+  function budgetAllowanceDays(daily, from, through, amount, bills) {
+    const days = diffDays(from, through) + 1, cents = Math.round((amount + scheduledFeeReserve(bills)) * 100);
     for (let i = 0; i < days; i++) daily.set(addDays(from, i),
       (Math.floor(cents * (i + 1) / days) - Math.floor(cents * i / days)) / 100);
   }
@@ -18388,7 +18428,7 @@
     const daily = new Map(), incomes = new Map();
     for (const p of periods) {
       const remaining = p.start <= day ? p.householdBudget.reduce((sum, row) => sum + Math.max(0, savingsCents(row.hold) - savingsCents(row.spent, true)), 0) / 100 : p.budgetHold;
-      budgetAllowanceDays(daily, p.start <= day ? day : p.start, p.end, remaining);
+      budgetAllowanceDays(daily, p.start <= day ? day : p.start, p.end, remaining, p.bills);
       for (const row of p.income || []) if (row.date >= day) incomes.set(row.id + '@' + row.date, row);
     }
     const end = windows.at(-1).end, ordinary = new Set();
