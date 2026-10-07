@@ -12042,9 +12042,44 @@
       if (!readable || invalidEvidence || !Array.isArray(rows)) return unknown(actualReason || 'Actual evidence unavailable.');
       let amount = 0, missing = 0, known = 0, trust = 'calculated';
       const evidence = [];
+      // The minimum contract owns posting, purpose, identity and cycle proof.
+      // Its cash sent is distinct from the requirement and issuer satisfaction.
+      // Historical progress cannot acquire a payment posted after its boundary.
+      const minimums = direction === 'bills' ? cardMinimumState(plan, through, opts) : null;
+      const countedMinimums = new Set();
       for (const row of rows) {
         if (!row || !savingsDate(row.date) || row.needsDate
           || row.date < period.start || row.date > period.end) { missing++; continue; }
+        const obligation = direction === 'bills' && row.kind === 'obligation'
+          ? (plan?.obligations || []).find(item => item?.id === row.id && item.effect === 'payment') : null;
+        const scheduledDate = obligation && statementOccurrenceIdentity(plan, row.id, row.scheduledDate || row.date);
+        const sends = scheduledDate ? minimums.payments.filter(item => item.id === row.id
+          && item.scheduledDate === scheduledDate && item.date === row.date) : [];
+        const nativeMinimum = sends.length || obligation && (row.cashPaymentStatus === 'sent'
+          || obligation.sentPayments != null && (!Array.isArray(obligation.sentPayments)
+            || obligation.sentPayments.some(item => item?.scheduledDate === scheduledDate)));
+        if (nativeMinimum) {
+          const key = row.id + '@' + scheduledDate;
+          // Never add legacy actual as well, reuse a bank debit, or turn an
+          // invalid/pending allocation into its scheduled minimum amount.
+          if (!sends.length || countedMinimums.has(key)
+            || row.notReliedUpon === true || row.settlement === 'not-relied-upon'
+            || sends.some(item => item.householdPaymentEvidence === 'conflict')) { missing++; continue; }
+          countedMinimums.add(key);
+          const actual = roundCent(sends.reduce((sum, item) => sum + item.cashPaid, 0));
+          amount = roundCent(amount + actual); known++;
+          const unresolvedOwnerRecords = Array.isArray(obligation.sentPayments)
+            && obligation.sentPayments.filter(item => item?.scheduledDate === scheduledDate
+              && item.intent !== 'purchase-backfill').length > sends.length;
+          const confirmation = !unresolvedOwnerRecords && sends.every(item => item.issuerMinimumStatus === 'satisfied'
+            && item.cashInclusionStatus === 'included');
+          if (!confirmation) missing++;
+          evidence.push({ id: row.id, date: row.date, scheduledDate, actual,
+            kind: 'minimum-cash-sent', cashSentDates: Array.from(new Set(sends.map(item => item.cashSentOn))).sort(),
+            issuerMinimumStatus: sends.every(item => item.issuerMinimumStatus === 'satisfied') ? 'satisfied' : 'unconfirmed',
+            cashInclusionStatus: sends.every(item => item.cashInclusionStatus === 'included') ? 'included' : 'unconfirmed' });
+          continue;
+        }
         const contradiction = ['unverified', 'pending', 'unknown', 'unavailable', 'not-relied-upon', 'relied-upon'].includes(row.settlement)
           || row.notReliedUpon === true || ['unresolved', 'pending', 'unknown'].includes(row.status);
         const settled = direction === 'income' ? row.status === 'received' : rowIsSettledBill(row);
@@ -12075,7 +12110,8 @@
     const income = { planned: originalPlan(period && period.income, plannedAmount, plannedTrust),
       actual: settledActual(period && period.income, 'income'), semantics: 'confirmed received / original scheduled plan' };
     const bills = { planned: originalPlan(period && period.bills, plannedAmount, plannedTrust),
-      actual: settledActual(period && period.bills, 'bills'), semantics: 'confirmed settled paid / original scheduled plan' };
+      actual: settledActual(period && period.bills, 'bills'),
+      semantics: 'Recorded settlements and minimum money sent toward bills scheduled in this period / original scheduled plan. Money sent is separate from lender minimum confirmation and inclusion in the cash opening.' };
     const categories = period && period.householdBudget;
     const cycle = period && period.spendingCycle;
     const householdScope = scope && cycle && cycle.start === period.start && cycle.end === period.end;

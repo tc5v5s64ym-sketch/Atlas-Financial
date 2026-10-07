@@ -44,6 +44,11 @@ function fixture(card = 'triangle', id = card === 'travelvisa' ? 'travel' : card
 function payment(live) { return F.cardMinimumState(live.data.plan, NOW); }
 function packet(x) { return O.observe({ ...x, provider: 'lunchmoney' }).cardMinimumCategoryEvidence; }
 function zero(x) { assert.equal(packet(x).payments.length, 0); }
+function headerActual(live, bill) {
+  return F.budgetPeriodProgress(live.data.plan, NOW,
+    { start: '2035-10-01', end: '2035-10-14', bills: [bill], income: [], householdBudget: [] },
+    { currentPeriodActuals: live.report.currentPeriodActuals }).bills.actual.amount;
+}
 
 for (const card of Object.values(Category.CATEGORIES)) check(`${card}: actual consumer, amount and conservation`, () => {
   const x = fixture(card), before = JSON.stringify(x), live = Live.fromObservation(x);
@@ -65,6 +70,7 @@ for (const card of Object.values(Category.CATEGORIES)) check(`${card}: actual co
   assert.equal(advice.defaultView.balanceAfterDeductions, -43.19);
   const row = advice.defaultView.bills.find(b => b.id === x.eventId && b.date === DUE);
   assert.ok(row); assert.equal(row.householdPaymentStatus, 'paid'); assert.equal(row.cashPaid, 49.37);
+  assert.equal(headerActual(live, row), 49.37, 'header uses posted category payment, not the 43.19 requirement');
   assert.equal(F.cardMinimumState(live.data.plan, '2035-10-04').payments.length, 0);
   const classification = F.classifyCurrentPeriodTransaction(live.report.currentPeriodActuals.transactions[0], live.data.plan);
   assert.equal(classification.kind, 'card-payment'); assert.equal(classification.householdSpending, false);
@@ -130,6 +136,7 @@ for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'v
       currentPeriodActuals: live.report.currentPeriodActuals });
     const bill = advice.defaultView.bills.find(b => b.id === 'triangle' && b.date === DUE);
     assert.ok(bill); assert.notEqual(bill.status, 'PAID'); assert.equal(bill.remaining, 43.19);
+    assert.equal(headerActual(live, bill), 0, 'reversal-withdrawn category proof cannot become header money sent');
   });
 
 for (const payee of ['CAN TIRE MC PAYMENT REVERSAL', 'CAN TIRE MC REVERSAL'])
@@ -147,6 +154,7 @@ for (const payee of ['CAN TIRE MC PAYMENT REVERSAL', 'CAN TIRE MC REVERSAL'])
       currentPeriodActuals: live.report.currentPeriodActuals });
     const bill = advice.defaultView.bills.find(b => b.id === 'triangle' && b.date === DUE);
     assert.ok(bill); assert.notEqual(bill.status, 'PAID'); assert.equal(bill.remaining, 43.19);
+    assert.equal(headerActual(live, bill), 0, 'generic-category funding reversal withdraws derived header proof');
     assert.equal(F.startingCashAmount(plan), 1000); assert.equal(live.data.debts[0].balance, 800);
   });
 check('equal credit alone and unrelated reversal cannot withdraw minimum proof', () => {
