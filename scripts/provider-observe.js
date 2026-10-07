@@ -31,6 +31,7 @@ const crypto = require('crypto');
 const R = require('./reconcile.js');
 const Credentials = require('./local-credentials.js');
 const SalaryDiagnostic = require('./salary-match-diagnostic.js');
+const MinimumCategory = require('./card-minimum-category.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
@@ -325,6 +326,7 @@ function normalizeLunchMoneyCategory(raw) {
     excludeFromTotals: raw.exclude_from_totals === true,
     excludeFromBudget: raw.exclude_from_budget === true,
     isGroup: raw.is_group === true || raw.is_group_parent === true,
+    archived: raw.archived === true || raw.is_archived === true,
   };
 }
 
@@ -402,6 +404,8 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     || (fromIndex && fromIndex.excludeFromTotals === true);
   const excludeFromBudget = raw.exclude_from_budget === true
     || (fromIndex && fromIndex.excludeFromBudget === true);
+  const minimumCategoryDebt = fromIndex && categoryName === fromIndex.name && raw.is_pending === false
+    ? MinimumCategory.categoryDebt(fromIndex) : null;
   return {
     provider: 'lunchmoney',
     providerTransactionId: String(raw.id),
@@ -424,10 +428,11 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     parentId: raw.parent_id != null ? String(raw.parent_id) : null,
     pending: raw.is_pending === true,
     status: raw.status || null,
-    kind: raw.kind || null,
+    kind: minimumCategoryDebt ? 'card-payment' : raw.kind || null,
     mcc: raw.mcc || raw.plaid_mcc || null,
     categoryId,
     categoryLabel: categoryName,
+    minimumCategoryDebt,
     isIncome,
     excludeFromTotals,
     excludeFromBudget,
@@ -2084,8 +2089,9 @@ function isBillOrObligationEvent(plan, eventId) {
 
 // A posted card payment proves a balance movement, not the household's
 // purpose for it. Purchase backfills can have the same payee, date and amount
-// as a minimum payment. No approved machine-readable intent convention exists;
-// leave these occurrences unconfirmed. Exact owner/statement confirmations
+// as a minimum payment. Generic identity leaves these occurrences unconfirmed;
+// the separate owner-approved exact-category path now supplies typed household
+// confirmation without opening this payee/amount gate. Owner/statement confirmations
 // already on plan.opening.representedEvents remain Forecast inputs unchanged.
 // Visa purchase reconciliation publishes the backfill split for Budget. It
 // does not reopen this gate.
@@ -3479,6 +3485,26 @@ function observe(input) {
     salaryDiagnostic,
   });
   const represented = hitGroups.unique.map(c => classifyRepresentedCandidate(c, openingAsOf));
+  const explicitlyPostedCounts = new Map();
+  for (const raw of input.payload?.transactions || []) if (raw.is_pending === false && raw.id != null) {
+    const id = String(raw.id);
+    explicitlyPostedCounts.set(id, (explicitlyPostedCounts.get(id) || 0) + 1);
+  }
+  const cardMinimumCategoryEvidence = MinimumCategory.observe({
+    plan: planForIdentity, accountMap: mapDoc, asOf: scheduleTrustAsOf,
+    transactions: collapsed.transactions, transactionWindow: normalized.transactionWindow,
+    pendingCoverage: normalized.pendingCoverage,
+    cycleOpensOn: (due, day) => statementCloseDateForDue(due, day) || due,
+    isExplicitlyPosted: tx => explicitlyPostedCounts.get(tx.providerTransactionId) === 1,
+    alreadyAllocated: tx => (planForIdentity.cardPurchaseCoverage?.payments || []).some(p =>
+      p.confirmed === true && (p.debitRef === cardCoverageReference(tx) || p.creditRef === cardCoverageReference(tx))),
+    matchesIdentity: (tx, row) => identityRules.some(rule => rule.eventId === row.id
+      && ruleMatchesTransactionIdentity(tx, rule)),
+    // Reversal evidence uses the same payment aliases. Exclusions prevent a
+    // reversal from confirming a payment, but must not hide its withdrawal.
+    matchesReversalIdentity: (tx, row) => identityRules.some(rule => rule.eventId === row.id
+      && ruleMatchesTransactionIdentity(tx, { ...rule, payeeExcludePatterns: [] })),
+  });
   // Historical transaction-identity hits are evidence, not current-opening
   // posting comparisons. The live overlay may consume one only for an exact
   // once joint-cash outflow that Forecast is still carrying.
@@ -3512,6 +3538,7 @@ function observe(input) {
     cardCapacityIsCash: R.householdCashFromCardCapacity(),
     cardInferences,
     representedEventCandidates: represented,
+    cardMinimumCategoryEvidence,
     sameDayInboundAmbiguity: sanitizedSameDayInboundAmbiguity(hitGroups.ambiguous),
     sameDayDiscrepancies: sameDay,
     reconciliation: result,

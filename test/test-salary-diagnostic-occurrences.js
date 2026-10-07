@@ -6,6 +6,7 @@ const path = require('node:path'), Module = require('node:module');
 const O = require('../scripts/provider-observe'), D = require('../scripts/salary-match-diagnostic');
 const F = require('../public/forecast'), Live = require('../scripts/live-plan');
 const Assistant = require('../scripts/assistant-packet'), fx = require('./fixtures/salary-diagnostic-data');
+const minimumCategoryExpectation = require('./fixtures/minimum-category-conservation');
 const ROOT = path.resolve(__dirname, '..'), BASE = '6d1e151c8f2d124b544496d7b882953ea1dc7520';
 const historical = cp.spawnSync('git', ['-c', 'safe.directory=' + ROOT.replace(/\\/g, '/'),
   'show', BASE + ':scripts/provider-observe.js'], { cwd: ROOT, encoding: 'utf8' });
@@ -65,7 +66,8 @@ function observe(x) {
   delete conserved.observationReceipt.salaryMatcherDiagnostic;
   const disabled = O.observe({ ...clone(x), salaryDiagnostic: false });
   eq(conserved, disabled, 'diagnostic never changes incumbent financial fields');
-  if (old) eq(conserved, old.observe(clone(x)), 'immutable current-main observer conservation');
+  if (old) eq(conserved, minimumCategoryExpectation(old.observe(clone(x)), x, old),
+    'immutable current-main observer conservation with exact empty protocol additions');
   eq(JSON.stringify(x), untouched, 'ledger and schedule inputs immutable');
   const diagnostic = report.observationReceipt.salaryMatcherDiagnostic;
   eq(D.project(diagnostic), diagnostic, 'closed scope/target projection round trip');
