@@ -213,7 +213,7 @@ check('pending reversal leaves posted evidence while independent owner receipt s
   assert.equal(payment(live).payments[0].issuerMinimumStatus, 'satisfied');
 });
 check('owner-allocated stable debit cannot manufacture another cycle or obligation receipt', () => {
-  for (const otherObligation of [false, true]) {
+  for (const otherObligation of [false, true]) for (const namespace of ['protocol-hash', 'human-label', 'linked-human-label']) {
     const x = fixture(), row = x.data.plan.obligations[0];
     const prior = '2035-09-07';
     row.firstDue = prior;
@@ -222,9 +222,15 @@ check('owner-allocated stable debit cannot manufacture another cycle or obligati
     const owner = otherObligation ? { ...clone(row), id: 'triangle-owner' } : row;
     if (otherObligation) x.data.plan.obligations.push(owner);
     owner.sentPayments = [{ scheduledDate: prior, confirmed: true, intent: 'minimum',
-      debitId: crypto.createHash('sha256').update('lunchmoney-minimum-category:98001').digest('hex'),
+      debitId: namespace === 'protocol-hash'
+        ? crypto.createHash('sha256').update('lunchmoney-minimum-category:98001').digest('hex')
+        : 'triangle-2026-10-bank-sent',
       postedOn: '2035-10-05', amount: 49.37, currency: 'cad', fundingAccountId: 'chequing-a',
       pending: false, cashIncludedAsOf: NOW }];
+    if (namespace === 'linked-human-label') owner.sentPayments[0].movementIdentity = {
+      source: Category.SOURCE,
+      debitId: crypto.createHash('sha256').update('lunchmoney-minimum-category:98001').digest('hex'),
+    };
     x.data.plan.opening.representedEvents = [{ id: owner.id, date: prior, effectiveAsOf: NOW }];
     const live = Live.fromObservation(x), plan = live.data.plan;
     assert.equal(live.report.cardMinimumCategoryEvidence.payments.length, 0);
@@ -240,6 +246,7 @@ check('owner-allocated stable debit cannot manufacture another cycle or obligati
     // bypasses observation. The original owner's receipt remains authoritative.
     const valid = Live.fromObservation(fixture()).data.plan.cardMinimumCategoryEvidence;
     plan.cardMinimumCategoryEvidence = clone(valid);
+    delete plan.cardMinimumCategoryEvidence.payments[0].movementIdentity;
     assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), false);
     assert.ok(plan.opening.representedEvents.some(p => p.id === owner.id && p.date === prior));
     assert.equal(F.cardMinimumState(plan, NOW).payments.find(p => p.id === owner.id
@@ -257,6 +264,91 @@ check('partial payment and estimated minimum withhold satisfaction', () => {
     assert.equal(s.status, 'unavailable'); assert.equal(s.payments.length, 1);
     assert.equal(s.payments[0].additionalCashRequired, null);
     assert.equal(s.payments[0].issuerMinimumStatus, 'unconfirmed');
+  }
+});
+const allocationControls = {
+  'human label ambiguous': { accept: false },
+  'unknown hash namespace ambiguous': { accept: false, change(x, owner) {
+    owner.debitId = crypto.createHash('sha256').update('unrelated-owner-label').digest('hex');
+  } },
+  'partial sender already owner allocated': { accept: false, change(x, owner) {
+    x.payload.transactions[0].amount = owner.amount = 18.12;
+  } },
+  'malformed explicit namespace is not independence': { accept: false, change(x, owner) {
+    owner.movementIdentity = { source: 'owner-note', debitId: 'a'.repeat(64) };
+  } },
+  'different card is not the same movement': { accept: true, change(x, owner, row) { row.debtId = 'travelvisa'; } },
+  'different posted date is not the same sender': { accept: true, change(x, owner) { owner.postedOn = '2035-10-04'; } },
+  'different full sent amount is not the same sender': { accept: true, change(x, owner) { owner.amount = 31.17; } },
+  'different funding account is not the same sender': { accept: true, change(x, owner) { owner.fundingAccountId = 'chequing-b'; } },
+  'two observed senders do not identify an unlinked human label': { accept: false, change(x) {
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98000, category_id: null });
+  } },
+  'explicitly linked independent human sender': { accept: true, change(x, owner) {
+    owner.movementIdentity = { source: Category.SOURCE,
+      debitId: crypto.createHash('sha256').update(Category.SOURCE + ':98000').digest('hex') };
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98000, category_id: null });
+  } },
+  'legacy hash verified against a distinct posted sender': { accept: true, needsEvidence: true, change(x, owner) {
+    owner.debitId = crypto.createHash('sha256').update(Category.SOURCE + ':98000').digest('hex');
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98000, category_id: null });
+  } },
+  'legacy hash with unknown posting state is not independence': { accept: false, change(x, owner) {
+    owner.debitId = crypto.createHash('sha256').update(Category.SOURCE + ':98000').digest('hex');
+    const old = { ...x.payload.transactions[0], id: 98000, category_id: null };
+    delete old.is_pending; x.payload.transactions.push(old);
+  } },
+  'legacy hash with pending sender is not independence': { accept: false, change(x, owner) {
+    owner.debitId = crypto.createHash('sha256').update(Category.SOURCE + ':98000').digest('hex');
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98000, category_id: null, is_pending: true });
+  } },
+  'legacy hash with duplicate posted sender is not independence': { accept: false, change(x, owner) {
+    owner.debitId = crypto.createHash('sha256').update(Category.SOURCE + ':98000').digest('hex');
+    const old = { ...x.payload.transactions[0], id: 98000, category_id: null };
+    x.payload.transactions.push(old, clone(old));
+  } },
+  'duplicate provider sender remains ambiguous': { accept: false, change(x, owner) {
+    owner.movementIdentity = { source: Category.SOURCE, debitId: 'a'.repeat(64) };
+    x.payload.transactions.push(clone(x.payload.transactions[0]));
+  } },
+};
+for (const [name, control] of Object.entries(allocationControls)) check(`owner namespace: ${name}`, () => {
+  const x = fixture(), prior = '2035-09-07';
+  const row = { ...clone(x.data.plan.obligations[0]), id: 'prior-owner', firstDue: prior,
+    statementOccurrences: [{ scheduledDate: prior, dueDate: prior, minimum: 17.31,
+      currency: 'cad', confidence: 'confirmed' }] };
+  const owner = { scheduledDate: prior, confirmed: true, intent: 'minimum',
+    debitId: 'triangle-2026-10-bank-sent', postedOn: '2035-10-05', amount: 49.37,
+    currency: 'cad', fundingAccountId: 'chequing-a', pending: false, cashIncludedAsOf: NOW };
+  row.sentPayments = [owner]; x.data.plan.obligations.push(row);
+  x.data.plan.opening.representedEvents = [{ id: row.id, date: prior, effectiveAsOf: NOW }];
+  control.change?.(x, owner, row);
+  // Source stocks include all observed sends once; no inferred settlement may
+  // change those stocks or manufacture another allocation from their values.
+  const sent = [...new Map(x.payload.transactions.map(t => [t.id, t])).values()]
+    .reduce((sum, t) => sum + t.amount, 0);
+  x.payload.accounts[0].balance = 1000 - sent; x.payload.accounts[3].balance = 800 - sent;
+  const before = JSON.stringify(x), live = Live.fromObservation(x), plan = live.data.plan;
+  assert.equal(JSON.stringify(x), before);
+  assert.equal(live.report.cardMinimumCategoryEvidence.payments.length, control.accept ? 1 : 0);
+  assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), control.accept);
+  assert.equal(F.startingCashAmount(plan), 1000 - sent); assert.equal(live.data.debts[0].balance, 800 - sent);
+  assert.deepEqual(plan.obligations.find(r => r.id === row.id).sentPayments, [owner]);
+  assert.ok(plan.opening.representedEvents.some(p => p.id === row.id && p.date === prior));
+  const direct = clone(Live.fromObservation(fixture()).data.plan.cardMinimumCategoryEvidence);
+  direct.payments[0].amount = x.payload.transactions[0].amount;
+  if (control.needsEvidence) direct.payments[0].verifiedIndependentOwnerDebitIds =
+    live.report.cardMinimumCategoryEvidence.payments[0].verifiedIndependentOwnerDebitIds;
+  plan.cardMinimumCategoryEvidence = direct;
+  // Duplicate detection is observation-owned; Forecast independently rejects
+  // allocation namespace conflicts before it can publish any receipt.
+  if (name !== 'duplicate provider sender remains ambiguous') {
+    assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), control.accept);
+    assert.equal(F.cardMinimumState(plan, NOW).payments.some(p => p.minimumConfirmationSource === 'household-category'), control.accept);
+    if (control.needsEvidence) {
+      delete direct.payments[0].verifiedIndependentOwnerDebitIds;
+      assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), false);
+    }
   }
 });
 check('refresh is idempotent and changed category revokes only derived confirmation', () => {

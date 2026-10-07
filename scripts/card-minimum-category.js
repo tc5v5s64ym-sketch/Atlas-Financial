@@ -30,7 +30,8 @@ function categoryDebt(category) {
 
 function observe(input) {
   const { plan, accountMap, asOf, transactionWindow: window, pendingCoverage,
-    transactions = [], matchesIdentity, matchesReversalIdentity, alreadyAllocated, cycleOpensOn } = input;
+    transactions = [], matchesIdentity, matchesReversalIdentity, alreadyAllocated, cycleOpensOn,
+    isExplicitlyPosted } = input;
   const packet = { source: SOURCE, asOf, payments: [] };
   if (!iso(asOf) || !window || window.complete !== true || window.hasMore === true
       || window.truncated === true || !iso(window.startDate) || !iso(window.endDate)
@@ -43,6 +44,22 @@ function observe(input) {
   const events = Forecast.expandEvents(schedule, Forecast.addDays(asOf, -62), Forecast.addDays(asOf, 62));
   const ownerDebits = new Set((plan.obligations || []).flatMap(row =>
     Array.isArray(row.sentPayments) ? row.sentPayments.map(p => p?.debitId).filter(Boolean) : []));
+  const verifiedIndependentOwnerDebitIds = [];
+  for (const row of plan.obligations || []) for (const owner of Array.isArray(row.sentPayments) ? row.sentPayments : []) {
+    if (owner?.confirmed !== true || owner.pending !== false || owner.currency !== 'cad'
+        || !/^[a-f0-9]{64}$/.test(owner.debitId || '')) continue;
+    const linked = transactions.filter(tx => isExplicitlyPosted?.(tx) === true
+      && tx.pending !== true && !tx.contradictoryEvidence && !tx.isGroup && !tx.parentId
+      && tx.currency === 'cad' && iso(tx.date) && tx.date <= asOf
+      && tx.date >= window.startDate && tx.date <= window.endDate && tx.date === owner.postedOn
+      && cents(tx.amount) > 0 && cents(tx.amount) === cents(owner.amount)
+      && mapping(tx)?.atlasRole === 'household-cash'
+      && mapping(tx)?.canonical?.id === owner.fundingAccountId
+      // Owner allocation already names its purpose/card. This verifies only
+      // its explicit hash-to-provider movement link, not a new merchant match.
+      && crypto.createHash('sha256').update(SOURCE + ':' + tx.providerTransactionId).digest('hex') === owner.debitId);
+    if (linked.length === 1) verifiedIndependentOwnerDebitIds.push(owner.debitId);
+  }
   const hits = [];
   for (const tx of transactions) {
     const debtId = CARD_IDS.has(tx.minimumCategoryDebt) ? tx.minimumCategoryDebt : null;
@@ -76,6 +93,9 @@ function observe(input) {
     }
     if (compatible.length !== 1) continue;
     const target = compatible[0];
+    if (Forecast.minimumCategoryAllocationConflict(plan, { id: target.row.id, debitId,
+      postedOn: tx.date, amount: tx.amount, currency: 'cad', fundingAccountId: map.canonical.id,
+      verifiedIndependentOwnerDebitIds })) continue;
     // A posted reversal of this categorized movement withdraws derived proof.
     // A generic purchase refund is not silently interpreted as a payment reversal.
     const reversed = transactions.some(other => other !== tx && other.pending !== true
@@ -101,7 +121,9 @@ function observe(input) {
         || hits.filter(h => h.row.id === row.id && h.original === original).length !== 1) continue;
     packet.payments.push({ id: row.id, scheduledDate: original, confirmed: true,
       intent: 'minimum', debitId, postedOn: tx.date, amount: tx.amount,
-      currency: 'cad', fundingAccountId: map.canonical.id, pending: false, cashIncludedAsOf: asOf });
+      currency: 'cad', fundingAccountId: map.canonical.id, pending: false, cashIncludedAsOf: asOf,
+      movementIdentity: { source: SOURCE, debitId },
+      ...(verifiedIndependentOwnerDebitIds.length ? { verifiedIndependentOwnerDebitIds } : {}) });
   }
   return packet;
 }

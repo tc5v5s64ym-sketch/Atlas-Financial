@@ -38,8 +38,22 @@ debit or principal payment. Future rows keep their existing Planned semantics.
 Explicit recorded owner sender/receipt evidence takes precedence; changing a
 provider category cannot delete it. Stable debit identities already allocated
 by owner sender records cannot supply another cycle or obligation's receipt;
-both observation and Forecast enforce this before representation. Explicit
-posted funding-side reversal aliases withhold derived proof even under a generic
+both observation and Forecast enforce this before representation.
+Human owner sender labels and provider hashes are different namespaces. When
+an owner allocation could be the same card, posted date, full sent amount and
+funding account, derived confirmation is withheld unless an explicit shared
+movement reference establishes independence. This compatibility check never
+establishes payment identity or settlement. Sender amounts remain full cash sent,
+including partial minimum payments; no guessed allocation or remainder is created.
+An optional `movementIdentity` uses source `lunchmoney-minimum-category` and its
+stable hashed debit ID. Existing records are not rewritten. Legacy hashed owner
+IDs establish independent movement only when the current complete observation
+verifies that hash against a distinct posted native-CAD funding debit with the
+owner's recorded date, amount and account. Only those verified opaque references
+are passed to Forecast; a different arbitrary label or merely another same-valued
+transaction is insufficient. Both boundaries use Forecast's same ownership guard.
+
+Explicit posted funding-side reversal aliases withhold derived proof even under a generic
 category. The card/payment identity is required; equal amounts alone do not
 identify a reversal. A funding-side return explicitly categorized for a different
 card does not withdraw this card's proof through a shared bank alias. Mapped
@@ -57,6 +71,14 @@ income or category expense. Tests cover all five cards, the actual observer and
 live-plan consumer, partial/estimated minimums, missing/category metadata,
 pending replacement, wrong accounts/currency, reversals, duplicates, ambiguous
 cycles, historical query dates, repeated refreshes and category removal.
+Owner-namespace controls retain the exact prior-cycle fixture with both human
+labels and protocol hashes on the same or a separate obligation, including
+stale packets without the new typed reference at Forecast's boundary. Partial
+senders, different cards/dates/full amounts/accounts and duplicate senders are
+covered. A legacy owner hash requires one explicitly posted provider row;
+missing posting state, pending rows and duplicate posted rows cannot prove an
+independent sender. Prior owner settlement and independently observed stocks
+remain unchanged throughout these checks.
 
 This outcome leaves ordinary-bill category-family mapping and the real external
 taxonomy setup for separate work. Historical paid bills may retain schedule

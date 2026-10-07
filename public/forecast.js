@@ -520,6 +520,43 @@
   function cardMinimumState(plan, asOf, opts) {
     return CardMinimumContract.state(plan, asOf, occurrences, representedEventEffectiveBy, opts);
   }
+  function minimumCategoryAllocationConflict(plan, payment) {
+    const target = (plan?.obligations || []).find(row => row?.id === payment?.id);
+    if (!target) return true;
+    const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+    const cents = value => typeof value === 'number' && value > 0 && Number.isFinite(value)
+      && Number.isSafeInteger(Math.round(value * 100))
+      && Math.abs(value * 100 - Math.round(value * 100)) < 1e-7 ? Math.round(value * 100) : null;
+    const day = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && Number.isFinite(Date.parse(value + 'T00:00:00Z'))
+      && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
+    const verified = new Set((Array.isArray(payment.verifiedIndependentOwnerDebitIds)
+      ? payment.verifiedIndependentOwnerDebitIds : []).filter(hash));
+    for (const row of plan.obligations || []) for (const owner of Array.isArray(row.sentPayments) ? row.sentPayments : []) {
+      if (!owner) continue;
+      if (owner.debitId === payment.debitId) return true;
+      const identity = owner.movementIdentity;
+      const explicit = owner.confirmed === true && owner.pending === false
+        && identity && Object.hasOwn(identity, 'source') && Object.hasOwn(identity, 'debitId')
+        && identity.source === 'lunchmoney-minimum-category' && hash(identity.debitId)
+        ? identity.debitId : null;
+      if (explicit === payment.debitId) return true;
+      // A differing owner label is never assumed to be a differing provider ID.
+      // Only an explicit shared reference or a legacy hash verified against a
+      // distinct posted observation establishes that independence.
+      if (explicit || (hash(owner.debitId) && verified.has(owner.debitId))) continue;
+      const funding = owner.fundingAccountId || row.payingAccount;
+      if (row.debtId === target.debtId && (!funding || funding === payment.fundingAccountId)
+          && (!owner.currency || owner.currency === payment.currency)
+          && (!day(owner.postedOn) || owner.postedOn === payment.postedOn)
+          && (cents(owner.amount) == null || cents(owner.amount) === cents(payment.amount))) {
+        // This is ambiguity for withholding only: no amount/date match creates
+        // identity, allocation, receipt, liability or another cash movement.
+        return true;
+      }
+    }
+    return false;
+  }
   function minimumCategoryEvidence(plan, asOf) {
     const packet = plan?.cardMinimumCategoryEvidence;
     const day = value => typeof value === 'string' && ISO_CALENDAR_DATE.test(value)
@@ -529,8 +566,6 @@
     const counts = new Map(), keys = new Map();
     // Reject already owner-allocated identities before either sender state or
     // represented receipts can publish a second occurrence's confirmation.
-    const ownerDebits = new Set((plan.obligations || []).flatMap(row =>
-      Array.isArray(row.sentPayments) ? row.sentPayments.map(p => p?.debitId).filter(Boolean) : []));
     for (const p of packet.payments) {
       counts.set(p?.debitId, (counts.get(p?.debitId) || 0) + 1);
       const key = p?.id + '@' + p?.scheduledDate;
@@ -549,7 +584,7 @@
           || p.cashIncludedAsOf !== packet.asOf || p.fundingAccountId !== row.payingAccount
           || !['chequing-a', 'chequing-b'].includes(p.fundingAccountId)
           || typeof p.debitId !== 'string' || !/^[a-f0-9]{64}$/.test(p.debitId)
-          || ownerDebits.has(p.debitId)
+          || minimumCategoryAllocationConflict(plan, p)
           || counts.get(p.debitId) !== 1 || keys.get(p.id + '@' + p.scheduledDate) !== 1
           || occurrences(row, p.scheduledDate, p.scheduledDate).length !== 1
           || (row.sentPayments != null && !Array.isArray(row.sentPayments))
@@ -20532,7 +20567,7 @@
     };
   }
 
-  const Forecast = { cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { minimumCategoryAllocationConflict, cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,

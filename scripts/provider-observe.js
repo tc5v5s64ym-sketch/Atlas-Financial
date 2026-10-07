@@ -3485,11 +3485,17 @@ function observe(input) {
     salaryDiagnostic,
   });
   const represented = hitGroups.unique.map(c => classifyRepresentedCandidate(c, openingAsOf));
+  const explicitlyPostedCounts = new Map();
+  for (const raw of input.payload?.transactions || []) if (raw.is_pending === false && raw.id != null) {
+    const id = String(raw.id);
+    explicitlyPostedCounts.set(id, (explicitlyPostedCounts.get(id) || 0) + 1);
+  }
   const cardMinimumCategoryEvidence = MinimumCategory.observe({
     plan: planForIdentity, accountMap: mapDoc, asOf: scheduleTrustAsOf,
     transactions: collapsed.transactions, transactionWindow: normalized.transactionWindow,
     pendingCoverage: normalized.pendingCoverage,
     cycleOpensOn: (due, day) => statementCloseDateForDue(due, day) || due,
+    isExplicitlyPosted: tx => explicitlyPostedCounts.get(tx.providerTransactionId) === 1,
     alreadyAllocated: tx => (planForIdentity.cardPurchaseCoverage?.payments || []).some(p =>
       p.confirmed === true && (p.debitRef === cardCoverageReference(tx) || p.creditRef === cardCoverageReference(tx))),
     matchesIdentity: (tx, row) => identityRules.some(rule => rule.eventId === row.id
