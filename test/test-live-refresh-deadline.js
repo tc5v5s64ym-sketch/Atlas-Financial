@@ -5,8 +5,8 @@ const root=path.resolve(__dirname,'..'),Refresh=require('../scripts/server-live-
 const Credentials=require('../scripts/local-credentials');
 const filename=path.join(__dirname,'test-production-live-overlay.js'),source=fs.readFileSync(filename,'utf8');
 const fixture=new Module(filename);fixture.filename=filename;fixture.paths=Module._nodeModulePaths(__dirname);
-fixture._compile(source.slice(0,source.indexOf('function independentGroceryRemaining'))+'\nmodule.exports={startMockProvider,freePort,syntheticLiveMap,login,startAtlas};',filename);
-const {startMockProvider,freePort,syntheticLiveMap,login,startAtlas}=fixture.exports;
+fixture._compile(source.slice(0,source.indexOf('function independentGroceryRemaining'))+'\nmodule.exports={startMockProvider,freePort,syntheticLiveMap,login,startAtlas,PASS,SECRET};',filename);
+const {startMockProvider,freePort,syntheticLiveMap,login,startAtlas,PASS,SECRET}=fixture.exports;
 const canonicalText=fs.readFileSync(path.join(root,'data.json'),'utf8'),canonical=JSON.parse(canonicalText);
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const baseEnv={};for(const key of ['PATH','SystemRoot','WINDIR','TEMP','TMP','COMSPEC','PATHEXT'])if(process.env[key])baseEnv[key]=process.env[key];
@@ -95,7 +95,7 @@ async function stalled(mode,fn){
  const busy=await new Promise((resolve,reject)=>{let output='';const child=cp.spawn(process.execPath,['--require',path.join(__dirname,'fixtures/live-refresh-busy-worker.js'),'-e',busyProgram],{cwd:root,env:baseEnv,stdio:['ignore','pipe','pipe'],windowsHide:true});child.stdout.on('data',chunk=>output+=chunk);child.on('error',reject);child.on('exit',code=>resolve({code,output}));});
  check(busy,{code:0,output:'busy terminated\n'},'deadline interrupts synchronous worker work');
  await stalled('trickle',async(env,state)=>{
-  const port=await freePort(),atlas=await startAtlas({...env,PORT:String(port),SITE_PASSWORD:'synthetic-site-password',SESSION_SECRET:'synthetic-session-secret',ATLAS_ASSISTANT_TOKEN:'synthetic-assistant-token-long-enough'}),base='http://127.0.0.1:'+port;
+  const port=await freePort(),atlas=await startAtlas({...env,PORT:String(port),SITE_PASSWORD:PASS,SESSION_SECRET:SECRET,ATLAS_ASSISTANT_TOKEN:'synthetic-assistant-token-long-enough'}),base='http://127.0.0.1:'+port;
   try{
    const unauthorized=await fetch(base+'/data.json',{redirect:'manual'});check(unauthorized.status,401,'session guard unchanged');check(state.calls,0,'unauthorized request starts no provider work');
    const auth=await login(base);check(auth.status,302,'synthetic login unchanged');
