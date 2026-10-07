@@ -899,6 +899,15 @@
       "routed_to": {
         "path": "ARCHITECTURE.md"
       }
+    },
+    {
+      "id": "TRAVEL-VISA-ANNUAL-FEE-001",
+      "source": "docs/source_intake/TRAVEL_VISA_ANNUAL_FEE_ESTIMATE_2026-10-07.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills/27"
+      }
     }
   ]
 }
