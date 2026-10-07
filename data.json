@@ -207,7 +207,7 @@
                 "firstDue": "2026-09-07",
                 "amount": 253.57,
                 "confidence": "estimated",
-                "note": "August is paid on this opening. A further $300 posted 2026-08-10 was already inside the 2026-08-16 screenshot posted $13,197.00 (13,497.00 - 300.00); that screenshot is not this opening's posted $13,495.32. Displayed due date on the 2026-08-16 screenshot was Aug. 7 with displayed minimum $0.00; on-time status and default-rate consequences are not proven. Future statement minimums are estimated at the current level. firstDue 2026-09-07.",
+                "note": "August is paid on this opening. A further $300 posted 2026-08-10 was already inside the 2026-08-16 screenshot posted $13,197.00 (13,497.00 - 300.00); that screenshot is not this opening's posted $13,495.32. Displayed due date on the 2026-08-16 screenshot was Aug. 7 with displayed minimum $0.00; on-time status and default-rate consequences are not proven. Future statement minimums are estimated at the current level. firstDue 2026-09-07. October's existing $270 sender posted Oct. 5 is included in Bills cash as of Oct. 6. Dale confirmed \"triangle is paid\" on 2026-10-07 at 01:14:54 UTC (Oct. 6 in the household's America/Vancouver timezone); the original October occurrence is represented effective Oct. 6 by owner confirmation, not a fabricated bank or issuer receipt. See docs/household_interviews/DALE_2026-10-07_TRIANGLE_PAID.md. No additional debit, principal reduction, or excess-payment allocation is recorded.",
                 "payingAccount": "chequing-a",
                 "statementOccurrences": [
                     {
@@ -228,7 +228,8 @@
                         "amount": 270,
                         "currency": "cad",
                         "fundingAccountId": "chequing-a",
-                        "pending": false
+                        "pending": false,
+                        "cashIncludedAsOf": "2026-10-06"
                     }
                 ]
             },
@@ -1352,6 +1353,7 @@
                 { "id": "noble-garbage", "date": "2026-09-18" },
                 { "id": "heloc", "date": "2026-09-21" },
                 { "id": "triangle", "date": "2026-09-07", "effectiveAsOf": "2026-10-05" },
+                { "id": "triangle", "date": "2026-10-07", "effectiveAsOf": "2026-10-06" },
                 { "id": "mbna-aug31", "date": "2026-08-31", "effectiveAsOf": "2026-10-05" },
                 { "id": "cashback", "date": "2026-10-01", "effectiveAsOf": "2026-10-06" },
                 { "id": "mbna", "date": "2026-09-30", "effectiveAsOf": "2026-10-06" }
