@@ -2672,6 +2672,70 @@ function representedEventCandidates(input) {
   return representedEventHitGroups(input).unique;
 }
 
+// A qualified posted receipt can be in today's stock before its nominal
+// occurrence. This is uncertainty evidence only: never select a settlement,
+// change the calendar, or attach the receipt to a future represented event.
+function futureIncomeUncertainty(input, represented) {
+  const window = input.transactionWindow, asOf = input.asOf;
+  const empty = { asOf, status: 'ready', issues: [] };
+  if (!window || window.complete !== true || window.hasMore === true || window.truncated === true
+      || !parseIsoDate(window.startDate) || !parseIsoDate(asOf)
+      || window.endDate !== asOf || window.startDate > asOf || !input.plan) return empty;
+  const used = new Set((represented || []).flatMap(candidateTransactionIds));
+  const native = tx => tx && tx.pending !== true && tx.contradictoryEvidence !== true
+    && tx.currencySettlementUnconfirmed !== true && tx.currency === 'cad'
+    && parseIsoDate(tx.date) && tx.date >= window.startDate && tx.date <= asOf
+    && tx.providerTransactionId != null && !used.has(String(tx.providerTransactionId));
+  const rules = (input.identityRules || []).filter(rule => ruleHasIdentity(rule)
+    && rule.direction === 'credit' && rule.atlasAccountId === 'chequing-a');
+  const payroll = rules.filter(rule => rule.eventId === 'payroll' && rule.transactionKind !== 'transfer');
+  const salary = rules.filter(rule => ['amandaSalary15', 'amandaSalaryMonthEnd'].includes(rule.eventId)
+    && rule.transactionKind === 'transfer' && ruleCounterpartExternalId(rule)
+    && Array.isArray(rule.salaryReceiptPayeePatterns) && rule.salaryReceiptPayeePatterns.length);
+  const groups = [payroll, salary].filter(group => group.length);
+  const end = Forecast.knowledgeHorizon(input.plan, asOf).end;
+  const schedule = scheduledEventsOnRange(input.plan, window.startDate, end)
+    .filter(event => event.kind === 'income' && event.amount > 0)
+    .sort((left, right) => left.date.localeCompare(right.date));
+  const issues = [];
+  for (const group of groups) {
+    const ids = new Set(group.map(rule => rule.eventId));
+    const events = schedule.filter(event => ids.has(event.id));
+    const futureDate = events.find(event => event.date > asOf)?.date;
+    if (!futureDate) continue;
+    // Bound overlap by the native preceding income occurrence (both Amanda
+    // slots share one employer packet), clipped to complete provider coverage.
+    const previous = events.filter(event => event.date <= asOf).map(event => event.date).sort().pop();
+    const afterPrevious = tx => !previous || tx.date > previous;
+    let unresolved = false;
+    for (const credit of input.transactions || []) {
+      if (!native(credit) || !afterPrevious(credit) || !(lunchMoneyDebitAmount(credit.amount) < 0)) continue;
+      const mapping = mappingFor(input.accountMap, credit.providerAccountId);
+      if (mapping?.atlasRole !== 'household-cash' || mapping.canonical?.id !== 'chequing-a') continue;
+      for (const rule of group) {
+        if (!ruleMatchesTransactionIdentity(credit, rule)) continue;
+        if (rule.eventId === 'payroll') { unresolved = true; break; }
+        // Reuse native transfer/amount/account predicates. Competing qualified
+        // legs justify withholding; they never earn receipt or settlement.
+        const debits = transferCounterpartMatches(credit, rule, input, credit.amount).filter(native);
+        if (!debits.length) continue;
+        const source = (input.transactions || []).find(tx => native(tx) && afterPrevious(tx)
+          && tx.isIncome === true && lunchMoneyDebitAmount(tx.amount) < 0 && tx.date <= credit.date
+          && amountsMatchExactly(tx.amount, credit.amount)
+          && debits.some(debit => String(debit.providerAccountId) === String(tx.providerAccountId))
+          && payeeMatchesRule(tx, { payeePatterns: rule.salaryReceiptPayeePatterns,
+            payeeMatchMode: 'exact', payeeExcludePatterns: ['REFUND', 'REVERSAL', 'REIMBURSEMENT'] }));
+        if (source) { unresolved = true; break; }
+      }
+      if (unresolved) break;
+    }
+    if (unresolved) for (const event of events.filter(event => event.date === futureDate)) {
+      issues.push({ id: event.id, date: event.date, reason: 'posted-income-occurrence-unresolved' });
+    }
+  }
+  return { asOf, status: issues.length ? 'unavailable' : 'ready', issues };
+}
+
 function sanitizedEvidenceFingerprint(providerTransactionId) {
   if (providerTransactionId == null || providerTransactionId === '') return null;
   return crypto.createHash('sha256')
@@ -3521,6 +3585,9 @@ function observe(input) {
     postingObservations,
   });
   const sameDay = sameDayDiscrepancies(result);
+  const incomeUncertainty = futureIncomeUncertainty({ transactions: collapsed.transactions,
+    accountMap: mapDoc, plan: planForIdentity, identityRules,
+    transactionWindow: normalized.transactionWindow, asOf: scheduleTrustAsOf }, hitGroups.unique);
   const assembled = {
     writesCanonicalState: false,
     provider: 'lunchmoney',
@@ -3539,6 +3606,7 @@ function observe(input) {
     cardInferences,
     representedEventCandidates: represented,
     cardMinimumCategoryEvidence,
+    ...(incomeUncertainty.status === 'unavailable' ? { incomeReconciliation: incomeUncertainty } : {}),
     sameDayInboundAmbiguity: sanitizedSameDayInboundAmbiguity(hitGroups.ambiguous),
     sameDayDiscrepancies: sameDay,
     reconciliation: result,

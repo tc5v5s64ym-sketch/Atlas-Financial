@@ -49,6 +49,22 @@ for (const mode of modes) {
   const before = old ? minimumCategoryExpectation(old.observe(clone(x)), x, old)
     : O.observe({ ...clone(x), salaryDiagnostic: false });
   const after = O.observe(x), disabled = O.observe({ ...clone(x), salaryDiagnostic: false });
+  // July 2's posted employer receipt and paired cash transfer cannot match
+  // the prior month-end slot. They are also inside the native interval before
+  // July 15, so the separately authorized cash gate must withhold the next
+  // receipt claim. Extend the immutable expectation by this exact new packet;
+  // every incumbent matcher/receipt/actuals field still compares in full.
+  // Keep diagnostic-on/off comparison independent of this expectation.
+  if (mode === 'no-occurrence') {
+    const expectedIncomeUncertainty = { asOf: '2026-07-04', status: 'unavailable',
+      issues: [{ id: 'amandaSalary15', date: '2026-07-15',
+        reason: 'posted-income-occurrence-unresolved' }] };
+    eq(after.incomeReconciliation, expectedIncomeUncertainty,
+      'unmatched July2 income independently requires next native occurrence uncertainty');
+    if (old) before.incomeReconciliation = clone(expectedIncomeUncertainty);
+  } else {
+    ok(!Object.hasOwn(after, 'incomeReconciliation'), mode + ': no added uncertainty packet');
+  }
   const packet = after.observationReceipt.salaryMatcherDiagnostic;
   ok(packet && D.project(packet), mode + ': valid bounded diagnostic');
   eq(reportWithoutDiagnostic(after), before, mode + ': entire incumbent observer result conserved');
