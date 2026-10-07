@@ -1909,7 +1909,38 @@ function operatingCashExplanationHtml(explanation) {
   </div>`;
 }
 
+function bankFeesBillHtml(row, includeOriginal = true) {
+  const fees = row.fees;
+  const escape = value => String(value ?? '').replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const original = !includeOriginal || row.feeExpenseOnly ? '' : `<details class="bank-fees-original"><summary>Original scheduled account-fee evidence</summary>
+    ${periodBillLine({ ...row, fees: null })}</details>`;
+  if (fees.status !== 'ready') return `<section class="bank-fees" data-bank-fees="unavailable">
+    <h4>Fees</h4><p>Fee actuals and the period fee deduction are unavailable.</p>
+    <p>${escape(fees.reason)}</p>${original}</section>`;
+  const transactions = fees.transactions.map(tx => {
+    const state = tx.pending ? 'Pending fee' : 'Posted fee';
+    const coverage = !tx.cardPaid ? tx.pending ? 'Cash debit pending' : 'Cash debit posted'
+      : tx.coverageStatus === 'unconfirmed' ? 'Cash coverage unconfirmed'
+        : tx.remainingCoverage > 0 ? 'Bills cash reserved for this card fee' : 'Cash coverage confirmed';
+    return `<li class="bank-fee-transaction" data-fee-transaction="${tx.cardPaid ? 'card' : 'cash'}">
+      <div><strong>${escape(tx.accountLabel)}</strong><span>${escape(tx.date)} · ${state}</span>
+        <span>${coverage}</span></div><strong>${money2(tx.amount)}</strong></li>`;
+  }).join('');
+  return `<section class="bank-fees" data-bank-fees="ready">
+    <h4>Fees <span>${fees.periodCostTrust === 'estimated' ? 'about ' : ''}${money2(fees.periodCost)}</span></h4>
+    <dl class="bank-fees-totals"><div><dt>Planned allowance</dt><dd>${money2(fees.plannedAllowance)}</dd></div>
+      <div><dt>Actual${fees.pending > 0 ? ' including pending' : ''}</dt><dd>${money2(fees.actual)}</dd></div>
+      <div><dt>Over allowance</dt><dd>${money2(fees.overage)}</dd></div>
+      <div><dt>Allowance still reserved</dt><dd>${money2(fees.remainingAllowance)}</dd></div>
+      <div><dt>Unpaid card fees reserved</dt><dd>${fees.cardReserve == null ? 'Unconfirmed' : money2(fees.cardReserve)}</dd></div></dl>
+    <p class="operating-note">The allowance covers fees up to the planned amount. Only the overage adds to the full-period Bills deduction.
+      A matched card payment changes actual Bills cash and releases its reservation; it does not deduct the fee again.</p>
+    <ul class="bank-fees-transactions" aria-label="Fee transactions">${transactions}</ul>${original}</section>`;
+}
+
 function periodBillLine(row) {
+  if (row.fees) return bankFeesBillHtml(row);
   const kind = row.glanceKind || (row.status === 'in' ? 'in'
     : (row.status === 'PAID' ? 'paid'
       : (row.status === 'planned' || row.status === 'unknown' ? 'planned' : 'still-due')));
@@ -6380,7 +6411,8 @@ function budgetBillBrowseRowHtml(row) {
 
 function budgetBillsSectionHtml(period, ctx) {
   const progress = budgetProgressFor(period, ctx.asOf)?.bills;
-  const rows = (period.bills || []).filter(Boolean);
+  const feeRows = (period.bills || []).filter(row => row?.fees);
+  const rows = (period.bills || []).filter(row => row && !row.fees);
   const groups = { due: [], pending: [], check: [], paid: [], unknown: [] };
   rows.forEach(row => groups[budgetBillPresentation(row).kind].push(row));
   const section = (title, list, note = '') => list.length ? `<div class="budget-bill-group"><h3>${title}</h3>${note ? `<p>${note}</p>` : ''}${list.map(budgetBillBrowseRowHtml).join('')}</div>` : '';
@@ -6397,6 +6429,8 @@ function budgetBillsSectionHtml(period, ctx) {
     </div><p class="budget-cash-sr" data-budget-bill-filter-status role="status">Showing all bills.</p>
     <div class="budget-bills-progress-wrapper">${budgetProgressBarHtml(progress, 'bills')}</div>
     <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} confirmed settled or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
+    ${feeRows.map(row => bankFeesBillHtml(row, false)).join('')}
+    ${feeRows.length ? '<p class="budget-browse-note">Filters below apply to scheduled bills. Fee transactions keep their posted or pending state.</p>' : ''}
     <div id="budget-bill-bucket-not-paid" data-budget-bill-bucket="not-paid">
       ${section('Not paid', groups.due)}${section('Pending', groups.pending)}
       ${section('To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
@@ -6406,7 +6440,7 @@ function budgetBillsSectionHtml(period, ctx) {
       ${section('Paid', groups.paid)}${!groups.paid.length ? '<p class="budget-browse-note">No confirmed paid bills in this period.</p>' : ''}
     </div>
     ${!rows.length ? '<p class="budget-browse-note">No bill occurrences published for this period.</p>' : ''}
-    <footer><p>The plan deducts ${budgetBrowseMoney(period.periodBillLoad, period.periodBillLoadTrust)} — assigned amounts, excluding bills settled in the opening. Payment evidence remains available for each bill.</p><button type="button" data-budget-browse-evidence="04">Why</button></footer>
+    <footer><p>The plan deducts ${budgetBrowseMoney(period.periodBillLoad, period.periodBillLoadTrust)} - assigned amounts, excluding bills settled in the opening${feeRows.length ? ', plus fee costs beyond the assigned allowance' : ''}. Payment evidence remains available for each bill.</p><button type="button" data-budget-browse-evidence="04">Why</button></footer>
   </section>`;
 }
 

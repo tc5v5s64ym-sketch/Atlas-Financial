@@ -3,6 +3,22 @@
 
 #operating-surface:has([data-budget-surface]) { max-width:1080px; }
 
+.bank-fees { margin:12px 0; padding:16px; border:1px solid var(--border); border-radius:14px; min-width:0; }
+.bank-fees h4 { display:flex; justify-content:space-between; gap:12px; margin:0 0 12px; }
+.bank-fees-totals { display:grid; gap:6px; margin:0 0 12px; }
+.bank-fees-totals > div { display:flex; justify-content:space-between; gap:12px; }
+.bank-fees-totals dt { min-width:0; overflow-wrap:anywhere; }
+.bank-fees-totals dd { margin:0; flex-shrink:0; font-variant-numeric:tabular-nums; }
+.bank-fees-transactions { list-style:none; margin:12px 0; padding:0; display:grid; gap:8px; }
+.bank-fee-transaction { display:flex; justify-content:space-between; align-items:start; gap:12px; padding:12px;
+  border-left:3px solid #a78bfa; border-radius:8px; background:#302343; color:#f0e9ff; }
+.bank-fee-transaction > div { display:grid; gap:4px; min-width:0; overflow-wrap:anywhere; }
+.bank-fee-transaction span { font-size:12px; line-height:1.45; }
+.bank-fee-transaction > strong { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.bank-fees-original > summary { cursor:pointer; padding:8px 0; }
+.bank-fees-original > summary:focus-visible { outline:2px solid #a78bfa; outline-offset:3px; }
+@media (max-width:380px) { .bank-fees { padding:12px; } .bank-fee-transaction { padding:10px; gap:8px; } }
+
 .budget-surface { display:grid; gap:16px; }
 
 /* #480 upcoming funding and Month. Financial scopes stay in plan.js. */

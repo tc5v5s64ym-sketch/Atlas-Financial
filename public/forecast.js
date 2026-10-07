@@ -2522,13 +2522,14 @@
     const kept = omitRepresented(events, plan, opts, start);
     const already = new Set(kept.map(e => e.id + '@' + e.date));
     const carried = carriedUnresolvedJointCashOutflows(plan, start, opts, already);
-    if (!carried.length) return applyPostedCardPurchaseProtection(
-      applyReserveFunding(applyMinimumSent(kept, plan, start, opts), plan, start, end, opts), plan, start, opts);
+    if (!carried.length) return applyFeeAllowanceToCashEvents(plan, start, end,
+      applyPostedCardPurchaseProtection(
+        applyReserveFunding(applyMinimumSent(kept, plan, start, opts), plan, start, end, opts), plan, start, opts), opts);
     const out = kept.concat(carried);
     out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return applyPostedCardPurchaseProtection(
-      applyReserveFunding(applyMinimumSent(out, plan, start, opts), plan, start, end, opts), plan, start, opts);
+    return applyFeeAllowanceToCashEvents(plan, start, end, applyPostedCardPurchaseProtection(
+      applyReserveFunding(applyMinimumSent(out, plan, start, opts), plan, start, end, opts), plan, start, opts), opts);
   }
 
   // Additional cash needed to keep this walk's measured trajectory at or
@@ -4871,6 +4872,129 @@
   // confirmed Fuel without tx-level fuel evidence, except the two exact
   // owner-confirmed September 2026 transactions. Uncertain txs go to
   // confirmation, not a named household-budget row.
+  function bankFeeHouseholdAccount(tx) {
+    if (!tx) return false;
+    const key = canonicalAccountKey(tx);
+    return tx.accountRole === 'household-cash'
+      ? ['chequinga', 'chequingb', 'savings'].includes(key)
+      : tx.accountRole === 'revolving-credit' && isRevolvingCardAccount(tx);
+  }
+
+  // Owner October7: the existing Fees plan is an allowance against incurred
+  // bank/card fees. It keeps its authored dates/amount. A payment changes cash
+  // and confirmed coverage, never the incurred cost or full-period deduction.
+  function periodBankFees(plan, asOf, start, end, opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet || !Array.isArray(packet.transactions) || start > asOf) return null;
+    const through = end < asOf ? end : asOf;
+    const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
+    const candidates = packet.transactions.filter(tx => tx && tx.date >= start && tx.date <= through
+      && bankFeeHouseholdAccount(tx) && tx.bankFeeCategory
+      && ['bank-fee', 'bank-fee-category-unconfirmed'].includes(
+        classifyCurrentPeriodTransaction(tx, plan, classifyOpts).reason));
+    const unconfirmed = (packet.bankFeeUnconfirmed || []).some(row => !row.date
+      || row.date >= start && row.date <= through);
+    if (!candidates.length && !unconfirmed) return null; // preserve incumbent legacy-only evidence
+    const unknown = reason => ({ status: 'unavailable', reason, plannedAllowance: null,
+      actual: null, overage: null, periodCost: null, remainingAllowance: null,
+      protectedCash: null, transactions: [], actualTrust: 'unavailable' });
+    if (unconfirmed) return unknown('Fee category identity, native units or date are unconfirmed.');
+    if (!savingsDate(start) || !savingsDate(end) || !savingsDate(asOf)
+      || packet.observationAsOf !== asOf || !savingsDate(packet.coverageStart)
+      || packet.coverageStart > start || !savingsDate(packet.coverageThrough)
+      || packet.coverageThrough < through || packet.coverageThrough > asOf
+      || transactionCoverageStatus(packet) !== 'complete'
+      || pendingCoverageStatus(packet) !== 'complete') {
+      return unknown('Complete, dated fee evidence for this period is unavailable.');
+    }
+    const bills = (plan.bills || []).filter(row => row?.id === 'tdfees');
+    if (bills.length !== 1 || bills[0].needsDate || !billAffectsJointCash(bills[0], plan)
+      || !billIsHouseholdObligation(bills[0]) || savingsCents(bills[0].amount) == null
+      || bills[0].confidence !== 'confirmed') return unknown('The existing fee allowance is unconfirmed.');
+    const dates = outflowDates(bills[0], start, end);
+    if (dates.length > 1) return unknown('The fee allowance has more than one occurrence in this period.');
+    const planned = dates.length ? savingsCents(billOccurrenceCashAmount(bills[0], dates[0])) : 0;
+    if (planned == null) return unknown('The existing fee allowance amount is unavailable.');
+    const linked = new Set((packet.representedActuals || []).filter(row => row?.id === 'tdfees'
+      && row.date >= start && row.date <= end).flatMap(row =>
+        [row.transactionId, ...(row.transactionIds || [])]).filter(Boolean));
+    const duplicates = pendingPostedDuplicateIdSet(packet), seen = new Map(), selected = [];
+    for (const tx of packet.transactions) {
+      if (!tx || tx.date < start || tx.date > through || !bankFeeHouseholdAccount(tx)
+        || skipSplitParent(tx, packet) || isPossibleReplacementPending(tx, duplicates)) continue;
+      const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
+      if (cls.reason !== 'bank-fee' && cls.reason !== 'bank-fee-category-unconfirmed'
+        && !(linked.has(tx.id) && cls.kind === 'bill')) continue;
+      const amount = savingsCents(tx.amount);
+      if (amount == null || tx.currency !== 'cad' || tx.coverageCurrencyConflict === true
+        || tx.bankFeeCategory === 'unconfirmed' || typeof tx.pending !== 'boolean'
+        || !tx.id || tx.pendingPostedAmbiguous || tx.contradictoryEvidence) {
+        return unknown('Fee category identity, amount, currency or replacement evidence is unconfirmed.');
+      }
+      if (!amount) continue;
+      const signature = JSON.stringify([tx.date, amount, tx.account, tx.pending, tx.coverageRef]);
+      if (seen.has(tx.id)) {
+        if (seen.get(tx.id) !== signature) return unknown('Fee transaction evidence conflicts.');
+        continue;
+      }
+      seen.set(tx.id, signature); selected.push(tx);
+    }
+    const coverage = reconcileCardPurchases(packet.transactions, { plan, asOf, packet, debts: opts?.debts });
+    let actual = 0, posted = 0, pending = 0, cardReserve = 0, pendingCash = 0;
+    const transactions = selected.map(tx => {
+      const cents = savingsCents(tx.amount), card = isRevolvingCardAccount(tx);
+      const annotation = card ? cardCoverageAnnotation(tx, coverage) : null;
+      actual += cents;
+      if (tx.pending) pending += cents; else posted += cents;
+      if (card && annotation.remaining != null) cardReserve += savingsCents(annotation.remaining);
+      if (!card && tx.pending === true) pendingCash += cents;
+      const account = (plan.startingCash?.breakdown || []).concat(opts?.debts || plan.debts || [])
+        .find(row => canonicalAccountKey({ account: row.id }) === canonicalAccountKey(tx));
+      return { date: tx.date, amount: cents / 100, accountLabel: account?.label || 'Account label unavailable',
+        pending: tx.pending, cardPaid: card, coverageStatus: annotation?.status || null,
+        remainingCoverage: annotation?.remaining ?? null };
+    });
+    if (![actual, posted, pending, cardReserve, pendingCash].every(Number.isSafeInteger)) {
+      return unknown('Fee totals are outside supported cents.');
+    }
+    const remaining = Math.max(0, planned - actual), cost = Math.max(planned, actual);
+    const coverageKnown = coverage.publication.status !== 'unavailable'
+      && transactions.every(row => !row.cardPaid || row.remainingCoverage != null);
+    return { status: 'ready', asOf, start, end, source: 'Forecast.periodBankFees', reason: null,
+      plannedAllowance: planned / 100, actual: actual / 100, posted: posted / 100, pending: pending / 100,
+      actualTrust: pending ? 'estimated' : 'calculated', overage: Math.max(0, actual - planned) / 100,
+      periodCost: cost / 100, periodCostTrust: pending && actual > planned ? 'estimated' : 'calculated',
+      remainingAllowance: remaining / 100,
+      cardReserve: coverageKnown ? cardReserve / 100 : null, pendingCashReserve: pendingCash / 100,
+      protectedCash: coverageKnown ? (remaining + cardReserve + pendingCash) / 100 : null,
+      coverageStatus: coverageKnown ? 'ready' : 'unconfirmed', transactions };
+  }
+
+  function currentBankFees(plan, opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    const asOf = packet?.observationAsOf;
+    if (!savingsDate(asOf)) return null;
+    const window = operatingPayPeriodWindows(plan, asOf)[0];
+    return window ? periodBankFees(plan, asOf, window.start, window.end, opts) : null;
+  }
+
+  // The cash walk holds only the unincurred allowance. Unpaid card fees
+  // already sit in the incumbent card cash floor; observed paid fees already
+  // left their actual account. None is a second simulated cash payment.
+  function applyFeeAllowanceToCashEvents(plan, start, end, events, opts) {
+    if (opts?.keepRepresented) return events;
+    const fees = currentBankFees(plan, opts);
+    if (fees?.status !== 'ready') return events;
+    const rows = events.filter(e => e.id === 'tdfees' && e.date >= fees.start && e.date <= fees.end);
+    if (rows.length > 1) return events;
+    const out = events.map(e => rows.includes(e)
+      ? { ...e, amount: -fees.remainingAllowance, feeAllowanceRemaining: true } : e);
+    if (fees.pendingCashReserve > 0 && fees.asOf >= start && fees.asOf <= end) out.push({
+      id: 'pending-bank-fees', label: 'Pending bank fees', kind: 'bill', date: fees.asOf,
+      amount: -fees.pendingCashReserve, confidence: 'estimated', jointCash: true });
+    return out;
+  }
+
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
@@ -4931,6 +5055,14 @@
         kind: 'card-payment', categoryId: null, householdSpending: false,
         reason: 'debt-payment-identity', includeReason: 'debt-payment-identity',
       };
+    }
+    const excludedFee = ((plan?.budget?.excluded) || []).some(row =>
+      normalizeCategoryLabel(row?.from || row?.label) === normalizeCategoryLabel(tx.categoryLabel));
+    if (tx.bankFeeCategory && !excludedFee && bankFeeHouseholdAccount(tx)) {
+      return tx.bankFeeCategory === 'verified'
+        ? { kind: 'bill', categoryId: null, householdSpending: false,
+          reason: 'bank-fee', includeReason: 'bank-fee' }
+        : confirmationResult('bank-fee-category-unconfirmed');
     }
     // Dale 2026-09-09: issuer-posted revolving CC finance charges are
     // debt/interest cost. The provider Shopping / Pets label does not
@@ -5701,7 +5833,9 @@
         ...occurrenceTrustFields(e),
       });
     }
-    return items;
+    const fees = periodBankFees(plan, asOf, origin, periodLast, opts);
+    return fees?.status === 'ready' ? items.map(row => row.id === 'tdfees'
+      ? { ...row, remaining: fees.remainingAllowance, fees } : row) : items;
   }
 
   // Represented income already inside this pay period. Same keepRepresented
@@ -7477,13 +7611,31 @@
     };
     const sectionFor = window => {
       const rows = sortRows(buckets[window.id] || []);
-      const total = roundCent(rows.reduce((s, r) => s + displayedBillAbs(r), 0));
-      const remainingTotal = roundCent(rows.reduce((s, r) => {
+      let total = roundCent(rows.reduce((s, r) => s + displayedBillAbs(r), 0));
+      let remainingTotal = roundCent(rows.reduce((s, r) => {
         if (!r || r.status === 'PAID' || r.needsDate) return s;
         const raw = r.remaining != null ? Math.abs(Number(r.remaining))
           : Math.abs(Number(r.amount) || 0);
         return s + raw;
       }, 0));
+      const fees = periodBankFees(plan, asOf, window.start, window.end, opts);
+      if (fees) {
+        const allowanceRows = rows.filter(row => row.id === 'tdfees');
+        let host = allowanceRows[0];
+        if (!host) {
+          host = { id: 'observed-bank-fees', label: 'Fees', kind: 'bill', date: window.start,
+            planned: 0, amount: 0, actual: null, remaining: 0, movement: 0,
+            feeExpenseOnly: true, status: 'incurred', settlement: 'incurred',
+            glanceKind: 'incurred', confidence: 'confirmed' };
+          rows.push(host);
+        }
+        host.fees = fees;
+        total = fees.status === 'ready' ? roundCent(total
+          - allowanceRows.reduce((sum, row) => sum + displayedBillAbs(row), 0) + fees.periodCost) : null;
+        remainingTotal = fees.protectedCash != null ? roundCent(remainingTotal
+          - allowanceRows.reduce((sum, row) => sum + (row.status === 'PAID' ? 0 : row.remaining || 0), 0)
+          + fees.protectedCash) : null;
+      }
       return {
         id: window.id,
         label: window.label,
@@ -8812,6 +8964,7 @@
 
   function billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource) {
     if (!row || row.needsDate) return false;
+    if (row.feeExpenseOnly === true) return false;
     if (row.settledInOpening === true || row.settlement === 'opening') return false;
     if (paidBillAlreadyInPaydayOpening(row, openingAsOf, openingSource)) return false;
     return true;
@@ -9243,6 +9396,7 @@
       if (tx && (cardLike(tx) || paymentLike(tx)) && !savingsDate(tx.date)) issue('coverage-date-unconfirmed');
       if (tx && cardLike(tx) && tx.pending === true && tx.date < origin
         && (classifyCurrentPeriodTransaction(tx, plan, { packet }).householdSpending
+          || classifyCurrentPeriodTransaction(tx, plan, { packet }).reason === 'bank-fee'
           || tx.representedBill === true)
         && !(validOpening && opening.purchases.some(p => p && p.ref === tx.coverageRef))) {
         issue('coverage-pending-before-opening-unconfirmed', tx.coverageRef);
@@ -9271,7 +9425,7 @@
         // the pending authorization as uncovered card spend.
         continue;
       }
-      if (cls.householdSpending || tx.representedBill === true) {
+      if (cls.householdSpending || tx.representedBill === true || cls.reason === 'bank-fee') {
         purchases.set(tx.coverageRef, { ref: tx.coverageRef, accountId: account,
           accountLabel: label(account), date: tx.date, amount: amount / 100,
           categoryLabel: tx.categoryLabel || 'Category unavailable',
@@ -9490,9 +9644,15 @@
     const minimums = cardMinimumState(plan, asOf, opts);
     // Existing operating-cash gates also withhold permission when minimum
     // funding is unknown. Purchase reconciliation itself is left untouched.
-    return minimums.status !== 'unavailable' ? coverage : { ...coverage,
+    const base = minimums.status !== 'unavailable' ? coverage : { ...coverage,
       status: 'unavailable', reason: minimums.reason, reservedCash: null,
       cardMinimumPayments: minimums };
+    const fees = currentBankFees(plan, opts);
+    return base.status !== 'unavailable' && fees
+      && (fees.status !== 'ready' || fees.coverageStatus === 'unconfirmed')
+      ? { ...base, status: 'unavailable', reservedCash: null,
+        reason: fees.reason || 'Fee cash coverage is unconfirmed; verify the opening and explicit payment allocations.' }
+      : base;
   }
   function simulationCashFloor(sim) {
     return sim.requiredCashFloor != null ? sim.requiredCashFloor : sim.buffer;
@@ -9558,7 +9718,8 @@
       const bills = lookback
         ? assignedBillRows.map(row => sealHistoricalBillRow(Object.assign({}, row)))
         : assignedBillRows;
-      const remainingBills = lookback ? historicalRemainingBills(bills)
+      const fees = bills.find(row => row.fees)?.fees;
+      const remainingBills = fees && fees.protectedCash == null ? null : lookback ? historicalRemainingBills(bills)
         : section.remainingTotal != null
         ? section.remainingTotal
         : roundCent(bills.reduce((s, r) => {
@@ -9566,7 +9727,7 @@
           return s + (r.remaining != null ? Math.abs(Number(r.remaining))
             : Math.abs(Number(r.amount) || 0));
         }, 0));
-      const totalBillsThisPeriod = lookback
+      const totalBillsThisPeriod = fees ? fees.status === 'ready' ? section.total : null : lookback
         ? roundCent(bills.reduce((s, r) => s + periodDisplayedBillAbs(r), 0))
         : section.total != null
         ? section.total
@@ -9666,9 +9827,12 @@
       // remains visibly unproven for settlement. Opening cash is not added
       // to Payday balance.
       const available = planUnavailable ? null : incomeTotal;
-      const periodBillLoad = planUnavailable
+      const baseFeeLoad = periodWaterfallBillLoad(assignedBillRows.filter(row => row.id === 'tdfees'),
+        openingAsOf, openingSource);
+      const periodBillLoad = planUnavailable || fees?.status === 'unavailable'
         ? null
-        : periodWaterfallBillLoad(assignedBillRows, openingAsOf, openingSource);
+        : roundCent(periodWaterfallBillLoad(assignedBillRows, openingAsOf, openingSource)
+          + (fees ? fees.periodCost - baseFeeLoad : 0));
       const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
       // Balance After Deductions is the household remaining:
       // displayed period income − assigned bills − Household Budget.
@@ -9680,10 +9844,13 @@
         : null;
       const afterRemainingBills = afterBills;
       const incomeTrust = periodWaterfallTotalTrust(income, incomeTotal, row => row.amount);
-      const periodBillLoadTrust = periodWaterfallTotalTrust(
+      const assignedBillLoadTrust = periodWaterfallTotalTrust(
         assignedBillRows.filter(row => billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)),
         periodBillLoad, row => row.planned != null ? row.planned : row.amount);
-      const afterBillsTrust = periodWaterfallCombinedTrust(incomeTrust, periodBillLoadTrust);
+      const periodBillLoadTrust = periodWaterfallCombinedTrust(assignedBillLoadTrust,
+        fees ? fees.status === 'ready' ? fees.periodCostTrust : 'unavailable' : 'calculated');
+      const afterBillsTrust = periodWaterfallCombinedTrust(incomeTrust, periodBillLoadTrust,
+        fees ? fees.status === 'ready' ? fees.actualTrust : 'unavailable' : 'calculated');
       const afterHouseholdBudget = afterBills != null
         ? roundCent(afterBills - budget.hold) : null;
       const balanceAfterDeductionsTrust = periodWaterfallCombinedTrust(afterBillsTrust,
@@ -12076,6 +12243,19 @@
       actual: settledActual(period && period.income, 'income'), semantics: 'confirmed received / original scheduled plan' };
     const bills = { planned: originalPlan(period && period.bills, plannedAmount, plannedTrust),
       actual: settledActual(period && period.bills, 'bills'), semantics: 'confirmed settled paid / original scheduled plan' };
+    const fees = (period?.bills || []).find(row => row.fees)?.fees;
+    if (fees) {
+      const other = settledActual((period.bills || []).filter(row => row.id !== 'tdfees'
+        && row.feeExpenseOnly !== true), 'bills');
+      bills.actual = readable && fees.status === 'ready'
+        ? { ...stamp(roundCent((other.amount ?? 0) + fees.actual),
+          periodWaterfallCombinedTrust(other.amount == null ? 'calculated' : other.trust, fees.actualTrust),
+          other.completeness, other.reason), includesPending: fees.pending > 0,
+          evidence: [...(other.evidence || []), { id: 'bank-fees', actual: fees.actual,
+            posted: fees.posted, pending: fees.pending }] }
+        : unknown(fees.reason || actualReason);
+      bills.semantics = 'confirmed settled bills plus incurred Bank fees / original scheduled plan; pending fees stay pending';
+    }
     const categories = period && period.householdBudget;
     const cycle = period && period.spendingCycle;
     const householdScope = scope && cycle && cycle.start === period.start && cycle.end === period.end;

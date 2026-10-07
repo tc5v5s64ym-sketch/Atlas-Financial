@@ -406,6 +406,14 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     || (fromIndex && fromIndex.excludeFromBudget === true);
   const minimumCategoryDebt = fromIndex && categoryName === fromIndex.name && raw.is_pending === false
     ? MinimumCategory.categoryDebt(fromIndex) : null;
+  // Owner's existing Bank fees category is identity, not a merchant/note rule.
+  // Keep only a qualification flag in the public actuals projection, not its id.
+  const feeCategory = fromIndex?.name === 'Bank fees' || categoryName === 'Bank fees';
+  const bankFeeCategory = !feeCategory ? null : fromIndex?.name === 'Bank fees'
+    && categoryName === fromIndex.name && !fromIndex.archived && !fromIndex.isGroup
+    && !fromIndex.isIncome && !fromIndex.excludeFromTotals && !fromIndex.excludeFromBudget
+    && [...categoriesById.values()].filter(c => c.name === 'Bank fees').length === 1
+    ? 'verified' : 'unconfirmed';
   return {
     provider: 'lunchmoney',
     providerTransactionId: String(raw.id),
@@ -433,6 +441,7 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     categoryId,
     categoryLabel: categoryName,
     minimumCategoryDebt,
+    bankFeeCategory,
     isIncome,
     excludeFromTotals,
     excludeFromBudget,
@@ -4236,6 +4245,18 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   const txs = [];
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
+  const bankFeeUnconfirmed = [];
+  for (const tx of report?.transactions || []) {
+    if (!tx?.bankFeeCategory) continue;
+    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
+    const id = mapping?.canonical?.id, role = atlasAccountRole(mapping);
+    const household = role === 'household-cash' && ['chequing-a','chequing-b','savings'].includes(id)
+      || role === 'revolving-credit' && ['cashback','tdcc','mbna','travelvisa','triangle'].includes(id);
+    if (household && (tx.bankFeeCategory !== 'verified' || !tx.date
+      || lunchMoneyDebitAmount(tx.amount) == null || tx.currency !== 'cad'
+      || tx.coverageCurrencyConflict === true)) bankFeeUnconfirmed.push({
+        date: tx.date || null, reason: 'fee-category-units-or-date-unconfirmed' });
+  }
   // Collapse omits undated rows; keep their mapped-card evidence unknown.
   for (const tx of report && report.transactions || []) {
     if (tx && !tx.date && atlasAccountRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null) === 'revolving-credit') {
@@ -4287,6 +4308,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       mcc: tx.mcc,
       categoryLabel: tx.categoryLabel,
       atlasAccountId,
+      bankFeeCategory: tx.bankFeeCategory,
       account: atlasAccountId,
       accountId: atlasAccountId,
       date: tx.date,
@@ -4329,6 +4351,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       pendingTreatment: treatment.treatment,
       categoryLabel: tx.categoryLabel || null,
       displayedPayee: sanitizedMerchantIdentity(tx.payee),
+      bankFeeCategory: tx.bankFeeCategory,
       originalMerchant: sanitizedMerchantIdentity(tx.originalName || tx.payee),
       isIncome: tx.isIncome === true,
       excludeFromTotals: tx.excludeFromTotals === true,
@@ -4438,7 +4461,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   let transactionCoverage = 'complete';
   if (window.truncated === true || window.complete === false || window.hasMore === true) {
     transactionCoverage = 'truncated';
-  } else if (cardCoverageUnconfirmed.length || currencyUnconfirmed.length || txs.some(tx => tx && tx.accountRole === 'unmapped')) {
+  } else if (cardCoverageUnconfirmed.length || currencyUnconfirmed.length || bankFeeUnconfirmed.length
+    || txs.some(tx => tx && tx.accountRole === 'unmapped')) {
     transactionCoverage = 'incomplete';
   }
   let coverageStart = window.startDate || null;
@@ -4460,6 +4484,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     cardCoverageUnconfirmed,
     cardCoverageRequired: ((mapDoc && mapDoc.mappings) || []).some(m => atlasAccountRole(m) === 'revolving-credit'),
     currencyUnconfirmed,
+    bankFeeUnconfirmed,
     paydayGapComplete: paydayGapCompleteFromEvidence({
       plan: opts.plan,
       asOf,
