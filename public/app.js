@@ -362,33 +362,54 @@ const App = (() => {
     setupTheme();
     setupSpy();
     watchStackableTables();
-    const wants = [fetch('/data.json', { credentials: 'same-origin' })
-      .then(r => { if (r.status === 401) { location.href = '/login'; throw new Error('auth'); } return r.json(); })];
-    wants.push(opts.periods
-      ? fetch('/periods.json', { credentials: 'same-origin' })
-        .then(r => r.ok ? r.json() : null)
-        .catch(() => null)
-      : Promise.resolve(null));
-    wants.push(opts.history
-      ? fetch('/balance-history.json', { credentials: 'same-origin' })
-        .then(r => r.ok ? r.json() : null)
-        .catch(() => null)
-      : Promise.resolve(null));
-    Promise.all(wants).then(([d, p, h]) => {
-      DATA = d; PERIODS = p || null; HISTORY = h || null;
-      const asof = $('asof');
-      if (asof) {
-        asof.textContent = formatSiteAsOfChip(d, PERIODS);
-      }
-      for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
-      rerender();
-    }).catch(err => {
-      if (err.message === 'auth') return;
-      console.error(err);
-      const wrap = document.querySelector('.wrap');
-      if (wrap) wrap.insertAdjacentHTML('afterbegin',
-        '<div class="note-box crit">Could not load the data file. Check the server logs.</div>');
-    });
+    const wrap = document.querySelector('.wrap');
+    const notice = document.createElement('div');
+    notice.className = 'note-box';
+    notice.setAttribute('role', 'status');
+    if (wrap) wrap.prepend(notice);
+    function load() {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      notice.className = 'note-box';
+      notice.textContent = 'Loading current data...';
+      const wants = [fetch('/data.json', { credentials: 'same-origin', signal: controller.signal })
+        .then(r => {
+          if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
+          if (!r.ok) throw new Error('data unavailable');
+          return r.json();
+        })];
+      wants.push(opts.periods
+        ? fetch('/periods.json', { credentials: 'same-origin', signal: controller.signal })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+        : Promise.resolve(null));
+      wants.push(opts.history
+        ? fetch('/balance-history.json', { credentials: 'same-origin', signal: controller.signal })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+        : Promise.resolve(null));
+      Promise.all(wants).then(([d, p, h]) => {
+        DATA = d; PERIODS = p || null; HISTORY = h || null;
+        const asof = $('asof');
+        if (asof) {
+          asof.textContent = formatSiteAsOfChip(d, PERIODS);
+        }
+        for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
+        rerender();
+        notice.remove();
+      }).catch(err => {
+        if (err.message === 'auth') return;
+        controller.abort();
+        notice.className = 'note-box crit';
+        notice.textContent = 'Current data could not be loaded. Figures remain unavailable. ';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', load);
+        notice.append(retry);
+      }).finally(() => clearTimeout(timer));
+    }
+    load();
   }
 
   return {

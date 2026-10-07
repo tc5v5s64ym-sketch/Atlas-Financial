@@ -478,17 +478,26 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
   };
 }
 
-function httpsGetJson(url, token) {
+function httpsGetJson(url, token, options) {
   return new Promise((resolve, reject) => {
+    const signal = options && options.signal;
+    let req;
+    const cancelled = () => {
+      if (req && typeof req.destroy === 'function') req.destroy();
+      done(new Error('Live refresh cancelled.'));
+    };
     let settled = false;
     const done = (err, value) => {
       if (settled) return;
       settled = true;
+      if (signal) signal.removeEventListener('abort', cancelled);
       if (err) reject(err);
       else resolve(value);
     };
     const lib = requestLibFor(url);
-    const req = lib.request(url, {
+    if (signal && signal.aborted) { cancelled(); return; }
+    if (signal) signal.addEventListener('abort', cancelled, { once: true });
+    req = lib.request(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -497,6 +506,8 @@ function httpsGetJson(url, token) {
     }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
+      res.on('aborted', () => done(new Error('Lunch Money request failed.')));
+      res.on('error', () => done(new Error('Lunch Money request failed.')));
       res.on('end', () => {
         const body = Buffer.concat(chunks).toString('utf8');
         if (res.statusCode === 401 || res.statusCode === 403) {
@@ -524,9 +535,9 @@ function httpsGetJson(url, token) {
   });
 }
 
-async function tryGetJson(url, token) {
+async function tryGetJson(url, token, options) {
   try {
-    return await httpsGetJson(url, token);
+    return await httpsGetJson(url, token, options);
   } catch (err) {
     if (/HTTP 404/.test(err.message)) return null;
     throw err;
@@ -668,7 +679,7 @@ async function fetchLunchMoneyTransactionsPaged(url, token, opts) {
   let pages = 0;
   let truncated = false;
   while (pages < maxPages) {
-    const payload = await httpsGetJson(withPage(url, offset, limit), token);
+    const payload = await httpsGetJson(withPage(url, offset, limit), token, opts);
     const txs = (payload && payload.transactions) || [];
     all.push(...txs);
     pages += 1;
@@ -713,16 +724,17 @@ async function fetchLunchMoneyLive(token, now, historyDays, options) {
   const env = options && options.env ? options.env : process.env;
   const base = lunchMoneyApiBase(env);
   const txUrl = lunchMoneyTransactionsUrl(now, historyDays, base);
-  await httpsGetJson(new URL(`${base}/me`), token);
-  const plaid = await tryGetJson(new URL(`${base}/plaid_accounts`), token);
-  let manuals = await tryGetJson(new URL(`${base}/manual_accounts`), token);
-  if (!manuals) manuals = await tryGetJson(new URL(`${base}/assets`), token);
-  const categoriesPayload = await tryGetJson(new URL(`${base}/categories`), token);
-  const tagsPayload = await tryGetJson(new URL(`${base}/tags`), token);
-  const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token);
+  await httpsGetJson(new URL(`${base}/me`), token, options);
+  const plaid = await tryGetJson(new URL(`${base}/plaid_accounts`), token, options);
+  let manuals = await tryGetJson(new URL(`${base}/manual_accounts`), token, options);
+  if (!manuals) manuals = await tryGetJson(new URL(`${base}/assets`), token, options);
+  const categoriesPayload = await tryGetJson(new URL(`${base}/categories`), token, options);
+  const tagsPayload = await tryGetJson(new URL(`${base}/tags`), token, options);
+  const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token, options);
   const pendingPage = await fetchLunchMoneyTransactionsPaged(
     lunchMoneyPendingUniverseUrl(base),
-    token
+    token,
+    options
   );
   return {
     provider: 'lunchmoney',

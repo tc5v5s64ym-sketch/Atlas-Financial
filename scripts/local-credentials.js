@@ -126,6 +126,7 @@ function runDpapi(mode, filePath, stdin, options) {
           encoding: 'buffer',
           maxBuffer: 1024 * 1024,
           timeout: 15000,
+          ...(mode === 'unprotect' && options && options.signal ? { signal: options.signal } : {}),
         },
         (err, stdout) => finish(err, stdout)
       );
