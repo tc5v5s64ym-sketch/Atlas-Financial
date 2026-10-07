@@ -58,7 +58,10 @@ is still the whole financial picture of two people.
   expiry/not-before, and scope on every request. Lunch Money tools also require
   an authenticated JWT `sub`; catalog/query require `atlas.transactions.read`
   and preview/apply require `atlas.transactions.write`. `atlas.current.read`
-  does not grant ledger access.
+  does not grant ledger access. A preview/apply call from a token without
+  `atlas.transactions.write` is refused with HTTP 403 `insufficient_scope`
+  naming all three scopes, so the MCP client can ask for write consent on
+  demand; the base challenge never requests write up front.
   Only category/notes edits and amount-conserving splits are supported.
   Opaque access tokens are not supported.
 - OAuth login, consent, authorization-code + PKCE, client registration, token
