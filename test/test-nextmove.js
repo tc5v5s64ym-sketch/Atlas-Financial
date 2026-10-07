@@ -645,7 +645,7 @@ ok(!!moveSrc, 'the nextMove function is readable from forecast.js');
 const engineIds = [...new Set([...(moveSrc ? moveSrc[0] : '')
   .matchAll(/\bid: '([A-Za-z]+)'/g)].map(m => m[1]))].sort();
 const wordedIds = Object.keys(NEXT_MOVE).sort();
-ok(engineIds.length === 5, 'the engine emits five outcomes', engineIds.join(', '));
+ok(engineIds.length === 6, 'the engine emits five financial outcomes plus unavailable', engineIds.join(', '));
 ok(engineIds.every(id => wordedIds.includes(id)),
   'the page has wording for every outcome the engine can emit',
   engineIds.filter(id => !wordedIds.includes(id)).join(', ') || 'none missing');

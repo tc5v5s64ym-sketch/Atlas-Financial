@@ -148,6 +148,7 @@ const MISSION_PART = {
 // only so the opening-gap sentence can print `startingCash` — a published fact
 // straight from data.json, exactly as the funding lede below prints it.
 const STATUS_BAND = {
+  unavailable: { tone: 'crit', text: s => `<b>Current plan unavailable.</b> ${s.reason}` },
   infeasible: { tone: 'crit', text: s =>
     `<b>INFEASIBLE — the protected plan cannot work.</b> ${s.label || 'A protected constraint'}
        fails${s.date ? ` on ${fmtDateLong(s.date)}` : ''} by ${money2(s.shortfall)} at the
@@ -232,6 +233,7 @@ const ROOM_VERSUS_HOUSEHOLD = {
 // An outcome the engine can emit without wording here is a rendering failure,
 // so `test-nextmove.js` checks that the two sides still name the same set.
 const NEXT_MOVE = {
+  unavailable: s => s.reason,
   unfunded: s =>
     `Even with everything available moved across, ${money(s.shortfall)} of the
      ${money(s.gapAmount)} stays unfunded and the balance holds below the ${money(s.buffer)} buffer.

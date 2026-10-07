@@ -646,7 +646,7 @@ ok(!!statusSrc, 'the planStatus function is readable from forecast.js');
 const engineIds = [...new Set([...(statusSrc ? statusSrc[0] : '')
   .matchAll(/\bid: '([A-Za-z]+)'/g)].map(m => m[1]))].sort();
 const wordedIds = Object.keys(STATUS_BAND).sort();
-ok(engineIds.length === 8, 'the engine emits eight verdicts', engineIds.join(', '));
+ok(engineIds.length === 9, 'the engine emits eight financial verdicts plus unavailable', engineIds.join(', '));
 ok(engineIds.every(id => wordedIds.includes(id)),
   'the page has wording for every verdict the engine can emit',
   engineIds.filter(id => !wordedIds.includes(id)).join(', ') || 'none missing');

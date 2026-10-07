@@ -97,6 +97,14 @@ for (const kind of ['amanda', 'payroll']) {
   eq(debt.status, 'unavailable', kind + ': debt feasibility cannot use supplied affirmative plans');
   eq(debt.feasible, null, kind + ': debt feasibility unknown, not false/zero');
   const advice = F.recommend(plan, input.asOf, opts), debtProj = F.projectDebts(plan, out.data.debts, input.asOf, opts);
+  const pageSource = fs.readFileSync(path.join(__dirname, '../public/plan.js'), 'utf8');
+  for (const name of ['STATUS_BAND', 'NEXT_MOVE']) {
+    const source = pageSource.match(new RegExp('^const ' + name + ' = \\{[\\s\\S]*?^\\};$', 'm'))[0];
+    const render = vm.runInNewContext(source + ';' + name + '.unavailable');
+    const text = name === 'STATUS_BAND' ? render.text({ reason }) : render({ reason });
+    eq(text.includes(reason), true, kind + ': real ' + name + ' printer retains native reason');
+    eq(/\$0|undefined|NaN|Infinity/.test(text), false, kind + ': real ' + name + ' printer does not invent money');
+  }
   const staleOpts = { ...opts, sim: conditionalSim, weeklyOverride: 0 };
   const actions = F.currentPeriodAction(plan, input.asOf, { ...opts, paydayAllocation: F.paydayAllocation(conditional, input.asOf, opts) });
   eq(actions.unavailable, true, kind + ': supplied conditional allocation cannot create action');
