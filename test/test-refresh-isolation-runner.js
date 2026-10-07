@@ -206,6 +206,10 @@ const changed = require('../data.json').number !== 10;
 console.log(changed ? '  FAIL  synthetic canonical reconciliation' : '  PASS  synthetic reconciliation');
 process.exit(changed ? 1 : 0);
 `);
+  write('test/marker-reader.js', `
+require('../public/marker.js');
+console.log('  PASS  current tracked module loads');
+`);
   git(['init', '--quiet']);
   git(['add', '.']);
   git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -273,6 +277,92 @@ assert.deepStrictEqual(fs.readdirSync(temp), []);
     }), caught => caught === error);
     assert(!fs.existsSync(fixture), 'exception cleanup removes the fixture');
     unchanged();
+  });
+  const sameIndex = copy => {
+    assert.strictEqual(git(['ls-files', '--stage', '-z'], copy),
+      git(['ls-files', '--stage', '-z']));
+    assert.strictEqual(git(['diff', '--cached', '--raw', '-z'], copy),
+      git(['diff', '--cached', '--raw', '-z']));
+  };
+  const sameMissingModule = copy => {
+    const sourceRun = runSuite('marker-reader.js', source);
+    const fixtureRun = runSuite('marker-reader.js', copy);
+    for (const result of [sourceRun, fixtureRun]) {
+      assert.strictEqual(result.kind, 'execution-failure', result.out);
+      assert(result.out.includes('MODULE_NOT_FOUND'), result.out);
+      assert.strictEqual(isExpectedFailure(result, ['marker-reader.js']), false);
+    }
+    assert(!fs.existsSync(path.join(copy, 'public/marker.js')));
+    sameIndex(copy);
+    unchanged();
+  };
+  check('unstaged tracked deletion stays absent and the real child still fails', () => {
+    fs.unlinkSync(path.join(source, 'public/marker.js'));
+    withMutatedFixture(source, () => {}, sameMissingModule);
+    write('public/marker.js', 'module.exports = "current edited source";\n');
+  });
+  check('staged deletion cannot be resurrected from HEAD into a false green', () => {
+    git(['rm', '--quiet', '--force', 'public/marker.js']);
+    withMutatedFixture(source, () => {}, sameMissingModule);
+    git(['reset', '--quiet', 'HEAD', '--', 'public/marker.js']);
+    write('public/marker.js', 'module.exports = "current edited source";\n');
+  });
+  check('staged addition keeps index membership and staged bytes beneath current edits', () => {
+    write('public/added.js', 'module.exports = "staged addition";\n');
+    git(['add', 'public/added.js']);
+    write('public/added.js', 'module.exports = "unstaged addition edit";\n');
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert(git(['ls-files', '-z'], copy).split('\0').includes('public/added.js'));
+      assert.strictEqual(git(['show', ':public/added.js'], copy),
+        'module.exports = "staged addition";\n');
+      assert.strictEqual(require(path.join(copy, 'public/added.js')), 'unstaged addition edit');
+      unchanged();
+    });
+  });
+  check('staged rename keeps its new path and never restores the missing old module', () => {
+    git(['mv', 'public/marker.js', 'public/renamed.js']);
+    withMutatedFixture(source, () => {}, copy => {
+      sameMissingModule(copy);
+      assert(git(['ls-files', '-z'], copy).split('\0').includes('public/renamed.js'));
+      assert.strictEqual(require(path.join(copy, 'public/renamed.js')), 'current edited source');
+    });
+  });
+  check('mixed staged/unstaged edits preserve current files and the distinct staged view', () => {
+    write('public/renamed.js', 'module.exports = "staged modification";\n');
+    git(['add', 'public/renamed.js']);
+    write('public/renamed.js', 'module.exports = "unstaged modification";\n');
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert.strictEqual(git(['show', ':public/renamed.js'], copy),
+        'module.exports = "staged modification";\n');
+      assert.strictEqual(require(path.join(copy, 'public/renamed.js')), 'unstaged modification');
+      assert.strictEqual(require(path.join(copy, 'public/added.js')), 'unstaged addition edit');
+      assert(!fs.existsSync(path.join(copy, 'public/marker.js')));
+      unchanged();
+    });
+  });
+  check('an index-only deletion preserves a physically present HEAD path without tracking it', () => {
+    write('public/marker.js', 'module.exports = "physically present untracked HEAD path";\n');
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert(!git(['ls-files', '-z'], copy).split('\0').includes('public/marker.js'));
+      assert.strictEqual(require(path.join(copy, 'public/marker.js')),
+        'physically present untracked HEAD path');
+      assert.strictEqual(runSuite('marker-reader.js', copy).ok, true);
+      unchanged();
+    });
+  });
+  check('split source index remains independent and preserves staged/current views', () => {
+    git(['update-index', '--split-index']);
+    assert(git(['rev-parse', '--shared-index-path']).trim());
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert.strictEqual(git(['show', ':public/added.js'], copy),
+        'module.exports = "staged addition";\n');
+      assert.strictEqual(require(path.join(copy, 'public/added.js')), 'unstaged addition edit');
+      unchanged();
+    });
   });
   check('abrupt termination cannot write canonical data; leftover copy is confined to the temporary directory', () => {
     const temp = path.join(sandbox, 'cancel-temp');
