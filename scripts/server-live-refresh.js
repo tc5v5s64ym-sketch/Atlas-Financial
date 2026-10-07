@@ -1,7 +1,7 @@
 'use strict';
 // Request lifecycle only. The existing LivePlan/Forecast modules own all values.
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
-const LIVE_REFRESH_TIMEOUT_MS = 15000;
+const LIVE_REFRESH_TIMEOUT_MS = 150000;
 const MAX_ACTIVE_LIVE_REFRESHES = 2;
 
 if (!isMainThread) {

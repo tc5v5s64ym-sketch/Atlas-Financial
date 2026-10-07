@@ -27,8 +27,16 @@ async function stalled(mode,fn){
  finally{provider.closeAllConnections();await new Promise(resolve=>provider.close(resolve));}
 }
 (async()=>{
- check(Refresh.LIVE_REFRESH_TIMEOUT_MS,15000,'absolute production refresh budget');
+ check(Refresh.LIVE_REFRESH_TIMEOUT_MS,150000,'finite compatibility refresh budget');
  check(Refresh.MAX_ACTIVE_LIVE_REFRESHES,2,'worker concurrency is bounded without a data cache');
+ await stalled('trickle',async(env,state)=>{
+  const controller=new AbortController(),scheduled=[],original=setTimeout;
+  global.setTimeout=(fn,ms,...args)=>{scheduled.push(ms);return original(fn,ms,...args);};
+  let work;try{work=Refresh.serve(canonical,env,{signal:controller.signal,timeoutMs:300000});}finally{global.setTimeout=original;}
+  controller.abort();await assert.rejects(work,error=>error.code==='live-refresh-cancelled');checks++;
+  check(scheduled[0],150000,'caller cannot raise the finite production cap');
+  await pause(150);check(state.active,0,'cap proof cancellation leaves no provider work');
+ });
  const mock=await startMockProvider('ok');
  try{
   const env=envFor(mock.base),before=JSON.stringify(canonical);
@@ -95,7 +103,7 @@ async function stalled(mode,fn){
  const busy=await new Promise((resolve,reject)=>{let output='';const child=cp.spawn(process.execPath,['--require',path.join(__dirname,'fixtures/live-refresh-busy-worker.js'),'-e',busyProgram],{cwd:root,env:baseEnv,stdio:['ignore','pipe','pipe'],windowsHide:true});child.stdout.on('data',chunk=>output+=chunk);child.on('error',reject);child.on('exit',code=>resolve({code,output}));});
  check(busy,{code:0,output:'busy terminated\n'},'deadline interrupts synchronous worker work');
  await stalled('trickle',async(env,state)=>{
-  const port=await freePort(),atlas=await startAtlas({...env,PORT:String(port),SITE_PASSWORD:PASS,SESSION_SECRET:SECRET,ATLAS_ASSISTANT_TOKEN:'synthetic-assistant-token-long-enough'}),base='http://127.0.0.1:'+port;
+  const port=await freePort(),shortFixture=path.join(__dirname,'fixtures/live-refresh-short-budget.js').replace(/\\/g,'/'),atlas=await startAtlas({...env,NODE_OPTIONS:'--require "'+shortFixture+'"',PORT:String(port),SITE_PASSWORD:PASS,SESSION_SECRET:SECRET,ATLAS_ASSISTANT_TOKEN:'synthetic-assistant-token-long-enough'}),base='http://127.0.0.1:'+port;
   try{
    const unauthorized=await fetch(base+'/data.json',{redirect:'manual'});check(unauthorized.status,401,'session guard unchanged');check(state.calls,0,'unauthorized request starts no provider work');
    const auth=await login(base);check(auth.status,302,'synthetic login unchanged');
@@ -103,7 +111,7 @@ async function stalled(mode,fn){
    await pause(500);const healthStart=performance.now(),health=await fetch(base+'/healthz');check(await health.text(),'ok','health stays responsive during refresh');assert.ok(performance.now()-healthStart<500);checks++;
    const data=await response;check(data.status,503,'whole server deadline returns explicit unavailable');check(await data.json(),{error:'data unavailable'},'deadline publishes no stale financial payload');
    timings.httpDeadlineMs=Math.round(performance.now()-start);
-   assert.ok(performance.now()-start<17500);checks++;
+   assert.ok(performance.now()-start<3000);checks++;
    await pause(150);check(state.active,0,'HTTP deadline leaves no provider work');
    const controller=new AbortController(),cancelled=fetch(base+'/data.json',{headers:{cookie:auth.cookie},signal:controller.signal});await pause(300);controller.abort();await assert.rejects(cancelled);checks++;
    await pause(250);check(state.active,0,'HTTP client disconnect cancels refresh');
