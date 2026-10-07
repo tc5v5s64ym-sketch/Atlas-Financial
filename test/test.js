@@ -34,6 +34,8 @@ const suites = [
   ['bounded salary occurrence diagnostic scope and conservation', 'test-salary-diagnostic-occurrences.js'],
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
   ['Bills header includes recorded minimum money without changing original requirements', 'test-bills-header-payments.js'],
+  ['Bills-only expected period-end balance and fulfilled funding evidence', 'test-bills-period-end-balance.js'],
+  ['independent Bills closing negative controls', 'test-bills-period-end-negative-controls.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
   ['bounded strict card-minimum date validation', 'test-card-minimum-date-cache.js'],

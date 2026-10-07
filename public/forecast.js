@@ -9044,6 +9044,185 @@
   }
 
 
+  // Owner 2026-10-07: expected period-end stock of BILLS only. This
+  // derives a separate estimate; it never replaces the period-income BAD,
+  // Savings capacity, Month, or the signed A+B simulation opening.
+  function billsAccountPeriodBalance(plan, asOf, opts) {
+    opts = opts || {};
+    const day = financialDate(asOf), cycle = spendingCycle(plan, day);
+    const issues = [], issue = (code, message) => {
+      if (!issues.some(row => row.code === code && row.message === message)) issues.push({ code, message });
+    };
+    const finite = value => typeof value === 'number' && Number.isFinite(value);
+    const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+    const cashRows = rows.filter(row => row && row.id === BILLS_ACCOUNT_ID);
+    const cashRow = cashRows.length === 1 ? cashRows[0] : null;
+    const cash = cashRow && finite(cashRow.value) && cashRow.unknown !== true
+      ? postedBillsAccountCash(plan) : null;
+    const observedRows = (opts.observedCash && opts.observedCash.accounts || [])
+      .filter(row => row && (row.accountId || row.id) === BILLS_ACCOUNT_ID);
+    const observedRow = observedRows.length === 1 ? observedRows[0] : null;
+    const cashDate = financialDate(observedRow && (observedRow.evidenceDate || observedRow.asOf || observedRow.observedAsOf))
+      || financialDate(plan && plan.opening && plan.opening.asOf);
+    if (cash == null || !cashDate || !day || cashDate > day) {
+      issue('bills-cash-unavailable', 'A dated posted Bills account balance is unavailable.');
+    }
+    if (observedRows.length > 1 || observedRow && (!finite(observedRow.value) || observedRow.value !== cash)) {
+      issue('cash-observation-misaligned', 'The Bills plan row does not match its native cash observation.');
+    }
+    if (!cycle || !cycle.start || !cycle.end) issue('period-unavailable', 'The active pay period is unavailable.');
+    if (opts.operatingPlan === 'unavailable') issue('operating-plan-unavailable', opts.operatingPlanNote || 'The current cash observation is untrusted.');
+    const packet = currentPeriodActualsPacket(opts);
+    const through = cycle && day < cycle.end ? day : cycle && cycle.end;
+    const posted = cycle && postedAccountMovements(plan, BILLS_ACCOUNT_ID, { start: cycle.start, through }, opts);
+    if (!posted || posted.complete !== true) issue('posted-window-incomplete', 'Posted Bills movements do not cover this pay period completely.');
+    if (posted?.movements?.some(row => cashDate && row.date > cashDate)) {
+      issue('cash-observation-misaligned', 'Newer posted Bills movements are not proven inside the dated balance.');
+    }
+    if (!packet || pendingCoverageStatus(packet) !== 'complete') issue('pending-coverage-incomplete', 'Pending cash coverage is incomplete.');
+    const budget = cycle ? calendarHouseholdBudget(plan, day, cycle.start, cycle.end, 'active', opts) : null;
+    if (!budget || !budget.spentReady || !finite(budget.hold)) issue('household-actuals-incomplete', 'Household target and actual evidence is incomplete.');
+    const coverage = cardCoverageState(plan, day, opts);
+    if (coverage.status === 'unavailable') issue('card-coverage-unavailable', coverage.reason);
+    const incomeState = incomeReconciliationState(plan, day, opts);
+    if (incomeState.status === 'unavailable') issue('income-unavailable', incomeState.reason);
+    const transactions = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
+    const nativeIds = new Set(), byId = new Map(), byRef = new Map();
+    for (const tx of transactions) {
+      if (!tx || skipSplitParent(tx, packet)) continue;
+      const id = tx.id == null ? '' : String(tx.id);
+      if (!id || nativeIds.has(id)) issue('posted-window-incomplete', 'A cash transaction identity is missing or duplicated.');
+      nativeIds.add(id); byId.set(id, tx);
+      if (tx.coverageRef) byRef.set(tx.coverageRef, tx);
+      if (tx.accountRole !== 'household-external' && (householdCashLocationId(tx) || isRevolvingCardAccount(tx))
+        && (!finite(tx.amount) || !savingsDate(tx.date) || tx.currency?.trim().toLowerCase() !== 'cad'
+          || tx.pendingPostedAmbiguous || tx.pendingPostedDuplicate || tx.contradictoryEvidence)) {
+        issue('cash-evidence-untrusted', 'Transaction dates, CAD units or pending identity are untrusted.');
+      }
+    }
+    const supporting = cycle ? householdBudgetSupportingRows(plan, packet, cycle.start, through, opts) : [];
+    const eligibleIds = new Set(supporting.map(({ tx }) => String(tx.id)));
+    const eligibleCardRefs = new Set(supporting.filter(({ tx, amount }) => amount > 0 && isRevolvingCardAccount(tx))
+      .map(({ tx }) => tx.coverageRef));
+    const recon = reconcileCardPurchases(transactions, { plan, asOf: day, packet: packet || {}, debts: opts.debts });
+    let weeklyFunding = 0, directFunding = 0, cardFunding = 0, pendingBillsHousehold = 0, categoryCardCash = 0;
+    let fundingEventCount = 0;
+    const usedCash = new Set();
+    const takeFunding = id => {
+      if (usedCash.has(id)) { issue('funding-identity-reused', 'One posted cash event cannot fund two household purposes.'); return false; }
+      usedCash.add(id); fundingEventCount++; return true;
+    };
+    for (const mov of posted && posted.movements || []) {
+      const tx = byId.get(String(mov.id));
+      if (mov.internalTransfer && mov.counterpartAccountId === 'chequing-b') {
+        if (takeFunding(String(mov.id))) weeklyFunding = roundCent(weeklyFunding - mov.amount);
+      } else if (eligibleIds.has(String(mov.id))) {
+        if (takeFunding(String(mov.id))) directFunding = roundCent(directFunding - mov.amount);
+      } else if (mov.amount < 0 && tx && isInternalTransferIdentity(tx) && !mov.internalTransfer
+        && ['UNKNOWN', 'transfer'].includes(mov.classification)) {
+        issue('unpaired-bills-transfer', 'A Bills transfer has no proven destination and funding purpose.');
+      }
+    }
+    for (const { tx, amount } of supporting) {
+      if (tx.pending === true && householdCashLocationId(tx) === BILLS_ACCOUNT_ID) {
+        pendingBillsHousehold = roundCent(pendingBillsHousehold + amount);
+      }
+      if (eligibleCardRefs.has(tx.coverageRef) && coverage.status !== 'unavailable') {
+        const annotation = recon.annotations.get(tx.coverageRef);
+        if (!annotation || !finite(annotation.remaining)) issue('card-coverage-unavailable', 'Current household card funding is unconfirmed.');
+        else categoryCardCash = roundCent(categoryCardCash + annotation.remaining);
+      }
+    }
+    // Only the incumbent reconciler's ready result permits reading these
+    // confirmed existing policy allocations. Its native pair/intent validation
+    // owns this proof; no date/amount heuristic assigns backfill purpose here.
+    if (coverage.status === 'ready') {
+      const policy = plan.cardPurchaseCoverage;
+      const countParts = (record, cashRef, sign) => {
+        const leg = byRef.get(cashRef);
+        if (!leg || !cycle || leg.date < cycle.start || leg.date > through) return;
+        const amount = roundCent((record.allocations || []).filter(part => eligibleCardRefs.has(part.purchaseRef))
+          .reduce((sum, part) => sum + part.amount, 0));
+        if (amount && takeFunding(String(leg.id))) cardFunding = roundCent(cardFunding + sign * amount);
+      };
+      for (const record of policy && policy.payments || []) countParts(record, record.debitRef, 1);
+      for (const record of policy && policy.reversals || []) countParts(record, record.cashCreditRef, -1);
+    }
+    for (const tx of transactions) {
+      if (tx?.pending !== true || householdCashLocationId(tx) !== BILLS_ACCOUNT_ID || !(tx.amount > 0)) continue;
+      if (!eligibleIds.has(String(tx.id)) && tx.pendingMatchingCardPaidBill !== true) {
+        issue('pending-bills-purpose-unconfirmed', 'A pending Bills debit is not assigned to a known remaining cash requirement.');
+      }
+    }
+    const target = budget && finite(budget.hold) ? budget.hold : null;
+    const funded = roundCent(weeklyFunding + directFunding + cardFunding);
+    const requiredCashFloor = roundCent(pendingBillsHousehold + categoryCardCash);
+    const remainingHousehold = target == null ? null : roundCent(Math.max(0, target - funded, requiredCashFloor));
+    // Current-cycle category card purchases already enter H. Only uncovered
+    // carry / noncategory card bills enter this separate cash term.
+    const additionalCardCash = coverage.status === 'ready' && finite(coverage.reservedCash)
+      ? roundCent(Math.max(0, coverage.reservedCash - categoryCardCash)) : coverage.status === 'incumbent' ? 0 : null;
+    let futureIncome = 0, remainingBills = 0, otherOutflows = 0;
+    const futureCashKeys = new Set(), evidence = [];
+    const addCash = (key, amount, kind, source) => {
+      if (futureCashKeys.has(key)) { issue('future-cash-identity-reused', 'A remaining cash occurrence is duplicated.'); return; }
+      futureCashKeys.add(key);
+      if (!finite(amount) || amount < 0) { issue('remaining-cash-unknown', 'A remaining cash requirement is unknown.'); return; }
+      if (kind === 'income') futureIncome = roundCent(futureIncome + amount);
+      else if (kind === 'bill') remainingBills = roundCent(remainingBills + amount);
+      else otherOutflows = roundCent(otherOutflows + amount);
+      evidence.push({ kind, amount, source });
+    };
+    if (cycle) {
+      const windows = [{ id: 'bills-closing-active', role: 'active', start: cycle.start, end: cycle.end }];
+      const calendar = calendarBillSections(plan, day, { ...opts, periodWindows: windows });
+      for (const row of calendar.bills || []) {
+        const amount = Object.hasOwn(row, 'additionalCashRequired') ? row.additionalCashRequired : row.remaining;
+        if ((row.settlement === 'represented' && !Object.hasOwn(row, 'additionalCashRequired')) || row.settlement === 'opening') continue;
+        if (!['confirmed', 'estimated'].includes(row.confidence) && amount !== 0) {
+          issue('remaining-cash-unknown', 'The confidence of a remaining bill cash requirement is unknown.'); continue;
+        }
+        addCash((row.occurrenceKey || row.id + '@' + row.date), amount, 'bill', 'Forecast.calendarBillSections');
+      }
+      const events = expandEvents(plan, day, cycle.end, opts);
+      const representedIncome = representedKeySet(plan, opts, day);
+      const observedIncome = representedActualMap(opts);
+      for (const event of events) {
+        if (event.kind === 'income') {
+          if (calendarOccurrenceRepresented(representedIncome, observedIncome, event.id, event.date)) continue;
+          // Today is already in posted cash or needs the incumbent payday
+          // recognition proof. Never add an unrepresented earlier salary.
+          if (event.date <= day) {
+            if (event.amount > 0) issue('same-day-income-unconfirmed', 'Same-day income is not proven inside the posted Bills observation.');
+            continue;
+          }
+          if (event.notReliedUpon || event.notReliedUponReason) continue;
+          if (!['confirmed', 'estimated'].includes(event.confidence)) {
+            issue('income-unavailable', 'A future income amount is not qualified by the existing plan.'); continue;
+          }
+          addCash(event.id + '@' + event.date, event.amount, 'income', 'Forecast.expandEvents');
+        } else if (['commitment', 'reserve'].includes(event.kind) && event.jointCash !== false) {
+          const amount = -operatingEventAmount(event);
+          if (amount > 0) addCash(event.id + '@' + event.date, amount, 'other', 'Forecast.expandEvents');
+        }
+      }
+    }
+    const amount = issues.length || cash == null || remainingHousehold == null || additionalCardCash == null ? null
+      : roundCent(cash + futureIncome - remainingBills - remainingHousehold - otherOutflows - additionalCardCash);
+    return { source: 'Forecast.billsAccountPeriodBalance', scope: 'bills-only', accountId: BILLS_ACCOUNT_ID,
+      currency: 'CAD', asOf: day, start: cycle && cycle.start, end: cycle && cycle.end,
+      status: amount == null ? 'unavailable' : 'ready', trust: amount == null ? 'unknown' : 'estimated', amount,
+      observedCash: cash, observedAsOf: cashDate, futureIncome, remainingBills, otherOutflows,
+      additionalCardCash, household: { target, funded, remaining: issues.length ? null : remainingHousehold,
+        weeklyFunding, directFunding, cardFunding, requiredCashFloor, fundingEventCount,
+        basis: 'active-budget-hold-less-observed-bills-funding', trust: 'estimated',
+        assumption: 'Current-period household funding fulfills the aggregate period target; category allocation is not established.' },
+      issues, reason: issues.length ? issues[0].message : null, evidence,
+      provenance: ['Forecast.postedBillsAccountCash', 'Forecast.postedAccountMovements', 'Forecast.householdInternalMovements',
+        'Forecast.calendarHouseholdBudget', 'Forecast.reconcileCardPurchases', 'Forecast.cardMinimumState', 'Forecast.expandEvents'],
+      grantsSpendPermission: false };
+  }
+
   function billsLocationEffectForMovement(movement) {
     if (!movement) return null;
     const srcBills = movement.sourceAccountId === BILLS_ACCOUNT_ID;
@@ -9883,6 +10062,7 @@
         plan, BILLS_ACCOUNT_ID,
         operatingCashExplanationWindow(active, asOf),
         calendarOpts);
+      active.billsAccountPeriodBalance = billsAccountPeriodBalance(plan, asOf, calendarOpts);
     }
     return {
       calendarPeriods: periods,
@@ -9956,6 +10136,7 @@
       cashNote: null,
       liveCurrentBalance,
       currentBalancePublication: (alloc && alloc.currentBalancePublication) || null,
+      billsAccountPeriodBalance: activePeriod && activePeriod.billsAccountPeriodBalance || null,
       periodStart,
       periodEnd: cycleEnd,
       currentBalance: leftover.currentBalance,
@@ -20803,7 +20984,7 @@
     };
   }
 
-  const Forecast = { minimumCategoryAllocationConflict, incomeReconciliationState, cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
+  const Forecast = { billsAccountPeriodBalance, minimumCategoryAllocationConflict, incomeReconciliationState, cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
