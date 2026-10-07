@@ -1,7 +1,10 @@
 'use strict';
 const assert = require('assert');
 const path = require('path');
-const { timeoutForSuite, runSuite, isExpectedFailure, failureOutput } =
+const fs = require('fs');
+const os = require('os');
+const { execFileSync } = require('child_process');
+const { withMutatedFixture, timeoutForSuite, runSuite, isExpectedFailure, failureOutput } =
   require('./lib/refresh-isolation-runner');
 
 let checks = 0;
@@ -169,4 +172,253 @@ console.log('=== B20 deliberate reconciliation rejection ===');
     assert.strictEqual(timeoutForSuite('test-invariants.js'), 180000);
   });
 }
-console.log(`ALL ${checks} CHECKS PASSED (synthetic execution; no deadline wait)`);
+console.log('=== complete fixture lifecycle (synthetic repository, real children) ===');
+const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-refresh-controls-'));
+const source = path.join(sandbox, 'source');
+fs.mkdirSync(source);
+function write(relative, content) {
+  const file = path.join(source, relative);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content);
+}
+function git(args, cwd = source) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' });
+}
+try {
+  write('data.json', '{"number":10}\n');
+  write('.gitignore', 'raw/\n.env\n');
+  write('docs/provenance.txt', 'synthetic independent history\n');
+  write('public/marker.js', 'module.exports = "committed source";\n');
+  write('test/behavior.js', `
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+assert.strictEqual(require('../data.json').number, 17);
+assert.strictEqual(require('../public/marker'), 'current edited source');
+assert.strictEqual(fs.readFileSync(path.join(process.cwd(), 'docs/provenance.txt'), 'utf8'),
+  'synthetic independent history\\n');
+assert.strictEqual(JSON.parse(execFileSync('git', ['show', 'HEAD:data.json'], { encoding: 'utf8' })).number, 10);
+console.log('  PASS  complete fixture, current source, relative requires, cwd and independent Git history');
+`);
+  write('test/reconciliation.js', `
+const changed = require('../data.json').number !== 10;
+console.log(changed ? '  FAIL  synthetic canonical reconciliation' : '  PASS  synthetic reconciliation');
+process.exit(changed ? 1 : 0);
+`);
+  write('test/marker-reader.js', `
+require('../public/marker.js');
+console.log('  PASS  current tracked module loads');
+`);
+  git(['init', '--quiet']);
+  git(['add', '.']);
+  git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    'commit', '--quiet', '-m', 'Synthetic fixture baseline']);
+  write('public/marker.js', 'module.exports = "current edited source";\n');
+  write('raw/never-copy.txt', 'ignored local sentinel');
+  write('.env', 'ignored local sentinel');
+  const canonical = path.join(source, 'data.json');
+  const original = fs.readFileSync(canonical);
+  const originalMtime = fs.statSync(canonical, { bigint: true }).mtimeNs;
+  const unchanged = () => {
+    assert(fs.readFileSync(canonical).equals(original));
+    assert.strictEqual(fs.statSync(canonical, { bigint: true }).mtimeNs, originalMtime);
+  };
+  check('clone and mutation setup failures remove their temporary fixtures', () => {
+    const temp = path.join(sandbox, 'setup-temp');
+    fs.mkdirSync(temp);
+    const setup = `
+const assert = require('assert');
+const fs = require('fs');
+const [runner, source, temp] = process.argv.slice(1);
+const { withMutatedFixture } = require(runner);
+const error = new Error('synthetic mutation failure');
+assert.throws(() => withMutatedFixture(source, () => { throw error; }, () => {
+  throw new Error('callback must not run');
+}), caught => caught === error);
+assert.deepStrictEqual(fs.readdirSync(temp), []);
+assert.throws(() => withMutatedFixture(source + '-missing', () => {}, () => {}));
+assert.deepStrictEqual(fs.readdirSync(temp), []);
+`;
+    execFileSync(process.execPath, ['-e', setup,
+      path.join(__dirname, 'lib/refresh-isolation-runner.js'), source, temp], {
+      encoding: 'utf8', stdio: 'pipe', timeout: 20000,
+      env: { ...process.env, TMPDIR: temp, TEMP: temp, TMP: temp },
+    });
+    assert.deepStrictEqual(fs.readdirSync(temp), []);
+    unchanged();
+  });
+  let fixture;
+  check('real child suites receive the complete mutated fixture while canonical bytes never move', () => {
+    const returned = withMutatedFixture(source, data => { data.number += 7; }, copy => {
+      fixture = copy;
+      unchanged();
+      assert(!fs.existsSync(path.join(copy, 'raw')));
+      assert(!fs.existsSync(path.join(copy, '.env')));
+      assert.strictEqual(fs.readFileSync(path.join(copy, 'data.json'), 'utf8'), '{\n  "number": 17\n}\n');
+      const behavior = runSuite('behavior.js', copy);
+      assert.strictEqual(behavior.ok, true, behavior.out);
+      const recon = runSuite('reconciliation.js', copy);
+      assert.strictEqual(recon.fails, 1, recon.out);
+      assert.strictEqual(isExpectedFailure(recon, ['reconciliation.js']), true);
+      unchanged();
+      return 'callback result';
+    });
+    assert.strictEqual(returned, 'callback result');
+    assert(!fs.existsSync(fixture), 'normal completion removes the fixture');
+    unchanged();
+  });
+  check('callback exceptions retain the exact error and remove the mutated fixture', () => {
+    const error = new Error('synthetic callback failure');
+    assert.throws(() => withMutatedFixture(source, data => { data.number = 99; }, copy => {
+      fixture = copy;
+      unchanged();
+      throw error;
+    }), caught => caught === error);
+    assert(!fs.existsSync(fixture), 'exception cleanup removes the fixture');
+    unchanged();
+  });
+  const sameIndex = copy => {
+    assert.strictEqual(git(['ls-files', '--stage', '-z'], copy),
+      git(['ls-files', '--stage', '-z']));
+    assert.strictEqual(git(['diff', '--cached', '--raw', '-z'], copy),
+      git(['diff', '--cached', '--raw', '-z']));
+  };
+  const sameMissingModule = copy => {
+    const sourceRun = runSuite('marker-reader.js', source);
+    const fixtureRun = runSuite('marker-reader.js', copy);
+    for (const result of [sourceRun, fixtureRun]) {
+      assert.strictEqual(result.kind, 'execution-failure', result.out);
+      assert(result.out.includes('MODULE_NOT_FOUND'), result.out);
+      assert.strictEqual(isExpectedFailure(result, ['marker-reader.js']), false);
+    }
+    assert(!fs.existsSync(path.join(copy, 'public/marker.js')));
+    sameIndex(copy);
+    unchanged();
+  };
+  check('unstaged tracked deletion stays absent and the real child still fails', () => {
+    fs.unlinkSync(path.join(source, 'public/marker.js'));
+    withMutatedFixture(source, () => {}, sameMissingModule);
+    write('public/marker.js', 'module.exports = "current edited source";\n');
+  });
+  check('staged deletion cannot be resurrected from HEAD into a false green', () => {
+    git(['rm', '--quiet', '--force', 'public/marker.js']);
+    withMutatedFixture(source, () => {}, sameMissingModule);
+    git(['reset', '--quiet', 'HEAD', '--', 'public/marker.js']);
+    write('public/marker.js', 'module.exports = "current edited source";\n');
+  });
+  check('staged addition keeps index membership and staged bytes beneath current edits', () => {
+    write('public/added.js', 'module.exports = "staged addition";\n');
+    git(['add', 'public/added.js']);
+    write('public/added.js', 'module.exports = "unstaged addition edit";\n');
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert(git(['ls-files', '-z'], copy).split('\0').includes('public/added.js'));
+      assert.strictEqual(git(['show', ':public/added.js'], copy),
+        'module.exports = "staged addition";\n');
+      assert.strictEqual(require(path.join(copy, 'public/added.js')), 'unstaged addition edit');
+      unchanged();
+    });
+  });
+  check('staged rename keeps its new path and never restores the missing old module', () => {
+    git(['mv', 'public/marker.js', 'public/renamed.js']);
+    withMutatedFixture(source, () => {}, copy => {
+      sameMissingModule(copy);
+      assert(git(['ls-files', '-z'], copy).split('\0').includes('public/renamed.js'));
+      assert.strictEqual(require(path.join(copy, 'public/renamed.js')), 'current edited source');
+    });
+  });
+  check('mixed staged/unstaged edits preserve current files and the distinct staged view', () => {
+    write('public/renamed.js', 'module.exports = "staged modification";\n');
+    git(['add', 'public/renamed.js']);
+    write('public/renamed.js', 'module.exports = "unstaged modification";\n');
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert.strictEqual(git(['show', ':public/renamed.js'], copy),
+        'module.exports = "staged modification";\n');
+      assert.strictEqual(require(path.join(copy, 'public/renamed.js')), 'unstaged modification');
+      assert.strictEqual(require(path.join(copy, 'public/added.js')), 'unstaged addition edit');
+      assert(!fs.existsSync(path.join(copy, 'public/marker.js')));
+      unchanged();
+    });
+  });
+  check('an index-only deletion preserves a physically present HEAD path without tracking it', () => {
+    write('public/marker.js', 'module.exports = "physically present untracked HEAD path";\n');
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert(!git(['ls-files', '-z'], copy).split('\0').includes('public/marker.js'));
+      assert.strictEqual(require(path.join(copy, 'public/marker.js')),
+        'physically present untracked HEAD path');
+      assert.strictEqual(runSuite('marker-reader.js', copy).ok, true);
+      unchanged();
+    });
+  });
+  check('split source index remains independent and preserves staged/current views', () => {
+    git(['update-index', '--split-index']);
+    assert(git(['rev-parse', '--shared-index-path']).trim());
+    withMutatedFixture(source, () => {}, copy => {
+      sameIndex(copy);
+      assert.strictEqual(git(['show', ':public/added.js'], copy),
+        'module.exports = "staged addition";\n');
+      assert.strictEqual(require(path.join(copy, 'public/added.js')), 'unstaged addition edit');
+      unchanged();
+    });
+  });
+  check('abrupt termination cannot write canonical data; leftover copy is confined to the temporary directory', () => {
+    const temp = path.join(sandbox, 'cancel-temp');
+    fs.mkdirSync(temp);
+    const cancel = `
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const [runner, source, temp] = process.argv.slice(1);
+const canonical = path.join(source, 'data.json');
+const before = fs.readFileSync(canonical);
+const mtime = fs.statSync(canonical, { bigint: true }).mtimeNs;
+const childCode = \`const fs = require('fs');
+const [runner, source] = process.argv.slice(1);
+require(runner).withMutatedFixture(source, d => { d.number = 777; }, fixture => {
+  fs.writeSync(1, fixture + String.fromCharCode(10));
+  while (true) {}
+});\`;
+const child = spawn(process.execPath, ['-e', childCode, runner, source], {
+  env: { ...process.env, TMPDIR: temp, TEMP: temp, TMP: temp },
+  stdio: ['ignore', 'pipe', 'inherit'],
+});
+let fixture;
+let output = '';
+const timer = setTimeout(() => { child.kill('SIGKILL'); }, 15000);
+child.stdout.on('data', chunk => {
+  output += chunk;
+  if (fixture || !output.includes('\\n')) return;
+  fixture = output.trim();
+  assert.strictEqual(path.dirname(fixture), temp);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(fixture, 'data.json'))).number, 777);
+  assert(fs.readFileSync(canonical).equals(before));
+  assert.strictEqual(fs.statSync(canonical, { bigint: true }).mtimeNs, mtime);
+  assert(child.kill('SIGKILL'));
+});
+child.once('close', (code, signal) => {
+  clearTimeout(timer);
+  assert(fixture, 'child must reach the active mutation before it is killed');
+  assert(code !== 0 || signal, 'child must terminate abruptly');
+  assert(fs.readFileSync(canonical).equals(before));
+  assert.strictEqual(fs.statSync(canonical, { bigint: true }).mtimeNs, mtime);
+  assert(fs.existsSync(fixture), 'forced kill may bypass fixture cleanup');
+  fs.rmSync(fixture, { recursive: true, force: true });
+  assert(!fs.existsSync(fixture), 'the test supervisor removes its leftover copy');
+  console.log('cancelled safely; canonical bytes and mtime unchanged; supervisor cleanup passed');
+});
+`;
+    const output = execFileSync(process.execPath, ['-e', cancel,
+      path.join(__dirname, 'lib/refresh-isolation-runner.js'), source, temp],
+    { encoding: 'utf8', timeout: 20000 });
+    assert(output.includes('cancelled safely'), output);
+    assert.deepStrictEqual(fs.readdirSync(temp), []);
+    unchanged();
+  });
+} finally {
+  fs.rmSync(sandbox, { recursive: true, force: true });
+}
+console.log(`ALL ${checks} CHECKS PASSED (synthetic execution and real fixture children; no deadline wait)`);
