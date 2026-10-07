@@ -26,6 +26,8 @@ const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const {
   StreamableHTTPClientTransport,
 } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
+const { UnauthorizedError } = require('@modelcontextprotocol/sdk/client/auth.js');
+const { InMemoryTransport } = require('@modelcontextprotocol/sdk/inMemory.js');
 const O = require('../scripts/provider-observe.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -252,8 +254,48 @@ async function startOAuthIssuer() {
   publicJwk.use = 'sig';
   const otherPair = await jose.generateKeyPair('RS256', { extractable: true });
   let issuer;
+  // Synthetic authorization codes / refresh tokens for the SDK step-up proof.
+  // Granted scope = requested ∩ assigned, like an RBAC issuer; refresh never
+  // widens scope.
+  const codes = new Map();
+  const refreshTokens = new Map();
+  const tokenRequests = [];
+  let sequence = 0;
+  async function tokenResponse(grant) {
+    const body = {
+      access_token: await sign(grant.resource, { scope: grant.scope }),
+      token_type: 'Bearer',
+      expires_in: 300,
+      scope: grant.scope,
+    };
+    if (grant.refresh) {
+      const refreshToken = `synthetic-refresh-${++sequence}`;
+      refreshTokens.set(refreshToken, grant);
+      body.refresh_token = refreshToken;
+    }
+    return body;
+  }
   const server = http.createServer((req, res) => {
     res.setHeader('content-type', 'application/json');
+    if (req.method === 'POST' && req.url === '/token') {
+      const chunks = [];
+      req.on('data', chunk => chunks.push(chunk));
+      req.on('end', async () => {
+        const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+        const grantType = form.get('grant_type');
+        tokenRequests.push(grantType);
+        const grant = grantType === 'authorization_code' ? codes.get(form.get('code'))
+          : grantType === 'refresh_token' ? refreshTokens.get(form.get('refresh_token'))
+            : null;
+        if (grantType === 'authorization_code') codes.delete(form.get('code'));
+        if (!grant || (grantType === 'authorization_code' && !form.get('code_verifier'))) {
+          res.statusCode = 400;
+          return res.end(JSON.stringify({ error: 'invalid_grant' }));
+        }
+        return res.end(JSON.stringify(await tokenResponse(grant)));
+      });
+      return undefined;
+    }
     if (req.url === '/.well-known/oauth-authorization-server') {
       return res.end(JSON.stringify({
         issuer,
@@ -294,11 +336,30 @@ async function startOAuthIssuer() {
       .setExpirationTime(overrides.expiresAt === undefined ? now + 300 : overrides.expiresAt)
       .sign(key);
   }
+  function grantScope(requested, assigned) {
+    const asked = String(requested || '').split(/\s+/).filter(Boolean);
+    return (assigned ? asked.filter(scope => assigned.includes(scope)) : asked).join(' ');
+  }
+  // Simulates the user approving an authorization request: returns a code
+  // bound to requested ∩ assigned scope for this resource.
+  function issueCode(requestedScope, resource, opts) {
+    opts = opts || {};
+    const code = `synthetic-code-${++sequence}`;
+    codes.set(code, { scope: grantScope(requestedScope, opts.assigned), resource,
+      refresh: opts.refresh === true });
+    return code;
+  }
+  async function issueTokens(scope, resource, opts) {
+    return tokenResponse({ scope, resource, refresh: !!(opts && opts.refresh) });
+  }
   return {
     issuer,
     jwksUri: `${issuer}jwks`,
     otherPrivateKey: otherPair.privateKey,
     sign,
+    issueCode,
+    issueTokens,
+    tokenRequests: () => tokenRequests.slice(),
     close: () => new Promise(done => server.close(() => done())),
   };
 }
@@ -310,7 +371,7 @@ async function startLunchMoneyStub() {
     plaid_account_id: 4, manual_account_id: null, is_pending: false, status: 'reviewed',
   };
   const categories = [{ id: 3, name: 'Groceries' }, { id: 8, name: 'Household' }];
-  let hits = 0; let transactionFailure = false;
+  let hits = 0; let writes = 0; let transactionFailure = false;
   const server = http.createServer((req, res) => {
     hits += 1;
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -348,6 +409,7 @@ async function startLunchMoneyStub() {
       } else if (req.method === 'GET' && p.startsWith('/transactions/')) {
         data = tx;
       } else if (req.method === 'PUT' && p.startsWith('/transactions/')) {
+        writes += 1;
         Object.assign(tx, body);
         data = tx;
       } else {
@@ -366,6 +428,7 @@ async function startLunchMoneyStub() {
   return {
     base: `http://127.0.0.1:${server.address().port}/v2`,
     hits: () => hits,
+    writes: () => writes,
     resetHits: () => { hits = 0; },
     failTransactions: value => { transactionFailure = value; },
     close: () => new Promise(done => server.close(() => done())),
@@ -382,6 +445,18 @@ async function withOfficialMcp(resource, token, fn) {
     return await fn(client);
   } finally {
     await client.close().catch(() => {});
+  }
+}
+
+// A write-tool call without atlas.transactions.write must be refused at HTTP
+// (403 insufficient_scope) before MCP dispatch. Without an auth provider the
+// official client surfaces that as StreamableHTTPError 403.
+async function httpRefusal(promise) {
+  try {
+    await promise;
+    return null;
+  } catch (err) {
+    return err;
   }
 }
 
@@ -1242,17 +1317,16 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       ok(deniedQuery.isError === true
           && deniedQuery.structuredContent.reason === 'transaction-read-scope-required',
         'packet-only OAuth token cannot read Lunch Money transactions');
-      const deniedPrepare = await client.callTool({
+      const deniedPrepare = await httpRefusal(client.callTool({
         name: 'prepare_lunchmoney_edit',
         arguments: { transactionRef: 'tx-' + 'a'.repeat(24), changes: { notes: 'no' } },
-      });
-      ok(deniedPrepare.isError === true
-          && deniedPrepare.structuredContent.reason === 'transaction-write-scope-required',
-        'packet-only OAuth token cannot prepare Lunch Money edits');
-      const deniedEdit = await client.callTool({ name: 'apply_lunchmoney_edit',
-        arguments: { previewId: 'edit-' + 'a'.repeat(48), confirmed: true } });
-      ok(deniedEdit.isError === true && deniedEdit.structuredContent.reason === 'transaction-write-scope-required',
-        'packet-only OAuth token cannot apply Lunch Money edits');
+      }));
+      ok(deniedPrepare && deniedPrepare.code === 403,
+        'packet-only OAuth token cannot prepare Lunch Money edits (HTTP 403 step-up)');
+      const deniedEdit = await httpRefusal(client.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: 'edit-' + 'a'.repeat(48), confirmed: true } }));
+      ok(deniedEdit && deniedEdit.code === 403,
+        'packet-only OAuth token cannot apply Lunch Money edits (HTTP 403 step-up)');
       ok(lunchMoney.hits() === 0,
         'packet-only Lunch Money denials never reach the provider');
       const catalogTool = listed.tools.find(tool => tool.name === 'get_lunchmoney_catalog');
@@ -1293,13 +1367,14 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         'permissions claim alone does not widen ledger access beyond JWT scope');
       ok(lunchMoney.hits() === 0,
         'permissions-only widening denial never reaches the provider');
-      const deniedWriteWiden = await widenClient.callTool({
+      const deniedWriteWiden = await httpRefusal(widenClient.callTool({
         name: 'prepare_lunchmoney_edit',
         arguments: { transactionRef: 'tx-' + 'c'.repeat(24), changes: { notes: 'no' } },
-      });
-      ok(deniedWriteWiden.isError === true
-          && deniedWriteWiden.structuredContent.reason === 'transaction-write-scope-required',
+      }));
+      ok(deniedWriteWiden && deniedWriteWiden.code === 403,
         'read-scope-absent token cannot prepare writes even when permissions list write');
+      ok(lunchMoney.hits() === 0,
+        'permissions-only write denial never reaches the provider');
     });
 
     const readToken = await oauth.sign(resource, {
@@ -1349,21 +1424,24 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
           && failedQuery.structuredContent.diagnostic.upstreamStatus === 429
           && !JSON.stringify(failedQuery).includes('synthetic-private-ledger-and-token'),
         'authenticated MCP failures preserve safe stage/code/status without provider body');
-      const deniedWrite = await readClient.callTool({
+      lunchMoney.resetHits();
+      const deniedWrite = await httpRefusal(readClient.callTool({
         name: 'prepare_lunchmoney_edit',
         arguments: {
           transactionRef: queried.structuredContent.rows[0].transactionRef,
           changes: { notes: 'no' },
         },
-      });
-      ok(deniedWrite.isError === true
-          && deniedWrite.structuredContent.reason === 'transaction-write-scope-required',
-        'ledger-read OAuth token cannot prepare Lunch Money edits');
-      const deniedApply = await readClient.callTool({ name: 'apply_lunchmoney_edit',
-        arguments: { previewId: 'edit-' + 'b'.repeat(48), confirmed: true } });
-      ok(deniedApply.isError === true
-          && deniedApply.structuredContent.reason === 'transaction-write-scope-required',
-        'ledger-read OAuth token cannot apply Lunch Money edits');
+      }));
+      ok(deniedWrite && deniedWrite.code === 403,
+        'ledger-read OAuth token cannot prepare Lunch Money edits (HTTP 403 step-up)');
+      const deniedApply = await httpRefusal(readClient.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: 'edit-' + 'b'.repeat(48), confirmed: true } }));
+      ok(deniedApply && deniedApply.code === 403,
+        'ledger-read OAuth token cannot apply Lunch Money edits (HTTP 403 step-up)');
+      ok(lunchMoney.hits() === 0, 'ledger-read write denials never reach the provider');
+      const stillReads = await readClient.callTool({ name: 'get_lunchmoney_catalog', arguments: {} });
+      ok(stillReads.isError === false && stillReads.structuredContent.status === 'ok',
+        'ledger-read token still reads after a write step-up refusal');
 
     });
 
@@ -1399,6 +1477,277 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         'write-scoped OAuth token can apply a confirmed Lunch Money edit');
     });
 
+    console.log('\n  -- operation-specific write step-up: HTTP 403 insufficient_scope --');
+    const stepUpScope = [AssistantMcp.REQUIRED_SCOPE, LunchMoney.READ_SCOPE, LunchMoney.WRITE_SCOPE].join(' ');
+    const readScope = `${AssistantMcp.REQUIRED_SCOPE} ${LunchMoney.READ_SCOPE}`;
+    const expectedStepUp = `Bearer error="insufficient_scope", scope="${stepUpScope}", `
+      + `resource_metadata="${base}${AssistantOAuth.METADATA_PATH}"`;
+    ok(AssistantOAuth.WRITE_STEP_UP_SCOPES.join(' ') === stepUpScope
+        && AssistantOAuth.CHALLENGE_SCOPES.join(' ') === readScope,
+      'write step-up names all three scopes; base challenge stays packet+ledger-read');
+    const bearer = token => ({ authorization: `Bearer ${token}` });
+    const toolCall = (id, name, args) => ({
+      jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args || {} },
+    });
+    const prepareArgs = { transactionRef: 'tx-' + 'd'.repeat(24), changes: { notes: 'no' } };
+    const applyArgs = { previewId: 'edit-' + 'd'.repeat(48), confirmed: true };
+    async function expectStepUp(res, label) {
+      const body = await res.json().catch(() => null);
+      ok(res.status === 403
+          && res.headers.get('www-authenticate') === expectedStepUp
+          && body && body.error === 'insufficient_scope',
+        label, `status ${res.status} challenge ${res.headers.get('www-authenticate')}`);
+    }
+    lunchMoney.resetHits();
+    const writesBeforeStepUp = lunchMoney.writes();
+    await expectStepUp(await mcp(bearer(readToken), toolCall(11, 'prepare_lunchmoney_edit', prepareArgs)),
+      'read-only token calling prepare gets HTTP 403 with the exact write step-up challenge');
+    await expectStepUp(await mcp(bearer(readToken), toolCall(12, 'apply_lunchmoney_edit', applyArgs)),
+      'read-only token calling apply gets HTTP 403 with the exact write step-up challenge');
+    await expectStepUp(await mcp(bearer(accessToken), toolCall(13, 'prepare_lunchmoney_edit', prepareArgs)),
+      'packet-only token calling a write tool gets the same write step-up challenge');
+    await expectStepUp(await mcp(bearer(permissionsOnlyWiden), toolCall(14, 'apply_lunchmoney_edit', applyArgs)),
+      'permissions-claim-only write does not pass the write step-up');
+    const permissionsWriteToken = await oauth.sign(resource, {
+      scope: readScope,
+      permissions: [AssistantMcp.REQUIRED_SCOPE, LunchMoney.READ_SCOPE, LunchMoney.WRITE_SCOPE],
+    });
+    await expectStepUp(await mcp(bearer(permissionsWriteToken), toolCall(15, 'prepare_lunchmoney_edit', prepareArgs)),
+      'ledger-read token with write only in permissions still gets the write step-up');
+    await expectStepUp(await mcp(bearer(readToken), [
+      toolCall(16, 'get_lunchmoney_catalog'),
+      toolCall(17, 'prepare_lunchmoney_edit', prepareArgs),
+    ]), 'a batch containing a write tool call fails closed with the write step-up');
+    await expectStepUp(await mcp(bearer(readToken), [null, 5, 'x', [], {},
+      toolCall(18, 'apply_lunchmoney_edit', applyArgs)]),
+    'junk batch members do not hide a write tool call');
+    const notification = { jsonrpc: '2.0', method: 'tools/call',
+      params: { name: 'apply_lunchmoney_edit', arguments: applyArgs } };
+    await expectStepUp(await mcp(bearer(readToken), notification),
+      'a write tool call without an id is still stepped up');
+
+    for (const [label, body] of [
+      ['params null', { jsonrpc: '2.0', id: 21, method: 'tools/call', params: null }],
+      ['params array', { jsonrpc: '2.0', id: 22, method: 'tools/call', params: ['apply_lunchmoney_edit'] }],
+      ['name array', { jsonrpc: '2.0', id: 23, method: 'tools/call',
+        params: { name: ['apply_lunchmoney_edit'], arguments: applyArgs } }],
+      ['missing name in batch', [toolCall(24, 'get_lunchmoney_catalog'),
+        { jsonrpc: '2.0', id: 25, method: 'tools/call', params: { arguments: applyArgs } }]],
+    ]) {
+      for (const [who, token] of [['read-only', readToken], ['write', writeToken]]) {
+        const res = await mcp(bearer(token), body);
+        const parsed = await res.json().catch(() => null);
+        ok(res.status === 400 && parsed && parsed.error && parsed.error.code === -32600,
+          `unclassifiable tools/call (${label}, ${who} token) fails closed with 400`, `status ${res.status}`);
+      }
+    }
+    const brokenJson = await fetch(resource, {
+      method: 'POST',
+      headers: Object.assign({ accept: 'application/json, text/event-stream',
+        'content-type': 'application/json' }, bearer(readToken)),
+      body: '{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"apply_lunchmoney_edit"',
+    });
+    ok(brokenJson.status === 400, 'malformed JSON naming a write tool fails closed with 400',
+      `status ${brokenJson.status}`);
+    const writeShaped = [AssistantMcp.REQUIRED_SCOPE, LunchMoney.READ_SCOPE, LunchMoney.WRITE_SCOPE].join(' ');
+    for (const [label, overrides] of [
+      ['wrong signing key', { scope: writeShaped, key: oauth.otherPrivateKey }],
+      ['expired', { scope: writeShaped, expiresAt: Math.floor(Date.now() / 1000) - 30 }],
+      ['wrong audience', { scope: writeShaped, audience: `${base}/not-atlas` }],
+      ['wrong issuer', { scope: writeShaped, issuer: 'https://evil.example/' }],
+    ]) {
+      const forged = await oauth.sign(resource, overrides);
+      const res = await mcp(bearer(forged), toolCall(32, 'apply_lunchmoney_edit', applyArgs));
+      ok(res.status === 401, `unverifiable write-scoped token (${label}) is refused with 401`, `status ${res.status}`);
+    }
+    ok(lunchMoney.hits() === 0 && lunchMoney.writes() === writesBeforeStepUp,
+      'no step-up denial, malformed body or unverifiable token reaches the provider or writes');
+
+    const readInit = await mcp(bearer(readToken), initialize);
+    ok(readInit.status === 200 && !readInit.headers.get('www-authenticate'),
+      'read-only token initialize is unchanged (200, no challenge)');
+    const readList = await mcp(bearer(readToken), { jsonrpc: '2.0', id: 41, method: 'tools/list' });
+    const readListBody = await readList.json();
+    ok(readList.status === 200 && readListBody.result.tools.length === 5,
+      'read-only token tools/list is unchanged and still lists the write tools');
+    const readCatalogRaw = await mcp(bearer(readToken), toolCall(42, 'get_lunchmoney_catalog'));
+    const readCatalogBody = await readCatalogRaw.json();
+    ok(readCatalogRaw.status === 200 && readCatalogBody.result.isError === false
+        && readCatalogBody.result.structuredContent.status === 'ok',
+      'read-only token calling a read tool still gets 200');
+    const packetCatalogRaw = await mcp(bearer(accessToken), toolCall(43, 'get_lunchmoney_catalog'));
+    const packetCatalogBody = await packetCatalogRaw.json();
+    ok(packetCatalogRaw.status === 200 && packetCatalogBody.result.isError === true
+        && packetCatalogBody.result.structuredContent.reason === 'transaction-read-scope-required',
+      'packet-only read-tool denial is unchanged (tool-level read-scope error, no 403)');
+    const packetCurrentRaw = await mcp(bearer(accessToken), toolCall(44, AssistantMcp.TOOL_NAME));
+    ok(packetCurrentRaw.status === 200, 'packet-only get_atlas_current is unchanged');
+    const writeRaw = await mcp(bearer(writeToken), toolCall(45, 'prepare_lunchmoney_edit', prepareArgs));
+    const writeRawBody = await writeRaw.json();
+    ok(writeRaw.status === 200 && !writeRaw.headers.get('www-authenticate')
+        && writeRawBody.result
+        && writeRawBody.result.structuredContent.reason !== 'transaction-write-scope-required',
+      'write-scoped token passes the step-up and reaches prepare');
+
+    console.log('\n  -- official SDK client: 403 step-up re-authorizes once, then succeeds --');
+    function stepUpProvider(initialTokens) {
+      const state = { tokens: initialTokens, redirects: [], verifier: null, posts: 0 };
+      const redirectUrl = 'http://127.0.0.1/atlas-step-up-callback';
+      state.provider = {
+        get redirectUrl() { return redirectUrl; },
+        get clientMetadata() {
+          return { client_name: 'atlas-step-up-proof', redirect_uris: [redirectUrl],
+            grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'],
+            token_endpoint_auth_method: 'none' };
+        },
+        clientInformation: () => ({ client_id: 'atlas-step-up-client' }),
+        tokens: () => state.tokens,
+        saveTokens: tokens => { state.tokens = tokens; },
+        redirectToAuthorization: url => { state.redirects.push(new URL(String(url))); },
+        saveCodeVerifier: verifier => { state.verifier = verifier; },
+        codeVerifier: () => state.verifier,
+      };
+      return state;
+    }
+    async function withStepUpClient(state, fn) {
+      const client = new Client({ name: 'atlas-step-up-proof', version: '1.0.0' });
+      const transport = new StreamableHTTPClientTransport(new URL(resource), {
+        authProvider: state.provider,
+        // Count every POST the SDK makes to Atlas, to prove retries are bounded.
+        fetch: (url, init) => {
+          if (String(url) === resource && init && init.method === 'POST') state.posts += 1;
+          return fetch(url, init);
+        },
+      });
+      try {
+        await client.connect(transport);
+        return await fn(client, transport);
+      } finally {
+        await client.close().catch(() => {});
+      }
+    }
+    const granted = stepUpProvider(await oauth.issueTokens(readScope, resource));
+    await withStepUpClient(granted, async (client, transport) => {
+      const catalog = await client.callTool({ name: 'get_lunchmoney_catalog', arguments: {} });
+      const queried = await client.callTool({
+        name: 'get_lunchmoney_transactions',
+        arguments: { startDate: '2026-10-01', endDate: '2026-10-02' },
+      });
+      ok(catalog.isError === false && queried.isError === false && granted.redirects.length === 0,
+        'SDK client with a read-only grant reads without any re-authorization');
+      const editArgs = {
+        transactionRef: queried.structuredContent.rows[0].transactionRef,
+        changes: { categoryRef: catalog.structuredContent.categories[0].categoryRef,
+          notes: 'Synthetic step-up proof' },
+      };
+      lunchMoney.resetHits();
+      const writesBefore = lunchMoney.writes();
+      const postsBefore = granted.posts;
+      const firstTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: editArgs }));
+      ok(firstTry instanceof UnauthorizedError && granted.redirects.length === 1
+          && granted.posts - postsBefore === 1,
+        'SDK client answers the write 403 with exactly one re-authorization and no blind retry',
+        firstTry && `${firstTry.message}; posts ${granted.posts - postsBefore}`);
+      const authUrl = granted.redirects[0];
+      ok(authUrl && authUrl.searchParams.get('scope') === stepUpScope
+          && authUrl.searchParams.get('resource') === resource
+          && authUrl.searchParams.get('code_challenge_method') === 'S256',
+        'step-up authorization requests the challenge scope (incl. write) for the exact resource with PKCE',
+        authUrl && authUrl.search);
+      ok(lunchMoney.hits() === 0, 'the refused write never reached the provider');
+      await transport.finishAuth(oauth.issueCode(authUrl.searchParams.get('scope'), resource));
+      ok(granted.tokens.scope === stepUpScope, 'consented step-up grant carries write');
+      const preview = await client.callTool({ name: 'prepare_lunchmoney_edit', arguments: editArgs });
+      ok(preview.isError === false && preview.structuredContent.status === 'preview'
+          && preview.structuredContent.providerWrite === false
+          && lunchMoney.writes() === writesBefore,
+        'after step-up, the retried prepare returns a preview without writing');
+      const unconfirmed = await client.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: preview.structuredContent.previewId, confirmed: false } }).catch(err => err);
+      ok((unconfirmed instanceof Error || unconfirmed.isError === true)
+          && !(unconfirmed.structuredContent && unconfirmed.structuredContent.status === 'applied'),
+        'apply still refuses without confirmed=true after step-up');
+      const applied = await client.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: preview.structuredContent.previewId, confirmed: true } });
+      ok(applied.isError === false && applied.structuredContent.status === 'applied'
+          && applied.structuredContent.verifiedByReadback === true
+          && lunchMoney.writes() === writesBefore + 1,
+        'after step-up, one confirmed apply makes exactly one provider write and verifies by readback');
+      const replay = await client.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: preview.structuredContent.previewId, confirmed: true } }).catch(err => err);
+      ok((replay instanceof Error || replay.isError === true) && lunchMoney.writes() === writesBefore + 1,
+        'replaying a consumed preview is refused and writes nothing');
+      ok(granted.redirects.length === 1, 'no further re-authorization once write is granted');
+    });
+
+    const notAssigned = stepUpProvider(await oauth.issueTokens(readScope, resource));
+    await withStepUpClient(notAssigned, async (client, transport) => {
+      lunchMoney.resetHits();
+      const firstTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      ok(firstTry instanceof UnauthorizedError && notAssigned.redirects.length === 1,
+        'issuer-withheld write: first refusal triggers one re-authorization');
+      await transport.finishAuth(oauth.issueCode(notAssigned.redirects[0].searchParams.get('scope'), resource,
+        { assigned: [AssistantMcp.REQUIRED_SCOPE, LunchMoney.READ_SCOPE] }));
+      const secondTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      ok(secondTry && secondTry.code === 403 && notAssigned.redirects.length === 1,
+        'issuer-withheld write: retry is bounded (403, no second prompt, no loop)',
+        secondTry && secondTry.message);
+      ok(lunchMoney.hits() === 0 && notAssigned.tokens.scope === readScope,
+        'issuer-withheld write never reaches the provider and the grant stays narrow');
+    });
+
+    const cancelled = stepUpProvider(await oauth.issueTokens(readScope, resource));
+    await withStepUpClient(cancelled, async (client, transport) => {
+      lunchMoney.resetHits();
+      const writesAtStart = lunchMoney.writes();
+      const firstTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      ok(firstTry instanceof UnauthorizedError && cancelled.redirects.length === 1,
+        'cancelled consent: the write attempt opens exactly one consent request');
+      // The user cancels: no code is issued; a host that still tries to finish gets invalid_grant.
+      const finish = await httpRefusal(transport.finishAuth('synthetic-cancelled-consent'));
+      ok(finish instanceof Error && cancelled.tokens.scope === readScope,
+        'cancelled consent fails clearly and leaves the narrow grant unchanged');
+      const postsBefore = cancelled.posts;
+      const secondTry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      const thirdTry = await httpRefusal(client.callTool({ name: 'apply_lunchmoney_edit', arguments: applyArgs }));
+      ok(secondTry && secondTry.code === 403 && thirdTry && thirdTry.code === 403
+          && cancelled.redirects.length === 1 && cancelled.posts - postsBefore === 2,
+        'cancelled consent: repeat write attempts fail at once (one POST each, no new prompt, no loop)',
+        `posts ${cancelled.posts - postsBefore}`);
+      ok(lunchMoney.hits() === 0 && lunchMoney.writes() === writesAtStart,
+        'cancelled consent never reaches the provider or writes');
+      const stillReads = await client.callTool({ name: 'get_lunchmoney_catalog', arguments: {} });
+      ok(stillReads.isError === false && stillReads.structuredContent.status === 'ok',
+        'cancelled consent leaves reads working');
+      const userRetry = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      ok(userRetry instanceof UnauthorizedError && cancelled.redirects.length === 2,
+        'a later user-initiated write attempt asks for consent once more (one prompt per attempt)');
+      ok(lunchMoney.writes() === writesAtStart, 'still zero provider writes without a write-scoped token');
+    });
+
+    const refreshOnly = stepUpProvider(await oauth.issueTokens(readScope, resource, { refresh: true }));
+    await withStepUpClient(refreshOnly, async client => {
+      lunchMoney.resetHits();
+      const postsAtConnect = refreshOnly.posts;
+      const writesAtConnect = lunchMoney.writes();
+      const refreshesBefore = oauth.tokenRequests().filter(grant => grant === 'refresh_token').length;
+      const attempt = await httpRefusal(client.callTool({ name: 'prepare_lunchmoney_edit', arguments: prepareArgs }));
+      const refreshes = oauth.tokenRequests().filter(grant => grant === 'refresh_token').length - refreshesBefore;
+      ok(attempt && attempt.code === 403 && /after trying upscoping/.test(attempt.message)
+          && refreshes === 1 && refreshOnly.redirects.length === 0 && refreshOnly.posts === 2 + postsAtConnect,
+        'narrow refresh grant: one refresh, one retry, then a clear bounded 403 (no loop)',
+        attempt && `${attempt.message}; posts ${refreshOnly.posts - postsAtConnect}`);
+      ok(refreshOnly.tokens.scope === readScope && typeof refreshOnly.tokens.refresh_token === 'string',
+        'narrow refresh grant stays narrow after the step-up attempt');
+      const again = await httpRefusal(client.callTool({ name: 'apply_lunchmoney_edit', arguments: applyArgs }));
+      const refreshesAgain = oauth.tokenRequests().filter(grant => grant === 'refresh_token').length - refreshesBefore;
+      ok(again && again.code === 403 && refreshesAgain === 1 && refreshOnly.redirects.length === 0
+          && refreshOnly.posts === 3 + postsAtConnect,
+        'narrow refresh grant: a repeat write fails at once without another refresh, prompt or retry');
+      ok(lunchMoney.hits() === 0 && lunchMoney.writes() === writesAtConnect,
+        'narrow refresh grant never reaches the provider or writes without fresh consent');
+    });
+
     const getMcp = await fetch(resource, {
       headers: { authorization: `Bearer ${accessToken}` }, redirect: 'manual',
     });
@@ -1411,6 +1760,51 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     ok(badOrigin.status === 403, 'untrusted browser origin is rejected');
   });
   filesUnchanged('authenticated OAuth MCP');
+
+  console.log('\n=== write step-up classifier and tool-level defense in depth ===');
+  {
+    const C = AssistantOAuth.classifyToolCalls;
+    const call = name => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name } });
+    ok(C(call('apply_lunchmoney_edit')) === 'write' && C(call('prepare_lunchmoney_edit')) === 'write',
+      'classifier flags both write tools');
+    ok(C(call('get_lunchmoney_catalog')) === 'other' && C(call('get_atlas_current')) === 'other'
+        && C({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }) === 'other'
+        && C({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) === 'other',
+      'classifier leaves read tools and non-call methods alone');
+    ok(C(call('Apply_LunchMoney_Edit')) === 'other',
+      'classifier is exact-name (an unknown tool name is not dispatched by the SDK either)');
+    ok(C([call('get_lunchmoney_catalog'), call('apply_lunchmoney_edit')]) === 'write'
+        && C([null, 1, 'x', [], call('prepare_lunchmoney_edit')]) === 'write',
+      'classifier scans every batch member');
+    ok(C({ method: 'tools/call', params: null }) === 'invalid'
+        && C({ method: 'tools/call' }) === 'invalid'
+        && C({ method: 'tools/call', params: { name: 7 } }) === 'invalid'
+        && C([call('apply_lunchmoney_edit'), { method: 'tools/call', params: [] }]) === 'invalid',
+      'classifier fails closed on unclassifiable tools/call');
+    ok(C(undefined) === 'other' && C(null) === 'other' && C([]) === 'other' && C('x') === 'other',
+      'classifier never throws on empty or non-object bodies');
+
+    const server = AssistantMcp.createServer(async () => null, {
+      auth: { principal: 'atlas-owner-test', scopes: [AssistantMcp.REQUIRED_SCOPE, LunchMoney.READ_SCOPE] },
+      lunchMoney: { invoke: async () => { throw new Error('provider must not be called'); } },
+    });
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'atlas-defense-in-depth', version: '1.0.0' });
+    await server.connect(serverSide);
+    await client.connect(clientSide);
+    try {
+      const prepare = await client.callTool({ name: 'prepare_lunchmoney_edit',
+        arguments: { transactionRef: 'tx-' + 'e'.repeat(24), changes: { notes: 'no' } } });
+      const apply = await client.callTool({ name: 'apply_lunchmoney_edit',
+        arguments: { previewId: 'edit-' + 'e'.repeat(48), confirmed: true } });
+      ok(prepare.isError === true && prepare.structuredContent.reason === 'transaction-write-scope-required'
+          && apply.isError === true && apply.structuredContent.reason === 'transaction-write-scope-required',
+        'tool-level write-scope check still refuses when the HTTP step-up is bypassed');
+    } finally {
+      await client.close().catch(() => {});
+      await server.close().catch(() => {});
+    }
+  }
 
   console.log('\n=== source does not recompute financial answers ===');
   {
