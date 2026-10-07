@@ -132,6 +132,31 @@ for(const mutate of [
   assert.equal(r.p.balanceAfterDeductions,null);
   assert.equal(r.p.budgetProgress.bills.actual.amount,null);
 }
+// Effective native flags include transaction and catalog evidence. A false raw
+// flag cannot override a true catalog flag; every nonempty combination holds.
+const nativeFeeFlags = ['is_income','exclude_from_totals','exclude_from_budget'];
+for (const source of ['transaction','catalog']) for (let mask=1;mask<8;mask++) {
+  for (const location of ['cash','card']) for (const pending of [false,true]) {
+    const x=fixture(37.19,location), tx=x.payload.transactions[0], category=x.payload.categories[0];
+    for (let i=0;i<nativeFeeFlags.length;i++) {
+      tx[nativeFeeFlags[i]]=source==='transaction' && Boolean(mask & (1<<i));
+      category[nativeFeeFlags[i]]=source==='catalog' && Boolean(mask & (1<<i));
+    }
+    tx.is_pending=pending;
+    if (location==='cash' && pending) x.payload.accounts[0].balance=500;
+    const label=source+' flags '+mask+' '+location+' '+(pending?'pending':'posted');
+    const r=run(x);
+    assert.equal(r.packet.transactions[0].bankFeeCategory,'unconfirmed',label+' cannot qualify fee identity');
+    assert(r.packet.bankFeeUnconfirmed.length>0,label+' retains uncertainty evidence');
+    assert.equal(r.fees.status,'unavailable',label+' cannot publish a known fee cost');
+    assert.equal(r.fees.actual,null,label+' cannot publish an incurred fee total');
+    assert.equal(r.p.budgetProgress.bills.actual.amount,null,label+' cannot publish Bills actuals');
+    assert.equal(r.p.balanceAfterDeductions,null,label+' cannot grant a known full-period deduction');
+    assert.equal(r.p.fromTodayFunding.availableNow,null,label+' cannot grant cash permission');
+    assert.equal(r.p.liveCurrentBalance,location==='cash' && !pending?500-37.19:500,
+      label+' preserves observed cash independently of the hold');
+  }
+}
 // Exact catalog id can qualify a transaction with no redundant display label.
 const catalogOnly=fixture();delete catalogOnly.payload.transactions[0].category_name;
 assert.equal(run(catalogOnly).fees.actual,80);

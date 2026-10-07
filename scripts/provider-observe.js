@@ -411,7 +411,7 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
   const feeCategory = fromIndex?.name === 'Bank fees' || categoryName === 'Bank fees';
   const bankFeeCategory = !feeCategory ? null : fromIndex?.name === 'Bank fees'
     && categoryName === fromIndex.name && !fromIndex.archived && !fromIndex.isGroup
-    && !fromIndex.isIncome && !fromIndex.excludeFromTotals && !fromIndex.excludeFromBudget
+    && !isIncome && !excludeFromTotals && !excludeFromBudget
     && [...categoriesById.values()].filter(c => c.name === 'Bank fees').length === 1
     ? 'verified' : 'unconfirmed';
   return {
