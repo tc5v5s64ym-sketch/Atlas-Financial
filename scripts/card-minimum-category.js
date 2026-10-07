@@ -13,6 +13,7 @@ const CATEGORIES = Object.freeze({
   'Minimum payment - TD Cash Back Visa': 'cashback',
   'Minimum payment - TD Travel Visa': 'travelvisa',
 });
+const CARD_IDS = new Set(Object.values(CATEGORIES));
 const iso = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
   && Number.isFinite(Date.parse(value + 'T00:00:00Z'))
   && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
@@ -23,7 +24,8 @@ const cents = value => typeof value === 'number' && Number.isFinite(value)
 function categoryDebt(category) {
   return category && !category.isIncome && !category.isGroup && !category.archived
     && category.excludeFromBudget === true && category.excludeFromTotals === true
-    ? CATEGORIES[category.name] || null : null;
+    && typeof category.name === 'string' && Object.hasOwn(CATEGORIES, category.name)
+    ? CATEGORIES[category.name] : null;
 }
 
 function observe(input) {
@@ -43,7 +45,7 @@ function observe(input) {
     Array.isArray(row.sentPayments) ? row.sentPayments.map(p => p?.debitId).filter(Boolean) : []));
   const hits = [];
   for (const tx of transactions) {
-    const debtId = tx.minimumCategoryDebt;
+    const debtId = CARD_IDS.has(tx.minimumCategoryDebt) ? tx.minimumCategoryDebt : null;
     const map = mapping(tx), amount = cents(tx.amount);
     if (!debtId || tx.pending === true || tx.contradictoryEvidence === true
         || tx.isGroup || tx.parentId || tx.currency !== 'cad' || tx.isIncome === true
@@ -83,7 +85,7 @@ function observe(input) {
         || (other.amount < 0 && /revers/i.test(`${other.payee || ''} ${other.originalName || ''}`)
           // Several cards share bank aliases. An explicitly resolved different
           // card category outranks that alias for a funding-side return.
-          && (!other.minimumCategoryDebt || other.minimumCategoryDebt === debtId)
+          && (!CARD_IDS.has(other.minimumCategoryDebt) || other.minimumCategoryDebt === debtId)
           && mapping(other)?.canonical?.id === map.canonical.id
           && matchesReversalIdentity?.(other, target.row))
         || (/payment.*revers|revers.*payment/i.test(`${other.payee || ''} ${other.originalName || ''}`)

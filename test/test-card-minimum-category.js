@@ -111,6 +111,27 @@ const negatives = {
 };
 for (const [name, mutate] of Object.entries(negatives)) check(name, () => { const x = fixture(); mutate(x); zero(x); });
 
+for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf',
+  'Credit card payment', 'Payment, Transfer', 'Unknown minimum label', 'Minimum payment - Unknown card'])
+  check(`unapproved category cannot confirm or shield a reversal: ${name}`, () => {
+    assert.equal(Category.categoryDebt({ name, isIncome: false, isGroup: false, archived: false,
+      excludeFromBudget: true, excludeFromTotals: true }), null);
+    const unapproved = fixture(); unapproved.payload.categories[0].name = name; zero(unapproved);
+    const x = fixture();
+    x.payload.categories.push({ id: 9002, name, is_income: false, is_group: false,
+      exclude_from_totals: true, exclude_from_budget: true });
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98003, date: NOW,
+      amount: -49.37, payee: 'CAN TIRE MC PAYMENT REVERSAL', category_id: 9002 });
+    x.payload.accounts[0].balance = 1000; x.payload.accounts[3].balance = 800;
+    const live = Live.fromObservation(x), plan = live.data.plan;
+    assert.equal(live.report.cardMinimumCategoryEvidence.payments.length, 0);
+    assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), false);
+    const advice = F.recommend(plan, NOW, { debts: live.data.debts,
+      currentPeriodActuals: live.report.currentPeriodActuals });
+    const bill = advice.defaultView.bills.find(b => b.id === 'triangle' && b.date === DUE);
+    assert.ok(bill); assert.notEqual(bill.status, 'PAID'); assert.equal(bill.remaining, 43.19);
+  });
+
 for (const payee of ['CAN TIRE MC PAYMENT REVERSAL', 'CAN TIRE MC REVERSAL'])
   check(`posted funding reversal in generic category: ${payee}`, () => {
     const x = fixture();
