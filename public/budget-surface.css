@@ -605,3 +605,17 @@ body.budget-detail-open { overflow:hidden; }
   .budget-detail-sheet > header h2 { font-size:14px; }
   .budget-detail-body { padding:18px 16px 26px; max-height:calc(92dvh - 78px); }
 }
+
+/* Forecast's Bills-only closing estimate, separate from the period flow. */
+.budget-bills-closing { margin-top:20px; padding-top:20px; border-top:1px solid var(--border); scroll-margin-top:100px; }
+.budget-bills-closing h2 { margin:0 0 8px; font-size:16px; line-height:1.4; }
+.budget-bills-closing-value { margin:0 0 8px; font-size:30px; font-weight:750; line-height:1.2; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.budget-bills-closing-estimate { display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; }
+.budget-bills-closing-value[data-sign="negative"] { color:var(--critical); }
+.budget-bills-closing > details { margin-top:12px; }
+.budget-bills-closing > details > summary { padding:10px 0; cursor:pointer; font-size:13px; font-weight:650; }
+.budget-bills-closing-evidence { padding:8px 0; }
+.budget-bills-closing-evidence .operating-line { gap:12px; }
+.budget-bills-closing-evidence .operating-line span { min-width:0; }
+.budget-bills-closing-evidence .operating-line strong { white-space:nowrap; }
+.budget-bills-closing :is(summary,button) { scroll-margin-top:100px; scroll-margin-bottom:100px; }

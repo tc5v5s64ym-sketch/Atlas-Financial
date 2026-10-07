@@ -132,7 +132,7 @@ const mount = {
     if (/aria-current/.test(selector)) return { focus: () => { this.focused = selector; } };
     return null;
   },
-  querySelectorAll() { return this.wheels; },
+  querySelectorAll(selector) { return selector === '[data-budget-wheel]' ? this.wheels : []; },
 };
 function load(id) {
   context.id = id;

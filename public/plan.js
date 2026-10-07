@@ -5536,6 +5536,13 @@ function wirePlanLookPicker(mount, ctx) {
       else paydayDisclosuresOpen.delete(key);
     });
   });
+  mount.querySelectorAll('[data-bills-closing-details]').forEach(details => {
+    const close = () => { details.open = false; details.querySelector('summary').focus({ preventScroll: true }); };
+    details.querySelector('[data-bills-closing-close]')?.addEventListener('click', close);
+    details.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && details.open) { event.preventDefault(); close(); }
+    });
+  });
   if (!mount || typeof mount.querySelector !== 'function') return;
   wireBudgetGranularity(mount, ctx);
   const sel = mount.querySelector('[data-plan-look]');
@@ -6647,16 +6654,56 @@ function wireBudgetFunding(mount, sheet) {
   });
 }
 
+// Render only: Forecast owns every term and the unavailable/estimate stamp.
+function billsAccountPeriodBalanceHtml(ctx) {
+  const publication = ctx.advice?.defaultView?.billsAccountPeriodBalance;
+  if (!publication || publication.source !== 'Forecast.billsAccountPeriodBalance'
+    || publication.accountId !== 'chequing-a' || publication.scope !== 'bills-only') return '';
+  const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const numeric = value => typeof value === 'number' && Number.isFinite(value);
+  const ready = publication.status === 'ready' && publication.trust === 'estimated' && numeric(publication.amount);
+  const print = value => numeric(value) ? money2(value) : 'Unavailable';
+  const household = publication.household || {};
+  const rows = ready ? [
+    ['Posted Bills cash', publication.observedCash],
+    ['Income still to reach Bills', publication.futureIncome],
+    ['Remaining bills', publication.remainingBills],
+    ['Remaining household funding — estimate', household.remaining],
+    ['Other planned Bills outflows', publication.otherOutflows],
+    ['Earlier or nonbudget card purchases', publication.additionalCardCash],
+  ].map(([label, amount]) => `<div class="operating-line"><span>${escape(label)}</span><strong>${print(amount)}</strong></div>`).join('') : '';
+  const open = paydayDisclosuresOpen.has('bills-closing');
+  return `<section class="budget-bills-closing" data-bills-closing data-bills-closing-state="${ready ? 'estimated' : 'unavailable'}" aria-label="Expected Bills balance at period end">
+    <h2>Expected Bills balance at period end</h2>
+    <p class="budget-bills-closing-value" data-bills-closing-amount${ready && publication.amount < 0 ? ' data-sign="negative"' : ''}>${ready ? '<span class="budget-bills-closing-estimate">Estimated</span> ' + print(publication.amount) : 'Unavailable'}</p>
+    <p class="operating-note">After remaining bills and household funding${publication.end ? ', through ' + escape(fmtDateLong(publication.end)) : ''}. Bills account only.</p>
+    ${!ready ? `<p class="operating-note" data-bills-closing-reason>${escape(publication.reason || 'Remaining cash requirements are unconfirmed.')}</p>` : ''}
+    <p class="operating-note">Latest recorded Bills balance: ${print(publication.observedCash)}${publication.observedAsOf ? ', dated ' + escape(fmtDateLong(publication.observedAsOf)) : ''}. The bank may have a newer balance.</p>
+    <details data-payday-breakdown="bills-closing" data-bills-closing-details${open ? ' open' : ''}>
+      <summary>${ready ? 'How this estimate works' : 'What needs confirmation'}</summary>
+      <div class="budget-bills-closing-evidence">${rows}
+        ${ready ? `<p class="operating-note">Household target ${print(household.target)}; already funded from Bills ${print(household.funded)}. Remaining funding is estimated from the period target and observed Bills funding, with required pending and card cash protected. Category allocations are not established.</p>`
+          : `<ul>${(publication.issues || []).map(row => `<li>${escape(row.message)}</li>`).join('')}</ul>`}
+        ${publication.accountAssumption ? `<p class="operating-note">${escape(publication.accountAssumption)}</p>` : ''}
+        <p class="operating-note">Weekly transactions itemize household spending. Transfers already made count once. Weekly's balance and overdraft are excluded. This estimate grants no spending or transfer permission.</p>
+        <p class="operating-note">Balance After Deductions below remains this period's income after assigned bills and the household hold. It measures period income, separately from this Bills balance.</p>
+        <button type="button" class="budget-surface-link" data-bills-closing-close>Close details</button>
+      </div>
+    </details>
+  </section>`;
+}
+
 function budgetSurfaceParts() {
   return {
     planUnavailable: ctx => liveOperatingPlanUnavailable(ctx.advice || {}, ctx.liveOverlay),
-    unavailableHtml: ctx => unavailableOperatingSurfaceHtml(ctx),
+    unavailableHtml: ctx => unavailableOperatingSurfaceHtml(ctx) + billsAccountPeriodBalanceHtml(ctx),
     granularity: () => budgetGranularity,
       granularityToggleHtml: () => budgetGranularityToggleHtml(),
       headerHtml: ctx => budgetWindowHeaderHtml(ctx),
       detailSheetHtml: () => budgetDetailSheetHtml(),
     inDrilldown: () => budgetInPayPeriodDrilldown(),
-    todayHtml: ctx => budgetTodayCashCardHtml(ctx),
+    todayHtml: ctx => budgetTodayCashCardHtml(ctx) + billsAccountPeriodBalanceHtml(ctx),
     periodHtml: ctx => budgetPayPeriodContentHtml(Object.assign({}, ctx, { budgetCompactOverview: true })),
     browseHtml: ctx => budgetBrowseSectionsHtml(ctx),
     monthHtml: ctx => budgetMonthSurfaceHtml(ctx),
