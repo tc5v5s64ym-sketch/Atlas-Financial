@@ -14,7 +14,7 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v =>
 const ref = z.string().regex(/^(tx|cat|acct)-[a-f0-9]{24}$/);
 const money = z.string().regex(/^-?\d{1,10}(\.\d{1,2})?$/);
 // Provider evidence is a decimal string with up to four places. Read it
-// verbatim; the separate `money`/cents contract still governs split edits.
+// verbatim; the separate `money`/cents contract governs caller/write input.
 const providerMoney = z.string().max(64).regex(/^-?\d+(\.\d{1,4})?$/);
 const child = z.object({ amount: money, categoryRef: ref.nullable(), notes: z.string().max(1000).optional() }).strict();
 const changes = z.object({ categoryRef: ref.nullable().optional(), notes: z.string().max(1000).optional() })
@@ -35,6 +35,16 @@ function cents(value) {
   const negative = value.startsWith('-');
   const [whole, fraction = ''] = value.replace(/^-/, '').split('.');
   return (negative ? -1 : 1) * (Number(whole) * 100 + Number(fraction.padEnd(2, '0')));
+}
+function providerCents(value) {
+  if (!providerMoney.safeParse(value).success) throw new Error('invalid-provider-amount');
+  const negative = value.startsWith('-');
+  const [whole, fraction = ''] = value.replace(/^-/, '').split('.');
+  // Extra provider places may represent whole cents, never rounded fractions.
+  if (/[1-9]/.test(fraction.slice(2))) throw new Error('invalid-provider-amount');
+  const magnitude = BigInt(whole) * 100n + BigInt(fraction.slice(0, 2).padEnd(2, '0'));
+  if (magnitude > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('invalid-provider-amount');
+  return Number(negative ? -magnitude : magnitude);
 }
 function fingerprint(tx) { return crypto.createHash('sha256').update(JSON.stringify(tx)).digest('hex'); }
 function fail(reason) { return { status: 'unavailable', reason, writesAtlasState: false }; }
@@ -293,7 +303,7 @@ function createService(options = {}) {
       if (input.changes.notes !== undefined) body.notes = input.changes.notes;
     } else {
       const sum = input.splits.reduce((total, row) => total + cents(row.amount), 0);
-      const parentAmount = cents(tx.amount);
+      const parentAmount = providerCents(tx.amount);
       if (sum !== parentAmount || input.splits.some(row => cents(row.amount) === 0
         || Math.sign(cents(row.amount)) !== Math.sign(parentAmount))) throw new Error('split-must-conserve-parent-amount');
       body = { child_transactions: [] };
@@ -335,7 +345,7 @@ function createService(options = {}) {
       let verified = after.id === preview.targetId;
       if (preview.splits) {
         const expected = preview.body.child_transactions.map(c => [cents(c.amount), c.category_id, c.notes ?? current.notes ?? '', current.date, current.currency]);
-        const actual = (after.children || []).map(c => [cents(c.amount), c.category_id, c.notes ?? '', c.date, c.currency]);
+        const actual = (after.children || []).map(c => [providerCents(c.amount), c.category_id, c.notes ?? '', c.date, c.currency]);
         verified = verified && ['amount', 'currency', 'date', 'payee', 'plaid_account_id', 'manual_account_id'].every(key => after[key] === current[key]) && after.is_split_parent === true && expected.length === actual.length
           && JSON.stringify(expected.map(JSON.stringify).sort()) === JSON.stringify(actual.map(JSON.stringify).sort())
           && after.children.every(c => c.split_parent_id === preview.targetId
