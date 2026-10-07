@@ -3494,6 +3494,10 @@ function observe(input) {
       p.confirmed === true && (p.debitRef === cardCoverageReference(tx) || p.creditRef === cardCoverageReference(tx))),
     matchesIdentity: (tx, row) => identityRules.some(rule => rule.eventId === row.id
       && ruleMatchesTransactionIdentity(tx, rule)),
+    // Reversal evidence uses the same payment aliases. Exclusions prevent a
+    // reversal from confirming a payment, but must not hide its withdrawal.
+    matchesReversalIdentity: (tx, row) => identityRules.some(rule => rule.eventId === row.id
+      && ruleMatchesTransactionIdentity(tx, { ...rule, payeeExcludePatterns: [] })),
   });
   // Historical transaction-identity hits are evidence, not current-opening
   // posting comparisons. The live overlay may consume one only for an exact

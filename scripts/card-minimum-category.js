@@ -28,7 +28,7 @@ function categoryDebt(category) {
 
 function observe(input) {
   const { plan, accountMap, asOf, transactionWindow: window, pendingCoverage,
-    transactions = [], matchesIdentity, alreadyAllocated, cycleOpensOn } = input;
+    transactions = [], matchesIdentity, matchesReversalIdentity, alreadyAllocated, cycleOpensOn } = input;
   const packet = { source: SOURCE, asOf, payments: [] };
   if (!iso(asOf) || !window || window.complete !== true || window.hasMore === true
       || window.truncated === true || !iso(window.startDate) || !iso(window.endDate)
@@ -39,6 +39,8 @@ function observe(input) {
   // Work from the current complete observation, never a previous derived packet.
   const schedule = { ...plan, opening: undefined, cardMinimumCategoryEvidence: undefined };
   const events = Forecast.expandEvents(schedule, Forecast.addDays(asOf, -62), Forecast.addDays(asOf, 62));
+  const ownerDebits = new Set((plan.obligations || []).flatMap(row =>
+    Array.isArray(row.sentPayments) ? row.sentPayments.map(p => p?.debitId).filter(Boolean) : []));
   const hits = [];
   for (const tx of transactions) {
     const debtId = tx.minimumCategoryDebt;
@@ -50,7 +52,10 @@ function observe(input) {
         || map.canonical?.collection !== 'cash'
         || !['chequing-a', 'chequing-b'].includes(map.canonical.id)
         || /refund|revers|return/i.test(`${tx.payee || ''} ${tx.originalName || ''}`)) continue;
-    if (alreadyAllocated?.(tx)) continue;
+    const debitId = crypto.createHash('sha256').update(SOURCE + ':' + tx.providerTransactionId).digest('hex');
+    // Stable identity is consumed once across all owner allocations, not only
+    // the occurrence currently selected by the provider lookup window.
+    if (ownerDebits.has(debitId) || alreadyAllocated?.(tx)) continue;
     const rows = (plan.obligations || []).filter(r => r.debtId === debtId
       && r.effect === 'payment' && !r.nonCash && r.payingAccount === map.canonical.id
       && (r.sentPayments == null || Array.isArray(r.sentPayments)));
@@ -75,18 +80,20 @@ function observe(input) {
       && other.currency === 'cad' && iso(other.date) && other.date >= tx.date && other.date <= asOf
       && ((other.minimumCategoryDebt === debtId && other.amount < 0
         && mapping(other)?.canonical?.id === map.canonical.id)
+        || (other.amount < 0 && /revers/i.test(`${other.payee || ''} ${other.originalName || ''}`)
+          && mapping(other)?.canonical?.id === map.canonical.id
+          && matchesReversalIdentity?.(other, target.row))
         || (/payment.*revers|revers.*payment/i.test(`${other.payee || ''} ${other.originalName || ''}`)
           && mapping(other)?.canonical?.id === debtId)));
     if (reversed) continue;
-    hits.push({ tx, map, amount, ...target });
+    hits.push({ tx, map, amount, debitId, ...target });
   }
   for (const hit of hits) {
-    const { tx, map, row, original } = hit;
+    const { tx, map, row, original, debitId } = hit;
     // A stable debit cannot confirm several cycles; several debits for one
     // occurrence are ambiguous in this bounded protocol (no guessed allocation).
     if (transactions.filter(t => t.providerTransactionId === tx.providerTransactionId && t.pending !== true).length !== 1
         || hits.filter(h => h.row.id === row.id && h.original === original).length !== 1) continue;
-    const debitId = crypto.createHash('sha256').update(SOURCE + ':' + tx.providerTransactionId).digest('hex');
     packet.payments.push({ id: row.id, scheduledDate: original, confirmed: true,
       intent: 'minimum', debitId, postedOn: tx.date, amount: tx.amount,
       currency: 'cad', fundingAccountId: map.canonical.id, pending: false, cashIncludedAsOf: asOf });

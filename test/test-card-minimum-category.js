@@ -8,6 +8,7 @@ const F = require('../public/forecast');
 const O = require('../scripts/provider-observe');
 const Live = require('../scripts/live-plan');
 const Category = require('../scripts/card-minimum-category');
+const crypto = require('node:crypto');
 const source = require('./fixtures/card-backfill-data');
 const clone = x => JSON.parse(JSON.stringify(x));
 const NOW = '2035-10-06', ORIGINAL = '2035-10-07', DUE = '2035-10-08';
@@ -109,6 +110,94 @@ const negatives = {
     x.data.plan.cardPurchaseCoverage = { payments: [{ confirmed: true, debitRef: O.cardCoverageReference(tx) }] }; },
 };
 for (const [name, mutate] of Object.entries(negatives)) check(name, () => { const x = fixture(); mutate(x); zero(x); });
+
+for (const payee of ['CAN TIRE MC PAYMENT REVERSAL', 'CAN TIRE MC REVERSAL'])
+  check(`posted funding reversal in generic category: ${payee}`, () => {
+    const x = fixture();
+    x.payload.categories.push({ id: 9002, name: 'Credit card payment', is_income: false,
+      is_group: false, exclude_from_totals: true, exclude_from_budget: true });
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98003, date: NOW,
+      amount: -49.37, payee, category_id: 9002 });
+    x.payload.accounts[0].balance = 1000; x.payload.accounts[3].balance = 800;
+    const live = Live.fromObservation(x), plan = live.data.plan;
+    assert.equal(live.report.cardMinimumCategoryEvidence.payments.length, 0);
+    assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), false);
+    const advice = F.recommend(plan, NOW, { debts: live.data.debts,
+      currentPeriodActuals: live.report.currentPeriodActuals });
+    const bill = advice.defaultView.bills.find(b => b.id === 'triangle' && b.date === DUE);
+    assert.ok(bill); assert.notEqual(bill.status, 'PAID'); assert.equal(bill.remaining, 43.19);
+    assert.equal(F.startingCashAmount(plan), 1000); assert.equal(live.data.debts[0].balance, 800);
+  });
+check('equal credit alone and unrelated reversal cannot withdraw minimum proof', () => {
+  for (const payee of ['Invented grocery refund', 'UNRELATED CARD PAYMENT REVERSAL']) {
+    const x = fixture();
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98003, date: NOW,
+      amount: -49.37, payee, category_id: null,
+      account_id: payee.includes('UNRELATED') ? 3002 : 3001 });
+    assert.equal(packet(x).payments.length, 1);
+  }
+});
+check('funding reversal uses incumbent card aliases including excluded TD reversal text', () => {
+  for (const card of Object.values(Category.CATEGORIES)) {
+    const x = fixture(card);
+    x.payload.transactions.push({ ...x.payload.transactions[0], id: 98003, date: NOW,
+      amount: -12.19, payee: x.payload.transactions[0].payee + ' REVERSAL', category_id: null });
+    // Identity, rather than equal amounts or a confirming reversal category,
+    // makes unresolved returned-payment evidence withhold derived proof.
+    assert.equal(packet(x).payments.length, 0);
+  }
+});
+check('pending reversal leaves posted evidence while independent owner receipt survives reversal', () => {
+  const x = fixture();
+  x.payload.transactions.push({ ...x.payload.transactions[0], id: 98003, date: NOW,
+    amount: -49.37, payee: 'CAN TIRE MC REVERSAL', category_id: null, is_pending: true });
+  assert.equal(packet(x).payments.length, 1);
+  x.payload.transactions[1].is_pending = false;
+  const row = x.data.plan.obligations[0];
+  row.sentPayments = [{ scheduledDate: ORIGINAL, confirmed: true, intent: 'minimum',
+    debitId: 'independent-owner', postedOn: '2035-10-05', amount: 49.37, currency: 'cad',
+    fundingAccountId: 'chequing-a', pending: false, cashIncludedAsOf: NOW }];
+  x.data.plan.opening.representedEvents = [{ id: 'triangle', date: ORIGINAL, effectiveAsOf: NOW }];
+  const live = Live.fromObservation(x);
+  assert.equal(live.report.cardMinimumCategoryEvidence.payments.length, 0);
+  assert.equal(F.representedOccurrence(live.data.plan, 'triangle', ORIGINAL, NOW), true);
+  assert.equal(payment(live).payments[0].issuerMinimumStatus, 'satisfied');
+});
+check('owner-allocated stable debit cannot manufacture another cycle or obligation receipt', () => {
+  for (const otherObligation of [false, true]) {
+    const x = fixture(), row = x.data.plan.obligations[0];
+    const prior = '2035-09-07';
+    row.firstDue = prior;
+    row.statementOccurrences.unshift({ scheduledDate: prior, dueDate: prior,
+      minimum: 29.31, currency: 'cad', confidence: 'confirmed' });
+    const owner = otherObligation ? { ...clone(row), id: 'triangle-owner' } : row;
+    if (otherObligation) x.data.plan.obligations.push(owner);
+    owner.sentPayments = [{ scheduledDate: prior, confirmed: true, intent: 'minimum',
+      debitId: crypto.createHash('sha256').update('lunchmoney-minimum-category:98001').digest('hex'),
+      postedOn: '2035-10-05', amount: 49.37, currency: 'cad', fundingAccountId: 'chequing-a',
+      pending: false, cashIncludedAsOf: NOW }];
+    x.data.plan.opening.representedEvents = [{ id: owner.id, date: prior, effectiveAsOf: NOW }];
+    const live = Live.fromObservation(x), plan = live.data.plan;
+    assert.equal(live.report.cardMinimumCategoryEvidence.payments.length, 0);
+    assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), false);
+    assert.ok(plan.opening.representedEvents.some(p => p.id === owner.id && p.date === prior));
+    assert.equal(F.cardMinimumState(plan, NOW).payments.find(p => p.id === owner.id
+      && p.scheduledDate === prior)?.issuerMinimumStatus, 'satisfied');
+    const advice = F.recommend(plan, NOW, { debts: live.data.debts,
+      currentPeriodActuals: live.report.currentPeriodActuals });
+    const bill = advice.defaultView.bills.find(b => b.id === 'triangle' && b.date === DUE);
+    assert.ok(bill); assert.notEqual(bill.status, 'PAID'); assert.equal(bill.remaining, 43.19);
+    // Defense at Forecast's publication boundary, even if an old/forged packet
+    // bypasses observation. The original owner's receipt remains authoritative.
+    const valid = Live.fromObservation(fixture()).data.plan.cardMinimumCategoryEvidence;
+    plan.cardMinimumCategoryEvidence = clone(valid);
+    assert.equal(F.representedOccurrence(plan, 'triangle', ORIGINAL, NOW), false);
+    assert.ok(plan.opening.representedEvents.some(p => p.id === owner.id && p.date === prior));
+    assert.equal(F.cardMinimumState(plan, NOW).payments.find(p => p.id === owner.id
+      && p.scheduledDate === prior)?.issuerMinimumStatus, 'satisfied');
+    assert.equal(F.cardMinimumState(plan, NOW).payments.filter(p => p.minimumConfirmationSource === 'household-category').length, 0);
+  }
+});
 
 check('partial payment and estimated minimum withhold satisfaction', () => {
   for (const estimated of [false, true]) {

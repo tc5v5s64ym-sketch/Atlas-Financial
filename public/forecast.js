@@ -527,6 +527,10 @@
     if (packet?.source !== 'lunchmoney-minimum-category' || !day(packet.asOf)
         || !day(asOf) || packet.asOf > asOf || !Array.isArray(packet.payments)) return null;
     const counts = new Map(), keys = new Map();
+    // Reject already owner-allocated identities before either sender state or
+    // represented receipts can publish a second occurrence's confirmation.
+    const ownerDebits = new Set((plan.obligations || []).flatMap(row =>
+      Array.isArray(row.sentPayments) ? row.sentPayments.map(p => p?.debitId).filter(Boolean) : []));
     for (const p of packet.payments) {
       counts.set(p?.debitId, (counts.get(p?.debitId) || 0) + 1);
       const key = p?.id + '@' + p?.scheduledDate;
@@ -545,6 +549,7 @@
           || p.cashIncludedAsOf !== packet.asOf || p.fundingAccountId !== row.payingAccount
           || !['chequing-a', 'chequing-b'].includes(p.fundingAccountId)
           || typeof p.debitId !== 'string' || !/^[a-f0-9]{64}$/.test(p.debitId)
+          || ownerDebits.has(p.debitId)
           || counts.get(p.debitId) !== 1 || keys.get(p.id + '@' + p.scheduledDate) !== 1
           || occurrences(row, p.scheduledDate, p.scheduledDate).length !== 1
           || (row.sentPayments != null && !Array.isArray(row.sentPayments))

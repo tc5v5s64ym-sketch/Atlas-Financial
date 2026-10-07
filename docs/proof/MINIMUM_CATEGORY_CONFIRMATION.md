@@ -36,7 +36,12 @@ An insufficient transfer or estimated required amount keeps additional cash
 unknown. Category confirmation and observed stock cannot apply another cash
 debit or principal payment. Future rows keep their existing Planned semantics.
 Explicit recorded owner sender/receipt evidence takes precedence; changing a
-provider category cannot delete it. Removing/changing a confirming category,
+provider category cannot delete it. Stable debit identities already allocated
+by owner sender records cannot supply another cycle or obligation's receipt;
+both observation and Forecast enforce this before representation. Explicit
+posted funding-side reversal aliases withhold derived proof even under a generic
+category. The card/payment identity is required; equal amounts alone do not
+identify a reversal. Removing/changing a confirming category,
 a posted reversal, or incomplete coverage removes the derived confirmation on
 the next observation. There is no historical observation store or persistent
 receipt accumulation.
