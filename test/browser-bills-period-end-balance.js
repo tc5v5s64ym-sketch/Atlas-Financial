@@ -53,8 +53,13 @@ const head = cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await page.evaluate(async () => { await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); });
       await page.screenshot({ path: path.join(out, `${state}-${width}.png`), fullPage: true, animations: 'disabled' });
-      await card.screenshot({ path: path.join(out, `${state}-card-${width}.png`), animations: 'disabled' });
       const summary = card.locator('summary');
+      await summary.click();
+      await page.waitForFunction(() => document.querySelector('[data-bills-closing-details]')?.open);
+      await summary.click();
+      await page.waitForFunction(() => !document.querySelector('[data-bills-closing-details]')?.open);
+      await card.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
+      await card.screenshot({ path: path.join(out, `${state}-card-${width}.png`), animations: 'disabled' });
       await summary.focus(); await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('[data-bills-closing-details]')?.open);
       assert.match(await card.innerText(), /Weekly's balance and overdraft are excluded/);
