@@ -50,9 +50,10 @@ fs.mkdirSync(output, { recursive: true });
       await boot();
       await geometry();
       const today = page.locator('[data-budget-funding-panel="today"]');
-      assert.match(await today.locator('[data-budget-funding-proposal]').innerText(), /\$0\.00/,
-        'no contribution assigned to either later-dated cost today; capacity is a different field');
-      assert.match(await today.innerText(), /never add them together/);
+      assert.equal(await today.locator('[data-budget-funding-proposal]').innerText(), 'Unavailable',
+        'without configured purpose pools the native daily proposal is unknown, not zero');
+      assert.match(await today.innerText(), /Configured purpose pools are required/);
+      assert.match(await page.locator('[data-budget-funding-context="today"]').innerText(), /Capacity is separate from the proposed contribution/);
       await capture('upcoming-today', '[data-budget-funding-section]');
       const tabs = page.locator('[data-budget-funding-tab]');
       await tabs.first().focus(); await page.keyboard.press('ArrowRight');
@@ -62,7 +63,7 @@ fs.mkdirSync(output, { recursive: true });
       const payday = page.locator('[data-budget-funding-panel="payday"]');
       assert.equal(await payday.isVisible(), true);
       assert.match(await tabs.last().innerText(), /Aug 28/);
-      assert.match(await payday.innerText(), /exact published payday schedule/i);
+      assert.match(await payday.innerText(), /Future payday projection[\s\S]*Complete exact payday funding plan/i);
       await capture('upcoming-payday', '[data-budget-funding-section]');
       const evidenceButton = payday.locator('[data-budget-funding-evidence]');
       await evidenceButton.focus(); await page.keyboard.press('Enter');
@@ -87,12 +88,19 @@ fs.mkdirSync(output, { recursive: true });
       await visibleFocus('[data-budget-funding-panel="payday"] [data-budget-funding-evidence]');
       await tabs.last().focus(); await page.keyboard.press('Home');
       const todayButton = today.locator('[data-budget-funding-evidence]');
-      await page.locator('[data-from-today-proposal]').evaluate(node => { window.__fundingOriginal = node; });
+      // Preserve the independent earlier arithmetic without claiming that the
+      // compatibility evidence is the native daily proposal or its Info node.
+      const earlier = page.locator('[data-from-today-proposal]');
+      assert.match(await earlier.textContent(), /1,375\.00[\s\S]*265\.00[\s\S]*308\.50/);
+      assert.match(await earlier.textContent(), /501\.50/,
+        'earlier capacity still reconciles: 1375 cash - 265 remaining bills - 308.50 household - 300 floor');
+      await page.locator('[data-budget-daily-funding-evidence]').evaluate(node => { window.__fundingOriginal = node; });
       await todayButton.focus(); await page.keyboard.press('Enter');
-      assert.equal(await page.locator('[data-budget-detail-body] [data-from-today-proposal]').evaluate(node => node === window.__fundingOriginal), true, 'original complete evidence node is moved');
-      assert.match(await page.locator('[data-budget-detail-body]').innerText(), /1,375\.00[\s\S]*265\.00[\s\S]*308\.50/);
-      assert.match(await page.locator('[data-budget-detail-body]').innerText(), /501\.50/,
-        'capacity reconciles independently: 1375 cash - 265 remaining bills - 308.50 household - 300 floor');
+      const nativeToday = page.locator('[data-budget-detail-body] [data-budget-daily-funding-evidence]');
+      assert.equal(await nativeToday.evaluate(node => node === window.__fundingOriginal), true, 'original native daily evidence node is moved');
+      assert.equal(await nativeToday.locator('[data-budget-daily-proposal]').innerText(), 'Unavailable');
+      assert.match(await nativeToday.innerText(), /Configured purpose pools are required/);
+      assert.doesNotMatch(await nativeToday.innerText(), /\$[0-9]/, 'unknown daily evidence cannot borrow the earlier capacity');
       await page.keyboard.press('Escape');
       assert.equal(await todayButton.evaluate(node => node === document.activeElement), true);
       await visibleFocus('[data-budget-funding-panel="today"] [data-budget-funding-evidence]');
@@ -111,7 +119,7 @@ fs.mkdirSync(output, { recursive: true });
       assert.equal(await page.locator('[data-budget-funding-panel="today"]').innerText(), todayScope,
         'future period selection does not relabel current cash as a future receipt');
       await geometry();
-      await page.locator('[data-budget-granularity="month"]').click();
+      await page.locator('[aria-label="Budget planning granularity"] [data-budget-granularity="month"]').click();
       const shortcuts=page.locator('.budget-month-shortcuts');
       assert.equal(await shortcuts.isVisible(),width<960,'Month shortcuts add one quiet mobile row only');
       if(width<960) for(const section of ['result','flow','costs']) {
@@ -160,7 +168,7 @@ fs.mkdirSync(output, { recursive: true });
       assert.match(await page.locator('[data-budget-detail-body]').innerText(), /August 28|Aug 28/);
       await page.keyboard.press('Escape');
       await visibleFocus('[data-budget-month-funding-open]');
-      await page.locator('.budget-granularity [data-budget-granularity="pay-period"]').click();
+      await page.locator('[aria-label="Budget planning granularity"] [data-budget-granularity="pay-period"]').click();
       await page.locator('[data-budget-drilldown-exit]').click();
       data = fx.served({ withUndatedCost: true }); await boot();
       const undated = page.locator('[data-budget-funding-panel="today"] [data-budget-funding-cost="fixture-undated"]');
@@ -182,14 +190,18 @@ fs.mkdirSync(output, { recursive: true });
       }
       data = fx.served({ withheldSavings: true }); await boot();
       assert.match(await page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]').innerText(), /Unavailable/);
-      assert.match(await page.locator('[data-budget-funding-section]').innerText(), /unconfirmed|not confirmed|unknown|await confirmation/i);
-      assert.match(await page.locator('[data-budget-savings-goals]').innerText(), /School trip[\s\S]*Not confirmed[\s\S]*Winter tires/);
+      assert.match(await page.locator('[data-budget-funding-section]').innerText(), /Explicit purpose pools are required/);
+      assert.match(await page.locator('[data-budget-savings-goals]').innerText(), /Named savings unavailable/);
+      // The retained occurrence evidence still names both unconfirmed costs;
+      // it does not supply native daily assignments or purpose-pool amounts.
+      assert.match((await page.locator('[data-budget-goal-fulfillment-evidence]').allTextContents()).join('\n'),
+        /School trip[\s\S]*Not confirmed[\s\S]*Winter tires/);
       await page.locator('[data-budget-funding-tab="payday"]').click();
       assert.match(await page.locator('[data-budget-funding-panel="payday"] [data-budget-funding-proposal]').innerText(), /Unavailable/);
       await geometry(); await capture('upcoming-withheld', '[data-budget-funding-section]');
       data = fx.served({ zeroIncomeWithoutSpend: true }); await boot();
       assert.match(await page.locator('[data-budget-funding-panel="today"] [data-budget-funding-proposal]').innerText(), /Unavailable/);
-      await page.locator('[data-budget-granularity="month"]').click();
+      await page.locator('[aria-label="Budget planning granularity"] [data-budget-granularity="month"]').click();
       assert.match(await page.locator('[data-budget-month-view]').innerText(), /deficit|unavailable/i);
       await geometry(); await capture('month-zero-income');
       for (const [coverage, settlement] of [['missing', 'unverified'], ['partial', 'paid'], ['full', 'unverified'],
@@ -197,19 +209,24 @@ fs.mkdirSync(output, { recursive: true });
         data = fx.fundingHistorical(coverage, settlement); await boot();
         const ready = !['truncated', 'posted-only'].includes(coverage);
         const capacity = settlement === 'paid' ? /501\.50/ : /396\.50/;
-        assert.match(await page.locator('[data-budget-funding-context="today"]').innerText(), ready ? capacity : /Unavailable/);
+        assert.match(await page.locator('[data-from-today-proposal]').textContent(), ready ? capacity : /unavailable|incomplete|withholding/i);
+        assert.match(await page.locator('[data-budget-funding-context="today"]').innerText(), /Unavailable/);
         for (const role of ['past', 'current', 'next']) {
           if (role === 'past') await page.locator('[data-budget-window-step="-1"]').click();
           else await page.locator('[data-budget-window-step="1"]').click();
           const section = page.locator('[data-budget-funding-section]');
-          assert.match(await page.locator('[data-budget-funding-tab="today"]').innerText(), /Aug 20/);
-          assert.match(await page.locator('[data-budget-funding-context="today"]').innerText(), ready ? capacity : /Unavailable/);
-          assert.equal(await page.locator('[data-from-today-proposal]').count(), 1, 'one original current-cash evidence source in every selection');
+          assert.equal(await page.locator('[data-budget-funding-tab="today"]').innerText(), "From today's cash");
+          assert.match(await page.locator('[data-budget-funding-context="today"]').innerText(), /Unavailable/);
+          assert.equal(await page.locator('[data-budget-daily-funding-evidence]').count(), 1, 'one original native daily evidence source in every selection');
+          assert.match(await page.locator('[data-from-today-proposal]').textContent(), ready ? capacity : /unavailable|incomplete|withholding/i);
+          assert.match(await page.locator('[data-from-today-proposal]').textContent(), /2026-08-20/);
           const trigger = section.locator('[data-budget-funding-panel="today"] [data-budget-funding-evidence]');
           await trigger.focus(); await page.keyboard.press('Enter');
           await page.locator('[data-budget-detail-sheet]').waitFor({ state: 'visible' });
-          assert.match(await page.locator('[data-budget-detail-body]').innerText(), ready ? capacity : /unavailable|incomplete|withholding/i);
-          assert.match(await page.locator('[data-budget-detail-body]').innerText(), /2026-08-20/);
+          const daily = page.locator('[data-budget-detail-body] [data-budget-daily-funding-evidence]');
+          assert.match(await daily.innerText(), /Configured purpose pools are required/);
+          assert.equal(await daily.locator('[data-budget-daily-proposal]').innerText(), 'Unavailable');
+          assert.doesNotMatch(await daily.innerText(), /\$[0-9]/);
           await page.keyboard.press('Escape');
           await visibleFocus('[data-budget-funding-panel="today"] [data-budget-funding-evidence]');
           await geometry();
