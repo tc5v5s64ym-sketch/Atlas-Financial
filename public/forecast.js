@@ -13496,7 +13496,14 @@
       // Replaying the contractual minimum would invent another debt reduction
       // when the optional contract has no accepted minimum-intent allocation.
       const original = statementOccurrenceIdentity(plan, event.id, event.scheduledDate || event.date);
-      if ([...(plan?.opening?.representedEvents || []), ...(opts?.representedEvents || [])]
+      const row = (plan?.obligations || []).find(row => row && row.id === event.id);
+      // Optional records on another cycle must not reclassify an older legacy
+      // prepaid payment. expandEvents has validated statement records; state
+      // supplies only accepted, posted minimum allocations for this as-of.
+      const contracted = (row?.statementOccurrences || []).some(record => record.scheduledDate === original)
+        || cardMinimumState(plan, start, opts).payments.some(payment => payment.id === event.id
+          && payment.scheduledDate === original);
+      if (contracted && [...(plan?.opening?.representedEvents || []), ...(opts?.representedEvents || [])]
           .some(item => cardMinimumReceiptIdentity(plan, item) === original && item.id === event.id
             && representedEventEffectiveBy(item, start))) return false;
       return prepaidJointCashOutflow(plan, event.id, event.date, start);

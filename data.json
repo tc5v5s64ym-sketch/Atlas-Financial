@@ -341,9 +341,33 @@
                 "day": 17,
                 "amount": 94.03,
                 "confidence": "estimated",
-                "note": "The 2026-08-14 Chequing A TFR-TO C/C $94.03 posted and the TD card posted balance fell by exactly $94.03 to $1,705.94. firstDue 2026-09-17 so August is not reserved again. A further miss would restart the 24.99% penalty-rate clock.",
+                "note": "The 2026-08-14 Chequing A TFR-TO C/C $94.03 posted and the TD card posted balance fell by exactly $94.03 to $1,705.94. firstDue 2026-09-17 so August is not reserved again. A further miss would restart the 24.99% penalty-rate clock. Owner confirmation received 2026-10-06: Emerald minimum $45.96 paid $50.00. The owner-authorized target is the next existing October household planning occurrence, tdcc@2026-10-17. October 17 remains an estimated planning date, not newly proven issuer due-date evidence. The Bills debit posted 2026-10-05 and is included in the observed 2026-10-06 cash opening. The separately represented tdcc@2026-09-17 settlement remains intact. This occurrence-specific minimum does not replace later $94.03 estimates; the send does not infer a separate excess-principal allocation or another cash deduction.",
                 "firstDue": "2026-09-17",
-                "payingAccount": "chequing-a"
+                "payingAccount": "chequing-a",
+                "statementOccurrences": [
+                    {
+                        "scheduledDate": "2026-10-17",
+                        "dueDate": "2026-10-17",
+                        "minimum": 45.96,
+                        "currency": "cad",
+                        "confidence": "confirmed",
+                        "dateConfidence": "estimated"
+                    }
+                ],
+                "sentPayments": [
+                    {
+                        "scheduledDate": "2026-10-17",
+                        "confirmed": true,
+                        "intent": "minimum",
+                        "debitId": "tdcc-2026-10-bank-sent",
+                        "postedOn": "2026-10-05",
+                        "amount": 50,
+                        "currency": "cad",
+                        "fundingAccountId": "chequing-a",
+                        "pending": false,
+                        "cashIncludedAsOf": "2026-10-06"
+                    }
+                ]
             },
             {
                 "id": "travel",
@@ -1324,6 +1348,7 @@
             "asOf": "2026-08-19",
             "representedEvents": [
                 { "id": "tdcc", "date": "2026-09-17" },
+                { "id": "tdcc", "date": "2026-10-17", "effectiveAsOf": "2026-10-06" },
                 { "id": "noble-garbage", "date": "2026-09-18" },
                 { "id": "heloc", "date": "2026-09-21" },
                 { "id": "triangle", "date": "2026-09-07", "effectiveAsOf": "2026-10-05" },
