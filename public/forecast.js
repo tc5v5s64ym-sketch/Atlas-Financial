@@ -17,9 +17,21 @@
 (function (root) {
 
   const CardMinimumContract = (() => {
-  const date = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  const validateDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && Number.isFinite(Date.parse(value + 'T00:00:00Z'))
     && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
+  // Only memoize pure string validation, never statement or financial state.
+  const dateResults = new Map();
+  function date(value) {
+    if (typeof value !== 'string') return false;
+    if (dateResults.has(value)) return dateResults.get(value);
+    const valid = validateDate(value);
+    if (value.length === 10) {
+      if (dateResults.size >= 256) dateResults.delete(dateResults.keys().next().value);
+      dateResults.set(value, valid);
+    }
+    return valid;
+  }
   const cents = value => typeof value === 'number' && Number.isFinite(value)
     && value >= 0 && Number.isSafeInteger(Math.round(value * 100))
     && Math.abs(value * 100 - Math.round(value * 100)) < 1e-7 ? Math.round(value * 100) : null;

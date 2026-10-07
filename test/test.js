@@ -33,6 +33,7 @@ const suites = [
   ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
+  ['bounded strict card-minimum date validation', 'test-card-minimum-date-cache.js'],
   ['card minimum issuer confirmation across advancing live refreshes', 'test-card-minimum-issuer-lifecycle.js'],
   ['owner-confirmed carried minimum and later-cycle isolation', 'test-confirmed-carried-card-minimum.js'],
   ['Triangle owner-confirmed paid without duplicate cash or principal', 'test-triangle-owner-confirmed-paid.js'],
