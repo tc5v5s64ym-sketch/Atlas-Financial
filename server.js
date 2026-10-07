@@ -52,6 +52,9 @@ const MCP_OAUTH = AssistantOAuth.readConfig(process.env);
 const MCP_BEARER_AUTH = MCP_OAUTH.configured
   ? AssistantOAuth.createBearerMiddleware(MCP_OAUTH)
   : null;
+const MCP_WRITE_STEP_UP = MCP_OAUTH.configured
+  ? AssistantOAuth.createWriteStepUp(MCP_OAUTH)
+  : null;
 
 if (!PASSWORD || PASSWORD.length < 8) {
   console.error('FATAL: SITE_PASSWORD is not set, or is shorter than 8 characters.');
@@ -350,6 +353,11 @@ app.post('/assistant/mcp', mcpOAuthGate, (req, res, next) => {
       error: { code: -32700, message: 'parse error' },
     });
   });
+}, (req, res, next) => {
+  // Lunch Money write tools without atlas.transactions.write get HTTP 403
+  // insufficient_scope so MCP clients step up; every other request passes.
+  if (!MCP_WRITE_STEP_UP) return res.status(503).json({ error: 'assistant oauth unavailable' });
+  return MCP_WRITE_STEP_UP(req, res, next);
 }, async (req, res) => {
   try {
     await AssistantMcp.handleHttp(req, res, {

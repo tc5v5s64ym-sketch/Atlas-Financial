@@ -25,6 +25,20 @@ const CHALLENGE_SCOPES = Object.freeze([
   AssistantMcp.REQUIRED_SCOPE,
   READ_SCOPE,
 ]);
+// Operation-specific step-up. Only a JSON-RPC tools/call for one of these
+// write tools, from a token without atlas.transactions.write, gets an HTTP 403
+// insufficient_scope challenge naming the full scope set it needs, so SEP-835
+// MCP clients re-authorize for write on demand. Write is never requested up
+// front, and the tool-level scopeDenial check stays as defense in depth.
+const WRITE_TOOL_NAMES = Object.freeze([
+  'prepare_lunchmoney_edit',
+  'apply_lunchmoney_edit',
+]);
+const WRITE_STEP_UP_SCOPES = Object.freeze([
+  AssistantMcp.REQUIRED_SCOPE,
+  READ_SCOPE,
+  WRITE_SCOPE,
+]);
 const ASYMMETRIC_JWT_ALGORITHMS = Object.freeze([
   'RS256', 'RS384', 'RS512',
   'PS256', 'PS384', 'PS512',
@@ -190,9 +204,68 @@ function createBearerMiddleware(config, deps) {
   };
 }
 
+// Classify a parsed JSON-RPC body (single message or batch) for the write
+// step-up. 'write' when any tools/call names a write tool; 'invalid' when a
+// tools/call cannot be classified (params not an object, or name not a
+// string); otherwise 'other'. Never throws on JSON-shaped input.
+function classifyToolCalls(body) {
+  const messages = Array.isArray(body) ? body : [body];
+  let verdict = 'other';
+  for (const message of messages) {
+    if (!message || typeof message !== 'object' || Array.isArray(message)) continue;
+    if (message.method !== 'tools/call') continue;
+    const params = message.params;
+    if (!params || typeof params !== 'object' || Array.isArray(params)
+        || typeof params.name !== 'string') {
+      return 'invalid';
+    }
+    if (WRITE_TOOL_NAMES.includes(params.name)) verdict = 'write';
+  }
+  return verdict;
+}
+
+function writeStepUpChallenge(config) {
+  return `Bearer error="insufficient_scope", scope="${WRITE_STEP_UP_SCOPES.join(' ')}", `
+    + `resource_metadata="${config.metadataUrl}"`;
+}
+
+// Runs after createBearerMiddleware and JSON parsing, before MCP dispatch.
+function createWriteStepUp(config) {
+  if (!config || !config.configured) throw new Error('OAuth is not configured');
+  const challenge = writeStepUpChallenge(config);
+  return function writeScopeStepUp(req, res, next) {
+    let verdict;
+    try {
+      verdict = classifyToolCalls(req.body);
+    } catch {
+      verdict = 'invalid';
+    }
+    if (verdict === 'invalid') {
+      return res.status(400).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32600, message: 'invalid request' },
+      });
+    }
+    const scopes = req.auth && Array.isArray(req.auth.scopes) ? req.auth.scopes : [];
+    if (verdict === 'write' && !scopes.includes(WRITE_SCOPE)) {
+      // setHeader, not res.set: createBearerMiddleware wraps res.set to pin
+      // challenges to CHALLENGE_SCOPES, which would strip write from this one.
+      res.setHeader('WWW-Authenticate', challenge);
+      return res.status(403).json({
+        error: 'insufficient_scope',
+        error_description: 'Lunch Money edits require atlas.transactions.write',
+      });
+    }
+    return next();
+  };
+}
+
 module.exports = {
   METADATA_PATH,
   CHALLENGE_SCOPES,
+  WRITE_TOOL_NAMES,
+  WRITE_STEP_UP_SCOPES,
   ASYMMETRIC_JWT_ALGORITHMS,
   safeUrl,
   readConfig,
@@ -201,4 +274,7 @@ module.exports = {
   rewriteChallengeScope,
   createTokenVerifier,
   createBearerMiddleware,
+  classifyToolCalls,
+  writeStepUpChallenge,
+  createWriteStepUp,
 };
