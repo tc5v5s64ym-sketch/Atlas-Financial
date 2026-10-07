@@ -5185,7 +5185,7 @@ function budgetDetailSheetController(mount) {
     }
     if (source && node.hasAttribute('data-budget-category')) return `[data-budget-category="${CSS.escape(node.getAttribute('data-budget-category'))}"]`;
     for (const key of source ? ['data-budget-goal-fulfillment-evidence', 'data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-budget-daily-funding-evidence', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
-      : ['data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-month-section', 'data-budget-month-section-heading', 'data-budget-granularity', 'data-budget-window-step']) {
+      : ['data-budget-card-toggle', 'data-budget-card-close', 'data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-month-section', 'data-budget-month-section-heading', 'data-budget-granularity', 'data-budget-window-step']) {
       if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
     }
     if (!source && node.matches('.budget-period-info > summary')) return '.budget-period-info > summary';
@@ -5445,6 +5445,7 @@ function wirePlanLookPicker(mount, ctx) {
   wireBudgetWindow(mount, ctx, sheet);
   wireBudgetBrowse(mount, ctx, sheet);
   wireBudgetFunding(mount, sheet);
+  if (typeof BudgetCardMovements !== 'undefined') BudgetCardMovements.wire(mount);
   mount.querySelectorAll('.budget-period-info').forEach(info => {
     if (sheet) {
       const summary = info.querySelector('summary');
@@ -6705,12 +6706,24 @@ function budgetSurfaceParts() {
     inDrilldown: () => budgetInPayPeriodDrilldown(),
     todayHtml: ctx => budgetTodayCashCardHtml(ctx) + billsAccountPeriodBalanceHtml(ctx),
     periodHtml: ctx => budgetPayPeriodContentHtml(Object.assign({}, ctx, { budgetCompactOverview: true })),
+    cardMovementsHtml: ctx => budgetCardMovementsHtml(ctx),
     browseHtml: ctx => budgetBrowseSectionsHtml(ctx),
     monthHtml: ctx => budgetMonthSurfaceHtml(ctx),
     fundingHtml: ctx => budgetUpcomingFundingHtml(ctx),
     selectedMonthLabel: () => (budgetSelectedMonth && budgetMonthName(budgetSelectedMonth)) || null,
     drilldownHtml: ctx => budgetPayPeriodDrilldownHtml(ctx),
   };
+}
+
+function budgetCardMovementsHtml(ctx) {
+  if (typeof BudgetCardMovements === 'undefined' || typeof Forecast.cardPeriodMovements !== 'function') return '';
+  const period = payPeriodSelection(ctx.advice || {}, ctx.planPayPeriodId).period;
+  const overlay = ctx.liveOverlay?.applied === true ? ctx.liveOverlay : null;
+  const publication = Forecast.cardPeriodMovements(ctx.plan, ctx.debts, ctx.asOf,
+    period ? { start: period.start, end: period.end } : null,
+    { currentPeriodActuals: overlay?.currentPeriodActuals || null,
+      cardPeriodBalanceEvidence: overlay?.cardPeriodBalanceEvidence || null, liveOverlay: overlay });
+  return BudgetCardMovements.html(publication, { money: money2, date: fmtDate });
 }
 
 function budgetSurfaceHtml(ctx) {

@@ -1,0 +1,112 @@
+'use strict';
+const assert = require('node:assert/strict');
+const F = require('../public/forecast');
+const vm = require('node:vm'), fs = require('node:fs');
+const { fixture, copy } = require('./fixtures/card-period-movements-data');
+let checks = 0;
+const eq = (a, b, message) => { assert.deepEqual(a, b, message); checks++; };
+const publish = x => F.cardPeriodMovements(x.plan, x.debts, x.asOf, x.window,
+  { currentPeriodActuals: x.packet, cardPeriodBalanceEvidence: x.balanceEvidence, liveOverlay: x.overlay || null });
+const x = fixture(), before = JSON.stringify(x), pub = publish(x);
+// Existing engine mutation suites expose module.exports without require.
+const sandbox = { module: { exports: {} } };
+vm.runInNewContext(fs.readFileSync(require.resolve('../public/forecast'), 'utf8'), sandbox);
+const vmCycle = sandbox.module.exports.spendingCycle(x.plan, x.asOf);
+eq([vmCycle.start, vmCycle.end, vmCycle.nextPayday, vmCycle.days],
+  ['2026-08-14', '2026-08-27', '2026-08-28', 14],
+  'incumbent Forecast VM works without require');
+eq(pub.cards.map(row => row.id), ['travelvisa', 'cashback', 'tdcc', 'triangle', 'mbna'], 'all five canonical identities');
+eq(pub.cards[4].label, 'Amazon Mastercard', 'owner-visible Amazon name');
+// Two independent methods: institution-like invented endpoints and a ledger
+// written in integer cents here, never by calling the producing calculator.
+const independentTravelCents = 17240 + 6375 - 10000 - 3500 + 625;
+eq(independentTravelCents, 10740, 'independent ledger includes payment/refund/interest');
+eq(92740 - 82000, 10740, 'independent endpoints agree');
+eq(pub.cards[0].netChange.amount, 107.40, 'Travel posted debt change');
+eq(pub.cards[0].netChange.direction, 'up', 'debt increase');
+eq(pub.cards[1].netChange.amount, -135.80, '11420 - 25000 = -13580, cash leg never added');
+eq(pub.cards[1].netChange.direction, 'down', 'debt decrease');
+eq(pub.cards[2].netChange.amount, 0, 'complete true zero');
+eq(pub.cards[0].posted.map(tx => tx.kind), ['charge', 'charge', 'payment', 'interest', 'refund'], 'native explicit type, sorted identity');
+eq(pub.cards[0].posted.length, 5, 'card leg counts once');
+eq(pub.cards[0].pending.length, 1, 'pending remains separate');
+eq(pub.cards[3].netChange.amount, null, 'Triangle opening remains unknown');
+eq(pub.cards[4].netChange.amount, null, 'dated Amazon never becomes current closing');
+eq(pub.cards[4].reportedBalance.date, '2026-08-08', 'manual evidence not retimed');
+const nativeDate = copy(x); delete nativeDate.debts[4].evidenceDate;
+nativeDate.overlay = { overlays: [{ locator: 'debts:mbna', field: 'balance', proposedValue: 760, evidenceDate: '2026-08-08' }] };
+eq(publish(nativeDate).cards[4].reportedBalance.date, '2026-08-08', 'native colon locator preserves manual date without a canonical date');
+nativeDate.overlay.overlays[0].evidenceDate = '2026-08-21';
+eq(publish(nativeDate).cards[4].reportedBalance.date, null, 'future observation not promoted into current date');
+nativeDate.overlay.overlays[0].evidenceDate = '2026-08-08';
+nativeDate.overlay.overlays[0].proposedValue = 761;
+eq(publish(nativeDate).cards[4].reportedBalance.date, null, 'different provider stock not assigned to canonical stock');
+eq(JSON.stringify(x), before, 'no input write');
+for (const [name, mutate, amount, reason] of [
+  ['missing opening', y => { delete y.balanceEvidence.cards[0].opening; }, null, 'opening-unavailable'],
+  ['unconfirmed opening', y => { y.balanceEvidence.cards[0].opening.confirmed = false; }, null, 'opening-unqualified'],
+  ['date without temporal claim', y => { delete y.balanceEvidence.cards[0].opening.temporalClaim; }, null, 'opening-unqualified'],
+  ['stale closing', y => { y.balanceEvidence.cards[0].closing.date = '2026-08-08'; }, null, 'closing-unqualified'],
+  ['fractional-cent endpoint', y => { y.balanceEvidence.cards[0].closing.amount = 927.401; }, null, 'closing-unqualified'],
+  ['same endpoint reference', y => { y.balanceEvidence.cards[0].closing.evidenceRef = y.balanceEvidence.cards[0].opening.evidenceRef; }, null, 'endpoint-identity-conflict'],
+  ['duplicate endpoint records', y => { y.balanceEvidence.cards.push(copy(y.balanceEvidence.cards[0])); }, null, 'endpoint-identity-conflict'],
+  ['malformed endpoint container', y => { y.balanceEvidence.cards = {}; }, null, 'opening-unavailable'],
+  ['truncated pages', y => { y.packet.transactionCoverage = 'truncated'; }, null, 'posted-coverage-incomplete'],
+  ['missing first page', y => { y.packet.coverageStart = '2026-08-15'; }, null, 'posted-coverage-incomplete'],
+  ['missing last page', y => { y.packet.coverageThrough = '2026-08-19'; }, null, 'posted-coverage-incomplete'],
+  ['stale observation', y => { y.packet.observationAsOf = '2026-08-19'; }, null, 'observation-unavailable'],
+  ['USD movement', y => { y.packet.transactions[0].currency = 'usd'; }, null, 'transaction-amount-unqualified'],
+  ['amount string', y => { y.packet.transactions[0].amount = '172.40'; }, null, 'transaction-amount-unqualified'],
+  ['fractional-cent movement', y => { y.packet.transactions[0].amount = 172.401; }, null, 'transaction-amount-unqualified'],
+  ['duplicate posted id', y => { y.packet.transactions.push(copy(y.packet.transactions[0])); }, null, 'duplicate-identity'],
+  ['pending versus posted ambiguity', y => { y.packet.transactions[0].pendingPostedAmbiguous = true; }, null, 'transaction-evidence-unconfirmed'],
+  ['pending duplicate identity', y => { y.packet.transactions[0].pendingPostedDuplicate = true; }, null, 'transaction-evidence-unconfirmed'],
+  ['contradictory posted evidence', y => { y.packet.transactions[0].contradictoryEvidence = true; }, null, 'transaction-evidence-unconfirmed'],
+  ['unknown card mapping', y => { y.packet.transactions.push({ ...y.packet.transactions[0], id: 'unknown', accountRole: 'unmapped' }); }, null, 'unmapped-card-identity'],
+  ['discrepancy', y => { y.balanceEvidence.cards[0].closing.amount = 940; }, null, 'balance-ledger-discrepancy'],
+  ['large pending authorization', y => { y.packet.transactions.find(tx => tx.pending).amount = 750; }, 107.40, null],
+  ['pending coverage unknown', y => { y.packet.pendingCoverage = 'unknown'; }, 107.40, null],
+  ['next payday charge', y => { y.packet.transactions.push({ ...y.packet.transactions[0], id: 'next', date: '2026-08-28', amount: 900 }); }, 107.40, null],
+  ['spending exclusion still changes liability', y => { y.packet.transactions[2].excludeFromBudget = true; y.packet.transactions[2].excludeFromTotals = true; }, 107.40, null],
+  ['posted fee or adjustment included', y => { y.packet.transactions.push({ ...y.packet.transactions[0], id: 'fee', amount: 29, displayedPayee: 'Example fee' }); y.balanceEvidence.cards[0].closing.amount = 956.40; }, 136.40, null],
+  ['posted reversal', y => { y.packet.transactions.push({ ...y.packet.transactions[0], id: 'reversal', amount: 100 }); y.balanceEvidence.cards[0].closing.amount = 1027.40; }, 207.40, null],
+  ['ambiguous credit type', y => { delete y.packet.transactions.find(tx => tx.id === 'payment-a').kindHint; }, 107.40, null],
+]) {
+  const y = copy(x); mutate(y); const result = publish(y).cards[0];
+  eq(result.netChange.amount, amount, name + ' numeric truth');
+  if (reason) { assert.ok(result.reasons.includes(reason), name + ' reason'); checks++; }
+  eq(result.posted.some(tx => tx.id === 'cash-leg-a'), false, name + ' cash leg excluded');
+}
+const ambiguous = copy(x); delete ambiguous.packet.transactions.find(tx => tx.id === 'payment-a').kindHint;
+eq(publish(ambiguous).cards[0].posted.find(tx => tx.id === 'payment-a').kind, 'credit-unconfirmed', 'sign does not prove payment or refund');
+const split = copy(x); split.packet.transactions.push({ ...split.packet.transactions[0], id: 'parent', isGroup: true });
+eq(publish(split).cards[0].netChange.amount, null, 'unproven parent fails closed');
+split.packet.transactions[0].parentId = 'parent';
+eq(publish(split).cards[0].netChange.amount, 107.40, 'parent not added to child');
+const future = copy(x); future.window = { start: '2026-08-28', end: '2026-09-10' };
+eq(publish(future).cards.every(row => row.status === 'not-observed' && row.netChange.amount === null && !row.posted.length), true, 'future does not borrow current movement');
+const invalid = copy(x); invalid.window.start = '2026-02-30';
+eq(publish(invalid).cards.every(row => row.netChange.amount === null), true, 'invalid calendar identity');
+const wrongPeriod = copy(x); wrongPeriod.window.start = '2026-08-15';
+eq(publish(wrongPeriod).cards[0].reasons.includes('selected-period-unavailable'), true, 'arbitrary dates not a Seaspan period');
+const historical = copy(x); historical.window = { start: '2026-07-31', end: '2026-08-13' };
+const historicalCard = publish(historical).cards[0];
+eq(historicalCard.netChange.amount, null, 'current packet does not establish historical endpoints');
+eq(historicalCard.reportedBalance, null, 'current stock never copied into history');
+eq(historicalCard.posted, [], 'current period charges never copied into history');
+const currencyPoint = copy(x); currencyPoint.balanceEvidence.cards[0].opening.currency = 'USD';
+eq(publish(currencyPoint).cards[0].opening, null, 'USD endpoint never displayed as CAD opening');
+// Positive institution satisfaction is preserved independently of payment
+// purpose. These invented occurrences already have qualified issuer proof.
+const issuer = require('./fixtures/bills-header-payments-data').fixture();
+const issuerBefore = F.cardMinimumState(issuer.plan, issuer.asOf);
+eq(issuerBefore.payments.map(row => row.issuerMinimumStatus), ['satisfied', 'satisfied', 'satisfied'], 'independent issuer evidence fixture');
+publish({ ...x, plan: issuer.plan });
+eq(F.cardMinimumState(issuer.plan, issuer.asOf), issuerBefore, 'reporting never invents another liability over issuer proof');
+// New reporting must not mutate or settle any existing household authority.
+const minimumBefore = F.cardMinimumState(x.plan, x.asOf);
+const adviceBefore = F.recommend(x.plan, x.asOf, { debts: x.debts, currentPeriodActuals: x.packet });
+publish(x);
+eq(F.cardMinimumState(x.plan, x.asOf), minimumBefore, 'ambiguous provider credit does not settle household minimum');
+eq(F.recommend(x.plan, x.asOf, { debts: x.debts, currentPeriodActuals: x.packet }), adviceBefore, 'all incumbent cash/spending/obligation/funding publications unchanged');
+console.log(`PASS card period movements: ${checks} independent assertions`);
