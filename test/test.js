@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['real financial calendar identity and hypothetical conservation', 'test-financial-calendar-identity.js'],
   ['posted income and unresolved future occurrence cash gate', 'test-early-income-uncertainty.js'],
   ['bounded live refresh and client cancellation', 'test-live-refresh-deadline.js'],
   ['bounded shared browser data load and truthful retry', 'test-browser-data-deadline.js'],
