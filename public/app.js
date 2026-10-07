@@ -367,11 +367,20 @@ const App = (() => {
     notice.className = 'note-box';
     notice.setAttribute('role', 'status');
     if (wrap) wrap.prepend(notice);
+    let loading = false;
     function load() {
+      if (loading) return;
+      loading = true;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
+      let cancelled = false;
+      const timer = setTimeout(() => controller.abort(), 180000);
       notice.className = 'note-box';
-      notice.textContent = 'Loading current data...';
+      notice.textContent = 'Loading current data... This can take a couple of minutes. ';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', () => { cancelled = true; controller.abort(); });
+      notice.append(cancel);
       const wants = [fetch('/data.json', { credentials: 'same-origin', signal: controller.signal })
         .then(r => {
           if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
@@ -389,6 +398,7 @@ const App = (() => {
           .catch(() => null)
         : Promise.resolve(null));
       Promise.all(wants).then(([d, p, h]) => {
+        if (controller.signal.aborted) throw new Error('load cancelled');
         DATA = d; PERIODS = p || null; HISTORY = h || null;
         const asof = $('asof');
         if (asof) {
@@ -401,13 +411,15 @@ const App = (() => {
         if (err.message === 'auth') return;
         controller.abort();
         notice.className = 'note-box crit';
-        notice.textContent = 'Current data could not be loaded. Figures remain unavailable. ';
+        notice.textContent = cancelled
+          ? 'Loading cancelled. Figures remain unavailable. '
+          : 'Current data could not be loaded. Figures remain unavailable. ';
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.textContent = 'Retry';
         retry.addEventListener('click', load);
         notice.append(retry);
-      }).finally(() => clearTimeout(timer));
+      }).finally(() => { loading = false; clearTimeout(timer); });
     }
     load();
   }
