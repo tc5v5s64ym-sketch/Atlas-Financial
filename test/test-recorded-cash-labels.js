@@ -37,6 +37,17 @@ eq(html.includes('$1375.00'), true, 'native amount actually printed');
 eq(html.includes('Chequing A and Chequing B only.'), true, 'exact current account scope actually printed');
 eq(html.includes('Designated Savings remains reserve evidence'), true, 'reserve exclusion actually printed');
 eq(html.includes('Chequing A, Chequing B and Savings'), false, 'old current scope removed');
+let assumptions = ''; const recordsStop = new Error('assumptions complete'), recordNodes = {};
+const records = { Forecast: F, console, money: deep.money, money2: deep.money2,
+  App: { once() {}, register() {}, boot() {} }, $: id => {
+    if (!recordNodes[id]) recordNodes[id] = {};
+    if (id === 'assumptions') Object.defineProperty(recordNodes[id], 'innerHTML', { configurable: true,
+      set(value) { assumptions = value; throw recordsStop; } }); return recordNodes[id]; } };
+vm.createContext(records); vm.runInContext(read('public/records.js'), records);
+try { records.renderRecords(data); assert.fail('assumptions not reached'); } catch (e) { assert.equal(e, recordsStop); }
+eq(assumptions.includes('Chequing A, Chequing B and Savings'), false, 'Records does not reintroduce old current scope');
+eq(assumptions.includes('Chequing A and Chequing B (designated Savings is reserve evidence'), true, 'Records current scope agrees');
+eq(assumptions.includes('2026-08-20'), true, 'Records keeps dated explanation');
 for (const long of [false, true]) {
   const history = fx.history(long), original = JSON.stringify(history), points = H.spendableSeries(history);
   eq(points.map(p => p.balance), [2507.31, 2507.31], 'independent broader balances unchanged');

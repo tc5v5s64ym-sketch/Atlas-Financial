@@ -32,6 +32,7 @@ function data() {
   out.questions = []; out.paypal = { categories: [], perMonth: 0, crossCheck: 0, note: 'Invented empty evidence' };
   out.unexplained = []; out.spending = []; out.fees = []; out.settled = [];
   out.assets = []; out.helocHistory = []; out.income = []; out.incomeCaptureMonths = 1;
+  out.netWorth = { caveat: 'Invented accounts only; no home valuation claim' }; out.coverage = [];
   return out;
 }
 module.exports = { data, history };

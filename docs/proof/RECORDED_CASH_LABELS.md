@@ -26,7 +26,8 @@ The existing history mount is moved out of Budget's hidden legacy section into
 a closed, keyboard-accessible Recorded account balances disclosure. One mount
 and one renderer remain. Current notes are corrected when displayed; stored
 dated source explanations remain untouched. The legacy 13-week parent stays
-hidden. Bills-only Current Balance, native Forecast totals and savings
+hidden. Records uses the same current wording when it displays the stored
+assumptions, retaining their dates and exclusions. Bills-only Current Balance, native Forecast totals and savings
 assignments are separate and unchanged.
 
 `test-recorded-cash-labels.js` uses only the independent
