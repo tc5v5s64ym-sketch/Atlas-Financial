@@ -9067,7 +9067,8 @@
     if (cash == null || !cashDate || !day || cashDate > day) {
       issue('bills-cash-unavailable', 'A dated posted Bills account balance is unavailable.');
     }
-    if (observedRows.length > 1 || observedRow && (!finite(observedRow.value) || observedRow.value !== cash)) {
+    if (observedRows.length > 1 || observedRow && (!finite(observedRow.value)
+      || savingsCents(observedRow.value, true) !== savingsCents(cash, true))) {
       issue('cash-observation-misaligned', 'The Bills plan row does not match its native cash observation.');
     }
     if (!cycle || !cycle.start || !cycle.end) issue('period-unavailable', 'The active pay period is unavailable.');
