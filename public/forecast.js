@@ -198,11 +198,25 @@
   const HOUSEHOLD_TIMEZONE = 'America/Vancouver';
   const ISO_CALENDAR_DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
   const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/;
+  function realCalendarDate(value) {
+    const match = ISO_CALENDAR_DATE.exec(value);
+    if (!match) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const lengths = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return day <= lengths[month - 1];
+  }
   function financialDate(value) {
     if (value == null || value === '') return null;
     const s = String(value).trim();
-    if (ISO_CALENDAR_DATE.test(s)) return s;
+    if (ISO_CALENDAR_DATE.test(s)) return realCalendarDate(s) ? s : null;
     if (!ISO_INSTANT.test(s)) return null;
+    // Validate the source calendar before Date can roll an impossible day
+    // forward. This prefix is validation only; the household day below
+    // still comes from the actual instant in America/Vancouver.
+    if (!realCalendarDate(s.slice(0, 10))) return null;
     const instant = new Date(s);
     if (Number.isNaN(instant.getTime())) return null;
     const parts = new Intl.DateTimeFormat('en-CA', {
