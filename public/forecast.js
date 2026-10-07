@@ -9174,12 +9174,76 @@
       else otherOutflows = roundCent(otherOutflows + amount);
       evidence.push({ kind, amount, source });
     };
+    // The calendar owns joint household costs, not an account's stock.
+    // An explicit other cash payer does not imply a new Bills transfer.
+    // Unassigned household costs retain the owner's Bills funding anchor;
+    // unknown explicit account ids cannot establish Bills cash attribution.
+    const cashAccounts = new Set([...rows, ...(plan?.startingCash?.heldElsewhere || [])].map(row => row?.id));
+    const billsCashScope = row => {
+      const payer = row && row.payingAccount;
+      if (!payer || payer === BILLS_ACCOUNT_ID) return true;
+      if (cashAccounts.has(payer)) return false;
+      if (row.cardPaid === true) return true; // incumbent card funding/coverage still owns this cash
+      issue('remaining-cash-account-unconfirmed', 'The paying account for a remaining cash requirement is unconfirmed.');
+      return false;
+    };
+    const validateNativeRemainingCash = () => {
+      if (!cycle) return;
+      const represented = representedKeySet(plan, opts, day), observed = representedActualMap(opts);
+      const settled = (id, date) => calendarOccurrenceRepresented(represented, observed, id, date);
+      // Check eligible native occurrences before expandEvents can omit null,
+      // missing or nonfinite amounts. Known zero and named no-pay/settlement
+      // remain zero; this guard does not change any incumbent event or field.
+      for (const bill of plan.bills || []) {
+        if (!billIsHouseholdObligation(bill) || bill.needsDate) continue;
+        for (const date of outflowDates(bill, cycle.start, cycle.end)) {
+          if (settled(bill.id, date) || bill.noPaymentRequiredOn?.includes(date)) continue;
+          if (finite(bill.amount) && billOccurrenceCashAmount(bill, date) === 0) continue;
+          if (!billsCashScope({ ...bill, cardPaid: isCardPaidBill(bill, plan) })) continue;
+          if (!finite(bill.amount) || bill.amount < 0) issue('remaining-cash-unknown', 'A remaining bill amount is unknown.');
+        }
+      }
+      for (const obligation of plan.obligations || []) {
+        if (obligation.nonCash) continue;
+        for (const occurrence of obligationOccurrences(obligation, cycle.start, cycle.end)) {
+          if (settled(obligation.id, occurrence.date) || occurrence.amount === 0) continue;
+          if (!billsCashScope(obligation)) continue;
+          if (!finite(occurrence.amount) || occurrence.amount < 0) issue('remaining-cash-unknown', 'A remaining obligation amount is unknown.');
+        }
+      }
+      const disabled = new Set(opts.disabled || []);
+      const prior = plan.opening?.asOf === day && plan.opening.priorAsOf < day ? plan.opening.priorAsOf : null;
+      for (const commitment of plan.commitments || []) {
+        const date = commitmentCashDate(commitment);
+        if (disabled.has(commitment.id) || commitmentSettledBy(commitment, day)
+          || commitmentFlexibility(commitment) === 'optional' || !date || date > cycle.end
+          || date < day && !(prior && date > prior) || settled(commitment.id, date)) continue;
+        if (commitment.amount === 0) continue;
+        if (!billsCashScope(commitment)) continue;
+        if (!finite(commitment.amount) || commitment.amount < 0) issue('remaining-cash-unknown', 'A remaining commitment amount is unknown.');
+      }
+      for (const stream of plan.income || []) for (const date of occurrences(stream, day, cycle.end)) {
+        if (date <= day || settled(stream.id, date)) continue;
+        let amount = streamAmount(stream, opts);
+        const adjustment = typeof opts.incomeOccurrenceAdjust === 'function'
+          ? opts.incomeOccurrenceAdjust(stream, date, amount) : null;
+        if (adjustment?.omit) continue;
+        if (adjustment?.amount != null) amount = adjustment.amount;
+        if (!finite(amount) || amount < 0) issue('income-unavailable', 'A qualified future income amount is unknown.');
+      }
+      for (const extra of opts.additionalIncomeEvents || []) {
+        if (extra?.kind !== 'income' || !extra.date || extra.date <= day || extra.date > cycle.end || settled(extra.id, extra.date)) continue;
+        if (!finite(extra.amount) || extra.amount < 0) issue('income-unavailable', 'A qualified future income amount is unknown.');
+      }
+    };
+    validateNativeRemainingCash();
     if (cycle) {
       const windows = [{ id: 'bills-closing-active', role: 'active', start: cycle.start, end: cycle.end }];
       const calendar = calendarBillSections(plan, day, { ...opts, periodWindows: windows });
       for (const row of calendar.bills || []) {
         const amount = Object.hasOwn(row, 'additionalCashRequired') ? row.additionalCashRequired : row.remaining;
         if ((row.settlement === 'represented' && !Object.hasOwn(row, 'additionalCashRequired')) || row.settlement === 'opening') continue;
+        if (amount !== 0 && !billsCashScope(row)) continue;
         if (!['confirmed', 'estimated'].includes(row.confidence) && amount !== 0) {
           issue('remaining-cash-unknown', 'The confidence of a remaining bill cash requirement is unknown.'); continue;
         }
@@ -9204,6 +9268,8 @@
           addCash(event.id + '@' + event.date, event.amount, 'income', 'Forecast.expandEvents');
         } else if (['commitment', 'reserve'].includes(event.kind) && event.jointCash !== false) {
           const amount = -operatingEventAmount(event);
+          if (event.kind === 'commitment' && amount !== 0
+            && !billsCashScope((plan.commitments || []).find(row => row.id === event.id) || event)) continue;
           if (amount > 0) addCash(event.id + '@' + event.date, amount, 'other', 'Forecast.expandEvents');
         }
       }
@@ -9218,6 +9284,7 @@
         weeklyFunding, directFunding, cardFunding, requiredCashFloor, fundingEventCount,
         basis: 'active-budget-hold-less-observed-bills-funding', trust: 'estimated',
         assumption: 'Current-period household funding fulfills the aggregate period target; category allocation is not established.' },
+      accountAssumption: 'Unassigned household outflows follow the owner\'s Bills funding anchor. Explicit other cash payers do not imply a Bills transfer.',
       issues, reason: issues.length ? issues[0].message : null, evidence,
       provenance: ['Forecast.postedBillsAccountCash', 'Forecast.postedAccountMovements', 'Forecast.householdInternalMovements',
         'Forecast.calendarHouseholdBudget', 'Forecast.reconcileCardPurchases', 'Forecast.cardMinimumState', 'Forecast.expandEvents'],

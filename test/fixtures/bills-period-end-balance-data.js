@@ -64,4 +64,23 @@ function fixture() {
   return { data, plan: data.plan, asOf: AS_OF, opts: { currentPeriodActuals: data.liveOverlay.currentPeriodActuals,
     debts: data.debts, observedCash: data.liveOverlay.observedCash } };
 }
-module.exports = { served, fixture, tx, AS_OF, START };
+// Reviewer-selected independent cents, with a complete empty ledger to
+// isolate native future requirements from observed funding reconciliation.
+function requirementsServed() {
+  const data = served(), p = data.plan;
+  p.startingCash.breakdown[0].value = data.liveOverlay.observedCash.accounts[0].value = 823.47;
+  p.startingCash.breakdown[1].value = data.liveOverlay.observedCash.accounts[1].value = -119.53;
+  p.startingCash.breakdown[2].value = 777.19;
+  p.income[0].amount = 1077.37; p.income[1].amount = 263.19;
+  data.liveOverlay.currentPeriodActuals.representedActuals[0].actual = -1077.37;
+  p.budget.categories[0].plannedPayday = 71.13; p.budget.categories[1].plannedPayday = 29.27;
+  p.bills[0].amount = 17.23; p.commitments[0].amount = 9.41;
+  data.liveOverlay.currentPeriodActuals.transactions = []; p.cardPurchaseCoverage.payments = [];
+  return data;
+}
+function requirementsFixture() {
+  const data = requirementsServed();
+  return { data, plan: data.plan, asOf: AS_OF, opts: { currentPeriodActuals: data.liveOverlay.currentPeriodActuals,
+    debts: data.debts, observedCash: data.liveOverlay.observedCash } };
+}
+module.exports = { served, fixture, requirementsServed, requirementsFixture, tx, AS_OF, START };

@@ -1,6 +1,11 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const { cases } = require('./test-bills-period-end-balance');
+const fx = require('./fixtures/bills-period-end-balance-data');
+const unknown = fx.requirementsFixture(); unknown.plan.bills[0].amount = null;
+const weekly = fx.requirementsFixture(); weekly.plan.bills[0].payingAccount = 'chequing-b';
+cases.push({ name: 'native amount erased by display projection', input: unknown, expected: null },
+  { name: 'native explicit other cash payer', input: weekly, expected: 976.85 });
 const source = fs.readFileSync(require.resolve('../public/forecast'), 'utf8');
 const controls = [
   ['include Weekly overdraft', 'cash + futureIncome - remainingBills', 'startingCashAmount(plan) + futureIncome - remainingBills', 'Weekly overdraft excluded'],
@@ -11,6 +16,8 @@ const controls = [
   ['replay early income', 'if (calendarOccurrenceRepresented(representedIncome, observedIncome, event.id, event.date)) continue;', 'if (false) continue;', 'early received future salary is added to stock once'],
   ['release earlier carry', '- otherOutflows - additionalCardCash', '- otherOutflows', 'confirmed earlier card carry is additional cash once'],
   ['unknown is dollar zero', "status: amount == null ? 'unavailable' : 'ready'", "status: amount == null ? 'ready' : 'ready'", 'missing posted coverage'],
+  ['erase native unknown before projection', 'validateNativeRemainingCash();', '/* native validation omitted */', 'native amount erased by display projection'],
+  ['other cash accounts become Bills payments', 'if (cashAccounts.has(payer)) return false;', 'if (cashAccounts.has(payer)) return true;', 'native explicit other cash payer'],
 ];
 for (const [name, from, to, caseName] of controls) {
   assert(source.includes(from), 'matched mutation: ' + name);

@@ -26,6 +26,12 @@ const variants = [
   ['truncated ledger', x => { x.opts.currentPeriodActuals.transactionCoverage = 'truncated'; }],
   ['earlier carry', x => { x.plan.cardPurchaseCoverage.opening.purchases.push({ ref: 'earlier', accountId: 'travelvisa', date: '2026-08-13', amount: 48.19, covered: 0 }); }],
   ['household overspend', x => { x.opts.currentPeriodActuals.transactions.push(fx.tx('overspend', 'chequing-b', fx.AS_OF, 223.33, 'Restaurants')); }],
+  ['native bill unknown', x => { x.plan.bills[0].amount = null; }],
+  ['native commitment unknown', x => { x.plan.commitments[0].amount = null; }],
+  ['native future income unknown', x => { x.plan.income[1].amount = null; }],
+  ['explicit Weekly bill', x => { x.plan.bills[0].payingAccount = 'chequing-b'; }],
+  ['explicit Savings bill', x => { x.plan.bills[0].payingAccount = 'savings'; }],
+  ['explicit Weekly commitment', x => { x.plan.commitments[0].payingAccount = 'chequing-b'; }],
 ];
 const report = { baseline, executionHead: cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), variants: [] };
 for (const [name, change] of variants) {

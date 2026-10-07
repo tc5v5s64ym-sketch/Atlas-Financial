@@ -6685,6 +6685,7 @@ function billsAccountPeriodBalanceHtml(ctx) {
       <div class="budget-bills-closing-evidence">${rows}
         ${ready ? `<p class="operating-note">Household target ${print(household.target)}; already funded from Bills ${print(household.funded)}. Remaining funding is estimated from the period target and observed Bills funding, with required pending and card cash protected. Category allocations are not established.</p>`
           : `<ul>${(publication.issues || []).map(row => `<li>${escape(row.message)}</li>`).join('')}</ul>`}
+        ${publication.accountAssumption ? `<p class="operating-note">${escape(publication.accountAssumption)}</p>` : ''}
         <p class="operating-note">Weekly transactions itemize household spending. Transfers already made count once. Weekly's balance and overdraft are excluded. This estimate grants no spending or transfer permission.</p>
         <p class="operating-note">Balance After Deductions below remains this period's income after assigned bills and the household hold. It measures period income, separately from this Bills balance.</p>
         <button type="button" class="budget-surface-link" data-bills-closing-close>Close details</button>
