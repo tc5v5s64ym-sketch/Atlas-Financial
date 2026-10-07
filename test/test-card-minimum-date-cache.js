@@ -12,11 +12,14 @@ class ObservedDate extends Date { static parse(value) { parseCalls++; return Dat
 // Expose the private validator in this VM only; production exports stay intact.
 const anchor = 'return { resolveOccurrences, mappedDate, originalDate, state };';
 assert.equal(source.split(anchor).length, 2);
+const exportAnchor = 'const Forecast = {';
+assert.equal(source.split(exportAnchor).length, 2, 'private test hook has one export object target');
 const testSource = source.replace(anchor, 'return { resolveOccurrences, mappedDate, originalDate, state, date };')
-  .replace('const Forecast = { minimumCategoryAllocationConflict,', 'const Forecast = { privateDate: CardMinimumContract.date, minimumCategoryAllocationConflict,');
+  .replace(exportAnchor, exportAnchor + ' privateDate: CardMinimumContract.date,');
 const context = { module: { exports: {} }, Date: ObservedDate, Map: ObservedMap };
 vm.runInNewContext(testSource, context, { filename: 'forecast-date-test.js' });
 const date = context.module.exports.privateDate;
+assert.equal(typeof date, 'function', 'private validator was actually exposed in this VM'); checks++;
 assert.equal(maps.length, 1); checks++;
 const cache = maps[0];
 // Gregorian arithmetic is independent of the incumbent Date.parse/round-trip predicate.

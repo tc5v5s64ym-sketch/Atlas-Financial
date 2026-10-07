@@ -6,6 +6,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const { execFileSync } = require('node:child_process');
 const F = require('../public/forecast');
+const incumbentAdvice = require('./bills-period-end-legacy-comparison');
 const { AS_OF, fixture, observedPlan, clone } = require('./fixtures/savings-earmarks');
 const BASE = '210fb231bff9422fa9eca568b4e0acb68cece854';
 const ROOT = path.join(__dirname, '..');
@@ -31,7 +32,7 @@ const legacyBefore = before.recommend(empty, AS_OF, opts), legacyAfter = F.recom
 // The new bill display-provenance fields are also validated independently
 // against the immutable schedule rows: this probe supplies no actual packet.
 function incumbentPublication(value) {
-  const copy = clone(value);
+  const copy = clone(incumbentAdvice(value, AS_OF));
   const periodSets = [copy.defaultView.calendarPeriods, copy.pastPeriodViews, copy.payPeriodViews];
   let count = 0;
   for (const periods of periodSets) for (const period of periods) {
@@ -85,6 +86,18 @@ const changedDisplayBasis = clone(legacyAfter);
 changedDisplayBasis.payPeriodViews.find(p => p.bills.length).bills[0].displayAmountBasis = 'posted-actual';
 assert.throws(() => incumbentPublication(changedDisplayBasis), assert.AssertionError,
   'invented posted-actual provenance without a packet is rejected before comparison');
+const changedBillsPublisher = clone(legacyAfter);
+changedBillsPublisher.defaultView.billsAccountPeriodBalance.source = 'page';
+assert.throws(() => incumbentPublication(changedBillsPublisher), assert.AssertionError,
+  'the added Bills publisher is validated before its namespace is excluded');
+const falseBillsReady = clone(legacyAfter);
+Object.assign(falseBillsReady.defaultView.billsAccountPeriodBalance, { status: 'ready', trust: 'estimated', amount: 0 });
+assert.throws(() => incumbentPublication(falseBillsReady), assert.AssertionError,
+  'a ready Bills figure without actuals is rejected before comparison');
+const unexpectedBillsNamespace = clone(legacyAfter);
+unexpectedBillsNamespace.unexpected = { billsAccountPeriodBalance: clone(legacyAfter.defaultView.billsAccountPeriodBalance) };
+assert.throws(() => incumbentPublication(unexpectedBillsNamespace), assert.AssertionError,
+  'the addition cannot hide fields outside its three authorized publication paths');
 empty.savingsEarmarks = { version: 1, currency: 'CAD', pools: [], history: [] };
 const explicitEmpty = F.recommend(empty, AS_OF, opts); delete explicitEmpty.savingsInventory;
 assert.deepEqual(incumbentPublication(explicitEmpty), before.recommend(empty, AS_OF, opts), 'explicitly empty configuration also preserves every incumbent field');
