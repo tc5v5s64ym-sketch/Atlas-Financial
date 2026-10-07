@@ -3559,6 +3559,9 @@ function observe(input) {
     postingObservations,
   });
   const sameDay = sameDayDiscrepancies(result);
+  const incomeUncertainty = futureIncomeUncertainty({ transactions: collapsed.transactions,
+    accountMap: mapDoc, plan: planForIdentity, identityRules,
+    transactionWindow: normalized.transactionWindow, asOf: scheduleTrustAsOf }, hitGroups.unique);
   const assembled = {
     writesCanonicalState: false,
     provider: 'lunchmoney',
@@ -3576,9 +3579,7 @@ function observe(input) {
     cardCapacityIsCash: R.householdCashFromCardCapacity(),
     cardInferences,
     representedEventCandidates: represented,
-    incomeReconciliation: futureIncomeUncertainty({ transactions: collapsed.transactions,
-      accountMap: mapDoc, plan: planForIdentity, identityRules,
-      transactionWindow: normalized.transactionWindow, asOf: scheduleTrustAsOf }, hitGroups.unique),
+    ...(incomeUncertainty.status === 'unavailable' ? { incomeReconciliation: incomeUncertainty } : {}),
     sameDayInboundAmbiguity: sanitizedSameDayInboundAmbiguity(hitGroups.ambiguous),
     sameDayDiscrepancies: sameDay,
     reconciliation: result,

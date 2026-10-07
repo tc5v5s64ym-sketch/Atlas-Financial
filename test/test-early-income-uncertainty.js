@@ -41,14 +41,14 @@ for (const kind of ['amanda', 'payroll']) {
 }
 for (const [kind, control] of [['amanda', 'bracketed'], ['amanda', 'same-day'], ['payroll', 'same-day'], ['payroll', 'unpaid']]) {
   const input = fixture(kind, control), out = run(input);
-  eq(out.report.incomeReconciliation.status, 'ready', kind + ' ' + control + ': no conflict');
+  eq(Object.hasOwn(out.report, 'incomeReconciliation'), false, kind + ' ' + control + ': conflict-free observer shape unchanged');
   eq(out.data.liveOverlay.operatingPlan, 'live', kind + ' ' + control + ': live availability unchanged');
   eq(out.sim.ending, kind === 'payroll' ? 3500 : 2800.25, kind + ' ' + control + ': independent closing cash');
 }
 function negative(name, mutate, kind = 'amanda') {
   const input = fixture(kind); mutate(input);
   const out = run(input);
-  eq(out.report.incomeReconciliation.status, 'ready', name + ': no qualified overlap manufactured');
+  eq(Object.hasOwn(out.report, 'incomeReconciliation'), false, name + ': no qualified overlap manufactured');
 }
 const row = (x, id) => x.payload.transactions.find(tx => tx.id === id);
 negative('no incoming Bills credit', x => x.payload.transactions.pop());
@@ -79,7 +79,7 @@ negative('stale receipt from previous native interval', x => {
 for (const key of ['complete', 'hasMore', 'truncated']) {
   const input = fixture(); input.payload.transactionWindow[key] = key !== 'complete';
   const report = O.observe({ provider: 'lunchmoney', ...input });
-  eq(report.incomeReconciliation.status, 'ready', key + ': incomplete packet does not qualify an income match');
+  eq(Object.hasOwn(report, 'incomeReconciliation'), false, key + ': incomplete packet does not qualify an income match');
 }
 for (const id of ['invented-employer-receipt', 'invented-transfer-debit', 'invented-transfer-credit']) {
   const input = fixture(); input.payload.transactions.push({ ...row(input, id), id: id + '-competing' });
@@ -99,7 +99,7 @@ for (const id of ['invented-employer-receipt', 'invented-transfer-debit', 'inven
   const [input, early] = retained[0], next = fixture('amanda', 'same-day');
   next.data = clone(early.data);
   const resolved = run(next);
-  eq(resolved.report.incomeReconciliation.status, 'ready', 'fresh supported occurrence resolves gate');
+  eq(Object.hasOwn(resolved.report, 'incomeReconciliation'), false, 'fresh supported occurrence resolves gate');
   eq(resolved.sim.ending, 2800.25, 'resolved opening is counted once');
   const again = clone(input); again.data = clone(early.data);
   eq(run(again).report.incomeReconciliation.status, 'unavailable', 'same-date refresh retains unresolved overlap');
