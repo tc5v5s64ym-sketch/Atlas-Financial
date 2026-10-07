@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['recorded household minimum action stays separate from issuer settlement', 'test-bills-recorded-payment.js'],
   ['card minimum repair stock, proof and identity conservation', 'test-card-minimum-repair-conservation.js'],
   ['card statement cycle replacement and sender-only minimum evidence', 'test-card-minimum-cycle-contract.js'],
   ['card minimum issuer confirmation across advancing live refreshes', 'test-card-minimum-issuer-lifecycle.js'],
