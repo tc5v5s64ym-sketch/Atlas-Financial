@@ -5,6 +5,7 @@ const { isDeepStrictEqual } = require('node:util');
 const O = require('../scripts/provider-observe'), D = require('../scripts/salary-match-diagnostic');
 const Live = require('../scripts/live-plan'), Assistant = require('../scripts/assistant-packet');
 const F = require('../public/forecast'), fx = require('./fixtures/salary-diagnostic-data');
+const minimumCategoryExpectation = require('./fixtures/minimum-category-conservation');
 const ROOT = path.resolve(__dirname, '..'), BASE = '6d1e151c8f2d124b544496d7b882953ea1dc7520';
 const filename = path.join(ROOT, 'scripts/provider-observe.js');
 // Local review compares the immutable base too. Shallow CI has no historical
@@ -45,7 +46,8 @@ const modes = ['matched', 'missing-identity', 'empty-identity', 'wrong-identity'
 let matched;
 for (const mode of modes) {
   const x = fx.input(mode), untouched = JSON.stringify(x);
-  const before = old ? old.observe(clone(x)) : O.observe({ ...clone(x), salaryDiagnostic: false });
+  const before = old ? minimumCategoryExpectation(old.observe(clone(x)), x, old)
+    : O.observe({ ...clone(x), salaryDiagnostic: false });
   const after = O.observe(x), disabled = O.observe({ ...clone(x), salaryDiagnostic: false });
   // July 2's posted employer receipt and paired cash transfer cannot match
   // the prior month-end slot. They are also inside the native interval before

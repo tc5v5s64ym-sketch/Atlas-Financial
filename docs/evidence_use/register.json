@@ -891,6 +891,14 @@
         "path": "data.json",
         "json_pointer": "/plan/bills/0"
       }
+    },
+    {
+      "id": "MIN-CATEGORY-OWNER-001",
+      "source": "docs/household_interviews/DALE_2026-10-07_MINIMUM_CATEGORIES.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "ARCHITECTURE.md"
+      }
     }
   ]
 }

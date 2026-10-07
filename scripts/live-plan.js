@@ -1149,6 +1149,10 @@ function overlayLiveState(input) {
     assertFreshLivePacket(data, report, liveAsOf);
   }
   const next = clone(data);
+  // Replace, never accumulate, provider-category confirmation on each refresh.
+  // It is independent of durable owner-confirmed opening receipts/policy.
+  next.plan.cardMinimumCategoryEvidence = clone(report.cardMinimumCategoryEvidence
+    || { source: 'lunchmoney-minimum-category', asOf: liveAsOf, payments: [] });
   if (Forecast.savingsEarmarksState(data.plan, liveAsOf).status !== 'setup-unknown') next.plan.savingsPoolObservation = report.savingsPools || { asOf: liveAsOf, accounts: [] };
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
   // Rebuild from fresh evidence. Absence on a later fetch is not proof that
@@ -1289,6 +1293,7 @@ function failedOverlay(canonical, reason, extra) {
   const sanitized = sanitizeLiveFailureReason(reason);
   logLiveFailure(sanitized);
   const next = clone(canonical);
+  if (next.plan) delete next.plan.cardMinimumCategoryEvidence;
   const historicalOpeningAsOf = (canonical.plan && canonical.plan.opening && canonical.plan.opening.asOf)
     || (canonical.meta && canonical.meta.asOf) || null;
   const report = extra && extra.report;
