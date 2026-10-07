@@ -1,7 +1,10 @@
 'use strict';
 const assert = require('assert');
 const path = require('path');
-const { timeoutForSuite, runSuite, isExpectedFailure, failureOutput } =
+const fs = require('fs');
+const os = require('os');
+const { execFileSync } = require('child_process');
+const { withMutatedFixture, timeoutForSuite, runSuite, isExpectedFailure, failureOutput } =
   require('./lib/refresh-isolation-runner');
 
 let checks = 0;
@@ -169,4 +172,163 @@ console.log('=== B20 deliberate reconciliation rejection ===');
     assert.strictEqual(timeoutForSuite('test-invariants.js'), 180000);
   });
 }
-console.log(`ALL ${checks} CHECKS PASSED (synthetic execution; no deadline wait)`);
+console.log('=== complete fixture lifecycle (synthetic repository, real children) ===');
+const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-refresh-controls-'));
+const source = path.join(sandbox, 'source');
+fs.mkdirSync(source);
+function write(relative, content) {
+  const file = path.join(source, relative);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content);
+}
+function git(args, cwd = source) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' });
+}
+try {
+  write('data.json', '{"number":10}\n');
+  write('.gitignore', 'raw/\n.env\n');
+  write('docs/provenance.txt', 'synthetic independent history\n');
+  write('public/marker.js', 'module.exports = "committed source";\n');
+  write('test/behavior.js', `
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+assert.strictEqual(require('../data.json').number, 17);
+assert.strictEqual(require('../public/marker'), 'current edited source');
+assert.strictEqual(fs.readFileSync(path.join(process.cwd(), 'docs/provenance.txt'), 'utf8'),
+  'synthetic independent history\\n');
+assert.strictEqual(JSON.parse(execFileSync('git', ['show', 'HEAD:data.json'], { encoding: 'utf8' })).number, 10);
+console.log('  PASS  complete fixture, current source, relative requires, cwd and independent Git history');
+`);
+  write('test/reconciliation.js', `
+const changed = require('../data.json').number !== 10;
+console.log(changed ? '  FAIL  synthetic canonical reconciliation' : '  PASS  synthetic reconciliation');
+process.exit(changed ? 1 : 0);
+`);
+  git(['init', '--quiet']);
+  git(['add', '.']);
+  git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    'commit', '--quiet', '-m', 'Synthetic fixture baseline']);
+  write('public/marker.js', 'module.exports = "current edited source";\n');
+  write('raw/never-copy.txt', 'ignored local sentinel');
+  write('.env', 'ignored local sentinel');
+  const canonical = path.join(source, 'data.json');
+  const original = fs.readFileSync(canonical);
+  const originalMtime = fs.statSync(canonical, { bigint: true }).mtimeNs;
+  const unchanged = () => {
+    assert(fs.readFileSync(canonical).equals(original));
+    assert.strictEqual(fs.statSync(canonical, { bigint: true }).mtimeNs, originalMtime);
+  };
+  check('clone and mutation setup failures remove their temporary fixtures', () => {
+    const temp = path.join(sandbox, 'setup-temp');
+    fs.mkdirSync(temp);
+    const setup = `
+const assert = require('assert');
+const fs = require('fs');
+const [runner, source, temp] = process.argv.slice(1);
+const { withMutatedFixture } = require(runner);
+const error = new Error('synthetic mutation failure');
+assert.throws(() => withMutatedFixture(source, () => { throw error; }, () => {
+  throw new Error('callback must not run');
+}), caught => caught === error);
+assert.deepStrictEqual(fs.readdirSync(temp), []);
+assert.throws(() => withMutatedFixture(source + '-missing', () => {}, () => {}));
+assert.deepStrictEqual(fs.readdirSync(temp), []);
+`;
+    execFileSync(process.execPath, ['-e', setup,
+      path.join(__dirname, 'lib/refresh-isolation-runner.js'), source, temp], {
+      encoding: 'utf8', stdio: 'pipe', timeout: 20000,
+      env: { ...process.env, TMPDIR: temp, TEMP: temp, TMP: temp },
+    });
+    assert.deepStrictEqual(fs.readdirSync(temp), []);
+    unchanged();
+  });
+  let fixture;
+  check('real child suites receive the complete mutated fixture while canonical bytes never move', () => {
+    const returned = withMutatedFixture(source, data => { data.number += 7; }, copy => {
+      fixture = copy;
+      unchanged();
+      assert(!fs.existsSync(path.join(copy, 'raw')));
+      assert(!fs.existsSync(path.join(copy, '.env')));
+      assert.strictEqual(fs.readFileSync(path.join(copy, 'data.json'), 'utf8'), '{\n  "number": 17\n}\n');
+      const behavior = runSuite('behavior.js', copy);
+      assert.strictEqual(behavior.ok, true, behavior.out);
+      const recon = runSuite('reconciliation.js', copy);
+      assert.strictEqual(recon.fails, 1, recon.out);
+      assert.strictEqual(isExpectedFailure(recon, ['reconciliation.js']), true);
+      unchanged();
+      return 'callback result';
+    });
+    assert.strictEqual(returned, 'callback result');
+    assert(!fs.existsSync(fixture), 'normal completion removes the fixture');
+    unchanged();
+  });
+  check('callback exceptions retain the exact error and remove the mutated fixture', () => {
+    const error = new Error('synthetic callback failure');
+    assert.throws(() => withMutatedFixture(source, data => { data.number = 99; }, copy => {
+      fixture = copy;
+      unchanged();
+      throw error;
+    }), caught => caught === error);
+    assert(!fs.existsSync(fixture), 'exception cleanup removes the fixture');
+    unchanged();
+  });
+  check('abrupt termination cannot write canonical data; leftover copy is confined to the temporary directory', () => {
+    const temp = path.join(sandbox, 'cancel-temp');
+    fs.mkdirSync(temp);
+    const cancel = `
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const [runner, source, temp] = process.argv.slice(1);
+const canonical = path.join(source, 'data.json');
+const before = fs.readFileSync(canonical);
+const mtime = fs.statSync(canonical, { bigint: true }).mtimeNs;
+const childCode = \`const fs = require('fs');
+const [runner, source] = process.argv.slice(1);
+require(runner).withMutatedFixture(source, d => { d.number = 777; }, fixture => {
+  fs.writeSync(1, fixture + String.fromCharCode(10));
+  while (true) {}
+});\`;
+const child = spawn(process.execPath, ['-e', childCode, runner, source], {
+  env: { ...process.env, TMPDIR: temp, TEMP: temp, TMP: temp },
+  stdio: ['ignore', 'pipe', 'inherit'],
+});
+let fixture;
+let output = '';
+const timer = setTimeout(() => { child.kill('SIGKILL'); }, 15000);
+child.stdout.on('data', chunk => {
+  output += chunk;
+  if (fixture || !output.includes('\\n')) return;
+  fixture = output.trim();
+  assert.strictEqual(path.dirname(fixture), temp);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(fixture, 'data.json'))).number, 777);
+  assert(fs.readFileSync(canonical).equals(before));
+  assert.strictEqual(fs.statSync(canonical, { bigint: true }).mtimeNs, mtime);
+  assert(child.kill('SIGKILL'));
+});
+child.once('close', (code, signal) => {
+  clearTimeout(timer);
+  assert(fixture, 'child must reach the active mutation before it is killed');
+  assert(code !== 0 || signal, 'child must terminate abruptly');
+  assert(fs.readFileSync(canonical).equals(before));
+  assert.strictEqual(fs.statSync(canonical, { bigint: true }).mtimeNs, mtime);
+  assert(fs.existsSync(fixture), 'forced kill may bypass fixture cleanup');
+  fs.rmSync(fixture, { recursive: true, force: true });
+  assert(!fs.existsSync(fixture), 'the test supervisor removes its leftover copy');
+  console.log('cancelled safely; canonical bytes and mtime unchanged; supervisor cleanup passed');
+});
+`;
+    const output = execFileSync(process.execPath, ['-e', cancel,
+      path.join(__dirname, 'lib/refresh-isolation-runner.js'), source, temp],
+    { encoding: 'utf8', timeout: 20000 });
+    assert(output.includes('cancelled safely'), output);
+    assert.deepStrictEqual(fs.readdirSync(temp), []);
+    unchanged();
+  });
+} finally {
+  fs.rmSync(sandbox, { recursive: true, force: true });
+}
+console.log(`ALL ${checks} CHECKS PASSED (synthetic execution and real fixture children; no deadline wait)`);

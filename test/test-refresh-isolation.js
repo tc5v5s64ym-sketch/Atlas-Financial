@@ -1,16 +1,17 @@
 'use strict';
 /* B92 — ordinary household-value refresh must not rewrite unrelated suites.
  *
- * Mutates a throwaway copy of data.json on disk, runs the other npm test
- * suites in child processes, then restores the original bytes. Never leaves
- * a household figure changed.
+ * Runs the other npm test suites against a complete temporary repository
+ * fixture. Only the fixture's data.json is mutated; canonical bytes are never
+ * written. Normal completion and exceptions remove the fixture. A forced kill
+ * may leave a temporary copy, but cannot leave a household figure changed.
  *
  * Live-reconciliation suites are allowed to fail when the mutated fact is
  * the thing they reconcile. Behaviour suites are not.
  */
 const fs = require('fs');
 const path = require('path');
-const { runSuite, isExpectedFailure, failureSummary, failureOutput } =
+const { withMutatedFixture, runSuite, isExpectedFailure, failureSummary, failureOutput } =
   require('./lib/refresh-isolation-runner');
 const F = require('../public/forecast.js');
 
@@ -100,29 +101,17 @@ const CASES = [
   },
 ];
 
-function withMutatedData(mutate, fn) {
-  const orig = fs.readFileSync(DATA);
-  try {
-    const data = JSON.parse(orig.toString('utf8'));
-    mutate(data);
-    fs.writeFileSync(DATA, JSON.stringify(data, null, 2) + '\n');
-    return fn();
-  } finally {
-    fs.writeFileSync(DATA, orig);
-  }
-}
-
 console.log('=== B92 refresh isolation ===');
-const restored = fs.readFileSync(DATA);
+const original = fs.readFileSync(DATA);
 const report = [];
 
 for (const c of CASES) {
   console.log(`\n--- ${c.label} ---`);
-  const result = withMutatedData(c.mutate, () => {
+  const result = withMutatedFixture(ROOT, c.mutate, fixture => {
     const failed = [];
     let asserts = 0;
     for (const file of SUITES) {
-      const r = runSuite(file, ROOT);
+      const r = runSuite(file, fixture);
       if (!r.ok) {
         failed.push(r);
         asserts += r.fails;
@@ -132,8 +121,8 @@ for (const c of CASES) {
     return { failed, asserts };
   });
   const after = fs.readFileSync(DATA);
-  ok(Buffer.compare(restored, after) === 0,
-    `${c.id}: data.json bytes restored after the mutation`);
+  ok(Buffer.compare(original, after) === 0,
+    `${c.id}: canonical data.json bytes unchanged by the mutation`);
   const unexpected = result.failed.filter(f => !isExpectedFailure(f, c.allow));
   const expected = result.failed.filter(f => isExpectedFailure(f, c.allow));
   ok(unexpected.length === 0,
