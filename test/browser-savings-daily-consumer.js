@@ -31,7 +31,7 @@ fs.mkdirSync(output, { recursive: true });
       ? 'const packet = nativeDaily(...args); packet.currency = "USD"; return packet;'
       : 'throw new Error("Invented browser selector failure");';
      const stale = mode === 'selector-exception-stale-stock'
-      ? 'const nativeRecommend = Forecast.recommend; Forecast.recommend = (...args) => { const advice = nativeRecommend(...args); advice.savingsInventory = JSON.parse(JSON.stringify(advice.savingsInventory)); advice.savingsInventory.observedStock.asOf = "2026-10-04"; return advice; };'
+      ? 'const nativeRecommend = Forecast.recommend; Forecast.recommend = (...args) => { const advice = nativeRecommend(...args); advice.savingsInventory = JSON.parse(JSON.stringify(advice.savingsInventory)); advice.savingsInventory.reportedStock.asOf = "2026-10-04"; return advice; };'
       : '';
      bytes = Buffer.concat([bytes, Buffer.from(`\n{ const nativeDaily = Forecast.savingsDailyFunding; Forecast.savingsDailyFunding = (...args) => { ${fault} }; ${stale} }\n`)]);
     }
