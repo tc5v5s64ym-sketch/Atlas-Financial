@@ -386,6 +386,35 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
     'each rounded payoff is kept in the month its pay period closes');
 }
 
+// Two fractional payoffs in ONE pay period distinguish rounding each dated
+// payment from rounding their grouped total. Each independently accrued $1
+// principal pays $1.01 on Jan 31; their raw sum would round to $2.01, not $2.02.
+{
+  const p = fixture(); p.income = [{ ...p.income[0], amount: 0, anchor: '2026-01-02' }];
+  p.bills = []; p.commitments = []; p.budget.categories = []; p.defaults.extraDebtMonthly = 0;
+  p.obligations = [0, 1].map(i => ({ id: 'same-period' + i, debtId: 'same-period' + i,
+    label: 'Same-period debt ' + i, effect: 'payment', frequency: 'monthly', day: 31,
+    amount: 10, confidence: 'confirmed' }));
+  const ds = p.obligations.map(r => ({ ...debt[0], id: r.debtId, balance: 1, rate: 6 }));
+  const ledger = [];
+  for (const r of p.obligations) {
+    let balance = 1;
+    for (let n = 0; n < 31; n++) balance += balance * 0.06 / 365;
+    eq(cents(balance), 101, 'independent daily interest rounds each payoff to 1.01');
+    ledger.push(event(r, '2026-01-31', 'obligations', '2026-01-01', cents(balance) / 100));
+  }
+  const t = ask(p, ds);
+  assertPartition(t, ledger, '2026-01-02');
+  const period = t.payPeriods.find(r => r.payday === '2026-01-30');
+  eq({ start: period.start, end: period.end }, { start: '2026-01-30', end: '2026-02-12' },
+    'both fractional payments belong to one closing pay period');
+  eq(period.stage1.obligations.amount, 2.02, 'same-period payoffs total exactly 2.02, not 2.01');
+  eq(period.stage1.obligations.lines.map(l => ({ id: l.id, amount: l.amount })),
+    p.obligations.map(r => ({ id: r.id, amount: 1.01 })), 'exact named payoff amounts remain whole cents');
+  eq(t.months.find(m => m.month === '2026-02').stage1.obligations.amount, 2.02,
+    'February close-month preserves both individually rounded payoffs');
+}
+
 // Recent baseline: completed posted 101.01; current groceries actual 40.01,
 // reserve 59.99, Other 3.01 => full estimate 103.01; mean 102.01.
 // Pending old consumption, income, a transfer, a debt payment and a represented
