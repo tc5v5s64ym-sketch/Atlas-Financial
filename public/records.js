@@ -1,6 +1,11 @@
 'use strict';
 /* Records — balance sheet, coverage, and the forecast's stated assumptions. */
 
+function recordsCashScopeNote(note) {
+  return String(note || '').replace(/Chequing A, Chequing B and Savings/g,
+    'Chequing A and Chequing B (designated Savings is reserve evidence, excluded from spendable cash)');
+}
+
 function renderRecords(d) {
   $('coverage-line').textContent = `${d.meta.coverage} · ${d.meta.transactions.toLocaleString('en-CA')} transactions, ${d.meta.statements} statements`;
   $('disclaimer').textContent = d.meta.disclaimer;
@@ -19,7 +24,7 @@ function renderRecords(d) {
     <td><span class="chip ${c.status === 'complete' ? 'v' : c.status === 'blocked' ? 'e' : 'c'}">${c.status}</span></td></tr>`).join('');
 
   if (d.plan) {
-    $('assumptions').innerHTML = d.plan.assumptions.map(a => `<li>${a}</li>`).join('');
+    $('assumptions').innerHTML = d.plan.assumptions.map(a => `<li>${recordsCashScopeNote(a)}</li>`).join('');
 
     // Every stream and obligation with its stated basis, so a figure on the
     // Plan page can always be traced to its source here.

@@ -67,8 +67,8 @@ function renderDeepDive(d) {
     label: 'Spendable household cash',
     value: dive.cashAmount,
     tone: 'alert',
-    note: `Chequing A, Chequing B and Savings — the accounts the mortgage, bills and card minimums are actually ` +
-      `paid from. A further ${money(dive.elsewhere)} sits elsewhere and is not household spending money: ${classLine}.`,
+    note: `Chequing A and Chequing B only. Designated Savings remains reserve evidence and is excluded from this ` +
+      `spendable amount. A further ${money(dive.elsewhere)} sits elsewhere and is not household spending money: ${classLine}.`,
   };
   // Total debt, annual interest and revolving headroom used to be stored in
   // `data.json` `headline`. They are Forecast.publicationTotals now — the

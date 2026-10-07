@@ -530,8 +530,8 @@ console.log('\n=== 16. incomplete spendable snapshots cannot publish a complete 
   ok(!History.accountRows(onlyA).some(r => r.id === 'spendable-cash'),
     'account rows do not invent a complete spendable total from one cash account');
   const htmlOnlyA = History.render(onlyA);
-  ok(!/Spendable household cash/.test(htmlOnlyA),
-    'the page does not label Chequing A as Spendable household cash');
+  ok(!/Recorded cash balances/.test(htmlOnlyA),
+    'the page does not label Chequing A as the complete recorded cash aggregate');
   ok(htmlOnlyA.includes(History.money2(999)),
     'the missing-account fixture still shows Chequing A as its own opening');
 
@@ -637,7 +637,7 @@ console.log('\n=== 18. snapshot coverage, not page membership, decides a complet
   ok(!History.accountRows(omittedHistory).some(r => r.id === 'spendable-cash'),
     'account rows do not publish a complete total when coverage is incomplete');
   const omittedHtml = History.render(omittedHistory);
-  ok(!/Spendable household cash/.test(omittedHtml),
+  ok(!/Recorded cash balances/.test(omittedHtml),
     'the page does not label the incomplete four-account opening as household cash');
   ok(omittedHtml.includes(History.money2(100)) && omittedHtml.includes(History.money2(200)),
     'the incomplete fixture still shows the present cash accounts as themselves');
