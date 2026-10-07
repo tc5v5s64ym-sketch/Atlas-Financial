@@ -1652,6 +1652,9 @@ category, writes once, then independently reads the provider result. An uncertai
 result is unavailable as success and must never be automatically retried.
 No payment, transfer, balance edit, deletion, bulk/automatic write, provider
 configuration or canonical Atlas policy write is authorized by this addendum.
+A JSON-RPC batch that contains more than one `apply_lunchmoney_edit` is refused
+before dispatch; each confirmed apply remains a separate single-transaction
+call with its own preview, confirmation and readback.
 Pending/grouped/already-split rows fail closed. Provider read completeness is
 not bank sync completeness or Atlas budget membership. Currency remains explicit.
 No promise of atomicity with external clients: the provider has no conditional

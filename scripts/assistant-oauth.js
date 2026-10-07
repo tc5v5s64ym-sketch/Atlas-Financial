@@ -205,12 +205,14 @@ function createBearerMiddleware(config, deps) {
 }
 
 // Classify a parsed JSON-RPC body (single message or batch) for the write
-// step-up. 'write' when any tools/call names a write tool; 'invalid' when a
-// tools/call cannot be classified (params not an object, or name not a
-// string); otherwise 'other'. Never throws on JSON-shaped input.
+// step-up and the no-bulk-write boundary. 'write' when any tools/call names a
+// write tool; 'bulk-write' when more than one apply_lunchmoney_edit appears;
+// 'invalid' when a tools/call cannot be classified (params not an object, or
+// name not a string); otherwise 'other'. Never throws on JSON-shaped input.
 function classifyToolCalls(body) {
   const messages = Array.isArray(body) ? body : [body];
   let verdict = 'other';
+  let applyCount = 0;
   for (const message of messages) {
     if (!message || typeof message !== 'object' || Array.isArray(message)) continue;
     if (message.method !== 'tools/call') continue;
@@ -220,8 +222,9 @@ function classifyToolCalls(body) {
       return 'invalid';
     }
     if (WRITE_TOOL_NAMES.includes(params.name)) verdict = 'write';
+    if (params.name === 'apply_lunchmoney_edit') applyCount += 1;
   }
-  return verdict;
+  return applyCount > 1 ? 'bulk-write' : verdict;
 }
 
 function writeStepUpChallenge(config) {
@@ -240,11 +243,16 @@ function createWriteStepUp(config) {
     } catch {
       verdict = 'invalid';
     }
-    if (verdict === 'invalid') {
+    if (verdict === 'invalid' || verdict === 'bulk-write') {
       return res.status(400).json({
         jsonrpc: '2.0',
         id: null,
-        error: { code: -32600, message: 'invalid request' },
+        error: {
+          code: -32600,
+          message: verdict === 'bulk-write'
+            ? 'bulk write is not authorized'
+            : 'invalid request',
+        },
       });
     }
     const scopes = req.auth && Array.isArray(req.auth.scopes) ? req.auth.scopes : [];

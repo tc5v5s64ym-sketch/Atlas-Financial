@@ -1589,6 +1589,39 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         && writeRawBody.result.structuredContent.reason !== 'transaction-write-scope-required',
       'write-scoped token passes the step-up and reaches prepare');
 
+    lunchMoney.resetHits();
+    const writesBeforeBulk = lunchMoney.writes();
+    const multiApply = await mcp(bearer(writeToken), [
+      toolCall(46, 'apply_lunchmoney_edit', { previewId: 'edit-' + 'a'.repeat(48), confirmed: true }),
+      toolCall(47, 'apply_lunchmoney_edit', { previewId: 'edit-' + 'b'.repeat(48), confirmed: true }),
+    ]);
+    const multiApplyBody = await multiApply.json().catch(() => null);
+    ok(multiApply.status === 400
+        && multiApplyBody && multiApplyBody.error && multiApplyBody.error.code === -32600
+        && multiApplyBody.error.message === 'bulk write is not authorized',
+      'authenticated multi-apply batch is refused before dispatch',
+      `status ${multiApply.status}`);
+    ok(lunchMoney.hits() === 0 && lunchMoney.writes() === writesBeforeBulk,
+      'refused multi-apply batch makes zero provider calls or writes');
+    const readMultiApply = await mcp(bearer(readToken), [
+      toolCall(49, 'apply_lunchmoney_edit', applyArgs),
+      toolCall(50, 'apply_lunchmoney_edit', applyArgs),
+    ]);
+    const readMultiApplyBody = await readMultiApply.json().catch(() => null);
+    ok(readMultiApply.status === 400
+        && readMultiApplyBody && readMultiApplyBody.error
+        && readMultiApplyBody.error.message === 'bulk write is not authorized',
+      'read-scoped multi-apply batch is refused as bulk write, not stepped up',
+      `status ${readMultiApply.status}`);
+    const oneApplyBatch = await mcp(bearer(writeToken), [
+      toolCall(48, 'apply_lunchmoney_edit', { previewId: 'edit-' + 'c'.repeat(48), confirmed: true }),
+    ]);
+    ok(oneApplyBatch.status === 200,
+      'a one-member apply batch is not treated as bulk write',
+      `status ${oneApplyBatch.status}`);
+    ok(lunchMoney.writes() === writesBeforeBulk,
+      'the one-member apply batch with an unknown preview writes nothing');
+
     console.log('\n  -- official SDK client: 403 step-up re-authorizes once, then succeeds --');
     function stepUpProvider(initialTokens) {
       const state = { tokens: initialTokens, redirects: [], verifier: null, posts: 0 };
@@ -1776,6 +1809,12 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     ok(C([call('get_lunchmoney_catalog'), call('apply_lunchmoney_edit')]) === 'write'
         && C([null, 1, 'x', [], call('prepare_lunchmoney_edit')]) === 'write',
       'classifier scans every batch member');
+    ok(C([call('apply_lunchmoney_edit'), call('apply_lunchmoney_edit')]) === 'bulk-write'
+        && C([null, call('apply_lunchmoney_edit'), 5, call('apply_lunchmoney_edit')]) === 'bulk-write'
+        && C([call('apply_lunchmoney_edit')]) === 'write'
+        && C([call('prepare_lunchmoney_edit'), call('prepare_lunchmoney_edit')]) === 'write'
+        && C([call('get_lunchmoney_catalog'), call('apply_lunchmoney_edit')]) === 'write',
+      'classifier refuses only multi-apply batches as bulk-write');
     ok(C({ method: 'tools/call', params: null }) === 'invalid'
         && C({ method: 'tools/call' }) === 'invalid'
         && C({ method: 'tools/call', params: { name: 7 } }) === 'invalid'
