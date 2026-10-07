@@ -5256,9 +5256,11 @@ function budgetRemount(mount, ctx) {
   const sheet = budgetDetailSheetController(mount);
   const restore = sheet?.snapshot();
   const focused = mount.ownerDocument?.activeElement;
-  const focusRestore = !restore && focused && mount.contains?.(focused)
+  const attentionBottom = mount.ownerDocument?.getElementById('budget-attention-bottom');
+  const focusRestore = !restore && focused && (mount.contains?.(focused) || attentionBottom?.contains(focused))
     ? sheet?.focusIdentity(focused) : null;
   sheet?.close(false);
+  attentionBottom?.replaceChildren();
   mount.innerHTML = budgetSurfaceHtml(ctx);
   mount.budgetSheetRestore = restore;
   mount.budgetFocusRestore = focusRestore;
@@ -5732,6 +5734,19 @@ function wirePlanLookPicker(mount, ctx) {
     if (trigger) {
       trigger.focus({ preventScroll: true });
       trigger.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+  // Move the wired incumbent controls after the page's lower disclosures.
+  // Keep the same nodes: sheet dismissal must return to the exact trigger.
+  const attentionBottom = mount.ownerDocument?.getElementById('budget-attention-bottom');
+  if (attentionBottom) {
+    const attention = mount.querySelector('[data-budget-browse="attention"]');
+    const focused = mount.ownerDocument.activeElement;
+    const restoreAttentionFocus = attention?.contains(focused);
+    attentionBottom.replaceChildren(...(attention ? [attention] : []));
+    if (restoreAttentionFocus) {
+      focused.focus({ preventScroll: true });
+      focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }
 }
