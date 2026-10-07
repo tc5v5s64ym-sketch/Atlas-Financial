@@ -28,6 +28,7 @@ async function stalled(mode,fn){
 }
 (async()=>{
  check(Refresh.LIVE_REFRESH_TIMEOUT_MS,15000,'absolute production refresh budget');
+ check(Refresh.MAX_ACTIVE_LIVE_REFRESHES,2,'worker concurrency is bounded without a data cache');
  const mock=await startMockProvider('ok');
  try{
   const env=envFor(mock.base),before=JSON.stringify(canonical);
@@ -50,6 +51,15 @@ async function stalled(mode,fn){
   assert.ok(performance.now()-start<1800,'absolute budget cannot be reset by activity/pages');checks++;
   await pause(150);check(state.active,0,mode+' deadline closes provider sockets');
   if(mode==='cumulative'){assert.ok(state.calls>1&&state.calls<7,'shared budget covers successive GETs');checks++;}
+ });
+ await stalled('trickle',async(env,state)=>{
+  const controller=new AbortController();
+  const first=Refresh.serve(canonical,env,{signal:controller.signal});
+  const second=Refresh.serve(canonical,env,{signal:controller.signal});
+  const stopped=Promise.all([assert.rejects(first,error=>error.code==='live-refresh-cancelled'),assert.rejects(second,error=>error.code==='live-refresh-cancelled')]);
+  await assert.rejects(Refresh.serve(canonical,env),error=>error.code==='live-refresh-busy');checks++;
+  controller.abort();await stopped;checks++;
+  await pause(150);check(state.active,0,'bounded concurrent cancellation leaves no provider work');
  });
  await stalled('trickle',async(env,state)=>{
   const controller=new AbortController(),baseline=events.getEventListeners(controller.signal,'abort').length;

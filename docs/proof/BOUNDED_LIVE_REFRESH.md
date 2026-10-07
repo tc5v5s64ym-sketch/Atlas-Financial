@@ -20,6 +20,8 @@ also accepts and propagates cancellation through all sequential GETs and pages.
 Normal successful and qualified provider-failure payloads retain the incumbent
 semantics. The deadline itself returns an unavailable HTTP response without a
 stale financial payload. This changes availability, not household policy.
+At most two refresh workers run concurrently; excess requests are unavailable.
+This bounds resources without sharing or caching another request's financial data.
 
 The shared browser boot has a 20-second load budget, shows loading/error state,
 and offers Retry. HTTP unavailable responses never enter financial rendering.

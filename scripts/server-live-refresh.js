@@ -2,6 +2,7 @@
 // Request lifecycle only. The existing LivePlan/Forecast modules own all values.
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 const LIVE_REFRESH_TIMEOUT_MS = 15000;
+const MAX_ACTIVE_LIVE_REFRESHES = 2;
 
 if (!isMainThread) {
   const Live = require('./live-plan');
@@ -11,6 +12,7 @@ if (!isMainThread) {
     .then(data => parentPort.postMessage({ data }))
     .catch(() => parentPort.postMessage({ error: 'live-refresh-unavailable' }));
 } else {
+  const active = new Set();
   function unavailable(code) {
     const error = new Error(code);
     error.code = code;
@@ -21,6 +23,7 @@ if (!isMainThread) {
     if (Live.overlayModeFromEnv(env) !== 'live') return Live.applyForServer(canonical, env);
     const signal = options.signal;
     if (signal?.aborted) return Promise.reject(unavailable('live-refresh-cancelled'));
+    if (active.size >= MAX_ACTIVE_LIVE_REFRESHES) return Promise.reject(unavailable('live-refresh-busy'));
     // Shorter budgets support bounded callers/tests; no caller can raise the cap.
     const requested = options.timeoutMs;
     const budget = Number.isFinite(requested) && requested > 0
@@ -48,13 +51,17 @@ if (!isMainThread) {
       signal?.addEventListener('abort', cancelled, { once: true });
       try {
         worker = new Worker(__filename, { workerData: { canonical }, env });
+        active.add(worker);
         worker.on('message', result => result?.data
           ? finish(null, result.data) : finish(unavailable('live-refresh-unavailable')));
         worker.on('error', () => finish(unavailable('live-refresh-unavailable')));
-        worker.on('exit', () => { if (!settled) finish(unavailable('live-refresh-unavailable')); });
+        worker.on('exit', () => {
+          active.delete(worker);
+          if (!settled) finish(unavailable('live-refresh-unavailable'));
+        });
         if (signal?.aborted) cancelled();
       } catch (_) { finish(unavailable('live-refresh-unavailable')); }
     });
   }
-  module.exports = { serve, LIVE_REFRESH_TIMEOUT_MS };
+  module.exports = { serve, LIVE_REFRESH_TIMEOUT_MS, MAX_ACTIVE_LIVE_REFRESHES };
 }

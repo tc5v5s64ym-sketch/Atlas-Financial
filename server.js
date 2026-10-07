@@ -323,7 +323,7 @@ app.get('/assistant/current', async (req, res) => {
     res.json(await buildCurrentAssistantPacket(req, res));
   } catch (err) {
     console.error('assistant packet could not be built:', err.message);
-    if (!res.destroyed) res.status(err.code === 'live-refresh-timeout' ? 503 : 500).json({ error: 'assistant unavailable' });
+    if (!res.destroyed) res.status(err.code?.startsWith('live-refresh-') ? 503 : 500).json({ error: 'assistant unavailable' });
   }
 });
 app.all('/assistant/current', (_req, res) => {
@@ -403,7 +403,7 @@ app.get('/data.json', async (req, res) => {
     if (!res.destroyed) res.json(served);
   } catch (err) {
     if (err.code !== 'live-refresh-cancelled') console.error('data.json could not be read:', err.code || 'data unavailable');
-    if (!res.destroyed) res.status(err.code === 'live-refresh-timeout' ? 503 : 500).json({ error: 'data unavailable' });
+    if (!res.destroyed) res.status(err.code?.startsWith('live-refresh-') ? 503 : 500).json({ error: 'data unavailable' });
   }
 });
 
