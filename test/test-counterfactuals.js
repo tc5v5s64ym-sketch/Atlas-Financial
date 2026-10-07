@@ -696,7 +696,9 @@ function bootPage(knobs) {
       addEventListener(kind, fn) { (this.listeners[kind] = this.listeners[kind] || []).push(fn); },
       setAttribute(k, v) { this.attributes[k] = v; },
       removeAttribute(k) { delete this.attributes[k]; },
-      appendChild(child) { this.children.push(child); return child; },
+      appendChild(child) { this.children.push(child); child.parentElement = this; return child; },
+      append(...children) { for (const child of children) this.appendChild(child); },
+      remove() { if (this.parentElement) { this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.parentElement = null; } },
       insertAdjacentHTML(_, html) { this.innerHTML = String(html); },
       querySelectorAll: () => [],
     };
@@ -735,6 +737,7 @@ function bootPage(knobs) {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
+  Object.assign(sandbox, { AbortController, setTimeout, clearTimeout });
   vm.createContext(sandbox);
   for (const file of ['public/app.js', 'public/forecast.js', 'public/budget-surface.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });

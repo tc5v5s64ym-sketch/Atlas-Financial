@@ -28,6 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
+const ServerLiveRefresh = require('./scripts/server-live-refresh.js');
 const Assistant = require('./scripts/assistant-packet.js');
 const RunningBuild = require('./scripts/running-build.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
@@ -188,8 +189,8 @@ function assistantHttpGuard(req, res) {
   }
   return false;
 }
-async function buildCurrentAssistantPacket() {
-  const served = await servedAtlasData();
+async function buildCurrentAssistantPacket(req, res) {
+  const served = await servedAtlasData(req, res);
   return Assistant.buildPacket({
     data: served,
     env: process.env,
@@ -297,8 +298,18 @@ function loadCanonicalData() {
   }
   return cachedData;
 }
-async function servedAtlasData() {
-  return LivePlan.applyForServer(loadCanonicalData(), process.env);
+async function servedAtlasData(req, res) {
+  const controller = new AbortController();
+  const cancel = () => { if (!res || !res.writableEnded) controller.abort(); };
+  req?.once('aborted', cancel);
+  res?.once('close', cancel);
+  if (req?.aborted || res?.destroyed) controller.abort();
+  try {
+    return await ServerLiveRefresh.serve(loadCanonicalData(), process.env, { signal: controller.signal });
+  } finally {
+    req?.removeListener('aborted', cancel);
+    res?.removeListener('close', cancel);
+  }
 }
 
 // ---------------------------------------------------------------- assistant (dedicated auth; not the browser session)
@@ -309,10 +320,10 @@ function assistantUnauthorized(res) {
 app.get('/assistant/current', async (req, res) => {
   if (assistantHttpGuard(req, res)) return;
   try {
-    res.json(await buildCurrentAssistantPacket());
+    res.json(await buildCurrentAssistantPacket(req, res));
   } catch (err) {
     console.error('assistant packet could not be built:', err.message);
-    res.status(500).json({ error: 'assistant unavailable' });
+    if (!res.destroyed) res.status(err.code?.startsWith('live-refresh-') ? 503 : 500).json({ error: 'assistant unavailable' });
   }
 });
 app.all('/assistant/current', (_req, res) => {
@@ -342,7 +353,7 @@ app.post('/assistant/mcp', mcpOAuthGate, (req, res, next) => {
 }, async (req, res) => {
   try {
     await AssistantMcp.handleHttp(req, res, {
-      getPacket: buildCurrentAssistantPacket,
+      getPacket: () => buildCurrentAssistantPacket(req, res),
       lunchMoney: lunchMoneyAssistant,
       auth: { principal: req.auth && req.auth.extra && req.auth.extra.subject,
         scopes: req.auth && req.auth.scopes || [] },
@@ -382,26 +393,26 @@ app.use((req, res, next) => {
 });
 
 // ---------------------------------------------------------------- data
-app.get('/data.json', async (_req, res) => {
+app.get('/data.json', async (req, res) => {
   try {
     // Dated openings stay on disk. An explicit overlay (ATLAS_LIVE_OVERLAY=
     // fixture|live) may replace posted/pending for today's live plan only.
     // Production read-only Lunch Money uses live mode plus owner-supplied
     // secrets. Default without that flag remains the canonical file.
-    const served = await servedAtlasData();
-    res.json(served);
+    const served = await servedAtlasData(req, res);
+    if (!res.destroyed) res.json(served);
   } catch (err) {
-    console.error('data.json could not be read:', err.message);
-    res.status(500).json({ error: 'data unavailable' });
+    if (err.code !== 'live-refresh-cancelled') console.error('data.json could not be read:', err.code || 'data unavailable');
+    if (!res.destroyed) res.status(err.code?.startsWith('live-refresh-') ? 503 : 500).json({ error: 'data unavailable' });
   }
 });
 
 // Talk context — same incumbent assistant packet, browser session only.
 // Does not change /assistant/current or /assistant/mcp auth semantics.
 // Browser JS must not authenticate to those assistant endpoints.
-app.get('/talk/context', async (_req, res) => {
+app.get('/talk/context', async (req, res) => {
   try {
-    res.json(await buildCurrentAssistantPacket());
+    res.json(await buildCurrentAssistantPacket(req, res));
   } catch (err) {
     console.error('talk context packet could not be built:', err.message);
     res.status(500).json({ error: 'talk context unavailable' });
@@ -464,14 +475,14 @@ function appendTalkSessionTurn(sessionKey, question, presented) {
   });
 }
 
-async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
+async function presentTalkAskTurn(parsed, sessionKey, onPhase, req, res) {
   const phase = (name) => {
     if (typeof onPhase === 'function') onPhase(name);
   };
   phase('understanding');
   phase('checking-atlas-context');
   const priorTurns = talkSessions.turns(sessionKey);
-  const served = await servedAtlasData();
+  const served = await servedAtlasData(req, res);
   const packet = Assistant.buildPacket({
     data: served,
     env: process.env,
@@ -647,7 +658,7 @@ app.post('/talk/ask', (req, res, next) => {
       const onPhase = (name) => {
         if (!gate.closed) TalkStream.writeStatus(res, name);
       };
-      const outcome = await presentTalkAskTurn(parsed, sessionKey, onPhase);
+      const outcome = await presentTalkAskTurn(parsed, sessionKey, onPhase, req, res);
       if (gate.closed) {
         TalkStream.endStream(res);
         return;
@@ -664,7 +675,7 @@ app.post('/talk/ask', (req, res, next) => {
       TalkStream.endStream(res);
       return;
     }
-    const outcome = await presentTalkAskTurn(parsed, sessionKey, null);
+    const outcome = await presentTalkAskTurn(parsed, sessionKey, null, req, res);
     if (outcome.error || !outcome.presented) {
       return res.status(502).json({ error: 'talk answer unavailable' });
     }

@@ -525,7 +525,9 @@ function bootPage(storedKnobs, payload, periodsOverride) {
       addEventListener(k, fn) { (this.listeners[k] = this.listeners[k] || []).push(fn); },
       setAttribute(k, v) { this.attributes[k] = v; },
       removeAttribute(k) { delete this.attributes[k]; },
-      appendChild(c) { this.children.push(c); return c; },
+      appendChild(c) { this.children.push(c); c.parentElement = this; return c; },
+      append(...children) { for (const child of children) this.appendChild(child); },
+      remove() { if (this.parentElement) { this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.parentElement = null; } },
       insertAdjacentHTML(_, h) { this.innerHTML = String(h); },
       querySelectorAll: () => [],
     };
@@ -556,6 +558,7 @@ function bootPage(storedKnobs, payload, periodsOverride) {
         : String(url).includes('balance-history') ? null : body) }),
   };
   sandbox.window = sandbox; sandbox.globalThis = sandbox;
+  Object.assign(sandbox, { AbortController, setTimeout, clearTimeout });
   vm.createContext(sandbox);
   for (const file of ['public/app.js', 'public/forecast.js', 'public/budget-surface.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });
