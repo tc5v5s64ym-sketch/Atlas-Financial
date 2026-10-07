@@ -1245,6 +1245,19 @@ distinguish posted balance, pending, limit, available credit, and
 confirmed payment. Limit and available credit are never household cash.
 Unknown pending is not $0. A scheduled minimum is not a confirmed posted
 payment. Live card balances, limits, pending, and payments are unchanged.
+Owner decision 2026-10-07: an exact, card-specific minimum-payment category
+assigned in Lunch Money may confirm household minimum-payment purpose and the
+payment action. The read-only observer requires the approved leaf category and
+transfer exclusions, a posted native-CAD debit from the declared funding account,
+payment identity and one uniquely eligible cycle. Forecast alone determines
+amount satisfaction against the confirmed minimum. This is household category
+confirmation, not an invented issuer posting or a promotion of estimated minimum
+or due-date inputs. Generic transfers, purchase backfills, pending and ambiguous
+evidence cannot qualify. Current category evidence is rebuilt on each observation;
+recorded owner confirmations retain precedence. The exact protocol and independent
+proof are in [MINIMUM_CATEGORY_CONFIRMATION.md](docs/proof/MINIMUM_CATEGORY_CONFIRMATION.md).
+This decision authorizes this bounded read-only consumer, not Lunch Money category,
+rule or transaction writes, canonical refresh, a new planner or a store.
 The later pending-transaction slice lets `scripts/provider-observe.js`
 derive a mapped revolving-credit pending observation from Lunch Money
 transactions, including the 2026-08-16 Bell Mobility $250 Travel Visa
