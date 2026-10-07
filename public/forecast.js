@@ -7356,7 +7356,10 @@
       }
       // Only this active period owns the still-unspent allowance. A paid
       // historical occurrence cannot reserve it again in a later period.
-      if (window.role === 'active' && row.date >= window.start && row.date <= asOf) {
+      // A qualified receipt may post before its scheduled date; the native
+      // posting date, rather than that future due, owns cash effectiveness.
+      if (window.role === 'active' && row.date >= window.start && row.date <= window.end
+          && observedPostedOn(observed, row.id, row.date, row.date) <= asOf) {
         const fee = scheduledFeeOccurrenceAmounts(row);
         if (fee) row.scheduledFeeAllowance = fee;
       }

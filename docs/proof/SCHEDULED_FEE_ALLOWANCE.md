@@ -36,7 +36,7 @@ The original planned Bills progress stays 24, recorded scheduled expense stays 1
 
 ## Verification
 
-`node test/test-scheduled-fee-routing.js`: **22/22 PASS**. It covers below/equal/above plan; no fee; pending, single-leg and ambiguous receipts; partial/missing evidence; unknown card opening; matched partial/full backfill; typed reversal; last-day/next-period boundaries; repeat observation; and existing ordinary-bill recognition with merchant/account/occurrence guards. A category label or instruction note alone cannot settle a bill.
+`node test/test-scheduled-fee-routing.js`: **27/27 PASS**. It covers below/equal/above plan; no fee; pending, single-leg and ambiguous receipts; partial/missing evidence; unknown card opening; matched partial/full backfill; typed reversal; last-day/next-period boundaries; repeat observation; and existing ordinary-bill recognition with merchant/account/occurrence guards. A category label or instruction note alone cannot settle a bill.
 
 The 17 focused suites cover the new contract, #540 Bills header, period progress, recorded-payment detail, From today funding/integration, period funding, minimum category/repair/cycle conservation, card purchase coverage, daily savings allocation/consumer, paid-actual trust, month-end reconciliation, Forecast, and authority coverage. The renderer copy change is separately checked through the existing Bills/Budget suites and actual browser path.
 
@@ -46,7 +46,7 @@ Optional browser command:
 node test/browser-scheduled-fee-routing.js [installed-browser-path] [local-output-dir]
 ```
 
-The browser uses actual `App.boot`, serves independently invented observations, and intercepts every request. It rejects external requests and writes. At 1440, 390 and 320 pixels it checks below/equal/above-plan and coverage-withheld states, native financial terms, visible original-plan/actual evidence, overflow, Enter/Escape and exact focus restoration, period/month return, and responsive resizing. The retained-reserve copy is asserted in both Bills browse and Info. Missing coverage stays unavailable.
+The browser uses actual `App.boot`, serves independently invented observations, and intercepts every request. It rejects external requests and writes. At 1440, 390 and 320 pixels it checks below/equal/above-plan, coverage-withheld, and one-day-early below/above-plan states, native financial terms, visible original-plan/actual evidence, overflow, Enter/Escape and exact focus restoration, period/month return, and responsive resizing. The retained-reserve copy is asserted in both Bills browse and Info. Missing coverage stays unavailable.
 
 The local exact-head receipt records the execution commit and SHA-256 hashes of Forecast, the active renderer and browser harness. Representative committed screenshots are independent invented-data browser output; no private ledger is included. Full `npm test`, required hosted checks, and independent exact-head Systems Review must be green before merge. The builder does not merge this PR.
 
@@ -61,4 +61,19 @@ Representative reviewed pixels:
 - [320px Bills detail and reserve explanation](scheduled-fee-below-info-320.png)
 - [320px, incomplete coverage](scheduled-fee-coverage-withheld-320.png)
 
-Candidate browser proof: **12/12 PASS**. Existing renderer verification: Bills header, period progress, recorded payment, paid-actual trust, and Budget surface **5/5 PASS**. A guessed `test-budget-browse.js` command reported MODULE_NOT_FOUND; that file is absent and no test was skipped or weakened. The actual registered Budget surface suite and browser exercise the browse path.
+Candidate browser proof: **18/18 PASS**. Existing renderer verification: Bills header, period progress, recorded payment, paid-actual trust, and Budget surface **5/5 PASS**. A guessed `test-budget-browse.js` command reported MODULE_NOT_FOUND; that file is absent and no test was skipped or weakened. The actual registered Budget surface suite and browser exercise the browse path.
+
+## Exact-head review repair: qualified early receipt
+
+Independent review blocked `e3ee912106475c33dbf2f1bd26eabc8de3347152`: a qualified receipt posted on September 29 for the September 30 occurrence missed the allowance term because the scheduled date was after the financial date. The new invented regression independently reproduced below-plan remaining allowance `0` instead of `8` and above-plan Balance After Deductions `826` instead of `822`.
+
+The active-period guard now uses the incumbent `observedPostedOn` date for cash effectiveness, with the scheduled occurrence still required inside the active window. The original scheduled identity remains September 30. Missing posting dates retain the existing scheduled-date fallback. Future-posted/future-effective records, historical windows, and the next-period boundary cannot gain this term.
+
+Five additional controls check early below/equal/above amounts, future-posted evidence and an older query before a receipt becomes effective. The deliberately future-dated packet control tests withholding of this new term and preservation of original planned progress; it does not redefine the incumbent calendar reprint policy. No existing test is weakened.
+
+The repaired source passes 11 existing focused preservation suites: #540 Bills header, From today funding/integration, daily savings allocation, minimum-category confirmation, card coverage, represented effective-date cash conservation, month-end bills, calendar represented actuals, authority coverage and Forecast. The browser adds six early-payment cases across the three widths. All earlier normal/unknown cases remain.
+
+Browser source SHA-256 receipts now normalize UTF-8 line endings to LF so they match committed Git blobs. The earlier renderer receipt hashed Windows working-tree line endings; the PR receipt must use the corrected Git-blob hash. Full-suite evidence from the superseded head is kept separate and does not certify this repaired head. No Systems PASS or merge is claimed.
+
+- [Early receipt desktop](scheduled-fee-early-below-1440.png)
+- [Early receipt 320px Info](scheduled-fee-early-below-info-320.png)

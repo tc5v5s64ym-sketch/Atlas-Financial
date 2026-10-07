@@ -12,12 +12,15 @@ const head=cp.execFileSync('git',['-c','safe.directory='+root.replace(/\\/g,'/')
   {cwd:root,encoding:'utf8'}).trim();
 const errors=[],writes=[],external=[],states=[];
 const visibleText=text=>text.replace(/\s+/g,' ').trim();
+const sourceHash=file=>crypto.createHash('sha256').update(fs.readFileSync(path.join(root,file),'utf8').replace(/\r\n/g,'\n')).digest('hex');
 (async()=>{
   const browser=await chromium.launch({executablePath:process.argv[2]||undefined,headless:true});
   try {
-    for(const width of [1440,390,320]) for(const state of ['below','equal','above','coverage-withheld']) {
-      const posted=state==='above'?28:state==='equal'?24:16;
-      const data=Live.fromObservation(fx(posted,state==='below')).data;
+    for(const width of [1440,390,320]) for(const state of ['below','equal','above','coverage-withheld','early-below','early-above']) {
+      const early=state.startsWith('early-'),below=state==='below'||state==='early-below';
+      const above=state==='above'||state==='early-above';
+      const posted=above?28:state==='equal'?24:16;
+      const data=Live.fromObservation((early?fx.early:fx)(posted,below)).data;
       data.meta.title='Invented scheduled fee routing';
       if(state==='coverage-withheld') data.liveOverlay.currentPeriodActuals.transactionCoverage='truncated';
       const page=await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce',colorScheme:'light'});
@@ -57,10 +60,10 @@ const visibleText=text=>text.replace(/\s+/g,' ').trim();
       else {
         assert.equal(native.actual,posted);
         assert.equal(native.remaining,Math.max(0,24-posted));
-        assert.equal(native.bad,state==='above'?822:state==='below'?808.44:826);
-        assert.equal(native.available,state==='above'?422:state==='below'?408.44:426);
-        assert.equal(native.other,state==='below'?17.56:0);
-        assert.equal(native.cardReserve,state==='below'?13.37:0);
+        assert.equal(native.bad,above?822:below?808.44:826);
+        assert.equal(native.available,above?422:below?408.44:426);
+        assert.equal(native.other,below?17.56:0);
+        assert.equal(native.cardReserve,below?13.37:0);
       }
       await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
       await page.screenshot({path:path.join(out,state+'-'+width+'.png'),fullPage:true,animations:'disabled'});
@@ -68,11 +71,11 @@ const visibleText=text=>text.replace(/\s+/g,' ').trim();
       await page.waitForFunction(()=>document.querySelector('[data-budget-detail-sheet]')?.open);
       const body=page.locator('[data-budget-detail-body]');
       const evidence=await body.locator('[data-budget-progress-evidence="bills"]').innerText();
-      if(state==='below') {
+      if(below) {
         assert.match(await body.innerText(),/Remaining bill reserve/);
         assert.match(await body.locator('[data-scheduled-fee-reserve]').innerText(),/not another payment due/);
         assert.match(await page.locator('[data-budget-browse="bills"]').innerText(),/8\.00 still reserved for bills/);
-      } else if(state==='equal'||state==='above') {
+      } else if(state==='equal'||above) {
         assert.equal(await body.locator('[data-scheduled-fee-reserve]').count(),0);
       }
       if(state==='coverage-withheld')assert.match(evidence,/Actual: Unavailable/);
@@ -99,8 +102,8 @@ const visibleText=text=>text.replace(/\s+/g,' ').trim();
     }
     assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);assert.deepEqual(external,[]);
     fs.writeFileSync(path.join(out,'proof.json'),JSON.stringify({synthetic:true,executionHead:head,
-      planSha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(root,'public/plan.js'))).digest('hex'),
-      forecastSha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(root,'public/forecast.js'))).digest('hex'),
-      browserSha256:crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),states},null,2)+'\n');
+      sourceHashEncoding:'UTF-8 LF (git blob)',planSha256:sourceHash('public/plan.js'),
+      forecastSha256:sourceHash('public/forecast.js'),
+      browserSha256:sourceHash('test/browser-scheduled-fee-routing.js'),states},null,2)+'\n');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

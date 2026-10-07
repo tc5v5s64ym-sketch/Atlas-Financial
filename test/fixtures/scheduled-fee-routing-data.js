@@ -1,9 +1,9 @@
 'use strict';
 // Independent invented fee/bill fixture; never read canonical financial rows.
 const seed = require('./card-purchase-coverage-data');
-function fixture(posted = 16, unexpected = false) {
+function fixture(posted = 16, unexpected = false, observationDate = '2026-09-30') {
   const x = seed('before');
-  x.asOf = '2026-09-30';
+  x.asOf = observationDate;
   x.data.plan.obligations = [];
   x.data.plan.startingCash.breakdown[1].value = 100;
   x.data.plan.bills = [{id:'tdfees',label:'Invented scheduled monthly fee',
@@ -39,3 +39,5 @@ function internetFixture() {
 
 module.exports = fixture;
 module.exports.internet = internetFixture;
+
+module.exports.early = (posted, unexpected) => fixture(posted, unexpected, '2026-09-29');

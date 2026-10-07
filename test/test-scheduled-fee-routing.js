@@ -40,6 +40,35 @@ for (const posted of [16,24,28]) check('scheduled pair '+posted+': actual once, 
   assert.equal(period.balanceAfterDeductions,1000-150-Math.max(24,posted),
     'independent period income ledger');
 });
+for (const posted of [16,24,28]) check('qualified one-day early pair '+posted+' retains scheduled allowance and cost', () => {
+  const r=run(fixture.early(posted)),row=activeBill(r);
+  assert.equal(row.date,'2026-09-30','scheduled identity is not rewritten to posting day');
+  assert.equal(row.status,'PAID','incumbent recognizes the early receipt');
+  assert.equal(r.packet.representedActuals.find(row=>row.id==='tdfees').postedOn,'2026-09-29');
+  assert.equal(r.period.budgetProgress.bills.planned.amount,24);
+  assert.equal(r.period.budgetProgress.bills.actual.amount,posted);
+  assert.equal(r.period.remainingBills,Math.max(0,24-posted));
+  assert.equal(r.period.totalBillsThisPeriod,Math.max(24,posted));
+  assert.equal(r.period.balanceAfterDeductions,1000-150-Math.max(24,posted));
+  assert.equal(r.period.fromTodayFunding.availableNow,600-posted-150-Math.max(0,24-posted));
+});
+check('future-posted pair cannot publish an early reserve term', () => {
+  const x=fixture.early(16);
+  x.payload.transactions.forEach(row=>{row.date='2026-09-30';});
+  x.payload.accounts[0].balance=500;x.payload.accounts[1].balance=100;
+  const r=run(x);
+  assert.equal(activeBill(r).scheduledFeeAllowance,undefined);
+  // The incumbent packet may reprint this deliberately future-dated row.
+  // This repair must not turn it into an effective allowance/cost term.
+  assert.equal(r.period.budgetProgress.bills.planned.amount,24);
+});
+check('future-effective receipt cannot gain a reserve in an older query', () => {
+  const r=run(fixture(16)),data=clone(r.live.data),day='2026-09-29';
+  const advice=F.recommend(data.plan,day,{debts:data.debts,currentPeriodActuals:data.liveOverlay.currentPeriodActuals});
+  const current=advice.payPeriodViews.find(p=>p.start<=day && p.end>=day);
+  assert.equal(current.bills.find(row=>row.id==='tdfees').scheduledFeeAllowance,undefined);
+  assert.equal(F.representedOccurrence(data.plan,'tdfees','2026-09-30',day),false);
+});
 check('unexpected overdraft and current-year annual fee stay Other Spend', () => {
   const {period,advice} = run(fixture(16,true));
   const other = period.householdBudget.find(row => row.otherSpending);
