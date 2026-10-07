@@ -989,7 +989,9 @@ function renderPage() {
       addEventListener(kind, fn) { (this.listeners[kind] = this.listeners[kind] || []).push(fn); },
       setAttribute(k, v) { this.attributes[k] = v; },
       removeAttribute(k) { delete this.attributes[k]; },
-      appendChild(child) { this.children.push(child); return child; },
+      appendChild(child) { this.children.push(child); child.parentElement = this; return child; },
+      append(...children) { for (const child of children) this.appendChild(child); },
+      remove() { if (this.parentElement) { this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.parentElement = null; } },
       fire(kind) { for (const fn of this.listeners[kind] || []) fn(); },
     };
     // Writing innerHTML replaces the children, as it does in a browser — the
@@ -1026,6 +1028,7 @@ function renderPage() {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
+  Object.assign(sandbox, { AbortController, setTimeout, clearTimeout });
   vm.createContext(sandbox);
   for (const file of ['public/app.js', 'public/forecast.js', 'public/modellers.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });

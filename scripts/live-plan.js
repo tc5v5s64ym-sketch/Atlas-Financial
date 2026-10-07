@@ -1395,7 +1395,7 @@ function serveCanonicalOrFixture(canonical, env) {
   }
 }
 
-async function applyForServer(canonical, env) {
+async function applyForServer(canonical, env, options) {
   const mode = overlayModeFromEnv(env);
   if (mode === 'off' || mode === 'fixture') {
     return serveCanonicalOrFixture(canonical, env);
@@ -1404,10 +1404,10 @@ async function applyForServer(canonical, env) {
     const accountMap = O.loadLiveAccountMap(env || process.env, canonical);
     const now = observationNow(env || process.env);
     const payload = await O.fetchLunchMoneyLive(
-      await O.resolveLiveToken({ env: env || process.env }),
+      await O.resolveLiveToken({ env: env || process.env, signal: options && options.signal }),
       now,
       livePostedHistoryDays(canonical, now),
-      { env: env || process.env }
+      { env: env || process.env, signal: options && options.signal }
     );
     const report = observeForOverlay(canonical, payload, accountMap);
     return applyObservedOverlay(canonical, report);
