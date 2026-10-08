@@ -574,7 +574,12 @@ const composite = (fg, bg) => {
             const nav = document.querySelector('[data-bad-river]');
             const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => (el.textContent || '').trim());
             const items = list ? [...list.querySelectorAll(':scope > li')] : [];
-            const expected = items.map(li => {
+            const kept = items.filter(li => {
+              if ((li.getAttribute('data-bad-timeline-role') || '') !== 'past') return true;
+              const coverage = li.getAttribute('data-bad-timeline-coverage');
+              return coverage === 'precise' || coverage === 'posted-only';
+            });
+            const expected = kept.map(li => {
               const trust = li.getAttribute('data-bad-term-trust') || '';
               const amount = (li.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim();
               return trust === 'unavailable' || !amount ? '—' : amount;
@@ -585,17 +590,18 @@ const composite = (fg, bg) => {
               labels,
               expected,
               rows: items.length,
+              kept: kept.length,
               hidden: !!(list && list.hidden && list.getAttribute('aria-hidden') === 'true'),
             };
           });
-          if (!riverContract.rows) {
+          if (!riverContract.rows || !riverContract.kept) {
             if (port.river !== 'absent' || port.riverCount < 2 || port.riverLabels.some(label => label !== '—')) {
-              errors.push(`river without the timeline list ${JSON.stringify(port)}`);
+              errors.push(`river without a kept timeline row ${JSON.stringify(port)}`);
             }
           } else if (riverContract.mode !== 'printed' || !riverContract.hidden
-            || riverContract.labels.length !== riverContract.rows
+            || riverContract.labels.length !== riverContract.kept
             || riverContract.labels.some((label, i) => label !== riverContract.expected[i])) {
-            errors.push(`river timeline ${JSON.stringify({ mode: riverContract.mode, rows: riverContract.rows, labels: riverContract.labels.slice(0, 4), expected: riverContract.expected.slice(0, 4) })}`);
+            errors.push(`river timeline ${JSON.stringify({ mode: riverContract.mode, rows: riverContract.rows, kept: riverContract.kept, labels: riverContract.labels.slice(0, 4), expected: riverContract.expected.slice(0, 4) })}`);
           }
         }
         if ((face.terms || []).find(term => term.id === '06')?.label !== 'Household budget') {
@@ -1801,15 +1807,14 @@ const composite = (fg, bg) => {
       }));
     }));
     await probe.close();
-    const probeLabels = ['$731.83', '—', '−$1,020.09', '-$10.00', '$0.00'];
+    const probeLabels = ['—', '−$1,020.09', '-$10.00', '$0.00'];
     if (riverProbe.mode !== 'printed' || riverProbe.state !== 'neutral' || !riverProbe.focusable
       || riverProbe.rows !== 5 || riverProbe.labels.join('|') !== probeLabels.join('|')
       || riverProbe.value !== '—'
-      || !/is-income/.test(riverProbe.tones[0]) || !/is-est/.test(riverProbe.tones[0]) || /is-short/.test(riverProbe.tones[0])
-      || !/is-muted/.test(riverProbe.tones[1])
-      || !/is-short/.test(riverProbe.tones[2]) || /is-income/.test(riverProbe.tones[2])
-      || !/is-income/.test(riverProbe.tones[3]) || /is-short/.test(riverProbe.tones[3])
-      || !/is-income/.test(riverProbe.tones[4])
+      || !/is-muted/.test(riverProbe.tones[0]) || /is-income/.test(riverProbe.tones[0])
+      || !/is-short/.test(riverProbe.tones[1]) || /is-income/.test(riverProbe.tones[1])
+      || !/is-income/.test(riverProbe.tones[2]) || /is-short/.test(riverProbe.tones[2])
+      || !/is-income/.test(riverProbe.tones[3])
       || riverProbe.labels.some(label => label === '$0' || label === '0')
       || !riverProbe.months.some(label => label.startsWith('Aug'))
       || !riverProbe.months.some(label => /Jan/.test(label) && /2027/.test(label))) {

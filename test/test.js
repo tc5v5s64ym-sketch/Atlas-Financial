@@ -57,6 +57,7 @@ const suites = [
   ['paid actual display trust remains separate from estimated schedules', 'test-paid-actual-display-trust.js'],
   ['one household actual/planned total and Other remaining display', 'test-budget-household-total-display.js'],
   ['print-only Balance After Deductions terms close to the cent or print Unavailable', 'test-bad-terms-print.js'],
+  ['Budget river keeps a past timeline row only for precise or posted-only coverage', 'test-bad-timeline-river.js'],
   ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
   ['dated owner Other payday target and once-only reserve', 'test-other-period-target.js'],
   ['purpose-reserve funding seed and independent payment conservation', 'test-reserve-aware-funding.js'],

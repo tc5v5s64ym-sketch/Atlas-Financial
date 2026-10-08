@@ -1717,13 +1717,24 @@
     return { key: (year ? year[1] + '-' : '') + named[1], name: named[1], year: year ? year[1] : '' };
   }
 
+  // Past rows only. Current and future always stay, including when their
+  // coverage is unavailable. precise and posted-only are the only kept
+  // past claims; missing, unavailable, and anything else fail closed.
+  // Coverage is the only input. Terms, trust, and amounts are not.
+  function keepPastTimelineNode(li) {
+    const role = li.getAttribute('data-bad-timeline-role') || '';
+    if (role !== 'past') return true;
+    const coverage = li.getAttribute('data-bad-timeline-coverage');
+    return coverage === 'precise' || coverage === 'posted-only';
+  }
+
   // Reads ol[data-bad-timeline] only. The amount is the span text.
   // trust=unavailable or an empty span is a muted dash with no height.
   // Absent list: the same neutral dashes, still focusable, and not a navigator.
   function readBadTimeline(doc) {
     const list = doc.querySelector('ol[data-bad-timeline]');
     if (!list) return { present: false, nodes: [] };
-    const nodes = [...list.children].filter(node => node.tagName === 'LI').map((li, index) => {
+    const nodes = [...list.children].filter(node => node.tagName === 'LI' && keepPastTimelineNode(node)).map((li, index) => {
       const trust = li.getAttribute('data-bad-term-trust') || '';
       const span = li.querySelector('[data-bad-term-amount]');
       const amount = span ? String(span.textContent == null ? '' : span.textContent).replace(/\s+/g, ' ').trim() : '';
@@ -2094,6 +2105,10 @@
     document.addEventListener('pointermove', tilt);
     document.addEventListener('pointerleave', untilt, true);
     document.querySelector('[data-blend-theme]')?.addEventListener('click', themeCycle);
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports.keepPastTimelineNode = keepPastTimelineNode;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
