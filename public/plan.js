@@ -4408,13 +4408,20 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
             ? '<span class="budget-waterfall-scale-note">Scale unavailable</span>' : ''}
         ${overflowStart ? '<span class="budget-waterfall-overflow at-start">←</span>' : ''}${overflowEnd ? '<span class="budget-waterfall-overflow at-end">→</span>' : ''}
       </span>`;
-      return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}"${compactOverview && number === '07' ? ' data-budget-period-result' : ''}${summary.stock ? ' data-budget-savings-stock' : ''}>
+      // Print-only Q07 hooks: data-budget-result-trust (null stamp = calculated)
+      // and [data-budget-result-amount], the same money2 text without the ≈
+      // prefix, empty when unavailable. Visible text is unchanged.
+      const resultHook = number === '07' && !(ratioKey && ratioKey !== 'savings');
+      const resultTrust = known ? summary.trust === 'estimated' ? 'estimated' : 'calculated' : 'unavailable';
+      return `<div class="operating-question budget-step${kind ? ` budget-step-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}"${compactOverview && number === '07' ? ' data-budget-period-result' : ''}${resultHook ? ` data-budget-result-trust="${resultTrust}"` : ''}${summary.stock ? ' data-budget-savings-stock' : ''}>
         <details class="budget-step-details">
           <summary class="budget-step-summary">
             <span class="operating-number" aria-hidden="true">${summary.stock ? '•' : number === '02' || kind === 'credit' ? '+' : (number === '04' || number === '06' || number === 'savings' ? '−' : '=')}</span>
             <span class="budget-step-title"><span class="operating-prompt" role="heading" aria-level="2">${prompt}</span>${compactOverview ? summary.stock && stockDateLabel ? `<span class="budget-step-caption" data-budget-savings-observed-date>${budgetBrowseEscape(stockDateLabel)}</span>` : '' : `<span class="budget-step-caption">${summary.note}</span>`}</span>
             ${graph}
-            <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${ratioKey && ratioKey !== 'savings' ? budgetProgressValueHtml(progress, ratioKey) : known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
+            <span class="budget-step-value"${known && summary.amount < 0 ? ' data-sign="negative"' : ''}>${ratioKey && ratioKey !== 'savings' ? budgetProgressValueHtml(progress, ratioKey) : resultHook
+              ? `${known ? estimate : 'Unavailable'}<span data-budget-result-amount>${known ? money2(summary.amount) : ''}</span>`
+              : known ? estimate + money2(summary.amount) : 'Unavailable'}</span>
             <span class="budget-step-chevron" aria-hidden="true">⌄</span>
           </summary>
           <div class="operating-answer budget-step-body">${detail}</div>
@@ -4490,10 +4497,11 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   const finalCaption = dailySavings ? 'After bills and household budget, before unsent savings top-ups' : fundedBalanceKnown
     ? 'After bills, household and proposed funding — retain any future carry'
     : 'Before savings — the funding deduction is unavailable';
-  const finalHero = !planUnavailable ? `<div class="budget-period-result" data-budget-period-result>
+  // Same print-only result hooks as Q07 on the non-compact hero.
+  const finalHero = !planUnavailable ? `<div class="budget-period-result" data-budget-period-result data-budget-result-trust="${finalKnown ? finalTrust === 'estimated' ? 'estimated' : 'calculated' : 'unavailable'}">
     <h2>Balance After Deductions</h2>
     <p class="budget-period-result-value"${finalKnown && finalAmount < 0 ? ' data-sign="negative"' : ''}>${finalKnown
-      ? `${finalTrust === 'estimated' ? compactOverview ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : ''}${money2(finalAmount)}` : 'Unavailable'}</p>
+      ? `${finalTrust === 'estimated' ? compactOverview ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : ''}<span data-budget-result-amount>${money2(finalAmount)}</span>` : 'Unavailable<span data-budget-result-amount></span>'}</p>
     <p class="budget-period-result-caption">${compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
   </div>` : '';
   // Print-only: Forecast's published Balance After Deductions terms for this
