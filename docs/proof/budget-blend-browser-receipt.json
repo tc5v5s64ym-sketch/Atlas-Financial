@@ -497,8 +497,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          170,
-          69
+          197,
+          44
         ],
         "pass": true
       },
@@ -510,8 +510,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          170,
-          69
+          197,
+          44
         ],
         "pass": true
       },
@@ -523,7 +523,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          186,
+          168,
           43
         ],
         "pass": true

@@ -158,6 +158,8 @@ const composite = (fg, bg) => {
         qualifier: (document.querySelector('.blend-bad-qualifier')?.textContent || '').replace(/\s+/g, ' ').trim(),
         label: (label?.innerText || '').replace(/\s+/g, ' ').trim(),
         q07: (line?.innerText || '').replace(/\s+/g, ' ').trim(),
+        lineLabel: line?.querySelector('.blend-after-label')?.textContent || '',
+        valueText: value?.textContent || '',
         headline: (clone?.textContent || '').replace(/\s+/g, ' ').trim(),
         printed: (document.querySelector('[data-bad-term="balanceAfterDeductions"] [data-bad-term-value]')?.textContent || '').replace(/\s+/g, ' ').trim(),
         chip: !!(bad && bad.nextElementSibling && bad.nextElementSibling.classList.contains('blend-est')),
@@ -581,6 +583,16 @@ const composite = (fg, bg) => {
           return {
             estChip: !!(estEl && !estEl.closest('.blend-clip') && getComputedStyle(estEl).display !== 'none' && est && est.width > 8),
             estBeside: !!(cents && est && estEl && !estEl.closest('.blend-clip') && est.left >= cents.right - 2 && est.left - cents.right < 40 && Math.abs(est.top - cents.top) < 28),
+            termChips: [...document.querySelectorAll('.blend-hero [data-operating-question="02"] .budget-step-value > .blend-est, .blend-hero [data-operating-question="04"] .budget-step-value > .blend-est, .blend-hero [data-operating-question="06"] .budget-step-value > .blend-est')].map(chip => {
+              const amount = chip.previousElementSibling;
+              if (!amount) return { beside: false, below: true };
+              const a = amount.getBoundingClientRect();
+              const b = chip.getBoundingClientRect();
+              return {
+                beside: b.left >= a.right - 2 && b.top < a.bottom - 1,
+                below: b.top >= a.bottom - 1,
+              };
+            }),
             pillRight: !!(cashShown && top && top.right - cashBox.right < 24 && cashBox.top >= top.top - 2 && cashBox.bottom <= top.bottom + 2),
             incomeInside: !(metaBox && income) || (metaBox.right <= income.right + 1 && metaBox.left >= income.left - 1 && metaBox.bottom <= income.bottom + 1),
             stacked: !!(income && pay && income.bottom <= pay.top + 6 && Math.abs(income.left - pay.left) < 12),
@@ -600,6 +612,9 @@ const composite = (fg, bg) => {
           };
         });
         if (layout.estChip && !layout.estBeside) errors.push(`${width}/${theme} est chip is not beside the cents`);
+        if (width > 480 && (layout.termChips || []).some(row => !row.beside || row.below)) {
+          errors.push(`${width}/${theme} term est chip wrapped ${JSON.stringify(layout.termChips)}`);
+        }
         if (!layout.pillRight) errors.push(`${width}/${theme} Bills account pill is not at the right of the hero top`);
         if (!layout.incomeInside) errors.push(`${width}/${theme} received amount leaves the Income tile`);
         if (!layout.separate || layout.depOverlap) errors.push(`${width}/${theme} income track overlap ${JSON.stringify(layout)}`);
@@ -858,10 +873,12 @@ const composite = (fg, bg) => {
     if (aug28.faceAttr !== 'after-proposed-funding' || aug28.qualifier !== '· before proposed savings funding'
       || !/Balance After Deductions/.test(aug28.label) || !aug28.label.includes('before proposed savings funding')
       || !aug28.q07.includes('$1,675.00') || !/≈ estimated/.test(aug28.q07)
+      || aug28.lineLabel !== 'Balance After Deductions'
+      || !aug28.valueText.includes('estimated $') || aug28.valueText.includes('estimated$')
+      || !aug28.q07.includes('estimated $')
       || !aug28.headline.includes('$1,870.00') || aug28.headline.includes('$1,675.00')
       || aug28.trust !== 'calculated' || aug28.chip || aug28.lineChip || aug28.clip || !aug28.lineVisible
       || aug28.fontSize !== '15px' || aug28.color !== aug28.ink || aug28.valueWrap !== 'nowrap'
-      || aug28.estAfter !== 'none' || !aug28.estBeforeValue || aug28.estimatedWidth < 20
       || aug28.align == null || aug28.align > 2 || !aug28.abovePills
       || aug28.gap == null || aug28.gap < 4 || aug28.gap > 12
       || !aug28.school.some(row => /School trip/.test(row) && /\$195\.00/.test(row))
@@ -951,10 +968,11 @@ const composite = (fg, bg) => {
       || sep11.qualifier !== '· before proposed savings funding'
       || !sep11.label.includes('before proposed savings funding')
       || !sep11.q07.includes('$0.00') || !/≈ estimated/.test(sep11.q07)
+      || sep11.lineLabel !== 'Balance After Deductions'
+      || !sep11.valueText.includes('estimated $') || sep11.valueText.includes('estimated$')
       || !sep11.headline.includes('$205.00') || sep11.headline.includes('$0.00')
       || sep11.clip || !sep11.lineVisible || sep11.lineChip
       || sep11.fontSize !== '15px' || sep11.valueWrap !== 'nowrap'
-      || !sep11.estBeforeValue || sep11.estimatedWidth < 20
       || /After proposed savings|After Planned Savings/.test(sep11.q07 + ' ' + sep11.label)) {
       errors.push(`Sep 11 funding ${JSON.stringify(sep11)}`);
     }
@@ -964,9 +982,10 @@ const composite = (fg, bg) => {
     const aug320 = await readFunding(augNarrow);
     if (!/Aug 28/.test(aug320.range) || aug320.qualifier !== '· before proposed savings funding'
       || !aug320.q07.includes('$1,675.00') || !/≈ estimated/.test(aug320.q07)
+      || aug320.lineLabel !== 'Balance After Deductions'
+      || !aug320.valueText.includes('estimated $') || aug320.valueText.includes('estimated$')
       || !aug320.headline.includes('$1,870.00') || aug320.clip || !aug320.lineVisible
       || aug320.fontSize !== '13px' || aug320.valueWrap !== 'nowrap' || !aug320.labelInside
-      || !aug320.estBeforeValue || aug320.estimatedWidth < 20
       || aug320.align == null || aug320.align > 2) {
       errors.push(`Aug 28 narrow funding ${JSON.stringify(aug320)}`);
     }
@@ -1271,13 +1290,18 @@ const composite = (fg, bg) => {
         return {
           flex: getComputedStyle(head).display,
           sameRow: dock ? Math.abs(brandBox.top - themeBox.top) < 14 : Math.abs(navBox.top - themeBox.top) < 14,
-          buildHidden: getComputedStyle(document.querySelector('.running-build')).display === 'none',
+          buildShown: (() => {
+            const el = document.querySelector('.running-build');
+            const style = getComputedStyle(el);
+            const box = el.getBoundingClientRect();
+            return style.display !== 'none' && style.fontSize === '12px' && box.height > 0 && box.height < 40;
+          })(),
           trustRadius: parseFloat(getComputedStyle(trust).borderRadius),
           trustShown: trust.getBoundingClientRect().height > 20,
           cardRadius: parseFloat(getComputedStyle(card).borderRadius),
         };
       });
-      if (shell.flex !== 'flex' || !shell.sameRow || !shell.buildHidden || shell.trustRadius < 16 || !shell.trustShown || shell.cardRadius < 24) {
+      if (shell.flex !== 'flex' || !shell.sameRow || !shell.buildShown || shell.trustRadius < 16 || !shell.trustShown || shell.cardRadius < 24) {
         errors.push(`${file} shell ${JSON.stringify(shell)}`);
       }
       await capture(page, file);

@@ -81,7 +81,15 @@ body:has([data-budget-bento]) #operating-surface {
   max-width: 1360px;
 }
 
-body:has([data-budget-bento]) .running-build { display: none; }
+body:has([data-budget-bento]) .running-build {
+  display: block;
+  margin: 0 0 10px;
+  color: var(--blend-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
 
 body:has([data-budget-bento]) .site-head-inner {
   display: flex;
@@ -596,6 +604,16 @@ body:has([data-budget-bento]) .sitenav {
   white-space: nowrap;
   overflow: visible;
 }
+.budget-bento .blend-hero :is([data-operating-question="02"], [data-operating-question="04"], [data-operating-question="06"]) .budget-step-value {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: baseline;
+  justify-content: flex-start;
+  column-gap: 8px;
+}
+.budget-bento .blend-hero :is([data-operating-question="02"], [data-operating-question="04"], [data-operating-question="06"]) .budget-step-value > .blend-term {
+  flex: 0 0 auto;
+}
 
 .budget-bento .blend-hero :is([data-operating-question="02"], [data-operating-question="04"], [data-operating-question="06"]) .budget-step-value [data-budget-ratio] {
   position: fixed;
@@ -716,10 +734,15 @@ body:has([data-budget-bento]) .sitenav {
   letter-spacing: 0;
   line-height: 1.2;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: 0;
   max-width: 100%;
+}
+.blend-after-label {
+  font-weight: 400;
+  white-space: nowrap;
+  margin-right: .4em;
 }
 .blend-after-value {
   font-weight: 600;
@@ -1893,7 +1916,15 @@ body:has([data-budget-surface="unavailable"]) .wrap,
 body:has([data-budget-surface="unavailable"]) #operating-surface {
   max-width: 1360px;
 }
-body:has([data-budget-surface="unavailable"]) .running-build { display: none; }
+body:has([data-budget-surface="unavailable"]) .running-build {
+  display: block;
+  margin: 0 0 10px;
+  color: var(--blend-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
 body:has([data-budget-surface="unavailable"]) .site-head-inner {
   display: flex;
   align-items: center;
@@ -2080,7 +2111,10 @@ dialog.budget-detail-sheet[open] {
 }
 
 @media (max-width: 480px) {
-  .blend-after-funding { font-size: 13px; }
+  .blend-after-funding { flex-wrap: wrap; font-size: 13px; }
+  .budget-bento .blend-hero :is([data-operating-question="02"], [data-operating-question="04"], [data-operating-question="06"]) .budget-step-value {
+    flex-wrap: wrap;
+  }
   .budget-bento > .blend-income { grid-column: 1 / -1; grid-row: 4; }
   .budget-bento > .blend-pay { grid-column: 1 / -1; grid-row: 5; }
   .budget-bento [data-budget-browse="spending"] { grid-column: 1 / -1; grid-row: 6; }

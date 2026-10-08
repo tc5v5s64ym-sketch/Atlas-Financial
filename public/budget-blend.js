@@ -373,6 +373,51 @@
     }
   }
 
+  // Concatenate each printed node's textContent. Do not trim an inner node:
+  // the space before "$" is the leading character of that text node.
+  function copiedPrintedText(node) {
+    let copied = '';
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3 || child.nodeType === 1) copied += child.textContent;
+    }
+    return copied;
+  }
+
+  // The label is the printed prompt beside the Q07 value. A colon is dropped
+  // only when that colon is its own node. Nothing here is invented.
+  function printedQ07Label(value) {
+    const row = value && value.closest('[data-operating-question="07"][data-budget-period-result]');
+    const prompt = row && row.querySelector('.budget-step-summary .operating-prompt');
+    let copied = '';
+    if (prompt) {
+      for (const node of prompt.childNodes) {
+        const raw = node.textContent || '';
+        if (raw.trim() === ':') continue;
+        copied += raw;
+      }
+    }
+    if (copied.trim()) return copied;
+    const note = row && [...row.querySelectorAll('.operating-note')].map(item => item.textContent || '')
+      .find(item => item.includes('after proposed savings'));
+    const found = note && note.match(/after proposed savings/);
+    return found ? found[0] : '';
+  }
+
+  function appendAfterLine(line, value, valueText) {
+    const label = printedQ07Label(value);
+    if (label) {
+      const name = document.createElement('span');
+      name.className = 'blend-after-label';
+      name.textContent = label;
+      line.appendChild(name);
+    }
+    const shown = document.createElement('span');
+    shown.className = 'blend-after-value';
+    shown.textContent = valueText;
+    line.appendChild(shown);
+    return shown;
+  }
+
   // On an after-proposed-funding period the '=' slot stays the pre-funding
   // Balance After Deductions figure. The printed note says those terms are
   // before proposed savings funding. The printed Q07 value is the after
@@ -400,16 +445,10 @@
     const trustHost = amount && amount.closest('[data-bad-term]');
     const trust = trustHost ? (trustHost.getAttribute('data-bad-term-trust') || '') : '';
     if (amount && trust === 'unavailable') {
-      const shown = document.createElement('span');
-      shown.className = 'blend-after-value';
-      shown.textContent = 'Unavailable';
-      line.appendChild(shown);
+      appendAfterLine(line, value, 'Unavailable');
       clip.remove();
     } else if (bare) {
-      const shown = document.createElement('span');
-      shown.className = 'blend-after-value';
-      shown.textContent = bare;
-      line.appendChild(shown);
+      appendAfterLine(line, value, bare);
       if (trust === 'estimated') {
         const pill = document.createElement('span');
         pill.className = 'blend-est';
@@ -418,16 +457,7 @@
       }
       clip.remove();
     } else {
-      while (clip.firstChild) {
-        const node = clip.firstChild;
-        if (node.nodeType === 3 && /\$/.test(node.textContent)) {
-          const span = document.createElement('span');
-          span.className = 'blend-after-value';
-          span.textContent = node.textContent;
-          line.appendChild(span);
-          node.remove();
-        } else line.appendChild(node);
-      }
+      appendAfterLine(line, value, copiedPrintedText(clip));
       clip.remove();
     }
     const dollars = bad.querySelector('.blend-dollars');
