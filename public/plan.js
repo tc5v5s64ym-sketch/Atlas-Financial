@@ -7247,6 +7247,7 @@ function renderPlan(d, periods, history) {
       { weeklyOverride: state.weeklyVariable, sim });
   $('plan-mission').textContent = planUnavailable
     ? unavailableNote
+    : missionResult.status === 'unavailable' ? missionResult.reason
     : missionResult.parts
       .map(p => MISSION_PART[p.id](p)).join(', ')
       .replace(/^./, c => c.toUpperCase()) + '.';
@@ -7264,10 +7265,11 @@ function renderPlan(d, periods, history) {
     : Forecast.nextMove(plan, advice,
       { weeklyOverride: state.weeklyVariable, sim, debts: state.debts,
         extraFacilities: state.extraFacilities });
-  if (planUnavailable) {
+  if (planUnavailable || move?.id === 'unavailable') {
+    // Forecast's unavailable outcome has no action to head the card; say why.
     const nextmoveCard = $('nextmove-card');
     if (nextmoveCard) {
-      nextmoveCard.innerHTML = `<p class="operating-lead" data-operating-plan="unavailable">${unavailableNote}</p>`;
+      nextmoveCard.innerHTML = `<p class="operating-lead" data-operating-plan="unavailable">${planUnavailable ? unavailableNote : move.reason}</p>`;
     }
   } else if (move) {
     // The action the engine measured, so the head and the outcome below it

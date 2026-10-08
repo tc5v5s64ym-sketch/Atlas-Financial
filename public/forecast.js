@@ -15231,6 +15231,13 @@
     const income = incomeReconciliationState(plan, asOf);
     return income.status === 'unavailable' ? income : null;
   }
+  // The simulation being shown, when Forecast deliberately withheld its cash
+  // walk (status 'unavailable', e.g. a sent card minimum whose cash inclusion
+  // is unconfirmed). Its nulled low and ending are not figures to classify.
+  function shownSimUnavailable(advice, opts) {
+    const sim = opts?.sim || advice?.sim;
+    return sim?.status === 'unavailable' ? { reason: sim.reason } : null;
+  }
   function publishedIncomeUncertainty(advice, opts) {
     return [advice?.incomeReconciliation, advice?.sim?.incomeReconciliation,
       opts?.sim?.incomeReconciliation].find(row => row?.status === 'unavailable') || null;
@@ -15301,6 +15308,8 @@
   function planStatus(advice, opts) {
     const income = publishedIncomeUncertainty(advice, opts);
     if (income) return { id: 'unavailable', status: 'unavailable', reason: income.reason };
+    const walk = shownSimUnavailable(advice, opts);
+    if (walk) return { id: 'unavailable', status: 'unavailable', reason: walk.reason };
     const { gap, funding, fundingShort, overrideBreaches, weekly, recommended, sim }
       = planContext(advice, opts);
     // Every verdict reads the buffer, the low or the ending off the simulation
@@ -15443,6 +15452,8 @@
   function mission(advice, debtProj, opts) {
     const income = publishedIncomeUncertainty(advice, opts);
     if (income) return { status: 'unavailable', reason: income.reason, parts: [] };
+    const walk = shownSimUnavailable(advice, opts);
+    if (walk) return { status: 'unavailable', reason: walk.reason, parts: [] };
     debtProj = debtProj || {};
     const { recommended, weekly, sim, gap, funding, fundingShort, overrideBreaches }
       = planContext(advice, opts);
@@ -15714,6 +15725,8 @@
     const income = publishedIncomeUncertainty(advice, opts)
       || unavailablePlanIncome(plan, advice?.asOf || advice?.sim?.start || plan?.opening?.asOf);
     if (income) return { id: 'unavailable', status: 'unavailable', reason: income.reason };
+    const walk = shownSimUnavailable(advice, opts);
+    if (walk) return { id: 'unavailable', status: 'unavailable', reason: walk.reason };
     const action = (resolveActions(plan, opts && opts.debts, opts && opts.extraFacilities)[0]) || null;
     if (!action) return null;
     const { gap, funding, weekly, recommended, sim, overrideBreaches }
