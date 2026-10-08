@@ -15,7 +15,7 @@
     "budget-blend-1440-light-next.png",
     "budget-blend-1440-light-aug28.png",
     "budget-blend-320-light-aug28.png",
-    "budget-blend-390-light-aug28.png",
+    "budget-blend-390-light-next.png",
     "budget-blend-1440-light-past.png",
     "budget-blend-390-light-past.png",
     "budget-blend-320-light-past.png",
@@ -27,7 +27,9 @@
     "budget-blend-focus-household.png",
     "budget-blend-focus-goal.png",
     "budget-blend-cards-1440-light.png",
-    "budget-blend-cards-320-dark.png"
+    "budget-blend-cards-320-dark.png",
+    "budget-blend-1440-light-on-plan.png",
+    "budget-blend-1440-light-infeasible.png"
   ],
   "contrasts": [
     {

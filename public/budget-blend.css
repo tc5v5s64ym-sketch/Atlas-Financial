@@ -476,6 +476,7 @@ body:has([data-budget-bento]) .sitenav {
   justify-content: flex-start;
   gap: 8px 10px;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 .blend-hero-id {
@@ -500,6 +501,41 @@ body:has([data-budget-bento]) .sitenav {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
+}
+.blend-hero-top:has(.blend-plan-note) { padding-bottom: 22px; }
+.blend-plan-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  color: var(--blend-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.blend-plan-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.blend-plan-chip.is-good {
+  color: var(--blend-income);
+  background: color-mix(in srgb, var(--blend-income) 16%, transparent);
+}
+.blend-plan-chip.is-warn {
+  color: var(--blend-over);
+  background: color-mix(in srgb, var(--blend-over) 16%, transparent);
+}
+.blend-plan-chip.is-crit {
+  color: var(--blend-overdue);
+  background: color-mix(in srgb, var(--blend-overdue) 16%, transparent);
 }
 .atlas-budget-ui-ready .blend-hero .blend-hero-top .budget-today-cash.atlas-current-balance-card {
   position: static;
@@ -877,6 +913,9 @@ body:has([data-budget-bento]) .sitenav {
   padding: 5px 8px;
 }
 @media (min-width: 901px) {
+  .budget-bento .blend-hero.is-other-period [data-operating-question="07"] {
+    margin-bottom: 16px;
+  }
   .blend-hero-foot { flex-wrap: nowrap; }
   .budget-surface .budget-bento .blend-hero .blend-hero-foot > :is(.budget-step, .budget-bills-closing) {
     flex: 0 0 auto;
@@ -1217,6 +1256,7 @@ body:has([data-budget-bento]) .sitenav {
   letter-spacing: -.03em;
   line-height: 1.1;
   text-align: right;
+  white-space: normal;
 }
 .blend-pay-main.is-unavailable {
   font-size: 15px;

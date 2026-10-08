@@ -12,13 +12,50 @@
     return (node && node.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
-  // The hero term slot is painted into the same step value the income line
-  // copies. It is not a printed income status. Leave that slot on the hero.
-  function printedStep(node) {
+  // Join the printed node's own pieces with spaces. Skip chips this skin
+  // added. Do not trim inside a piece, and do not drop "≈" or "estimated".
+  function separatedText(node) {
     if (!node) return '';
-    const clone = node.cloneNode(true);
-    clone.querySelectorAll('.blend-term').forEach(term => term.remove());
-    return text(clone);
+    const bits = [];
+    const walk = el => {
+      if (!el) return;
+      if (el.nodeType === 3) {
+        const raw = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (raw) bits.push(raw);
+        return;
+      }
+      if (el.nodeType !== 1) return;
+      if (el.classList.contains('blend-est') || el.classList.contains('blend-term')) return;
+      for (const child of el.childNodes) walk(child);
+    };
+    walk(node);
+    return bits.join(' ');
+  }
+
+  // The income tile reads the printed ratio, not the hero slot painted into
+  // the same step. "of planned" is included only when that phrase is printed.
+  function printedIncomeSentence(step) {
+    if (!step) return '';
+    const ratio = step.querySelector('[data-budget-ratio="income"]');
+    if (!ratio) return separatedText(step.querySelector('.budget-step-value'));
+    const parts = [];
+    const actual = separatedText(ratio.querySelector('[data-budget-ratio-actual]'));
+    if (actual) parts.push(actual);
+    const ofPlanned = [...ratio.children].find(node => node.classList.contains('budget-cash-sr') && /of planned/i.test(node.textContent || ''));
+    if (ofPlanned) {
+      const slash = [...ratio.children].find(node => node.getAttribute('aria-hidden') === 'true' && /\//.test(node.textContent || ''));
+      if (slash) parts.push(separatedText(slash));
+      parts.push(separatedText(ofPlanned));
+      const plan = separatedText(ratio.querySelector('[data-budget-ratio-plan]'));
+      if (plan) parts.push(plan);
+    } else {
+      [...ratio.children].forEach(node => {
+        if (node.hasAttribute('data-budget-ratio-actual')) return;
+        const bit = separatedText(node);
+        if (bit) parts.push(bit);
+      });
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
   }
 
   function moneyToken(value) {
@@ -131,9 +168,11 @@
         progress.appendChild(date);
       }
     } else {
+      const statusText = text(progress.querySelector('p > span'));
+      const shown = printedDate || statusText;
       const main = document.createElement('span');
-      main.className = 'blend-pay-main' + (printedDate ? '' : ' is-unavailable');
-      main.textContent = printedDate || 'Unavailable';
+      main.className = 'blend-pay-main' + (shown ? '' : ' is-unavailable');
+      main.textContent = shown || 'Unavailable';
       progress.appendChild(main);
     }
     const next = document.querySelector('[data-budget-cash-next]');
@@ -228,6 +267,55 @@
     splitPrintedCents(hero.querySelector('[data-blend-term="balanceAfterDeductions"]'));
     paintAfterFunding(hero);
     paintIncomeLongLabel(hero);
+    paintPlanStatus(hero);
+  }
+
+  // The chip reads data-plan-status only. No lead text, amount, or date.
+  // Missing, infeasible, unavailable, and unknown ids draw nothing.
+  const PLAN_STATUS = {
+    onPlan: ['On plan', 'good'],
+    belowBuffer: ['Tight', 'warn'],
+    negative: ['Short', 'crit'],
+    gap: ['Short', 'crit'],
+    unfunded: ['Short', 'crit'],
+    combination: ['Short', 'crit'],
+    overrideBreach: ['Short', 'crit'],
+  };
+
+  function paintPlanStatus(hero) {
+    if (!selectedPeriodIsCurrent(hero)) {
+      hero.querySelector('.blend-plan-chip')?.remove();
+      hero.querySelector('.blend-plan-note')?.remove();
+      return;
+    }
+    const top = hero.querySelector('.blend-hero-top');
+    if (top && !hero.querySelector('.blend-plan-note')) {
+      const note = document.createElement('p');
+      note.className = 'blend-plan-note';
+      note.textContent = 'Plan status covers the next 13 weeks, not just this pay period.';
+      top.appendChild(note);
+    }
+    const band = document.getElementById('status-band');
+    const id = band && band.getAttribute('data-plan-status');
+    const mapped = id && Object.prototype.hasOwnProperty.call(PLAN_STATUS, id) ? PLAN_STATUS[id] : null;
+    let chip = hero.querySelector('.blend-plan-chip');
+    if (!mapped) {
+      chip?.remove();
+      return;
+    }
+    if (!chip) {
+      chip = document.createElement('span');
+      const hidden = document.createElement('span');
+      hidden.className = 'budget-cash-sr';
+      const word = document.createElement('span');
+      word.className = 'blend-plan-word';
+      chip.append(hidden, word);
+      const row = hero.querySelector('.blend-hero-id') || top;
+      row?.appendChild(chip);
+    }
+    chip.className = 'blend-plan-chip is-' + mapped[1];
+    chip.querySelector('.budget-cash-sr').textContent = 'Plan status (13-week window)';
+    chip.querySelector('.blend-plan-word').textContent = mapped[0];
   }
 
   function paintHeroTop(hero) {
@@ -398,25 +486,6 @@
     return copied;
   }
 
-  // Visible wording only when base prints this phrase. The match keeps the
-  // printed casing. No phrase means no visible label.
-  function printedAfterSavingsPhrase(value) {
-    const row = value && value.closest('[data-operating-question="07"]');
-    const chunks = [];
-    if (row) {
-      const clone = row.cloneNode(true);
-      clone.querySelectorAll('.blend-bad-qualifier, .blend-after-funding, .blend-term, .blend-bad').forEach(node => node.remove());
-      chunks.push(clone.textContent || '');
-    }
-    const note = value && (value.closest('[data-budget-bento]') || document).querySelector('[data-bad-terms] .operating-note');
-    if (note) chunks.push(note.textContent || '');
-    for (const source of chunks) {
-      const found = source.match(/after proposed savings/i);
-      if (found) return found[0];
-    }
-    return '';
-  }
-
   function appendAfterLine(line, value, valueText) {
     const printed = printedQ07Prompt(value);
     if (printed) {
@@ -425,13 +494,10 @@
       hidden.textContent = printed;
       line.appendChild(hidden);
     }
-    const phrase = printedAfterSavingsPhrase(value);
-    if (phrase) {
-      const name = document.createElement('span');
-      name.className = 'blend-after-visible';
-      name.textContent = phrase;
-      line.appendChild(name);
-    }
+    const name = document.createElement('span');
+    name.className = 'blend-after-visible';
+    name.textContent = 'After proposed savings';
+    line.appendChild(name);
     const shown = document.createElement('span');
     shown.className = 'blend-after-value';
     shown.textContent = valueText;
@@ -461,7 +527,7 @@
     if (!clip || !bad || bad.querySelector('.blend-after-funding') || !clip.childNodes.length) return;
     const line = document.createElement('p');
     line.className = 'blend-after-funding';
-    const amount = clip.querySelector('[data-bad-term-amount]');
+    const amount = [...clip.querySelectorAll('[data-bad-term-amount]')].find(node => !node.closest('[data-bad-terms]')) || null;
     const bare = text(amount);
     const trustHost = amount && amount.closest('[data-bad-term]');
     const trust = trustHost ? (trustHost.getAttribute('data-bad-term-trust') || '') : '';
@@ -660,7 +726,7 @@
     const muted = document.createElement('span');
     muted.className = 'blend-muted';
     const value = step && step.querySelector('.budget-step-value');
-    muted.textContent = printedStep(value);
+    muted.textContent = printedIncomeSentence(step);
     if (received && muted.textContent) muted.classList.add('blend-clip');
     button.append(head, figure, rail);
     if (muted.textContent) button.appendChild(muted);
