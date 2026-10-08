@@ -26,8 +26,11 @@ const LABELS=['Period income','Assigned bills (incl. required debt minimums)',
  'Household (greater of plan or spent, incl. Other)','Balance After Deductions'];
 const block=(html,id)=>{const q=html.split('data-operating-question="07"')[1];assert.ok(q,'terms print inside Balance After Deductions');
  const b=q.split(`data-bad-terms-period="${id}"`)[1];assert.ok(b,'one block per period id '+id);return b.split('</div>\n  </div>')[0]+'</div>';};
-const terms=b=>KEYS.map((key,i)=>{const m=b.match(new RegExp(`data-bad-term="${key}" data-bad-term-trust="([a-z]+)"><span data-bad-term-label>([^<]*)</span><span data-bad-term-value>(.*?)</span></div>`));
- assert.ok(m,'hook for '+key);assert.equal(m[2],LABELS[i]);return{trust:m[1],text:m[3].replace(/<[^>]+>/g,'')};});
+// [data-bad-term-amount] sits inside [data-bad-term-value]: plain money2 text
+// (no ≈ prefix; trust stays on data-bad-term-trust) or Unavailable.
+const terms=b=>KEYS.map((key,i)=>{const m=b.match(new RegExp(`data-bad-term="${key}" data-bad-term-trust="([a-z]+)"><span data-bad-term-label>([^<]*)</span><span data-bad-term-value>(.*?)<span data-bad-term-amount>([^<]*)</span></span></div>`));
+ assert.ok(m,'value and amount hooks for '+key);assert.equal(m[2],LABELS[i]);
+ return{trust:m[1],text:(m[3]+m[4]).replace(/<[^>]+>/g,''),amount:m[4]};});
 const cents=text=>{const m=text.match(/^(?:≈ estimated )?(−?)\$([\d,]+)\.(\d\d)$/);assert.ok(m,'money text: '+text);
  return (m[1]?-1:1)*(Number(m[2].replace(/,/g,''))*100+Number(m[3]));};
 
@@ -54,6 +57,7 @@ expected.forEach(([role,income,bills,hold,future],i)=>{
   assert.equal(t[2].trust,future?'estimated':'calculated','future Other policy hold is estimated');
   assert.equal(t[3].trust,future?'estimated':'calculated');
   t.forEach(x=>assert.equal(x.text.startsWith('≈ estimated'),x.trust==='estimated'));
+  t.forEach(x=>assert.equal(x.text,(x.trust==='estimated'?'≈ estimated ':'')+x.amount));
   assert.equal(JSON.stringify(v),sealed,'printing cannot rewrite the publication');
  }
 });
@@ -70,7 +74,7 @@ for(const over of [{predictedEndingBalanceTerms:null},failClosed,{...failClosed,
  for(const compact of [true,false]){
   const b=block(render(v,f.plan,compact),v.id);
   assert.match(b,/data-bad-terms-status="unavailable"/);
-  assert.deepEqual(terms(b).map(x=>[x.trust,x.text]),KEYS.map(()=>['unavailable','Unavailable']));
+  assert.deepEqual(terms(b).map(x=>[x.trust,x.text,x.amount]),KEYS.map(()=>['unavailable','Unavailable','Unavailable']));
   fallback.forEach(s=>assert.ok(!b.includes(s),'no fallback figure '+s));
  }
 }
@@ -80,4 +84,21 @@ assert.deepEqual(terms(one).map(x=>x.text==='Unavailable'),[false,true,false,fal
 // An unavailable trust stamp fails closed even when a number exists.
 const untrusted=block(render({...cur,balanceAfterDeductionsTrust:'unavailable'},f.plan,true),cur.id);
 assert.deepEqual(terms(untrusted).map(x=>x.text==='Unavailable'),[false,false,false,true]);
-console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable');
+// (c) Amount hook on Forecast's published Oct 8 2026 terms (snapshot
+// data-2026-10-08-548check.json: income, bills, household, BAD per period;
+// household is calculated only in the current period). The Oct 6 snapshot
+// published null terms, which is the fail-closed shape covered in (b).
+const OCT8=[[6635.92,2706.67,3197.42,731.83,'$731.83'],[6652.30,3097.00,2175.00,1380.30,'$1,380.30'],
+ [6651.99,2537.70,2275.00,1839.29,'$1,839.29'],[6432.85,2584.46,2175.00,1673.39,'$1,673.39']];
+OCT8.forEach(([I,B,H,R,bad],i)=>{const v={...cur,predictedEndingBalanceTerms:{...cur.predictedEndingBalanceTerms,
+ periodIncome:I,assignedBills:B,householdBudgetHold:H,balanceAfterDeductions:R},incomeTrust:'estimated',
+ periodBillLoadTrust:'estimated',budgetHoldTrust:i?'estimated':null,balanceAfterDeductionsTrust:'estimated'};
+ for(const compact of [true,false]){const t=terms(block(render(v,f.plan,compact),v.id));
+  assert.equal(t[3].amount,bad);
+  assert.deepEqual(t.map(x=>x.trust),['estimated','estimated',i?'estimated':'calculated','estimated']);
+  t.forEach(x=>{assert.ok(!/[≈a-z]/i.test(x.amount),'plain amount '+x.amount);assert.equal(x.text,(x.trust==='estimated'?'≈ estimated ':'')+x.amount);});
+  const [ci,cb,ch,cr]=t.map(x=>cents(x.amount));assert.equal(ci-cb-ch,cr);}
+});
+// Unavailable terms hold no number in the amount hook.
+for(const b of [one,untrusted])terms(b).filter(x=>x.trust==='unavailable').forEach(x=>assert.equal(x.amount,'Unavailable'));
+console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39)');
