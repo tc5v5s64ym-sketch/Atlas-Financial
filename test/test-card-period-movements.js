@@ -27,6 +27,9 @@ eq(pub.cards[0].netChange.direction, 'up', 'debt increase');
 eq(pub.cards[1].netChange.amount, -135.80, '11420 - 25000 = -13580, cash leg never added');
 eq(pub.cards[1].netChange.direction, 'down', 'debt decrease');
 eq(pub.cards[2].netChange.amount, 0, 'complete true zero');
+eq(pub.cards[2].status, 'ready', 'explicit empty Emerald ledger stays ready');
+eq(pub.cards[2].netChange.trust, 'calculated', 'explicit empty Emerald ledger stays calculated');
+eq(pub.cards[2].netChange.completeness, 'complete', 'explicit empty Emerald ledger stays complete');
 eq(pub.cards[0].posted.map(tx => tx.kind), ['charge', 'charge', 'payment', 'interest', 'refund'], 'native explicit type, sorted identity');
 eq(pub.cards[0].posted.length, 5, 'card leg counts once');
 eq(pub.cards[0].pending.length, 1, 'pending remains separate');
@@ -96,6 +99,64 @@ eq(historicalCard.reportedBalance, null, 'current stock never copied into histor
 eq(historicalCard.posted, [], 'current period charges never copied into history');
 const currencyPoint = copy(x); currencyPoint.balanceEvidence.cards[0].opening.currency = 'USD';
 eq(publish(currencyPoint).cards[0].opening, null, 'USD endpoint never displayed as CAD opening');
+// Malformed ledger is not a calculated complete zero. Independent Emerald
+// endpoints 123456 - 123456 = 0 do not invent a ready ledger when the
+// transactions container is missing, null, an object or a string.
+const emptyLedger = copy(x);
+emptyLedger.packet.transactions = [];
+emptyLedger.balanceEvidence.cards.find(row => row.id === 'tdcc').opening.amount = 1234.56;
+emptyLedger.balanceEvidence.cards.find(row => row.id === 'tdcc').closing.amount = 1234.56;
+eq(123456 - 123456, 0, 'independent equal Emerald endpoints are zero');
+eq(publish(emptyLedger).cards[2].netChange.amount, 0, 'explicit empty array remains a true zero');
+eq(publish(emptyLedger).cards[2].status, 'ready', 'explicit empty array remains ready');
+for (const [name, assign] of [
+  ['missing transactions', y => { delete y.packet.transactions; }],
+  ['null transactions', y => { y.packet.transactions = null; }],
+  ['object transactions', y => { y.packet.transactions = {}; }],
+  ['string transactions', y => { y.packet.transactions = '[]'; }],
+]) {
+  const y = copy(emptyLedger); assign(y); const card = publish(y).cards[2];
+  eq(card.netChange.amount, null, name + ' does not publish zero');
+  eq(card.status, 'unavailable', name + ' status');
+  eq(card.netChange.trust, 'unavailable', name + ' trust');
+  eq(card.netChange.completeness, 'unavailable', name + ' completeness');
+  eq(card.postedCoverage, 'incomplete', name + ' coverage');
+  assert.ok(card.reasons.includes('posted-coverage-incomplete'), name + ' reason'); checks++;
+}
+// Cross-card source identity, alias conflict and unflagged posted/pending
+// reuse withhold only the affected cards. Independent invented ledgers:
+// Travel 17240+6375-10000-3500+625=10740; Cash Back 11420-25000=-13580.
+eq(17240 + 6375 - 10000 - 3500 + 625, 10740, 'Travel ledger remains independently 10740');
+eq(11420 - 25000, -13580, 'Cash Back ledger remains independently -13580');
+const collide = copy(x);
+const travelCharge = collide.packet.transactions.find(tx => tx.id === 'charge-a');
+const cashCharge = collide.packet.transactions.find(tx => tx.id === 'cashback-charge');
+cashCharge.id = travelCharge.id;
+cashCharge.coverageRef = travelCharge.coverageRef;
+const collided = publish(collide);
+eq(collided.cards[0].netChange.amount, null, 'Travel withheld on shared source identity');
+eq(collided.cards[1].netChange.amount, null, 'Cash Back withheld on shared source identity');
+eq(collided.cards[2].netChange.amount, 0, 'Emerald remains an independent true zero');
+eq(collided.cards[2].status, 'ready', 'unaffected Emerald stays ready');
+assert.ok(collided.cards[0].reasons.includes('duplicate-identity'), 'Travel shared-identity reason'); checks++;
+assert.ok(collided.cards[1].reasons.includes('duplicate-identity'), 'Cash Back shared-identity reason'); checks++;
+const alias = copy(x);
+alias.packet.transactions[0].account = 'cashback';
+const aliased = publish(alias);
+eq(aliased.cards[0].netChange.amount, null, 'Travel withheld on conflicting aliases');
+eq(aliased.cards[1].netChange.amount, null, 'Cash Back withheld on conflicting aliases');
+eq(aliased.cards[2].netChange.amount, 0, 'Emerald remains ready after alias conflict');
+assert.ok(aliased.cards[0].reasons.includes('unmapped-card-identity'), 'Travel alias reason'); checks++;
+assert.ok(aliased.cards[1].reasons.includes('unmapped-card-identity'), 'Cash Back alias reason'); checks++;
+const pendingReuse = copy(x);
+const pendingRow = pendingReuse.packet.transactions.find(tx => tx.id === 'pending-a');
+pendingRow.id = 'charge-a';
+pendingRow.coverageRef = 'invented-charge-a';
+const reused = publish(pendingReuse);
+eq(reused.cards[0].netChange.amount, null, 'unflagged posted/pending identity reuse withholds Travel');
+eq(reused.cards[1].netChange.amount, -135.80, 'Cash Back remains independent after pending reuse');
+eq(reused.cards[2].netChange.amount, 0, 'Emerald remains independent after pending reuse');
+assert.ok(reused.cards[0].reasons.includes('duplicate-identity'), 'posted/pending reuse reason'); checks++;
 // Positive institution satisfaction is preserved independently of payment
 // purpose. These invented occurrences already have qualified issuer proof.
 const issuer = require('./fixtures/bills-header-payments-data').fixture();

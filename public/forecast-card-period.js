@@ -17,11 +17,38 @@
       ? start > asOf ? 'future' : end < asOf ? 'past' : 'current' : 'unknown';
     const through = role === 'future' ? null : role === 'past' ? end : asOf;
     const windowKnown = input.windowQualified === true && date(start) && date(end) && start <= end && date(asOf);
-    const rows = Array.isArray(packet?.transactions) ? packet.transactions : [];
+    const ledgerValid = Array.isArray(packet?.transactions);
+    const rows = ledgerValid ? packet.transactions : [];
     const packetCurrent = packet?.schema === 'atlas-current-period-actuals/v1' && packet.observationAsOf === asOf;
-    const coverage = packetCurrent && packet.transactionCoverage === 'complete'
+    const coverage = packetCurrent && ledgerValid && packet.transactionCoverage === 'complete'
       && date(packet.coverageStart) && date(packet.coverageThrough)
       && packet.coverageStart <= start && packet.coverageThrough >= through;
+    const known = new Set(identities.map(([id]) => id));
+    const duplicateCards = new Set();
+    const aliasCards = new Set();
+    const owners = new Map();
+    const mark = (set, ids) => ids.forEach(id => { if (known.has(id)) set.add(id); });
+    const remember = (map, key, aliases, pending, requireCrossCard) => {
+      const prev = map.get(key);
+      if (!prev) { map.set(key, { aliases: aliases.slice(), pending }); return; }
+      const crossCard = aliases.some(id => !prev.aliases.includes(id)) || prev.aliases.some(id => !aliases.includes(id));
+      if (!requireCrossCard || crossCard || prev.pending !== pending) {
+        mark(duplicateCards, prev.aliases.concat(aliases));
+        aliases.forEach(id => { if (!prev.aliases.includes(id)) prev.aliases.push(id); });
+      }
+    };
+    for (const tx of rows) {
+      if (!tx || tx.accountRole !== 'revolving-credit') continue;
+      if (!date(tx.date) || !date(through) || tx.date < start || tx.date > through) continue;
+      const aliases = [];
+      if (tx.atlasAccountId != null && String(tx.atlasAccountId) !== '') aliases.push(String(tx.atlasAccountId));
+      if (tx.account != null && String(tx.account) !== '' && String(tx.account) !== aliases[0])
+        aliases.push(String(tx.account));
+      if (aliases.length > 1) mark(aliasCards, aliases);
+      if (tx.id != null && String(tx.id) !== '') remember(owners, 'id:' + String(tx.id), aliases, tx.pending === true, false);
+      if (typeof tx.coverageRef === 'string' && tx.coverageRef.trim())
+        remember(owners, 'ref:' + tx.coverageRef.trim(), aliases, tx.pending === true, true);
+    }
     // Unknown identity can conceal a card movement; mapped rows remain useful.
     const unmapped = rows.some(tx => tx && (tx.accountRole === 'unmapped'
       || tx.accountRole === 'revolving-credit' && !identities.some(([id]) => id === (tx.atlasAccountId || tx.account))));
@@ -59,6 +86,8 @@
       if (!packetCurrent) issues.push('observation-unavailable');
       if (!coverage) issues.push('posted-coverage-incomplete');
       if (unmapped) issues.push('unmapped-card-identity');
+      if (duplicateCards.has(id)) issues.push('duplicate-identity');
+      if (aliasCards.has(id)) issues.push('unmapped-card-identity');
       if ((packet?.cardCoverageUnconfirmed || []).length || (packet?.currencyUnconfirmed || []).length)
         issues.push('transaction-evidence-unconfirmed');
       const seen = new Set();
@@ -90,14 +119,14 @@
           amount: value == null ? null : value / 100, magnitude: value == null ? null : Math.abs(value) / 100,
           direction: value == null ? null : value > 0 ? 'up' : value < 0 ? 'down' : 'flat',
           kind, pending: tx.pending === true };
+        if (!published.id) issues.push('transaction-identity-unqualified');
+        else if (seen.has(published.id)) issues.push('duplicate-identity');
+        else seen.add(published.id);
         if (published.pending) {
           if (role === 'current') card.pending.push(published);
           continue;
         }
         card.posted.push(published);
-        if (!published.id) issues.push('transaction-identity-unqualified');
-        else if (seen.has(published.id)) issues.push('duplicate-identity');
-        else seen.add(published.id);
         if (value == null) { issues.push('transaction-amount-unqualified'); continue; }
         total += value;
         if (!Number.isSafeInteger(total)) issues.push('movement-total-overflow');
