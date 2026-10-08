@@ -92,7 +92,7 @@
   }
 
   function paintPayday(progress) {
-    if (!progress || progress.querySelector('.blend-pay-face')) return;
+    if (!progress || progress.querySelector('.blend-pay-face, .blend-pay-main')) return;
     if (!progress.querySelector('.blend-tile-head')) {
       const head = document.createElement('span');
       head.className = 'blend-tile-head';
@@ -108,12 +108,14 @@
     const days = /in (\d+) days/.exec(line);
     const dates = [...progress.querySelectorAll('p b')];
     const published = dates.length >= 2 ? text(dates[1]) : '';
+    const printedDate = /^[A-Z][a-z]{2}\s+\d{1,2}$/.test(published) ? published : '';
     const marks = [...progress.querySelectorAll('.budget-window-days > span')];
-    const face = document.createElement('div');
-    face.className = 'blend-pay-face';
-    face.appendChild(payRing(marks));
     const current = selectedPeriodIsCurrent(progress.closest('[data-budget-bento]') || document);
+    progress.querySelector('p')?.classList.add('blend-clip');
     if (current) {
+      const face = document.createElement('div');
+      face.className = 'blend-pay-face';
+      face.appendChild(payRing(marks));
       const num = document.createElement('span');
       num.className = 'blend-pay-num' + (days ? '' : ' is-word');
       num.textContent = days ? days[1] : 'Unavailable';
@@ -121,14 +123,18 @@
       unit.className = 'blend-pay-unit';
       unit.textContent = days ? 'days' : '';
       face.append(num, unit);
-    }
-    progress.querySelector('p')?.classList.add('blend-clip');
-    progress.appendChild(face);
-    if (published && !/^unavailable$/i.test(published)) {
-      const date = document.createElement('span');
-      date.className = 'blend-pay-date';
-      date.textContent = published;
-      progress.appendChild(date);
+      progress.appendChild(face);
+      if (printedDate) {
+        const date = document.createElement('span');
+        date.className = 'blend-pay-date';
+        date.textContent = printedDate;
+        progress.appendChild(date);
+      }
+    } else {
+      const main = document.createElement('span');
+      main.className = 'blend-pay-main' + (printedDate ? '' : ' is-unavailable');
+      main.textContent = printedDate || 'Unavailable';
+      progress.appendChild(main);
     }
     const next = document.querySelector('[data-budget-cash-next]');
     if (next) progress.addEventListener('click', () => next.click());
@@ -220,6 +226,8 @@
     paintTermSlots(hero);
     markResultClosed(hero);
     splitPrintedCents(hero.querySelector('[data-blend-term="balanceAfterDeductions"]'));
+    paintAfterFunding(hero);
+    paintIncomeLongLabel(hero);
   }
 
   function paintHeroTop(hero) {
@@ -362,6 +370,74 @@
     }
   }
 
+  // On an after-proposed-funding period the '=' slot stays the pre-funding
+  // Balance After Deductions figure. The printed note says those terms are
+  // before proposed savings funding. The printed Q07 value is the after
+  // figure and is shown, not left in the clip. Nothing here is calculated.
+  function paintAfterFunding(hero) {
+    const block = badTermsBlock(hero);
+    if (!block || block.getAttribute('data-bad-terms-face') !== 'after-proposed-funding') return;
+    const note = text(block.querySelector('.operating-note'));
+    const copied = (note.match(/before proposed savings funding/) || [])[0];
+    const prompt = hero.querySelector('[data-operating-question="07"] .operating-prompt');
+    if (copied && prompt && !prompt.parentElement.querySelector('.blend-bad-qualifier')) {
+      const qualifier = document.createElement('span');
+      qualifier.className = 'blend-bad-qualifier';
+      qualifier.textContent = ' · ' + copied;
+      prompt.after(qualifier);
+    }
+    const value = hero.querySelector('[data-operating-question="07"] .budget-step-value');
+    const clip = value && value.querySelector(':scope > .blend-clip');
+    const bad = value && value.querySelector('.blend-bad');
+    if (!clip || !bad || bad.querySelector('.blend-after-funding') || !clip.childNodes.length) return;
+    const line = document.createElement('p');
+    line.className = 'blend-after-funding';
+    const amount = clip.querySelector('[data-bad-term-amount]');
+    const trustHost = amount && (amount.closest('[data-bad-term]') || clip);
+    const trust = trustHost ? (trustHost.getAttribute('data-bad-term-trust') || '') : '';
+    if (amount && trust === 'estimated') {
+      const shown = document.createElement('span');
+      shown.className = 'blend-after-value';
+      shown.textContent = text(amount);
+      const pill = document.createElement('span');
+      pill.className = 'blend-est';
+      pill.textContent = 'est.';
+      line.append(shown, pill);
+      clip.remove();
+    } else {
+      while (clip.firstChild) {
+        const node = clip.firstChild;
+        if (node.nodeType === 3 && /\$/.test(node.textContent)) {
+          const span = document.createElement('span');
+          span.className = 'blend-after-value';
+          span.textContent = node.textContent;
+          line.appendChild(span);
+          node.remove();
+        } else line.appendChild(node);
+      }
+      clip.remove();
+    }
+    const dollars = bad.querySelector('.blend-dollars');
+    const cents = bad.querySelector('.blend-cents');
+    if (dollars && !dollars.parentElement.classList.contains('blend-dollar-group')) {
+      const group = document.createElement('span');
+      group.className = 'blend-dollar-group';
+      dollars.before(group);
+      group.appendChild(dollars);
+      if (cents) group.appendChild(cents);
+    }
+    bad.appendChild(line);
+  }
+
+  function paintIncomeLongLabel(hero) {
+    const body = panelBody(heroPanel(hero));
+    if (!body || body.querySelector('.blend-income-long')) return;
+    const note = document.createElement('p');
+    note.className = 'blend-income-long budget-cash-sr';
+    note.textContent = 'Period income, counted in Balance After Deductions';
+    body.appendChild(note);
+  }
+
   function markResultClosed(hero) {
     const value = hero.querySelector('[data-operating-question="07"] .budget-step-value');
     if (!value) return;
@@ -458,7 +534,7 @@
     head.className = 'blend-tile-head';
     const title = document.createElement('span');
     title.className = 'blend-tile-title';
-    title.textContent = 'Income';
+    title.textContent = 'Planned income';
     const meta = document.createElement('span');
     meta.className = 'blend-income-in';
     if (received) meta.textContent = received + ' in';
