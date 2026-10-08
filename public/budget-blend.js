@@ -12,6 +12,15 @@
     return (node && node.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
+  // The hero term slot is painted into the same step value the income line
+  // copies. It is not a printed income status. Leave that slot on the hero.
+  function printedStep(node) {
+    if (!node) return '';
+    const clone = node.cloneNode(true);
+    clone.querySelectorAll('.blend-term').forEach(term => term.remove());
+    return text(clone);
+  }
+
   function moneyToken(value) {
     const found = String(value || '').match(/-?\$[\d,]+(?:\.\d{2})?/);
     return found ? found[0] : '';
@@ -323,7 +332,7 @@
     const muted = document.createElement('span');
     muted.className = 'blend-muted';
     const value = step && step.querySelector('.budget-step-value');
-    muted.textContent = value ? text(value) : '';
+    muted.textContent = printedStep(value);
     button.append(title, figure, rail);
     if (muted.textContent) button.appendChild(muted);
     if (step) button.addEventListener('click', () => step.querySelector('summary')?.click());

@@ -195,6 +195,26 @@ const composite = (fg, bg) => {
               const incomeBig = document.querySelector('.blend-income .blend-big');
               const incomeEst = document.querySelector('.blend-income .blend-est');
               const oneLine = values.length === 3 && Math.max(...values.map(v => v.top)) - Math.min(...values.map(v => v.top)) < 4;
+              const incomeValue = document.querySelector('[data-operating-question="02"] .budget-step-value');
+              const incomeClone = incomeValue ? incomeValue.cloneNode(true) : null;
+              incomeClone?.querySelectorAll('.blend-term').forEach(node => node.remove());
+              const incomePrinted = (incomeClone?.textContent || '').replace(/\s+/g, ' ').trim();
+              const incomeShown = (document.querySelector('.blend-income .blend-muted')?.textContent || '').replace(/\s+/g, ' ').trim();
+              const pills = [...document.querySelectorAll('.blend-hero-foot > *')].filter(el => {
+                const box = el.getBoundingClientRect();
+                return getComputedStyle(el).display !== 'none' && box.height > 1 && box.width > 1;
+              }).map(el => {
+                const b = el.getBoundingClientRect();
+                return {
+                  id: el.getAttribute('data-operating-question') || (el.hasAttribute('data-bills-closing') ? 'closing' : 'pill'),
+                  top: Math.round(b.top),
+                  width: Math.round(b.width),
+                  text: (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+                  inside: b.left >= hb.left - 1 && b.right <= hb.right + 1,
+                  fits: el.scrollWidth <= el.clientWidth + 1,
+                };
+              });
+              const footBox = document.querySelector('.blend-hero-foot')?.getBoundingClientRect();
               return {
                 terms, between,
                 pillOverlapsHouse: overlaps(pill, house),
@@ -210,6 +230,10 @@ const composite = (fg, bg) => {
                 dateOneLine: !!(payDate && payDate.scrollWidth <= payDate.clientWidth + 1),
                 estOverlapsIncome: overlaps(box(incomeBig), box(incomeEst)),
                 oneLine,
+                incomeShown,
+                incomePrinted,
+                pills,
+                footWidth: footBox ? Math.round(footBox.width) : 0,
               };
             })(),
             shown: ['[data-budget-browse-hold]', '[data-budget-browse="spending"] .budget-browse-counts',
@@ -285,6 +309,16 @@ const composite = (fg, bg) => {
         if (face.savingsPad < 8 || !face.savingsInside) {
           errors.push(`${width}/${theme} savings pill pad ${face.savingsPad} inside ${face.savingsInside}`);
         }
+        if (face.incomeShown !== face.incomePrinted) {
+          errors.push(`${width}/${theme} income line ${JSON.stringify(face.incomeShown)} printed ${JSON.stringify(face.incomePrinted)}`);
+        }
+        const overflow = (face.pills || []).filter(pill => !pill.inside || !pill.fits);
+        if (overflow.length) errors.push(`${width}/${theme} pill overflow ${JSON.stringify({ foot: face.footWidth, pills: face.pills })}`);
+        if (width >= 1000) {
+          const tops = (face.pills || []).map(pill => pill.top);
+          const oneRow = tops.length > 1 && Math.max(...tops) - Math.min(...tops) < 4;
+          if (!oneRow) errors.push(`${width}/${theme} pills not one line ${JSON.stringify({ foot: face.footWidth, pills: face.pills })}`);
+        }
         if ((face.flags || []).some(flag => /^(To confirm|Overdue) 0$/.test(flag))) {
           errors.push(`${width}/${theme} zero pill ${JSON.stringify(face.flags)}`);
         }
@@ -356,15 +390,25 @@ const composite = (fg, bg) => {
       const a = date && date.getBoundingClientRect();
       const b = face && face.getBoundingClientRect();
       const overlap = !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
+      const incomeValue = document.querySelector('[data-operating-question="02"] .budget-step-value');
+      const incomeClone = incomeValue ? incomeValue.cloneNode(true) : null;
+      incomeClone?.querySelectorAll('.blend-term').forEach(node => node.remove());
+      const incomePrinted = (incomeClone?.textContent || '').replace(/\s+/g, ' ').trim();
+      const incomeShown = (document.querySelector('.blend-income .blend-muted')?.textContent || '').replace(/\s+/g, ' ').trim();
       return {
         cash: shown(document.querySelector('.budget-today-cash')),
         closing: shown(document.querySelector('[data-bills-closing]')),
         overlap,
         dateLine: !!(date && date.scrollWidth <= date.clientWidth + 1),
+        incomeShown,
+        incomePrinted,
       };
     });
     if (otherPeriod.cash || otherPeriod.closing || otherPeriod.overlap || !otherPeriod.dateLine) {
       errors.push(`other period pills ${JSON.stringify(otherPeriod)}`);
+    }
+    if (otherPeriod.incomeShown !== otherPeriod.incomePrinted) {
+      errors.push(`other period income ${JSON.stringify(otherPeriod.incomeShown)} printed ${JSON.stringify(otherPeriod.incomePrinted)}`);
     }
     await next.screenshot({ path: path.join(outDir, 'budget-blend-1440-light-next.png'), fullPage: true, animations: 'disabled' });
     shots.push('budget-blend-1440-light-next.png');
