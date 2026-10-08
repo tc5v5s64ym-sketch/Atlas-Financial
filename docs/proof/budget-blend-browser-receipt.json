@@ -13,6 +13,7 @@
     "budget-blend-320-light.png",
     "budget-blend-320-dark.png",
     "budget-blend-1440-light-next.png",
+    "budget-blend-1440-light-past.png",
     "budget-blend-1440-light-unavailable.png",
     "budget-blend-390-dark-unavailable.png",
     "budget-blend-focus-granularity.png",
@@ -259,6 +260,12 @@
       ]
     }
   ],
+  "heroTerms": [
+    "≈ estimated $4,050.00",
+    "≈ estimated $1,665.00",
+    "$752.99",
+    "≈ estimated $1,632.01"
+  ],
   "focusWalk": {
     "viewport": 1440,
     "theme": "light",
@@ -461,12 +468,12 @@
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00 Unavailable",
+        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00 ≈ estimated $4,050.00",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          228,
+          247,
           43
         ],
         "pass": true
@@ -474,12 +481,12 @@
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00 Unavailable",
+        "text": "Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00 ≈ estimated $1,665.00",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          228,
+          247,
           43
         ],
         "pass": true
@@ -487,12 +494,12 @@
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Household budget $444.49 / of planned $730.00 Unavailable",
+        "text": "Household budget $444.49 / of planned $730.00 $752.99",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          228,
+          135,
           43
         ],
         "pass": true

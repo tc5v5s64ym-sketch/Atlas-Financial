@@ -108,13 +108,16 @@
     const face = document.createElement('div');
     face.className = 'blend-pay-face';
     face.appendChild(payRing(marks));
-    const num = document.createElement('span');
-    num.className = 'blend-pay-num' + (days ? '' : ' is-word');
-    num.textContent = days ? days[1] : 'Unavailable';
-    const unit = document.createElement('span');
-    unit.className = 'blend-pay-unit';
-    unit.textContent = days ? 'days' : '';
-    face.append(num, unit);
+    const current = selectedPeriodIsCurrent(progress.closest('[data-budget-bento]') || document);
+    if (current) {
+      const num = document.createElement('span');
+      num.className = 'blend-pay-num' + (days ? '' : ' is-word');
+      num.textContent = days ? days[1] : 'Unavailable';
+      const unit = document.createElement('span');
+      unit.className = 'blend-pay-unit';
+      unit.textContent = days ? 'days' : '';
+      face.append(num, unit);
+    }
     progress.querySelector('p')?.classList.add('blend-clip');
     progress.appendChild(face);
     if (published && !/^unavailable$/i.test(published)) {
@@ -168,8 +171,10 @@
     }
     clip(hero.querySelector('.budget-cash-how'));
     const panel = heroPanel(hero);
+    const body = panelBody(panel);
     const info = hero.querySelector('.budget-period-info');
-    if (info && info.parentElement !== panel) panel.appendChild(info);
+    if (info && info.parentElement !== body) body.appendChild(info);
+    parkBadTerms(hero, body);
     ['04', '06'].forEach(number => {
       const step = hero.querySelector('[data-operating-question="' + number + '"]');
       if (!step || step.previousElementSibling?.classList.contains('blend-minus')) return;
@@ -185,7 +190,6 @@
       foot.className = 'blend-hero-foot';
       hero.appendChild(foot);
     }
-    paintTermSlots(hero);
     const savings = hero.querySelector('[data-operating-question="savings"], [data-budget-savings-stock]');
     const closing = hero.querySelector('[data-bills-closing]');
     const afterBills = hero.querySelector('[data-operating-question="05"]');
@@ -198,19 +202,20 @@
     hero.querySelectorAll('.budget-bills-closing > .operating-note').forEach(node => {
       if (/Latest recorded Bills balance/i.test(text(node))) {
         node.classList.add('blend-panel-note');
-        if (node.parentElement !== panel) panel.appendChild(node);
+        if (node.parentElement !== body) body.appendChild(node);
       } else clip(node);
     });
     const notice = hero.querySelector('.budget-cash-notice');
-    if (notice && notice.parentElement !== panel) {
+    if (notice && notice.parentElement !== body) {
       notice.classList.add('blend-panel-note');
-      panel.appendChild(notice);
+      body.appendChild(notice);
     }
     hero.classList.toggle('is-other-period', !selectedPeriodIsCurrent(hero));
     paintHeroTop(hero);
     joinResultLabel(hero);
+    paintTermSlots(hero);
     markResultClosed(hero);
-    splitPrintedCents(hero.querySelector('[data-operating-question="07"] .budget-step-value'));
+    splitPrintedCents(hero.querySelector('[data-blend-term="balanceAfterDeductions"]'));
   }
 
   function paintHeroTop(hero) {
@@ -239,24 +244,32 @@
   }
 
   function splitPrintedCents(value) {
-    if (!value || value.classList.contains('is-fail-closed') || value.querySelector('.blend-cents')) return;
+    if (!value || value.classList.contains('is-fail-closed') || value.classList.contains('is-unavailable') || value.querySelector('.blend-cents')) return;
     const nodes = [];
     const walker = document.createTreeWalker(value, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      if (node.parentElement && node.parentElement.closest('.budget-cash-sr, .est')) continue;
+      if (node.parentElement && node.parentElement.closest('.budget-cash-sr, .est, .blend-clip')) continue;
       if (/\$[\d,]+\.\d{2}/.test(node.textContent)) nodes.push(node);
     }
     nodes.forEach(textNode => {
       const parts = textNode.textContent.match(/^(.*?)(-?\$[\d,]+)(\.\d{2})(.*)$/);
       if (!parts) return;
+      const frag = document.createDocumentFragment();
+      if (parts[1]) {
+        const prefix = document.createElement('span');
+        prefix.className = 'blend-term-prefix';
+        prefix.textContent = parts[1];
+        frag.appendChild(prefix);
+      }
       const dollars = document.createElement('span');
       dollars.className = 'blend-dollars';
-      dollars.textContent = parts[1] + parts[2];
+      dollars.textContent = parts[2];
       const cents = document.createElement('sup');
       cents.className = 'blend-cents';
       cents.textContent = parts[3];
-      textNode.replaceWith(dollars, cents, document.createTextNode(parts[4]));
+      frag.append(dollars, cents, document.createTextNode(parts[4]));
+      textNode.replaceWith(frag);
     });
   }
 
@@ -270,39 +283,90 @@
     return true;
   }
 
-  // One printed node per Balance After Deductions term. plan.js does not
-  // print these yet; the slot stays the word Unavailable until it does.
+  // Face slots copy Forecast's printed Balance After Deductions terms.
+  // The long labels stay in the published block. No arithmetic.
   const TERM_SOURCES = [
     ['02', 'periodIncome'],
     ['04', 'assignedBills'],
     ['06', 'householdBudgetHold'],
   ];
 
+  function badTermsBlock(hero) {
+    const root = hero.closest('[data-budget-bento]') || document;
+    return root.querySelector('[data-bad-terms]');
+  }
+
+  function parkBadTerms(hero, body) {
+    const block = badTermsBlock(hero);
+    if (block && body && block.parentElement !== body) body.appendChild(block);
+  }
+
+  function selectedPeriodIsPast(root) {
+    return /Completed pay period/i.test(text((root || document).querySelector('[data-budget-window-progress]')));
+  }
+
+  // Path A: a printed [data-bad-term-amount] is the bare amount, plus an
+  // est. chip only when that row's trust is estimated.
+  // Path B: no amount span — the value text is copied verbatim, including
+  // "≈ estimated" when that is what was printed, and no chip is added.
+  function termDisplay(row, blockStatus) {
+    const trust = row ? (row.getAttribute('data-bad-term-trust') || '') : '';
+    if (blockStatus !== 'published' || !row || trust === 'unavailable') {
+      return { text: 'Unavailable', chip: false, unavailable: true };
+    }
+    const amount = row.querySelector('[data-bad-term-amount]');
+    if (amount) return { text: text(amount), chip: trust === 'estimated', unavailable: false };
+    const value = row.querySelector('[data-bad-term-value]');
+    return { text: text(value) || 'Unavailable', chip: false, unavailable: !text(value) };
+  }
+
+  function paintTermFace(parent, name, display, className) {
+    if (!parent || parent.querySelector('[data-blend-term="' + name + '"]')) return null;
+    const slot = document.createElement('span');
+    slot.className = className;
+    slot.setAttribute('data-blend-term', name);
+    slot.textContent = display.text;
+    slot.classList.toggle('is-unavailable', !!display.unavailable);
+    parent.appendChild(slot);
+    if (display.chip) {
+      const pill = document.createElement('span');
+      pill.className = 'blend-est';
+      pill.textContent = 'est.';
+      slot.after(pill);
+    }
+    return slot;
+  }
+
   function paintTermSlots(hero) {
-    const root = hero.closest('[data-budget-bento]') || hero;
+    const block = badTermsBlock(hero);
+    const status = block ? (block.getAttribute('data-bad-terms-status') || 'unavailable') : 'unavailable';
     TERM_SOURCES.forEach(([number, name]) => {
       const value = hero.querySelector('[data-operating-question="' + number + '"] .budget-step-value');
-      if (!value || value.querySelector('.blend-term')) return;
-      const source = root.querySelector('[data-predicted-ending-term="' + name + '"]');
-      const slot = document.createElement('span');
-      slot.className = 'blend-term';
-      slot.setAttribute('data-blend-term', name);
-      slot.textContent = text(source) || 'Unavailable';
-      value.appendChild(slot);
-      if (moneyToken(slot.textContent) && /≈|estimated/i.test(slot.textContent)) {
-        const pill = document.createElement('span');
-        pill.className = 'blend-est';
-        pill.textContent = 'est.';
-        slot.after(pill);
-      }
+      const row = block && block.querySelector('[data-bad-term="' + name + '"]');
+      paintTermFace(value, name, termDisplay(row, status), 'blend-term');
     });
+    const result = hero.querySelector('[data-operating-question="07"] .budget-step-value');
+    if (result && !result.querySelector('[data-blend-term="balanceAfterDeductions"]')) {
+      if (!result.querySelector(':scope > .blend-clip')) {
+        const hidden = document.createElement('span');
+        hidden.className = 'blend-clip';
+        while (result.firstChild) hidden.appendChild(result.firstChild);
+        result.appendChild(hidden);
+      }
+      const row = block && block.querySelector('[data-bad-term="balanceAfterDeductions"]');
+      paintTermFace(result, 'balanceAfterDeductions', termDisplay(row, status), 'blend-bad');
+    }
   }
 
   function markResultClosed(hero) {
     const value = hero.querySelector('[data-operating-question="07"] .budget-step-value');
     if (!value) return;
+    const shown = value.querySelector('[data-blend-term="balanceAfterDeductions"]');
     const root = hero.closest('[data-budget-bento]') || document;
-    const closed = !!root.querySelector('[data-operating-plan="unavailable"]') || !moneyToken(text(value));
+    const closed = !!root.querySelector('[data-operating-plan="unavailable"]')
+      || !shown
+      || shown.classList.contains('is-unavailable')
+      || !moneyToken(text(shown));
     value.classList.toggle('is-fail-closed', closed);
   }
 
@@ -324,9 +388,15 @@
     panel.className = 'blend-hero-panel';
     const summary = document.createElement('summary');
     summary.textContent = 'Period figures';
-    panel.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'blend-hero-panel-body';
+    panel.append(summary, body);
     hero.appendChild(panel);
     return panel;
+  }
+
+  function panelBody(panel) {
+    return panel.querySelector('.blend-hero-panel-body') || panel;
   }
 
   function depositRows(step) {
@@ -523,24 +593,28 @@
     const rows = [...section.querySelectorAll('.budget-bill-row')];
     const confirmRows = rows.filter(row => billState(row) === 'confirm');
     const overdueCount = printedOverdueCount(section);
-    const remain = document.createElement('span');
-    remain.className = 'blend-bills-of';
-    const leftRaw = text(section.querySelector('[data-budget-browse-bills-remaining]'));
-    const planRaw = text(section.querySelector('[data-budget-ratio="bills"] [data-budget-ratio-plan]'));
-    const billsStatus = text(section.querySelector('[data-budget-ratio="bills"]'));
-    const leftMoney = moneyToken(leftRaw);
-    const planMoney = moneyToken(planRaw);
-    const statusUnavailable = !planMoney && /unknown|unavailable/i.test(billsStatus + ' ' + leftRaw);
-    if (statusUnavailable) {
-      remain.textContent = 'Unavailable';
-    } else if (!rows.length) {
-      remain.textContent = 'No bills assigned';
-      remain.classList.add('is-empty');
-    } else if (leftMoney && planMoney) {
-      const est = /estimated|≈/.test(leftRaw + ' ' + planRaw) ? ' est.' : '';
-      remain.textContent = leftMoney + ' left of ' + planMoney + est;
-    } else {
-      remain.textContent = 'Unavailable';
+    const past = selectedPeriodIsPast(bento);
+    let remain = null;
+    if (!past) {
+      remain = document.createElement('span');
+      remain.className = 'blend-bills-of';
+      const leftRaw = text(section.querySelector('[data-budget-browse-bills-remaining]'));
+      const planRaw = text(section.querySelector('[data-budget-ratio="bills"] [data-budget-ratio-plan]'));
+      const billsStatus = text(section.querySelector('[data-budget-ratio="bills"]'));
+      const leftMoney = moneyToken(leftRaw);
+      const planMoney = moneyToken(planRaw);
+      const statusUnavailable = !planMoney && /unknown|unavailable/i.test(billsStatus + ' ' + leftRaw);
+      if (statusUnavailable) {
+        remain.textContent = 'Unavailable';
+      } else if (!rows.length) {
+        remain.textContent = 'No bills assigned';
+        remain.classList.add('is-empty');
+      } else if (leftMoney && planMoney) {
+        const est = /estimated|≈/.test(leftRaw + ' ' + planRaw) ? ' est.' : '';
+        remain.textContent = leftMoney + ' left of ' + planMoney + est;
+      } else {
+        remain.textContent = 'Unavailable';
+      }
     }
     head.appendChild(title);
     if (confirmRows.length > 0) {
@@ -555,7 +629,7 @@
       overdue.textContent = 'Overdue ' + overdueCount;
       head.appendChild(overdue);
     }
-    head.appendChild(remain);
+    if (remain) head.appendChild(remain);
     const cal = document.createElement('div');
     cal.className = 'blend-cal';
     cal.setAttribute('data-blend-cal', '');
