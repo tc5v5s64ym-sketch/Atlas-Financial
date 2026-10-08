@@ -66,7 +66,7 @@
     face.className = 'blend-pay-face';
     face.appendChild(payRing(marks));
     const num = document.createElement('span');
-    num.className = 'blend-pay-num';
+    num.className = 'blend-pay-num' + (days ? '' : ' is-word');
     num.textContent = days ? days[1] : 'Unavailable';
     const unit = document.createElement('span');
     unit.className = 'blend-pay-unit';
@@ -75,6 +75,7 @@
     const date = document.createElement('span');
     date.className = 'blend-pay-date';
     date.textContent = published || 'Unavailable';
+    progress.querySelector('p')?.classList.add('blend-clip');
     progress.append(face, date);
     const next = document.querySelector('[data-budget-cash-next]');
     if (next) progress.addEventListener('click', () => next.click());
@@ -120,7 +121,9 @@
       cash.querySelector('[data-budget-cash-hero]')?.before(label);
     }
     clip(hero.querySelector('.budget-cash-how'));
-    clip(hero.querySelector('.budget-period-info'));
+    const panel = heroPanel(hero);
+    const info = hero.querySelector('.budget-period-info');
+    if (info && info.parentElement !== panel) panel.appendChild(info);
     ['04', '06'].forEach(number => {
       const step = hero.querySelector('[data-operating-question="' + number + '"]');
       if (!step || step.previousElementSibling?.classList.contains('blend-minus')) return;
@@ -143,15 +146,41 @@
     clip(closing && closing.querySelector('details > summary'));
     hero.querySelectorAll('.budget-bills-closing > .operating-note').forEach(node => {
       if (/Latest recorded Bills balance/i.test(text(node))) {
-        node.classList.add('blend-keep-visible');
-        foot.appendChild(node);
+        node.classList.add('blend-panel-note');
+        if (node.parentElement !== panel) panel.appendChild(node);
       } else clip(node);
     });
     const notice = hero.querySelector('.budget-cash-notice');
-    if (notice) {
-      notice.classList.add('blend-keep-visible');
-      foot.appendChild(notice);
+    if (notice && notice.parentElement !== panel) {
+      notice.classList.add('blend-panel-note');
+      panel.appendChild(notice);
     }
+    const afterBills = hero.querySelector('[data-operating-question="05"]');
+    if (afterBills) afterBills.classList.add('blend-clip');
+    joinResultLabel(hero);
+  }
+
+  function joinResultLabel(hero) {
+    const step = hero.querySelector('[data-operating-question="07"]');
+    const number = step && step.querySelector('.operating-number');
+    const title = step && step.querySelector('.budget-step-title');
+    if (!number || !title || number.parentElement.classList.contains('blend-result-label')) return;
+    const wrap = document.createElement('span');
+    wrap.className = 'blend-result-label';
+    title.before(wrap);
+    wrap.append(number, document.createTextNode(' '), title);
+  }
+
+  function heroPanel(hero) {
+    let panel = hero.querySelector('.blend-hero-panel');
+    if (panel) return panel;
+    panel = document.createElement('details');
+    panel.className = 'blend-hero-panel';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Period figures';
+    panel.appendChild(summary);
+    hero.appendChild(panel);
+    return panel;
   }
 
   function depositRows(step) {
@@ -397,14 +426,60 @@
         cal.appendChild(day);
       });
     }
-    section.querySelector('header')?.before(head);
-    section.querySelector('header')?.after(cal);
-    section.querySelector('.budget-bills-progress-wrapper')?.classList.add('blend-in-panel');
-    section.querySelector('.budget-bills-figures')?.classList.add('blend-quiet-figure');
-    section.querySelector('header h2')?.classList.add('blend-quiet-figure');
-    section.querySelectorAll('header .budget-browse-sub').forEach(node => node.classList.add('blend-quiet-figure'));
-    section.querySelector(':scope > footer')?.classList.add('blend-quiet-figure');
-    section.querySelectorAll('header .budget-browse-eyebrow').forEach(clip);
+    const header = section.querySelector('header');
+    header?.before(head);
+    header?.after(cal);
+    const panel = document.createElement('div');
+    panel.className = 'blend-face-off';
+    panel.id = 'blend-bills-more';
+    panel.inert = true;
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'blend-panel-toggle';
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', panel.id);
+    toggle.setAttribute('aria-label', 'Bills detail');
+    toggle.textContent = 'Details';
+    toggle.addEventListener('click', () => {
+      const open = panel.classList.toggle('is-open');
+      panel.inert = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    head.appendChild(toggle);
+    cal.after(panel);
+    [...section.children].forEach(node => {
+      if (node !== head && node !== cal && node !== panel) panel.appendChild(node);
+    });
+  }
+
+  function plannedPhrase(row) {
+    const meta = row.querySelector('.budget-category-meta');
+    const found = text(meta).match(/of planned\s+(.+)$/i);
+    if (!found) return null;
+    const wrap = document.createElement('span');
+    wrap.className = 'blend-of-plan';
+    wrap.textContent = 'of planned ' + found[1].trim();
+    return wrap;
+  }
+
+  function markSheet(button, row) {
+    const sheet = document.querySelector('[data-budget-detail-sheet]');
+    if (sheet && !sheet.id) sheet.id = 'budget-detail-sheet';
+    button.setAttribute('aria-haspopup', 'dialog');
+    if (sheet) button.setAttribute('aria-controls', sheet.id);
+    button.setAttribute('aria-expanded', 'false');
+    button.addEventListener('click', () => {
+      button.setAttribute('aria-expanded', 'true');
+      row.click();
+    });
+    if (sheet && sheet.dataset.blendRingClose !== '1') {
+      sheet.dataset.blendRingClose = '1';
+      sheet.addEventListener('close', () => {
+        document.querySelectorAll('.blend-ring[aria-expanded="true"], .blend-other[aria-expanded="true"]').forEach(node => {
+          node.setAttribute('aria-expanded', 'false');
+        });
+      });
+    }
   }
 
   function leftArc(share) {
@@ -474,7 +549,14 @@
       label.className = 'blend-ring-l';
       label.textContent = planned ? name + ' · of ' + planned.trim() : name;
       button.append(well, label);
-      button.addEventListener('click', () => row.click());
+      if (row.classList.contains('is-over')) {
+        button.classList.add('is-over');
+        const pill = document.createElement('span');
+        pill.className = 'blend-over-pill';
+        pill.textContent = status;
+        button.appendChild(pill);
+      }
+      markSheet(button, row);
       rings.appendChild(button);
     });
     if (!main.length) {
@@ -515,15 +597,27 @@
       chevron.className = 'blend-other-chev';
       chevron.setAttribute('aria-hidden', 'true');
       chevron.textContent = '›';
-      foot.append(dot, name, word, chevron);
-      foot.addEventListener('click', () => other[0].click());
+      const plan = plannedPhrase(other[0]);
+      foot.append(dot, name);
+      if (plan) foot.appendChild(plan);
+      foot.append(word, chevron);
+      markSheet(foot, other[0]);
       rings.after(foot);
     }
+    const more = document.createElement('details');
+    more.className = 'blend-house-panel';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Household detail';
+    more.appendChild(summary);
+    const remainBlock = section.querySelector('[data-budget-browse-remaining]')?.parentElement;
+    if (remainBlock) remainBlock.classList.add('blend-house-remain');
+    [remainBlock?.querySelector(':scope > span'), remainBlock?.querySelector('small'), section.querySelector('.budget-browse-cycle')]
+      .forEach(node => { if (node) more.appendChild(node); });
+    (section.querySelector('.blend-other') || rings).after(more);
     section.querySelectorAll('.budget-category-list, .budget-pace-key').forEach(node => {
       node.classList.add('blend-in-panel');
     });
     clip(section.querySelector('footer'));
-    section.querySelector('.budget-browse-cycle')?.classList.add('blend-quiet-figure');
     section.querySelectorAll('.budget-browse-eyebrow, .budget-browse-sub').forEach(clip);
   }
 
@@ -581,14 +675,7 @@
         const label = text(node.querySelector('small'));
         return [amount, label].filter(Boolean).join(' ');
       }).filter(Boolean).join(' · ');
-      const contextNode = row.querySelector('.budget-goal-context');
-      let context = '';
-      if (contextNode) {
-        const clone = contextNode.cloneNode(true);
-        clone.querySelectorAll('.budget-goal-evidence').forEach(node => node.remove());
-        context = text(clone);
-      }
-      detail.textContent = [status, amounts, context].filter(Boolean).join(' · ');
+      detail.textContent = status || (/Unavailable/i.test(amounts) ? 'Unavailable' : /Unknown/i.test(amounts) ? 'Unknown' : '');
       item.append(name, detail);
       list.appendChild(item);
     });

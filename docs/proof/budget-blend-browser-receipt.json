@@ -12,6 +12,7 @@
     "budget-blend-390-dark.png",
     "budget-blend-320-light.png",
     "budget-blend-320-dark.png",
+    "budget-blend-1440-light-next.png",
     "budget-blend-1440-light-unavailable.png",
     "budget-blend-390-dark-unavailable.png",
     "budget-blend-focus-granularity.png",
@@ -37,12 +38,12 @@
       ]
     },
     {
-      "name": "light payday line",
-      "ratio": 18,
+      "name": "light payday date",
+      "ratio": 13.38,
       "large": false,
       "pass": true,
-      "text": "Next payday Aug 28 · in 8 days",
-      "fg": "rgb(246, 247, 249)",
+      "text": "Aug 28",
+      "fg": "rgb(255, 209, 102)",
       "bg": [
         13,
         14,
@@ -52,9 +53,9 @@
     {
       "name": "light day count",
       "ratio": 18,
-      "large": false,
+      "large": true,
       "pass": true,
-      "text": "Day 7 of 14",
+      "text": "8",
       "fg": "rgb(246, 247, 249)",
       "bg": [
         13,
@@ -141,12 +142,12 @@
       ]
     },
     {
-      "name": "dark payday line",
-      "ratio": 17.1,
+      "name": "dark payday date",
+      "ratio": 5.46,
       "large": false,
       "pass": true,
-      "text": "Next payday Aug 28 · in 8 days",
-      "fg": "rgb(13, 14, 18)",
+      "text": "Aug 28",
+      "fg": "rgb(138, 86, 0)",
       "bg": [
         244,
         241,
@@ -156,9 +157,9 @@
     {
       "name": "dark day count",
       "ratio": 17.1,
-      "large": false,
+      "large": true,
       "pass": true,
-      "text": "Day 7 of 14",
+      "text": "8",
       "fg": "rgb(13, 14, 18)",
       "bg": [
         244,
@@ -460,26 +461,26 @@
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Income ≈ estimated $4,050.00",
+        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
           156,
-          30
+          43
         ],
         "pass": true
       },
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Bills ≈ estimated $1,665.00",
+        "text": "Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
           156,
-          30
+          43
         ],
         "pass": true
       },
@@ -491,8 +492,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          749,
-          32
+          1,
+          85
         ],
         "pass": true
       }
