@@ -154,20 +154,23 @@ const composite = (fg, bg) => {
               const overlaps = (a, b) => !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
               const terms = ['02', '04', '06'].map(id => {
                 const prompt = document.querySelector(`[data-operating-question="${id}"] .operating-prompt`);
-                const value = document.querySelector(`[data-operating-question="${id}"] .budget-step-value`);
-                const painted = value?.querySelector('[data-budget-ratio-plan], [data-budget-ratio]') || value;
+                const painted = document.querySelector(`[data-operating-question="${id}"] .blend-term`);
                 const pb = box(prompt), vb = box(painted);
+                const style = painted ? getComputedStyle(painted) : null;
                 return {
                   id,
                   label: (prompt?.textContent || '').trim(),
-                  font: painted ? parseFloat(getComputedStyle(painted).fontSize) : 0,
+                  shown: (painted?.textContent || '').trim(),
+                  hook: painted?.getAttribute('data-blend-term') || '',
+                  font: style ? parseFloat(style.fontSize) : 0,
+                  ink: style ? style.color : '',
                   clipped: !pb || pb.top < hb.top - 1 || pb.bottom > hb.bottom + 1 || prompt.scrollHeight > prompt.clientHeight + 2,
                   valueClipped: !vb || vb.top < hb.top - 1 || painted.scrollWidth > painted.clientWidth + 2,
                 };
               });
               const values = terms.map(row => {
-                const value = document.querySelector(`[data-operating-question="${row.id}"] .budget-step-value`);
-                return (value.querySelector('[data-budget-ratio-plan]') || value).getBoundingClientRect();
+                const painted = document.querySelector(`[data-operating-question="${row.id}"] .blend-term`);
+                return painted.getBoundingClientRect();
               });
               const minuses = [...document.querySelectorAll('.blend-minus')].map(el => el.getBoundingClientRect());
               const between = minuses.length === 2 && minuses.every((m, i) => {
@@ -180,11 +183,33 @@ const composite = (fg, bg) => {
               const house = box(document.querySelector('[data-operating-question="06"] .operating-prompt'));
               const result = document.querySelector('[data-operating-question="07"] .budget-step-summary');
               const lines = (result?.innerText || '').split(/\n/).map(line => line.trim()).filter(Boolean);
+              const foot = [...document.querySelectorAll('.blend-hero-foot > *')].map(el => el.getAttribute('data-operating-question') || el.getAttribute('data-bills-closing') || el.className);
+              const savingsPill = document.querySelector('.blend-hero-foot [data-operating-question="savings"], .blend-hero-foot [data-budget-savings-stock]');
+              const savingsBox = box(savingsPill);
+              const savingsStyle = savingsPill ? getComputedStyle(savingsPill) : null;
+              const flags = [...document.querySelectorAll('.blend-flag')].map(el => (el.textContent || '').trim());
+              const caption = document.querySelector('.blend-ring-l');
+              const captionStyle = caption ? getComputedStyle(caption) : null;
+              const payDate = document.querySelector('.blend-pay-date');
+              const payFace = document.querySelector('.blend-pay-face');
+              const incomeBig = document.querySelector('.blend-income .blend-big');
+              const incomeEst = document.querySelector('.blend-income .blend-est');
+              const oneLine = values.length === 3 && Math.max(...values.map(v => v.top)) - Math.min(...values.map(v => v.top)) < 4;
               return {
                 terms, between,
                 pillOverlapsHouse: overlaps(pill, house),
                 strayLine: lines.some(line => /^[=—−\-]$/.test(line)),
                 resultLine: lines.find(line => /Balance After Deductions/.test(line)) || '',
+                foot,
+                savingsPad: savingsStyle ? parseFloat(savingsStyle.paddingLeft) : 0,
+                savingsInside: !!(savingsBox && savingsPill && savingsPill.scrollWidth <= savingsPill.clientWidth + 1),
+                flags,
+                captionWrap: captionStyle ? captionStyle.whiteSpace : '',
+                captionEllipsis: captionStyle ? captionStyle.textOverflow : '',
+                dateOverlapsRing: overlaps(box(payDate), box(payFace)),
+                dateOneLine: !!(payDate && payDate.scrollWidth <= payDate.clientWidth + 1),
+                estOverlapsIncome: overlaps(box(incomeBig), box(incomeEst)),
+                oneLine,
               };
             })(),
             shown: ['[data-budget-browse-hold]', '[data-budget-browse="spending"] .budget-browse-counts',
@@ -244,6 +269,31 @@ const composite = (fg, bg) => {
         if (face.strayLine || !/^=\s*Balance After Deductions/.test(face.resultLine || '')) {
           errors.push(`${width}/${theme} result label ${JSON.stringify(face.resultLine)} stray ${face.strayLine}`);
         }
+        const hooks = { '02': 'periodIncome', '04': 'assignedBills', '06': 'householdBudgetHold' };
+        (face.terms || []).forEach(term => {
+          if (term.shown !== 'Unavailable' || term.hook !== hooks[term.id] || /\$/.test(term.shown)) {
+            errors.push(`${width}/${theme} term slot ${JSON.stringify(term)}`);
+          }
+        });
+        if ((face.terms || []).find(term => term.id === '06')?.label !== 'Household budget') {
+          errors.push(`${width}/${theme} household label ${JSON.stringify(face.terms)}`);
+        }
+        if (width >= 1000 && !face.oneLine) errors.push(`${width}/${theme} equation is not one line`);
+        if (face.foot?.[0] !== '05' || !/closing/.test(String(face.foot?.[1] || '')) || !/savings/.test(String(face.foot?.[2] || ''))) {
+          errors.push(`${width}/${theme} pill order ${JSON.stringify(face.foot)}`);
+        }
+        if (face.savingsPad < 8 || !face.savingsInside) {
+          errors.push(`${width}/${theme} savings pill pad ${face.savingsPad} inside ${face.savingsInside}`);
+        }
+        if ((face.flags || []).some(flag => /^(To confirm|Overdue) 0$/.test(flag))) {
+          errors.push(`${width}/${theme} zero pill ${JSON.stringify(face.flags)}`);
+        }
+        if (face.captionWrap === 'nowrap' || face.captionEllipsis === 'ellipsis') {
+          errors.push(`${width}/${theme} caption ${face.captionWrap} ${face.captionEllipsis}`);
+        }
+        if (width <= 390 && (face.dateOverlapsRing || !face.dateOneLine || face.estOverlapsIncome)) {
+          errors.push(`${width}/${theme} overlap date ${face.dateOverlapsRing} line ${face.dateOneLine} est ${face.estOverlapsIncome}`);
+        }
         if (width === 1440 && theme === 'dark') {
           const toggle = await page.evaluate(() => {
             const buttons = [...document.querySelectorAll('.blend-toolbar .budget-granularity-btn')];
@@ -298,6 +348,23 @@ const composite = (fg, bg) => {
     });
     if (paydayFit.missing || !paydayFit.faceInside || !paydayFit.wordInside || !paydayFit.wordFits) {
       errors.push(`future payday ${JSON.stringify(paydayFit)}`);
+    }
+    const otherPeriod = await next.evaluate(() => {
+      const shown = el => !!(el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 1);
+      const date = document.querySelector('.blend-pay-date');
+      const face = document.querySelector('.blend-pay-face');
+      const a = date && date.getBoundingClientRect();
+      const b = face && face.getBoundingClientRect();
+      const overlap = !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
+      return {
+        cash: shown(document.querySelector('.budget-today-cash')),
+        closing: shown(document.querySelector('[data-bills-closing]')),
+        overlap,
+        dateLine: !!(date && date.scrollWidth <= date.clientWidth + 1),
+      };
+    });
+    if (otherPeriod.cash || otherPeriod.closing || otherPeriod.overlap || !otherPeriod.dateLine) {
+      errors.push(`other period pills ${JSON.stringify(otherPeriod)}`);
     }
     await next.screenshot({ path: path.join(outDir, 'budget-blend-1440-light-next.png'), fullPage: true, animations: 'disabled' });
     shots.push('budget-blend-1440-light-next.png');
@@ -355,6 +422,8 @@ const composite = (fg, bg) => {
     });
     if (!opened.open || !opened.name || opened.expanded !== 'true') errors.push(`ring sheet ${JSON.stringify(opened)}`);
     await next.keyboard.press('Escape');
+    const returned = await next.waitForFunction(() => document.activeElement && document.activeElement.classList.contains('blend-ring')).then(() => true).catch(() => false);
+    if (!returned) errors.push('ring focus did not return to the ring');
     await next.close();
 
     const otherPlan = await open(1440, 'light');

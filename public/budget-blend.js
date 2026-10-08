@@ -38,8 +38,12 @@
     }
     const header = bento.querySelector('[data-budget-window-header]');
     if (header && !header.classList.contains('blend-toolbar')) {
+      const active = document.activeElement;
       header.classList.add('blend-toolbar');
       bento.insertBefore(header, bento.firstChild);
+      if (active && active !== document.body && header.contains(active) && document.activeElement !== active) {
+        active.focus({ preventScroll: true });
+      }
     }
     paintPayday(progress);
     paintHero(hero);
@@ -139,10 +143,15 @@
       foot.className = 'blend-hero-foot';
       hero.appendChild(foot);
     }
+    paintTermSlots(hero);
     const savings = hero.querySelector('[data-operating-question="savings"], [data-budget-savings-stock]');
     const closing = hero.querySelector('[data-bills-closing]');
+    const afterBills = hero.querySelector('[data-operating-question="05"]');
     if (savings) savings.classList.add('blend-hero-pill');
-    if (closing) foot.appendChild(closing);
+    [afterBills, closing, savings].forEach(node => {
+      if (node && node.parentElement !== foot) foot.appendChild(node);
+    });
+    if (afterBills) afterBills.classList.remove('blend-clip');
     clip(closing && closing.querySelector('details > summary'));
     hero.querySelectorAll('.budget-bills-closing > .operating-note').forEach(node => {
       if (/Latest recorded Bills balance/i.test(text(node))) {
@@ -155,9 +164,49 @@
       notice.classList.add('blend-panel-note');
       panel.appendChild(notice);
     }
-    const afterBills = hero.querySelector('[data-operating-question="05"]');
-    if (afterBills) afterBills.classList.add('blend-clip');
+    hero.classList.toggle('is-other-period', !selectedPeriodIsCurrent(hero));
     joinResultLabel(hero);
+    markResultClosed(hero);
+  }
+
+  function selectedPeriodIsCurrent(hero) {
+    const root = hero.closest('[data-budget-bento]') || document;
+    const sub = text(root.querySelector('.budget-cash-sub'));
+    if (/not the selected period opening/i.test(sub)) return false;
+    const line = text(root.querySelector('[data-budget-window-progress]'));
+    if (/Next payday/i.test(line)) return true;
+    if (/Upcoming|Completed pay period|Selected pay period/i.test(line)) return false;
+    return true;
+  }
+
+  // One printed node per Balance After Deductions term. plan.js does not
+  // print these yet; the slot stays the word Unavailable until it does.
+  const TERM_SOURCES = [
+    ['02', 'periodIncome'],
+    ['04', 'assignedBills'],
+    ['06', 'householdBudgetHold'],
+  ];
+
+  function paintTermSlots(hero) {
+    const root = hero.closest('[data-budget-bento]') || hero;
+    TERM_SOURCES.forEach(([number, name]) => {
+      const value = hero.querySelector('[data-operating-question="' + number + '"] .budget-step-value');
+      if (!value || value.querySelector('.blend-term')) return;
+      const source = root.querySelector('[data-predicted-ending-term="' + name + '"]');
+      const slot = document.createElement('span');
+      slot.className = 'blend-term';
+      slot.setAttribute('data-blend-term', name);
+      slot.textContent = text(source) || 'Unavailable';
+      value.appendChild(slot);
+    });
+  }
+
+  function markResultClosed(hero) {
+    const value = hero.querySelector('[data-operating-question="07"] .budget-step-value');
+    if (!value) return;
+    const root = hero.closest('[data-budget-bento]') || document;
+    const closed = !!root.querySelector('[data-operating-plan="unavailable"]') || !moneyToken(text(value));
+    value.classList.toggle('is-fail-closed', closed);
   }
 
   function joinResultLabel(hero) {
@@ -313,12 +362,25 @@
 
   function billState(row) {
     const state = text(row.querySelector('.budget-bill-state'));
+    if (/\boverdue\b/i.test(state)) return 'overdue';
     if (!state || /status unavailable|unknown|unavailable|not observed/i.test(state)) return 'unknown';
     if (/paid/i.test(state) && !/not paid|unpaid|not confirmed/i.test(state)) return 'paid';
     if (/confirm|needs a date/i.test(state)) return 'confirm';
     if (/pending/i.test(state)) return 'pending';
     if (/not paid|^due\b|planned/i.test(state)) return 'due';
     return 'unknown';
+  }
+
+  function printedOverdueCount(section) {
+    const named = section.querySelector('[data-budget-overdue-count], [data-budget-bills-overdue]');
+    if (named) {
+      const found = text(named).match(/\d+/);
+      return found ? Number(found[0]) : 0;
+    }
+    const label = [...section.querySelectorAll('h3, .budget-browse-pill, p')].find(node => /^Overdue\s+\d+\b/i.test(text(node)));
+    if (!label) return null;
+    const found = text(label).match(/\d+/);
+    return found ? Number(found[0]) : null;
   }
 
   function paintBills(bento) {
@@ -335,22 +397,35 @@
     title.textContent = 'Bills';
     const rows = [...section.querySelectorAll('.budget-bill-row')];
     const confirmRows = rows.filter(row => billState(row) === 'confirm');
-    const flag = document.createElement('span');
-    flag.className = 'blend-flag';
-    flag.textContent = 'To confirm ' + confirmRows.length;
+    const overdueCount = printedOverdueCount(section);
     const remain = document.createElement('span');
     remain.className = 'blend-bills-of';
     const leftRaw = text(section.querySelector('[data-budget-browse-bills-remaining]'));
     const planRaw = text(section.querySelector('[data-budget-ratio="bills"] [data-budget-ratio-plan]'));
+    const billsStatus = text(section.querySelector('[data-budget-ratio="bills"]'));
     const leftMoney = moneyToken(leftRaw);
     const planMoney = moneyToken(planRaw);
-    if (leftMoney && planMoney) {
+    const statusUnavailable = !planMoney && /unknown|unavailable/i.test(billsStatus + ' ' + leftRaw);
+    if (leftMoney && planMoney && !statusUnavailable) {
       const est = /estimated|≈/.test(leftRaw + ' ' + planRaw) ? ' est.' : '';
       remain.textContent = leftMoney + ' left of ' + planMoney + est;
     } else {
-      remain.textContent = text(section.querySelector('.budget-browse-sub')) || 'Unavailable';
+      remain.textContent = 'Unavailable';
     }
-    head.append(title, flag, remain);
+    head.appendChild(title);
+    if (confirmRows.length > 0) {
+      const flag = document.createElement('span');
+      flag.className = 'blend-flag';
+      flag.textContent = 'To confirm ' + confirmRows.length;
+      head.appendChild(flag);
+    }
+    if (overdueCount > 0) {
+      const overdue = document.createElement('span');
+      overdue.className = 'blend-flag is-overdue';
+      overdue.textContent = 'Overdue ' + overdueCount;
+      head.appendChild(overdue);
+    }
+    head.appendChild(remain);
     const cal = document.createElement('div');
     cal.className = 'blend-cal';
     cal.setAttribute('data-blend-cal', '');
@@ -397,7 +472,8 @@
           mark.type = 'button';
           mark.className = 'blend-day-hit';
           mark.tabIndex = -1;
-          const state = billState(hits[0]);
+          const state = remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
+          if (state === 'overdue') day.classList.add('is-overdue');
           mark.dataset.s = state;
           mark.appendChild(billIcon(text(hits[0].querySelector('strong'))));
           const badge = document.createElement('i');
@@ -432,19 +508,22 @@
     const panel = document.createElement('div');
     panel.className = 'blend-face-off';
     panel.id = 'blend-bills-more';
-    panel.inert = true;
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'blend-panel-toggle';
     toggle.setAttribute('aria-expanded', 'false');
     toggle.setAttribute('aria-controls', panel.id);
     toggle.setAttribute('aria-label', 'Bills detail');
-    toggle.textContent = 'Details';
+    toggle.textContent = 'Details ›';
+    const openPanel = () => {
+      panel.classList.add('is-open');
+      toggle.setAttribute('aria-expanded', 'true');
+    };
     toggle.addEventListener('click', () => {
       const open = panel.classList.toggle('is-open');
-      panel.inert = !open;
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
+    panel.addEventListener('focusin', openPanel);
     head.appendChild(toggle);
     cal.after(panel);
     [...section.children].forEach(node => {
@@ -470,13 +549,34 @@
     button.setAttribute('aria-expanded', 'false');
     button.addEventListener('click', () => {
       button.setAttribute('aria-expanded', 'true');
+      button.setAttribute('data-blend-opened', '1');
       row.click();
+      if (!sheet || !sheet.open) button.removeAttribute('data-blend-opened');
     });
     if (sheet && sheet.dataset.blendRingClose !== '1') {
       sheet.dataset.blendRingClose = '1';
       sheet.addEventListener('close', () => {
+        const opened = document.querySelector('[data-blend-opened="1"]');
         document.querySelectorAll('.blend-ring[aria-expanded="true"], .blend-other[aria-expanded="true"]').forEach(node => {
           node.setAttribute('aria-expanded', 'false');
+        });
+        if (opened) {
+          opened.removeAttribute('data-blend-opened');
+          queueMicrotask(() => {
+            if (opened.isConnected) opened.focus({ preventScroll: true });
+          });
+          return;
+        }
+        queueMicrotask(() => {
+          const current = document.activeElement;
+          if (!current || current === document.body || !current.getBoundingClientRect) return;
+          const dock = document.querySelector('.sitenav-household');
+          const limit = dock && getComputedStyle(dock).position === 'fixed'
+            ? dock.getBoundingClientRect().top : window.innerHeight;
+          const box = current.getBoundingClientRect();
+          if (box.height < 1 || box.top < 0 || box.bottom > limit - 4) {
+            current.scrollIntoView({ block: 'center', inline: 'nearest' });
+          }
         });
       });
     }
@@ -675,8 +775,19 @@
         const label = text(node.querySelector('small'));
         return [amount, label].filter(Boolean).join(' ');
       }).filter(Boolean).join(' · ');
+      const savedSpan = [...row.querySelectorAll('.budget-goal-amounts > span')].find(node => /^saved$/i.test(text(node.querySelector('small'))));
+      const savedAmount = savedSpan ? text(savedSpan.querySelector('.budget-goal-amount')) : '';
       detail.textContent = status || (/Unavailable/i.test(amounts) ? 'Unavailable' : /Unknown/i.test(amounts) ? 'Unknown' : '');
-      item.append(name, detail);
+      const stack = document.createElement('span');
+      stack.className = 'blend-goal-status';
+      stack.appendChild(detail);
+      if (savedAmount) {
+        const saved = document.createElement('span');
+        saved.className = 'blend-goal-saved';
+        saved.textContent = 'Saved ' + savedAmount;
+        stack.appendChild(saved);
+      }
+      item.append(name, stack);
       list.appendChild(item);
     });
     if (!goals.length) {
