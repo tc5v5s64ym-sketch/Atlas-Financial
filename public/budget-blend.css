@@ -1,0 +1,573 @@
+/* Budget bento skin. Placement and paint only: every figure, label, and
+   fail-closed word still comes from the incumbent Budget markup.
+   Geist is not loaded: the page CSP allows no font source, so this file
+   keeps the existing system font stack. */
+
+:root {
+  --blend-bg: #eceef2;
+  --blend-glass: rgba(255, 255, 255, .92);
+  --blend-glass-chip: rgba(255, 255, 255, .78);
+  --blend-ink: #12141a;
+  --blend-ink-2: #3a3e49;
+  --blend-line: rgba(12, 14, 22, .12);
+  --blend-hero-0: #f4fbf7;
+  --blend-hero-1: #e7eef6;
+  --blend-income: #0c7a52;
+  --blend-bills: #3d36c4;
+  --blend-house: #086f8c;
+  --blend-goals: #a8246a;
+  --blend-focus: #3d36c4;
+  --blend-pay-bg: #0d0e12;
+  --blend-pay-ink: #f7f8fa;
+  --blend-pay-ink-2: #d5d7dc;
+  --blend-pay-acc: #e6b325;
+  --blend-shadow: 0 1px 1px rgba(16, 18, 27, .04), 0 12px 32px -18px rgba(16, 18, 27, .28);
+  --blend-radius: 28px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    --blend-bg: #050507;
+    --blend-glass: rgba(22, 23, 28, .94);
+    --blend-glass-chip: rgba(255, 255, 255, .08);
+    --blend-ink: #f5f6f8;
+    --blend-ink-2: #d5d7de;
+    --blend-line: rgba(255, 255, 255, .16);
+    --blend-hero-0: #07140f;
+    --blend-hero-1: #10131a;
+    --blend-income: #5ee0a8;
+    --blend-bills: #b1aeff;
+    --blend-house: #7adcf3;
+    --blend-goals: #f7a3cc;
+    --blend-focus: #b1aeff;
+    --blend-pay-bg: #f4f1ea;
+    --blend-pay-ink: #12141a;
+    --blend-pay-ink-2: #3e4450;
+    --blend-pay-acc: #8a5a00;
+    --blend-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 18px 40px -24px rgba(0, 0, 0, .75);
+  }
+}
+
+:root[data-theme="dark"] {
+  --blend-bg: #050507;
+  --blend-glass: rgba(22, 23, 28, .94);
+  --blend-glass-chip: rgba(255, 255, 255, .08);
+  --blend-ink: #f5f6f8;
+  --blend-ink-2: #d5d7de;
+  --blend-line: rgba(255, 255, 255, .16);
+  --blend-hero-0: #07140f;
+  --blend-hero-1: #10131a;
+  --blend-income: #5ee0a8;
+  --blend-bills: #b1aeff;
+  --blend-house: #7adcf3;
+  --blend-goals: #f7a3cc;
+  --blend-focus: #b1aeff;
+  --blend-pay-bg: #f4f1ea;
+  --blend-pay-ink: #12141a;
+  --blend-pay-ink-2: #3e4450;
+  --blend-pay-acc: #8a5a00;
+  --blend-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 18px 40px -24px rgba(0, 0, 0, .75);
+}
+
+body:has([data-budget-surface]) {
+  background:
+    radial-gradient(closest-side at -10% -20%, color-mix(in srgb, var(--blend-income) 24%, transparent), transparent 70%),
+    radial-gradient(closest-side at 110% 8%, color-mix(in srgb, var(--blend-bills) 20%, transparent), transparent 68%),
+    radial-gradient(closest-side at 30% 120%, color-mix(in srgb, var(--blend-goals) 16%, transparent), transparent 72%),
+    var(--blend-bg);
+  color: var(--text-primary);
+}
+
+body:has([data-budget-bento]) .wrap,
+body:has([data-budget-bento]) #operating-surface:has([data-budget-surface]) {
+  max-width: 1360px;
+}
+
+.budget-bento {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  font-family: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+.budget-surface .budget-bento :focus-visible,
+[data-budget-surface="unavailable"] :focus-visible {
+  outline: 3px solid var(--blend-focus);
+  outline-offset: 3px;
+}
+
+.budget-bento .budget-surface-period {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.budget-blend-hero-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 16px 16px;
+  border-radius: var(--blend-radius);
+  background:
+    radial-gradient(closest-side at 0% 0%, color-mix(in srgb, var(--blend-income) 22%, transparent), transparent 68%),
+    radial-gradient(closest-side at 100% 100%, color-mix(in srgb, var(--blend-house) 16%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--blend-hero-0), var(--blend-hero-1));
+  box-shadow: var(--blend-shadow), inset 0 0 0 1px var(--blend-line);
+  color: var(--text-primary);
+}
+
+/* The selected-window landmark stays a real box. Only its children join the
+   hero grid, so the payday block can sit beside the equation. */
+.budget-surface-today {
+  position: static;
+}
+
+@media (min-width: 960px) {
+  .budget-blend-hero-layout {
+    grid-template-columns: minmax(0, 1.7fr) minmax(220px, .86fr);
+    gap: 16px 18px;
+    padding: 22px 22px 18px;
+  }
+  .budget-blend-hero-layout > .budget-window-header {
+    display: contents;
+  }
+  .budget-blend-hero-layout .budget-window-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .budget-blend-hero-layout .budget-window-progress {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: stretch;
+  }
+  .budget-blend-hero-layout > .budget-surface-today {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .budget-blend-hero-layout > .calendar-waterfall {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .budget-blend-hero-layout > .budget-section-nav {
+    grid-column: 1 / -1;
+  }
+}
+
+.budget-bento .budget-window-header {
+  margin: 0;
+}
+
+.budget-bento .budget-window-title h1 {
+  font-size: clamp(26px, 3vw, 40px);
+  letter-spacing: -.03em;
+}
+
+.budget-bento .budget-window-progress {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 18px 18px 16px;
+  border-radius: var(--blend-radius);
+  background: var(--blend-pay-bg);
+  color: var(--blend-pay-ink);
+  box-shadow: var(--blend-shadow);
+}
+
+.budget-bento .budget-window-progress p,
+.budget-bento .budget-window-progress span,
+.budget-bento .budget-window-progress b {
+  color: var(--blend-pay-ink);
+}
+
+.budget-bento .budget-window-progress p {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.budget-bento .budget-window-progress p > span:first-child {
+  color: var(--blend-pay-ink-2);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.budget-bento .budget-window-progress p > span:last-child {
+  font-size: clamp(20px, 2vw, 28px);
+  font-weight: 650;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
+
+.budget-bento .budget-window-progress b {
+  color: var(--blend-pay-acc);
+}
+
+.budget-bento .budget-window-days span {
+  background: color-mix(in srgb, var(--blend-pay-ink) 22%, transparent);
+}
+
+.budget-bento .budget-window-days .is-past {
+  background: color-mix(in srgb, var(--blend-pay-ink) 55%, transparent);
+}
+
+.budget-bento .budget-window-days .is-today {
+  background: var(--blend-pay-acc);
+  outline-color: color-mix(in srgb, var(--blend-pay-acc) 35%, transparent);
+}
+
+/* Current balance and the Bills-period slot stay in the hero, in source order. */
+.budget-bento .budget-surface-today {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+}
+
+.budget-bento .budget-today-cash {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: var(--blend-glass-chip);
+  box-shadow: inset 0 0 0 1px var(--blend-line);
+}
+
+.budget-bento .budget-today-cash header {
+  display: contents;
+}
+
+.budget-bento .budget-cash-eyebrow,
+.budget-bento .budget-today-cash h2,
+.budget-bento .budget-cash-sub,
+.budget-bento .budget-cash-notice {
+  margin: 0;
+}
+
+.budget-bento .budget-today-cash h2 {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.budget-bento .budget-cash-hero {
+  margin: 0;
+  font-size: clamp(22px, 2.4vw, 32px);
+  line-height: 1.1;
+}
+
+.budget-bento .budget-cash-how {
+  margin-left: auto;
+}
+
+.budget-bento .budget-cash-next,
+.budget-bento .budget-cash-notice {
+  flex-basis: 100%;
+}
+
+.budget-bento .budget-bills-closing {
+  margin: 0;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--blend-glass);
+  box-shadow: inset 0 0 0 1px var(--blend-line);
+}
+
+.budget-bento .budget-bills-closing h2 {
+  font-size: 15px;
+}
+
+.budget-bento .budget-bills-closing-value {
+  font-size: clamp(26px, 3vw, 36px);
+}
+
+.budget-bento [data-bills-closing-state="unavailable"] .budget-bills-closing-value {
+  color: var(--text-primary);
+  font-size: clamp(22px, 2.4vw, 30px);
+}
+
+/* Equation: Income, Bills, Balance after bills, Household budget, then
+   Balance After Deductions and Planned Savings. Source order is the
+   reading order, so keyboard focus does not jump backwards. */
+.budget-bento .calendar-waterfall {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  position: relative;
+}
+
+.budget-bento .calendar-waterfall-head,
+.budget-bento .budget-period-flow-heading,
+.budget-bento .budget-period-info {
+  grid-column: 1 / -1;
+}
+
+.budget-bento .budget-period-flow-heading {
+  padding: 4px 4px 0;
+  margin: 0;
+}
+
+.budget-surface .budget-bento .budget-step .budget-step-summary,
+.budget-surface .budget-bento [data-budget-period-result] > details > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "op title chev"
+    "value value value";
+  gap: 2px 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: var(--blend-glass-chip);
+  box-shadow: inset 0 0 0 1px var(--blend-line);
+}
+
+/* The period surface pins Balance after bills and the result into
+   columns 4 and 5 of the old five-column summary. Those columns do
+   not exist on this three-column chip, and they were squeezing the
+   label. Place each child explicitly. */
+.budget-surface .budget-bento .budget-step-summary > .operating-number {
+  grid-area: op;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.budget-surface .budget-bento .budget-step-summary > .budget-step-title {
+  grid-area: title;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.budget-surface .budget-bento .budget-step-summary > .budget-step-value {
+  grid-area: value;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.budget-surface .budget-bento .budget-step-summary > .budget-step-chevron {
+  grid-area: chev;
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.budget-bento .budget-step-summary .operating-number {
+  grid-area: op;
+  color: var(--blend-ink-2);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.budget-bento .budget-step-title {
+  grid-area: title;
+  min-width: 0;
+}
+
+.budget-bento .budget-step-summary .operating-prompt {
+  display: block;
+  min-width: 0;
+  overflow-wrap: break-word;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.budget-bento .budget-step-value {
+  grid-area: value;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: break-word;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-bento .budget-step-chevron {
+  grid-area: chev;
+  justify-self: end;
+  align-self: center;
+  color: var(--blend-ink-2);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.budget-bento .budget-waterfall-track {
+  display: none;
+}
+
+.budget-bento [data-operating-question="02"] > details > summary {
+  box-shadow: inset 3px 0 0 var(--blend-income), inset 0 0 0 1px var(--blend-line);
+}
+
+.budget-bento [data-operating-question="04"] > details > summary {
+  box-shadow: inset 3px 0 0 var(--blend-bills), inset 0 0 0 1px var(--blend-line);
+}
+
+.budget-bento [data-operating-question="06"] > details > summary {
+  box-shadow: inset 3px 0 0 var(--blend-house), inset 0 0 0 1px var(--blend-line);
+}
+
+.budget-bento [data-operating-question="07"] > details > summary,
+.budget-bento [data-budget-period-result] > details > summary {
+  background: var(--blend-glass);
+  padding-block: 12px;
+}
+
+.budget-bento [data-operating-question="07"] .budget-step-value,
+.budget-bento [data-budget-period-result] .budget-step-value {
+  font-size: clamp(28px, 4.2vw, 64px);
+  font-weight: 650;
+  letter-spacing: -.04em;
+  line-height: 1.05;
+}
+
+.budget-bento [data-operating-question="07"] .operating-prompt,
+.budget-bento [data-budget-period-result] .operating-prompt {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.budget-bento [data-operating-question="05"] > details > summary {
+  background: transparent;
+  box-shadow: none;
+  padding-block: 6px;
+}
+
+.budget-bento [data-operating-question="05"] .budget-step-value {
+  font-size: 16px;
+}
+
+.budget-bento [data-budget-savings-stock] > details > summary {
+  border-radius: 999px;
+  background: var(--blend-glass);
+}
+
+.budget-bento [data-budget-savings-stock] .operating-prompt {
+  color: var(--blend-goals);
+}
+
+@media (min-width: 1100px) {
+  .budget-bento .calendar-waterfall {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .budget-bento [data-operating-question="07"],
+  .budget-bento [data-operating-question="savings"],
+  .budget-bento [data-budget-savings-stock] {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Bills, Household, and Goals — the sections the page already renders. */
+.budget-bento .budget-browse-grid,
+.budget-bento .budget-funding-grid {
+  gap: 16px;
+  margin-top: 0;
+}
+
+.budget-bento .budget-browse-card,
+.budget-bento .budget-funding-card,
+.budget-bento .budget-funding-sidebar .budget-surface-card,
+.budget-bento .budget-savings-goals,
+.budget-bento .budget-browse-attention {
+  background: var(--blend-glass);
+  border: 1px solid var(--blend-line);
+  border-radius: var(--blend-radius);
+  box-shadow: var(--blend-shadow);
+}
+
+.budget-bento .budget-browse-spending {
+  box-shadow: var(--blend-shadow), inset 3px 0 0 var(--blend-house);
+}
+
+.budget-bento .budget-browse-bills {
+  box-shadow: var(--blend-shadow), inset 3px 0 0 var(--blend-bills);
+}
+
+.budget-bento .budget-savings-goals {
+  box-shadow: var(--blend-shadow), inset 3px 0 0 var(--blend-goals);
+}
+
+.budget-bento .budget-browse-attention {
+  margin-top: 0;
+}
+
+@media (min-width: 960px) {
+  .budget-bento > .budget-surface-grid,
+  .budget-bento > .budget-blend-card-movements,
+  .budget-bento > .budget-browse-attention,
+  .budget-bento > .budget-funding-section,
+  .budget-bento > .budget-browse-grid {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Card movement stays the section #546 publishes. The glass tile is the
+   wrapper. The strip itself keeps a transparent background and no border:
+   test/browser-card-period-movements.js reads those computed values. */
+.budget-blend-card-movements {
+  min-width: 0;
+  padding: 16px 16px 8px;
+  border-radius: var(--blend-radius);
+  background: var(--blend-glass);
+  border: 1px solid var(--blend-line);
+  box-shadow: var(--blend-shadow);
+}
+
+.budget-blend-card-movements .card-movement-strip {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.budget-blend-card-movements .card-movement-track {
+  min-width: 0;
+}
+
+/* Fail-closed plan: same words, glass card, nothing removed. */
+[data-budget-surface="unavailable"] .budget-surface-unavailable {
+  background: var(--blend-glass);
+  border: 1px solid var(--blend-line);
+  border-radius: var(--blend-radius);
+  box-shadow: var(--blend-shadow);
+  color: var(--text-primary);
+}
+
+[data-budget-surface="unavailable"] .budget-surface-unavailable :is(p, li, h2, strong, span) {
+  color: inherit;
+}
+
+@media (max-width: 959px) {
+  .budget-bento .budget-window-progress {
+    width: 100%;
+    margin-top: 8px;
+  }
+  .budget-bento .budget-today-cash {
+    border-radius: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-bento,
+  .budget-bento::before,
+  .budget-bento::after,
+  .budget-bento *,
+  .budget-bento *::before,
+  .budget-bento *::after,
+  [data-budget-surface="unavailable"],
+  [data-budget-surface="unavailable"] * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
