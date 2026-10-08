@@ -267,14 +267,14 @@
   "heroTerms": [
     {
       "key": "periodIncome",
-      "shown": "≈ estimated $4,050.00",
-      "chip": false,
+      "shown": "$4,050.00",
+      "chip": true,
       "trust": "estimated"
     },
     {
       "key": "assignedBills",
-      "shown": "≈ estimated $1,665.00",
-      "chip": false,
+      "shown": "$1,665.00",
+      "chip": true,
       "trust": "estimated"
     },
     {
@@ -285,8 +285,8 @@
     },
     {
       "key": "balanceAfterDeductions",
-      "shown": "≈ estimated $1,632.01",
-      "chip": false,
+      "shown": "$1,632.01",
+      "chip": true,
       "trust": "estimated"
     }
   ],
@@ -492,26 +492,26 @@
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00 ≈ estimated $4,050.00",
+        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00 $4,050.00 est.",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          247,
-          43
+          170,
+          69
         ],
         "pass": true
       },
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00 ≈ estimated $1,665.00",
+        "text": "Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00 $1,665.00 est.",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          247,
-          43
+          170,
+          69
         ],
         "pass": true
       },
@@ -523,7 +523,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          135,
+          186,
           43
         ],
         "pass": true
