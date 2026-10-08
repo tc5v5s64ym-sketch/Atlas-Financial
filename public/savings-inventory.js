@@ -10,7 +10,19 @@
     'cash-unknown': 'Cash unknown', 'intent-unknown': 'Assignments unknown',
     'pending-evidence': 'Pending evidence', 'goal-unresolved': 'Goal needs reconciliation' };
   const amount = (label, value, trust, attr) => `<div class="savings-inventory-fact"${attr ? ` data-savings-${attr}` : ''}><dt>${label}</dt><dd>${money(value)} <small>${escape(trust || 'unknown')}</small></dd></div>`;
-  function html(inventory) {
+  function html(inventory, context = {}) {
+    if (inventory?.source === 'Forecast.savingsDailyFunding' || context.plan?.savingsEarmarks?.allocationPolicy != null) {
+      const forecast = root.Forecast || (typeof require === 'function' ? require('./forecast') : null);
+      const packet = forecast?.savingsFundingPublication(inventory, context);
+      if (!packet) {
+        return '<section class="savings-inventory" data-savings-inventory="unavailable"><h2>One savings pot</h2><p>Shared savings evidence is unavailable. No zero saved balance has been assumed.</p></section>';
+      }
+      if (packet.allocationMode === 'historical-pools' && packet.manualInventory)
+        return html(packet.manualInventory);
+      const rows = (packet.rows || []).map(row => `<article data-savings-goal="${escape(row.key)}"><h3>${escape(row.label)}</h3><dl>${amount('Currently backed', row.saved, row.savedTrust, 'backed')}${amount('Needed', row.needed, row.neededTrust, 'needed')}${amount('Projected this period', row.thisPeriod, row.thisPeriodTrust)}</dl></article>`).join('');
+      const pools = (packet.backing?.pools || []).map(pool => `<li>${escape(pool.label || pool.accountId)}: ${money(pool.observedCash)} <small>${escape(pool.observedAsOf || 'Date unavailable')}</small></li>`).join('');
+      return `<section class="savings-inventory" data-savings-inventory="${escape(packet.backing?.status || 'unavailable')}"><h2>One savings pot</h2><p>Observed stock as of ${escape(packet.asOf)}: ${money(packet.stock?.amount)}. Currently backed amounts follow unpaid planning dates across both reserves.</p><p>Calculated backing is separate from manual assignments, actual transfers and future projected top-ups.</p>${packet.backing?.reason ? '<p>'+escape(packet.backing.reason)+'</p>' : ''}${rows}<details><summary>Accounts &amp; evidence</summary><ul>${pools}</ul><p>Physical withdrawal routing and money movement are not authorized by this view.</p></details></section>`;
+    }
     const packet = inventory || { status: 'setup-unknown', reason: 'Savings setup is unknown.' };
     const head = '<h2>Savings assigned to goals</h2>';
     if (packet.status !== 'ready') return `<section class="savings-inventory" data-savings-inventory="${escape(packet.status)}">${head}<p>${escape(packet.reason)}</p><p class="operating-note">Starting assignments are unknown. No zero saved balance has been assumed.</p>${packet.instructionReason ? `<p>${escape(packet.instructionReason)}</p>` : ''}</section>`;

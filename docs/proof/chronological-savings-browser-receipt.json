@@ -1,0 +1,153 @@
+{
+  "head": "d958d72aad66ba4504d13f35c5ecd97b5ec2d911",
+  "cases": [
+    {
+      "mode": "ready",
+      "width": 1440,
+      "backing": "ready",
+      "clubSaved": 95
+    },
+    {
+      "mode": "deposit",
+      "width": 1440,
+      "backing": "ready",
+      "clubSaved": 105
+    },
+    {
+      "mode": "settled",
+      "width": 1440,
+      "backing": "ready",
+      "clubSaved": 95
+    },
+    {
+      "mode": "missing",
+      "width": 1440,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "stale",
+      "width": 1440,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "pending",
+      "width": 1440,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "negative",
+      "width": 1440,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "undated",
+      "width": 1440,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "ready",
+      "width": 390,
+      "backing": "ready",
+      "clubSaved": 95
+    },
+    {
+      "mode": "deposit",
+      "width": 390,
+      "backing": "ready",
+      "clubSaved": 105
+    },
+    {
+      "mode": "settled",
+      "width": 390,
+      "backing": "ready",
+      "clubSaved": 95
+    },
+    {
+      "mode": "missing",
+      "width": 390,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "stale",
+      "width": 390,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "pending",
+      "width": 390,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "negative",
+      "width": 390,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "undated",
+      "width": 390,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "ready",
+      "width": 320,
+      "backing": "ready",
+      "clubSaved": 95
+    },
+    {
+      "mode": "deposit",
+      "width": 320,
+      "backing": "ready",
+      "clubSaved": 105
+    },
+    {
+      "mode": "settled",
+      "width": 320,
+      "backing": "ready",
+      "clubSaved": 95
+    },
+    {
+      "mode": "missing",
+      "width": 320,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "stale",
+      "width": 320,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "pending",
+      "width": 320,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "negative",
+      "width": 320,
+      "backing": "unavailable",
+      "clubSaved": null
+    },
+    {
+      "mode": "undated",
+      "width": 320,
+      "backing": "unavailable",
+      "clubSaved": null
+    }
+  ],
+  "errors": [],
+  "external": [],
+  "fixture": "independently invented chronological-savings-data",
+  "checks": "real App.boot; three Budget views and Plan Spend; calculator fallbacks forbidden; 320/390/1440px; keyboard/focus; unknown evidence; redraw immutability"
+}

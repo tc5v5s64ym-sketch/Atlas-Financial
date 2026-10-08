@@ -908,6 +908,24 @@
         "path": "data.json",
         "json_pointer": "/plan/bills/27"
       }
+    },
+    {
+      "id": "SAVINGS-ONE-POT-001",
+      "source": "docs/source_intake/CHRONOLOGICAL_SAVINGS_ONE_POT_2026-10-07.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/savingsEarmarks/allocationPolicy"
+      }
+    },
+    {
+      "id": "LINDEN-PLANNING-DATE-001",
+      "source": "docs/source_intake/CHRONOLOGICAL_SAVINGS_ONE_POT_2026-10-07.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/11/date"
+      }
     }
   ]
 }

@@ -109,7 +109,7 @@ function planSpendFundingHero(schedule) {
 function planSpendScheduledFacts(cost) {
   if (!cost) return '<p>Funding schedule unavailable for this cost.</p>';
   return `<dl class="plan-spend-facts">
-    ${planSpendFact('protected', 'Already saved for this cost', planSpendMoney(cost.protectedNow))}
+    ${planSpendFact('protected', cost.backingBasis === 'policy-derived-observed-backing' ? 'Currently backed for this cost' : 'Already saved for this cost', planSpendMoney(cost.protectedNow))}
     ${planSpendFact('remaining', 'Still to fund in this plan', planSpendMoney(cost.stillToFund))}
     ${planSpendFact('next', 'Next contribution', cost.nextContribution
       ? `${planSpendMoney(cost.nextContribution.amount)} on ${fmtDateFull(cost.nextContribution.payday)}` : 'No contribution scheduled')}
@@ -150,7 +150,23 @@ function planSpendScheduledCard(card, cost, schedule, byId) {
       <span data-plan-spend-when>${planSpendTiming(card).text}</span><div class="plan-spend-status">${status}${planSpendConfidence(card)}</div>${facts}</div>${details}</article>`;
 }
 
-function planSpendPageHtml(advice, liveOverlay) {
+// Select the shared Forecast publication. A malformed current packet cannot
+// silently fall back to the older publication alias.
+function planSpendFundingSchedule(advice, context = {}) {
+  if (advice.savingsFunding == null && context.plan?.savingsEarmarks?.allocationPolicy == null)
+    return advice.planSpendPaydayFunding;
+  const packet = Forecast.savingsFundingPublication(advice.savingsFunding, { ...context, advice });
+  const schedule = packet?.schedule;
+  if (!schedule || schedule.source !== 'Forecast.planSpendPaydayFunding' || schedule.asOf !== packet.asOf
+      || !Array.isArray(schedule.costs) || !Array.isArray(schedule.groups)
+      || !Array.isArray(schedule.paydays)) {
+    return { status: 'unavailable', reason: 'Shared savings funding publication is unavailable.',
+      costs: [], groups: [], paydays: [] };
+  }
+  return schedule;
+}
+
+function planSpendPageHtml(advice, liveOverlay, context = {}) {
   advice = advice || {};
   const unavailable = advice.operatingPlanUnavailable === true
     || (liveOverlay && liveOverlay.operatingPlan === 'unavailable');
@@ -167,7 +183,7 @@ function planSpendPageHtml(advice, liveOverlay) {
     return { lede: '', list: '<div class="note-box crit" data-plan-spend="cards-unavailable">Plan spend cards are unavailable.</div>', note: '' };
   }
   const cards = Forecast.planSpendCards(plans);
-  const schedule = advice.planSpendPaydayFunding;
+  const schedule = planSpendFundingSchedule(advice, context);
   const costById = new Map((schedule && schedule.costs || []).map(cost => [cost.id, cost]));
   const groupById = new Map((schedule && schedule.groups || []).map(group => [group.id, group]));
   const list = cards.map(card => planSpendScheduledCard(card,
@@ -191,14 +207,17 @@ function planSpendAdvice(d, periods) {
     currentPeriodActuals: actuals,
     operatingPlan: overlay && overlay.operatingPlan,
     operatingPlanNote: overlay && overlay.operatingPlanNote,
+    observedCash: overlay && overlay.observedCash,
   });
 }
 
 function renderPlanSpend(d, periods) {
   const advice = planSpendAdvice(d, periods);
-  const html = planSpendPageHtml(advice, d.liveOverlay);
+  const context = { advice, plan: d.plan, asOf: d.meta.asOf };
+  const html = planSpendPageHtml(advice, d.liveOverlay, context);
   const inventoryMount = $('savings-inventory');
-  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = SavingsInventory.html(advice.savingsInventory);
+  if (inventoryMount && typeof SavingsInventory !== 'undefined') inventoryMount.innerHTML = SavingsInventory.html(
+    advice.savingsFunding || (d.plan.savingsEarmarks?.allocationPolicy == null ? advice.savingsInventory : null), context);
   const lede = $('plan-spend-lede');
   const list = $('plan-spend-list');
   const note = $('plan-spend-note');

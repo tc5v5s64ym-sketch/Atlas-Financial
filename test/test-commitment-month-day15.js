@@ -53,7 +53,6 @@ const OWNER_DAY15 = {
   'san-diego': { date: '2027-01-15', amount: 3000, when: 'Jan 2027' },
 };
 const LEFT_UNDATED = {
-  'burrards-linden-team-fee': 'Approval and due date pending',
   'provincials': 'timing TBD',
 };
 const RETIRED = ['downstairs-couch', 'exterior-painting', 'vehicle-maintenance', 'indio-tournament', 'burrards-team-fees'];
@@ -108,6 +107,11 @@ ok(byId['san-diego'] && byId['san-diego'].tripWindow === 'Jan 8–9, 2027'
   'san-diego keeps the owner trip window and is a point amount');
 ok(byId.provincials && near(byId.provincials.amount, 1500) && byId.provincials.date == null,
   'provincials is the owner-confirmed $1,500 with timing still TBD');
+const lindenTeam = byId['burrards-linden-team-fee'];
+ok(lindenTeam && lindenTeam.date === '2026-10-20' && near(lindenTeam.amount, 340)
+    && lindenTeam.confidence === 'estimated' && lindenTeam.paid !== true
+    && /approval, payment instructions and invoice due date pending/i.test(lindenTeam.when),
+  'owner October 20 planning date preserves the estimated amount and unknown invoice/approval');
 for (const [id, when] of Object.entries(LEFT_UNDATED)) {
   const row = byId[id];
   ok(row && row.date == null && row.when === when && independentMonth15(when) == null,

@@ -1,0 +1,34 @@
+# Prospective Systems findings: bounded savings repair
+
+Independent review [5450037177](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/547#pullrequestreview-5450037177) blocked exact head `4850aea8f53476236abafb399b7365ae9e163cd9`. The three confirmed findings are repaired together because they govern the same native publication and its consumers. The independent review remains blocking until the coordinator accepts a fresh exact-head review. No self-issued Systems PASS or merge is claimed.
+
+| Confirmed finding | Repair | Verification |
+|---|---|---|
+| Grouped calculated backing said “Already saved” despite unknown actual saving. | Forecast groups preserve member backing provenance and `actualSaved: null`. Plan Spend uses the existing calculated-backing label. Confirmed historical assignments keep their existing label. | Invented native group: calculated backing 95.00; actual saving unknown; rendered label “Currently backed for this cost.” |
+| Missing/stale packets held Budget but left Plan Spend/Inventory using old backing and action amounts. | `Forecast.savingsFundingPublication` qualifies the shared packet against the independent native opening and period. Budget, Plan Spend and Inventory use this selector. Current canonical policy cannot borrow the older alias. Current, future and historical windows stay distinct. | Missing/stale/malformed/currency/window/allocation/schedule controls withhold; native pending stock remains 119.00 while permission stays held. Actual App.boot at 1440/390/320px verifies both pages, keyboard sheet entry/Escape focus restoration, redraw and no overflow. |
+| Fully backed valid payments before the next payday disabled projections. | The serial native funding producer publishes its already uniquely matched current-cycle payments. The same location projection consumes that roster and future payday payment rows once, matching native expense and backed cents. | Independent literal cents below; both reserve deposit controls; annual payment exactly once; actual saving and transfers remain unknown. Missing price/pending controls still hold. |
+
+The pre-payday fixture is independently invented: observed savings 200.98, operating cash 80.00; cash planning payments 12.13 on October 9, annual card planning requirement 30.21 on October 11, 40.07 on October 15, 90.22 on October 20; future receipt 77.00 on November 2. The expected location ledger is:
+
+| Date | Operating cents | Savings cents | Combined cents |
+|---|---:|---:|---:|
+| 2026-10-07 | 8000 | 20098 | 28098 |
+| 2026-10-09 | 8000 | 18885 | 26885 |
+| 2026-10-11 | 8000 | 15864 | 23864 |
+| 2026-10-15 | 8000 | 11857 | 19857 |
+| 2026-10-20 | 8000 | 2835 | 10835 |
+| 2026-11-02 | 15700 | 2835 | 18535 |
+
+A settled invented 11.11 deposit into either reserve subtracts 1111 cents from each operating row and adds 1111 to each savings row; combined cents stay identical. Moving the same requirements after the next payday is a separate positive control. Annual card costs retain incumbent reserved planning gravity; this is not a physical card purchase or debt posting.
+
+`test/test-chronological-savings-review-boundaries.js` retains the reviewer's literal financial expectations. It is RED on the frozen published head and passes on the repaired implementation. The original 16-case independent allocation oracle, 70-case daily-allocation contract and 345-check provider stock suite remain unchanged. The Month guard now uses a qualified native invented publication and adds stale/malformed rejection; its old alias, legacy knob, trust, ordering and financial-arithmetic prohibitions remain.
+
+The frozen `4850aea8` required full run completed all 337 suites with exit 0, unchanged head, at 2026-10-08 00:45:07 UTC. That result belongs to the reviewed defective head. The next candidate registers the new review suite (338 total) and needs its own exact-head full result, browser receipts and independent review. Safe terminal receipts and exact hashes are reported in the draft; raw canonical test logs are not published.
+
+This repair does not change `data.json`, household amounts, baseline assignments, the independent allocation oracle, upstream Budget layout/CSS, card implementation or #546. Accepted #546 integration and main retarget remain separate coordinator work. Full #480 visual parity and real-data acceptance remain outstanding.
+
+Actual invented 320px captures show the [corrected calculated-backing label](chronological-savings-plan-spend-320.png), [missing shared packet](chronological-savings-publication-missing-320.png), and [stale shared packet](chronological-savings-publication-stale-320.png). The existing Budget Today/next-payday desktop/mobile comparison images are unchanged. Whole-page typography, spacing, timeline density and the rest of the approved design remain separate visual closure work; passing this repair's financial/browser controls does not close that checklist.
+
+Independent prospective [re-review 5450381937](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/547#pullrequestreview-5450381937) verified all three named findings closed on `c94fe48b577c6c76c4b80beaa50fb534a7684c5a`. It explicitly did not issue merge-ready Systems PASS on the temporary base. The hosted 338-suite run subsequently found one legacy output-shape regression: `currentPayments: []` was added even when savings configuration was absent. That namespace is now published only under the active combined policy. The unchanged immutable before/after test passes, preserving every incumbent field; current pre-payday and money/trust controls still pass. No baseline invariant is excluded or weakened. Hosted full correctness and a fresh exact-head independent review remain required.
+
+The accepted-main `76a602c` review was superseded by [annual-waiver BLOCK 5450804412](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/547#pullrequestreview-5450804412). External candidate `91cf57a` repaired a single waiver but independent controls found two remaining failures: two waived years exceeded the fixed search window when no later cost extended it, and null/empty amounts were coerced to known zero. After that worker ended, Codex resumed the authorized bounded repair. One complete native annual cycle beyond the latest dated waiver/firstDue now bounds requirement discovery from the finite evidence, rather than an arbitrary lookahead. Strict whole-cent amount qualification precedes the known-zero check; unknown requirements stay unresolved. The two-waiver controls expect a payable 2028-10-25 cost backed by 61 of the invented 119 stock, with 58 remaining or backing the later 88 cost. First-payable and single-waiver controls remain; four null/empty controls preserve unknowns with and without a waiver. No canonical input, amount, baseline, card, provider or consumer change is part of this follow-up. Independent exact-head acceptance and hosted full checks are still required.

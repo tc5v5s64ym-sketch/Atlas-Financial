@@ -15,13 +15,14 @@ const approved = ids.map(id => {
   return rows.find(r => r.id === id);
 });
 assert.deepEqual(approved.map(r => cents(r.amount)), [20288, 20287, 34000]);
-assert.deepEqual(approved.map(r => r.date || null), ['2026-10-16', '2026-11-01', null]);
+assert.deepEqual(approved.map(r => r.date || null), ['2026-10-16', '2026-11-01', '2026-10-20']);
 assert.deepEqual(approved.map(r => r.confidence), ['confirmed', 'confirmed', 'estimated']);
 assert.ok(approved.every(r => r.budgetCategory === 'sport' && r.sinkingFund === true
   && !r.settledOn && r.funded == null && r.actualSaved == null));
 assert.equal(approved.slice(0, 2).reduce((n, r) => n + cents(r.amount), 0), 40575);
 assert.equal(approved.reduce((n, r) => n + cents(r.amount), 0), 74575);
-assert.equal(F.commitmentCashDate(approved[2]), null, 'Linden has no manufactured month/day');
+assert.equal(F.commitmentCashDate(approved[2]), '2026-10-20', 'Linden uses the explicit October 7 owner planning-date update');
+assert.match(approved[2].note, /invoice due date remain unknown/, 'planning date does not establish an invoice due date');
 for (const id of ['burrard1', 'burrard2']) {
   assert.equal(rows.find(r => r.id === id).settledOn, '2026-08-16', 'paid registrations are separate');
 }

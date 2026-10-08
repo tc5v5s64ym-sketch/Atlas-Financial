@@ -25,6 +25,9 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['one chronological savings publication and independent allocation oracle', 'test-chronological-savings-publication.js'],
+  ['combined savings location conservation and publication gates', 'test-chronological-savings-conservation.js'],
+  ['independent savings review boundary and pre-payday conservation controls', 'test-chronological-savings-review-boundaries.js'],
   ['scheduled fee actual cost, reserve and bounded bill recognition', 'test-scheduled-fee-routing.js'],
   ['real financial calendar identity and hypothetical conservation', 'test-financial-calendar-identity.js'],
   ['posted income and unresolved future occurrence cash gate', 'test-early-income-uncertainty.js'],

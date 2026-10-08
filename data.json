@@ -8,6 +8,11 @@
     },
     "plan": {
         "savingsEarmarks": {
+            "allocationPolicy": {
+                "order": "due-date-first-combined-pool",
+                "effectiveFrom": "2026-10-07",
+                "source": "Owner instruction 2026-10-07 21:13 UTC: one combined savings pot; see docs/source_intake/CHRONOLOGICAL_SAVINGS_ONE_POT_2026-10-07.md."
+            },
             "version": 1,
             "currency": "CAD",
             "pools": [
@@ -854,14 +859,15 @@
             },
             {
                 "id": "burrards-linden-team-fee",
-                "label": "Linden Burrards team fee — proposal held",
+                "date": "2026-10-20",
+                "label": "Linden Burrards team fee - estimated plan",
                 "amount": 340,
-                "when": "Approval and due date pending",
+                "when": "October 20 owner planning date; approval, payment instructions and invoice due date pending",
                 "budgetCategory": "sport",
                 "confidence": "estimated",
                 "group": "burrards-team-fees",
                 "sinkingFund": true,
-                "note": "Owner approved retaining the provisional U11 $340 as an undated protected hold on 2026-10-01. Team approval, payment instructions and due date remain unknown. Unpaid; no due date, actual saving or settlement is invented. Distinct from paid August registrations. See docs/source_intake/BURRARDS_TEAM_FEES_2026-10-01.md."
+                "note": "Owner supplied October 20, 2026 as the planning date on 2026-10-07. Amount remains estimated. Team approval, payment instructions and invoice due date remain unknown. Unpaid; no actual saving, transfer or settlement is asserted. Distinct from paid August registrations. Earlier undated hold retained as history: docs/source_intake/BURRARDS_TEAM_FEES_2026-10-01.md. Updated source: docs/source_intake/CHRONOLOGICAL_SAVINGS_ONE_POT_2026-10-07.md."
             },
             {
                 "id": "seattle-nov",

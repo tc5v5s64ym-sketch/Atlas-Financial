@@ -599,9 +599,25 @@ check('P9a: no page-side ordering of costs in the slice 8 region', () => {
   assert.doesNotMatch(slice8Region, /\.sort\(/, 'no sort() — Forecast order kept');
 });
 
-check('R1b: the slice 8 region never reads the advice context', () => {
-  assert.doesNotMatch(slice8Region, /src\.advice/, 'no src.advice read — the schedule is computed, not inherited');
-  assert.doesNotMatch(slice8Region, /advice\.planSpendPaydayFunding/, 'no advice publication read');
+check('R1b: current policy selects the sealed publication; legacy trajectory stays input-matched', () => {
+  const legacyRegion = slice8Region.slice(slice8Region.indexOf("// The trajectory's own inputs"));
+  assert.doesNotMatch(legacyRegion, /src\.advice/, 'legacy trajectory never inherits the earlier advice context');
+  assert.doesNotMatch(slice8Region, /advice\.planSpendPaydayFunding/, 'no rival schedule alias read');
+  const invented = require('./fixtures/chronological-savings-data').data('ready');
+  const advice = F.recommend(invented.plan, invented.meta.asOf, { weeklyVariable: 40, ...invented.liveOverlay });
+  const schedule = advice.savingsFunding.schedule;
+  const src = { asOf: invented.meta.asOf, plan: invented.plan, advice };
+  assert.equal(P.budgetMonthPlanSpendSchedule(src), schedule, 'current policy uses the exact shared schedule');
+  for (const mutate of [packet => { packet.asOf = '2026-10-06'; }, packet => { packet.rows = {}; }]) {
+    const packet = JSON.parse(JSON.stringify(advice.savingsFunding)); mutate(packet);
+    const rejected = P.budgetMonthPlanSpendSchedule({ ...src, advice: { ...advice, savingsFunding: packet } });
+    assert.equal(rejected.status, 'unavailable', 'stale/malformed publication cannot borrow precise schedule figures');
+    assert.equal(rejected.paydays.length, 0);
+  }
+  delete src.advice.savingsFunding;
+  const withheld = P.budgetMonthPlanSpendSchedule(src);
+  assert.equal(withheld.status, 'unavailable', 'missing current publication cannot recompute a rival schedule');
+  assert.equal(withheld.paydays.length, 0);
   assert.ok(planSource.includes('budgetMonthFundingPressureHtml(month, budgetMonthPlanSpendSchedule(src))'),
     'the month view wires the input-matched schedule into the block');
 });
