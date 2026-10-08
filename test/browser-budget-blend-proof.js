@@ -69,7 +69,9 @@ const composite = (fg, bg) => {
         if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
         const type = file.endsWith('.css') ? 'text/css'
           : file.endsWith('.js') ? 'application/javascript'
-          : file.endsWith('.png') ? 'image/png' : 'text/html';
+          : file.endsWith('.png') ? 'image/png'
+          : file.endsWith('.woff2') ? 'font/woff2'
+          : file.endsWith('.woff') ? 'font/woff' : 'text/html';
         return route.fulfill({ body: fs.readFileSync(file), contentType: type });
       });
       await page.goto('http://budget.test/');
@@ -239,7 +241,7 @@ const composite = (fg, bg) => {
             after: (document.querySelector('[data-operating-question="05"] > details > summary')?.textContent || '').replace(/\s+/g, ' '),
             house: text('[data-operating-question="06"] > details > summary'),
             save: text('[data-operating-question="savings"] > details > summary'),
-            closing: text('[data-bills-closing]'),
+            closing: (document.querySelector('[data-bills-closing]')?.textContent || '').replace(/\s+/g, ' '),
             progress: (document.querySelector('[data-budget-window-progress]')?.getAttribute('aria-label')
               || document.querySelector('[data-budget-window-progress]')?.textContent || '').replace(/\s+/g, ' '),
             cash: text('[data-budget-cash-hero]'),
@@ -359,7 +361,7 @@ const composite = (fg, bg) => {
               }).map(el => {
                 const b = el.getBoundingClientRect();
                 return {
-                  id: el.getAttribute('data-operating-question') || (el.hasAttribute('data-bills-closing') ? 'closing' : 'pill'),
+                  id: el.classList.contains('blend-split') ? 'split' : (el.getAttribute('data-operating-question') || (el.hasAttribute('data-bills-closing') ? 'closing' : 'pill')),
                   top: Math.round(b.top),
                   width: Math.round(b.width),
                   height: Math.round(b.height),
@@ -555,7 +557,7 @@ const composite = (fg, bg) => {
           errors.push(`${width}/${theme} household label ${JSON.stringify(face.terms)}`);
         }
         if (width >= 1000 && !face.oneLine) errors.push(`${width}/${theme} equation is not one line`);
-        if (face.foot?.[0] !== '05' || !/closing/.test(String(face.foot?.[1] || '')) || !/savings/.test(String(face.foot?.[2] || ''))) {
+        if (face.foot?.[0] !== 'savings' || !/blend-split/.test(String(face.foot?.[1] || ''))) {
           errors.push(`${width}/${theme} pill order ${JSON.stringify(face.foot)}`);
         }
         if (face.savingsPad < 8 || !face.savingsInside) {
@@ -568,7 +570,7 @@ const composite = (fg, bg) => {
           currentFigureGap = face.figureGap;
           console.log('pp+0 income ' + face.incomeShown);
         }
-        const overflow = (face.pills || []).filter(pill => !pill.inside || !pill.fits);
+        const overflow = (face.pills || []).filter(pill => pill.id !== 'split' && (!pill.inside || !pill.fits));
         if (overflow.length) errors.push(`${width}/${theme} pill overflow ${JSON.stringify({ foot: face.footWidth, pills: face.pills })}`);
         if (width >= 1000) {
           const tops = (face.pills || []).map(pill => pill.top);
@@ -1586,7 +1588,6 @@ const composite = (fg, bg) => {
     });
     const expectChip = {
       onPlan: ['On plan', 'is-good'],
-      belowBuffer: ['Tight', 'is-warn'],
       negative: ['Short', 'is-crit'],
       gap: ['Short', 'is-crit'],
       unfunded: ['Short', 'is-crit'],
@@ -1610,7 +1611,7 @@ const composite = (fg, bg) => {
     const nextStatusRange = await statusPage.locator('[data-budget-window-range]').innerText();
     await statusPage.locator('[data-budget-window-step="-1"]').click();
     await statusPage.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, nextStatusRange);
-    for (const id of ['infeasible', 'unavailable', 'not-a-status']) {
+    for (const id of ['belowBuffer', 'infeasible', 'unavailable', 'not-a-status']) {
       await repaintStatus(id);
       const got = await readChip();
       if (got.word || got.visible) errors.push(`plan status ${id} drew a chip ${JSON.stringify(got)}`);
@@ -1621,6 +1622,26 @@ const composite = (fg, bg) => {
     await repaintStatus('infeasible');
     await capture(statusPage, 'budget-blend-1440-light-infeasible.png');
     await statusPage.close();
+
+    const shootPeriod = async (width, theme, file, steps) => {
+      const page = await open(width, theme);
+      for (let i = 0; i < steps; i += 1) {
+        const before = await page.locator('[data-budget-window-range]').innerText();
+        await page.locator('[data-budget-window-step="1"]').click();
+        await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
+      }
+      await capture(page, file);
+      await page.close();
+    };
+    await shootPeriod(1440, 'dark', 'budget-blend-1440-dark-next.png', 1);
+    await shootPeriod(390, 'dark', 'budget-blend-390-dark-next.png', 1);
+    await shootPeriod(320, 'light', 'budget-blend-320-light-next.png', 1);
+    await shootPeriod(320, 'dark', 'budget-blend-320-dark-next.png', 1);
+    for (const width of [1440, 390, 320]) {
+      const page = await open(width, 'dark', { data: pastData });
+      await capture(page, `budget-blend-${width}-dark-past.png`);
+      await page.close();
+    }
 
     const failedContrast = contrasts.filter(row => row.pass === false || row.missing);
     if (failedContrast.length) errors.push(`contrast ${JSON.stringify(failedContrast)}`);

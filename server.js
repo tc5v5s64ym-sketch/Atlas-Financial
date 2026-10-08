@@ -118,7 +118,7 @@ app.use((req, res, next) => {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Content-Security-Policy':
       "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+      "font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   });
   next();
 });

@@ -58,6 +58,13 @@
     return parts.join(' ').replace(/\s+/g, ' ').trim();
   }
 
+  function printedMagnitude(value) {
+    const match = String(value || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    const number = Number(match[0]);
+    return Number.isFinite(number) ? Math.abs(number) : null;
+  }
+
   function moneyToken(value) {
     const found = String(value || '').match(/-?\$[\d,]+(?:\.\d{2})?/);
     return found ? found[0] : '';
@@ -73,6 +80,19 @@
       sky.setAttribute('aria-hidden', 'true');
       sky.innerHTML = '<i class="b1"></i><i class="b2"></i><i class="b3"></i>';
       hero.prepend(sky);
+    }
+    if (!hero.querySelector('.blend-aurora')) {
+      const canvas = document.createElement('canvas');
+      canvas.className = 'blend-aurora';
+      canvas.setAttribute('data-aurora', '');
+      canvas.setAttribute('aria-hidden', 'true');
+      hero.prepend(canvas);
+    }
+    if (globalThis.Aurora && hero.dataset.auroraOn !== '1') {
+      hero.dataset.auroraOn = '1';
+      const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      globalThis.Aurora.init(hero.querySelector('.blend-aurora'), { reduce: reduce });
+      globalThis.Aurora.set('healthy');
     }
     const tight = hero.querySelector('[data-operating-question="07"] [data-sign="negative"]')
       || hero.querySelector('.budget-cash-notice.has-gap');
@@ -102,6 +122,8 @@
     guard('household', () => paintHouse(bento));
     guard('cards', () => paintCards(bento));
     guard('goals', () => paintGoals(bento));
+    guard('funding', () => parkFunding(bento));
+    guard('badges', () => paintFaceBadges(bento));
     guard('quiet', () => paintQuiet(bento));
     bento.querySelectorAll('[data-budget-browse="bills"], [data-budget-browse="spending"], .budget-blend-card-movements, [data-budget-savings-goals]')
       .forEach(node => node.classList.add('blend-tilt'));
@@ -243,9 +265,10 @@
     const closing = hero.querySelector('[data-bills-closing]');
     const afterBills = hero.querySelector('[data-operating-question="05"]');
     if (savings) savings.classList.add('blend-hero-pill');
-    [afterBills, closing, savings].forEach(node => {
-      if (node && node.parentElement !== foot) foot.appendChild(node);
+    [afterBills, closing].forEach(node => {
+      if (node && node.parentElement !== body) body.appendChild(node);
     });
+    if (savings && savings.parentElement !== foot) foot.appendChild(savings);
     if (afterBills) afterBills.classList.remove('blend-clip');
     clip(closing && closing.querySelector('details > summary'));
     hero.querySelectorAll('.budget-bills-closing > .operating-note').forEach(node => {
@@ -268,18 +291,22 @@
     paintAfterFunding(hero);
     paintIncomeLongLabel(hero);
     paintPlanStatus(hero);
+    paintSplit(hero, foot);
   }
 
-  // The chip reads data-plan-status only. No lead text, amount, or date.
-  // Missing, infeasible, unavailable, and unknown ids draw nothing.
+  // One row per engine status id. A null word draws no chip.
+  // belowBuffer stays null: a null-low defect can print a false Tight.
+  // Restore it later by replacing null with ['Tight', 'warn'].
   const PLAN_STATUS = {
     onPlan: ['On plan', 'good'],
-    belowBuffer: ['Tight', 'warn'],
+    belowBuffer: null,
     negative: ['Short', 'crit'],
     gap: ['Short', 'crit'],
     unfunded: ['Short', 'crit'],
     combination: ['Short', 'crit'],
     overrideBreach: ['Short', 'crit'],
+    infeasible: null,
+    unavailable: null,
   };
 
   function paintPlanStatus(hero) {
@@ -509,6 +536,47 @@
   // Balance After Deductions figure. The printed note says those terms are
   // before proposed savings funding. The printed Q07 value is the after
   // figure and is shown, not left in the clip. Nothing here is calculated.
+  function paintSplit(hero, foot) {
+    if (!foot || foot.querySelector('.blend-split')) return;
+    const read = selector => printedMagnitude(text(hero.querySelector(selector)));
+    const parts = [
+      ['s-bills', read('[data-operating-question="04"] .blend-term')],
+      ['s-house', read('[data-operating-question="06"] .blend-term')],
+      ['s-bad', read('[data-blend-term="balanceAfterDeductions"]')],
+    ];
+    const split = document.createElement('span');
+    split.className = 'blend-split';
+    split.setAttribute('aria-hidden', 'true');
+    const total = parts.reduce((sum, part) => sum + (part[1] > 0 ? part[1] : 0), 0);
+    if (!total) {
+      split.classList.add('is-untracked');
+      const mark = document.createElement('b');
+      mark.className = 'blend-untracked-mark';
+      mark.textContent = '—';
+      split.appendChild(mark);
+    } else {
+      parts.forEach(([name, amount]) => {
+        const segment = document.createElement('i');
+        segment.className = name;
+        if (amount == null) segment.classList.add('is-untracked');
+        else segment.style.setProperty('--w', (amount / total * 100).toFixed(2) + '%');
+        split.appendChild(segment);
+      });
+    }
+    foot.appendChild(split);
+  }
+
+  function budgetResultHook(hero) {
+    const host = hero.querySelector('[data-budget-period-result][data-budget-result-trust]');
+    if (!host) return null;
+    const amount = host.querySelector('[data-budget-result-amount]');
+    if (!amount) return null;
+    return {
+      trust: host.getAttribute('data-budget-result-trust') || '',
+      bare: text(amount),
+    };
+  }
+
   function paintAfterFunding(hero) {
     const block = badTermsBlock(hero);
     if (!block || block.getAttribute('data-bad-terms-face') !== 'after-proposed-funding') return;
@@ -527,6 +595,43 @@
     if (!clip || !bad || bad.querySelector('.blend-after-funding') || !clip.childNodes.length) return;
     const line = document.createElement('p');
     line.className = 'blend-after-funding';
+    const hook = budgetResultHook(hero);
+    if (hook && hook.trust === 'unavailable') {
+      appendAfterLine(line, value, 'Unavailable');
+      clip.remove();
+      const dollars = bad.querySelector('.blend-dollars');
+      const cents = bad.querySelector('.blend-cents');
+      if (dollars && !dollars.parentElement.classList.contains('blend-dollar-group')) {
+        const group = document.createElement('span');
+        group.className = 'blend-dollar-group';
+        dollars.before(group);
+        group.appendChild(dollars);
+        if (cents) group.appendChild(cents);
+      }
+      bad.appendChild(line);
+      return;
+    }
+    if (hook && hook.bare && (hook.trust === 'estimated' || hook.trust === 'calculated')) {
+      appendAfterLine(line, value, hook.bare);
+      if (hook.trust === 'estimated') {
+        const pill = document.createElement('span');
+        pill.className = 'blend-est';
+        pill.textContent = 'est.';
+        line.appendChild(pill);
+      }
+      clip.remove();
+      const dollars = bad.querySelector('.blend-dollars');
+      const cents = bad.querySelector('.blend-cents');
+      if (dollars && !dollars.parentElement.classList.contains('blend-dollar-group')) {
+        const group = document.createElement('span');
+        group.className = 'blend-dollar-group';
+        dollars.before(group);
+        group.appendChild(dollars);
+        if (cents) group.appendChild(cents);
+      }
+      bad.appendChild(line);
+      return;
+    }
     const amount = [...clip.querySelectorAll('[data-bad-term-amount]')].find(node => !node.closest('[data-bad-terms]')) || null;
     const bare = text(amount);
     const trustHost = amount && amount.closest('[data-bad-term]');
@@ -728,7 +833,34 @@
     const value = step && step.querySelector('.budget-step-value');
     muted.textContent = printedIncomeSentence(step);
     if (received && muted.textContent) muted.classList.add('blend-clip');
-    button.append(head, figure, rail);
+    const pulse = document.createElement('span');
+    pulse.className = 'blend-dep-pulse';
+    pulse.setAttribute('aria-hidden', 'true');
+    const track = document.createElement('i');
+    track.className = 'blend-p-track';
+    const receivedN = printedMagnitude(received);
+    const planN = printedMagnitude(money);
+    if (receivedN != null && planN != null && planN > 0) {
+      const fill = document.createElement('i');
+      fill.className = 'blend-p-fill';
+      fill.style.setProperty('--w', Math.max(0, Math.min(100, receivedN / planN * 100)).toFixed(2) + '%');
+      track.appendChild(fill);
+    } else {
+      track.classList.add('is-untracked');
+      const mark = document.createElement('b');
+      mark.className = 'blend-untracked-mark';
+      mark.textContent = '—';
+      pulse.appendChild(mark);
+    }
+    pulse.insertBefore(track, pulse.firstChild);
+    rows.forEach((row, index) => {
+      const dot = document.createElement('i');
+      dot.className = 'blend-p-dot' + (depositReceived(row) ? ' is-got' : ' is-wait');
+      const x = rows.length <= 1 ? 8 : (index / (rows.length - 1)) * 100;
+      dot.style.left = 'calc(' + x + '% - 7px)';
+      pulse.appendChild(dot);
+    });
+    button.append(head, figure, pulse, rail);
     if (muted.textContent) button.appendChild(muted);
     if (step) button.addEventListener('click', () => step.querySelector('summary')?.click());
     bento.appendChild(button);
@@ -736,6 +868,20 @@
 
   function billIcon(label) {
     const s = String(label || '').toLowerCase();
+    if (!s) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '12');
+      circle.setAttribute('cy', '12');
+      circle.setAttribute('r', '6');
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke', 'currentColor');
+      circle.setAttribute('stroke-width', '1.7');
+      svg.appendChild(circle);
+      return svg;
+    }
     const name = /rent|mortgage|house|property|home/.test(s) ? 'house'
       : /car|auto|vehicle/.test(s) ? 'car'
       : /hydro|electric|power|bolt/.test(s) ? 'bolt'
@@ -889,7 +1035,16 @@
           const state = remain && remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
           if (state === 'overdue') day.classList.add('is-overdue');
           mark.dataset.s = state;
-          mark.appendChild(billIcon(text(hits[0].querySelector('strong'))));
+          const category = hits[0].getAttribute('data-budget-bill-category') || '';
+          mark.appendChild(billIcon(category));
+          let heatSum = 0;
+          let heatKnown = false;
+          hits.forEach(row => {
+            const amount = printedMagnitude(text(row.querySelector('.budget-bill-amount')));
+            if (amount != null) { heatSum += amount; heatKnown = true; }
+          });
+          if (!heatKnown) day.classList.add('is-untracked');
+          else day.dataset.blendHeat = String(heatSum);
           const badge = document.createElement('i');
           badge.className = 'blend-state' + (state === 'confirm' ? ' blend-pulse' : '');
           badge.setAttribute('aria-hidden', 'true');
@@ -914,6 +1069,13 @@
           }
         }
         cal.appendChild(day);
+      });
+      const heated = [...cal.querySelectorAll('[data-blend-heat]')];
+      const maxHeat = heated.reduce((max, el) => Math.max(max, Number(el.dataset.blendHeat) || 0), 0);
+      heated.forEach(el => {
+        const share = maxHeat > 0 ? (Number(el.dataset.blendHeat) || 0) / maxHeat : 0;
+        el.style.setProperty('--heat', share.toFixed(4));
+        if (share >= 0.66) el.classList.add('is-hot');
       });
     }
     const header = section.querySelector('header');
@@ -1033,6 +1195,8 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'blend-ring';
+      const categoryId = row.getAttribute('data-budget-category-open');
+      if (categoryId) button.setAttribute('data-blend-cat', categoryId);
       const bar = row.querySelector('.budget-category-bar');
       const scale = bar && bar.getAttribute('data-budget-category-scale');
       const fill = row.querySelector('.budget-category-fill');
@@ -1052,12 +1216,13 @@
       well.setAttribute('aria-hidden', 'true');
       const value = document.createElement('span');
       value.className = 'blend-ring-v';
-      value.textContent = status;
+      value.textContent = status || '—';
       if (known) {
         const liquid = document.createElement('span');
         liquid.className = 'blend-liquid';
-        const share = Math.max(0, Math.min(1, 1 - Math.max(0, Math.min(100, width)) / 100));
-        well.append(liquid, leftArc(share), value);
+        const spent = Math.max(0, Math.min(1, Math.max(0, Math.min(100, width)) / 100));
+        button.style.setProperty('--left', String(spent));
+        well.append(liquid, leftArc(spent), value);
       } else well.appendChild(value);
       const label = document.createElement('span');
       label.className = 'blend-ring-l';
@@ -1106,6 +1271,8 @@
       const foot = document.createElement('button');
       foot.type = 'button';
       foot.className = 'blend-other';
+      const otherId = other[0].getAttribute('data-budget-category-open');
+      if (otherId) foot.setAttribute('data-blend-cat', otherId);
       const status = text(other[0].querySelector('.budget-category-status'))
         || text(other[0].querySelector('.budget-category-meta'))
         || 'Unavailable';
@@ -1160,6 +1327,14 @@
       bar.className = 'blend-card-bar';
       bar.setAttribute('aria-hidden', 'true');
       button.appendChild(bar);
+      if (!button.querySelector('.blend-cc-chip')) {
+        const chip = document.createElement('span');
+        chip.className = 'blend-cc-chip';
+        const name = text(button);
+        const net = /visa/i.test(name) ? 'visa' : /mastercard|\bmc\b/i.test(name) ? 'mc' : /\bflex\b/i.test(name) ? 'flex' : '';
+        if (net) chip.setAttribute('data-net', net);
+        button.prepend(chip);
+      }
     });
     const note = bento.querySelector('.card-movement-heading p');
     if (note && !note.dataset.blendPosted && /Posted through|activity not observed/i.test(text(note))) {
@@ -1262,7 +1437,21 @@
         appendPrintedAmount(needed, neededNode);
         stack.appendChild(needed);
       }
-      item.append(name, stack);
+      const bar = document.createElement('span');
+      bar.className = 'blend-g-bar';
+      bar.setAttribute('aria-hidden', 'true');
+      const savedN = printedMagnitude(savedAmount);
+      const neededN = printedMagnitude(neededAmount);
+      if (savedN != null && neededN != null && savedN + neededN > 0) {
+        bar.style.setProperty('--w', Math.max(0, Math.min(1, savedN / (savedN + neededN))).toFixed(4));
+      } else {
+        bar.classList.add('is-untracked');
+        const mark = document.createElement('b');
+        mark.className = 'blend-untracked-mark';
+        mark.textContent = '—';
+        bar.appendChild(mark);
+      }
+      item.append(name, stack, bar);
       list.appendChild(item);
     });
     if (!goals.length) {
@@ -1287,21 +1476,47 @@
     });
   }
 
+  function parkFunding(bento) {
+    const card = bento.querySelector('[data-budget-savings-goals]');
+    const section = document.querySelector('[data-budget-funding-section]');
+    if (!card || !section || section.parentElement === card) return;
+    section.classList.add('blend-goals-costs');
+    card.appendChild(section);
+  }
+
+  function paintFaceBadges(bento) {
+    const section = document.querySelector('[data-budget-browse="attention"]');
+    if (!section || section.dataset.blendBadges === '1') return;
+    section.dataset.blendBadges = '1';
+    section.classList.add('blend-offstage');
+    section.querySelectorAll('.budget-attention-item').forEach(item => {
+      const label = text(item.querySelector('strong')) || text(item);
+      if (!label) return;
+      const cat = item.getAttribute('data-budget-category-open');
+      const bill = item.getAttribute('data-budget-bill-open');
+      const host = cat
+        ? bento.querySelector('[data-blend-cat="' + CSS.escape(cat) + '"]')
+        : bill
+          ? bento.querySelector('[data-budget-browse="bills"] .blend-bills-head')
+          : null;
+      const key = cat || bill || label;
+      if (!host || host.querySelector('[data-blend-badge="' + CSS.escape(key) + '"]')) return;
+      const badge = document.createElement('span');
+      badge.className = 'blend-face-badge';
+      badge.setAttribute('data-blend-badge', key);
+      badge.textContent = label;
+      host.appendChild(badge);
+    });
+  }
+
   function paintQuiet() {
     if (document.querySelector('.blend-quiet')) return;
     const footer = document.querySelector('.wrap > footer');
     if (!footer) return;
-    const details = document.createElement('details');
-    details.className = 'blend-quiet';
-    const summary = document.createElement('summary');
-    summary.textContent = 'More on this page';
-    details.appendChild(summary);
-    footer.before(details);
-    details.appendChild(footer);
-    const note = document.createElement('p');
-    note.className = 'blend-quiet-note';
-    note.textContent = 'Recorded account balances, Savings accounts & evidence, and the snapshot stay available here for an owner removal decision.';
-    details.appendChild(note);
+    const quiet = document.createElement('div');
+    quiet.className = 'blend-quiet';
+    footer.before(quiet);
+    quiet.appendChild(footer);
   }
 
   function paint(root) {

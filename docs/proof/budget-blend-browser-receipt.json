@@ -29,20 +29,27 @@
     "budget-blend-cards-1440-light.png",
     "budget-blend-cards-320-dark.png",
     "budget-blend-1440-light-on-plan.png",
-    "budget-blend-1440-light-infeasible.png"
+    "budget-blend-1440-light-infeasible.png",
+    "budget-blend-1440-dark-next.png",
+    "budget-blend-390-dark-next.png",
+    "budget-blend-320-light-next.png",
+    "budget-blend-320-dark-next.png",
+    "budget-blend-1440-dark-past.png",
+    "budget-blend-390-dark-past.png",
+    "budget-blend-320-dark-past.png"
   ],
   "contrasts": [
     {
       "name": "light period range",
-      "ratio": 19.55,
+      "ratio": 18.14,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
       "fg": "rgb(11, 12, 16)",
       "bg": [
-        255,
-        255,
-        255
+        238,
+        249,
+        244
       ]
     },
     {
@@ -73,41 +80,41 @@
     },
     {
       "name": "light closing label",
-      "ratio": 10.17,
+      "ratio": 18.14,
       "large": false,
       "pass": true,
-      "text": "Expected Bills balance at period end",
-      "fg": "rgb(60, 65, 80)",
+      "text": "",
+      "fg": "rgb(11, 12, 16)",
       "bg": [
-        255,
-        255,
-        255
+        238,
+        249,
+        244
       ]
     },
     {
       "name": "light result label",
-      "ratio": 19.55,
+      "ratio": 8.21,
       "large": false,
       "pass": true,
       "text": "Balance After Deductions",
-      "fg": "rgb(11, 12, 16)",
+      "fg": "rgb(71, 74, 84)",
       "bg": [
-        255,
-        255,
-        255
+        238,
+        249,
+        244
       ]
     },
     {
       "name": "light income label",
-      "ratio": 10.17,
+      "ratio": 8.21,
       "large": false,
       "pass": true,
       "text": "Income",
-      "fg": "rgb(60, 65, 80)",
+      "fg": "rgb(71, 74, 84)",
       "bg": [
-        255,
-        255,
-        255
+        238,
+        249,
+        244
       ]
     },
     {
@@ -138,15 +145,15 @@
     },
     {
       "name": "dark period range",
-      "ratio": 15.94,
+      "ratio": 17.78,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
       "fg": "rgb(245, 246, 248)",
       "bg": [
-        27,
-        27,
-        26
+        5,
+        17,
+        13
       ]
     },
     {
@@ -177,41 +184,41 @@
     },
     {
       "name": "dark closing label",
-      "ratio": 10.3,
+      "ratio": 17.78,
       "large": false,
       "pass": true,
-      "text": "Expected Bills balance at period end",
-      "fg": "rgb(197, 200, 208)",
+      "text": "",
+      "fg": "rgb(245, 246, 248)",
       "bg": [
-        27,
-        27,
-        26
+        5,
+        17,
+        13
       ]
     },
     {
       "name": "dark result label",
-      "ratio": 15.94,
+      "ratio": 11.48,
       "large": false,
       "pass": true,
       "text": "Balance After Deductions",
-      "fg": "rgb(245, 246, 248)",
+      "fg": "rgb(197, 200, 208)",
       "bg": [
-        27,
-        27,
-        26
+        5,
+        17,
+        13
       ]
     },
     {
       "name": "dark income label",
-      "ratio": 10.3,
+      "ratio": 11.48,
       "large": false,
       "pass": true,
       "text": "Income",
       "fg": "rgb(197, 200, 208)",
       "bg": [
-        27,
-        27,
-        26
+        5,
+        17,
+        13
       ]
     },
     {
@@ -255,13 +262,13 @@
     },
     {
       "name": "dark unavailable copy",
-      "ratio": 9.41,
+      "ratio": 9.39,
       "large": false,
       "pass": true,
       "text": "BUDGET",
       "fg": "rgb(185, 184, 177)",
       "bg": [
-        17,
+        18,
         18,
         22
       ]
@@ -305,7 +312,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          74,
+          75,
           28
         ],
         "pass": true
@@ -318,7 +325,7 @@
         "outlineWidth": "2px",
         "outlineColor": "rgb(42, 111, 208)",
         "box": [
-          75,
+          73,
           42
         ],
         "pass": true
@@ -357,7 +364,7 @@
         "outlineWidth": "2px",
         "outlineColor": "rgb(42, 111, 208)",
         "box": [
-          113,
+          112,
           42
         ],
         "pass": true
@@ -370,7 +377,7 @@
         "outlineWidth": "2px",
         "outlineColor": "rgb(42, 111, 208)",
         "box": [
-          64,
+          63,
           42
         ],
         "pass": true
@@ -383,7 +390,7 @@
         "outlineWidth": "2px",
         "outlineColor": "rgb(42, 111, 208)",
         "box": [
-          97,
+          96,
           42
         ],
         "pass": true
@@ -409,7 +416,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          103,
+          100,
           32
         ],
         "pass": true
@@ -422,7 +429,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          77,
+          74,
           32
         ],
         "pass": true
@@ -448,7 +455,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          95,
+          92,
           30
         ],
         "pass": true
@@ -500,8 +507,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          197,
-          44
+          179,
+          50
         ],
         "pass": true
       },
@@ -513,8 +520,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          197,
-          44
+          179,
+          50
         ],
         "pass": true
       },
@@ -526,8 +533,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          168,
-          43
+          141,
+          50
         ],
         "pass": true
       }
