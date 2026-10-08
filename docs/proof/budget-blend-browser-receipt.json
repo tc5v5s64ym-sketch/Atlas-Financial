@@ -119,28 +119,28 @@
     },
     {
       "name": "light household heading",
-      "ratio": 16.83,
+      "ratio": 18.54,
       "large": false,
       "pass": true,
       "text": "Household budget",
       "fg": "rgb(11, 12, 16)",
       "bg": [
-        236,
-        238,
-        242
+        248,
+        249,
+        250
       ]
     },
     {
       "name": "light goals heading",
-      "ratio": 16.83,
+      "ratio": 18.54,
       "large": false,
       "pass": true,
       "text": "Saving for",
       "fg": "rgb(11, 12, 16)",
       "bg": [
-        236,
-        238,
-        242
+        248,
+        249,
+        250
       ]
     },
     {
@@ -223,28 +223,28 @@
     },
     {
       "name": "dark household heading",
-      "ratio": 18.83,
+      "ratio": 17.28,
       "large": false,
       "pass": true,
       "text": "Household budget",
       "fg": "rgb(245, 246, 248)",
       "bg": [
-        5,
-        5,
-        7
+        18,
+        18,
+        22
       ]
     },
     {
       "name": "dark goals heading",
-      "ratio": 18.83,
+      "ratio": 17.28,
       "large": false,
       "pass": true,
       "text": "Saving for",
       "fg": "rgb(245, 246, 248)",
       "bg": [
-        5,
-        5,
-        7
+        18,
+        18,
+        22
       ]
     },
     {
@@ -474,6 +474,19 @@
         "pass": true
       },
       {
+        "tag": "DIV",
+        "label": "Pay periods. Balance After Deductions.",
+        "text": "$4,050.00 $2,600.00 $4,050.00 $2,600.00 $4,050.00 $2,600.00 $1,632.01 $1,870.00 $205.00 $3",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          1134,
+          176
+        ],
+        "pass": true
+      },
+      {
         "tag": "BUTTON",
         "label": "",
         "text": "ⓘ Current balance and funding details",
@@ -521,19 +534,6 @@
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
           179,
-          50
-        ],
-        "pass": true
-      },
-      {
-        "tag": "SUMMARY",
-        "label": "",
-        "text": "Household budget $444.49 / of planned $730.00 $752.99",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          141,
           50
         ],
         "pass": true
