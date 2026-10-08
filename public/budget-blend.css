@@ -745,6 +745,10 @@ body:has([data-budget-bento]) .sitenav {
 .blend-after-label {
   font-weight: 400;
   white-space: nowrap;
+}
+.blend-after-visible {
+  font-weight: 400;
+  white-space: nowrap;
   margin-right: .4em;
 }
 .blend-after-value {

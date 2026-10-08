@@ -383,32 +383,53 @@
     return copied;
   }
 
-  // The label is the printed prompt beside the Q07 value. A colon is dropped
-  // only when that colon is its own node. Nothing here is invented.
-  function printedQ07Label(value) {
+  // The printed prompt beside the Q07 value. A colon is dropped only when
+  // that colon is its own node. The caller keeps this text, verbatim.
+  function printedQ07Prompt(value) {
     const row = value && value.closest('[data-operating-question="07"][data-budget-period-result]');
     const prompt = row && row.querySelector('.budget-step-summary .operating-prompt');
     let copied = '';
-    if (prompt) {
-      for (const node of prompt.childNodes) {
-        const raw = node.textContent || '';
-        if (raw.trim() === ':') continue;
-        copied += raw;
-      }
+    if (!prompt) return '';
+    for (const node of prompt.childNodes) {
+      const raw = node.textContent || '';
+      if (raw.trim() === ':') continue;
+      copied += raw;
     }
-    if (copied.trim()) return copied;
-    const note = row && [...row.querySelectorAll('.operating-note')].map(item => item.textContent || '')
-      .find(item => item.includes('after proposed savings'));
-    const found = note && note.match(/after proposed savings/);
-    return found ? found[0] : '';
+    return copied;
+  }
+
+  // Visible wording only when base prints this phrase. The match keeps the
+  // printed casing. No phrase means no visible label.
+  function printedAfterSavingsPhrase(value) {
+    const row = value && value.closest('[data-operating-question="07"]');
+    const chunks = [];
+    if (row) {
+      const clone = row.cloneNode(true);
+      clone.querySelectorAll('.blend-bad-qualifier, .blend-after-funding, .blend-term, .blend-bad').forEach(node => node.remove());
+      chunks.push(clone.textContent || '');
+    }
+    const note = value && (value.closest('[data-budget-bento]') || document).querySelector('[data-bad-terms] .operating-note');
+    if (note) chunks.push(note.textContent || '');
+    for (const source of chunks) {
+      const found = source.match(/after proposed savings/i);
+      if (found) return found[0];
+    }
+    return '';
   }
 
   function appendAfterLine(line, value, valueText) {
-    const label = printedQ07Label(value);
-    if (label) {
+    const printed = printedQ07Prompt(value);
+    if (printed) {
+      const hidden = document.createElement('span');
+      hidden.className = 'blend-after-label budget-cash-sr';
+      hidden.textContent = printed;
+      line.appendChild(hidden);
+    }
+    const phrase = printedAfterSavingsPhrase(value);
+    if (phrase) {
       const name = document.createElement('span');
-      name.className = 'blend-after-label';
-      name.textContent = label;
+      name.className = 'blend-after-visible';
+      name.textContent = phrase;
       line.appendChild(name);
     }
     const shown = document.createElement('span');

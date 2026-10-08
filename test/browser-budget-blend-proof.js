@@ -159,6 +159,20 @@ const composite = (fg, bg) => {
         label: (label?.innerText || '').replace(/\s+/g, ' ').trim(),
         q07: (line?.innerText || '').replace(/\s+/g, ' ').trim(),
         lineLabel: line?.querySelector('.blend-after-label')?.textContent || '',
+        srHidden: (() => {
+          const hidden = line && line.querySelector('.blend-after-label');
+          if (!hidden) return false;
+          const style = getComputedStyle(hidden);
+          const box = hidden.getBoundingClientRect();
+          return hidden.classList.contains('budget-cash-sr') && style.position === 'absolute' && box.width <= 2 && box.height <= 2;
+        })(),
+        visibleLabel: line?.querySelector('.blend-after-visible')?.textContent || '',
+        shown: [...(line ? line.childNodes : [])]
+          .filter(node => !(node.classList && node.classList.contains('budget-cash-sr')))
+          .map(node => node.textContent || '')
+          .join('')
+          .replace(/\s+/g, ' ')
+          .trim(),
         valueText: value?.textContent || '',
         headline: (clone?.textContent || '').replace(/\s+/g, ' ').trim(),
         printed: (document.querySelector('[data-bad-term="balanceAfterDeductions"] [data-bad-term-value]')?.textContent || '').replace(/\s+/g, ' ').trim(),
@@ -886,9 +900,10 @@ const composite = (fg, bg) => {
     if (aug28.faceAttr !== 'after-proposed-funding' || aug28.qualifier !== '· before proposed savings funding'
       || !/Balance After Deductions/.test(aug28.label) || !aug28.label.includes('before proposed savings funding')
       || !aug28.q07.includes('$1,675.00') || !/≈ estimated/.test(aug28.q07)
-      || aug28.lineLabel !== 'Balance After Deductions'
+      || aug28.lineLabel !== 'Balance After Deductions' || !aug28.srHidden || aug28.visibleLabel
+      || /Balance After Deductions/.test(aug28.shown)
       || !aug28.valueText.includes('estimated $') || aug28.valueText.includes('estimated$')
-      || !aug28.q07.includes('estimated $')
+      || !aug28.shown.includes('estimated $') || !aug28.q07.includes('estimated $')
       || !aug28.headline.includes('$1,870.00') || aug28.headline.includes('$1,675.00')
       || aug28.trust !== 'calculated' || aug28.chip || aug28.lineChip || aug28.clip || !aug28.lineVisible
       || aug28.fontSize !== '15px' || aug28.color !== aug28.ink || aug28.valueWrap !== 'nowrap'
@@ -902,7 +917,9 @@ const composite = (fg, bg) => {
     console.log('Aug 28 hero ' + JSON.stringify({
       range: aug28.range,
       terms: aug28.terms,
-      q07: aug28.q07,
+      shown: aug28.shown,
+      visibleLabel: aug28.visibleLabel,
+      lineLabel: aug28.lineLabel,
       headline: aug28.headline,
     }));
     await capture(next, 'budget-blend-1440-light-next.png');
@@ -986,22 +1003,32 @@ const composite = (fg, bg) => {
       || sep11.qualifier !== '· before proposed savings funding'
       || !sep11.label.includes('before proposed savings funding')
       || !sep11.q07.includes('$0.00') || !/≈ estimated/.test(sep11.q07)
-      || sep11.lineLabel !== 'Balance After Deductions'
+      || sep11.lineLabel !== 'Balance After Deductions' || !sep11.srHidden || sep11.visibleLabel
+      || /Balance After Deductions/.test(sep11.shown)
       || !sep11.valueText.includes('estimated $') || sep11.valueText.includes('estimated$')
+      || !sep11.shown.includes('estimated $')
       || !sep11.headline.includes('$205.00') || sep11.headline.includes('$0.00')
       || sep11.clip || !sep11.lineVisible || sep11.lineChip
       || sep11.fontSize !== '15px' || sep11.valueWrap !== 'nowrap'
       || /After proposed savings|After Planned Savings/.test(sep11.q07 + ' ' + sep11.label)) {
       errors.push(`Sep 11 funding ${JSON.stringify(sep11)}`);
     }
+    console.log('Sep 11 trusts ' + JSON.stringify({
+      range: sep11.range,
+      shown: sep11.shown,
+      visibleLabel: sep11.visibleLabel,
+      terms: sep11.terms,
+    }));
     await sep.close();
     const augNarrow = await open(320, 'light');
     await stepForward(augNarrow);
     const aug320 = await readFunding(augNarrow);
     if (!/Aug 28/.test(aug320.range) || aug320.qualifier !== '· before proposed savings funding'
       || !aug320.q07.includes('$1,675.00') || !/≈ estimated/.test(aug320.q07)
-      || aug320.lineLabel !== 'Balance After Deductions'
+      || aug320.lineLabel !== 'Balance After Deductions' || !aug320.srHidden || aug320.visibleLabel
+      || /Balance After Deductions/.test(aug320.shown)
       || !aug320.valueText.includes('estimated $') || aug320.valueText.includes('estimated$')
+      || !aug320.shown.includes('estimated $')
       || !aug320.headline.includes('$1,870.00') || aug320.clip || !aug320.lineVisible
       || aug320.fontSize !== '13px' || aug320.valueWrap !== 'nowrap' || !aug320.labelInside
       || aug320.align == null || aug320.align > 2) {
@@ -1009,6 +1036,19 @@ const composite = (fg, bg) => {
     }
     await capture(augNarrow, 'budget-blend-320-light-aug28.png');
     await augNarrow.close();
+    const augPhone = await open(390, 'light');
+    await stepForward(augPhone);
+    const aug390 = await readFunding(augPhone);
+    if (!/Aug 28/.test(aug390.range) || aug390.qualifier !== '· before proposed savings funding'
+      || aug390.lineLabel !== 'Balance After Deductions' || !aug390.srHidden || aug390.visibleLabel
+      || /Balance After Deductions/.test(aug390.shown)
+      || !aug390.shown.includes('estimated $') || !aug390.shown.includes('$1,675.00')
+      || !aug390.headline.includes('$1,870.00') || !aug390.lineVisible
+      || aug390.fontSize !== '13px') {
+      errors.push(`Aug 28 phone funding ${JSON.stringify(aug390)}`);
+    }
+    await capture(augPhone, 'budget-blend-390-light-aug28.png');
+    await augPhone.close();
 
     const pastData = fx.served({ fundingHistory: 'paid' });
     const assertPast = async (page, label) => {
