@@ -460,39 +460,39 @@
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00",
+        "text": "Income ≈ estimated $4,050.00",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          112,
-          17
+          156,
+          30
         ],
         "pass": true
       },
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "− Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00",
+        "text": "Bills ≈ estimated $1,665.00",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          109,
-          24
+          156,
+          30
         ],
         "pass": true
       },
       {
         "tag": "SUMMARY",
         "label": "",
-        "text": "− Household budget $444.49 / of planned $730.00",
+        "text": "Balance after bills ≈ estimated $2,385.00",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          184,
-          24
+          749,
+          32
         ],
         "pass": true
       }

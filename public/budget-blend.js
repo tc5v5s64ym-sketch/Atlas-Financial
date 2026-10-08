@@ -61,9 +61,10 @@
     const days = /in (\d+) days/.exec(line);
     const dates = [...progress.querySelectorAll('p b')];
     const published = dates.length >= 2 ? text(dates[1]) : '';
-    progress.querySelector('p')?.classList.add('blend-in-panel');
+    const marks = [...progress.querySelectorAll('.budget-window-days > span')];
     const face = document.createElement('div');
     face.className = 'blend-pay-face';
+    face.appendChild(payRing(marks));
     const num = document.createElement('span');
     num.className = 'blend-pay-num';
     num.textContent = days ? days[1] : 'Unavailable';
@@ -75,11 +76,37 @@
     date.className = 'blend-pay-date';
     date.textContent = published || 'Unavailable';
     progress.append(face, date);
-    const marks = [...progress.querySelectorAll('.budget-window-days > span')];
-    progress.style.setProperty('--pay-n', String(marks.length || 1));
-    marks.forEach((mark, index) => mark.style.setProperty('--i', String(index)));
     const next = document.querySelector('[data-budget-cash-next]');
     if (next) progress.addEventListener('click', () => next.click());
+  }
+
+  function payRing(marks) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 120 120');
+    svg.setAttribute('class', 'blend-pay-ring');
+    svg.setAttribute('aria-hidden', 'true');
+    const n = marks.length;
+    if (!n) return svg;
+    const radius = 52;
+    const circumference = 2 * Math.PI * radius;
+    const gap = circumference * (6 / 360);
+    const segment = Math.max(0, circumference / n - gap);
+    marks.forEach((mark, index) => {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '60');
+      circle.setAttribute('cy', '60');
+      circle.setAttribute('r', String(radius));
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke-width', '7');
+      circle.setAttribute('stroke-linecap', 'butt');
+      circle.setAttribute('stroke-dasharray', segment.toFixed(3) + ' ' + (circumference - segment).toFixed(3));
+      const turn = -90 + 3 + index * (360 / n);
+      circle.setAttribute('transform', 'rotate(' + turn.toFixed(3) + ' 60 60)');
+      circle.setAttribute('class', mark.classList.contains('is-today') ? 'is-today'
+        : mark.classList.contains('is-past') ? 'is-past' : 'is-left');
+      svg.appendChild(circle);
+    });
+    return svg;
   }
 
   function paintHero(hero) {
@@ -94,15 +121,37 @@
     }
     clip(hero.querySelector('.budget-cash-how'));
     clip(hero.querySelector('.budget-period-info'));
-    const waterfall = hero.querySelector('.calendar-waterfall');
-    const closing = hero.querySelector('[data-bills-closing]');
-    const savings = hero.querySelector('[data-operating-question="savings"], [data-budget-savings-stock]');
-    if (waterfall && closing && closing.parentElement !== waterfall) {
-      if (savings && savings.parentElement === waterfall) savings.after(closing);
-      else waterfall.appendChild(closing);
+    ['04', '06'].forEach(number => {
+      const step = hero.querySelector('[data-operating-question="' + number + '"]');
+      if (!step || step.previousElementSibling?.classList.contains('blend-minus')) return;
+      const sep = document.createElement('span');
+      sep.className = 'blend-minus' + (number === '04' ? ' is-bills' : ' is-house');
+      sep.setAttribute('aria-hidden', 'true');
+      sep.textContent = '−';
+      step.before(sep);
+    });
+    let foot = hero.querySelector('.blend-hero-foot');
+    if (!foot) {
+      foot = document.createElement('div');
+      foot.className = 'blend-hero-foot';
+      hero.appendChild(foot);
     }
+    const savings = hero.querySelector('[data-operating-question="savings"], [data-budget-savings-stock]');
+    const closing = hero.querySelector('[data-bills-closing]');
+    if (savings) savings.classList.add('blend-hero-pill');
+    if (closing) foot.appendChild(closing);
     clip(closing && closing.querySelector('details > summary'));
-    hero.querySelectorAll('.budget-bills-closing > .operating-note').forEach(clip);
+    hero.querySelectorAll('.budget-bills-closing > .operating-note').forEach(node => {
+      if (/Latest recorded Bills balance/i.test(text(node))) {
+        node.classList.add('blend-keep-visible');
+        foot.appendChild(node);
+      } else clip(node);
+    });
+    const notice = hero.querySelector('.budget-cash-notice');
+    if (notice) {
+      notice.classList.add('blend-keep-visible');
+      foot.appendChild(notice);
+    }
   }
 
   function depositRows(step) {
@@ -180,13 +229,17 @@
       const amount = document.createElement('b');
       amount.textContent = depositAmount(row);
       const name = document.createElement('span');
-      const when = depositDate(row);
-      name.textContent = depositName(row) + (when ? ' · ' + when : '');
+      name.className = 'blend-rail-name';
+      name.textContent = depositName(row);
+      const when = document.createElement('span');
+      when.className = 'blend-rail-when';
+      when.textContent = depositDate(row);
       const mark = document.createElement('i');
       mark.className = depositReceived(row) ? 'is-got' : 'is-wait';
       mark.setAttribute('aria-hidden', 'true');
       mark.textContent = depositReceived(row) ? '✓' : '○';
       item.append(amount, name, mark);
+      if (when.textContent) item.appendChild(when);
       rail.appendChild(item);
     });
     const muted = document.createElement('span');
@@ -231,11 +284,12 @@
 
   function billState(row) {
     const state = text(row.querySelector('.budget-bill-state'));
-    if (/paid/i.test(state) && !/not paid|unpaid/i.test(state)) return 'paid';
+    if (!state || /status unavailable|unknown|unavailable|not observed/i.test(state)) return 'unknown';
+    if (/paid/i.test(state) && !/not paid|unpaid|not confirmed/i.test(state)) return 'paid';
     if (/confirm|needs a date/i.test(state)) return 'confirm';
     if (/pending/i.test(state)) return 'pending';
-    if (/not paid|due|planned/i.test(state)) return 'due';
-    return 'due';
+    if (/not paid|^due\b|planned/i.test(state)) return 'due';
+    return 'unknown';
   }
 
   function paintBills(bento) {
@@ -320,8 +374,14 @@
           const badge = document.createElement('i');
           badge.className = 'blend-state' + (state === 'confirm' ? ' blend-pulse' : '');
           badge.setAttribute('aria-hidden', 'true');
-          if (state === 'paid') badge.textContent = '✓';
-          mark.appendChild(badge);
+          if (state === 'paid') {
+            badge.textContent = '✓';
+            day.appendChild(badge);
+          } else if (state === 'unknown') {
+            badge.classList.add('is-unknown');
+            badge.textContent = '–';
+            mark.appendChild(badge);
+          } else mark.appendChild(badge);
           mark.addEventListener('click', event => {
             event.stopPropagation();
             hits[0].click();
@@ -339,12 +399,36 @@
     }
     section.querySelector('header')?.before(head);
     section.querySelector('header')?.after(cal);
-    section.querySelectorAll('.budget-bill-group, .budget-bills-figures, .budget-bills-progress-wrapper, .budget-browse-counts').forEach(node => {
-      node.classList.add('blend-in-panel');
+    section.querySelector('.budget-bills-progress-wrapper')?.classList.add('blend-in-panel');
+    section.querySelector('.budget-bills-figures')?.classList.add('blend-quiet-figure');
+    section.querySelector('header h2')?.classList.add('blend-quiet-figure');
+    section.querySelectorAll('header .budget-browse-sub').forEach(node => node.classList.add('blend-quiet-figure'));
+    section.querySelector(':scope > footer')?.classList.add('blend-quiet-figure');
+    section.querySelectorAll('header .budget-browse-eyebrow').forEach(clip);
+  }
+
+  function leftArc(share) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 104 104');
+    svg.setAttribute('class', 'blend-left-arc');
+    svg.setAttribute('aria-hidden', 'true');
+    ['blend-arc-track', 'blend-arc-left'].forEach(name => {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '52');
+      circle.setAttribute('cy', '52');
+      circle.setAttribute('r', '49');
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke-width', '3');
+      circle.setAttribute('class', name);
+      if (name === 'blend-arc-left') {
+        circle.setAttribute('stroke-linecap', 'round');
+        circle.setAttribute('pathLength', '100');
+        const drawn = share == null ? 0 : Math.max(0, Math.min(100, share * 100));
+        circle.setAttribute('stroke-dasharray', drawn.toFixed(2) + ' 100');
+      }
+      svg.appendChild(circle);
     });
-    clip(section.querySelector('.budget-browse-bills > footer, footer'));
-    clip(section.querySelector('header h2'));
-    section.querySelectorAll('header .budget-browse-sub, header .budget-browse-eyebrow').forEach(clip);
+    return svg;
   }
 
   function paintHouse(bento) {
@@ -360,25 +444,32 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'blend-ring';
+      const bar = row.querySelector('.budget-category-bar');
+      const scale = bar && bar.getAttribute('data-budget-category-scale');
       const fill = row.querySelector('.budget-category-fill');
       const width = fill && fill.style.width ? parseFloat(fill.style.width) : NaN;
-      if (Number.isFinite(width)) {
+      const known = scale === 'numeric' && Number.isFinite(width);
+      if (known) {
         const used = Math.max(0, Math.min(100, width)) / 100;
+        button.classList.add('is-known');
         button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - used))));
-      }
+      } else button.classList.add('is-unknown');
       const status = text(row.querySelector('.budget-category-status')) || 'Unavailable';
       const meta = text(row.querySelector('.budget-category-meta'));
       const planned = (meta.match(/of planned\s+(.+)$/i) || [])[1];
       const name = text(row.querySelector('.budget-category-name')) || 'Category';
       const well = document.createElement('span');
-      well.className = 'blend-ring-g';
+      well.className = 'blend-ring-g' + (known ? '' : ' is-hatched');
       well.setAttribute('aria-hidden', 'true');
-      const liquid = document.createElement('span');
-      liquid.className = 'blend-liquid';
       const value = document.createElement('span');
       value.className = 'blend-ring-v';
       value.textContent = status;
-      well.append(liquid, value);
+      if (known) {
+        const liquid = document.createElement('span');
+        liquid.className = 'blend-liquid';
+        const share = Math.max(0, Math.min(1, 1 - Math.max(0, Math.min(100, width)) / 100));
+        well.append(liquid, leftArc(share), value);
+      } else well.appendChild(value);
       const label = document.createElement('span');
       label.className = 'blend-ring-l';
       label.textContent = planned ? name + ' · of ' + planned.trim() : name;
@@ -392,7 +483,18 @@
       missing.textContent = 'Unavailable';
       rings.appendChild(missing);
     }
-    section.querySelector('header')?.after(rings);
+    const header = section.querySelector('header');
+    header?.after(rings);
+    const facts = section.querySelector('.budget-browse-stats');
+    const counts = section.querySelector('.budget-browse-counts');
+    if (header && facts) {
+      facts.classList.add('blend-house-facts');
+      header.appendChild(facts);
+    }
+    if (header && counts) {
+      counts.classList.add('blend-house-status');
+      header.appendChild(counts);
+    }
     if (other[0]) {
       const foot = document.createElement('button');
       foot.type = 'button';
@@ -403,18 +505,25 @@
       const dot = document.createElement('i');
       dot.className = 'blend-amber';
       dot.setAttribute('aria-hidden', 'true');
+      const name = document.createElement('span');
+      name.className = 'blend-other-name';
+      name.textContent = text(other[0].querySelector('.budget-category-name')) || 'Other spending';
       const word = document.createElement('span');
       const counted = text(other[0]).match(/\d+\s+to sort/i);
       word.textContent = counted ? counted[0] : status;
-      foot.append(dot, word);
+      const chevron = document.createElement('span');
+      chevron.className = 'blend-other-chev';
+      chevron.setAttribute('aria-hidden', 'true');
+      chevron.textContent = '›';
+      foot.append(dot, name, word, chevron);
       foot.addEventListener('click', () => other[0].click());
       rings.after(foot);
     }
-    section.querySelectorAll('.budget-category-list, .budget-browse-stats, .budget-browse-counts, .budget-pace-key').forEach(node => {
+    section.querySelectorAll('.budget-category-list, .budget-pace-key').forEach(node => {
       node.classList.add('blend-in-panel');
     });
     clip(section.querySelector('footer'));
-    clip(section.querySelector('.budget-browse-cycle'));
+    section.querySelector('.budget-browse-cycle')?.classList.add('blend-quiet-figure');
     section.querySelectorAll('.budget-browse-eyebrow, .budget-browse-sub').forEach(clip);
   }
 
@@ -426,6 +535,16 @@
       bar.setAttribute('aria-hidden', 'true');
       button.appendChild(bar);
     });
+    const note = bento.querySelector('.card-movement-heading p');
+    if (note && !note.dataset.blendPosted && /Posted through|activity not observed/i.test(text(note))) {
+      note.dataset.blendPosted = '1';
+      note.classList.add('blend-card-posted');
+      bento.querySelectorAll('.card-movement-panel').forEach(panel => {
+        const copy = note.cloneNode(true);
+        copy.classList.add('blend-card-posted');
+        panel.prepend(copy);
+      });
+    }
   }
 
   function paintGoals(bento) {
@@ -455,16 +574,31 @@
       const item = document.createElement('li');
       const name = document.createElement('span');
       name.textContent = text(row.querySelector('strong')) || 'Goal';
-      const pct = document.createElement('b');
-      const found = text(row).match(/(\d+(?:\.\d+)?)\s*%/);
-      pct.textContent = found ? found[1] + '%' : 'Unavailable';
-      item.append(name, pct);
+      const detail = document.createElement('b');
+      const status = text(row.querySelector('.budget-goal-state'));
+      const amounts = [...row.querySelectorAll('.budget-goal-amounts > span')].map(node => {
+        const amount = text(node.querySelector('.budget-goal-amount'));
+        const label = text(node.querySelector('small'));
+        return [amount, label].filter(Boolean).join(' ');
+      }).filter(Boolean).join(' · ');
+      const contextNode = row.querySelector('.budget-goal-context');
+      let context = '';
+      if (contextNode) {
+        const clone = contextNode.cloneNode(true);
+        clone.querySelectorAll('.budget-goal-evidence').forEach(node => node.remove());
+        context = text(clone);
+      }
+      detail.textContent = [status, amounts, context].filter(Boolean).join(' · ');
+      item.append(name, detail);
       list.appendChild(item);
     });
     if (!goals.length) {
-      const item = document.createElement('li');
-      item.textContent = 'Unavailable';
-      list.appendChild(item);
+      const notice = text(card.querySelector('.budget-goal-notice, p'));
+      if (notice) {
+        const item = document.createElement('li');
+        item.textContent = notice;
+        list.appendChild(item);
+      }
     }
     face.append(svg, list);
     const title = document.createElement('span');
@@ -477,24 +611,21 @@
     });
   }
 
-  function paintQuiet(bento) {
-    if (bento.querySelector('.blend-quiet')) return;
+  function paintQuiet() {
+    if (document.querySelector('.blend-quiet')) return;
+    const footer = document.querySelector('.wrap > footer');
+    if (!footer) return;
     const details = document.createElement('details');
     details.className = 'blend-quiet';
     const summary = document.createElement('summary');
     summary.textContent = 'More on this page';
     details.appendChild(summary);
-    const attention = document.querySelector('[data-budget-browse="attention"]');
-    if (attention) details.appendChild(attention);
-    const footer = document.querySelector('.wrap > footer');
-    if (footer) details.appendChild(footer);
+    footer.before(details);
+    details.appendChild(footer);
     const note = document.createElement('p');
+    note.className = 'blend-quiet-note';
     note.textContent = 'Recorded account balances, Savings accounts & evidence, and the snapshot stay available here for an owner removal decision.';
     details.appendChild(note);
-    bento.appendChild(details);
-    bento.querySelectorAll('.card-movement-heading p').forEach(node => {
-      if (/Posted through|activity not observed/i.test(text(node))) clip(node);
-    });
   }
 
   function paint(root) {

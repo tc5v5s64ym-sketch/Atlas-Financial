@@ -146,10 +146,24 @@ const composite = (fg, bg) => {
               || document.querySelector('[data-budget-window-progress]')?.textContent || '').replace(/\s+/g, ' '),
             cash: text('[data-budget-cash-hero]'),
             motion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+            shown: ['[data-budget-browse-hold]', '[data-budget-browse="spending"] .budget-browse-counts',
+              '.blend-income .blend-muted', '[data-budget-browse="bills"] h2', '.budget-bills-figures',
+              '[data-operating-question="05"] .budget-step-value', '.blend-hero-foot > .operating-note.blend-keep-visible',
+              '[data-budget-window-progress] > p', '[data-budget-browse="bills"] > footer',
+              ...(document.querySelector('.card-movement-heading') ? ['.card-movement-heading .blend-card-posted'] : [])
+            ].map(sel => {
+              const el = document.querySelector(sel);
+              if (!el) return sel + ':missing';
+              const box = el.getBoundingClientRect();
+              const style = getComputedStyle(el);
+              const visible = box.width > 8 && box.height > 8 && style.visibility !== 'hidden'
+                && style.display !== 'none' && style.position !== 'absolute';
+              return visible ? '' : sel;
+            }).filter(Boolean),
           };
         });
-        if (facts.cards !== 1 || facts.today !== 'static' || !facts.scroll || facts.tracks !== 0 || facts.escaped.length) {
-          errors.push(`${width}/${theme} geometry ${JSON.stringify({ cards: facts.cards, today: facts.today, scroll: facts.scroll, tracks: facts.tracks, escaped: facts.escaped.slice(0, 4) })}`);
+        if (facts.cards !== 1 || facts.today !== 'static' || !facts.scroll || facts.tracks !== 0 || facts.escaped.length || facts.shown.length) {
+          errors.push(`${width}/${theme} geometry ${JSON.stringify({ cards: facts.cards, today: facts.today, scroll: facts.scroll, tracks: facts.tracks, escaped: facts.escaped.slice(0, 4), shown: facts.shown })}`);
         }
         if (width === 390) {
           const quiet = page.locator('.blend-quiet');
@@ -280,6 +294,13 @@ const composite = (fg, bg) => {
         || placement.label !== 'Card movement in selected pay period') {
         errors.push(`card tile ${file} ${JSON.stringify(placement)}`);
       }
+      const posted = await page.evaluate(() => {
+        const el = document.querySelector('.card-movement-heading .blend-card-posted');
+        if (!el) return 'missing';
+        const box = el.getBoundingClientRect();
+        return box.width > 8 && box.height > 8 ? '' : 'hidden';
+      });
+      if (posted) errors.push(`card posted note ${file} ${posted}`);
       await page.screenshot({ path: path.join(outDir, file), fullPage: true, animations: 'disabled' });
       shots.push(file);
       await page.close();
