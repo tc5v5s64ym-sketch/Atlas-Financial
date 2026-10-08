@@ -4503,6 +4503,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   // there is no fallback to afterHouseholdBudget, funding or plan strings.
   // Stable hooks for other renderers: [data-bad-terms] per period, then
   // [data-bad-term="<key>"] [data-bad-term-value] with data-bad-term-trust.
+  // [data-bad-term-amount] sits inside the value: the same money2 text with
+  // no ≈ prefix (the trust attribute carries estimated); empty when unavailable.
   const badTerms = period.predictedEndingBalanceTerms;
   const badTermsKnown = !!badTerms && badTerms.identity === 'balance-after-deductions' && badTerms.closes === true;
   const badTermRow = (key, label, trust, nullIsCalculated) => {
@@ -4511,7 +4513,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     const known = numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
     const mark = known && stamp === 'estimated' ? compactOverview
       ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : '';
-    return `<div class="operating-line" data-bad-term="${key}" data-bad-term-trust="${known ? stamp : 'unavailable'}"><span data-bad-term-label>${label}</span><span data-bad-term-value>${known ? mark + money2(value) : 'Unavailable'}</span></div>`;
+    return `<div class="operating-line" data-bad-term="${key}" data-bad-term-trust="${known ? stamp : 'unavailable'}"><span data-bad-term-label>${label}</span><span data-bad-term-value>${known ? mark : 'Unavailable'}<span data-bad-term-amount>${known ? money2(value) : ''}</span></span></div>`;
   };
   // When the Q07 figure is the after-proposed-funding balance, say so: the
   // published term is before savings funding, so the two are not one figure.
