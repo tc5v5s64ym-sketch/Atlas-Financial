@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const F = require('../public/forecast');
+const View = require('../public/budget-card-movements');
 const vm = require('node:vm'), fs = require('node:fs');
 const { fixture, copy } = require('./fixtures/card-period-movements-data');
 let checks = 0;
@@ -109,6 +110,8 @@ emptyLedger.balanceEvidence.cards.find(row => row.id === 'tdcc').closing.amount 
 eq(123456 - 123456, 0, 'independent equal Emerald endpoints are zero');
 eq(publish(emptyLedger).cards[2].netChange.amount, 0, 'explicit empty array remains a true zero');
 eq(publish(emptyLedger).cards[2].status, 'ready', 'explicit empty array remains ready');
+eq(publish(emptyLedger).cards[2].pendingCoverage, 'complete-provider-response',
+  'explicit valid empty ledger preserves proven empty pending coverage');
 for (const [name, assign] of [
   ['missing transactions', y => { delete y.packet.transactions; }],
   ['null transactions', y => { y.packet.transactions = null; }],
@@ -121,6 +124,10 @@ for (const [name, assign] of [
   eq(card.netChange.trust, 'unavailable', name + ' trust');
   eq(card.netChange.completeness, 'unavailable', name + ' completeness');
   eq(card.postedCoverage, 'incomplete', name + ' coverage');
+  eq(card.pendingCoverage, 'unavailable', name + ' pending coverage cannot prove emptiness');
+  const rendered = View.html(publish(y), { money: value => '$' + value.toFixed(2), date: value => value });
+  eq(rendered.includes('No pending authorizations returned.'), false, name + ' no false pending all-clear');
+  eq(rendered.includes('Pending coverage unavailable.'), true, name + ' renderer copies unavailable pending evidence');
   assert.ok(card.reasons.includes('posted-coverage-incomplete'), name + ' reason'); checks++;
 }
 // Cross-card source identity, alias conflict and unflagged posted/pending

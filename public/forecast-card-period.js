@@ -71,7 +71,7 @@
         netChange: { amount: null, magnitude: null, direction: null, trust: 'unavailable', completeness: 'unavailable' },
         opening: null, closing: null, reportedBalance: null, posted: [], pending: [],
         postedCoverage: coverage ? 'complete-provider-response' : 'incomplete',
-        pendingCoverage: role !== 'current' ? 'not-observed' : packetCurrent && packet.pendingCoverage === 'complete' ? 'complete-provider-response' : 'unavailable',
+        pendingCoverage: role !== 'current' ? 'not-observed' : packetCurrent && ledgerValid && packet.pendingCoverage === 'complete' ? 'complete-provider-response' : 'unavailable',
         manualStatement: id === 'triangle' || id === 'mbna', reasons: issues };
       const debt = (debts || []).find(row => row?.id === id);
       // Preserve the actual observation date; never retime a manual balance.
