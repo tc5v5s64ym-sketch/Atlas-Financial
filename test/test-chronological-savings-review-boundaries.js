@@ -121,3 +121,60 @@ for (const unknown of ['price', 'pending']) test('pre-payday ' + unknown + ' rem
   assert.equal(packet.timeline.status, 'unavailable'); assert.deepEqual(packet.timeline.daily, []);
   assert.equal(packet.period.actualSaved, null);
 });
+// Independent annual-waiver allocation: $119 stock, $61 yearly card bill
+// firstDue 2026-10-25 waived, next payable 2027-10-25, later $88 on 2027-11-01.
+// Hand-listed due-date-first: 6100 then min(5800, 8800) = 5800, leftover 0.
+function annualWaiver(later) {
+  const input = fx.ledger();
+  input.plan.commitments = later ? [{ id: 'later', label: 'Invented later cost', date: '2027-11-01',
+    amount: 88, confidence: 'confirmed', sinkingFund: true }] : [];
+  input.plan.bills = [{ id: 'annual', label: 'Invented annual card bill', frequency: 'yearly',
+    month: 10, day: 25, firstDue: '2026-10-25', amount: 61, confidence: 'confirmed',
+    jointCash: false, noPaymentRequiredOn: ['2026-10-25'] }];
+  return input;
+}
+test('waived first annual occurrence yields next-year backing before a later cost', () => {
+  const input = annualWaiver(true), before = JSON.stringify(input);
+  const native = F.expandEvents(input.plan, input.asOf, '2027-11-01', { weeklyVariable: 0, ...input.opts })
+    .filter(row => row.id === 'annual');
+  assert.deepEqual(native.map(row => [row.date, row.amount]), [['2027-10-25', -61]]);
+  const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+  assert.equal(JSON.stringify(input), before);
+  assert.deepEqual(packet.backing.items.map(row => [row.id, row.date, row.needed, row.saved]),
+    [['annual', '2027-10-25', 61, 61], ['later', '2027-11-01', 88, 58]]);
+  assert.equal(packet.backing.unallocated, 0);
+  assert.equal(Math.round((61 + 58 + 0) * 100), 11900);
+});
+test('horizon extension reaches the next payable annual when no later cost forces it', () => {
+  const input = annualWaiver(false);
+  const defaultEnd = F.addDays(input.asOf, 364);
+  assert.equal(defaultEnd, '2027-10-06');
+  assert.ok(defaultEnd < '2027-10-25');
+  const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+  assert.deepEqual(packet.backing.items.map(row => [row.id, row.date, row.needed, row.saved]),
+    [['annual', '2027-10-25', 61, 61]]);
+  assert.equal(packet.backing.unallocated, 58);
+  const native = F.expandEvents(input.plan, input.asOf, '2027-10-25', { weeklyVariable: 0, ...input.opts })
+    .filter(row => row.id === 'annual');
+  assert.deepEqual(native.map(row => [row.date, row.amount]), [['2027-10-25', -61]]);
+});
+test('first payable annual occurrence remains the selected backing date', () => {
+  const input = annualWaiver(true);
+  delete input.plan.bills[0].noPaymentRequiredOn;
+  const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+  assert.deepEqual(packet.backing.items.map(row => [row.id, row.date, row.needed, row.saved]),
+    [['annual', '2026-10-25', 61, 61], ['later', '2027-11-01', 88, 58]]);
+  assert.equal(packet.backing.unallocated, 0);
+});
+test('waived first annual with unknown next amount stays unresolved', () => {
+  const input = annualWaiver(true);
+  delete input.plan.bills[0].amount;
+  const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+  const unknown = packet.unresolved.find(row => row.id === 'annual');
+  assert.ok(unknown);
+  assert.equal(unknown.date, '2027-10-25');
+  assert.equal(unknown.needed, null);
+  assert.equal(unknown.saved, null);
+  assert.equal(packet.backing.status, 'unavailable');
+  assert.equal(packet.backing.items.find(row => row.id === 'later').saved, null);
+});

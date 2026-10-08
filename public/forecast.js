@@ -2964,6 +2964,26 @@
     }
     return rows;
   }
+  function yearlyCardPaidSearchEnd(bill, asOf) {
+    return savingsDate(bill && bill.firstDue) && bill.firstDue > addDays(asOf, 731)
+      ? bill.firstDue : addDays(asOf, 731);
+  }
+  // First native yearly card-paid occurrence after asOf that is not waived
+  // or known zero. Unknown amount or needsDate stays unresolved; no date
+  // is invented when every in-window occurrence is ineligible.
+  function firstEligibleYearlyCardPaidOccurrence(bill, plan, asOf, end) {
+    if (!bill || !asOf || !isYearlyCardPaidBill(bill, plan)) return null;
+    if (bill.needsDate) {
+      const need = savingsCents(bill.amount) == null ? null : bill.amount;
+      return need === 0 ? null : { date: null, need };
+    }
+    const through = end || yearlyCardPaidSearchEnd(bill, asOf);
+    for (const date of outflowDates(bill, asOf, through)) {
+      if (billOccurrenceCashAmount(bill, date) === 0) continue;
+      return { date, need: savingsCents(bill.amount) == null ? null : billOccurrenceCashAmount(bill, date) };
+    }
+    return null;
+  }
   function yearlyCardPaidFundingRows(plan, asOf, opts) {
     opts = opts || {};
     if (!plan || !asOf) return [];
@@ -2974,10 +2994,10 @@
     let index = (plan.commitments || []).length;
     for (const b of plan.bills || []) {
       if (!isYearlyCardPaidBill(b, plan) || !b.id || commitmentIds.has(b.id)) continue;
-      const dates = outflowDates(b, asOf, horizon.end);
-      if (!dates.length) continue;
-      const date = dates[0];
-      const need = billOccurrenceCashAmount(b, date);
+      const selected = firstEligibleYearlyCardPaidOccurrence(b, plan, asOf, horizon.end);
+      if (!selected || !selected.date) continue;
+      const date = selected.date;
+      const need = selected.need;
       if (!(need > 0) || !isFinite(need)) continue;
       rows.push({
         id: b.id,
@@ -18670,8 +18690,8 @@
     for (const row of plan.commitments || []) { const date=commitmentCashDate(row); if (date && date>end) end=date; }
     for (const row of plan.budget?.categories || []) if (savingsDate(row.planningDate) && row.planningDate>end) end=row.planningDate;
     for (const bill of plan.bills || []) if (isYearlyCardPaidBill(bill,plan)) {
-      const limit = savingsDate(bill.firstDue) && bill.firstDue > addDays(day, 731) ? bill.firstDue : addDays(day, 731);
-      const next = outflowDates(bill,day,limit)[0]; if (next && next>end) end=next;
+      const next = firstEligibleYearlyCardPaidOccurrence(bill,plan,day,yearlyCardPaidSearchEnd(bill,day));
+      if (next && next.date && next.date>end) end=next.date;
     }
     const rosterOpts = { ...opts, horizonDays: diffDays(day,end)+1, viewDays: diffDays(day,end)+1 };
     const seq = fundingSequence(plan,day,rosterOpts).filter(row => !disabled.has(row.id)
@@ -18703,11 +18723,10 @@
     for (const bill of plan.bills || []) {
       if (!isYearlyCardPaidBill(bill,plan) || disabled.has(bill.id) || competing.has(bill.id)
           || seq.some(row => row.id === bill.id)) continue;
-      const date = bill.needsDate ? null : outflowDates(bill,day,end)[0] || null;
-      if (date && bill.noPaymentRequiredOn?.includes(date)) continue;
-      const need = savingsCents(bill.amount) == null ? null : date ? billOccurrenceCashAmount(bill,date) : bill.amount;
-      if (need === 0) continue;
-      append({id:bill.id,label:bill.label,date,need,confidence:bill.confidence,source:'yearly-card-paid-bill'});
+      const selected = firstEligibleYearlyCardPaidOccurrence(bill,plan,day,end);
+      if (!selected || selected.need === 0) continue;
+      append({id:bill.id,label:bill.label,date:selected.date,need:selected.need,
+        confidence:bill.confidence,source:'yearly-card-paid-bill'});
     }
     for (const category of plan.budget?.categories || []) {
       if (category.class !== 'reserve' || disabled.has(category.id) || competing.has(category.id)
