@@ -101,4 +101,16 @@ OCT8.forEach(([I,B,H,R,bad],i)=>{const v={...cur,predictedEndingBalanceTerms:{..
 });
 // Unavailable terms leave the amount hook empty.
 for(const b of [one,untrusted])terms(b).filter(x=>x.trust==='unavailable').forEach(x=>assert.equal(x.amount,''));
-console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39)');
+// (d) Q07 result hooks: data-budget-result-trust plus [data-budget-result-amount]
+// (plain money2, empty when unavailable) on the Q07 step (both layouts) and the
+// non-compact hero. Visible text stays (≈ estimated) + amount, or Unavailable.
+const result=(html,compact)=>{const strip=x=>x.replace(/<[^>]+>/g,'');
+ const out=[html.match(/data-operating-question="07"[^>]*?data-budget-result-trust="([a-z]+)"[^]*?<span class="budget-step-value"[^>]*>(.*?)<span data-budget-result-amount>([^<]*)<\/span><\/span>/)];
+ if(!compact)out.push(html.match(/data-budget-period-result data-budget-result-trust="([a-z]+)">[^]*?<p class="budget-period-result-value"[^>]*>(.*?)<span data-budget-result-amount>([^<]*)<\/span><\/p>/));
+ return out.map(m=>{assert.ok(m,'Q07 result hook');return{trust:m[1],text:strip(m[2]+m[3]),amount:m[3]};});};
+const funded={...cur,plannedCostFunding:{status:'ready',start:cur.start,end:cur.end,contribution:100,afterProposedFunding:1675,trust:'estimated',items:[],unscheduled:[]}};
+for(const [v,trust,amount] of [[cur,'calculated','$93.93'],[views[1],'estimated','$174.45'],[funded,'estimated','$1,675.00'],[{...cur,...failClosed},'unavailable','']])
+ for(const compact of [true,false]){const r=result(render(v,f.plan,compact),compact);assert.equal(r.length,compact?1:2);
+  r.forEach(x=>{assert.deepEqual([x.trust,x.amount],[trust,amount]);assert.ok(!/≈/.test(x.amount));
+   assert.equal(x.text,trust==='unavailable'?'Unavailable':(trust==='estimated'?'≈ estimated ':'')+amount);});}
+console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39); Q07 + hero result hooks (funded $1,675.00 est, unavailable empty)');
