@@ -15,6 +15,7 @@
   --blend-house: #0a8fb5;
   --blend-goals: #d23f8a;
   --blend-overdue: #9f1239;
+  --blend-over: #c2410c;
   --blend-cards: #4f6bed;
   --blend-focus: #5650e0;
   --blend-pay-bg: #0d0e12;
@@ -37,6 +38,7 @@
     --blend-house: #7adcf3;
     --blend-goals: #f7a3cc;
     --blend-overdue: #fda4af;
+    --blend-over: #fdba74;
     --blend-cards: #9eb0ff;
     --blend-focus: #b1aeff;
     --blend-pay-bg: #f4f1ea;
@@ -58,6 +60,7 @@
   --blend-house: #7adcf3;
   --blend-goals: #f7a3cc;
   --blend-overdue: #fda4af;
+  --blend-over: #fdba74;
   --blend-cards: #9eb0ff;
   --blend-focus: #b1aeff;
   --blend-pay-bg: #f4f1ea;
@@ -1586,15 +1589,17 @@ body:has([data-budget-bento]) .sitenav {
   font-weight: 650;
   white-space: nowrap;
 }
-.blend-ring.is-over .blend-ring-g { box-shadow: inset 0 0 0 3px #c2410c; }
+.blend-ring.is-over .blend-ring-g { box-shadow: inset 0 0 0 3px var(--blend-over); }
+.blend-ring.is-over .blend-ring-v { color: var(--blend-over); }
 .blend-over-pill {
+  position: relative;
   display: inline-block;
   max-width: 100%;
   padding: 2px 7px;
   overflow: visible;
   border-radius: 999px;
-  background: #c2410c;
-  color: #fff;
+  background: color-mix(in srgb, var(--blend-over) 16%, transparent);
+  color: var(--blend-over);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.2;

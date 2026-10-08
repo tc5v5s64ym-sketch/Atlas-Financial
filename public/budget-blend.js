@@ -980,7 +980,12 @@
         button.classList.add('is-over');
         const pill = document.createElement('span');
         pill.className = 'blend-over-pill';
-        pill.textContent = status;
+        const amount = document.createElement('span');
+        amount.className = 'budget-cash-sr';
+        amount.textContent = status;
+        const word = document.createElement('span');
+        word.textContent = 'Over plan';
+        pill.append(amount, word);
         button.appendChild(pill);
       }
       markSheet(button, row);

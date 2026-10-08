@@ -674,18 +674,26 @@ const composite = (fg, bg) => {
                 if (/\$/.test(sample) && style.textOverflow === 'ellipsis') bad.push({ kind: 'ellipsis', label, sample });
               });
             });
-            const pill = document.querySelector('.blend-over-pill');
+            const ring = document.querySelector('.blend-ring.is-over');
+            const pill = ring && ring.querySelector('.blend-over-pill');
+            const sr = pill && pill.querySelector('.budget-cash-sr');
+            const word = pill && [...pill.children].find(el => !el.classList.contains('budget-cash-sr'));
             const state = document.querySelector('.blend-other-state');
             const plan = document.querySelector('.blend-other .blend-of-plan');
             const hits = (a, b) => !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
             return {
               bad: bad.slice(0, 6),
-              pill: (pill?.textContent || '').replace(/\s+/g, ' ').trim(),
+              centre: (ring?.querySelector('.blend-ring-v')?.textContent || '').replace(/\s+/g, ' ').trim(),
+              word: (word?.textContent || '').replace(/\s+/g, ' ').trim(),
+              sr: (sr?.textContent || '').replace(/\s+/g, ' ').trim(),
+              srReachable: !!(sr && getComputedStyle(sr).display !== 'none' && !sr.closest('[aria-hidden="true"]')),
               pillEllipsis: pill ? getComputedStyle(pill).textOverflow : '',
               otherOverlap: hits(state && state.getBoundingClientRect(), plan && plan.getBoundingClientRect()),
             };
           });
-          if (narrow.bad.length || narrow.pill !== '$295.14 over' || narrow.pillEllipsis === 'ellipsis' || narrow.otherOverlap) {
+          if (narrow.bad.length || narrow.centre !== '$295.14 over' || narrow.word !== 'Over plan'
+            || narrow.sr !== '$295.14 over' || !narrow.srReachable
+            || narrow.pillEllipsis === 'ellipsis' || narrow.otherOverlap) {
             errors.push(`${width}/${theme} narrow overflow ${JSON.stringify(narrow)}`);
           }
         }
@@ -750,11 +758,16 @@ const composite = (fg, bg) => {
       const overs = rows.map((row, index) => {
         const ring = rings[index];
         const pill = ring && ring.querySelector('.blend-over-pill');
+        const sr = pill && pill.querySelector('.budget-cash-sr');
+        const word = pill && [...pill.children].find(el => !el.classList.contains('budget-cash-sr'));
         return {
           status: (row.querySelector('.budget-category-status')?.textContent || '').trim(),
           over: row.classList.contains('is-over'),
-          pill: pill ? (pill.textContent || '').trim() : '',
-          onFace: !!(pill && visible(pill) && !pill.closest('.blend-house-panel')),
+          centre: (ring?.querySelector('.blend-ring-v')?.textContent || '').trim(),
+          word: word ? (word.textContent || '').trim() : '',
+          sr: sr ? (sr.textContent || '').trim() : '',
+          srReachable: !!(sr && getComputedStyle(sr).display !== 'none' && !sr.closest('[aria-hidden="true"]')),
+          onFace: !!(word && visible(word) && !pill.closest('.blend-house-panel')),
         };
       }).filter(row => row.over);
       return {
@@ -773,7 +786,7 @@ const composite = (fg, bg) => {
     });
     const overOk = prepared.marked.length >= 1
       && household.overs.length === prepared.marked.length
-      && prepared.marked.every(status => household.overs.some(row => row.status === status && row.pill === status && row.onFace));
+      && prepared.marked.every(status => household.overs.some(row => row.status === status && row.centre === status && row.word === 'Over plan' && row.sr === status && row.srReachable && row.onFace));
     if (!overOk || household.countText !== prepared.printed
       || !/known categories over plan/.test(household.countText)
       || household.countOnFace || household.countInHeader || !household.countInPanel
@@ -915,17 +928,22 @@ const composite = (fg, bg) => {
     const marked = await next.evaluate(() => {
       const ring = document.querySelector('.blend-ring.is-over');
       const pill = ring && ring.querySelector('.blend-over-pill');
+      const sr = pill && pill.querySelector('.budget-cash-sr');
+      const word = pill && [...pill.children].find(el => !el.classList.contains('budget-cash-sr'));
       const sheet = document.querySelector('[data-budget-detail-sheet]');
       return {
-        word: pill ? pill.textContent : '',
-        visible: !!(pill && pill.getBoundingClientRect().width > 8 && pill.getBoundingClientRect().height > 8),
+        centre: ring ? (ring.querySelector('.blend-ring-v')?.textContent || '') : '',
+        word: word ? word.textContent : '',
+        sr: sr ? sr.textContent : '',
+        srReachable: !!(sr && getComputedStyle(sr).display !== 'none' && !sr.closest('[aria-hidden="true"]')),
+        visible: !!(word && word.getBoundingClientRect().width > 8 && word.getBoundingClientRect().height > 8),
         popup: ring && ring.getAttribute('aria-haspopup'),
         controls: ring && ring.getAttribute('aria-controls'),
         sheetLabel: sheet && sheet.getAttribute('aria-labelledby'),
         expanded: ring && ring.getAttribute('aria-expanded'),
       };
     });
-    if (marked.word !== '$80.00 over' || !marked.visible || marked.popup !== 'dialog'
+    if (marked.centre !== '$80.00 over' || marked.word !== 'Over plan' || marked.sr !== '$80.00 over' || !marked.srReachable || !marked.visible || marked.popup !== 'dialog'
       || marked.controls !== 'budget-detail-sheet' || marked.sheetLabel !== 'budget-detail-title') {
       errors.push(`over ring ${JSON.stringify(marked)}`);
     }
