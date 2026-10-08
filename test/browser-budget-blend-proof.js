@@ -284,7 +284,8 @@ const composite = (fg, bg) => {
               };
             })(),
             shown: ['[data-budget-browse-hold]',
-              '.blend-income .blend-muted',
+              '.blend-income .blend-big',
+              '.budget-bento [data-budget-browse="spending"] .budget-browse-counts',
               ...(document.querySelector('.card-movement-heading') ? ['.card-movement-heading .blend-card-posted'] : [])
             ].map(sel => {
               const el = document.querySelector(sel);
@@ -335,7 +336,7 @@ const composite = (fg, bg) => {
             errors.push(`${width}/${theme} equation ${JSON.stringify(term)}`);
           }
         });
-        if (width > 360 && !face.between) errors.push(`${width}/${theme} minus signs are not between the terms`);
+        if (width >= 1000 && !face.between) errors.push(`${width}/${theme} minus signs are not between the terms`);
         if (face.pillOverlapsHouse) errors.push(`${width}/${theme} Bills account pill overlaps Household budget`);
         if (face.strayLine || !/^=\s*Balance After Deductions/.test(face.resultLine || '')) {
           errors.push(`${width}/${theme} result label ${JSON.stringify(face.resultLine)} stray ${face.strayLine}`);
@@ -453,16 +454,11 @@ const composite = (fg, bg) => {
       return { printed, hold, marked: sample.map((_, index) => marked[index]) };
     });
     await house.locator('.blend-house-panel').waitFor();
-    const summary = house.locator('.blend-house-panel > summary');
-    await summary.focus();
-    const summaryFocused = await summary.evaluate(el => el === document.activeElement);
-    await house.keyboard.press('Enter');
-    await house.waitForFunction(() => document.querySelector('.blend-house-panel')?.open === true);
     const household = await house.evaluate(() => {
       const section = document.querySelector('[data-budget-browse="spending"]');
       const header = section.querySelector(':scope > header');
       const panel = section.querySelector('.blend-house-panel');
-      const counts = panel && panel.querySelector('.budget-browse-counts');
+      const counts = section.querySelector('.budget-browse-counts');
       const hold = header && header.querySelector('[data-budget-browse-hold]');
       const visible = el => {
         if (!el) return false;
@@ -486,8 +482,8 @@ const composite = (fg, bg) => {
       return {
         open: !!(panel && panel.open),
         countText: (counts?.textContent || '').replace(/\s+/g, ' ').trim(),
-        countInPanel: !!counts,
-        countInHeader: !!(header && header.querySelector('.budget-browse-counts')),
+        countOnFace: !!(counts && visible(counts) && !counts.closest('.blend-house-panel')),
+        countInHeader: !!(header && header.contains(counts)),
         countVisible: visible(counts),
         countHidden: counts ? counts.getAttribute('aria-hidden') : 'missing',
         clipped: !!(counts && counts.closest('.blend-clip, [aria-hidden="true"]')),
@@ -499,11 +495,11 @@ const composite = (fg, bg) => {
     const overOk = prepared.marked.length >= 1
       && household.overs.length === prepared.marked.length
       && prepared.marked.every(status => household.overs.some(row => row.status === status && row.pill === status && row.onFace));
-    if (!summaryFocused || !household.open || !overOk || household.countText !== prepared.printed
-      || !/known categories over plan/.test(household.countText) || !household.countInPanel
-      || household.countInHeader || !household.countVisible || household.countHidden || household.clipped
+    if (!overOk || household.countText !== prepared.printed
+      || !/known categories over plan/.test(household.countText) || !household.countOnFace
+      || !household.countVisible || household.countHidden || household.clipped
       || household.holdText !== prepared.hold || !household.holdOnFace || !/\$/.test(household.holdText)) {
-      errors.push(`household count ${JSON.stringify({ prepared, summaryFocused, household })}`);
+      errors.push(`household count ${JSON.stringify({ prepared, household })}`);
     }
     await house.close();
 

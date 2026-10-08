@@ -26,15 +26,15 @@
   "contrasts": [
     {
       "name": "light period range",
-      "ratio": 16.83,
+      "ratio": 19.55,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
       "fg": "rgb(11, 12, 16)",
       "bg": [
-        236,
-        238,
-        242
+        255,
+        255,
+        255
       ]
     },
     {
@@ -130,15 +130,15 @@
     },
     {
       "name": "dark period range",
-      "ratio": 18.83,
+      "ratio": 15.94,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
       "fg": "rgb(245, 246, 248)",
       "bg": [
-        5,
-        5,
-        7
+        27,
+        27,
+        26
       ]
     },
     {
@@ -466,7 +466,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          156,
+          228,
           43
         ],
         "pass": true
@@ -479,7 +479,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          156,
+          228,
           43
         ],
         "pass": true
@@ -492,7 +492,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          156,
+          228,
           43
         ],
         "pass": true
