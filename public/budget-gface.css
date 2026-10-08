@@ -79,6 +79,9 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   gap: 18px;
   align-items: start;
   min-width: 0;
+  /* Flat page colour in the column gap. The goals wash stays in the
+     margins; it must not show through the gutter as a pink stripe. */
+  background: var(--blend-bg);
 }
 .budget-bento.atlas-g > .blend-board > .blend-col {
   display: flex;
@@ -711,13 +714,15 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 }
 .budget-bento.atlas-g .blend-goals-panel > summary { display: none; }
 .budget-bento.atlas-g .blend-goals-panel:not([open]) > :not(summary) { display: none; }
-.budget-bento.atlas-g > .g-source {
+.budget-bento.atlas-g > .g-source,
+.budget-bento.atlas-g .budget-browse-grid {
   position: absolute !important;
   width: 1px !important;
   height: 1px !important;
   margin: 0 !important;
   overflow: hidden !important;
   clip: rect(0 0 0 0) !important;
+  pointer-events: none;
 }
 .budget-bento.atlas-g .blend-goals-costs { margin: 0; padding: 12px 0 0; border: 0; }
 
@@ -866,10 +871,22 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 }
 @media (max-width: 759px) {
   body:has([data-budget-bento]) .wrap { padding: 0 16px; }
+  .budget-bento.atlas-g { gap: 18px; }
   .budget-bento.atlas-g > .blend-board {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    align-items: stretch;
+    gap: 18px;
+  }
+  .budget-bento.atlas-g .blend-hero,
+  .budget-bento.atlas-g .blend-income,
+  .budget-bento.atlas-g [data-budget-browse="bills"],
+  .budget-bento.atlas-g [data-budget-browse="spending"],
+  .budget-bento.atlas-g .budget-blend-card-movements,
+  .budget-bento.atlas-g [data-budget-savings-goals] {
+    width: 100%;
+    max-width: none;
+    align-self: stretch;
   }
   .budget-bento.atlas-g > .blend-board > .blend-col { display: contents; }
   .budget-bento.atlas-g .blend-hero { order: 1; padding: 20px 16px 24px; }
@@ -882,8 +899,39 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
   }
-  .budget-bento.atlas-g .blend-ring { padding: 2px; }
-  .budget-bento.atlas-g .blend-ring-g { width: min(100%, 128px); height: auto; }
+  .budget-bento.atlas-g .blend-ring { padding: 2px; min-width: 0; width: 100%; }
+  .budget-bento.atlas-g .blend-ring-g {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: auto;
+    aspect-ratio: 1;
+    justify-self: stretch;
+    overflow: hidden;
+  }
+  .budget-bento.atlas-g .blend-arc-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .budget-bento.atlas-g .day-g,
+  .budget-bento.atlas-g .blend-day-hit {
+    right: 2px;
+    bottom: 3px;
+    width: 16px;
+    height: 16px;
+  }
+  .budget-bento.atlas-g .blend-day-hit svg { width: 16px; height: 16px; }
+  .budget-bento.atlas-g .day-s,
+  .budget-bento.atlas-g .blend-day > .blend-state {
+    left: 2px;
+    bottom: 3px;
+    width: 12px;
+    height: 12px;
+  }
+  .budget-bento.atlas-g .day-s[data-s="paid"] svg,
+  .budget-bento.atlas-g .blend-state[data-s="paid"] svg { width: 8px; height: 8px; }
   .budget-bento.atlas-g .blend-income .blend-tile-head { flex-wrap: nowrap; align-items: center; }
   .budget-bento.atlas-g .blend-income-in {
     flex: 0 0 auto;

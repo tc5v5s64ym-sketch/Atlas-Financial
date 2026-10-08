@@ -1802,7 +1802,7 @@
           ? bento.querySelector('#blend-bills-more')
           : null;
       const key = cat || bill || label;
-      if (!host || host.classList.contains('blend-other') || host.querySelector('[data-blend-badge="' + CSS.escape(key) + '"]')) return;
+      if (!host || host.classList.contains('blend-other') || host.classList.contains('is-over') || host.querySelector('.blend-over-pill') || host.querySelector('[data-blend-badge="' + CSS.escape(key) + '"]')) return;
       const badge = document.createElement('span');
       badge.className = 'blend-face-badge';
       badge.setAttribute('data-blend-badge', key);

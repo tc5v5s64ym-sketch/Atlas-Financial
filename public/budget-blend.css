@@ -1656,7 +1656,6 @@ body:has([data-budget-bento]) .sitenav {
   font-weight: 650;
   white-space: nowrap;
 }
-.blend-ring.is-over .blend-ring-g { box-shadow: inset 0 0 0 3px var(--blend-over); }
 .blend-ring.is-over .blend-ring-v { color: var(--blend-over); }
 .blend-over-pill {
   position: relative;
