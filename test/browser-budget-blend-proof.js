@@ -375,14 +375,15 @@ const composite = (fg, bg) => {
               const billsHead = document.querySelector('.blend-bills-head');
               const billsTitle = billsHead && billsHead.querySelector('.blend-tile-title');
               const billsOf = billsHead && billsHead.querySelector('.blend-bills-of');
-              const billsToggle = billsHead && billsHead.querySelector('.blend-panel-toggle');
+              const billsToggle = document.querySelector('[data-budget-browse="bills"] .blend-panel-toggle');
               const titleBox = box(billsTitle);
               const ofBox = box(billsOf);
-              const toggleBox = box(billsToggle);
-              const bills = billsHead && titleBox && ofBox && toggleBox ? {
+              const bills = billsHead && titleBox && ofBox ? {
                 oneLine: billsOf.scrollWidth <= billsOf.clientWidth + 1 && billsOf.getClientRects().length === 1,
-                row: ofBox.top >= titleBox.bottom - 2 && Math.abs(titleBox.top - toggleBox.top) < 8,
-                crowded: ofBox.top < titleBox.bottom - 2,
+                sameRow: Math.abs((ofBox.top + ofBox.height / 2) - (titleBox.top + titleBox.height / 2)) < 14,
+                right: ofBox.left >= titleBox.right - 4,
+                toggleInHead: !!(billsToggle && billsHead.contains(billsToggle)),
+                crowded: ofBox.top >= titleBox.bottom + 8,
               } : null;
               const pillHeights = pills.length ? {
                 spread: Math.max(...pills.map(row => row.height || 0)) - Math.min(...pills.map(row => row.height || 0)),
@@ -637,11 +638,21 @@ const composite = (fg, bg) => {
         if (width <= 390 && (face.dateOverlapsRing || !face.dateOneLine || face.estOverlapsIncome)) {
           errors.push(`${width}/${theme} overlap date ${face.dateOverlapsRing} line ${face.dateOneLine} est ${face.estOverlapsIncome}`);
         }
-        if (width <= 480 && face.bills && (!face.bills.oneLine || !face.bills.row || face.bills.crowded)) {
+        if (face.bills && (face.bills.toggleInHead || !face.bills.oneLine)) {
           errors.push(`${width}/${theme} bills head ${JSON.stringify(face.bills)}`);
         }
-        if (width <= 390 && face.pillHeights && face.pillHeights.spread > 14) {
-          errors.push(`${width}/${theme} pill heights ${JSON.stringify(face.pillHeights)}`);
+        if (width >= 1000 && face.bills && (!face.bills.sameRow || !face.bills.right || face.bills.crowded)) {
+          errors.push(`${width}/${theme} bills head row ${JSON.stringify(face.bills)}`);
+        }
+        if (width <= 390) {
+          const save = (face.pills || []).find(pill => pill.id === 'savings');
+          const split = (face.pills || []).find(pill => pill.id === 'split');
+          if (save && (save.height > 64 || save.width < (face.footWidth || 0) - 24)) {
+            errors.push(`${width}/${theme} savings pill ${JSON.stringify(save)}`);
+          }
+          if (split && split.width < (face.footWidth || 0) - 28) {
+            errors.push(`${width}/${theme} split width ${JSON.stringify({ foot: face.footWidth, split })}`);
+          }
         }
         if (width >= 1000 && face.baselines && face.baselines.some(row => row.delta > 3)) {
           errors.push(`${width}/${theme} pill baseline ${JSON.stringify(face.baselines)}`);
@@ -1288,9 +1299,10 @@ const composite = (fg, bg) => {
           };
         });
         const head = document.querySelector('.blend-bills-head');
-        const toggle = head && head.querySelector('.blend-panel-toggle');
+        const cal = document.querySelector('[data-blend-cal]');
+        const toggle = document.querySelector('[data-budget-browse="bills"] .blend-panel-toggle');
         const flag = head && head.querySelector('.blend-flag');
-        const headBox = head ? head.getBoundingClientRect() : null;
+        const calBox = cal ? cal.getBoundingClientRect() : null;
         const toggleBox = toggle ? toggle.getBoundingClientRect() : null;
         const flagBox = flag ? flag.getBoundingClientRect() : null;
         return {
@@ -1319,8 +1331,8 @@ const composite = (fg, bg) => {
           qualifier: (document.querySelector('.blend-bad-qualifier')?.textContent || '').trim(),
           hero: document.querySelector('[data-budget-bento]')?.getAttribute('data-blend-ready') === '1',
           centres,
-          detailsPinned: !!(headBox && toggleBox && headBox.right - toggleBox.right <= 4 && toggleBox.width > 8),
-          detailsClear: !flagBox || !toggleBox || toggleBox.left - flagBox.right > 16,
+          detailsPinned: !!(toggle && toggleBox && toggleBox.width > 8 && calBox && toggleBox.top >= calBox.bottom - 8 && head && !head.contains(toggle)),
+          detailsClear: !flagBox || !toggleBox || toggleBox.top >= flagBox.bottom - 2 || toggleBox.left - flagBox.right > 16,
         };
       });
       const badCentres = (pastFace.centres || []).filter(row => row.ellipsis || row.clipped || row.outside || !row.text || row.lines < 1);
@@ -1471,13 +1483,13 @@ const composite = (fg, bg) => {
         panel?.remove();
         mount.appendChild(document.createTextNode(''));
       }, html);
-      await otherPlan.locator('.blend-other .blend-of-plan').waitFor();
-      return otherPlan.locator('.blend-other .blend-of-plan').innerText();
+      await otherPlan.locator('.blend-other-amt').waitFor();
+      return (await otherPlan.locator('.blend-other').innerText()).replace(/\s+/g, ' ').trim();
     };
     const plainPlan = await readPlan('<span class="budget-cash-sr">Spent </span>$22.99<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>$450.00');
     const estimatedPlan = await readPlan('<span class="budget-cash-sr">Spent </span>$22.99<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span><span class="est"><span aria-hidden="true">≈</span><span class="budget-cash-sr">estimated </span></span>$450.00');
-    if (plainPlan !== 'of planned $450.00') errors.push(`other plan face ${plainPlan}`);
-    if (!/of planned\s+≈estimated \$450\.00/.test(estimatedPlan || '')) errors.push(`future other plan ${estimatedPlan}`);
+    if (!/\$22\.99/.test(plainPlan) || /of planned/i.test(plainPlan)) errors.push(`other plan face ${plainPlan}`);
+    if (!/\$22\.99/.test(estimatedPlan || '') || /of planned/i.test(estimatedPlan || '')) errors.push(`future other plan ${estimatedPlan}`);
     await otherPlan.close();
 
     const goalPage = await open(1440, 'light');
@@ -1827,18 +1839,20 @@ const composite = (fg, bg) => {
 from PIL import Image
 import sys
 pairs = sys.argv[1:]
-def scale(im, h):
-    w = max(1, int(im.width * h / im.height))
+def fit_width(im, w):
+    if im.width == w:
+        return im
+    h = max(1, int(round(im.height * w / im.width)))
     return im.resize((w, h), Image.Resampling.LANCZOS)
 for i in range(0, len(pairs), 3):
     left, right, out = pairs[i:i+3]
-    a = scale(Image.open(left).convert('RGB'), 1100)
-    b = scale(Image.open(right).convert('RGB'), 1100)
-    canvas = Image.new('RGB', (a.width + b.width + 12, 1100), (236, 238, 242))
+    a = Image.open(left).convert('RGB')
+    b = fit_width(Image.open(right).convert('RGB'), a.width)
+    canvas = Image.new('RGB', (a.width + b.width + 12, max(a.height, b.height)), (236, 238, 242))
     canvas.paste(a, (0, 0))
     canvas.paste(b, (a.width + 12, 0))
     canvas.save(out)
-    print(out)
+    print(out, a.size, b.size)
 `;
     const gblend = '/tmp/g-blend/g-blend/shots';
     const side = spawnSync('python3', ['-c', sideScript,
@@ -1848,6 +1862,16 @@ for i in range(0, len(pairs), 3):
     ], { encoding: 'utf8' });
     if (side.status !== 0) errors.push(`side-by-side ${side.stderr || side.stdout}`);
     else console.log(side.stdout.trim());
+    const crop = spawnSync('python3', ['-c', `
+from PIL import Image
+im = Image.open(${JSON.stringify(path.join(outDir, 'budget-blend-390-light.png'))})
+mid = im.height // 2
+im.crop((0, 0, im.width, mid)).save(${JSON.stringify(path.join(outDir, 'budget-blend-390-light-top.png'))})
+im.crop((0, mid, im.width, im.height)).save(${JSON.stringify(path.join(outDir, 'budget-blend-390-light-bot.png'))})
+print('390 crops', im.size)
+`], { encoding: 'utf8' });
+    if (crop.status !== 0) errors.push(`390 crops ${crop.stderr || crop.stdout}`);
+    else console.log(crop.stdout.trim());
 
     const failedContrast = contrasts.filter(row => row.pass === false || row.missing);
     if (failedContrast.length) errors.push(`contrast ${JSON.stringify(failedContrast)}`);

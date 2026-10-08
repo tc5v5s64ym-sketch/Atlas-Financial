@@ -932,7 +932,18 @@
       caption.className = 'blend-p-lbl';
       const when = depositDate(row);
       const name = depositName(row);
-      caption.textContent = [depositAmount(row), name].filter(Boolean).join(' ') + (when ? ' · ' + when : '');
+      const amount = depositAmount(row);
+      if (amount) {
+        const strong = document.createElement('b');
+        strong.textContent = amount;
+        caption.appendChild(strong);
+      }
+      const rest = [name, when].filter(Boolean).join(' · ');
+      if (rest) {
+        const line = document.createElement('span');
+        line.textContent = rest;
+        caption.appendChild(line);
+      }
       dep.append(dot, caption);
       pulse.appendChild(dep);
     });
@@ -944,26 +955,13 @@
 
   function billIcon(label) {
     const s = String(label || '').toLowerCase();
-    if (!s) {
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('aria-hidden', 'true');
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', '12');
-      circle.setAttribute('cy', '12');
-      circle.setAttribute('r', '6');
-      circle.setAttribute('fill', 'none');
-      circle.setAttribute('stroke', 'currentColor');
-      circle.setAttribute('stroke-width', '1.7');
-      svg.appendChild(circle);
-      return svg;
-    }
-    const name = /rent|mortgage|house|property|home/.test(s) ? 'house'
+    const name = !s ? 'card'
+      : /rent|mortgage|house|property|home/.test(s) ? 'house'
       : /car|auto|vehicle/.test(s) ? 'car'
       : /hydro|electric|power|bolt/.test(s) ? 'bolt'
       : /wifi|internet|shaw|telus|rogers|phone/.test(s) ? 'wifi'
       : /card|visa|mastercard|mbna|amex|credit/.test(s) ? 'card'
-      : 'generic';
+      : 'card';
     const paths = {
       house: 'M4 11.2 12 4l8 7.2V20h-5.2v-5.2H9.2V20H4V11.2Z',
       car: 'M4 16h16v2H4v-2Zm1.2-2 1.6-5h10.4l1.6 5H5.2Z',
@@ -1043,8 +1041,13 @@
         remain.textContent = 'No bills assigned';
         remain.classList.add('is-empty');
       } else if (leftMoney && planMoney) {
-        const est = /estimated|≈/.test(leftRaw + ' ' + planRaw) ? ' est.' : '';
-        remain.textContent = leftMoney + ' left of ' + planMoney + est;
+        remain.appendChild(document.createTextNode(leftMoney + ' left of ' + planMoney));
+        if (/estimated|≈/.test(leftRaw + ' ' + planRaw)) {
+          const est = document.createElement('span');
+          est.className = 'blend-est';
+          est.textContent = 'est.';
+          remain.appendChild(est);
+        }
       } else {
         remain.textContent = 'Unavailable';
       }
@@ -1112,16 +1115,12 @@
           const state = remain && remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
           if (state === 'overdue') day.classList.add('is-overdue');
           mark.dataset.s = state;
-          const category = hits[0].getAttribute('data-budget-bill-category') || '';
-          mark.appendChild(billIcon(category));
-          let heatSum = 0;
-          let heatKnown = false;
-          hits.forEach(row => {
-            const amount = printedMagnitude(text(row.querySelector('.budget-bill-amount')));
-            if (amount != null) { heatSum += amount; heatKnown = true; }
-          });
-          if (!heatKnown) day.classList.add('is-untracked');
-          else day.dataset.blendHeat = String(heatSum);
+          const printedLabel = text(hits[0].querySelector('.budget-bill-label strong'));
+          mark.appendChild(billIcon(printedLabel));
+          // Count only. One bill is ~20% of --bills (0.32 × 62%). Extra
+          // bills step up and stay under the hot threshold. Amounts are not read.
+          const heat = hits.length <= 1 ? 0.32 : hits.length === 2 ? 0.42 : 0.50;
+          day.style.setProperty('--heat', heat.toFixed(2));
           if (state !== 'unknown') {
             const badge = document.createElement('i');
             badge.className = 'blend-state day-s' + (state === 'confirm' ? ' blend-pulse' : '');
@@ -1143,13 +1142,6 @@
           }
         }
         cal.appendChild(day);
-      });
-      const heated = [...cal.querySelectorAll('[data-blend-heat]')];
-      const maxHeat = heated.reduce((max, el) => Math.max(max, Number(el.dataset.blendHeat) || 0), 0);
-      heated.forEach(el => {
-        const share = maxHeat > 0 ? (Number(el.dataset.blendHeat) || 0) / maxHeat : 0;
-        el.style.setProperty('--heat', share.toFixed(4));
-        if (share >= 0.66) el.classList.add('is-hot');
       });
     }
     const header = section.querySelector('header');
@@ -1174,10 +1166,10 @@
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
     panel.addEventListener('focusin', openPanel);
-    head.appendChild(toggle);
-    cal.after(panel);
+    cal.after(toggle);
+    toggle.after(panel);
     [...section.children].forEach(node => {
-      if (node !== head && node !== cal && node !== panel) panel.appendChild(node);
+      if (node !== head && node !== cal && node !== panel && node !== toggle) panel.appendChild(node);
     });
   }
 
@@ -1278,6 +1270,8 @@
       const circ = 2 * Math.PI * 44;
       const drawn = Math.max(0, Math.min(1, share)) * circ;
       circle('rg-arc', {
+        stroke: 'currentColor',
+        'stroke-width': '7',
         'stroke-linecap': 'round',
         transform: 'rotate(-90 56 56)',
         'stroke-dasharray': drawn.toFixed(2) + ' ' + circ.toFixed(2),
@@ -1291,6 +1285,51 @@
     svg.appendChild(glass);
     track.setAttribute('stroke-width', '7');
     return svg;
+  }
+
+  function ringCentre(status) {
+    const raw = String(status || '').replace(/\s+/g, ' ').trim();
+    const wrap = document.createElement('span');
+    wrap.className = 'blend-ring-v';
+    const parts = raw.match(/^(-?\$[\d,]+)(\.\d{2})(?:\s+(\S+))?/);
+    if (!parts) {
+      wrap.textContent = raw || '—';
+      if (!/\$[\d,]/.test(raw) || raw.length > 14) wrap.classList.add('is-word');
+      return wrap;
+    }
+    const amt = document.createElement('span');
+    amt.className = 'blend-ring-amt';
+    amt.appendChild(document.createTextNode(parts[1]));
+    const cents = document.createElement('span');
+    cents.className = 'blend-cents';
+    cents.textContent = parts[2];
+    amt.appendChild(cents);
+    wrap.appendChild(amt);
+    if (parts[3]) {
+      const gap = document.createElement('span');
+      gap.className = 'budget-cash-sr';
+      gap.textContent = ' ';
+      const unit = document.createElement('span');
+      unit.className = 'blend-ring-u';
+      unit.textContent = parts[3];
+      wrap.append(gap, unit);
+    }
+    return wrap;
+  }
+
+  // Geometry for the ring arc. The bar width is preferred. When that width
+  // is missing or zero, a printed spent amount and a printed plan amount
+  // are the same kind of share the split bar already uses. Nothing here is
+  // written back as a figure.
+  function printedSpentPlanShare(row) {
+    const meta = row.querySelector('.budget-category-meta');
+    if (!meta) return null;
+    const clone = meta.cloneNode(true);
+    clone.querySelectorAll('.budget-cash-sr').forEach(node => node.remove());
+    const shown = text(clone);
+    const amounts = [...shown.matchAll(/-?\$[\d,]+\.\d{2}/g)].map(match => printedMagnitude(match[0]));
+    if (amounts.length < 2 || amounts[0] == null || amounts[1] == null || !(amounts[1] > 0)) return null;
+    return Math.max(0, Math.min(1, amounts[0] / amounts[1]));
   }
 
   function paintHouse(bento) {
@@ -1313,36 +1352,26 @@
       const scale = bar && bar.getAttribute('data-budget-category-scale');
       const fill = row.querySelector('.budget-category-fill');
       const width = fill && fill.style.width ? parseFloat(fill.style.width) : NaN;
-      const known = scale === 'numeric' && Number.isFinite(width);
-      if (known) {
-        const used = Math.max(0, Math.min(100, width)) / 100;
-        button.classList.add('is-known');
-        button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - used))));
+      const known = scale === 'numeric' && Number.isFinite(width) && width > 0;
+      let share = known ? Math.max(0, Math.min(1, width / 100)) : null;
+      if (!(share > 0)) {
+        const printed = printedSpentPlanShare(row);
+        if (printed > 0) share = printed;
+      }
+      if (share > 0) {
+        button.classList.add('is-known', 'has-arc');
+        button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - share))));
+        button.style.setProperty('--pct', share.toFixed(4));
       } else button.classList.add('is-unknown');
       const status = text(row.querySelector('.budget-category-status')) || 'Unavailable';
       const meta = text(row.querySelector('.budget-category-meta'));
       const planned = (meta.match(/of planned\s+(.+)$/i) || [])[1];
       const name = text(row.querySelector('.budget-category-name')) || 'Category';
-      const nothingPrinted = !known && !/\$[\d,]/.test(status) && /not observed|unavailable|unknown|^$/i.test(status);
+      const nothingPrinted = !(share > 0) && !/\$[\d,]/.test(status) && /not observed|unavailable|unknown|^$/i.test(status);
       const well = document.createElement('span');
       well.className = 'blend-ring-g' + (nothingPrinted ? ' is-empty' : '');
-      const value = document.createElement('span');
-      value.className = 'blend-ring-v';
-      value.textContent = nothingPrinted ? '—' : (status || '—');
-      if (!/\$[\d,]/.test(value.textContent) || value.textContent.length > 14) value.classList.add('is-word');
-      if (!nothingPrinted) splitFaceCents(value);
-      if (known) {
-        const spent = Math.max(0, Math.min(1, Math.max(0, Math.min(100, width)) / 100));
-        button.style.setProperty('--pct', spent.toFixed(4));
-        button.classList.add('has-arc');
-      }
-      well.append(categoryArc(known ? Math.max(0, Math.min(1, Math.max(0, Math.min(100, width)) / 100)) : null), value);
-      if (known) {
-        const wave = document.createElement('span');
-        wave.className = 'blend-wave';
-        wave.setAttribute('aria-hidden', 'true');
-        well.appendChild(wave);
-      }
+      const value = nothingPrinted ? ringCentre('—') : ringCentre(status || '—');
+      well.append(categoryArc(share > 0 ? share : null), value);
       const label = document.createElement('span');
       label.className = 'blend-ring-l';
       label.textContent = planned ? name + ' · of ' + planned.trim() : name;
@@ -1401,21 +1430,31 @@
       const name = document.createElement('span');
       name.className = 'blend-other-name';
       name.textContent = text(other[0].querySelector('.budget-category-name')) || 'Other spending';
-      const word = document.createElement('span');
-      word.className = 'blend-other-state';
-      const counted = text(other[0]).match(/\d+\s+to sort/i);
       const rawOther = text(other[0]);
-      word.textContent = counted ? counted[0]
-        : /needs a category/i.test(rawOther) ? 'needs a category'
-        : (/not observed|unavailable|unknown/i.test(status) && !/\$[\d,]/.test(status) ? '—' : status);
-      const chevron = document.createElement('span');
-      chevron.className = 'blend-other-chev';
-      chevron.setAttribute('aria-hidden', 'true');
-      chevron.textContent = '›';
-      const plan = plannedPhrase(other[0]);
+      const attention = otherId
+        ? text(document.querySelector('[data-budget-browse="attention"] [data-budget-category-open="' + CSS.escape(otherId) + '"] strong'))
+        : '';
+      const needsCategory = /needs a category/i.test(rawOther) || /needs a category/i.test(attention);
       foot.append(dot, name);
-      if (plan) foot.appendChild(plan);
-      foot.append(word, chevron);
+      if (needsCategory) {
+        const badge = document.createElement('span');
+        badge.className = 'blend-need-badge';
+        badge.textContent = 'needs a category';
+        foot.appendChild(badge);
+      }
+      const amount = moneyToken(status) || moneyToken(rawOther);
+      if (amount) {
+        const shown = document.createElement('span');
+        shown.className = 'blend-other-amt';
+        shown.textContent = amount;
+        foot.appendChild(shown);
+      } else if (!needsCategory) {
+        const word = document.createElement('span');
+        word.className = 'blend-other-state';
+        const counted = rawOther.match(/\d+\s+to sort/i);
+        word.textContent = counted ? counted[0] : status;
+        foot.appendChild(word);
+      }
       markSheet(foot, other[0]);
       rings.after(foot);
     }
@@ -1468,7 +1507,12 @@
         chip.className = 'blend-cc-chip cc-chip';
         const net = /visa/i.test(name) ? 'visa' : /mastercard|\bmc\b/i.test(name) ? 'mc' : /\bflex\b/i.test(name) ? 'flex' : '';
         if (net) chip.setAttribute('data-net', net);
-        const hue = /travel/i.test(name) ? '28' : /cash/i.test(name) ? '210' : /triangle/i.test(name) ? '262' : /amazon|mbna/i.test(name) ? '198' : '220';
+        const hue = /emerald/i.test(name) ? '150'
+          : /travel/i.test(name) ? '220'
+          : /cash/i.test(name) ? '160'
+          : /triangle/i.test(name) ? '0'
+          : /amazon|mbna/i.test(name) ? '30'
+          : '220';
         chip.style.setProperty('--h', hue);
         button.prepend(chip);
       }
@@ -1602,10 +1646,6 @@
         bar.style.setProperty('--w', Math.max(0, Math.min(1, savedN / (savedN + neededN))).toFixed(4));
       } else {
         bar.classList.add('is-untracked');
-        const mark = document.createElement('b');
-        mark.className = 'blend-untracked-mark';
-        mark.textContent = '—';
-        bar.appendChild(mark);
       }
       item.append(name, stack, bar);
       list.appendChild(item);
@@ -1680,16 +1720,42 @@
       const host = cat
         ? bento.querySelector('[data-blend-cat="' + CSS.escape(cat) + '"]')
         : bill
-          ? bento.querySelector('[data-budget-browse="bills"] .blend-bills-head')
+          ? bento.querySelector('#blend-bills-more')
           : null;
       const key = cat || bill || label;
-      if (!host || host.querySelector('[data-blend-badge="' + CSS.escape(key) + '"]')) return;
+      if (!host || host.classList.contains('blend-other') || host.querySelector('[data-blend-badge="' + CSS.escape(key) + '"]')) return;
       const badge = document.createElement('span');
       badge.className = 'blend-face-badge';
       badge.setAttribute('data-blend-badge', key);
       badge.textContent = label;
       host.appendChild(badge);
     });
+  }
+
+  // Fritsch–Carlson monotone cubic slopes. Geometry of already chosen points.
+  function monotoneSlopes(xs, ys) {
+    const n = xs.length;
+    const slope = new Array(n).fill(0);
+    if (n < 2) return slope;
+    const delta = [];
+    for (let i = 0; i < n - 1; i++) delta.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i] || 1));
+    slope[0] = delta[0];
+    slope[n - 1] = delta[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      slope[i] = delta[i - 1] * delta[i] <= 0 ? 0 : (delta[i - 1] + delta[i]) / 2;
+    }
+    for (let i = 0; i < n - 1; i++) {
+      if (delta[i] === 0) { slope[i] = slope[i + 1] = 0; continue; }
+      const a = slope[i] / delta[i];
+      const b = slope[i + 1] / delta[i];
+      const sum = a * a + b * b;
+      if (sum > 9) {
+        const scale = 3 / Math.sqrt(sum);
+        slope[i] = scale * a * delta[i];
+        slope[i + 1] = scale * b * delta[i];
+      }
+    }
+    return slope;
   }
 
   // Geometry only. Empty text is not zero. Number('') must never become a height.
@@ -1861,12 +1927,11 @@
     play.append(pill, beam, orb);
     if (!absent) {
       const marks = nodes.map(riverMonth);
-      const firstChange = marks.findIndex((mark, i) => i && mark && marks[i - 1] && mark.key !== marks[i - 1].key);
       let yearShown = false;
       marks.forEach((mark, i) => {
         if (!mark) return;
         const prev = i ? marks[i - 1] : null;
-        const boundary = prev ? prev.key !== mark.key : (firstChange < 0 || firstChange >= 2);
+        const boundary = !prev || prev.key !== mark.key;
         if (!boundary) return;
         const label = document.createElement('span');
         label.dataset.i = String(i);
@@ -1946,7 +2011,7 @@
       const n = nodes.length;
       const mobile = width < 640;
       const pad = mobile ? 26 : 36;
-      const minSp = mobile ? 44 : 52;
+      const minSp = mobile ? 56 : 88;
       const fit = n <= 1 ? 0 : (width - pad * 2) / Math.max(1, n - 1);
       const sp = n <= 1 ? 0 : Math.max(fit, minSp);
       const contentW = n <= 1 ? width : pad * 2 + sp * (n - 1);
@@ -1972,63 +2037,153 @@
       }
       layout.off = off;
       layout.xs = xs;
+      slide.style.right = 'auto';
       slide.style.width = contentW + 'px';
       slide.style.transform = 'translate3d(' + (-off).toFixed(1) + 'px,0,0)';
       const dark = document.documentElement.getAttribute('data-theme') === 'dark'
         || (!document.documentElement.getAttribute('data-theme') && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      const palette = dark
-        ? { income: 'rgb(92, 242, 176)', short: 'rgb(255, 86, 102)', muted: 'rgba(244,245,247,.45)' }
-        : { income: 'rgb(10, 168, 112)', short: 'rgb(228, 52, 80)', muted: 'rgba(16,18,27,.35)' };
+      const income = dark ? [92, 242, 176] : [10, 168, 112];
+      const amber = dark ? [255, 190, 92] : [236, 146, 18];
+      const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
+      const ink = dark ? '255,255,255' : '16,18,27';
+      const knownIdx = [];
+      ys.forEach((y, i) => { if (y != null) knownIdx.push(i); });
       ctx.save();
       ctx.translate(-off, 0);
       ctx.setLineDash([2, 6]);
-      ctx.strokeStyle = palette.muted;
+      ctx.strokeStyle = 'rgba(' + ink + ',' + (dark ? 0.22 : 0.2) + ')';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(xs[0], y0);
-      ctx.lineTo(xs[n - 1], y0);
+      ctx.moveTo(xs[0] - 18, y0 + 0.5);
+      ctx.lineTo(xs[n - 1] + 18, y0 + 0.5);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      let carry = null;
-      for (let i = 0; i < n - 1; i++) {
-        const knownSeg = ys[i] != null && ys[i + 1] != null;
-        const fromY = ys[i] != null ? ys[i] : (carry != null ? carry : y0);
-        const toY = knownSeg ? ys[i + 1] : (ys[i + 1] != null ? ys[i + 1] : fromY);
-        ctx.beginPath();
-        ctx.moveTo(xs[i], fromY);
-        ctx.lineTo(xs[i + 1], toY);
-        if (knownSeg) {
-          ctx.setLineDash([]);
-          ctx.strokeStyle = palette[nodes[i + 1].tone] || palette.income;
-          ctx.lineWidth = 2.4;
-        } else {
-          ctx.setLineDash([2, 6]);
-          ctx.strokeStyle = palette.muted;
-          ctx.lineWidth = 1.5;
+      if (knownIdx.length >= 2) {
+        const kxs = knownIdx.map(i => xs[i]);
+        const kys = knownIdx.map(i => ys[i]);
+        const slopes = monotoneSlopes(kxs, kys);
+        const path = new Path2D();
+        path.moveTo(kxs[0], kys[0]);
+        for (let i = 0; i < kxs.length - 1; i++) {
+          const h = kxs[i + 1] - kxs[i];
+          path.bezierCurveTo(
+            kxs[i] + h / 3, kys[i] + slopes[i] * h / 3,
+            kxs[i + 1] - h / 3, kys[i + 1] - slopes[i + 1] * h / 3,
+            kxs[i + 1], kys[i + 1]
+          );
         }
-        ctx.stroke();
-        if (ys[i + 1] != null) carry = ys[i + 1];
-        else if (ys[i] != null) carry = ys[i];
+        const area = new Path2D(path);
+        area.lineTo(kxs[kxs.length - 1], botSafe + 6);
+        area.lineTo(kxs[0], botSafe + 6);
+        area.closePath();
+        const grad = ctx.createLinearGradient(kxs[0], 0, kxs[kxs.length - 1], 0);
+        knownIdx.forEach((idx, i) => {
+          const t = i / (knownIdx.length - 1);
+          grad.addColorStop(t, rgba(nodes[idx].negative ? amber : income, 1));
+        });
+        ctx.save();
+        ctx.globalAlpha = dark ? 0.22 : 0.16;
+        ctx.fillStyle = grad;
+        ctx.fill(area);
+        ctx.globalCompositeOperation = 'destination-out';
+        const fade = ctx.createLinearGradient(0, top, 0, botSafe + 6);
+        fade.addColorStop(0, 'rgba(0,0,0,0)');
+        fade.addColorStop(1, 'rgba(0,0,0,1)');
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = fade;
+        ctx.fillRect(kxs[0] - 24, top - 40, (kxs[kxs.length - 1] - kxs[0]) + 48, botSafe - top + 56);
+        ctx.restore();
+        const cur = Math.max(0, nodes.findIndex(node => node.role !== 'past'));
+        const xCur = cur <= 0 ? kxs[0] - 30 : (xs[Math.max(0, cur - 1)] + xs[cur]) / 2;
+        const pass = alpha => {
+          ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+          ctx.strokeStyle = grad;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = (dark ? 0.07 : 0.08) * alpha;
+          ctx.lineWidth = dark ? 16 : 14;
+          ctx.stroke(path);
+          ctx.globalAlpha = 0.16 * alpha;
+          ctx.lineWidth = dark ? 7 : 6;
+          ctx.stroke(path);
+          ctx.globalAlpha = 0.95 * alpha;
+          ctx.lineWidth = dark ? 2 : 2.4;
+          ctx.stroke(path);
+        };
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(off - 20, 0, xCur - off + 20, height);
+        ctx.clip();
+        pass(0.42);
+        ctx.restore();
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(xCur, 0, contentW - xCur + 20, height);
+        ctx.clip();
+        pass(1);
+        ctx.restore();
       }
-      ctx.setLineDash([]);
-      nodes.forEach((node, i) => {
-        if (ys[i] == null) return;
+      ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+      knownIdx.forEach(i => {
+        const node = nodes[i];
+        const col = node.negative ? amber : income;
         const past = node.role === 'past';
-        ctx.globalAlpha = past ? 0.55 : 1;
-        const radius = node.tone === 'short' ? 3.6 : 2.6;
-        ctx.fillStyle = dark ? 'rgba(255,255,255,.9)' : '#fff';
-        ctx.beginPath();
-        ctx.arc(xs[i], ys[i], radius + 1.6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = palette[node.tone] || palette.income;
-        ctx.beginPath();
-        ctx.arc(xs[i], ys[i], radius, 0, Math.PI * 2);
-        ctx.fill();
+        const alpha = past ? (dark ? 0.5 : 0.55) : 1;
+        const x = xs[i];
+        const y = ys[i];
+        if (node.negative) {
+          const radius = 10;
+          const halo = ctx.createRadialGradient(x, y, 0, x, y, radius);
+          halo.addColorStop(0, rgba(col, (dark ? 0.6 : 0.42) * alpha));
+          halo.addColorStop(1, rgba(col, 0));
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = halo;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = alpha;
+        if (!dark) {
+          const radius = node.negative ? 4.4 : 3;
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(x, y, radius + 1.6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = rgba(col, 1);
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = rgba(col.map(v => Math.round(v + (255 - v) * 0.4)), 1);
+          ctx.beginPath();
+          ctx.arc(x, y, node.negative ? 3.6 : 2.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
       });
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
       ctx.restore();
-      [...vals.children].forEach((el, i) => { el.style.left = xs[i].toFixed(1) + 'px'; });
+      const valueEls = [...vals.children];
+      valueEls.forEach((el, i) => {
+        el.style.left = xs[i].toFixed(1) + 'px';
+        el.style.visibility = 'visible';
+      });
+      const widths = valueEls.map(el => el.offsetWidth || 0);
+      const shown = [];
+      const overlaps = (a, b) => {
+        const gap = 8;
+        return xs[a] - widths[a] / 2 < xs[b] + widths[b] / 2 + gap
+          && xs[b] - widths[b] / 2 < xs[a] + widths[a] / 2 + gap;
+      };
+      const order = valueEls.map((_, i) => i).sort((a, b) => (a === sel ? -1 : b === sel ? 1 : xs[a] - xs[b]));
+      order.forEach(i => {
+        if (!widths[i]) return;
+        if (shown.some(j => overlaps(i, j))) {
+          valueEls[i].style.visibility = 'hidden';
+          return;
+        }
+        shown.push(i);
+      });
       [...months.children].forEach(el => {
         const i = Number(el.dataset.i);
         const x = Math.max(0, xs[i] - (i ? sp / 2 : 0)) + 6;
