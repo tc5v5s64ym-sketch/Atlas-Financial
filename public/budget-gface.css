@@ -797,7 +797,13 @@ body:has([data-budget-bento]) .budget-bento {
   .budget-bento.atlas-g .blend-pay-face { max-width: 84px; }
   .budget-bento.atlas-g .blend-pay-date { white-space: nowrap; font-size: 13px; }
   .budget-bento.atlas-g .blend-income .blend-tile-head { flex-wrap: wrap; }
-  .budget-bento.atlas-g .blend-income-in { flex: 1 0 100%; margin-left: 38px; }
+  .budget-bento.atlas-g .blend-income-in {
+    flex: 1 0 100%;
+    margin-left: 0;
+    padding-left: 38px;
+    box-sizing: border-box;
+    max-width: 100%;
+  }
   .budget-bento.atlas-g .blend-income .blend-big { font-size: 26px; }
   .budget-bento.atlas-g .t-river { height: 162px; }
   .budget-bento.atlas-g .blend-ring-g { width: 96px; height: 96px; }
