@@ -54,14 +54,18 @@
         active.focus({ preventScroll: true });
       }
     }
-    paintPayday(progress);
-    paintHero(hero);
-    paintIncome(bento);
-    paintBills(bento);
-    paintHouse(bento);
-    paintCards(bento);
-    paintGoals(bento);
-    paintQuiet(bento);
+    const guard = (label, fn) => {
+      try { fn(); }
+      catch (error) { console.error('Budget blend stopped on ' + label, error); }
+    };
+    guard('payday', () => paintPayday(progress));
+    guard('hero', () => paintHero(hero));
+    guard('income', () => paintIncome(bento));
+    guard('bills', () => paintBills(bento));
+    guard('household', () => paintHouse(bento));
+    guard('cards', () => paintCards(bento));
+    guard('goals', () => paintGoals(bento));
+    guard('quiet', () => paintQuiet(bento));
     bento.querySelectorAll('[data-budget-browse="bills"], [data-budget-browse="spending"], .budget-blend-card-movements, [data-budget-savings-goals]')
       .forEach(node => node.classList.add('blend-tilt'));
   }
@@ -676,7 +680,7 @@
           mark.type = 'button';
           mark.className = 'blend-day-hit';
           mark.tabIndex = -1;
-          const state = remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
+          const state = remain && remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
           if (state === 'overdue') day.classList.add('is-overdue');
           mark.dataset.s = state;
           mark.appendChild(billIcon(text(hits[0].querySelector('strong'))));

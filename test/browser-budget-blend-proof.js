@@ -462,6 +462,14 @@ const composite = (fg, bg) => {
             ringsAcross: rings.length < 3 || Math.max(...ringTops) - Math.min(...ringTops) < 12,
             cardPair: paired(cardIcon, cardTitle),
             housePair: paired(houseIcon, houseTitle),
+            ringInside: (() => {
+              const ring = document.querySelector('.blend-pay-ring');
+              const tile = document.querySelector('.blend-pay');
+              if (!ring || !tile) return false;
+              const a = ring.getBoundingClientRect();
+              const b = tile.getBoundingClientRect();
+              return a.left >= b.left - 0.5 && a.right <= b.right + 0.5 && a.top >= b.top - 0.5 && a.bottom <= b.bottom + 0.5;
+            })(),
           };
         });
         if (layout.estChip && !layout.estBeside) errors.push(`${width}/${theme} est chip is not beside the cents`);
@@ -471,6 +479,7 @@ const composite = (fg, bg) => {
         if (width <= 480 && !layout.stacked) errors.push(`${width}/${theme} income and payday are not stacked`);
         if (width <= 360 && !layout.ringsAcross) errors.push(`${width}/${theme} household rings are not one row`);
         if (!layout.cardPair || !layout.housePair) errors.push(`${width}/${theme} header alignment ${JSON.stringify(layout)}`);
+        if (width >= 1000 && !layout.ringInside) errors.push(`${width}/${theme} payday ring leaves the tile`);
         if (width === 1440 && theme === 'dark') {
           const toggle = await page.evaluate(() => {
             const buttons = [...document.querySelectorAll('.blend-toolbar .budget-granularity-btn')];
@@ -485,6 +494,57 @@ const composite = (fg, bg) => {
           const off = toggle.find(row => row.pressed === 'false');
           if (!on || !off || on.text !== 'Pay period' || on.bg === off.bg || on.fg === off.fg) {
             errors.push(`dark toggle ${JSON.stringify(toggle)}`);
+          }
+        }
+        if (width === 320) {
+          await page.evaluate(() => {
+            const section = document.querySelector('[data-budget-browse="spending"]');
+            const row = [...section.querySelectorAll('.budget-category-row')]
+              .find(item => item.getAttribute('data-budget-category-open') !== 'other-spending');
+            row.classList.add('is-over');
+            row.querySelector('.budget-category-status').textContent = '$295.14 over';
+            const bento = document.querySelector('[data-budget-bento]');
+            const panel = bento.querySelector('.blend-house-panel');
+            const counts = panel && panel.querySelector('.budget-browse-counts');
+            if (counts) section.appendChild(counts);
+            bento.removeAttribute('data-blend-ready');
+            bento.querySelector('[data-blend-rings]')?.remove();
+            bento.querySelector('.blend-other')?.remove();
+            panel?.remove();
+            document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+          });
+          await page.locator('.blend-over-pill').waitFor();
+          const narrow = await page.evaluate(() => {
+            const tiles = [...document.querySelectorAll('.blend-hero, .blend-income, .blend-pay, [data-budget-browse="bills"], [data-budget-browse="spending"], .budget-blend-card-movements, [data-budget-savings-goals]')];
+            const bad = [];
+            const skip = '.blend-clip, .budget-cash-sr, .blend-hero-panel-body, .blend-house-body, .blend-sky, svg, svg *';
+            tiles.forEach(tile => {
+              tile.querySelectorAll('*').forEach(el => {
+                if (el.closest(skip) || el.matches('svg, svg *')) return;
+                const style = getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden') return;
+                const box = el.getBoundingClientRect();
+                if (box.width < 8 || box.height < 8) return;
+                const own = [...el.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join('');
+                const sample = (own || (el.children.length ? '' : el.textContent) || '').replace(/\s+/g, ' ').trim().slice(0, 70);
+                const label = ((el.className && el.className.baseVal) || el.className || el.tagName || '').toString().slice(0, 80);
+                if (/\$/.test(sample) && el.scrollWidth > el.clientWidth + 1) bad.push({ kind: 'scroll', label, sample, sw: el.scrollWidth, cw: el.clientWidth });
+                if (/\$/.test(sample) && style.textOverflow === 'ellipsis') bad.push({ kind: 'ellipsis', label, sample });
+              });
+            });
+            const pill = document.querySelector('.blend-over-pill');
+            const state = document.querySelector('.blend-other-state');
+            const plan = document.querySelector('.blend-other .blend-of-plan');
+            const hits = (a, b) => !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
+            return {
+              bad: bad.slice(0, 6),
+              pill: (pill?.textContent || '').replace(/\s+/g, ' ').trim(),
+              pillEllipsis: pill ? getComputedStyle(pill).textOverflow : '',
+              otherOverlap: hits(state && state.getBoundingClientRect(), plan && plan.getBoundingClientRect()),
+            };
+          });
+          if (narrow.bad.length || narrow.pill !== '$295.14 over' || narrow.pillEllipsis === 'ellipsis' || narrow.otherOverlap) {
+            errors.push(`${width}/${theme} narrow overflow ${JSON.stringify(narrow)}`);
           }
         }
         const file = `budget-blend-${width}-${theme}.png`;
@@ -732,25 +792,47 @@ const composite = (fg, bg) => {
     if (!returned) errors.push('ring focus did not return to the ring');
     await next.close();
 
-    const past = await open(1440, 'light');
-    const pastBefore = await past.locator('[data-budget-window-range]').innerText();
-    await past.locator('[data-budget-window-step="-1"]').click();
-    await past.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, pastBefore);
-    const pastFace = await past.evaluate(() => {
-      const progress = (document.querySelector('[data-budget-window-progress]')?.textContent || '').replace(/\s+/g, ' ');
-      return {
-        progress,
-        countdown: !!document.querySelector('.blend-pay-num, .blend-pay-unit'),
-        remaining: !!document.querySelector('.blend-bills-of'),
-        remainingText: (document.querySelector('.blend-bills-of')?.textContent || '').trim(),
-      };
-    });
-    if (!/Completed pay period/i.test(pastFace.progress) || pastFace.countdown || pastFace.remaining) {
-      errors.push(`past period ${JSON.stringify(pastFace)}`);
-    }
+    const pastData = fx.served({ fundingHistory: 'paid' });
+    const assertPast = async (page, label) => {
+      const before = await page.locator('[data-budget-window-range]').innerText();
+      const consoleErrors = [];
+      page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+      page.on('pageerror', err => consoleErrors.push(err.message));
+      await page.locator('[data-budget-window-step="-1"]').click();
+      await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
+      const pastFace = await page.evaluate(() => {
+        const progress = (document.querySelector('[data-budget-window-progress]')?.textContent || '').replace(/\s+/g, ' ');
+        const tile = sel => !!document.querySelector(sel);
+        return {
+          progress,
+          countdown: !!document.querySelector('.blend-pay-num, .blend-pay-unit'),
+          remaining: !!document.querySelector('.blend-bills-of'),
+          billRows: document.querySelectorAll('[data-budget-browse="bills"] .budget-bill-row').length,
+          bills: tile('[data-budget-browse="bills"] [data-blend-cal]'),
+          house: tile('[data-budget-browse="spending"] [data-blend-rings]'),
+          cards: tile('.card-movement-heading .blend-tile-ico'),
+          goals: tile('[data-budget-savings-goals] .blend-tile-head'),
+          income: tile('.blend-income .blend-tile-head'),
+          payday: tile('.blend-pay-face'),
+          hero: document.querySelector('[data-budget-bento]')?.getAttribute('data-blend-ready') === '1',
+        };
+      });
+      if (!/Completed pay period/i.test(pastFace.progress) || pastFace.countdown || pastFace.remaining
+        || pastFace.billRows < 1 || !pastFace.bills || !pastFace.house || !pastFace.cards
+        || !pastFace.goals || !pastFace.income || !pastFace.payday || !pastFace.hero || consoleErrors.length) {
+        errors.push(`${label} past period ${JSON.stringify({ pastFace, consoleErrors })}`);
+      }
+    };
+    const past = await open(1440, 'light', { data: pastData });
+    await assertPast(past, '1440');
     await past.screenshot({ path: path.join(outDir, 'budget-blend-1440-light-past.png'), fullPage: true, animations: 'disabled' });
     shots.push('budget-blend-1440-light-past.png');
     await past.close();
+    const pastNarrow = await open(320, 'light', { data: pastData });
+    await assertPast(pastNarrow, '320');
+    await pastNarrow.screenshot({ path: path.join(outDir, 'budget-blend-320-light-past.png'), fullPage: true, animations: 'disabled' });
+    shots.push('budget-blend-320-light-past.png');
+    await pastNarrow.close();
 
     const termsPage = await open(1440, 'light');
     const repaintTerms = async () => {

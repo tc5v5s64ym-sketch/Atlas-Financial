@@ -1036,11 +1036,14 @@ body:has([data-budget-bento]) .sitenav {
   display: grid;
   place-items: center;
   justify-self: end;
+  box-sizing: border-box;
   width: 100%;
   max-width: 168px;
   height: auto;
   aspect-ratio: 1;
   min-width: 0;
+  padding: 2px;
+  overflow: hidden;
 }
 
 .blend-pay-ring {
@@ -1469,14 +1472,17 @@ body:has([data-budget-bento]) .sitenav {
   display: inline-block;
   max-width: 100%;
   padding: 2px 7px;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 999px;
   background: #c2410c;
   color: #fff;
   font-size: 11px;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
 }
 .budget-bento h2.blend-quiet-figure,
 .budget-bento .budget-browse-sub.blend-quiet-figure,
@@ -2015,7 +2021,7 @@ dialog.budget-detail-sheet[open] {
     row-gap: 2px;
     align-items: center;
   }
-  .blend-other .blend-amber { grid-column: 1; grid-row: 1 / span 2; }
+  .blend-other .blend-amber { grid-column: 1; grid-row: 1 / span 3; }
   .blend-other-name {
     grid-column: 2;
     grid-row: 1;
@@ -2023,8 +2029,7 @@ dialog.budget-detail-sheet[open] {
     overflow: visible;
     text-overflow: clip;
   }
-  .blend-other-state,
-  .blend-other .blend-of-plan {
+  .blend-other-state {
     grid-column: 2;
     grid-row: 2;
     margin: 0;
@@ -2032,7 +2037,15 @@ dialog.budget-detail-sheet[open] {
     overflow: visible;
     text-overflow: clip;
   }
-  .blend-other-chev { grid-column: 3; grid-row: 1 / span 2; margin-left: 0; }
+  .blend-other .blend-of-plan {
+    grid-column: 2;
+    grid-row: 3;
+    margin: 0;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .blend-other-chev { grid-column: 3; grid-row: 1 / span 3; margin-left: 0; }
 }
 
 @media (max-width: 360px) {
