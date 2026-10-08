@@ -142,13 +142,30 @@ const composite = (fg, bg) => {
             house: text('[data-operating-question="06"] > details > summary'),
             save: text('[data-operating-question="savings"] > details > summary'),
             closing: text('[data-bills-closing]'),
-            progress: text('[data-budget-window-progress]'),
+            progress: (document.querySelector('[data-budget-window-progress]')?.getAttribute('aria-label')
+              || document.querySelector('[data-budget-window-progress]')?.textContent || '').replace(/\s+/g, ' '),
             cash: text('[data-budget-cash-hero]'),
             motion: matchMedia('(prefers-reduced-motion: reduce)').matches,
           };
         });
         if (facts.cards !== 1 || facts.today !== 'static' || !facts.scroll || facts.tracks !== 0 || facts.escaped.length) {
           errors.push(`${width}/${theme} geometry ${JSON.stringify({ cards: facts.cards, today: facts.today, scroll: facts.scroll, tracks: facts.tracks, escaped: facts.escaped.slice(0, 4) })}`);
+        }
+        if (width === 390) {
+          const quiet = page.locator('.blend-quiet');
+          if (await quiet.count()) {
+            await quiet.scrollIntoViewIfNeeded();
+            await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+          }
+          const dock = await page.evaluate(() => {
+            const nav = document.querySelector('.sitenav-household');
+            const last = document.querySelector('.blend-quiet');
+            if (!nav || !last) return { missing: true };
+            const navTop = nav.getBoundingClientRect().top;
+            const lastBottom = last.getBoundingClientRect().bottom;
+            return { navTop, lastBottom, gap: navTop - lastBottom, scrollY: window.scrollY };
+          });
+          if (dock.missing || dock.scrollY < 1 || dock.gap < -1) errors.push(`${width}/${theme} dock covers content ${JSON.stringify(dock)}`);
         }
         for (const [key, needle] of [
           ['hero', 'Balance After Deductions'],

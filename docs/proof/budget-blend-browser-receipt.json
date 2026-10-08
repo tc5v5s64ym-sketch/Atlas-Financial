@@ -25,15 +25,15 @@
   "contrasts": [
     {
       "name": "light period range",
-      "ratio": 19.55,
+      "ratio": 16.83,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
       "fg": "rgb(11, 12, 16)",
       "bg": [
-        255,
-        255,
-        255
+        236,
+        238,
+        242
       ]
     },
     {
@@ -64,11 +64,11 @@
     },
     {
       "name": "light closing label",
-      "ratio": 19.55,
+      "ratio": 10.17,
       "large": false,
       "pass": true,
       "text": "Expected Bills balance at period end",
-      "fg": "rgb(11, 12, 16)",
+      "fg": "rgb(60, 65, 80)",
       "bg": [
         255,
         255,
@@ -129,15 +129,15 @@
     },
     {
       "name": "dark period range",
-      "ratio": 15.94,
+      "ratio": 18.83,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
       "fg": "rgb(245, 246, 248)",
       "bg": [
-        27,
-        27,
-        26
+        5,
+        5,
+        7
       ]
     },
     {
@@ -168,11 +168,11 @@
     },
     {
       "name": "dark closing label",
-      "ratio": 15.94,
+      "ratio": 10.3,
       "large": false,
       "pass": true,
       "text": "Expected Bills balance at period end",
-      "fg": "rgb(245, 246, 248)",
+      "fg": "rgb(197, 200, 208)",
       "bg": [
         27,
         27,
@@ -434,65 +434,65 @@
       {
         "tag": "BUTTON",
         "label": "",
-        "text": "Overview",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          77,
-          36
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "",
-        "text": "Spending",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          78,
-          36
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "",
-        "text": "Bills",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          45,
-          36
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "",
-        "text": "Upcoming",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          83,
-          36
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "",
         "text": "ⓘ Current balance and funding details",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          40,
-          40
+          1,
+          1
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "AUG 28 Next payday · August 28 Funding details ›",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          30,
+          26
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          112,
+          17
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "− Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          109,
+          24
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "− Household budget $444.49 / of planned $730.00",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          184,
+          24
         ],
         "pass": true
       }

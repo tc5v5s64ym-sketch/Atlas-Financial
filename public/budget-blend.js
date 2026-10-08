@@ -12,6 +12,11 @@
     return (node && node.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
+  function moneyToken(value) {
+    const found = String(value || '').match(/-?\$[\d,]+(?:\.\d{2})?/);
+    return found ? found[0] : '';
+  }
+
   function place(bento) {
     const hero = bento.querySelector('.budget-blend-hero-layout');
     if (!hero) return;
@@ -23,15 +28,25 @@
       sky.innerHTML = '<i class="b1"></i><i class="b2"></i><i class="b3"></i>';
       hero.prepend(sky);
     }
+    const tight = hero.querySelector('[data-operating-question="07"] [data-sign="negative"]')
+      || hero.querySelector('.budget-cash-notice.has-gap');
+    hero.classList.toggle('is-tight', !!tight);
     const progress = bento.querySelector('[data-budget-window-progress]');
     if (progress && progress.parentElement !== bento) {
       progress.classList.add('blend-pay', 'blend-tilt');
       bento.appendChild(progress);
     }
+    const header = bento.querySelector('[data-budget-window-header]');
+    if (header && !header.classList.contains('blend-toolbar')) {
+      header.classList.add('blend-toolbar');
+      bento.insertBefore(header, bento.firstChild);
+    }
     paintPayday(progress);
+    paintHero(hero);
     paintIncome(bento);
     paintBills(bento);
     paintHouse(bento);
+    paintCards(bento);
     paintGoals(bento);
     paintQuiet(bento);
     bento.querySelectorAll('[data-budget-browse="bills"], [data-budget-browse="spending"], .budget-blend-card-movements, [data-budget-savings-goals]')
@@ -40,22 +55,26 @@
 
   function paintPayday(progress) {
     if (!progress || progress.querySelector('.blend-pay-face')) return;
+    const sentence = text(progress.querySelector('p'));
+    if (sentence) progress.setAttribute('aria-label', sentence);
     const line = text(progress.querySelector('p span:last-child'));
     const days = /in (\d+) days/.exec(line);
+    const dates = [...progress.querySelectorAll('p b')];
+    const published = dates.length >= 2 ? text(dates[1]) : '';
+    progress.querySelector('p')?.classList.add('blend-in-panel');
     const face = document.createElement('div');
     face.className = 'blend-pay-face';
-    face.setAttribute('aria-hidden', 'true');
     const num = document.createElement('span');
     num.className = 'blend-pay-num';
     num.textContent = days ? days[1] : 'Unavailable';
     const unit = document.createElement('span');
     unit.className = 'blend-pay-unit';
     unit.textContent = days ? 'days' : '';
+    face.append(num, unit);
     const date = document.createElement('span');
     date.className = 'blend-pay-date';
-    date.textContent = line || text(progress.querySelector('p')) || 'Unavailable';
-    face.append(num, unit, date);
-    progress.appendChild(face);
+    date.textContent = published || 'Unavailable';
+    progress.append(face, date);
     const marks = [...progress.querySelectorAll('.budget-window-days > span')];
     progress.style.setProperty('--pay-n', String(marks.length || 1));
     marks.forEach((mark, index) => mark.style.setProperty('--i', String(index)));
@@ -63,22 +82,160 @@
     if (next) progress.addEventListener('click', () => next.click());
   }
 
+  function paintHero(hero) {
+    const cash = hero.querySelector('.budget-today-cash');
+    if (cash && !cash.querySelector('.blend-cash-label')) {
+      const sub = text(cash.querySelector('.budget-cash-sub'));
+      const heading = text(cash.querySelector('h2'));
+      const label = document.createElement('span');
+      label.className = 'blend-cash-label';
+      label.textContent = /^Bills account\b/i.test(sub) ? 'Bills account' : (heading || 'Unavailable');
+      cash.querySelector('[data-budget-cash-hero]')?.before(label);
+    }
+    clip(hero.querySelector('.budget-cash-how'));
+    clip(hero.querySelector('.budget-period-info'));
+    const waterfall = hero.querySelector('.calendar-waterfall');
+    const closing = hero.querySelector('[data-bills-closing]');
+    const savings = hero.querySelector('[data-operating-question="savings"], [data-budget-savings-stock]');
+    if (waterfall && closing && closing.parentElement !== waterfall) {
+      if (savings && savings.parentElement === waterfall) savings.after(closing);
+      else waterfall.appendChild(closing);
+    }
+    clip(closing && closing.querySelector('details > summary'));
+    hero.querySelectorAll('.budget-bills-closing > .operating-note').forEach(clip);
+  }
+
+  function depositRows(step) {
+    return [...step.querySelectorAll('[data-period-income], .other-income-tx')];
+  }
+
+  function depositName(row) {
+    if (row.classList.contains('other-income-tx')) {
+      const payee = row.querySelector('.other-income-tx-payee');
+      if (!payee) return 'Unavailable';
+      const clone = payee.cloneNode(true);
+      clone.querySelectorAll('.other-income-tx-received, .other-income-tx-pending').forEach(node => node.remove());
+      return text(clone) || 'Unavailable';
+    }
+    const span = row.querySelector('span');
+    if (!span) return 'Unavailable';
+    const clone = span.cloneNode(true);
+    clone.querySelectorAll('time, [data-income-original-plan]').forEach(node => node.remove());
+    return text(clone) || 'Unavailable';
+  }
+
+  function depositDate(row) {
+    const time = row.querySelector('time');
+    if (!time) return '';
+    const raw = (time.getAttribute('datetime') && text(time)) || text(time);
+    const found = raw.match(/[A-Z][a-z]{2}\s+\d{1,2}/);
+    return found ? found[0] : raw.split('·')[0].trim();
+  }
+
+  function depositAmount(row) {
+    const raw = text(row.querySelector('[data-income-line-amount]'));
+    if (!raw || raw === '-' || /unavailable|unknown/i.test(raw)) return raw && raw !== '-' ? raw : 'Unavailable';
+    if (/[+-]\$/.test(raw)) return raw;
+    if (/^\$[\d,]+(?:\.\d{2})?$/.test(raw)) return '+' + raw;
+    return raw;
+  }
+
+  function depositReceived(row) {
+    const status = String(row.getAttribute('data-income-status') || '').toLowerCase();
+    return status === 'received' || status === 'already in balance';
+  }
+
   function paintIncome(bento) {
     if (bento.querySelector('.blend-income')) return;
     const step = bento.querySelector('[data-operating-question="02"]');
-    const value = step && step.querySelector('.budget-step-value');
+    const plan = step && step.querySelector('[data-budget-ratio="income"] [data-budget-ratio-plan]');
+    const planText = text(plan);
+    const money = moneyToken(planText);
+    const estimated = /estimated|≈/.test(planText);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'blend-tile blend-income blend-tilt';
     const title = document.createElement('span');
     title.className = 'blend-kicker';
     title.textContent = 'Income';
+    const figure = document.createElement('span');
+    figure.className = 'blend-figure';
     const big = document.createElement('span');
     big.className = 'blend-big';
-    big.textContent = value ? text(value) : 'Unavailable';
-    button.append(title, big);
+    if (money) big.textContent = money;
+    else if (/unknown|unavailable/i.test(planText)) big.textContent = /unknown/i.test(planText) ? 'Unknown' : 'Unavailable';
+    else big.textContent = planText || 'Unavailable';
+    figure.appendChild(big);
+    if (money && estimated) {
+      const pill = document.createElement('span');
+      pill.className = 'blend-est';
+      pill.textContent = 'est.';
+      figure.appendChild(pill);
+    }
+    const rail = document.createElement('span');
+    rail.className = 'blend-rail';
+    depositRows(step || bento).forEach(row => {
+      const item = document.createElement('span');
+      item.className = 'blend-rail-item';
+      const amount = document.createElement('b');
+      amount.textContent = depositAmount(row);
+      const name = document.createElement('span');
+      const when = depositDate(row);
+      name.textContent = depositName(row) + (when ? ' · ' + when : '');
+      const mark = document.createElement('i');
+      mark.className = depositReceived(row) ? 'is-got' : 'is-wait';
+      mark.setAttribute('aria-hidden', 'true');
+      mark.textContent = depositReceived(row) ? '✓' : '○';
+      item.append(amount, name, mark);
+      rail.appendChild(item);
+    });
+    const muted = document.createElement('span');
+    muted.className = 'blend-muted';
+    const value = step && step.querySelector('.budget-step-value');
+    muted.textContent = value ? text(value) : '';
+    button.append(title, figure, rail);
+    if (muted.textContent) button.appendChild(muted);
     if (step) button.addEventListener('click', () => step.querySelector('summary')?.click());
     bento.appendChild(button);
+  }
+
+  function billIcon(label) {
+    const s = String(label || '').toLowerCase();
+    const name = /rent|mortgage|house|property|home/.test(s) ? 'house'
+      : /car|auto|vehicle/.test(s) ? 'car'
+      : /hydro|electric|power|bolt/.test(s) ? 'bolt'
+      : /wifi|internet|shaw|telus|rogers|phone/.test(s) ? 'wifi'
+      : /card|visa|mastercard|mbna|amex|credit/.test(s) ? 'card'
+      : 'generic';
+    const paths = {
+      house: 'M4 11.2 12 4l8 7.2V20h-5.2v-5.2H9.2V20H4V11.2Z',
+      car: 'M4 16h16v2H4v-2Zm1.2-2 1.6-5h10.4l1.6 5H5.2Z',
+      bolt: 'M13 3 6 13h5l-1 8 7-10h-5l1-8Z',
+      wifi: 'M12 18.2 12.1 18.1M7.2 14.2a6.8 6.8 0 0 1 9.6 0M4.2 11.2a11 11 0 0 1 15.6 0',
+      card: 'M4 7h16v10H4V7Zm0 3h16',
+      generic: 'M8 4h8v16H8V4Zm2.2 3h3.6'
+    };
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', paths[name]);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.7');
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function billState(row) {
+    const state = text(row.querySelector('.budget-bill-state'));
+    if (/paid/i.test(state) && !/not paid|unpaid/i.test(state)) return 'paid';
+    if (/confirm|needs a date/i.test(state)) return 'confirm';
+    if (/pending/i.test(state)) return 'pending';
+    if (/not paid|due|planned/i.test(state)) return 'due';
+    return 'due';
   }
 
   function paintBills(bento) {
@@ -87,10 +244,33 @@
     const progress = document.querySelector('[data-budget-window-progress]');
     const start = progress && progress.getAttribute('data-start');
     const end = progress && progress.getAttribute('data-end');
+    const asOf = progress && progress.getAttribute('data-as-of');
+    const head = document.createElement('div');
+    head.className = 'blend-bills-head';
+    const title = document.createElement('span');
+    title.className = 'blend-tile-title';
+    title.textContent = 'Bills';
+    const rows = [...section.querySelectorAll('.budget-bill-row')];
+    const confirmRows = rows.filter(row => billState(row) === 'confirm');
+    const flag = document.createElement('span');
+    flag.className = 'blend-flag';
+    flag.textContent = 'To confirm ' + confirmRows.length;
+    const remain = document.createElement('span');
+    remain.className = 'blend-bills-of';
+    const leftRaw = text(section.querySelector('[data-budget-browse-bills-remaining]'));
+    const planRaw = text(section.querySelector('[data-budget-ratio="bills"] [data-budget-ratio-plan]'));
+    const leftMoney = moneyToken(leftRaw);
+    const planMoney = moneyToken(planRaw);
+    if (leftMoney && planMoney) {
+      const est = /estimated|≈/.test(leftRaw + ' ' + planRaw) ? ' est.' : '';
+      remain.textContent = leftMoney + ' left of ' + planMoney + est;
+    } else {
+      remain.textContent = text(section.querySelector('.budget-browse-sub')) || 'Unavailable';
+    }
+    head.append(title, flag, remain);
     const cal = document.createElement('div');
     cal.className = 'blend-cal';
     cal.setAttribute('data-blend-cal', '');
-    cal.setAttribute('aria-hidden', 'true');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) {
       const missing = document.createElement('p');
       missing.className = 'blend-missing';
@@ -99,74 +279,72 @@
     } else {
       const startDate = new Date(start + 'T12:00:00');
       const endDate = new Date(end + 'T12:00:00');
+      const days = [];
       const cursor = new Date(startDate);
-      cursor.setDate(cursor.getDate() - cursor.getDay());
-      const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-      dow.forEach(label => {
+      while (cursor <= endDate && days.length < 14) {
+        days.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      days.slice(0, Math.min(7, days.length)).forEach(day => {
         const cell = document.createElement('span');
         cell.className = 'blend-dow';
-        cell.textContent = label;
+        cell.textContent = day.toLocaleDateString('en-US', { weekday: 'narrow' });
         cal.appendChild(cell);
       });
       const byDay = new Map();
-      section.querySelectorAll('.budget-bill-row').forEach(row => {
+      rows.forEach(row => {
         const date = row.getAttribute('data-budget-bill-date');
         if (!date) return;
         const list = byDay.get(date) || [];
         list.push(row);
         byDay.set(date, list);
       });
-      let guard = 0;
-      while (cursor <= endDate && guard < 42) {
-        const iso = cursor.getFullYear() + '-' + String(cursor.getMonth() + 1).padStart(2, '0') + '-' + String(cursor.getDate()).padStart(2, '0');
-        const inPeriod = iso >= start && iso <= end;
+      days.forEach(date => {
+        const iso = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
         const day = document.createElement('span');
-        day.className = 'blend-day' + (inPeriod ? '' : ' is-out');
-        if (inPeriod) {
-          const n = document.createElement('span');
-          n.className = 'blend-day-n';
-          n.textContent = String(cursor.getDate());
-          day.appendChild(n);
-          const rows = byDay.get(iso) || [];
-          if (rows.length) {
-            day.classList.add('has');
-            const mark = document.createElement('button');
-            mark.type = 'button';
-            mark.className = 'blend-day-hit';
-            mark.tabIndex = -1;
-            const state = text(rows[0].querySelector('.budget-bill-state'));
-            mark.dataset.s = /paid/i.test(state) ? 'paid' : /confirm|needs a date/i.test(state) ? 'confirm' : /pending/i.test(state) ? 'pending' : 'due';
-            mark.textContent = text(rows[0].querySelector('strong')).slice(0, 1) || '•';
-            mark.addEventListener('click', event => {
-              event.stopPropagation();
-              rows[0].click();
-            });
-            day.appendChild(mark);
-            if (rows.length > 1) {
-              const more = document.createElement('span');
-              more.className = 'blend-day-more';
-              more.textContent = '+' + (rows.length - 1);
-              day.appendChild(more);
-            }
+        day.className = 'blend-day' + (iso === asOf ? ' is-today' : '');
+        const n = document.createElement('span');
+        n.className = 'blend-day-n';
+        n.textContent = String(date.getDate());
+        day.appendChild(n);
+        const hits = byDay.get(iso) || [];
+        if (hits.length) {
+          day.classList.add('has');
+          const mark = document.createElement('button');
+          mark.type = 'button';
+          mark.className = 'blend-day-hit';
+          mark.tabIndex = -1;
+          const state = billState(hits[0]);
+          mark.dataset.s = state;
+          mark.appendChild(billIcon(text(hits[0].querySelector('strong'))));
+          const badge = document.createElement('i');
+          badge.className = 'blend-state' + (state === 'confirm' ? ' blend-pulse' : '');
+          badge.setAttribute('aria-hidden', 'true');
+          if (state === 'paid') badge.textContent = '✓';
+          mark.appendChild(badge);
+          mark.addEventListener('click', event => {
+            event.stopPropagation();
+            hits[0].click();
+          });
+          day.appendChild(mark);
+          if (hits.length > 1) {
+            const more = document.createElement('span');
+            more.className = 'blend-day-more';
+            more.textContent = '+' + (hits.length - 1);
+            day.appendChild(more);
           }
         }
         cal.appendChild(day);
-        cursor.setDate(cursor.getDate() + 1);
-        guard += 1;
-      }
+      });
     }
-    const confirmRows = [...section.querySelectorAll('.budget-bill-row')].filter(row =>
-      /confirm|needs a date/i.test(text(row.querySelector('.budget-bill-state'))));
-    if (confirmRows.length) {
-      const flag = document.createElement('span');
-      flag.className = 'blend-flag';
-      flag.textContent = 'To confirm ' + confirmRows.length;
-      section.querySelector('header')?.appendChild(flag);
-    }
+    section.querySelector('header')?.before(head);
     section.querySelector('header')?.after(cal);
     section.querySelectorAll('.budget-bill-group, .budget-bills-figures, .budget-bills-progress-wrapper, .budget-browse-counts').forEach(node => {
       node.classList.add('blend-in-panel');
     });
+    clip(section.querySelector('.budget-browse-bills > footer, footer'));
+    clip(section.querySelector('header h2'));
+    section.querySelectorAll('header .budget-browse-sub, header .budget-browse-eyebrow').forEach(clip);
   }
 
   function paintHouse(bento) {
@@ -178,28 +356,33 @@
     const rows = [...section.querySelectorAll('.budget-category-row')];
     const other = rows.filter(row => row.getAttribute('data-budget-category-open') === 'other-spending');
     const main = rows.filter(row => !other.includes(row));
-    rings.style.setProperty('--n', String(Math.max(main.length, 1)));
     main.forEach(row => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'blend-ring';
       const fill = row.querySelector('.budget-category-fill');
-      const width = fill && fill.style.width ? fill.style.width : '';
-      if (width) button.style.setProperty('--lvl', String(Math.max(0, Math.min(100, parseFloat(width))) / 100));
+      const width = fill && fill.style.width ? parseFloat(fill.style.width) : NaN;
+      if (Number.isFinite(width)) {
+        const used = Math.max(0, Math.min(100, width)) / 100;
+        button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - used))));
+      }
       const status = text(row.querySelector('.budget-category-status')) || 'Unavailable';
       const meta = text(row.querySelector('.budget-category-meta'));
-      const name = text(row.querySelector('.budget-category-name'));
-      button.innerHTML = '<span class="blend-ring-g" aria-hidden="true"><svg viewBox="0 0 120 120"><circle class="rg-track" cx="60" cy="60" r="46"/><circle class="rg-arc" cx="60" cy="60" r="44"/></svg></span>';
+      const planned = (meta.match(/of planned\s+(.+)$/i) || [])[1];
+      const name = text(row.querySelector('.budget-category-name')) || 'Category';
+      const well = document.createElement('span');
+      well.className = 'blend-ring-g';
+      well.setAttribute('aria-hidden', 'true');
+      const liquid = document.createElement('span');
+      liquid.className = 'blend-liquid';
       const value = document.createElement('span');
       value.className = 'blend-ring-v';
       value.textContent = status;
-      const of = document.createElement('span');
-      of.className = 'blend-ring-of';
-      of.textContent = meta || 'Unavailable';
+      well.append(liquid, value);
       const label = document.createElement('span');
       label.className = 'blend-ring-l';
-      label.textContent = name;
-      button.append(value, of, label);
+      label.textContent = planned ? name + ' · of ' + planned.trim() : name;
+      button.append(well, label);
       button.addEventListener('click', () => row.click());
       rings.appendChild(button);
     });
@@ -214,15 +397,34 @@
       const foot = document.createElement('button');
       foot.type = 'button';
       foot.className = 'blend-other';
-      foot.textContent = text(other[0].querySelector('.budget-category-name')) + ' · ' + (text(other[0].querySelector('.budget-category-status')) || text(other[0].querySelector('.budget-category-meta')) || 'Unavailable');
+      const status = text(other[0].querySelector('.budget-category-status'))
+        || text(other[0].querySelector('.budget-category-meta'))
+        || 'Unavailable';
+      const dot = document.createElement('i');
+      dot.className = 'blend-amber';
+      dot.setAttribute('aria-hidden', 'true');
+      const word = document.createElement('span');
+      const counted = text(other[0]).match(/\d+\s+to sort/i);
+      word.textContent = counted ? counted[0] : status;
+      foot.append(dot, word);
       foot.addEventListener('click', () => other[0].click());
       rings.after(foot);
     }
     section.querySelectorAll('.budget-category-list, .budget-browse-stats, .budget-browse-counts, .budget-pace-key').forEach(node => {
       node.classList.add('blend-in-panel');
     });
-    section.querySelectorAll('.budget-browse-sub').forEach(node => {
-      if (/Tap a category/i.test(text(node))) node.classList.add('blend-clip');
+    clip(section.querySelector('footer'));
+    clip(section.querySelector('.budget-browse-cycle'));
+    section.querySelectorAll('.budget-browse-eyebrow, .budget-browse-sub').forEach(clip);
+  }
+
+  function paintCards(bento) {
+    bento.querySelectorAll('.card-movement-trigger').forEach(button => {
+      if (button.querySelector('.blend-card-bar')) return;
+      const bar = document.createElement('span');
+      bar.className = 'blend-card-bar';
+      bar.setAttribute('aria-hidden', 'true');
+      button.appendChild(bar);
     });
   }
 
@@ -254,8 +456,7 @@
       const name = document.createElement('span');
       name.textContent = text(row.querySelector('strong')) || 'Goal';
       const pct = document.createElement('b');
-      const raw = text(row);
-      const found = raw.match(/(\d+(?:\.\d+)?)\s*%/);
+      const found = text(row).match(/(\d+(?:\.\d+)?)\s*%/);
       pct.textContent = found ? found[1] + '%' : 'Unavailable';
       item.append(name, pct);
       list.appendChild(item);
@@ -266,7 +467,14 @@
       list.appendChild(item);
     }
     face.append(svg, list);
-    card.querySelector('h3')?.after(face);
+    const title = document.createElement('span');
+    title.className = 'blend-tile-title';
+    title.textContent = text(card.querySelector('h3')) || 'Saving for';
+    card.querySelector('h3')?.before(title);
+    card.querySelector('h3')?.before(face);
+    card.querySelectorAll(':scope > ul, :scope > .budget-surface-link, :scope > .budget-goal-notice, :scope > .budget-surface-eyebrow, :scope > [data-budget-funding-savings], :scope > h3').forEach(node => {
+      node.classList.add('blend-goals-source');
+    });
   }
 
   function paintQuiet(bento) {
@@ -275,12 +483,17 @@
     details.className = 'blend-quiet';
     const summary = document.createElement('summary');
     summary.textContent = 'More on this page';
+    details.appendChild(summary);
+    const attention = document.querySelector('[data-budget-browse="attention"]');
+    if (attention) details.appendChild(attention);
+    const footer = document.querySelector('.wrap > footer');
+    if (footer) details.appendChild(footer);
     const note = document.createElement('p');
-    note.textContent = 'Upcoming costs stay below with the one-pot savings views. Worth a look, Recorded account balances, and Savings accounts & evidence are flagged for an owner removal decision.';
-    details.append(summary, note);
+    note.textContent = 'Recorded account balances, Savings accounts & evidence, and the snapshot stay available here for an owner removal decision.';
+    details.appendChild(note);
     bento.appendChild(details);
-    bento.querySelectorAll('.budget-browse-sub, .card-movement-heading p, .budget-browse-bills > footer p').forEach(node => {
-      if (/Tap a category|Posted through|activity not observed|The plan deducts/i.test(text(node))) node.classList.add('blend-clip');
+    bento.querySelectorAll('.card-movement-heading p').forEach(node => {
+      if (/Posted through|activity not observed/i.test(text(node))) clip(node);
     });
   }
 
