@@ -4330,7 +4330,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         ? budgetProgressFor(period, savingsContext?.asOf ?? period.budgetProgressAsOf)
         : budgetProgressFor(period))?.[ratioKey] : null;
       const evidence = ratioKey ? budgetProgressEvidenceHtml(progress, ratioKey, period) : '';
-      let detail = `${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}${evidence}`;
+      // appendix prints even when the step total is unavailable (print-only rows).
+      let detail = `${known || summary.discloseUnknown ? answer : '<p class="operating-note">Forecast did not publish a valid total for this period.</p>'}${evidence}${summary.appendix || ''}`;
       if (ratioKey === 'savings') {
         // Pool-backed totals and this payday's proposals have distinct sources.
         // No grouping, allocation or financial total is calculated in the page.
@@ -4423,7 +4424,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     return `<div class="operating-question${kind ? ` operating-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
       <div class="operating-number">${number}</div>
       <h2 class="operating-prompt">${prompt}</h2>
-      <div class="operating-answer">${answer}</div>
+      <div class="operating-answer">${answer}${summary?.appendix || ''}</div>
     </div>`;
   };
   const unavailable = planUnavailable ? calendarCurrentUnavailableHtml(period) : null;
@@ -4495,6 +4496,33 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
       ? `${finalTrust === 'estimated' ? compactOverview ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : ''}${money2(finalAmount)}` : 'Unavailable'}</p>
     <p class="budget-period-result-caption">${compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
   </div>` : '';
+  // Print-only: Forecast's published Balance After Deductions terms for this
+  // pay period (advice.payPeriodViews[i].predictedEndingBalanceTerms). Every
+  // amount is read from that one object; nothing is added, subtracted or
+  // substituted here. A missing, non-closing or untrusted term is Unavailable;
+  // there is no fallback to afterHouseholdBudget, funding or plan strings.
+  // Stable hooks for other renderers: [data-bad-terms] per period, then
+  // [data-bad-term="<key>"] [data-bad-term-value] with data-bad-term-trust.
+  const badTerms = period.predictedEndingBalanceTerms;
+  const badTermsKnown = !!badTerms && badTerms.identity === 'balance-after-deductions' && badTerms.closes === true;
+  const badTermRow = (key, label, trust, nullIsCalculated) => {
+    const value = badTermsKnown ? badTerms[key] : null;
+    const stamp = trust == null && nullIsCalculated ? 'calculated' : trust;
+    const known = numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
+    const mark = known && stamp === 'estimated' ? compactOverview
+      ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : '';
+    return `<div class="operating-line" data-bad-term="${key}" data-bad-term-trust="${known ? stamp : 'unavailable'}"><span data-bad-term-label>${label}</span><span data-bad-term-value>${known ? mark + money2(value) : 'Unavailable'}</span></div>`;
+  };
+  // When the Q07 figure is the after-proposed-funding balance, say so: the
+  // published term is before savings funding, so the two are not one figure.
+  const badTermsFace = !dailySavings && fundedBalanceKnown ? 'after-proposed-funding' : 'balance-after-deductions';
+  const badTermsHtml = `<div class="operating-lines budget-bad-terms" data-bad-terms data-bad-terms-period="${escape(period.id || period.start || '')}" data-bad-terms-status="${badTermsKnown ? 'published' : 'unavailable'}" data-bad-terms-face="${badTermsFace}">
+    <p class="operating-note">Forecast's published terms for this period. Balance After Deductions is period income less assigned bills and the household amount.${badTermsFace === 'after-proposed-funding' ? ' These terms are before proposed savings funding; the period result above is after it.' : ''}</p>
+    ${badTermRow('periodIncome', 'Period income', period.incomeTrust, false)}
+    ${badTermRow('assignedBills', 'Assigned bills (incl. required debt minimums)', period.periodBillLoadTrust, false)}
+    ${badTermRow('householdBudgetHold', 'Household (greater of plan or spent, incl. Other)', period.budgetHoldTrust, true)}
+    ${badTermRow('balanceAfterDeductions', 'Balance After Deductions', period.balanceAfterDeductionsTrust, true)}
+  </div>`;
   const today = period.fromTodayFunding;
   const todayHtml = calendarFromTodayEvidenceHtml(period, plan);
   const savingsRow = () => q('savings', compactOverview ? 'Planned Savings' : 'Proposed savings', planUnavailable ? unavailable : fundingBody, null,
@@ -4531,7 +4559,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
       ? `<p class="operating-note">Full-period projection: ${finalCaption}. Current Bills cash is context and is not added to period income.</p>`
       : runningLeftoverHtml(finalAmount, finalTrust))
       + '<p class="operating-note">A positive period balance may be needed for a later short period. It is not permission to spend.</p>', 'balance',
-      { amount: finalAmount, trust: finalTrust, barStart: 0, note: fundedBalanceKnown
+      { amount: finalAmount, trust: finalTrust, barStart: 0, appendix: badTermsHtml, note: fundedBalanceKnown
         ? 'After bills, household and proposed funding — retain any future carry'
         : 'Before savings — the funding deduction is unavailable' })}
     ${compactOverview ? savingsRow() : ''}

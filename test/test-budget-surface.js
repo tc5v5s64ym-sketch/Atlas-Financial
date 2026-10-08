@@ -102,8 +102,12 @@ ok(html.indexOf('data-budget-window-header') < html.indexOf('data-live-current-b
   'the selected window precedes Current balance in the one primary section');
 ok((html.match(/data-budget-surface-section="period"/g) || []).length === 1,
   'Current balance and period deductions share one overview card');
+// The print-only Balance After Deductions terms row (#549) reprints the
+// published closing term exactly once; nothing else may repeat the figure.
+const badTermRow = (html.match(/data-bad-term="balanceAfterDeductions"[^]*?<\/div>/) || [''])[0];
 ok((html.match(/data-budget-period-result/g) || []).length === 1
-  && (html.match(/\$1,632\.01/g) || []).length === 1,
+  && (html.replace(badTermRow, '').match(/\$1,632\.01/g) || []).length === 1
+  && (badTermRow.match(/\$1,632\.01/g) || []).length === 1,
   'the final result is published once at the end, including its expanded evidence');
 ok(/data-budget-window-range>Aug 14 – Aug 27</.test(html),
   'the title uses the actual published bounds rather than the This payday label');

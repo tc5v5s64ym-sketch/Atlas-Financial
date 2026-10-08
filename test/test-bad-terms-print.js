@@ -1,0 +1,83 @@
+'use strict';
+// Print-only Balance After Deductions terms on the Budget period view.
+// Invented household (other-period-target fixture plus two invented bills).
+// Expected cents below come from the invented inputs, not from Forecast:
+//   income 1,400.00 every period (one confirmed biweekly salary);
+//   bills  212.34 rent (biweekly from Sep 30) + 88.21 estimated hydro (15th);
+//   household current = six plans 475.00 (groceries 110.37 under its 220)
+//             + Other observed 618.73 above its 450 policy = 1,093.73;
+//   household future  = 475.00 + Other policy 450.00 = 925.00.
+// The identity is re-added here in integer cents from the printed strings.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const F=require('../public/forecast'),fx=require('./fixtures/other-period-target');
+const stub=()=>({innerHTML:'',value:'',dataset:{},style:{},classList:{add(){},remove(){},toggle(){}},
+ addEventListener(){},querySelector(){return null},querySelectorAll(){return[]},appendChild(){},replaceChildren(){}});
+const context=vm.createContext({Forecast:F,console,setTimeout,clearTimeout,addEventListener(){},
+ document:{getElementById:stub,querySelectorAll(){return[]},addEventListener(){},documentElement:{dataset:{},style:{}}},
+ localStorage:{getItem(){return null},setItem(){}},location:{pathname:'/',search:''}});
+context.window=context;context.matchMedia=()=>({matches:false,addEventListener(){}});
+const script=name=>fs.readFileSync(path.join(__dirname,'../public/'+name+'.js'),'utf8');
+vm.runInContext(script('app'),context);vm.runInContext('App.boot=()=>{};',context);
+for(const name of ['bill-detail','savings-inventory','budget-surface','plan'])vm.runInContext(script(name),context);
+const render=(period,plan,compact)=>{context.period=period;context.plan=plan;context.compact=compact;
+ return vm.runInContext('calendarWaterfallHtml(period,null,null,plan,compact)',context);};
+const KEYS=['periodIncome','assignedBills','householdBudgetHold','balanceAfterDeductions'];
+const LABELS=['Period income','Assigned bills (incl. required debt minimums)',
+ 'Household (greater of plan or spent, incl. Other)','Balance After Deductions'];
+const block=(html,id)=>{const q=html.split('data-operating-question="07"')[1];assert.ok(q,'terms print inside Balance After Deductions');
+ const b=q.split(`data-bad-terms-period="${id}"`)[1];assert.ok(b,'one block per period id '+id);return b.split('</div>\n  </div>')[0]+'</div>';};
+const terms=b=>KEYS.map((key,i)=>{const m=b.match(new RegExp(`data-bad-term="${key}" data-bad-term-trust="([a-z]+)"><span data-bad-term-label>([^<]*)</span><span data-bad-term-value>(.*?)</span></div>`));
+ assert.ok(m,'hook for '+key);assert.equal(m[2],LABELS[i]);return{trust:m[1],text:m[3].replace(/<[^>]+>/g,'')};});
+const cents=text=>{const m=text.match(/^(?:≈ estimated )?(−?)\$([\d,]+)\.(\d\d)$/);assert.ok(m,'money text: '+text);
+ return (m[1]?-1:1)*(Number(m[2].replace(/,/g,''))*100+Number(m[3]));};
+
+const f=fx.build(618.73);
+f.plan.bills=[{id:'invented-rent',label:'Invented rent',frequency:'biweekly',anchor:'2026-09-30',amount:212.34,confidence:'confirmed',payingAccount:'chequing-a'},
+ {id:'invented-hydro',label:'Invented hydro',frequency:'monthly',day:15,amount:88.21,confidence:'estimated',payingAccount:'chequing-a'}];
+const advice=F.recommend(f.plan,f.date,{...f.plan.defaults,debts:[],currentPeriodActuals:f.packet});
+const views=advice.payPeriodViews.filter(v=>v.timelineRole!=='past');
+const expected=[['current',140000,21234,109373,false],['next',140000,30055,92500,true],
+ ['future',140000,21234,92500,true],['future',140000,30055,92500,true]];
+assert.ok(views.length>=4);
+// (a) current + next + two later periods: printed terms close to the cent.
+expected.forEach(([role,income,bills,hold,future],i)=>{
+ const v=views[i];assert.equal(v.timelineRole,role);
+ for(const compact of [true,false]){
+  const sealed=JSON.stringify(v),b=block(render(v,f.plan,compact),v.id);
+  assert.match(b,/data-bad-terms-status="published"/);
+  const t=terms(b),[I,B,H,R]=t.map(x=>cents(x.text));
+  assert.deepEqual([I,B,H],[income,bills,hold],`${v.id}: printed terms match invented inputs`);
+  assert.equal(I-B-H,R,`${v.id}: Income − Bills − Household = Balance After Deductions to the cent`);
+  assert.equal(R,income-bills-hold);
+  // Trust marks follow the stamps plan.js already uses for these values.
+  assert.equal(t[1].trust,bills===30055?'estimated':'calculated','estimated hydro marks bills');
+  assert.equal(t[2].trust,future?'estimated':'calculated','future Other policy hold is estimated');
+  assert.equal(t[3].trust,future?'estimated':'calculated');
+  t.forEach(x=>assert.equal(x.text.startsWith('≈ estimated'),x.trust==='estimated'));
+  assert.equal(JSON.stringify(v),sealed,'printing cannot rewrite the publication');
+ }
+});
+// (b) null terms (Forecast's fail-closed publication) print Unavailable for
+// all four, with no fallback to afterHouseholdBudget or the funded result.
+const cur=views[0],fallback=['$93.93','93.93'];
+// Fail-closed shapes: Forecast's null object (card minimum or income gate,
+// forecast.js nulls terms and stamps the result unavailable), a non-closing
+// object, a missing field, and the operating-plan-unavailable publication.
+const failClosed={predictedEndingBalanceTerms:null,balanceAfterDeductions:null,predictedEndingBalance:null,balanceAfterDeductionsTrust:'unavailable'};
+for(const over of [{predictedEndingBalanceTerms:null},failClosed,{...failClosed,operatingPlanUnavailable:true},
+ {predictedEndingBalanceTerms:{...cur.predictedEndingBalanceTerms,closes:false}},{predictedEndingBalanceTerms:undefined}]){
+ const v={...cur,...over};
+ for(const compact of [true,false]){
+  const b=block(render(v,f.plan,compact),v.id);
+  assert.match(b,/data-bad-terms-status="unavailable"/);
+  assert.deepEqual(terms(b).map(x=>[x.trust,x.text]),KEYS.map(()=>['unavailable','Unavailable']));
+  fallback.forEach(s=>assert.ok(!b.includes(s),'no fallback figure '+s));
+ }
+}
+// A single missing term is Unavailable for that term only.
+const one=block(render({...cur,predictedEndingBalanceTerms:{...cur.predictedEndingBalanceTerms,assignedBills:null}},f.plan,true),cur.id);
+assert.deepEqual(terms(one).map(x=>x.text==='Unavailable'),[false,true,false,false]);
+// An unavailable trust stamp fails closed even when a number exists.
+const untrusted=block(render({...cur,balanceAfterDeductionsTrust:'unavailable'},f.plan,true),cur.id);
+assert.deepEqual(terms(untrusted).map(x=>x.text==='Unavailable'),[false,false,false,true]);
+console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable');
