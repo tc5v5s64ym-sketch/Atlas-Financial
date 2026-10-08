@@ -317,17 +317,20 @@
     return /Completed pay period/i.test(text((root || document).querySelector('[data-budget-window-progress]')));
   }
 
-  // Path A: a printed [data-bad-term-amount] is the bare amount, plus an
-  // est. chip only when that row's trust is estimated.
-  // Path B: no amount span — the value text is copied verbatim, including
-  // "≈ estimated" when that is what was printed, and no chip is added.
+  // Path A: a non-empty [data-bad-term-amount] is the bare amount. An est.
+  // chip is added only when that row's trust is estimated. Only the span's
+  // own text is read, so the ≈ mark in the value is not copied again.
+  // An empty or whitespace-only amount span is absent.
+  // Unavailable trust is decided before the span is read.
+  // Path B: no usable amount span — the value text is copied verbatim,
+  // including "≈ estimated" when that is what was printed, and no chip is added.
   function termDisplay(row, blockStatus) {
     const trust = row ? (row.getAttribute('data-bad-term-trust') || '') : '';
     if (blockStatus !== 'published' || !row || trust === 'unavailable') {
       return { text: 'Unavailable', chip: false, unavailable: true };
     }
-    const amount = row.querySelector('[data-bad-term-amount]');
-    if (amount) return { text: text(amount), chip: trust === 'estimated', unavailable: false };
+    const bare = text(row.querySelector('[data-bad-term-amount]'));
+    if (bare) return { text: bare, chip: trust === 'estimated', unavailable: false };
     const value = row.querySelector('[data-bad-term-value]');
     return { text: text(value) || 'Unavailable', chip: false, unavailable: !text(value) };
   }
@@ -393,16 +396,26 @@
     const line = document.createElement('p');
     line.className = 'blend-after-funding';
     const amount = clip.querySelector('[data-bad-term-amount]');
-    const trustHost = amount && (amount.closest('[data-bad-term]') || clip);
+    const bare = text(amount);
+    const trustHost = amount && amount.closest('[data-bad-term]');
     const trust = trustHost ? (trustHost.getAttribute('data-bad-term-trust') || '') : '';
-    if (amount && trust === 'estimated') {
+    if (amount && trust === 'unavailable') {
       const shown = document.createElement('span');
       shown.className = 'blend-after-value';
-      shown.textContent = text(amount);
-      const pill = document.createElement('span');
-      pill.className = 'blend-est';
-      pill.textContent = 'est.';
-      line.append(shown, pill);
+      shown.textContent = 'Unavailable';
+      line.appendChild(shown);
+      clip.remove();
+    } else if (bare) {
+      const shown = document.createElement('span');
+      shown.className = 'blend-after-value';
+      shown.textContent = bare;
+      line.appendChild(shown);
+      if (trust === 'estimated') {
+        const pill = document.createElement('span');
+        pill.className = 'blend-est';
+        pill.textContent = 'est.';
+        line.appendChild(pill);
+      }
       clip.remove();
     } else {
       while (clip.firstChild) {

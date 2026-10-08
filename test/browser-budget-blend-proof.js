@@ -172,6 +172,22 @@ const composite = (fg, bg) => {
         estBeforeValue: !!(est && value && est.getBoundingClientRect().right <= value.getBoundingClientRect().left + 2),
         estimatedWidth: line && line.querySelector('.budget-cash-sr') ? line.querySelector('.budget-cash-sr').getBoundingClientRect().width : 0,
         school: [...document.querySelectorAll('[data-budget-funding-item]')].map(el => (el.textContent || '').replace(/\s+/g, ' ').trim()),
+        terms: ['periodIncome', 'assignedBills', 'householdBudgetHold', 'balanceAfterDeductions'].map(key => {
+          const slot = document.querySelector(`[data-blend-term="${key}"]`);
+          const row = document.querySelector(`[data-bad-term="${key}"]`);
+          const clone = slot ? slot.cloneNode(true) : null;
+          clone?.querySelector('.blend-after-funding')?.remove();
+          const amount = (row?.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim();
+          const shown = (clone?.textContent || '').replace(/\s+/g, ' ').trim();
+          return {
+            key,
+            shown,
+            chip: !!(slot && slot.nextElementSibling && slot.nextElementSibling.classList.contains('blend-est')),
+            trust: row?.getAttribute('data-bad-term-trust') || '',
+            amount,
+            doubled: !!(amount && /≈|estimated/.test(shown)),
+          };
+        }),
         align: lineBox && dollarBox ? Math.abs(lineBox.left - dollarBox.left) : null,
         abovePills: !!(lineBox && footBox && lineBox.bottom <= footBox.top + 1 && lineBox.top >= (dollarBox ? dollarBox.bottom - 1 : 0)),
         gap: lineBox && dollarBox ? Math.round((lineBox.top - dollarBox.bottom) * 10) / 10 : null,
@@ -229,7 +245,7 @@ const composite = (fg, bg) => {
                   shown: (painted?.textContent || '').replace(/\s+/g, ' ').trim(),
                   printed: (row?.querySelector('[data-bad-term-value]')?.textContent || '').replace(/\s+/g, ' ').trim(),
                   trust: row?.getAttribute('data-bad-term-trust') || '',
-                  hasAmount: !!row?.querySelector('[data-bad-term-amount]'),
+                  amountText: (row?.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim(),
                   chip: !!(painted && painted.nextElementSibling && painted.nextElementSibling.classList.contains('blend-est')),
                   hook: painted?.getAttribute('data-blend-term') || '',
                   font: style ? parseFloat(style.fontSize) : 0,
@@ -249,6 +265,8 @@ const composite = (fg, bg) => {
                 shown: (badShown?.textContent || '').replace(/\s+/g, ' ').trim(),
                 printed: (badRow?.querySelector('[data-bad-term-value]')?.textContent || '').replace(/\s+/g, ' ').trim(),
                 chip: !!(badShown && badShown.nextElementSibling && badShown.nextElementSibling.classList.contains('blend-est')),
+                trust: badRow?.getAttribute('data-bad-term-trust') || '',
+                amountText: (badRow?.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim(),
                 cents: (badShown?.querySelector('.blend-cents')?.textContent || ''),
                 prefix: badShown?.querySelector('.blend-term-prefix')?.textContent || '',
                 parked: !!(badBlock && badBlock.closest('.blend-hero-panel-body')),
@@ -462,19 +480,28 @@ const composite = (fg, bg) => {
           errors.push(`${width}/${theme} result label ${JSON.stringify(face.resultLine)} stray ${face.strayLine}`);
         }
         const hooks = { '02': 'periodIncome', '04': 'assignedBills', '06': 'householdBudgetHold' };
+        const expectShown = row => row.trust === 'unavailable' ? 'Unavailable' : (row.amountText || row.printed);
+        const expectChip = row => !!(row.amountText && row.trust === 'estimated');
         (face.terms || []).forEach(term => {
-          if (term.hook !== hooks[term.id] || term.shown !== term.printed || term.chip !== (term.hasAmount && term.trust === 'estimated')) {
+          if (term.hook !== hooks[term.id] || term.shown !== expectShown(term) || term.chip !== expectChip(term)
+            || (term.amountText && /≈|estimated/.test(term.shown))) {
             errors.push(`${width}/${theme} term slot ${JSON.stringify(term)}`);
           }
         });
         const big = face.big || {};
-        if (big.shown !== big.printed || big.chip || !big.parked || !big.hidden || big.longOnFace) {
+        if (big.shown !== expectShown(big) || big.chip !== expectChip(big) || (big.amountText && /≈|estimated/.test(big.shown))
+          || !big.parked || !big.hidden || big.longOnFace) {
           errors.push(`${width}/${theme} bad number ${JSON.stringify(big)}`);
         }
         if (big.printed && big.printed !== 'Unavailable' && /\$[\d,]+\.\d{2}/.test(big.printed) && !big.cents) {
           errors.push(`${width}/${theme} cents were not split from the displayed string ${JSON.stringify(big)}`);
         }
-        if (width === 1440 && theme === 'light') heroTerms = face.terms.map(term => term.shown).concat(big.shown);
+        if (width === 1440 && theme === 'light') {
+          heroTerms = face.terms.map(term => ({
+            key: hooks[term.id], shown: term.shown, chip: term.chip, trust: term.trust,
+          })).concat([{ key: 'balanceAfterDeductions', shown: big.shown, chip: big.chip, trust: big.trust }]);
+          console.log('pp+0 hero ' + JSON.stringify(heroTerms));
+        }
         if ((face.terms || []).find(term => term.id === '06')?.label !== 'Household budget') {
           errors.push(`${width}/${theme} household label ${JSON.stringify(face.terms)}`);
         }
@@ -838,9 +865,16 @@ const composite = (fg, bg) => {
       || aug28.align == null || aug28.align > 2 || !aug28.abovePills
       || aug28.gap == null || aug28.gap < 4 || aug28.gap > 12
       || !aug28.school.some(row => /School trip/.test(row) && /\$195\.00/.test(row))
-      || /After proposed savings|After Planned Savings/.test(aug28.q07 + ' ' + aug28.label)) {
+      || /After proposed savings|After Planned Savings/.test(aug28.q07 + ' ' + aug28.label)
+      || (aug28.terms || []).some(row => row.doubled)) {
       errors.push(`Aug 28 funding ${JSON.stringify(aug28)}`);
     }
+    console.log('Aug 28 hero ' + JSON.stringify({
+      range: aug28.range,
+      terms: aug28.terms,
+      q07: aug28.q07,
+      headline: aug28.headline,
+    }));
     await capture(next, 'budget-blend-1440-light-next.png');
     await capture(next, 'budget-blend-1440-light-aug28.png');
     const rings = await next.evaluate(() => {
@@ -1057,18 +1091,21 @@ const composite = (fg, bg) => {
       };
     });
     await termsPage.evaluate(() => {
+      const put = (row, value) => {
+        let amount = row.querySelector('[data-bad-term-amount]');
+        if (!amount) {
+          amount = document.createElement('span');
+          amount.setAttribute('data-bad-term-amount', '');
+          row.querySelector('[data-bad-term-value]').appendChild(amount);
+        }
+        amount.textContent = value;
+      };
       const row = document.querySelector('[data-bad-term="periodIncome"]');
       row.setAttribute('data-bad-term-trust', 'estimated');
-      const amount = document.createElement('span');
-      amount.setAttribute('data-bad-term-amount', '');
-      amount.textContent = '$9.00';
-      row.querySelector('[data-bad-term-value]').appendChild(amount);
+      put(row, '$9.00');
       const big = document.querySelector('[data-bad-term="balanceAfterDeductions"]');
       big.setAttribute('data-bad-term-trust', 'estimated');
-      const bigAmount = document.createElement('span');
-      bigAmount.setAttribute('data-bad-term-amount', '');
-      bigAmount.textContent = '$1,632.01';
-      big.querySelector('[data-bad-term-value]').appendChild(bigAmount);
+      put(big, '$1,632.01');
     });
     await repaintTerms();
     const amountPath = await readTerms();
@@ -1084,6 +1121,22 @@ const composite = (fg, bg) => {
       || /estimated|≈/.test(amountPath.periodIncome.shown + amountPath.balanceAfterDeductions.shown)
       || beside.missing || beside.text !== 'est.' || beside.gap < -2 || beside.gap > 40 || beside.tops > 28) {
       errors.push(`amount est path ${JSON.stringify({ amountPath, beside })}`);
+    }
+    await termsPage.evaluate(() => {
+      const income = document.querySelector('[data-bad-term="periodIncome"]');
+      income.setAttribute('data-bad-term-trust', 'estimated');
+      income.querySelector('[data-bad-term-amount]').textContent = ' \n ';
+      const big = document.querySelector('[data-bad-term="balanceAfterDeductions"]');
+      big.setAttribute('data-bad-term-trust', 'unavailable');
+      big.querySelector('[data-bad-term-amount]').textContent = '$1,632.01';
+    });
+    await repaintTerms();
+    const emptySpan = await readTerms();
+    if (!/≈ estimated/.test(emptySpan.periodIncome.shown) || emptySpan.periodIncome.chip
+      || /\$9\.00/.test(emptySpan.periodIncome.shown)
+      || emptySpan.balanceAfterDeductions.shown !== 'Unavailable' || emptySpan.balanceAfterDeductions.chip
+      || !emptySpan.balanceAfterDeductions.muted) {
+      errors.push(`empty or unavailable amount span ${JSON.stringify(emptySpan)}`);
     }
     await termsPage.evaluate(() => {
       document.querySelector('[data-bad-term="periodIncome"] [data-bad-term-amount]')?.remove();

@@ -265,10 +265,30 @@
     }
   ],
   "heroTerms": [
-    "≈ estimated $4,050.00",
-    "≈ estimated $1,665.00",
-    "$752.99",
-    "≈ estimated $1,632.01"
+    {
+      "key": "periodIncome",
+      "shown": "≈ estimated $4,050.00",
+      "chip": false,
+      "trust": "estimated"
+    },
+    {
+      "key": "assignedBills",
+      "shown": "≈ estimated $1,665.00",
+      "chip": false,
+      "trust": "estimated"
+    },
+    {
+      "key": "householdBudgetHold",
+      "shown": "$752.99",
+      "chip": false,
+      "trust": "calculated"
+    },
+    {
+      "key": "balanceAfterDeductions",
+      "shown": "≈ estimated $1,632.01",
+      "chip": false,
+      "trust": "estimated"
+    }
   ],
   "focusWalk": {
     "viewport": 1440,
