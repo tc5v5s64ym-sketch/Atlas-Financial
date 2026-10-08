@@ -289,6 +289,7 @@
     markResultClosed(hero);
     splitPrintedCents(hero.querySelector('[data-blend-term="balanceAfterDeductions"]'));
     paintAfterFunding(hero);
+    paintFinalResult(hero.closest('[data-budget-bento]') || document);
     paintIncomeLongLabel(hero);
     paintPlanStatus(hero);
     paintSplit(hero, foot);
@@ -566,15 +567,38 @@
     foot.appendChild(split);
   }
 
+  // Text only. Number('') is 0, so an empty span must never become $0.00.
+  function resultAmountDecision(trust, raw) {
+    const bare = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+    if (trust === 'unavailable' || bare.length === 0) return 'Unavailable';
+    return bare;
+  }
+
   function budgetResultHook(hero) {
-    const host = hero.querySelector('[data-budget-period-result][data-budget-result-trust]');
+    const host = hero.querySelector('[data-operating-question="07"][data-budget-result-trust]')
+      || hero.querySelector('[data-budget-period-result][data-budget-result-trust]');
     if (!host) return null;
     const amount = host.querySelector('[data-budget-result-amount]');
     if (!amount) return null;
-    return {
-      trust: host.getAttribute('data-budget-result-trust') || '',
-      bare: text(amount),
-    };
+    const trust = host.getAttribute('data-budget-result-trust') || '';
+    const shown = resultAmountDecision(trust, amount.textContent);
+    return { trust: trust, shown: shown, closed: shown === 'Unavailable' };
+  }
+
+  function paintFinalResult(root) {
+    root.querySelectorAll('.budget-period-result[data-budget-result-trust]').forEach(host => {
+      const span = host.querySelector('[data-budget-result-amount]');
+      const value = host.querySelector('.budget-period-result-value');
+      if (!span || !value) return;
+      const trust = host.getAttribute('data-budget-result-trust') || '';
+      const decision = resultAmountDecision(trust, span.textContent);
+      if (decision !== 'Unavailable') return;
+      const current = (value.textContent || '').replace(/\s+/g, ' ').trim();
+      if (current === 'Unavailable') return;
+      const kept = document.createElement('span');
+      kept.setAttribute('data-budget-result-amount', '');
+      value.replaceChildren(document.createTextNode('Unavailable'), kept);
+    });
   }
 
   function paintAfterFunding(hero) {
@@ -596,24 +620,9 @@
     const line = document.createElement('p');
     line.className = 'blend-after-funding';
     const hook = budgetResultHook(hero);
-    if (hook && hook.trust === 'unavailable') {
-      appendAfterLine(line, value, 'Unavailable');
-      clip.remove();
-      const dollars = bad.querySelector('.blend-dollars');
-      const cents = bad.querySelector('.blend-cents');
-      if (dollars && !dollars.parentElement.classList.contains('blend-dollar-group')) {
-        const group = document.createElement('span');
-        group.className = 'blend-dollar-group';
-        dollars.before(group);
-        group.appendChild(dollars);
-        if (cents) group.appendChild(cents);
-      }
-      bad.appendChild(line);
-      return;
-    }
-    if (hook && hook.bare && (hook.trust === 'estimated' || hook.trust === 'calculated')) {
-      appendAfterLine(line, value, hook.bare);
-      if (hook.trust === 'estimated') {
+    if (hook) {
+      appendAfterLine(line, value, hook.shown);
+      if (!hook.closed && hook.trust === 'estimated') {
         const pill = document.createElement('span');
         pill.className = 'blend-est';
         pill.textContent = 'est.';

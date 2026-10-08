@@ -975,14 +975,14 @@ const composite = (fg, bg) => {
     const aug28 = await readFunding(next);
     if (aug28.faceAttr !== 'after-proposed-funding' || aug28.qualifier !== '· before proposed savings funding'
       || !/Balance After Deductions/.test(aug28.label) || !aug28.label.includes('before proposed savings funding')
-      || !aug28.q07.includes('$1,675.00') || !/≈ estimated/.test(aug28.q07)
+      || !aug28.q07.includes('$1,675.00') || /≈/.test(aug28.valueText)
       || aug28.lineLabel !== 'Balance After Deductions' || !aug28.srHidden
       || aug28.visibleLabel !== 'After proposed savings'
       || /Balance After Deductions/.test(aug28.shown)
-      || !aug28.valueText.includes('estimated $') || aug28.valueText.includes('estimated$')
-      || !aug28.shown.includes('estimated $') || !aug28.q07.includes('estimated $')
+      || aug28.valueText !== '$1,675.00'
+      || !aug28.shown.includes('$1,675.00') || /≈/.test(aug28.shown)
       || !aug28.headline.includes('$1,870.00') || aug28.headline.includes('$1,675.00')
-      || aug28.trust !== 'calculated' || aug28.chip || aug28.lineChip || aug28.clip || !aug28.lineVisible
+      || aug28.trust !== 'calculated' || aug28.chip || !aug28.lineChip || aug28.clip || !aug28.lineVisible
       || aug28.fontSize !== '15px' || aug28.color !== aug28.ink || aug28.valueWrap !== 'nowrap'
       || aug28.align == null || aug28.align > 2 || !aug28.abovePills
       || aug28.gap == null || aug28.gap < 4 || aug28.gap > 12
@@ -1080,14 +1080,14 @@ const composite = (fg, bg) => {
     if (!/Sep 11/.test(sep11.range) || sep11.faceAttr !== 'after-proposed-funding'
       || sep11.qualifier !== '· before proposed savings funding'
       || !sep11.label.includes('before proposed savings funding')
-      || !sep11.q07.includes('$0.00') || !/≈ estimated/.test(sep11.q07)
+      || !sep11.q07.includes('$0.00') || /≈/.test(sep11.valueText)
       || sep11.lineLabel !== 'Balance After Deductions' || !sep11.srHidden
       || sep11.visibleLabel !== 'After proposed savings'
       || /Balance After Deductions/.test(sep11.shown)
-      || !sep11.valueText.includes('estimated $') || sep11.valueText.includes('estimated$')
-      || !sep11.shown.includes('estimated $')
+      || sep11.valueText !== '$0.00'
+      || !sep11.shown.includes('$0.00') || /≈/.test(sep11.shown)
       || !sep11.headline.includes('$205.00') || sep11.headline.includes('$0.00')
-      || sep11.clip || !sep11.lineVisible || sep11.lineChip
+      || sep11.clip || !sep11.lineVisible || !sep11.lineChip
       || sep11.fontSize !== '15px' || sep11.valueWrap !== 'nowrap'
       || /After Planned Savings/.test(sep11.q07 + ' ' + sep11.label)
       || !/After proposed savings/.test(sep11.shown)) {
@@ -1104,12 +1104,12 @@ const composite = (fg, bg) => {
     await stepForward(augNarrow);
     const aug320 = await readFunding(augNarrow);
     if (!/Aug 28/.test(aug320.range) || aug320.qualifier !== '· before proposed savings funding'
-      || !aug320.q07.includes('$1,675.00') || !/≈ estimated/.test(aug320.q07)
+      || !aug320.q07.includes('$1,675.00') || /≈/.test(aug320.valueText)
       || aug320.lineLabel !== 'Balance After Deductions' || !aug320.srHidden
       || aug320.visibleLabel !== 'After proposed savings'
       || /Balance After Deductions/.test(aug320.shown)
-      || !aug320.valueText.includes('estimated $') || aug320.valueText.includes('estimated$')
-      || !aug320.shown.includes('estimated $')
+      || aug320.valueText !== '$1,675.00'
+      || !aug320.shown.includes('$1,675.00') || /≈/.test(aug320.shown)
       || !aug320.headline.includes('$1,870.00') || aug320.clip || !aug320.lineVisible
       || aug320.fontSize !== '13px' || aug320.valueWrap !== 'nowrap' || !aug320.labelInside
       || aug320.align == null || aug320.align > 2) {
@@ -1124,13 +1124,83 @@ const composite = (fg, bg) => {
       || aug390.lineLabel !== 'Balance After Deductions' || !aug390.srHidden
       || aug390.visibleLabel !== 'After proposed savings'
       || /Balance After Deductions/.test(aug390.shown)
-      || !aug390.shown.includes('estimated $') || !aug390.shown.includes('$1,675.00')
+      || /≈/.test(aug390.shown) || !aug390.shown.includes('$1,675.00')
       || !aug390.headline.includes('$1,870.00') || !aug390.lineVisible
       || aug390.fontSize !== '13px') {
       errors.push(`Aug 28 phone funding ${JSON.stringify(aug390)}`);
     }
     await capture(augPhone, 'budget-blend-390-light-next.png');
     await augPhone.close();
+
+    const closedPage = await open(1440, 'light');
+    await stepForward(closedPage);
+    const closedResult = await closedPage.evaluate(() => {
+      const q07 = document.querySelector('[data-operating-question="07"]');
+      const value = q07 && q07.querySelector('.budget-step-value');
+      const bad = value && value.querySelector('.blend-bad');
+      const face = document.querySelector('[data-bad-terms]')?.getAttribute('data-bad-terms-face') || '';
+      if (!q07 || !value || !bad || face !== 'after-proposed-funding') {
+        return { ready: false, face, hasStep: !!q07, hasValue: !!value, hasBad: !!bad };
+      }
+      q07.setAttribute('data-budget-result-trust', 'unavailable');
+      q07.querySelectorAll('[data-budget-result-amount]').forEach(node => node.remove());
+      const span = document.createElement('span');
+      span.setAttribute('data-budget-result-amount', '');
+      span.textContent = ' \n\t ';
+      q07.appendChild(span);
+      value.querySelector('.blend-after-funding')?.remove();
+      let clip = value.querySelector(':scope > .blend-clip');
+      if (!clip) {
+        clip = document.createElement('span');
+        clip.className = 'blend-clip';
+        value.appendChild(clip);
+      }
+      while (clip.firstChild) clip.removeChild(clip.firstChild);
+      clip.appendChild(document.createTextNode(' '));
+      const bento = q07.closest('[data-budget-bento]');
+      const hero = document.createElement('div');
+      hero.className = 'budget-period-result';
+      hero.setAttribute('data-budget-period-result', '');
+      hero.setAttribute('data-budget-result-trust', 'unavailable');
+      const heroValue = document.createElement('p');
+      heroValue.className = 'budget-period-result-value';
+      const heroSpan = document.createElement('span');
+      heroSpan.setAttribute('data-budget-result-amount', '');
+      heroSpan.textContent = '   ';
+      heroValue.appendChild(heroSpan);
+      hero.appendChild(heroValue);
+      bento.appendChild(hero);
+      bento.removeAttribute('data-blend-ready');
+      document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+      return new Promise(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const stepText = (q07.innerText || '').replace(/\s+/g, ' ').trim();
+          const stepRaw = q07.textContent || '';
+          const finalText = (hero.innerText || '').replace(/\s+/g, ' ').trim();
+          const finalRaw = hero.textContent || '';
+          const after = value.querySelector('.blend-after-value');
+          resolve({
+            ready: true,
+            after: after ? after.textContent : null,
+            stepText,
+            finalText,
+            stepZero: stepText.includes('$0.00') || stepRaw.includes('$0.00'),
+            finalZero: finalText.includes('$0.00') || finalRaw.includes('$0.00'),
+            stepUnavailable: stepText.includes('Unavailable'),
+            finalUnavailable: finalText.includes('Unavailable'),
+            chip: !!value.querySelector('.blend-after-funding .blend-est'),
+            span: span.textContent,
+            heroSpan: hero.querySelector('[data-budget-result-amount]')?.textContent ?? null,
+          });
+        }));
+      });
+    });
+    if (!closedResult.ready || closedResult.after !== 'Unavailable' || !closedResult.stepUnavailable
+      || !closedResult.finalUnavailable || closedResult.stepZero || closedResult.finalZero
+      || closedResult.chip || /\$0\.00/.test(closedResult.stepText + closedResult.finalText)) {
+      errors.push(`unavailable empty Q07 ${JSON.stringify(closedResult)}`);
+    }
+    await closedPage.close();
 
     const pastData = fx.served({ fundingHistory: 'paid' });
     const assertPast = async (page, label) => {
