@@ -1,525 +1,696 @@
-/* Budget bento skin. Placement and paint only: every figure, label, and
-   fail-closed word still comes from the incumbent Budget markup.
-   Geist is not loaded: the page CSP allows no font source, so this file
-   keeps the existing system font stack. */
+/* Budget bento. Paint and placement only.
+   Geist is named first and is not loaded: the page CSP allows no font source.
+   #547 one-pot views stay visible. Saving for is the goals tile. The funding
+   section is a full-width block under the grid. Card-movement strip stays
+   transparent with no border. */
 
 :root {
   --blend-bg: #eceef2;
-  --blend-glass: rgba(255, 255, 255, .92);
-  --blend-glass-chip: rgba(255, 255, 255, .78);
-  --blend-ink: #12141a;
-  --blend-ink-2: #3a3e49;
-  --blend-line: rgba(12, 14, 22, .12);
-  --blend-hero-0: #f4fbf7;
-  --blend-hero-1: #e7eef6;
-  --blend-income: #0c7a52;
-  --blend-bills: #3d36c4;
-  --blend-house: #086f8c;
-  --blend-goals: #a8246a;
-  --blend-focus: #3d36c4;
+  --blend-glass: rgba(255, 255, 255, .64);
+  --blend-ink: #0b0c10;
+  --blend-ink-2: #3c4150;
+  --blend-line: rgba(11, 12, 16, .12);
+  --blend-income: #0c9a6a;
+  --blend-bills: #5650e0;
+  --blend-house: #0a8fb5;
+  --blend-goals: #d23f8a;
+  --blend-cards: #4f6bed;
+  --blend-focus: #5650e0;
   --blend-pay-bg: #0d0e12;
-  --blend-pay-ink: #f7f8fa;
-  --blend-pay-ink-2: #d5d7dc;
-  --blend-pay-acc: #e6b325;
-  --blend-shadow: 0 1px 1px rgba(16, 18, 27, .04), 0 12px 32px -18px rgba(16, 18, 27, .28);
+  --blend-pay-ink: #f6f7f9;
+  --blend-pay-ink-2: #c5c8d0;
+  --blend-pay-acc: #ffd166;
+  --blend-shadow: 0 1px 1px rgba(16, 18, 27, .04), 0 18px 40px -24px rgba(16, 18, 27, .45);
   --blend-radius: 28px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     --blend-bg: #050507;
-    --blend-glass: rgba(22, 23, 28, .94);
-    --blend-glass-chip: rgba(255, 255, 255, .08);
+    --blend-glass: rgba(22, 23, 28, .72);
     --blend-ink: #f5f6f8;
-    --blend-ink-2: #d5d7de;
-    --blend-line: rgba(255, 255, 255, .16);
-    --blend-hero-0: #07140f;
-    --blend-hero-1: #10131a;
+    --blend-ink-2: #c5c8d0;
+    --blend-line: rgba(255, 255, 255, .14);
     --blend-income: #5ee0a8;
     --blend-bills: #b1aeff;
     --blend-house: #7adcf3;
     --blend-goals: #f7a3cc;
+    --blend-cards: #9eb0ff;
     --blend-focus: #b1aeff;
     --blend-pay-bg: #f4f1ea;
-    --blend-pay-ink: #12141a;
+    --blend-pay-ink: #0d0e12;
     --blend-pay-ink-2: #3e4450;
-    --blend-pay-acc: #8a5a00;
+    --blend-pay-acc: #c27a00;
     --blend-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 18px 40px -24px rgba(0, 0, 0, .75);
   }
 }
 
 :root[data-theme="dark"] {
   --blend-bg: #050507;
-  --blend-glass: rgba(22, 23, 28, .94);
-  --blend-glass-chip: rgba(255, 255, 255, .08);
+  --blend-glass: rgba(22, 23, 28, .72);
   --blend-ink: #f5f6f8;
-  --blend-ink-2: #d5d7de;
-  --blend-line: rgba(255, 255, 255, .16);
-  --blend-hero-0: #07140f;
-  --blend-hero-1: #10131a;
+  --blend-ink-2: #c5c8d0;
+  --blend-line: rgba(255, 255, 255, .14);
   --blend-income: #5ee0a8;
   --blend-bills: #b1aeff;
   --blend-house: #7adcf3;
   --blend-goals: #f7a3cc;
+  --blend-cards: #9eb0ff;
   --blend-focus: #b1aeff;
   --blend-pay-bg: #f4f1ea;
-  --blend-pay-ink: #12141a;
+  --blend-pay-ink: #0d0e12;
   --blend-pay-ink-2: #3e4450;
-  --blend-pay-acc: #8a5a00;
+  --blend-pay-acc: #c27a00;
   --blend-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 18px 40px -24px rgba(0, 0, 0, .75);
 }
 
-body:has([data-budget-surface]) {
+body:has([data-budget-bento]) {
   background:
-    radial-gradient(closest-side at -10% -20%, color-mix(in srgb, var(--blend-income) 24%, transparent), transparent 70%),
-    radial-gradient(closest-side at 110% 8%, color-mix(in srgb, var(--blend-bills) 20%, transparent), transparent 68%),
-    radial-gradient(closest-side at 30% 120%, color-mix(in srgb, var(--blend-goals) 16%, transparent), transparent 72%),
+    radial-gradient(closest-side at -8% -10%, color-mix(in srgb, var(--blend-income) 28%, transparent), transparent 70%),
+    radial-gradient(closest-side at 108% 0%, color-mix(in srgb, var(--blend-bills) 22%, transparent), transparent 68%),
     var(--blend-bg);
-  color: var(--text-primary);
+  color: var(--blend-ink);
+  font-family: "Geist", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
 body:has([data-budget-bento]) .wrap,
-body:has([data-budget-bento]) #operating-surface:has([data-budget-surface]) {
+body:has([data-budget-bento]) #operating-surface {
   max-width: 1360px;
+}
+
+body:has([data-budget-bento]) .running-build { display: none; }
+
+body:has([data-budget-bento]) .site-head-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1360px;
+}
+
+body:has([data-budget-bento]) .sitenav {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.blend-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: inherit;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  text-decoration: none;
+}
+
+.blend-mark { width: 28px; height: 28px; display: block; }
+.bm-bg { fill: #0b0c10; }
+.bm-a { fill: #0c9a6a; }
+.bm-b { fill: #5650e0; }
+.bm-c { fill: #d23f8a; }
+
+.blend-theme {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  border: 1px solid var(--blend-line);
+  border-radius: 999px;
+  background: var(--blend-glass);
+  color: var(--blend-ink);
+  cursor: pointer;
+}
+
+.blend-theme svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+:root[data-theme="dark"] .blend-theme .i-moon,
+:root:not([data-theme="light"]) .i-moon { display: none; }
+:root[data-theme="light"] .blend-theme .i-sun,
+:root:not([data-theme]) .blend-theme .i-sun { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .blend-theme .i-moon { display: none; }
+  :root:not([data-theme]) .blend-theme .i-sun { display: block; }
 }
 
 .budget-bento {
   display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: 16px;
   min-width: 0;
-  font-family: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  overflow-x: clip;
+  font-family: "Geist", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  color: var(--blend-ink);
+}
+
+.budget-bento > .budget-surface-grid,
+.budget-bento .budget-surface-period,
+.budget-bento > .budget-browse-grid {
+  display: contents;
 }
 
 .budget-surface .budget-bento :focus-visible,
-[data-budget-surface="unavailable"] :focus-visible {
+.blend-theme:focus-visible,
+.blend-brand:focus-visible {
   outline: 3px solid var(--blend-focus);
   outline-offset: 3px;
 }
 
-.budget-bento .budget-surface-period {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  padding: 0;
+.budget-blend-hero-layout,
+.budget-bento > .blend-income,
+.budget-bento [data-budget-browse="bills"],
+.budget-bento [data-budget-browse="spending"],
+.budget-bento > .budget-blend-card-movements,
+.budget-bento > [data-budget-savings-goals],
+.budget-bento > [data-budget-funding-section] {
+  min-width: 0;
+  border-radius: var(--blend-radius);
+  background: var(--blend-glass);
+  border: 1px solid var(--blend-line);
+  box-shadow: var(--blend-shadow);
 }
 
 .budget-blend-hero-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  min-width: 0;
-  padding: 18px 16px 16px;
-  border-radius: var(--blend-radius);
+  position: relative;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  overflow: hidden;
+  padding: 18px 18px 16px;
   background:
-    radial-gradient(closest-side at 0% 0%, color-mix(in srgb, var(--blend-income) 22%, transparent), transparent 68%),
-    radial-gradient(closest-side at 100% 100%, color-mix(in srgb, var(--blend-house) 16%, transparent), transparent 70%),
-    linear-gradient(180deg, var(--blend-hero-0), var(--blend-hero-1));
-  box-shadow: var(--blend-shadow), inset 0 0 0 1px var(--blend-line);
-  color: var(--text-primary);
+    linear-gradient(180deg, color-mix(in srgb, var(--blend-glass) 88%, white), var(--blend-glass));
 }
 
-/* The selected-window landmark stays a real box. Only its children join the
-   hero grid, so the payday block can sit beside the equation. */
-.budget-surface-today {
-  position: static;
+.blend-sky {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
 }
 
-@media (min-width: 960px) {
-  .budget-blend-hero-layout {
-    grid-template-columns: minmax(0, 1.7fr) minmax(220px, .86fr);
-    gap: 16px 18px;
-    padding: 22px 22px 18px;
-  }
-  .budget-blend-hero-layout > .budget-window-header {
-    display: contents;
-  }
-  .budget-blend-hero-layout .budget-window-left {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .budget-blend-hero-layout .budget-window-progress {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: stretch;
-  }
-  .budget-blend-hero-layout > .budget-surface-today {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-  .budget-blend-hero-layout > .calendar-waterfall {
-    grid-column: 1 / -1;
-    grid-row: 3;
-  }
-  .budget-blend-hero-layout > .budget-section-nav {
-    grid-column: 1 / -1;
-  }
+.blend-sky i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(28px);
+  opacity: .7;
 }
 
-.budget-bento .budget-window-header {
+.blend-sky .b1 { width: 46%; height: 70%; left: -8%; top: -20%; background: color-mix(in srgb, var(--blend-income) 70%, transparent); }
+.blend-sky .b2 { width: 40%; height: 60%; right: -6%; top: 10%; background: color-mix(in srgb, var(--blend-bills) 55%, transparent); }
+.blend-sky .b3 { width: 36%; height: 50%; left: 30%; bottom: -20%; background: color-mix(in srgb, var(--blend-house) 45%, transparent); }
+
+.blend-hero > .budget-window-header,
+.blend-hero > .budget-section-nav,
+.blend-hero > .calendar-waterfall,
+.blend-hero .budget-today-cash,
+.blend-hero .budget-bills-closing {
+  position: relative;
+  z-index: 1;
+}
+
+.budget-surface-today { position: static; }
+
+.blend-hero .budget-window-header { margin: 0 0 8px; max-width: calc(100% - 180px); }
+.blend-hero .budget-window-title h1 {
   margin: 0;
-}
-
-.budget-bento .budget-window-title h1 {
-  font-size: clamp(26px, 3vw, 40px);
+  font-size: clamp(22px, 2.4vw, 34px);
   letter-spacing: -.03em;
+  line-height: 1.1;
+}
+.blend-hero .budget-window-eyebrow { margin: 0 0 4px; font-size: 12px; color: var(--blend-ink-2); }
+.blend-hero .budget-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.blend-hero .budget-section-nav button {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blend-glass) 80%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.budget-bento .budget-window-progress {
+.blend-hero .budget-today-cash {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  max-width: min(240px, 46%);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--blend-glass);
+  box-shadow: inset 0 0 0 1px var(--blend-line);
+}
+
+.blend-hero .budget-today-cash header,
+.blend-hero .budget-today-cash h2,
+.blend-hero .budget-cash-eyebrow,
+.blend-hero .budget-cash-sub,
+.blend-hero .budget-cash-notice,
+.blend-hero .live-current-balance-label,
+.blend-hero .live-current-balance-date,
+.blend-hero .live-current-balance-account { margin: 0; }
+
+.blend-hero .budget-today-cash h2,
+.blend-hero .budget-cash-eyebrow,
+.blend-hero .live-current-balance-label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--blend-ink-2);
+}
+
+.blend-hero .budget-cash-hero,
+.blend-hero .live-current-balance-amount {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.02em;
+  color: var(--blend-ink);
+}
+
+.blend-hero .budget-cash-how,
+.blend-hero .budget-cash-notice { flex-basis: 100%; font-size: 12px; }
+
+/* The black payday tile is this control. The original button stays in the
+   tree so its published action still runs. */
+.blend-hero .budget-cash-next {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.blend-hero .budget-bills-closing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.blend-hero .budget-bills-closing h2 { margin: 0; font-size: 13px; font-weight: 650; }
+.blend-hero .budget-bills-closing-value { margin: 0; font-size: 18px; font-weight: 700; }
+.blend-hero .budget-bills-closing > .operating-note {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.blend-hero .calendar-waterfall {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  min-width: 0;
+}
+
+.blend-hero .calendar-waterfall-head,
+.blend-hero .budget-period-flow-heading,
+.blend-hero .budget-period-info { display: none; }
+
+.budget-bento [data-operating-question="05"] { display: none; }
+.budget-bento .budget-waterfall-track { display: none; }
+
+.budget-bento .blend-hero .budget-step { margin: 0; min-width: 0; border: 0; background: none; }
+.budget-bento .blend-hero [data-operating-question="02"],
+.budget-bento .blend-hero [data-operating-question="04"],
+.budget-bento .blend-hero [data-operating-question="06"] { flex: 1 1 120px; min-width: 0; }
+.budget-bento .blend-hero [data-operating-question="07"],
+.budget-bento .blend-hero [data-operating-question="savings"],
+.budget-bento .blend-hero [data-budget-savings-stock] { flex: 1 1 100%; }
+
+.budget-surface .budget-bento .blend-hero .budget-step .budget-step-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 8px 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--blend-ink);
+  box-shadow: none;
+}
+
+.budget-bento .blend-hero .operating-number {
+  color: var(--blend-ink-2);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.budget-bento .blend-hero [data-operating-question="07"] .operating-number,
+.budget-bento .blend-hero [data-operating-question="savings"] .operating-number,
+.budget-bento .blend-hero .budget-step-chevron { display: none; }
+
+.budget-bento .blend-hero .operating-prompt {
+  color: var(--blend-ink-2);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.budget-bento .blend-hero .budget-step-value {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--blend-ink);
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -.03em;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.budget-bento .blend-hero [data-operating-question="02"] .budget-step-value { color: var(--blend-income); }
+.budget-bento .blend-hero [data-operating-question="04"] .budget-step-value { color: var(--blend-bills); }
+.budget-bento .blend-hero [data-operating-question="06"] .budget-step-value { color: var(--blend-house); }
+
+.budget-bento .blend-hero [data-operating-question="07"] .budget-step-summary { padding-top: 10px; }
+.budget-bento .blend-hero [data-operating-question="07"] .operating-prompt {
+  color: var(--blend-ink);
+  font-size: 15px;
+}
+.budget-bento .blend-hero [data-operating-question="07"] .budget-step-value {
+  font-size: clamp(44px, 7vw, 112px);
+  font-weight: 680;
+  letter-spacing: -.045em;
+  line-height: .95;
+}
+
+.budget-bento .blend-hero [data-budget-savings-stock] .budget-step-summary,
+.budget-bento .blend-hero [data-operating-question="savings"] .budget-step-summary {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--blend-glass);
+  box-shadow: inset 0 0 0 1px var(--blend-line);
+}
+
+.budget-bento .blend-hero [data-operating-question="savings"] .budget-step-value,
+.budget-bento .blend-hero [data-budget-savings-stock] .budget-step-value {
+  color: var(--blend-goals);
+  font-size: 18px;
+}
+
+.budget-bento > .blend-income {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--blend-line);
+  box-shadow: var(--blend-shadow), inset 4px 0 0 var(--blend-income);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.blend-kicker { font-size: 13px; font-weight: 700; color: var(--blend-ink-2); }
+.blend-income .blend-big {
+  font-size: clamp(28px, 3vw, 44px);
+  font-weight: 700;
+  letter-spacing: -.04em;
+  line-height: 1;
+  color: var(--blend-income);
+  overflow-wrap: anywhere;
+}
+
+.budget-bento > .blend-pay {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 16px;
   width: auto;
   max-width: none;
-  margin: 0;
-  padding: 18px 18px 16px;
   border-radius: var(--blend-radius);
   background: var(--blend-pay-bg);
   color: var(--blend-pay-ink);
   box-shadow: var(--blend-shadow);
+  cursor: pointer;
 }
 
-.budget-bento .budget-window-progress p,
-.budget-bento .budget-window-progress span,
-.budget-bento .budget-window-progress b {
-  color: var(--blend-pay-ink);
-}
+.budget-bento .blend-pay p,
+.budget-bento .blend-pay span,
+.budget-bento .blend-pay b { color: var(--blend-pay-ink); }
 
-.budget-bento .budget-window-progress p {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 0 14px;
-  font-size: 15px;
+.budget-bento .blend-pay p {
+  order: 2;
+  margin: 0;
+  font-size: 13px;
   line-height: 1.35;
+  text-align: center;
 }
 
-.budget-bento .budget-window-progress p > span:first-child {
-  color: var(--blend-pay-ink-2);
-  font-size: 14px;
-  font-weight: 650;
-}
+.budget-bento .blend-pay b { color: var(--blend-pay-acc); }
 
-.budget-bento .budget-window-progress p > span:last-child {
-  font-size: clamp(20px, 2vw, 28px);
-  font-weight: 650;
-  letter-spacing: -.02em;
-  line-height: 1.2;
-}
-
-.budget-bento .budget-window-progress b {
-  color: var(--blend-pay-acc);
-}
-
-.budget-bento .budget-window-days span {
-  background: color-mix(in srgb, var(--blend-pay-ink) 22%, transparent);
-}
-
-.budget-bento .budget-window-days .is-past {
-  background: color-mix(in srgb, var(--blend-pay-ink) 55%, transparent);
-}
-
-.budget-bento .budget-window-days .is-today {
-  background: var(--blend-pay-acc);
-  outline-color: color-mix(in srgb, var(--blend-pay-acc) 35%, transparent);
-}
-
-/* Current balance and the Bills-period slot stay in the hero, in source order. */
-.budget-bento .budget-surface-today {
+.blend-pay-face {
   display: grid;
-  gap: 12px;
-  padding: 0;
-  border: 0;
+  justify-items: center;
+  align-content: center;
+  width: 148px;
+  height: 148px;
 }
 
-.budget-bento .budget-today-cash {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: var(--blend-glass-chip);
-  box-shadow: inset 0 0 0 1px var(--blend-line);
+.blend-pay-num {
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -.05em;
+  line-height: .9;
 }
 
-.budget-bento .budget-today-cash header {
-  display: contents;
+.blend-pay-unit { font-size: 14px; font-weight: 650; color: var(--blend-pay-ink-2); }
+.blend-pay-date {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
-.budget-bento .budget-cash-eyebrow,
-.budget-bento .budget-today-cash h2,
-.budget-bento .budget-cash-sub,
-.budget-bento .budget-cash-notice {
-  margin: 0;
-}
-
-.budget-bento .budget-today-cash h2 {
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.budget-bento .budget-cash-hero {
-  margin: 0;
-  font-size: clamp(22px, 2.4vw, 32px);
-  line-height: 1.1;
-}
-
-.budget-bento .budget-cash-how {
-  margin-left: auto;
-}
-
-.budget-bento .budget-cash-next,
-.budget-bento .budget-cash-notice {
-  flex-basis: 100%;
-}
-
-.budget-bento .budget-bills-closing {
-  margin: 0;
-  padding: 14px 16px;
-  border: 0;
-  border-radius: 22px;
-  background: var(--blend-glass);
-  box-shadow: inset 0 0 0 1px var(--blend-line);
-}
-
-.budget-bento .budget-bills-closing h2 {
-  font-size: 15px;
-}
-
-.budget-bento .budget-bills-closing-value {
-  font-size: clamp(26px, 3vw, 36px);
-}
-
-.budget-bento [data-bills-closing-state="unavailable"] .budget-bills-closing-value {
-  color: var(--text-primary);
-  font-size: clamp(22px, 2.4vw, 30px);
-}
-
-/* Equation: Income, Bills, Balance after bills, Household budget, then
-   Balance After Deductions and Planned Savings. Source order is the
-   reading order, so keyboard focus does not jump backwards. */
-.budget-bento .calendar-waterfall {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
+.budget-bento .blend-pay .budget-window-days {
   position: relative;
+  width: 148px;
+  height: 148px;
+  margin: -148px 0 0;
+  pointer-events: none;
 }
 
-.budget-bento .calendar-waterfall-head,
-.budget-bento .budget-period-flow-heading,
-.budget-bento .budget-period-info {
+.budget-bento .blend-pay .budget-window-days > span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--blend-pay-ink) 28%, transparent);
+  transform: rotate(calc(var(--i) * 360deg / var(--pay-n, 14))) translateY(-64px);
+}
+
+.budget-bento .blend-pay .budget-window-days .is-past {
+  background: color-mix(in srgb, var(--blend-pay-ink) 62%, transparent);
+}
+
+.budget-bento .blend-pay .budget-window-days .is-today {
+  background: var(--blend-pay-acc);
+  outline: 0;
+}
+
+.budget-bento [data-budget-browse="bills"] { grid-column: 1; grid-row: 3; padding: 16px; }
+.budget-bento [data-budget-browse="spending"] { grid-column: 2; grid-row: 3; padding: 16px; }
+.budget-bento > .budget-blend-card-movements { grid-column: 1; grid-row: 4; }
+.budget-bento > [data-budget-savings-goals] { grid-column: 2; grid-row: 4; padding: 16px; }
+.budget-bento > [data-budget-funding-section] {
   grid-column: 1 / -1;
-}
-
-.budget-bento .budget-period-flow-heading {
-  padding: 4px 4px 0;
-  margin: 0;
-}
-
-.budget-surface .budget-bento .budget-step .budget-step-summary,
-.budget-surface .budget-bento [data-budget-period-result] > details > summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "op title chev"
-    "value value value";
-  gap: 2px 8px;
-  align-items: center;
-  min-width: 0;
-  min-height: 44px;
-  padding: 10px 12px;
-  border-radius: 18px;
-  background: var(--blend-glass-chip);
-  box-shadow: inset 0 0 0 1px var(--blend-line);
-}
-
-/* The period surface pins Balance after bills and the result into
-   columns 4 and 5 of the old five-column summary. Those columns do
-   not exist on this three-column chip, and they were squeezing the
-   label. Place each child explicitly. */
-.budget-surface .budget-bento .budget-step-summary > .operating-number {
-  grid-area: op;
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.budget-surface .budget-bento .budget-step-summary > .budget-step-title {
-  grid-area: title;
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.budget-surface .budget-bento .budget-step-summary > .budget-step-value {
-  grid-area: value;
-  grid-column: 1 / -1;
-  grid-row: 2;
-}
-
-.budget-surface .budget-bento .budget-step-summary > .budget-step-chevron {
-  grid-area: chev;
-  grid-column: 3;
-  grid-row: 1;
-}
-
-.budget-bento .budget-step-summary .operating-number {
-  grid-area: op;
-  color: var(--blend-ink-2);
-  font-size: 20px;
-  font-weight: 500;
-}
-
-.budget-bento .budget-step-title {
-  grid-area: title;
-  min-width: 0;
-}
-
-.budget-bento .budget-step-summary .operating-prompt {
-  display: block;
-  min-width: 0;
-  overflow-wrap: break-word;
-  font-size: 14px;
-  line-height: 1.3;
-}
-
-.budget-bento .budget-step-value {
-  grid-area: value;
-  min-width: 0;
-  max-width: 100%;
-  text-align: left;
-  white-space: normal;
-  overflow-wrap: break-word;
-  font-variant-numeric: tabular-nums;
-}
-
-.budget-bento .budget-step-chevron {
-  grid-area: chev;
-  justify-self: end;
-  align-self: center;
-  color: var(--blend-ink-2);
-  font-size: 12px;
-  line-height: 1;
-}
-
-.budget-bento .budget-waterfall-track {
-  display: none;
-}
-
-.budget-bento [data-operating-question="02"] > details > summary {
-  box-shadow: inset 3px 0 0 var(--blend-income), inset 0 0 0 1px var(--blend-line);
-}
-
-.budget-bento [data-operating-question="04"] > details > summary {
-  box-shadow: inset 3px 0 0 var(--blend-bills), inset 0 0 0 1px var(--blend-line);
-}
-
-.budget-bento [data-operating-question="06"] > details > summary {
-  box-shadow: inset 3px 0 0 var(--blend-house), inset 0 0 0 1px var(--blend-line);
-}
-
-.budget-bento [data-operating-question="07"] > details > summary,
-.budget-bento [data-budget-period-result] > details > summary {
-  background: var(--blend-glass);
-  padding-block: 12px;
-}
-
-.budget-bento [data-operating-question="07"] .budget-step-value,
-.budget-bento [data-budget-period-result] .budget-step-value {
-  font-size: clamp(28px, 4.2vw, 64px);
-  font-weight: 650;
-  letter-spacing: -.04em;
-  line-height: 1.05;
-}
-
-.budget-bento [data-operating-question="07"] .operating-prompt,
-.budget-bento [data-budget-period-result] .operating-prompt {
-  font-size: 16px;
-  font-weight: 650;
-}
-
-.budget-bento [data-operating-question="05"] > details > summary {
-  background: transparent;
-  box-shadow: none;
-  padding-block: 6px;
-}
-
-.budget-bento [data-operating-question="05"] .budget-step-value {
-  font-size: 16px;
-}
-
-.budget-bento [data-budget-savings-stock] > details > summary {
-  border-radius: 999px;
-  background: var(--blend-glass);
-}
-
-.budget-bento [data-budget-savings-stock] .operating-prompt {
-  color: var(--blend-goals);
-}
-
-@media (min-width: 1100px) {
-  .budget-bento .calendar-waterfall {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .budget-bento [data-operating-question="07"],
-  .budget-bento [data-operating-question="savings"],
-  .budget-bento [data-budget-savings-stock] {
-    grid-column: 1 / -1;
-  }
-}
-
-/* Bills, Household, and Goals — the sections the page already renders. */
-.budget-bento .budget-browse-grid,
-.budget-bento .budget-funding-grid {
-  gap: 16px;
-  margin-top: 0;
+  grid-row: 5;
+  padding: 18px;
 }
 
 .budget-bento .budget-browse-card,
-.budget-bento .budget-funding-card,
-.budget-bento .budget-funding-sidebar .budget-surface-card,
-.budget-bento .budget-savings-goals,
-.budget-bento .budget-browse-attention {
-  background: var(--blend-glass);
-  border: 1px solid var(--blend-line);
-  border-radius: var(--blend-radius);
-  box-shadow: var(--blend-shadow);
+.budget-bento [data-budget-savings-goals] {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
-.budget-bento .budget-browse-spending {
-  box-shadow: var(--blend-shadow), inset 3px 0 0 var(--blend-house);
+.budget-bento [data-budget-browse] h2,
+.budget-bento [data-budget-savings-goals] h3,
+.budget-bento .card-movement-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -.02em;
 }
 
-.budget-bento .budget-browse-bills {
-  box-shadow: var(--blend-shadow), inset 3px 0 0 var(--blend-bills);
+.blend-cal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin: 12px 0;
 }
 
-.budget-bento .budget-savings-goals {
-  box-shadow: var(--blend-shadow), inset 3px 0 0 var(--blend-goals);
-}
-
-.budget-bento .budget-browse-attention {
-  margin-top: 0;
-}
-
-@media (min-width: 960px) {
-  .budget-bento > .budget-surface-grid,
-  .budget-bento > .budget-blend-card-movements,
-  .budget-bento > .budget-browse-attention,
-  .budget-bento > .budget-funding-section,
-  .budget-bento > .budget-browse-grid {
-    grid-column: 1 / -1;
-  }
-}
-
-/* Card movement stays the section #546 publishes. The glass tile is the
-   wrapper. The strip itself keeps a transparent background and no border:
-   test/browser-card-period-movements.js reads those computed values. */
-.budget-blend-card-movements {
+.blend-dow, .blend-day {
   min-width: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--blend-ink-2);
+}
+
+.blend-day {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--blend-ink) 4%, transparent);
+}
+
+.blend-day.is-out { background: transparent; }
+.blend-day.has { background: color-mix(in srgb, var(--blend-bills) 12%, transparent); }
+.blend-day-n { font-size: 11px; font-weight: 650; }
+.blend-day-hit {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blend-bills);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.blend-day-hit[data-s="paid"] { background: var(--blend-income); }
+.blend-day-hit[data-s="confirm"] { background: var(--blend-goals); }
+.blend-day-hit[data-s="pending"] { background: var(--blend-pay-acc); color: #0d0e12; }
+.blend-day-more { position: absolute; right: 2px; bottom: 1px; font-size: 9px; }
+.blend-flag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blend-goals) 16%, transparent);
+  color: var(--blend-goals);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.blend-rings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.blend-ring {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.blend-ring-g { width: 92px; height: 92px; }
+.blend-ring-g svg { width: 100%; height: 100%; }
+.rg-track, .rg-arc { fill: none; stroke-width: 10; }
+.rg-track { stroke: color-mix(in srgb, var(--blend-house) 22%, transparent); }
+.rg-arc {
+  stroke: var(--blend-house);
+  stroke-linecap: round;
+  stroke-dasharray: calc(276 * var(--lvl, 0)) 276;
+  transform: rotate(-90deg);
+  transform-origin: 60px 60px;
+}
+.blend-ring:nth-child(3n+2) .rg-arc { stroke: var(--blend-income); }
+.blend-ring:nth-child(3n) .rg-arc { stroke: var(--blend-goals); }
+.blend-ring-v, .blend-ring-of, .blend-ring-l {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.blend-ring-v { font-size: 13px; font-weight: 700; }
+.blend-ring-of, .blend-ring-l { font-size: 11px; color: var(--blend-ink-2); }
+
+.blend-other {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--blend-line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.blend-goals {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin: 8px 0 12px;
+}
+
+.blend-goal-rings { width: 120px; height: 120px; }
+.gr-track { fill: none; stroke: color-mix(in srgb, var(--blend-goals) 35%, transparent); stroke-width: 8; }
+.blend-goal-legend { list-style: none; margin: 0; padding: 0; }
+.blend-goal-legend li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.blend-goal-legend b { color: var(--blend-goals); }
+
+.budget-bento [data-budget-savings-goals] .budget-goal-amount,
+.budget-bento [data-budget-savings-goals] .budget-goal-row,
+.budget-bento [data-budget-funding-section] {
+  color: inherit;
+}
+
+.budget-blend-card-movements {
   padding: 16px 16px 8px;
-  border-radius: var(--blend-radius);
-  background: var(--blend-glass);
-  border: 1px solid var(--blend-line);
-  box-shadow: var(--blend-shadow);
+  overflow: hidden;
+  box-shadow: var(--blend-shadow), inset 4px 0 0 var(--blend-cards);
 }
 
 .budget-blend-card-movements .card-movement-strip {
@@ -527,47 +698,134 @@ body:has([data-budget-bento]) #operating-surface:has([data-budget-surface]) {
   margin: 0;
   border: 0;
   background: none;
+  background-color: transparent;
   box-shadow: none;
 }
 
-.budget-blend-card-movements .card-movement-track {
-  min-width: 0;
+.blend-in-panel {
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
-/* Fail-closed plan: same words, glass card, nothing removed. */
+.blend-clip {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.blend-quiet {
+  grid-column: 1 / -1;
+  grid-row: 6;
+  color: var(--blend-ink-2);
+  font-size: 14px;
+}
+
+.blend-quiet summary { cursor: pointer; min-height: 36px; }
+.blend-quiet summary:focus-visible { outline: 3px solid var(--blend-focus); outline-offset: 3px; }
+
+body:has([data-budget-bento]) .budget-bento:not(:has(.blend-quiet[open])) > [data-budget-browse="attention"],
+body:has([data-budget-bento]):not(:has(.blend-quiet[open])) :is(#recorded-balances, .budget-savings-accounts, #snapshot) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.budget-bento:has(.blend-quiet[open]) > [data-budget-browse="attention"] {
+  grid-column: 1 / -1;
+  grid-row: 7;
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 16px;
+  overflow: visible;
+  clip: auto;
+}
+
+body:has(.blend-quiet[open]) :is(#recorded-balances, .budget-savings-accounts, #snapshot) {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+}
+
+.blend-tilt {
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform .18s ease;
+}
+
 [data-budget-surface="unavailable"] .budget-surface-unavailable {
   background: var(--blend-glass);
   border: 1px solid var(--blend-line);
   border-radius: var(--blend-radius);
   box-shadow: var(--blend-shadow);
-  color: var(--text-primary);
+  color: var(--blend-ink);
 }
 
-[data-budget-surface="unavailable"] .budget-surface-unavailable :is(p, li, h2, strong, span) {
-  color: inherit;
+dialog.budget-detail-sheet[open] {
+  position: fixed;
+  inset: 16px 16px 16px auto;
+  width: min(500px, calc(100vw - 32px));
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  border-radius: 30px;
 }
 
-@media (max-width: 959px) {
-  .budget-bento .budget-window-progress {
+@media (max-width: 900px) {
+  .budget-bento { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .budget-blend-hero-layout { grid-column: 1 / -1; grid-row: 1; }
+  .budget-bento [data-budget-browse="bills"] { grid-column: 1 / -1; grid-row: 2; }
+  .budget-bento > .blend-income { grid-column: 1; grid-row: 3; }
+  .budget-bento > .blend-pay { grid-column: 2; grid-row: 3; }
+  .budget-bento [data-budget-browse="spending"] { grid-column: 1 / -1; grid-row: 4; }
+  .budget-bento > .budget-blend-card-movements { grid-column: 1 / -1; grid-row: 5; }
+  .budget-bento > [data-budget-savings-goals] { grid-column: 1 / -1; grid-row: 6; }
+  .budget-bento > [data-budget-funding-section] { grid-row: 7; }
+  .blend-quiet { grid-row: 8; }
+  .blend-hero .budget-window-header { max-width: none; }
+  .blend-hero .budget-today-cash { position: static; max-width: none; margin: 8px 0; }
+  .budget-bento .blend-hero [data-operating-question="07"] .budget-step-value { font-size: clamp(40px, 12vw, 72px); }
+}
+
+@media (max-width: 640px) {
+  dialog.budget-detail-sheet[open] {
+    inset: auto 0 0 0;
     width: 100%;
-    margin-top: 8px;
+    max-height: 88dvh;
+    border-radius: 28px 28px 0 0;
   }
-  .budget-bento .budget-today-cash {
-    border-radius: 22px;
-  }
+  .blend-goals { grid-template-columns: 1fr; }
+  .blend-pay-num { font-size: 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .blend-tilt,
   .budget-bento,
-  .budget-bento::before,
-  .budget-bento::after,
   .budget-bento *,
   .budget-bento *::before,
   .budget-bento *::after,
-  [data-budget-surface="unavailable"],
-  [data-budget-surface="unavailable"] * {
+  .blend-sky,
+  .blend-sky i {
     animation: none !important;
     transition: none !important;
-    scroll-behavior: auto !important;
+    transform: none !important;
+  }
+  .budget-bento .blend-pay .budget-window-days > span,
+  .rg-arc {
+    transform: none !important;
   }
 }

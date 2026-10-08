@@ -46,7 +46,7 @@ const composite = (fg, bg) => {
       const page = await browser.newPage({
         viewport: { width, height: 1000 },
         colorScheme: theme,
-        reducedMotion: 'reduce',
+        reducedMotion: (options && options.reducedMotion) || 'no-preference',
       });
       await page.addInitScript(chosen => {
         try { localStorage.setItem('hfd-theme', chosen); } catch (e) {}
@@ -138,7 +138,7 @@ const composite = (fg, bg) => {
             hero: text('[data-budget-period-result]'),
             income: text('[data-operating-question="02"] > details > summary'),
             bills: text('[data-operating-question="04"] > details > summary'),
-            after: text('[data-operating-question="05"] > details > summary'),
+            after: (document.querySelector('[data-operating-question="05"] > details > summary')?.textContent || '').replace(/\s+/g, ' '),
             house: text('[data-operating-question="06"] > details > summary'),
             save: text('[data-operating-question="savings"] > details > summary'),
             closing: text('[data-bills-closing]'),
@@ -278,7 +278,7 @@ const composite = (fg, bg) => {
       cardMovementFixture: 'test/fixtures/card-period-movements-data.js',
       liveSite: false,
       chrome: process.env.CHROME_PATH || null,
-      reducedMotion: true,
+      reducedMotion: false,
       screenshots: shots,
       contrasts,
       focusWalk: focusWalks[0],

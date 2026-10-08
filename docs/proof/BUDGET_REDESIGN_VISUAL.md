@@ -1,14 +1,20 @@
 # Budget redesign PR A — visual proof
 
-Fixture browser proof for the pay-period Budget bento. Every shot uses `test/fixtures/budget-surface-data.js` through the existing page scripts. Nothing here was read from the live site, and no figure was copied from the design prototype.
+Fixture browser proof for the pay-period Budget bento. Every shot uses `test/fixtures/budget-surface-data.js` through the existing page scripts, except the two card shots, which use `test/fixtures/card-period-movements-data.js`. Nothing here was read from the live site, and no figure was copied from the design prototype.
 
-## What the shots show
+## Placement
 
-The hero keeps the published equation in source order: Income, Bills, Balance after bills, Household budget, then Balance After Deductions, with Planned Savings on the same waterfall. Current balance stays the Bills-account figure. Expected Bills balance at period end keeps its own slot, including the Estimated stamp. The payday tile is the existing window progress (Day 7 of 14, next payday). Household budget and Bills are the existing browse sections. Saving for is the existing goals block. Unavailable, estimated, and To confirm wording stays on the page.
+Desktop, two columns. The hero is one glass tile on the left, spanning the income tile and the payday tile on the right. Bills is the calendar tile under the hero. Household budget is the ring tile beside it. Card movement is the tile under Bills. Saving for is the goals tile beside the cards. Upcoming costs & savings, the one-pot Today and Payday funding views, stays a full-width block under that grid. Worth a look, Recorded account balances, Savings accounts & evidence, and the snapshot sit behind “More on this page”.
 
-Card movement, merged in #546, sits in its own glass tile after the hero and before Household and Bills. The strip keeps its published label, hooks, and fail-closed words. The strip element itself stays transparent with no border. `budget-blend-cards-1440-light.png` and `budget-blend-cards-320-dark.png` use `test/fixtures/card-period-movements-data.js`. The other shots use the Budget surface fixture, which does not publish that strip.
+On a narrow screen the order is hero, Bills, Income beside Payday, Household, Cards, Saving for, then the funding block.
 
-Household sits left of Bills because that is the source order of those sections, so keyboard focus moves left to right. The prototype draws Bills on the left; swapping the tiles would focus the right-hand tile first.
+The payday number is the digit already printed in “in N days”. Planned Savings, the Bills balance pill, and the period-end Bills line are the figures the page already renders. A percent that the goal row does not already contain stays Unavailable.
+
+## #546 and #547
+
+Card movement keeps the published heading, aria-label, hooks, and fail-closed words. The glass tile is the wrapper. The strip itself stays transparent with no border. `budget-blend-cards-1440-light.png` and `budget-blend-cards-320-dark.png` are that fixture.
+
+#547’s Saving for rows stay in the goals tile, including Saved, Needed, and This period. The funding section keeps its Today and Payday tabs and the “Currently backed” lines. Those hooks are not clipped.
 
 ## How it was run
 
@@ -16,15 +22,13 @@ Household sits left of Bills because that is the source order of those sections,
 CHROME_PATH=/usr/bin/google-chrome node test/browser-budget-blend-proof.js
 ```
 
-Playwright served `public/` at `http://budget.test/` and aborted every other origin. `prefers-reduced-motion: reduce` was on. Light and dark used the existing `hfd-theme` / `data-theme` mechanism. Viewports were 1440, 390, and 320. One fail-closed packet (`unavailablePlan`) was shot in light at 1440 and dark at 390.
-
-`test/browser-budget-v3-period.js` also passed at 1440, 390, and 320 on this head: one overview card, static today column, no horizontal scroll, and the same published figures. `node test/test-card-period-movements.js` and `node test/browser-card-period-movements.js` passed after the tile wrapper. Those tests own the card-movement behavior. This proof only checks that the published strip sits in the tile, after the period grid and before Household and Bills.
+Playwright served `public/` at `http://budget.test/` and aborted every other origin. Light and dark used `hfd-theme` / `data-theme`. Viewports were 1440, 390, and 320. One fail-closed packet (`unavailablePlan`) was shot in light at 1440 and dark at 390. The shots were taken with motion allowed so the rings and payday marks paint. The stylesheet still removes tilt and animation when `prefers-reduced-motion: reduce` is set.
 
 ## Contrast and focus
 
-Sampled text against its painted background was at least 4.5:1 for body text and 3:1 for large text, in both themes, including the payday tile and the unavailable card. The receipt lists each sample.
+Sampled text against its painted background was at least 4.5:1 for body text and 3:1 for large text, in both themes. The receipt lists each sample.
 
-Tab order from the top of the light 1440 page: the six household destinations, then Pay period, Month, the previous/next period controls, then the rest of the hero and tiles. Each of the first 18 stops had a solid outline of at least 2px. Focused shots: granularity, Income, Balance After Deductions, a household category, and a savings goal.
+Tab order from the top of the light 1440 page includes the household destinations, the period controls, and the hero. Each of the first 18 stops had a solid outline of at least 2px.
 
 ## Files
 

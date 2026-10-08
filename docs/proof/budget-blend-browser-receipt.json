@@ -4,7 +4,7 @@
   "cardMovementFixture": "test/fixtures/card-period-movements-data.js",
   "liveSite": false,
   "chrome": "/usr/bin/google-chrome",
-  "reducedMotion": true,
+  "reducedMotion": false,
   "screenshots": [
     "budget-blend-1440-light.png",
     "budget-blend-1440-dark.png",
@@ -25,24 +25,24 @@
   "contrasts": [
     {
       "name": "light period range",
-      "ratio": 15.74,
+      "ratio": 19.55,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
-      "fg": "rgb(21, 21, 19)",
+      "fg": "rgb(11, 12, 16)",
       "bg": [
-        236,
-        238,
-        242
+        255,
+        255,
+        255
       ]
     },
     {
       "name": "light payday line",
-      "ratio": 18.15,
-      "large": true,
+      "ratio": 18,
+      "large": false,
       "pass": true,
       "text": "Next payday Aug 28 · in 8 days",
-      "fg": "rgb(247, 248, 250)",
+      "fg": "rgb(246, 247, 249)",
       "bg": [
         13,
         14,
@@ -51,11 +51,11 @@
     },
     {
       "name": "light day count",
-      "ratio": 13.4,
+      "ratio": 18,
       "large": false,
       "pass": true,
       "text": "Day 7 of 14",
-      "fg": "rgb(213, 215, 220)",
+      "fg": "rgb(246, 247, 249)",
       "bg": [
         13,
         14,
@@ -64,89 +64,89 @@
     },
     {
       "name": "light closing label",
-      "ratio": 18.1,
+      "ratio": 19.55,
       "large": false,
       "pass": true,
       "text": "Expected Bills balance at period end",
-      "fg": "rgb(21, 21, 19)",
+      "fg": "rgb(11, 12, 16)",
       "bg": [
-        253,
-        254,
-        254
+        255,
+        255,
+        255
       ]
     },
     {
       "name": "light result label",
-      "ratio": 17.68,
+      "ratio": 19.55,
       "large": false,
       "pass": true,
       "text": "Balance After Deductions",
-      "fg": "rgb(21, 21, 19)",
+      "fg": "rgb(11, 12, 16)",
       "bg": [
-        251,
-        251,
-        252
+        255,
+        255,
+        255
       ]
     },
     {
       "name": "light income label",
-      "ratio": 17.68,
+      "ratio": 10.17,
       "large": false,
       "pass": true,
       "text": "Income",
-      "fg": "rgb(21, 21, 19)",
+      "fg": "rgb(60, 65, 80)",
       "bg": [
-        251,
-        251,
-        252
+        255,
+        255,
+        255
       ]
     },
     {
       "name": "light household heading",
-      "ratio": 18.1,
-      "large": true,
+      "ratio": 16.83,
+      "large": false,
       "pass": true,
       "text": "Household budget",
-      "fg": "rgb(21, 21, 19)",
+      "fg": "rgb(11, 12, 16)",
       "bg": [
-        253,
-        254,
-        254
+        236,
+        238,
+        242
       ]
     },
     {
       "name": "light goals heading",
-      "ratio": 18.1,
+      "ratio": 16.83,
       "large": false,
       "pass": true,
       "text": "Saving for",
-      "fg": "rgb(21, 21, 19)",
+      "fg": "rgb(11, 12, 16)",
       "bg": [
-        253,
-        254,
-        254
+        236,
+        238,
+        242
       ]
     },
     {
       "name": "dark period range",
-      "ratio": 18.64,
+      "ratio": 15.94,
       "large": true,
       "pass": true,
       "text": "Aug 14 – Aug 27",
-      "fg": "rgb(245, 245, 242)",
+      "fg": "rgb(245, 246, 248)",
       "bg": [
-        5,
-        5,
-        7
+        27,
+        27,
+        26
       ]
     },
     {
       "name": "dark payday line",
-      "ratio": 16.32,
-      "large": true,
+      "ratio": 17.1,
+      "large": false,
       "pass": true,
       "text": "Next payday Aug 28 · in 8 days",
-      "fg": "rgb(18, 20, 26)",
+      "fg": "rgb(13, 14, 18)",
       "bg": [
         244,
         241,
@@ -155,11 +155,11 @@
     },
     {
       "name": "dark day count",
-      "ratio": 8.67,
+      "ratio": 17.1,
       "large": false,
       "pass": true,
       "text": "Day 7 of 14",
-      "fg": "rgb(62, 68, 80)",
+      "fg": "rgb(13, 14, 18)",
       "bg": [
         244,
         241,
@@ -168,93 +168,93 @@
     },
     {
       "name": "dark closing label",
-      "ratio": 16.54,
+      "ratio": 15.94,
       "large": false,
       "pass": true,
       "text": "Expected Bills balance at period end",
-      "fg": "rgb(245, 245, 242)",
+      "fg": "rgb(245, 246, 248)",
       "bg": [
-        21,
-        22,
-        27
+        27,
+        27,
+        26
       ]
     },
     {
       "name": "dark result label",
-      "ratio": 16.07,
+      "ratio": 15.94,
       "large": false,
       "pass": true,
       "text": "Balance After Deductions",
-      "fg": "rgb(245, 245, 242)",
+      "fg": "rgb(245, 246, 248)",
       "bg": [
-        25,
-        25,
-        27
+        27,
+        27,
+        26
       ]
     },
     {
       "name": "dark income label",
-      "ratio": 16.07,
+      "ratio": 10.3,
       "large": false,
       "pass": true,
       "text": "Income",
-      "fg": "rgb(245, 245, 242)",
+      "fg": "rgb(197, 200, 208)",
       "bg": [
-        25,
-        25,
-        27
+        27,
+        27,
+        26
       ]
     },
     {
       "name": "dark household heading",
-      "ratio": 16.54,
-      "large": true,
+      "ratio": 18.83,
+      "large": false,
       "pass": true,
       "text": "Household budget",
-      "fg": "rgb(245, 245, 242)",
+      "fg": "rgb(245, 246, 248)",
       "bg": [
-        21,
-        22,
-        27
+        5,
+        5,
+        7
       ]
     },
     {
       "name": "dark goals heading",
-      "ratio": 16.54,
+      "ratio": 18.83,
       "large": false,
       "pass": true,
       "text": "Saving for",
-      "fg": "rgb(245, 245, 242)",
+      "fg": "rgb(245, 246, 248)",
       "bg": [
-        21,
-        22,
-        27
+        5,
+        5,
+        7
       ]
     },
     {
       "name": "light unavailable copy",
-      "ratio": 18.1,
+      "ratio": 6.67,
       "large": false,
       "pass": true,
       "text": "BUDGET",
-      "fg": "rgb(21, 21, 19)",
+      "fg": "rgb(91, 90, 85)",
       "bg": [
-        253,
-        254,
-        254
+        251,
+        251,
+        250
       ]
     },
     {
       "name": "dark unavailable copy",
-      "ratio": 16.54,
+      "ratio": 9.23,
       "large": false,
       "pass": true,
       "text": "BUDGET",
-      "fg": "rgb(245, 245, 242)",
+      "fg": "rgb(185, 184, 177)",
       "bg": [
-        21,
-        22,
-        27
+        20,
+        20,
+        24
       ]
     }
   ],
@@ -262,6 +262,19 @@
     "viewport": 1440,
     "theme": "light",
     "steps": [
+      {
+        "tag": "A",
+        "label": "Atlas",
+        "text": "Atlas",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          74,
+          28
+        ],
+        "pass": true
+      },
       {
         "tag": "A",
         "label": "",
@@ -342,11 +355,24 @@
       },
       {
         "tag": "BUTTON",
+        "label": "Switch theme",
+        "text": "",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          40,
+          40
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
         "label": "",
         "text": "Pay period",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
           103,
           32
@@ -359,7 +385,7 @@
         "text": "Month",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
           77,
           32
@@ -372,7 +398,7 @@
         "text": "‹",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
           38,
           38
@@ -385,7 +411,7 @@
         "text": "Choose period ⌄",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
           95,
           30
@@ -398,7 +424,7 @@
         "text": "›",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
           38,
           38
@@ -408,91 +434,65 @@
       {
         "tag": "BUTTON",
         "label": "",
-        "text": "ⓘ Current balance and funding details",
+        "text": "Overview",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          40,
-          40
+          77,
+          36
         ],
         "pass": true
       },
       {
         "tag": "BUTTON",
         "label": "",
-        "text": "AUG 28 Next payday · August 28 Funding details ›",
+        "text": "Spending",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          1284,
-          69
+          78,
+          36
         ],
         "pass": true
       },
       {
-        "tag": "SUMMARY",
+        "tag": "BUTTON",
         "label": "",
-        "text": "How this estimate works",
+        "text": "Bills",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
+        "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          1252,
+          45,
+          36
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "Upcoming",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          83,
+          36
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "ⓘ Current balance and funding details",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          40,
           40
-        ],
-        "pass": true
-      },
-      {
-        "tag": "SUMMARY",
-        "label": "About the selected period figures",
-        "text": "ⓘ",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
-        "box": [
-          32,
-          42
-        ],
-        "pass": true
-      },
-      {
-        "tag": "SUMMARY",
-        "label": "",
-        "text": "+ Income $2,600.00 / of planned ≈ estimated $4,050.00 ⌄",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
-        "box": [
-          204,
-          68
-        ],
-        "pass": true
-      },
-      {
-        "tag": "SUMMARY",
-        "label": "",
-        "text": "− Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00 ⌄",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
-        "box": [
-          204,
-          68
-        ],
-        "pass": true
-      },
-      {
-        "tag": "SUMMARY",
-        "label": "",
-        "text": "= Balance after bills ≈ estimated $2,385.00 ⌄",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(61, 54, 196)",
-        "box": [
-          204,
-          73
         ],
         "pass": true
       }
