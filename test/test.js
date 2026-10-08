@@ -110,6 +110,7 @@ const suites = [
   ['homepage mission', 'test-mission.js'],
   ['plan status band + funding verdicts', 'test-status-band.js'],
   ['what the next move achieves', 'test-nextmove.js'],
+  ['a withheld cash walk is unavailable in status, mission and next move', 'test-sim-unavailable-guard.js'],
   ['gap counterfactuals', 'test-counterfactuals.js'],
   ['May 2027 renewal', 'test-renewal.js'],
   ['payoff modeller', 'test-payoff.js'],
