@@ -27,7 +27,7 @@ const LABELS=['Period income','Assigned bills (incl. required debt minimums)',
 const block=(html,id)=>{const q=html.split('data-operating-question="07"')[1];assert.ok(q,'terms print inside Balance After Deductions');
  const b=q.split(`data-bad-terms-period="${id}"`)[1];assert.ok(b,'one block per period id '+id);return b.split('</div>\n  </div>')[0]+'</div>';};
 // [data-bad-term-amount] sits inside [data-bad-term-value]: plain money2 text
-// (no ≈ prefix; trust stays on data-bad-term-trust) or Unavailable.
+// (no ≈ prefix; trust stays on data-bad-term-trust), empty when unavailable.
 const terms=b=>KEYS.map((key,i)=>{const m=b.match(new RegExp(`data-bad-term="${key}" data-bad-term-trust="([a-z]+)"><span data-bad-term-label>([^<]*)</span><span data-bad-term-value>(.*?)<span data-bad-term-amount>([^<]*)</span></span></div>`));
  assert.ok(m,'value and amount hooks for '+key);assert.equal(m[2],LABELS[i]);
  return{trust:m[1],text:(m[3]+m[4]).replace(/<[^>]+>/g,''),amount:m[4]};});
@@ -74,7 +74,7 @@ for(const over of [{predictedEndingBalanceTerms:null},failClosed,{...failClosed,
  for(const compact of [true,false]){
   const b=block(render(v,f.plan,compact),v.id);
   assert.match(b,/data-bad-terms-status="unavailable"/);
-  assert.deepEqual(terms(b).map(x=>[x.trust,x.text,x.amount]),KEYS.map(()=>['unavailable','Unavailable','Unavailable']));
+  assert.deepEqual(terms(b).map(x=>[x.trust,x.text,x.amount]),KEYS.map(()=>['unavailable','Unavailable','']));
   fallback.forEach(s=>assert.ok(!b.includes(s),'no fallback figure '+s));
  }
 }
@@ -99,6 +99,6 @@ OCT8.forEach(([I,B,H,R,bad],i)=>{const v={...cur,predictedEndingBalanceTerms:{..
   t.forEach(x=>{assert.ok(!/[≈a-z]/i.test(x.amount),'plain amount '+x.amount);assert.equal(x.text,(x.trust==='estimated'?'≈ estimated ':'')+x.amount);});
   const [ci,cb,ch,cr]=t.map(x=>cents(x.amount));assert.equal(ci-cb-ch,cr);}
 });
-// Unavailable terms hold no number in the amount hook.
-for(const b of [one,untrusted])terms(b).filter(x=>x.trust==='unavailable').forEach(x=>assert.equal(x.amount,'Unavailable'));
+// Unavailable terms leave the amount hook empty.
+for(const b of [one,untrusted])terms(b).filter(x=>x.trust==='unavailable').forEach(x=>assert.equal(x.amount,''));
 console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39)');
