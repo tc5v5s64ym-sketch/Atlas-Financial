@@ -157,6 +157,43 @@ eq(reused.cards[0].netChange.amount, null, 'unflagged posted/pending identity re
 eq(reused.cards[1].netChange.amount, -135.80, 'Cash Back remains independent after pending reuse');
 eq(reused.cards[2].netChange.amount, 0, 'Emerald remains independent after pending reuse');
 assert.ok(reused.cards[0].reasons.includes('duplicate-identity'), 'posted/pending reuse reason'); checks++;
+// Source ownership is qualified before date/window slicing. Independent
+// Travel 10740 / Cash Back -13580 / Emerald 0 remain the only published
+// numbers when a colliding counterpart escapes the selected interval.
+const escapedDate = copy(x);
+const escapedCash = escapedDate.packet.transactions.find(tx => tx.id === 'cashback-charge');
+escapedCash.id = 'charge-a';
+escapedCash.date = 'not-a-date';
+const escapedDatePub = publish(escapedDate);
+eq(escapedDatePub.cards[0].netChange.amount, null, 'Travel withheld when colliding Cash Back date is malformed');
+eq(escapedDatePub.cards[1].netChange.amount, null, 'Cash Back withheld on malformed colliding date');
+eq(escapedDatePub.cards[2].netChange.amount, 0, 'Emerald remains an independent true zero after escaped date');
+assert.ok(escapedDatePub.cards[0].reasons.includes('duplicate-identity'), 'malformed-date collision reason'); checks++;
+const escapedPending = copy(x);
+const latePending = escapedPending.packet.transactions.find(tx => tx.id === 'pending-a');
+latePending.id = 'charge-a';
+latePending.coverageRef = 'invented-charge-a';
+latePending.date = '2026-08-21';
+const escapedPendingPub = publish(escapedPending);
+eq(escapedPendingPub.cards[0].netChange.amount, null, 'Travel withheld when colliding pending is after through');
+eq(escapedPendingPub.cards[1].netChange.amount, -135.80, 'Cash Back remains independent after post-through pending reuse');
+eq(escapedPendingPub.cards[2].netChange.amount, 0, 'Emerald remains independent after post-through pending reuse');
+assert.ok(escapedPendingPub.cards[0].reasons.includes('duplicate-identity'), 'post-through pending collision reason'); checks++;
+const escapedBefore = copy(x);
+const earlyCash = escapedBefore.packet.transactions.find(tx => tx.id === 'cashback-charge');
+earlyCash.id = 'charge-a';
+earlyCash.date = '2026-08-10';
+const escapedBeforePub = publish(escapedBefore);
+eq(escapedBeforePub.cards[0].netChange.amount, null, 'Travel withheld when colliding Cash Back is before start');
+eq(escapedBeforePub.cards[1].netChange.amount, null, 'Cash Back withheld on pre-window colliding source');
+eq(escapedBeforePub.cards[2].netChange.amount, 0, 'Emerald remains independent after pre-window collision');
+assert.ok(escapedBeforePub.cards[0].reasons.includes('duplicate-identity'), 'pre-window collision reason'); checks++;
+const independentBadDate = copy(x);
+independentBadDate.packet.transactions.find(tx => tx.id === 'cashback-charge').date = 'not-a-date';
+const independentBadDatePub = publish(independentBadDate);
+eq(independentBadDatePub.cards[0].netChange.amount, 107.40, 'Travel stays publishable when a distinct Cash Back date is malformed');
+eq(independentBadDatePub.cards[1].netChange.amount, null, 'Cash Back withholds its own malformed date');
+eq(independentBadDatePub.cards[2].netChange.amount, 0, 'Emerald remains independent of an unrelated malformed date');
 // Positive institution satisfaction is preserved independently of payment
 // purpose. These invented occurrences already have qualified issuer proof.
 const issuer = require('./fixtures/bills-header-payments-data').fixture();

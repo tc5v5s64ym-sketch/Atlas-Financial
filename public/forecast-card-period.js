@@ -37,9 +37,11 @@
         aliases.forEach(id => { if (!prev.aliases.includes(id)) prev.aliases.push(id); });
       }
     };
+    // Date eligibility does not prove source independence. Register native
+    // identities before amount/date slicing so a malformed, pre-window or
+    // post-through counterpart still withholds the affected cards.
     for (const tx of rows) {
       if (!tx || tx.accountRole !== 'revolving-credit') continue;
-      if (!date(tx.date) || !date(through) || tx.date < start || tx.date > through) continue;
       const aliases = [];
       if (tx.atlasAccountId != null && String(tx.atlasAccountId) !== '') aliases.push(String(tx.atlasAccountId));
       if (tx.account != null && String(tx.account) !== '' && String(tx.account) !== aliases[0])
