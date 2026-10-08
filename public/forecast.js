@@ -2965,22 +2965,32 @@
     return rows;
   }
   function yearlyCardPaidSearchEnd(bill, asOf) {
-    return savingsDate(bill && bill.firstDue) && bill.firstDue > addDays(asOf, 731)
-      ? bill.firstDue : addDays(asOf, 731);
+    let latest = asOf;
+    if (savingsDate(bill && bill.firstDue) && bill.firstDue > latest) latest = bill.firstDue;
+    for (const date of Array.isArray(bill && bill.noPaymentRequiredOn) ? bill.noPaymentRequiredOn : []) {
+      if (savingsDate(date) && date > latest) latest = date;
+    }
+    // Named waivers are finite occurrence evidence. One complete annual
+    // cycle beyond the last exclusion/firstDue contains a native payable
+    // date; an arbitrary fixed lookahead must not erase that requirement.
+    return addDays(latest, 366);
   }
   // First native yearly card-paid occurrence after asOf that is not waived
   // or known zero. Unknown amount or needsDate stays unresolved; no date
   // is invented when every in-window occurrence is ineligible.
   function firstEligibleYearlyCardPaidOccurrence(bill, plan, asOf, end) {
     if (!bill || !asOf || !isYearlyCardPaidBill(bill, plan)) return null;
-    if (bill.needsDate) {
-      const need = savingsCents(bill.amount) == null ? null : bill.amount;
-      return need === 0 ? null : { date: null, need };
-    }
+    const need = savingsCents(bill.amount) == null ? null : bill.amount;
+    if (need === 0) return null;
+    if (bill.needsDate) return { date: null, need };
     const through = end || yearlyCardPaidSearchEnd(bill, asOf);
     for (const date of outflowDates(bill, asOf, through)) {
-      if (billOccurrenceCashAmount(bill, date) === 0) continue;
-      return { date, need: savingsCents(bill.amount) == null ? null : billOccurrenceCashAmount(bill, date) };
+      if (Array.isArray(bill.noPaymentRequiredOn) && bill.noPaymentRequiredOn.includes(date)) continue;
+      // The native cash primitive coerces some malformed amounts to zero.
+      // Strict requirement knowledge must survive before testing cash zero.
+      const cashNeed = need == null ? null : billOccurrenceCashAmount(bill, date);
+      if (cashNeed === 0) continue;
+      return { date, need: cashNeed };
     }
     return null;
   }

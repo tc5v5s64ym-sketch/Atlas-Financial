@@ -178,3 +178,41 @@ test('waived first annual with unknown next amount stays unresolved', () => {
   assert.equal(packet.backing.status, 'unavailable');
   assert.equal(packet.backing.items.find(row => row.id === 'later').saved, null);
 });
+
+for (const later of [true, false]) test('two waived annual occurrences retain the next payable cost' + (later ? ' before later cost' : ' without later cost'), () => {
+  const input = annualWaiver(later);
+  input.plan.bills[0].noPaymentRequiredOn.push('2027-10-25');
+  if (later) input.plan.commitments[0].date = '2028-11-01';
+  const unchanged = JSON.stringify(input);
+  const native = F.expandEvents(input.plan, input.asOf, '2028-10-25', { ...input.opts, weeklyVariable: 0 })
+    .filter(row => row.id === 'annual');
+  assert.deepEqual(native.map(row => [row.date, row.amount]), [['2028-10-25', -61]]);
+  const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+  assert.equal(JSON.stringify(input), unchanged);
+  assert.equal(packet.backing.status, 'ready');
+  const expected = [['annual', '2028-10-25', 61, 61]];
+  if (later) expected.push(['later', '2028-11-01', 88, 58]);
+  assert.deepEqual(packet.backing.items.map(row => [row.id, row.date, row.needed, row.saved]), expected);
+  assert.equal(packet.backing.unallocated, later ? 0 : 58);
+  assert.equal(packet.backing.items.reduce((sum, row) => sum + Math.round(row.saved * 100), 0)
+    + Math.round(packet.backing.unallocated * 100), 11900);
+});
+
+for (const value of [null, '']) for (const waived of [false, true]) test('annual ' + JSON.stringify(value) + ' amount stays unknown' + (waived ? ' after a waiver' : ' on first payable'), () => {
+  const input = annualWaiver(true);
+  if (!waived) input.plan.bills[0].noPaymentRequiredOn = [];
+  input.plan.bills[0].amount = value;
+  const before = JSON.stringify(input);
+  const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+  assert.equal(JSON.stringify(input), before);
+  assert.equal(packet.stock.amount, 119);
+  assert.equal(packet.backing.status, 'unavailable');
+  const unknown = packet.unresolved.find(row => row.id === 'annual');
+  assert.ok(unknown);
+  assert.equal(unknown.date, waived ? '2027-10-25' : '2026-10-25');
+  assert.equal(unknown.needed, null);
+  assert.equal(unknown.saved, null);
+  assert.equal(packet.backing.items.find(row => row.id === 'later').saved, null);
+  assert.equal(packet.period.actualSaved, null);
+  assert.equal(packet.moneyMovementPermission, 'not-granted');
+});
