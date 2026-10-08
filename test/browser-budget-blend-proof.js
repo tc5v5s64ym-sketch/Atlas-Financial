@@ -166,6 +166,9 @@ const composite = (fg, bg) => {
                   ink: style ? style.color : '',
                   clipped: !pb || pb.top < hb.top - 1 || pb.bottom > hb.bottom + 1 || prompt.scrollHeight > prompt.clientHeight + 2,
                   valueClipped: !vb || vb.top < hb.top - 1 || painted.scrollWidth > painted.clientWidth + 2,
+                  wrap: style ? style.overflowWrap : '',
+                  break: style ? style.wordBreak : '',
+                  rects: painted ? painted.getClientRects().length : 0,
                 };
               });
               const values = terms.map(row => {
@@ -209,12 +212,50 @@ const composite = (fg, bg) => {
                   id: el.getAttribute('data-operating-question') || (el.hasAttribute('data-bills-closing') ? 'closing' : 'pill'),
                   top: Math.round(b.top),
                   width: Math.round(b.width),
+                  height: Math.round(b.height),
                   text: (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 80),
                   inside: b.left >= hb.left - 1 && b.right <= hb.right + 1,
                   fits: el.scrollWidth <= el.clientWidth + 1,
                 };
               });
               const footBox = document.querySelector('.blend-hero-foot')?.getBoundingClientRect();
+              const billsHead = document.querySelector('.blend-bills-head');
+              const billsTitle = billsHead && billsHead.querySelector('.blend-tile-title');
+              const billsOf = billsHead && billsHead.querySelector('.blend-bills-of');
+              const billsToggle = billsHead && billsHead.querySelector('.blend-panel-toggle');
+              const titleBox = box(billsTitle);
+              const ofBox = box(billsOf);
+              const toggleBox = box(billsToggle);
+              const bills = billsHead && titleBox && ofBox && toggleBox ? {
+                oneLine: billsOf.scrollWidth <= billsOf.clientWidth + 1 && billsOf.getClientRects().length === 1,
+                row: ofBox.top >= titleBox.bottom - 2 && Math.abs(titleBox.top - toggleBox.top) < 8,
+                crowded: ofBox.top < titleBox.bottom - 2,
+              } : null;
+              const pillHeights = pills.length ? {
+                spread: Math.max(...pills.map(row => row.height || 0)) - Math.min(...pills.map(row => row.height || 0)),
+              } : null;
+              const baselines = [...document.querySelectorAll('.blend-hero-foot > *')].filter(el => getComputedStyle(el).display !== 'none').map(el => {
+                const label = el.querySelector('.operating-prompt, h2');
+                const value = el.querySelector('.budget-step-value, .budget-bills-closing-value');
+                const a = label && label.getClientRects()[0];
+                const b = value && value.getClientRects()[0];
+                return { delta: a && b ? Math.abs(a.bottom - b.bottom) : 0 };
+              });
+              const savedLines = [...document.querySelectorAll('.blend-goal-saved, .blend-goal-needed')].map(el => (el.textContent || '').trim());
+              const otherName = document.querySelector('.blend-other-name');
+              const otherState = document.querySelector('.blend-other-state');
+              const otherStyle = otherName ? getComputedStyle(otherName) : null;
+              const other = otherName ? {
+                ellipsis: otherStyle.textOverflow === 'ellipsis' || (otherState && getComputedStyle(otherState).textOverflow === 'ellipsis'),
+                nameLine: otherName.scrollWidth <= otherName.clientWidth + 1 && otherName.getClientRects().length === 1,
+                stateBelow: !otherState || otherState.getBoundingClientRect().top >= otherName.getBoundingClientRect().bottom - 2,
+              } : null;
+              const qualifier = document.querySelector('.card-movement-qualifier');
+              const qualifierStyle = qualifier ? getComputedStyle(qualifier) : null;
+              const cardQualifier = qualifier ? {
+                ellipsis: qualifierStyle.textOverflow === 'ellipsis' || qualifierStyle.whiteSpace === 'nowrap',
+                clipped: qualifier.scrollWidth > qualifier.clientWidth + 1,
+              } : null;
               return {
                 terms, between,
                 pillOverlapsHouse: overlaps(pill, house),
@@ -234,9 +275,15 @@ const composite = (fg, bg) => {
                 incomePrinted,
                 pills,
                 footWidth: footBox ? Math.round(footBox.width) : 0,
+                bills,
+                pillHeights,
+                baselines,
+                savedLines,
+                other,
+                cardQualifier,
               };
             })(),
-            shown: ['[data-budget-browse-hold]', '[data-budget-browse="spending"] .budget-browse-counts',
+            shown: ['[data-budget-browse-hold]',
               '.blend-income .blend-muted',
               ...(document.querySelector('.card-movement-heading') ? ['.card-movement-heading .blend-card-posted'] : [])
             ].map(sel => {
@@ -284,11 +331,11 @@ const composite = (fg, bg) => {
         const face = facts.face || {};
         const minFont = width >= 1000 ? 20 : width <= 360 ? 13 : 15;
         (face.terms || []).forEach(term => {
-          if (term.clipped || term.valueClipped || term.font < minFont) {
+                if (term.clipped || term.valueClipped || term.font < minFont || term.wrap !== 'normal' || term.break !== 'normal' || term.rects !== 1) {
             errors.push(`${width}/${theme} equation ${JSON.stringify(term)}`);
           }
         });
-        if (!face.between) errors.push(`${width}/${theme} minus signs are not between the terms`);
+        if (width > 360 && !face.between) errors.push(`${width}/${theme} minus signs are not between the terms`);
         if (face.pillOverlapsHouse) errors.push(`${width}/${theme} Bills account pill overlaps Household budget`);
         if (face.strayLine || !/^=\s*Balance After Deductions/.test(face.resultLine || '')) {
           errors.push(`${width}/${theme} result label ${JSON.stringify(face.resultLine)} stray ${face.strayLine}`);
@@ -328,6 +375,24 @@ const composite = (fg, bg) => {
         if (width <= 390 && (face.dateOverlapsRing || !face.dateOneLine || face.estOverlapsIncome)) {
           errors.push(`${width}/${theme} overlap date ${face.dateOverlapsRing} line ${face.dateOneLine} est ${face.estOverlapsIncome}`);
         }
+        if (width <= 480 && face.bills && (!face.bills.oneLine || !face.bills.row || face.bills.crowded)) {
+          errors.push(`${width}/${theme} bills head ${JSON.stringify(face.bills)}`);
+        }
+        if (width <= 390 && face.pillHeights && face.pillHeights.spread > 14) {
+          errors.push(`${width}/${theme} pill heights ${JSON.stringify(face.pillHeights)}`);
+        }
+        if (width >= 1000 && face.baselines && face.baselines.some(row => row.delta > 3)) {
+          errors.push(`${width}/${theme} pill baseline ${JSON.stringify(face.baselines)}`);
+        }
+        if ((face.savedLines || []).some(line => /Saved Unavailable/.test(line))) {
+          errors.push(`${width}/${theme} saved unavailable ${JSON.stringify(face.savedLines)}`);
+        }
+        if (width <= 390 && face.other && (face.other.ellipsis || !face.other.nameLine || !face.other.stateBelow)) {
+          errors.push(`${width}/${theme} other row ${JSON.stringify(face.other)}`);
+        }
+        if (width <= 390 && face.cardQualifier && (face.cardQualifier.ellipsis || face.cardQualifier.clipped)) {
+          errors.push(`${width}/${theme} card subtitle ${JSON.stringify(face.cardQualifier)}`);
+        }
         if (width === 1440 && theme === 'dark') {
           const toggle = await page.evaluate(() => {
             const buttons = [...document.querySelectorAll('.blend-toolbar .budget-granularity-btn')];
@@ -363,6 +428,85 @@ const composite = (fg, bg) => {
       }
     }
 
+    const house = await open(1440, 'light');
+    const prepared = await house.evaluate(() => {
+      const section = document.querySelector('[data-budget-browse="spending"]');
+      const rows = [...section.querySelectorAll('.budget-category-row')]
+        .filter(row => row.getAttribute('data-budget-category-open') !== 'other-spending');
+      const sample = rows.slice(0, 2);
+      const marked = ['$80.00 over', '$12.00 over'];
+      sample.forEach((row, index) => {
+        row.classList.add('is-over');
+        row.querySelector('.budget-category-status').textContent = marked[index];
+      });
+      const printed = (section.querySelector('.budget-browse-counts')?.textContent || '').replace(/\s+/g, ' ').trim();
+      const hold = (section.querySelector('[data-budget-browse-hold]')?.textContent || '').replace(/\s+/g, ' ').trim();
+      const bento = document.querySelector('[data-budget-bento]');
+      const panel = bento.querySelector('.blend-house-panel');
+      const counts = panel && panel.querySelector('.budget-browse-counts');
+      if (counts) section.appendChild(counts);
+      bento.removeAttribute('data-blend-ready');
+      bento.querySelector('[data-blend-rings]')?.remove();
+      bento.querySelector('.blend-other')?.remove();
+      panel?.remove();
+      document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+      return { printed, hold, marked: sample.map((_, index) => marked[index]) };
+    });
+    await house.locator('.blend-house-panel').waitFor();
+    const summary = house.locator('.blend-house-panel > summary');
+    await summary.focus();
+    const summaryFocused = await summary.evaluate(el => el === document.activeElement);
+    await house.keyboard.press('Enter');
+    await house.waitForFunction(() => document.querySelector('.blend-house-panel')?.open === true);
+    const household = await house.evaluate(() => {
+      const section = document.querySelector('[data-budget-browse="spending"]');
+      const header = section.querySelector(':scope > header');
+      const panel = section.querySelector('.blend-house-panel');
+      const counts = panel && panel.querySelector('.budget-browse-counts');
+      const hold = header && header.querySelector('[data-budget-browse-hold]');
+      const visible = el => {
+        if (!el) return false;
+        const box = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return box.width > 8 && box.height > 8 && style.visibility !== 'hidden' && style.display !== 'none' && style.position !== 'absolute';
+      };
+      const rows = [...section.querySelectorAll('.budget-category-row')]
+        .filter(row => row.getAttribute('data-budget-category-open') !== 'other-spending');
+      const rings = [...section.querySelectorAll('.blend-ring')];
+      const overs = rows.map((row, index) => {
+        const ring = rings[index];
+        const pill = ring && ring.querySelector('.blend-over-pill');
+        return {
+          status: (row.querySelector('.budget-category-status')?.textContent || '').trim(),
+          over: row.classList.contains('is-over'),
+          pill: pill ? (pill.textContent || '').trim() : '',
+          onFace: !!(pill && visible(pill) && !pill.closest('.blend-house-panel')),
+        };
+      }).filter(row => row.over);
+      return {
+        open: !!(panel && panel.open),
+        countText: (counts?.textContent || '').replace(/\s+/g, ' ').trim(),
+        countInPanel: !!counts,
+        countInHeader: !!(header && header.querySelector('.budget-browse-counts')),
+        countVisible: visible(counts),
+        countHidden: counts ? counts.getAttribute('aria-hidden') : 'missing',
+        clipped: !!(counts && counts.closest('.blend-clip, [aria-hidden="true"]')),
+        holdText: (hold?.textContent || '').replace(/\s+/g, ' ').trim(),
+        holdOnFace: visible(hold),
+        overs,
+      };
+    });
+    const overOk = prepared.marked.length >= 1
+      && household.overs.length === prepared.marked.length
+      && prepared.marked.every(status => household.overs.some(row => row.status === status && row.pill === status && row.onFace));
+    if (!summaryFocused || !household.open || !overOk || household.countText !== prepared.printed
+      || !/known categories over plan/.test(household.countText) || !household.countInPanel
+      || household.countInHeader || !household.countVisible || household.countHidden || household.clipped
+      || household.holdText !== prepared.hold || !household.holdOnFace || !/\$/.test(household.holdText)) {
+      errors.push(`household count ${JSON.stringify({ prepared, summaryFocused, household })}`);
+    }
+    await house.close();
+
     const next = await open(1440, 'light');
     const before = await next.locator('[data-budget-window-range]').innerText();
     await next.locator('[data-budget-window-step="1"]').click();
@@ -378,18 +522,24 @@ const composite = (fg, bg) => {
         faceInside: b.left >= a.left - 1 && b.right <= a.right + 1 && b.top >= a.top - 1 && b.bottom <= a.bottom + 1,
         wordInside: c.left >= b.left - 1 && c.right <= b.right + 1 && c.top >= b.top - 1 && c.bottom <= b.bottom + 1,
         wordFits: num.scrollWidth <= num.clientWidth + 1,
+        clearance: Math.min(c.left - b.left, b.right - c.right, c.top - b.top, b.bottom - c.bottom),
       };
     });
-    if (paydayFit.missing || !paydayFit.faceInside || !paydayFit.wordInside || !paydayFit.wordFits) {
+    if (paydayFit.missing || !paydayFit.faceInside || !paydayFit.wordInside || !paydayFit.wordFits || paydayFit.clearance < 12) {
       errors.push(`future payday ${JSON.stringify(paydayFit)}`);
     }
     const otherPeriod = await next.evaluate(() => {
       const shown = el => !!(el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 1);
       const date = document.querySelector('.blend-pay-date');
       const face = document.querySelector('.blend-pay-face');
+      const ringWord = (document.querySelector('.blend-pay-num')?.textContent || '').trim();
       const a = date && date.getBoundingClientRect();
       const b = face && face.getBoundingClientRect();
       const overlap = !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
+      const billsSection = document.querySelector('[data-budget-browse="bills"]');
+      const billRows = billsSection ? billsSection.querySelectorAll('.budget-bill-row').length : -1;
+      const billsFace = (document.querySelector('.blend-bills-of')?.textContent || '').trim();
+      const billsDom = (billsSection?.textContent || '').replace(/\s+/g, ' ');
       const incomeValue = document.querySelector('[data-operating-question="02"] .budget-step-value');
       const incomeClone = incomeValue ? incomeValue.cloneNode(true) : null;
       incomeClone?.querySelectorAll('.blend-term').forEach(node => node.remove());
@@ -399,13 +549,27 @@ const composite = (fg, bg) => {
         cash: shown(document.querySelector('.budget-today-cash')),
         closing: shown(document.querySelector('[data-bills-closing]')),
         overlap,
-        dateLine: !!(date && date.scrollWidth <= date.clientWidth + 1),
+        dateLine: !date || date.scrollWidth <= date.clientWidth + 1,
+        dateText: date ? (date.textContent || '').trim() : '',
+        ringWord,
+        billRows,
+        billsFace,
+        billsDom,
         incomeShown,
         incomePrinted,
       };
     });
     if (otherPeriod.cash || otherPeriod.closing || otherPeriod.overlap || !otherPeriod.dateLine) {
       errors.push(`other period pills ${JSON.stringify(otherPeriod)}`);
+    }
+    if (/^unavailable$/i.test(otherPeriod.dateText) || (otherPeriod.ringWord === 'Unavailable' && otherPeriod.dateText === 'Unavailable')) {
+      errors.push(`duplicate payday unavailable ${JSON.stringify(otherPeriod)}`);
+    }
+    if (otherPeriod.billRows === 0 && otherPeriod.billsFace !== 'No bills assigned') {
+      errors.push(`empty bills face ${JSON.stringify(otherPeriod.billsFace)}`);
+    }
+    if (otherPeriod.billRows === 0 && !/\$0\.00/.test(otherPeriod.billsDom || '')) {
+      errors.push('empty bills period dropped the printed zero');
     }
     if (otherPeriod.incomeShown !== otherPeriod.incomePrinted) {
       errors.push(`other period income ${JSON.stringify(otherPeriod.incomeShown)} printed ${JSON.stringify(otherPeriod.incomePrinted)}`);
@@ -421,7 +585,10 @@ const composite = (fg, bg) => {
       bento.removeAttribute('data-blend-ready');
       bento.querySelector('[data-blend-rings]')?.remove();
       bento.querySelector('.blend-other')?.remove();
-      bento.querySelector('.blend-house-panel')?.remove();
+      const panel = bento.querySelector('.blend-house-panel');
+      const counts = panel && panel.querySelector('.budget-browse-counts');
+      if (counts) document.querySelector('[data-budget-browse="spending"]').appendChild(counts);
+      panel?.remove();
       mount.appendChild(document.createTextNode(''));
       return new Promise(resolve => requestAnimationFrame(() => resolve(true)));
     });
@@ -480,7 +647,10 @@ const composite = (fg, bg) => {
         bento.removeAttribute('data-blend-ready');
         bento.querySelector('[data-blend-rings]')?.remove();
         bento.querySelector('.blend-other')?.remove();
-        bento.querySelector('.blend-house-panel')?.remove();
+        const panel = bento.querySelector('.blend-house-panel');
+        const counts = panel && panel.querySelector('.budget-browse-counts');
+        if (counts) document.querySelector('[data-budget-browse="spending"]').appendChild(counts);
+        panel?.remove();
         mount.appendChild(document.createTextNode(''));
       }, html);
       await otherPlan.locator('.blend-other .blend-of-plan').waitFor();
@@ -492,6 +662,66 @@ const composite = (fg, bg) => {
     if (!/of planned\s+≈estimated \$450\.00/.test(estimatedPlan || '')) errors.push(`future other plan ${estimatedPlan}`);
     await otherPlan.close();
 
+    const goalPage = await open(1440, 'light');
+    const goalFace = await goalPage.evaluate(() => {
+      const card = document.querySelector('[data-budget-savings-goals]');
+      const rows = [...card.querySelectorAll('[data-budget-savings-goal]')];
+      const row = rows[0];
+      row.querySelector('.budget-goal-amounts').innerHTML = '<span><span class="budget-goal-amount">Unavailable</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">≈ $745.75</span><small>Needed</small></span>';
+      const both = rows[1] || row.cloneNode(true);
+      if (!rows[1]) row.after(both);
+      both.querySelector('.budget-goal-amounts').innerHTML = '<span><span class="budget-goal-amount"><span class="budget-v3-est">≈<span class="budget-cash-sr"> estimated</span></span> $100.00</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount"><span class="budget-v3-est">≈<span class="budget-cash-sr"> estimated</span></span> $3,300.00</span><small>Needed</small></span>';
+      card.querySelector('[data-blend-goals]')?.remove();
+      card.querySelectorAll(':scope > .blend-tile-title').forEach(node => node.remove());
+      card.querySelectorAll('.blend-goals-source').forEach(node => node.classList.remove('blend-goals-source'));
+      document.querySelector('[data-budget-bento]').removeAttribute('data-blend-ready');
+      document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+      return new Promise(resolve => requestAnimationFrame(() => {
+        const legend = [...document.querySelectorAll('.blend-goal-legend li')].map(el => (el.innerText || '').replace(/\s+/g, ' ').trim());
+        const lines = [...document.querySelectorAll('.blend-goal-legend li')];
+        const bothLine = lines[1] || lines[0];
+        const savedLine = bothLine.querySelector('.blend-goal-saved');
+        const neededLine = bothLine.querySelector('.blend-goal-needed');
+        const savedStyle = savedLine ? getComputedStyle(savedLine) : null;
+        const neededStyle = neededLine ? getComputedStyle(neededLine) : null;
+        const mark = neededLine && neededLine.querySelector('.budget-v3-est');
+        const probe = document.createElement('span');
+        probe.className = 'budget-v3-est';
+        probe.textContent = '≈';
+        document.body.appendChild(probe);
+        const markStyle = mark ? getComputedStyle(mark) : null;
+        const probeStyle = getComputedStyle(probe);
+        const markColor = markStyle ? markStyle.color : '';
+        const lineColor = neededStyle ? neededStyle.color : '';
+        const probeColor = probeStyle.color;
+        probe.remove();
+        resolve({
+          legend,
+          kept: /≈ \$745\.75/.test(card.textContent || '') && /Unavailable/.test(card.textContent || ''),
+          bothText: bothLine ? (bothLine.innerText || '').replace(/\s+/g, ' ').trim() : '',
+          savedText: savedLine ? (savedLine.innerText || '').replace(/\s+/g, ' ').trim() : '',
+          neededText: neededLine ? (neededLine.innerText || '').replace(/\s+/g, ' ').trim() : '',
+          order: !!(savedLine && neededLine && (savedLine.compareDocumentPosition(neededLine) & Node.DOCUMENT_POSITION_FOLLOWING)),
+          sameSize: !!(savedStyle && neededStyle && savedStyle.fontSize === neededStyle.fontSize && savedStyle.fontWeight === neededStyle.fontWeight),
+          sameColor: !!(savedStyle && neededStyle && savedStyle.color === neededStyle.color),
+          estTone: !!(markColor && markColor === probeColor && lineColor && markColor !== lineColor),
+          markColor,
+          lineColor,
+          probeColor,
+          estSize: !!(markStyle && neededStyle && markStyle.fontSize === neededStyle.fontSize),
+          hiddenEstimate: !/estimated|calculated/.test((legend[0] || '') + ' ' + (savedLine ? savedLine.textContent : '') + ' ' + (neededLine ? neededLine.textContent : '')),
+        });
+      }));
+    });
+    const firstGoal = goalFace.legend[0] || '';
+    if (!/Needed ≈ \$745\.75/.test(firstGoal) || /Saved Unavailable/.test(firstGoal) || goalFace.legend.some(line => /Saved Unavailable/.test(line)) || !goalFace.kept) {
+      errors.push(`goal needed line ${JSON.stringify(goalFace)}`);
+    }
+    if (goalFace.savedText !== 'Saved ≈ $100.00' || goalFace.neededText !== 'Needed ≈ $3,300.00' || !goalFace.order || !goalFace.sameSize || !goalFace.sameColor || !goalFace.estTone || !goalFace.estSize || !goalFace.hiddenEstimate) {
+      errors.push(`goal line style ${JSON.stringify(goalFace)}`);
+    }
+    await goalPage.close();
+
     const unavailable = await open(1440, 'light', { unavailablePlan: true });
     const unavailableDark = await open(390, 'dark', { unavailablePlan: true });
     for (const [page, file, theme] of [
@@ -500,6 +730,32 @@ const composite = (fg, bg) => {
     ]) {
       const text = await page.locator('[data-budget-surface="unavailable"]').innerText();
       if (!/unavailable/i.test(text)) errors.push(`${file} hid the fail-closed wording`);
+      if (!/Notes behind these numbers/.test(text) || !/Attention needed/.test(text) || !/Current plan unavailable/.test(text)) {
+        errors.push(`${file} dropped fail-closed copy`);
+      }
+      const shell = await page.evaluate(() => {
+        const head = document.querySelector('.site-head-inner');
+        const nav = document.querySelector('.sitenav');
+        const themeBtn = document.querySelector('[data-blend-theme]');
+        const trust = document.querySelector('.refresh-trust');
+        const card = document.querySelector('.budget-surface-unavailable');
+        const brand = document.querySelector('.blend-brand');
+        const navBox = nav.getBoundingClientRect();
+        const themeBox = themeBtn.getBoundingClientRect();
+        const brandBox = brand.getBoundingClientRect();
+        const dock = getComputedStyle(nav).position === 'fixed';
+        return {
+          flex: getComputedStyle(head).display,
+          sameRow: dock ? Math.abs(brandBox.top - themeBox.top) < 14 : Math.abs(navBox.top - themeBox.top) < 14,
+          buildHidden: getComputedStyle(document.querySelector('.running-build')).display === 'none',
+          trustRadius: parseFloat(getComputedStyle(trust).borderRadius),
+          trustShown: trust.getBoundingClientRect().height > 20,
+          cardRadius: parseFloat(getComputedStyle(card).borderRadius),
+        };
+      });
+      if (shell.flex !== 'flex' || !shell.sameRow || !shell.buildHidden || shell.trustRadius < 16 || !shell.trustShown || shell.cardRadius < 24) {
+        errors.push(`${file} shell ${JSON.stringify(shell)}`);
+      }
       await page.screenshot({ path: path.join(outDir, file), fullPage: true, animations: 'disabled' });
       shots.push(file);
       await sampleContrast(page, '[data-budget-surface="unavailable"] h2, [data-budget-surface="unavailable"] .operating-lead, [data-budget-surface="unavailable"] p', `${theme} unavailable copy`);

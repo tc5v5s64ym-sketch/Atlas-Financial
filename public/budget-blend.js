@@ -85,11 +85,14 @@
     unit.className = 'blend-pay-unit';
     unit.textContent = days ? 'days' : '';
     face.append(num, unit);
-    const date = document.createElement('span');
-    date.className = 'blend-pay-date';
-    date.textContent = published || 'Unavailable';
     progress.querySelector('p')?.classList.add('blend-clip');
-    progress.append(face, date);
+    progress.appendChild(face);
+    if (published && !/^unavailable$/i.test(published)) {
+      const date = document.createElement('span');
+      date.className = 'blend-pay-date';
+      date.textContent = published;
+      progress.appendChild(date);
+    }
     const next = document.querySelector('[data-budget-cash-next]');
     if (next) progress.addEventListener('click', () => next.click());
   }
@@ -415,7 +418,12 @@
     const leftMoney = moneyToken(leftRaw);
     const planMoney = moneyToken(planRaw);
     const statusUnavailable = !planMoney && /unknown|unavailable/i.test(billsStatus + ' ' + leftRaw);
-    if (leftMoney && planMoney && !statusUnavailable) {
+    if (statusUnavailable) {
+      remain.textContent = 'Unavailable';
+    } else if (!rows.length) {
+      remain.textContent = 'No bills assigned';
+      remain.classList.add('is-empty');
+    } else if (leftMoney && planMoney) {
       const est = /estimated|≈/.test(leftRaw + ' ' + planRaw) ? ' est.' : '';
       remain.textContent = leftMoney + ' left of ' + planMoney + est;
     } else {
@@ -682,10 +690,6 @@
       facts.classList.add('blend-house-facts');
       header.appendChild(facts);
     }
-    if (header && counts) {
-      counts.classList.add('blend-house-status');
-      header.appendChild(counts);
-    }
     if (other[0]) {
       const foot = document.createElement('button');
       foot.type = 'button';
@@ -700,6 +704,7 @@
       name.className = 'blend-other-name';
       name.textContent = text(other[0].querySelector('.budget-category-name')) || 'Other spending';
       const word = document.createElement('span');
+      word.className = 'blend-other-state';
       const counted = text(other[0]).match(/\d+\s+to sort/i);
       word.textContent = counted ? counted[0] : status;
       const chevron = document.createElement('span');
@@ -718,6 +723,7 @@
     const summary = document.createElement('summary');
     summary.textContent = 'Household detail';
     more.appendChild(summary);
+    if (counts) more.appendChild(counts);
     const remainBlock = section.querySelector('[data-budget-browse-remaining]')?.parentElement;
     if (remainBlock) remainBlock.classList.add('blend-house-remain');
     [remainBlock?.querySelector(':scope > span'), remainBlock?.querySelector('small'), section.querySelector('.budget-browse-cycle')]
@@ -784,17 +790,60 @@
         const label = text(node.querySelector('small'));
         return [amount, label].filter(Boolean).join(' ');
       }).filter(Boolean).join(' · ');
-      const savedSpan = [...row.querySelectorAll('.budget-goal-amounts > span')].find(node => /^saved$/i.test(text(node.querySelector('small'))));
-      const savedAmount = savedSpan ? text(savedSpan.querySelector('.budget-goal-amount')) : '';
+      const goalAmount = label => {
+        const node = [...row.querySelectorAll('.budget-goal-amounts > span')].find(span => new RegExp('^' + label + '$', 'i').test(text(span.querySelector('small'))));
+        return node ? node.querySelector('.budget-goal-amount') : null;
+      };
+      const visibleAmount = node => {
+        if (!node) return '';
+        const clone = node.cloneNode(true);
+        clone.querySelectorAll('.budget-cash-sr').forEach(hidden => hidden.remove());
+        return text(clone);
+      };
+      const appendPrintedAmount = (line, amountNode) => {
+        const walk = node => {
+          node.childNodes.forEach(child => {
+            if (child.nodeType === 3) {
+              const value = child.textContent.replace(/\s+/g, ' ');
+              if (!value) return;
+              value.split('≈').forEach((part, index) => {
+                if (index > 0) {
+                  const mark = document.createElement('span');
+                  mark.className = 'budget-v3-est';
+                  mark.textContent = '≈';
+                  line.appendChild(mark);
+                }
+                if (part) line.appendChild(document.createTextNode(part));
+              });
+              return;
+            }
+            if (child.nodeType === 1 && !child.classList.contains('budget-cash-sr')) walk(child);
+          });
+        };
+        walk(amountNode);
+      };
+      const savedNode = goalAmount('Saved');
+      const neededNode = goalAmount('Needed');
+      const savedAmount = visibleAmount(savedNode);
+      const neededAmount = visibleAmount(neededNode);
+      const printedMoney = value => /\$[\d,]/.test(value || '');
       detail.textContent = status || (/Unavailable/i.test(amounts) ? 'Unavailable' : /Unknown/i.test(amounts) ? 'Unknown' : '');
       const stack = document.createElement('span');
       stack.className = 'blend-goal-status';
       stack.appendChild(detail);
-      if (savedAmount) {
+      if (printedMoney(savedAmount)) {
         const saved = document.createElement('span');
         saved.className = 'blend-goal-saved';
-        saved.textContent = 'Saved ' + savedAmount;
+        saved.appendChild(document.createTextNode('Saved '));
+        appendPrintedAmount(saved, savedNode);
         stack.appendChild(saved);
+      }
+      if (printedMoney(neededAmount)) {
+        const needed = document.createElement('span');
+        needed.className = 'blend-goal-needed';
+        needed.appendChild(document.createTextNode('Needed '));
+        appendPrintedAmount(needed, neededNode);
+        stack.appendChild(needed);
       }
       item.append(name, stack);
       list.appendChild(item);

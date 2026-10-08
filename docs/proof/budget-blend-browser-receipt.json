@@ -234,28 +234,28 @@
     },
     {
       "name": "light unavailable copy",
-      "ratio": 6.67,
+      "ratio": 6.56,
       "large": false,
       "pass": true,
       "text": "BUDGET",
       "fg": "rgb(91, 90, 85)",
       "bg": [
-        251,
-        251,
+        248,
+        249,
         250
       ]
     },
     {
       "name": "dark unavailable copy",
-      "ratio": 9.23,
+      "ratio": 9.41,
       "large": false,
       "pass": true,
       "text": "BUDGET",
       "fg": "rgb(185, 184, 177)",
       "bg": [
-        20,
-        20,
-        24
+        17,
+        18,
+        22
       ]
     }
   ],
