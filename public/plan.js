@@ -4263,7 +4263,13 @@ function badTimelineHtml(advice, compactOverview, savingsContext) {
     const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
     const face = !dailySavings && fundedBalanceKnown ? 'after-proposed-funding' : 'balance-after-deductions';
     const role = period.timelineRole === 'past' || period.timelineRole === 'current' ? period.timelineRole : 'future';
-    return `<li data-bad-timeline-period="${escape(period.id || period.start || '')}" data-bad-timeline-role="${role}" data-bad-timeline-start="${escape(period.start || '')}" data-bad-timeline-end="${escape(period.end || '')}" data-bad-timeline-range-label="${escape(payPeriodRangeLabel(period).replace(/<[^>]*>/g, ''))}" data-bad-term-trust="${known ? stamp : 'unavailable'}" data-bad-terms-face="${face}"${known && value < 0 ? ' data-sign="negative"' : ''}>${known ? mark : 'Unavailable'}<span data-bad-term-amount>${known ? money2(value) : ''}</span></li>`;
+    // Print-only. Forecast already published this; no coverage math here.
+    // Missing, null or empty claim omits the attribute so a reader can
+    // treat "no attribute" as skip.
+    const claim = period.budgetProgress?.coverage?.remainingClaim;
+    const coverage = typeof claim === 'string' && claim
+      ? ` data-bad-timeline-coverage="${escape(claim)}"` : '';
+    return `<li data-bad-timeline-period="${escape(period.id || period.start || '')}" data-bad-timeline-role="${role}" data-bad-timeline-start="${escape(period.start || '')}" data-bad-timeline-end="${escape(period.end || '')}" data-bad-timeline-range-label="${escape(payPeriodRangeLabel(period).replace(/<[^>]*>/g, ''))}"${coverage} data-bad-term-trust="${known ? stamp : 'unavailable'}" data-bad-terms-face="${face}"${known && value < 0 ? ' data-sign="negative"' : ''}>${known ? mark : 'Unavailable'}<span data-bad-term-amount>${known ? money2(value) : ''}</span></li>`;
   }).join('');
   return `<ol data-bad-timeline hidden aria-hidden="true">${items}</ol>`;
 }

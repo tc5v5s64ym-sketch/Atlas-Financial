@@ -120,8 +120,8 @@ const timeline=(adv,compact,selected)=>{context.adv=adv;context.plan=f.plan;cont
  const html=vm.runInContext('payPeriodTimelineHtml(adv,sel,null,null,"",plan,compact,null,null)',context);
  const lists=html.match(/<ol data-bad-timeline[^>]*>[^]*?<\/ol>/g)||[];assert.equal(lists.length,1,'one timeline list per render');
  assert.match(lists[0],/^<ol data-bad-timeline hidden aria-hidden="true">/,'hidden from layout and screen readers');
- return [...lists[0].matchAll(/<li data-bad-timeline-period="([^"]*)" data-bad-timeline-role="([a-z]+)" data-bad-timeline-start="([^"]*)" data-bad-timeline-end="([^"]*)" data-bad-timeline-range-label="([^"]*)" data-bad-term-trust="([a-z]+)" data-bad-terms-face="([a-z-]+)"( data-sign="negative")?>(.*?)<span data-bad-term-amount>([^<]*)<\/span><\/li>/g)]
-  .map(m=>({id:m[1],role:m[2],start:m[3],end:m[4],label:m[5],trust:m[6],face:m[7],negative:!!m[8],text:(m[9]+m[10]).replace(/<[^>]+>/g,''),amount:m[10]}));};
+ return [...lists[0].matchAll(/<li data-bad-timeline-period="([^"]*)" data-bad-timeline-role="([a-z]+)" data-bad-timeline-start="([^"]*)" data-bad-timeline-end="([^"]*)" data-bad-timeline-range-label="([^"]*)"(?: data-bad-timeline-coverage="([^"]*)")? data-bad-term-trust="([a-z]+)" data-bad-terms-face="([a-z-]+)"( data-sign="negative")?>(.*?)<span data-bad-term-amount>([^<]*)<\/span><\/li>/g)]
+  .map(m=>({id:m[1],role:m[2],start:m[3],end:m[4],label:m[5],coverage:m[6],trust:m[7],face:m[8],negative:!!m[9],text:(m[10]+m[11]).replace(/<[^>]+>/g,''),amount:m[11]}));};
 const badRow=b=>{const m=b.match(/data-bad-terms-face="([a-z-]+)"/);return{face:m[1],...terms(b)[3]};};
 const rowsOf=adv=>adv.payPeriodViews.filter(Boolean);
 const checkTimeline=(adv,compact,selected)=>{const li=timeline(adv,compact,selected),rows=rowsOf(adv);
@@ -137,6 +137,8 @@ const checkTimeline=(adv,compact,selected)=>{const li=timeline(adv,compact,selec
   const t=v.predictedEndingBalanceTerms;
   if(x.trust==='unavailable'){assert.equal(x.text,'Unavailable');assert.equal(x.amount,'');assert.equal(x.negative,false);}
   else{assert.equal(x.amount,vm.runInContext('money2',context)(t.balanceAfterDeductions));assert.equal(x.negative,t.balanceAfterDeductions<0);}
+  const claim=v.budgetProgress&&v.budgetProgress.coverage&&v.budgetProgress.coverage.remainingClaim;
+  assert.equal(x.coverage,typeof claim==='string'&&claim?claim:undefined,v.id+': coverage attribute reprints remainingClaim, absent when empty');
  });return li;};
 for(const compact of [true,false]){
  const li=checkTimeline(advice,compact);
@@ -163,4 +165,19 @@ for(const compact of [true,false]){
 }
 // No payPeriodViews rows: no list.
 assert.equal(vm.runInContext('badTimelineHtml({payPeriodViews:[]},true,null)+badTimelineHtml({},false,null)',context),'');
-console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39); Q07 + hero result hooks (funded $1,675.00 est, unavailable empty); hidden all-period timeline matches the terms block per row');
+// Coverage is print-only: remainingClaim is copied, and a missing claim
+// omits the attribute rather than printing an empty one.
+const covRow=(id,claim)=>({id,timelineRole:'past',start:'2026-07-03',end:'2026-07-16',
+ predictedEndingBalanceTerms:{identity:'balance-after-deductions',closes:true,balanceAfterDeductions:1},
+ balanceAfterDeductionsTrust:'calculated',...(claim===undefined?{}:{budgetProgress:{coverage:{remainingClaim:claim}}})});
+context.covRows=[covRow('precise','precise'),covRow('posted','posted-only'),covRow('none','unavailable'),
+ covRow('absent',undefined),covRow('empty',''),covRow('nil',null)];
+const covHtml=vm.runInContext('badTimelineHtml({payPeriodViews:covRows},false,null)',context);
+const covAttr=id=>{const li=covHtml.split(`data-bad-timeline-period="${id}"`)[1].split('</li>')[0];
+ const m=li.match(/ data-bad-timeline-coverage="([^"]*)"/);return m?m[1]:null;};
+assert.deepEqual([covAttr('precise'),covAttr('posted'),covAttr('none')],['precise','posted-only','unavailable']);
+for(const id of ['absent','empty','nil']){
+ assert.equal(covAttr(id),null,id+' omits data-bad-timeline-coverage');
+ assert.ok(!covHtml.split(`data-bad-timeline-period="${id}"`)[1].split('>')[0].includes('data-bad-timeline-coverage='));
+}
+console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39); Q07 + hero result hooks (funded $1,675.00 est, unavailable empty); hidden all-period timeline matches the terms block per row; coverage attribute reprints remainingClaim (precise, posted-only, unavailable) and is omitted when missing');
