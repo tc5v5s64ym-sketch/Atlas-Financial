@@ -162,6 +162,9 @@
       bento.querySelector('[data-budget-savings-goals]'),
     ];
     ordered.forEach(node => { if (node) bento.appendChild(node); });
+    const cards = bento.querySelector(':scope > .budget-blend-card-movements');
+    const browse = bento.querySelector(':scope > .budget-browse-grid');
+    if (cards && browse) cards.after(browse);
     bento.querySelectorAll(':scope > .budget-surface-grid, :scope > .budget-browse-grid').forEach(node => {
       node.classList.add('g-source');
     });
@@ -1326,6 +1329,7 @@
       const value = document.createElement('span');
       value.className = 'blend-ring-v';
       value.textContent = nothingPrinted ? '—' : (status || '—');
+      if (!/\$[\d,]/.test(value.textContent) || value.textContent.length > 14) value.classList.add('is-word');
       if (!nothingPrinted) splitFaceCents(value);
       if (known) {
         const spent = Math.max(0, Math.min(1, Math.max(0, Math.min(100, width)) / 100));

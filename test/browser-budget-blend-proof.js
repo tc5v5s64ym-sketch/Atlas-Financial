@@ -446,7 +446,6 @@ const composite = (fg, bg) => {
             })(),
             shown: ['[data-budget-browse-hold]',
               '.blend-income .blend-big',
-              ...(document.querySelector('.card-movement-heading') ? ['.card-movement-heading .blend-card-posted'] : [])
             ].map(sel => {
               const el = document.querySelector(sel);
               if (!el) return sel + ':missing';
