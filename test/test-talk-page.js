@@ -142,8 +142,8 @@ console.log('\n=== 3. Talk is off every household dock ===');
     ['/credit.html', 'Credit'],
     ['/plan-spend.html', 'Plan spend'],
   ]);
+  ok(siteNav(read('public/index.html')) === null, 'Budget has no page nav, so Talk is not a Budget tab');
   for (const file of [
-    'public/index.html',
     'public/bills.html',
     'public/subscriptions.html',
     'public/credit.html',

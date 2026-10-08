@@ -150,24 +150,77 @@
   }
 
   function liftFace(bento) {
-    const ordered = [
-      bento.querySelector('.blend-toolbar'),
-      bento.querySelector('.g-river-wrap'),
-      bento.querySelector('.budget-blend-hero-layout'),
-      bento.querySelector('.blend-income'),
-      bento.querySelector('.blend-pay'),
-      bento.querySelector('[data-budget-browse="bills"]'),
-      bento.querySelector('[data-budget-browse="spending"]'),
-      bento.querySelector('.budget-blend-card-movements'),
-      bento.querySelector('[data-budget-savings-goals]'),
-    ];
-    ordered.forEach(node => { if (node) bento.appendChild(node); });
-    const cards = bento.querySelector(':scope > .budget-blend-card-movements');
+    const toolbar = bento.querySelector('.blend-toolbar');
+    const river = bento.querySelector('.g-river-wrap');
+    const quiet = bento.querySelector('.blend-quiet');
+    if (toolbar) bento.appendChild(toolbar);
+    if (river) bento.appendChild(river);
+    stackBoard(bento);
+    if (quiet) bento.appendChild(quiet);
+    const cards = bento.querySelector('.budget-blend-card-movements');
     const browse = bento.querySelector(':scope > .budget-browse-grid');
     if (cards && browse) cards.after(browse);
     bento.querySelectorAll(':scope > .budget-surface-grid, :scope > .budget-browse-grid').forEach(node => {
       node.classList.add('g-source');
     });
+  }
+
+  // Two independent columns. Hero stays on the left. Income and Household
+  // start the right column, and Household may run past the hero. Bills,
+  // Cards and Savings goals then join whichever column is shorter so a
+  // tall tile does not open a hole under the other column. Payday stays
+  // in the tree, off the face.
+  function stackBoard(bento) {
+    let board = bento.querySelector(':scope > .blend-board');
+    if (!board) {
+      board = document.createElement('div');
+      board.className = 'blend-board';
+      const left = document.createElement('div');
+      left.className = 'blend-col blend-col-main';
+      const right = document.createElement('div');
+      right.className = 'blend-col blend-col-side';
+      board.append(left, right);
+    }
+    bento.appendChild(board);
+    const left = board.querySelector('.blend-col-main');
+    const right = board.querySelector('.blend-col-side');
+    const find = selector => bento.querySelector(selector);
+    const hero = find('.budget-blend-hero-layout');
+    const income = find('.blend-income');
+    const house = find('[data-budget-browse="spending"]');
+    const bills = find('[data-budget-browse="bills"]');
+    const cards = find('.budget-blend-card-movements');
+    const goals = find('[data-budget-savings-goals]');
+    const pay = find('.blend-pay');
+    const stackedHeight = (col, skip) => {
+      const kids = [...col.children].filter(node => node !== skip);
+      const gap = 18;
+      return kids.reduce((sum, node) => sum + node.getBoundingClientRect().height, 0)
+        + Math.max(0, kids.length - 1) * gap;
+    };
+    const placeFillers = () => {
+      if (pay) {
+        pay.classList.add('blend-sr');
+        bento.appendChild(pay);
+      }
+      if (hero) left.appendChild(hero);
+      if (income) right.appendChild(income);
+      if (house) right.appendChild(house);
+      const phone = window.matchMedia('(max-width: 759px)').matches;
+      [bills, cards, goals].filter(Boolean).forEach(node => {
+        const dest = phone || stackedHeight(left, node) <= stackedHeight(right, node) ? left : right;
+        dest.appendChild(node);
+      });
+    };
+    placeFillers();
+    if (!bento.dataset.blendStacked) {
+      bento.dataset.blendStacked = '1';
+      let frame = 0;
+      window.addEventListener('resize', () => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(placeFillers);
+      });
+    }
   }
 
   function tileGlyph(kind) {
@@ -1342,6 +1395,15 @@
     const rows = [...section.querySelectorAll('.budget-category-row')];
     const other = rows.filter(row => row.getAttribute('data-budget-category-open') === 'other-spending');
     const main = rows.filter(row => !other.includes(row));
+    const spentPrinted = row => {
+      const meta = row.querySelector('.budget-category-meta');
+      if (!meta) return false;
+      const clone = meta.cloneNode(true);
+      clone.querySelectorAll('.budget-cash-sr').forEach(node => node.remove());
+      const head = text(clone).split('/')[0] || '';
+      if (/\$[\d,]/.test(head)) return true;
+      return /\$[\d,]/.test(text(row.querySelector('.budget-category-status')));
+    };
     main.forEach(row => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -1358,6 +1420,8 @@
         const printed = printedSpentPlanShare(row);
         if (printed > 0) share = printed;
       }
+      const hasSpend = spentPrinted(row);
+      if (!hasSpend) share = null;
       if (share > 0) {
         button.classList.add('is-known', 'has-arc');
         button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - share))));
@@ -1367,7 +1431,7 @@
       const meta = text(row.querySelector('.budget-category-meta'));
       const planned = (meta.match(/of planned\s+(.+)$/i) || [])[1];
       const name = text(row.querySelector('.budget-category-name')) || 'Category';
-      const nothingPrinted = !(share > 0) && !/\$[\d,]/.test(status) && /not observed|unavailable|unknown|^$/i.test(status);
+      const nothingPrinted = !hasSpend || (!(share > 0) && !/\$[\d,]/.test(status) && /not observed|unavailable|unknown|^$/i.test(status));
       const well = document.createElement('span');
       well.className = 'blend-ring-g' + (nothingPrinted ? ' is-empty' : '');
       const value = nothingPrinted ? ringCentre('—') : ringCentre(status || '—');
@@ -1391,6 +1455,20 @@
       markSheet(button, row);
       rings.appendChild(button);
     });
+    let moreRings = null;
+    if (main.length > 8) {
+      rings.classList.add('is-capped');
+      moreRings = document.createElement('button');
+      moreRings.type = 'button';
+      moreRings.className = 'blend-rings-more';
+      moreRings.textContent = 'Show the rest';
+      moreRings.setAttribute('aria-expanded', 'false');
+      moreRings.addEventListener('click', () => {
+        const open = rings.classList.toggle('is-open');
+        moreRings.textContent = open ? 'Show fewer' : 'Show the rest';
+        moreRings.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    }
     if (!main.length) {
       const missing = document.createElement('p');
       missing.className = 'blend-missing';
@@ -1399,6 +1477,7 @@
     }
     const header = section.querySelector('header');
     header?.after(rings);
+    if (moreRings) rings.after(moreRings);
     const facts = section.querySelector('.budget-browse-stats');
     const counts = section.querySelector('.budget-browse-counts');
     const titleWrap = header && (header.querySelector('h2')?.parentElement || header);
@@ -1456,7 +1535,7 @@
         foot.appendChild(word);
       }
       markSheet(foot, other[0]);
-      rings.after(foot);
+      (moreRings || rings).after(foot);
     }
     const more = document.createElement('details');
     more.className = 'blend-house-panel';

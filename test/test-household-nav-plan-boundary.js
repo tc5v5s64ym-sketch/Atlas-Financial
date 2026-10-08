@@ -197,19 +197,16 @@ function currentAdvice() {
   });
 }
 
-console.log('=== 1. Plan household nav is Budget | Forecast | Bills | Subscriptions | Credit | Plan spend ===');
+console.log('=== 1. Budget has no page nav; the other household pages keep the six links ===');
 {
-  const nav = siteNav(read('public/index.html'));
-  ok(nav && nav.length === 6, 'the Plan page has exactly six household nav links',
-    nav ? nav.map(l => l.label).join(' | ') : 'no nav');
-  ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
-    'links are Budget (/), Forecast (/planning.html), Bills, Subscriptions, Credit, Plan spend in that order');
-  ok(nav && nav[0].label === 'Budget' && nav[1].label === 'Forecast',
-    'Forecast sits immediately beside Budget');
-  ok(nav && !nav.some(l => l.label === 'Talk' || l.href === '/talk.html'),
-    'Talk is not on the Plan household nav');
-  ok(nav && nav.filter(l => l.current).length === 1 && nav[0].current,
-    'Budget is the one aria-current page on the Plan nav');
+  const page = read('public/index.html');
+  ok(siteNav(page) === null, 'the Budget page has no page nav');
+  ok(!/class="sitenav sitenav-household"/.test(page),
+    'the Budget page does not reserve a household dock');
+  ok(/class="blend-brand"/.test(page) && /data-blend-theme/.test(page),
+    'the Budget header is the logo and the theme control');
+  ok(!/data-nav="budget"/.test(page) && !/data-nav="forecast"/.test(page),
+    'Budget does not print the household destination links');
 }
 
 console.log('\n=== 2. Bills, Subscriptions, Credit, Forecast and Plan spend shells share the household nav on the incumbent header ===');
@@ -285,7 +282,8 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptio
 
 console.log('\n=== 3. Modellers, Deep Dive, Records leave the household nav but stay routable ===');
 {
-  for (const page of ['index.html', 'bills.html', 'subscriptions.html', 'credit.html', 'planning.html', 'plan-spend.html', 'talk.html']) {
+  ok(siteNav(read('public/index.html')) === null, 'index.html has no page nav');
+  for (const page of ['bills.html', 'subscriptions.html', 'credit.html', 'planning.html', 'plan-spend.html', 'talk.html']) {
     const nav = siteNav(read('public/' + page)) || [];
     ok(!nav.some(l => RETIRED_FROM_NAV.includes(l.label))
         && !nav.some(l => /modellers|deepdive|records/.test(l.href)),
@@ -552,10 +550,15 @@ function startAtlas(env) {
       const res = await fetch(base + page, { headers: { cookie } });
       const body = await res.text();
       const nav = siteNav(body);
-      ok(res.status === 200 && nav
-          && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV)
-          && nav.find(l => l.current).label === label,
-        `${page} serves 200 with the household nav and ${label} current`);
+      if (page === '/') {
+        ok(res.status === 200 && nav === null && /id="operating-surface"/.test(body),
+          '/ serves 200 with the operating surface and no page nav');
+      } else {
+        ok(res.status === 200 && nav
+            && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV)
+            && nav.find(l => l.current).label === label,
+          `${page} serves 200 with the household nav and ${label} current`);
+      }
       ok(/no-store/.test(res.headers.get('cache-control') || '')
           && /script-src 'self'/.test(res.headers.get('content-security-policy') || ''),
         `${page} carries the incumbent no-store and CSP headers`);

@@ -2167,9 +2167,6 @@ dialog.budget-detail-sheet[open] {
   .budget-bento .blend-hero [data-operating-question="07"] { grid-column: 1; grid-row: 5; }
   .budget-bento .blend-hero .blend-hero-foot { grid-row: 6; }
   .budget-bento .blend-hero .blend-hero-panel { grid-row: 7; }
-  body:has([data-budget-bento]) {
-    padding-bottom: calc(var(--nav-dock-height, 66px) + var(--nav-dock-lift, 12px) + 18px + env(safe-area-inset-bottom, 0px));
-  }
   dialog.budget-detail-sheet[open] {
     inset: auto 0 0 0;
     width: 100%;

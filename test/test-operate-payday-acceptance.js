@@ -265,9 +265,8 @@ console.log('\n=== default homepage answers the operating questions first ===');
     ok(road.includes(`id="${id}"`) && !defaultSurface.includes(`id="${id}"`),
       `competing diagnostic ${id} lives after the operating surface, not on the default Plan`);
   }
-  const nav = /<nav class="sitenav(?: [^"]*)?" aria-label="Pages">[\s\S]*?<\/nav>/.exec(html);
-  ok(nav && !/Deep Dive|Modellers|Records/.test(nav[0]),
-    'diagnostic pages are not in the household nav');
+  ok(!/<nav class="sitenav/.test(html),
+    'Budget has no page nav');
   for (const page of ['modellers.html', 'deepdive.html', 'records.html']) {
     ok(exists(path.join('public', page)), `${page} remains routable even though it left the household nav`);
   }

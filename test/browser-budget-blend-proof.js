@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const fx = require('./fixtures/budget-surface-data');
+const householdAll = require('./fixtures/budget-household-all');
 
 const root = path.join(__dirname, '..');
 const outDir = path.join(root, 'docs/proof');
@@ -461,45 +462,18 @@ const composite = (fg, bg) => {
         if (facts.cards !== 1 || facts.today !== 'static' || !facts.scroll || facts.tracks !== 0 || facts.escaped.length || facts.shown.length) {
           errors.push(`${width}/${theme} geometry ${JSON.stringify({ cards: facts.cards, today: facts.today, scroll: facts.scroll, tracks: facts.tracks, escaped: facts.escaped.slice(0, 4), shown: facts.shown })}`);
         }
-        if (width === 320) {
+        if (width === 320 || width === 390) {
           const clear = await page.evaluate(() => {
-            document.documentElement.style.scrollBehavior = 'auto';
-            const nav = document.querySelector('.sitenav-household');
+            const nav = document.querySelector('.sitenav, .sitenav-household');
+            const pad = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
             const rootStyle = getComputedStyle(document.documentElement);
             const dock = parseFloat(rootStyle.getPropertyValue('--nav-dock-height')) || 0;
             const lift = parseFloat(rootStyle.getPropertyValue('--nav-dock-lift')) || 0;
-            const pad = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
-            const navTop = () => nav.getBoundingClientRect().top;
-            const tiles = [...document.querySelectorAll('.blend-hero, .blend-income, .blend-pay, [data-budget-browse="bills"], [data-budget-browse="spending"], .budget-blend-card-movements, [data-budget-savings-goals], .blend-quiet')];
-            const blocked = [];
-            tiles.forEach(tile => {
-              const over = tile.getBoundingClientRect().bottom - navTop();
-              if (over > 1) window.scrollBy(0, over + 1);
-              const still = tile.getBoundingClientRect().bottom - navTop();
-              if (still > 1) blocked.push(String(tile.className || tile.getAttribute('data-budget-browse') || 'tile').slice(0, 48));
-            });
-            window.scrollTo(0, 0);
-            return { pad, dock, lift, blocked };
+            return { nav: !!nav, pad, dock, lift };
           });
-          if (clear.blocked.length || clear.pad + 0.5 < clear.dock + clear.lift) {
-            errors.push(`${width}/${theme} nav clearance ${JSON.stringify(clear)}`);
+          if (clear.nav || clear.pad > 96.5) {
+            errors.push(`${width}/${theme} dock still reserved ${JSON.stringify(clear)}`);
           }
-        }
-        if (width === 390) {
-          const quiet = page.locator('.blend-quiet');
-          if (await quiet.count()) {
-            await quiet.scrollIntoViewIfNeeded();
-            await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
-          }
-          const dock = await page.evaluate(() => {
-            const nav = document.querySelector('.sitenav-household');
-            const last = document.querySelector('.blend-quiet');
-            if (!nav || !last) return { missing: true };
-            const navTop = nav.getBoundingClientRect().top;
-            const lastBottom = last.getBoundingClientRect().bottom;
-            return { navTop, lastBottom, gap: navTop - lastBottom, scrollY: window.scrollY };
-          });
-          if (dock.missing || dock.scrollY < 1 || dock.gap < -1) errors.push(`${width}/${theme} dock covers content ${JSON.stringify(dock)}`);
         }
         for (const [key, needle] of [
           ['hero', 'Balance After Deductions'],
@@ -635,8 +609,8 @@ const composite = (fg, bg) => {
         if (face.captionWrap === 'nowrap' || face.captionEllipsis === 'ellipsis') {
           errors.push(`${width}/${theme} caption ${face.captionWrap} ${face.captionEllipsis}`);
         }
-        if (width <= 390 && (face.dateOverlapsRing || !face.dateOneLine || face.estOverlapsIncome)) {
-          errors.push(`${width}/${theme} overlap date ${face.dateOverlapsRing} line ${face.dateOneLine} est ${face.estOverlapsIncome}`);
+        if (width <= 390 && face.estOverlapsIncome) {
+          errors.push(`${width}/${theme} est overlaps income`);
         }
         if (face.bills && (face.bills.toggleInHead || !face.bills.oneLine)) {
           errors.push(`${width}/${theme} bills head ${JSON.stringify(face.bills)}`);
@@ -710,19 +684,52 @@ const composite = (fg, bg) => {
             }),
             pillRight: !!(cashShown && top && top.right - cashBox.right < 24 && cashBox.top >= top.top - 2 && cashBox.bottom <= top.bottom + 2),
             incomeInside: !(metaBox && income) || (metaBox.right <= income.right + 1 && metaBox.left >= income.left - 1 && metaBox.bottom <= income.bottom + 1),
-            stacked: !!(income && pay && income.bottom <= pay.top + 6 && Math.abs(income.left - pay.left) < 12),
+            stacked: !!(income && document.querySelector('[data-budget-browse="spending"]') && income.bottom <= box(document.querySelector('[data-budget-browse="spending"]')).top + 8),
             separate: !hits(income, pay),
+            payHidden: !!(pay && pay.width <= 2 && pay.height <= 2),
             depOverlap,
             ringsAcross: rings.length < 3 || Math.max(...ringTops) - Math.min(...ringTops) < 12,
             cardPair: paired(cardIcon, cardTitle),
             housePair: paired(houseIcon, houseTitle),
-            ringInside: (() => {
-              const ring = document.querySelector('.blend-pay-ring');
-              const tile = document.querySelector('.blend-pay');
-              if (!ring || !tile) return false;
-              const a = ring.getBoundingClientRect();
-              const b = tile.getBoundingClientRect();
-              return a.left >= b.left - 0.5 && a.right <= b.right + 0.5 && a.top >= b.top - 0.5 && a.bottom <= b.bottom + 0.5;
+            columnGaps: [...document.querySelectorAll('.blend-col')].map(col => {
+              const kids = [...col.children].map(el => el.getBoundingClientRect()).filter(row => row.height > 8);
+              const gaps = [];
+              for (let i = 1; i < kids.length; i++) gaps.push(Math.round(kids[i].top - kids[i - 1].bottom));
+              return gaps;
+            }),
+            phoneOrder: ['.g-river-wrap', '.blend-hero', '.blend-income', '[data-budget-browse="spending"]', '[data-budget-browse="bills"]', '.budget-blend-card-movements', '[data-budget-savings-goals]'].map(sel => {
+              const el = document.querySelector(sel);
+              return el ? Math.round(el.getBoundingClientRect().top) : null;
+            }),
+            ringWidths: [...document.querySelectorAll('.blend-ring-g')].map(el => Math.round(el.getBoundingClientRect().width)),
+            goalSlack: (() => {
+              const tile = document.querySelector('[data-budget-savings-goals]');
+              if (!tile) return null;
+              const nodes = [...tile.querySelectorAll('li, p, h2, .blend-goals-costs')].filter(el => el.getBoundingClientRect().height > 4);
+              const last = nodes[nodes.length - 1];
+              if (!last) return null;
+              return Math.round(tile.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom);
+            })(),
+            heroSlack: (() => {
+              const tile = document.querySelector('.blend-hero');
+              const foot = tile && tile.querySelector('.blend-hero-foot');
+              if (!tile || !foot) return null;
+              return Math.round(tile.getBoundingClientRect().bottom - foot.getBoundingClientRect().bottom);
+            })(),
+            incomeSlack: (() => {
+              const tile = document.querySelector('.blend-income');
+              const pulse = tile && tile.querySelector('.blend-dep-pulse');
+              if (!tile || !pulse) return null;
+              return Math.round(tile.getBoundingClientRect().bottom - pulse.getBoundingClientRect().bottom);
+            })(),
+            pillLine: (() => {
+              const summary = document.querySelector('.blend-hero-pill .budget-step-summary');
+              if (!summary) return null;
+              const mid = el => {
+                const row = el && el.getBoundingClientRect();
+                return row && row.height ? row.top + row.height / 2 : null;
+              };
+              return [mid(summary.querySelector('.blend-save-ico')), mid(summary.querySelector('.operating-prompt')), mid(summary.querySelector('.budget-step-value'))];
             })(),
           };
         });
@@ -733,10 +740,31 @@ const composite = (fg, bg) => {
         if (!layout.pillRight) errors.push(`${width}/${theme} Bills account pill is not at the right of the hero top`);
         if (!layout.incomeInside) errors.push(`${width}/${theme} received amount leaves the Income tile`);
         if (!layout.separate || layout.depOverlap) errors.push(`${width}/${theme} income track overlap ${JSON.stringify(layout)}`);
-        if (width <= 360 && !layout.stacked) errors.push(`${width}/${theme} income and payday are not stacked`);
-        if (width <= 360 && !layout.ringsAcross) errors.push(`${width}/${theme} household rings are not one row`);
+        if (width <= 400 && !layout.stacked) errors.push(`${width}/${theme} income is not above household`);
+        if (width <= 400 && !layout.ringsAcross) errors.push(`${width}/${theme} household rings are not one row`);
+        if (!layout.payHidden) errors.push(`${width}/${theme} payday tile is still on the face`);
         if (!layout.cardPair || !layout.housePair) errors.push(`${width}/${theme} header alignment ${JSON.stringify(layout)}`);
-        if (width >= 1000 && !layout.ringInside) errors.push(`${width}/${theme} payday ring leaves the tile`);
+        if (width >= 1000) {
+          const gaps = (layout.columnGaps || []).flat();
+          if (!gaps.length || gaps.some(gap => gap < 8 || gap > 28)) {
+            errors.push(`${width}/${theme} column gaps ${JSON.stringify(layout.columnGaps)}`);
+          }
+          if ((layout.ringWidths || []).some(size => size < 96)) {
+            errors.push(`${width}/${theme} ring width ${JSON.stringify(layout.ringWidths)}`);
+          }
+          if (layout.goalSlack == null || layout.goalSlack > 48 || layout.heroSlack == null || layout.heroSlack > 40 || layout.incomeSlack == null || layout.incomeSlack > 40) {
+            errors.push(`${width}/${theme} tile slack ${JSON.stringify({ goal: layout.goalSlack, hero: layout.heroSlack, income: layout.incomeSlack })}`);
+          }
+        }
+        if (width <= 400) {
+          const tops = layout.phoneOrder || [];
+          const ordered = tops.every((top, index) => index === 0 || (top != null && tops[index - 1] != null && top > tops[index - 1]));
+          if (!ordered) errors.push(`${width}/${theme} phone order ${JSON.stringify(tops)}`);
+        }
+        if (layout.pillLine && layout.pillLine.every(value => value != null)) {
+          const spread = Math.max(...layout.pillLine) - Math.min(...layout.pillLine);
+          if (spread > 8) errors.push(`${width}/${theme} savings pill baseline ${JSON.stringify(layout.pillLine)}`);
+        }
         if (width === 1440 && theme === 'dark') {
           const toggle = await page.evaluate(() => {
             const buttons = [...document.querySelectorAll('.blend-toolbar .budget-granularity-btn')];
@@ -946,10 +974,11 @@ const composite = (fg, bg) => {
         main: (main.textContent || '').trim(),
         unavailable: main.classList.contains('is-unavailable'),
         fontSize: getComputedStyle(main).fontSize,
-        inside: b.left >= a.left - 1 && b.right <= a.right + 1 && b.top >= a.top - 1 && b.bottom <= a.bottom + 1,
+        tileW: Math.round(a.width),
+        tileH: Math.round(a.height),
       };
     });
-    if (paydayFit.missing || paydayFit.ring || paydayFit.main !== 'Upcoming · 14 days' || paydayFit.unavailable || paydayFit.fontSize !== '28px' || !paydayFit.inside) {
+    if (paydayFit.missing || paydayFit.ring || paydayFit.main !== 'Upcoming · 14 days' || paydayFit.unavailable || paydayFit.fontSize !== '28px' || paydayFit.tileW > 2 || paydayFit.tileH > 2) {
       errors.push(`future payday ${JSON.stringify(paydayFit)}`);
     }
     console.log('pp+1 payday ' + paydayFit.main);
@@ -1565,18 +1594,16 @@ const composite = (fg, bg) => {
       }
       const shell = await page.evaluate(() => {
         const head = document.querySelector('.site-head-inner');
-        const nav = document.querySelector('.sitenav');
         const themeBtn = document.querySelector('[data-blend-theme]');
         const trust = document.querySelector('.refresh-trust');
         const card = document.querySelector('.budget-surface-unavailable');
         const brand = document.querySelector('.blend-brand');
-        const navBox = nav.getBoundingClientRect();
         const themeBox = themeBtn.getBoundingClientRect();
         const brandBox = brand.getBoundingClientRect();
-        const dock = getComputedStyle(nav).position === 'fixed';
         return {
           flex: getComputedStyle(head).display,
-          sameRow: dock ? Math.abs(brandBox.top - themeBox.top) < 14 : Math.abs(navBox.top - themeBox.top) < 14,
+          nav: !!document.querySelector('.sitenav, .sitenav-household'),
+          sameRow: Math.abs((brandBox.top + brandBox.height / 2) - (themeBox.top + themeBox.height / 2)) < 14 && themeBox.left > brandBox.right,
           buildShown: (() => {
             const el = document.querySelector('.running-build');
             const style = getComputedStyle(el);
@@ -1588,7 +1615,7 @@ const composite = (fg, bg) => {
           cardRadius: parseFloat(getComputedStyle(card).borderRadius),
         };
       });
-      if (shell.flex !== 'flex' || !shell.sameRow || !shell.buildShown || shell.trustRadius < 16 || !shell.trustShown || shell.cardRadius < 24) {
+      if (shell.flex !== 'flex' || shell.nav || !shell.sameRow || !shell.buildShown || shell.trustRadius < 16 || !shell.trustShown || shell.cardRadius < 24) {
         errors.push(`${file} shell ${JSON.stringify(shell)}`);
       }
       await capture(page, file);
@@ -1835,6 +1862,35 @@ const composite = (fg, bg) => {
       console.log('river adapter ' + riverProbe.labels.join(' | '));
     }
 
+    const householdPacket = householdAll.packet();
+    for (const [width, file] of [[1440, 'budget-blend-1440-light-household-all.png'], [390, 'budget-blend-390-light-household-all.png']]) {
+      const page = await open(width, 'light', { data: householdPacket });
+      const rings = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('[data-budget-browse="spending"] .budget-category-row')];
+        const other = rows.filter(row => row.getAttribute('data-budget-category-open') === 'other-spending');
+        const names = [...document.querySelectorAll('[data-blend-rings] .blend-ring-l')].map(el => (el.textContent || '').trim());
+        const wells = [...document.querySelectorAll('[data-blend-rings] .blend-ring-g')].map(el => Math.round(el.getBoundingClientRect().width));
+        const tops = [...document.querySelectorAll('[data-blend-rings] .blend-ring')].map(el => Math.round(el.getBoundingClientRect().top));
+        const perRow = tops.filter(top => Math.abs(top - tops[0]) < 8).length;
+        const more = document.querySelector('.blend-rings-more');
+        const otherRow = !!document.querySelector('.blend-other');
+        return { printed: rows.length - other.length, names, wells, perRow, more: !!more, otherRow };
+      });
+      if (rings.printed < 7 || rings.names.length !== rings.printed || rings.more || !rings.otherRow) {
+        errors.push(`household-all ${width} ${JSON.stringify(rings)}`);
+      }
+      if (width >= 1000 && rings.wells.some(size => size < 96)) {
+        errors.push(`household-all ring width ${JSON.stringify(rings.wells)}`);
+      }
+      if (width >= 1000 && (rings.perRow < 3 || rings.perRow > 4)) {
+        errors.push(`household-all columns ${rings.perRow}`);
+      }
+      if (width <= 400 && rings.perRow !== 3) errors.push(`household-all phone columns ${rings.perRow}`);
+      console.log(`household-all ${width} rings ${rings.names.length} per row ${rings.perRow}`);
+      await capture(page, file);
+      await page.close();
+    }
+
     const sideScript = `
 from PIL import Image
 import sys
@@ -1859,6 +1915,8 @@ for i in range(0, len(pairs), 3):
       path.join(gblend, 'desktop.png'), path.join(outDir, 'budget-blend-1440-light.png'), path.join(outDir, 'side-1440-light.png'),
       path.join(gblend, 'desktop-dark.png'), path.join(outDir, 'budget-blend-1440-dark.png'), path.join(outDir, 'side-1440-dark.png'),
       path.join(gblend, 'mobile.png'), path.join(outDir, 'budget-blend-390-light.png'), path.join(outDir, 'side-390-light.png'),
+      path.join(gblend, 'desktop.png'), path.join(outDir, 'budget-blend-1440-light-household-all.png'), path.join(outDir, 'side-1440-light-household-all.png'),
+      path.join(gblend, 'mobile.png'), path.join(outDir, 'budget-blend-390-light-household-all.png'), path.join(outDir, 'side-390-light-household-all.png'),
     ], { encoding: 'utf8' });
     if (side.status !== 0) errors.push(`side-by-side ${side.stderr || side.stdout}`);
     else console.log(side.stdout.trim());

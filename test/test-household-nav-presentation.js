@@ -75,6 +75,15 @@ console.log('=== 1–8. Shared household destinations, routes, order, and curren
 {
   const expected = JSON.stringify(HOUSEHOLD_NAV.map(n => [n[0], n[1]]));
   for (const [file, label] of HOUSEHOLD_PAGES) {
+    if (file === 'public/index.html') {
+      const html = read(file);
+      ok(siteNav(html) === null, 'Budget has no page nav');
+      ok(!/class="sitenav sitenav-household"/.test(html),
+        'Budget does not reserve a household dock');
+      ok(/class="blend-brand"/.test(html) && /data-blend-theme/.test(html),
+        'Budget header is the logo and the theme control');
+      continue;
+    }
     const nav = siteNav(read(file));
     ok(nav && nav.length === 6, `${file} has exactly six household destinations`,
       nav ? nav.map(l => l.label).join(' | ') : 'no nav');
