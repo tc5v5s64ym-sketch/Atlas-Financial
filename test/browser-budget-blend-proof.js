@@ -803,6 +803,35 @@ const composite = (fg, bg) => {
       const pastFace = await page.evaluate(() => {
         const progress = (document.querySelector('[data-budget-window-progress]')?.textContent || '').replace(/\s+/g, ' ');
         const tile = sel => !!document.querySelector(sel);
+        const centres = [...document.querySelectorAll('.blend-ring-v')].map(el => {
+          const style = getComputedStyle(el);
+          const well = el.closest('.blend-ring-g');
+          const wellBox = well ? well.getBoundingClientRect() : null;
+          const range = document.createRange();
+          if (el.firstChild) range.selectNodeContents(el);
+          const lines = el.firstChild ? [...range.getClientRects()] : [];
+          const cx = wellBox ? wellBox.left + wellBox.width / 2 : 0;
+          const cy = wellBox ? wellBox.top + wellBox.height / 2 : 0;
+          const inner = wellBox ? (47.5 / 104) * Math.min(wellBox.width, wellBox.height) : 0;
+          const outside = !wellBox || lines.some(rect => {
+            const corners = [[rect.left, rect.top], [rect.right, rect.top], [rect.left, rect.bottom], [rect.right, rect.bottom]];
+            return corners.some(([x, y]) => ((x - cx) ** 2) + ((y - cy) ** 2) > (inner + 1) ** 2);
+          });
+          return {
+            text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+            ellipsis: style.textOverflow === 'ellipsis' || style.whiteSpace === 'nowrap'
+              || (el.textContent || '').includes('…') || (el.textContent || '').includes('...'),
+            clipped: el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1,
+            outside,
+            lines: lines.length,
+          };
+        });
+        const head = document.querySelector('.blend-bills-head');
+        const toggle = head && head.querySelector('.blend-panel-toggle');
+        const flag = head && head.querySelector('.blend-flag');
+        const headBox = head ? head.getBoundingClientRect() : null;
+        const toggleBox = toggle ? toggle.getBoundingClientRect() : null;
+        const flagBox = flag ? flag.getBoundingClientRect() : null;
         return {
           progress,
           countdown: !!document.querySelector('.blend-pay-num, .blend-pay-unit'),
@@ -815,12 +844,17 @@ const composite = (fg, bg) => {
           income: tile('.blend-income .blend-tile-head'),
           payday: tile('.blend-pay-face'),
           hero: document.querySelector('[data-budget-bento]')?.getAttribute('data-blend-ready') === '1',
+          centres,
+          detailsPinned: !!(headBox && toggleBox && headBox.right - toggleBox.right <= 4 && toggleBox.width > 8),
+          detailsClear: !flagBox || !toggleBox || toggleBox.left - flagBox.right > 16,
         };
       });
+      const badCentres = (pastFace.centres || []).filter(row => row.ellipsis || row.clipped || row.outside || !row.text || row.lines < 1);
       if (!/Completed pay period/i.test(pastFace.progress) || pastFace.countdown || pastFace.remaining
         || pastFace.billRows < 1 || !pastFace.bills || !pastFace.house || !pastFace.cards
-        || !pastFace.goals || !pastFace.income || !pastFace.payday || !pastFace.hero || consoleErrors.length) {
-        errors.push(`${label} past period ${JSON.stringify({ pastFace, consoleErrors })}`);
+        || !pastFace.goals || !pastFace.income || !pastFace.payday || !pastFace.hero || consoleErrors.length
+        || !pastFace.centres.length || badCentres.length || !pastFace.detailsPinned || !pastFace.detailsClear) {
+        errors.push(`${label} past period ${JSON.stringify({ pastFace, badCentres, consoleErrors })}`);
       }
     };
     const past = await open(1440, 'light', { data: pastData });
@@ -828,6 +862,11 @@ const composite = (fg, bg) => {
     await past.screenshot({ path: path.join(outDir, 'budget-blend-1440-light-past.png'), fullPage: true, animations: 'disabled' });
     shots.push('budget-blend-1440-light-past.png');
     await past.close();
+    const pastMid = await open(390, 'light', { data: pastData });
+    await assertPast(pastMid, '390');
+    await pastMid.screenshot({ path: path.join(outDir, 'budget-blend-390-light-past.png'), fullPage: true, animations: 'disabled' });
+    shots.push('budget-blend-390-light-past.png');
+    await pastMid.close();
     const pastNarrow = await open(320, 'light', { data: pastData });
     await assertPast(pastNarrow, '320');
     await pastNarrow.screenshot({ path: path.join(outDir, 'budget-blend-320-light-past.png'), fullPage: true, animations: 'disabled' });

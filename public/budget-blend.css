@@ -1175,6 +1175,7 @@ body:has([data-budget-bento]) .sitenav {
 }
 .blend-bills-of { margin-left: auto; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .blend-bills-of.is-empty { margin-left: auto; color: var(--blend-ink-2); font-weight: 500; }
+.blend-bills-head:not(:has(.blend-bills-of)) .blend-panel-toggle { margin-left: auto; }
 .blend-panel-toggle {
   flex: none;
   margin: 0;
@@ -1513,12 +1514,19 @@ body:has([data-budget-bento]) .sitenav {
 .blend-ring-v {
   position: relative;
   z-index: 1;
-  padding: 0 8px;
-  overflow: hidden;
-  font-size: 13px;
+  box-sizing: border-box;
+  width: 74%;
+  max-width: 74%;
+  min-width: 0;
+  padding: 0;
+  overflow: visible;
+  font-size: 12px;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.15;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .blend-ring-l {
   overflow: visible;
@@ -1996,9 +2004,9 @@ dialog.budget-detail-sheet[open] {
   .blend-ring-v {
     font-size: 11px;
     line-height: 1.1;
-    padding: 0 3px;
+    padding: 0;
     white-space: normal;
-    text-overflow: unset;
+    text-overflow: clip;
   }
   .blend-bills-head { flex-wrap: wrap; row-gap: 4px; }
   .blend-bills-head .blend-tile-ico { order: 1; }
@@ -2050,6 +2058,7 @@ dialog.budget-detail-sheet[open] {
 
 @media (max-width: 360px) {
   .blend-ring-g { width: min(86px, 100%); }
+  .blend-ring-v { font-size: 10px; line-height: 1.1; }
   .budget-bento .budget-blend-hero-layout {
     grid-template-columns: minmax(0, 1fr);
   }
