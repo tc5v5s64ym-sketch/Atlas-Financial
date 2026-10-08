@@ -73,7 +73,25 @@
   function place(bento) {
     const hero = bento.querySelector('.budget-blend-hero-layout');
     if (!hero) return;
-    hero.classList.add('blend-hero', 'blend-tilt');
+    hero.classList.add('blend-hero', 'blend-tilt', 'tile', 't-hero');
+    bento.classList.add('atlas-g');
+    if (!document.querySelector('.blend-ambient')) {
+      const ambient = document.createElement('div');
+      ambient.className = 'blend-ambient';
+      ambient.setAttribute('aria-hidden', 'true');
+      ambient.innerHTML = '<i class="a1"></i><i class="a2"></i><i class="a3"></i>';
+      document.body.prepend(ambient);
+    }
+    if (!hero.dataset.blendOpen) {
+      hero.dataset.blendOpen = '1';
+      hero.addEventListener('click', event => {
+        if (event.target.closest('a, button, input, .blend-hero-pill, .blend-hero-foot')) return;
+        const openPanel = hero.querySelector('.blend-hero-panel');
+        if (!openPanel) return;
+        if (event.target.closest('summary') && !event.target.closest('[data-operating-question="07"]')) return;
+        openPanel.open = !openPanel.open;
+      });
+    }
     if (!hero.querySelector('.blend-sky')) {
       const sky = document.createElement('div');
       sky.className = 'blend-sky';
@@ -99,7 +117,7 @@
     hero.classList.toggle('is-tight', !!tight);
     const progress = bento.querySelector('[data-budget-window-progress]');
     if (progress && progress.parentElement !== bento) {
-      progress.classList.add('blend-pay', 'blend-tilt');
+      progress.classList.add('blend-pay', 'blend-tilt', 'tile', 't-pay');
       bento.appendChild(progress);
     }
     const header = bento.querySelector('[data-budget-window-header]');
@@ -125,8 +143,28 @@
     guard('funding', () => parkFunding(bento));
     guard('badges', () => paintFaceBadges(bento));
     guard('quiet', () => paintQuiet(bento));
+    guard('river', () => paintRiver(bento));
+    guard('lift', () => liftFace(bento));
     bento.querySelectorAll('[data-budget-browse="bills"], [data-budget-browse="spending"], .budget-blend-card-movements, [data-budget-savings-goals]')
       .forEach(node => node.classList.add('blend-tilt'));
+  }
+
+  function liftFace(bento) {
+    const ordered = [
+      bento.querySelector('.blend-toolbar'),
+      bento.querySelector('.g-river-wrap'),
+      bento.querySelector('.budget-blend-hero-layout'),
+      bento.querySelector('.blend-income'),
+      bento.querySelector('.blend-pay'),
+      bento.querySelector('[data-budget-browse="bills"]'),
+      bento.querySelector('[data-budget-browse="spending"]'),
+      bento.querySelector('.budget-blend-card-movements'),
+      bento.querySelector('[data-budget-savings-goals]'),
+    ];
+    ordered.forEach(node => { if (node) bento.appendChild(node); });
+    bento.querySelectorAll(':scope > .budget-surface-grid, :scope > .budget-browse-grid').forEach(node => {
+      node.classList.add('g-source');
+    });
   }
 
   function tileGlyph(kind) {
@@ -264,7 +302,18 @@
     const savings = hero.querySelector('[data-operating-question="savings"], [data-budget-savings-stock]');
     const closing = hero.querySelector('[data-bills-closing]');
     const afterBills = hero.querySelector('[data-operating-question="05"]');
-    if (savings) savings.classList.add('blend-hero-pill');
+    if (savings) {
+      savings.classList.add('blend-hero-pill');
+      savings.querySelector('.operating-number')?.classList.add('blend-clip');
+      const summary = savings.querySelector('summary') || savings;
+      if (!summary.querySelector('.blend-save-ico')) {
+        const ico = document.createElement('span');
+        ico.className = 'blend-save-ico';
+        ico.setAttribute('aria-hidden', 'true');
+        ico.appendChild(tileGlyph('goals'));
+        summary.prepend(ico);
+      }
+    }
     [afterBills, closing].forEach(node => {
       if (node && node.parentElement !== body) body.appendChild(node);
     });
@@ -316,12 +365,12 @@
       hero.querySelector('.blend-plan-note')?.remove();
       return;
     }
-    const top = hero.querySelector('.blend-hero-top');
-    if (top && !hero.querySelector('.blend-plan-note')) {
+    const panelBodyNode = hero.querySelector('.blend-hero-panel-body');
+    if (panelBodyNode && !hero.querySelector('.blend-plan-note')) {
       const note = document.createElement('p');
       note.className = 'blend-plan-note';
       note.textContent = 'Plan status covers the next 13 weeks, not just this pay period.';
-      top.appendChild(note);
+      panelBodyNode.appendChild(note);
     }
     const band = document.getElementById('status-band');
     const id = band && band.getAttribute('data-plan-status');
@@ -711,6 +760,7 @@
     panel = document.createElement('details');
     panel.className = 'blend-hero-panel';
     const summary = document.createElement('summary');
+    summary.className = 'blend-clip';
     summary.textContent = 'Period figures';
     const body = document.createElement('div');
     body.className = 'blend-hero-panel-body';
@@ -763,6 +813,36 @@
     return status === 'received' || status === 'already in balance';
   }
 
+  function splitFaceCents(node) {
+    if (!node) return;
+    const raw = node.textContent || '';
+    const parts = raw.match(/^(.*?)(-?\$[\d,]+)(\.\d{2})(.*)$/);
+    if (!parts) return;
+    node.replaceChildren();
+    if (parts[1]) node.appendChild(document.createTextNode(parts[1]));
+    node.appendChild(document.createTextNode(parts[2]));
+    const cents = document.createElement('span');
+    cents.className = 'blend-cents';
+    cents.textContent = parts[3];
+    node.appendChild(cents);
+    if (parts[4]) node.appendChild(document.createTextNode(parts[4]));
+  }
+
+  function checkGlyph() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M5 12.5 10 17.5 19 7');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#fff');
+    path.setAttribute('stroke-width', '3');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    return svg;
+  }
+
   function paintIncome(bento) {
     if (bento.querySelector('.blend-income')) return;
     const step = bento.querySelector('[data-operating-question="02"]');
@@ -772,7 +852,7 @@
     const estimated = /estimated|≈/.test(planText);
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'blend-tile blend-income blend-tilt';
+    button.className = 'blend-tile blend-income blend-tilt tile t-income';
     const received = moneyToken(text(step && step.querySelector('[data-budget-ratio="income"] [data-budget-ratio-actual]')));
     const head = document.createElement('span');
     head.className = 'blend-tile-head';
@@ -790,6 +870,7 @@
     if (money) big.textContent = money;
     else if (/unknown|unavailable/i.test(planText)) big.textContent = /unknown/i.test(planText) ? 'Unknown' : 'Unavailable';
     else big.textContent = planText || 'Unavailable';
+    splitFaceCents(big);
     figure.appendChild(big);
     if (money && estimated) {
       const pill = document.createElement('span');
@@ -797,46 +878,8 @@
       pill.textContent = 'est.';
       figure.appendChild(pill);
     }
-    const rail = document.createElement('span');
-    rail.className = 'blend-deps';
-    const line = document.createElement('i');
-    line.className = 'blend-dep-line';
-    line.setAttribute('aria-hidden', 'true');
-    rail.appendChild(line);
     const rows = depositRows(step || bento);
-    let seenWaiting = false;
     const todayMarked = !!document.querySelector('.budget-window-days .is-today, [data-budget-window-progress] .is-today');
-    rows.forEach(row => {
-      const receivedRow = depositReceived(row);
-      if (todayMarked && !seenWaiting && !receivedRow && rail.querySelector('.blend-dep')) {
-        const tick = document.createElement('i');
-        tick.className = 'blend-dep-today';
-        tick.setAttribute('aria-hidden', 'true');
-        rail.appendChild(tick);
-        seenWaiting = true;
-      }
-      if (!receivedRow) seenWaiting = true;
-      const item = document.createElement('span');
-      item.className = 'blend-dep' + (receivedRow ? ' is-got' : ' is-wait');
-      const mark = document.createElement('i');
-      mark.className = receivedRow ? 'is-got' : 'is-wait';
-      mark.setAttribute('aria-hidden', 'true');
-      mark.textContent = receivedRow ? '✓' : '';
-      const caption = document.createElement('span');
-      const when = depositDate(row);
-      const name = depositName(row);
-      caption.textContent = [depositAmount(row), name].filter(Boolean).join(' ') + (when ? ' · ' + when : '');
-      item.append(mark, caption);
-      rail.appendChild(item);
-    });
-    if (todayMarked && !rail.querySelector('.blend-dep-today') && rows.length) {
-      const tick = document.createElement('i');
-      tick.className = 'blend-dep-today';
-      tick.setAttribute('aria-hidden', 'true');
-      const waiting = rail.querySelector('.blend-dep.is-wait');
-      if (waiting) rail.insertBefore(tick, waiting);
-      else rail.appendChild(tick);
-    }
     const muted = document.createElement('span');
     muted.className = 'blend-muted';
     const value = step && step.querySelector('.budget-step-value');
@@ -862,14 +905,35 @@
       pulse.appendChild(mark);
     }
     pulse.insertBefore(track, pulse.firstChild);
+    let seenWaiting = false;
     rows.forEach((row, index) => {
+      const got = depositReceived(row);
+      const x = rows.length <= 1 ? 12 : 8 + (index / (rows.length - 1)) * 84;
+      if (todayMarked && !seenWaiting && !got) {
+        const tick = document.createElement('i');
+        tick.className = 'blend-p-today';
+        tick.setAttribute('aria-hidden', 'true');
+        tick.style.left = x + '%';
+        pulse.appendChild(tick);
+        seenWaiting = true;
+      }
+      if (!got) seenWaiting = true;
+      const dep = document.createElement('span');
+      dep.className = 'blend-p-dep' + (got ? ' is-got' : ' is-wait');
+      dep.style.left = x + '%';
       const dot = document.createElement('i');
-      dot.className = 'blend-p-dot' + (depositReceived(row) ? ' is-got' : ' is-wait');
-      const x = rows.length <= 1 ? 8 : (index / (rows.length - 1)) * 100;
-      dot.style.left = 'calc(' + x + '% - 7px)';
-      pulse.appendChild(dot);
+      dot.className = 'blend-p-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      if (got) dot.appendChild(checkGlyph());
+      const caption = document.createElement('span');
+      caption.className = 'blend-p-lbl';
+      const when = depositDate(row);
+      const name = depositName(row);
+      caption.textContent = [depositAmount(row), name].filter(Boolean).join(' ') + (when ? ' · ' + when : '');
+      dep.append(dot, caption);
+      pulse.appendChild(dep);
     });
-    button.append(head, figure, pulse, rail);
+    button.append(head, figure, pulse);
     if (muted.textContent) button.appendChild(muted);
     if (step) button.addEventListener('click', () => step.querySelector('summary')?.click());
     bento.appendChild(button);
@@ -945,6 +1009,7 @@
   function paintBills(bento) {
     const section = bento.querySelector('[data-budget-browse="bills"]');
     if (!section || section.querySelector('[data-blend-cal]')) return;
+    section.classList.add('tile', 't-bills');
     const progress = document.querySelector('[data-budget-window-progress]');
     const start = progress && progress.getAttribute('data-start');
     const end = progress && progress.getAttribute('data-end');
@@ -996,7 +1061,7 @@
     }
     if (remain) head.appendChild(remain);
     const cal = document.createElement('div');
-    cal.className = 'blend-cal';
+    cal.className = 'blend-cal cal';
     cal.setAttribute('data-blend-cal', '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) {
       const missing = document.createElement('p');
@@ -1029,9 +1094,9 @@
       days.forEach(date => {
         const iso = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
         const day = document.createElement('span');
-        day.className = 'blend-day' + (iso === asOf ? ' is-today' : '');
+        day.className = 'blend-day day' + (iso === asOf ? ' is-today' : '');
         const n = document.createElement('span');
-        n.className = 'blend-day-n';
+        n.className = 'blend-day-n day-n';
         n.textContent = String(date.getDate());
         day.appendChild(n);
         const hits = byDay.get(iso) || [];
@@ -1039,7 +1104,7 @@
           day.classList.add('has');
           const mark = document.createElement('button');
           mark.type = 'button';
-          mark.className = 'blend-day-hit';
+          mark.className = 'blend-day-hit day-g';
           mark.tabIndex = -1;
           const state = remain && remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
           if (state === 'overdue') day.classList.add('is-overdue');
@@ -1054,17 +1119,14 @@
           });
           if (!heatKnown) day.classList.add('is-untracked');
           else day.dataset.blendHeat = String(heatSum);
-          const badge = document.createElement('i');
-          badge.className = 'blend-state' + (state === 'confirm' ? ' blend-pulse' : '');
-          badge.setAttribute('aria-hidden', 'true');
-          if (state === 'paid') {
-            badge.textContent = '✓';
+          if (state !== 'unknown') {
+            const badge = document.createElement('i');
+            badge.className = 'blend-state day-s' + (state === 'confirm' ? ' blend-pulse' : '');
+            badge.dataset.s = state;
+            badge.setAttribute('aria-hidden', 'true');
+            if (state === 'paid') badge.appendChild(checkGlyph());
             day.appendChild(badge);
-          } else if (state === 'unknown') {
-            badge.classList.add('is-unknown');
-            badge.textContent = '–';
-            mark.appendChild(badge);
-          } else mark.appendChild(badge);
+          }
           mark.addEventListener('click', event => {
             event.stopPropagation();
             hits[0].click();
@@ -1191,9 +1253,47 @@
     return svg;
   }
 
+  function categoryArc(share) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 112 112');
+    svg.setAttribute('class', 'blend-arc-ring');
+    svg.setAttribute('aria-hidden', 'true');
+    const ns = 'http://www.w3.org/2000/svg';
+    const circle = (cls, extra) => {
+      const node = document.createElementNS(ns, 'circle');
+      node.setAttribute('cx', '56');
+      node.setAttribute('cy', '56');
+      node.setAttribute('r', '44');
+      node.setAttribute('fill', 'none');
+      node.setAttribute('class', cls);
+      if (extra) Object.entries(extra).forEach(([key, value]) => node.setAttribute(key, value));
+      svg.appendChild(node);
+      return node;
+    };
+    const track = circle(share == null ? 'rg-track is-dotted' : 'rg-track');
+    if (share != null) {
+      const circ = 2 * Math.PI * 44;
+      const drawn = Math.max(0, Math.min(1, share)) * circ;
+      circle('rg-arc', {
+        'stroke-linecap': 'round',
+        transform: 'rotate(-90 56 56)',
+        'stroke-dasharray': drawn.toFixed(2) + ' ' + circ.toFixed(2),
+      });
+    }
+    const glass = document.createElementNS(ns, 'circle');
+    glass.setAttribute('cx', '56');
+    glass.setAttribute('cy', '56');
+    glass.setAttribute('r', '36');
+    glass.setAttribute('class', 'rg-glass');
+    svg.appendChild(glass);
+    track.setAttribute('stroke-width', '7');
+    return svg;
+  }
+
   function paintHouse(bento) {
     const section = bento.querySelector('[data-budget-browse="spending"]');
     if (!section || section.querySelector('[data-blend-rings]')) return;
+    section.classList.add('tile', 't-house');
     const rings = document.createElement('div');
     rings.className = 'blend-rings';
     rings.setAttribute('data-blend-rings', '');
@@ -1220,19 +1320,25 @@
       const meta = text(row.querySelector('.budget-category-meta'));
       const planned = (meta.match(/of planned\s+(.+)$/i) || [])[1];
       const name = text(row.querySelector('.budget-category-name')) || 'Category';
+      const nothingPrinted = !known && !/\$[\d,]/.test(status) && /not observed|unavailable|unknown|^$/i.test(status);
       const well = document.createElement('span');
-      well.className = 'blend-ring-g' + (known ? '' : ' is-hatched');
-      well.setAttribute('aria-hidden', 'true');
+      well.className = 'blend-ring-g' + (nothingPrinted ? ' is-empty' : '');
       const value = document.createElement('span');
       value.className = 'blend-ring-v';
-      value.textContent = status || '—';
+      value.textContent = nothingPrinted ? '—' : (status || '—');
+      if (!nothingPrinted) splitFaceCents(value);
       if (known) {
-        const liquid = document.createElement('span');
-        liquid.className = 'blend-liquid';
         const spent = Math.max(0, Math.min(1, Math.max(0, Math.min(100, width)) / 100));
-        button.style.setProperty('--left', String(spent));
-        well.append(liquid, leftArc(spent), value);
-      } else well.appendChild(value);
+        button.style.setProperty('--pct', spent.toFixed(4));
+        button.classList.add('has-arc');
+      }
+      well.append(categoryArc(known ? Math.max(0, Math.min(1, Math.max(0, Math.min(100, width)) / 100)) : null), value);
+      if (known) {
+        const wave = document.createElement('span');
+        wave.className = 'blend-wave';
+        wave.setAttribute('aria-hidden', 'true');
+        well.appendChild(wave);
+      }
       const label = document.createElement('span');
       label.className = 'blend-ring-l';
       label.textContent = planned ? name + ' · of ' + planned.trim() : name;
@@ -1279,7 +1385,7 @@
     if (other[0]) {
       const foot = document.createElement('button');
       foot.type = 'button';
-      foot.className = 'blend-other';
+      foot.className = 'blend-other other-chip';
       const otherId = other[0].getAttribute('data-budget-category-open');
       if (otherId) foot.setAttribute('data-blend-cat', otherId);
       const status = text(other[0].querySelector('.budget-category-status'))
@@ -1294,7 +1400,10 @@
       const word = document.createElement('span');
       word.className = 'blend-other-state';
       const counted = text(other[0]).match(/\d+\s+to sort/i);
-      word.textContent = counted ? counted[0] : status;
+      const rawOther = text(other[0]);
+      word.textContent = counted ? counted[0]
+        : /needs a category/i.test(rawOther) ? 'needs a category'
+        : (/not observed|unavailable|unknown/i.test(status) && !/\$[\d,]/.test(status) ? '—' : status);
       const chevron = document.createElement('span');
       chevron.className = 'blend-other-chev';
       chevron.setAttribute('aria-hidden', 'true');
@@ -1329,37 +1438,71 @@
 
   function paintCards(bento) {
     const heading = bento.querySelector('.card-movement-heading');
-    if (heading && !heading.querySelector('.blend-tile-ico')) heading.prepend(tileIcon('cards'));
+    if (!heading || heading.dataset.blendCards === '1') return;
+    heading.dataset.blendCards = '1';
+    heading.closest('.budget-blend-card-movements')?.classList.add('tile', 't-cards');
+    if (!heading.querySelector('.blend-tile-ico')) heading.prepend(tileIcon('cards'));
+    const h2 = heading.querySelector('h2');
+    if (h2 && !heading.querySelector('.blend-tile-title')) {
+      const title = document.createElement('span');
+      title.className = 'blend-tile-title';
+      title.textContent = 'Cards this pay period';
+      h2.classList.add('blend-clip');
+      h2.after(title);
+    }
+    const panels = [...bento.querySelectorAll('.card-movement-panel')];
+    const note = heading.querySelector('p');
+    if (note && /Opening balance unavailable|Future period not observed|activity not observed|Posted through/i.test(text(note))) {
+      note.classList.add('blend-card-posted', 'blend-card-aside');
+      if (panels[0]) panels[0].prepend(note);
+    }
+    let anyMoney = false;
     bento.querySelectorAll('.card-movement-trigger').forEach(button => {
-      if (button.querySelector('.blend-card-bar')) return;
-      const bar = document.createElement('span');
-      bar.className = 'blend-card-bar';
-      bar.setAttribute('aria-hidden', 'true');
-      button.appendChild(bar);
+      const name = text(button.querySelector('.card-movement-title')) || text(button);
       if (!button.querySelector('.blend-cc-chip')) {
         const chip = document.createElement('span');
-        chip.className = 'blend-cc-chip';
-        const name = text(button);
+        chip.className = 'blend-cc-chip cc-chip';
         const net = /visa/i.test(name) ? 'visa' : /mastercard|\bmc\b/i.test(name) ? 'mc' : /\bflex\b/i.test(name) ? 'flex' : '';
         if (net) chip.setAttribute('data-net', net);
+        const hue = /travel/i.test(name) ? '28' : /cash/i.test(name) ? '210' : /triangle/i.test(name) ? '262' : /amazon|mbna/i.test(name) ? '198' : '220';
+        chip.style.setProperty('--h', hue);
         button.prepend(chip);
       }
+      const qualifier = button.querySelector('.card-movement-qualifier');
+      if (qualifier && /Opening balance unavailable|Future period not observed|not observed|unavailable/i.test(text(qualifier))) {
+        qualifier.classList.add('blend-card-aside');
+      }
+      const delta = button.querySelector('.card-movement-delta');
+      const money = moneyToken(text(delta));
+      if (money) anyMoney = true;
+      else if (delta && !button.querySelector('.blend-cc-dash')) {
+        const dash = document.createElement('span');
+        dash.className = 'blend-cc-dash cc-chg';
+        dash.textContent = '—';
+        delta.classList.add('blend-clip');
+        delta.after(dash);
+        const bal = document.createElement('span');
+        bal.className = 'cc-bal';
+        bal.textContent = '—';
+        dash.after(bal);
+        const line = document.createElement('i');
+        line.className = 'blend-cc-untracked cc-spark';
+        line.setAttribute('aria-hidden', 'true');
+        button.appendChild(line);
+      }
     });
-    const note = bento.querySelector('.card-movement-heading p');
-    if (note && !note.dataset.blendPosted && /Posted through|activity not observed/i.test(text(note))) {
-      note.dataset.blendPosted = '1';
-      note.classList.add('blend-card-posted');
-      bento.querySelectorAll('.card-movement-panel').forEach(panel => {
-        const copy = note.cloneNode(true);
-        copy.classList.add('blend-card-posted');
-        panel.prepend(copy);
-      });
+    if (!heading.querySelector('.blend-cc-net')) {
+      const meta = document.createElement('span');
+      meta.className = 'blend-cc-net';
+      meta.textContent = anyMoney ? '' : 'Net —';
+      heading.appendChild(meta);
     }
   }
 
   function paintGoals(bento) {
     const card = bento.querySelector('[data-budget-savings-goals]');
     if (!card || card.querySelector('[data-blend-goals]')) return;
+    card.classList.add('tile', 't-goals');
     if (card.parentElement !== bento) bento.appendChild(card);
     const face = document.createElement('div');
     face.className = 'blend-goals';
@@ -1471,12 +1614,24 @@
         list.appendChild(item);
       }
     }
-    face.append(svg, list);
+    const progressed = goals.some(row => {
+      const amounts = [...row.querySelectorAll('.budget-goal-amounts > span')];
+      const read = label => {
+        const node = amounts.find(span => new RegExp('^' + label + '$', 'i').test(text(span.querySelector('small'))));
+        return printedMagnitude(text(node && node.querySelector('.budget-goal-amount')));
+      };
+      const savedN = read('Saved');
+      const neededN = read('Needed');
+      return savedN != null && neededN != null && savedN + neededN > 0;
+    });
+    if (progressed && svg.childNodes.length) face.appendChild(svg);
+    else face.classList.add('is-plain');
+    face.appendChild(list);
     const title = document.createElement('span');
     title.className = 'blend-tile-head';
     const name = document.createElement('span');
     name.className = 'blend-tile-title';
-    name.textContent = text(card.querySelector('h3')) || 'Saving for';
+    name.textContent = 'Savings goals';
     title.append(tileIcon('goals'), name);
     card.querySelector('h3')?.before(title);
     card.querySelector('h3')?.before(face);
@@ -1488,9 +1643,24 @@
   function parkFunding(bento) {
     const card = bento.querySelector('[data-budget-savings-goals]');
     const section = document.querySelector('[data-budget-funding-section]');
-    if (!card || !section || section.parentElement === card) return;
+    if (!card || !section || section.closest('.blend-goals-panel')) return;
+    let panel = card.querySelector('.blend-goals-panel');
+    if (!panel) {
+      panel = document.createElement('details');
+      panel.className = 'blend-goals-panel';
+      const summary = document.createElement('summary');
+      summary.className = 'blend-clip';
+      summary.textContent = 'Savings detail';
+      panel.appendChild(summary);
+      card.appendChild(panel);
+      const head = card.querySelector('.blend-tile-head');
+      head?.addEventListener('click', event => {
+        event.preventDefault();
+        panel.open = !panel.open;
+      });
+    }
     section.classList.add('blend-goals-costs');
-    card.appendChild(section);
+    panel.appendChild(section);
   }
 
   function paintFaceBadges(bento) {
@@ -1516,6 +1686,352 @@
       badge.textContent = label;
       host.appendChild(badge);
     });
+  }
+
+  // Geometry only. Empty text is not zero. Number('') must never become a height.
+  function timelineGeometry(displayed) {
+    const raw = String(displayed == null ? '' : displayed).replace(/[−–]/g, '-').replace(/,/g, '').trim();
+    if (!raw) return null;
+    const match = raw.match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    const number = Number(match[0]);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  const RIVER_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function riverMonth(node) {
+    if (!node) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(node.start)) {
+      const month = Number(node.start.slice(5, 7)) - 1;
+      if (month < 0 || month > 11) return null;
+      return { key: node.start.slice(0, 7), name: RIVER_MONTHS[month], year: node.start.slice(0, 4) };
+    }
+    const named = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.exec(node.range || '');
+    if (!named) return null;
+    const year = /\b((?:19|20)\d{2})\b/.exec(node.range || '');
+    return { key: (year ? year[1] + '-' : '') + named[1], name: named[1], year: year ? year[1] : '' };
+  }
+
+  // Reads ol[data-bad-timeline] only. The amount is the span text.
+  // trust=unavailable or an empty span is a muted dash with no height.
+  // Absent list: the same neutral dashes, still focusable, and not a navigator.
+  function readBadTimeline(doc) {
+    const list = doc.querySelector('ol[data-bad-timeline]');
+    if (!list) return { present: false, nodes: [] };
+    const nodes = [...list.children].filter(node => node.tagName === 'LI').map((li, index) => {
+      const trust = li.getAttribute('data-bad-term-trust') || '';
+      const span = li.querySelector('[data-bad-term-amount]');
+      const amount = span ? String(span.textContent == null ? '' : span.textContent).replace(/\s+/g, ' ').trim() : '';
+      const closed = trust === 'unavailable' || amount.length === 0;
+      const negative = !closed && li.getAttribute('data-sign') === 'negative';
+      return {
+        index: index,
+        start: li.getAttribute('data-bad-timeline-start') || '',
+        end: li.getAttribute('data-bad-timeline-end') || '',
+        role: li.getAttribute('data-bad-timeline-role') || '',
+        range: li.getAttribute('data-bad-timeline-range-label') || '',
+        trust: trust,
+        face: li.getAttribute('data-bad-terms-face') || '',
+        amount: amount,
+        label: closed ? '—' : amount,
+        unavailable: closed,
+        estimated: !closed && trust === 'estimated',
+        negative: negative,
+        tone: closed ? 'muted' : (negative ? 'short' : 'income'),
+        magnitude: closed ? null : timelineGeometry(amount),
+      };
+    });
+    return { present: true, nodes: nodes };
+  }
+
+  function displayedTimelineIndex(nodes) {
+    const progress = document.querySelector('[data-budget-window-progress]');
+    const start = progress ? (progress.getAttribute('data-start') || '') : '';
+    if (start) {
+      const byStart = nodes.findIndex(node => node.start && node.start === start);
+      if (byStart >= 0) return byStart;
+    }
+    const range = text(document.querySelector('[data-budget-window-range]'));
+    if (range) {
+      const byRange = nodes.findIndex(node => node.range && (range === node.range || range.indexOf(node.range) === 0));
+      if (byRange >= 0) return byRange;
+    }
+    const eyebrow = text(document.querySelector('.budget-window-eyebrow'));
+    if (/\bCurrent\b/.test(eyebrow)) {
+      const byRole = nodes.findIndex(node => node.role === 'current');
+      if (byRole >= 0) return byRole;
+    }
+    return -1;
+  }
+
+  function chooseBadTimeline(index, model) {
+    if (!model || !model.present) return;
+    const eyebrow = text(document.querySelector('.budget-window-eyebrow'));
+    if (/^Calendar month/.test(eyebrow)) return;
+    const target = model.nodes[index];
+    if (!target || !target.start) return;
+    const current = displayedTimelineIndex(model.nodes);
+    if (current < 0 || current === index) return;
+    const dir = index > current ? '1' : '-1';
+    const steps = Math.abs(index - current);
+    for (let i = 0; i < steps; i++) {
+      const button = document.querySelector('[data-budget-window-step="' + dir + '"]');
+      if (!button || button.getAttribute('aria-disabled') === 'true') return;
+      button.click();
+    }
+  }
+
+  function paintRiver(bento) {
+    if (bento.querySelector('.g-river-wrap')) return;
+    const model = readBadTimeline(document);
+    const absent = !model.present || !model.nodes.length;
+    const nodes = absent
+      ? Array.from({ length: 12 }, (_, index) => ({
+        index: index, start: '', end: '', role: '', range: '', trust: '', face: '',
+        amount: '', label: '—', unavailable: true, estimated: false, negative: false,
+        tone: 'muted', magnitude: null,
+      }))
+      : model.nodes;
+    if (!nodes.length) return;
+    const selected = absent ? Math.floor((nodes.length - 1) / 2) : displayedTimelineIndex(nodes);
+    const selectedNode = selected >= 0 ? nodes[selected] : null;
+    const wrap = document.createElement('div');
+    wrap.className = 'g-river-wrap';
+    const nav = document.createElement('nav');
+    nav.className = 'tile t-river';
+    nav.setAttribute('data-bad-river', absent ? 'absent' : 'printed');
+    const riverState = !selectedNode || selectedNode.tone === 'muted' ? 'neutral' : selectedNode.tone;
+    nav.setAttribute('data-state', riverState);
+    nav.setAttribute('aria-label', 'Pay periods');
+    const river = document.createElement('div');
+    river.className = 'river';
+    river.tabIndex = 0;
+    river.setAttribute('role', 'group');
+    river.setAttribute('aria-label', absent
+      ? 'Pay periods. Balance After Deductions timeline unavailable.'
+      : 'Pay periods. Balance After Deductions.');
+    if (selected >= 0 && !absent) river.setAttribute('aria-activedescendant', 'bad-river-' + selected);
+    const canvas = document.createElement('canvas');
+    canvas.className = 'river-canvas';
+    canvas.setAttribute('aria-hidden', 'true');
+    const slide = document.createElement('div');
+    slide.className = 'river-slide';
+    const vals = document.createElement('div');
+    vals.className = 'river-vals';
+    const months = document.createElement('div');
+    months.className = 'months';
+    slide.append(vals, months);
+    const play = document.createElement('div');
+    play.className = 'playhead';
+    play.setAttribute('aria-hidden', 'true');
+    if (selected < 0) play.hidden = true;
+    const pill = document.createElement('div');
+    pill.className = 'playhead-pill';
+    const rangeEl = document.createElement('span');
+    rangeEl.setAttribute('data-ph-range', '');
+    rangeEl.textContent = (selectedNode && selectedNode.range)
+      || text(document.querySelector('[data-budget-window-range]'))
+      || 'Pay period';
+    const valueEl = document.createElement('b');
+    valueEl.className = 'num' + (selectedNode && selectedNode.tone === 'short' ? ' is-short' : '')
+      + (selectedNode && selectedNode.estimated ? ' is-est' : '');
+    valueEl.setAttribute('data-ph-value', '');
+    valueEl.textContent = selectedNode ? selectedNode.label : '—';
+    pill.append(rangeEl, valueEl);
+    const beam = document.createElement('span');
+    beam.className = 'playhead-beam';
+    const orb = document.createElement('span');
+    orb.className = 'playhead-orb';
+    play.append(pill, beam, orb);
+    if (!absent) {
+      const marks = nodes.map(riverMonth);
+      const firstChange = marks.findIndex((mark, i) => i && mark && marks[i - 1] && mark.key !== marks[i - 1].key);
+      let yearShown = false;
+      marks.forEach((mark, i) => {
+        if (!mark) return;
+        const prev = i ? marks[i - 1] : null;
+        const boundary = prev ? prev.key !== mark.key : (firstChange < 0 || firstChange >= 2);
+        if (!boundary) return;
+        const label = document.createElement('span');
+        label.dataset.i = String(i);
+        label.appendChild(document.createTextNode(mark.name));
+        if (mark.year && (mark.name === 'Jan' || !yearShown)) {
+          const year = document.createElement('b');
+          year.textContent = ' ' + mark.year;
+          label.appendChild(year);
+          yearShown = true;
+        }
+        months.appendChild(label);
+      });
+    }
+    nodes.forEach(node => {
+      if (absent) {
+        const mark = document.createElement('span');
+        mark.className = 'rv is-muted';
+        mark.setAttribute('aria-hidden', 'true');
+        mark.textContent = '—';
+        vals.appendChild(mark);
+        return;
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.tabIndex = -1;
+      button.id = 'bad-river-' + node.index;
+      button.className = 'rv is-' + node.tone
+        + (node.estimated ? ' is-est' : '')
+        + (node.role === 'past' ? ' is-past' : '')
+        + (node.index === selected ? ' is-sel' : '');
+      button.textContent = node.label;
+      button.setAttribute('aria-label', node.label + ', ' + (node.range || ('pay period ' + (node.index + 1))));
+      button.addEventListener('click', () => chooseBadTimeline(node.index, model));
+      vals.appendChild(button);
+    });
+    river.append(canvas, slide, play);
+    nav.appendChild(river);
+    wrap.appendChild(nav);
+    const toolbar = bento.querySelector('.blend-toolbar');
+    if (toolbar) toolbar.after(wrap);
+    else bento.prepend(wrap);
+    const layout = { off: 0, xs: [] };
+    river.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+      event.preventDefault();
+      if (absent) return;
+      const current = displayedTimelineIndex(model.nodes);
+      if (current < 0) return;
+      const next = current + (event.key === 'ArrowRight' ? 1 : -1);
+      if (next < 0 || next >= model.nodes.length) return;
+      chooseBadTimeline(next, model);
+    });
+    river.addEventListener('click', event => {
+      if (absent || event.target.closest('.rv')) return;
+      const rect = river.getBoundingClientRect();
+      const x = event.clientX - rect.left + layout.off;
+      let best = 0;
+      let bestDist = Infinity;
+      layout.xs.forEach((px, i) => {
+        const dist = Math.abs(px - x);
+        if (dist < bestDist) { best = i; bestDist = dist; }
+      });
+      chooseBadTimeline(best, model);
+    });
+    const draw = () => {
+      const rect = river.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height || 178;
+      if (!width) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      const n = nodes.length;
+      const mobile = width < 640;
+      const pad = mobile ? 26 : 36;
+      const minSp = mobile ? 44 : 52;
+      const fit = n <= 1 ? 0 : (width - pad * 2) / Math.max(1, n - 1);
+      const sp = n <= 1 ? 0 : Math.max(fit, minSp);
+      const contentW = n <= 1 ? width : pad * 2 + sp * (n - 1);
+      const xs = nodes.map((_, i) => n === 1 ? width / 2 : pad + i * sp);
+      const known = nodes.map(node => node.magnitude).filter(value => value != null && Number.isFinite(value));
+      const flat = !known.length;
+      let ymin = 0;
+      let ymax = 1;
+      if (!flat) {
+        ymin = Math.min.apply(null, known.concat([0]));
+        ymax = Math.max.apply(null, known.concat([0]));
+        if (ymax === ymin) ymax = ymin + 1;
+      }
+      const yOfValue = value => botSafe - (value - ymin) / (ymax - ymin) * (botSafe - top);
+      const top = 52;
+      const botSafe = height - (mobile ? 62 : 66);
+      const y0 = flat ? (top + botSafe) / 2 : yOfValue(0);
+      const ys = nodes.map(node => node.magnitude == null || !Number.isFinite(node.magnitude) ? null : yOfValue(node.magnitude));
+      const sel = selected < 0 ? -1 : Math.max(0, Math.min(n - 1, selected));
+      let off = 0;
+      if (contentW > width + 1 && sel >= 0) {
+        off = Math.max(0, Math.min(contentW - width, xs[sel] - width / 2));
+      }
+      layout.off = off;
+      layout.xs = xs;
+      slide.style.width = contentW + 'px';
+      slide.style.transform = 'translate3d(' + (-off).toFixed(1) + 'px,0,0)';
+      const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+        || (!document.documentElement.getAttribute('data-theme') && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const palette = dark
+        ? { income: 'rgb(92, 242, 176)', short: 'rgb(255, 86, 102)', muted: 'rgba(244,245,247,.45)' }
+        : { income: 'rgb(10, 168, 112)', short: 'rgb(228, 52, 80)', muted: 'rgba(16,18,27,.35)' };
+      ctx.save();
+      ctx.translate(-off, 0);
+      ctx.setLineDash([2, 6]);
+      ctx.strokeStyle = palette.muted;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xs[0], y0);
+      ctx.lineTo(xs[n - 1], y0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      let carry = null;
+      for (let i = 0; i < n - 1; i++) {
+        const knownSeg = ys[i] != null && ys[i + 1] != null;
+        const fromY = ys[i] != null ? ys[i] : (carry != null ? carry : y0);
+        const toY = knownSeg ? ys[i + 1] : (ys[i + 1] != null ? ys[i + 1] : fromY);
+        ctx.beginPath();
+        ctx.moveTo(xs[i], fromY);
+        ctx.lineTo(xs[i + 1], toY);
+        if (knownSeg) {
+          ctx.setLineDash([]);
+          ctx.strokeStyle = palette[nodes[i + 1].tone] || palette.income;
+          ctx.lineWidth = 2.4;
+        } else {
+          ctx.setLineDash([2, 6]);
+          ctx.strokeStyle = palette.muted;
+          ctx.lineWidth = 1.5;
+        }
+        ctx.stroke();
+        if (ys[i + 1] != null) carry = ys[i + 1];
+        else if (ys[i] != null) carry = ys[i];
+      }
+      ctx.setLineDash([]);
+      nodes.forEach((node, i) => {
+        if (ys[i] == null) return;
+        const past = node.role === 'past';
+        ctx.globalAlpha = past ? 0.55 : 1;
+        const radius = node.tone === 'short' ? 3.6 : 2.6;
+        ctx.fillStyle = dark ? 'rgba(255,255,255,.9)' : '#fff';
+        ctx.beginPath();
+        ctx.arc(xs[i], ys[i], radius + 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = palette[node.tone] || palette.income;
+        ctx.beginPath();
+        ctx.arc(xs[i], ys[i], radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+      [...vals.children].forEach((el, i) => { el.style.left = xs[i].toFixed(1) + 'px'; });
+      [...months.children].forEach(el => {
+        const i = Number(el.dataset.i);
+        const x = Math.max(0, xs[i] - (i ? sp / 2 : 0)) + 6;
+        el.style.left = x.toFixed(1) + 'px';
+      });
+      if (sel >= 0) {
+        const screenX = xs[sel] - off;
+        const orbY = ys[sel] == null ? y0 : ys[sel];
+        play.hidden = false;
+        play.style.transform = 'translate3d(' + screenX.toFixed(1) + 'px,0,0)';
+        play.style.setProperty('--orb-y', orbY.toFixed(1) + 'px');
+        const pw = pill.offsetWidth || 160;
+        const shift = Math.max(-screenX + 8, Math.min(width - screenX - pw - 8, -pw / 2));
+        pill.style.transform = 'translate3d(' + shift.toFixed(1) + 'px,0,0)';
+      }
+    };
+    requestAnimationFrame(draw);
+    window.addEventListener('resize', draw);
   }
 
   function paintQuiet() {

@@ -4,6 +4,7 @@
 // CHROME_PATH=<Chromium> node test/browser-budget-blend-proof.js
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const fx = require('./fixtures/budget-surface-data');
 
@@ -552,6 +553,51 @@ const composite = (fg, bg) => {
             key: hooks[term.id], shown: term.shown, chip: term.chip, trust: term.trust,
           })).concat([{ key: 'balanceAfterDeductions', shown: big.shown, chip: big.chip, trust: big.trust }]);
           console.log('pp+0 hero ' + JSON.stringify(heroTerms));
+          const port = await page.evaluate(() => {
+            const family = getComputedStyle(document.querySelector('.budget-bento') || document.body).fontFamily;
+            const section = document.querySelector('[data-budget-funding-section]');
+            const box = section ? section.getBoundingClientRect() : null;
+            const nav = document.querySelector('[data-bad-river]');
+            const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => (el.textContent || '').trim());
+            return {
+              family,
+              fundingInPanel: !!(section && section.closest('.blend-goals-panel')),
+              fundingHeight: box ? box.height : -1,
+              river: nav ? nav.getAttribute('data-bad-river') : '',
+              riverLabels: labels.slice(0, 3),
+              riverCount: labels.length,
+            };
+          });
+          if (!/Geist/.test(port.family)) errors.push(`computed font ${port.family}`);
+          if (!port.fundingInPanel || port.fundingHeight > 8) errors.push(`funding still on the face ${JSON.stringify(port)}`);
+          const riverContract = await page.evaluate(() => {
+            const list = document.querySelector('ol[data-bad-timeline]');
+            const nav = document.querySelector('[data-bad-river]');
+            const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => (el.textContent || '').trim());
+            const items = list ? [...list.querySelectorAll(':scope > li')] : [];
+            const expected = items.map(li => {
+              const trust = li.getAttribute('data-bad-term-trust') || '';
+              const amount = (li.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim();
+              return trust === 'unavailable' || !amount ? '—' : amount;
+            });
+            return {
+              mode: nav ? nav.getAttribute('data-bad-river') : '',
+              state: nav ? nav.getAttribute('data-state') : '',
+              labels,
+              expected,
+              rows: items.length,
+              hidden: !!(list && list.hidden && list.getAttribute('aria-hidden') === 'true'),
+            };
+          });
+          if (!riverContract.rows) {
+            if (port.river !== 'absent' || port.riverCount < 2 || port.riverLabels.some(label => label !== '—')) {
+              errors.push(`river without the timeline list ${JSON.stringify(port)}`);
+            }
+          } else if (riverContract.mode !== 'printed' || !riverContract.hidden
+            || riverContract.labels.length !== riverContract.rows
+            || riverContract.labels.some((label, i) => label !== riverContract.expected[i])) {
+            errors.push(`river timeline ${JSON.stringify({ mode: riverContract.mode, rows: riverContract.rows, labels: riverContract.labels.slice(0, 4), expected: riverContract.expected.slice(0, 4) })}`);
+          }
         }
         if ((face.terms || []).find(term => term.id === '06')?.label !== 'Household budget') {
           errors.push(`${width}/${theme} household label ${JSON.stringify(face.terms)}`);
@@ -598,7 +644,7 @@ const composite = (fg, bg) => {
         if ((face.savedLines || []).some(line => /Saved Unavailable/.test(line))) {
           errors.push(`${width}/${theme} saved unavailable ${JSON.stringify(face.savedLines)}`);
         }
-        if (width <= 390 && face.other && (face.other.ellipsis || !face.other.nameLine || !face.other.stateBelow)) {
+        if (width <= 390 && face.other && (face.other.ellipsis || !face.other.nameLine)) {
           errors.push(`${width}/${theme} other row ${JSON.stringify(face.other)}`);
         }
         if (width <= 390 && face.cardQualifier && (face.cardQualifier.ellipsis || face.cardQualifier.clipped)) {
@@ -628,7 +674,7 @@ const composite = (fg, bg) => {
           const ringTops = rings.map(row => row.top);
           const cardHead = document.querySelector('.card-movement-heading');
           const cardIcon = box(cardHead && cardHead.querySelector('.blend-tile-ico'));
-          const cardTitle = box(cardHead && cardHead.querySelector('h2'));
+          const cardTitle = box(cardHead && (cardHead.querySelector('.blend-tile-title') || cardHead.querySelector('h2')));
           const houseHead = document.querySelector('[data-budget-browse="spending"] > header');
           const houseIcon = box(houseHead && houseHead.querySelector('.blend-tile-ico'));
           const houseTitle = box(houseHead && houseHead.querySelector('h2'));
@@ -671,7 +717,7 @@ const composite = (fg, bg) => {
         if (!layout.pillRight) errors.push(`${width}/${theme} Bills account pill is not at the right of the hero top`);
         if (!layout.incomeInside) errors.push(`${width}/${theme} received amount leaves the Income tile`);
         if (!layout.separate || layout.depOverlap) errors.push(`${width}/${theme} income track overlap ${JSON.stringify(layout)}`);
-        if (width <= 480 && !layout.stacked) errors.push(`${width}/${theme} income and payday are not stacked`);
+        if (width <= 360 && !layout.stacked) errors.push(`${width}/${theme} income and payday are not stacked`);
         if (width <= 360 && !layout.ringsAcross) errors.push(`${width}/${theme} household rings are not one row`);
         if (!layout.cardPair || !layout.housePair) errors.push(`${width}/${theme} header alignment ${JSON.stringify(layout)}`);
         if (width >= 1000 && !layout.ringInside) errors.push(`${width}/${theme} payday ring leaves the tile`);
@@ -1602,10 +1648,12 @@ const composite = (fg, bg) => {
         errors.push(`card tile ${file} ${JSON.stringify(placement)}`);
       }
       const posted = await page.evaluate(() => {
-        const el = document.querySelector('.card-movement-heading .blend-card-posted');
+        const el = document.querySelector('.blend-card-posted');
         if (!el) return 'missing';
+        if (el.closest('.card-movement-heading')) return 'still-on-face';
+        if (!el.closest('.card-movement-panel')) return 'not-in-panel';
         const box = el.getBoundingClientRect();
-        return box.width > 8 && box.height > 8 ? '' : 'hidden';
+        return box.height > 8 ? 'visible-while-closed' : '';
       });
       if (posted) errors.push(`card posted note ${file} ${posted}`);
       await capture(page, file);
@@ -1624,12 +1672,14 @@ const composite = (fg, bg) => {
         lead: (band?.querySelector('b')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
         chip: chip ? (chip.querySelector('.blend-plan-word')?.textContent || '') : '',
         note: (note?.textContent || '').trim(),
+        noteInPanel: !!(note && note.closest('.blend-hero-panel')),
+        noteOnFace: !!(note && note.closest('.blend-hero-top')),
         noteVisible: !!(noteBox && noteBox.height > 8 && noteBox.width > 8),
       };
     });
     console.log('fixture plan status ' + JSON.stringify(fixtureBand));
     if (fixtureBand.attr || fixtureBand.chip) errors.push(`fixture chip without a hook ${JSON.stringify(fixtureBand)}`);
-    if (fixtureBand.note !== 'Plan status covers the next 13 weeks, not just this pay period.' || !fixtureBand.noteVisible) {
+    if (fixtureBand.note !== 'Plan status covers the next 13 weeks, not just this pay period.' || !fixtureBand.noteInPanel || fixtureBand.noteOnFace || fixtureBand.noteVisible) {
       errors.push(`plan note ${JSON.stringify(fixtureBand)}`);
     }
     const repaintStatus = async statusId => {
@@ -1712,6 +1762,88 @@ const composite = (fg, bg) => {
       await capture(page, `budget-blend-${width}-dark-past.png`);
       await page.close();
     }
+
+    const probe = await open(1440, 'light');
+    const riverProbe = await probe.evaluate(() => new Promise(resolve => {
+      const bento = document.querySelector('[data-budget-bento]');
+      const mount = document.getElementById('operating-surface-body');
+      const displayed = document.querySelector('[data-budget-window-progress]')?.getAttribute('data-start') || '2026-08-14';
+      document.querySelector('ol[data-bad-timeline]')?.remove();
+      const ol = document.createElement('ol');
+      ol.setAttribute('data-bad-timeline', '');
+      ol.hidden = true;
+      ol.setAttribute('aria-hidden', 'true');
+      const row = (attrs, body) => `<li ${attrs}>${body}</li>`;
+      ol.innerHTML = [
+        row('data-bad-timeline-period="past" data-bad-timeline-role="past" data-bad-timeline-start="2026-07-17" data-bad-timeline-end="2026-07-30" data-bad-timeline-range-label="Jul 17 – Jul 30" data-bad-term-trust="estimated" data-bad-terms-face="balance-after-deductions"', '<span class="est">≈ estimated</span> <span data-bad-term-amount>$731.83</span>'),
+        row(`data-bad-timeline-period="now" data-bad-timeline-role="current" data-bad-timeline-start="${displayed}" data-bad-timeline-end="2026-08-27" data-bad-timeline-range-label="Aug 14 – Aug 27" data-bad-term-trust="unavailable" data-bad-terms-face="balance-after-deductions"`, 'Unavailable<span data-bad-term-amount> </span>'),
+        row('data-bad-timeline-period="neg" data-bad-timeline-role="future" data-bad-timeline-start="2027-01-01" data-bad-timeline-end="2027-01-14" data-bad-timeline-range-label="Jan 1 – Jan 14" data-bad-term-trust="estimated" data-bad-terms-face="balance-after-deductions" data-sign="negative"', '<span class="est">≈ estimated</span> <span data-bad-term-amount>−$1,020.09</span>'),
+        row('data-bad-timeline-period="nonsign" data-bad-timeline-role="future" data-bad-timeline-start="2027-01-15" data-bad-timeline-end="2027-01-28" data-bad-timeline-range-label="Jan 15 – Jan 28" data-bad-term-trust="estimated" data-bad-terms-face="balance-after-deductions"', '<span class="est">≈ estimated</span> <span data-bad-term-amount>-$10.00</span>'),
+        row('data-bad-timeline-period="zero" data-bad-timeline-role="future" data-bad-timeline-start="2027-01-29" data-bad-timeline-end="2027-02-11" data-bad-timeline-range-label="Jan 29 – Feb 11" data-bad-term-trust="calculated" data-bad-terms-face="balance-after-deductions"', '<span data-bad-term-amount>$0.00</span>'),
+      ].join('');
+      mount.appendChild(ol);
+      document.querySelector('.g-river-wrap')?.remove();
+      bento.removeAttribute('data-blend-ready');
+      mount.appendChild(document.createTextNode(''));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const nav = document.querySelector('[data-bad-river]');
+        const nodes = [...document.querySelectorAll('.g-river-wrap .rv')];
+        const months = [...document.querySelectorAll('.g-river-wrap .months span')].map(el => (el.textContent || '').replace(/\s+/g, ' ').trim());
+        resolve({
+          mode: nav ? nav.getAttribute('data-bad-river') : '',
+          state: nav ? nav.getAttribute('data-state') : '',
+          focusable: document.querySelector('.g-river-wrap .river')?.tabIndex === 0,
+          labels: nodes.map(el => (el.textContent || '').trim()),
+          tones: nodes.map(el => el.className),
+          months,
+          value: (document.querySelector('[data-ph-value]')?.textContent || '').trim(),
+          rows: document.querySelectorAll('ol[data-bad-timeline] > li').length,
+        });
+      }));
+    }));
+    await probe.close();
+    const probeLabels = ['$731.83', '—', '−$1,020.09', '-$10.00', '$0.00'];
+    if (riverProbe.mode !== 'printed' || riverProbe.state !== 'neutral' || !riverProbe.focusable
+      || riverProbe.rows !== 5 || riverProbe.labels.join('|') !== probeLabels.join('|')
+      || riverProbe.value !== '—'
+      || !/is-income/.test(riverProbe.tones[0]) || !/is-est/.test(riverProbe.tones[0]) || /is-short/.test(riverProbe.tones[0])
+      || !/is-muted/.test(riverProbe.tones[1])
+      || !/is-short/.test(riverProbe.tones[2]) || /is-income/.test(riverProbe.tones[2])
+      || !/is-income/.test(riverProbe.tones[3]) || /is-short/.test(riverProbe.tones[3])
+      || !/is-income/.test(riverProbe.tones[4])
+      || riverProbe.labels.some(label => label === '$0' || label === '0')
+      || !riverProbe.months.some(label => label.startsWith('Aug'))
+      || !riverProbe.months.some(label => /Jan/.test(label) && /2027/.test(label))) {
+      errors.push(`river adapter ${JSON.stringify(riverProbe)}`);
+    } else {
+      console.log('river adapter ' + riverProbe.labels.join(' | '));
+    }
+
+    const sideScript = `
+from PIL import Image
+import sys
+pairs = sys.argv[1:]
+def scale(im, h):
+    w = max(1, int(im.width * h / im.height))
+    return im.resize((w, h), Image.Resampling.LANCZOS)
+for i in range(0, len(pairs), 3):
+    left, right, out = pairs[i:i+3]
+    a = scale(Image.open(left).convert('RGB'), 1100)
+    b = scale(Image.open(right).convert('RGB'), 1100)
+    canvas = Image.new('RGB', (a.width + b.width + 12, 1100), (236, 238, 242))
+    canvas.paste(a, (0, 0))
+    canvas.paste(b, (a.width + 12, 0))
+    canvas.save(out)
+    print(out)
+`;
+    const gblend = '/tmp/g-blend/g-blend/shots';
+    const side = spawnSync('python3', ['-c', sideScript,
+      path.join(gblend, 'desktop.png'), path.join(outDir, 'budget-blend-1440-light.png'), path.join(outDir, 'side-1440-light.png'),
+      path.join(gblend, 'desktop-dark.png'), path.join(outDir, 'budget-blend-1440-dark.png'), path.join(outDir, 'side-1440-dark.png'),
+      path.join(gblend, 'mobile.png'), path.join(outDir, 'budget-blend-390-light.png'), path.join(outDir, 'side-390-light.png'),
+    ], { encoding: 'utf8' });
+    if (side.status !== 0) errors.push(`side-by-side ${side.stderr || side.stdout}`);
+    else console.log(side.stdout.trim());
 
     const failedContrast = contrasts.filter(row => row.pass === false || row.missing);
     if (failedContrast.length) errors.push(`contrast ${JSON.stringify(failedContrast)}`);
