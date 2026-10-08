@@ -141,6 +141,10 @@ function isolatedEnv(extra) {
   for (const key of Object.keys(env)) {
     if (/^(ATLAS_|LUNCHMONEY_)/.test(key)) delete env[key];
   }
+  // Missing-token controls must never consult the user's Windows credential
+  // store. This empty task-owned location is independent of real credentials.
+  env.ATLAS_LUNCHMONEY_CREDENTIAL_FILE = path.join(require('os').tmpdir(),
+    'atlas-production-overlay-no-credentials-' + process.pid, 'missing.dat');
   return Object.assign(env, extra || {});
 }
 

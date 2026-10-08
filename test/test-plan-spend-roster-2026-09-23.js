@@ -212,8 +212,9 @@ oneCash('linden-birthday', '2026-12-09', -500);
 oneCash('san-diego', '2027-01-15', -3000);
 oneCash('burrards-logan-team-fee-oct', '2026-10-16', -202.88);
 oneCash('burrards-logan-team-fee-nov', '2026-11-01', -202.87);
-ok(!nowEvents.some(e => e.id === 'burrards-team-fees' || e.id === 'burrards-linden-team-fee'),
-  'the replaced aggregate and undated provisional hold emit no cash event');
+oneCash('burrards-linden-team-fee', '2026-10-20', -340);
+ok(!nowEvents.some(e => e.id === 'burrards-team-fees'),
+  'the replaced aggregate emits no cash event; owner-dated Linden appears once');
 ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-08' || e.date === '2027-01-09')),
   'San Diego does not also emit on January 8 or January 9');
 ok(!nowEvents.some(e => e.id === 'provincials'), 'Provincials emits no Forecast cash date');
@@ -241,6 +242,7 @@ for (const key of keys) {
 }
 cashDeltas.sort();
 const expectedDeltas = [
+  'burrards-linden-team-fee@2026-10-20|null->-340',
   'burrards-logan-team-fee-nov@2026-11-01|null->-202.87',
   'burrards-logan-team-fee-oct@2026-10-16|null->-202.88',
   'burrards-team-fees@2026-09-15|-700->null',
@@ -289,16 +291,17 @@ ok(near(sinkNow.get('Seattle November 2026'), 1500 / monthsInWindow)
     && near(sinkPrior.get('Seattle tournament #2'), 1200 / monthsInWindow),
   'each Seattle sinking smear is its own point amount over the window');
 const sinkingDelta = (sinking.sinkingMonthly || 0) - (priorSinking.sinkingMonthly || 0);
-// Only dated commitments smear into this window's sinking line. The $340
-// undated hold stays protected in the funding sequence, without inventing a
-// cash date or adding it to the dated $405.75 sinking amount.
+// Only dated commitments smear into this window's sinking line. The owner
+// supplied October 20 for the existing estimated $340 Linden requirement.
+// Invoice due date remains unknown; all other unclear-date holds stay undated.
 const authorizedSinking = (1500 - 1200) + (1500 - 1200) + 3000 + 500
-  + (202.88 + 202.87 - 700);
+  + (202.88 + 202.87 - 700) + 340;
 ok(near(sinkingDelta, authorizedSinking / monthsInWindow),
   'sinking monthly delta includes only the approved dated costs, with no undated hold smear',
   String(sinkingDelta));
 ok(near(sinkNow.get('Logan Burrards team fee — instalment 1'), 202.88 / monthsInWindow)
     && near(sinkNow.get('Logan Burrards team fee — instalment 2'), 202.87 / monthsInWindow)
+    && near(sinkNow.get('Linden Burrards team fee - estimated plan'), 340 / monthsInWindow)
     && !sinkNow.has('Burrards team fees') && !sinkNow.has('Linden Burrards team fee — proposal held'),
   'each dated team fee smears its exact amount; retired and undated rows do not');
 ok(near(sinkNow.get('San Diego'), 3000 / monthsInWindow),
@@ -592,6 +595,7 @@ for (const key of lineKeys) {
 lineDeltas.sort();
 const expectedLineDeltas = [
   '2026-09|burrards-team-fees|2026-09-15|700->null',
+  '2026-10|burrards-linden-team-fee|2026-10-20|null->340',
   '2026-10|burrards-logan-team-fee-oct|2026-10-16|null->202.88',
   '2026-11|burrards-logan-team-fee-nov|2026-11-01|null->202.87',
   '2026-11|seattle-nov|2026-11-15|1200->1500',

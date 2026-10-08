@@ -60,6 +60,7 @@ const POINT = {
 const OWNER_EXPLICIT_DATES = {
   'burrards-logan-team-fee-oct': '2026-10-16',
   'burrards-logan-team-fee-nov': '2026-11-01',
+  'burrards-linden-team-fee': '2026-10-20',
   'seattle-dec': '2026-12-09',
   'linden-birthday': '2026-12-09',
   'christmas-2026': '2026-12-25',
@@ -69,7 +70,6 @@ const OWNER_DAY15_DATES = {
   'san-diego': '2027-01-15',
 };
 const STILL_UNDATED = [
-  'burrards-linden-team-fee',
   'provincials',
 ];
 const RANGES = {};
@@ -163,6 +163,7 @@ ok(unclearCash.length === 0,
 for (const [id, date, amount] of [
   ['burrards-logan-team-fee-oct', '2026-10-16', 202.88],
   ['burrards-logan-team-fee-nov', '2026-11-01', 202.87],
+  ['burrards-linden-team-fee', '2026-10-20', 340],
 ]) {
   const hits = events.filter(e => e.id === id);
   ok(hits.length === 1 && hits[0].date === date && near(hits[0].amount, -amount),

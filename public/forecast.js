@@ -826,7 +826,7 @@
   }
   function savingsEarmarksEnabled(plan) {
     const block = plan && plan.savingsEarmarks;
-    return block != null && !(savingsKeys(block, ['version', 'currency', 'pools', 'history'])
+    return block != null && !(savingsKeys(block, ['version', 'currency', 'pools', 'history', 'allocationPolicy'])
       && block.version === 1 && block.currency === 'CAD' && Array.isArray(block.pools) && !block.pools.length
       && Array.isArray(block.history) && !block.history.length);
   }
@@ -877,9 +877,11 @@
     const block = plan && plan.savingsEarmarks;
     const invalid = reason => ({ status: 'invalid', reason, pools: [], history: [], latest: null });
     if (!savingsEarmarksEnabled(plan)) return { status: 'setup-unknown', reason: 'The two savings accounts and starting goal assignments have not been confirmed.', pools: [], history: [], latest: null };
-    if (!savingsKeys(block, ['version', 'currency', 'pools', 'history']) || block.version !== 1
+    if (!savingsKeys(block, ['version', 'currency', 'pools', 'history', 'allocationPolicy']) || block.version !== 1
         || block.currency !== 'CAD' || !Array.isArray(block.pools) || block.pools.length !== 2
         || !Array.isArray(block.history)) return invalid('Savings configuration requires version 1, CAD, two explicit pools and confirmation history.');
+    if (block.allocationPolicy != null && !savingsCombinedPolicy(block.allocationPolicy))
+      return invalid('Savings allocation policy requires one dated owner source and combined chronological ordering.');
     const poolIds = new Set(), accounts = new Set();
     const held = ((plan.startingCash && plan.startingCash.heldElsewhere) || []).map(r => r && r.id);
     for (const pool of block.pools) {
@@ -1085,6 +1087,8 @@
     // Only the daily publisher can mint this private, derived walk context.
     // Public options never impersonate confirmed intent or alter other callers.
     if (savingsDailyReserveContexts.has(plan)) return savingsDailyReserveContexts.get(plan);
+    if (!inventory && savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf))
+      return savingsPolicyBacking(plan, asOf, opts || {}).funding;
     if (!savingsEarmarksEnabled(plan)) return { status: 'incumbent', payments: [] };
     if (!Array.isArray(plan.savingsEarmarks.pools) || plan.savingsEarmarks.pools.some(pool => !pool || pool.role !== 'purpose-reserve')) {
       return unavailable(SAVINGS_INSTRUCTIONS_HELD);
@@ -3520,6 +3524,39 @@
   // Later contributions are capped by their own period capacity, so a weak
   // later payday can require an earlier contribution. Daily cash headroom
   // caps carried protection between paydays.
+  // All current consumers qualify the same publication against the native
+  // opening and period, never against a date/window taken from the packet.
+  // This selector performs no financial calculation and never borrows aliases.
+  function savingsFundingPublication(publication, context = {}) {
+    const asOf = context.asOf || context.advice?.defaultView?.asOf;
+    const periods = Array.isArray(context.advice?.payPeriodViews) ? context.advice.payPeriodViews : [];
+    const current = context.period || periods.find(row => row.timelineRole === 'current');
+    const valid = (packet, period) => packet?.source === 'Forecast.savingsDailyFunding'
+      && savingsDate(asOf) && packet.asOf === asOf && packet.currency === 'CAD'
+      && packet.actionPermission === 'not-granted' && packet.moneyMovementPermission === 'not-granted'
+      && ['ready', 'unavailable'].includes(packet.status) && Array.isArray(packet.rows)
+      && Array.isArray(packet.backing?.items) && Array.isArray(packet.backing?.pools)
+      && (packet.periodViews == null || Array.isArray(packet.periodViews))
+      && (packet.schedule == null || packet.schedule.status === 'unavailable'
+        || ['ready', 'funding-gap'].includes(packet.schedule.status)
+          && packet.schedule.source === 'Forecast.planSpendPaydayFunding' && packet.schedule.asOf === asOf
+          && [packet.schedule.paydays, packet.schedule.costs, packet.schedule.groups].every(Array.isArray))
+      && (packet.status !== 'ready' || packet.period?.status === 'ready'
+        && packet.period.basis === 'operating-surplus-before-proposals'
+        && savingsDate(period?.start) && savingsDate(period?.end)
+        && packet.period.start === period.start && packet.period.end === period.end
+        && [packet.period.allocations, packet.period.cycleAllocations].every(parts => Array.isArray(parts)
+          && parts.every(part => typeof part?.id === 'string' && savingsCents(part.amount) != null)));
+    if (!valid(publication, current)) return null;
+    if (context.periodId == null) return publication;
+    const view = publication.periodViews?.find(row => row?.id === context.periodId);
+    const native = periods.find(row => row?.id === context.periodId);
+    if (!view || !native || view.start !== native.start || view.end !== native.end
+        || view.role !== native.timelineRole) return null;
+    if (view.role === 'current') return publication;
+    return valid(view.packet, native) ? view.packet : null;
+  }
+
   function planSpendPaydayFunding(plan, asOf, sim, seq, plans, incumbentAllocation, periodBasis) {
     const unavailable = reason => ({ status: 'unavailable', reason,
       source: 'Forecast.planSpendPaydayFunding', paydays: [], costs: [], gap: null });
@@ -3542,6 +3579,8 @@
       // A hold rejects allocation, not the independently known price/date roster.
       return unavailableWithRoster(sim.cardPurchaseCoverage.reason);
     }
+    if (savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf)) seq = [...seq]
+      .sort((a,b)=>(a.date||'\uffff').localeCompare(b.date||'\uffff')||a.rank-b.rank||a.id.localeCompare(b.id));
     const reserves = savingsEarmarksEnabled(plan) ? sim.reserveFunding : null;
     if (savingsEarmarksEnabled(plan) && (!reserves || reserves.status !== 'ready' || reserves.asOf !== asOf)) {
       return unavailable(reserves && reserves.reason || SAVINGS_INSTRUCTIONS_HELD);
@@ -3894,7 +3933,9 @@
         kind: cost.kind, group: cost.group, baseRequirement: dollars(cost.baseRequirement),
         ceiling: dollars(cost.ceiling), uncertaintyAdditional: dollars(Math.max(0, cost.ceiling - cost.baseRequirement)),
         protectedNow: cost.actualSaved == null ? null : dollars(cost.actualSaved),
-        ...(reserves ? { actualSaved: dollars(cost.actualSaved), reserveParts: cost.reserveParts } : {}),
+        ...(reserves ? { actualSaved: savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf) ? null : dollars(cost.actualSaved),
+          backingBasis: savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf) ? 'policy-derived-observed-backing' : 'confirmed-assignment',
+          reserveParts: cost.reserveParts } : {}),
         protectedAfterNextPayday: contributions.length && rows.length
           && contributions[0].payday === rows[0].payday ? contributions[0].amount : 0,
         stillToFund: dollars(cost.baseRequirement - (cost.actualSaved || 0)),
@@ -3919,6 +3960,10 @@
       })).filter(row => row.amount > 0);
       groups.push({ id: item.group, label: item.groupLabel || item.label,
         members: members.map(member => member.id),
+        ...(reserves ? { actualSaved: members.every(member => member.actualSaved != null)
+          ? roundCent(members.reduce((sum, member) => sum + member.actualSaved, 0)) : null,
+          backingBasis: members.every(member => member.backingBasis === 'policy-derived-observed-backing')
+            ? 'policy-derived-observed-backing' : 'confirmed-assignment' } : {}),
         baseRequirement: roundCent(members.reduce((sum, member) => sum + member.baseRequirement, 0)),
         protectedNow: reserves ? roundCent(members.reduce((sum, member) => sum + member.protectedNow, 0)) : null,
         stillToFund: roundCent(members.reduce((sum, member) => sum + member.stillToFund, 0)),
@@ -3957,6 +4002,16 @@
           shortBy: dollars(overdueRequirement), affected: prePayday.map(row => row.id),
         };
       })() : null),
+      // These uniquely matched native payments occur before the first future
+      // payday. No future contribution can fund them; their observed reserve
+      // component remains a draw from current stock, not a missing schedule row.
+      ...(savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf) ? {
+      currentPayments: costs.filter(cost => cost.kind === 'payment' && cost.date < paydayDates[0])
+        .map(cost => ({ id: cost.id, label: cost.label, date: cost.date,
+          amount: dollars(cost.baseRequirement), protectedConsumed: 0,
+          ...(reserves ? { reserveFunded: dollars(cost.actualSaved),
+            operatingPayment: dollars(cost.baseRequirement - cost.actualSaved), reserveParts: cost.reserveParts } : {}) })),
+      } : {}),
       costs: costPublication, groups,
       unscheduled: seq.filter(row => row && !row.date).map(row => ({
         id: row.id, reason: 'cash-date-not-established', when: row.when || null,
@@ -12230,6 +12285,24 @@
           ? { unscheduled: result.planSpendPaydayFunding.unscheduled } : {}),
       };
     }
+    if (result.savingsFunding) {
+      // The same current operating/card gate reaches every reprint and alias.
+      const packet = result.savingsFunding;
+      packet.schedule = result.planSpendPaydayFunding;
+      packet.lenses = (packet.lenses || []).map(lens => ({ ...lens, ready: false,
+        proposal: null, remaining: null, trust: 'unavailable', fundingTrust: 'unavailable', reason: note,
+        items: (lens.items || []).map(item => ({ ...item, contribution: null })) }));
+      packet.period = { ...packet.period, status: 'unavailable', proposal: null, availableNow: null, reason: note, actualSaved: null };
+      packet.status = 'unavailable';
+      packet.timeline = { ...packet.timeline, status: 'unavailable', reason: note,
+        daily: [], transfers: [], payPeriods: [], payments: [] };
+      packet.rows = packet.rows.map(row => ({ ...row, thisPeriod: null, remainingThisPeriod: null }));
+      for (const view of packet.periodViews || []) if (view.packet) {
+        view.packet.status = 'unavailable';
+        view.packet.period = { ...view.packet.period, status: 'unavailable', proposal: null, reason: note };
+        view.packet.rows = view.packet.rows.map(row => ({ ...row, thisPeriod: null, remainingThisPeriod: null }));
+      }
+    }
     if (result.defaultView) {
       result.defaultView.operatingCashExplanation = null;
       const periods = result.defaultView.calendarPeriods || [];
@@ -13092,6 +13165,14 @@
 
   function recommend(plan, asOf, opts) {
     const base = Object.assign({}, opts || {});
+    // One dated owner policy seeds the same native cash/funding publications.
+    // The caller plan, observed balances and confirmation history stay immutable.
+    if (savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf)) {
+      const backing = savingsPolicyBacking(plan, asOf, base);
+      plan = { ...plan };
+      savingsDailyBackingContexts.set(plan, backing);
+      savingsDailyReserveContexts.set(plan, backing.funding);
+    }
     const income = incomeReconciliationState(plan, asOf);
     if (income.status === 'unavailable') {
       base.incomeReconciliation = income;
@@ -13378,7 +13459,158 @@
       publishBudgetPeriodFunding(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
       publishBudgetPeriodProgress(plan, asOf, payPeriodTimelinePack.views, paydayOpts);
       publishBudgetBillDisplayTrust(asOf, payPeriodTimelinePack.views, paydayOpts);
+      let savingsFunding, savingsSchedule = planSpendFunding;
+      if (plan.savingsEarmarks?.allocationPolicy != null) {
+        savingsFunding = savingsDailyFunding(plan, paydayOpts.debts || base.debts, asOf, { ...paydayOpts, savingsAllocationPolicy: undefined });
+        const savingsBound = payPeriodTimelineBound(plan, asOf, paydayOpts);
+        const combinedPolicy = savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, asOf);
+        savingsSchedule = combinedPolicy && planSpendFunding.status !== 'unavailable' ? {
+          ...planSpendFunding, contributionAuthorityThrough: savingsBound.through, nature: 'projected-funding',
+          paydays: planSpendFunding.paydays.filter(row => row.through <= savingsBound.through),
+          costs: planSpendFunding.costs.map(row => ({ ...row,
+            nextContribution: row.nextContribution?.payday <= savingsBound.through ? row.nextContribution : null,
+            projectedFullyFunded: row.projectedFullyFunded <= savingsBound.through ? row.projectedFullyFunded : null,
+            contributions: row.contributions.filter(part => part.payday <= savingsBound.through),
+            remainingAfterSchedule: row.date > savingsBound.through ? null : row.remainingAfterSchedule,
+            contributionReason: row.date > savingsBound.through ? 'Later contribution authority is unavailable.' : null })),
+          groups: (planSpendFunding.groups || []).map(row => ({ ...row,
+            nextContribution: row.nextContribution?.payday <= savingsBound.through ? row.nextContribution : null,
+            projectedFullyFunded: row.projectedFullyFunded <= savingsBound.through ? row.projectedFullyFunded : null })),
+        } : planSpendFunding;
+        const historicalSavings = plan.savingsEarmarks?.allocationPolicy == null
+          || savingsCombinedPolicy(plan.savingsEarmarks.allocationPolicy)
+            && plan.savingsEarmarks.allocationPolicy.effectiveFrom > asOf;
+        // An invalid current policy cannot expose the legacy schedule through
+        // the shared alias. Requirements remain visible; permission stays held.
+        if (!historicalSavings && savingsFunding.backing.status !== 'ready') {
+          const hold = row => ({ ...row, protectedNow: null, actualSaved: null,
+            stillToFund: null, remainingAfterSchedule: null, nextContribution: null,
+            projectedFullyFunded: null, contributions: [] });
+          savingsSchedule = { ...savingsSchedule, status: 'unavailable',
+            reason: savingsFunding.backing.reason, fundingTrust: 'unknown', gap: null,
+            paydays: [], costs: (savingsSchedule.costs || []).map(hold),
+            groups: (savingsSchedule.groups || []).map(hold) };
+        }
+        savingsFunding.allocationMode = historicalSavings ? 'historical-pools' : 'combined';
+        savingsFunding.manualInventory = historicalSavings ? savingsInventory(plan, asOf) : null;
+        savingsFunding.schedule = savingsSchedule;
+        const todayReady = savingsFunding.status === 'ready' && savingsFunding.period?.status === 'ready';
+        const savingsNext = savingsSchedule.status !== 'unavailable' ? savingsSchedule.paydays?.[0] : null;
+        const lensItems = (allocations, ready, byOccurrence) => savingsFunding.backing.items.map(item => ({
+          id: item.key, requirementId: item.id, label: item.label, date: item.date, cost: item.needed,
+          saved: item.saved, savedTrust: item.saved == null ? 'unknown' : 'calculated',
+          confidence: item.trust === 'calculated' ? 'confirmed' : item.trust,
+          contribution: ready ? allocations.find(part => part.id === (byOccurrence ? item.key : item.id))?.amount ?? 0 : null }));
+        savingsFunding.lenses = [
+          { key: 'today', ready: todayReady, asOf, trust: savingsFunding.period?.trust,
+            fundingTrust: savingsFunding.period?.trust, proposal: savingsFunding.period?.proposal,
+            remaining: savingsFunding.period?.remainingEntitlement,
+            items: lensItems(savingsFunding.period?.allocations || [], todayReady, true),
+            unscheduled: savingsFunding.unresolved.map(row => ({ ...row, cost: row.needed, confidence: row.trust })),
+            reason: savingsFunding.period?.reason || savingsFunding.backing.reason, when: 'unsent top-up today' },
+          { key: 'payday', ready: !!savingsNext, payday: savingsNext?.payday || null, asOf,
+            trust: planSpendFunding.fundingTrust, fundingTrust: planSpendFunding.fundingTrust,
+            proposal: savingsNext?.contribution ?? null, remaining: savingsNext?.stillToFund ?? null,
+            items: lensItems(savingsNext?.allocations || [], !!savingsNext, false),
+            unscheduled: savingsFunding.unresolved.map(row => ({ ...row, cost: row.needed, confidence: row.trust })),
+            gap: savingsSchedule.gap, reason: savingsSchedule.reason, when: 'projected top-up this payday' },
+        ];
+        savingsFunding.periodViews = payPeriodTimelinePack.views.map(period => ({ id: period.id, start: period.start,
+          end: period.end, role: period.timelineRole, funding: period.plannedCostFunding, progress: period.budgetProgress }));
+        // A location reprint of this same native walk and serial schedule. New
+        // projected top-ups move cash between locations; expenses remain once.
+        const projectionShell = { source: 'Forecast.savingsFundingTimeline', asOf, currency: 'CAD',
+          nature: 'hypothetical-projection', trust: 'estimated', actualContributions: null,
+          cashBasis: 'native-available-and-reserved-planning-ledger',
+          actionPermission: 'not-granted', moneyMovementPermission: 'not-granted',
+          pools: [], goals: [], payPeriods: [], daily: [], transfers: [], payments: [] };
+        const incomeBound = payPeriodTimelineBound(plan, asOf, paydayOpts);
+        let projectionReason = savingsFunding.backing.status !== 'ready' ? savingsFunding.backing.reason
+          : savingsFunding.period.status !== 'ready' ? savingsFunding.period.reason
+          : !['ready', 'funding-gap'].includes(planSpendFunding.status) ? planSpendFunding.reason
+          : !savingsDate(incomeBound.through) ? 'Supported income horizon is unavailable.' : null;
+        const projectionEnd = incomeBound.through && incomeBound.through < knowledgeSim.end ? incomeBound.through : knowledgeSim.end;
+        const projectedRows = (savingsSchedule.paydays || []).filter(row => row.through <= projectionEnd);
+        const nativePayments = [...(savingsSchedule.currentPayments || []),
+          ...projectedRows.flatMap(p => p.payments || [])];
+        let contributions = 0, consumed = 0, stockDrawn = 0;
+        const projectionDaily = [], projectedPayments = [];
+        if (!projectionReason) for (const row of knowledgeSim.daily.filter(row => row.date <= projectionEnd)) {
+          const paydays = projectedRows.filter(p => p.payday === row.date);
+          for (const payday of paydays) contributions += savingsCents(payday.contribution);
+          for (const event of knowledgeSim.events.filter(e => cashWalkDate(e, asOf) === row.date && e.reserveFunding)) {
+            const matches = nativePayments.filter(p => p.id === event.id && p.date === event.date);
+            if (matches.length !== 1) { projectionReason = 'A projected draw has no unique native funding payment.'; break; }
+            const funded = savingsCents(event.reserveFunding.amount), topup = savingsCents(matches[0].protectedConsumed);
+            if (funded == null || topup == null || savingsCents(matches[0].reserveFunded) !== funded
+                || savingsCents(matches[0].amount) !== savingsCents(-event.amount)) {
+              projectionReason = 'Projected payment cents are unavailable.'; break;
+            }
+            stockDrawn += funded; consumed += topup;
+            projectedPayments.push({ id: event.id, date: row.date, scheduledDate: event.date,
+              amount: (funded + topup) / 100, fromCurrentStock: funded / 100, fromProjectedTopups: topup / 100 });
+          }
+          // Unbacked costs can later be protected by a future native top-up.
+          for (const payment of projectedRows.flatMap(p => p.payments || []).filter(p => p.date === row.date && !p.reserveFunded)) {
+            const matches = knowledgeSim.events.filter(e => e.id === payment.id && e.date === payment.date
+              && ['commitment', 'bill', 'reserve'].includes(e.kind));
+            const take = savingsCents(payment.protectedConsumed);
+            if (matches.length !== 1 || take == null) { projectionReason = 'A future top-up draw lacks one native expense.'; break; }
+            consumed += take;
+            if (take) projectedPayments.push({ id: payment.id, date: row.date, amount: take / 100,
+              fromCurrentStock: 0, fromProjectedTopups: take / 100 });
+          }
+          const nativeCash = typeof row.balance === 'number' && Number.isFinite(row.balance) ? Math.round(row.balance * 100) : null;
+          if (nativeCash == null || !Number.isSafeInteger(nativeCash)) { projectionReason = 'The native cash walk is unavailable.'; break; }
+          const operating = nativeCash - contributions + consumed;
+          const savings = savingsCents(savingsFunding.stock.amount, true) + contributions - consumed - stockDrawn;
+          if (![operating, savings, operating + savings].every(Number.isSafeInteger) || savings < 0 || consumed > contributions) {
+            projectionReason = 'The native location projection cannot conserve supported savings cents.'; break;
+          }
+          projectionDaily.push({ date: row.date, operatingCash: operating / 100, savingsCash: savings / 100,
+            combinedHouseholdCash: (operating + savings) / 100, projectedContributions: contributions / 100,
+            projectedDraws: (consumed + stockDrawn) / 100, nature: 'hypothetical-projection', trust: 'estimated' });
+        }
+        savingsFunding.timeline = projectionReason ? { ...projectionShell, status: 'unavailable', reason: projectionReason }
+          : { ...projectionShell, status: 'ready', completeness: 'bounded', through: projectionEnd,
+            nativeCashAuthority: 'Forecast.recommend', daily: projectionDaily, payments: projectedPayments,
+            transfers: projectedRows.filter(row => row.contribution > 0).map(row => ({ date: row.payday,
+              amount: row.contribution, nature: 'hypothetical-projection', trust: 'estimated', actionPermission: 'not-granted' })),
+            payPeriods: projectedRows.map(row => ({ start: row.payday, end: row.through,
+              projectedContribution: row.contribution, actualContribution: null,
+              nature: 'hypothetical-projection', trust: 'estimated' })) };
+        if (plan.savingsEarmarks?.allocationPolicy != null) for (const view of savingsFunding.periodViews) {
+          if (view.role === 'current') continue;
+          const projected = ['next', 'future'].includes(view.role);
+          const payday = projected ? savingsSchedule.paydays?.find(row => row.payday === view.start && row.through === view.end) : null;
+          const ready = projected && savingsSchedule.status !== 'unavailable' && !!payday;
+          const rows = savingsFunding.rows.map(row => {
+            const ids = [...savingsFunding.backing.items, ...savingsFunding.unresolved]
+              .filter(item => row.members.includes(item.key)).map(item => item.id);
+            const contribution = ready ? payday.allocations.filter(part => ids.includes(part.id))
+              .reduce((sum,part) => sum + savingsCents(part.amount),0) / 100 : null;
+            return { ...row, saved: null, savedTrust: 'unknown', needed: projected ? row.needed : null,
+              neededTrust: projected ? row.neededTrust : 'unknown', neededRange: projected ? row.neededRange : null,
+              thisPeriod: contribution, thisPeriodTrust: ready ? 'estimated' : 'unknown',
+              remainingThisPeriod: null, actualContribution: null };
+          });
+          view.packet = { source: savingsFunding.source, asOf, currency: 'CAD', status: ready ? 'ready' : 'unavailable',
+            actionPermission: 'not-granted', moneyMovementPermission: 'not-granted', rows,
+            stock: { ...savingsFunding.stock, status: 'unavailable', amount: null },
+            backing: { ...savingsFunding.backing, status: 'unavailable',
+              items: savingsFunding.backing.items.map(item => ({ ...item, saved: null })) },
+            unresolved: savingsFunding.unresolved,
+            allocationDescription: projected ? 'Projected top-ups from this same opening. Actual saved and transfers in this future period are unknown.'
+              : 'Historical saving evidence is unavailable. Current observed savings are not substituted into this earlier period.',
+            period: { status: ready ? 'ready' : 'unavailable', kind: projected ? 'projected' : 'historical',
+              basis: 'operating-surplus-before-proposals', start: view.start, end: view.end,
+              trust: ready ? 'estimated' : 'unknown', proposal: ready ? payday.contribution : null,
+              actualSaved: null, allocations: ready ? payday.allocations : [], cycleAllocations: ready ? payday.allocations : [],
+              reason: ready ? null : projected ? 'This selected period has no qualified projected top-up.' : 'Historical saved evidence is unknown.' } };
+        }
+      }
       return withholdCurrentOperatingClaims({
+        ...(savingsFunding ? { savingsFunding } : {}),
         ...(cardMinimumState(plan, asOf, paydayOpts).status !== 'incumbent'
           ? { cardMinimumPayments: cardMinimumState(plan, asOf, paydayOpts) } : {}),
         ...(cardCoverageState(plan, asOf, paydayOpts).status !== 'incumbent'
@@ -13393,7 +13625,7 @@
         view,
         fundingSequence: sequence,
         majorPlans: plans,
-        planSpendPaydayFunding: planSpendFunding,
+        planSpendPaydayFunding: savingsSchedule,
         savingsInventory: savingsInventory(plan, asOf),
         plannedDebt: debt,
         infeasible: mode === 'infeasible' ? (infeasible || protectedAtCap.first) : null,
@@ -18392,6 +18624,140 @@
     const deductions = roundCent(income - walkCapacity);
     return { cash, income, walkCapacity, capacity, deductions, bills: roundCent(deductions - remaining) };
   }
+  function savingsCombinedPolicy(policy, day) {
+    return savingsKeys(policy, ['order', 'effectiveFrom', 'source'])
+      && policy.order === 'due-date-first-combined-pool'
+      && savingsDate(policy.effectiveFrom) && (!day || policy.effectiveFrom <= day)
+      && typeof policy.source === 'string' && !!policy.source.trim() && policy.source.length <= 200;
+  }
+  const savingsDailyBackingContexts = new WeakMap();
+  // The existing daily publisher owns this combined branch. Physical account
+  // links remain evidence/history, never separate priority or goal eligibility.
+  function savingsCombinedBacking(plan, day, opts) {
+    opts = opts || {};
+    const block = plan.savingsEarmarks;
+    const pools = (Array.isArray(block?.pools) ? block.pools : []).map(pool => !Array.isArray(pool?.goalRefs) ? pool : ({ ...pool,
+      goalRefs: pool.goalRefs.filter(ref => !(ref?.kind === 'commitment' && pool.goalRefs.some(other =>
+        other?.kind === 'group' && savingsGoal(plan, other, day).members.includes('goal:' + ref.id)))) }));
+    const normalized = { ...plan, savingsEarmarks: { ...block, pools } };
+    const config = savingsEarmarksState(normalized, day), disabled = new Set(opts.disabled || []);
+    const inventory = savingsInventory(normalized, day);
+    const observations = plan.savingsPoolObservation;
+    const safeObservation = config.status === 'ready' && config.pools.every(p => p.role === 'purpose-reserve')
+      && observations?.asOf === day && Array.isArray(observations.accounts) && observations.accounts.length === 2
+      && inventory.pools.length === 2 && inventory.pools.every(pool => pool.observedAsOf === day
+        && pool.observedTrust === 'verified' && savingsCents(pool.observedCash, true) != null
+        && observations.accounts.filter(r => r.accountId === pool.accountId).length === 1);
+    // Posted stock truth is independent of permission to use that stock.
+    // Pending movement never changes the known posted cents into unknown/zero,
+    // but it still withholds every backing allocation and funding proposal.
+    const actualTransactions = currentPeriodActualsPacket(opts)?.transactions;
+    const pendingMovement = !Array.isArray(observations?.accounts)
+      || observations.accounts.some(row => row?.pendingState !== 'clear')
+      || actualTransactions != null && (!Array.isArray(actualTransactions)
+        || actualTransactions.some(tx => tx?.pending === true && (!savingsDate(tx.date) || tx.date <= day)
+          && ['savings', 'savings-dont-touch'].includes(String(tx.atlasAccountId || tx.accountId || tx.account))));
+    const stockCents = safeObservation ? inventory.pools.reduce((sum,p) => sum + savingsCents(p.observedCash,true),0) : null;
+    const stockKnown = safeObservation && Number.isSafeInteger(stockCents);
+    const stock = { status: stockKnown ? 'ready' : 'unavailable', asOf: day, currency: 'CAD',
+      amount: stockKnown ? stockCents / 100 : null, trust: stockKnown ? 'calculated' : 'unknown',
+      evidenceTrust: stockKnown ? 'verified' : 'unknown', basis: 'observed-savings-stock', nonAdditive: true,
+      accountIds: ['savings', 'savings-dont-touch'], pendingState: pendingMovement ? 'unresolved' : 'clear',
+      reportedStock: inventory.reportedStock || null };
+    // Requirement knowledge can extend beyond permission to project payroll.
+    // Reuse native recurrence and funding rows; do not import a PDF scenario.
+    let end = knowledgeHorizon(plan, day, opts).end;
+    for (const row of plan.commitments || []) { const date=commitmentCashDate(row); if (date && date>end) end=date; }
+    for (const row of plan.budget?.categories || []) if (savingsDate(row.planningDate) && row.planningDate>end) end=row.planningDate;
+    for (const bill of plan.bills || []) if (isYearlyCardPaidBill(bill,plan)) {
+      const limit = savingsDate(bill.firstDue) && bill.firstDue > addDays(day, 731) ? bill.firstDue : addDays(day, 731);
+      const next = outflowDates(bill,day,limit)[0]; if (next && next>end) end=next;
+    }
+    const rosterOpts = { ...opts, horizonDays: diffDays(day,end)+1, viewDays: diffDays(day,end)+1 };
+    const seq = fundingSequence(plan,day,rosterOpts).filter(row => !disabled.has(row.id)
+      && row.flexibility !== 'optional' && (row.source || (plan.commitments || []).some(c => c.id === row.id && c.sinkingFund === true)));
+    // Inspect raw occurrence identity without recursively deriving its backing.
+    const occurrencePlan = { ...plan };
+    savingsDailyReserveContexts.set(occurrencePlan, { status: 'incumbent', payments: [] });
+    const events = expandEvents(occurrencePlan,day,end,{ ...rosterOpts, savingsAllocationPolicy: undefined });
+    const items=[], unresolved=[], seen=new Set();
+    const append = row => {
+      const key=row.id+'@'+(row.date||'undated'); if(seen.has(key))return; seen.add(key);
+      const matches=events.filter(e => e.id===row.id && e.date===row.date && ['commitment','bill','reserve'].includes(e.kind));
+      const need=savingsCents(row.need), trust=row.confidence==='confirmed'?'calculated'
+        : row.confidence==='estimated'?'estimated':'unknown';
+      const item={key,id:row.id,label:row.label,date:row.date||null,scheduledDate:row.date||null,
+        when:row.when||null,group:row.group||null,groupLabel:row.groupLabel||null,source:row.source||null,
+        rank:row.rank || Number.MAX_SAFE_INTEGER,needed:need==null?null:need/100,
+        neededRange:need==null&&row.amountMin!=null&&row.amountMax!=null?{min:row.amountMin,max:row.amountMax}:null,
+        saved:null,inactive:false,trust,poolId:'combined-savings',needCents:need,savedCents:0,
+        event:matches.length===1?matches[0]:null,dateBasis:'cash-planning-date'};
+      if(!row.date || need==null || trust==='unknown') unresolved.push({...item,saved:null,contribution:null,
+        reason:!row.date?'Planning date not established.':'Point requirement or evidence not established.'});
+      else items.push(item);
+    };
+    seq.forEach(append);
+    // Native funding rows intentionally omit unresolved requirements. Preserve
+    // those native records as unknown, without inventing an amount or date.
+    const competing = new Set((plan.commitments || []).map(row => row.id));
+    for (const bill of plan.bills || []) {
+      if (!isYearlyCardPaidBill(bill,plan) || disabled.has(bill.id) || competing.has(bill.id)
+          || seq.some(row => row.id === bill.id)) continue;
+      const date = bill.needsDate ? null : outflowDates(bill,day,end)[0] || null;
+      if (date && bill.noPaymentRequiredOn?.includes(date)) continue;
+      const need = savingsCents(bill.amount) == null ? null : date ? billOccurrenceCashAmount(bill,date) : bill.amount;
+      if (need === 0) continue;
+      append({id:bill.id,label:bill.label,date,need,confidence:bill.confidence,source:'yearly-card-paid-bill'});
+    }
+    for (const category of plan.budget?.categories || []) {
+      if (category.class !== 'reserve' || disabled.has(category.id) || competing.has(category.id)
+          || (plan.bills || []).some(row => row.id === category.id) || seq.some(row => row.id === category.id)
+          || !Object.hasOwn(category,'plannedAmount') && !Object.hasOwn(category,'planningDate')) continue;
+      if (category.plannedAmount === 0) continue;
+      append({id:category.id,label:category.label,date:savingsDate(category.planningDate)?category.planningDate:null,
+        need:savingsCents(category.plannedAmount)==null?null:category.plannedAmount,
+        confidence:category.confidence,source:'dated-reserve-planning'});
+    }
+    for(const c of plan.commitments || []) if(c.sinkingFund===true && !disabled.has(c.id)
+        && commitmentFlexibility(c) !== 'optional' && !commitmentSettledBy(c,day) && !seq.some(r=>r.id===c.id)) append({id:c.id,label:c.label,
+          date:commitmentCashDate(c),when:c.when,group:c.group,confidence:c.confidence,need:commitmentNeed(c),
+          ...commitmentRange(c)});
+    items.sort((a,b)=>a.date.localeCompare(b.date)||a.rank-b.rank||a.key.localeCompare(b.key));
+    let reason=config.status!=='ready'?config.reason:!stockKnown?'Both savings accounts require current, clear CAD cents evidence.'
+      :inventory.pools.some(p=>p.observedCash<0)?'Negative savings stock remains a protected deficit.'
+      :pendingMovement?'Pending savings movement withholds backing and contributions; known posted stock is retained.'
+      :unresolved.length?'Unresolved protected requirements withhold allocation and contributions; no date or priority is invented.':null;
+    const ready=!reason; let left=ready?stockCents:null;
+    for(const item of items) if(ready){const take=Math.min(left,item.needCents); item.savedCents=take; item.saved=take/100; left-=take;}
+    const rows=[], groups=new Map();
+    for(const item of [...items,...unresolved]) {
+      const key=item.group?'group:'+item.group:(item.source==='yearly-card-paid-bill'?'yearly-bill:'
+        :item.source==='dated-reserve-planning'?'budget-reserve:':'commitment:')+item.id;
+      let row=groups.get(key); if(!row){row={key,label:item.groupLabel||item.label,poolId:'combined-savings',members:[],
+        saved:null,needed:null,thisPeriod:null,remainingThisPeriod:null,actualContribution:null,trust:item.trust};groups.set(key,row);rows.push(row);}
+      row.members.push(item.key);
+    }
+    for(const row of rows){const members=[...items,...unresolved].filter(item=>row.members.includes(item.key));
+      row.saved=members.every(i=>i.saved!=null)?members.reduce((sum,i)=>sum+savingsCents(i.saved),0)/100:null;
+      row.needed=members.every(i=>i.needCents!=null)?members.reduce((sum,i)=>sum+i.needCents,0)/100:null;
+      row.trust=members.some(i=>i.trust==='unknown')?'unknown':members.some(i=>i.trust==='estimated')?'estimated':'calculated';
+      if (row.needed == null && members.every(i => i.needed != null || i.neededRange)) row.neededRange = {
+        min: members.reduce((sum,i) => sum + Math.round((i.needed ?? i.neededRange.min)*100),0)/100,
+        max: members.reduce((sum,i) => sum + Math.round((i.needed ?? i.neededRange.max)*100),0)/100 };
+      row.savedTrust=row.saved==null?'unknown':'calculated';row.neededTrust=row.needed==null&&!row.neededRange?'unknown':row.trust;
+    }
+    const packetPools=inventory.pools.map(pool=>({id:pool.id,accountId:pool.accountId,label:pool.label,
+      status:ready?'ready':'unavailable',observedCash:pool.observedCash,observedAsOf:pool.observedAsOf,
+      deficit:pool.observedCash<0?-pool.observedCash:0,unallocated:null,encumberedManual:null}));
+    const paymentReason = ready && items.some(i => i.saved > 0 && !i.event)
+      ? 'A backed requirement lacks one uniquely matched dated payment.' : reason;
+    const payments=ready?items.filter(i=>i.saved>0&&i.event).map(i=>({id:i.id,date:i.scheduledDate,
+      requirement:i.needed,backed:i.saved,parts:[{poolId:'combined-savings',accountId:null,
+        goalKey:rows.find(r=>r.members.includes(i.key))?.key,amount:i.saved,location:'combined-observed-reserves'}]})):[];
+    return {status:ready?'ready':'unavailable',reason,stock,items,unresolved,rows,pools:packetPools,
+      unallocated:left==null?null:left/100,basis:'policy-derived-combined-observed-backing',trust:ready?'calculated':'unknown',
+      funding:{status:paymentReason?'unavailable':'ready',asOf:day,reason:paymentReason,revision:null,source:'Forecast.savingsDailyFunding',payments}};
+  }
   function savingsDailyPolicy(policy, day) {
     return savingsKeys(policy, ['schema', 'confirmedAt', 'source', 'order', 'periodBasis'])
       && policy.schema === 'atlas-savings-daily-policy/v1'
@@ -18403,6 +18769,13 @@
   const savingsDailyReserveContexts = new WeakMap();
   function savingsPolicyBacking(plan, day, opts) {
     opts = opts || {};
+    if (plan?.savingsEarmarks?.allocationPolicy != null
+        && (!savingsCombinedPolicy(plan.savingsEarmarks.allocationPolicy)
+          || plan.savingsEarmarks.allocationPolicy.effectiveFrom <= day)) return savingsCombinedBacking(plan, day, opts);
+    if (savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy) && day >= '2026-10-05') opts = { ...opts,
+      savingsAllocationPolicy: { schema: 'atlas-savings-daily-policy/v1', confirmedAt: '2026-10-05',
+        source: 'Historical owner policy, PR #511', order: 'due-date-first-within-pool',
+        periodBasis: 'operating-surplus-before-proposals' } };
     const unavailable = reason => ({ status: 'unavailable', reason, items: [], pools: [], rows: [],
       funding: { status: 'unavailable', asOf: day, reason, payments: [] },
       stock: { status: 'unavailable', asOf: day, amount: null, trust: 'unknown', evidenceTrust: 'unknown',
@@ -18559,18 +18932,23 @@
   // evidence; no canonical history, observations or real money are changed.
   function savingsDailyFunding(plan, debts, asOf, opts) {
     opts = { ...(opts || {}), debts: Array.isArray(debts) ? debts : [] };
-    const day = financialDate(asOf), derived = savingsPolicyBacking(plan, day, opts);
+    const day = financialDate(asOf), derived = savingsDailyBackingContexts.get(plan) || savingsPolicyBacking(plan, day, opts);
     const shell = { source: 'Forecast.savingsDailyFunding', asOf: day, currency: 'CAD',
       actionPermission: 'not-granted', moneyMovementPermission: 'not-granted', stock: derived.stock,
       backing: { status: derived.status, reason: derived.reason, basis: derived.basis, trust: derived.trust,
         actualTransferred: null, pools: derived.pools,
-        items: derived.items.map(({ needCents, savedCents, event, rank, ...item }) => item) }, rows: derived.rows };
+        items: derived.items.map(({ needCents, savedCents, event, rank, ...item }) => item), unallocated: derived.unallocated ?? null },
+      allocationDescription: derived.basis === 'policy-derived-combined-observed-backing'
+        ? 'Current observed stock allocated chronologically from one combined savings pot.'
+        : 'Historical allocation policy applies to the dated pool evidence.',
+      unresolved: (derived.unresolved || []).map(({ needCents, savedCents, event, rank, ...item }) => item), rows: derived.rows };
     const unknown = reason => ({ ...shell, status: 'unavailable', reason,
       period: { status: 'unavailable', reason, entitlement: null, transferred: null,
-        remainingEntitlement: null, availableNow: null, proposal: null, unassigned: null } });
+        remainingEntitlement: null, availableNow: null, proposal: null, unassigned: null, actualSaved: null } });
     const income = incomeReconciliationState(plan, day);
     if (income.status === 'unavailable') return unknown(income.reason);
     if (derived.status !== 'ready') return unknown(derived.reason);
+    if (derived.funding.status !== 'ready') return unknown(derived.funding.reason);
     if (derived.pools.some(pool => pool.deficit > 0)) return unknown('Negative savings stock remains a protected deficit.');
     if (plan.opening?.asOf !== day || opts.operatingPlan === 'unavailable') return unknown('A matching available operating opening is required.');
     const cashRows = plan.startingCash?.breakdown;
@@ -18759,6 +19137,11 @@
   function savingsFundingTimeline(plan, debts, asOf, opts) {
     opts = opts || {};
     const day = financialDate(asOf);
+    if (savingsCombinedPolicy(plan?.savingsEarmarks?.allocationPolicy, day)) return {
+      source: 'Forecast.savingsFundingTimeline', asOf: day, currency: 'CAD', status: 'unavailable',
+      reason: 'Read the single recommend.savingsFunding publication; a separate location projection is withheld.',
+      nature: 'hypothetical-projection', pools: [], goals: [], payPeriods: [], daily: [], actualContributions: null,
+      actionPermission: 'not-granted', moneyMovementPermission: 'not-granted' };
     const shell = { source: 'Forecast.savingsFundingTimeline', asOf: day, currency: 'CAD',
       nature: 'hypothetical-projection', trust: 'estimated', actualContributions: null,
       actionPermission: 'not-granted', incrementalInstructions: 'withheld',
@@ -21070,7 +21453,7 @@
 
   const Forecast = { billsAccountPeriodBalance, minimumCategoryAllocationConflict, incomeReconciliationState, cardMinimumState, cardMinimumReceiptIdentity, obligationOccurrences, statementOccurrenceDate, statementOccurrenceIdentity, representedOccurrence, savingsInventory, savingsFundingTimeline, savingsDailyFunding, savingsEarmarksState, HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, commitmentCashDate, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, representedEventEffectiveBy, expandEvents, simulate, establishPaydaySnapshot, paydayBoundaryAccountObservation, postedAccountMovements, prePaydayBillsAccountCash,
     cardPeriodMovements,
-    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
+    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, planSpendCards, planSpendPaydayFunding, savingsFundingPublication, budgetPeriodProgress, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, householdInternalMovements, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle, incomeReceivedAmount,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,

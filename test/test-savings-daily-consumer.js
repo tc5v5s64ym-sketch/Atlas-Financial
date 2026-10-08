@@ -44,7 +44,7 @@ for (const mode of ['ready', 'partial', 'full', 'multiple', 'returned', 'pending
     const home = packet.rows.find(row => row.key === 'yearly-bill:home-cost');
     assert.equal(home.needed, 24, 'independent exact home requirement');
     assert.equal(home.trust, 'calculated');
-    assert.equal(home.neededTrust, undefined, 'unavailable packet publishes requirement trust on row');
+    assert.equal(home.neededTrust, 'calculated', 'unavailable backing retains independent exact requirement trust');
     ctx.knownNeed = home;
     assert.match(vm.runInContext('budgetDailyNeededHtml(knownNeed)', ctx), /24\.00/);
     const homeHtml = html.split('data-budget-savings-total-goal="yearly-bill:home-cost"')[1].split('</li>')[0];
@@ -64,7 +64,7 @@ for (const row of [
   assert.match(vm.runInContext('budgetDailyNeededHtml(knownNeed)', ctx), /Unavailable/, 'no coercion or override of explicit unknown requirement trust');
 }
 
-ctx.Forecast = { ...F, savingsDailyFunding() { throw new Error('Invented unavailable selector'); } };
+delete ctx.src.advice.savingsFunding;
 ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
 assert.equal(ctx.packet.stock, undefined, 'failed daily publication does not invent stock');
 const failed = vm.runInContext('calendarWaterfallHtml(period,src.liveOverlay,null,src.plan,true,{daily:packet,inventory:src.advice.savingsInventory,asOf:src.asOf})', ctx);
@@ -88,7 +88,7 @@ const rejectedStockCents = ctx.src.plan.savingsPoolObservation.accounts
 const rejectedStockRe = new RegExp((rejectedStockCents / 100).toFixed(2).replace('.', '\\.'));
 for (const mutate of [p => { p.source = 'other'; }, p => { p.asOf = '2026-10-06'; }, p => { p.currency = 'USD'; }, p => { p.period.basis = 'after-proposals'; }, p => { p.period.start = '2026-10-16'; }, p => { p.moneyMovementPermission = 'granted'; }, p => { p.period.allocations = null; }, p => { p.period.allocations[0].amount = null; }, p => { p.period.cycleAllocations[0].amount = '80'; }]) {
   const invalid = JSON.parse(JSON.stringify(valid)); mutate(invalid);
-  ctx.Forecast = { ...F, savingsDailyFunding: () => invalid };
+  ctx.src.advice.savingsFunding = invalid;
   ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
   assert.equal(ctx.packet.status, 'unavailable', 'invalid scope or authority never borrows legacy amounts');
   assert.equal(ctx.packet.stock, undefined, 'rejected daily packet does not invent stock');
@@ -103,10 +103,7 @@ for (const failure of ['exception', 'currency', 'allocation']) {
   const rejected = JSON.parse(JSON.stringify(valid));
   if (failure === 'currency') rejected.currency = 'USD';
   if (failure === 'allocation') rejected.period.allocations[0].amount = null;
-  ctx.Forecast = { ...F, savingsDailyFunding() {
-    if (failure === 'exception') throw new Error('Invented selector exception');
-    return rejected;
-  } };
+  ctx.src.advice.savingsFunding = failure === 'exception' ? undefined : rejected;
   ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
   assert.equal(ctx.packet.source, 'Budget.savingsDailyFundingUnavailable');
   for (const [label, mutate] of [
@@ -135,10 +132,34 @@ const nativeUnavailable = JSON.parse(JSON.stringify(valid));
 nativeUnavailable.status = nativeUnavailable.period.status = 'unavailable';
 nativeUnavailable.period.proposal = null;
 Object.assign(nativeUnavailable.stock, { status: 'unavailable', amount: null, trust: 'unknown', evidenceTrust: 'unknown' });
-ctx.Forecast = { ...F, savingsDailyFunding: () => nativeUnavailable };
+ctx.src.advice.savingsFunding = nativeUnavailable;
 ctx.packet = vm.runInContext('budgetDailySavingsFor(src)', ctx);
 assert.equal(ctx.packet.source, 'Forecast.savingsDailyFunding', 'accepted native stock uncertainty retains its authority');
 const nativeHtml = vm.runInContext('calendarWaterfallHtml(period,src.liveOverlay,null,src.plan,true,{daily:packet,inventory:src.advice.savingsInventory,asOf:src.asOf})', ctx);
 assert.match(nativeHtml.split('data-operating-question="savings"')[1].split('</summary>')[0], /119\.00/, 'independently reported stock survives unavailable daily backing');
 assert.match(nativeHtml.split('data-budget-daily-proposal>')[1].split('</strong>')[0], /Unavailable/);
 console.log('PASS active current Budget/Savings consumer: thirteen independent ledgers, replace-only refresh, transfer once, native surplus vs entitlement, independently known requirement, publication boundary and guarded stock fallback');
+
+
+// The second live page also refuses malformed shared metadata instead of
+// borrowing a plausible legacy schedule. The valid schedule is an alias.
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../public/plan-spend.js'),'utf8'),ctx);
+ctx.spendAdvice=F.recommend(readyData.plan,readyData.meta.asOf,{weeklyVariable:40,...readyData.liveOverlay});
+const spendPacket=ctx.spendAdvice.savingsFunding;
+assert.equal(vm.runInContext('planSpendFundingSchedule(spendAdvice)',ctx),spendPacket.schedule);
+for(const mutate of [p=>{p.source='other';},p=>{p.currency='USD';},p=>{p.moneyMovementPermission='granted';},
+ p=>{p.rows=null;},p=>{p.schedule=null;}]) {
+ const bad=JSON.parse(JSON.stringify(spendPacket));mutate(bad);ctx.spendAdvice.savingsFunding=bad;
+ assert.equal(vm.runInContext('planSpendFundingSchedule(spendAdvice)',ctx).status,'unavailable');
+ assert.match(vm.runInContext('planSpendPageHtml(spendAdvice,null).lede',ctx),/publication is unavailable/);
+}
+ctx.spendAdvice.savingsFunding=spendPacket;
+
+
+// A missing selected-period child cannot substitute the current 119 stock.
+ctx.src.advice=F.recommend(readyData.plan,readyData.meta.asOf,{weeklyVariable:40,...readyData.liveOverlay});
+const future=ctx.src.advice.savingsFunding.periodViews.find(row=>row.role==='next');
+assert.ok(future?.packet);delete future.packet;ctx.futureId=future.id;
+const missingFuture=vm.runInContext('budgetDailySavingsFor(src,futureId)',ctx);
+assert.equal(missingFuture.status,'unavailable');assert.equal(missingFuture.stock,undefined);
+assert.equal(missingFuture.period.proposal,null,'no current offer is borrowed into a missing future publication');

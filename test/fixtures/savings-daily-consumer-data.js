@@ -3,6 +3,8 @@
 const fx = require('./savings-daily-allocation-contract');
 module.exports = function dailyConsumerData(mode = 'ready') {
   const input = fx.fixture();
+  input.plan.savingsEarmarks.allocationPolicy = { order: 'due-date-first-combined-pool',
+    effectiveFrom: '2026-10-05', source: 'Independent invented owner policy' };
   if (mode === 'before-policy') fx.advance(input, '2026-10-04');
   if (mode === 'ranged-need') {
     delete input.plan.commitments[1].amount;
