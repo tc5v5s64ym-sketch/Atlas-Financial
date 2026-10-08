@@ -1,6 +1,7 @@
 {
   "proof": "budget-blend-visual",
   "fixture": "test/fixtures/budget-surface-data.js",
+  "cardMovementFixture": "test/fixtures/card-period-movements-data.js",
   "liveSite": false,
   "chrome": "/usr/bin/google-chrome",
   "reducedMotion": true,
@@ -17,7 +18,9 @@
     "budget-blend-focus-income.png",
     "budget-blend-focus-result.png",
     "budget-blend-focus-household.png",
-    "budget-blend-focus-goal.png"
+    "budget-blend-focus-goal.png",
+    "budget-blend-cards-1440-light.png",
+    "budget-blend-cards-320-dark.png"
   ],
   "contrasts": [
     {

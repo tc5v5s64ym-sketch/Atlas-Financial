@@ -6,6 +6,8 @@ Fixture browser proof for the pay-period Budget bento. Every shot uses `test/fix
 
 The hero keeps the published equation in source order: Income, Bills, Balance after bills, Household budget, then Balance After Deductions, with Planned Savings on the same waterfall. Current balance stays the Bills-account figure. Expected Bills balance at period end keeps its own slot, including the Estimated stamp. The payday tile is the existing window progress (Day 7 of 14, next payday). Household budget and Bills are the existing browse sections. Saving for is the existing goals block. Unavailable, estimated, and To confirm wording stays on the page.
 
+Card movement, merged in #546, sits in its own glass tile after the hero and before Household and Bills. The strip keeps its published label, hooks, and fail-closed words. The strip element itself stays transparent with no border. `budget-blend-cards-1440-light.png` and `budget-blend-cards-320-dark.png` use `test/fixtures/card-period-movements-data.js`. The other shots use the Budget surface fixture, which does not publish that strip.
+
 Household sits left of Bills because that is the source order of those sections, so keyboard focus moves left to right. The prototype draws Bills on the left; swapping the tiles would focus the right-hand tile first.
 
 ## How it was run
@@ -16,7 +18,7 @@ CHROME_PATH=/usr/bin/google-chrome node test/browser-budget-blend-proof.js
 
 Playwright served `public/` at `http://budget.test/` and aborted every other origin. `prefers-reduced-motion: reduce` was on. Light and dark used the existing `hfd-theme` / `data-theme` mechanism. Viewports were 1440, 390, and 320. One fail-closed packet (`unavailablePlan`) was shot in light at 1440 and dark at 390.
 
-`test/browser-budget-v3-period.js` also passed at 1440, 390, and 320 on this head: one overview card, static today column, no horizontal scroll, and the same published figures.
+`test/browser-budget-v3-period.js` also passed at 1440, 390, and 320 on this head: one overview card, static today column, no horizontal scroll, and the same published figures. `node test/test-card-period-movements.js` and `node test/browser-card-period-movements.js` passed after the tile wrapper. Those tests own the card-movement behavior. This proof only checks that the published strip sits in the tile, after the period grid and before Household and Bills.
 
 ## Contrast and focus
 

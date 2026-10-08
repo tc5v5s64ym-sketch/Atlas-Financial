@@ -51,7 +51,7 @@ const composite = (fg, bg) => {
       await page.addInitScript(chosen => {
         try { localStorage.setItem('hfd-theme', chosen); } catch (e) {}
       }, theme);
-      let data = fx.served(options || {});
+      let data = options && options.data ? options.data : fx.served(options || {});
       page.on('pageerror', err => errors.push(`${width}/${theme}: ${err.message}`));
       await page.route('**/*', route => {
         const u = new URL(route.request().url());
@@ -237,6 +237,37 @@ const composite = (fg, bg) => {
     await unavailable.close();
     await unavailableDark.close();
 
+    const cards = require('./fixtures/card-period-movements-data');
+    for (const [width, theme, file] of [
+      [1440, 'light', 'budget-blend-cards-1440-light.png'],
+      [320, 'dark', 'budget-blend-cards-320-dark.png'],
+    ]) {
+      const page = await open(width, theme, { data: cards.served() });
+      const placement = await page.evaluate(() => {
+        const strip = document.querySelector('[data-budget-card-movements]');
+        const tile = strip && strip.closest('.budget-blend-card-movements');
+        const grid = document.querySelector('.budget-surface-grid');
+        const browse = document.querySelector('.budget-browse-grid');
+        const style = strip ? getComputedStyle(strip) : null;
+        return {
+          tile: !!tile,
+          after: !!(grid && strip && (grid.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING)),
+          before: !!(browse && strip && (strip.compareDocumentPosition(browse) & Node.DOCUMENT_POSITION_FOLLOWING)),
+          border: style && style.borderTopWidth,
+          background: style && style.backgroundColor,
+          label: strip ? strip.getAttribute('aria-label') : '',
+        };
+      });
+      if (!placement.tile || !placement.after || !placement.before
+        || placement.border !== '0px' || placement.background !== 'rgba(0, 0, 0, 0)'
+        || placement.label !== 'Card movement in selected pay period') {
+        errors.push(`card tile ${file} ${JSON.stringify(placement)}`);
+      }
+      await page.screenshot({ path: path.join(outDir, file), fullPage: true, animations: 'disabled' });
+      shots.push(file);
+      await page.close();
+    }
+
     const failedContrast = contrasts.filter(row => row.pass === false || row.missing);
     if (failedContrast.length) errors.push(`contrast ${JSON.stringify(failedContrast)}`);
     if (external.length) errors.push(`external requests ${external.join(',')}`);
@@ -244,6 +275,7 @@ const composite = (fg, bg) => {
     const receipt = {
       proof: 'budget-blend-visual',
       fixture: 'test/fixtures/budget-surface-data.js',
+      cardMovementFixture: 'test/fixtures/card-period-movements-data.js',
       liveSite: false,
       chrome: process.env.CHROME_PATH || null,
       reducedMotion: true,
