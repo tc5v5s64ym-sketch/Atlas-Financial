@@ -7129,6 +7129,11 @@ function renderPlan(d, periods, history) {
   const status = planUnavailable
     ? null
     : Forecast.planStatus(advice, { weeklyOverride: state.weeklyVariable, sim });
+  // Print-only hook: data-plan-status (dataset.planStatus) is the engine's
+  // verdict id, or 'unavailable' on the live-unavailable path. It is set on
+  // every paint so a stale value cannot survive a re-render. Text and class
+  // are unchanged.
+  band.setAttribute('data-plan-status', planUnavailable ? 'unavailable' : status.id);
   if (planUnavailable) {
     band.className = 'statusband warn';
     band.innerHTML = `<b>Current plan unavailable.</b> ${unavailableNote}`;
