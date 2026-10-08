@@ -459,7 +459,16 @@ body:has([data-budget-bento]) .sitenav {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px 10px;
+  width: 100%;
+  min-width: 0;
+}
+.blend-hero-id {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 .blend-hero-top .blend-hero-range {
@@ -478,12 +487,20 @@ body:has([data-budget-bento]) .sitenav {
   font-weight: 700;
   line-height: 1.3;
 }
-.blend-hero-top .budget-today-cash {
+.atlas-budget-ui-ready .blend-hero .blend-hero-top .budget-today-cash.atlas-current-balance-card {
   position: static;
   grid-column: auto;
   grid-row: auto;
-  justify-self: auto;
-  margin-left: auto;
+  justify-self: end;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 0 auto;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blend-glass);
+  box-shadow: inset 0 0 0 1px var(--blend-line);
 }
 
 .blend-minus {
@@ -660,20 +677,21 @@ body:has([data-budget-bento]) .sitenav {
   position: relative;
   display: flex;
   flex: 1 0 100%;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-start;
   align-items: flex-start;
   gap: 0;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding-right: 52px;
+  padding-right: 0;
   font-size: clamp(28px, 9vw, 120px);
   font-weight: 680;
   letter-spacing: -.045em;
   line-height: .92;
 }
 .blend-cents {
+  order: 1;
   font-size: .42em;
   font-weight: 650;
   line-height: 1;
@@ -681,11 +699,14 @@ body:has([data-budget-bento]) .sitenav {
   color: var(--blend-ink-2);
   margin-top: .18em;
 }
-.budget-bento .blend-hero [data-operating-question="07"] .budget-step-value .est { order: 1; }
+.budget-bento .blend-hero [data-operating-question="07"] .budget-step-value .est { order: 2; }
 .budget-bento .blend-hero [data-operating-question="07"] .est {
-  position: absolute;
-  top: 4px;
-  right: 0;
+  position: static;
+  top: auto;
+  right: auto;
+  order: 2;
+  align-self: flex-start;
+  margin: .2em 0 0 8px;
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
@@ -846,11 +867,13 @@ body:has([data-budget-bento]) .sitenav {
   position: relative;
   z-index: 1;
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  max-width: 48%;
+  max-width: 100%;
   min-width: 0;
+  overflow-wrap: break-word;
   color: var(--blend-ink-2);
   font-size: 12px;
   line-height: 1.3;
@@ -1074,6 +1097,21 @@ body:has([data-budget-bento]) .sitenav {
   box-shadow: none;
 }
 
+.budget-bento .card-movement-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px 12px;
+}
+.budget-bento .card-movement-heading > .blend-tile-ico { flex: none; }
+.budget-bento .card-movement-heading > h2,
+.budget-bento .card-movement-heading h2 {
+  flex: 0 1 auto;
+  margin: 0;
+  text-align: left;
+}
+.budget-bento .card-movement-heading > p { margin-left: auto; }
 .budget-bento [data-budget-browse] h2,
 .budget-bento [data-budget-savings-goals] h3,
 .budget-bento .card-movement-heading h2 {
@@ -1281,6 +1319,7 @@ body:has([data-budget-bento]) .sitenav {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-start;
   gap: 4px 12px;
   min-width: 0;
 }
@@ -1301,9 +1340,10 @@ body:has([data-budget-bento]) .sitenav {
 }
 .budget-bento [data-budget-browse="spending"] > header > div:first-child {
   display: flex;
-  flex: 0 0 auto;
-  align-items: baseline;
-  min-width: max-content;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
 }
 .budget-bento [data-budget-browse="spending"] > header h2 {
   overflow: visible;
@@ -1373,6 +1413,8 @@ body:has([data-budget-bento]) .sitenav {
   font-size: 12px;
 }
 .blend-house-panel > summary { cursor: pointer; width: fit-content; font-weight: 650; }
+.blend-house-panel:not([open]) > .blend-house-body { display: none; }
+.blend-house-panel[open] > .blend-house-body { display: block; }
 .blend-house-panel .budget-browse-counts {
   display: flex;
   flex-wrap: wrap;
@@ -1777,10 +1819,11 @@ dialog.budget-detail-sheet[open] {
   .budget-bento .budget-blend-hero-layout {
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
   }
-  .budget-bento .blend-hero .budget-today-cash {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    justify-self: start;
+  .budget-bento .blend-hero .blend-hero-top .budget-today-cash {
+    grid-column: auto;
+    grid-row: auto;
+    justify-self: end;
+    margin-left: auto;
   }
   .budget-bento .blend-hero [data-operating-question="02"],
   .budget-bento .blend-hero .blend-minus,
@@ -1884,6 +1927,41 @@ dialog.budget-detail-sheet[open] {
 }
 
 @media (max-width: 480px) {
+  .budget-bento > .blend-income { grid-column: 1 / -1; grid-row: 4; }
+  .budget-bento > .blend-pay { grid-column: 1 / -1; grid-row: 5; }
+  .budget-bento [data-budget-browse="spending"] { grid-column: 1 / -1; grid-row: 6; }
+  .budget-bento > .budget-blend-card-movements { grid-column: 1 / -1; grid-row: 7; }
+  .budget-bento > [data-budget-savings-goals] { grid-column: 1 / -1; grid-row: 8; }
+  .budget-bento > [data-budget-funding-section] { grid-row: 9; }
+  .blend-quiet { grid-row: 10; }
+  .blend-deps {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .blend-dep {
+    flex: none;
+    flex-direction: row;
+    align-items: flex-start;
+    max-width: 100%;
+    gap: 8px;
+  }
+  .blend-dep-line { display: none; }
+  .blend-dep-today { width: 2px; height: 12px; margin: 2px 0 2px 8px; }
+  .blend-house-facts { flex: 1 0 100%; margin-left: 0; }
+  .blend-rings { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .blend-ring-g {
+    width: min(96px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .blend-ring-v {
+    font-size: 11px;
+    line-height: 1.1;
+    padding: 0 3px;
+    white-space: normal;
+    text-overflow: unset;
+  }
   .blend-bills-head { flex-wrap: wrap; row-gap: 4px; }
   .blend-bills-head .blend-tile-ico { order: 1; }
   .blend-bills-head .blend-tile-title { order: 1; }
@@ -1926,6 +2004,7 @@ dialog.budget-detail-sheet[open] {
 }
 
 @media (max-width: 360px) {
+  .blend-ring-g { width: min(86px, 100%); }
   .budget-bento .budget-blend-hero-layout {
     grid-template-columns: minmax(0, 1fr);
   }

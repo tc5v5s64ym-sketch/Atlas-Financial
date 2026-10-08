@@ -285,7 +285,6 @@ const composite = (fg, bg) => {
             })(),
             shown: ['[data-budget-browse-hold]',
               '.blend-income .blend-big',
-              '.budget-bento [data-budget-browse="spending"] .budget-browse-counts',
               ...(document.querySelector('.card-movement-heading') ? ['.card-movement-heading .blend-card-posted'] : [])
             ].map(sel => {
               const el = document.querySelector(sel);
@@ -394,6 +393,52 @@ const composite = (fg, bg) => {
         if (width <= 390 && face.cardQualifier && (face.cardQualifier.ellipsis || face.cardQualifier.clipped)) {
           errors.push(`${width}/${theme} card subtitle ${JSON.stringify(face.cardQualifier)}`);
         }
+        const layout = await page.evaluate(() => {
+          const box = el => el ? el.getBoundingClientRect() : null;
+          const hits = (a, b) => !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
+          const cents = box(document.querySelector('.blend-cents'));
+          const est = box(document.querySelector('[data-operating-question="07"] .budget-step-value .est'));
+          const top = box(document.querySelector('.blend-hero-top'));
+          const cash = document.querySelector('.blend-hero-top .budget-today-cash');
+          const cashBox = box(cash);
+          const cashShown = !!(cash && getComputedStyle(cash).display !== 'none' && cashBox && cashBox.width > 8);
+          const income = box(document.querySelector('.blend-income'));
+          const pay = box(document.querySelector('.blend-pay'));
+          const meta = document.querySelector('.blend-income-in');
+          const metaBox = box(meta);
+          const deps = [...document.querySelectorAll('.blend-dep')].map(box);
+          let depOverlap = false;
+          for (let i = 0; i < deps.length; i++) {
+            for (let j = i + 1; j < deps.length; j++) if (hits(deps[i], deps[j])) depOverlap = true;
+          }
+          const rings = [...document.querySelectorAll('[data-budget-browse="spending"] .blend-ring')].slice(0, 3).map(box);
+          const ringTops = rings.map(row => row.top);
+          const cardHead = document.querySelector('.card-movement-heading');
+          const cardIcon = box(cardHead && cardHead.querySelector('.blend-tile-ico'));
+          const cardTitle = box(cardHead && cardHead.querySelector('h2'));
+          const houseHead = document.querySelector('[data-budget-browse="spending"] > header');
+          const houseIcon = box(houseHead && houseHead.querySelector('.blend-tile-ico'));
+          const houseTitle = box(houseHead && houseHead.querySelector('h2'));
+          const paired = (icon, title) => !!(icon && title && title.left >= icon.left && title.left - icon.right < 24 && Math.abs(title.top - icon.top) < 24);
+          return {
+            estBeside: !!(cents && est && est.left >= cents.right - 2 && est.left - cents.right < 40 && Math.abs(est.top - cents.top) < 28),
+            pillRight: !!(cashShown && top && top.right - cashBox.right < 24 && cashBox.top >= top.top - 2 && cashBox.bottom <= top.bottom + 2),
+            incomeInside: !(metaBox && income) || (metaBox.right <= income.right + 1 && metaBox.left >= income.left - 1 && metaBox.bottom <= income.bottom + 1),
+            stacked: !!(income && pay && income.bottom <= pay.top + 6 && Math.abs(income.left - pay.left) < 12),
+            separate: !hits(income, pay),
+            depOverlap,
+            ringsAcross: rings.length < 3 || Math.max(...ringTops) - Math.min(...ringTops) < 12,
+            cardPair: paired(cardIcon, cardTitle),
+            housePair: paired(houseIcon, houseTitle),
+          };
+        });
+        if (!layout.estBeside) errors.push(`${width}/${theme} est chip is not beside the cents`);
+        if (!layout.pillRight) errors.push(`${width}/${theme} Bills account pill is not at the right of the hero top`);
+        if (!layout.incomeInside) errors.push(`${width}/${theme} received amount leaves the Income tile`);
+        if (!layout.separate || layout.depOverlap) errors.push(`${width}/${theme} income track overlap ${JSON.stringify(layout)}`);
+        if (width <= 480 && !layout.stacked) errors.push(`${width}/${theme} income and payday are not stacked`);
+        if (width <= 360 && !layout.ringsAcross) errors.push(`${width}/${theme} household rings are not one row`);
+        if (!layout.cardPair || !layout.housePair) errors.push(`${width}/${theme} header alignment ${JSON.stringify(layout)}`);
         if (width === 1440 && theme === 'dark') {
           const toggle = await page.evaluate(() => {
             const buttons = [...document.querySelectorAll('.blend-toolbar .budget-granularity-btn')];
@@ -484,6 +529,7 @@ const composite = (fg, bg) => {
         countText: (counts?.textContent || '').replace(/\s+/g, ' ').trim(),
         countOnFace: !!(counts && visible(counts) && !counts.closest('.blend-house-panel')),
         countInHeader: !!(header && header.contains(counts)),
+        countInPanel: !!(panel && counts && panel.contains(counts)),
         countVisible: visible(counts),
         countHidden: counts ? counts.getAttribute('aria-hidden') : 'missing',
         clipped: !!(counts && counts.closest('.blend-clip, [aria-hidden="true"]')),
@@ -496,10 +542,32 @@ const composite = (fg, bg) => {
       && household.overs.length === prepared.marked.length
       && prepared.marked.every(status => household.overs.some(row => row.status === status && row.pill === status && row.onFace));
     if (!overOk || household.countText !== prepared.printed
-      || !/known categories over plan/.test(household.countText) || !household.countOnFace
-      || !household.countVisible || household.countHidden || household.clipped
+      || !/known categories over plan/.test(household.countText)
+      || household.countOnFace || household.countInHeader || !household.countInPanel
+      || household.countVisible || household.countHidden || household.clipped
       || household.holdText !== prepared.hold || !household.holdOnFace || !/\$/.test(household.holdText)) {
       errors.push(`household count ${JSON.stringify({ prepared, household })}`);
+    }
+    const summary = house.locator('.blend-house-panel > summary');
+    await summary.focus();
+    const summaryFocus = await summary.evaluate(el => el === document.activeElement);
+    await house.keyboard.press('Enter');
+    const openedCount = await house.evaluate(() => {
+      const panel = document.querySelector('.blend-house-panel');
+      const counts = panel && panel.querySelector('.budget-browse-counts');
+      const box = counts ? counts.getBoundingClientRect() : { width: 0, height: 0 };
+      const style = counts ? getComputedStyle(counts) : null;
+      return {
+        open: !!(panel && panel.open),
+        text: (counts?.textContent || '').replace(/\s+/g, ' ').trim(),
+        visible: !!(counts && box.width > 8 && box.height > 8 && style.display !== 'none' && style.visibility !== 'hidden'),
+        hidden: counts ? counts.getAttribute('aria-hidden') : 'missing',
+        clipped: !!(counts && counts.closest('.blend-clip')),
+      };
+    });
+    if (!summaryFocus || !openedCount.open || !openedCount.visible || openedCount.hidden || openedCount.clipped
+      || openedCount.text !== prepared.printed) {
+      errors.push(`household detail ${JSON.stringify({ summaryFocus, openedCount, printed: prepared.printed })}`);
     }
     await house.close();
 

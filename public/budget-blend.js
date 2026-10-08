@@ -217,17 +217,20 @@
     if (hero.querySelector('.blend-hero-top')) return;
     const top = document.createElement('div');
     top.className = 'blend-hero-top';
+    const id = document.createElement('div');
+    id.className = 'blend-hero-id';
     const range = document.querySelector('[data-budget-window-range]');
     if (range) {
       range.classList.add('blend-hero-range');
-      top.appendChild(range);
+      id.appendChild(range);
     }
     if (selectedPeriodIsCurrent(hero)) {
       const now = document.createElement('span');
       now.className = 'blend-now';
       now.textContent = 'Now';
-      top.appendChild(now);
+      id.appendChild(now);
     }
+    top.appendChild(id);
     const cash = hero.querySelector('.budget-today-cash');
     if (cash) top.appendChild(cash);
     const sky = hero.querySelector('.blend-sky');
@@ -796,8 +799,9 @@
     header?.after(rings);
     const facts = section.querySelector('.budget-browse-stats');
     const counts = section.querySelector('.budget-browse-counts');
-    if (header && !header.querySelector('.blend-tile-ico')) {
-      header.prepend(tileIcon('house'));
+    const titleWrap = header && (header.querySelector('h2')?.parentElement || header);
+    if (titleWrap && !header.querySelector('.blend-tile-ico')) {
+      titleWrap.prepend(tileIcon('house'));
       const chev = document.createElement('span');
       chev.className = 'blend-house-chev';
       chev.setAttribute('aria-hidden', 'true');
@@ -808,10 +812,7 @@
       facts.classList.add('blend-house-facts');
       header.appendChild(facts);
     }
-    if (header && counts) {
-      counts.classList.add('blend-house-status');
-      header.appendChild(counts);
-    }
+    if (counts) counts.classList.add('blend-house-status');
     if (other[0]) {
       const foot = document.createElement('button');
       foot.type = 'button';
@@ -845,10 +846,14 @@
     const summary = document.createElement('summary');
     summary.textContent = 'Household detail';
     more.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'blend-house-body';
+    if (counts) body.appendChild(counts);
     const remainBlock = section.querySelector('[data-budget-browse-remaining]')?.parentElement;
     if (remainBlock) remainBlock.classList.add('blend-house-remain');
     [remainBlock?.querySelector(':scope > span'), remainBlock?.querySelector('small'), section.querySelector('.budget-browse-cycle')]
-      .forEach(node => { if (node) more.appendChild(node); });
+      .forEach(node => { if (node) body.appendChild(node); });
+    more.appendChild(body);
     (section.querySelector('.blend-other') || rings).after(more);
     section.querySelectorAll('.budget-category-list, .budget-pace-key').forEach(node => {
       node.classList.add('blend-in-panel');
