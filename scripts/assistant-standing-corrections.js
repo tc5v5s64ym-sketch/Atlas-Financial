@@ -175,7 +175,7 @@ function validateGrantShape(grant, context, now) {
         || !/^[a-f0-9]{64}$/.test(t.toSignature))) deny('invalid-delegated-owner-grant');
   // Structural eligibility uses no provider, receipt, or persisted evidence.
   const a = grant.accounts?.[0], t = grant.categoryTransitions[0];
-  const tx = { id: 1, date: grant.startDate, category_id: t.from, is_pending: false,
+  const tx = { id: 1, date: grant.startDate, category_id: t.from, is_pending: false, status: 'reviewed',
     plaid_account_id: a?.type === 'plaid' ? a.id : null, manual_account_id: a?.type === 'manual' ? a.id : null };
   const categoryContext = { from: t.fromSignature, to: t.toSignature };
   const auth = { principal: grant.principal, clientId: grant.clientId, resource: grant.resource };
