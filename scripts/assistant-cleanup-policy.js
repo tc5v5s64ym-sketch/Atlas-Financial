@@ -83,6 +83,8 @@ function review({ grant, context, auth, tx, body, review, categoryContext, metad
   // Every changed field needs an explicit assertion from the researched source,
   // not an inferred merchant default. Provenance remains delegated, not fetched.
   check(same(review.supportedChanges, cleanupInstruction.changes), 'cleanup-source-does-not-support-instruction');
+  if (review.categoryReceipt) check(review.categoryReceipt.status === 'resolved'
+    && Array.isArray(review.categoryReceipt.issues) && review.categoryReceipt.issues.length === 0, 'cleanup-review-unresolved');
   if (body.category_id !== undefined) {
     const { cleanupInstructions, ...base } = grant;
     require('./assistant-standing-corrections').validateDelegatedReview({

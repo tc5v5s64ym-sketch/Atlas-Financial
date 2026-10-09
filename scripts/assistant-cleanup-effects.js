@@ -11,6 +11,14 @@ const Store = require('./assistant-standing-store');
 const clone = x => JSON.parse(JSON.stringify(x));
 const hash = Store.ownerDigest;
 function check(ok) { if (!ok) throw new Error('cleanup-financial-proof-unavailable'); }
+function exactCents(value) {
+  check(typeof value === 'string' && value.length <= 64 && /^-?\d+(\.\d{1,4})?$/.test(value));
+  const negative = value.startsWith('-'), [whole, fraction = ''] = value.replace(/^-/, '').split('.');
+  check(!/[1-9]/.test(fraction.slice(2)));
+  const amount = BigInt(whole) * 100n + BigInt(fraction.slice(0, 2).padEnd(2, '0'));
+  check(amount <= BigInt(Number.MAX_SAFE_INTEGER));
+  return negative ? -amount : amount;
+}
 function revision(root = path.resolve(__dirname, '..')) {
   // Pin all deployed calculation/parser dependencies, including transitive
   // modules. A code change requires a newly approved context, never a stale PASS.
@@ -71,7 +79,7 @@ function transferProof(payload, tx, metadataContext) {
     && account(debit, from) && account(credit, to) && (from.type !== to.type || from.id !== to.id)
     && debit.date === credit.date && debit.currency === credit.currency
     && /^\d+(\.\d{1,4})?$/.test(debit.amount) && /^-\d+(\.\d{1,4})?$/.test(credit.amount)
-    && Number(debit.amount) > 0 && Number(debit.amount) === -Number(credit.amount)
+    && exactCents(debit.amount) > 0n && exactCents(debit.amount) === -exactCents(credit.amount)
     && matches.every(row => row.status === 'reviewed' && row.is_pending === false
       && !row.is_split_parent && row.split_parent_id == null && !row.is_group_parent && row.group_parent_id == null));
   return { kind: 'bank-directed-counterpart', reference: directed.tfrReference,
@@ -84,6 +92,7 @@ function evaluate({ inputs, tx, body, parserRevision, metadataContext }) {
     && payload.transactionWindow.startDate <= tx.date && payload.transactionWindow.endDate >= tx.date);
   const rows = payload.transactions.filter(row => row.id === tx.id);
   check(rows.length === 1 && Store.digest(rows[0]) === Store.digest(tx));
+  exactCents(tx.amount); // The real financial path cannot establish fractional/unsafe cents.
   check(Array.isArray(payload.accounts) && new Set(payload.accounts.map(a => String(a.id))).size === payload.accounts.length);
   const accountId = tx.plaid_account_id ?? tx.manual_account_id;
   check(accountId != null && (tx.account_id == null || tx.account_id === accountId));

@@ -170,7 +170,9 @@ async function main() {
     assert.equal(E.evaluate({ inputs: bad, tx, body, parserRevision: 'synthetic' }).metadataNeutral, false, JSON.stringify(body));
   }
   for (const change of [x => x.payload.transactionWindow.complete = false, x => x.payload.pendingCoverage.complete = false,
-    x => x.accountMap.mappings = [], x => x.payload.transactions.push(clone(x.payload.transactions.find(t=>t.id===91004)))]) {
+    x => x.accountMap.mappings = [], x => x.payload.transactions.push(clone(x.payload.transactions.find(t=>t.id===91004))),
+    x => x.payload.transactions.find(t=>t.id===91004).amount='30.0001',
+    x => x.payload.transactions.find(t=>t.id===91004).amount='50000000000000000.01']) {
     const bad = household(); change(bad);
     assert.throws(() => E.evaluate({ inputs: bad, tx: bad.payload.transactions.find(t=>t.id===91004), body: {}, parserRevision: 'synthetic' }));
   }
@@ -241,9 +243,10 @@ async function main() {
   const meta = { transfer: [{ type: 'plaid', id: 1001, name: 'Synthetic Bills' }, { type: 'plaid', id: 1002, name: 'Synthetic Weekly' }] };
   for (const mutation of [x=>x.transactions.push({ ...counterpart, id: 91998 }), x=>x.transactions.find(t=>t.id===91999).amount='-49',
     x=>x.transactions.find(t=>t.id===91999).is_pending=true, x=>x.transactions.find(t=>t.id===91999).original_name='ordinary deposit',
-    x=>x.transactions.find(t=>t.id===91999).date='2026-08-17']) {
+    x=>x.transactions.find(t=>t.id===91999).date='2026-08-17', x=>x.transactions.find(t=>t.id===91999).amount='-50.0001',
+    x=>{ x.transactions.find(t=>t.id===91999).amount='-50000000000000000.02'; x.transactions.find(t=>t.id===91004).amount='50000000000000000.01'; }]) {
     const payload = clone(transfer.inputs.payload); mutation(payload);
-    assert.throws(() => E.transferProof(payload, transfer.tx, meta));
+    assert.throws(() => E.transferProof(payload, payload.transactions.find(t=>t.id===91004), meta));
   }
   const m = await fixture(), server = MCP.createServer(async () => null, { lunchMoney: m.service, auth: m.auth });
   const [ct, st] = InMemoryTransport.createLinkedPair(), client = new Client({ name: 'synthetic-routine', version: '1' });
