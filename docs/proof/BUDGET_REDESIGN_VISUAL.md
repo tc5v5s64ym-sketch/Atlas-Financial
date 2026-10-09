@@ -8,13 +8,25 @@ remain outstanding.
 
 ## Current-state verification
 
-Verdict: **PARTIALLY FIXED** before this repair. Remote head was
-`a713b1d5adfaccc82e9122158d75536293f7c3b5`. Its committed browser receipt had
-18 failures, and `plan.js` and the river adapter suppressed every historical BAD
-amount. The Household adapter already iterated every native category; no new
-category renderer was needed. Current main
-`f6ee6b84c96e5c87cb85aa9d7fdf9a9a7d6212fa` was inspected and integrated before
-repairs. New private-history files from main are unchanged by this repair.
+The latest source is the owner's instruction to pick up the
+[bounded review findings](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6090295139),
+verify current main and regenerate proof from a clean checkout. Verdict before
+this continuation: **STILL BROKEN** for release evidence. The review accepted
+the approved repairs at `db9b9778eb4cf5a1812a39d37d277296d688c14d` in its
+bounded source assessment, but found four source hashes did not reproduce from
+committed bytes and the full-suite certificate used an older main. It did not
+establish a new production defect or grant formal Systems PASS.
+
+Current main `6a9f37da6009408e90013c39070f4b6be0a8ca3c` is integrated in
+merge `3da15f0ab3f15e1d5833bf9e90e3193bdcdd2b0d`. Every file under `public/`
+remains byte-identical to the approved `db9b977` tree. This continuation changes
+only proof/test sources and generated evidence. Released main changes are
+inherited without authoring a Lunch Money, private-history or backend repair.
+
+The earlier approved repair removed the separate Income tile, restored qualified
+historical BAD and addressed the original 18 findings recorded below. Every
+Household category was already iterated; the repair strengthened the visibility,
+order and overlap proof rather than creating another category renderer.
 
 The original ZIP and extracted g-blend files are accessible. The approved
 desktop light, desktop dark and mobile light PNG bytes match the SHA256 hashes
@@ -70,6 +82,7 @@ Run the existing fixture-only runner with Playwright and Chromium:
 $env:CHROME_PATH = '<Chromium executable>'
 $env:PYTHON = '<Python with Pillow>'
 $env:APPROVED_REFERENCE_DIR = '<exact approved reference PNG folder>'
+$env:PROOF_BASE_SHA = '6a9f37da6009408e90013c39070f4b6be0a8ca3c'
 node test/browser-budget-blend-proof.js
 ```
 
@@ -80,8 +93,38 @@ future, incomplete history, qualified history, unavailable, cards, all Household
 lines, native Bills filters and nested Back, Month, resize, disclosure focus,
 contrast and reduced-motion behavior remain covered.
 
-The receipt records results, exact reference hashes, source hashes and screenshot
-hashes. `visualMatchApproved:false` remains an owner decision. Side-by-side images
+The runner must start with a clean checkout whose actual source bytes equal its
+Git blobs. Windows Git's default CRLF conversion initially failed this new
+preflight. The isolated checkout's scoped source files were materialized directly
+from Git blobs, and its index stat metadata was refreshed with no staged content
+change. The clean-start and raw-byte checks then passed. No source hash or
+screenshot expectation was manually substituted to make the proof pass.
+
+Exercised code commit: `586fd3e9334e3133c08eda01ea8e5edaa04f4799`.
+Source tree: `27abdbd4f2ebc1e368249d18e24bf7f99fff50f7`.
+The receipt binds 181 tracked sources with Git blob IDs, SHA256 and byte counts.
+Each repository asset served to the browser is checked against that binding,
+and every scoped source is checked again after execution. The published evidence
+commit may follow this code commit only with `docs/proof/` changes; scoped source
+blobs and exercised bytes must still match. The runner was committed before
+execution and was not edited afterward.
+
+The fresh run passed: **37 screenshots**, **181 bound sources**, **29 served
+repository assets**, `errors:[]` and `externalRequests:[]`. All 37 screenshot
+hashes, every bound source and every served-asset hash were independently
+verified after execution. The three approved repaired production hashes now
+match the bounded review's committed-byte hashes exactly:
+
+| Source | SHA256 of committed and exercised bytes |
+|---|---|
+| `public/plan.js` | `f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769` |
+| `public/budget-blend.js` | `9e0d9de512d30fdf2d35c488579304caac4cb06144ba75485e3c36b6c2845995` |
+| `public/budget-gface.css` | `29ccf6f753a7daf27e8b7739c39524e01b9c089244c68bcbee0276705297274d` |
+| `test/browser-budget-blend-proof.js` | `3d525e2e99af313de0202860c170c94078dfe2394abddfbf9de0e8feb2942b05` |
+
+The receipt records results, exact reference hashes, source and served-asset
+hashes, and screenshot hashes. `visualMatchApproved:false` remains an owner
+decision. Side-by-side images
 are review evidence; differences caused by native unavailable data are retained.
 The approved dark reference ends before lower tiles, so lower dark fidelity
 has no approved reference. Physical touch and signed-in production are untested.
@@ -98,12 +141,24 @@ Useful captures:
 ## Numerical and validation boundaries
 
 Forecast, canonical data and the numerical snapshot script are byte-identical to
-the integrated main. The 578-key numerical snapshot SHA256 remains
-`6c941205cb1719d0e9063a1d8fe7af33663a2be75cd2dc23494512b8724271b5`.
+integrated main `6a9f37da6009408e90013c39070f4b6be0a8ca3c`. That revision's
+own script and inputs were extracted from its exact Git blobs and executed
+independently of the candidate checkout. Both 582-key numerical snapshots have
+SHA256 `60b0328bc9174270ef23c1bba6e2d61f52cc674204ad6cd07728ad6eeabc8ac6`.
 Historical aggregate availability is an intentional presentation repair and is
 proved separately through the real renderer and browser.
 
-The PR merge card records the full-suite outcome and exact-head hosted checks.
-Windows `test-private-period-history.js` is evaluated separately against unchanged
-main when its filesystem operations fail. No out-of-scope history or Lunch Money
-repair is included. Prior Systems PASS does not certify this repair head.
+The PR merge card records the full-suite outcome and actual hosted checkout
+identity. The focused BAD terms, timeline river, historical pay-period and new
+source-binding suites pass in the fresh checkout. Prior Windows full-suite
+limitations remain historical results and are not relabeled as a new local full
+PASS. No out-of-scope history or Lunch Money repair is included. Prior Systems
+PASS does not certify this head.
+
+The keyboard walk records **18 outlined stops and 13 targets meeting its size
+and visibility predicate**; its first 18 stops are not comprehensive
+accessibility clearance. **16 visible-text contrast samples** passed; **two
+empty-text probes** are unevaluated. These limitations from the bounded review
+do not authorize changing
+the approved design. Design, Engine, Money, current-head Systems and Dale's final
+visual approval remain pending. Keep Draft.
