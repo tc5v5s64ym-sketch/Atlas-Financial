@@ -40,6 +40,57 @@
     "budget-blend-1440-light-household-all.png",
     "budget-blend-390-light-household-all.png"
   ],
+  "visualComparison": {
+    "authority": "Owner-approved Slack images",
+    "sourceThread": "C0C6M5Z1LF8/thread1791497896.975019",
+    "references": [
+      {
+        "key": "desktopLight",
+        "file": "desktop-light.png",
+        "sedimentFileId": "file_00000000abe481f5857186c409c435a2",
+        "expectedSha256": "d2a7bbcf95381b2018960219801592e26a608ab741b33b7ebab9b3827a7bf4f6",
+        "dimensions": [
+          2880,
+          2846
+        ],
+        "path": "/tmp/approved-budget-refs/desktop-light.png",
+        "available": true,
+        "sha256": "d2a7bbcf95381b2018960219801592e26a608ab741b33b7ebab9b3827a7bf4f6",
+        "matchesApproved": true
+      },
+      {
+        "key": "desktopDark",
+        "file": "desktop-dark.png",
+        "sedimentFileId": "file_000000000aa481f5af2b4e6576471c55",
+        "expectedSha256": "72170f4bb71d9cae0d7194e4eb85de19437316b12695c5be57932b51c442e39f",
+        "dimensions": [
+          2880,
+          1800
+        ],
+        "path": "/tmp/approved-budget-refs/desktop-dark.png",
+        "available": true,
+        "sha256": "72170f4bb71d9cae0d7194e4eb85de19437316b12695c5be57932b51c442e39f",
+        "matchesApproved": true
+      },
+      {
+        "key": "mobileLight",
+        "file": "mobile-light.png",
+        "sedimentFileId": "file_00000000da6c820c8903938c22abe5f5",
+        "expectedSha256": "42f01c091b4c4148fb5d75eb1a40fb5eff79fb2e8159a9947caa9c61700d02ac",
+        "dimensions": [
+          780,
+          4238
+        ],
+        "path": "/tmp/approved-budget-refs/mobile-light.png",
+        "available": true,
+        "sha256": "42f01c091b4c4148fb5d75eb1a40fb5eff79fb2e8159a9947caa9c61700d02ac",
+        "matchesApproved": true
+      }
+    ],
+    "status": "generated-requires-owner-review",
+    "darkCoverage": "Reference cuts off inside Bills/Household; lower dark details are unproven.",
+    "visualMatchApproved": false
+  },
   "contrasts": [
     {
       "name": "light period range",
@@ -124,7 +175,7 @@
       "ratio": 18.54,
       "large": false,
       "pass": true,
-      "text": "Household budget",
+      "text": "Household budget ›",
       "fg": "rgb(11, 12, 16)",
       "bg": [
         248,
@@ -228,7 +279,7 @@
       "ratio": 17.28,
       "large": false,
       "pass": true,
-      "text": "Household budget",
+      "text": "Household budget ›",
       "fg": "rgb(245, 246, 248)",
       "bg": [
         18,
@@ -307,19 +358,6 @@
     "theme": "light",
     "steps": [
       {
-        "tag": "A",
-        "label": "Atlas",
-        "text": "Atlas",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          75,
-          28
-        ],
-        "pass": true
-      },
-      {
         "tag": "BUTTON",
         "label": "Switch theme",
         "text": "",
@@ -327,85 +365,20 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          40,
-          40
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "",
-        "text": "Pay period",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          100,
+          32,
           32
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "",
-        "text": "Month",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          74,
-          32
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "Previous pay period",
-        "text": "‹",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          38,
-          38
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "",
-        "text": "Choose period ⌄",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          92,
-          30
-        ],
-        "pass": true
-      },
-      {
-        "tag": "BUTTON",
-        "label": "Next pay period",
-        "text": "›",
-        "outlineStyle": "solid",
-        "outlineWidth": "3px",
-        "outlineColor": "rgb(86, 80, 224)",
-        "box": [
-          38,
-          38
         ],
         "pass": true
       },
       {
         "tag": "DIV",
         "label": "Pay periods. Balance After Deductions.",
-        "text": "$1,632.01 $1,870.00 $205.00 $3,320.00 $290.00 $3,235.00 $350.00 $3,175.00 $470.00 $3,055.0",
+        "text": "Unavailable Unavailable Unavailable Unavailable Unavailable Unavailable $1,632.01 $1,870.0",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          1148,
+          1278,
           176
         ],
         "pass": true
@@ -444,8 +417,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          179,
-          50
+          178,
+          51
         ],
         "pass": true
       },
@@ -457,8 +430,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          179,
-          50
+          178,
+          51
         ],
         "pass": true
       },
@@ -470,7 +443,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          141,
+          142,
           50
         ],
         "pass": true
@@ -483,7 +456,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          590,
+          589,
           164
         ],
         "pass": true
@@ -496,7 +469,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          94,
+          93,
           1
         ],
         "pass": true
@@ -517,32 +490,129 @@
       {
         "tag": "BUTTON",
         "label": "Bills detail",
-        "text": "Details ›",
+        "text": "Bills",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          53,
-          22
+          71,
+          30
         ],
         "pass": true
       },
       {
         "tag": "BUTTON",
-        "label": "Paid bills: 1. Click again to show all bills.",
-        "text": "PAID 1",
+        "label": "Aug 15 Mortgage August 15 $1,400.00 Paid ›",
+        "text": "",
         "outlineStyle": "solid",
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          67,
-          34
+          28,
+          28
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Aug 18 Hydro August 18 ≈ estimated $120.00 To confirm ›",
+        "text": "",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          28,
+          28
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Aug 22 Synthetic card minimum August 22 $60.00 Due ›",
+        "text": "",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          28,
+          28
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Aug 24 Internet August 24 $85.00 Due ›",
+        "text": "",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          28,
+          28
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "Travel Net unavailable Unavailable Show Travel activity",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          702,
+          54
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "Cash Back Net unavailable Unavailable Show Cash Back activity",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          702,
+          54
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "Emerald Net unavailable Unavailable Show Emerald activity",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          702,
+          54
         ],
         "pass": true
       }
     ]
   },
   "externalRequests": [],
-  "errors": [],
+  "errors": [
+    "1440/light geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
+    "1440/light tile slack {\"goal\":-188,\"hero\":51,\"income\":23}",
+    "1440/dark geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
+    "1440/dark tile slack {\"goal\":-188,\"hero\":51,\"income\":23}",
+    "390/light geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
+    "390/light bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
+    "390/light Bills account pill is not at the right of the hero top",
+    "390/dark geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
+    "390/dark bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
+    "390/dark Bills account pill is not at the right of the hero top",
+    "320/light geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
+    "320/light bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
+    "320/light Bills account pill is not at the right of the hero top",
+    "320/dark geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
+    "320/dark bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
+    "320/dark Bills account pill is not at the right of the hero top",
+    "household count {\"prepared\":{\"printed\":\"0 of 3 known categories over plan\",\"hold\":\"$444.49 / of planned $730.00\",\"marked\":[\"$80.00 over\",\"$12.00 over\"]},\"household\":{\"extraDisclosure\":false,\"countText\":\"0 of 3 known categories over plan\",\"countOnFace\":true,\"countInHeader\":false,\"countInNativeBody\":true,\"countVisible\":true,\"countHidden\":null,\"clipped\":false,\"holdText\":\"$444.49 / of planned $730.00\",\"holdAccessible\":true,\"overs\":[{\"status\":\"$80.00 over\",\"over\":true,\"centre\":\"$80.00 over\",\"word\":\"Over plan\",\"sr\":\"$80.00 over\",\"srReachable\":true,\"onFace\":true},{\"status\":\"$12.00 over\",\"over\":true,\"centre\":\"$12.00 over\",\"word\":\"Over plan\",\"sr\":\"$12.00 over\",\"srReachable\":true,\"onFace\":true}]}}",
+    "river adapter {\"mode\":\"printed\",\"state\":\"neutral\",\"focusable\":true,\"labels\":[\"Unavailable\",\"Unavailable\",\"Unavailable\",\"Unavailable\",\"−$1,020.09\",\"-$10.00\",\"$0.00\"],\"tones\":[\"rv is-muted is-past\",\"rv is-muted is-past\",\"rv is-muted is-past\",\"rv is-muted is-sel\",\"rv is-short is-est\",\"rv is-income is-est\",\"rv is-income\"],\"months\":[\"Jun 2026\",\"Jul\",\"Aug\",\"Jan 2027\"],\"value\":\"Unavailable\",\"orbHidden\":true,\"beamHidden\":true,\"chooserVisible\":true,\"rows\":7}"
+  ],
   "figuresCopiedFromPrototype": false
 }
