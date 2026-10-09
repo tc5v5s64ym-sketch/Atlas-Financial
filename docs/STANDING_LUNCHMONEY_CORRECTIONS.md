@@ -170,7 +170,10 @@ the new suite reachable by the existing npm test route. The new suite covers
 default-off, missing adapters/scopes, principal/client/budget/evidence binding,
 grant expiry/revocation/limits, note preservation/effects, forbidden fields,
 staleness/category invalidation, mode separation, single use, concurrent applies,
-durable-before-write audit order and uncertainty/audit-failure blocks.
+durable-before-write audit order and uncertainty/audit-failure blocks. Official
+MCP SDK in-memory sessions prove default tool invisibility, distinct permission
+metadata, scope refusal before dispatch, unchanged interactive confirmation and
+a complete synthetic standing prepare/apply/audit exchange.
 
 Required validation: node test/test-assistant-standing-corrections.js,
 node test/test-assistant-lunchmoney.js, npm test, incumbent privacy guard and

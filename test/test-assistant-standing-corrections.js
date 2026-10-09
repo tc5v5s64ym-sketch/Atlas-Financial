@@ -4,6 +4,17 @@ const crypto = require('node:crypto');
 const LM = require('../scripts/assistant-lunchmoney');
 const Standing = require('../scripts/assistant-standing-corrections');
 const OAuth = require('../scripts/assistant-oauth');
+const MCP = require('../scripts/assistant-mcp');
+const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
+const { InMemoryTransport } = require('@modelcontextprotocol/sdk/inMemory.js');
+async function withMcp(lunchMoney, auth, work) {
+  const server = MCP.createServer(async () => null, { lunchMoney, auth });
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'synthetic-standing-contract', version: '1' });
+  await server.connect(serverSide); await client.connect(clientSide);
+  try { return await work(client); }
+  finally { await client.close(); await server.close(); }
+}
 const hash = x => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const opaque = (type, n) => type + '-' + n.toString(16).padStart(24, '0');
 function fixture(enabled = true) {
@@ -237,5 +248,37 @@ module.exports = (async () => {
   OAuth.createWriteStepUp(opted)({ body: call('apply_standing_lunchmoney_correction'),
     auth: { scopes: [LM.READ_SCOPE, LM.WRITE_SCOPE] } }, res, () => { next++; });
   assert.equal(status, 403); assert.match(challenge, /correct-with-grant/); assert.equal(next, 0);
+  await withMcp(off.service, off.auth, async client => {
+    const listed = await client.listTools();
+    assert.equal(listed.tools.length, 5);
+    assert.equal(listed.tools.some(x => /standing/.test(x.name)), false, 'default tool contract is unchanged');
+    const interactiveApply = listed.tools.find(x => x.name === 'apply_lunchmoney_edit');
+    assert.equal(interactiveApply.inputSchema.required.includes('confirmed'), true);
+  });
+  let invoked = 0;
+  await withMcp({ standingEnabled: true, invoke: async () => { invoked++; throw new Error('must not dispatch'); } },
+    { ...f.auth, scopes: [LM.READ_SCOPE, LM.WRITE_SCOPE] }, async client => {
+      const denied = await client.callTool({ name: 'apply_standing_lunchmoney_correction',
+        arguments: { previewId: 'edit-' + 'a'.repeat(48) } });
+      assert.equal(denied.isError, true);
+      assert.equal(denied.structuredContent.reason, 'standing-correction-scopes-required');
+    });
+  assert.equal(invoked, 0, 'MCP scope gate refuses before service/provider dispatch');
+  const wired = fixture(); const wa = await wired.proposal();
+  await withMcp(wired.service, wired.auth, async client => {
+    const listed = await client.listTools(); assert.equal(listed.tools.length, 7);
+    const descriptor = listed.tools.find(x => x.name === 'apply_standing_lunchmoney_correction');
+    assert.deepEqual(descriptor._meta.securitySchemes[0].scopes,
+      [MCP.REQUIRED_SCOPE, LM.READ_SCOPE, LM.WRITE_SCOPE, Standing.SCOPE]);
+    assert.equal(descriptor.annotations.readOnlyHint, false);
+    assert.equal(descriptor.annotations.idempotentHint, false);
+    assert.equal(Object.hasOwn(descriptor.inputSchema.properties, 'confirmed'), false);
+    const p = await client.callTool({ name: 'prepare_standing_lunchmoney_correction', arguments: wa });
+    assert.equal(p.structuredContent.status, 'preview'); assert.equal(wired.state.writes.length, 0);
+    const r = await client.callTool({ name: 'apply_standing_lunchmoney_correction',
+      arguments: { previewId: p.structuredContent.previewId } });
+    assert.equal(r.structuredContent.status, 'applied'); assert.match(r.structuredContent.auditReceipt.receiptRef, /^receipt-/);
+    assert.equal(wired.state.writes.length, 1);
+  });
   console.log('Standing corrections: default off, exact scope/grant/evidence binding, revocation/limits, notes effects, audit, stale/replay/races and unchanged interactive contract PASS');
 })().catch(error => { console.error(error); process.exitCode = 1; });
