@@ -715,6 +715,20 @@
                 "note": "Owner 2026-09-18: Square One policy #5157890, annual home insurance, due/paid 10 February. Last verified payment $3,131.76 on 2026-02-10 (Square One emails: renewal + payment processed on a credit card). Next occurrence 2027-02-10. Cadence is yearly, not monthly. Card-paid reserved gravity — jointCash false, not a BILLS ACCOUNT / chequing withdrawal, not a Household Budget plannedMonthly, and not an insurance-category smear. Specific paying card is still unknown (B69). The next cash event is estimated — last verified amount is the planning figure; the premium rose ~17% the prior year. Owner-confirmed 2026-08-27: this is approximately $3,000/year, not $6,000/year ($6,000 is property tax). Replaces the undated plan.commitments home-insurance sinking-fund row so February Forecast publishes one dated obligation. Insured property is the household home; the street address is not restated here."
             },
             {
+                "id": "rehearsal-space",
+                "label": "Band rehearsal space (estimated timing)",
+                "frequency": "monthly",
+                "day": 1,
+                "firstDue": "2026-11-01",
+                "amount": 80,
+                "confidence": "estimated",
+                "dateConfidence": "estimated",
+                "budgetCategory": null,
+                "householdObligation": true,
+                "payingAccount": "chequing-a",
+                "note": "Owner 2026-10-09: new $80 monthly band rehearsal-space bill. October is already paid. The contractual due day is unknown; day 1 and firstDue 2026-11-01 are estimated planning timing only, following the existing estimated monthly bill precedent. firstDue excludes a second October hold. Future dates remain estimates until the owner supplies timing evidence. No schedule-trust or generic e-transfer settlement identity is added; historical data is unchanged."
+            },
+            {
                 "id": "travelvisa-annual-fee-2027",
                 "label": "Travel Visa annual fee",
                 "frequency": "yearly",

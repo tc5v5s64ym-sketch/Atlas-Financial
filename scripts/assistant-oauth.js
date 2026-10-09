@@ -15,7 +15,7 @@ const {
   requireBearerAuth,
 } = require('@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js');
 const AssistantMcp = require('./assistant-mcp.js');
-const { READ_SCOPE, WRITE_SCOPE } = require('./assistant-lunchmoney.js');
+const { READ_SCOPE, WRITE_SCOPE, STANDING_SCOPE } = require('./assistant-lunchmoney.js');
 
 const METADATA_PATH = '/.well-known/oauth-protected-resource';
 // WWW-Authenticate challenge advertises packet + ledger-read so MCP clients
@@ -34,6 +34,8 @@ const WRITE_TOOL_NAMES = Object.freeze([
   'prepare_lunchmoney_edit',
   'apply_lunchmoney_edit',
 ]);
+const STANDING_TOOL_NAMES = Object.freeze(['prepare_standing_lunchmoney_correction', 'apply_standing_lunchmoney_correction',
+  'submit_lunchmoney_category_evidence', 'get_lunchmoney_correction_audit']);
 const WRITE_STEP_UP_SCOPES = Object.freeze([
   AssistantMcp.REQUIRED_SCOPE,
   READ_SCOPE,
@@ -106,7 +108,8 @@ function protectedResourceMetadata(config) {
   return {
     resource: config.resource.href,
     authorization_servers: [config.issuer],
-    scopes_supported: [config.requiredScope, READ_SCOPE, WRITE_SCOPE],
+    scopes_supported: [config.requiredScope, READ_SCOPE, WRITE_SCOPE,
+      ...(config.standingCorrectionsEnabled === true ? [STANDING_SCOPE] : [])],
     bearer_methods_supported: ['header'],
     resource_name: 'Atlas Financial assistant with confirmed Lunch Money edits',
   };
@@ -208,7 +211,7 @@ function createBearerMiddleware(config, deps) {
 // step-up. 'write' when any tools/call names a write tool; 'invalid' when a
 // tools/call cannot be classified (params not an object, or name not a
 // string); otherwise 'other'. Never throws on JSON-shaped input.
-function classifyToolCalls(body) {
+function classifyToolCalls(body, standingEnabled = false) {
   const messages = Array.isArray(body) ? body : [body];
   let verdict = 'other';
   for (const message of messages) {
@@ -219,13 +222,14 @@ function classifyToolCalls(body) {
         || typeof params.name !== 'string') {
       return 'invalid';
     }
-    if (WRITE_TOOL_NAMES.includes(params.name)) verdict = 'write';
+    if (standingEnabled && STANDING_TOOL_NAMES.includes(params.name)) verdict = 'standing';
+    if (WRITE_TOOL_NAMES.includes(params.name) && verdict !== 'standing') verdict = 'write';
   }
   return verdict;
 }
 
-function writeStepUpChallenge(config) {
-  return `Bearer error="insufficient_scope", scope="${WRITE_STEP_UP_SCOPES.join(' ')}", `
+function writeStepUpChallenge(config, standing = false) {
+  return `Bearer error="insufficient_scope", scope="${[...WRITE_STEP_UP_SCOPES, ...(standing ? [STANDING_SCOPE] : [])].join(' ')}", `
     + `resource_metadata="${config.metadataUrl}"`;
 }
 
@@ -236,7 +240,7 @@ function createWriteStepUp(config) {
   return function writeScopeStepUp(req, res, next) {
     let verdict;
     try {
-      verdict = classifyToolCalls(req.body);
+      verdict = classifyToolCalls(req.body, config.standingCorrectionsEnabled === true);
     } catch {
       verdict = 'invalid';
     }
@@ -248,13 +252,15 @@ function createWriteStepUp(config) {
       });
     }
     const scopes = req.auth && Array.isArray(req.auth.scopes) ? req.auth.scopes : [];
-    if (verdict === 'write' && !scopes.includes(WRITE_SCOPE)) {
+    if (verdict === 'write' && !scopes.includes(WRITE_SCOPE)
+        || verdict === 'standing' && ![READ_SCOPE, WRITE_SCOPE, STANDING_SCOPE].every(s => scopes.includes(s))) {
       // setHeader, not res.set: createBearerMiddleware wraps res.set to pin
       // challenges to CHALLENGE_SCOPES, which would strip write from this one.
-      res.setHeader('WWW-Authenticate', challenge);
+      res.setHeader('WWW-Authenticate', verdict === 'standing' ? writeStepUpChallenge(config, true) : challenge);
       return res.status(403).json({
         error: 'insufficient_scope',
-        error_description: 'Lunch Money edits require atlas.transactions.write',
+        error_description: verdict === 'standing' ? 'Standing corrections require a separate permission and bounded owner grant'
+          : 'Lunch Money edits require atlas.transactions.write',
       });
     }
     return next();
@@ -265,6 +271,7 @@ module.exports = {
   METADATA_PATH,
   CHALLENGE_SCOPES,
   WRITE_TOOL_NAMES,
+  STANDING_TOOL_NAMES,
   WRITE_STEP_UP_SCOPES,
   ASYMMETRIC_JWT_ALGORITHMS,
   safeUrl,

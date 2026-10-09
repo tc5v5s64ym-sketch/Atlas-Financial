@@ -33,7 +33,7 @@ const Assistant = require('./scripts/assistant-packet.js');
 const RunningBuild = require('./scripts/running-build.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
 const LunchMoneyAssistant = require('./scripts/assistant-lunchmoney.js');
-const lunchMoneyAssistant = LunchMoneyAssistant.createService();
+const StandingRuntime = require('./scripts/assistant-standing-runtime.js');
 const AssistantOAuth = require('./scripts/assistant-oauth.js');
 const TalkGemini = require('./scripts/talk-gemini.js');
 const TalkPresentation = require('./scripts/talk-presentation.js');
@@ -49,6 +49,10 @@ const TALK_GEMINI_KEY = process.env.ATLAS_TALK_GEMINI_API_KEY || '';
 const PORT = process.env.PORT || 3000;
 const SESSION_HOURS = 24 * 14;
 const MCP_OAUTH = AssistantOAuth.readConfig(process.env);
+const STANDING_CORRECTIONS = StandingRuntime.fromEnv({ resource: MCP_OAUTH.resource?.href });
+const lunchMoneyAssistant = LunchMoneyAssistant.createService({ standingCorrections: STANDING_CORRECTIONS });
+// Tools, metadata and HTTP step-up share one validated default-off capability.
+MCP_OAUTH.standingCorrectionsEnabled = lunchMoneyAssistant.standingEnabled === true;
 const MCP_BEARER_AUTH = MCP_OAUTH.configured
   ? AssistantOAuth.createBearerMiddleware(MCP_OAUTH)
   : null;

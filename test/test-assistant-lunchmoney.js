@@ -133,4 +133,4 @@ const { createService, READ_SCOPE, WRITE_SCOPE, TTL, cents } = require('../scrip
   assert.equal((await service.invoke('query', { ...args, categoryRef: leaf.categoryRef }, auth)).matchedCount, 1);
   assert.equal(cents('-10.25'), -1025); assert.throws(() => cents('1.001'));
   console.log('Lunch Money: lookup, namespaces, scope, subject, confirmation, stale/expired/replay guards, exact edits, split conservation, ambiguous writes PASS');
-})().catch(e => { console.error(e); process.exitCode = 1; });
+})().then(() => require('./test-assistant-standing-corrections')).catch(e => { console.error(e); process.exitCode = 1; });
