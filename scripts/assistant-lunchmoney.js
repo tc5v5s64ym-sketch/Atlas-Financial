@@ -423,7 +423,7 @@ function createService(options = {}) {
       input = { transactionRef: input.transactionRef, changes: Cleanup.resolve(recipe, currentCatalog) };
     }
     if ((recipe || ['payee', 'notesAppend', 'tagRefsAdd', 'transferLabel'].some(key => input.changes?.[key] !== undefined))
-        && tx.status !== 'reviewed') throw new Error('cleanup-reviewed-transaction-required');
+        && (tx.status !== 'reviewed' || tx.is_pending !== false)) throw new Error('cleanup-reviewed-posted-transaction-required');
     let body;
     if (input.changes) {
       body = {};
@@ -461,6 +461,7 @@ function createService(options = {}) {
       const sign = /^-/.test(tx.amount) ? -1 : 1;
       const side = sign === 1 ? from : to;
       if (from.type === to.type && from.id === to.id || !account
+          || tx.plaid_account_id != null && tx.manual_account_id != null
           || account[0] !== side.type || account[1] !== side.id || !/[1-9]/.test(tx.amount))
         throw new Error('transfer-direction-unresolved');
       body.payee = 'Transfer: ' + from.name + ' → ' + to.name;

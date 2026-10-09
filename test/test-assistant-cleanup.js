@@ -113,6 +113,7 @@ async function withMcp(f, work) {
     await x.apply(p); assert.equal(x.state.writes.length, 1);
   }
   for (const setup of [x => { x.state.tx.original_name = null; }, x => { x.state.tx.is_pending = true; },
+    x => { delete x.state.tx.is_pending; },
     x => { x.state.tx.status = 'unreviewed'; }, x => { x.state.tx.split_parent_id = 123; },
     x => { x.state.tx.group_parent_id = 123; }]) {
     const x = fixture(); setup(x);
@@ -157,6 +158,9 @@ async function withMcp(f, work) {
   assert.equal((await transfer.service.invoke('prepare', { transactionRef: transferFound.transactionRef,
     changes: { transferLabel: label } }, transfer.auth)).status, 'preview');
   transfer.state.tx.amount = '0.0000';
+  assert.equal((await transfer.service.invoke('prepare', { transactionRef: transferFound.transactionRef,
+    changes: { transferLabel: label } }, transfer.auth)).status, 'unavailable');
+  transfer.state.tx.amount = '19.9900'; transfer.state.tx.plaid_account_id = 4; transfer.state.tx.manual_account_id = 4;
   assert.equal((await transfer.service.invoke('prepare', { transactionRef: transferFound.transactionRef,
     changes: { transferLabel: label } }, transfer.auth)).status, 'unavailable');
 
