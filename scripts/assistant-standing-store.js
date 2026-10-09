@@ -95,7 +95,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     return { ...clone(p.grant), attempts, revokedAt: revoked ? revoked.payload.at : null,
       suspended: Object.values(state.attempts).some(a => a.grantRef === ref && !a.acknowledged) };
   }
-  function ownerUpdate(envelope) {
+  async function ownerUpdate(envelope) {
     const p = verified(envelope, publicKey);
     return mutate(state => {
       if (p.kind === 'grant') {
@@ -180,6 +180,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
       check(saved && !saved.acknowledged && state.targets[saved.target] === attempt.reservation.attemptRef
         && saved.beforeFingerprint === attempt.beforeFingerprint, 'reservation-lease-lost');
       eligibility(state, { ...saved, categoryContext: attempt.categoryContext, reservation: attempt.reservation }, true);
+      saved.providerDispatchArmed = true; // durable before the executor may send
       return { valid: true, attemptRef: attempt.reservation.attemptRef };
     });
   }
@@ -228,6 +229,8 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     const position = observed === a.beforeFingerprint ? 'before'
       : row.category_id === a.expectedCategory && protectedFingerprint(row) === a.untargetedFingerprint ? 'after' : null;
     check(position, 'provider-state-unresolved');
+    check(a.providerDispatchArmed !== true || a.terminal?.providerRequestReturned === true
+      || a.terminal?.providerWriteMayHaveOccurred === false, 'provider-attempt-closure-unresolved');
     return mutate(live => {
       const current = live.attempts[p.attemptRef];
       check(current && !current.acknowledged && current.beforeFingerprint === a.beforeFingerprint, 'reconciliation-raced');
@@ -264,13 +267,15 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     const position = digest(row) === a.beforeFingerprint ? 'before'
       : row.category_id === a.expectedCategory && protectedFingerprint(row) === a.untargetedFingerprint ? 'after' : null;
     check(position, 'provider-state-unresolved');
+    check(a.providerDispatchArmed !== true || a.terminal?.providerRequestReturned === true
+      || a.terminal?.providerWriteMayHaveOccurred === false, 'provider-attempt-closure-unresolved');
     return { kind: 'reconcile', grantRef: a.grantRef, attemptRef, revoke: true,
       observedFingerprint: digest(row), at: now() };
   }
   function planLockRecovery() {
     return { kind: 'recover-lock', lockDigest: digest(fs.readFileSync(lockPath, 'utf8')), at: now() };
   }
-  read(); // Existing owner-initialized store required; never mkdir on startup.
+  contextIn(read()); // Existing owner-initialized store required; never mkdir on startup.
   return { durable: true, context: async () => contextIn(read()),
     grant: async ref => grantIn(read(), ref), evidence: async ref => clone(read().evidence[ref] || null),
     admit, reserve, verifyReservation, finish, acknowledgeVerified, suspend, audit,

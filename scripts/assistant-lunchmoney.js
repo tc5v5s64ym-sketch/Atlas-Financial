@@ -403,6 +403,7 @@ function createService(options = {}) {
     preview.used = true;
     locks.add(preview.targetId);
     let writeAttempted = false;
+    let providerRequestReturned = false;
     let executionCredentialDigest = null;
     const executionGate = async candidate => { if (candidate.credentialDigest !== executionCredentialDigest) throw new Error('provider-credential-changed'); };
     let reservation = null;
@@ -418,7 +419,8 @@ function createService(options = {}) {
           ...preview.authorization, attemptRef: reservation.attemptRef, reason: result.reason });
         const record = { reservation,
           outcome: result.status, reason: result.reason || null, verifiedByReadback: result.verifiedByReadback === true,
-          finishedAt: now(), after: afterRead };
+          finishedAt: now(), after: afterRead,
+          providerWriteMayHaveOccurred: writeAttempted, providerRequestReturned };
         const recordFingerprint = fingerprint(record);
         // finish persists the outcome but MUST retain durable quarantine. A
         // committed outcome with a lost/malformed reply is still quarantined.
@@ -518,6 +520,7 @@ function createService(options = {}) {
       if (!standingMode) writeAttempted = true;
       await request(preview.splits ? 'POST' : 'PUT', preview.splits
         ? '/transactions/split/' + preview.targetId : '/transactions/' + preview.targetId + '?update_balance=false', preview.body, beforeSend);
+      providerRequestReturned = true;
       const after = await request('GET', '/transactions/' + preview.targetId, undefined, standingMode ? executionGate : undefined);
       if (standingMode) afterRead = project(after, auth.principal, auditCatalog.categories, auditCatalog.accounts);
       let verified = after.id === preview.targetId;

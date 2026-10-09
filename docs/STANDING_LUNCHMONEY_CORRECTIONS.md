@@ -60,8 +60,8 @@ nothing when imported:
 5. list reports private grant/attempt status.
 6. plan-reconcile --attempt-ref <opaque-attempt> performs one GET using the
    existing credential, produces a bound observation/digest; after owner
-   signing, reconcile checks the same read-only observation, releases a
-   conclusively observed hold and permanently revokes the affected grant.
+   signing, reconcile checks the same read-only observation and known request closure,
+   releases a conclusively observed hold and permanently revokes the affected grant.
 7. plan-lock-recovery / recover-lock requires an owner-signed exact lock digest
    and verifies the recorded process is dead. It never releases attempt holds.
 
@@ -132,7 +132,10 @@ readback plus a validated attributed receipt permits acknowledgeVerified.
 A finish commit with a lost/malformed reply stays held even if suspension fails
 and the service restarts. An ambiguous acknowledgment after known audit/readback
 leaves the edit honestly applied and reports uncertain continuation, never a
-provider retry. Owner reconciliation performs no write and cannot revive grants.
+provider retry. Owner reconciliation performs no write and cannot revive grants. A durably
+armed provider request with unknown completion remains quarantined even if a
+GET still shows the old category; that read does not prove no late write can
+arrive. Known pre-dispatch failure or a returned provider request is required.
 
 get_lunchmoney_correction_audit returns private before/proposed/readback,
 pending/terminal outcomes, receipt/actor and honestly labeled delegated review

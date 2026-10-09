@@ -91,14 +91,14 @@ function fixture(enabled = true, shared = { targets: new Map() }, grantNumber = 
       // Commit terminal data WITHOUT releasing the durable pending hold.
       if (outcome.outcome === 'write-unverified') grant.suspended = true;
       Object.assign(state.receipts.at(-1), structuredClone(outcome));
+      state.terminal = structuredClone(outcome);
       if (state.commitThenThrow) throw new Error('synthetic-committed-reply-lost');
       return { receiptRef: opaque('receipt', grant.attempts), actorRef: state.missingActor ? null : opaque('actor', 1),
         durable: true, attemptRef: outcome.reservation.attemptRef, recordFingerprint: hash(outcome) };
     },
     acknowledgeVerified: async ack => {
       const receipt = state.receipts.at(-1);
-      const terminal = { reservation: receipt.reservation, outcome: receipt.outcome, reason: receipt.reason,
-        verifiedByReadback: receipt.verifiedByReadback, finishedAt: receipt.finishedAt, after: receipt.after };
+      const terminal = state.terminal;
       if (grant.suspended || receipt.outcome !== 'applied' || receipt.verifiedByReadback !== true
           || ack.reservation.attemptRef !== receipt.reservation.attemptRef
           || ack.recordFingerprint !== hash(terminal)) throw new Error('synthetic-ack-rejected');
