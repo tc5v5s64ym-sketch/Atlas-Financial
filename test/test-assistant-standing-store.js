@@ -108,6 +108,10 @@ module.exports = (async () => {
       await assert.rejects(f.adapter.admit({ grantRef: g.grantRef, auth: f.auth, tx: f.tx,
         body: { category_id: 8 }, review, categoryContext: f.categoryContext }));
     }
+    await assert.rejects(f.adapter.admit({ grantRef: g.grantRef, auth: f.auth,
+      tx: { ...f.tx, status: 'unreviewed' }, body: { category_id: 8 }, review: f.review,
+      categoryContext: f.categoryContext }), /reviewed-transaction-required/);
+    assert.equal(f.adapter.list().attempts.length, 0, 'status guard refuses before any reservation');
     const a = await f.attempt(g); const evidence = await f.adapter.evidence(a.evidenceRef);
     assert.equal(evidence.attestedBy, 'delegated-client-review');
     assert.equal(evidence.provenance.independentlyVerified, false);

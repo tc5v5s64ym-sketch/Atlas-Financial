@@ -97,6 +97,9 @@ function validate({ grant, evidence, auth, context, tx, body, fingerprint, now, 
       || !body.notes.slice((tx.notes || '').length).trim())) deny('standing-notes-not-additive');
   const delegated = grant.evidencePolicy === DELEGATED_POLICY;
   if (delegated) {
+    // Provider settings may auto-mark edited rows reviewed. This initial
+    // category-only policy cannot authorize an incidental status change.
+    if (tx.status !== 'reviewed') deny('delegated-reviewed-transaction-required');
     const transition = grant.categoryTransitions.find(t => t.from === (tx.category_id ?? null) && t.to === body.category_id);
     if (!instant(context.providerProof?.expiresAt) || context.providerProof.expiresAt <= now)
       deny('provider-proof-expired-or-invalid');

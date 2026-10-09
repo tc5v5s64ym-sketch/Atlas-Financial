@@ -85,7 +85,10 @@ the client's supplied excerpt; it does not prove Gmail provenance or truthful
 extraction. The client assertions and server consistency checks are distinct
 from an independently verified receipt/classification.
 
-This conservative initial policy requires a complete positive-expense receipt:
+This conservative initial policy admits already-reviewed transactions only;
+provider settings may otherwise auto-mark category edits reviewed. That guard
+prevents this policy from authorizing an incidental review-status change. It
+requires a complete positive-expense receipt:
 exact payee/date/currency/total matching, positive whole-cent item amounts summing
 to the total, all items assigned to the same allowed destination, no issues and
 a resolved review disposition. Mixed, partial, uncertain, conflicting, refund,
@@ -175,6 +178,10 @@ remain unresolved.
 ## Authoritative provider contract and remaining blocker
 
 Checked 2026-10-09:
+- https://lunchmoney.dev/v2/openapi (official v2.11.1) documents category-only
+  PUT, update_balance, POST-only apply_rules, auto_create_category_rules and
+  auto_review_transaction_on_update settings. No PUT rule-suppression control
+  or explicit API exemption is documented.
 - https://lunchmoney.dev/v2/overview documents PUT validation and field behavior.
 - https://github.com/lunch-money/lunch-money-js-v2/blob/main/src/types.generated.ts
   (inspected blob 66d71737f0dce66f50bbe0de680fd5b9a77ee9df, SDK 2.11.1) documents
