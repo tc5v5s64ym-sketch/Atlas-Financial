@@ -1,5 +1,14 @@
 # Bounded category-only standing Lunch Money corrections — inactive candidate
 
+PR #559's v1 category policy remains the compatibility baseline below. Dale's
+2026-10-09 continuation on #560 adds a separately signed v2 routine-cleanup
+policy, real observer/Forecast effects and history rows; see
+[the current connection contract](LUNCHMONEY_CLEANUP_CONNECTION.md). No existing
+v1 grant gains metadata permission. All production access/activation and
+provider-contract holds remain. Default discovery now includes the inert
+instruction-data tool; activated v1 discovery is ten tools, and an additionally
+approved v2 cleanup capability adds one evidence-admission tool.
+
 Dale's 2026-10-09 request authorizes this implementation and synthetic proof.
 It does not install private storage or keys, provision household grants, expand
 OAuth consent, activate, deploy, merge or authorize a real provider write.

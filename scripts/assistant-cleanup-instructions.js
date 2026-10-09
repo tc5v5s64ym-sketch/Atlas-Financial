@@ -1,5 +1,6 @@
 'use strict';
-// Reusable preview data, never standing authorization or a provider rule.
+// Reusable instruction data. Only an externally owner-signed v2 grant can
+// authorize its automatic use; creating data never grants permission.
 const z = require('zod/v4');
 const text = z.string().min(1).max(200).refine(v => v.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(v));
 const note = z.string().min(1).max(500).refine(v => v.trim().length > 0
@@ -16,7 +17,7 @@ const createSchema = z.object({ name: text, changes: recipeChanges }).strict();
 function create(input) {
   return { status: 'instruction', instruction: { schema: 'atlas-lunchmoney-cleanup-instruction/v1', ...input },
     providerWrite: false, writesAtlasState: false, automaticEdits: false,
-    usage: 'Keep this instruction as reusable data. Pass it to prepare_lunchmoney_edit with one freshly looked-up transactionRef. Exact current catalog names must be unique. Show the fresh before/proposed preview and confirm it individually. This instruction creates no rule, grant, schedule or automatic access.' };
+    usage: 'Keep this instruction as reusable data. Exact current catalog names must be unique. Under a separately owner-signed version-2 routine grant, submit_lunchmoney_cleanup_evidence then prepare/apply_standing_lunchmoney_correction and report afterward without individual confirmation. Otherwise use prepare_lunchmoney_edit and confirm that preview. Creating instruction data creates no rule, grant, schedule or automatic access.' };
 }
 function unique(rows, matches) {
   const found = rows.filter(matches);

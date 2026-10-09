@@ -33,5 +33,7 @@ jobs:
         run: node test/test-assistant-lunchmoney.js
       - name: Prove preserving metadata cleanup and reusable previews
         run: node test/test-assistant-cleanup.js
+      - name: Prove automatic routine cleanup, real financial effects and durable private history
+        run: node test/test-assistant-routine-cleanup.js
       - name: Prove incumbent HTTP and JWT boundary
         run: node test/test-assistant-interface.js

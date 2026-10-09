@@ -1,159 +1,185 @@
-# Lunch Money cleanup connection — inactive draft
+# Lunch Money routine cleanup connection — inactive draft
 
-Owner instruction 2026-10-09: finish the editing connection from PR #559 on a
-separate branch, preserve its safeguards and original descriptions/notes, add
-names/categories/notes/tags/clear transfer labels/reusable cleanup instructions,
-run tests and open one draft. No amounts, money movement, deletion, #548 work or
-real automatic edits before final access approval.
+Dale's 2026-10-09 instructions are the source of PR #560: preserve #559's
+safeguards and finish supported automatic routine cleanup without asking for
+individual transaction approval. Names, existing categories, additive notes/tags
+and evidence-backed transfer labels are in scope. Uncertainty remains unresolved.
+No amounts, splits, deletions or money movement are allowed on the routine path.
 
-The branch starts at #559 head a6c2b390849cdf215eaebf784c55f12ea422384c,
-which incorporates current main 509f0910aabfe0eadb93a8db7476b4cc70a65764.
-Main's interactive schema accepts categories/notes/splits but has no display-name,
-tag, transfer-label or reusable instruction inputs. #559 adds its default-off
-bounded category authority. Current-state verdict: PARTIALLY FIXED; metadata
-cleanup requires code. The owner specifically requested this dependency. The new
-draft includes #559's foundation and waits for its disposition before merge;
-after #559 merges, refresh this branch from main and review the resulting exact
-head. No change is made to either existing pull request or #548's held UI.
+Current-state verdict: PARTIALLY FIXED. Fresh main
+6a9f37da6009408e90013c39070f4b6be0a8ca3c contains #559's category-only standing
+authority. #560's previous head 04f54fe8a08092168a1fe83798bcea79591e2d49 supplies
+metadata previews but requires individual confirmation. This owner-directed
+continuation stays on the same branch and PR. #548 and household UI are untouched.
 
-## One outcome and its consumer
+## One outcome and authority
 
-The existing MCP prepare_lunchmoney_edit → apply_lunchmoney_edit path can preview
-and verify one metadata cleanup while retaining the bank's original description
-and all prior notes/tags. The live consumer is the already-installed MCP editing
-interface; no UI, new financial planner, mailbox access, provider rule, schedule
-or ledger is added. Forecast continues to recompute only from observed provider
-evidence. This draft does not deploy or configure access.
+One outcome: the incumbent signed standing authority can execute a supported,
+financially safe routine instruction and durably record its before/after for
+an afterward report and private history sheet. Lunch Money owns transactions;
+Forecast owns classification, calculations and planning. No competing ledger,
+classifier, mailbox feed, scheduler or rule service is added.
 
-Names change payee only. original_name and all other unrequested transaction
-fields are verified unchanged by a separate provider GET. A name edit is refused
-when the original bank description is unavailable. Read rows show
-originalBankDescription, its availability, and opaque tag references; missing
-tags are unknown, not an empty set. Tag names become available after a catalog
-lookup with includeTags=true. Raw provider IDs remain server-side.
+A new atlas-standing-correction-grant/v2 binds the exact reusable JSON
+cleanupInstructions and atlas-delegated-routine-cleanup/v1 policy. Its subject,
+verified client/resource, budget/token, context/parser revision, account
+namespace/IDs, date window, pinned category transitions, expiry, attempts,
+revocation, target leases and audit/quarantine come from the incumbent authority.
+Existing signed v1 category grants gain no metadata permission.
 
-Notes use notesAppend, which retains the exact original string, including
-whitespace, and appends a newline plus the supplied addition. The legacy notes
-input also appends; it cannot replace or clear prior text. The preview shows the
-complete resulting notes. Notes beyond the existing size limit are refused.
-An exact already-present suffix supplied through notesAppend is retained without
-adding a duplicate. No note normalization or rewrite is performed.
+The externally owner-signed context must explicitly set cleanupEnabled=true,
+pin the deployed parser revision and financialContextDigest, and include a
+provider API proof covering category_id/payee/notes/additional_tag_ids with
+updateBalanceFalse=true. The signing key stays outside the runtime. MCP can
+neither grant nor widen authority. The default runtime reads no standing store,
+creates no key/grant and exposes no automatic tools.
 
-Tags use tagRefsAdd and the provider's additional_tag_ids command, never a
-replacement tag_ids write. Existing tags must be known and well formed. Each
-addition must name an existing active tag. Before dispatch the server rechecks
-the tag's identity, name and active status. Readback must contain exactly the
-union of original and requested tags, independent of order. Missing tags,
-unexpected tags or changed untouched fields make the result write-unverified.
+## Routine use after separately approved activation
 
-New metadata and recipe previews require already-reviewed, posted, ungrouped,
-unsplit transactions. This retains #559's protection against an incidental
-review-status change from Lunch Money's update settings. Existing category
-selection remains a provider-ledger change, with current category validation;
-it does not independently establish Atlas budget classification or household
-policy. The incumbent conserving split interface is preserved; recipes cannot
-split transactions or contain amounts.
+1. Read fresh transactions/catalog, including tags when needed. Research the
+   exact selected transaction through already-authorized sources.
+2. Call submit_lunchmoney_cleanup_evidence with the signed cleanupInstruction,
+   exact before facts, source references/digests, supportedChanges, rationale
+   and no unresolved issues. Category changes additionally need the incumbent
+   complete, positive, single-category receipt proof.
+3. Call prepare_standing_lunchmoney_correction with that same instruction and
+   issued evidenceRef. Preparation checks authority, fresh catalogs and the real
+   financial-effect proof; it does not write.
+4. Call apply_standing_lunchmoney_correction with previewId. No confirmed=true
+   or individual approval is required. The server revalidates the grant/evidence,
+   durably reserves one attempt, rechecks the target and effects under the shared
+   lease, then makes one exact PUT with update_balance=false.
+5. Report the verified change and durable audit receipt afterward. Read
+   get_lunchmoney_correction_audit for history rows, including uncertain attempts.
 
-## Clear transfer labels
+Client evidence is labeled delegated-client-review, independentlyVerified=false.
+The server checks consistency and bounds; it does not fetch or authenticate the
+source excerpt. A digest or model confidence does not turn an assertion into
+owner authority. Uncertain, partial, mixed, conflicting, pending, unreviewed,
+split/grouped, out-of-bound or unsupported work is refused without a provider
+write. A reusable recipe alone supplies no permission. The existing interactive
+prepare/apply path still requires its exact individual confirmation.
 
-transferLabel accepts fromAccountRef and toAccountRef from a fresh catalog.
-The server resolves the exact account namespaces, requires distinct accounts,
-and checks the transaction account against the supplied direction: a provider
-debit must be on the from side and a provider credit on the to side. Zero or
-unknown direction is refused. Account labels are rechecked before dispatch.
+## Preservation and reusable instructions
 
-The resulting payee is `Transfer: Bills → Weekly`, for example. The preview
-explicitly says this is a display label based on the supplied direction, not
-independent proof of a matched transfer. No account association, amount,
-category, transfer linkage, balance or financial policy changes merely because
-a label is supplied. It never initiates a transfer. Counterparty and purpose
-remain caller-supplied evidence.
+The instruction data schema is atlas-lunchmoney-cleanup-instruction/v1, with
+name and changes containing payee, categoryName, notesAppend, tagNamesAdd or
+transferLabel.from/to (exact account name and plaid/manual namespace).
+prepare_lunchmoney_cleanup_instruction creates this data without a provider
+call, grant or write. The signed grant must contain the identical instruction.
 
-## Reusable cleanup instructions
+Names edit payee only and require a known original_name. The original bank
+description, amount, date, currency, account and every untargeted provider field
+remain exact. Notes retain the original string, including whitespace; only a
+newline and the approved addition are appended. Existing suffixes are not
+duplicated. Tags use additional_tag_ids, never a replacement tag_ids write;
+readback must be exactly the original-plus-requested set. No tag is created.
 
-prepare_lunchmoney_cleanup_instruction returns portable, strict JSON data. It
-makes no provider call or write and grants no authority. The caller may retain
-that data and pass it to prepare_lunchmoney_edit with a fresh transactionRef in
-another session. Atlas does not persist a new instruction store.
+Catalog names must resolve uniquely to active existing records. No fuzzy merchant
+target, guessed category, amount/date matching as identity, bulk mutation or
+provider rule is introduced. Already-matching instructions return no-changes,
+with no reservation or PUT. Unknown writes are different: never retry them.
 
-Example returned instruction (synthetic names):
+## Evidence-backed transfer labels
 
-```json
-{
-  "schema": "atlas-lunchmoney-cleanup-instruction/v1",
-  "name": "Receipt cleanup",
-  "changes": {
-    "payee": "Readable Shop",
-    "categoryName": "Household",
-    "notesAppend": "Receipt checked.",
-    "tagNamesAdd": ["Receipt matched"]
-  }
-}
-```
+A standing transfer instruction labels one selected leg only. The real observer
+identity parser must find the same explicit bank reference in the original
+descriptions of exactly two transactions, with opposite TFR-TO/TFR-FR directions.
+Both must be posted/reviewed, same-date, same-currency, exactly opposite nonzero
+amounts, on the two exact distinct instruction accounts. Missing, third,
+conflicting, pending or ambiguous legs are refused. Amount/date coincidence
+without the directed bank reference supplies no proof.
 
-Each use resolves exact, unique, active current category/tag names. Transfer
-recipes identify each account by its exact name and plaid/manual namespace.
-Missing, duplicate or ambiguous names fail closed. Renamed categories/tags are
-not guessed. Recipes do not select transactions or run over a merchant, date
-window or account. No fuzzy target, bulk operation or automatic loop is added.
-An instruction already matching the transaction returns no-changes without a
-preview or write. This repeat behavior is distinct from retrying an uncertain
-write, which is always forbidden.
+The result is a payee such as Transfer: Synthetic Bills → Synthetic Weekly.
+No amount, account, category or provider linkage changes because a label is
+supplied. No transfer or payment is initiated. Only a label whose effects remain
+neutral through the real Atlas path is eligible.
 
-Every nonempty result is a fresh, subject-bound, expiring, single-use preview.
-Show its exact before/proposed contents and obtain confirmation of that preview.
-apply_lunchmoney_edit still requires literal confirmed=true and the incumbent
-write scope. An instruction, source document, model assertion or instruction
-title cannot manufacture confirmation or a standing grant. Transaction and
-catalog changes invalidate the preview. An ambiguous response/readback consumes
-the preview and must not be retried.
+## Financial-effect proof
 
-After the catalog rechecks, a final transaction GET under the exact execution
-credential must still match the preview fingerprint immediately before PUT.
-This prevents overwriting notes added during those asynchronous catalog reads.
-The same credential is pinned for readback and result-catalog reads. An external
-client can still race the final GET/PUT because the provider offers no documented
-compare-and-swap; that remaining limitation is not presented as solved.
+assistant-cleanup-effects.js is consumed by the optional production standing
+adapter and synthetic service tests. It uses the real provider-observe,
+live-plan overlay and Forecast.baselineTrajectory/operating answer, with the
+current canonical data, account map, identity rules, public periods and a fresh
+complete provider transaction/pending snapshot. Missing mappings, colliding
+account IDs, incomplete coverage, stale target fingerprints, unavailable overlay
+or unavailable Forecast fail closed.
 
-## Provider contract and access hold
+The signed context pins the data/map/identity/periods digest and a hash of all
+deployed public/scripts JavaScript. Changed policy, map, actuals basis or parser
+requires a new approved context. The comparison removes only source/display
+text; derived ownership, identities, coverage, settlement, trust, amounts,
+dates, decisions and all financial outputs remain in the proof.
 
-Read-only check on 2026-10-09 of the official
-[Lunch Money v2.11.1 OpenAPI](https://lunchmoney.dev/v2/openapi) confirms the
-separate editable payee/read-only original_name fields, replacing notes, and
-additive additional_tag_ids versus replacing tag_ids. The implementation sends
-only the selected metadata with update_balance=false and verifies a subsequent
-GET. It has no DELETE, money movement or new amount-edit endpoint.
+Metadata-only effects must be identical under BOTH the original and resulting
+category. A supported, signed category correction may intentionally move its
+budget classification; the audit records authorized-category-reclassification
+and both effect digests. Category income/exclusion semantics and minimum-payment
+confirmation identity cannot change. Category corrections also retain #559's
+full-receipt proof and pinned semantic transition. The connection does not invent
+classification or household policy to make a proof pass.
 
-These documented field semantics and synthetic tests do not establish absence
-of automatic provider rules or effects on other transactions. PR #559's
-[provider-safety/access requirements](STANDING_LUNCHMONEY_CORRECTIONS.md) remain
-open. The reusable instruction path requires individual preview confirmation;
-it never broadens the category-only standing grant schema to metadata. Notes,
-names and tags may affect incumbent Atlas evidence parsing, so a future
-automatic metadata path requires its own exact owner permission and real parser
-proof. No such automatic metadata path is installed here.
+A final credential-pinned target GET follows all asynchronous effect/catalog
+checks. Separate readback verifies requested fields, exact tag union and all
+untargeted fields except updated_at. Unknown/unexpected provider results remain
+quarantined; they cannot be reported as successful or retried. No provider
+compare-and-swap is documented, so an unrelated client can still race GET/PUT.
+Readback is detection, not a claim that all external races are prevented.
 
-The standing runtime remains default-off. No private store/key/grant is created,
-no environment flag is changed, no consent is granted, no connection is replaced,
-no real provider write is tested, and no deployment or merge is performed.
-Final access approval and exact-head Atlas Contract / Systems Review are still
-required before activation/merge where applicable. The builder cannot supply
-its own Systems PASS.
+## Private history sheet
 
-## Proof and limits
+Every dispatched attempt is durably reserved before PUT, with full projected
+before/proposed, actor, grant/evidence, request time and effect proof. The terminal
+record adds outcome, reason, readback after and receipt. The matching-subject,
+client/resource audit exposes a stable atlas-cleanup-history-row/v1 using
+attemptRef as rowKey. It survives restart, includes uncertain/pending records,
+and is an idempotent export key for the private history sheet. This is the
+existing operation audit, not a new transaction ledger.
 
-test/test-assistant-cleanup.js exercises the real service and official MCP SDK
-against independently authored synthetic provider behavior. It checks exact
-wire fields, byte-preserved notes/original description/metadata, signed amount
-and account preservation, additive tags, debit/credit transfer labels, portable
-recipes across fresh instances, repeat no-op, uncertain results, stale/expired
-previews, wrong-subject/scopes, forbidden fields and changed/missing catalogs.
-The expected PUT body and preservation values are fixture facts, not outputs
-of a second invocation of the implementation.
+Sheet rows include complete name/category/notes/tags/original-description
+before and after, unchanged amount/date/account evidence, source provenance,
+the signed instruction, financial-effect digests, timestamps and outcome.
+Missing after on an uncertain request stays unknown. finish must durably record
+the outcome before acknowledgeVerified can release quarantine. Audit failure
+cannot turn a possibly sent edit into a success.
 
-The test is registered in npm test and the focused standing workflow. Existing
-interactive, provider-amount, balance, standing-authority, real-store and HTTP/JWT
-proofs remain applicable. The private durable authority intentionally requires
-POSIX; Windows cannot certify its fsync/permissions/locking contract. Linux CI
-on the final exact head is required for the full certificate. Synthetic tests
-prove Atlas behavior, not a live connection or provider side-effect exemption.
+The history feed is export-ready-not-synced. No sheet destination, connector
+permission or spreadsheet write is installed by this PR; those belong to final
+access setup. The configured consumer must export rows by rowKey, confirm the
+private destination and report sheet synchronization honestly. Existing private
+audit storage remains the recoverable source if export is unavailable.
+
+## Access and review hold
+
+Everything automatic stays OFF until exact-head tests and Atlas Contract /
+Systems Review complete, and the owner approves the final resource/consent,
+provider API semantics proof for every allowed field, durable private
+installation, owner key/operator/revocation, exact signed context/grant,
+financial inputs, history sheet destination/access/retention and activation.
+No live provider edit, sheet write, new consent, secret handling, connection
+replacement, environment flag change, deployment or merge is performed here.
+
+The official [Lunch Money v2.11.1 OpenAPI](https://lunchmoney.dev/v2/openapi)
+documents separate payee/original_name, additive additional_tag_ids, notes
+replacement and update_balance=false. It does not establish API-specific
+absence of automatic rule creation/execution or effects on other transactions.
+[#559's provider-contract safety hold](STANDING_LUNCHMONEY_CORRECTIONS.md)
+therefore still applies and now must cover every cleanup field. A synthetic
+proof is never accepted as a production provider-contract proof.
+
+## Verification
+
+test-assistant-routine-cleanup.js exercises actual MCP standing admission and
+apply without confirmation, the real observer/overlay/Forecast, independent
+fixture arithmetic, preserving wire fields, category proof, paired transfer
+references, uncertainty, forbidden operations, stale notes and unexpected
+readback. On POSIX it also exercises real Ed25519 signed grants, the actual
+private store, restart and private history access. Windows prints that durable
+proof was not run; Linux CI must certify it.
+
+The incumbent category-only, crash/quarantine/reconciliation/multiprocess,
+interactive cleanup, HTTP/JWT, provider amount and balance tests remain
+applicable. The new proof is registered in npm test and the focused standing
+workflow. These are synthetic implementation proofs, not evidence of a live
+write exemption, approved access or deployment. Systems Review is required;
+the active builder cannot supply its own PASS.

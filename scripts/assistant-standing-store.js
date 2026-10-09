@@ -7,6 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const Policy = require('./assistant-standing-corrections');
+const CleanupPolicy = require('./assistant-cleanup-policy');
 const SCHEMA = 'atlas-standing-authority/v1';
 const clone = x => JSON.parse(JSON.stringify(x));
 const canonical = x => Array.isArray(x) ? x.map(canonical) : x && typeof x === 'object'
@@ -111,7 +112,8 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     if (!envelope) return null;
     const p = verified(envelope, publicKey);
     check(p.kind === 'grant' && p.grant.grantRef === ref && p.grant.resource === resource
-      && p.grant.evidencePolicy === Policy.DELEGATED_POLICY && p.grant.allowNotes === false, 'owner-grant-mismatch');
+      && (p.grant.evidencePolicy === Policy.DELEGATED_POLICY && p.grant.allowNotes === false
+        || p.grant.evidencePolicy === CleanupPolicy.POLICY && p.grant.schema === CleanupPolicy.SCHEMA), 'owner-grant-mismatch');
     const revoked = state.revocations[ref];
     if (revoked) { const r = verified(revoked, publicKey); check(r.grantRef === ref && (r.kind === 'revoke' || r.kind === 'reconcile' && r.revoke === true), 'owner-revocation-invalid'); }
     const attempts = Object.values(state.attempts).filter(a => a.grantRef === ref).length;
@@ -123,7 +125,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     return mutate(state => {
       if (p.kind === 'grant') {
         const g = p.grant; const ctx = contextIn(state);
-        check(g.evidencePolicy === Policy.DELEGATED_POLICY && g.allowNotes === false
+        check((g.evidencePolicy === Policy.DELEGATED_POLICY && g.allowNotes === false || g.evidencePolicy === CleanupPolicy.POLICY)
           && g.resource === resource && g.approvedByOwner === true && g.attempts === 0
           && g.suspended === false && g.revokedAt === null, 'category-only-owner-grant-required');
         check(!state.grants[g.grantRef], 'grant-cannot-be-overwritten-or-renewed');
@@ -144,14 +146,15 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     return mutate(state => {
       const context = contextIn(state); const grant = grantIn(state, input.grantRef);
       check(grant, 'owner-grant-required');
-      Policy.validateDelegatedReview({ ...input, context, grant, now: now() });
+      const cleanup = grant.evidencePolicy === CleanupPolicy.POLICY;
+      (cleanup ? CleanupPolicy.review : Policy.validateDelegatedReview)({ ...input, context, grant, now: now() });
       const key = ownerDigest({ grantRef: grant.grantRef, transactionId: input.tx.id,
         beforeFingerprint: digest(input.tx), body: input.body, review: input.review });
       check(!state.admissions[key], 'evidence-already-admitted');
       check(Object.keys(state.evidence).length < 2000, 'evidence-capacity');
       const evidenceRef = opaque('evidence');
-      const record = { schema: 'atlas-delegated-category-evidence/v1', evidenceRef,
-        grantRef: grant.grantRef, grantRevision: grant.revision, policy: Policy.DELEGATED_POLICY,
+      const record = { schema: cleanup ? 'atlas-delegated-cleanup-evidence/v1' : 'atlas-delegated-category-evidence/v1', evidenceRef,
+        grantRef: grant.grantRef, grantRevision: grant.revision, policy: grant.evidencePolicy,
         contextVersion: grant.contextVersion, parserRevision: grant.parserRevision,
         resolution: 'resolved', attestedBy: 'delegated-client-review',
         transactionId: input.tx.id, beforeFingerprint: digest(input.tx), body: clone(input.body),
@@ -159,7 +162,9 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
         provenance: { kind: 'delegated-client-review', independentlyVerified: false,
           principal: input.auth.principal, clientId: input.auth.clientId, resource: input.auth.resource,
           reviewDigest: ownerDigest(input.review) },
-        review: clone(input.review), categoryContext: clone(input.categoryContext) };
+        review: clone(input.review), categoryContext: clone(input.categoryContext),
+        ...(cleanup ? { cleanupInstruction: clone(input.cleanupInstruction), metadataContext: clone(input.metadataContext),
+          ...(input.transferProof ? { transferProof: clone(input.transferProof) } : {}) } : {}) };
       state.evidence[evidenceRef] = record; state.admissions[key] = evidenceRef;
       return { evidenceRef, expiresAt: record.expiresAt, provenance: record.provenance };
     });
@@ -176,7 +181,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     Policy.validate({ grant: active, evidence, context: ctx,
       auth: { principal: attempt.principal, clientId: attempt.clientId, resource: attempt.resource },
       tx: attempt.beforeProvider, body: evidence.body, fingerprint: attempt.beforeFingerprint, now: now(),
-      categoryContext: attempt.categoryContext });
+      categoryContext: attempt.categoryContext, metadataContext: attempt.metadataContext });
     check(digest(evidence.body) === attempt.proposedFingerprint && attempt.expiresAt > now()
       && attempt.contextVersion === ctx.contextVersion && attempt.parserRevision === ctx.parserRevision
       && attempt.credentialVersion === ctx.credentialVersion, 'reservation-binding-changed');
@@ -240,7 +245,15 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
       reservation: a.reservation, outcome: a.outcome, acknowledged: a.acknowledged,
       before: a.before, proposed: a.proposed, terminal: a.terminal || null,
       receipt: a.receipt || null, evidenceProvenance: state.evidence[a.evidenceRef]?.provenance,
-      delegatedReview: state.evidence[a.evidenceRef]?.review }));
+      delegatedReview: state.evidence[a.evidenceRef]?.review,
+      historyRow: { schema: 'atlas-cleanup-history-row/v1', rowKey: a.reservation.attemptRef,
+        grantRef: a.grantRef, evidenceRef: a.evidenceRef, actor: { principal: a.principal, clientId: a.clientId, resource: a.resource },
+        requestedAt: a.requestedAt, finishedAt: a.terminal?.finishedAt ?? null, outcome: a.outcome,
+        before: a.before, proposed: a.proposed, after: a.terminal?.after ?? null,
+        financialEffects: a.financialEffects ?? null, evidenceProvenance: state.evidence[a.evidenceRef]?.provenance,
+        reason: a.terminal?.reason ?? null, cleanupInstruction: state.evidence[a.evidenceRef]?.cleanupInstruction ?? null,
+        sources: state.evidence[a.evidenceRef]?.review?.sources ?? [],
+        receipt: a.receipt ?? null, sheetStatus: 'export-ready-not-synced' } }));
   }
   async function reconcile(envelope, fetchTransaction) {
     const p = verified(envelope, publicKey);
@@ -250,7 +263,8 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     const observed = digest(row);
     check(observed === p.observedFingerprint, 'owner-observation-changed');
     const position = observed === a.beforeFingerprint ? 'before'
-      : row.category_id === a.expectedCategory && protectedFingerprint(row) === a.untargetedFingerprint ? 'after' : null;
+      : a.expectedAfterFingerprint ? observedWithoutTimestamp(row) === a.expectedAfterFingerprint ? 'after' : null
+        : row.category_id === a.expectedCategory && protectedFingerprint(row) === a.untargetedFingerprint ? 'after' : null;
     check(position, 'provider-state-unresolved');
     check(a.providerDispatchArmed !== true || a.terminal?.providerRequestReturned === true
       || a.terminal?.providerWriteMayHaveOccurred === false, 'provider-attempt-closure-unresolved');
@@ -300,7 +314,8 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     const state = read(), a = state.attempts[attemptRef]; check(a && !a.acknowledged, 'pending-attempt-required');
     const row = await fetchTransaction(a.transactionId);
     const position = digest(row) === a.beforeFingerprint ? 'before'
-      : row.category_id === a.expectedCategory && protectedFingerprint(row) === a.untargetedFingerprint ? 'after' : null;
+      : a.expectedAfterFingerprint ? observedWithoutTimestamp(row) === a.expectedAfterFingerprint ? 'after' : null
+        : row.category_id === a.expectedCategory && protectedFingerprint(row) === a.untargetedFingerprint ? 'after' : null;
     check(position, 'provider-state-unresolved');
     check(a.providerDispatchArmed !== true || a.terminal?.providerRequestReturned === true
       || a.terminal?.providerWriteMayHaveOccurred === false, 'provider-attempt-closure-unresolved');
@@ -330,4 +345,10 @@ function initialize({ root, publicKey, contextEnvelope }) {
   finally { fs.closeSync(fd); }
   const directory = fs.openSync(root, 'r'); try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
 }
-module.exports = { createAuthority, initialize, sign, verified, digest, ownerDigest, protectedFingerprint, opaque, validProofExpiry };
+function observedWithoutTimestamp(tx) {
+  const result = Object.fromEntries(Object.entries(tx).filter(([k]) => k !== 'updated_at'));
+  if (Array.isArray(result.tag_ids) && result.tag_ids.every(id => Number.isSafeInteger(id) && id > 0)
+      && new Set(result.tag_ids).size === result.tag_ids.length) result.tag_ids = [...result.tag_ids].sort((a, b) => a - b);
+  return ownerDigest(result);
+}
+module.exports = { createAuthority, initialize, sign, verified, digest, ownerDigest, protectedFingerprint, observedWithoutTimestamp, opaque, validProofExpiry };
