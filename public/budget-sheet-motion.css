@@ -1,0 +1,40 @@
+/* Motion decoration never owns the native dialog's placement or visibility. */
+.budget-sheet-motion-shell {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout style paint;
+}
+.budget-detail-body > [hidden] { display: none !important; }
+.budget-detail-body > [data-blend-bills-panel]:not([hidden]) {
+  max-height: none;
+  margin: 0;
+  overflow: visible;
+}
+.budget-detail-sheet > header { gap: 12px; }
+.budget-detail-sheet > header [data-budget-detail-title] { flex: 1; min-width: 0; }
+.budget-detail-sheet [data-budget-detail-back] {
+  border: 0;
+  background: var(--surface-2);
+  color: inherit;
+  border-radius: 99px;
+  padding: 8px 14px;
+  min-height: 38px;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.budget-detail-sheet [data-budget-detail-close] { order: 2; }
+.budget-detail-sheet [data-budget-detail-back]:focus-visible,
+.budget-detail-sheet [data-budget-detail-close]:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .budget-sheet-motion-shell { display: none; }
+}
+
+.budget-detail-sheet [data-budget-detail-back][hidden] { display: none !important; }

@@ -459,7 +459,7 @@ const composite = (fg, bg) => {
               const billsHead = document.querySelector('.blend-bills-head');
               const billsTitle = billsHead && billsHead.querySelector('.blend-tile-title');
               const billsOf = billsHead && billsHead.querySelector('.blend-bills-of');
-              const billsToggle = document.querySelector('[data-budget-browse="bills"] .blend-panel-toggle');
+              const billsToggle = document.querySelector('[data-blend-bills-open]');
               const titleBox = box(billsTitle);
               const ofBox = box(billsOf);
               const bills = billsHead && titleBox && ofBox ? {
@@ -641,7 +641,8 @@ const composite = (fg, bg) => {
             const expected = kept.map(li => {
               const trust = li.getAttribute('data-bad-term-trust') || '';
               const amount = (li.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim();
-              return trust === 'unavailable' || !amount ? '—' : amount;
+              return li.getAttribute('data-bad-timeline-role') === 'past' ? 'Unavailable'
+                : trust === 'unavailable' || !amount ? '\u2014' : amount;
             });
             return {
               mode: nav ? nav.getAttribute('data-bad-river') : '',
@@ -696,7 +697,7 @@ const composite = (fg, bg) => {
         if (width <= 390 && face.estOverlapsIncome) {
           errors.push(`${width}/${theme} est overlaps income`);
         }
-        if (face.bills && (face.bills.toggleInHead || !face.bills.oneLine)) {
+        if (face.bills && (!face.bills.toggleInHead || !face.bills.oneLine)) {
           errors.push(`${width}/${theme} bills head ${JSON.stringify(face.bills)}`);
         }
         if (width >= 1000 && face.bills && (!face.bills.sameRow || !face.bills.right || face.bills.crowded)) {
@@ -1023,6 +1024,114 @@ const composite = (fg, bg) => {
         'Same visible category retains focus after ' + closeWith);
     }
     await responsive.close();
+
+    // The approved header is the Bills opener. Exercise the native evidence
+    // nodes and their handlers through the new presentation, including nested
+    // Back. No payment or confirmation action is invoked.
+    for (const width of [1440, 390]) {
+      const detailsPage = await open(width, 'light');
+      const header = detailsPage.getByRole('button', { name: 'Bills detail', exact: true });
+      const panel = detailsPage.locator('[data-blend-bills-panel]');
+      const originalPanel = await panel.elementHandle();
+      const originalHydro = await detailsPage.locator('[data-bill-detail]:has(> [data-period-bill="hydro"])').elementHandle();
+      assert.ok(originalPanel && originalHydro, 'Fixture retains original Bills and Hydro evidence');
+      const originalBillCopy = await originalHydro.textContent();
+      await header.scrollIntoViewIfNeeded();
+      await header.focus();
+      assert.equal(await header.evaluate(node => {
+        const box = node.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return node === document.activeElement && !!node.closest('.blend-bills-head')
+          && box.width > 8 && box.height > 8 && (hit === node || node.contains(hit));
+      }), true, 'Bills header is visibly focused and hit-testable at ' + width);
+      await detailsPage.keyboard.press('Enter');
+      const dialog = detailsPage.locator('[data-budget-detail-sheet]');
+      await dialog.waitFor({ state: 'visible' });
+      await assertDialogPlacement(detailsPage, 'Bills at ' + width);
+      assert.equal(await originalPanel.evaluate(node => node.closest('dialog')?.open && !node.hidden), true,
+        'Bills opens the original evidence panel');
+      assert.equal(await dialog.locator('[data-budget-detail-title]').innerText(), 'Bills');
+      const unpaid = panel.locator('[data-budget-bill-filter="not-paid"]');
+      await unpaid.focus();
+      await detailsPage.keyboard.press('Space');
+      assert.equal(await unpaid.getAttribute('aria-pressed'), 'true');
+      assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), false);
+      assert.equal(await panel.locator('[data-budget-bill-bucket="not-paid"]').isVisible(), true);
+      assert.match(await panel.locator('[data-budget-bill-filter-status]').textContent(), /not confirmed paid/);
+      const hydro = panel.locator('[data-budget-bill-open="hydro"]');
+      const originalHydroOpener = await hydro.elementHandle();
+      await hydro.focus();
+      await detailsPage.keyboard.press('Enter');
+      await detailsPage.waitForFunction(() => document.querySelector('[data-budget-detail-title]')?.textContent === 'Hydro');
+      await assertDialogPlacement(detailsPage, 'Nested Hydro at ' + width);
+      assert.equal(await originalHydro.evaluate(node => node.closest('dialog')?.open && !node.hidden), true,
+        'Hydro opens the original occurrence evidence');
+      assert.equal(await originalHydro.textContent(), originalBillCopy, 'Opening preserves the published bill evidence');
+      assert.match(await dialog.locator('[data-budget-detail-body]').innerText(), /Missing evidence does not mean unpaid/);
+      assert.equal(await originalPanel.evaluate(node => node.hidden && node.inert), true,
+        'Inactive Bills panel cannot remain in the nested focus order');
+      await dialog.getByRole('button', { name: 'Go back', exact: true }).click();
+      await detailsPage.waitForFunction(() => document.querySelector('[data-budget-detail-title]')?.textContent === 'Bills');
+      assert.equal(await originalPanel.evaluate(node => node.closest('dialog')?.open && !node.hidden && !node.inert), true);
+      assert.equal(await originalHydroOpener.evaluate(node => document.activeElement === node), true,
+        'Nested Back returns focus to the original Hydro row');
+      assert.equal(await unpaid.getAttribute('aria-pressed'), 'true', 'Back preserves the selected Bills filter');
+      assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), false);
+      await unpaid.click();
+      assert.equal(await unpaid.getAttribute('aria-pressed'), 'false');
+      assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), true,
+        'The original filter handler still clears after a nested return');
+      await dialog.getByRole('button', { name: 'Close details', exact: true }).click();
+      assert.equal(await header.evaluate(node => document.activeElement === node && node.getAttribute('aria-expanded') === 'false'), true);
+      assert.equal(await originalPanel.evaluate(node => !node.closest('dialog') && node.hidden), true,
+        'Close restores the original Bills panel to its source');
+      await header.click();
+      await detailsPage.keyboard.press('Escape');
+      assert.equal(await header.evaluate(node => document.activeElement === node), true, 'Escape returns to the Bills header');
+
+      const figures = detailsPage.locator('[data-budget-period-info-body]');
+      const originalFigures = await figures.elementHandle();
+      const figureCopy = await figures.textContent();
+      assert.match(figureCopy, /Private\./, 'Static provenance is retained within Period figures');
+      assert.match(figureCopy, /Forecast|Balance after bills|Expected Bills balance/, 'Native figure explanations are retained');
+      const result = detailsPage.locator('[data-operating-question="07"] .budget-step-summary');
+      await result.scrollIntoViewIfNeeded();
+      await result.focus();
+      await detailsPage.keyboard.press('Enter');
+      await dialog.waitFor({ state: 'visible' });
+      assert.equal(await dialog.locator('[data-budget-detail-title]').innerText(), 'Period figures');
+      await assertDialogPlacement(detailsPage, 'Period figures at ' + width);
+      assert.equal(await originalFigures.evaluate(node => node.closest('dialog')?.open && !node.hidden), true,
+        'Period figures uses the original evidence node');
+      assert.equal(await originalFigures.textContent(), figureCopy, 'All original qualifiers and provenance survive opening');
+      assert.equal(await dialog.locator('a[href="/records.html"]').count(), 0, 'Provenance does not add page navigation');
+      assert.equal(await dialog.locator('footer').isVisible(), true, 'Retained provenance is readable in the open dialog');
+      await detailsPage.keyboard.press('Escape');
+      assert.equal(await result.evaluate(node => document.activeElement === node && node.getAttribute('aria-expanded') === 'false'), true,
+        'Period figures dismissal returns to the visible result');
+
+      const income = detailsPage.locator('.blend-income');
+      const originalIncome = await detailsPage.locator('[data-operating-question="02"] .budget-step-body').elementHandle();
+      const incomeCopy = await originalIncome.textContent();
+      await income.scrollIntoViewIfNeeded();
+      await income.focus();
+      assert.equal(await income.evaluate(node => {
+        const box = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return node.tagName === 'BUTTON' && node === document.activeElement && box.width > 8 && box.height > 8
+          && style.visibility !== 'hidden' && style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) >= 2;
+      }), true, 'Income has visible keyboard focus at ' + width);
+      await detailsPage.keyboard.press('Space');
+      await dialog.waitFor({ state: 'visible' });
+      assert.equal(await originalIncome.evaluate(node => node.closest('dialog')?.open), true,
+        'Income opens the native published evidence');
+      assert.equal(await originalIncome.textContent(), incomeCopy);
+      await detailsPage.keyboard.press('Escape');
+      assert.equal(await income.evaluate(node => document.activeElement === node && node.getAttribute('aria-expanded') === 'false'), true,
+        'Income dismissal returns to its visible tile');
+      assert.equal(detailsPage.url(), 'http://budget.test/', 'Evidence interactions stay on the single page');
+      await detailsPage.close();
+    }
 
     // The Savings disclosure must expose its incumbent funding evidence through
     // the visible heading, with both native button activation keys.
@@ -1616,7 +1725,7 @@ const composite = (fg, bg) => {
         });
         const head = document.querySelector('.blend-bills-head');
         const cal = document.querySelector('[data-blend-cal]');
-        const toggle = document.querySelector('[data-budget-browse="bills"] .blend-panel-toggle');
+        const toggle = document.querySelector('[data-blend-bills-open]');
         const flag = head && head.querySelector('.blend-flag');
         const calBox = cal ? cal.getBoundingClientRect() : null;
         const toggleBox = toggle ? toggle.getBoundingClientRect() : null;
@@ -1647,8 +1756,13 @@ const composite = (fg, bg) => {
           qualifier: (document.querySelector('.blend-bad-qualifier')?.textContent || '').trim(),
           hero: document.querySelector('[data-budget-bento]')?.getAttribute('data-blend-ready') === '1',
           centres,
-          detailsPinned: !!(toggle && toggleBox && toggleBox.width > 8 && calBox && toggleBox.top >= calBox.bottom - 8 && head && !head.contains(toggle)),
-          detailsClear: !flagBox || !toggleBox || toggleBox.top >= flagBox.bottom - 2 || toggleBox.left - flagBox.right > 16,
+          detailsInHeader: !!(toggle && toggleBox && toggleBox.width > 8 && toggleBox.height > 8 && calBox
+            && toggleBox.bottom <= calBox.top + 1 && head?.contains(toggle)),
+          detailsClear: !flagBox || !toggleBox || toggleBox.right <= flagBox.left - 4
+            || flagBox.right <= toggleBox.left - 4 || toggleBox.top >= flagBox.bottom - 1,
+          riverValue: (document.querySelector('[data-ph-value]')?.textContent || '').trim(),
+          riverOrb: document.querySelector('.playhead-orb')?.hidden === false,
+          riverBeam: document.querySelector('.playhead-beam')?.hidden === false,
         };
       });
       const badCentres = (pastFace.centres || []).filter(row => row.ellipsis || row.clipped || row.outside || !row.text || row.lines < 1);
@@ -1658,7 +1772,8 @@ const composite = (fg, bg) => {
         || pastFace.paydayMain !== 'Completed · 14 days' || pastFace.paydaySize !== '28px'
         || pastFace.afterLine || pastFace.qualifier
         || !pastFace.hero || consoleErrors.length
-        || !pastFace.centres.length || badCentres.length || !pastFace.detailsPinned || !pastFace.detailsClear) {
+        || !pastFace.centres.length || badCentres.length || !pastFace.detailsInHeader || !pastFace.detailsClear
+        || !['Unavailable', '\u2014'].includes(pastFace.riverValue) || pastFace.riverOrb || pastFace.riverBeam) {
         errors.push(`${label} past period ${JSON.stringify({ pastFace, badCentres, consoleErrors })}`);
       }
       if (label === '1440' && (pastFace.figureGap == null || currentFigureGap == null || Math.abs(pastFace.figureGap - currentFigureGap) > 2)) {
@@ -1934,7 +2049,7 @@ const composite = (fg, bg) => {
     focusWalks.push({ viewport: 1440, theme: 'light', steps: walk });
     const focusTargets = [
       ['[data-budget-granularity="month"]', 'budget-blend-focus-granularity.png'],
-      ['[data-operating-question="02"] > details > summary', 'budget-blend-focus-income.png'],
+      ['.blend-income', 'budget-blend-focus-income.png'],
       ['[data-operating-question="07"] > details > summary', 'budget-blend-focus-result.png'],
       ['.blend-ring[data-blend-cat="groceries"]', 'budget-blend-focus-household.png'],
       ['[data-budget-goal-open]', 'budget-blend-focus-goal.png'],
@@ -2112,6 +2227,8 @@ const composite = (fg, bg) => {
       ol.setAttribute('aria-hidden', 'true');
       const row = (attrs, body) => `<li ${attrs}>${body}</li>`;
       ol.innerHTML = [
+        row('data-bad-timeline-period="past-precise" data-bad-timeline-role="past" data-bad-timeline-coverage="precise" data-bad-timeline-start="2026-06-19" data-bad-timeline-end="2026-07-02" data-bad-timeline-range-label="Jun 19 - Jul 2" data-bad-term-trust="calculated" data-bad-terms-face="balance-after-deductions"', '<span data-bad-term-amount>$3,700.00</span>'),
+        row('data-bad-timeline-period="past-posted" data-bad-timeline-role="past" data-bad-timeline-coverage="posted-only" data-bad-timeline-start="2026-07-03" data-bad-timeline-end="2026-07-16" data-bad-timeline-range-label="Jul 3 - Jul 16" data-bad-term-trust="estimated" data-bad-terms-face="balance-after-deductions" data-sign="negative"', '<span data-bad-term-amount>-$420.00</span>'),
         row('data-bad-timeline-period="past" data-bad-timeline-role="past" data-bad-timeline-start="2026-07-17" data-bad-timeline-end="2026-07-30" data-bad-timeline-range-label="Jul 17 – Jul 30" data-bad-term-trust="estimated" data-bad-terms-face="balance-after-deductions"', '<span class="est">≈ estimated</span> <span data-bad-term-amount>$731.83</span>'),
         row(`data-bad-timeline-period="now" data-bad-timeline-role="current" data-bad-timeline-start="${displayed}" data-bad-timeline-end="2026-08-27" data-bad-timeline-range-label="Aug 14 – Aug 27" data-bad-term-trust="unavailable" data-bad-terms-face="balance-after-deductions"`, 'Unavailable<span data-bad-term-amount> </span>'),
         row('data-bad-timeline-period="neg" data-bad-timeline-role="future" data-bad-timeline-start="2027-01-01" data-bad-timeline-end="2027-01-14" data-bad-timeline-range-label="Jan 1 – Jan 14" data-bad-term-trust="estimated" data-bad-terms-face="balance-after-deductions" data-sign="negative"', '<span class="est">≈ estimated</span> <span data-bad-term-amount>−$1,020.09</span>'),
@@ -2141,15 +2258,15 @@ const composite = (fg, bg) => {
         });
       }));
     }));
-    const probeLabels = ['—', '−$1,020.09', '-$10.00', '$0.00'];
+    const probeLabels = ['Unavailable', 'Unavailable', '\u2014', '-$1,020.09', '-$10.00', '$0.00'];
     if (riverProbe.mode !== 'printed' || riverProbe.state !== 'neutral' || !riverProbe.focusable
       || !riverProbe.orbHidden || !riverProbe.beamHidden || !riverProbe.chooserVisible
-      || riverProbe.rows !== 5 || riverProbe.labels.join('|') !== probeLabels.join('|')
+      || riverProbe.rows !== 7 || riverProbe.labels.join('|') !== probeLabels.join('|')
       || riverProbe.value !== '—'
-      || !/is-muted/.test(riverProbe.tones[0]) || /is-income/.test(riverProbe.tones[0])
-      || !/is-short/.test(riverProbe.tones[1]) || /is-income/.test(riverProbe.tones[1])
-      || !/is-income/.test(riverProbe.tones[2]) || /is-short/.test(riverProbe.tones[2])
-      || !/is-income/.test(riverProbe.tones[3])
+      || riverProbe.tones.slice(0, 3).some(tone => !/is-muted/.test(tone) || /is-income|is-short/.test(tone))
+      || !/is-short/.test(riverProbe.tones[3]) || /is-income/.test(riverProbe.tones[3])
+      || !/is-income/.test(riverProbe.tones[4]) || /is-short/.test(riverProbe.tones[4])
+      || !/is-income/.test(riverProbe.tones[5])
       || riverProbe.labels.some(label => label === '$0' || label === '0')
       || !riverProbe.months.some(label => label.startsWith('Aug'))
       || !riverProbe.months.some(label => /Jan/.test(label) && /2027/.test(label))) {
@@ -2162,6 +2279,26 @@ const composite = (fg, bg) => {
     await probe.keyboard.press('Escape');
     assert.equal(await probe.locator('.playhead-pill').evaluate(el => el === document.activeElement), true,
       'Unavailable selected river value retains the keyboard period chooser');
+    // Force the selected publication to a numerically populated past row.
+    // Even precise Household coverage cannot promote it to whole-BAD history.
+    await probe.evaluate(() => {
+      const selected = document.querySelector('ol[data-bad-timeline] > [data-bad-timeline-period="now"]');
+      selected.setAttribute('data-bad-timeline-role', 'past');
+      selected.setAttribute('data-bad-timeline-coverage', 'precise');
+      selected.setAttribute('data-bad-term-trust', 'calculated');
+      selected.querySelector('[data-bad-term-amount]').textContent = '$987.65';
+      document.querySelector('.g-river-wrap')?.remove();
+      document.querySelector('[data-budget-bento]').removeAttribute('data-blend-ready');
+      document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+    });
+    await probe.waitForFunction(() => document.querySelector('[data-ph-value]')?.textContent.trim() === 'Unavailable');
+    assert.equal(await probe.locator('.playhead-orb').isVisible(), false, 'Selected historical value has no plotted orb');
+    assert.equal(await probe.locator('.playhead-beam').isVisible(), false, 'Selected historical value has no amount marker');
+    assert.equal(await probe.locator('[data-ph-value]').innerText(), 'Unavailable');
+    await openToolbar(probe, true);
+    await probe.keyboard.press('Escape');
+    assert.equal(await probe.locator('.playhead-pill').evaluate(el => el === document.activeElement), true,
+      'Withheld historical value retains native period selection');
     await probe.close();
 
     const householdPacket = householdAll.packet();

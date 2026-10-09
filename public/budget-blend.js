@@ -103,10 +103,8 @@
       hero.dataset.blendOpen = '1';
       hero.addEventListener('click', event => {
         if (event.target.closest('a, button, input, .blend-hero-pill, .blend-hero-foot')) return;
-        const openPanel = hero.querySelector('.blend-hero-panel');
-        if (!openPanel) return;
-        if (event.target.closest('summary') && !event.target.closest('[data-operating-question="07"]')) return;
-        openPanel.open = !openPanel.open;
+        if (event.target.closest('summary')) return;
+        hero.querySelector('[data-operating-question="07"] .budget-step-summary')?.click();
       });
     }
     if (!hero.querySelector('.blend-sky')) {
@@ -426,6 +424,34 @@
     paintIncomeLongLabel(hero);
     paintPlanStatus(hero);
     paintSplit(hero, foot);
+    wirePeriodFigures(hero, body);
+  }
+
+  function wirePeriodFigures(hero, body) {
+    const result = hero.querySelector('[data-operating-question="07"]');
+    const trigger = result?.querySelector('.budget-step-summary');
+    const figures = document.querySelector('[data-budget-period-info-body]');
+    const sheet = document.querySelector('[data-budget-detail-sheet]')?.budgetSheet;
+    if (!trigger || !figures || !sheet) return;
+    // Preserve every original qualifier and evidence node. The visible result
+    // is the keyboard opener; no financial text or values are regenerated.
+    const resultBody = result.querySelector('.budget-step-body');
+    if (resultBody && !figures.contains(resultBody)) figures.appendChild(resultBody);
+    [...body.children].forEach(node => {
+      if (!node.classList.contains('budget-period-info') && node !== figures && !node.contains(figures))
+        figures.appendChild(node);
+    });
+    if (!figures.id) figures.id = 'budget-period-figures';
+    trigger.setAttribute('aria-controls', figures.id);
+    trigger.setAttribute('aria-haspopup', 'dialog');
+    trigger.setAttribute('aria-expanded', String(!!figures.closest('dialog[open]')));
+    if (trigger.hasAttribute('data-blend-figures-open')) return;
+    trigger.setAttribute('data-blend-figures-open', '');
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      sheet.open(figures, trigger, 'Period figures');
+    }, true);
   }
 
   // One row per engine status id. A null word draws no chip.
@@ -1072,7 +1098,11 @@
     });
     button.append(head, figure, pulse, deposits);
     if (muted.textContent) button.appendChild(muted);
-    if (step) button.addEventListener('click', () => step.querySelector('summary')?.click());
+    if (step) button.addEventListener('click', () => {
+      const open = () => step.querySelector('summary')?.click();
+      if (window.BudgetSheetMotion?.from) window.BudgetSheetMotion.from(button, open);
+      else open();
+    });
     bento.appendChild(button);
   }
 
@@ -1143,7 +1173,14 @@
     const title = document.createElement('span');
     title.className = 'blend-tile-title';
     title.textContent = 'Bills';
-    head.appendChild(tileIcon('bills'));
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'blend-bills-open';
+    toggle.setAttribute('data-blend-bills-open', '');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Bills detail');
+    toggle.append(tileIcon('bills'), title);
+    head.appendChild(toggle);
     const rows = [...section.querySelectorAll('.budget-bill-row')];
     const confirmRows = rows.filter(row => billState(row) === 'confirm');
     const overdueCount = printedOverdueCount(section);
@@ -1160,6 +1197,7 @@
       const statusUnavailable = !planMoney && /unknown|unavailable/i.test(billsStatus + ' ' + leftRaw);
       if (statusUnavailable) {
         remain.textContent = 'Unavailable';
+        remain.classList.add('is-unavailable');
       } else if (!rows.length) {
         remain.textContent = 'No bills assigned';
         remain.classList.add('is-empty');
@@ -1173,9 +1211,9 @@
         }
       } else {
         remain.textContent = 'Unavailable';
+        remain.classList.add('is-unavailable');
       }
     }
-    head.appendChild(title);
     if (confirmRows.length > 0) {
       const flag = document.createElement('span');
       flag.className = 'blend-flag';
@@ -1234,7 +1272,8 @@
           const mark = document.createElement('button');
           mark.type = 'button';
           mark.className = 'blend-day-hit day-g';
-          mark.tabIndex = -1;
+          mark.setAttribute('aria-label', hits.map(row => separatedText(row)).join('; '));
+          mark.setAttribute('aria-haspopup', 'dialog');
           const state = remain && remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
           if (state === 'overdue') day.classList.add('is-overdue');
           mark.dataset.s = state;
@@ -1252,10 +1291,8 @@
             if (state === 'paid') badge.appendChild(checkGlyph());
             day.appendChild(badge);
           }
-          mark.addEventListener('click', event => {
-            event.stopPropagation();
-            hits[0].click();
-          });
+          mark.setAttribute('data-blend-bill', (hits[0].getAttribute('data-budget-bill-open') || '') + ':' + iso);
+          markSheet(mark, hits[0]);
           day.appendChild(mark);
           if (hits.length > 1) {
             const more = document.createElement('span');
@@ -1273,26 +1310,25 @@
     const panel = document.createElement('div');
     panel.className = 'blend-face-off';
     panel.id = 'blend-bills-more';
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'blend-panel-toggle';
-    toggle.setAttribute('aria-expanded', 'false');
+    panel.setAttribute('data-blend-bills-panel', '');
     toggle.setAttribute('aria-controls', panel.id);
-    toggle.setAttribute('aria-label', 'Bills detail');
-    toggle.textContent = 'Details ›';
-    const openPanel = () => {
-      panel.classList.add('is-open');
-      toggle.setAttribute('aria-expanded', 'true');
-    };
+    const sheet = document.querySelector('[data-budget-detail-sheet]');
+    const native = typeof sheet?.budgetSheet?.open === 'function';
+    if (native) {
+      panel.hidden = true;
+      toggle.setAttribute('aria-haspopup', 'dialog');
+    }
     toggle.addEventListener('click', () => {
+      if (native) {
+        sheet.budgetSheet.open(panel, toggle, 'Bills');
+        return;
+      }
       const open = panel.classList.toggle('is-open');
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
-    panel.addEventListener('focusin', openPanel);
-    cal.after(toggle);
-    toggle.after(panel);
+    cal.after(panel);
     [...section.children].forEach(node => {
-      if (node !== head && node !== cal && node !== panel && node !== toggle) panel.appendChild(node);
+      if (node !== head && node !== cal && node !== panel) panel.appendChild(node);
     });
   }
 
@@ -1309,13 +1345,16 @@
   function markSheet(button, row) {
     const sheet = document.querySelector('[data-budget-detail-sheet]');
     const categoryId = button.getAttribute('data-blend-cat');
-    const kind = button.classList.contains('blend-other') ? '.blend-other' : '.blend-ring';
+    const attribute = categoryId ? 'data-blend-cat' : 'data-blend-bill';
+    const id = button.getAttribute(attribute);
+    const kind = button.classList.contains('blend-day-hit') ? '.blend-day-hit'
+      : button.classList.contains('blend-other') ? '.blend-other' : '.blend-ring';
     if (sheet && !sheet.id) sheet.id = 'budget-detail-sheet';
     button.setAttribute('aria-haspopup', 'dialog');
     if (sheet) button.setAttribute('aria-controls', sheet.id);
     button.setAttribute('aria-expanded', 'false');
-    if (sheet?.open && categoryId && categoryFocusReturn?.id === categoryId
-      && sheet.querySelector('[data-budget-category="' + CSS.escape(categoryId) + '"]')) {
+    if (sheet?.open && id && categoryFocusReturn?.id === id
+      && (!categoryId || sheet.querySelector('[data-budget-category="' + CSS.escape(categoryId) + '"]'))) {
       categoryFocusReturn.node = button;
       button.setAttribute('aria-expanded', 'true');
       button.setAttribute('data-blend-opened', '1');
@@ -1323,8 +1362,9 @@
     button.addEventListener('click', () => {
       button.setAttribute('aria-expanded', 'true');
       button.setAttribute('data-blend-opened', '1');
-      categoryFocusReturn = { node: button, id: categoryId, kind };
-      row.click();
+      categoryFocusReturn = { node: button, id, kind, attribute };
+      if (window.BudgetSheetMotion?.from) window.BudgetSheetMotion.from(button, () => row.click());
+      else row.click();
       if (!sheet || !sheet.open) {
         button.removeAttribute('data-blend-opened');
         button.setAttribute('aria-expanded', 'false');
@@ -1339,10 +1379,12 @@
         if (document.querySelector('[data-budget-detail-sheet]')?.open) return;
         const opened = document.querySelector('[data-blend-opened="1"]');
         const returnTo = categoryFocusReturn || (opened ? {
-          node: opened, id: opened.getAttribute('data-blend-cat'),
-          kind: opened.classList.contains('blend-other') ? '.blend-other' : '.blend-ring',
+          node: opened, id: opened.getAttribute('data-blend-cat') || opened.getAttribute('data-blend-bill'),
+          attribute: opened.hasAttribute('data-blend-cat') ? 'data-blend-cat' : 'data-blend-bill',
+          kind: opened.classList.contains('blend-day-hit') ? '.blend-day-hit'
+            : opened.classList.contains('blend-other') ? '.blend-other' : '.blend-ring',
         } : null);
-        document.querySelectorAll('.blend-ring[aria-expanded="true"], .blend-other[aria-expanded="true"]').forEach(node => {
+        document.querySelectorAll('[data-blend-opened="1"]').forEach(node => {
           node.setAttribute('aria-expanded', 'false');
         });
         document.querySelectorAll('[data-blend-opened="1"]').forEach(node => node.removeAttribute('data-blend-opened'));
@@ -1353,7 +1395,7 @@
             const visible = node => node?.isConnected && node.getClientRects().length
               && getComputedStyle(node).visibility !== 'hidden';
             const target = visible(returnTo.node) ? returnTo.node : returnTo.id
-              ? [...document.querySelectorAll(returnTo.kind + '[data-blend-cat="' + CSS.escape(returnTo.id) + '"]')].find(visible) : null;
+              ? [...document.querySelectorAll(returnTo.kind + '[' + (returnTo.attribute || 'data-blend-cat') + '="' + CSS.escape(returnTo.id) + '"]')].find(visible) : null;
             if (target) {
               target.focus({ preventScroll: true });
               if (document.activeElement === target) {
@@ -2067,7 +2109,8 @@
   }
 
   // Reads ol[data-bad-timeline] only. The amount is the span text.
-  // trust=unavailable or an empty span is a muted dash with no height.
+  // Past BAD is withheld; Household coverage qualifies only retained dates.
+  // Current/future trust=unavailable or empty spans have no height.
   // Absent list: the same neutral dashes, still focusable, and not a navigator.
   function readBadTimeline(doc) {
     const list = doc.querySelector('ol[data-bad-timeline]');
@@ -2077,7 +2120,10 @@
       const trust = li.getAttribute('data-bad-term-trust') || '';
       const span = li.querySelector('[data-bad-term-amount]');
       const amount = span ? String(span.textContent == null ? '' : span.textContent).replace(/\s+/g, ' ').trim() : '';
-      const closed = trust === 'unavailable' || amount.length === 0;
+      // Household transaction coverage is not whole-period historical BAD
+      // qualification. Keep retained dates, but withhold past amount claims.
+      const past = li.getAttribute('data-bad-timeline-role') === 'past';
+      const closed = past || trust === 'unavailable' || amount.length === 0;
       const negative = !closed && li.getAttribute('data-sign') === 'negative';
       return {
         index: index,
@@ -2089,7 +2135,7 @@
         trust: trust,
         face: li.getAttribute('data-bad-terms-face') || '',
         amount: amount,
-        label: closed ? '—' : amount,
+        label: past ? 'Unavailable' : closed ? '\u2014' : amount,
         unavailable: closed,
         estimated: !closed && trust === 'estimated',
         negative: negative,
@@ -2114,6 +2160,39 @@
       runs[runs.length - 1].push(index);
     });
     return runs;
+  }
+
+  // Decorative position spring adapted from the owner's g-blend/js/river.js.
+  // Its state is a period position, never an interpolated financial amount.
+  class RiverSpring {
+    constructor(value) { this.x = this.target = value; this.v = 0; }
+    set(value) { this.x = this.target = value; this.v = 0; }
+    step(seconds) {
+      const dt = Math.max(0, Math.min(0.05, Number.isFinite(seconds) ? seconds : 0));
+      const n = Math.max(1, Math.ceil(dt / 0.008));
+      const h = dt / n;
+      for (let i = 0; i < n; i++) {
+        this.v += (-190 * (this.x - this.target) - 27 * this.v) * h;
+        this.x += this.v * h;
+      }
+      if (Math.abs(this.v) < 0.001 && Math.abs(this.x - this.target) < 0.001) this.set(this.target);
+      return this.x;
+    }
+    get settled() { return this.x === this.target && this.v === 0; }
+  }
+
+  function riverKeyTarget(key, current, count) {
+    if (current < 0 || count < 1) return null;
+    if (key === 'Home') return 0;
+    if (key === 'End') return count - 1;
+    const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 6, PageDown: -6 }[key];
+    return step ? Math.max(0, Math.min(count - 1, current + step)) : null;
+  }
+
+  function riverFlingTarget(target, velocity, spacing, count, pan, reduced) {
+    const fling = !reduced && spacing > 0 && Number.isFinite(velocity)
+      ? Math.max(-4, Math.min(4, (pan ? -velocity : velocity) * 140 / spacing)) : 0;
+    return Math.round(Math.max(0, Math.min(count - 1, target + fling)));
   }
 
   function displayedTimelineIndex(nodes) {
@@ -2149,6 +2228,13 @@
     const from = model.nodes[current].sourceIndex;
     const to = target.sourceIndex;
     if (!Number.isInteger(from) || !Number.isInteger(to)) return;
+    // The native wheel and timeline printer share the same unfiltered rows.
+    // Prefer one native selection; retain steps for minimal/older mounts.
+    const nativeChoice = document.querySelector('[data-budget-wheel="period"] [data-wheel-index="' + to + '"]');
+    if (nativeChoice && !nativeChoice.disabled && nativeChoice.getAttribute('aria-disabled') !== 'true') {
+      nativeChoice.click();
+      return;
+    }
     const dir = to > from ? '1' : '-1';
     const steps = Math.abs(to - from);
     for (let i = 0; i < steps; i++) {
@@ -2159,6 +2245,7 @@
   }
 
   let activeRiver = null;
+  let riverMotionSession = null;
 
   function cleanupDetachedRiver() {
     if (!activeRiver || activeRiver.wrap.isConnected) return;
@@ -2182,6 +2269,31 @@
     const selected = absent ? Math.floor((nodes.length - 1) / 2) : displayedTimelineIndex(nodes);
     const selectedNode = selected >= 0 ? nodes[selected] : null;
     const selectedKnown = !!selectedNode && Number.isFinite(selectedNode.magnitude);
+    const canNavigate = !absent && selected >= 0 && !/^Calendar month/.test(text(document.querySelector('.budget-window-eyebrow')));
+    const sessionKey = absent ? '' : nodes.map(node => node.sourceIndex + ':' + node.start).join('|');
+    const remembered = sessionKey && riverMotionSession?.key === sessionKey ? riverMotionSession : null;
+    const clampPosition = value => Math.max(0, Math.min(nodes.length - 1, value));
+    const head = new RiverSpring(remembered ? clampPosition(remembered.x) : Math.max(0, selected));
+    head.v = remembered && Number.isFinite(remembered.v) ? remembered.v : 0;
+    head.target = Math.max(0, selected);
+    let previewIndex = selected;
+    let restoreFocus = !!remembered?.focus;
+    let reveal = absent || remembered || reduceMotion() ? 1 : 0;
+    let frame = null;
+    let lastFrame = 0;
+    let disposed = false;
+    let visible = true;
+    let drag = null;
+    let suppressClickUntil = 0;
+    const listeners = [];
+    const listen = (target, type, handler, options) => {
+      target.addEventListener(type, handler, options);
+      listeners.push(() => target.removeEventListener(type, handler, options));
+    };
+    const rememberMotion = focus => {
+      if (sessionKey) riverMotionSession = { key: sessionKey, x: head.x, v: head.v,
+        focus: focus == null ? !!(riverMotionSession?.key === sessionKey && riverMotionSession.focus) : !!focus };
+    };
     const wrap = document.createElement('div');
     wrap.className = 'g-river-wrap';
     const nav = document.createElement('nav');
@@ -2278,8 +2390,13 @@
         + (node.role === 'past' ? ' is-past' : '')
         + (node.index === selected ? ' is-sel' : '');
       button.textContent = node.label;
-      button.setAttribute('aria-label', node.label + ', ' + (node.range || ('pay period ' + (node.index + 1))));
-      button.addEventListener('click', () => chooseBadTimeline(node.index, model));
+      button.setAttribute('aria-label', (node.unavailable ? 'Unavailable' : node.label)
+        + (node.estimated ? ', estimated' : '') + ', ' + (node.range || ('pay period ' + (node.index + 1))));
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        if (drag || performance.now() < suppressClickUntil) return;
+        commitSelection(node.index, river.contains(document.activeElement));
+      });
       vals.appendChild(button);
     });
     river.append(canvas, slide, play);
@@ -2304,39 +2421,162 @@
       pill.disabled = true;
       bento.prepend(wrap);
     }
-    const layout = { off: 0, xs: [] };
-    river.addEventListener('keydown', event => {
-      if (event.target.closest('.playhead-pill')) return;
-      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
-      event.preventDefault();
-      if (absent) return;
+    const layout = { off: 0, xs: [], spacing: 1, pan: false, width: 0 };
+    const markPreview = index => {
+      previewIndex = index;
+      const node = nodes[index];
+      if (!node) return;
+      [...vals.children].forEach((value, i) => value.classList.toggle('is-sel', i === index));
+      rangeEl.textContent = node.range || text(document.querySelector('[data-budget-window-range]')) || 'Pay period';
+      valueEl.textContent = node.label;
+      valueEl.classList.toggle('is-short', node.tone === 'short');
+      valueEl.classList.toggle('is-est', node.estimated);
+      pill.setAttribute('aria-label', 'Choose period or month. ' + rangeEl.textContent + ', '
+        + (node.unavailable ? 'Unavailable' : node.label) + (node.estimated ? ', estimated' : ''));
+      nav.setAttribute('data-state', node.tone === 'muted' ? 'neutral' : node.tone);
+      if (!absent) river.setAttribute('aria-activedescendant', 'bad-river-' + index);
+      river.toggleAttribute('data-river-preview', index !== selected);
+    };
+    const requestDraw = () => {
+      if (frame != null || disposed || document.hidden || !visible) return;
+      frame = requestAnimationFrame(now => { frame = null; draw(now); });
+    };
+    const commitSelection = (index, focus) => {
+      if (!canNavigate || !Number.isInteger(index) || !nodes[index]) return;
       const current = displayedTimelineIndex(model.nodes);
-      if (current < 0) return;
-      const next = current + (event.key === 'ArrowRight' ? 1 : -1);
-      if (next < 0 || next >= model.nodes.length) return;
-      chooseBadTimeline(next, model);
-    });
-    river.addEventListener('click', event => {
-      if (absent || event.target.closest('.rv')) return;
+      head.target = index;
+      markPreview(index);
+      if (reduceMotion()) head.set(index);
+      rememberMotion(false);
+      requestDraw();
+      if (index === current) return;
+      const wasToolbarOpen = toolbarOpen;
+      chooseBadTimeline(index, model);
+      // The incumbent wheel focuses its own remounted control. This river
+      // action must not open the toolbar as a side effect of that focus.
+      toolbarOpen = wasToolbarOpen;
+      const nativeFocus = document.activeElement;
+      if (nativeFocus?.closest('[data-budget-wheel="period"], [data-budget-window-step]')) nativeFocus.blur();
+      const remounted = !bento.isConnected;
+      rememberMotion(remounted && focus);
+      if (!remounted) {
+        head.target = current;
+        markPreview(current);
+        if (reduceMotion()) head.set(current);
+      }
+    };
+    const positionAt = clientX => {
       const rect = river.getBoundingClientRect();
-      const x = event.clientX - rect.left + layout.off;
-      let best = 0;
-      let bestDist = Infinity;
-      layout.xs.forEach((px, i) => {
-        const dist = Math.abs(px - x);
-        if (dist < bestDist) { best = i; bestDist = dist; }
-      });
-      chooseBadTimeline(best, model);
+      return clampPosition((clientX - rect.left + layout.off - (layout.xs[0] || 0)) / layout.spacing);
+    };
+    listen(river, 'keydown', event => {
+      if (event.target.closest('.playhead-pill')) return;
+      if (!canNavigate || drag || event.altKey || event.ctrlKey || event.metaKey) return;
+      const next = riverKeyTarget(event.key, displayedTimelineIndex(model.nodes), nodes.length);
+      if (next == null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      commitSelection(next, true);
     });
-    const draw = () => {
+    listen(river, 'click', event => {
+      if (!canNavigate || drag || event.target.closest('.rv, .playhead-pill') || performance.now() < suppressClickUntil) return;
+      commitSelection(Math.round(positionAt(event.clientX)), river.contains(document.activeElement));
+    });
+    listen(river, 'pointerdown', event => {
+      if (!canNavigate || drag || event.isPrimary === false || event.button !== 0
+        || event.target.closest('button, a, input, select, textarea')) return;
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, head: head.x,
+        lastX: event.clientX, lastT: performance.now(), velocity: 0, moved: false };
+    });
+    listen(river, 'pointermove', event => {
+      if (!drag || drag.cancelled || event.pointerId !== drag.id) return;
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      if (!drag.moved) {
+        if (Math.abs(dy) > 5 && Math.abs(dy) > Math.abs(dx)) {
+          drag.cancelled = true;
+          return;
+        }
+        if (Math.abs(dx) <= 5) return;
+        drag.moved = true;
+        river.classList.add('is-dragging');
+        try { river.setPointerCapture(event.pointerId); } catch (error) { /* detached pointer */ }
+      }
+      if (event.cancelable) event.preventDefault();
+      const now = performance.now();
+      drag.velocity = 0.75 * drag.velocity + 0.25 * (event.clientX - drag.lastX) / Math.max(1, now - drag.lastT);
+      drag.lastX = event.clientX;
+      drag.lastT = now;
+      head.target = layout.pan ? clampPosition(drag.head - dx / layout.spacing) : positionAt(event.clientX);
+      markPreview(Math.round(head.target));
+      if (reduceMotion()) head.set(head.target);
+      requestDraw();
+    });
+    const finishPointer = (event, cancelled) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const ended = drag;
+      drag = null;
+      river.classList.remove('is-dragging');
+      if (river.hasPointerCapture?.(ended.id)) river.releasePointerCapture(ended.id);
+      if (ended.cancelled) { suppressClickUntil = performance.now() + 400; return; }
+      if (!ended.moved) return;
+      suppressClickUntil = performance.now() + 400;
+      if (cancelled) {
+        head.target = Math.max(0, selected);
+        markPreview(selected);
+        if (reduceMotion()) head.set(head.target);
+        requestDraw();
+        return;
+      }
+      const fresh = performance.now() - ended.lastT < 80 && Math.abs(ended.velocity) > 0.6;
+      const index = riverFlingTarget(head.target, fresh ? ended.velocity : 0,
+        layout.spacing, nodes.length, layout.pan, reduceMotion());
+      commitSelection(index, river.contains(document.activeElement));
+    };
+    listen(window, 'pointerup', event => finishPointer(event, false));
+    listen(window, 'pointercancel', event => finishPointer(event, true));
+    listen(river, 'lostpointercapture', event => finishPointer(event, true));
+    let wheelDelta = 0;
+    let wheelTime = 0;
+    listen(river, 'wheel', event => {
+      if (!canNavigate || event.ctrlKey || event.metaKey || event.altKey || drag) return;
+      const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey;
+      if (!horizontal && document.activeElement !== river) return;
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? layout.width : 1;
+      const delta = (horizontal && event.deltaX ? event.deltaX : event.deltaY) * unit;
+      const current = displayedTimelineIndex(model.nodes);
+      if (!delta || current < 0 || (current === 0 && delta < 0) || (current === nodes.length - 1 && delta > 0)) return;
+      event.preventDefault();
+      const now = performance.now();
+      if (now - wheelTime > 400) wheelDelta = 0;
+      wheelTime = now;
+      wheelDelta += delta;
+      if (Math.abs(wheelDelta) > 60) {
+        const next = Math.max(0, Math.min(nodes.length - 1, current + Math.sign(wheelDelta)));
+        wheelDelta = 0;
+        commitSelection(next, document.activeElement === river);
+      }
+    }, { passive: false });
+    listen(river, 'pointermove', event => {
+      if (drag || event.pointerType === 'touch' || absent) return;
+      const hovered = Math.round(positionAt(event.clientX));
+      [...vals.children].forEach((value, i) => value.classList.toggle('is-hover', i === hovered));
+    });
+    listen(river, 'pointerleave', () => [...vals.children].forEach(value => value.classList.remove('is-hover')));
+    const draw = now => {
       if (!wrap.isConnected) { cleanupDetachedRiver(); return; }
+      if (disposed || document.hidden || !visible) return;
+      const dt = lastFrame ? Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000)) : 0.016;
+      lastFrame = now;
+      if (reduceMotion()) { head.set(head.target); reveal = 1; }
+      else { head.step(dt); reveal = Math.min(1, reveal + dt / 1.6); }
       const rect = river.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height || 178;
       if (!width) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
+      if (canvas.width !== Math.round(width * dpr)) canvas.width = Math.round(width * dpr);
+      if (canvas.height !== Math.round(height * dpr)) canvas.height = Math.round(height * dpr);
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2363,13 +2603,16 @@
       const botSafe = height - (mobile ? 62 : 66);
       const y0 = flat ? (top + botSafe) / 2 : yOfValue(0);
       const ys = nodes.map(node => node.magnitude == null || !Number.isFinite(node.magnitude) ? null : yOfValue(node.magnitude));
-      const sel = selected < 0 ? -1 : Math.max(0, Math.min(n - 1, selected));
+      const sel = previewIndex < 0 ? -1 : Math.max(0, Math.min(n - 1, previewIndex));
       let off = 0;
       if (contentW > width + 1 && sel >= 0) {
-        off = Math.max(0, Math.min(contentW - width, xs[sel] - width / 2));
+        off = Math.max(0, Math.min(contentW - width, pad + head.x * sp - width / 2));
       }
       layout.off = off;
       layout.xs = xs;
+      layout.spacing = sp || 1;
+      layout.pan = contentW > width + 1;
+      layout.width = width;
       slide.style.right = 'auto';
       slide.style.width = contentW + 'px';
       slide.style.transform = 'translate3d(' + (-off).toFixed(1) + 'px,0,0)';
@@ -2383,6 +2626,10 @@
       ys.forEach((y, i) => { if (y != null) knownIdx.push(i); });
       ctx.save();
       ctx.translate(-off, 0);
+      // Prototype reveal is a viewport clip, not a change to any amount.
+      ctx.beginPath();
+      ctx.rect(off - 20, 0, (width + 40) * (1 - Math.pow(1 - reveal, 3)), height);
+      ctx.clip();
       ctx.setLineDash([2, 6]);
       ctx.strokeStyle = 'rgba(' + ink + ',' + (dark ? 0.22 : 0.2) + ')';
       ctx.lineWidth = 1;
@@ -2494,6 +2741,30 @@
           ctx.fill();
         }
       });
+      // The diamond denotes an explicitly published current period. Never
+      // promote the first future row, or an unknown amount, into "today".
+      const current = nodes.findIndex(node => node.role === 'current');
+      if (current >= 0 && ys[current] != null) {
+        const x = xs[current];
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = 'rgb(' + ink + ')';
+        ctx.beginPath();
+        ctx.moveTo(x, y0 - 5); ctx.lineTo(x + 5, y0); ctx.lineTo(x, y0 + 5); ctx.lineTo(x - 5, y0);
+        ctx.closePath(); ctx.fill();
+      }
+      // A stationary lens may highlight a known publication. No yAt or
+      // fractional-height interpolation is used while the head is moving.
+      const markerKnown = sel >= 0 && ys[sel] != null && !drag && head.settled && head.x === sel;
+      if (markerKnown) {
+        const lens = ctx.createRadialGradient(xs[sel], ys[sel], 0, xs[sel], ys[sel], 90);
+        lens.addColorStop(0, dark ? 'rgba(255,255,255,.10)' : 'rgba(10,168,112,.08)');
+        lens.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = lens;
+        ctx.fillRect(xs[sel] - 90, 0, 180, height);
+      }
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
       ctx.restore();
@@ -2524,31 +2795,60 @@
         el.style.left = x.toFixed(1) + 'px';
       });
       if (sel >= 0) {
-        const screenX = xs[sel] - off;
+        const screenX = (n === 1 ? width / 2 : pad + head.x * sp) - off;
         play.hidden = false;
         play.style.transform = 'translate3d(' + screenX.toFixed(1) + 'px,0,0)';
-        if (ys[sel] != null) play.style.setProperty('--orb-y', ys[sel].toFixed(1) + 'px');
+        beam.hidden = orb.hidden = !markerKnown;
+        if (markerKnown) play.style.setProperty('--orb-y', ys[sel].toFixed(1) + 'px');
         const pw = pill.offsetWidth || 160;
         const shift = Math.max(-screenX + 8, Math.min(width - screenX - pw - 8, -pw / 2));
         pill.style.transform = 'translate3d(' + shift.toFixed(1) + 'px,0,0)';
       }
+      river.setAttribute('data-river-motion', !head.settled || reveal < 1 ? 'moving' : 'settled');
+      if (restoreFocus) { restoreFocus = false; river.focus({ preventScroll: true }); rememberMotion(false); }
+      else rememberMotion();
+      if (!head.settled || reveal < 1) requestDraw();
     };
-    let frame = requestAnimationFrame(() => { frame = null; draw(); });
-    window.addEventListener('resize', draw);
+    listen(window, 'resize', requestDraw);
+    listen(document, 'visibilitychange', () => {
+      lastFrame = 0;
+      if (document.hidden && frame != null) { cancelAnimationFrame(frame); frame = null; }
+      else requestDraw();
+    });
+    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (motionQuery?.addEventListener) listen(motionQuery, 'change', () => {
+      if (motionQuery.matches) { head.set(head.target); reveal = 1; }
+      requestDraw();
+    });
+    const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+      visible = !!entries[0]?.isIntersecting;
+      lastFrame = 0;
+      if (!visible && frame != null) { cancelAnimationFrame(frame); frame = null; }
+      else requestDraw();
+    }) : null;
+    observer?.observe(river);
     activeRiver = { wrap: wrap, dispose: () => {
-      window.removeEventListener('resize', draw);
+      disposed = true;
+      rememberMotion();
+      listeners.forEach(remove => remove());
+      observer?.disconnect();
       if (frame != null) cancelAnimationFrame(frame);
+      if (drag && river.hasPointerCapture?.(drag.id)) river.releasePointerCapture(drag.id);
+      drag = null;
     } };
+    requestDraw();
   }
 
+  let provenanceFooter = null;
   function paintQuiet() {
-    if (document.querySelector('.blend-quiet')) return;
-    const footer = document.querySelector('.wrap > footer');
+    const footer = provenanceFooter || document.querySelector('.wrap > footer');
     if (!footer) return;
-    const quiet = document.createElement('div');
-    quiet.className = 'blend-quiet';
-    footer.before(quiet);
-    quiet.appendChild(footer);
+    provenanceFooter = footer;
+    const figures = document.querySelector('[data-budget-period-info-body]');
+    if (figures) {
+      footer.classList.add('blend-provenance');
+      figures.appendChild(footer);
+    }
     // The Budget is one surface; keep the provenance wording without a
     // page-navigation affordance. Native evidence controls are untouched.
     footer.querySelectorAll('a[href="/records.html"]').forEach(link => link.replaceWith(document.createTextNode(link.textContent)));
@@ -2616,6 +2916,9 @@
     module.exports.readBadTimeline = readBadTimeline;
     module.exports.knownTimelineRuns = knownTimelineRuns;
     module.exports.chooseBadTimeline = chooseBadTimeline;
+    module.exports.RiverSpring = RiverSpring;
+    module.exports.riverKeyTarget = riverKeyTarget;
+    module.exports.riverFlingTarget = riverFlingTarget;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

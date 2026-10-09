@@ -5244,11 +5244,25 @@ function budgetDetailSheetController(mount) {
   const dialog = mount.querySelector('[data-budget-detail-sheet]');
   if (!dialog || typeof dialog.showModal !== 'function') return null;
   if (dialog.budgetSheet) return dialog.budgetSheet;
+  if (!dialog.id) dialog.id = 'budget-detail-sheet';
   const body = dialog.querySelector('[data-budget-detail-body]');
   const title = dialog.querySelector('[data-budget-detail-title]');
   const closeButton = dialog.querySelector('[data-budget-detail-close]');
+  const backButton = document.createElement('button');
+  backButton.type = 'button';
+  backButton.setAttribute('data-budget-detail-back', '');
+  backButton.setAttribute('aria-label', 'Go back');
+  backButton.textContent = '< Back';
+  backButton.hidden = true;
+  closeButton.textContent = '\u00d7';
+  closeButton.before(backButton);
+  const parents = [];
   let held = null;
   const identity = (node, source) => {
+    if (!source && node.matches('.blend-income')) return '.blend-income';
+    for (const key of source ? [] : ['data-blend-cat', 'data-blend-bill']) {
+      if (node.hasAttribute(key)) return '[' + key + '="' + CSS.escape(node.getAttribute(key)) + '"]';
+    }
     if (source && node.matches('[data-bill-detail]')) {
       const summary = node.querySelector('[data-period-bill]');
       if (!summary) return null;
@@ -5259,55 +5273,129 @@ function budgetDetailSheetController(mount) {
       return `[${key}="${CSS.escape(node.getAttribute(key))}"][data-budget-browse-origin="${CSS.escape(node.getAttribute('data-budget-browse-origin') || '')}"]${node.hasAttribute('data-budget-bill-date') ? `[data-budget-bill-date="${CSS.escape(node.getAttribute('data-budget-bill-date'))}"]` : ''}`;
     }
     if (source && node.hasAttribute('data-budget-category')) return `[data-budget-category="${CSS.escape(node.getAttribute('data-budget-category'))}"]`;
-    for (const key of source ? ['data-budget-goal-fulfillment-evidence', 'data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-budget-daily-funding-evidence', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
-      : ['data-budget-card-toggle', 'data-budget-card-close', 'data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-month-section', 'data-budget-month-section-heading', 'data-budget-granularity', 'data-budget-window-step']) {
+    for (const key of source ? ['data-blend-bills-panel', 'data-budget-goal-fulfillment-evidence', 'data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-budget-daily-funding-evidence', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
+      : ['data-blend-bills-open', 'data-budget-card-toggle', 'data-budget-card-close', 'data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-month-section', 'data-budget-month-section-heading', 'data-budget-granularity', 'data-budget-window-step']) {
       if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
     }
     if (!source && node.matches('.budget-period-info > summary')) return '.budget-period-info > summary';
     const question = node.closest('[data-operating-question]');
     return question ? `[data-operating-question="${CSS.escape(question.getAttribute('data-operating-question'))}"] ${source ? '.budget-step-body' : '.budget-step-summary'}` : null;
   };
-  const close = (restoreFocus = true) => {
-    if (!held) return;
-    const item = held;
-    held = null;
+  const motion = (method, ...args) => {
+    try { return typeof BudgetSheetMotion !== 'undefined' ? BudgetSheetMotion[method]?.(...args) : null; }
+    catch (_) { return null; } // Decoration must never prevent evidence or dismissal.
+  };
+  const openerFor = item => {
+    const replacement = item.openerSelector && item.openerSelector !== item.triggerSelector
+      ? mount.querySelector(item.openerSelector) : null;
+    return replacement || (item.opener?.isConnected ? item.opener : null);
+  };
+  const release = item => {
     item.parent.insertBefore(item.source, item.next?.parentNode === item.parent ? item.next : null);
     item.source.hidden = item.hidden;
-    if (item.expanded != null) item.trigger.setAttribute('aria-expanded', item.expanded);
+    item.source.inert = item.inert;
+    if (item.expanded != null || item.trigger.hasAttribute('aria-expanded'))
+      item.trigger.setAttribute('aria-expanded', item.expanded ?? 'false');
+    const opener = openerFor(item);
+    if (opener && opener !== item.trigger) opener.setAttribute('aria-expanded', 'false');
+  };
+  const focus = node => {
+    if (!node?.isConnected || !node.getClientRects().length) return false;
+    node.focus({ preventScroll: true });
+    if (document.activeElement !== node) return false;
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return true;
+  };
+  const present = item => {
+    title.textContent = item.label;
+    dialog.classList.toggle('budget-surface-today', item.today);
+    dialog.classList.toggle('budget-surface-period', !item.today);
+    item.source.hidden = false;
+    item.source.inert = item.inert;
+    backButton.hidden = parents.length === 0;
+  };
+  const close = (restoreFocus = true) => {
+    if (!held) { motion('cancel', dialog); return; }
+    const root = parents[0] || held;
+    const departure = restoreFocus ? motion('departure', dialog) : null;
+    motion('cancel', dialog);
+    const items = [...parents, held];
+    held = null;
+    parents.length = 0;
+    items.reverse().forEach(release);
+    backButton.hidden = true;
     dialog.close();
     document.body.classList.remove('budget-detail-open');
-    if (restoreFocus && item.trigger.isConnected) {
-      item.trigger.focus({ preventScroll: true });
-      item.trigger.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const returnTo = openerFor(root) || root.trigger;
+    if (restoreFocus && !focus(returnTo) && !focus(root.trigger)) {
+      mount.tabIndex = -1;
+      mount.focus({ preventScroll: true });
     }
+    if (restoreFocus) motion('leave', departure, motion('origin', returnTo) || root.origin);
   };
-  const open = (source, trigger, label, focusSelector) => {
-    if (!source || !trigger) return;
-    close(false);
-    held = { source, trigger, sourceSelector: identity(source, true), triggerSelector: identity(trigger, false), label, focusSelector,
-      parent: source.parentNode, next: source.nextSibling,
-      hidden: source.hidden, expanded: trigger.getAttribute('aria-expanded') };
-    title.textContent = label;
-    dialog.classList.toggle('budget-surface-today', !!source.closest('.budget-surface-today'));
-    dialog.classList.toggle('budget-surface-period', !source.closest('.budget-surface-today'));
+  const open = (source, trigger, label, focusSelector, options = {}) => {
+    if (!source || !trigger || !source.parentNode) return false;
+    motion('cancel', dialog);
+    // Only Bills -> bill evidence adds a Back level. Other incumbent open()
+    // callers retain replacement behavior and cannot accidentally form a stack.
+    const visibleOpener = options.opener || motion('opener') || trigger;
+    const nested = held && held.source.hasAttribute('data-blend-bills-panel')
+      && held.source.contains(trigger) && source !== held.source && !source.contains(held.source);
+    const replacing = !!held && !nested;
+    if (nested) {
+      held.scrollTop = body.scrollTop;
+      held.source.hidden = true;
+      held.source.inert = true;
+      parents.push(held);
+    } else {
+      close(false);
+    }
+    held = { source, trigger, sourceSelector: identity(source, true), triggerSelector: identity(trigger, false),
+      opener: visibleOpener, openerSelector: options.openerSelector || identity(visibleOpener, false),
+      label, focusSelector, parent: source.parentNode, next: source.nextSibling,
+      hidden: source.hidden, inert: source.inert, expanded: trigger.getAttribute('aria-expanded'),
+      today: !!source.closest('.budget-surface-today'), scrollTop: 0,
+      origin: nested ? parents[0].origin : motion('origin', visibleOpener) };
     body.appendChild(source);
-    source.hidden = false;
+    present(held);
     if (source.matches('[data-bill-detail]')) source.open = true;
     if (source.hasAttribute('data-budget-category')) {
       const spending = source.querySelector('[data-budget-spent]');
       if (spending) spending.open = true;
     }
     if (held.expanded != null) trigger.setAttribute('aria-expanded', 'true');
+    if (visibleOpener !== trigger) {
+      visibleOpener.setAttribute('aria-haspopup', 'dialog');
+      visibleOpener.setAttribute('aria-controls', dialog.id);
+      visibleOpener.setAttribute('aria-expanded', 'true');
+    }
     document.body.classList.add('budget-detail-open');
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
     const first = focusSelector ? source.querySelector(focusSelector) : null;
     body.scrollTop = 0;
     (first || closeButton).focus({ preventScroll: true });
     if (first) first.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (!options.instant) {
+      if (nested || replacing) motion('detail', dialog, nested ? 1 : 0);
+      else motion('enter', dialog, held.origin);
+    }
+    return true;
+  };
+  const back = () => {
+    if (!held || !parents.length) return;
+    motion('cancel', dialog);
+    const child = held;
+    release(child);
+    held = parents.pop();
+    present(held);
+    body.scrollTop = held.scrollTop;
+    if (!focus(openerFor(child) || child.trigger)) closeButton.focus({ preventScroll: true });
+    motion('detail', dialog, -1);
   };
   closeButton.addEventListener('click', () => close());
+  backButton.addEventListener('click', back);
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
-  dialog.addEventListener('close', () => { if (!dialog.open) close(); });
+  dialog.addEventListener('close', () => { if (!dialog.open && held) close(); });
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();
@@ -5317,15 +5405,36 @@ function budgetDetailSheetController(mount) {
   dialog.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
     const nodes = [...dialog.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]')]
-      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && !node.closest('[inert]'));
     const first = nodes[0], last = nodes[nodes.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
-  const snapshot = () => held && held.sourceSelector && held.triggerSelector
-    ? { sourceSelector: held.sourceSelector, triggerSelector: held.triggerSelector,
-      label: held.label, focusSelector: held.focusSelector } : null;
-  dialog.budgetSheet = { open, close, snapshot, focusIdentity: node => identity(node, false) };
+  const snapshot = () => {
+    if (!held) return null;
+    const frames = [...parents, held].map(item => item.sourceSelector && item.triggerSelector
+      ? { sourceSelector: item.sourceSelector, triggerSelector: item.triggerSelector,
+        openerSelector: item.openerSelector, label: item.label, focusSelector: item.focusSelector } : null);
+    return frames.every(Boolean) ? { ...frames[frames.length - 1], frames } : null;
+  };
+  const restore = state => {
+    close(false);
+    const descriptors = state?.frames || (state ? [state] : []);
+    const frames = descriptors.map(item => ({ ...item,
+      source: mount.querySelector(item.sourceSelector), trigger: mount.querySelector(item.triggerSelector) }));
+    // Blend-created Bills parents may not exist yet during a native remount.
+    // Require the complete original-node chain; never fabricate or drop a parent.
+    if (!frames.length || frames.some(item => !item.source || !item.trigger)
+      || new Set(frames.map(item => item.source)).size !== frames.length) return false;
+    if (frames.some((item, index) => index > 0
+      && (!frames[index - 1].source.hasAttribute('data-blend-bills-panel')
+        || !frames[index - 1].source.contains(item.trigger)))) return false;
+    for (const item of frames) open(item.source, item.trigger, item.label, item.focusSelector, { instant: true,
+      opener: item.openerSelector ? mount.querySelector(item.openerSelector) : null, openerSelector: item.openerSelector });
+    if (parents.length !== frames.length - 1) { close(false); return false; }
+    return true;
+  };
+  dialog.budgetSheet = { open, close, back, snapshot, restore, focusIdentity: node => identity(node, false) };
   return dialog.budgetSheet;
 }
 
@@ -5424,7 +5533,8 @@ function wireBudgetWindow(mount, ctx, sheet) {
 function wireBudgetBrowse(mount, ctx, sheet) {
   if (!sheet) return;
   mount.querySelectorAll('[data-budget-bill-filter]').forEach(button => button.addEventListener('click', () => {
-    const section = button.closest('[data-budget-browse="bills"]');
+    const section = button.closest('[data-blend-bills-panel], [data-budget-browse="bills"]');
+    if (!section) return;
     const choice = button.getAttribute('data-budget-bill-filter');
     const selected = button.getAttribute('aria-pressed') !== 'true' ? choice : null;
     section.querySelectorAll('[data-budget-bill-filter]').forEach(control =>
@@ -5811,8 +5921,10 @@ function wirePlanLookPicker(mount, ctx) {
   if (restore) {
     const source = mount.querySelector(restore.sourceSelector);
     const trigger = mount.querySelector(restore.triggerSelector);
-    if (source && trigger && sheet) sheet.open(source, trigger, restore.label, restore.focusSelector);
-    else if (trigger) trigger.focus({ preventScroll: true });
+    const outerTrigger = restore.frames?.length > 1
+      ? mount.querySelector(restore.frames[0].triggerSelector) : trigger;
+    if (source && trigger && sheet && sheet.restore(restore)) { /* Complete original-node chain restored. */ }
+    else if (outerTrigger?.getClientRects().length) outerTrigger.focus({ preventScroll: true });
     else if (typeof mount.focus === 'function') { mount.tabIndex = -1; mount.focus({ preventScroll: true }); }
   } else if (focusRestore) {
     const trigger = mount.querySelector(focusRestore);

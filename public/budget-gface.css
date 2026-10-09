@@ -404,6 +404,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
   margin-top: 12px;
+  margin-bottom: 0;
 }
 .budget-bento.atlas-g .blend-cal,
 .budget-bento.atlas-g .blend-bills-head,
@@ -426,6 +427,15 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   white-space: nowrap;
 }
 .budget-bento.atlas-g .blend-bills-of .blend-est { margin-left: 0; }
+.budget-bento.atlas-g .blend-bills-open {
+  display: inline-flex; align-items: center; gap: 9px; flex: none;
+  margin: 0; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.budget-bento.atlas-g .blend-bills-open:focus-visible { outline: 3px solid var(--blend-focus); outline-offset: 4px; border-radius: 6px; }
+.budget-detail-body > .blend-face-off { max-height: none; overflow: visible; }
+.budget-detail-body .blend-provenance { margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.5; }
+.budget-bento.atlas-g .blend-face-off[hidden] { display: none; }
 .budget-bento.atlas-g .blend-bills-head .blend-flag:not(.is-overdue) { color: #a45f00; background: #fff0d7; }
 .budget-bento.atlas-g .blend-bills-head .blend-flag:not(.is-overdue)::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #dc8200; vertical-align: 1px; }
 .budget-bento.atlas-g .blend-day,
@@ -899,12 +909,17 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   font-size: 13px;
   color: var(--blend-ink-2);
 }
+.budget-detail-body .blend-plan-note { position: static; margin: 8px 0 0; }
 .budget-bento.atlas-g .blend-hero-top:has(.blend-plan-note) { padding-bottom: 0; }
 .budget-bento.atlas-g .blend-hero-panel:not([open]) { position: absolute; }
 #operating-surface .budget-bento.atlas-g .blend-hero-range { font-size: 22px; }
 .budget-bento.atlas-g .budget-category-row.blend-category-projected { display: none; }
 
 /* River */
+.budget-bento.atlas-g .river { cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.budget-bento.atlas-g .river.is-dragging { cursor: grabbing; }
+.budget-bento.atlas-g .river-slide, .budget-bento.atlas-g .playhead { will-change: transform; }
+.budget-bento.atlas-g .rv.is-hover { opacity: 1; color: var(--blend-ink); }
 .budget-bento.atlas-g .g-river-wrap { position: relative; z-index: 2; min-width: 0; }
 .budget-bento.atlas-g .t-river {
   --st: 90 96 110;
@@ -1129,6 +1144,10 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
     height: 100%;
   }
   .budget-bento.atlas-g .blend-cal { gap: 5px; margin-top: 14px; }
+  /* The prototype omits numeric metadata when an action flag fills this row.
+     Missing-publication warnings stay visible; complete native totals remain
+     in the Bills drawer opened by its heading. */
+  .budget-bento.atlas-g .blend-bills-head:has(.blend-flag) .blend-bills-of:not(.is-unavailable) { display: none; }
   .budget-bento.atlas-g .day-n,
   .budget-bento.atlas-g .blend-day-n { left: 6px; top: 5px; font-size: 13px; line-height: 1; }
   .budget-bento.atlas-g .day-g,

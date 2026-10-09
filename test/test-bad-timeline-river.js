@@ -40,7 +40,8 @@ global.document = {
   documentElement: { getAttribute() { return null; }, setAttribute() {}, removeAttribute() {} },
 };
 global.matchMedia = () => ({ matches: false });
-const { keepPastTimelineNode, readBadTimeline, knownTimelineRuns, chooseBadTimeline } = require('../public/budget-blend.js');
+const { keepPastTimelineNode, readBadTimeline, knownTimelineRuns, chooseBadTimeline,
+  RiverSpring, riverKeyTarget, riverFlingTarget } = require('../public/budget-blend.js');
 
 function period(role, start, end, claim, extra) {
   const row = {
@@ -213,10 +214,17 @@ gapItems[6].body = '<span data-bad-term-amount> </span>';
 const gapModel = readBadTimeline({ querySelector() { return { children: gapItems }; } });
 assert.deepEqual(gapModel.nodes.map(node => node.sourceIndex), [0, 2, 3, 4, 5, 6, 7],
   'adapter retains original publication positions after filtering');
-assert.deepEqual(gapModel.nodes.map(node => node.magnitude), [100, 50, null, 0, -20, null, 40],
-  'unavailable and empty spans have no geometry; printed zero is known');
-assert.deepEqual(knownTimelineRuns(gapModel.nodes), [[0], [1], [3, 4], [6]],
+assert.deepEqual(gapModel.nodes.map(node => node.magnitude), [null, null, null, 0, -20, null, 40],
+  'past Household coverage, unavailable and empty spans have no BAD geometry; printed future zero is known');
+assert.deepEqual(gapModel.nodes.slice(0, 2).map(node => [node.label, node.unavailable]),
+  [['Unavailable', true], ['Unavailable', true]],
+  'precise and posted-only Household coverage cannot publish historical BAD');
+assert.deepEqual(knownTimelineRuns(gapModel.nodes), [[3, 4], [6]],
   'only the adjacent published zero and negative value can share a line');
+assert.deepEqual(knownTimelineRuns([
+  { sourceIndex: 0, magnitude: 100 }, { sourceIndex: 2, magnitude: 50 },
+  { sourceIndex: 3, magnitude: 0 },
+]), [[0], [1, 2]], 'a removed source row cannot become an interpolated segment');
 assert.deepEqual(knownTimelineRuns([
   { sourceIndex: 0, magnitude: null }, { sourceIndex: 1, magnitude: NaN },
   { sourceIndex: 2, magnitude: Infinity },
@@ -237,11 +245,23 @@ for (const [label, magnitude] of [
 const savedQuery = global.document.querySelector;
 let currentStart = '2026-07-03';
 let stepCount = 0;
+let wheelCount = 0;
+let useWheel = false;
 let monthMode = false;
 context.gapRows = gapRows;
 global.document.querySelector = selector => {
   if (selector === '[data-budget-window-progress]') return { getAttribute() { return currentStart; } };
   if (selector === '.budget-window-eyebrow') return { textContent: monthMode ? 'Calendar month' : 'Pay period' };
+  const wheel = /^\[data-budget-wheel="period"\] \[data-wheel-index="(\d+)"\]$/.exec(selector);
+  if (useWheel && wheel) return {
+    getAttribute() { return null; },
+    click() {
+      context.requestedStart = currentStart;
+      context.requestedIndex = Number(wheel[1]);
+      currentStart = vm.runInContext('payPeriodWheelSelection({payPeriodViews:gapRows}, requestedStart, "period", requestedIndex).period.start', context);
+      wheelCount++;
+    },
+  };
   const step = /^\[data-budget-window-step="(-?1)"\]$/.exec(selector);
   if (!step) return null;
   return {
@@ -265,8 +285,39 @@ try {
   monthMode = true;
   chooseBadTimeline(0, gapModel);
   assert.equal(stepCount, 7, 'river does not change native selection in month mode');
+  monthMode = false;
+  useWheel = true;
+  chooseBadTimeline(0, gapModel);
+  assert.equal(currentStart, '2026-05-08', 'native wheel reaches the exact retained date despite filtered source rows');
+  assert.equal(wheelCount, 1, 'one release selects one native period without intermediate remounts');
+  assert.equal(stepCount, 7, 'native wheel does not also invoke step controls');
 } finally {
   global.document.querySelector = savedQuery;
 }
 
-console.log('bad timeline river: existing past coverage gate preserved; missing publications and filtered source gaps break geometry; printed zero stays known; navigation reaches the exact native target across gaps');
+// Prototype navigation limits are positions only, independent of amounts.
+assert.equal(riverKeyTarget('Home', 4, 9), 0);
+assert.equal(riverKeyTarget('End', 4, 9), 8);
+assert.equal(riverKeyTarget('PageUp', 1, 9), 7);
+assert.equal(riverKeyTarget('PageDown', 7, 9), 1);
+assert.equal(riverKeyTarget('ArrowLeft', 0, 9), 0);
+assert.equal(riverKeyTarget('ArrowRight', 8, 9), 8);
+assert.equal(riverKeyTarget('ArrowRight', -1, 9), null, 'no fabricated selection when native period is absent');
+assert.equal(riverKeyTarget('Enter', 4, 9), null, 'unrelated keys keep their native behavior');
+assert.equal(riverFlingTarget(3, 1, 56, 9, true, false), 1);
+assert.equal(riverFlingTarget(3, 1, 56, 9, false, false), 6);
+assert.equal(riverFlingTarget(3, 100, 56, 9, true, false), 0);
+assert.equal(riverFlingTarget(3, -100, 56, 9, true, false), 7, 'fling is bounded to four positions');
+assert.equal(riverFlingTarget(3, -100, 56, 9, true, true), 3, 'reduced motion removes fling momentum');
+const spring = new RiverSpring(0);
+spring.target = 6;
+const positions = [];
+for (let frame = 0; frame < 300 && !spring.settled; frame++) positions.push(spring.step(1 / 60));
+assert.ok(positions.length > 1 && positions.every(Number.isFinite), 'bounded spring progresses through finite display positions');
+assert.equal(spring.x, 6);
+assert.equal(spring.settled, true, 'animation reaches a stopped state rather than retaining a perpetual RAF');
+spring.target = 2;
+spring.set(spring.target);
+assert.deepEqual([spring.x, spring.v, spring.target], [2, 0, 2], 'instant/reduced-motion positioning leaves no velocity');
+
+console.log('bad timeline river: past dates retain no unqualified BAD; missing/source gaps break geometry; signed currency and zero stay faithful; exact native navigation, bounded spring/fling and keyboard controls pass');
