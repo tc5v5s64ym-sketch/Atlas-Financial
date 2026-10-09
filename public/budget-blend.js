@@ -1734,25 +1734,32 @@
       rings.after(foot);
       bridges.push([other[0], foot]);
     }
-    const more = document.createElement('details');
-    more.className = 'blend-house-panel';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Household detail';
-    more.appendChild(summary);
+    const sourceRoot = bento.closest('[data-budget-surface]') || bento;
+    const sheet = sourceRoot.querySelector('[data-budget-detail-sheet]');
     const body = document.createElement('div');
     body.className = 'blend-house-body';
     if (counts) body.appendChild(counts);
     const remainBlock = section.querySelector('[data-budget-browse-remaining]')?.parentElement;
     if (remainBlock) remainBlock.classList.add('blend-house-remain');
-    [remainBlock?.querySelector(':scope > span'), remainBlock?.querySelector('small'), section.querySelector('.budget-browse-cycle')]
-      .forEach(node => { if (node) body.appendChild(node); });
-    more.appendChild(body);
-    (section.querySelector('.blend-other') || rings).after(more);
+    const cycle = section.querySelector('.budget-browse-cycle');
+    if (cycle) body.appendChild(cycle);
+    section.querySelectorAll('footer > p').forEach(node => body.appendChild(node));
+    const sourceIdentity = `[data-operating-question="${CSS.escape('06')}"] .budget-step-body`;
+    const evidenceBody = sheet?.budgetSheet?.sourceForIdentity?.(sourceIdentity)
+      || sourceRoot.querySelector(sourceIdentity);
+    if (evidenceBody) evidenceBody.appendChild(body);
+    else {
+      // A missing native disclosure must not discard counts or qualifiers.
+      const more = document.createElement('details');
+      more.className = 'blend-house-panel';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Household detail';
+      more.append(summary, body);
+      (section.querySelector('.blend-other') || rings).after(more);
+    }
     // Only a complete, connected bridge may replace its source row on the
     // face. Keep the full printed status and amounts in its accessible name.
     // Unrepresented rows (including extra Other rows) remain visible.
-    const sourceRoot = bento.closest('[data-budget-surface]') || bento;
-    const sheet = sourceRoot.querySelector('[data-budget-detail-sheet]');
     bridges.forEach(([row, button]) => {
       const label = separatedText(row);
       if (label) button.setAttribute('aria-label', label);
@@ -2864,6 +2871,39 @@
     if (!bento || bento.getAttribute('data-blend-ready') === '1') return;
     bento.setAttribute('data-blend-ready', '1');
     place(bento);
+    paintSheet(root);
+    root.querySelector('[data-budget-detail-sheet]')?.budgetSheet?.completeDeferredRestore?.();
+  }
+
+  function paintSheet(root) {
+    const dialog = root.querySelector('[data-budget-detail-sheet]');
+    const header = dialog?.querySelector(':scope > header');
+    const title = header?.querySelector('[data-budget-detail-title]');
+    if (!dialog || !header || !title) return;
+    dialog.classList.add('blend-detail-sheet');
+    let titles = header.querySelector('.blend-sheet-titles');
+    if (!titles) {
+      titles = document.createElement('div');
+      titles.className = 'blend-sheet-titles';
+      const range = document.createElement('span');
+      range.className = 'blend-sheet-kicker';
+      range.textContent = text(root.querySelector('[data-budget-window-range]'));
+      title.before(titles);
+      titles.append(range, title);
+    }
+    root.querySelectorAll('.budget-bill-row, [data-bill-detail] > summary').forEach(row => {
+      if (row.querySelector('.blend-bill-symbol')) return;
+      const nativeLabel = row.querySelector('.budget-bill-label strong') || row.querySelector('span');
+      const symbol = document.createElement('span');
+      symbol.className = 'blend-bill-symbol';
+      symbol.setAttribute('aria-hidden', 'true');
+      symbol.appendChild(billIcon(text(nativeLabel)));
+      if (row.matches('[data-bill-detail] > summary')) {
+        nativeLabel?.classList.add('blend-bill-summary-label');
+        row.querySelector(':scope > span:last-child')?.classList.add('blend-bill-summary-amount');
+      }
+      row.prepend(symbol);
+    });
   }
 
   function tilt(event) {

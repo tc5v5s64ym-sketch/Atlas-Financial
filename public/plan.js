@@ -5258,6 +5258,7 @@ function budgetDetailSheetController(mount) {
   closeButton.before(backButton);
   const parents = [];
   let held = null;
+  let pendingRestore = null;
   const identity = (node, source) => {
     if (!source && node.matches('.blend-income')) return '.blend-income';
     for (const key of source ? [] : ['data-blend-cat', 'data-blend-bill']) {
@@ -5315,6 +5316,7 @@ function budgetDetailSheetController(mount) {
     backButton.hidden = parents.length === 0;
   };
   const close = (restoreFocus = true) => {
+    pendingRestore = null;
     if (!held) { motion('cancel', dialog); return; }
     const root = parents[0] || held;
     const departure = restoreFocus ? motion('departure', dialog) : null;
@@ -5334,6 +5336,7 @@ function budgetDetailSheetController(mount) {
     if (restoreFocus) motion('leave', departure, motion('origin', returnTo) || root.origin);
   };
   const open = (source, trigger, label, focusSelector, options = {}) => {
+    pendingRestore = null;
     if (!source || !trigger || !source.parentNode) return false;
     motion('cancel', dialog);
     // Only Bills -> bill evidence adds a Back level. Other incumbent open()
@@ -5410,31 +5413,108 @@ function budgetDetailSheetController(mount) {
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
-  const snapshot = () => {
-    if (!held) return null;
-    const frames = [...parents, held].map(item => item.sourceSelector && item.triggerSelector
-      ? { sourceSelector: item.sourceSelector, triggerSelector: item.triggerSelector,
-        openerSelector: item.openerSelector, label: item.label, focusSelector: item.focusSelector } : null);
-    return frames.every(Boolean) ? { ...frames[frames.length - 1], frames } : null;
+  const readBillsFilter = source => {
+    const selected = [...source.querySelectorAll('[data-budget-bill-filter][aria-pressed="true"]')];
+    const choice = selected.length === 1 ? selected[0].getAttribute('data-budget-bill-filter') : null;
+    return choice === 'paid' || choice === 'not-paid' ? choice : null;
   };
-  const restore = state => {
+  const restoreBillsFilter = (source, choice) => {
+    const controls = [...source.querySelectorAll('[data-budget-bill-filter]')];
+    const selected = (choice === 'paid' || choice === 'not-paid')
+      && controls.filter(control => control.getAttribute('data-budget-bill-filter') === choice).length === 1
+      ? choice : null;
+    controls.forEach(control => control.setAttribute('aria-pressed',
+      String(control.getAttribute('data-budget-bill-filter') === selected)));
+    source.querySelectorAll('[data-budget-bill-bucket]').forEach(bucket => {
+      bucket.hidden = !!selected && bucket.getAttribute('data-budget-bill-bucket') !== selected;
+    });
+    // Same native filter description; buckets and their financial content are
+    // freshly published nodes. Only the user's display choice is restored.
+    const status = source.querySelector('[data-budget-bill-filter-status]');
+    if (status) status.textContent = selected === 'paid'
+      ? 'Showing paid bills: money sent or settlement confirmed.' : selected === 'not-paid'
+        ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.';
+  };
+  const descriptor = item => ({
+    sourceSelector: item.sourceSelector, triggerSelector: item.triggerSelector,
+    openerSelector: item.openerSelector, label: item.label, focusSelector: item.focusSelector,
+    scrollTop: Number.isFinite(item.scrollTop) && item.scrollTop >= 0 ? item.scrollTop : 0,
+    billsFilter: item.billsFilter === 'paid' || item.billsFilter === 'not-paid' ? item.billsFilter : null,
+  });
+  const copyState = state => {
+    const frames = (state?.frames || (state ? [state] : [])).map(descriptor);
+    return frames.length ? { ...frames[frames.length - 1], frames } : null;
+  };
+  const snapshot = () => {
+    if (pendingRestore) return copyState(pendingRestore);
+    if (!held) return null;
+    const frames = [...parents, { ...held, scrollTop: body.scrollTop }].map(item => ({ ...item,
+      billsFilter: item.source.hasAttribute('data-blend-bills-panel') ? readBillsFilter(item.source) : null }));
+    return frames.every(item => item.sourceSelector && item.triggerSelector)
+      ? copyState({ frames }) : null;
+  };
+  const matches = selector => typeof selector === 'string' && selector
+    ? [...mount.querySelectorAll(selector)] : [];
+  const unique = selector => {
+    const nodes = matches(selector);
+    return nodes.length === 1 ? nodes[0] : null;
+  };
+  const sourceForIdentity = selector => {
+    const owned = [...parents, held].find(item => item?.sourceSelector === selector);
+    return owned?.source.isConnected ? owned.source : unique(selector);
+  };
+  const restore = (state, { deferBlend = false } = {}) => {
     close(false);
-    const descriptors = state?.frames || (state ? [state] : []);
-    const frames = descriptors.map(item => ({ ...item,
-      source: mount.querySelector(item.sourceSelector), trigger: mount.querySelector(item.triggerSelector) }));
-    // Blend-created Bills parents may not exist yet during a native remount.
-    // Require the complete original-node chain; never fabricate or drop a parent.
-    if (!frames.length || frames.some(item => !item.source || !item.trigger)
+    const saved = copyState(state);
+    const frames = (saved?.frames || []).map(item => {
+      const sources = matches(item.sourceSelector), triggers = matches(item.triggerSelector);
+      return { ...item, source: sources[0], trigger: triggers[0],
+        sourceCount: sources.length, triggerCount: triggers.length };
+    });
+    const isBillsFrame = item => item.sourceSelector === '[data-blend-bills-panel]'
+      && item.triggerSelector === '[data-blend-bills-open]';
+    const incomplete = frames.some(item => item.sourceCount !== 1 || item.triggerCount !== 1);
+    if (incomplete && deferBlend) {
+      const bento = mount.querySelector('[data-budget-bento]');
+      const canWait = frames.length > 0 && frames.some(isBillsFrame)
+        && bento && bento.getAttribute('data-blend-ready') !== '1'
+        && mount.querySelector('[data-budget-browse="bills"]')
+        && frames.every(item => item.sourceCount === 1 && item.triggerCount === 1
+          || isBillsFrame(item) && item.sourceCount <= 1 && item.triggerCount <= 1);
+      // Only known skin-created Bills identities may wait. Every native child
+      // must already resolve uniquely; no missing publication is manufactured.
+      if (canWait) { pendingRestore = saved; return 'pending'; }
+    }
+    if (!frames.length || incomplete
       || new Set(frames.map(item => item.source)).size !== frames.length) return false;
     if (frames.some((item, index) => index > 0
       && (!frames[index - 1].source.hasAttribute('data-blend-bills-panel')
-        || !frames[index - 1].source.contains(item.trigger)))) return false;
-    for (const item of frames) open(item.source, item.trigger, item.label, item.focusSelector, { instant: true,
-      opener: item.openerSelector ? mount.querySelector(item.openerSelector) : null, openerSelector: item.openerSelector });
+        || !frames[index - 1].source.contains(item.trigger)
+        || item.source.contains(frames[index - 1].source)))) return false;
+    for (const item of frames) {
+      open(item.source, item.trigger, item.label, item.focusSelector, { instant: true,
+        opener: unique(item.openerSelector), openerSelector: item.openerSelector });
+      if (item.source.hasAttribute('data-blend-bills-panel')) restoreBillsFilter(item.source, item.billsFilter);
+      body.scrollTop = item.scrollTop;
+    }
     if (parents.length !== frames.length - 1) { close(false); return false; }
     return true;
   };
-  dialog.budgetSheet = { open, close, back, snapshot, restore, focusIdentity: node => identity(node, false) };
+  const completeDeferredRestore = () => {
+    const state = pendingRestore;
+    pendingRestore = null; // One attempt; subsequent paints must not replay it.
+    if (!state || !dialog.isConnected
+      || mount.querySelector('[data-budget-detail-sheet]') !== dialog) return false;
+    if (restore(state)) return true;
+    const root = state.frames[0];
+    if (!focus(unique(root.openerSelector)) && !focus(unique(root.triggerSelector))) {
+      mount.tabIndex = -1;
+      mount.focus({ preventScroll: true });
+    }
+    return false;
+  };
+  dialog.budgetSheet = { open, close, back, snapshot, restore, completeDeferredRestore, sourceForIdentity,
+    focusIdentity: node => identity(node, false) };
   return dialog.budgetSheet;
 }
 
@@ -5919,13 +5999,13 @@ function wirePlanLookPicker(mount, ctx) {
   const focusRestore = mount.budgetFocusRestore;
   mount.budgetFocusRestore = null;
   if (restore) {
-    const source = mount.querySelector(restore.sourceSelector);
-    const trigger = mount.querySelector(restore.triggerSelector);
-    const outerTrigger = restore.frames?.length > 1
-      ? mount.querySelector(restore.frames[0].triggerSelector) : trigger;
-    if (source && trigger && sheet && sheet.restore(restore)) { /* Complete original-node chain restored. */ }
-    else if (outerTrigger?.getClientRects().length) outerTrigger.focus({ preventScroll: true });
-    else if (typeof mount.focus === 'function') { mount.tabIndex = -1; mount.focus({ preventScroll: true }); }
+    const result = sheet?.restore(restore, { deferBlend: true });
+    if (result !== true && result !== 'pending') {
+      const root = restore.frames?.[0] || restore;
+      const outerTrigger = mount.querySelector(root.openerSelector || root.triggerSelector);
+      if (outerTrigger?.getClientRects().length) outerTrigger.focus({ preventScroll: true });
+      else if (typeof mount.focus === 'function') { mount.tabIndex = -1; mount.focus({ preventScroll: true }); }
+    }
   } else if (focusRestore) {
     const trigger = mount.querySelector(focusRestore);
     if (trigger) {

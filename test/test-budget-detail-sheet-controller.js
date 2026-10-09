@@ -10,6 +10,8 @@ const source = fs.readFileSync(path.join(__dirname, '../public/plan.js'), 'utf8'
 const controller = source.slice(source.indexOf('function budgetDetailSheetController(mount) {'),
   source.indexOf('\nfunction budgetRemount(mount, ctx)'));
 assert.ok(controller.startsWith('function budgetDetailSheetController'));
+const cssEscape = value => String(value).replace(/^[0-9]/, digit => '\\' + digit.codePointAt(0).toString(16) + ' ');
+const cssUnescape = value => value.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
 function selectors(text, separator) {
   let depth = 0, start = 0;
   const result = [];
@@ -64,7 +66,7 @@ class Element {
     const classes = [...selector.matchAll(/\.([\w-]+)/g)];
     if (classes.some(match => !this.classList.contains(match[1]))) return false;
     return [...selector.matchAll(/\[([\w-]+)(?:="([^"]*)")?\]/g)]
-      .every(([, key, value]) => this.hasAttribute(key) && (value === undefined || this.getAttribute(key) === value));
+      .every(([, key, value]) => this.hasAttribute(key) && (value === undefined || this.getAttribute(key) === cssUnescape(value)));
   }
   closest(selector) { return this.matches(selector) ? this : this.parentNode?.closest(selector) || null; }
   querySelectorAll(selector) {
@@ -95,7 +97,8 @@ function fixture() {
   document.body = new Element(document, 'body'); document.activeElement = document.body;
   const add = (parent, tag, attrs) => parent.appendChild(new Element(document, tag, attrs));
   const mount = add(document.body, 'main', {});
-  const section = add(mount, 'section', { class: 'budget-surface-period', 'data-budget-browse': 'bills' });
+  const bento = add(mount, 'div', { 'data-budget-bento': '' });
+  const section = add(bento, 'section', { class: 'budget-surface-period', 'data-budget-browse': 'bills' });
   const heading = add(section, 'button', { 'data-blend-bills-open': '', 'aria-expanded': 'false' });
   const panel = add(section, 'div', { 'data-blend-bills-panel': '' }); panel.hidden = true;
   const row = add(panel, 'button', { 'data-budget-bill-open': 'hydro', 'data-budget-browse-origin': 'current',
@@ -114,7 +117,7 @@ function fixture() {
   const body = add(dialog, 'div', { 'data-budget-detail-body': '' });
   const calls = [];
   let forwarded = null;
-  const context = vm.createContext({ document, CSS: { escape: value => value },
+  const context = vm.createContext({ document, CSS: { escape: cssEscape },
     BudgetSheetMotion: {
       from(node, action) { const previous = forwarded; forwarded = node; try { return action(); } finally { forwarded = previous; } },
       opener: () => forwarded,
@@ -127,7 +130,7 @@ function fixture() {
     } });
   vm.runInContext(controller, context);
   const sheet = context.budgetDetailSheetController(mount);
-  return { document, mount, panel, heading, row, detail, evidence, owner, after, dialog, close, title, body,
+  return { document, mount, bento, panel, heading, row, detail, evidence, owner, after, dialog, close, title, body,
     other, otherTrigger, calls, sheet, motion: context.BudgetSheetMotion, back: dialog.querySelector('[data-budget-detail-back]') };
 }
 function openBills(f) { f.sheet.open(f.panel, f.heading, 'Bills'); }
@@ -237,4 +240,220 @@ for (const action of ['close', 'escape', 'backdrop']) {
   assert.equal(fresh.document.activeElement, nextIncome, 'close resolves the visible proxy created after remount');
   assert.equal(nextIncome.getAttribute('aria-expanded'), 'false');
 }
-console.log('PASS native Budget drawer: original-node ownership, nested Back, full dismissal, focus, immutable evidence and remount identity chain');
+function removeBlendBills(f) {
+  const section = f.heading.parentNode;
+  const nativeNodes = [...f.panel.children];
+  nativeNodes.forEach(node => section.appendChild(node)); // Native rows and filters precede skin grouping.
+  section.removeChild(f.panel);
+  section.removeChild(f.heading);
+  f.bento.removeAttribute('data-blend-ready');
+  return () => {
+    section.appendChild(f.heading);
+    section.appendChild(f.panel);
+    nativeNodes.forEach(node => f.panel.appendChild(node));
+    f.bento.setAttribute('data-blend-ready', '1');
+  };
+}
+function billsSnapshot() {
+  const f = fixture();
+  openBills(f); f.body.scrollTop = 240;
+  openBill(f); f.body.scrollTop = 90;
+  const state = f.sheet.snapshot();
+  f.sheet.close(false);
+  return state;
+}
+{
+  const state = billsSnapshot(), f = fixture(), paint = removeBlendBills(f);
+  assert.equal(f.sheet.restore(state, { deferBlend: true }), 'pending');
+  assert.equal(f.dialog.open, false, 'a missing skin parent cannot produce a partial modal');
+  assert.equal(f.detail.parentNode, f.owner, 'waiting never moves native evidence');
+  const pending = f.sheet.snapshot();
+  assert.equal(pending.frames.length, 2);
+  pending.frames[0].label = 'Do not mutate the saved chain';
+  assert.equal(f.sheet.snapshot().frames[0].label, 'Bills', 'pending snapshots are detached copies');
+  paint();
+  assert.equal(f.sheet.completeDeferredRestore(), true);
+  assert.equal(f.title.textContent, 'Hydro');
+  assert.equal(f.detail.parentNode, f.body);
+  assert.equal(f.panel.parentNode, f.body);
+  assert.equal(f.panel.hidden, true); assert.equal(f.panel.inert, true);
+  assert.equal(f.body.scrollTop, 90);
+  assert.equal(f.back.hidden, false);
+  assert.deepEqual(f.calls, [], 'completing a remount does not replay user actions or motion');
+  assert.equal(f.sheet.completeDeferredRestore(), false, 'completion is consumed once');
+  f.sheet.back();
+  assert.equal(f.body.scrollTop, 240, 'Back retains the parent scroll position');
+  assert.equal(f.document.activeElement, f.row);
+  f.close.emit('click');
+  originalEvidence(f);
+  assert.equal(f.document.activeElement, f.heading);
+}
+{
+  const initial = billsSnapshot(), first = fixture();
+  removeBlendBills(first);
+  assert.equal(first.sheet.restore(initial, { deferBlend: true }), 'pending');
+  const carried = first.sheet.snapshot();
+  first.sheet.close(false); // budgetRemount snapshots before closing its old controller.
+  assert.equal(first.sheet.completeDeferredRestore(), false);
+  const second = fixture(), paint = removeBlendBills(second);
+  assert.equal(second.sheet.restore(carried, { deferBlend: true }), 'pending');
+  paint(); assert.equal(second.sheet.completeDeferredRestore(), true);
+  assert.equal(second.back.hidden, false);
+  second.sheet.back(); assert.equal(second.document.activeElement, second.row);
+  second.sheet.close(false); originalEvidence(second);
+}
+for (const cancel of ['close', 'new-open', 'invalid-open', 'detached']) {
+  const f = fixture(), paint = removeBlendBills(f);
+  assert.equal(f.sheet.restore(billsSnapshot(), { deferBlend: true }), 'pending');
+  if (cancel === 'close') f.sheet.close();
+  if (cancel === 'new-open') f.sheet.open(f.other, f.otherTrigger, 'Choose period');
+  if (cancel === 'invalid-open') f.sheet.open(null, f.otherTrigger, 'Missing');
+  if (cancel === 'detached') f.mount.removeChild(f.dialog);
+  paint();
+  assert.equal(f.sheet.completeDeferredRestore(), false, cancel + ' cancels obsolete restoration');
+  originalEvidence(f);
+  if (cancel === 'new-open') {
+    assert.equal(f.title.textContent, 'Choose period');
+    assert.equal(f.other.parentNode, f.body, 'later paint must not replace a newer user choice');
+    f.sheet.close(false);
+  } else assert.equal(f.dialog.open, false);
+}
+{
+  const f = fixture(); removeBlendBills(f);
+  f.owner.removeChild(f.detail);
+  assert.equal(f.sheet.restore(billsSnapshot(), { deferBlend: true }), false,
+    'a missing native child is unavailable evidence, not pending skin');
+  assert.equal(f.sheet.snapshot(), null);
+}
+for (const duplicate of ['source', 'trigger']) {
+  const f = fixture(); removeBlendBills(f);
+  if (duplicate === 'source') {
+    const detail = f.document.createElement('details');
+    detail.setAttribute('data-bill-detail', '');
+    const summary = f.document.createElement('summary');
+    summary.setAttribute('data-period-bill', 'hydro');
+    summary.setAttribute('data-bill-date', '2026-10-09');
+    detail.appendChild(summary); f.owner.appendChild(detail);
+  } else {
+    const row = f.document.createElement('button');
+    for (const [key, value] of Object.entries(f.row.attrs)) row.setAttribute(key, value);
+    f.row.parentNode.appendChild(row);
+  }
+  assert.equal(f.sheet.restore(billsSnapshot(), { deferBlend: true }), false,
+    'ambiguous native ' + duplicate + ' must not pick the first match');
+  assert.equal(f.sheet.snapshot(), null); originalEvidence(f);
+}
+{
+  const f = fixture(), paint = removeBlendBills(f);
+  assert.equal(f.sheet.restore(billsSnapshot(), { deferBlend: true }), 'pending');
+  paint();
+  f.panel.removeAttribute('data-blend-bills-panel');
+  assert.equal(f.sheet.completeDeferredRestore(), false, 'an incomplete completed paint cannot drop its parent');
+  assert.equal(f.dialog.open, false); assert.equal(f.document.activeElement, f.heading);
+  assert.equal(f.sheet.snapshot(), null); originalEvidence(f);
+}
+{
+  const f = fixture(), paint = removeBlendBills(f);
+  assert.equal(f.sheet.restore(billsSnapshot(), { deferBlend: true }), 'pending');
+  paint();
+  f.panel.removeChild(f.row);
+  f.heading.parentNode.appendChild(f.row);
+  assert.equal(f.sheet.completeDeferredRestore(), false, 'a resolved child must still belong to the published parent');
+  assert.equal(f.dialog.open, false); originalEvidence(f);
+}
+{
+  const f = fixture();
+  const question = f.document.createElement('section');
+  question.setAttribute('data-operating-question', '06');
+  const source = f.document.createElement('div'); source.classList.add('budget-step-body');
+  const trigger = f.document.createElement('summary'); trigger.classList.add('budget-step-summary');
+  question.appendChild(trigger); question.appendChild(source); f.mount.appendChild(question);
+  const literal = '[data-operating-question="06"] .budget-step-body';
+  const key = '[data-operating-question="' + cssEscape('06') + '"] .budget-step-body';
+  assert.notEqual(key, literal, 'numeric native question identities use CSS.escape');
+  assert.equal(f.mount.querySelector(literal), source);
+  assert.equal(f.sheet.sourceForIdentity(key), source);
+  f.sheet.open(source, trigger, 'Household');
+  assert.equal(f.mount.querySelector(key), null, 'moving a source removes its former ancestor selector');
+  assert.equal(f.sheet.sourceForIdentity(literal), null, 'equivalent DOM selectors are not the held canonical identity');
+  assert.equal(f.sheet.sourceForIdentity(key), source, 'escaped identity resolves the exact controller-owned Q06 source');
+  const saved = f.sheet.snapshot();
+  assert.equal(saved.sourceSelector, key);
+  f.sheet.close(false);
+  assert.equal(f.sheet.restore(saved), true);
+  assert.equal(f.sheet.sourceForIdentity(key), source, 'canonical lookup survives native remount restoration');
+  f.sheet.close(false);
+  assert.equal(f.sheet.sourceForIdentity(key), source);
+  const duplicate = f.document.createElement('div'); duplicate.classList.add('budget-step-body');
+  question.appendChild(duplicate);
+  assert.equal(f.sheet.sourceForIdentity(key), null, 'unowned ambiguous sources are never selected arbitrarily');
+}
+function filterFixture() {
+  const f = fixture();
+  const add = (parent, tag, attrs) => {
+    const node = f.document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    parent.appendChild(node); return node;
+  };
+  f.paidFilter = add(f.panel, 'button', { 'data-budget-bill-filter': 'paid', 'aria-pressed': 'false' });
+  f.notPaidFilter = add(f.panel, 'button', { 'data-budget-bill-filter': 'not-paid', 'aria-pressed': 'false' });
+  f.filterStatus = add(f.panel, 'p', { 'data-budget-bill-filter-status': '' });
+  f.filterStatus.textContent = 'Showing all bills.';
+  f.paidBucket = add(f.panel, 'div', { 'data-budget-bill-bucket': 'paid' });
+  f.notPaidBucket = add(f.panel, 'div', { 'data-budget-bill-bucket': 'not-paid' });
+  f.notPaidBucket.appendChild(f.row);
+  f.paidRow = add(f.paidBucket, 'button', { 'data-budget-bill-open': 'rent',
+    'data-budget-browse-origin': 'current', 'data-budget-bill-date': '2026-10-09' });
+  f.paidDetail = add(f.owner, 'details', { 'data-bill-detail': '' });
+  add(f.paidDetail, 'summary', { 'data-period-bill': 'rent', 'data-bill-date': '2026-10-09' });
+  f.paidEvidence = add(f.paidDetail, 'p', {});
+  f.paidEvidence.textContent = 'Fixture publication: $45.00; confirmed';
+  return f;
+}
+for (const choice of ['paid', 'not-paid', null]) {
+  const first = filterFixture();
+  openBills(first);
+  // Set the UI state produced by an existing native filter click. The
+  // controller must retain this choice, not recalculate a settlement bucket.
+  first.paidFilter.setAttribute('aria-pressed', String(choice === 'paid'));
+  first.notPaidFilter.setAttribute('aria-pressed', String(choice === 'not-paid'));
+  first.paidBucket.hidden = choice === 'not-paid';
+  first.notPaidBucket.hidden = choice === 'paid';
+  if (choice === 'paid') first.sheet.open(first.paidDetail, first.paidRow, 'Rent');
+  else openBill(first);
+  const saved = first.sheet.snapshot();
+  assert.equal(saved.frames[0].billsFilter, choice);
+  first.sheet.close(false);
+  const fresh = filterFixture(), paint = removeBlendBills(fresh);
+  assert.equal(fresh.sheet.restore(saved, { deferBlend: true }), 'pending');
+  assert.equal(fresh.sheet.snapshot().frames[0].billsFilter, choice, 'deferred copy retains the display choice');
+  paint(); assert.equal(fresh.sheet.completeDeferredRestore(), true);
+  fresh.sheet.back();
+  assert.equal(fresh.paidFilter.getAttribute('aria-pressed'), String(choice === 'paid'));
+  assert.equal(fresh.notPaidFilter.getAttribute('aria-pressed'), String(choice === 'not-paid'));
+  assert.equal(fresh.paidBucket.hidden, choice === 'not-paid');
+  assert.equal(fresh.notPaidBucket.hidden, choice === 'paid');
+  assert.equal(fresh.filterStatus.textContent, choice === 'paid'
+    ? 'Showing paid bills: money sent or settlement confirmed.' : choice === 'not-paid'
+      ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.');
+  assert.equal(fresh.document.activeElement, choice === 'paid' ? fresh.paidRow : fresh.row);
+  assert.equal(fresh.evidence.textContent, 'Fixture publication: $120.00; unconfirmed');
+  assert.equal(fresh.paidEvidence.textContent, 'Fixture publication: $45.00; confirmed');
+  assert.equal(fresh.paidEvidence.parentNode, fresh.paidDetail, 'filter restoration never copies evidence');
+  assert.equal(fresh.sheet.snapshot().frames[0].billsFilter, choice, 'later remounts capture the restored UI');
+  fresh.sheet.close(false);
+}
+{
+  const first = filterFixture();
+  openBills(first); first.paidFilter.setAttribute('aria-pressed', 'true');
+  const saved = first.sheet.snapshot(); first.sheet.close(false);
+  const fresh = filterFixture();
+  fresh.panel.removeChild(fresh.paidFilter);
+  assert.equal(fresh.sheet.restore(saved), true);
+  assert.equal(fresh.notPaidFilter.getAttribute('aria-pressed'), 'false');
+  assert.equal(fresh.paidBucket.hidden, false); assert.equal(fresh.notPaidBucket.hidden, false);
+  assert.equal(fresh.filterStatus.textContent, 'Showing all bills.',
+    'a no-longer-published filter falls back to the complete current evidence');
+  fresh.sheet.close(false);
+}
+console.log('PASS native Budget drawer: original-node ownership, Back/focus, immutable evidence, deferred remount chain, cancellation, unique identities, held-source lookup and retained Bills filters');

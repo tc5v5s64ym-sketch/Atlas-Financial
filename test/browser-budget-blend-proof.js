@@ -874,13 +874,9 @@ const composite = (fg, bg) => {
             row.classList.add('is-over');
             row.querySelector('.budget-category-status').textContent = '$295.14 over';
             const bento = document.querySelector('[data-budget-bento]');
-            const panel = bento.querySelector('.blend-house-panel');
-            const counts = panel && panel.querySelector('.budget-browse-counts');
-            if (counts) section.appendChild(counts);
             bento.removeAttribute('data-blend-ready');
             bento.querySelector('[data-blend-rings]')?.remove();
             bento.querySelector('.blend-other')?.remove();
-            panel?.remove();
             document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
           });
           await page.locator('.blend-over-pill').waitFor();
@@ -1089,6 +1085,47 @@ const composite = (fg, bg) => {
       await detailsPage.keyboard.press('Escape');
       assert.equal(await header.evaluate(node => document.activeElement === node), true, 'Escape returns to the Bills header');
 
+      // Cross the responsive breakpoint while the native bill is nested.
+      // A remount may replace DOM nodes, but cannot strand the child, lose
+      // its published occurrence or send Back to the page instead of Bills.
+      await header.click();
+      await unpaid.click();
+      assert.equal(await unpaid.getAttribute('aria-pressed'), 'true');
+      await panel.locator('[data-budget-bill-open="hydro"]').click();
+      for (const resizedWidth of [width === 1440 ? 390 : 1440, width]) {
+        await detailsPage.setViewportSize({ width: resizedWidth, height: 1000 });
+        await detailsPage.evaluate(() => App.rerender());
+        await detailsPage.waitForFunction(() => {
+          const sheet = document.querySelector('[data-budget-detail-sheet]');
+          return sheet?.open && sheet.querySelector('[data-budget-detail-title]')?.textContent === 'Hydro'
+            && !sheet.querySelector('[data-budget-detail-back]')?.hidden;
+        });
+        await settle(detailsPage);
+        await assertDialogPlacement(detailsPage, 'Nested Hydro after resize to ' + resizedWidth);
+        const occurrence = dialog.locator('[data-bill-detail]:has(> [data-period-bill="hydro"])');
+        assert.equal(await occurrence.count(), 1, 'Exactly the selected occurrence remains after resize');
+        assert.equal(await occurrence.textContent(), originalBillCopy, 'Resize preserves published Hydro evidence');
+        assert.equal(await unpaid.getAttribute('aria-pressed'), 'true', 'Nested resize preserves the selected Bills filter');
+        assert.equal(await dialog.evaluate(node => node.contains(document.activeElement)
+          && !document.activeElement.closest('[inert], [hidden]')), true, 'Nested focus remains inside active evidence');
+      }
+      await dialog.getByRole('button', { name: 'Go back', exact: true }).click();
+      await detailsPage.waitForFunction(() => document.querySelector('[data-budget-detail-title]')?.textContent === 'Bills');
+      assert.equal(await panel.locator('[data-budget-bill-open="hydro"]').evaluate(node => node === document.activeElement), true,
+        'Back after responsive remount returns to the matching bill row');
+      assert.equal(await unpaid.getAttribute('aria-pressed'), 'true', 'Back after remount retains NOT PAID');
+      assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), false,
+        'Previously selected filter still excludes paid bills after responsive restoration');
+      assert.equal(await panel.locator('[data-budget-bill-bucket="not-paid"]').isVisible(), true);
+      assert.match(await panel.locator('[data-budget-bill-filter-status]').textContent(), /not confirmed paid/);
+      await unpaid.click();
+      assert.equal(await unpaid.getAttribute('aria-pressed'), 'false');
+      assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), true,
+        'Native filter still clears after responsive restoration');
+      await detailsPage.keyboard.press('Escape');
+      assert.equal(await header.evaluate(node => node === document.activeElement && node.getAttribute('aria-expanded') === 'false'), true,
+        'Nested resize flow returns to the visible Bills heading');
+
       const figures = detailsPage.locator('[data-budget-period-info-body]');
       const originalFigures = await figures.elementHandle();
       const figureCopy = await figures.textContent();
@@ -1205,25 +1242,21 @@ const composite = (fg, bg) => {
         row.classList.add('is-over');
         row.querySelector('.budget-category-status').textContent = marked[index];
       });
-      const printed = (section.querySelector('.budget-browse-counts')?.textContent || '').replace(/\s+/g, ' ').trim();
+      const printed = (document.querySelector('[data-operating-question="06"] .blend-house-body .budget-browse-counts')?.textContent || '').replace(/\s+/g, ' ').trim();
       const hold = (section.querySelector('[data-budget-browse-hold]')?.textContent || '').replace(/\s+/g, ' ').trim();
       const bento = document.querySelector('[data-budget-bento]');
-      const panel = bento.querySelector('.blend-house-panel');
-      const counts = panel && panel.querySelector('.budget-browse-counts');
-      if (counts) section.appendChild(counts);
       bento.removeAttribute('data-blend-ready');
       bento.querySelector('[data-blend-rings]')?.remove();
       bento.querySelector('.blend-other')?.remove();
-      panel?.remove();
       document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
       return { printed, hold, marked: sample.map((_, index) => marked[index]) };
     });
-    await house.locator('.blend-house-panel').waitFor();
+    await house.locator('[data-blend-rings] .blend-ring.is-over').first().waitFor();
     const household = await house.evaluate(() => {
       const section = document.querySelector('[data-budget-browse="spending"]');
       const header = section.querySelector(':scope > header');
-      const panel = section.querySelector('.blend-house-panel');
-      const counts = section.querySelector('.budget-browse-counts');
+      const body = document.querySelector('[data-operating-question="06"] .budget-step-body');
+      const counts = body?.querySelector('.blend-house-body .budget-browse-counts');
       const hold = header && header.querySelector('[data-budget-browse-hold]');
       const visible = el => {
         if (!el) return false;
@@ -1246,15 +1279,15 @@ const composite = (fg, bg) => {
           word: word ? (word.textContent || '').trim() : '',
           sr: sr ? (sr.textContent || '').trim() : '',
           srReachable: !!(sr && getComputedStyle(sr).display !== 'none' && !sr.closest('[aria-hidden="true"]')),
-          onFace: !!(word && visible(word) && !pill.closest('.blend-house-panel')),
+          onFace: !!(word && visible(word) && !pill.closest('.budget-step-body')),
         };
       }).filter(row => row.over);
       return {
-        open: !!(panel && panel.open),
+        extraDisclosure: !!section.querySelector('.blend-house-panel'),
         countText: (counts?.textContent || '').replace(/\s+/g, ' ').trim(),
-        countOnFace: !!(counts && visible(counts) && !counts.closest('.blend-house-panel')),
+        countOnFace: visible(counts),
         countInHeader: !!(header && header.contains(counts)),
-        countInPanel: !!(panel && counts && panel.contains(counts)),
+        countInNativeBody: !!(body && counts && body.contains(counts)),
         countVisible: visible(counts),
         countHidden: counts ? counts.getAttribute('aria-hidden') : 'missing',
         clipped: !!(counts && counts.closest('.blend-clip, [aria-hidden="true"]')),
@@ -1276,31 +1309,10 @@ const composite = (fg, bg) => {
       && prepared.marked.every(status => household.overs.some(row => row.status === status && row.centre === status && row.word === 'Over plan' && row.sr === status && row.srReachable && row.onFace));
     if (!overOk || household.countText !== prepared.printed
       || !/known categories over plan/.test(household.countText)
-      || household.countOnFace || household.countInHeader || !household.countInPanel
+      || household.extraDisclosure || household.countOnFace || household.countInHeader || !household.countInNativeBody
       || household.countVisible || household.countHidden || household.clipped
       || household.holdText !== prepared.hold || !household.holdAccessible || !/\$/.test(household.holdText)) {
       errors.push(`household count ${JSON.stringify({ prepared, household })}`);
-    }
-    const summary = house.locator('.blend-house-panel > summary');
-    await summary.focus();
-    const summaryFocus = await summary.evaluate(el => el === document.activeElement);
-    await house.keyboard.press('Enter');
-    const openedCount = await house.evaluate(() => {
-      const panel = document.querySelector('.blend-house-panel');
-      const counts = panel && panel.querySelector('.budget-browse-counts');
-      const box = counts ? counts.getBoundingClientRect() : { width: 0, height: 0 };
-      const style = counts ? getComputedStyle(counts) : null;
-      return {
-        open: !!(panel && panel.open),
-        text: (counts?.textContent || '').replace(/\s+/g, ' ').trim(),
-        visible: !!(counts && box.width > 8 && box.height > 8 && style.display !== 'none' && style.visibility !== 'hidden'),
-        hidden: counts ? counts.getAttribute('aria-hidden') : 'missing',
-        clipped: !!(counts && counts.closest('.blend-clip')),
-      };
-    });
-    if (!summaryFocus || !openedCount.open || !openedCount.visible || openedCount.hidden || openedCount.clipped
-      || openedCount.text !== prepared.printed) {
-      errors.push(`household detail ${JSON.stringify({ summaryFocus, openedCount, printed: prepared.printed })}`);
     }
     // The redundant hold stays accessible, and the native evidence action
     // must be visible and hit-testable on the Household heading.
@@ -1327,9 +1339,50 @@ const composite = (fg, bg) => {
       'Household heading evidence is a visible hit target at ' + width + ': ' + JSON.stringify(evidenceTarget));
       await householdInfo.focus();
       assert.equal(await householdInfo.evaluate(el => el === document.activeElement), true);
+      const remainingFace = await house.locator('[data-budget-browse="spending"] .blend-house-remain').evaluate(node => {
+        const label = node.querySelector(':scope > span');
+        const amount = node.querySelector('[data-budget-browse-remaining]');
+        const timing = node.querySelector(':scope > small');
+        const visible = el => {
+          if (!el) return false;
+          const box = el.getBoundingClientRect();
+          const style = getComputedStyle(el);
+          return box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+            && !el.closest('dialog, .blend-clip, [hidden], [aria-hidden="true"], [inert]');
+        };
+        return {
+          label: label?.textContent.trim(), amount: amount?.textContent.trim(), timing: timing?.textContent.trim(),
+          sameParent: [label, amount, timing].every(el => el?.parentElement === node),
+          visible: [label, amount, timing].every(visible), text: node.textContent,
+        };
+      });
+      assert.equal(remainingFace.label, 'Still planned');
+      assert.equal(remainingFace.timing, 'From today');
+      assert.ok(remainingFace.amount && remainingFace.sameParent && remainingFace.visible,
+        'Still planned, its published amount and From today remain visible together on the face at ' + width);
+      assert.doesNotMatch(remainingFace.text, /\bleft\b/i, 'Remaining amount keeps its original qualifiers without a left suffix');
+      const originalHouseBody = await house.locator('[data-operating-question="06"] .budget-step-body').elementHandle();
+      const originalCount = await house.locator('[data-operating-question="06"] .blend-house-body .budget-browse-counts').elementHandle();
+      const qualifierTexts = await originalHouseBody.evaluate(node => [...node.querySelectorAll('.blend-house-body')]
+        .flatMap(part => [...part.children]).flatMap(part => part.matches('.budget-browse-counts') ? [...part.children] : [part])
+        .map(part => part.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean));
+      assert.match(qualifierTexts.join(' '), /known categories over plan/);
       await house.keyboard.press('Enter');
       await house.locator('[data-budget-detail-sheet][open]').waitFor({ state: 'visible' });
+      await assertDialogPlacement(house, 'Household heading evidence at ' + width);
+      assert.equal(await originalHouseBody.evaluate(node => node.closest('dialog')?.open), true,
+        'Household heading opens the original Q06 evidence body');
+      assert.equal(await originalCount.evaluate(node => {
+        const box = node.getBoundingClientRect();
+        return !!node.closest('dialog[open]') && box.width > 8 && box.height > 8
+          && getComputedStyle(node).visibility !== 'hidden' && !node.closest('[hidden], [inert], [aria-hidden="true"], .blend-clip');
+      }), true, 'Original Household count is readable in the heading disclosure');
+      assert.equal((await originalCount.textContent()).replace(/\s+/g, ' ').trim(), prepared.printed);
+      assert.equal(await house.locator('.blend-house-body .budget-browse-counts').count(), 1, 'No duplicated Household count after repaint');
       const holdEvidence = await house.locator('[data-budget-detail-sheet] [data-budget-detail-body]').innerText();
+      for (const qualifier of qualifierTexts) {
+        assert.ok(holdEvidence.replace(/\s+/g, ' ').includes(qualifier), 'Relocated Household qualification stays readable: ' + qualifier);
+      }
       for (const amount of prepared.hold.match(/-?\$[\d,]+\.\d{2}/g) || []) {
         assert.ok(holdEvidence.includes(amount), 'Household Info preserves published hold/progress amount ' + amount);
       }
@@ -1343,7 +1396,30 @@ const composite = (fg, bg) => {
       await settle(house);
       assert.equal(await householdInfo.evaluate(el => el === document.activeElement), true,
         'Household evidence focus remains on its visible heading button at ' + width);
+      assert.equal(await originalHouseBody.evaluate(node => !node.closest('dialog') && !!node.closest('[data-operating-question="06"]')), true,
+        'Household dismissal restores the same native body');
     }
+    const resizedHouseHeading = house.getByRole('button', { name: 'Household spending and reserve evidence' });
+    const countsBeforeResize = (await house.locator('.blend-house-body .budget-browse-counts').textContent()).replace(/\s+/g, ' ').trim();
+    await resizedHouseHeading.click();
+    for (const width of [1440, 390]) {
+      await house.setViewportSize({ width, height: 1000 });
+      await house.evaluate(() => App.rerender());
+      await house.waitForFunction(() => {
+        const sheet = document.querySelector('[data-budget-detail-sheet]');
+        return sheet?.open && sheet.querySelector('[data-budget-detail-title]')?.textContent === 'Household budget evidence'
+          && sheet.querySelectorAll('.blend-house-body .budget-browse-counts').length === 1;
+      });
+      await assertDialogPlacement(house, 'Open Household evidence after resize to ' + width);
+      const counts = house.locator('[data-budget-detail-sheet] .blend-house-body .budget-browse-counts');
+      assert.equal((await counts.textContent()).replace(/\s+/g, ' ').trim(), countsBeforeResize);
+      assert.equal(await counts.isVisible(), true, 'Household counts stay readable through an open resize');
+      assert.equal(await house.locator('[data-budget-browse="spending"] .blend-house-panel').count(), 0,
+        'Responsive restoration does not recreate the extra Household footer');
+    }
+    await house.keyboard.press('Escape');
+    assert.equal(await resizedHouseHeading.evaluate(node => node === document.activeElement), true,
+      'Open Household resize returns to the same visible heading identity');
     await house.close();
 
     const next = await open(1440, 'light');
@@ -1489,10 +1565,6 @@ const composite = (fg, bg) => {
       bento.removeAttribute('data-blend-ready');
       bento.querySelector('[data-blend-rings]')?.remove();
       bento.querySelector('.blend-other')?.remove();
-      const panel = bento.querySelector('.blend-house-panel');
-      const counts = panel && panel.querySelector('.budget-browse-counts');
-      if (counts) document.querySelector('[data-budget-browse="spending"]').appendChild(counts);
-      panel?.remove();
       mount.appendChild(document.createTextNode(''));
       return new Promise(resolve => requestAnimationFrame(() => resolve(true)));
     });
@@ -1780,6 +1852,23 @@ const composite = (fg, bg) => {
         errors.push(`past figure gap ${pastFace.figureGap} current ${currentFigureGap}`);
       }
       if (label === '1440') console.log('pp-1 payday ' + pastFace.paydayMain);
+      const historicalQualifier = page.locator('[data-operating-question="06"] .blend-house-body > p')
+        .filter({ hasText: /Completed periods show observed spending|Missing or incomplete history/ });
+      assert.equal(await historicalQualifier.count(), 1, label + ': historical spending qualification is retained once');
+      const originalQualifier = await historicalQualifier.elementHandle();
+      const qualification = await historicalQualifier.textContent();
+      const heading = page.getByRole('button', { name: 'Household spending and reserve evidence' });
+      await heading.click();
+      await page.locator('[data-budget-detail-sheet][open]').waitFor({ state: 'visible' });
+      assert.equal(await originalQualifier.evaluate(node => {
+        const box = node.getBoundingClientRect();
+        return !!node.closest('dialog[open]') && box.width > 8 && box.height > 8
+          && !node.closest('.blend-clip, [hidden], [aria-hidden="true"], [inert]');
+      }), true, label + ': original historical qualifier is readable from the Household heading');
+      assert.equal(await originalQualifier.textContent(), qualification, 'Historical qualifier is not rewritten');
+      await page.keyboard.press('Escape');
+      assert.equal(await heading.evaluate(node => node === document.activeElement), true,
+        label + ': historical Household evidence restores heading focus');
     };
     const past = await open(1440, 'light', { data: pastData });
     await assertPast(past, '1440');
@@ -1908,10 +1997,6 @@ const composite = (fg, bg) => {
         bento.removeAttribute('data-blend-ready');
         bento.querySelector('[data-blend-rings]')?.remove();
         bento.querySelector('.blend-other')?.remove();
-        const panel = bento.querySelector('.blend-house-panel');
-        const counts = panel && panel.querySelector('.budget-browse-counts');
-        if (counts) document.querySelector('[data-budget-browse="spending"]').appendChild(counts);
-        panel?.remove();
         mount.appendChild(document.createTextNode(''));
       }, html);
       await otherPlan.locator('.blend-other-amt').waitFor();
