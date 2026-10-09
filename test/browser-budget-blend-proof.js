@@ -1066,7 +1066,7 @@ const composite = (fg, bg) => {
       // A remount may replace DOM nodes, but cannot strand the child, lose
       // its published occurrence or send Back to the page instead of Bills.
       await header.click();
-      await panel.locator('[data-budget-bill-filter="all"]').click();
+      await panel.locator('[data-budget-bill-filter="check"]').click();
       assert.equal(await unpaid.getAttribute('aria-pressed'), 'true');
       await panel.locator('[data-budget-bill-open="hydro"]').click();
       for (const resizedWidth of [width === 1440 ? 390 : 1440, width]) {
