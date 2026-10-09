@@ -167,11 +167,12 @@ function servedFixture() {
       if (output) { fs.mkdirSync(output, { recursive: true }); await page.screenshot({ path: path.join(output, `budget-bill-${width}.png`), fullPage: true }); }
 
       // Actual route navigation back to Budget gets a fresh packet.
-      await tap(page.locator('a[data-nav="bills"]'));
+      await page.goto(new URL('/bills.html', base).href);
       await page.waitForURL('**/bills.html');
       data = servedFixture(); data.liveOverlay.currentPeriodActuals.representedActuals = [];
-      await tap(page.locator('a[data-nav="budget"]'));
+      await page.goto(base + '/');
       await page.waitForURL(base + '/');
+      assert.equal(await page.locator('.sitenav, .sitenav-household').count(), 0);
       await page.locator('[data-pay-period-swipe]').waitFor();
       await openBills(); await tap(bill());
       assert.doesNotMatch(await paymentBody().innerText(), /Transaction date|2026-08-18/);

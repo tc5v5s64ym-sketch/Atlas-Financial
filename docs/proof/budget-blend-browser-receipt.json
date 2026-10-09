@@ -1,0 +1,548 @@
+{
+  "proof": "budget-blend-visual",
+  "fixture": "test/fixtures/budget-surface-data.js",
+  "cardMovementFixture": "test/fixtures/card-period-movements-data.js",
+  "liveSite": false,
+  "chrome": "/usr/bin/google-chrome",
+  "reducedMotion": false,
+  "screenshots": [
+    "budget-blend-1440-light.png",
+    "budget-blend-1440-dark.png",
+    "budget-blend-390-light.png",
+    "budget-blend-390-dark.png",
+    "budget-blend-320-light.png",
+    "budget-blend-320-dark.png",
+    "budget-blend-1440-light-next.png",
+    "budget-blend-1440-light-aug28.png",
+    "budget-blend-320-light-aug28.png",
+    "budget-blend-390-light-next.png",
+    "budget-blend-1440-light-past.png",
+    "budget-blend-390-light-past.png",
+    "budget-blend-320-light-past.png",
+    "budget-blend-1440-light-unavailable.png",
+    "budget-blend-390-dark-unavailable.png",
+    "budget-blend-focus-granularity.png",
+    "budget-blend-focus-income.png",
+    "budget-blend-focus-result.png",
+    "budget-blend-focus-household.png",
+    "budget-blend-focus-goal.png",
+    "budget-blend-cards-1440-light.png",
+    "budget-blend-cards-320-dark.png",
+    "budget-blend-1440-light-on-plan.png",
+    "budget-blend-1440-light-infeasible.png",
+    "budget-blend-1440-dark-next.png",
+    "budget-blend-390-dark-next.png",
+    "budget-blend-320-light-next.png",
+    "budget-blend-320-dark-next.png",
+    "budget-blend-1440-dark-past.png",
+    "budget-blend-390-dark-past.png",
+    "budget-blend-320-dark-past.png",
+    "budget-blend-1440-light-household-all.png",
+    "budget-blend-390-light-household-all.png"
+  ],
+  "contrasts": [
+    {
+      "name": "light period range",
+      "ratio": 18.54,
+      "large": true,
+      "pass": true,
+      "text": "Aug 14 – Aug 27",
+      "fg": "rgb(11, 12, 16)",
+      "bg": [
+        248,
+        249,
+        250
+      ]
+    },
+    {
+      "name": "light payday date",
+      "ratio": 13.38,
+      "large": false,
+      "pass": true,
+      "text": "Aug 28",
+      "fg": "rgb(255, 209, 102)",
+      "bg": [
+        13,
+        14,
+        18
+      ]
+    },
+    {
+      "name": "light day count",
+      "ratio": 18,
+      "large": true,
+      "pass": true,
+      "text": "8",
+      "fg": "rgb(246, 247, 249)",
+      "bg": [
+        13,
+        14,
+        18
+      ]
+    },
+    {
+      "name": "light closing label",
+      "ratio": 18.54,
+      "large": false,
+      "pass": true,
+      "text": "",
+      "fg": "rgb(11, 12, 16)",
+      "bg": [
+        248,
+        249,
+        250
+      ]
+    },
+    {
+      "name": "light result label",
+      "ratio": 8.39,
+      "large": false,
+      "pass": true,
+      "text": "Balance After Deductions",
+      "fg": "rgb(71, 74, 84)",
+      "bg": [
+        248,
+        249,
+        250
+      ]
+    },
+    {
+      "name": "light income label",
+      "ratio": 8.39,
+      "large": false,
+      "pass": true,
+      "text": "Income",
+      "fg": "rgb(71, 74, 84)",
+      "bg": [
+        248,
+        249,
+        250
+      ]
+    },
+    {
+      "name": "light household heading",
+      "ratio": 18.54,
+      "large": false,
+      "pass": true,
+      "text": "Household budget",
+      "fg": "rgb(11, 12, 16)",
+      "bg": [
+        248,
+        249,
+        250
+      ]
+    },
+    {
+      "name": "light goals heading",
+      "ratio": 18.54,
+      "large": false,
+      "pass": true,
+      "text": "Saving for",
+      "fg": "rgb(11, 12, 16)",
+      "bg": [
+        248,
+        249,
+        250
+      ]
+    },
+    {
+      "name": "dark period range",
+      "ratio": 17.78,
+      "large": true,
+      "pass": true,
+      "text": "Aug 14 – Aug 27",
+      "fg": "rgb(245, 246, 248)",
+      "bg": [
+        5,
+        17,
+        13
+      ]
+    },
+    {
+      "name": "dark payday date",
+      "ratio": 5.46,
+      "large": false,
+      "pass": true,
+      "text": "Aug 28",
+      "fg": "rgb(138, 86, 0)",
+      "bg": [
+        244,
+        241,
+        234
+      ]
+    },
+    {
+      "name": "dark day count",
+      "ratio": 17.1,
+      "large": true,
+      "pass": true,
+      "text": "8",
+      "fg": "rgb(13, 14, 18)",
+      "bg": [
+        244,
+        241,
+        234
+      ]
+    },
+    {
+      "name": "dark closing label",
+      "ratio": 17.78,
+      "large": false,
+      "pass": true,
+      "text": "",
+      "fg": "rgb(245, 246, 248)",
+      "bg": [
+        5,
+        17,
+        13
+      ]
+    },
+    {
+      "name": "dark result label",
+      "ratio": 11.48,
+      "large": false,
+      "pass": true,
+      "text": "Balance After Deductions",
+      "fg": "rgb(197, 200, 208)",
+      "bg": [
+        5,
+        17,
+        13
+      ]
+    },
+    {
+      "name": "dark income label",
+      "ratio": 11.48,
+      "large": false,
+      "pass": true,
+      "text": "Income",
+      "fg": "rgb(197, 200, 208)",
+      "bg": [
+        5,
+        17,
+        13
+      ]
+    },
+    {
+      "name": "dark household heading",
+      "ratio": 17.28,
+      "large": false,
+      "pass": true,
+      "text": "Household budget",
+      "fg": "rgb(245, 246, 248)",
+      "bg": [
+        18,
+        18,
+        22
+      ]
+    },
+    {
+      "name": "dark goals heading",
+      "ratio": 17.28,
+      "large": false,
+      "pass": true,
+      "text": "Saving for",
+      "fg": "rgb(245, 246, 248)",
+      "bg": [
+        18,
+        18,
+        22
+      ]
+    },
+    {
+      "name": "light unavailable copy",
+      "ratio": 6.56,
+      "large": false,
+      "pass": true,
+      "text": "BUDGET",
+      "fg": "rgb(91, 90, 85)",
+      "bg": [
+        248,
+        249,
+        250
+      ]
+    },
+    {
+      "name": "dark unavailable copy",
+      "ratio": 9.39,
+      "large": false,
+      "pass": true,
+      "text": "BUDGET",
+      "fg": "rgb(185, 184, 177)",
+      "bg": [
+        18,
+        18,
+        22
+      ]
+    }
+  ],
+  "heroTerms": [
+    {
+      "key": "periodIncome",
+      "shown": "$4,050.00",
+      "chip": true,
+      "trust": "estimated"
+    },
+    {
+      "key": "assignedBills",
+      "shown": "$1,665.00",
+      "chip": true,
+      "trust": "estimated"
+    },
+    {
+      "key": "householdBudgetHold",
+      "shown": "$752.99",
+      "chip": false,
+      "trust": "calculated"
+    },
+    {
+      "key": "balanceAfterDeductions",
+      "shown": "$1,632.01",
+      "chip": true,
+      "trust": "estimated"
+    }
+  ],
+  "focusWalk": {
+    "viewport": 1440,
+    "theme": "light",
+    "steps": [
+      {
+        "tag": "A",
+        "label": "Atlas",
+        "text": "Atlas",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          75,
+          28
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Switch theme",
+        "text": "",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          40,
+          40
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "Pay period",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          100,
+          32
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "Month",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          74,
+          32
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Previous pay period",
+        "text": "‹",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          38,
+          38
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "Choose period ⌄",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          92,
+          30
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Next pay period",
+        "text": "›",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          38,
+          38
+        ],
+        "pass": true
+      },
+      {
+        "tag": "DIV",
+        "label": "Pay periods. Balance After Deductions.",
+        "text": "$1,632.01 $1,870.00 $205.00 $3,320.00 $290.00 $3,235.00 $350.00 $3,175.00 $470.00 $3,055.0",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          1148,
+          176
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "ⓘ Current balance and funding details",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          1,
+          1
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "",
+        "text": "AUG 28 Next payday · August 28 Funding details ›",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          30,
+          26
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "Income $2,600.00 / of planned ≈ estimated $4,050.00 $4,050.00 est.",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          179,
+          50
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "Bills $1,400.00* partial evidence / of planned ≈ estimated $1,665.00 $1,665.00 est.",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          179,
+          50
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "Household budget $444.49 / of planned $730.00 $752.99",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          141,
+          50
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "= Balance After Deductions ≈ estimated $1,632.01 $1,632 .01 est.",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          590,
+          164
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "Period figures",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          94,
+          1
+        ],
+        "pass": true
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "",
+        "text": "Planned Savings Unavailable",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          237,
+          23
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Bills detail",
+        "text": "Details ›",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          53,
+          22
+        ],
+        "pass": true
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Paid bills: 1. Click again to show all bills.",
+        "text": "PAID 1",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgb(86, 80, 224)",
+        "box": [
+          67,
+          34
+        ],
+        "pass": true
+      }
+    ]
+  },
+  "externalRequests": [],
+  "errors": [],
+  "figuresCopiedFromPrototype": false
+}

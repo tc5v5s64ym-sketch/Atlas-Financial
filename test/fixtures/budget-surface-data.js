@@ -181,6 +181,7 @@ function served(opts = {}) {
     // No salary occurred: 1,215 closing + 1,400 paid mortgage = 2,615 opening.
     data.plan.startingCash.breakdown.find(row => row.id === 'chequing-a').value = 2615;
   }
+  if (Array.isArray(opts.budgetCategories)) data.plan.budget.categories = opts.budgetCategories;
   if (typeof opts.groceriesExtra === 'number' && opts.groceriesExtra > 0) {
     observed.transactions.push(tx(92008, 1002, '2026-08-19', opts.groceriesExtra, 'Synthetic extra grocer', 11));
     // Independent higher opening finances this extra observed purchase;

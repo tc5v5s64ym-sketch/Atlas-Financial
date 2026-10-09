@@ -679,9 +679,14 @@ console.log('\n=== 10. finalized historical facts close every publication alias 
     planView: advice.defaultView });
   ok(html.includes('data-selected-pay-period="past:2026-08-14"'),
     'default this-period timeline selects completed Aug 14 window');
-  for (const amount of [6067.25, 200, 5867.25, 5827.25, 220, 93.40, 126.60]) {
+  for (const amount of [6067.25, 200, 5867.25, 220, 93.40, 126.60]) {
     ok(html.includes(composer.money2(amount)), 'default timeline prints finalized ' + amount);
   }
+  ok(!html.includes(composer.money2(5827.25))
+    && /data-bad-term="balanceAfterDeductions" data-bad-term-trust="unavailable"/.test(html)
+    && /data-budget-result-trust="unavailable"/.test(html)
+    && /data-bad-historical-withheld/.test(html),
+    'historical arithmetic alone cannot qualify whole-period BAD or the result; original source evidence stays separate');
   ok(/Paid bills this period<\/span><span>\$220\.00/.test(html),
     'paid disclosure on default timeline matches settled rows');
   const second = run(f);

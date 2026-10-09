@@ -281,15 +281,18 @@ async function session(server, width, steps, extras = true) {
       await closeSheet(futureBill);
       await move('ArrowLeft'); await check(last);
       // Actual Forecast route shows the remaining window, not Budget's full cycle.
-      await tap(page.locator('a[data-nav="forecast"]'));
+      await page.goto(new URL('/planning.html', server.base).href);
       await page.waitForURL('**/planning.html');
       await tap(page.locator('button[data-trajectory-funding-granularity="pay-period"]').first());
       const road = page.locator('[data-road-waterfall-granularity="pay-period"]');
       await road.waitFor();
       assert.match(await page.locator('[data-road-timeline-granularity="pay-period"]').innerText(), /Aug 21.*Aug 27.*remaining/s);
       assert.match(await road.locator('[data-planning-road-wf-row="income-total"]').innerText(), /\$0\.00/);
-      await tap(page.locator('a[data-nav="budget"]')); await page.waitForURL(server.base + '/');
-      await page.locator('[data-budget-surface]').waitFor(); await check(last);
+      await page.goto(server.base + '/');
+      await page.waitForURL(server.base + '/');
+      await page.locator('[data-budget-surface]').waitFor();
+      assert.equal(await page.locator('.sitenav, .sitenav-household').count(), 0);
+      await check(last);
       for (const mode of ['missing', 'stale', 'floor']) {
         await load(variant(mode)); await openFunding();
         assert.equal(await nativeFunding().locator('[data-budget-daily-proposal]').innerText(), 'Unavailable');
