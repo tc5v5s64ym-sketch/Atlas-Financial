@@ -8,12 +8,20 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { chromium } = require('playwright');
-const fx = require('./fixtures/budget-surface-data');
-const householdAll = require('./fixtures/budget-household-all');
+const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
 
 const root = path.join(__dirname, '..');
 const outDir = path.join(root, 'docs/proof');
 fs.mkdirSync(outDir, { recursive: true });
+const listedSources = spawnSync('git', ['ls-files', '-z', '--', 'public', 'scripts/*.js', 'test/fixtures',
+  'test/proof-source-binding.js', 'test/test-proof-source-binding.js', 'test/test.js',
+  'test/browser-budget-blend-proof.js', 'data.json', 'package.json', 'package-lock.json'],
+{ cwd: root, encoding: 'utf8' });
+assert.equal(listedSources.status, 0, 'Tracked proof source scope must be readable.');
+const sourceBinding = captureSourceBinding(root, listedSources.stdout.split('\0').filter(Boolean), process.env.PROOF_BASE_SHA || null);
+const fx = require('./fixtures/budget-surface-data');
+const householdAll = require('./fixtures/budget-household-all');
+const servedSourceSha256 = {};
 
 const parseRgb = value => {
   const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(value || '');
@@ -76,7 +84,12 @@ const composite = (fg, bg) => {
           : file.endsWith('.png') ? 'image/png'
           : file.endsWith('.woff2') ? 'font/woff2'
           : file.endsWith('.woff') ? 'font/woff' : 'text/html';
-        return route.fulfill({ body: fs.readFileSync(file), contentType: type });
+        const relative = path.relative(root, file).split(path.sep).join('/');
+        const bytes = fs.readFileSync(file);
+        const sha256 = createHash('sha256').update(bytes).digest('hex');
+        assert.equal(sha256, sourceBinding.files[relative]?.sha256, 'Served asset must match committed source: ' + relative);
+        servedSourceSha256[relative] = sha256;
+        return route.fulfill({ body: bytes, contentType: type });
       });
       await page.goto('http://budget.test/');
       await page.locator('[data-budget-surface]').waitFor();
@@ -194,7 +207,9 @@ const composite = (fg, bg) => {
       const value = fg ? ratio(fg.rgb, bg) : 0;
       const large = row.size >= 24 || (row.size >= 18.66 && row.weight >= 700);
       contrasts.push({
-        name, ratio: Math.round(value * 100) / 100, large, pass: value >= (large ? 3 : 4.5),
+        name, ratio: Math.round(value * 100) / 100, large,
+        sampleType: row.text.trim() ? 'visible-text' : 'no-visible-text',
+        pass: row.text.trim() ? value >= (large ? 3 : 4.5) : null,
         text: row.text, fg: row.fg, bg,
       });
     };
@@ -2120,13 +2135,19 @@ const composite = (fg, bg) => {
           outlineWidth: s.outlineWidth,
           outlineColor: s.outlineColor,
           box: [Math.round(r.width), Math.round(r.height)],
+          visiblyUsable: r.width >= 18 && r.height >= 18 && s.visibility !== 'hidden'
+            && s.display !== 'none' && Number(s.opacity) > 0
+            && !el.closest('[hidden], [inert], .blend-clip')
+            && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth,
         };
       });
-      step.pass = step.outlineStyle !== 'none' && parseFloat(step.outlineWidth) >= 2 && step.box[0] > 0;
+      step.outlineCheckPassed = step.outlineStyle !== 'none' && parseFloat(step.outlineWidth) >= 2 && step.box[0] > 0;
       walk.push(step);
-      if (!step.pass) errors.push(`focus step ${i + 1} not visible: ${JSON.stringify(step)}`);
+      if (!step.outlineCheckPassed) errors.push(`focus step ${i + 1} lacks its measured outline: ${JSON.stringify(step)}`);
     }
-    focusWalks.push({ viewport: 1440, theme: 'light', steps: walk });
+    focusWalks.push({ viewport: 1440, theme: 'light', scope: 'first 18 keyboard stops; not comprehensive accessibility clearance',
+      outlinedStops: walk.filter(step => step.outlineCheckPassed).length,
+      visiblyUsableTargets: walk.filter(step => step.visiblyUsable).length, steps: walk });
     const focusTargets = [
       ['[data-budget-granularity="month"]', 'budget-blend-focus-granularity.png'],
       ['[data-operating-question="02"] .budget-step-summary', 'budget-blend-focus-income.png'],
@@ -2488,6 +2509,7 @@ print('390 crops', im.size)
     if (failedContrast.length) errors.push(`contrast ${JSON.stringify(failedContrast)}`);
     if (external.length) errors.push(`external requests ${external.join(',')}`);
 
+    verifySourceBinding(root, sourceBinding);
     const receipt = {
       proof: 'budget-blend-visual',
       fixture: 'test/fixtures/budget-surface-data.js',
@@ -2495,16 +2517,20 @@ print('390 crops', im.size)
       liveSite: false,
       chrome: process.env.CHROME_PATH || null,
       reducedMotion: false,
+      sourceBinding: { ...sourceBinding, unchangedAfterProof: true },
+      servedSourceSha256,
       screenshots: shots,
       screenshotSha256: Object.fromEntries(shots.map(file => [file,
         createHash('sha256').update(fs.readFileSync(path.join(outDir, file))).digest('hex')])),
       sourceSha256: Object.fromEntries(['public/plan.js', 'public/budget-blend.js', 'public/budget-gface.css',
         'public/forecast.js', 'data.json', 'test/browser-budget-blend-proof.js'].map(file => [file,
-        createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')])),
+        sourceBinding.files[file].sha256])),
       // Local reference paths can identify the owner. Publish reference
       // filenames and hashes; retain full paths only for this run's reads.
       visualComparison: { ...visualComparison, references: references.map(({ path: localPath, ...ref }) => ref) },
       contrasts,
+      textContrastSamples: contrasts.filter(row => row.sampleType === 'visible-text').length,
+      emptyContrastProbes: contrasts.filter(row => row.sampleType === 'no-visible-text').length,
       heroTerms,
       focusWalk: focusWalks[0],
       externalRequests: external,
@@ -2516,7 +2542,7 @@ print('390 crops', im.size)
       console.error(errors.join('\n'));
       process.exit(1);
     }
-    console.log(`PASS budget blend proof: ${shots.length} screenshots, ${contrasts.length} contrast samples, ${walk.length} tab stops`);
+    console.log(`PASS budget blend proof: ${shots.length} screenshots, ${receipt.textContrastSamples} visible-text contrast samples; ${walk.length} outlined keyboard stops, ${focusWalks[0].visiblyUsableTargets} visibly usable targets`);
   } finally {
     await browser.close();
   }
