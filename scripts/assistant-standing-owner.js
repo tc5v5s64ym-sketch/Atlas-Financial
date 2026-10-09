@@ -22,10 +22,9 @@ async function run(argv, output = value => console.log(JSON.stringify(value, nul
     if (!stat.isFile() || stat.isSymbolicLink() || process.platform !== 'win32' && (stat.mode & 0o077)) throw new Error('private-owner-key-required');
     output(Store.sign(payload, fs.readFileSync(keyPath))); return;
   }
-  const root = flags['--root'], keyPath = flags['--public-key'];
-  if (!root || !keyPath || !path.isAbsolute(root) || !path.isAbsolute(keyPath)) throw new Error('private-owner-installation-required');
-  if (!Runtime.outside(path.resolve(__dirname, '..'), root) || !Runtime.outside(path.resolve(__dirname, '..'), keyPath)
-      || !Runtime.outside(root, keyPath)) throw new Error('owner-store-must-be-outside-project');
+  const installation = Runtime.privateInstallation({ root: flags['--root'], keyPath: flags['--public-key'],
+    creating: command === 'init' });
+  const root = installation.root, keyPath = installation.keyPath;
   const publicKey = fs.readFileSync(keyPath, 'utf8');
   if (command === 'init') {
     const envelope = input();

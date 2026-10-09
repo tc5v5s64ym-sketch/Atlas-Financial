@@ -24,6 +24,9 @@ function verified(envelope, publicKey) {
     Buffer.from(envelope.signature, 'base64')), 'owner-signature-invalid');
   return envelope.payload;
 }
+function validProofExpiry(proof, now) {
+  return Number.isSafeInteger(proof?.expiresAt) && proof.expiresAt > 0 && proof.expiresAt > now;
+}
 function protectedFingerprint(tx) {
   return ownerDigest(Object.fromEntries(Object.entries(tx).filter(([k]) => !['updated_at', 'category_id'].includes(k))));
 }
@@ -36,6 +39,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
   check(crypto.createPublicKey(publicKey).asymmetricKeyType === 'ed25519', 'ed25519-owner-key-required'); // Parse once, never accept a request's key.
   const statePath = path.join(root, 'authority.json');
   const lockPath = path.join(root, 'authority.lock');
+  const acquisitionPath = path.join(root, 'authority-acquisition.lock');
   function read() {
     const stat = fs.lstatSync(statePath);
     check(stat.isFile() && !stat.isSymbolicLink() && stat.size < 32 * 1024 * 1024, 'private-store-invalid');
@@ -67,12 +71,21 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
   async function mutate(work) {
     let fd;
     for (let n = 0; n < 100; n++) {
-      try { fd = fs.openSync(lockPath, 'wx', 0o600); break; }
-      catch (e) { if (e.code !== 'EEXIST') throw e; await new Promise(r => setTimeout(r, 5)); }
+      let acquisition;
+      try { acquisition = fs.openSync(acquisitionPath, 'wx', 0o600); }
+      catch (e) { if (e.code !== 'EEXIST') throw e; }
+      if (acquisition !== undefined) {
+        try {
+          fd = fs.openSync(lockPath, 'wx', 0o600);
+          fs.writeFileSync(fd, JSON.stringify({ host: os.hostname(), pid: process.pid, nonce: opaque('lock'), createdAt: now() }));
+          fs.fsyncSync(fd);
+        } catch (e) { if (e.code !== 'EEXIST') throw e; }
+        finally { fs.closeSync(acquisition); fs.unlinkSync(acquisitionPath); }
+      }
+      if (fd !== undefined) break;
+      await new Promise(r => setTimeout(r, 5));
     }
     check(fd !== undefined, 'authority-busy-or-owner-recovery-required');
-    fs.writeFileSync(fd, JSON.stringify({ host: os.hostname(), pid: process.pid, nonce: opaque('lock'), createdAt: now() }));
-    fs.fsyncSync(fd);
     try { const state = read(); const result = work(state); persist(state); return clone(result); }
     finally { fs.closeSync(fd); fs.unlinkSync(lockPath); }
   }
@@ -80,7 +93,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     const p = verified(state.context, publicKey);
     check(p.kind === 'context' && p.context.resource === resource && p.context.notesEnabled === false, 'owner-context-mismatch');
     const context = clone(p.context);
-    if (context.providerProof?.expiresAt <= now()) context.ruleEffects = 'unknown';
+    if (!validProofExpiry(context.providerProof, now())) context.ruleEffects = 'unknown';
     return context;
   }
   function grantIn(state, ref) {
@@ -234,6 +247,8 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     return mutate(live => {
       const current = live.attempts[p.attemptRef];
       check(current && !current.acknowledged && current.beforeFingerprint === a.beforeFingerprint, 'reconciliation-raced');
+      check(current.providerDispatchArmed !== true || current.terminal?.providerRequestReturned === true
+        || current.terminal?.providerWriteMayHaveOccurred === false, 'provider-attempt-closure-unresolved');
       current.ownerReconciliation = clone(envelope); current.outcome = 'owner-reconciled-' + position;
       current.acknowledged = true; delete live.targets[current.target];
       // Reconciliation cannot revive a grant. A signed permanent revoke closes
@@ -254,12 +269,22 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
         grantRef: a.grantRef, outcome: a.outcome, acknowledged: a.acknowledged })) };
   }
   function recoverLock(envelope) {
-    const p = verified(envelope, publicKey); const raw = fs.readFileSync(lockPath, 'utf8'); const lock = JSON.parse(raw);
-    check(p.kind === 'recover-lock' && p.lockDigest === digest(raw) && lock.host === os.hostname(), 'owner-lock-proof-required');
-    let alive = true; try { process.kill(lock.pid, 0); } catch (e) { if (e.code === 'ESRCH') alive = false; }
-    check(!alive, 'lock-process-still-live');
-    check(fs.readFileSync(lockPath, 'utf8') === raw, 'lock-changed');
-    fs.unlinkSync(lockPath); return { lockRecovered: true, attemptsStillQuarantined: true };
+    const p = verified(envelope, publicKey);
+    // Every writer uses this exclusive gate while acquiring the primary lock.
+    // A second recovery cannot compare/unlink a replacement writer's lock.
+    // A crash leaves the gate fail-closed; no automated stale-gate takeover.
+    let acquisition;
+    try { acquisition = fs.openSync(acquisitionPath, 'wx', 0o600); }
+    catch (e) { if (e.code === 'EEXIST') throw new Error('authority-recovery-busy'); throw e; }
+    try {
+      const raw = fs.readFileSync(lockPath, 'utf8'); const lock = JSON.parse(raw);
+      check(p.kind === 'recover-lock' && p.lockDigest === digest(raw) && lock.host === os.hostname(), 'owner-lock-proof-required');
+      let alive = true; try { process.kill(lock.pid, 0); } catch (e) { if (e.code === 'ESRCH') alive = false; }
+      check(!alive, 'lock-process-still-live');
+      check(fs.readFileSync(lockPath, 'utf8') === raw, 'lock-changed');
+      fault('recovery-before-unlink');
+      fs.unlinkSync(lockPath); return { lockRecovered: true, attemptsStillQuarantined: true };
+    } finally { fs.closeSync(acquisition); fs.unlinkSync(acquisitionPath); }
   }
   async function planReconciliation(attemptRef, fetchTransaction) {
     const state = read(), a = state.attempts[attemptRef]; check(a && !a.acknowledged, 'pending-attempt-required');
@@ -294,4 +319,4 @@ function initialize({ root, publicKey, contextEnvelope }) {
   finally { fs.closeSync(fd); }
   const directory = fs.openSync(root, 'r'); try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
 }
-module.exports = { createAuthority, initialize, sign, verified, digest, ownerDigest, protectedFingerprint, opaque };
+module.exports = { createAuthority, initialize, sign, verified, digest, ownerDigest, protectedFingerprint, opaque, validProofExpiry };

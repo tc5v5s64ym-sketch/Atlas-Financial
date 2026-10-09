@@ -347,7 +347,15 @@ function createService(options = {}) {
   }
   async function standingAudit(input, auth) {
     if (!Standing.available(standing) || typeof standing.adapter.audit !== 'function') return fail('standing-audit-disabled');
-    return { status: 'audit', providerWrite: false, receipts: await standing.adapter.audit({ ...input, auth }) };
+    const receipts = await standing.adapter.audit({ ...input, auth });
+    // Private authority retains internal IDs for exact validation; MCP evidence
+    // omits them. Audit uses the already recorded safe category projection.
+    return { status: 'audit', providerWrite: false, receipts: receipts.map(receipt => {
+      const review = receipt.delegatedReview;
+      return { ...receipt, delegatedReview: review ? { ...review, facts: { ...review.facts,
+        items: review.facts.items.map(item => ({ description: item.description, amount: item.amount,
+          categoryRef: receipt.proposed?.categoryRef || null })) } } : null };
+    }) };
   }
   async function prepare(input, auth, standingInput = null) {
     const target = resolve(input.transactionRef, 'tx', auth.principal);
@@ -481,7 +489,7 @@ function createService(options = {}) {
           const attempt = { ...boundary, previewId: input.previewId, principal: auth.principal, clientId: auth.clientId,
             transactionId: preview.targetId, beforeProvider: current, expectedCategory: preview.body.category_id,
             untargetedFingerprint: require('./assistant-standing-store').protectedFingerprint(current),
-            categoryContext: preview.body.category_id == null ? null : await categoryContextFor(current, preview.body.category_id),
+            categoryContext: preview.body.category_id == null ? null : await categoryContextFor(current, preview.body.category_id, executionGate),
             beforeFingerprint: preview.fingerprint, proposedFingerprint: fingerprint(preview.body),
             expiresAt: preview.expires, requestedAt: now(),
             before: project(current, auth.principal, cat.categories, cat.accounts),
@@ -542,7 +550,7 @@ function createService(options = {}) {
       if (standingMode) {
         verified = verified && Standing.unchangedOtherFields(current, after, preview.body);
         if (preview.authorization.evidenceProvenance) {
-          const afterContext = await categoryContextFor(current, preview.body.category_id);
+          const afterContext = await categoryContextFor(current, preview.body.category_id, executionGate);
           verified = verified && JSON.stringify(afterContext) === JSON.stringify(auditAttempt.categoryContext);
         }
       }

@@ -25,7 +25,7 @@ function child(input, dir) {
       resolve({ code, parsed, err }); });
   });
 }
-async function fixture() {
+async function fixture({ proofPatch = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-standing-synthetic-'));
   const root = path.join(dir, 'authority'); const clock = Date.parse('2026-10-09T00:00:00Z');
   const resource = 'https://atlas.example/assistant/mcp', token = 'synthetic-category-only-token';
@@ -37,7 +37,7 @@ async function fixture() {
   const context = { resource, budgetRef: 'synthetic-budget', credentialVersion: 'synthetic-credential-v1',
     credentialDigest: Store.digest(token), contextVersion: 'synthetic-context-v1', parserRevision: 'category-only-v1',
     ruleEffects: 'none-verified', notesEnabled: false, providerProof: { kind: 'synthetic-test',
-      reference: 'synthetic-provider-contract', digest: Store.ownerDigest('synthetic-contract'), expiresAt: clock + 86400000 } };
+      reference: 'synthetic-provider-contract', digest: Store.ownerDigest('synthetic-contract'), expiresAt: clock + 86400000, ...proofPatch } };
   const contextPayload = { kind: 'context', context };
   const contextFile = path.join(dir, 'context.json');
   fs.writeFileSync(contextFile, JSON.stringify(contextPayload), { mode: 0o600 });
@@ -88,7 +88,7 @@ async function fixture() {
 }
 module.exports = (async () => {
   const owned = [];
-  const make = async () => { const f = await fixture(); owned.push(f.dir); return f; };
+  const make = async options => { const f = await fixture(options); owned.push(f.dir); return f; };
   try {
     const f = await make(); const g = await f.grant();
     const unsigned = { payload: { kind: 'grant', grant: { ...g, grantRef: 'grant-' + 'f'.repeat(24) } }, signature: '' };
@@ -146,7 +146,24 @@ module.exports = (async () => {
     assert.equal((await restarted.grant(gc.grantRef)).attempts, 1);
     await assert.rejects(restarted.reserve(ac), /authority-busy/);
     const recover = restarted.planLockRecovery();
-    assert.equal(restarted.recoverLock(Store.sign(recover, crash.privateKey)).attemptsStillQuarantined, true);
+    const readyPath = path.join(crash.dir, 'recovery-ready'), releasePath = path.join(crash.dir, 'recovery-release');
+    const recoveryWorker = { root: crash.root, publicKeyPath: crash.publicKeyPath,
+      resource: crash.resource, clock: crash.clock, action: 'recover', envelope: Store.sign(recover, crash.privateKey) };
+    const firstRecovery = child({ ...recoveryWorker, readyPath, releasePath }, crash.dir);
+    const deadline = Date.now() + 5000;
+    while (!fs.existsSync(readyPath) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(fs.existsSync(readyPath), true, 'first recovery paused while holding acquisition gate');
+    const adversaries = await Promise.all([child(recoveryWorker, crash.dir),
+      child({ root: crash.root, publicKeyPath: crash.publicKeyPath, resource: crash.resource,
+        clock: crash.clock, action: 'reserve', attempt: ac }, crash.dir)]);
+    assert.equal(adversaries[0].parsed?.ok, false);
+    assert.match(adversaries[0].parsed?.reason || '', /authority-recovery-busy/);
+    assert.equal(adversaries[1].parsed?.ok, false);
+    assert.match(adversaries[1].parsed?.reason || '', /authority-busy/);
+    assert.equal(fs.existsSync(path.join(crash.root, 'authority.lock')), true);
+    fs.writeFileSync(releasePath, 'synthetic-release');
+    const recovered = await firstRecovery;
+    assert.equal(recovered.parsed?.result?.attemptsStillQuarantined, true, JSON.stringify(recovered));
     await assert.rejects(restarted.reserve(ac), /quarantined|inactive/);
     const pending = restarted.list().attempts[0].attemptRef;
     const reconciliation = await restarted.planReconciliation(pending, async () => clone(crash.tx));
@@ -165,6 +182,48 @@ module.exports = (async () => {
     assert.equal(ls.list().attempts[0].outcome, 'applied');
     assert.equal((await ls.grant(gl.grantRef)).suspended, true);
     await assert.rejects(ls.reserve(al), /quarantined|inactive/);
+    // An armed request can still complete after a GET of the old category.
+    // A signed owner observation and restart must not release that quarantine.
+    const unknown = await make(), gu = await unknown.grant(), au = await unknown.attempt(gu);
+    const ur = await unknown.adapter.reserve(au);
+    await unknown.adapter.verifyReservation({ ...au, reservation: ur });
+    await unknown.adapter.finish({ reservation: ur, outcome: 'unverified', reason: 'synthetic-timeout',
+      verifiedByReadback: false, providerWriteMayHaveOccurred: true, providerRequestReturned: false,
+      finishedAt: unknown.clock, after: null });
+    const us = Store.createAuthority({ root: unknown.root, publicKey: unknown.publicKey,
+      resource: unknown.resource, now: () => unknown.clock });
+    let reads = 0;
+    const oldGet = async () => { reads++; return clone(unknown.tx); };
+    const observation = { kind: 'reconcile', grantRef: gu.grantRef, attemptRef: ur.attemptRef,
+      revoke: true, observedFingerprint: Store.digest(unknown.tx), at: unknown.clock };
+    await assert.rejects(us.planReconciliation(ur.attemptRef, oldGet), /provider-attempt-closure-unresolved/);
+    await assert.rejects(us.reconcile(Store.sign(observation, unknown.privateKey), oldGet), /provider-attempt-closure-unresolved/);
+    assert.equal(reads, 2, 'both recovery paths performed only the synthetic old-state GET');
+    assert.equal(us.list().attempts[0].acknowledged, false);
+    assert.equal((await us.grant(gu.grantRef)).suspended, true);
+    assert.equal((await us.grant(gu.grantRef)).attempts, 1);
+    const competingGrant = await unknown.grant(2), competing = await unknown.attempt(competingGrant);
+    await assert.rejects(us.reserve(competing), /target-or-evidence-quarantined/);
+    // Closure must also be rechecked INSIDE the locked mutation. Dispatch can
+    // arm while an owner reconciliation awaits its read-only provider GET.
+    const closeRace = await make(), gr = await closeRace.grant(), ar = await closeRace.attempt(gr);
+    const rr = await closeRace.adapter.reserve(ar);
+    const prior = await closeRace.adapter.planReconciliation(rr.attemptRef, async () => clone(closeRace.tx));
+    await assert.rejects(closeRace.adapter.reconcile(Store.sign(prior, closeRace.privateKey), async () => {
+      await closeRace.adapter.verifyReservation({ ...ar, reservation: rr });
+      return clone(closeRace.tx);
+    }), /provider-attempt-closure-unresolved/);
+    assert.equal(closeRace.adapter.list().attempts[0].acknowledged, false);
+    assert.equal((await closeRace.adapter.grant(gr.grantRef)).revokedAt, null);
+    // A failed atomic snapshot replacement cannot charge or consume anything.
+    const rollback = await make(), gbefore = await rollback.grant(), abefore = await rollback.attempt(gbefore);
+    const failBeforeRename = Store.createAuthority({ root: rollback.root, publicKey: rollback.publicKey,
+      resource: rollback.resource, now: () => rollback.clock,
+      fault: point => { if (point === 'before-rename') throw new Error('synthetic-before-rename'); } });
+    await assert.rejects(failBeforeRename.reserve(abefore), /synthetic-before-rename/);
+    assert.equal(rollback.adapter.list().attempts.length, 0);
+    assert.equal((await rollback.adapter.grant(gbefore.grantRef)).attempts, 0);
+    assert.equal((await rollback.adapter.reserve(abefore)).durable, true);
     // Disabled production wiring does not open/create a path, accept a synthetic
     // provider proof, or advertise a capability solely because a flag is set.
     assert.equal(Runtime.fromEnv({ env: { ATLAS_STANDING_STORE_PATH: '/does-not-exist' } }).enabled, false);
@@ -174,6 +233,42 @@ module.exports = (async () => {
     assert.equal(Runtime.fromEnv({ env, resource: f.resource, testOnly: true, now: () => f.clock }).enabled, true);
     assert.equal(Runtime.fromEnv({ env: { ...env, ATLAS_STANDING_STORE_PATH: path.resolve(__dirname, '..') },
       resource: f.resource, testOnly: true, now: () => f.clock }).enabled, false);
+    // Malformed owner-signed proof expiry cannot activate or mint a grant.
+    for (const expiresAt of [undefined, null, NaN, 0, -1, 1.5, String(f.clock + 86400000), f.clock, Number.MAX_SAFE_INTEGER + 1]) {
+      const invalid = await make({ proofPatch: { expiresAt } });
+      const badEnv = { ATLAS_STANDING_CORRECTIONS_ENABLED: 'true', ATLAS_STANDING_STORE_PATH: invalid.root,
+        ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: invalid.publicKeyPath };
+      assert.equal(Runtime.fromEnv({ env: badEnv, resource: invalid.resource, testOnly: true,
+        now: () => invalid.clock }).enabled, false, 'malformed expiry: ' + String(expiresAt));
+      assert.equal((await invalid.adapter.context()).ruleEffects, 'unknown');
+      await assert.rejects(invalid.grant(), /binding-mismatch|provider-proof/);
+    }
+    const expiring = await make({ proofPatch: { expiresAt: f.clock + 500 } });
+    const ge = await expiring.grant(), ae = await expiring.attempt(ge), er = await expiring.adapter.reserve(ae);
+    const expired = Store.createAuthority({ root: expiring.root, publicKey: expiring.publicKey,
+      resource: expiring.resource, now: () => expiring.clock + 500 });
+    await assert.rejects(expired.verifyReservation({ ...ae, reservation: er }), /binding-mismatch|provider-proof/);
+    assert.equal(expired.list().attempts[0].acknowledged, false, 'live proof expiry retains quarantine');
+    // Resolve ancestor symlinks before containment, including owner init's
+    // existing parent. Apparent outside paths can otherwise point into public.
+    const links = await make(), project = path.join(links.dir, 'synthetic-project');
+    const served = path.join(project, 'public'); fs.mkdirSync(served, { recursive: true });
+    const apparentlyExternal = path.join(links.dir, 'external-alias'); fs.symlinkSync(served, apparentlyExternal, 'dir');
+    const exposed = path.join(served, 'authority');
+    Store.initialize({ root: exposed, publicKey: links.publicKey,
+      contextEnvelope: Store.sign({ kind: 'context', context: links.context }, links.privateKey) });
+    assert.equal(Runtime.fromEnv({ env: { ATLAS_STANDING_CORRECTIONS_ENABLED: 'true',
+      ATLAS_STANDING_STORE_PATH: path.join(apparentlyExternal, 'authority'),
+      ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: links.publicKeyPath }, projectRoot: project,
+      resource: links.resource, testOnly: true, now: () => links.clock }).enabled, false);
+    const prospective = path.join(apparentlyExternal, 'new-authority');
+    assert.throws(() => Runtime.privateInstallation({ root: prospective, keyPath: links.publicKeyPath,
+      projectRoot: project, creating: true }), /outside-project/);
+    assert.equal(fs.existsSync(path.join(served, 'new-authority')), false);
+    const servedKey = path.join(served, 'owner-public.pem'); fs.copyFileSync(links.publicKeyPath, servedKey);
+    assert.equal(Runtime.fromEnv({ env: { ATLAS_STANDING_CORRECTIONS_ENABLED: 'true',
+      ATLAS_STANDING_STORE_PATH: links.root, ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: path.join(apparentlyExternal, 'owner-public.pem') },
+      projectRoot: project, resource: links.resource, testOnly: true, now: () => links.clock }).enabled, false);
     // Full MCP -> actual authority -> exact synthetic provider edit -> durable
     // audit exchange, plus two independently running service processes.
     const full = await make(), gf = await full.grant();
@@ -189,7 +284,7 @@ module.exports = (async () => {
     const after = JSON.parse(fs.readFileSync(providerPath, 'utf8'));
     assert.equal(after.category_id, 8); assert.equal(after.notes, full.tx.notes); assert.equal(after.amount, full.tx.amount);
     assert.equal(Store.protectedFingerprint(after), Store.protectedFingerprint(full.tx));
-    console.log('Real standing authority: owner signatures/digests, delegated provenance, persistent audit/replay/revocation, two-process lease, crash/reply-loss recovery and category-only synthetic execution PASS');
+    console.log('Real standing authority: owner signatures/digests, delegated provenance, persistent audit/replay/revocation, two-process lease, unknown-dispatch quarantine, locked reconciliation race, atomic rollback, crash/reply-loss recovery and category-only synthetic execution PASS');
   } finally { for (const dir of owned) {
     assert.equal(path.isAbsolute(dir) && dir.startsWith(path.join(os.tmpdir(), 'atlas-standing-synthetic-')), true);
     fs.rmSync(dir, { recursive: true, force: true });

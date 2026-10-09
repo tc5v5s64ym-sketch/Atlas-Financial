@@ -11,11 +11,21 @@ const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const publicKey = fs.readFileSync(input.publicKeyPath, 'utf8');
 const now = () => input.clock;
 const adapter = Store.createAuthority({ root: input.root, publicKey, resource: input.resource, now,
-  fault: point => { if (input.crash === point) process.exit(91); } });
+  fault: point => {
+    if (input.crash === point) process.exit(91);
+    if (point === 'recovery-before-unlink' && input.readyPath) {
+      fs.writeFileSync(input.readyPath, 'synthetic-gate-held');
+      const deadline = Date.now() + 10000;
+      while (!fs.existsSync(input.releasePath) && Date.now() < deadline)
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      if (!fs.existsSync(input.releasePath)) throw new Error('synthetic-recovery-barrier-timeout');
+    }
+  } });
 async function main() {
   if (input.action === 'reserve') return adapter.reserve(input.attempt);
   if (input.action === 'finish') return adapter.finish(input.record);
   if (input.action === 'inspect') return adapter.list();
+  if (input.action === 'recover') return adapter.recoverLock(input.envelope);
   if (input.action === 'service') {
     const categories = input.categories;
     const tx = () => JSON.parse(fs.readFileSync(input.providerPath, 'utf8'));
@@ -41,7 +51,11 @@ async function main() {
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: 'synthetic-durable-standing', version: '1' });
     await server.connect(serverSide); await client.connect(clientSide);
-    const call = async (name, args) => (await client.callTool({ name, arguments: args })).structuredContent;
+    let lastToolResponse;
+    const call = async (name, args) => {
+      lastToolResponse = await client.callTool({ name, arguments: args });
+      return lastToolResponse.structuredContent;
+    };
     try {
       assert.equal((await client.listTools()).tools.length, 9);
       const cat = await call('get_lunchmoney_catalog', {});
@@ -65,6 +79,11 @@ async function main() {
         const audit = await call('get_lunchmoney_correction_audit', { grantRef: input.grantRef });
         assert.equal(audit.receipts.length, 1); assert.equal(audit.receipts[0].outcome, 'applied');
         assert.equal(audit.receipts[0].acknowledged, true);
+        assert.equal(audit.receipts[0].delegatedReview.facts.items[0].categoryRef, categoryRef);
+        // Check both structured content and serialized MCP text content.
+        assert.doesNotMatch(JSON.stringify(lastToolResponse),
+          /category_id|transactionId|providerId|plaid_account_id|manual_account_id|tag_ids|beforeProvider/);
+        assert.equal(JSON.stringify(lastToolResponse).includes(input.token), false);
       }
       return result;
     } finally { await client.close(); await server.close(); }

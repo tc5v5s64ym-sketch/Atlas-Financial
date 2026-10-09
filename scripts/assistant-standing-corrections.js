@@ -1,5 +1,5 @@
 'use strict';
-// Disabled foundation. No grant/evidence creation or production store is wired.
+// Bounded correction policy. Production construction remains default-off.
 // The adapter is a trusted server dependency, never an MCP argument.
 const SCOPE = 'atlas.transactions.correct-with-grant';
 const DELEGATED_POLICY = 'atlas-delegated-category-review/v1';
@@ -98,6 +98,8 @@ function validate({ grant, evidence, auth, context, tx, body, fingerprint, now, 
   const delegated = grant.evidencePolicy === DELEGATED_POLICY;
   if (delegated) {
     const transition = grant.categoryTransitions.find(t => t.from === (tx.category_id ?? null) && t.to === body.category_id);
+    if (!instant(context.providerProof?.expiresAt) || context.providerProof.expiresAt <= now)
+      deny('provider-proof-expired-or-invalid');
     if (grant.resource !== context.resource || auth.resource !== grant.resource || grant.allowNotes !== false
         || !keys(body, ['category_id']) || !transition || !record(categoryContext)
         || transition.fromSignature !== categoryContext.from || transition.toSignature !== categoryContext.to

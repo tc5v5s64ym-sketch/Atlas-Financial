@@ -18,15 +18,14 @@ Default construction remains inactive. It performs no standing-store/provider
 reads, creates no key/grant/directory and exposes the five incumbent tools.
 Interactive category/notes/splits and literal preview confirmation remain intact.
 
-server.js remains unchanged. A small prepared assistant-construction hunk would
-inject the optional runtime after OAuth config and derive metadata/step-up from
-the same service. Automatic approval review rejected publication of that hunk
-because server.js belongs to #548's owner hard hold; the delegated instruction
-was not accepted as an owner override. The patch is retained privately for an
-exact owner decision, without moving wiring into another file to bypass the
-hold. Runtime/service/MCP composition is tested with synthetic data; production
-server integration is a concrete approval blocker. No UI/redesign behavior or
-builder is touched. test/test.js, #558 and #557 files/modules remain untouched.
+The prepared backend-only server.js hunk injects the optional runtime after
+OAuth config and derives metadata/step-up from the same validated service.
+Dale explicitly approved publication of that exact construction hunk on
+2026-10-09 after automatic review enforced #548's file hold. That approval covers
+publication only. It does not enable the flag, install storage/keys/grants,
+expand consent, deploy, merge or authorize provider writes. No UI/redesign
+behavior or builder is touched; #548's redesign hold remains. test/test.js,
+#558 and #557 files/modules remain untouched.
 
 ## Explicit owner authority
 
@@ -108,7 +107,7 @@ scripts/assistant-standing-store.js stores only bounded capability/evidence/
 attempt/receipt state for this operation, not a general transaction ledger or
 receipt platform. The supported installation is one POSIX host on durable private
 storage: directory 0700, snapshots/lock 0600, symlink refusal, 32 MiB ceiling,
-exclusive process lock, atomic snapshot replacement and file/directory fsync.
+exclusive acquisition/recovery gate and process lock, atomic snapshot replacement and file/directory fsync.
 The snapshot checksum detects corruption; it is not an external tamper-proof
 audit service. Filesystem access and owner-key separation remain essential.
 
@@ -117,7 +116,9 @@ atomically rechecks identity, scope bindings, expiry/revocation, evidence/body,
 category context and budgets; consumes evidence/preview and charges an attempt
 before any PUT. No refund follows a possibly sent write. Restart retains limits,
 replay markers, revocation and unresolved attempts. Busy/stale locks fail closed;
-no process automatically steals another's lock.
+no process automatically steals another's lock. Recovery and writer acquisition
+share an exclusive gate. A crash with that gate held remains fail-closed and
+requires offline operator intervention; no automated gate recovery is provided.
 
 After reservation, the executor re-reads target/categories under the same
 credential, checks the original fingerprint, then verifies the live reservation.
@@ -140,6 +141,8 @@ arrive. Known pre-dispatch failure or a returned provider request is required.
 get_lunchmoney_correction_audit returns private before/proposed/readback,
 pending/terminal outcomes, receipt/actor and honestly labeled delegated review
 for the matching subject/client/resource, including expired/revoked grants.
+Client audit item categories use recorded opaque references; raw provider IDs
+remain confined to private authority state.
 This supports the afterward report and unresolved-write inspection.
 
 No provider compare-and-swap is documented. Shared Atlas leases and post-lock
@@ -152,21 +155,21 @@ cannot prove absence of all external provider side effects.
 Runtime variables exist as code interfaces only; none are configured here:
 ATLAS_STANDING_CORRECTIONS_ENABLED, ATLAS_STANDING_STORE_PATH,
 ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH. Missing/invalid configuration, Windows or
-a nonprivate installation leaves the capability unavailable. Existing tools and
+a nonprivate installation leaves the capability unavailable. Real paths (including ancestor symlinks) must remain outside the public project;
+owner init checks the existing parent's real path before creating storage. Existing tools and
 OAuth JWT issuer/JWKS/audience/resource/expiry/subject validation are unchanged.
 
 A valid capability adds four tools and requires
 atlas.transactions.correct-with-grant in addition to current-read and transaction
-read/write scopes. The prepared server patch couples metadata, HTTP step-up and dispatch to the
-same capability state; that production integration remains blocked by the
-#548 hard hold. A flag or OAuth scope alone cannot authorize a correction.
+read/write scopes. The backend construction hunk couples metadata, HTTP step-up and dispatch to the
+same capability state. A flag or OAuth scope alone cannot authorize a correction.
 
 The signed context must contain an unexpired, explicitly approved provider API
 contract proof. Synthetic proof is accepted only by direct testOnly injection,
-never by production server configuration. Unknown/expired rule effects refuse
-activation and writes. Default env parsing does not configure a store or consent. The unchanged
-production server injects no standing runtime, so these tools remain unavailable
-there even before the provider-contract and activation prerequisites.
+never by production server configuration. Unknown rule effects or missing/malformed/expired positive safe-integer proof
+expiry refuse activation and writes; live eligibility rechecks the expiry. Default env parsing does not configure a store or consent. The default production construction performs no standing-store reads and exposes
+no standing tools. Provider-contract proof and separate activation prerequisites
+remain unresolved.
 
 ## Authoritative provider contract and remaining blocker
 
@@ -192,7 +195,9 @@ No rule creation/management endpoint or provider setting change is added.
 Synthetic proof exercises genuine owner signatures/exact digests, forged grants,
 delegated-vs-independent provenance, uncertainty/mixed facts, real temporary
 storage, two process contention, replay/revocation across restart, fsync/rename
-crash, committed audit reply loss plus failed suspension, signed dead-lock
+crash/rollback, unknown-dispatch quarantine after an old-state GET, locked
+reconciliation race, concurrent recovery/writer exclusion, malformed/live proof
+expiry, ancestor-symlink containment, MCP audit privacy, committed audit reply loss plus failed suspension, signed dead-lock
 recovery, read-only reconciliation, actual MCP-to-store-to-mock-provider category
 execution and unchanged interactive/default HTTP/JWT behavior. Public fixtures
 contain only synthetic data. Full npm test on a superseded head is not a final
