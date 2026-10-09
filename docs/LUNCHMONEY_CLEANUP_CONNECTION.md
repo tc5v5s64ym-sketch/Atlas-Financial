@@ -104,6 +104,9 @@ current canonical data, account map, identity rules, public periods and a fresh
 complete provider transaction/pending snapshot. Missing mappings, colliding
 account IDs, incomplete coverage, stale target fingerprints, unavailable overlay
 or unavailable Forecast fail closed.
+The selected transaction must also have explicit known notes, category and
+tag IDs, with unique current category/tag semantics. Omitted fields or missing
+catalog labels are unknown; they cannot be treated as empty or neutral.
 
 The signed context pins the data/map/identity/periods digest and a hash of all
 deployed public/scripts JavaScript. Changed policy, map, actuals basis or parser

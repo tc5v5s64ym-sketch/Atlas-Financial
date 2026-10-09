@@ -93,6 +93,21 @@ function evaluate({ inputs, tx, body, parserRevision, metadataContext }) {
   const rows = payload.transactions.filter(row => row.id === tx.id);
   check(rows.length === 1 && Store.digest(rows[0]) === Store.digest(tx));
   exactCents(tx.amount); // The real financial path cannot establish fractional/unsafe cents.
+  // Missing parser inputs are unknown, not empty notes/tags or uncategorized.
+  check(Object.hasOwn(tx, 'notes') && (tx.notes === null || typeof tx.notes === 'string')
+    && Object.hasOwn(tx, 'category_id') && (tx.category_id === null || Number.isSafeInteger(tx.category_id) && tx.category_id > 0)
+    && Array.isArray(tx.tag_ids) && tx.tag_ids.every(id => Number.isSafeInteger(id) && id > 0)
+    && new Set(tx.tag_ids).size === tx.tag_ids.length);
+  const categories = (payload.categories || []).flatMap(row => [row, ...(row.children || [])]);
+  for (const id of new Set([tx.category_id, body.category_id].filter(id => id != null))) {
+    const matches = categories.filter(row => row.id === id);
+    check(matches.length === 1 && typeof matches[0].name === 'string' && matches[0].name.trim()
+      && ['is_income', 'exclude_from_budget', 'exclude_from_totals'].every(key => typeof matches[0][key] === 'boolean'));
+  }
+  for (const id of [...tx.tag_ids, ...(body.additional_tag_ids || [])]) {
+    const matches = (payload.tags || []).filter(row => row.id === id);
+    check(matches.length === 1 && typeof matches[0].name === 'string' && matches[0].name.trim());
+  }
   check(Array.isArray(payload.accounts) && new Set(payload.accounts.map(a => String(a.id))).size === payload.accounts.length);
   const accountId = tx.plaid_account_id ?? tx.manual_account_id;
   check(accountId != null && (tx.account_id == null || tx.account_id === accountId));

@@ -172,7 +172,11 @@ async function main() {
   for (const change of [x => x.payload.transactionWindow.complete = false, x => x.payload.pendingCoverage.complete = false,
     x => x.accountMap.mappings = [], x => x.payload.transactions.push(clone(x.payload.transactions.find(t=>t.id===91004))),
     x => x.payload.transactions.find(t=>t.id===91004).amount='30.0001',
-    x => x.payload.transactions.find(t=>t.id===91004).amount='50000000000000000.01']) {
+    x => x.payload.transactions.find(t=>t.id===91004).amount='50000000000000000.01',
+    x => { delete x.payload.transactions.find(t=>t.id===91004).notes; },
+    x => { delete x.payload.transactions.find(t=>t.id===91004).category_id; },
+    x => { delete x.payload.transactions.find(t=>t.id===91004).tag_ids; },
+    x => { x.payload.tags = []; }, x => { x.payload.categories = []; }]) {
     const bad = household(); change(bad);
     assert.throws(() => E.evaluate({ inputs: bad, tx: bad.payload.transactions.find(t=>t.id===91004), body: {}, parserRevision: 'synthetic' }));
   }
