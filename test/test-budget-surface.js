@@ -202,9 +202,32 @@ const noSpent = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRo
     && bucket('check').includes('data-budget-bill-open="synthetic-contradiction"')
     && bucket('unknown').includes('data-budget-bill-open="synthetic-unknown"')
     && !bucket('due').includes('synthetic-pending') && !bucket('due').includes('synthetic-unknown')
-    && /Payment pending/.test(out) && /Not confirmed/.test(out) && /Status unavailable/.test(out),
+    && /Payment pending/.test(out) && /To confirm/.test(out) && /Status unavailable/.test(out),
     'every published state keeps its own bucket; pending and unknown never become Due');
   ok(vm.runInContext('JSON.stringify(__filterRows) === __beforeRows', bp.context), 'filter presentation never rewrites settlement evidence');
+  const statusCases = [
+    [{status:'still due',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Due', ''],
+    [{status:'planned',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Due', ''],
+    [{status:'still due',settlement:'unverified',date:'2026-08-18'}, 'check', 'To confirm', ''],
+    [{status:'overdue',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Not paid', ''],
+    [{status:'not-paid',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Not paid', ''],
+    [{status:'still due',settlement:'upcoming',date:'2026-02-30'}, 'due', 'Not paid', ''],
+    [{status:'still due',settlement:'upcoming'}, 'due', 'Not paid', ''],
+    [{status:'unknown',settlement:'upcoming',date:'2026-08-21'}, 'unknown', 'Status unavailable', ''],
+    [{status:'pending',settlement:'upcoming',date:'2026-08-21'}, 'pending', 'Payment pending', ''],
+    [{status:'needs-date',settlement:'upcoming',date:'2026-08-21'}, 'check', 'Needs a date', ''],
+    [{status:'still due',settlement:'upcoming',date:'2026-08-21',cashPaymentStatus:'sent',householdPaymentStatus:'partial'}, 'check', 'Not paid', 'Partial payment sent'],
+    [{status:'planned',settlement:'upcoming',date:'2026-08-21',cashPaymentStatus:'sent',householdPaymentStatus:'paid'}, 'due', 'Planned', 'Money sent'],
+    [{status:'still due',settlement:'unverified',date:'2026-08-18',cashPaymentStatus:'sent',householdPaymentStatus:'unconfirmed'}, 'check', 'To confirm', 'Payment allocation unconfirmed'],
+    [{status:'still due',settlement:'upcoming',date:'2026-08-21',cashPaymentStatus:'sent'}, 'due', 'Not paid', ''],
+  ];
+  for (const [row, kind, label, qualifier] of statusCases) {
+    const actual = vm.runInContext(`budgetBillPresentation(${JSON.stringify(row)})`, bp.context);
+    const rendered = vm.runInContext(`budgetBillBrowseRowHtml(${JSON.stringify(row)})`, bp.context);
+    ok(actual.kind === kind && actual.label === label && (actual.qualifier || '') === qualifier
+      && rendered.includes('is-upcoming-due') === (label === 'Due'),
+      `published ${row.status}/${row.settlement}: ${label} retains ${qualifier || 'its distinct state'}; only qualified scheduled rows get neutral Due styling`);
+  }
   const empty = vm.runInContext('budgetBillsSectionHtml({bills: []}, __ctx)', bp.context);
   ok(/All<span>0<\/span>/.test(empty) && /Paid<span>0<\/span>/.test(empty)
     && /To confirm<span>0<\/span>/.test(empty) && /Due<span>0<\/span>/.test(empty)
@@ -312,7 +335,7 @@ ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(hydroBills)
   && !/left to pay or confirm/.test(hydroBills)
   && !/\$0\.00/.test(/id="budget-bills-heading"[\s\S]*?<\/h2>/.exec(hydroBills)?.[0] || '')
   && /To confirm<span>1<\/span>/.test(hydroBills)
-  && /data-budget-bill-bucket="check"[\s\S]*?data-budget-bill-open="hydro"[\s\S]*?120\.00[\s\S]*?Not confirmed/.test(hydroBills)
+  && /data-budget-bill-bucket="check"[\s\S]*?data-budget-bill-open="hydro"[\s\S]*?120\.00[\s\S]*?To confirm/.test(hydroBills)
   && /data-period-bill="hydro"[\s\S]*?Missing evidence does not mean unpaid/.test(hydroLookback),
   'unverified historical Hydro withholds the actionable $0 heading and keeps original evidence');
 const paidHistory = hydroPage.rerender(`

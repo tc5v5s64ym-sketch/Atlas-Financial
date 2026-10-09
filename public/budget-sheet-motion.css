@@ -184,6 +184,10 @@ dialog.blend-detail-sheet[open] {
 .blend-detail-sheet .budget-bill-when { display: block; margin-top: 2px; font-size: 13px; color: var(--blend-ink-3); }
 .blend-detail-sheet .budget-bill-value { display: grid; justify-items: end; gap: 2px; }
 .blend-detail-sheet .budget-bill-state { font-size: 11px; margin-top: 0; white-space: normal; max-width: 140px; text-align: right; }
+.blend-detail-sheet .budget-bill-row.is-check .budget-bill-state { color: #d97706; }
+.blend-detail-sheet .budget-bill-row.is-check .budget-bill-state i { background: currentColor; }
+.blend-detail-sheet .budget-bill-row.is-upcoming-due .budget-bill-state { color: var(--blend-ink-2); }
+.blend-detail-sheet .budget-bill-row.is-upcoming-due .budget-bill-state i { background: currentColor; }
 .blend-detail-sheet .budget-bill-amount { font-size: 15px; font-weight: 620; }
 .blend-detail-sheet .budget-bill-chevron { color: var(--blend-ink-3); font-size: 21px; }
 .blend-detail-sheet .budget-bill-period-evidence { margin-top: 22px; font-size: 13px; }

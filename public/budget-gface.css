@@ -490,6 +490,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
 .budget-bento.atlas-g [data-budget-browse="spending"] > header h2 { font-size: 16px; }
 .budget-bento.atlas-g .blend-house-open { display: inline-flex; align-items: center; gap: 9px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .budget-bento.atlas-g .blend-house-open:focus-visible { outline: 3px solid var(--blend-focus); outline-offset: 4px; border-radius: 4px; }
+.budget-bento.atlas-g [data-budget-browse="spending"] > footer { border-top: 0; }
 .budget-bento.atlas-g .blend-house-facts { flex: 0 1 auto; margin-left: auto; }
 .budget-bento.atlas-g .blend-house-facts [data-budget-browse-remaining] { font-size: 16px; }
 .budget-bento.atlas-g [data-budget-browse="spending"] .budget-browse-eyebrow,

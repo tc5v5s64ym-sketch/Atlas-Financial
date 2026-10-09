@@ -6626,16 +6626,22 @@ function budgetBillPresentation(row) {
   }
   const settled = row.status === 'PAID' || row.settlement === 'represented';
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'unconfirmed') {
-    return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'Not confirmed', qualifier: 'Payment allocation unconfirmed' };
+    return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'To confirm', qualifier: 'Payment allocation unconfirmed' };
   }
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'paid') return { kind: 'paid', label: 'Paid', qualifier: 'Money sent' };
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'partial') return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'Not paid', qualifier: 'Partial payment sent' };
-  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'sent') return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'Not confirmed', qualifier: 'Money sent; minimum amount unconfirmed' };
-  if (row.settlement === 'unverified') return { kind: 'check', label: 'Not confirmed' };
+  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'sent') return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'To confirm', qualifier: 'Money sent; minimum amount unconfirmed' };
+  if (row.settlement === 'unverified') return { kind: 'check', label: 'To confirm' };
   if (row.settlement === 'unknown' || row.status === 'unknown') return { kind: 'unknown', label: 'Status unavailable' };
   if (row.status === 'PAID' || row.settlement === 'represented') return { kind: 'paid', label: 'Paid' };
   if (row.needsDate || row.status === 'needs-date') return { kind: 'check', label: 'Needs a date' };
-  if (row.settlement === 'upcoming') return { kind: 'due', label: 'Not paid' };
+  if (row.settlement === 'upcoming') {
+    // Forecast's upcoming settlement already qualifies the dated occurrence.
+    // Keep explicit payment qualifiers and contradictory statuses distinct.
+    const scheduled = isValidIsoCalendarDate(row.date) && ['still due', 'planned'].includes(row.status)
+      && !row.cashPaymentStatus && !row.householdPaymentStatus;
+    return { kind: 'due', label: scheduled ? 'Due' : 'Not paid' };
+  }
   return { kind: 'unknown', label: 'Status unavailable' };
 }
 
@@ -6656,7 +6662,7 @@ function budgetBillBrowseRowHtml(row) {
   const amount = budgetBrowseKnown(row.movement) ? Math.abs(row.movement) : null;
   const month = knownDate ? new Date(row.date + 'T12:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : '?';
   const dateEstimated = row.dateConfidence === 'estimated';
-  return `<button type="button" class="budget-bill-row is-${state.kind}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
+  return `<button type="button" class="budget-bill-row is-${state.kind}${state.label === 'Due' ? ' is-upcoming-due' : ''}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
     <span class="budget-bill-date${dateEstimated ? ' est' : ''}" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
     <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-when">${knownDate ? budgetBrowseEscape(fmtDateLong(row.date)) + (dateEstimated ? ' · estimated' : '') : 'Date unavailable'}</span></span>
     <span class="budget-bill-value"><span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}</span></span><span class="budget-bill-chevron" aria-hidden="true">›</span>
