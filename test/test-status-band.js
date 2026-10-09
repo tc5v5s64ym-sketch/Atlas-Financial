@@ -987,6 +987,30 @@ function bootPage() {
         : 'no funding cards when the published default has no opening gap',
       String((fundEl.innerHTML.match(/class="fund /g) || []).length));
 
+    // Print-only data-plan-status hook: the engine's verdict id on every paint,
+    // 'unavailable' on the live-unavailable path; text and class unchanged.
+    ok(bandEl.attributes['data-plan-status'] === movedBand(inputs)[2],
+      'the booted band carries data-plan-status = the engine verdict id', bandEl.attributes['data-plan-status']);
+    const F2 = page.sandbox.Forecast, realStatus = F2.planStatus, periods = JSON.parse(read('public/periods.json'));
+    const statuses = { onPlan, belowBuffer, negative, gap: plain, infeasible, unfunded, overrideBreach: breach, combination: combo,
+      unavailable: { id: 'unavailable', status: 'unavailable', reason: 'Income is uncertain.' } };
+    const paint = (s, liveDown) => { F2.planStatus = () => s;
+      page.sandbox.renderPlan(liveDown ? { ...data, liveOverlay: { ...(data.liveOverlay || {}), operatingPlan: 'unavailable', operatingPlanNote: 'Stale opening.' } } : data, periods); };
+    for (const id of ['infeasible', 'onPlan', 'belowBuffer', 'negative', 'gap', 'unfunded', 'overrideBreach', 'combination', 'unavailable']) {
+      const s = statuses[id]; ok(s.id === id, 'fixture verdict ' + id);
+      paint(s);
+      ok(bandEl.attributes['data-plan-status'] === id && bandEl.className === 'statusband ' + STATUS_BAND[id].tone
+        && flat(bandEl.innerHTML) === flat(STATUS_BAND[id].text(s, plan)),
+        `data-plan-status="${id}" with the band class and text unchanged`, bandEl.attributes['data-plan-status']);
+      if (id !== 'infeasible') continue;
+      // Live-unavailable repaint over 'infeasible', then 'onPlan' over it: no stale id either way.
+      paint(s, true);
+      ok(bandEl.attributes['data-plan-status'] === 'unavailable' && bandEl.className === 'statusband warn'
+        && flat(bandEl.innerHTML) === '<b>Current plan unavailable.</b> Stale opening.',
+        'live-unavailable repaint sets data-plan-status="unavailable" (no stale infeasible)', bandEl.attributes['data-plan-status']);
+    }
+    F2.planStatus = realStatus;
+
     console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
     process.exit(failures === 0 ? 0 : 1);
   }, 0);

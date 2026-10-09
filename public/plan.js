@@ -4270,6 +4270,55 @@ function calendarFromTodayEvidenceHtml(period, plan) {
   return todayHtml;
 }
 
+// Print-only, hidden from layout and assistive tech (hidden + aria-hidden):
+// Forecast's published Balance After Deductions
+// (predictedEndingBalanceTerms.balanceAfterDeductions, before savings funding)
+// for EVERY advice.payPeriodViews row in order, for renderers that need the
+// whole timeline while the Budget page shows one period. Trust, face, the
+// ≈ mark and the amount are decided exactly as the selected period's terms
+// block in calendarWaterfallHtml decides them (#549/#550): the same tests,
+// repeated here because suites load calendarWaterfallHtml on its own.
+// test-bad-terms-print.js locks the two to the same output for every row.
+function badTimelineHtml(advice, compactOverview, savingsContext) {
+  const rows = Array.isArray(advice && advice.payPeriodViews) ? advice.payPeriodViews.filter(Boolean) : [];
+  if (!rows.length) return '';
+  const numeric = value => typeof value === 'number' && Number.isFinite(value);
+  const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const items = rows.map(period => {
+    // Terms block: badTermsKnown + badTermRow('balanceAfterDeductions', …, period.balanceAfterDeductionsTrust, true).
+    const badTerms = period.predictedEndingBalanceTerms;
+    const badTermsKnown = !!badTerms && badTerms.identity === 'balance-after-deductions' && badTerms.closes === true;
+    const value = badTermsKnown ? badTerms.balanceAfterDeductions : null;
+    const trust = period.balanceAfterDeductionsTrust;
+    const stamp = trust == null ? 'calculated' : trust;
+    const known = numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
+    const mark = known && stamp === 'estimated' ? compactOverview
+      ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : '';
+    // Terms block face: dailySavings and fundedBalanceKnown, as calendarWaterfallHtml derives them.
+    const dailySavings = compactOverview
+      && ['Forecast.savingsDailyFunding', 'Budget.savingsDailyFundingUnavailable'].includes(savingsContext?.daily?.source)
+      && savingsContext.daily.asOf === savingsContext.asOf ? (savingsContext.daily.periodViews?.find(view => view.id === period.id)?.packet
+        || (period.timelineRole === 'current' ? savingsContext.daily : null)) : null;
+    const funding = period.plannedCostFunding;
+    const fundingKnown = funding && (funding.status === 'ready' || funding.status === 'funding-gap')
+      && funding.start === period.start && funding.end === period.end
+      && numeric(funding.contribution) && funding.contribution >= 0 && numeric(funding.afterProposedFunding)
+      && (funding.trust === 'calculated' || funding.trust === 'estimated');
+    const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
+    const face = !dailySavings && fundedBalanceKnown ? 'after-proposed-funding' : 'balance-after-deductions';
+    const role = period.timelineRole === 'past' || period.timelineRole === 'current' ? period.timelineRole : 'future';
+    // Print-only. Forecast already published this; no coverage math here.
+    // Missing, null or empty claim omits the attribute so a reader can
+    // treat "no attribute" as skip.
+    const claim = period.budgetProgress?.coverage?.remainingClaim;
+    const coverage = typeof claim === 'string' && claim
+      ? ` data-bad-timeline-coverage="${escape(claim)}"` : '';
+    return `<li data-bad-timeline-period="${escape(period.id || period.start || '')}" data-bad-timeline-role="${role}" data-bad-timeline-start="${escape(period.start || '')}" data-bad-timeline-end="${escape(period.end || '')}" data-bad-timeline-range-label="${escape(payPeriodRangeLabel(period).replace(/<[^>]*>/g, ''))}"${coverage} data-bad-term-trust="${known ? stamp : 'unavailable'}" data-bad-terms-face="${face}"${known && value < 0 ? ' data-sign="negative"' : ''}>${known ? mark : 'Unavailable'}<span data-bad-term-amount>${known ? money2(value) : ''}</span></li>`;
+  }).join('');
+  return `<ol data-bad-timeline hidden aria-hidden="true">${items}</ol>`;
+}
+
 function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview = false, savingsContext = null) {
   if (!period) return '';
   const dailySavings = compactOverview
@@ -4921,6 +4970,7 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
   const asOf = defaultView.asOf || (alloc && alloc.asOf) || '';
   const asOfAttr = /^\d{4}-\d{2}-\d{2}$/.test(String(asOf))
     ? ` data-household-as-of="${asOf}"` : '';
+  const savingsContext = { inventory: advice?.savingsInventory, timeline: savingsTimeline, daily: dailySavings, asOf };
   const undated = current ? (defaultView.undatedBills || []) : [];
   const undatedLines = undated.map(periodBillLine).join('');
   const undatedBlock = undatedLines
@@ -4936,7 +4986,8 @@ function payPeriodTimelineHtml(advice, requestedId, liveOverlay, alloc, extraCon
     ${current && !compactOverview ? liveCurrentBalanceHtml(defaultView, liveOverlay, alloc) : ''}
     ${compactOverview ? '' : payPeriodNavigatorHtml(selection)}
     ${extraControls || ''}
-    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview, { inventory: advice?.savingsInventory, timeline: savingsTimeline, daily: dailySavings, asOf })}
+    ${calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview, savingsContext)}
+    ${typeof badTimelineHtml === 'function' ? badTimelineHtml(advice, compactOverview, savingsContext) : ''}
     ${budgetPlanSpendEarmarkHtml(advice, period)}
     ${undatedBlock}
   </div>`;
@@ -7174,6 +7225,11 @@ function renderPlan(d, periods, history) {
   const status = planUnavailable
     ? null
     : Forecast.planStatus(advice, { weeklyOverride: state.weeklyVariable, sim });
+  // Print-only hook: data-plan-status (dataset.planStatus) is the engine's
+  // verdict id, or 'unavailable' on the live-unavailable path. It is set on
+  // every paint so a stale value cannot survive a re-render. Text and class
+  // are unchanged.
+  band.setAttribute('data-plan-status', planUnavailable ? 'unavailable' : status.id);
   if (planUnavailable) {
     band.className = 'statusband warn';
     band.innerHTML = `<b>Current plan unavailable.</b> ${unavailableNote}`;
