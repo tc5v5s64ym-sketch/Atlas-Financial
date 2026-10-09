@@ -118,9 +118,26 @@ const fmtRange = (a, b) => {
 // rendering failure, so `test-mission.js` checks that the two sides still name
 // the same set of instructions.
 const MISSION_PART = {
-  infeasible: p => `the protected plan cannot work — ${p.label || 'a protected constraint'}
-    fails${p.date ? ` on ${fmtDateLong(p.date)}` : ''} by ${money2(p.shortfall)}; a weekly spending
-    figure does not fix this`,
+  infeasible: p => {
+    // Presentation fail-closed: a null / undefined / nonfinite shortfall is a
+    // published verdict WITHOUT a published amount — money2(null) would print
+    // $0.00 and invent a figure, so the amount stays explicitly unquantified.
+    // A real numeric zero is a valid amount and still prints $0.00. The date
+    // is validated before formatting: an invalid date prints no date clause,
+    // never "Invalid Date" and never an invented day.
+    const dateOk = (() => {
+      if (typeof p.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.date)) return false;
+      const [y, m, d] = p.date.split('-').map(Number);
+      const dt = new Date(`${p.date}T00:00:00`);
+      return !Number.isNaN(dt.getTime()) && dt.getFullYear() === y
+        && dt.getMonth() === m - 1 && dt.getDate() === d;
+    })();
+    const by = Number.isFinite(p.shortfall)
+      ? ` by ${money2(p.shortfall)}` : ' by an unquantified amount';
+    return `the protected plan cannot work — ${p.label || 'a protected constraint'}
+    fails${dateOk ? ` on ${fmtDateLong(p.date)}` : ''}${by}; a weekly spending
+    figure does not fix this`;
+  },
   fundingShortfall: p => `find ${money(p.shortfall)} beyond every account available, or lower the buffer`,
   coverGap: p => `cover the ${money(p.amount)} timing gap by ${fmtDateLong(p.by)}`,
   overLimit: p => `get the ${p.debts.map(x => x.label).join(' and ')} back under its limit`,
@@ -149,10 +166,26 @@ const MISSION_PART = {
 // straight from data.json, exactly as the funding lede below prints it.
 const STATUS_BAND = {
   unavailable: { tone: 'crit', text: s => `<b>Current plan unavailable.</b> ${s.reason}` },
-  infeasible: { tone: 'crit', text: s =>
-    `<b>INFEASIBLE — the protected plan cannot work.</b> ${s.label || 'A protected constraint'}
-       fails${s.date ? ` on ${fmtDateLong(s.date)}` : ''} by ${money2(s.shortfall)} at the
-       ${money(s.buffer)} model buffer. A weekly spending figure does not fix this.` },
+  infeasible: { tone: 'crit', text: s => {
+      // Same fail-closed presentation as the mission clause: a null /
+      // undefined / nonfinite shortfall stays explicitly unquantified (never
+      // $0.00), a real numeric zero still prints $0.00, an invalid date
+      // prints no date clause (never "Invalid Date"), and a nonfinite buffer
+      // prints no buffer clause rather than a fabricated figure.
+      const dateOk = (() => {
+        if (typeof s.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return false;
+        const [y, m, d] = s.date.split('-').map(Number);
+        const dt = new Date(`${s.date}T00:00:00`);
+        return !Number.isNaN(dt.getTime()) && dt.getFullYear() === y
+          && dt.getMonth() === m - 1 && dt.getDate() === d;
+      })();
+      const by = Number.isFinite(s.shortfall)
+        ? ` by ${money2(s.shortfall)}` : ' by an unquantified amount';
+      const atBuffer = Number.isFinite(s.buffer) ? ` at the
+       ${money(s.buffer)} model buffer` : '';
+      return `<b>INFEASIBLE — the protected plan cannot work.</b> ${s.label || 'A protected constraint'}
+       fails${dateOk ? ` on ${fmtDateLong(s.date)}` : ''}${by}${atBuffer}. A weekly spending figure does not fix this.`;
+    } },
 
   unfunded: { tone: 'crit', text: s =>
     `<b>Short by ${money(s.gapAmount)} on ${fmtDateLong(s.floorDate)}, and there is not enough
@@ -726,8 +759,20 @@ function weeklyCapView(advice, weeklyOverride) {
     reason = advice.operatingPlanNote
       || 'Current plan unavailable. The dated opening is stale.';
   } else if (modeInfeasible && fail) {
+    // Same fail-closed presentation as the status band and mission: a null /
+    // nonfinite shortfall stays explicitly unquantified (never $0.00), a real
+    // numeric zero still prints $0.00, and an invalid date prints no clause.
+    const failDateOk = (() => {
+      if (typeof fail.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fail.date)) return false;
+      const [y, m, d] = fail.date.split('-').map(Number);
+      const dt = new Date(`${fail.date}T00:00:00`);
+      return !Number.isNaN(dt.getTime()) && dt.getFullYear() === y
+        && dt.getMonth() === m - 1 && dt.getDate() === d;
+    })();
+    const failBy = Number.isFinite(fail.shortfall)
+      ? ` by ${money2(fail.shortfall)}` : ' by an unquantified amount';
     reason = `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
-      fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
+      failDateOk ? ` on ${fmtDateLong(fail.date)}` : ''}${failBy}; a weekly spending
           figure does not fix this.`;
   } else if (fundingBlocked) {
     reason = `There is no feasible weekly cap. ${money2(funding.shortfall)} stays unfunded after every usable source.

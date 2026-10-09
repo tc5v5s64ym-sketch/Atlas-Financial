@@ -109,6 +109,7 @@ const suites = [
   ['publication totals', 'test-publication-totals.js'],
   ['homepage mission', 'test-mission.js'],
   ['plan status band + funding verdicts', 'test-status-band.js'],
+  ['plan status unquantified presentation', 'test-plan-status-unquantified.js'],
   ['what the next move achieves', 'test-nextmove.js'],
   ['a withheld cash walk is unavailable in status, mission and next move', 'test-sim-unavailable-guard.js'],
   ['gap counterfactuals', 'test-counterfactuals.js'],
