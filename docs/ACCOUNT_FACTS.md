@@ -233,6 +233,17 @@ steady value, not the 18-month median.
 | **every 14 days** (payday cadence) | Fit4Less | $11.54 | 18 months; plus a ~$22 annual fee each July |
 | **18th, every 3 months** | Noble Disposal Services — garbage | **$95.85** | Invoice cadence; Forecast quarterly row, firstDue 2026-09-18 |
 
+**Band rehearsal space** *(owner instruction 2026-10-09)*: Dale confirmed a
+new **$80 monthly** bill, paid from BILLS ACCOUNT. October is already paid.
+The contractual due day is **unknown**. `plan.bills` `rehearsal-space` uses
+**2026-11-01 and day 1 thereafter as estimated planning timing only**, following
+the incumbent BC Hydro estimated monthly-date precedent. The row's overall
+confidence and visible label retain that uncertainty; this is not a confirmed
+merchant due date. `firstDue` excludes any October occurrence or second unpaid
+hold. No historical opening, transaction or paid record is rewritten. No
+generic e-transfer settlement matcher or schedule-trust is authorized. Timing
+needs later owner evidence; receipt and recipient details remain private.
+
 **FortisBC annual review** *(invoice Sep. 9; supplied and portal corroborated
 Oct. 4, 2026)*: the bill due **Oct. 1** says **DO NOT PAY** and shows
 **$71.15 Credit**. The old $124 equal-plan charge less $195.15 annual
