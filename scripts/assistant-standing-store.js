@@ -15,6 +15,16 @@ const digest = x => crypto.createHash('sha256').update(JSON.stringify(x)).digest
 const ownerDigest = x => digest(canonical(x));
 const opaque = type => type + '-' + crypto.randomBytes(12).toString('hex');
 function check(ok, reason) { if (!ok) throw new Error(reason); }
+function pinnedPublicKey(material) {
+  // createPublicKey also accepts private PEMs; accepting one would mount owner
+  // signing authority in the runtime. This interface accepts public PEM only.
+  check(typeof material === 'string'
+    && /^-----BEGIN PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\s*$/.test(material),
+    'public-owner-key-required');
+  const key = crypto.createPublicKey(material);
+  check(key.type === 'public' && key.asymmetricKeyType === 'ed25519', 'ed25519-owner-key-required');
+  return key;
+}
 function sign(payload, key) {
   return { payload: clone(payload), signature: crypto.sign(null, Buffer.from(JSON.stringify(canonical(payload))), key).toString('base64') };
 }
@@ -36,7 +46,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
   const dir = fs.lstatSync(root);
   check(dir.isDirectory() && !dir.isSymbolicLink(), 'private-store-not-directory');
   if (process.platform !== 'win32') check((dir.mode & 0o077) === 0, 'private-store-permissions-required');
-  check(crypto.createPublicKey(publicKey).asymmetricKeyType === 'ed25519', 'ed25519-owner-key-required'); // Parse once, never accept a request's key.
+  publicKey = pinnedPublicKey(publicKey); // Parse once; runtime never accepts private signing material.
   const statePath = path.join(root, 'authority.json');
   const lockPath = path.join(root, 'authority.lock');
   const acquisitionPath = path.join(root, 'authority-acquisition.lock');
@@ -307,6 +317,7 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
     ownerUpdate, reconcile, planReconciliation, recoverLock, planLockRecovery, list };
 }
 function initialize({ root, publicKey, contextEnvelope }) {
+  publicKey = pinnedPublicKey(publicKey);
   check(process.platform !== 'win32', 'posix-durable-store-required');
   check(path.isAbsolute(root), 'private-absolute-store-required');
   const p = verified(contextEnvelope, publicKey);

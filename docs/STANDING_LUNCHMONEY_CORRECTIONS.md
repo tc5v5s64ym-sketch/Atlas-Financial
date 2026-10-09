@@ -29,7 +29,8 @@ behavior or builder is touched; #548's redesign hold remains. test/test.js,
 
 ## Explicit owner authority
 
-Runtime pins an externally installed Ed25519 owner PUBLIC key. The signing key
+Runtime pins an externally installed Ed25519 owner PUBLIC key and rejects private
+PEM material even though Node's key parser can derive a public key from it. The signing key
 is held by the owner outside the runtime/store/repository. Signed context and
 grant envelopes are verified before use. MCP has no owner-control tools and
 cannot mint, widen, renew or revoke grants. Source prose, model confidence,

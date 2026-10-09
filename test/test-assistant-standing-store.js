@@ -237,6 +237,16 @@ module.exports = (async () => {
     assert.equal(Runtime.fromEnv({ env, resource: f.resource, testOnly: true, now: () => f.clock }).enabled, true);
     assert.equal(Runtime.fromEnv({ env: { ...env, ATLAS_STANDING_STORE_PATH: path.resolve(__dirname, '..') },
       resource: f.resource, testOnly: true, now: () => f.clock }).enabled, false);
+    // A misconfigured public-key path must not mount owner signing authority.
+    const privateAsPublic = path.join(f.dir, 'owner-private.pem');
+    assert.equal(Runtime.fromEnv({ env: { ...env, ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: privateAsPublic },
+      resource: f.resource, testOnly: true, now: () => f.clock }).enabled, false);
+    assert.throws(() => Store.createAuthority({ root: f.root, publicKey: f.privateKey,
+      resource: f.resource, now: () => f.clock }), /public-owner-key-required/);
+    const invalidKeyRoot = path.join(f.dir, 'private-key-install-refused');
+    assert.throws(() => Store.initialize({ root: invalidKeyRoot, publicKey: f.privateKey,
+      contextEnvelope: Store.sign({ kind: 'context', context: f.context }, f.privateKey) }), /public-owner-key-required/);
+    assert.equal(fs.existsSync(invalidKeyRoot), false);
     // Malformed owner-signed proof expiry cannot activate or mint a grant.
     for (const expiresAt of [undefined, null, NaN, 0, -1, 1.5, String(f.clock + 86400000), f.clock, Number.MAX_SAFE_INTEGER + 1]) {
       const invalid = await make({ proofPatch: { expiresAt } });
