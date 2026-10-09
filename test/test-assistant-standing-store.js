@@ -269,6 +269,20 @@ module.exports = (async () => {
     assert.equal(Runtime.fromEnv({ env: { ATLAS_STANDING_CORRECTIONS_ENABLED: 'true',
       ATLAS_STANDING_STORE_PATH: links.root, ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: path.join(apparentlyExternal, 'owner-public.pem') },
       projectRoot: project, resource: links.resource, testOnly: true, now: () => links.clock }).enabled, false);
+    // The served public directory may itself link to an external directory;
+    // containment must exclude that physical serving root as well.
+    const publicLink = await make(), linkedProject = path.join(publicLink.dir, 'linked-project');
+    const externalPublic = path.join(publicLink.dir, 'external-public');
+    fs.mkdirSync(linkedProject); fs.mkdirSync(externalPublic);
+    fs.symlinkSync(externalPublic, path.join(linkedProject, 'public'), 'dir');
+    const servedAuthority = path.join(externalPublic, 'authority');
+    Store.initialize({ root: servedAuthority, publicKey: publicLink.publicKey,
+      contextEnvelope: Store.sign({ kind: 'context', context: publicLink.context }, publicLink.privateKey) });
+    assert.equal(Runtime.fromEnv({ env: { ATLAS_STANDING_CORRECTIONS_ENABLED: 'true',
+      ATLAS_STANDING_STORE_PATH: servedAuthority, ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: publicLink.publicKeyPath },
+      projectRoot: linkedProject, resource: publicLink.resource, testOnly: true, now: () => publicLink.clock }).enabled, false);
+    assert.throws(() => Runtime.privateInstallation({ root: path.join(externalPublic, 'new-authority'),
+      keyPath: publicLink.publicKeyPath, projectRoot: linkedProject, creating: true }), /outside-project/);
     // Full MCP -> actual authority -> exact synthetic provider edit -> durable
     // audit exchange, plus two independently running service processes.
     const full = await make(), gf = await full.grant();

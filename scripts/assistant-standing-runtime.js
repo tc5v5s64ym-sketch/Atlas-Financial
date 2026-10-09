@@ -14,8 +14,10 @@ function privateInstallation({ root, keyPath, projectRoot = path.resolve(__dirna
   const resolvedRoot = creating
     ? path.join(fs.realpathSync(path.dirname(root)), path.basename(root)) : fs.realpathSync(root);
   const resolvedKey = fs.realpathSync(keyPath);
-  if (!outside(project, resolvedRoot) || !outside(project, resolvedKey) || !outside(resolvedRoot, resolvedKey))
-    throw new Error('owner-store-must-be-outside-project');
+  const publicPath = path.join(project, 'public');
+  const excluded = [project, ...(fs.existsSync(publicPath) ? [fs.realpathSync(publicPath)] : [])];
+  if (excluded.some(base => !outside(base, resolvedRoot) || !outside(base, resolvedKey))
+      || !outside(resolvedRoot, resolvedKey)) throw new Error('owner-store-must-be-outside-project');
   if (!creating && fs.lstatSync(root).isSymbolicLink() || fs.lstatSync(keyPath).isSymbolicLink())
     throw new Error('pinned-owner-installation-required');
   return { root: resolvedRoot, keyPath: resolvedKey };

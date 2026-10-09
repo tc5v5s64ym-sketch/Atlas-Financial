@@ -155,7 +155,8 @@ cannot prove absence of all external provider side effects.
 Runtime variables exist as code interfaces only; none are configured here:
 ATLAS_STANDING_CORRECTIONS_ENABLED, ATLAS_STANDING_STORE_PATH,
 ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH. Missing/invalid configuration, Windows or
-a nonprivate installation leaves the capability unavailable. Real paths (including ancestor symlinks) must remain outside the public project;
+a nonprivate installation leaves the capability unavailable. Real paths (including ancestor symlinks) must remain outside the project and
+physical served public directory, including an outward public symlink;
 owner init checks the existing parent's real path before creating storage. Existing tools and
 OAuth JWT issuer/JWKS/audience/resource/expiry/subject validation are unchanged.
 

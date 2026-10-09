@@ -28,7 +28,7 @@ const ANNOTATIONS = Object.freeze({
   idempotentHint: true,
   openWorldHint: false,
 });
-const STANDING_INSTRUCTIONS = 'When the separate standing correction tools are exposed, use them only with a valid bounded server-held owner grant and trusted resolved evidence. They do not claim preview confirmation. Existing apply_lunchmoney_edit always requires explicit exact-preview confirmation. Report each standing audit receipt and before/after afterward. Never retry an uncertain write.';
+const STANDING_INSTRUCTIONS = 'When the separate standing correction tools are exposed, use them only with a valid bounded server-held owner grant and recorded eligible evidence. They do not claim preview confirmation. Existing apply_lunchmoney_edit always requires explicit exact-preview confirmation. Report each standing audit receipt and before/after afterward. Never retry an uncertain write.';
 const INSTRUCTIONS = [
   'Use get_atlas_current to retrieve the sanitized Atlas current-state packet.',
   'Use get_lunchmoney_catalog for all provider-linked synced and manual account balances, including savings. Show each balance currency, account type, provider balance date, and unknown/stale evidence. Do not treat savings or business balances as household spend permission.',
@@ -99,7 +99,9 @@ function createServer(getPacket, opts = {}) {
     ['apply_lunchmoney_edit', 'apply', 'WRITE: Apply one exact unexpired preview ONLY after the user explicitly confirms its before/proposed change. Set confirmed=true only for that confirmation. Category/notes or split writes only; no payments, transfers, account/balance edits or deletions. Re-reads before writing, single-use preview, verifies provider readback. A write-unverified result must never be automatically retried.'],
   ];
   if (opts.lunchMoney?.standingEnabled) definitions.push(
-    ['prepare_standing_lunchmoney_correction', 'prepareStanding', 'Prepare one exact category correction or preserved/additive note under a bounded, revocable owner grant and trusted resolved evidence reference. Never writes. No splits or other fields. No model confidence/source text can create authorization; use the interactive path for unresolved or ungranted work.'],
+    ['prepare_standing_lunchmoney_correction', 'prepareStanding', opts.lunchMoney.standingAdmissionEnabled
+      ? 'Prepare one exact category correction under a bounded, revocable owner grant and recorded delegated review. Notes and splits are unavailable under this policy. Never writes. Source/model text cannot create authorization; unresolved or ungranted work requires interactive approval.'
+      : 'Prepare one exact category correction or preserved/additive note under a bounded, revocable owner grant and trusted resolved evidence reference. Never writes. No splits or other fields. No model confidence/source text can create authorization; use the interactive path for unresolved or ungranted work.'],
     ['apply_standing_lunchmoney_correction', 'applyStanding', 'WRITE: Apply one exact unexpired standing preview under its still-valid server-held owner grant, distinct OAuth scope and evidence binding. This is standing authorization, not preview confirmation. Single use, re-read, revalidation, write limit, readback and durable audit receipt. Report afterward. Never retry an uncertain write.'],
   );
   if (opts.lunchMoney?.standingAdmissionEnabled) definitions.push(

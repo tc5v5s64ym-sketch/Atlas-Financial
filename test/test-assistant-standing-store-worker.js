@@ -57,7 +57,12 @@ async function main() {
       return lastToolResponse.structuredContent;
     };
     try {
-      assert.equal((await client.listTools()).tools.length, 9);
+      const tools = (await client.listTools()).tools;
+      assert.equal(tools.length, 9);
+      const prepareDescription = tools.find(t => t.name === 'prepare_standing_lunchmoney_correction').description;
+      assert.match(prepareDescription, /recorded delegated review/);
+      assert.match(prepareDescription, /Notes and splits are unavailable/);
+      assert.doesNotMatch(prepareDescription, /preserved\/additive note/);
       const cat = await call('get_lunchmoney_catalog', {});
       const rows = await call('get_lunchmoney_transactions', { startDate: '2026-10-01', endDate: '2026-10-31' });
       const categoryRef = cat.categories.find(c => c.name === 'Household').categoryRef;
