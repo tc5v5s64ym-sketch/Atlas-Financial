@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const z = require('zod/v4');
 const Provider = require('./provider-observe.js');
 const Credentials = require('./local-credentials.js');
+const Standing = require('./assistant-standing-corrections.js');
 const READ_SCOPE = 'atlas.transactions.read';
 const WRITE_SCOPE = 'atlas.transactions.write';
 const TTL = 10 * 60 * 1000;
@@ -19,7 +20,13 @@ const providerMoney = z.string().max(64).regex(/^-?\d+(\.\d{1,4})?$/);
 const child = z.object({ amount: money, categoryRef: ref.nullable(), notes: z.string().max(1000).optional() }).strict();
 const changes = z.object({ categoryRef: ref.nullable().optional(), notes: z.string().max(1000).optional() })
   .strict().refine(v => Object.keys(v).length > 0);
+const standingChanges = z.object({ categoryRef: ref.optional(), notesAppend: z.string().min(1).max(500).optional() })
+  .strict().refine(v => Object.keys(v).length > 0);
+const grantRef = z.string().regex(/^grant-[a-f0-9]{24}$/);
+const evidenceRef = z.string().regex(/^evidence-[a-f0-9]{24}$/);
 const schemas = {
+  prepareStanding: z.object({ transactionRef: ref, grantRef, evidenceRef, changes: standingChanges }).strict(),
+  applyStanding: z.object({ previewId: z.string().regex(/^edit-[a-f0-9]{48}$/) }).strict(),
   catalog: z.object({}).strict(),
   query: z.object({ startDate: date, endDate: date, categoryRef: ref.optional(),
     accountRef: ref.optional(), excludeAccountRef: ref.optional(), merchant: z.string().trim().min(1).max(120).optional(),
@@ -76,6 +83,7 @@ function readFailure(operation, error) {
     ...(requestError && error.upstreamStatus !== undefined ? { upstreamStatus: error.upstreamStatus } : {}) } };
 }
 function requiredScope(operation) {
+  if (operation === 'prepareStanding' || operation === 'applyStanding') return Standing.SCOPE;
   if (operation === 'prepare' || operation === 'apply') return WRITE_SCOPE;
   if (operation === 'catalog' || operation === 'query') return READ_SCOPE;
   return null;
@@ -83,6 +91,10 @@ function requiredScope(operation) {
 function scopeDenial(operation, auth = {}) {
   const required = requiredScope(operation);
   if (!required) return fail('invalid-arguments');
+  if (required === Standing.SCOPE) {
+    return [READ_SCOPE, WRITE_SCOPE, Standing.SCOPE].every(scope => (auth.scopes || []).includes(scope))
+      ? null : fail('standing-correction-scopes-required');
+  }
   if (!(auth.scopes || []).includes(required)) {
     return fail(required === WRITE_SCOPE
       ? 'transaction-write-scope-required'
@@ -130,6 +142,9 @@ function accountEvidence(row, kind, observedAt) {
 
 function createService(options = {}) {
   const env = options.env || process.env;
+  // No environment flag or grant store is wired in production. Activation is
+  // a separate owner-approved installation of this trusted dependency.
+  const standing = options.standingCorrections || {};
   const now = options.now || Date.now;
   const refs = new Map();
   const previews = new Map();
@@ -153,7 +168,7 @@ function createService(options = {}) {
     if (!value || value.kind !== kind || value.principal !== principal) throw new Error('reference-expired-or-unavailable');
     return value;
   }
-  async function request(method, path, body) {
+  async function request(method, path, body, beforeSend) {
     const stage = path.startsWith('/transactions') ? 'transactions-request'
       : path.startsWith('/categories') ? 'categories-request'
         : path.startsWith('/plaid_accounts') ? 'synced-accounts-request' : 'manual-accounts-request';
@@ -164,6 +179,9 @@ function createService(options = {}) {
     let base;
     try { base = Provider.lunchMoneyApiBase(env); }
     catch (_) { throw new ProviderRequestError('provider-configuration-invalid', stage); }
+    // Run the standing final authorization/reservation after credentials resolve,
+    // immediately before the single provider request. It may reject the write.
+    if (beforeSend) await beforeSend({ credentialDigest: fingerprint(token) });
     let response;
     try {
       response = await fetcher(base + path, { method, redirect: 'error',
@@ -292,7 +310,7 @@ function createService(options = {}) {
       rows: selected.slice(start, start + limit), matchedCount: selected.length, hasMore: start + limit < selected.length,
       nextOffset: start + limit < selected.length ? start + limit : null, referenceExpiresInSeconds: TTL / 1000 };
   }
-  async function prepare(input, auth) {
+  async function prepare(input, auth, standingInput = null) {
     const target = resolve(input.transactionRef, 'tx', auth.principal);
     const tx = await request('GET', '/transactions/' + target.id); editable(tx);
     if (tx.id !== target.id) throw new Error('identity-mismatch');
@@ -301,6 +319,7 @@ function createService(options = {}) {
       body = {};
       if (input.changes.categoryRef !== undefined) body.category_id = await categoryId(input.changes.categoryRef, auth.principal);
       if (input.changes.notes !== undefined) body.notes = input.changes.notes;
+      if (standingInput && input.changes.notesAppend !== undefined) body.notes = Standing.appendNotes(tx.notes, input.changes.notesAppend);
     } else {
       const sum = input.splits.reduce((total, row) => total + cents(row.amount), 0);
       const parentAmount = providerCents(tx.amount);
@@ -311,26 +330,61 @@ function createService(options = {}) {
         category_id: await categoryId(row.categoryRef, auth.principal), ...(row.notes === undefined ? {} : { notes: row.notes }) });
     }
     const cat = await catalogData(auth.principal);
+    const authorization = standingInput ? await Standing.authorize(standing, {
+      ...standingInput, auth, tx, body, fingerprint: fingerprint(tx), now: now(),
+    }) : null;
     sweep(); if (previews.size >= 100) throw new Error('preview-capacity');
     const id = 'edit-' + crypto.randomBytes(24).toString('hex');
     previews.set(id, { principal: auth.principal, targetId: target.id, before: tx,
-      fingerprint: fingerprint(tx), body, splits: !!input.splits, expires: now() + TTL, used: false });
+      fingerprint: fingerprint(tx), body, splits: !!input.splits, expires: now() + TTL, used: false, authorization });
     return { status: 'preview', previewId: id, expiresAt: new Date(now() + TTL).toISOString(),
       before: project(tx, auth.principal, cat.categories, cat.accounts),
-      proposed: input.changes ? { ...input.changes,
+      proposed: input.changes ? { ...(standingInput ? {
+        ...(input.changes.categoryRef === undefined ? {} : { categoryRef: input.changes.categoryRef }),
+        ...(body.notes === undefined ? {} : { notes: body.notes }),
+      } : input.changes),
         ...(body.category_id === undefined ? {} : { category: cat.categories.find(c => c.id === body.category_id)?.name || null }) }
         : { splits: input.splits.map((row, i) => ({ ...row,
           category: cat.categories.find(c => c.id === body.child_transactions[i].category_id)?.name || null })) },
-      instruction: 'Show the exact before/proposed change to the user. Apply only after explicit confirmation for this preview. No write has occurred.', providerWrite: false };
+      ...(authorization ? { authorization: { mode: 'standing-grant', grantRef: authorization.grantRef,
+        grantRevision: authorization.grantRevision, evidenceRef: authorization.evidenceRef } } : {}),
+      instruction: authorization
+        ? 'No write has occurred. This exact preview is eligible only for apply_standing_lunchmoney_correction under its bounded owner grant. Report the audit receipt afterward; uncertain writes must not be retried.'
+        : 'Show the exact before/proposed change to the user. Apply only after explicit confirmation for this preview. No write has occurred.', providerWrite: false };
   }
-  async function apply(input, auth) {
+  async function apply(input, auth, standingMode = false) {
     sweep(); const preview = previews.get(input.previewId);
     if (!preview || preview.principal !== auth.principal || preview.used) return fail('preview-expired-or-already-used');
+    if (!!preview.authorization !== standingMode) return fail('preview-authorization-mode-mismatch');
+    if (standingMode && !Standing.available(standing)) return fail('standing-corrections-disabled');
     if (locks.has(preview.targetId)) return fail('transaction-edit-in-progress');
     // Consume before the first await: concurrent calls and ambiguous write failures cannot retry.
     preview.used = true;
     locks.add(preview.targetId);
     let writeAttempted = false;
+    let reservation = null;
+    let afterRead = null;
+    let auditAttempt = null;
+    let auditCatalog = null;
+    const startedAt = now();
+    async function audit(result) {
+      if (!standingMode || !reservation) return result;
+      try {
+        const receipt = await standing.adapter.finish({ reservation,
+          outcome: result.status, reason: result.reason || null, verifiedByReadback: result.verifiedByReadback === true,
+          finishedAt: now(), after: afterRead });
+        if (!receipt || !/^receipt-[a-f0-9]{24}$/.test(receipt.receiptRef) || receipt.durable !== true) throw new Error('audit-unavailable');
+        return { ...result, auditReceipt: { receiptRef: receipt.receiptRef, authorization: 'standing-grant',
+          grantRef: preview.authorization.grantRef, grantRevision: preview.authorization.grantRevision,
+          evidenceRef: preview.authorization.evidenceRef, startedAt: new Date(startedAt).toISOString(),
+          finishedAt: new Date(now()).toISOString(), outcome: result.status,
+          before: auditAttempt.before, proposed: auditAttempt.proposed, after: afterRead,
+          actorRef: /^actor-[a-f0-9]{24}$/.test(receipt.actorRef) ? receipt.actorRef : null } };
+      } catch (_) {
+        return { status: 'write-unverified', reason: 'audit-outcome-unavailable-do-not-retry',
+          providerWriteMayHaveOccurred: writeAttempted };
+      }
+    }
     try {
       const current = await request('GET', '/transactions/' + preview.targetId);
       if (fingerprint(current) !== preview.fingerprint) return fail('transaction-changed-prepare-new-preview');
@@ -338,10 +392,39 @@ function createService(options = {}) {
       for (const id of preview.splits ? preview.body.child_transactions.map(c => c.category_id) : [preview.body.category_id]) {
         if (id != null) { const c = await request('GET', '/categories/' + id); if (c.id !== id || c.archived || c.is_group) throw new Error('category-not-editable'); }
       }
-      writeAttempted = true;
+            const beforeSend = async ({ credentialDigest }) => {
+        if (standingMode) {
+          if (preview.expires <= now()) throw new Error('preview-expired');
+          const boundary = await Standing.authorize(standing, {
+            ...preview.authorization, auth, credentialDigest, tx: current, body: preview.body,
+            fingerprint: fingerprint(current), now: now(),
+          });
+          if (JSON.stringify(boundary) !== JSON.stringify(preview.authorization)) throw new Error('standing-grant-changed');
+          const cat = await catalogData(auth.principal);
+          auditCatalog = cat;
+          const attempt = { ...boundary, previewId: input.previewId, principal: auth.principal, clientId: auth.clientId,
+            expiresAt: preview.expires, requestedAt: now(),
+            before: project(current, auth.principal, cat.categories, cat.accounts),
+            proposed: { ...(preview.body.category_id === undefined ? {} : { categoryRef: alias('cat', preview.body.category_id, auth.principal) }),
+              ...(preview.body.notes === undefined ? {} : { notes: preview.body.notes }) } };
+          // Atomic durable reserve rechecks live revocation, expiry, revision,
+          // budget and attempt limits; a pending/unverified attempt suspends the
+          // grant until read-only reconciliation. No reservation is refunded.
+          auditAttempt = attempt;
+          reservation = await standing.adapter.reserve(attempt);
+          if (!reservation || reservation.authorized !== true
+              || !/^attempt-[a-f0-9]{24}$/.test(reservation.attemptRef)
+              || reservation.grantRef !== boundary.grantRef
+              || reservation.grantRevision !== boundary.grantRevision
+              || reservation.durable !== true || preview.expires <= now()) throw new Error('standing-reservation-denied');
+        }
+        writeAttempted = true;
+      };
+      if (!standingMode) writeAttempted = true;
       await request(preview.splits ? 'POST' : 'PUT', preview.splits
-        ? '/transactions/split/' + preview.targetId : '/transactions/' + preview.targetId + '?update_balance=false', preview.body);
+        ? '/transactions/split/' + preview.targetId : '/transactions/' + preview.targetId + '?update_balance=false', preview.body, beforeSend);
       const after = await request('GET', '/transactions/' + preview.targetId);
+      if (standingMode) afterRead = project(after, auth.principal, auditCatalog.categories, auditCatalog.accounts);
       let verified = after.id === preview.targetId;
       if (preview.splits) {
         const expected = preview.body.child_transactions.map(c => [cents(c.amount), c.category_id, c.notes ?? current.notes ?? '', current.date, current.currency]);
@@ -358,29 +441,39 @@ function createService(options = {}) {
           && (preview.body.category_id !== undefined || after.category_id === current.category_id)
           && (preview.body.notes !== undefined || (after.notes ?? '') === (current.notes ?? ''));
       }
-      if (!verified) return { status: 'write-unverified', reason: 'readback-did-not-match-do-not-retry', providerWriteMayHaveOccurred: true };
+      if (standingMode) verified = verified && Standing.unchangedOtherFields(current, after, preview.body);
+      if (!verified) return await audit({ status: 'write-unverified', reason: 'readback-did-not-match-do-not-retry', providerWriteMayHaveOccurred: true });
       const cat = await catalogData(auth.principal);
-      return { status: 'applied', verifiedByReadback: true, writesAtlasState: false,
+      afterRead = project(after, auth.principal, cat.categories, cat.accounts);
+      return await audit({ status: 'applied', verifiedByReadback: true, writesAtlasState: false,
         transaction: project(after, auth.principal, cat.categories, cat.accounts),
         ...(preview.splits ? { children: after.children.map(c => project(c, auth.principal, cat.categories, cat.accounts)) } : {}),
-        instruction: 'Lunch Money saved the edit. Re-query Lunch Money and get_atlas_current for refreshed evidence; no canonical Atlas policy was edited.' };
+        instruction: standingMode
+          ? 'Readback verified the bounded correction. Report before/after, evidence and audit receipt to the owner. Re-query for refreshed state.'
+          : 'Lunch Money saved the edit. Re-query Lunch Money and get_atlas_current for refreshed evidence; no canonical Atlas policy was edited.' });
     } catch (_) {
-      return writeAttempted ? { status: 'write-unverified', reason: 'provider-result-unknown-do-not-retry', providerWriteMayHaveOccurred: true }
-        : fail('apply-rejected-before-write');
+      return await audit(writeAttempted ? { status: 'write-unverified', reason: 'provider-result-unknown-do-not-retry', providerWriteMayHaveOccurred: true }
+        : fail('apply-rejected-before-write'));
     } finally { locks.delete(preview.targetId); }
   }
+  async function prepareStanding(input, auth) {
+    if (!Standing.available(standing)) return fail('standing-corrections-disabled');
+    return prepare({ transactionRef: input.transactionRef, changes: input.changes }, auth,
+      { grantRef: input.grantRef, evidenceRef: input.evidenceRef });
+  }
+  async function applyStanding(input, auth) { return apply(input, auth, true); }
   async function invoke(operation, args, auth = {}) {
     if (!auth.principal) return fail('authenticated-subject-required');
     const denied = scopeDenial(operation, auth);
     if (denied) return denied;
     const parsed = schemas[operation]?.safeParse(args);
     if (!parsed?.success) return fail('invalid-arguments');
-    try { return await ({ catalog, query, prepare, apply })[operation](parsed.data, auth); }
+    try { return await ({ catalog, query, prepare, apply, prepareStanding, applyStanding })[operation](parsed.data, auth); }
     catch (error) {
       return operation === 'catalog' || operation === 'query'
         ? readFailure(operation, error) : fail('lunchmoney-operation-unavailable');
     }
   }
-  return { invoke };
+  return { invoke, standingEnabled: Standing.available(standing) };
 }
-module.exports = { READ_SCOPE, WRITE_SCOPE, TTL, schemas, cents, requiredScope, scopeDenial, createService };
+module.exports = { READ_SCOPE, WRITE_SCOPE, STANDING_SCOPE: Standing.SCOPE, TTL, schemas, cents, requiredScope, scopeDenial, createService };
