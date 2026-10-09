@@ -3,7 +3,6 @@
    Does not read Forecast, total money, or invent a figure. */
 (function blendBudget() {
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let toolbarOpen = false;
   let categoryFocusReturn = null;
 
   function clip(node) {
@@ -72,21 +71,6 @@
     return found ? found[0] : '';
   }
 
-  function setToolbarOpen(toolbar, open, focusControl = false) {
-    if (!toolbar) return;
-    toolbarOpen = open;
-    toolbar.classList.toggle('is-open', open);
-    const pill = document.querySelector('.playhead-pill[aria-controls="' + CSS.escape(toolbar.id) + '"]');
-    if (pill) pill.setAttribute('aria-expanded', String(open));
-    if (open && focusControl) {
-      const control = [...toolbar.querySelectorAll('button, select, input, [tabindex]')].find(node =>
-        !node.disabled && node.getAttribute('aria-disabled') !== 'true' && node.tabIndex >= 0 && node.getClientRects().length);
-      control?.focus({ preventScroll: true });
-    } else if (!open) {
-      pill?.focus({ preventScroll: true });
-    }
-  }
-
   function place(bento) {
     const hero = bento.querySelector('.budget-blend-hero-layout');
     if (!hero) return;
@@ -139,24 +123,11 @@
       bento.appendChild(progress);
     }
     const header = bento.querySelector('[data-budget-window-header]');
-    if (header && !header.classList.contains('blend-toolbar')) {
-      const active = document.activeElement;
-      header.classList.add('blend-toolbar');
-      if (!header.id) header.id = 'budget-period-toolbar';
-      if (header.contains(active)) toolbarOpen = true;
-      header.classList.toggle('is-open', toolbarOpen);
-      header.addEventListener('focusin', () => setToolbarOpen(header, true));
-      header.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        event.stopPropagation();
-        setToolbarOpen(header, false);
-      });
-      bento.insertBefore(header, bento.firstChild);
-      if (active && active !== document.body && header.contains(active) && document.activeElement !== active) {
-        active.focus({ preventScroll: true });
-      }
-    }
+    const granularityFocus = header?.contains(document.activeElement)
+      && document.activeElement.hasAttribute('data-budget-granularity');
+    // Retain the native selection handlers and printed date identity as an
+    // internal source. The river is the period control; no alternate chooser.
+    if (header) header.hidden = true;
     const guard = (label, fn) => {
       try { fn(); }
       catch (error) { console.error('Budget blend stopped on ' + label, error); }
@@ -173,6 +144,9 @@
     guard('quiet', () => paintQuiet(bento));
     guard('river', () => paintRiver(bento));
     guard('lift', () => liftFace(bento));
+    // Native Month/drilldown remounts focus the Pay period toggle before
+    // this adapter moves it into the disclosure. Restore a visible opener.
+    if (granularityFocus) hero.querySelector('[data-blend-figures-open]')?.focus({ preventScroll: true });
     bento.querySelectorAll('[data-budget-browse="bills"], [data-budget-browse="spending"], .budget-blend-card-movements, [data-budget-savings-goals]')
       .forEach(node => node.classList.add('blend-tilt'));
   }
@@ -180,11 +154,10 @@
   function liftFace(bento) {
     const active = document.activeElement;
     const restoreFocus = active && active !== document.body && bento.contains(active);
-    const toolbar = bento.querySelector('.blend-toolbar');
+    const header = bento.querySelector('[data-budget-window-header]');
     const river = bento.querySelector('.g-river-wrap');
     const quiet = bento.querySelector('.blend-quiet');
-    if (toolbar && toolbar.contains(active)) setToolbarOpen(toolbar, true);
-    if (toolbar) bento.appendChild(toolbar);
+    if (header) bento.appendChild(header);
     if (river) bento.appendChild(river);
     stackBoard(bento);
     if (quiet) bento.appendChild(quiet);
@@ -433,6 +406,8 @@
     const figures = document.querySelector('[data-budget-period-info-body]');
     const sheet = document.querySelector('[data-budget-detail-sheet]')?.budgetSheet;
     if (!trigger || !figures || !sheet) return;
+    const granularity = document.querySelector('[data-budget-window-header] .budget-granularity');
+    if (granularity && !figures.contains(granularity)) figures.prepend(granularity);
     // Preserve every original qualifier and evidence node. The visible result
     // is the keyboard opener; no financial text or values are regenerated.
     const resultBody = result.querySelector('.budget-step-body');
@@ -1110,7 +1085,7 @@
     const s = String(label || '').toLowerCase();
     const name = !s ? 'card'
       : /rent|mortgage|house|property|home/.test(s) ? 'house'
-      : /car|auto|vehicle/.test(s) ? 'car'
+      : /\bcar\b|auto|vehicle/.test(s) ? 'car'
       : /hydro|electric|power|bolt/.test(s) ? 'bolt'
       : /wifi|internet|shaw|telus|rogers|phone/.test(s) ? 'wifi'
       : /card|visa|mastercard|mbna|amex|credit/.test(s) ? 'card'
@@ -2104,19 +2079,14 @@
     return { key: (year ? year[1] + '-' : '') + named[1], name: named[1], year: year ? year[1] : '' };
   }
 
-  // Past rows only. Current and future always stay, including when their
-  // coverage is unavailable. precise and posted-only are the only kept
-  // past claims; missing, unavailable, and anything else fail closed.
-  // Coverage is the only input. Terms, trust, and amounts are not.
+  // Every published period date stays selectable, irrespective of financial
+  // coverage. Missing date identity cannot invent a navigation destination.
   function keepPastTimelineNode(li) {
-    const role = li.getAttribute('data-bad-timeline-role') || '';
-    if (role !== 'past') return true;
-    const coverage = li.getAttribute('data-bad-timeline-coverage');
-    return coverage === 'precise' || coverage === 'posted-only';
+    return !!li.getAttribute('data-bad-timeline-start') && !!li.getAttribute('data-bad-timeline-end');
   }
 
   // Reads ol[data-bad-timeline] only. The amount is the span text.
-  // Past BAD is withheld; Household coverage qualifies only retained dates.
+  // Past BAD is withheld; Household coverage never removes period dates.
   // Current/future trust=unavailable or empty spans have no height.
   // Absent list: the same neutral dashes, still focusable, and not a navigator.
   function readBadTimeline(doc) {
@@ -2142,7 +2112,7 @@
         trust: trust,
         face: li.getAttribute('data-bad-terms-face') || '',
         amount: amount,
-        label: past ? 'Unavailable' : closed ? '\u2014' : amount,
+        label: closed ? 'Unavailable' : amount,
         unavailable: closed,
         estimated: !closed && trust === 'estimated',
         negative: negative,
@@ -2329,11 +2299,11 @@
     slide.append(vals, months);
     const play = document.createElement('div');
     play.className = 'playhead';
-    const pill = document.createElement('button');
-    pill.type = 'button';
+    const pill = document.createElement('div');
     pill.className = 'playhead-pill';
+    pill.setAttribute('aria-hidden', 'true');
     if (selected < 0) {
-      // Keep the period chooser reachable without implying a selected timeline point.
+      // Show the native range without implying a selected timeline point.
       play.style.transform = 'translate3d(8px,0,0)';
       pill.style.transform = 'none';
     }
@@ -2348,8 +2318,6 @@
     valueEl.setAttribute('data-ph-value', '');
     valueEl.textContent = selectedNode ? selectedNode.label : '—';
     pill.append(rangeEl, valueEl);
-    pill.setAttribute('aria-label', 'Choose period or month. ' + rangeEl.textContent + ', ' + valueEl.textContent
-      + (selectedNode && selectedNode.estimated ? ', estimated' : ''));
     const beam = document.createElement('span');
     beam.className = 'playhead-beam';
     beam.setAttribute('aria-hidden', 'true');
@@ -2409,25 +2377,7 @@
     river.append(canvas, slide, play);
     nav.appendChild(river);
     wrap.appendChild(nav);
-    const toolbar = bento.querySelector('.blend-toolbar');
-    if (toolbar) {
-      pill.setAttribute('aria-controls', toolbar.id);
-      pill.setAttribute('aria-expanded', String(toolbarOpen));
-      pill.addEventListener('click', event => {
-        event.stopPropagation();
-        setToolbarOpen(toolbar, !toolbarOpen, true);
-      });
-      pill.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        event.stopPropagation();
-        setToolbarOpen(toolbar, false);
-      });
-      toolbar.after(wrap);
-    } else {
-      pill.disabled = true;
-      bento.prepend(wrap);
-    }
+    bento.prepend(wrap);
     const layout = { off: 0, xs: [], spacing: 1, pan: false, width: 0 };
     const markPreview = index => {
       previewIndex = index;
@@ -2438,8 +2388,6 @@
       valueEl.textContent = node.label;
       valueEl.classList.toggle('is-short', node.tone === 'short');
       valueEl.classList.toggle('is-est', node.estimated);
-      pill.setAttribute('aria-label', 'Choose period or month. ' + rangeEl.textContent + ', '
-        + (node.unavailable ? 'Unavailable' : node.label) + (node.estimated ? ', estimated' : ''));
       nav.setAttribute('data-state', node.tone === 'muted' ? 'neutral' : node.tone);
       if (!absent) river.setAttribute('aria-activedescendant', 'bad-river-' + index);
       river.toggleAttribute('data-river-preview', index !== selected);
@@ -2457,11 +2405,8 @@
       rememberMotion(false);
       requestDraw();
       if (index === current) return;
-      const wasToolbarOpen = toolbarOpen;
       chooseBadTimeline(index, model);
-      // The incumbent wheel focuses its own remounted control. This river
-      // action must not open the toolbar as a side effect of that focus.
-      toolbarOpen = wasToolbarOpen;
+      // The internal native wheel must not retain focus in its hidden source.
       const nativeFocus = document.activeElement;
       if (nativeFocus?.closest('[data-budget-wheel="period"], [data-budget-window-step]')) nativeFocus.blur();
       const remounted = !bento.isConnected;
@@ -2477,7 +2422,6 @@
       return clampPosition((clientX - rect.left + layout.off - (layout.xs[0] || 0)) / layout.spacing);
     };
     listen(river, 'keydown', event => {
-      if (event.target.closest('.playhead-pill')) return;
       if (!canNavigate || drag || event.altKey || event.ctrlKey || event.metaKey) return;
       const next = riverKeyTarget(event.key, displayedTimelineIndex(model.nodes), nodes.length);
       if (next == null) return;
@@ -2486,7 +2430,7 @@
       commitSelection(next, true);
     });
     listen(river, 'click', event => {
-      if (!canNavigate || drag || event.target.closest('.rv, .playhead-pill') || performance.now() < suppressClickUntil) return;
+      if (!canNavigate || drag || event.target.closest('.rv') || performance.now() < suppressClickUntil) return;
       commitSelection(Math.round(positionAt(event.clientX)), river.contains(document.activeElement));
     });
     listen(river, 'pointerdown', event => {
@@ -2796,9 +2740,16 @@
         }
         shown.push(i);
       });
-      [...months.children].forEach(el => {
+      const monthLabels = [...months.children];
+      monthLabels.forEach((el, index) => {
         const i = Number(el.dataset.i);
-        const x = Math.max(0, xs[i] - (i ? sp / 2 : 0)) + 6;
+        let x = Math.max(0, xs[i] - (i ? sp / 2 : 0)) + 6;
+        const next = monthLabels[index + 1];
+        if (next) {
+          const nextIndex = Number(next.dataset.i);
+          const nextX = Math.max(0, xs[nextIndex] - sp / 2) + 6;
+          if (x + el.offsetWidth + 8 > nextX) x = Math.max(6, nextX - el.offsetWidth - 8);
+        }
         el.style.left = x.toFixed(1) + 'px';
       });
       if (sel >= 0) {
@@ -2897,12 +2848,52 @@
       const symbol = document.createElement('span');
       symbol.className = 'blend-bill-symbol';
       symbol.setAttribute('aria-hidden', 'true');
+      const label = text(nativeLabel).toLowerCase();
+      const hue = /hydro|electric|power/.test(label) ? 186 : /internet|wifi|telus|shaw/.test(label) ? 262
+        : /\bcar\b|auto|vehicle/.test(label) ? 152 : /phone/.test(label) ? 18
+          : /home.*insurance/.test(label) ? 38 : /mortgage|rent|house/.test(label) ? 222 : 230;
+      symbol.style.setProperty('--bill-hue', String(hue));
       symbol.appendChild(billIcon(text(nativeLabel)));
       if (row.matches('[data-bill-detail] > summary')) {
         nativeLabel?.classList.add('blend-bill-summary-label');
         row.querySelector(':scope > span:last-child')?.classList.add('blend-bill-summary-amount');
       }
       row.prepend(symbol);
+    });
+    root.querySelectorAll('[data-bill-detail] .bill-detail-body:not([data-blend-bill-interior])').forEach(body => {
+      body.setAttribute('data-blend-bill-interior', '');
+      const original = [...body.children];
+      const heading = body.querySelector(':scope > h4');
+      const facts = body.querySelector(':scope > dl');
+      const published = document.createElement('details');
+      published.className = 'blend-bill-published';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Published bill evidence';
+      published.appendChild(summary);
+      if (heading) published.appendChild(heading);
+      if (facts) published.appendChild(facts);
+      const matching = document.createElement('section');
+      matching.className = 'blend-bill-matching';
+      const matchingTitle = document.createElement('h3');
+      matchingTitle.textContent = 'Matching payment';
+      matching.appendChild(matchingTitle);
+      const paymentEvidence = document.createElement('div');
+      paymentEvidence.className = 'blend-payment-evidence';
+      matching.appendChild(paymentEvidence);
+      // Keep the original linked-payment evidence and every warning. No
+      // candidate matching, financial calculations or prototype actions.
+      original.filter(node => node !== heading && node !== facts).forEach(node => paymentEvidence.appendChild(node));
+      const history = document.createElement('section');
+      history.className = 'blend-bill-history';
+      const historyTitle = document.createElement('h3');
+      historyTitle.textContent = 'Last 6 months';
+      const unavailable = document.createElement('div');
+      unavailable.className = 'blend-history-unavailable';
+      unavailable.textContent = 'Unavailable';
+      const historyNote = document.createElement('p');
+      historyNote.textContent = 'Average: Unavailable · Range: Unavailable. Forecast has not published a qualified six-month bill history. Missing history does not mean zero.';
+      history.append(historyTitle, unavailable, historyNote);
+      body.append(matching, history, published);
     });
   }
 

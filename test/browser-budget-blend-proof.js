@@ -114,24 +114,19 @@ const composite = (fg, bg) => {
       assert.ok(background && background.a >= 0.99,
         label + ' preserves an opaque evidence background: ' + placement.background);
     };
-    const openToolbar = async (page, keyboard = false) => {
-      const pill = page.getByRole('button', { name: /^Choose period or month/ });
-      await pill.waitFor({ state: 'visible' });
-      if (await pill.getAttribute('aria-expanded') === 'true'
-        && !await page.locator('.blend-toolbar').evaluate(el => el.contains(document.activeElement))) await pill.click();
-      if (await pill.getAttribute('aria-expanded') !== 'true') {
-        if (keyboard) {
-          await pill.focus();
-          await page.keyboard.press('Enter');
-        } else await pill.click();
+    const openPeriodFigures = async (page, keyboard = false) => {
+      const trigger = page.locator('[data-blend-figures-open]');
+      if (!await page.locator('dialog[open] [data-budget-period-info-body]').count()) {
+        if (keyboard) { await trigger.focus(); await page.keyboard.press('Enter'); }
+        else await trigger.click();
       }
-      await page.waitForFunction(() => {
-        const pill = document.querySelector('.playhead-pill');
-        const toolbar = document.getElementById(pill?.getAttribute('aria-controls'));
-        const active = document.activeElement;
-        return pill?.getAttribute('aria-expanded') === 'true' && toolbar?.classList.contains('is-open')
-          && toolbar.contains(active) && active.getBoundingClientRect().height > 8;
-      });
+      await page.locator('dialog[open] [data-budget-period-info-body] .budget-granularity').waitFor({ state: 'visible' });
+    };
+    const moveRiver = async (page, direction) => {
+      const before = await page.locator('[data-budget-window-range]').textContent();
+      await page.locator('.river').focus();
+      await page.keyboard.press(direction < 0 ? 'ArrowLeft' : 'ArrowRight');
+      await page.waitForFunction(previous => document.querySelector('[data-budget-window-range]')?.textContent !== previous, before);
     };
     const assertBoardOrder = async (page, label, width) => {
       const result = await page.evaluate(() => {
@@ -633,16 +628,12 @@ const composite = (fg, bg) => {
             const nav = document.querySelector('[data-bad-river]');
             const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => (el.textContent || '').trim());
             const items = list ? [...list.querySelectorAll(':scope > li')] : [];
-            const kept = items.filter(li => {
-              if ((li.getAttribute('data-bad-timeline-role') || '') !== 'past') return true;
-              const coverage = li.getAttribute('data-bad-timeline-coverage');
-              return coverage === 'precise' || coverage === 'posted-only';
-            });
+            const kept = items.filter(li => li.getAttribute('data-bad-timeline-start') && li.getAttribute('data-bad-timeline-end'));
             const expected = kept.map(li => {
               const trust = li.getAttribute('data-bad-term-trust') || '';
               const amount = (li.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim();
               return li.getAttribute('data-bad-timeline-role') === 'past' ? 'Unavailable'
-                : trust === 'unavailable' || !amount ? '\u2014' : amount;
+                : trust === 'unavailable' || !amount ? 'Unavailable' : amount;
             });
             return {
               mode: nav ? nav.getAttribute('data-bad-river') : '',
@@ -852,7 +843,7 @@ const composite = (fg, bg) => {
         }
         if (width === 1440 && theme === 'dark') {
           const toggle = await page.evaluate(() => {
-            const buttons = [...document.querySelectorAll('.blend-toolbar .budget-granularity-btn')];
+            const buttons = [...document.querySelectorAll('[data-budget-period-info-body] .budget-granularity-btn')];
             return buttons.map(el => ({
               text: (el.textContent || '').trim(),
               pressed: el.getAttribute('aria-pressed'),
@@ -940,34 +931,20 @@ const composite = (fg, bg) => {
     }
 
 
-    // Exercise the real chooser path, including remount focus and Escape.
+    // The river controls dates; Month is reached through native Period figures.
     for (const width of [1440, 390]) {
       const controls = await open(width, 'light');
-      await openToolbar(controls, width === 1440);
-      const range = await controls.locator('[data-budget-window-range]').innerText();
-      const nextControl = controls.locator('[data-budget-window-step="1"]');
-      await nextControl.focus();
-      await controls.keyboard.press('Enter');
-      await controls.waitForFunction(previous => document.querySelector('[data-budget-window-range]')?.textContent !== previous, range);
+      assert.equal(await controls.locator('.playhead-pill').evaluate(el => el.tagName === 'DIV' && el.getAttribute('aria-hidden') === 'true'), true);
+      assert.equal(await controls.locator('[data-budget-window-choose]').isVisible(), false);
+      await moveRiver(controls, 1);
       await settle(controls);
-      assert.equal(await controls.locator('[data-budget-window-step="1"]').evaluate(el => el === document.activeElement
-        && !!el.closest('.blend-toolbar.is-open') && el.getBoundingClientRect().height > 8), true,
-      'Period remount preserves visible focus at ' + width);
-      await controls.keyboard.press('Escape');
-      await controls.waitForFunction(() => {
-        const pill = document.querySelector('.playhead-pill');
-        return document.activeElement === pill && pill.getAttribute('aria-expanded') === 'false'
-          && !document.querySelector('.blend-toolbar')?.classList.contains('is-open');
-      });
-      await openToolbar(controls);
+      assert.equal(await controls.locator('.river').evaluate(el => el === document.activeElement && el.getBoundingClientRect().height > 8), true,
+        'Period remount restores visible river focus at ' + width);
+      await openPeriodFigures(controls, width === 1440);
       await controls.locator('[data-budget-granularity="month"]').click();
       await controls.locator('[data-budget-surface="month"]').waitFor();
       await settle(controls);
-      // Month uses the incumbent native surface, outside the bento adapter.
-      assert.equal(await controls.locator('[data-budget-granularity="month"]').evaluate(el => el === document.activeElement
-        && el.getAttribute('aria-pressed') === 'true' && el.getBoundingClientRect().height > 8
-        && getComputedStyle(el).visibility !== 'hidden'), true,
-      'Month remount preserves visible native focus at ' + width);
+      assert.equal(await controls.locator('[data-budget-granularity="month"]').evaluate(el => el === document.activeElement && el.getAttribute('aria-pressed') === 'true' && el.getBoundingClientRect().height > 8), true);
       assert.equal(controls.url(), 'http://budget.test/', 'Month remains on this page');
       await controls.close();
     }
@@ -984,13 +961,13 @@ const composite = (fg, bg) => {
     await settle(noSelected);
     assert.equal(await noSelected.locator('.playhead-pill').evaluate(el => {
       const box = el.getBoundingClientRect();
-      return el.tagName === 'BUTTON' && box.width > 8 && box.height > 8 && box.left >= 0 && box.right <= innerWidth;
-    }), true, 'No selected point retains the visible period chooser');
+      return el.tagName === 'DIV' && box.width > 8 && box.height > 8 && box.left >= 0 && box.right <= innerWidth;
+    }), true, 'No selected point retains the plain visible native date label');
     assert.equal(await noSelected.locator('.playhead-beam').isVisible(), false);
     assert.equal(await noSelected.locator('.playhead-orb').isVisible(), false);
-    await openToolbar(noSelected);
+    await openPeriodFigures(noSelected);
     await noSelected.keyboard.press('Escape');
-    assert.equal(await noSelected.locator('.playhead-pill').evaluate(el => el === document.activeElement), true);
+    assert.equal(await noSelected.locator('[data-blend-figures-open]').evaluate(el => el === document.activeElement), true);
     await noSelected.close();
 
     const responsive = await open(390, 'light');
@@ -1047,13 +1024,13 @@ const composite = (fg, bg) => {
       assert.equal(await originalPanel.evaluate(node => node.closest('dialog')?.open && !node.hidden), true,
         'Bills opens the original evidence panel');
       assert.equal(await dialog.locator('[data-budget-detail-title]').innerText(), 'Bills');
-      const unpaid = panel.locator('[data-budget-bill-filter="not-paid"]');
+      const unpaid = panel.locator('[data-budget-bill-filter="check"]');
       await unpaid.focus();
       await detailsPage.keyboard.press('Space');
       assert.equal(await unpaid.getAttribute('aria-pressed'), 'true');
       assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), false);
-      assert.equal(await panel.locator('[data-budget-bill-bucket="not-paid"]').isVisible(), true);
-      assert.match(await panel.locator('[data-budget-bill-filter-status]').textContent(), /not confirmed paid/);
+      assert.equal(await panel.locator('[data-budget-bill-bucket="check"]').isVisible(), true);
+      assert.match(await panel.locator('[data-budget-bill-filter-status]').textContent(), /bills to confirm/);
       const hydro = panel.locator('[data-budget-bill-open="hydro"]');
       const originalHydroOpener = await hydro.elementHandle();
       await hydro.focus();
@@ -1073,7 +1050,7 @@ const composite = (fg, bg) => {
         'Nested Back returns focus to the original Hydro row');
       assert.equal(await unpaid.getAttribute('aria-pressed'), 'true', 'Back preserves the selected Bills filter');
       assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), false);
-      await unpaid.click();
+      await panel.locator('[data-budget-bill-filter="all"]').click();
       assert.equal(await unpaid.getAttribute('aria-pressed'), 'false');
       assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), true,
         'The original filter handler still clears after a nested return');
@@ -1089,7 +1066,7 @@ const composite = (fg, bg) => {
       // A remount may replace DOM nodes, but cannot strand the child, lose
       // its published occurrence or send Back to the page instead of Bills.
       await header.click();
-      await unpaid.click();
+      await panel.locator('[data-budget-bill-filter="all"]').click();
       assert.equal(await unpaid.getAttribute('aria-pressed'), 'true');
       await panel.locator('[data-budget-bill-open="hydro"]').click();
       for (const resizedWidth of [width === 1440 ? 390 : 1440, width]) {
@@ -1113,12 +1090,12 @@ const composite = (fg, bg) => {
       await detailsPage.waitForFunction(() => document.querySelector('[data-budget-detail-title]')?.textContent === 'Bills');
       assert.equal(await panel.locator('[data-budget-bill-open="hydro"]').evaluate(node => node === document.activeElement), true,
         'Back after responsive remount returns to the matching bill row');
-      assert.equal(await unpaid.getAttribute('aria-pressed'), 'true', 'Back after remount retains NOT PAID');
+      assert.equal(await unpaid.getAttribute('aria-pressed'), 'true', 'Back after remount retains To confirm');
       assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), false,
         'Previously selected filter still excludes paid bills after responsive restoration');
-      assert.equal(await panel.locator('[data-budget-bill-bucket="not-paid"]').isVisible(), true);
-      assert.match(await panel.locator('[data-budget-bill-filter-status]').textContent(), /not confirmed paid/);
-      await unpaid.click();
+      assert.equal(await panel.locator('[data-budget-bill-bucket="check"]').isVisible(), true);
+      assert.match(await panel.locator('[data-budget-bill-filter-status]').textContent(), /bills to confirm/);
+      await panel.locator('[data-budget-bill-filter="all"]').click();
       assert.equal(await unpaid.getAttribute('aria-pressed'), 'false');
       assert.equal(await panel.locator('[data-budget-bill-bucket="paid"]').isVisible(), true,
         'Native filter still clears after responsive restoration');
@@ -1424,8 +1401,7 @@ const composite = (fg, bg) => {
 
     const next = await open(1440, 'light');
     const before = await next.locator('[data-budget-window-range]').innerText();
-    await openToolbar(next);
-    await next.locator('[data-budget-window-step="1"]').click();
+    await moveRiver(next, 1);
     await next.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
     const paydayFit = await next.evaluate(() => {
       const pay = document.querySelector('.blend-pay');
@@ -1627,8 +1603,7 @@ const composite = (fg, bg) => {
 
     const stepForward = async page => {
       const before = await page.locator('[data-budget-window-range]').innerText();
-      await openToolbar(page);
-      await page.locator('[data-budget-window-step="1"]').click();
+      await moveRiver(page, 1);
       await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
     };
     const sep = await open(1440, 'light');
@@ -1766,8 +1741,7 @@ const composite = (fg, bg) => {
       const consoleErrors = [];
       page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
       page.on('pageerror', err => consoleErrors.push(err.message));
-      await openToolbar(page);
-      await page.locator('[data-budget-window-step="-1"]').click();
+      await moveRiver(page, -1);
       await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
       const pastFace = await page.evaluate(() => {
         const progress = (document.querySelector('[data-budget-window-progress]')?.textContent || '').replace(/\s+/g, ' ');
@@ -1832,6 +1806,8 @@ const composite = (fg, bg) => {
             && toggleBox.bottom <= calBox.top + 1 && head?.contains(toggle)),
           detailsClear: !flagBox || !toggleBox || toggleBox.right <= flagBox.left - 4
             || flagBox.right <= toggleBox.left - 4 || toggleBox.top >= flagBox.bottom - 1,
+          historicalNote: document.querySelector('[data-bad-historical-withheld]')?.textContent || '',
+          historicalHero: document.querySelector('[data-blend-term="balanceAfterDeductions"]')?.textContent || '',
           riverValue: (document.querySelector('[data-ph-value]')?.textContent || '').trim(),
           riverOrb: document.querySelector('.playhead-orb')?.hidden === false,
           riverBeam: document.querySelector('.playhead-beam')?.hidden === false,
@@ -1845,7 +1821,7 @@ const composite = (fg, bg) => {
         || pastFace.afterLine || pastFace.qualifier
         || !pastFace.hero || consoleErrors.length
         || !pastFace.centres.length || badCentres.length || !pastFace.detailsInHeader || !pastFace.detailsClear
-        || !['Unavailable', '\u2014'].includes(pastFace.riverValue) || pastFace.riverOrb || pastFace.riverBeam) {
+        || pastFace.riverValue !== 'Unavailable' || !/Whole-period income, bill settlement and Household evidence/.test(pastFace.historicalNote) || pastFace.historicalHero !== 'Unavailable' || pastFace.riverOrb || pastFace.riverBeam) {
         errors.push(`${label} past period ${JSON.stringify({ pastFace, badCentres, consoleErrors })}`);
       }
       if (label === '1440' && (pastFace.figureGap == null || currentFigureGap == null || Math.abs(pastFace.figureGap - currentFigureGap) > 2)) {
@@ -2140,7 +2116,7 @@ const composite = (fg, bg) => {
       ['[data-budget-goal-open]', 'budget-blend-focus-goal.png'],
     ];
     for (const [sel, file] of focusTargets) {
-      if (sel === '[data-budget-granularity="month"]') await openToolbar(focusPage);
+      if (sel === '[data-budget-granularity="month"]') await openPeriodFigures(focusPage);
       const loc = focusPage.locator(sel).first();
       if (await loc.count()) {
         await loc.focus();
@@ -2150,6 +2126,7 @@ const composite = (fg, bg) => {
           && getComputedStyle(el).visibility !== 'hidden'), true, 'Visible focus target ' + sel);
         await focusPage.screenshot({ path: path.join(outDir, file), fullPage: false, animations: 'disabled' });
         shots.push(file);
+        if (sel === '[data-budget-granularity="month"]') await focusPage.keyboard.press('Escape');
       } else errors.push(`missing focus target ${sel}`);
     }
     await focusPage.close();
@@ -2258,14 +2235,12 @@ const composite = (fg, bg) => {
     await repaintStatus('onPlan');
     await capture(statusPage, 'budget-blend-1440-light-on-plan.png');
     const beforeStatus = await statusPage.locator('[data-budget-window-range]').innerText();
-    await openToolbar(statusPage);
-    await statusPage.locator('[data-budget-window-step="1"]').click();
+    await moveRiver(statusPage, 1);
     await statusPage.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, beforeStatus);
     const offPeriodChip = await readChip();
     if (offPeriodChip.word || offPeriodChip.visible) errors.push(`chip on next period ${JSON.stringify(offPeriodChip)}`);
     const nextStatusRange = await statusPage.locator('[data-budget-window-range]').innerText();
-    await openToolbar(statusPage);
-    await statusPage.locator('[data-budget-window-step="-1"]').click();
+    await moveRiver(statusPage, -1);
     await statusPage.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, nextStatusRange);
     for (const id of ['belowBuffer', 'infeasible', 'unavailable', 'not-a-status']) {
       await repaintStatus(id);
@@ -2283,8 +2258,7 @@ const composite = (fg, bg) => {
       const page = await open(width, theme);
       for (let i = 0; i < steps; i += 1) {
         const before = await page.locator('[data-budget-window-range]').innerText();
-        await openToolbar(page);
-        await page.locator('[data-budget-window-step="1"]').click();
+        await moveRiver(page, 1);
         await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
       }
       await capture(page, file);
@@ -2343,15 +2317,15 @@ const composite = (fg, bg) => {
         });
       }));
     }));
-    const probeLabels = ['Unavailable', 'Unavailable', '\u2014', '-$1,020.09', '-$10.00', '$0.00'];
+    const probeLabels = ['Unavailable', 'Unavailable', 'Unavailable', 'Unavailable', '-$1,020.09', '-$10.00', '$0.00'];
     if (riverProbe.mode !== 'printed' || riverProbe.state !== 'neutral' || !riverProbe.focusable
       || !riverProbe.orbHidden || !riverProbe.beamHidden || !riverProbe.chooserVisible
       || riverProbe.rows !== 7 || riverProbe.labels.join('|') !== probeLabels.join('|')
-      || riverProbe.value !== '—'
-      || riverProbe.tones.slice(0, 3).some(tone => !/is-muted/.test(tone) || /is-income|is-short/.test(tone))
-      || !/is-short/.test(riverProbe.tones[3]) || /is-income/.test(riverProbe.tones[3])
-      || !/is-income/.test(riverProbe.tones[4]) || /is-short/.test(riverProbe.tones[4])
-      || !/is-income/.test(riverProbe.tones[5])
+      || riverProbe.value !== 'Unavailable'
+      || riverProbe.tones.slice(0, 4).some(tone => !/is-muted/.test(tone) || /is-income|is-short/.test(tone))
+      || !/is-short/.test(riverProbe.tones[4]) || /is-income/.test(riverProbe.tones[4])
+      || !/is-income/.test(riverProbe.tones[5]) || /is-short/.test(riverProbe.tones[5])
+      || !/is-income/.test(riverProbe.tones[6])
       || riverProbe.labels.some(label => label === '$0' || label === '0')
       || !riverProbe.months.some(label => label.startsWith('Aug'))
       || !riverProbe.months.some(label => /Jan/.test(label) && /2027/.test(label))) {
@@ -2360,10 +2334,10 @@ const composite = (fg, bg) => {
       console.log('river adapter ' + riverProbe.labels.join(' | '));
     }
 
-    await openToolbar(probe, true);
+    await openPeriodFigures(probe, true);
     await probe.keyboard.press('Escape');
-    assert.equal(await probe.locator('.playhead-pill').evaluate(el => el === document.activeElement), true,
-      'Unavailable selected river value retains the keyboard period chooser');
+    assert.equal(await probe.locator('[data-blend-figures-open]').evaluate(el => el === document.activeElement), true,
+      'Unavailable selected river value retains keyboard access to Period figures');
     // Force the selected publication to a numerically populated past row.
     // Even precise Household coverage cannot promote it to whole-BAD history.
     await probe.evaluate(() => {
@@ -2380,9 +2354,9 @@ const composite = (fg, bg) => {
     assert.equal(await probe.locator('.playhead-orb').isVisible(), false, 'Selected historical value has no plotted orb');
     assert.equal(await probe.locator('.playhead-beam').isVisible(), false, 'Selected historical value has no amount marker');
     assert.equal(await probe.locator('[data-ph-value]').innerText(), 'Unavailable');
-    await openToolbar(probe, true);
+    await openPeriodFigures(probe, true);
     await probe.keyboard.press('Escape');
-    assert.equal(await probe.locator('.playhead-pill').evaluate(el => el === document.activeElement), true,
+    assert.equal(await probe.locator('[data-blend-figures-open]').evaluate(el => el === document.activeElement), true,
       'Withheld historical value retains native period selection');
     await probe.close();
 

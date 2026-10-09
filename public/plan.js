@@ -4247,7 +4247,9 @@ function badTimelineHtml(advice, compactOverview, savingsContext) {
     const value = badTermsKnown ? badTerms.balanceAfterDeductions : null;
     const trust = period.balanceAfterDeductionsTrust;
     const stamp = trust == null ? 'calculated' : trust;
-    const known = numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
+    const historicalBadWithheld = period.timelineRole === 'past' || period.lookback === true;
+    const known = !historicalBadWithheld && numeric(value)
+      && (stamp === 'calculated' || stamp === 'estimated');
     const mark = known && stamp === 'estimated' ? compactOverview
       ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : '';
     // Terms block face: dailySavings and fundedBalanceKnown, as calendarWaterfallHtml derives them.
@@ -4260,7 +4262,7 @@ function badTimelineHtml(advice, compactOverview, savingsContext) {
       && funding.start === period.start && funding.end === period.end
       && numeric(funding.contribution) && funding.contribution >= 0 && numeric(funding.afterProposedFunding)
       && (funding.trust === 'calculated' || funding.trust === 'estimated');
-    const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
+    const fundedBalanceKnown = !historicalBadWithheld && fundingKnown && numeric(funding.afterProposedFunding);
     const face = !dailySavings && fundedBalanceKnown ? 'after-proposed-funding' : 'balance-after-deductions';
     const role = period.timelineRole === 'past' || period.timelineRole === 'current' ? period.timelineRole : 'future';
     // Print-only. Forecast already published this; no coverage math here.
@@ -4536,10 +4538,15 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     ${numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0 ? `<p class="operating-note">${fundMoney(funding.proposedFundingForBillPayments)} of this period's bill deduction is paid from earlier proposed funding. Forecast adds that protection back once in the final proposed balance, so the payment and contribution are not deducted twice.</p>` : ''}
     <p class="operating-note">DEFICIT PLANNING is for Fusion and related sports; SAVINGS-DONT TOUCH is for property tax and home insurance. Account funding and silver draws are not assigned by this projection.</p>`
     : `<p class="operating-note">${escape(funding && funding.reason || 'Forecast has not published a funding schedule for this period.')} ${confirmedSavings ? 'See the savings inventory for confirmed assignments and observed backing.' : 'Actual saved balances and the original payday plan remain unavailable.'}</p>${itemDetails}`;
-  const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
-  const finalAmount = dailySavings ? period.afterHouseholdBudget : fundedBalanceKnown ? funding.afterProposedFunding
+  // A closing arithmetic identity does not qualify historical income, bill
+  // settlement and Household evidence as a whole-period BAD publication.
+  // Withhold only the aggregate presentation; keep each published source term.
+  const historicalBadWithheld = period.timelineRole === 'past' || period.lookback === true;
+  const historicalBadNote = 'Historical Balance After Deductions is unavailable. Whole-period income, bill settlement and Household evidence have not been qualified together. Household transaction coverage alone does not qualify this balance.';
+  const fundedBalanceKnown = !historicalBadWithheld && fundingKnown && numeric(funding.afterProposedFunding);
+  const finalAmount = historicalBadWithheld ? null : dailySavings ? period.afterHouseholdBudget : fundedBalanceKnown ? funding.afterProposedFunding
     : (period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget);
-  const finalTrust = dailySavings ? period.balanceAfterDeductionsTrust : fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
+  const finalTrust = historicalBadWithheld ? 'unavailable' : dailySavings ? period.balanceAfterDeductionsTrust : fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
   // Forecast's optional household/final trust stamp is null for calculated
   // values; explicit unavailable/unknown/untrusted stamps still fail closed.
   const finalKnown = numeric(finalAmount) && (finalTrust == null || ['calculated', 'estimated'].includes(finalTrust));
@@ -4551,7 +4558,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     <h2>Balance After Deductions</h2>
     <p class="budget-period-result-value"${finalKnown && finalAmount < 0 ? ' data-sign="negative"' : ''}>${finalKnown
       ? `${finalTrust === 'estimated' ? compactOverview ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : ''}<span data-budget-result-amount>${money2(finalAmount)}</span>` : 'Unavailable<span data-budget-result-amount></span>'}</p>
-    <p class="budget-period-result-caption">${compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
+    <p class="budget-period-result-caption">${historicalBadWithheld ? historicalBadNote : compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
   </div>` : '';
   // Print-only: Forecast's published Balance After Deductions terms for this
   // pay period (advice.payPeriodViews[i].predictedEndingBalanceTerms). Every
@@ -4567,7 +4574,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   const badTermRow = (key, label, trust, nullIsCalculated) => {
     const value = badTermsKnown ? badTerms[key] : null;
     const stamp = trust == null && nullIsCalculated ? 'calculated' : trust;
-    const known = numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
+    const known = !(historicalBadWithheld && key === 'balanceAfterDeductions')
+      && numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
     const mark = known && stamp === 'estimated' ? compactOverview
       ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : '';
     return `<div class="operating-line" data-bad-term="${key}" data-bad-term-trust="${known ? stamp : 'unavailable'}"><span data-bad-term-label>${label}</span><span data-bad-term-value>${known ? mark : 'Unavailable'}<span data-bad-term-amount>${known ? money2(value) : ''}</span></span></div>`;
@@ -4576,6 +4584,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   // published term is before savings funding, so the two are not one figure.
   const badTermsFace = !dailySavings && fundedBalanceKnown ? 'after-proposed-funding' : 'balance-after-deductions';
   const badTermsHtml = `<div class="operating-lines budget-bad-terms" data-bad-terms data-bad-terms-period="${escape(period.id || period.start || '')}" data-bad-terms-status="${badTermsKnown ? 'published' : 'unavailable'}" data-bad-terms-face="${badTermsFace}">
+    ${historicalBadWithheld ? `<p class="operating-note" data-bad-historical-withheld>${historicalBadNote} The source terms below retain their individual published qualifications.</p>` : ''}
     <p class="operating-note">Forecast's published terms for this period. Balance After Deductions is period income less assigned bills and the household amount.${badTermsFace === 'after-proposed-funding' ? ' These terms are before proposed savings funding; the period result above is after it.' : ''}</p>
     ${badTermRow('periodIncome', 'Period income', period.incomeTrust, false)}
     ${badTermRow('assignedBills', 'Assigned bills (incl. required debt minimums)', period.periodBillLoadTrust, false)}
@@ -4615,10 +4624,10 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         { amount: funding.proposedFundingForBillPayments, trust: funding.trust, trustRequired: true, barStart: 0,
           note: 'Planning only — bill payment offset, not new income' }) : ''}
     ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : (compactOverview
-      ? `<p class="operating-note">Full-period projection: ${finalCaption}. Current Bills cash is context and is not added to period income.</p>`
+      ? `<p class="operating-note">${historicalBadWithheld ? historicalBadNote : `Full-period projection: ${finalCaption}. Current Bills cash is context and is not added to period income.`}</p>`
       : runningLeftoverHtml(finalAmount, finalTrust))
       + '<p class="operating-note">A positive period balance may be needed for a later short period. It is not permission to spend.</p>', 'balance',
-      { amount: finalAmount, trust: finalTrust, barStart: 0, appendix: badTermsHtml, note: fundedBalanceKnown
+      { amount: finalAmount, trust: finalTrust, discloseUnknown: true, barStart: 0, appendix: badTermsHtml, note: historicalBadWithheld ? historicalBadNote : fundedBalanceKnown
         ? 'After bills, household and proposed funding — retain any future carry'
         : 'Before savings — the funding deduction is unavailable' })}
     ${compactOverview ? savingsRow() : ''}
@@ -5416,30 +5425,16 @@ function budgetDetailSheetController(mount) {
   const readBillsFilter = source => {
     const selected = [...source.querySelectorAll('[data-budget-bill-filter][aria-pressed="true"]')];
     const choice = selected.length === 1 ? selected[0].getAttribute('data-budget-bill-filter') : null;
-    return choice === 'paid' || choice === 'not-paid' ? choice : null;
+    return ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(choice) ? choice : null;
   };
   const restoreBillsFilter = (source, choice) => {
-    const controls = [...source.querySelectorAll('[data-budget-bill-filter]')];
-    const selected = (choice === 'paid' || choice === 'not-paid')
-      && controls.filter(control => control.getAttribute('data-budget-bill-filter') === choice).length === 1
-      ? choice : null;
-    controls.forEach(control => control.setAttribute('aria-pressed',
-      String(control.getAttribute('data-budget-bill-filter') === selected)));
-    source.querySelectorAll('[data-budget-bill-bucket]').forEach(bucket => {
-      bucket.hidden = !!selected && bucket.getAttribute('data-budget-bill-bucket') !== selected;
-    });
-    // Same native filter description; buckets and their financial content are
-    // freshly published nodes. Only the user's display choice is restored.
-    const status = source.querySelector('[data-budget-bill-filter-status]');
-    if (status) status.textContent = selected === 'paid'
-      ? 'Showing paid bills: money sent or settlement confirmed.' : selected === 'not-paid'
-        ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.';
+    budgetApplyBillFilter(source, choice);
   };
   const descriptor = item => ({
     sourceSelector: item.sourceSelector, triggerSelector: item.triggerSelector,
     openerSelector: item.openerSelector, label: item.label, focusSelector: item.focusSelector,
     scrollTop: Number.isFinite(item.scrollTop) && item.scrollTop >= 0 ? item.scrollTop : 0,
-    billsFilter: item.billsFilter === 'paid' || item.billsFilter === 'not-paid' ? item.billsFilter : null,
+    billsFilter: ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(item.billsFilter) ? item.billsFilter : null,
   });
   const copyState = state => {
     const frames = (state?.frames || (state ? [state] : [])).map(descriptor);
@@ -5610,21 +5605,34 @@ function wireBudgetWindow(mount, ctx, sheet) {
   });
 }
 
+// Display-only filtering of the Forecast states already printed on each
+// bucket. Pending and unknown stay distinct; no settlement is inferred.
+function budgetApplyBillFilter(section, choice) {
+  const controls = [...section.querySelectorAll('[data-budget-bill-filter]')];
+  const selected = ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(choice)
+    && controls.filter(control => control.getAttribute('data-budget-bill-filter') === choice).length === 1
+    ? choice : 'all';
+  controls.forEach(control => control.setAttribute('aria-pressed',
+    String(control.getAttribute('data-budget-bill-filter') === selected)));
+  const buckets = [...section.querySelectorAll('[data-budget-bill-bucket]')];
+  buckets.forEach(bucket => { bucket.hidden = selected !== 'all' && bucket.getAttribute('data-budget-bill-bucket') !== selected; });
+  const empty = section.querySelector('[data-budget-bill-filter-empty]');
+  if (empty) empty.hidden = selected === 'all' || buckets.some(bucket => !bucket.hidden);
+  const status = section.querySelector('[data-budget-bill-filter-status]');
+  if (status) status.textContent = ({ all: 'Showing all bills.',
+    check: 'Showing bills to confirm. They may already be paid; check the evidence before paying again.',
+    due: 'Showing bills published as due.', paid: 'Showing paid bills: money sent or settlement confirmed.',
+    pending: 'Showing pending bills. Settlement is not confirmed.',
+    unknown: 'Showing bills with unavailable status.' })[selected];
+}
+
 function wireBudgetBrowse(mount, ctx, sheet) {
   if (!sheet) return;
   mount.querySelectorAll('[data-budget-bill-filter]').forEach(button => button.addEventListener('click', () => {
     const section = button.closest('[data-blend-bills-panel], [data-budget-browse="bills"]');
     if (!section) return;
     const choice = button.getAttribute('data-budget-bill-filter');
-    const selected = button.getAttribute('aria-pressed') !== 'true' ? choice : null;
-    section.querySelectorAll('[data-budget-bill-filter]').forEach(control =>
-      control.setAttribute('aria-pressed', String(control.getAttribute('data-budget-bill-filter') === selected)));
-    section.querySelectorAll('[data-budget-bill-bucket]').forEach(bucket => {
-      bucket.hidden = !!selected && bucket.getAttribute('data-budget-bill-bucket') !== selected;
-    });
-    section.querySelector('[data-budget-bill-filter-status]').textContent = selected === 'paid'
-      ? 'Showing paid bills: money sent or settlement confirmed.' : selected === 'not-paid'
-        ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.';
+    budgetApplyBillFilter(section, choice);
   }));
   mount.querySelectorAll('[data-budget-category-open]').forEach(button => button.addEventListener('click', () => {
     const source = mount.querySelector(`[data-budget-category="${CSS.escape(button.getAttribute('data-budget-category-open'))}"]`);
@@ -6650,8 +6658,8 @@ function budgetBillBrowseRowHtml(row) {
   const dateEstimated = row.dateConfidence === 'estimated';
   return `<button type="button" class="budget-bill-row is-${state.kind}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
     <span class="budget-bill-date${dateEstimated ? ' est' : ''}" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
-    <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}${dateEstimated ? ' · estimated' : ''}</span>` : ''}</span></span>
-    <span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span>
+    <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-when">${knownDate ? budgetBrowseEscape(fmtDateLong(row.date)) + (dateEstimated ? ' · estimated' : '') : 'Date unavailable'}</span></span>
+    <span class="budget-bill-value"><span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}</span></span><span class="budget-bill-chevron" aria-hidden="true">›</span>
   </button>`;
 }
 
@@ -6661,7 +6669,7 @@ function budgetBillsSectionHtml(period, ctx) {
   const feeAllowanceRetained = rows.some(row => row.scheduledFeeAllowance?.remainingAllowance > 0);
   const groups = { due: [], pending: [], check: [], paid: [], unknown: [] };
   rows.forEach(row => groups[budgetBillPresentation(row).kind].push(row));
-  const section = (title, list, note = '') => list.length ? `<div class="budget-bill-group"><h3>${title}</h3>${note ? `<p>${note}</p>` : ''}${list.map(budgetBillBrowseRowHtml).join('')}</div>` : '';
+  const section = (key, title, list, note = '') => list.length ? `<div id="budget-bill-bucket-${key}" class="budget-bill-group${key === 'paid' ? ' budget-browse-paid' : ''}" data-budget-bill-bucket="${key}"><h3>${title} <span aria-label="Group total unavailable">Unavailable</span></h3>${list.map(budgetBillBrowseRowHtml).join('')}${note ? `<p>${note}</p>` : ''}</div>` : '';
   const historical = budgetBrowseHistorical(period);
   const withholdActionableRemaining = historical
     && (groups.check.length > 0 || groups.unknown.length > 0);
@@ -6672,18 +6680,14 @@ function budgetBillsSectionHtml(period, ctx) {
     <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : historical ? ' · completed' : ''}</p><h2 id="budget-bills-heading" tabindex="-1">${budgetProgressValueHtml(progress, 'bills')}</h2><p class="budget-browse-sub">${remainingHeading}</p>${historical ? `<p class="budget-browse-sub">${withholdActionableRemaining ? 'Settlement not fully confirmed. ' : ''}Historical settlement evidence, not an amount due now. Unconfirmed entries may already be paid.</p>` : ''}</div></header>
     ${feeAllowanceRetained ? '<p class="budget-browse-sub" data-scheduled-fee-reserve>The unspent scheduled fee allowance stays reserved. The recorded fee is already settled; this is not another payment due.</p>' : ''}
     <div class="budget-browse-counts budget-bill-filters" role="group" aria-label="Filter bills by recorded household payment">
-      ${[['paid', 'PAID', groups.paid.length], ['not-paid', 'NOT PAID', rows.length - groups.paid.length]].map(([key, label, count]) => `<button type="button" class="budget-browse-pill is-${key}" data-budget-bill-filter="${key}" aria-pressed="false" aria-controls="budget-bill-bucket-${key}" aria-label="${label === 'PAID' ? 'Paid' : 'Not confirmed paid'} bills: ${count}. Click again to show all bills.">${label}<span>${count}</span></button>`).join('')}
+      ${[['all', 'All', rows.length], ['check', 'To confirm', groups.check.length], ['due', 'Due', groups.due.length], ['paid', 'Paid', groups.paid.length], ...groups.pending.length ? [['pending', 'Pending', groups.pending.length]] : [], ...groups.unknown.length ? [['unknown', 'Unknown', groups.unknown.length]] : []].map(([key, label, count]) => `<button type="button" class="budget-browse-pill is-${key}" data-budget-bill-filter="${key}" aria-pressed="${key === 'all'}"${key !== 'all' && count ? ` aria-controls="budget-bill-bucket-${key}"` : ''} aria-label="${label} bills: ${count}">${label}<span>${count}</span></button>`).join('')}
     </div><p class="budget-cash-sr" data-budget-bill-filter-status role="status">Showing all bills.</p>
-    <div class="budget-bills-progress-wrapper">${budgetProgressBarHtml(progress, 'bills')}</div>
-    <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} confirmed settled or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
-    <div id="budget-bill-bucket-not-paid" data-budget-bill-bucket="not-paid">
-      ${section('Not paid', groups.due)}${section('Pending', groups.pending)}
-      ${section('To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
-      ${section('Status unavailable', groups.unknown)}
-      ${rows.length === groups.paid.length ? '<p class="budget-browse-note">No bills awaiting a recorded household payment.</p>' : ''}
-    </div><div id="budget-bill-bucket-paid" class="budget-browse-paid" data-budget-bill-bucket="paid">
-      ${section('Paid', groups.paid)}${!groups.paid.length ? '<p class="budget-browse-note">No confirmed paid bills in this period.</p>' : ''}
-    </div>
+    ${section('check', 'To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
+    ${section('due', 'Due', groups.due)}${section('pending', 'Pending', groups.pending)}
+    ${section('paid', 'Paid', groups.paid)}${section('unknown', 'Status unavailable', groups.unknown)}
+    <p class="budget-browse-note" data-budget-bill-filter-empty hidden>No published bills in this filter.</p>
+    <details class="budget-bill-period-evidence"><summary>Period evidence</summary><div class="budget-bills-progress-wrapper">${budgetProgressBarHtml(progress, 'bills')}</div>
+      <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} confirmed settled or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div></details>
     ${!rows.length ? '<p class="budget-browse-note">No bill occurrences published for this period.</p>' : ''}
     <footer><p>The plan deducts ${budgetBrowseMoney(period.periodBillLoad, period.periodBillLoadTrust)} — assigned amounts, excluding bills settled in the opening. Payment evidence remains available for each bill.</p><button type="button" data-budget-browse-evidence="04">Why</button></footer>
   </section>`;

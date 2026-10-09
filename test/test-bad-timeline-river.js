@@ -91,8 +91,9 @@ function items(html) {
 
 const blend = fs.readFileSync(path.join(root, 'public', 'budget-blend.js'), 'utf8');
 const gateSource = blend.match(/function keepPastTimelineNode\(li\) \{[\s\S]*?\n  \}/)[0];
-assert.match(gateSource, /data-bad-timeline-role/);
-assert.match(gateSource, /data-bad-timeline-coverage/);
+assert.match(gateSource, /data-bad-timeline-start/);
+assert.match(gateSource, /data-bad-timeline-end/);
+assert.doesNotMatch(gateSource, /data-bad-timeline-coverage|data-bad-timeline-role/);
 assert.doesNotMatch(gateSource, /trust|amount|data-sign|data-bad-term|\b(?:6|26|33)\b/);
 assert.match(blend, /keepPastTimelineNode\(node\)/);
 
@@ -130,12 +131,11 @@ for (const start of ['2026-02-13', '2026-02-27', '2026-03-13', '2026-06-05']) {
   assert.equal(coverageOf(start), null, start + ' omits coverage');
 }
 const keptMatrix = matrix.filter(keepPastTimelineNode).map(item => item.getAttribute('data-bad-timeline-start'));
-assert.deepEqual(keptMatrix, [
-  '2026-01-02', '2026-01-16', '2026-05-08', '2026-05-22', '2026-06-05', '2026-06-19', '2026-07-03',
-]);
+assert.deepEqual(keptMatrix, matrixRows.map(row => row.start), 'every published date remains independently selectable');
 assert.equal(matrix.find(item => item.getAttribute('data-bad-timeline-start') === '2026-07-03').getAttribute('data-bad-timeline-role'), 'future');
 assert.match(matrix.find(item => item.getAttribute('data-bad-timeline-start') === '2026-01-02').body, /Unavailable<span data-bad-term-amount><\/span>/);
-assert.equal(matrix.find(item => item.getAttribute('data-bad-timeline-start') === '2026-01-30').getAttribute('data-sign'), 'negative');
+assert.equal(matrix.find(item => item.getAttribute('data-bad-timeline-start') === '2026-01-30').getAttribute('data-sign'), null,
+  'withheld historical BAD has no signed claim');
 
 // Oct 8 pay-period calendar. Coverage is the Engine print: Jul 3, Jul 17
 // and Jul 31 are unavailable; Aug 14, Aug 28 and Sep 11 are precise.
@@ -179,22 +179,14 @@ assert.equal(oct8Spec.length, 33);
 const oct8 = items(printed(oct8Spec.map(row => period(row[0], row[1], row[2], row[3]))));
 assert.equal(oct8.length, 33, 'Oct 8 print keeps all 33 rows');
 const keptOct8 = oct8.filter(keepPastTimelineNode);
-assert.deepEqual(keptOct8.map(item => item.getAttribute('data-bad-timeline-start')), [
-  '2026-08-14', '2026-08-28', '2026-09-11', '2026-09-25',
-  '2026-10-09', '2026-10-23', '2026-11-06', '2026-11-20',
-  '2026-12-04', '2026-12-18', '2027-01-01', '2027-01-15', '2027-01-29',
-  '2027-02-12', '2027-02-26', '2027-03-12', '2027-03-26', '2027-04-09',
-  '2027-04-23', '2027-05-07', '2027-05-21', '2027-06-04', '2027-06-18',
-  '2027-07-02', '2027-07-16', '2027-07-30', '2027-08-13', '2027-08-27',
-  '2027-09-10', '2027-09-24',
-]);
+assert.deepEqual(keptOct8.map(item => item.getAttribute('data-bad-timeline-start')), oct8Spec.map(row => row[1]));
 assert.deepEqual(keptOct8.map(item => item.getAttribute('data-bad-timeline-role')), [
-  'past', 'past', 'past', 'current',
+  ...Array(6).fill('past'), 'current',
   ...Array(26).fill('future'),
 ]);
 assert.deepEqual(
   oct8.filter(item => !keepPastTimelineNode(item)).map(item => item.getAttribute('data-bad-timeline-start')),
-  ['2026-07-03', '2026-07-17', '2026-07-31'],
+  [],
 );
 
 // Independent display contract: missing publications break a line, even
@@ -212,14 +204,14 @@ const gapRows = [
 const gapItems = items(printed(gapRows));
 gapItems[6].body = '<span data-bad-term-amount> </span>';
 const gapModel = readBadTimeline({ querySelector() { return { children: gapItems }; } });
-assert.deepEqual(gapModel.nodes.map(node => node.sourceIndex), [0, 2, 3, 4, 5, 6, 7],
-  'adapter retains original publication positions after filtering');
-assert.deepEqual(gapModel.nodes.map(node => node.magnitude), [null, null, null, 0, -20, null, 40],
+assert.deepEqual(gapModel.nodes.map(node => node.sourceIndex), [0, 1, 2, 3, 4, 5, 6, 7],
+  'adapter retains every original publication position');
+assert.deepEqual(gapModel.nodes.map(node => node.magnitude), [null, null, null, null, 0, -20, null, 40],
   'past Household coverage, unavailable and empty spans have no BAD geometry; printed future zero is known');
-assert.deepEqual(gapModel.nodes.slice(0, 2).map(node => [node.label, node.unavailable]),
-  [['Unavailable', true], ['Unavailable', true]],
+assert.deepEqual(gapModel.nodes.slice(0, 3).map(node => [node.label, node.unavailable]),
+  [['Unavailable', true], ['Unavailable', true], ['Unavailable', true]],
   'precise and posted-only Household coverage cannot publish historical BAD');
-assert.deepEqual(knownTimelineRuns(gapModel.nodes), [[3, 4], [6]],
+assert.deepEqual(knownTimelineRuns(gapModel.nodes), [[4, 5], [7]],
   'only the adjacent published zero and negative value can share a line');
 assert.deepEqual(knownTimelineRuns([
   { sourceIndex: 0, magnitude: 100 }, { sourceIndex: 2, magnitude: 50 },
@@ -279,7 +271,7 @@ try {
   assert.equal(currentStart, '2026-05-08', 'backward click reaches the exact target across a filtered past gap');
   assert.equal(stepCount, 4, 'native navigation still traverses all four source periods');
   stepCount = 0;
-  chooseBadTimeline(6, gapModel);
+  chooseBadTimeline(7, gapModel);
   assert.equal(currentStart, '2026-08-14', 'forward click reaches the exact target across filtered and unavailable rows');
   assert.equal(stepCount, 7);
   monthMode = true;

@@ -9,6 +9,8 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../public/plan.js'), 'utf8');
 const controller = source.slice(source.indexOf('function budgetDetailSheetController(mount) {'),
   source.indexOf('\nfunction budgetRemount(mount, ctx)'));
+const filters = source.slice(source.indexOf('function budgetApplyBillFilter(section, choice) {'),
+  source.indexOf('\nfunction wireBudgetBrowse(mount, ctx, sheet)'));
 assert.ok(controller.startsWith('function budgetDetailSheetController'));
 const cssEscape = value => String(value).replace(/^[0-9]/, digit => '\\' + digit.codePointAt(0).toString(16) + ' ');
 const cssUnescape = value => value.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
@@ -128,7 +130,7 @@ function fixture() {
       detail(_, direction) { assert.equal(dialog.open, true); calls.push('detail:' + direction); },
       leave() { assert.equal(dialog.open, false); assert.equal(document.activeElement, heading); calls.push('leave'); },
     } });
-  vm.runInContext(controller, context);
+  vm.runInContext(filters + '\n' + controller, context);
   const sheet = context.budgetDetailSheetController(mount);
   return { document, mount, bento, panel, heading, row, detail, evidence, owner, after, dialog, close, title, body,
     other, otherTrigger, calls, sheet, motion: context.BudgetSheetMotion, back: dialog.querySelector('[data-budget-detail-back]') };
@@ -396,11 +398,12 @@ function filterFixture() {
     parent.appendChild(node); return node;
   };
   f.paidFilter = add(f.panel, 'button', { 'data-budget-bill-filter': 'paid', 'aria-pressed': 'false' });
-  f.notPaidFilter = add(f.panel, 'button', { 'data-budget-bill-filter': 'not-paid', 'aria-pressed': 'false' });
+  f.allFilter = add(f.panel, 'button', { 'data-budget-bill-filter': 'all', 'aria-pressed': 'true' });
+  f.notPaidFilter = add(f.panel, 'button', { 'data-budget-bill-filter': 'check', 'aria-pressed': 'false' });
   f.filterStatus = add(f.panel, 'p', { 'data-budget-bill-filter-status': '' });
   f.filterStatus.textContent = 'Showing all bills.';
   f.paidBucket = add(f.panel, 'div', { 'data-budget-bill-bucket': 'paid' });
-  f.notPaidBucket = add(f.panel, 'div', { 'data-budget-bill-bucket': 'not-paid' });
+  f.notPaidBucket = add(f.panel, 'div', { 'data-budget-bill-bucket': 'check' });
   f.notPaidBucket.appendChild(f.row);
   f.paidRow = add(f.paidBucket, 'button', { 'data-budget-bill-open': 'rent',
     'data-budget-browse-origin': 'current', 'data-budget-bill-date': '2026-10-09' });
@@ -410,14 +413,15 @@ function filterFixture() {
   f.paidEvidence.textContent = 'Fixture publication: $45.00; confirmed';
   return f;
 }
-for (const choice of ['paid', 'not-paid', null]) {
+for (const choice of ['paid', 'check', 'all']) {
   const first = filterFixture();
   openBills(first);
   // Set the UI state produced by an existing native filter click. The
   // controller must retain this choice, not recalculate a settlement bucket.
   first.paidFilter.setAttribute('aria-pressed', String(choice === 'paid'));
-  first.notPaidFilter.setAttribute('aria-pressed', String(choice === 'not-paid'));
-  first.paidBucket.hidden = choice === 'not-paid';
+  first.allFilter.setAttribute('aria-pressed', String(choice === 'all'));
+  first.notPaidFilter.setAttribute('aria-pressed', String(choice === 'check'));
+  first.paidBucket.hidden = choice === 'check';
   first.notPaidBucket.hidden = choice === 'paid';
   if (choice === 'paid') first.sheet.open(first.paidDetail, first.paidRow, 'Rent');
   else openBill(first);
@@ -430,12 +434,13 @@ for (const choice of ['paid', 'not-paid', null]) {
   paint(); assert.equal(fresh.sheet.completeDeferredRestore(), true);
   fresh.sheet.back();
   assert.equal(fresh.paidFilter.getAttribute('aria-pressed'), String(choice === 'paid'));
-  assert.equal(fresh.notPaidFilter.getAttribute('aria-pressed'), String(choice === 'not-paid'));
-  assert.equal(fresh.paidBucket.hidden, choice === 'not-paid');
+  assert.equal(fresh.allFilter.getAttribute('aria-pressed'), String(choice === 'all'));
+  assert.equal(fresh.notPaidFilter.getAttribute('aria-pressed'), String(choice === 'check'));
+  assert.equal(fresh.paidBucket.hidden, choice === 'check');
   assert.equal(fresh.notPaidBucket.hidden, choice === 'paid');
   assert.equal(fresh.filterStatus.textContent, choice === 'paid'
-    ? 'Showing paid bills: money sent or settlement confirmed.' : choice === 'not-paid'
-      ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.');
+    ? 'Showing paid bills: money sent or settlement confirmed.' : choice === 'check'
+      ? 'Showing bills to confirm. They may already be paid; check the evidence before paying again.' : 'Showing all bills.');
   assert.equal(fresh.document.activeElement, choice === 'paid' ? fresh.paidRow : fresh.row);
   assert.equal(fresh.evidence.textContent, 'Fixture publication: $120.00; unconfirmed');
   assert.equal(fresh.paidEvidence.textContent, 'Fixture publication: $45.00; confirmed');
@@ -445,7 +450,7 @@ for (const choice of ['paid', 'not-paid', null]) {
 }
 {
   const first = filterFixture();
-  openBills(first); first.paidFilter.setAttribute('aria-pressed', 'true');
+  openBills(first); first.allFilter.setAttribute('aria-pressed', 'false'); first.paidFilter.setAttribute('aria-pressed', 'true');
   const saved = first.sheet.snapshot(); first.sheet.close(false);
   const fresh = filterFixture();
   fresh.panel.removeChild(fresh.paidFilter);
