@@ -1,250 +1,206 @@
-# Bounded standing Lunch Money corrections — disabled foundation
+# Bounded category-only standing Lunch Money corrections — inactive candidate
 
-**FOUNDATION — NOT COMPLETION.** Dale's 2026-10-09 request authorizes building
-the category/preserved-note capability. It does not activate a grant, expand
-issuer permissions, deploy, merge, install a private store or authorize a live
-provider write. The incumbent exact-preview confirmation contract remains in
-force. No grant can be inferred from source content, model confidence or an
-agent's claim that the preview was confirmed.
+Dale's 2026-10-09 request authorizes this implementation and synthetic proof.
+It does not install private storage or keys, provision household grants, expand
+OAuth consent, activate, deploy, merge or authorize a real provider write.
+No household transaction, receipt or credential is used in public fixtures.
 
-## Current-state verification and one outcome
+## Current state and integration
 
-Source: Dale's explicit request to make evidence-backed corrections and report
-them afterward. Verdict: **STILL BROKEN** on main
-f6ee6b84c96e5c87cb85aa9d7fdf9a9a7d6212fa before edits.
+Fresh-main verification on f6ee6b84c96e5c87cb85aa9d7fdf9a9a7d6212fa found
+STILL BROKEN: interactive apply requires exact confirmed=true and MCP instructions
+require preview approval; main had no standing grant/evidence authority.
+AGENTS.md and canonical repository guidance were read. Main has no .agents/skills;
+neither cataloged repository procedure applies. One outcome: a distinct,
+bounded category-correction contract with afterward audit.
 
-- assistant-lunchmoney.js requires confirmed=true in the apply schema.
-- assistant-mcp.js tells the caller to show the exact preview and await explicit
-  confirmation. There is no standing-operation tool or grant owner.
-- assistant-oauth.js separately enforces transaction read/write scopes and
-  validates issuer/JWKS, exact audience/resource, token lifetime and subject.
-  Existing write scope is not a standing grant.
-- References/previews are principal-bound RAM objects, expire in ten minutes,
-  and are consumed before the first apply await. A target lock, fresh fingerprint
-  and category validation protect the current process. PUT uses
-  update_balance=false; readback verifies the requested and preserved fields.
-- Existing synthetic tests cover confirmation, subject/scope, stale/expired/
-  replayed previews, locks, note/category preservation and uncertain writes.
-- The complete main tree contains no .agents/skills. AGENTS.md currently routes
-  procedure to docs/skills/README.md; neither catalog row applies to this
-  implementation. Canonical guidance was inspected.
-- Open work is Draft #548 and #558. This foundation touches none of either PR's
-  changed files, including server.js and the shared test/test.js registry. #557's
-  disabled history module and changed files are also untouched.
+Default construction remains inactive. It performs no standing-store/provider
+reads, creates no key/grant/directory and exposes the five incumbent tools.
+Interactive category/notes/splits and literal preview confirmation remain intact.
 
-Missing capability: the new standing policy module is the sole grant/evidence
-eligibility checker, consumed by the incumbent Lunch Money service. That service
-still owns exact provider execution, preview consumption, concurrency and
-readback. Lunch Money remains ledger authority; Forecast remains sole planning
-authority. No financial figures or canonical state are edited.
+server.js remains unchanged. A small prepared assistant-construction hunk would
+inject the optional runtime after OAuth config and derive metadata/step-up from
+the same service. Automatic approval review rejected publication of that hunk
+because server.js belongs to #548's owner hard hold; the delegated instruction
+was not accepted as an owner override. The patch is retained privately for an
+exact owner decision, without moving wiring into another file to bypass the
+hold. Runtime/service/MCP composition is tested with synthetic data; production
+server integration is a concrete approval blocker. No UI/redesign behavior or
+builder is touched. test/test.js, #558 and #557 files/modules remain untouched.
 
-## Product contract
+## Explicit owner authority
 
-A separate prepare_standing_lunchmoney_correction / apply_standing_lunchmoney_correction
-pair consumes a bounded server-held owner grant. It never sends confirmed=true
-or reinterprets the existing apply tool's confirmation.
+Runtime pins an externally installed Ed25519 owner PUBLIC key. The signing key
+is held by the owner outside the runtime/store/repository. Signed context and
+grant envelopes are verified before use. MCP has no owner-control tools and
+cannot mint, widen, renew or revoke grants. Source prose, model confidence,
+approvedByOwner fields and guessed references supply no signature or authority.
 
-The new permission is atlas.transactions.correct-with-grant, required **in
-addition to** existing transaction read/write and the transport's current-read
-scope. Default OAuth metadata and challenges are unchanged. New tools and their
-extra metadata exist only for a service with explicit opt-in **and** a complete
-trusted durable adapter. No environment flag, grant file, backend store or
-production adapter is installed here. readConfig does not turn on the capability.
-The HTTP MCP adapter now derives principal, client identity and scopes directly
-from req.auth set by the existing JWT middleware. Caller arguments and opts.auth
-cannot supply HTTP identity. Token verification remains unchanged. Production
-still constructs no standing adapter, so this path is unavailable.
+A category-only grant binds:
+- exact subject, verified client and OAuth resource;
+- provider budget, active token digest/credential version and context/parser version;
+- exact account namespace/IDs and an explicit date window (at most 366 days);
+- allowed existing from/to category IDs and pinned semantic category signatures;
+- atlas-delegated-category-review/v1, notes=false, creation/expiry (at most 30 days);
+- immutable grant/revision/approval references, revocation and 1–1000 attempts.
 
-All ungranted operations keep the interactive tools. Standing schemas accept
-only an exact opaque transaction reference, opaque grant/evidence references,
-an existing destination category reference and/or notesAppend. They reject
-splits, category clearing, replacement notes, amounts, dates, deletions,
-balances, accounts, payments, rules, caller-supplied grants and confidence.
-Unresolved evidence is refused. No batch endpoint or scheduler is introduced.
+These are ceilings, not activated defaults. Replacement/renewal requires a new
+owner-approved grant. A revoked grant cannot be overwritten or revived.
 
-A grant must come from an owner-operated trusted authority and contain:
+Owner CLI: scripts/assistant-standing-owner.js. It defines commands and creates
+nothing when imported:
+1. plan --file <private-payload.json> prints the canonical payload digest.
+2. approve --file <private-payload.json> --approve-digest <exact-digest>
+   --signing-key <owner-private-key-path> signs only that exact owner decision.
+3. init --file <signed-context.json> --root <new-private-directory>
+   --public-key <pinned-public-key-path> initializes context, with no grant.
+4. provision / revoke --file <signed-envelope.json> --root <private-directory>
+   --public-key <pinned-public-key-path> --resource <exact-resource> applies the
+   corresponding verified owner action.
+5. list reports private grant/attempt status.
+6. plan-reconcile --attempt-ref <opaque-attempt> performs one GET using the
+   existing credential, produces a bound observation/digest; after owner
+   signing, reconcile checks the same read-only observation, releases a
+   conclusively observed hold and permanently revokes the affected grant.
+7. plan-lock-recovery / recover-lock requires an owner-signed exact lock digest
+   and verifies the recorded process is dead. It never releases attempt holds.
 
-- one explicit owner approval reference, principal and verified client;
-- one provider budget, credential version, context version and parser revision, with the active provider token
-  digest privately checked immediately before sending the write;
-- exact account identities and an explicit date window of at most 366 days;
-- allowed existing-category from/to transitions and an explicit note-addition
-  permission;
-- one named trusted evidence policy, creation and expiry (maximum 30 days),
-  revision, live revocation/suspension state, and an attempt budget of 1–1000.
+CLI paths are absolute and outside the repository; runtime pins the public key
+outside the store. The owner/operator must install appropriate private filesystem
+access and protect the signing key separately. These commands are code only;
+this task runs them only against temporary synthetic CI data.
 
-These are implementation ceilings, not an activated household grant or suggested
-defaults. No household values, transactions, receipts, IDs or credentials belong
-in public grant examples. The tests use synthetic data only.
+## Honest delegated evidence
 
-A trusted evidence record must bind the exact grant revision, transaction ID,
-complete provider-before fingerprint and proposed body, name the approved
-evidence policy, bind the context/parser revision, expire and be resolved. Model text cannot create this record.
-A future attestor must mechanically connect the underlying evidence to the exact
-transaction/classification; labelling model confidence trusted is unacceptable.
+submit_lunchmoney_category_evidence admits a distinct typed client review under
+an existing signed owner grant. The client researches sources through current
+authorized connectors; Atlas receives source references/excerpt digests,
+extracted facts, item classifications, rationale and unresolved issues.
+No server-side Gmail connection, mailbox credential/refresh grant, background
+feed or wider mailbox access is introduced.
 
-## Trusted adapter and audit contract
+The schema rejects caller provenance/authority fields. The server stamps subject,
+client/resource and an immutable review digest; provenance is explicitly
+delegated-client-review and independentlyVerified=false. A digest identifies
+the client's supplied excerpt; it does not prove Gmail provenance or truthful
+extraction. The client assertions and server consistency checks are distinct
+from an independently verified receipt/classification.
 
-The adapter is a server dependency, never an MCP argument. It requires context,
-grant, evidence, reserve, verifyReservation, finish, acknowledgeVerified and suspend
-methods and durable=true. noteEffects is required only with the separate
-notesEnabled=true opt-in; notes are otherwise refused even under an allowNotes grant.
-The flag describes a reviewed backend contract; it does not prove persistence.
-Only a separately reviewed implementation can earn that claim.
+This conservative initial policy requires a complete positive-expense receipt:
+exact payee/date/currency/total matching, positive whole-cent item amounts summing
+to the total, all items assigned to the same allowed destination, no issues and
+a resolved review disposition. Mixed, partial, uncertain, conflicting, refund,
+fractional-cent or unsupported cases remain unresolved. No fuzzy targeting or
+merchant-only inference. Source content never grants permission.
 
-context binds the active credential to its provider budget/version and carries
-ruleEffects=none-verified only after the single-transaction API's rule
-creation/execution effects have been independently verified. Unknown effects
-refuse standing corrections. This code does not change provider rule settings.
+The stored evidence binds the complete provider-before fingerprint, exact
+category body, grant revision, actor/resource, category context and expiry
+(maximum ten minutes or grant expiry). Admission does not write the provider.
+prepare_standing_lunchmoney_correction then creates the exact ephemeral preview;
+apply_standing_lunchmoney_correction consumes it under the live grant.
+Caller text is never fabricated into the legacy trusted-evidence-policy schema.
+The older trusted-record path remains distinct and has no production attestor
+installed by this change.
 
-reserve is the durable atomic acquisition gate. It must recheck the authenticated
-subject/client, provider binding, grant revision/expiry/revocation, exact
-preview/evidence binding and remaining attempts across all service instances.
-It persists the sanitized before/proposed record, exact target/fingerprints privately, and charges an attempt before
-the single PUT. A charge is never refunded after a possibly sent write.
-It must also acquire one shared target lease keyed by provider budget and
-transaction, across every grant and service instance, and reject consumed
-preview/evidence attempts. Pending/unverified attempts prevent later writes for
-that grant and leased target until read-only reconciliation. Restart must not reset limits, replay markers or
-unresolved attempts. No general transaction ledger is added.
+## Durable one-host authority
 
-After reserve, the service re-reads the exact provider transaction/category and
-compares the original fingerprint under the same credential digest. Then
-verifyReservation must atomically recheck lease ownership, subject/client,
-grant expiry/revision/revocation, preview and evidence expiry/body/fingerprint,
-context/parser versions, provider binding and rule-effects verification. The
-charged attempt remains allowed at its reserved ceiling; no later attempt does.
-No provider write occurs if these final checks fail.
+scripts/assistant-standing-store.js stores only bounded capability/evidence/
+attempt/receipt state for this operation, not a general transaction ledger or
+receipt platform. The supported installation is one POSIX host on durable private
+storage: directory 0700, snapshots/lock 0600, symlink refusal, 32 MiB ceiling,
+exclusive process lock, atomic snapshot replacement and file/directory fsync.
+The snapshot checksum detects corruption; it is not an external tamper-proof
+audit service. Filesystem access and owner-key separation remain essential.
 
-suspend must durably block the grant after any uncertain provider result or
-failed/malformed audit receipt. The service also refuses further use of that
-grant in this process. If suspension persistence fails, the pending reservation
-must keep every instance blocked; recovery is read-only and owner operated.
+All processes/grants share the same budget/transaction target lease. Reserve
+atomically rechecks identity, scope bindings, expiry/revocation, evidence/body,
+category context and budgets; consumes evidence/preview and charges an attempt
+before any PUT. No refund follows a possibly sent write. Restart retains limits,
+replay markers, revocation and unresolved attempts. Busy/stale locks fail closed;
+no process automatically steals another's lock.
 
-finish must durably attach the terminal outcome, readback and opaque actor
-attribution to that reservation **without releasing quarantine**. It returns a
-durable receipt with the exact attempt and terminal-record fingerprint. Only
-when the service knows both the verified provider readback and valid attributed
-receipt may acknowledgeVerified atomically release the hold. The authority
-must validate the stored verified terminal record; an acknowledgment is never a
-provider retry. A finish commit with a lost/malformed response stays quarantined,
-even if suspend fails and the service restarts. A lost acknowledgment response
-after known durable audit/readback keeps the edit honestly applied and reports
-that continuation needs checking; it cannot replay the provider write. A failed or uncertain provider result is
-write-unverified, cannot be retried, and suspends further standing execution.
-Audit persistence failure also returns write-unverified; the durable pending
-reservation must retain the block. The response provides the receipt reference,
-grant/revision, evidence reference, actor, time, outcome and before/proposed/
-readback so the caller can give Dale an afterward audit report.
+After reservation, the executor re-reads target/categories under the same
+credential, checks the original fingerprint, then verifies the live reservation.
+The credential is also pinned for readback and audit catalog reads. Exactly one
+PUT sends category_id only with update_balance=false. Independent GET verifies
+the requested category and every untouched field except updated_at; a changed
+category context is also unverified. No splits, notes, amounts, deletions,
+balances, accounts, payments, rules or Forecast changes on this path.
 
-The new path shares the incumbent fingerprint, expiry, single-use consumption,
-target lock, category revalidation, exactly one provider PUT and independent
-GET readback. It additionally checks every untouched field except the provider
-updated_at timestamp. Pending, deleted, grouped and split rows refuse standing
-correction. There is no provider compare-and-swap contract: another external
-client can still race between GET and PUT. Process locks are not distributed
-provider locks. That limit must be disclosed at activation.
+finish commits terminal audit WITHOUT releasing quarantine. Only known verified
+readback plus a validated attributed receipt permits acknowledgeVerified.
+A finish commit with a lost/malformed reply stays held even if suspension fails
+and the service restarts. An ambiguous acknowledgment after known audit/readback
+leaves the edit honestly applied and reports uncertain continuation, never a
+provider retry. Owner reconciliation performs no write and cannot revive grants.
 
-## Notes are interpreted evidence
+get_lunchmoney_correction_audit returns private before/proposed/readback,
+pending/terminal outcomes, receipt/actor and honestly labeled delegated review
+for the matching subject/client/resource, including expired/revoked grants.
+This supports the afterward report and unresolved-write inspection.
 
-provider-observe.js explicitPersonalOwnerFromTagsNotes uses Dale/Amanda words
-from notes/tags. sanitizedCurrentPeriodActuals passes notes through the incumbent
-Forecast derivedFlags and owner-confirmed fuel/Spotify/Noble recognition.
-Adding attribution or classification words can change ownership/budget meaning.
+No provider compare-and-swap is documented. Shared Atlas leases and post-lock
+reads prevent Atlas instances from overwriting stale reads; an unrelated external
+client can still race the final GET/PUT. Readback detects observed changes but
+cannot prove absence of all external provider side effects.
 
-notesAppend preserves the entire existing text byte-for-byte, uses a newline
-separator, and refuses exceeding the incumbent 1000-character write limit.
-The trusted noteEffects adapter must compare NOTE-ONLY before/after through the
-real incumbent observer/parser with identical account map, plan, tags and
-category. It must run under both the original and resulting categories, using
-the real current catalog labels. It must bind a parser revision and compare all ownership, fuel,
-merchant/category, payment/transfer/settlement and other derived effects.
-Missing or changed effects refuse the write. The implementation adds no second
-parser, safe-word allowlist or owner inference. Audit attribution lives in the
-receipt rather than being appended to the provider note.
+## Default-off installation boundary
 
-The tests' synthetic effect evaluator proves rejection wiring, not production
-parser equivalence. Real observer/map/plan proof is required before note activation. The smallest
-initial production option is category-only, with notesEnabled remaining false.
-No observer, Forecast engine, map or financial plan is changed here.
+Runtime variables exist as code interfaces only; none are configured here:
+ATLAS_STANDING_CORRECTIONS_ENABLED, ATLAS_STANDING_STORE_PATH,
+ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH. Missing/invalid configuration, Windows or
+a nonprivate installation leaves the capability unavailable. Existing tools and
+OAuth JWT issuer/JWKS/audience/resource/expiry/subject validation are unchanged.
 
-## Lunch Money rules assessment — support only
+A valid capability adds four tools and requires
+atlas.transactions.correct-with-grant in addition to current-read and transaction
+read/write scopes. The prepared server patch couples metadata, HTTP step-up and dispatch to the
+same capability state; that production integration remains blocked by the
+#548 hard hold. A flag or OAuth scope alone cannot authorize a correction.
 
-Atlas currently exposes no rule creation/management tool. Lunch Money documents
-manual rule creation and automatic category-rule creation in its UI, with
-optional execution on transaction updates:
-https://support.lunchmoney.app/setup/rules
-https://support.lunchmoney.app/setup/categories/faq
+The signed context must contain an unexpired, explicitly approved provider API
+contract proof. Synthetic proof is accepted only by direct testOnly injection,
+never by production server configuration. Unknown/expired rule effects refuse
+activation and writes. Default env parsing does not configure a store or consent. The unchanged
+production server injects no standing runtime, so these tools remain unavailable
+there even before the provider-contract and activation prerequisites.
 
-The current public v2 API reference/overview inspection did not establish a
-documented rule-management endpoint:
-https://lunchmoney.dev/v2/docs
-https://lunchmoney.dev/v2/overview
+## Authoritative provider contract and remaining blocker
 
-This is not a claim that UI settings apply identically to API PUT requests.
-Provider rule side effects must be verified separately; they cannot be inferred
-from transaction readback. No rule creation, retrospective application, private
-API/cookie use or provider settings change belongs to this foundation.
+Checked 2026-10-09:
+- https://lunchmoney.dev/v2/overview documents PUT validation and field behavior.
+- https://github.com/lunch-money/lunch-money-js-v2/blob/main/src/types.generated.ts
+  (inspected blob 66d71737f0dce66f50bbe0de680fd5b9a77ee9df, SDK 2.11.1) documents
+  updateTransaction's update_balance=false query parameter; no rule-suppression
+  option is present for that update operation.
+- https://support.lunchmoney.app/setup/rules describes automatic category-rule
+  creation and optional rules running on transaction updates.
 
-## Proof and closure
+These sources do NOT establish that API category PUT bypasses both rule creation
+and execution. UI semantics are not proof of API behavior; readback of one
+transaction cannot establish absence of rules/other-target effects. Therefore
+production provider-rule safety is a concrete unresolved prerequisite. Obtain
+authoritative API-specific confirmation or a separately owner-approved rehearsal
+before an actual provider-contract proof is installed. This task conducts none.
+No rule creation/management endpoint or provider setting change is added.
 
-test-assistant-lunchmoney.js retains all incumbent assertions, then runs the new
-synthetic test file. That keeps the held shared registry untouched while making
-the new suite reachable by the existing npm test route. The new suite covers
-default-off, missing adapters/scopes, principal/client/budget/evidence binding,
-grant expiry/revocation/limits, note preservation/effects, forbidden fields,
-staleness/category invalidation, mode separation, single use, concurrent applies,
-durable-before-write audit order and uncertainty/audit-failure blocks. Added
-negative controls cover commit-then-throw plus failed suspension and a new service
-instance, lost acknowledgment after known audit, stale provider reads after
-reservation, overlapping grants on separate instances sharing a synthetic
-lease authority, final evidence/version expiry and note effects that appear
-only under the resulting category. The in-memory authority models the contract;
-it does not establish persistence or multi-process correctness for a real store. Official
-MCP SDK in-memory sessions prove default tool invisibility, distinct permission
-metadata, scope refusal before dispatch, unchanged interactive confirmation and
-a complete synthetic standing prepare/apply/audit exchange.
+## Verification and activation
 
-The separate read-only standing-correction CI workflow executes the focused
-Node integration and unchanged HTTP/JWT suite without production credentials.
-It does not modify the existing full-suite or privacy workflows.
+Synthetic proof exercises genuine owner signatures/exact digests, forged grants,
+delegated-vs-independent provenance, uncertainty/mixed facts, real temporary
+storage, two process contention, replay/revocation across restart, fsync/rename
+crash, committed audit reply loss plus failed suspension, signed dead-lock
+recovery, read-only reconciliation, actual MCP-to-store-to-mock-provider category
+execution and unchanged interactive/default HTTP/JWT behavior. Public fixtures
+contain only synthetic data. Full npm test on a superseded head is not a final
+candidate certificate.
 
-Required validation: node test/test-assistant-standing-corrections.js,
-node test/test-assistant-lunchmoney.js, npm test, incumbent privacy guard and
-exact-head CI. A simulated policy or V8 syntax pass is not a Node integration
-or full-suite certificate.
-
-## Concrete end-to-end dependencies
-
-The foundation cannot yet perform Dale's live workflow. These are finite
-implementation dependencies, separate from owner activation:
-
-| Dependency | Build and synthetic proof now, without activating | Owner decision / activation boundary |
-| --- | --- | --- |
-| Private authority | Implement one bounded grant/evidence/attempt/receipt registry, atomic target leases across overlapping grants, durable quarantine and acknowledgment. Exercise two processes, restart, storage errors, commit-then-throw, stale readers, evidence replay, budget isolation and revocation using temporary synthetic storage. A durable file authority may suffice for one host if lock/atomic-replace/fsync/backup behavior is proven; multi-host needs a shared transactional authority. This is not a general household ledger. | Select the concrete private durable location/backend, process topology, access, backup/recovery and audit retention. Install only after exact approval. No real registry is created here. |
-| Owner control | Build an owner-only provision/list/revoke/reconcile CLI or route. Produce the canonical grant digest and explicit bounded approval receipt. Reconciliation reads provider state and audits; it never retries writes. Test that MCP/model/source text cannot provision grants or release unknown outcomes. | The owner approves the exact grant digest and owner authentication surface. Revocation and read-only recovery must be usable before enabling writes. |
-| Evidence provenance | Implement a typed trusted receipt/source attestor that verifies source identity and digest, exact item-to-category policy, transaction identity/before fingerprint, immutable proposed body and no ambiguous/mixed/split case. Test forged attestations, ambiguous matches, source injection, duplicate evidence and expiry. A policy string or confidence flag alone is insufficient. | Approve the actual private evidence ingress and named deterministic classification policy. Public fixtures stay synthetic. No household source is ingested here. |
-| Provider semantics | Add read-only documentation/contract proof plus a separately authorized provider rehearsal to establish transaction PUT rule creation/execution and untouched-field behavior. Unknown rule effects keep the feature unavailable. | Approve any live rehearsal separately. No rule creation/settings/actual writes are authorized by this build. |
-| Note effects | Build real incumbent observer/parser equivalence tests with synthetic account map, plan, tags and current category catalog; compare all derived ownership/classification/payment effects at original and destination categories. | Category-only can be considered first. Notes remain separately off until parser proof and exact note permission are reviewed and approved. |
-| Product wiring | Install the reviewed authority/attestor dependencies behind an explicit disabled configuration and couple conditional tools, metadata and step-up to the same capability state. Verified HTTP client forwarding is already implemented in the MCP adapter. Test default construction, withheld scope, mixed batches, full HTTP JWT client binding and revoked grants. | Approve exact resource/deployment and issuer consent for the additional scope. Existing read/write tokens acquire no new grant implicitly. |
-
-All build/test items can be prepared disabled with synthetic data under the
-current request. Installing persistent household access, accepting household
-evidence, widening issuer consent or enabling execution requires a separate
-exact owner approval. No broad activation approval is requested for an
-unfinished adapter. Green foundation tests are not end-to-end readiness.
-Independent advisory review of 94ef3d2 identified the missing adapter/provenance
-and commit/reply-loss problems; this revision addresses contract/wiring and
-synthetic negative controls, while actual-store and real-parser proof remain
-open. It is not a Systems PASS.
-
-Before activation, Dale must approve the exact reviewed implementation SHA,
-deployment/resource, verified subject and client, provider budget/credential
-binding, named account/date/category/evidence scope, notes permission, expiry,
-attempt ceiling, revocation method, private audit storage/access/retention and
-the issuer's additional permission/consent. This must be a separate exact
-approval after the adapter and provider semantics are concrete and reviewed.
-That approval cannot authorize splits, payments, rules or Forecast changes
-through this capability. Atlas Contract / Systems Review is required before
-merge. This task stops at Draft and performs no activation, deployment, merge,
-security setting change, OAuth grant expansion or provider write.
+Before activation, the owner must approve the exact reviewed SHA and deployment/
+resource, pinned owner key/operator channel, durable private directory/topology/
+permissions/backup/access/audit retention, provider API semantics proof, exact
+subject/client/budget/credential/accounts/dates/category signatures, named
+delegated policy with its provenance limits, expiry/attempt ceiling, working
+revocation/recovery and additional issuer consent. Notes remain disabled until
+real observer/map/plan/tag/catalog parser proof and separate exact permission.
+Atlas Contract / Systems Review is required before merge; this task stops at
+Draft and performs no activation or merge.

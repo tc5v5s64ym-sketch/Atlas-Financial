@@ -22,9 +22,20 @@ const changes = z.object({ categoryRef: ref.nullable().optional(), notes: z.stri
   .strict().refine(v => Object.keys(v).length > 0);
 const standingChanges = z.object({ categoryRef: ref.optional(), notesAppend: z.string().min(1).max(500).optional() })
   .strict().refine(v => Object.keys(v).length > 0);
+const delegatedReview = z.object({
+  schema: z.literal(Standing.DELEGATED_POLICY), status: z.enum(['resolved', 'uncertain']),
+  sources: z.array(z.object({ system: z.enum(['gmail', 'library', 'user-provided', 'other-authorized']),
+    reference: z.string().min(1).max(300), excerptDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(5),
+  facts: z.object({ date, payee: z.string().min(1).max(200), amount: money, currency: z.string().regex(/^[a-z]{3}$/),
+    completeReceipt: z.boolean(), items: z.array(z.object({ description: z.string().min(1).max(200),
+      amount: money, categoryRef: ref }).strict()).min(1).max(40) }).strict(),
+  rationale: z.string().min(1).max(1000), issues: z.array(z.string().max(200)).max(10),
+}).strict();
 const grantRef = z.string().regex(/^grant-[a-f0-9]{24}$/);
 const evidenceRef = z.string().regex(/^evidence-[a-f0-9]{24}$/);
 const schemas = {
+  submitStandingEvidence: z.object({ transactionRef: ref, grantRef, categoryRef: ref, review: delegatedReview }).strict(),
+  standingAudit: z.object({ grantRef }).strict(),
   prepareStanding: z.object({ transactionRef: ref, grantRef, evidenceRef, changes: standingChanges }).strict(),
   applyStanding: z.object({ previewId: z.string().regex(/^edit-[a-f0-9]{48}$/) }).strict(),
   catalog: z.object({}).strict(),
@@ -83,7 +94,7 @@ function readFailure(operation, error) {
     ...(requestError && error.upstreamStatus !== undefined ? { upstreamStatus: error.upstreamStatus } : {}) } };
 }
 function requiredScope(operation) {
-  if (operation === 'prepareStanding' || operation === 'applyStanding') return Standing.SCOPE;
+  if (['prepareStanding', 'applyStanding', 'submitStandingEvidence', 'standingAudit'].includes(operation)) return Standing.SCOPE;
   if (operation === 'prepare' || operation === 'apply') return WRITE_SCOPE;
   if (operation === 'catalog' || operation === 'query') return READ_SCOPE;
   return null;
@@ -223,8 +234,8 @@ function createService(options = {}) {
       groupParent: tx.is_group_parent === true, groupChild: tx.group_parent_id != null,
       updatedAt: tx.updated_at || null };
   }
-  async function catalogData(principal, includeBalances = false) {
-    const [c, p, m] = await Promise.all([request('GET', '/categories'), request('GET', '/plaid_accounts'), request('GET', '/manual_accounts')]);
+  async function catalogData(principal, includeBalances = false, credentialGate) {
+    const [c, p, m] = await Promise.all([request('GET', '/categories', undefined, credentialGate), request('GET', '/plaid_accounts', undefined, credentialGate), request('GET', '/manual_accounts', undefined, credentialGate)]);
     if (!Array.isArray(c.categories) || !Array.isArray(p.plaid_accounts) || !Array.isArray(m.manual_accounts)) throw new Error('catalog-unavailable');
     const categories = c.categories.flatMap(row => [row, ...(row.children || [])]);
     const observedAt = now();
@@ -236,10 +247,10 @@ function createService(options = {}) {
     ].map(a => ({ ...a, ref: accountAlias(a.type, a.providerId, principal, a.label) }));
     return { categories, accounts, observedAt };
   }
-  async function categoryId(value, principal) {
+  async function categoryId(value, principal, credentialGate) {
     if (value === null) return null;
     const id = resolve(value, 'cat', principal).id;
-    const category = await request('GET', '/categories/' + id);
+    const category = await request('GET', '/categories/' + id, undefined, credentialGate);
     if (category.id !== id || category.is_group || category.archived) throw new Error('category-not-editable');
     return id;
   }
@@ -311,6 +322,33 @@ function createService(options = {}) {
       rows: selected.slice(start, start + limit), matchedCount: selected.length, hasMore: start + limit < selected.length,
       nextOffset: start + limit < selected.length ? start + limit : null, referenceExpiresInSeconds: TTL / 1000 };
   }
+  async function categoryContextFor(tx, destination, credentialGate) {
+    const from = tx.category_id == null ? null : await request('GET', '/categories/' + tx.category_id, undefined, credentialGate);
+    const to = await request('GET', '/categories/' + destination, undefined, credentialGate);
+    if (from && from.id !== tx.category_id || to.id !== destination || to.is_group || to.archived) throw new Error('category-not-editable');
+    return { from: Standing.categorySignature(from), to: Standing.categorySignature(to) };
+  }
+  async function submitStandingEvidence(input, auth) {
+    if (!Standing.available(standing) || typeof standing.adapter.admit !== 'function') return fail('standing-evidence-admission-disabled');
+    const context = await standing.adapter.context();
+    const credentialGate = async candidate => { if (candidate.credentialDigest !== context.credentialDigest) throw new Error('provider-credential-changed'); };
+    const target = resolve(input.transactionRef, 'tx', auth.principal);
+    const tx = await request('GET', '/transactions/' + target.id, undefined, credentialGate); editable(tx);
+    if (tx.id !== target.id) throw new Error('identity-mismatch');
+    const category = await categoryId(input.categoryRef, auth.principal, credentialGate);
+    const body = { category_id: category };
+    const review = { ...input.review, facts: { ...input.review.facts, items: [] } };
+    for (const item of input.review.facts.items) review.facts.items.push({
+      description: item.description, amount: item.amount, category_id: await categoryId(item.categoryRef, auth.principal, credentialGate) });
+    const categoryContext = await categoryContextFor(tx, category, credentialGate);
+    const admitted = await standing.adapter.admit({ grantRef: input.grantRef, auth, tx, body, review, categoryContext });
+    return { status: 'evidence-recorded', providerWrite: false, ...admitted,
+      instruction: 'Delegated client assertions passed server consistency and grant checks. Atlas did not fetch or independently verify the source. Prepare the exact category correction using this evidenceRef.' };
+  }
+  async function standingAudit(input, auth) {
+    if (!Standing.available(standing) || typeof standing.adapter.audit !== 'function') return fail('standing-audit-disabled');
+    return { status: 'audit', providerWrite: false, receipts: await standing.adapter.audit({ ...input, auth }) };
+  }
   async function prepare(input, auth, standingInput = null) {
     const target = resolve(input.transactionRef, 'tx', auth.principal);
     const tx = await request('GET', '/transactions/' + target.id); editable(tx);
@@ -333,6 +371,7 @@ function createService(options = {}) {
     const cat = await catalogData(auth.principal);
     const authorization = standingInput ? await Standing.authorize(standing, {
       ...standingInput, auth, tx, body, fingerprint: fingerprint(tx), now: now(),
+      ...(body.category_id == null ? {} : { categoryContext: await categoryContextFor(tx, body.category_id) }),
     }) : null;
     sweep(); if (previews.size >= 100) throw new Error('preview-capacity');
     const id = 'edit-' + crypto.randomBytes(24).toString('hex');
@@ -364,6 +403,8 @@ function createService(options = {}) {
     preview.used = true;
     locks.add(preview.targetId);
     let writeAttempted = false;
+    let executionCredentialDigest = null;
+    const executionGate = async candidate => { if (candidate.credentialDigest !== executionCredentialDigest) throw new Error('provider-credential-changed'); };
     let reservation = null;
     let afterRead = null;
     let auditAttempt = null;
@@ -407,7 +448,7 @@ function createService(options = {}) {
           evidenceRef: preview.authorization.evidenceRef, startedAt: new Date(startedAt).toISOString(),
           finishedAt: new Date(now()).toISOString(), outcome: result.status,
           before: auditAttempt.before, proposed: auditAttempt.proposed, after: afterRead,
-          actorRef: receipt.actorRef } };
+          actorRef: receipt.actorRef, evidenceProvenance: preview.authorization.evidenceProvenance || null } };
       } catch (_) {
         blockedStandingGrants.add(preview.authorization.grantRef);
         try { await standing.adapter.suspend({ ...preview.authorization, attemptRef: reservation.attemptRef,
@@ -425,16 +466,21 @@ function createService(options = {}) {
       }
       const beforeSend = async ({ credentialDigest }) => {
         if (standingMode) {
+          executionCredentialDigest = credentialDigest;
           if (preview.expires <= now()) throw new Error('preview-expired');
           const boundary = await Standing.authorize(standing, {
             ...preview.authorization, auth, credentialDigest, tx: current, body: preview.body,
+            ...(preview.body.category_id == null ? {} : { categoryContext: await categoryContextFor(current, preview.body.category_id, executionGate) }),
             fingerprint: fingerprint(current), now: now(),
           });
           if (JSON.stringify(boundary) !== JSON.stringify(preview.authorization)) throw new Error('standing-grant-changed');
-          const cat = await catalogData(auth.principal);
+          const cat = await catalogData(auth.principal, false, executionGate);
           auditCatalog = cat;
           const attempt = { ...boundary, previewId: input.previewId, principal: auth.principal, clientId: auth.clientId,
-            transactionId: preview.targetId, beforeFingerprint: preview.fingerprint, proposedFingerprint: fingerprint(preview.body),
+            transactionId: preview.targetId, beforeProvider: current, expectedCategory: preview.body.category_id,
+            untargetedFingerprint: require('./assistant-standing-store').protectedFingerprint(current),
+            categoryContext: preview.body.category_id == null ? null : await categoryContextFor(current, preview.body.category_id),
+            beforeFingerprint: preview.fingerprint, proposedFingerprint: fingerprint(preview.body),
             expiresAt: preview.expires, requestedAt: now(),
             before: project(current, auth.principal, cat.categories, cat.accounts),
             proposed: { ...(preview.body.category_id === undefined ? {} : { categoryRef: alias('cat', preview.body.category_id, auth.principal) }),
@@ -462,7 +508,8 @@ function createService(options = {}) {
             const category = await request('GET', '/categories/' + preview.body.category_id, undefined, credentialGate);
             if (category.id !== preview.body.category_id || category.archived || category.is_group) throw new Error('category-not-editable');
           }
-          const lease = await standing.adapter.verifyReservation({ ...attempt, reservation, checkedAt: now() });
+          const lease = await standing.adapter.verifyReservation({ ...attempt, reservation, checkedAt: now(),
+            categoryContext: preview.body.category_id == null ? null : await categoryContextFor(lockedCurrent, preview.body.category_id, credentialGate) });
           if (!lease || lease.valid !== true || lease.attemptRef !== reservation.attemptRef
               || preview.expires <= now()) throw new Error('standing-reservation-no-longer-valid');
         }
@@ -471,7 +518,7 @@ function createService(options = {}) {
       if (!standingMode) writeAttempted = true;
       await request(preview.splits ? 'POST' : 'PUT', preview.splits
         ? '/transactions/split/' + preview.targetId : '/transactions/' + preview.targetId + '?update_balance=false', preview.body, beforeSend);
-      const after = await request('GET', '/transactions/' + preview.targetId);
+      const after = await request('GET', '/transactions/' + preview.targetId, undefined, standingMode ? executionGate : undefined);
       if (standingMode) afterRead = project(after, auth.principal, auditCatalog.categories, auditCatalog.accounts);
       let verified = after.id === preview.targetId;
       if (preview.splits) {
@@ -489,9 +536,15 @@ function createService(options = {}) {
           && (preview.body.category_id !== undefined || after.category_id === current.category_id)
           && (preview.body.notes !== undefined || (after.notes ?? '') === (current.notes ?? ''));
       }
-      if (standingMode) verified = verified && Standing.unchangedOtherFields(current, after, preview.body);
+      if (standingMode) {
+        verified = verified && Standing.unchangedOtherFields(current, after, preview.body);
+        if (preview.authorization.evidenceProvenance) {
+          const afterContext = await categoryContextFor(current, preview.body.category_id);
+          verified = verified && JSON.stringify(afterContext) === JSON.stringify(auditAttempt.categoryContext);
+        }
+      }
       if (!verified) return await audit({ status: 'write-unverified', reason: 'readback-did-not-match-do-not-retry', providerWriteMayHaveOccurred: true });
-      const cat = await catalogData(auth.principal);
+      const cat = await catalogData(auth.principal, false, standingMode ? executionGate : undefined);
       afterRead = project(after, auth.principal, cat.categories, cat.accounts);
       return await audit({ status: 'applied', verifiedByReadback: true, writesAtlasState: false,
         transaction: project(after, auth.principal, cat.categories, cat.accounts),
@@ -517,12 +570,13 @@ function createService(options = {}) {
     if (denied) return denied;
     const parsed = schemas[operation]?.safeParse(args);
     if (!parsed?.success) return fail('invalid-arguments');
-    try { return await ({ catalog, query, prepare, apply, prepareStanding, applyStanding })[operation](parsed.data, auth); }
+    try { return await ({ catalog, query, prepare, apply, prepareStanding, applyStanding, submitStandingEvidence, standingAudit })[operation](parsed.data, auth); }
     catch (error) {
       return operation === 'catalog' || operation === 'query'
         ? readFailure(operation, error) : fail('lunchmoney-operation-unavailable');
     }
   }
-  return { invoke, standingEnabled: Standing.available(standing) };
+  return { invoke, standingEnabled: Standing.available(standing),
+    standingAdmissionEnabled: Standing.available(standing) && typeof standing.adapter.admit === 'function' && typeof standing.adapter.audit === 'function' };
 }
 module.exports = { READ_SCOPE, WRITE_SCOPE, STANDING_SCOPE: Standing.SCOPE, TTL, schemas, cents, requiredScope, scopeDenial, createService };

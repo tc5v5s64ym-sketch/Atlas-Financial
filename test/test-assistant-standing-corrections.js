@@ -372,9 +372,9 @@ module.exports = (async () => {
     scopes: [LM.READ_SCOPE] }, body: { auth: { principal: 'forged-owner', clientId: 'forged-client',
     scopes: [LM.WRITE_SCOPE, Standing.SCOPE] } } };
   assert.deepEqual(MCP.authFromVerifiedRequest(verifiedReq), {
-    principal: 'verified-subject', clientId: 'verified-client', scopes: [LM.READ_SCOPE] });
+    principal: 'verified-subject', clientId: 'verified-client', resource: undefined, scopes: [LM.READ_SCOPE] });
   assert.deepEqual(MCP.authFromVerifiedRequest({ body: verifiedReq.body }), {
-    principal: undefined, clientId: undefined, scopes: [] });
+    principal: undefined, clientId: undefined, resource: undefined, scopes: [] });
   let invoked = 0;
   await withMcp({ standingEnabled: true, invoke: async () => { invoked++; throw new Error('must not dispatch'); } },
     { ...f.auth, scopes: [LM.READ_SCOPE, LM.WRITE_SCOPE] }, async client => {
@@ -401,4 +401,4 @@ module.exports = (async () => {
     assert.equal(wired.state.writes.length, 1);
   });
   console.log('Standing corrections: default off, exact scope/grant/evidence binding, revocation/limits, notes effects, audit, stale/replay/races and unchanged interactive contract PASS');
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().then(() => require('./test-assistant-standing-store')).catch(error => { console.error(error); process.exitCode = 1; });

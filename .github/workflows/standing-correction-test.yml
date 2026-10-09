@@ -27,6 +27,8 @@ jobs:
         run: npm ci --omit=dev
       - name: Prove bounded synthetic standing contract
         run: node test/test-assistant-standing-corrections.js
+      - name: Prove actual durable authority and two-process category execution
+        run: node test/test-assistant-standing-store.js
       - name: Prove incumbent interactive contract
         run: node test/test-assistant-lunchmoney.js
       - name: Prove incumbent HTTP and JWT boundary
