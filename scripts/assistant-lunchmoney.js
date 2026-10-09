@@ -420,7 +420,7 @@ function createService(options = {}) {
       review.categoryReceipt.facts.items = items;
     }
     const effects = await standing.adapter.cleanupEffects(candidate);
-    if (effects.metadataNeutral !== true || effects.parserRevision !== context.parserRevision
+    if (effects.metadataNeutral !== true || effects.categoryEvidenceNeutral !== true || effects.parserRevision !== context.parserRevision
         || effects.financialContextDigest !== context.financialContextDigest) return fail('cleanup-financial-effect-changed');
     const admitted = await standing.adapter.admit({ ...candidate, grantRef: input.grantRef, auth, review,
       cleanupInstruction: input.cleanupInstruction, transferProof: effects.transferProof });

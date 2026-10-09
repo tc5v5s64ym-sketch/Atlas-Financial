@@ -149,7 +149,7 @@ async function authorize(options, input) {
     if (financialEffects?.schema !== 'atlas-cleanup-financial-effects/v1'
         || financialEffects.parserRevision !== context.parserRevision
         || financialEffects.financialContextDigest !== context.financialContextDigest
-        || financialEffects.metadataNeutral !== true) deny('cleanup-financial-effect-changed');
+        || financialEffects.metadataNeutral !== true || financialEffects.categoryEvidenceNeutral !== true) deny('cleanup-financial-effect-changed');
     if (evidence.transferProof && !same(evidence.transferProof, financialEffects.transferProof)) deny('cleanup-transfer-proof-changed');
   } else if (input.body.notes !== undefined) {
     if (options.notesEnabled !== true) deny('standing-notes-disabled');

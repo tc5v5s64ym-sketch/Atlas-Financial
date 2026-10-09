@@ -39,7 +39,19 @@ function projection(inputs, payload) {
   const rows = F.baselineTrajectory(result.data.plan, result.data.debts, result.data.meta.asOf, {
     ...result.data.plan.defaults, periods: inputs.periods, currentPeriodActuals: result.data.liveOverlay.currentPeriodActuals });
   check(rows.status === 'ready');
-  return financial({ report: result.report, data: result.data, forecast, rows });
+  return { report: result.report, data: result.data, forecast, rows };
+}
+function categoryFacts(projected) {
+  const packet = projected.data.liveOverlay.currentPeriodActuals;
+  const permitted = new Set(['categoryLabel', 'confirmedGrocery', 'confirmedFuel', 'fuelEvidence']);
+  return financial({ packet: { ...packet, transactions: packet.transactions.map(row =>
+    Object.fromEntries(Object.entries(row).filter(([key]) => !permitted.has(key)))) },
+    classifications: packet.transactions.map(row => {
+      const c = F.classifyCurrentPeriodTransaction(row, projected.data.plan, { packet, currentPeriodActuals: packet });
+      return c.householdSpending === true && ['spend', 'unclassified'].includes(c.kind)
+        ? { id: row.id, kind: 'household-spending' } : { id: row.id, ...c };
+    }),
+    cash: projected.data.plan.startingCash, debts: projected.data.debts });
 }
 function transferProof(payload, tx, metadataContext) {
   if (!metadataContext?.transfer) return undefined;
@@ -81,17 +93,19 @@ function evaluate({ inputs, tx, body, parserRevision, metadataContext }) {
   if (body.additional_tag_ids) updated.tag_ids = [...new Set([...tx.tag_ids, ...body.additional_tag_ids])].sort((a, b) => a - b);
   const digestFor = row => {
     const next = clone(payload); next.transactions = next.transactions.map(t => t.id === tx.id ? row : t);
-    return hash(projection({ data, accountMap, identity, periods }, next));
+    const projected = projection({ data, accountMap, identity, periods }, next);
+    return { financial: hash(financial(projected)), categoryFacts: hash(categoryFacts(projected)) };
   };
   const comparisons = [];
   for (const category of new Set([tx.category_id, body.category_id ?? tx.category_id])) {
-    comparisons.push({ category, before: digestFor({ ...tx, category_id: category }),
-      after: digestFor({ ...updated, category_id: category }) });
+    const before = digestFor({ ...tx, category_id: category }), after = digestFor({ ...updated, category_id: category });
+    comparisons.push({ category, before: before.financial, after: after.financial, categoryFacts: before.categoryFacts });
   }
   const categoryBefore = comparisons[0].before, categoryAfter = comparisons.at(-1).before;
   return { schema: 'atlas-cleanup-financial-effects/v1', parserRevision,
     financialContextDigest: contextDigest({ data, accountMap, identity, periods }),
     metadataNeutral: comparisons.every(c => c.before === c.after), comparisons,
+    categoryEvidenceNeutral: comparisons[0].categoryFacts === comparisons.at(-1).categoryFacts,
     categoryBefore, categoryAfter,
     categoryEffect: categoryBefore === categoryAfter ? 'none' : 'authorized-category-reclassification',
     ...(metadataContext?.transfer ? { transferProof: transferProof(payload, tx, metadataContext) } : {}) };

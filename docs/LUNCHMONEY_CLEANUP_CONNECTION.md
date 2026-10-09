@@ -119,6 +119,12 @@ confirmation identity cannot change. Category corrections also retain #559's
 full-receipt proof and pinned semantic transition. The connection does not invent
 classification or household policy to make a proof pass.
 
+Category-only comparisons additionally preserve the actual sanitized packet,
+ownership/payment/transfer/income/settlement classifications, cash and debt facts;
+only the intended spending category and grocery/fuel category flags may vary.
+Payment/transfer meaning introduced by a category name is refused even when its
+provider income/exclusion flags are unchanged.
+
 A final credential-pinned target GET follows all asynchronous effect/catalog
 checks. Separate readback verifies requested fields, exact tag union and all
 untargeted fields except updated_at. Unknown/unexpected provider results remain

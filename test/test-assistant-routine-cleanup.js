@@ -210,6 +210,14 @@ async function main() {
   assert.equal(cp.financialEffects.categoryEffect, 'authorized-category-reclassification');
   assert.equal((await category.service.invoke('applyStanding', { previewId: cp.previewId }, category.auth)).status, 'applied');
   assert.equal(category.tx.category_id, 13); assert.equal(category.tx.amount, '30');
+  for (const name of ['Transfer', 'Payment']) {
+    const danger = household(); danger.payload.categories.push({ id: 16, name, is_income: false,
+      exclude_from_budget: false, exclude_from_totals: false });
+    const proof = E.evaluate({ inputs: danger, tx: danger.payload.transactions.find(t=>t.id===91004),
+      body: { category_id: 16 }, parserRevision: 'synthetic' });
+    assert.equal(proof.metadataNeutral, true);
+    assert.equal(proof.categoryEvidenceNeutral, false, 'same provider income/exclusion flags do not permit changed financial meaning');
+  }
   const categoryUnsafe = await fixture(false, categoryInstruction);
   categoryUnsafe.inputs.payload.categories.find(c=>c.id===13).is_income = true;
   categoryUnsafe.grant.categoryTransitions = [{ from: 12, to: 13,
