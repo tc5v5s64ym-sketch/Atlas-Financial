@@ -429,55 +429,12 @@
     }, true);
   }
 
-  // One row per engine status id. A null word draws no chip.
-  // belowBuffer stays null: a null-low defect can print a false Tight.
-  // Restore it later by replacing null with ['Tight', 'warn'].
-  const PLAN_STATUS = {
-    onPlan: ['On plan', 'good'],
-    belowBuffer: null,
-    negative: ['Short', 'crit'],
-    gap: ['Short', 'crit'],
-    unfunded: ['Short', 'crit'],
-    combination: ['Short', 'crit'],
-    overrideBreach: ['Short', 'crit'],
-    infeasible: null,
-    unavailable: null,
-  };
-
   function paintPlanStatus(hero) {
-    if (!selectedPeriodIsCurrent(hero)) {
-      hero.querySelector('.blend-plan-chip')?.remove();
-      hero.querySelector('.blend-plan-note')?.remove();
-      return;
-    }
-    const panelBodyNode = hero.querySelector('.blend-hero-panel-body');
-    if (panelBodyNode && !hero.querySelector('.blend-plan-note')) {
-      const note = document.createElement('p');
-      note.className = 'blend-plan-note';
-      note.textContent = 'Plan status covers the next 13 weeks, not just this pay period.';
-      panelBodyNode.appendChild(note);
-    }
-    const band = document.getElementById('status-band');
-    const id = band && band.getAttribute('data-plan-status');
-    const mapped = id && Object.prototype.hasOwnProperty.call(PLAN_STATUS, id) ? PLAN_STATUS[id] : null;
-    let chip = hero.querySelector('.blend-plan-chip');
-    if (!mapped) {
-      chip?.remove();
-      return;
-    }
-    if (!chip) {
-      chip = document.createElement('span');
-      const hidden = document.createElement('span');
-      hidden.className = 'budget-cash-sr';
-      const word = document.createElement('span');
-      word.className = 'blend-plan-word';
-      chip.append(hidden, word);
-      const row = hero.querySelector('.blend-hero-id') || top;
-      row?.appendChild(chip);
-    }
-    chip.className = 'blend-plan-chip is-' + mapped[1];
-    chip.querySelector('.budget-cash-sr').textContent = 'Plan status (13-week window)';
-    chip.querySelector('.blend-plan-word').textContent = mapped[0];
+    // Forecast's status describes the whole planning window. A verdict beside
+    // these dates requires a qualified selected-period publication from Forecast.
+    // Keep the native status band and its identity hook; clear only face additions.
+    hero.querySelector('.blend-plan-chip')?.remove();
+    hero.querySelector('.blend-plan-note')?.remove();
   }
 
   function paintHeroTop(hero) {

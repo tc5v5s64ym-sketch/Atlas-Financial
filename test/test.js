@@ -136,6 +136,7 @@ const suites = [
   ['Salary matcher diagnostic existing authenticated readback', 'test-salary-diagnostic-auth.js'],
   ['active Budget surface: one renderer, Forecast figures, drilldown and withheld states', 'test-budget-surface.js'],
   ['Budget owner-voice presentation', 'test-budget-owner-voice.js'],
+  ['Budget hero cannot borrow whole-window confidence', 'test-budget-plan-status-scope.js'],
   ['Plan homepage decision desk', 'test-plan-decision-desk.js'],
   ['cash-waterfall household homepage', 'test-cash-waterfall-view.js'],
   ['chequing availability headline', 'test-chequing-availability.js'],
