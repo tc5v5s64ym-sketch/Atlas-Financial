@@ -31,5 +31,7 @@ jobs:
         run: node test/test-assistant-standing-store.js
       - name: Prove incumbent interactive contract
         run: node test/test-assistant-lunchmoney.js
+      - name: Prove preserving metadata cleanup and reusable previews
+        run: node test/test-assistant-cleanup.js
       - name: Prove incumbent HTTP and JWT boundary
         run: node test/test-assistant-interface.js

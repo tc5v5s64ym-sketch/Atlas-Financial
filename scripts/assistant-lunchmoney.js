@@ -6,20 +6,26 @@ const z = require('zod/v4');
 const Provider = require('./provider-observe.js');
 const Credentials = require('./local-credentials.js');
 const Standing = require('./assistant-standing-corrections.js');
+const Cleanup = require('./assistant-cleanup-instructions.js');
 const READ_SCOPE = 'atlas.transactions.read';
 const WRITE_SCOPE = 'atlas.transactions.write';
 const TTL = 10 * 60 * 1000;
 const MAX_REFS = 10000;
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v =>
   Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v);
-const ref = z.string().regex(/^(tx|cat|acct)-[a-f0-9]{24}$/);
+const ref = z.string().regex(/^(tx|cat|acct|tag)-[a-f0-9]{24}$/);
 const money = z.string().regex(/^-?\d{1,10}(\.\d{1,2})?$/);
 // Provider evidence is a decimal string with up to four places. Read it
 // verbatim; the separate `money`/cents contract governs caller/write input.
 const providerMoney = z.string().max(64).regex(/^-?\d+(\.\d{1,4})?$/);
 const child = z.object({ amount: money, categoryRef: ref.nullable(), notes: z.string().max(1000).optional() }).strict();
-const changes = z.object({ categoryRef: ref.nullable().optional(), notes: z.string().max(1000).optional() })
-  .strict().refine(v => Object.keys(v).length > 0);
+const changes = z.object({ categoryRef: ref.nullable().optional(), notes: z.string().max(1000).optional(),
+  payee: Cleanup.text.optional(), notesAppend: Cleanup.note.optional(),
+  tagRefsAdd: z.array(ref).min(1).max(20).optional(),
+  transferLabel: z.object({ fromAccountRef: ref, toAccountRef: ref }).strict().optional(),
+}).strict().refine(v => Object.keys(v).length > 0 && !(v.notes !== undefined && v.notesAppend !== undefined)
+  && !(v.payee !== undefined && v.transferLabel !== undefined)
+  && (!v.tagRefsAdd || new Set(v.tagRefsAdd).size === v.tagRefsAdd.length));
 const standingChanges = z.object({ categoryRef: ref.optional(), notesAppend: z.string().min(1).max(500).optional() })
   .strict().refine(v => Object.keys(v).length > 0);
 const delegatedReview = z.object({
@@ -34,18 +40,20 @@ const delegatedReview = z.object({
 const grantRef = z.string().regex(/^grant-[a-f0-9]{24}$/);
 const evidenceRef = z.string().regex(/^evidence-[a-f0-9]{24}$/);
 const schemas = {
+  cleanupInstruction: Cleanup.createSchema,
   submitStandingEvidence: z.object({ transactionRef: ref, grantRef, categoryRef: ref, review: delegatedReview }).strict(),
   standingAudit: z.object({ grantRef }).strict(),
   prepareStanding: z.object({ transactionRef: ref, grantRef, evidenceRef, changes: standingChanges }).strict(),
   applyStanding: z.object({ previewId: z.string().regex(/^edit-[a-f0-9]{48}$/) }).strict(),
-  catalog: z.object({}).strict(),
+  catalog: z.object({ includeTags: z.boolean().optional() }).strict(),
   query: z.object({ startDate: date, endDate: date, categoryRef: ref.optional(),
     accountRef: ref.optional(), excludeAccountRef: ref.optional(), merchant: z.string().trim().min(1).max(120).optional(),
     offset: z.number().int().min(0).max(10000).optional(), limit: z.number().int().min(1).max(200).optional() }).strict()
     .refine(v => v.startDate <= v.endDate && (Date.parse(v.endDate) - Date.parse(v.startDate)) <= 366 * 86400000
       && !(v.accountRef && v.excludeAccountRef)),
-  prepare: z.object({ transactionRef: ref, changes: changes.optional(), splits: z.array(child).min(2).max(20).optional() })
-    .strict().refine(v => !!v.changes !== !!v.splits),
+  prepare: z.object({ transactionRef: ref, changes: changes.optional(), splits: z.array(child).min(2).max(20).optional(),
+    cleanupInstruction: Cleanup.schema.optional() })
+    .strict().refine(v => [v.changes, v.splits, v.cleanupInstruction].filter(Boolean).length === 1),
   apply: z.object({ previewId: z.string().regex(/^edit-[a-f0-9]{48}$/), confirmed: z.literal(true) }).strict(),
 };
 function cents(value) {
@@ -81,6 +89,7 @@ const READ_ERROR_CODES = new Set([
   'reference-expired-or-unavailable', 'category-evidence-unavailable',
   'account-evidence-unavailable', 'catalog-unavailable', 'coverage-unavailable',
   'duplicate-provider-identity',
+  'tag-evidence-unavailable',
 ]);
 function readFailure(operation, error) {
   // Never expose error text, request URLs/headers, provider bodies or IDs.
@@ -96,7 +105,7 @@ function readFailure(operation, error) {
 function requiredScope(operation) {
   if (['prepareStanding', 'applyStanding', 'submitStandingEvidence', 'standingAudit'].includes(operation)) return Standing.SCOPE;
   if (operation === 'prepare' || operation === 'apply') return WRITE_SCOPE;
-  if (operation === 'catalog' || operation === 'query') return READ_SCOPE;
+  if (operation === 'catalog' || operation === 'query' || operation === 'cleanupInstruction') return READ_SCOPE;
   return null;
 }
 function scopeDenial(operation, auth = {}) {
@@ -153,8 +162,8 @@ function accountEvidence(row, kind, observedAt) {
 
 function createService(options = {}) {
   const env = options.env || process.env;
-  // No environment flag or grant store is wired in production. Activation is
-  // a separate owner-approved installation of this trusted dependency.
+  // Runtime construction is default-off. Reusable preview recipes confer no
+  // standing authority and never widen the category-only grant contract.
   const standing = options.standingCorrections || {};
   const blockedStandingGrants = new Set();
   const now = options.now || Date.now;
@@ -172,7 +181,7 @@ function createService(options = {}) {
     sweep();
     const key = kind + '-' + crypto.createHmac('sha256', salt).update(`${principal}:${kind}:${id}`).digest('hex').slice(0, 24);
     if (!refs.has(key) && refs.size >= MAX_REFS) throw new Error('reference-capacity');
-    refs.set(key, { kind, id, principal, ...extra, expires: now() + TTL });
+    refs.set(key, { ...refs.get(key), kind, id, principal, ...extra, expires: now() + TTL });
     return key;
   }
   function resolve(key, kind, principal) {
@@ -183,7 +192,8 @@ function createService(options = {}) {
   async function request(method, path, body, beforeSend) {
     const stage = path.startsWith('/transactions') ? 'transactions-request'
       : path.startsWith('/categories') ? 'categories-request'
-        : path.startsWith('/plaid_accounts') ? 'synced-accounts-request' : 'manual-accounts-request';
+        : path.startsWith('/tags') ? 'tags-request'
+          : path.startsWith('/plaid_accounts') ? 'synced-accounts-request' : 'manual-accounts-request';
     let token;
     try { token = await resolveToken(); }
     catch (_) { throw new ProviderRequestError('credential-unavailable', stage); }
@@ -226,6 +236,12 @@ function createService(options = {}) {
     const accountRow = account && accounts.find(a => a.type === account[0] && a.providerId === account[1]);
     return { transactionRef: alias('tx', tx.id, principal), date: tx.date, amount: tx.amount,
       currency: tx.currency, payee: safeText(tx.payee), notes: safeText(tx.notes),
+      originalBankDescription: safeText(tx.original_name),
+      originalBankDescriptionStatus: typeof tx.original_name === 'string' ? 'provider-reported' : 'unavailable',
+      tags: Array.isArray(tx.tag_ids) ? tx.tag_ids.map(id => {
+        const tagRef = alias('tag', id, principal);
+        return { tagRef, name: refs.get(tagRef).label || null };
+      }) : null,
       categoryRef: tx.category_id == null ? null : alias('cat', tx.category_id, principal),
       category: categories.find(c => c.id === tx.category_id)?.name || null,
       accountRef: accountRow?.ref || null, account: accountRow?.label || null,
@@ -254,12 +270,50 @@ function createService(options = {}) {
     if (category.id !== id || category.is_group || category.archived) throw new Error('category-not-editable');
     return id;
   }
+  async function tagsData(principal, credentialGate) {
+    const data = await request('GET', '/tags', undefined, credentialGate);
+    if (!Array.isArray(data.tags)) throw new Error('tag-evidence-unavailable');
+    const seen = new Set();
+    return data.tags.map(row => {
+      if (!Number.isSafeInteger(row.id) || row.id < 1 || seen.has(row.id)
+          || typeof row.name !== 'string' || !row.name.trim()) throw new Error('tag-evidence-unavailable');
+      seen.add(row.id);
+      return { tagRef: alias('tag', row.id, principal, { label: row.name }), name: safeText(row.name),
+        archived: row.archived === true, providerId: row.id };
+    });
+  }
+  function tagIds(tx) {
+    if (!Array.isArray(tx.tag_ids) || tx.tag_ids.some(id => !Number.isSafeInteger(id) || id < 1)
+        || new Set(tx.tag_ids).size !== tx.tag_ids.length) throw new Error('tag-evidence-unavailable');
+    return [...tx.tag_ids].sort((a, b) => a - b);
+  }
+  async function metadataContext(body, principal, transfer, credentialGate) {
+    const context = {};
+    if (body.additional_tag_ids) {
+      const tags = await tagsData(principal, credentialGate);
+      context.tags = body.additional_tag_ids.map(id => {
+        const row = tags.find(t => t.providerId === id && !t.archived);
+        if (!row) throw new Error('tag-not-editable');
+        return { id, name: row.name };
+      });
+    }
+    if (transfer) {
+      const cat = await catalogData(principal, false, credentialGate);
+      context.transfer = [transfer.fromAccountRef, transfer.toAccountRef].map(key => {
+        const row = cat.accounts.find(a => a.ref === key);
+        if (!row || !row.label) throw new Error('transfer-account-unavailable');
+        return { type: row.type, id: row.providerId, name: row.label };
+      });
+    }
+    return context;
+  }
   function editable(tx) {
     if (tx.is_pending || tx.is_split_parent || tx.split_parent_id != null
       || tx.is_group_parent || tx.group_parent_id != null || tx.status === 'delete_pending') throw new Error('transaction-not-editable');
   }
-  async function catalog(_, auth) {
+  async function catalog(input, auth) {
     const { categories, accounts, observedAt } = await catalogData(auth.principal, true);
+    const tags = input.includeTags ? await tagsData(auth.principal) : null;
     return { status: 'ok', source: 'Lunch Money v2', observedAt: new Date(observedAt).toISOString(),
       coverage: 'complete-provider-account-response', writesAtlasState: false, providerWrite: false,
       note: 'All synced and manual accounts returned by Lunch Money, including savings and closed/inactive accounts. This is not proof that every household account is linked or every bank has synced. Balances are provider-reported, not independently verified; trust remains unknown. Show each balance date and flag old, missing, or future dates. observedAt and sync/object timestamps are not balance dates. Positive asset balances are held funds; positive liability balances are amounts owed. Preserve signs and currencies; never combine assets with debt or different currencies. Savings, restricted or business funds, and available credit are not automatically spendable household cash. Forecast remains the planner.',
@@ -267,7 +321,8 @@ function createService(options = {}) {
       categories: categories.map(c => ({ categoryRef: alias('cat', c.id, auth.principal), name: safeText(c.name),
         archived: c.archived === true, group: c.is_group === true, income: c.is_income === true,
         excludedFromBudget: c.exclude_from_budget === true, excludedFromTotals: c.exclude_from_totals === true })),
-      accounts: accounts.map(a => ({ accountRef: a.ref, name: a.label, type: a.type, ...a.evidence })) };
+      accounts: accounts.map(a => ({ accountRef: a.ref, name: a.label, type: a.type, ...a.evidence })),
+      ...(tags ? { tags: tags.map(({ providerId, ...row }) => row) } : {}) };
   }
   async function query(input, auth) {
     const { categories, accounts } = await catalogData(auth.principal);
@@ -361,12 +416,36 @@ function createService(options = {}) {
     const target = resolve(input.transactionRef, 'tx', auth.principal);
     const tx = await request('GET', '/transactions/' + target.id); editable(tx);
     if (tx.id !== target.id) throw new Error('identity-mismatch');
+    const recipe = input.cleanupInstruction;
+    if (recipe) {
+      if (standingInput) throw new Error('cleanup-instruction-is-not-a-grant');
+      const currentCatalog = await catalog({ includeTags: !!recipe.changes.tagNamesAdd }, auth);
+      input = { transactionRef: input.transactionRef, changes: Cleanup.resolve(recipe, currentCatalog) };
+    }
+    if ((recipe || ['payee', 'notesAppend', 'tagRefsAdd', 'transferLabel'].some(key => input.changes?.[key] !== undefined))
+        && tx.status !== 'reviewed') throw new Error('cleanup-reviewed-transaction-required');
     let body;
     if (input.changes) {
       body = {};
       if (input.changes.categoryRef !== undefined) body.category_id = await categoryId(input.changes.categoryRef, auth.principal);
-      if (input.changes.notes !== undefined) body.notes = input.changes.notes;
-      if (standingInput && input.changes.notesAppend !== undefined) body.notes = Standing.appendNotes(tx.notes, input.changes.notesAppend);
+      // Legacy notes input now means an addition too. No path replaces or
+      // clears pre-existing notes; the exact resulting string is previewed.
+      if (input.changes.notes !== undefined) body.notes = Standing.appendNotes(tx.notes, input.changes.notes);
+      if (input.changes.notesAppend !== undefined) {
+        const addition = input.changes.notesAppend;
+        const alreadyPresent = !standingInput && typeof tx.notes === 'string'
+          && (tx.notes === addition || tx.notes.endsWith('\n' + addition));
+        body.notes = alreadyPresent ? tx.notes : Standing.appendNotes(tx.notes, addition);
+      }
+      if (input.changes.payee !== undefined || input.changes.transferLabel) {
+        if (typeof tx.original_name !== 'string' || !tx.original_name.trim())
+          throw new Error('original-bank-description-unavailable');
+        if (input.changes.payee !== undefined) body.payee = input.changes.payee;
+      }
+      if (input.changes.tagRefsAdd) {
+        tagIds(tx); // Unknown/malformed existing tags are not an empty set.
+        body.additional_tag_ids = input.changes.tagRefsAdd.map(key => resolve(key, 'tag', auth.principal).id);
+      }
     } else {
       const sum = input.splits.reduce((total, row) => total + cents(row.amount), 0);
       const parentAmount = providerCents(tx.amount);
@@ -376,7 +455,23 @@ function createService(options = {}) {
       for (const row of input.splits) body.child_transactions.push({ amount: row.amount,
         category_id: await categoryId(row.categoryRef, auth.principal), ...(row.notes === undefined ? {} : { notes: row.notes }) });
     }
+    const context = await metadataContext(body, auth.principal, input.changes?.transferLabel);
+    if (context.transfer) {
+      const [from, to] = context.transfer, account = accountKey(tx);
+      const sign = /^-/.test(tx.amount) ? -1 : 1;
+      const side = sign === 1 ? from : to;
+      if (from.type === to.type && from.id === to.id || !account
+          || account[0] !== side.type || account[1] !== side.id || !/[1-9]/.test(tx.amount))
+        throw new Error('transfer-direction-unresolved');
+      body.payee = 'Transfer: ' + from.name + ' → ' + to.name;
+    }
     const cat = await catalogData(auth.principal);
+    if (recipe && Object.entries(body).every(([key, value]) => key === 'additional_tag_ids'
+      ? value.every(id => tagIds(tx).includes(id)) : tx[key] === value)) {
+      return { status: 'no-changes', providerWrite: false, writesAtlasState: false, automaticEdits: false,
+        transaction: project(tx, auth.principal, cat.categories, cat.accounts),
+        instruction: 'This cleanup instruction already matches the transaction. No preview or write is needed.' };
+    }
     const authorization = standingInput ? await Standing.authorize(standing, {
       ...standingInput, auth, tx, body, fingerprint: fingerprint(tx), now: now(),
       ...(body.category_id == null ? {} : { categoryContext: await categoryContextFor(tx, body.category_id) }),
@@ -384,18 +479,23 @@ function createService(options = {}) {
     sweep(); if (previews.size >= 100) throw new Error('preview-capacity');
     const id = 'edit-' + crypto.randomBytes(24).toString('hex');
     previews.set(id, { principal: auth.principal, targetId: target.id, before: tx,
-      fingerprint: fingerprint(tx), body, splits: !!input.splits, expires: now() + TTL, used: false, authorization });
+      fingerprint: fingerprint(tx), body, metadataContext: context, transfer: input.changes?.transferLabel,
+      splits: !!input.splits, expires: now() + TTL, used: false, authorization });
     return { status: 'preview', previewId: id, expiresAt: new Date(now() + TTL).toISOString(),
       before: project(tx, auth.principal, cat.categories, cat.accounts),
-      proposed: input.changes ? { ...(standingInput ? {
+      proposed: input.changes ? {
         ...(input.changes.categoryRef === undefined ? {} : { categoryRef: input.changes.categoryRef }),
         ...(body.notes === undefined ? {} : { notes: body.notes }),
-      } : input.changes),
+        ...(body.payee === undefined ? {} : { payee: body.payee }),
+        ...(body.additional_tag_ids ? { tagsAdded: context.tags.map(t => ({ tagRef: alias('tag', t.id, auth.principal, { label: t.name }), name: t.name })) } : {}),
+        ...(context.transfer ? { transferLabel: { from: context.transfer[0].name, to: context.transfer[1].name,
+          meaning: 'Display label only, based on the supplied direction; no money movement or independent transfer verification.' } } : {}),
         ...(body.category_id === undefined ? {} : { category: cat.categories.find(c => c.id === body.category_id)?.name || null }) }
         : { splits: input.splits.map((row, i) => ({ ...row,
           category: cat.categories.find(c => c.id === body.child_transactions[i].category_id)?.name || null })) },
       ...(authorization ? { authorization: { mode: 'standing-grant', grantRef: authorization.grantRef,
         grantRevision: authorization.grantRevision, evidenceRef: authorization.evidenceRef } } : {}),
+      ...(recipe ? { cleanupInstruction: recipe, automaticEdits: false } : {}),
       instruction: authorization
         ? 'No write has occurred. This exact preview is eligible only for apply_standing_lunchmoney_correction under its bounded owner grant. Report the audit receipt afterward; uncertain writes must not be retried.'
         : 'Show the exact before/proposed change to the user. Apply only after explicit confirmation for this preview. No write has occurred.', providerWrite: false };
@@ -475,6 +575,12 @@ function createService(options = {}) {
         if (id != null) { const c = await request('GET', '/categories/' + id); if (c.id !== id || c.archived || c.is_group) throw new Error('category-not-editable'); }
       }
       const beforeSend = async ({ credentialDigest }) => {
+        if (preview.expires <= now()) throw new Error('preview-expired');
+        if (!standingMode && Object.keys(preview.metadataContext).length) {
+          const gate = async candidate => { if (candidate.credentialDigest !== credentialDigest) throw new Error('provider-credential-changed'); };
+          const liveContext = await metadataContext(preview.body, auth.principal, preview.transfer, gate);
+          if (fingerprint(liveContext) !== fingerprint(preview.metadataContext)) throw new Error('metadata-catalog-changed');
+        }
         if (standingMode) {
           executionCredentialDigest = credentialDigest;
           if (preview.expires <= now()) throw new Error('preview-expired');
@@ -523,9 +629,9 @@ function createService(options = {}) {
           if (!lease || lease.valid !== true || lease.attemptRef !== reservation.attemptRef
               || preview.expires <= now()) throw new Error('standing-reservation-no-longer-valid');
         }
+        if (preview.expires <= now()) throw new Error('preview-expired');
         writeAttempted = true;
       };
-      if (!standingMode) writeAttempted = true;
       await request(preview.splits ? 'POST' : 'PUT', preview.splits
         ? '/transactions/split/' + preview.targetId : '/transactions/' + preview.targetId + '?update_balance=false', preview.body, beforeSend);
       providerRequestReturned = true;
@@ -542,10 +648,18 @@ function createService(options = {}) {
             && c.payee === current.payee);
       } else {
         verified = verified && Object.entries(preview.body).every(([key, value]) => key === 'notes'
-          ? (after[key] || '') === value : after[key] === value)
-          && ['amount', 'currency', 'date', 'payee', 'plaid_account_id', 'manual_account_id'].every(key => after[key] === current[key])
+          ? (after[key] || '') === value : key === 'additional_tag_ids'
+            ? JSON.stringify(tagIds(after)) === JSON.stringify([...new Set([...tagIds(current), ...value])].sort((a, b) => a - b))
+            : after[key] === value)
+          && ['amount', 'currency', 'date', 'original_name', 'plaid_account_id', 'manual_account_id'].every(key => after[key] === current[key])
+          && (preview.body.payee !== undefined || after.payee === current.payee)
           && (preview.body.category_id !== undefined || after.category_id === current.category_id)
           && (preview.body.notes !== undefined || (after.notes ?? '') === (current.notes ?? ''));
+        // Additional tags are a provider command; the readback field is tag_ids.
+        // Every other original field, including bank metadata/status, stays exact.
+        const actualBody = { ...preview.body };
+        if (actualBody.additional_tag_ids) { delete actualBody.additional_tag_ids; actualBody.tag_ids = after.tag_ids; }
+        verified = verified && Standing.unchangedOtherFields(current, after, actualBody);
       }
       if (standingMode) {
         verified = verified && Standing.unchangedOtherFields(current, after, preview.body);
@@ -581,7 +695,8 @@ function createService(options = {}) {
     if (denied) return denied;
     const parsed = schemas[operation]?.safeParse(args);
     if (!parsed?.success) return fail('invalid-arguments');
-    try { return await ({ catalog, query, prepare, apply, prepareStanding, applyStanding, submitStandingEvidence, standingAudit })[operation](parsed.data, auth); }
+    try { return await ({ catalog, query, prepare, apply, cleanupInstruction: Cleanup.create,
+      prepareStanding, applyStanding, submitStandingEvidence, standingAudit })[operation](parsed.data, auth); }
     catch (error) {
       return operation === 'catalog' || operation === 'query'
         ? readFailure(operation, error) : fail('lunchmoney-operation-unavailable');

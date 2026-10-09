@@ -65,6 +65,7 @@ const suites = [
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
   ['MCP provider account balances and truthful freshness', 'test-assistant-account-balances.js'],
   ['Lunch Money MCP reads and confirmed bounded edits', 'test-assistant-lunchmoney.js'],
+  ['Lunch Money preserving metadata and reusable cleanup previews', 'test-assistant-cleanup.js'],
   ['owner-selected purpose savings and explicit staging cutover', 'test-purpose-savings.js'],
   ['confirmed savings earmarks and independent cash conservation', 'test-savings-earmarks.js'],
   ['property-tax savings reference to incumbent Budget reserve', 'test-savings-property-tax.js'],
