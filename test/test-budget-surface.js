@@ -104,9 +104,13 @@ ok((html.match(/data-budget-surface-section="period"/g) || []).length === 1,
   'Current balance and period deductions share one overview card');
 // The print-only Balance After Deductions terms row (#549) reprints the
 // published closing term exactly once; nothing else may repeat the figure.
+// The print-only [data-bad-timeline] list is hidden (hidden + aria-hidden): it
+// reprints every period's term for other renderers and is never shown.
+const badTimeline = (html.match(/<ol data-bad-timeline hidden aria-hidden="true">[^]*?<\/ol>/) || [''])[0];
 const badTermRow = (html.match(/data-bad-term="balanceAfterDeductions"[^]*?<\/div>/) || [''])[0];
 ok((html.match(/data-budget-period-result/g) || []).length === 1
-  && (html.replace(badTermRow, '').match(/\$1,632\.01/g) || []).length === 1
+  && (html.match(/<ol data-bad-timeline /g) || []).length === 1 && badTimeline
+  && (html.replace(badTimeline, '').replace(badTermRow, '').match(/\$1,632\.01/g) || []).length === 1
   && (badTermRow.match(/\$1,632\.01/g) || []).length === 1,
   'the final result is published once at the end, including its expanded evidence');
 ok(/data-budget-window-range>Aug 14 – Aug 27</.test(html),
