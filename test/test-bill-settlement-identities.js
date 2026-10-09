@@ -1347,6 +1347,43 @@ console.log('\n=== 8. schedule-trust uses the financial as-of, never fetchedAt =
     'schedule-trust on the financial due date marks iCloud Storage PAID');
 }
 
+console.log('\n=== 9. Schedule-trust stays paid after its pay period rolls (YouTube Oct 2) ===');
+{
+  // Owner 2026-09-09: YouTube Premium is schedule-trust paid on its due date.
+  // On Oct 9 (Seaspan payday) Oct 2 sits in the prior period Sep 25 - Oct 8.
+  const identity = identityDoc();
+  const OCT_DUE = '2026-10-02';
+  const ROLLED = '2026-10-09';
+  const cycle = F.spendingCycle(liveData().plan, ROLLED);
+  ok(cycle && cycle.start === ROLLED && OCT_DUE < cycle.start,
+    'Oct 2 is before the Oct 9 cycle start, so it falls in a prior pay period');
+  const rolled = observeWith(identity, ROLLED, []);
+  const hit = (rolled.representedEventCandidates || [])
+    .find(c => c && c.id === YOUTUBE_ID && c.date === OCT_DUE);
+  ok(hit && hit.identity === SCHEDULE_TRUST && hit.providerTransactionId == null
+      && near(hit.observedAmount, YOUTUBE_PLANNED),
+    'after the period rolls, youtube-premium@Oct 2 is still represented from the schedule');
+  ok(((rolled.currentPeriodActuals || {}).representedActuals || [])
+      .some(r => r && r.id === YOUTUBE_ID && r.date === OCT_DUE && near(r.actual, YOUTUBE_PLANNED)),
+    'representedActuals still names youtube-premium@Oct 2 after the period rolls');
+  const advice = recommendFromReport(rolled, ROLLED);
+  const prior = (advice.payPeriodViews || []).find(v => v && v.timelineRole === 'past'
+    && (v.bills || []).some(b => b && b.id === YOUTUBE_ID && b.date === OCT_DUE));
+  const row = prior && prior.bills.find(b => b.id === YOUTUBE_ID && b.date === OCT_DUE);
+  ok(row && row.status === 'PAID' && row.settlement === 'represented' && near(row.remaining, 0),
+    'the prior-period YouTube Oct 2 row prints PAID, not unverified');
+  ok(!(rolled.representedEventCandidates || []).some(c => c && c.id === YOUTUBE_ID && c.date === '2026-11-02'),
+    'the next YouTube occurrence is not schedule-trusted before its due date');
+  const beforeOpening = (rolled.representedEventCandidates || []).filter(c => c
+    && c.identity === SCHEDULE_TRUST && c.date <= liveData().plan.opening.asOf);
+  ok(beforeOpening.length === 0,
+    'schedule-trust does not reach back past the canonical opening');
+  const sameCycle = observeWith(identity, '2026-10-08', []);
+  ok((sameCycle.representedEventCandidates || [])
+      .some(c => c && c.id === YOUTUBE_ID && c.date === OCT_DUE && c.identity === SCHEDULE_TRUST),
+    'inside its own period (Oct 8) youtube-premium@Oct 2 is represented as before');
+}
+
 if (failures) {
   console.error(`\n${failures} failure(s)`);
   process.exit(1);
