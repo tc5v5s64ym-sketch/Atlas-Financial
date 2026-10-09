@@ -459,6 +459,8 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
   const liveFuture = viewsA.find(row => row && (row.timelineRole === 'next' || row.timelineRole === 'future'));
   const liveCurrentHtml = composer.calendarWaterfallHtml(liveCurrent);
   const livePastHtml = composer.calendarWaterfallHtml(livePast);
+  const livePastBad = questionBlock(livePastHtml, 'Balance After Deductions');
+  const livePastResult = /<div[^>]*data-budget-period-result[^>]*>[\s\S]*?<\/div>/.exec(livePastHtml)?.[0] || '';
   const liveFutureHtml = composer.calendarWaterfallHtml(liveFuture);
   const liveFutureOther = categoryBlock(liveFutureHtml, OTHER_ID);
   const liveFutureTotal = totalBlock(liveFutureHtml);
@@ -479,10 +481,23 @@ console.log('\n=== 4. Forecast stays the authority; unrelated published figures 
       && !/data-budget-category="other-spend"/.test(liveCurrentHtml),
     'the live current pay period preserves income/bill trust without the Other Spend reserve marker');
   ok(livePast && !/data-budget-hold-trust="estimated"/.test(livePastHtml)
-      && /data-balance-trust="estimated"/.test(livePastHtml)
-        === (livePast.balanceAfterDeductionsTrust === 'estimated')
       && !/data-budget-category="other-spend"/.test(livePastHtml),
-    'a live past pay period preserves income/bill trust without the Other Spend reserve marker');
+    'a live past pay period does not receive the future-only Other Spend reserve marker');
+  // An estimated engine remainder does not establish qualified whole-period
+  // historical BAD. Require withholding at each aggregate publication hook;
+  // source terms and the current/future estimated-state checks stay separate.
+  ok(livePast && Number.isFinite(livePast.balanceAfterDeductions)
+      && livePast.balanceAfterDeductionsTrust === 'estimated'
+      && /data-budget-result-trust="unavailable"/.test(livePastBad)
+      && /Unavailable<span data-budget-result-amount><\/span>/.test(livePastBad)
+      && !/data-balance-trust="estimated"/.test(livePastBad),
+    'historical Q07 withholds the estimated model remainder as Unavailable with no result amount');
+  ok(/data-budget-result-trust="unavailable"/.test(livePastResult)
+      && /Unavailable<span data-budget-result-amount><\/span>/.test(livePastResult),
+    'historical hero withholds the aggregate result with an empty amount hook');
+  ok(/data-bad-term="balanceAfterDeductions" data-bad-term-trust="unavailable"><span data-bad-term-label>[^<]*<\/span><span data-bad-term-value>Unavailable<span data-bad-term-amount><\/span>/.test(livePastBad)
+      && /data-bad-historical-withheld/.test(livePastBad),
+    'historical BAD term is unavailable with no amount and retains the whole-period qualification warning');
 }
 
 if (failures) {
