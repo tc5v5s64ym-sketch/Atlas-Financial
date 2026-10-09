@@ -375,12 +375,34 @@ function createService(options = {}) {
       try {
         if (result.status === 'write-unverified') await standing.adapter.suspend({
           ...preview.authorization, attemptRef: reservation.attemptRef, reason: result.reason });
-        const receipt = await standing.adapter.finish({ reservation,
+        const record = { reservation,
           outcome: result.status, reason: result.reason || null, verifiedByReadback: result.verifiedByReadback === true,
-          finishedAt: now(), after: afterRead });
+          finishedAt: now(), after: afterRead };
+        const recordFingerprint = fingerprint(record);
+        // finish persists the outcome but MUST retain durable quarantine. A
+        // committed outcome with a lost/malformed reply is still quarantined.
+        const receipt = await standing.adapter.finish(record);
         if (!receipt || !/^receipt-[a-f0-9]{24}$/.test(receipt.receiptRef)
-            || !/^actor-[a-f0-9]{24}$/.test(receipt.actorRef) || receipt.durable !== true) throw new Error('audit-unavailable');
-        return { ...result, auditReceipt: { receiptRef: receipt.receiptRef, authorization: 'standing-grant',
+            || !/^actor-[a-f0-9]{24}$/.test(receipt.actorRef) || receipt.durable !== true
+            || receipt.attemptRef !== reservation.attemptRef
+            || receipt.recordFingerprint !== recordFingerprint) throw new Error('audit-unavailable');
+        let continuation = 'read-only-reconciliation-required';
+        if (result.status === 'applied') {
+          try {
+            const ack = await standing.adapter.acknowledgeVerified({ reservation,
+              receiptRef: receipt.receiptRef, recordFingerprint });
+            if (!ack || ack.acknowledged !== true) throw new Error('acknowledgment-unavailable');
+            continuation = 'acknowledged';
+          } catch (_) {
+            // Provider readback and the durable attributed receipt are already
+            // known. An uncertain ACK affects continuation, not this edit's
+            // verified outcome. It cannot cause another provider attempt.
+            blockedStandingGrants.add(preview.authorization.grantRef);
+            continuation = 'acknowledgment-unconfirmed-check-before-next-correction';
+          }
+        }
+        return { ...result, standingGrantContinuation: continuation,
+          auditReceipt: { receiptRef: receipt.receiptRef, authorization: 'standing-grant',
           grantRef: preview.authorization.grantRef, grantRevision: preview.authorization.grantRevision,
           evidenceRef: preview.authorization.evidenceRef, startedAt: new Date(startedAt).toISOString(),
           finishedAt: new Date(now()).toISOString(), outcome: result.status,
@@ -427,6 +449,22 @@ function createService(options = {}) {
               || reservation.grantRef !== boundary.grantRef
               || reservation.grantRevision !== boundary.grantRevision
               || reservation.durable !== true || preview.expires <= now()) throw new Error('standing-reservation-denied');
+          // The shared authority now owns the target lease across grants and
+          // instances. Re-read AFTER reservation so stale pre-lock reads cannot
+          // overwrite another Atlas instance's completed correction.
+          const credentialGate = async candidate => {
+            if (candidate.credentialDigest !== credentialDigest) throw new Error('provider-credential-changed');
+          };
+          const lockedCurrent = await request('GET', '/transactions/' + preview.targetId, undefined, credentialGate);
+          if (fingerprint(lockedCurrent) !== preview.fingerprint) throw new Error('transaction-changed-after-reservation');
+          editable(lockedCurrent);
+          if (preview.body.category_id != null) {
+            const category = await request('GET', '/categories/' + preview.body.category_id, undefined, credentialGate);
+            if (category.id !== preview.body.category_id || category.archived || category.is_group) throw new Error('category-not-editable');
+          }
+          const lease = await standing.adapter.verifyReservation({ ...attempt, reservation, checkedAt: now() });
+          if (!lease || lease.valid !== true || lease.attemptRef !== reservation.attemptRef
+              || preview.expires <= now()) throw new Error('standing-reservation-no-longer-valid');
         }
         writeAttempted = true;
       };

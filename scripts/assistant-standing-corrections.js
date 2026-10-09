@@ -3,7 +3,7 @@
 // The adapter is a trusted server dependency, never an MCP argument.
 const SCOPE = 'atlas.transactions.correct-with-grant';
 const MAX_GRANT_MS = 30 * 86400000;
-const adapterMethods = ['context', 'grant', 'evidence', 'noteEffects', 'reserve', 'finish', 'suspend'];
+const adapterMethods = ['context', 'grant', 'evidence', 'reserve', 'finish', 'suspend', 'acknowledgeVerified', 'verifyReservation'];
 function deny(reason) { throw new Error(reason); }
 function record(value) { return value && typeof value === 'object' && !Array.isArray(value); }
 function keys(value, allowed) {
@@ -17,7 +17,8 @@ function instant(v) { return typeof v === 'number' && Number.isSafeInteger(v) &&
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function available(options) {
   return options.enabled === true && options.adapter?.durable === true
-    && adapterMethods.every(k => typeof options.adapter[k] === 'function');
+    && adapterMethods.every(k => typeof options.adapter[k] === 'function')
+    && (options.notesEnabled !== true || typeof options.adapter.noteEffects === 'function');
 }
 function appendNotes(before, addition) {
   if (before != null && typeof before !== 'string') deny('notes-evidence-unavailable');
@@ -29,7 +30,7 @@ function appendNotes(before, addition) {
 }
 function validate({ grant, evidence, auth, context, tx, body, fingerprint, now }) {
   if (!keys(grant, ['schema', 'grantRef', 'revision', 'principal', 'clientId', 'budgetRef',
-    'credentialVersion', 'approvalRef', 'approvedByOwner', 'createdAt', 'expiresAt',
+    'credentialVersion', 'contextVersion', 'parserRevision', 'approvalRef', 'approvedByOwner', 'createdAt', 'expiresAt',
     'revokedAt', 'suspended', 'accounts', 'startDate', 'endDate', 'categoryTransitions',
     'allowNotes', 'evidencePolicy', 'maxAttempts', 'attempts'])) deny('invalid-standing-grant');
   if (grant.schema !== 'atlas-standing-correction-grant/v1'
@@ -50,7 +51,10 @@ function validate({ grant, evidence, auth, context, tx, body, fingerprint, now }
       || !record(context) || context.ruleEffects !== 'none-verified'
       || !/^[a-f0-9]{64}$/.test(context.credentialDigest)
       || grant.budgetRef !== context.budgetRef
-      || grant.credentialVersion !== context.credentialVersion) deny('standing-grant-binding-mismatch');
+      || grant.credentialVersion !== context.credentialVersion
+      || typeof grant.contextVersion !== 'string' || !grant.contextVersion || grant.contextVersion !== context.contextVersion
+      || typeof grant.parserRevision !== 'string' || !grant.parserRevision || grant.parserRevision !== context.parserRevision)
+    deny('standing-grant-binding-mismatch');
   if (!boundedDate(grant.startDate) || !boundedDate(grant.endDate)
       || grant.startDate > grant.endDate
       || Date.parse(grant.endDate) - Date.parse(grant.startDate) > 366 * 86400000
@@ -90,7 +94,8 @@ function validate({ grant, evidence, auth, context, tx, body, fingerprint, now }
       || !/^evidence-[a-f0-9]{24}$/.test(evidence.evidenceRef)
       || evidence.grantRef !== grant.grantRef || evidence.grantRevision !== grant.revision
       || typeof grant.evidencePolicy !== 'string' || !grant.evidencePolicy
-      || evidence.policy !== grant.evidencePolicy || evidence.resolution !== 'resolved'
+      || evidence.policy !== grant.evidencePolicy || evidence.contextVersion !== grant.contextVersion
+      || evidence.parserRevision !== grant.parserRevision || evidence.resolution !== 'resolved'
       || evidence.attestedBy !== 'trusted-evidence-policy'
       || !instant(evidence.expiresAt) || evidence.expiresAt <= now
       || evidence.transactionId !== tx.id || evidence.beforeFingerprint !== fingerprint
@@ -109,15 +114,20 @@ async function authorize(options, input) {
     deny('standing-reference-binding-mismatch');
   const boundary = validate({ ...input, context, grant, evidence });
   if (input.body.notes !== undefined) {
-    // Compare NOTE-ONLY effects with the category held fixed. The production
-    // adapter must use the incumbent observer/parser with the real map/plan/tags.
-    const effects = await adapter.noteEffects(input.tx, { ...input.tx, notes: input.body.notes });
-    if (!record(effects) || effects.schema !== 'atlas-standing-note-effects/v1'
-        || typeof effects.parserRevision !== 'string' || !effects.parserRevision
-        || !record(effects.before) || !record(effects.after)
-        || !same(effects.before, effects.after)) deny('standing-note-parser-effect-changed');
+    if (options.notesEnabled !== true) deny('standing-notes-disabled');
+    // Check note-only effects under BOTH the original and resulting category.
+    // The production adapter normalizes labels from the real current catalog.
+    for (const categoryId of new Set([input.tx.category_id, input.body.category_id ?? input.tx.category_id])) {
+      const baseline = { ...input.tx, category_id: categoryId };
+      const effects = await adapter.noteEffects(baseline, { ...baseline, notes: input.body.notes });
+      if (!record(effects) || effects.schema !== 'atlas-standing-note-effects/v1'
+          || effects.parserRevision !== context.parserRevision
+          || !record(effects.before) || !record(effects.after)
+          || !same(effects.before, effects.after)) deny('standing-note-parser-effect-changed');
+    }
   }
-  return { ...boundary, budgetRef: context.budgetRef, credentialVersion: context.credentialVersion };
+  return { ...boundary, budgetRef: context.budgetRef, credentialVersion: context.credentialVersion,
+    contextVersion: context.contextVersion, parserRevision: context.parserRevision, evidenceExpiresAt: evidence.expiresAt };
 }
 function unchangedOtherFields(before, after, body) {
   const ignored = new Set(['updated_at', ...Object.keys(body)]);

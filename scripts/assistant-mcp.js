@@ -132,8 +132,16 @@ function createServer(getPacket, opts = {}) {
   return server;
 }
 
+function authFromVerifiedRequest(req) {
+  // req.auth is supplied by the incumbent JWT middleware. JSON-RPC arguments
+  // and caller-supplied opts.auth cannot manufacture subject/client identity.
+  const auth = req && req.auth || {};
+  return { principal: typeof auth.extra?.subject === 'string' ? auth.extra.subject : undefined,
+    clientId: typeof auth.clientId === 'string' ? auth.clientId : undefined,
+    scopes: Array.isArray(auth.scopes) ? [...auth.scopes] : [] };
+}
 async function handleHttp(req, res, opts) {
-  const server = createServer(opts && opts.getPacket, opts);
+  const server = createServer(opts && opts.getPacket, { ...opts, auth: authFromVerifiedRequest(req) });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -161,4 +169,5 @@ module.exports = {
   packetResult,
   createServer,
   handleHttp,
+  authFromVerifiedRequest,
 };
