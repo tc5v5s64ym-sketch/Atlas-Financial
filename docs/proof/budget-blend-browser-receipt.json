@@ -3,7 +3,7 @@
   "fixture": "test/fixtures/budget-surface-data.js",
   "cardMovementFixture": "test/fixtures/card-period-movements-data.js",
   "liveSite": false,
-  "chrome": "/usr/bin/google-chrome",
+  "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "reducedMotion": false,
   "screenshots": [
     "budget-blend-1440-light.png",
@@ -19,6 +19,9 @@
     "budget-blend-1440-light-past.png",
     "budget-blend-390-light-past.png",
     "budget-blend-320-light-past.png",
+    "budget-blend-1440-light-past-qualified.png",
+    "budget-blend-390-light-past-qualified.png",
+    "budget-blend-320-light-past-qualified.png",
     "budget-blend-1440-light-unavailable.png",
     "budget-blend-390-dark-unavailable.png",
     "budget-blend-focus-granularity.png",
@@ -38,8 +41,56 @@
     "budget-blend-390-dark-past.png",
     "budget-blend-320-dark-past.png",
     "budget-blend-1440-light-household-all.png",
-    "budget-blend-390-light-household-all.png"
+    "budget-blend-390-light-household-all.png",
+    "budget-blend-320-light-household-all.png"
   ],
+  "screenshotSha256": {
+    "budget-blend-1440-light.png": "caf1e0a60b7933c6f112752071b6bd8cc7d598190b2943a6e395dea1d91855e3",
+    "budget-blend-1440-dark.png": "6c0b7675e1f7d271cba5fc36637270c9952d068d1b0e0d7dcf7a271f23faf987",
+    "budget-blend-390-light.png": "a599c10e24f1d783356e88436f37135640660ee1edc5266ccaf186b3d78edbcd",
+    "budget-blend-390-dark.png": "0cff44946bce645162d65be7c6330ea5c0ac8748d6b8ab88c925b5831ed30d2a",
+    "budget-blend-320-light.png": "cb4ef2e12979a5b4136e97901aecb548b95dc8d6c388a1c4778be85fc9d8eda5",
+    "budget-blend-320-dark.png": "d413ffc0416bd913f2d82dc7e5ad4b61718280371db6877b9474268131be1c17",
+    "budget-blend-1440-light-next.png": "c8f47e2c27fc3a47b6982e387a0c00c6a29542d3602c0c66ae316a5ea158ffe3",
+    "budget-blend-1440-light-aug28.png": "3995940d4a715daa3937ad61f459db4029755073acb4ad5479fa5b4b455ce58b",
+    "budget-blend-320-light-aug28.png": "353041fca33565a0a5045c1b38959c4198831a61d8513341de88d167db64c252",
+    "budget-blend-390-light-next.png": "802977aca9bb742a0df85ad715d663d11b4229e40ac1760b86c70cd64afa348f",
+    "budget-blend-1440-light-past.png": "83013b5f048ac682d7c84dc3992175afc226a6cbea9a2b19984a6401b213b180",
+    "budget-blend-390-light-past.png": "c5c27a8f64af13bffb0ded1e7fcafe5eb723cf1b104c33acf2919da31b792162",
+    "budget-blend-320-light-past.png": "cd27806c7df9545a4d247ea6f647f0e60efd7fef63b1655392409e5f4f4f09ac",
+    "budget-blend-1440-light-past-qualified.png": "9a1d8e11a128f9b54cdda4a9ba6039e524f756db87442818c639cc349430bf6e",
+    "budget-blend-390-light-past-qualified.png": "3cc9b0b08c3df75d7179ea9563b087727f6344167c9332aed09592f443d162de",
+    "budget-blend-320-light-past-qualified.png": "04091ecb2fd88d37915f1606ce2fe4ef2ca5bd7950ae04eed6f9975f9796b392",
+    "budget-blend-1440-light-unavailable.png": "c6f733d286dbd96c50476f0c2e56f09bffca886bd040d81f32661db56d9bd176",
+    "budget-blend-390-dark-unavailable.png": "1a764f3a4a8ff6689bd8a7aa1095c638ddfacd7428683ae46b59b19d4f089700",
+    "budget-blend-focus-granularity.png": "2f140779990b6c1dfa8283416560d5d88f65e2e21438de21a1bbb35f29f44047",
+    "budget-blend-focus-income.png": "b042c48eb401851151429b730e5083b87a9ae8774e8d1a311e489ccb03a10437",
+    "budget-blend-focus-result.png": "0c0aab1151b040fb7e1cd982e549e8f9d7565e7b51136c7a23ab23c35f240e25",
+    "budget-blend-focus-household.png": "59fe62bbcf49ba8fda342f1c0e2a274baad522a177ece4d95d63ef7acd560042",
+    "budget-blend-focus-goal.png": "1b532591987abc53f36d0b13760e7182a66d07df321d02e6d488f28a3e0e3596",
+    "budget-blend-cards-1440-light.png": "9a72a29186e47b9bc02c1033539457068a4ff5e0de4a220e4d0d45a888fe678f",
+    "budget-blend-cards-320-dark.png": "7db02f05bd30a23f187e88884ab5059ec3215f1d1818d0d900100c6ab3598d53",
+    "budget-blend-1440-light-on-plan.png": "952c31af5019a123bf16f4d6cd52f5a3cae393764c239ab7ccb78655df6b4662",
+    "budget-blend-1440-light-infeasible.png": "dde12b304867c6b57a58d826fef6ff65756796d2e22528c56fce1eccaf557ae0",
+    "budget-blend-1440-dark-next.png": "8f662c60c14e3b9469510d753f22efc40523c90317ce2fc0208e99f3a811ea31",
+    "budget-blend-390-dark-next.png": "2facd41f34cf3d9ef2d088f091ef7d3ae716d4540d21c478d7e36a0e5a630a5a",
+    "budget-blend-320-light-next.png": "a505502da53eb4f1bd3669819efa396d281c0bb308d0c181c0d5408c04c238b1",
+    "budget-blend-320-dark-next.png": "1f14dd1a46f368a4e10fd0b7300434a8bfb6a071e846fc7bd3b0859347f4ada1",
+    "budget-blend-1440-dark-past.png": "e43d070329ae7860b2b1ae60d1219b9dc318b5b538d8425113c3908a15770b9f",
+    "budget-blend-390-dark-past.png": "1da1963d3681246a5a8bd86bfe1dd59b1212e5dee0a44b04a25555cb365bc2cb",
+    "budget-blend-320-dark-past.png": "c433eb6cbf1b18d66c0d35962906ddd4b7df4c8e715c1e2581420be397bfb54f",
+    "budget-blend-1440-light-household-all.png": "c2c4e2f5f66460258def24a1dc34bccf269b8fd640a3eb69929a211e86e477cd",
+    "budget-blend-390-light-household-all.png": "0f168bf811aaab180d2dba6aa9850c467979a5552c8c5a04540e2ffe110b8e36",
+    "budget-blend-320-light-household-all.png": "44cf4ac2e1285482f10bef691cd908603e50137927c482e22e3ee957b1203a06"
+  },
+  "sourceSha256": {
+    "public/plan.js": "627e8fe8874dd27cd49ade3613585ae198ce8af056356c500d254eb1b1ae6b81",
+    "public/budget-blend.js": "534b9fa2d3b20dcc6d578ab8637939c526a0c08a0f873a1d6d330497c7d85157",
+    "public/budget-gface.css": "23dbf5f2d386ba76f27097f8f52fecda528cd8fb4d6e81e5b2e8d3c254b4d264",
+    "public/forecast.js": "1f4e71490fbfb1f357fe007dfda74ac1af4a01addc7893fa9b2463ce22f0c5e5",
+    "data.json": "51d7c6c457e35c1c78f13734ea6234b2edc5a3dd2b489293fb5c85acaaf942c9",
+    "test/browser-budget-blend-proof.js": "d914c99d0aee2875d51ca994bcc776efe1242feda771f021de9018b8057e4913"
+  },
   "visualComparison": {
     "authority": "Owner-approved Slack images",
     "sourceThread": "C0C6M5Z1LF8/thread1791497896.975019",
@@ -53,7 +104,6 @@
           2880,
           2846
         ],
-        "path": "/tmp/approved-budget-refs/desktop-light.png",
         "available": true,
         "sha256": "d2a7bbcf95381b2018960219801592e26a608ab741b33b7ebab9b3827a7bf4f6",
         "matchesApproved": true
@@ -67,7 +117,6 @@
           2880,
           1800
         ],
-        "path": "/tmp/approved-budget-refs/desktop-dark.png",
         "available": true,
         "sha256": "72170f4bb71d9cae0d7194e4eb85de19437316b12695c5be57932b51c442e39f",
         "matchesApproved": true
@@ -81,7 +130,6 @@
           780,
           4238
         ],
-        "path": "/tmp/approved-budget-refs/mobile-light.png",
         "available": true,
         "sha256": "42f01c091b4c4148fb5d75eb1a40fb5eff79fb2e8159a9947caa9c61700d02ac",
         "matchesApproved": true
@@ -594,25 +642,6 @@
     ]
   },
   "externalRequests": [],
-  "errors": [
-    "1440/light geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
-    "1440/light tile slack {\"goal\":-188,\"hero\":51,\"income\":23}",
-    "1440/dark geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
-    "1440/dark tile slack {\"goal\":-188,\"hero\":51,\"income\":23}",
-    "390/light geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
-    "390/light bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
-    "390/light Bills account pill is not at the right of the hero top",
-    "390/dark geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
-    "390/dark bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
-    "390/dark Bills account pill is not at the right of the hero top",
-    "320/light geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
-    "320/light bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
-    "320/light Bills account pill is not at the right of the hero top",
-    "320/dark geometry {\"cards\":1,\"today\":\"static\",\"scroll\":true,\"tracks\":0,\"escaped\":[],\"shown\":[\"[data-budget-browse-hold]\"]}",
-    "320/dark bills head {\"oneLine\":false,\"sameRow\":false,\"right\":false,\"toggleInHead\":true,\"crowded\":false}",
-    "320/dark Bills account pill is not at the right of the hero top",
-    "household count {\"prepared\":{\"printed\":\"0 of 3 known categories over plan\",\"hold\":\"$444.49 / of planned $730.00\",\"marked\":[\"$80.00 over\",\"$12.00 over\"]},\"household\":{\"extraDisclosure\":false,\"countText\":\"0 of 3 known categories over plan\",\"countOnFace\":true,\"countInHeader\":false,\"countInNativeBody\":true,\"countVisible\":true,\"countHidden\":null,\"clipped\":false,\"holdText\":\"$444.49 / of planned $730.00\",\"holdAccessible\":true,\"overs\":[{\"status\":\"$80.00 over\",\"over\":true,\"centre\":\"$80.00 over\",\"word\":\"Over plan\",\"sr\":\"$80.00 over\",\"srReachable\":true,\"onFace\":true},{\"status\":\"$12.00 over\",\"over\":true,\"centre\":\"$12.00 over\",\"word\":\"Over plan\",\"sr\":\"$12.00 over\",\"srReachable\":true,\"onFace\":true}]}}",
-    "river adapter {\"mode\":\"printed\",\"state\":\"neutral\",\"focusable\":true,\"labels\":[\"Unavailable\",\"Unavailable\",\"Unavailable\",\"Unavailable\",\"−$1,020.09\",\"-$10.00\",\"$0.00\"],\"tones\":[\"rv is-muted is-past\",\"rv is-muted is-past\",\"rv is-muted is-past\",\"rv is-muted is-sel\",\"rv is-short is-est\",\"rv is-income is-est\",\"rv is-income\"],\"months\":[\"Jun 2026\",\"Jul\",\"Aug\",\"Jan 2027\"],\"value\":\"Unavailable\",\"orbHidden\":true,\"beamHidden\":true,\"chooserVisible\":true,\"rows\":7}"
-  ],
+  "errors": [],
   "figuresCopiedFromPrototype": false
 }

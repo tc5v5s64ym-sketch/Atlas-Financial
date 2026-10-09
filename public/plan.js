@@ -4292,7 +4292,17 @@ function badTimelineHtml(advice, compactOverview, savingsContext) {
     const value = badTermsKnown ? badTerms.balanceAfterDeductions : null;
     const trust = period.balanceAfterDeductionsTrust;
     const stamp = trust == null ? 'calculated' : trust;
-    const historicalBadWithheld = period.timelineRole === 'past' || period.lookback === true;
+    const history = period.budgetProgress;
+    const historical = period.timelineRole === 'past' || period.lookback === true;
+    // Forecast owns the completeness of each historical component. A closing
+    // equation or Household-only coverage cannot qualify the whole period.
+    const historicalBadWithheld = historical && !(badTermsKnown && numeric(value)
+      && ['calculated', 'estimated'].includes(stamp)
+      && history?.source === 'Forecast.budgetPeriodProgress'
+      && history.start === period.start && history.end === period.end
+      && [history.income?.actual, history.bills?.actual, history.household?.actual].every(part =>
+        part?.completeness === 'complete' && numeric(part.amount)
+        && ['calculated', 'estimated'].includes(part.trust)));
     const known = !historicalBadWithheld && numeric(value)
       && (stamp === 'calculated' || stamp === 'estimated');
     const mark = known && stamp === 'estimated' ? compactOverview
@@ -4586,7 +4596,17 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   // A closing arithmetic identity does not qualify historical income, bill
   // settlement and Household evidence as a whole-period BAD publication.
   // Withhold only the aggregate presentation; keep each published source term.
-  const historicalBadWithheld = period.timelineRole === 'past' || period.lookback === true;
+  const history = period.budgetProgress;
+  const historical = period.timelineRole === 'past' || period.lookback === true;
+  const historicalBadWithheld = historical && !(period.predictedEndingBalanceTerms?.identity === 'balance-after-deductions'
+    && period.predictedEndingBalanceTerms.closes === true
+    && numeric(period.predictedEndingBalanceTerms.balanceAfterDeductions)
+    && ['calculated', 'estimated'].includes(period.balanceAfterDeductionsTrust ?? 'calculated')
+    && history?.source === 'Forecast.budgetPeriodProgress'
+    && history.start === period.start && history.end === period.end
+    && [history.income?.actual, history.bills?.actual, history.household?.actual].every(part =>
+      part?.completeness === 'complete' && numeric(part.amount)
+      && ['calculated', 'estimated'].includes(part.trust)));
   const historicalBadNote = 'Historical Balance After Deductions is unavailable. Whole-period income, bill settlement and Household evidence have not been qualified together. Household transaction coverage alone does not qualify this balance.';
   const fundedBalanceKnown = !historicalBadWithheld && fundingKnown && numeric(funding.afterProposedFunding);
   const finalAmount = historicalBadWithheld ? null : dailySavings ? period.afterHouseholdBudget : fundedBalanceKnown ? funding.afterProposedFunding

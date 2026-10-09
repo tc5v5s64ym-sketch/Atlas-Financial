@@ -202,16 +202,23 @@ const gapRows = [
   period('future', '2026-08-14', '2026-08-27', undefined, { amount: 40 }),
 ];
 const gapItems = items(printed(gapRows));
+// The native producer separately qualifies historical completeness. Exercise
+// the adapter on an already-published qualified historical amount; it must
+// preserve that amount rather than overriding the native trust by date role.
+gapItems[0].body = '<span data-bad-term-amount>$100.00</span>';
+gapItems[0].attrs['data-bad-term-trust'] = 'calculated';
+gapItems[2].body = '<span data-bad-term-amount>$50.00</span>';
+gapItems[2].attrs['data-bad-term-trust'] = 'estimated';
 gapItems[6].body = '<span data-bad-term-amount> </span>';
 const gapModel = readBadTimeline({ querySelector() { return { children: gapItems }; } });
 assert.deepEqual(gapModel.nodes.map(node => node.sourceIndex), [0, 1, 2, 3, 4, 5, 6, 7],
   'adapter retains every original publication position');
-assert.deepEqual(gapModel.nodes.map(node => node.magnitude), [null, null, null, null, 0, -20, null, 40],
+assert.deepEqual(gapModel.nodes.map(node => node.magnitude), [100, null, 50, null, 0, -20, null, 40],
   'past Household coverage, unavailable and empty spans have no BAD geometry; printed future zero is known');
 assert.deepEqual(gapModel.nodes.slice(0, 3).map(node => [node.label, node.unavailable]),
-  [['Unavailable', true], ['Unavailable', true], ['Unavailable', true]],
-  'precise and posted-only Household coverage cannot publish historical BAD');
-assert.deepEqual(knownTimelineRuns(gapModel.nodes), [[4, 5], [7]],
+  [['$100.00', false], ['Unavailable', true], ['$50.00', false]],
+  'the adapter preserves qualified historical amounts and unavailable gaps');
+assert.deepEqual(knownTimelineRuns(gapModel.nodes), [[0], [2], [4, 5], [7]],
   'only the adjacent published zero and negative value can share a line');
 assert.deepEqual(knownTimelineRuns([
   { sourceIndex: 0, magnitude: 100 }, { sourceIndex: 2, magnitude: 50 },

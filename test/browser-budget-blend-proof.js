@@ -132,7 +132,7 @@ const composite = (fg, bg) => {
       const result = await page.evaluate(() => {
         const selectors = [
           ['Hero', '.budget-blend-hero-layout'], ['Bills', '[data-budget-browse="bills"]'],
-          ['Income', '.blend-income'], ['Household', '[data-budget-browse="spending"]'],
+          ['Household', '[data-budget-browse="spending"]'],
           ['Cards', '.budget-blend-card-movements'], ['Savings', '[data-budget-savings-goals]'],
         ];
         const board = document.querySelector('.blend-board');
@@ -151,14 +151,15 @@ const composite = (fg, bg) => {
           tabTiles: tabTiles.filter((name, i) => name !== tabTiles[i - 1]),
         };
       });
-      assert.deepEqual(result.missing, [], label + ': all six target tiles survive');
+      assert.deepEqual(result.missing, [], label + ': all five target tiles survive');
+      assert.equal(await page.locator('.blend-income').count(), 0, label + ': separate Income tile removed');
       if (width < 760) {
-        const expected = ['Hero', 'Bills', 'Income', 'Household', 'Cards', 'Savings'];
+        const expected = ['Hero', 'Bills', 'Household', 'Cards', 'Savings'];
         assert.deepEqual(result.direct, expected, label + ': real mobile DOM order');
         assert.deepEqual(result.tabTiles, expected, label + ': focusable DOM order follows the mobile tile order');
       } else {
         assert.deepEqual(result.main, ['Hero', 'Bills', 'Cards'], label + ': fixed left column');
-        assert.deepEqual(result.side, ['Income', 'Household', 'Savings'], label + ': fixed right column');
+        assert.deepEqual(result.side, ['Household', 'Savings'], label + ': fixed right column');
       }
     };
 
@@ -458,7 +459,9 @@ const composite = (fg, bg) => {
               const titleBox = box(billsTitle);
               const ofBox = box(billsOf);
               const bills = billsHead && titleBox && ofBox ? {
-                oneLine: billsOf.scrollWidth <= billsOf.clientWidth + 1 && billsOf.getClientRects().length === 1,
+                oneLine: getComputedStyle(billsOf).display === 'none'
+                  ? !!billsHead.querySelector('.blend-flag') && !billsOf.classList.contains('is-unavailable')
+                  : billsOf.scrollWidth <= billsOf.clientWidth + 1 && billsOf.getClientRects().length === 1,
                 sameRow: Math.abs((ofBox.top + ofBox.height / 2) - (titleBox.top + titleBox.height / 2)) < 14,
                 right: ofBox.left >= titleBox.right - 4,
                 toggleInHead: !!(billsToggle && billsHead.contains(billsToggle)),
@@ -525,9 +528,7 @@ const composite = (fg, bg) => {
                 payMain: (document.querySelector('.blend-pay-main')?.textContent || '').trim(),
               };
             })(),
-            shown: ['[data-budget-browse-hold]',
-              '.blend-income .blend-big',
-            ].map(sel => {
+            shown: ['[data-operating-question="02"] .blend-term'].map(sel => {
               const el = document.querySelector(sel);
               if (!el) return sel + ':missing';
               const box = el.getBoundingClientRect();
@@ -570,7 +571,7 @@ const composite = (fg, bg) => {
         if (face.afterLine || face.qualifier) {
           errors.push(`${width}/${theme} current period showed proposed-funding chrome ${JSON.stringify({ after: face.afterLine, qualifier: face.qualifier })}`);
         }
-        if (face.incomeTitle !== 'Income' || !face.incomeAccessible.startsWith('Planned income.') || face.incomeLong !== 'Period income, counted in Balance After Deductions' || face.heroIncomeReceived || !face.payRing || face.payMain) {
+        if (face.incomeTitle || face.incomeAccessible || face.incomeLong !== 'Period income, counted in Balance After Deductions' || face.heroIncomeReceived || !face.payRing || face.payMain) {
           errors.push(`${width}/${theme} income or payday ${JSON.stringify({ title: face.incomeTitle, long: face.incomeLong, received: face.heroIncomeReceived, ring: face.payRing, main: face.payMain })}`);
         }
         const minFont = width >= 1000 ? 20 : width <= 360 ? 13 : 15;
@@ -632,8 +633,7 @@ const composite = (fg, bg) => {
             const expected = kept.map(li => {
               const trust = li.getAttribute('data-bad-term-trust') || '';
               const amount = (li.querySelector('[data-bad-term-amount]')?.textContent || '').replace(/\s+/g, ' ').trim();
-              return li.getAttribute('data-bad-timeline-role') === 'past' ? 'Unavailable'
-                : trust === 'unavailable' || !amount ? 'Unavailable' : amount;
+              return !['calculated', 'estimated'].includes(trust) || !amount ? 'Unavailable' : amount;
             });
             return {
               mode: nav ? nav.getAttribute('data-bad-river') : '',
@@ -665,9 +665,7 @@ const composite = (fg, bg) => {
         if (face.savingsPad < 8 || !face.savingsInside) {
           errors.push(`${width}/${theme} savings pill pad ${face.savingsPad} inside ${face.savingsInside}`);
         }
-        if (face.incomeShown !== face.incomePrinted || /≈estimated|estimated\$|est\./.test(face.incomeShown || '')) {
-          errors.push(`${width}/${theme} income line ${JSON.stringify(face.incomeShown)} printed ${JSON.stringify(face.incomePrinted)}`);
-        }
+        assert.equal(face.incomeShown, '', 'Removed tile has no copied income sentence');
         if (width === 1440 && theme === 'light') {
           currentFigureGap = face.figureGap;
           console.log('pp+0 income ' + face.incomeShown);
@@ -760,7 +758,7 @@ const composite = (fg, bg) => {
             }),
             pillRight: !!(cashShown && top && top.right - cashBox.right < 24 && cashBox.top >= top.top - 2 && cashBox.bottom <= top.bottom + 2),
             incomeInside: !(metaBox && income) || (metaBox.right <= income.right + 1 && metaBox.left >= income.left - 1 && metaBox.bottom <= income.bottom + 1),
-            stacked: !!(income && document.querySelector('[data-budget-browse="spending"]') && income.bottom <= box(document.querySelector('[data-budget-browse="spending"]')).top + 8),
+            stacked: !income,
             separate: !hits(income, pay),
             payHidden: !!(pay && pay.width <= 2 && pay.height <= 2),
             depOverlap,
@@ -773,7 +771,7 @@ const composite = (fg, bg) => {
               for (let i = 1; i < kids.length; i++) gaps.push(Math.round(kids[i].top - kids[i - 1].bottom));
               return gaps;
             }),
-            phoneOrder: ['.g-river-wrap', '.blend-hero', '[data-budget-browse="bills"]', '.blend-income', '[data-budget-browse="spending"]', '.budget-blend-card-movements', '[data-budget-savings-goals]'].map(sel => {
+            phoneOrder: ['.g-river-wrap', '.blend-hero', '[data-budget-browse="bills"]', '[data-budget-browse="spending"]', '.budget-blend-card-movements', '[data-budget-savings-goals]'].map(sel => {
               const el = document.querySelector(sel);
               return el ? Math.round(el.getBoundingClientRect().top) : null;
             }),
@@ -781,10 +779,10 @@ const composite = (fg, bg) => {
             goalSlack: (() => {
               const tile = document.querySelector('[data-budget-savings-goals]');
               if (!tile) return null;
-              const nodes = [...tile.querySelectorAll('li, p, h2, .blend-goals-costs')].filter(el => el.getBoundingClientRect().height > 4);
-              const last = nodes[nodes.length - 1];
-              if (!last) return null;
-              return Math.round(tile.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom);
+              const nodes = [...tile.querySelectorAll('li, p, h2, .blend-goals-costs')]
+                .filter(el => !el.closest('.blend-goals-source, details:not([open]), [hidden]') && el.getBoundingClientRect().height > 4);
+              if (!nodes.length) return null;
+              return Math.round(tile.getBoundingClientRect().bottom - Math.max(...nodes.map(el => el.getBoundingClientRect().bottom)));
             })(),
             heroSlack: (() => {
               const tile = document.querySelector('.blend-hero');
@@ -828,7 +826,7 @@ const composite = (fg, bg) => {
           if ((layout.ringWidths || []).some(size => size < 96)) {
             errors.push(`${width}/${theme} ring width ${JSON.stringify(layout.ringWidths)}`);
           }
-          if (layout.goalSlack == null || layout.goalSlack > 48 || layout.heroSlack == null || layout.heroSlack > 40 || layout.incomeSlack == null || layout.incomeSlack > 40) {
+          if (layout.goalSlack == null || layout.goalSlack < 0 || layout.goalSlack > 48 || layout.heroSlack == null || layout.heroSlack > 40) {
             errors.push(`${width}/${theme} tile slack ${JSON.stringify({ goal: layout.goalSlack, hero: layout.heroSlack, income: layout.incomeSlack })}`);
           }
         }
@@ -1124,7 +1122,7 @@ const composite = (fg, bg) => {
       assert.equal(await result.evaluate(node => document.activeElement === node && node.getAttribute('aria-expanded') === 'false'), true,
         'Period figures dismissal returns to the visible result');
 
-      const income = detailsPage.locator('.blend-income');
+      const income = detailsPage.locator('[data-operating-question="02"] .budget-step-summary');
       const originalIncome = await detailsPage.locator('[data-operating-question="02"] .budget-step-body').elementHandle();
       const incomeCopy = await originalIncome.textContent();
       await income.scrollIntoViewIfNeeded();
@@ -1132,17 +1130,17 @@ const composite = (fg, bg) => {
       assert.equal(await income.evaluate(node => {
         const box = node.getBoundingClientRect();
         const style = getComputedStyle(node);
-        return node.tagName === 'BUTTON' && node === document.activeElement && box.width > 8 && box.height > 8
+        return node.tagName === 'SUMMARY' && node === document.activeElement && box.width > 8 && box.height > 8
           && style.visibility !== 'hidden' && style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) >= 2;
-      }), true, 'Income has visible keyboard focus at ' + width);
-      await detailsPage.keyboard.press('Space');
+      }), true, 'Hero Income term has visible keyboard focus at ' + width);
+      await detailsPage.keyboard.press('Enter');
       await dialog.waitFor({ state: 'visible' });
       assert.equal(await originalIncome.evaluate(node => node.closest('dialog')?.open), true,
         'Income opens the native published evidence');
       assert.equal(await originalIncome.textContent(), incomeCopy);
       await detailsPage.keyboard.press('Escape');
-      assert.equal(await income.evaluate(node => document.activeElement === node && node.getAttribute('aria-expanded') === 'false'), true,
-        'Income dismissal returns to its visible tile');
+      assert.equal(await income.evaluate(node => document.activeElement === node && !document.querySelector('[data-budget-detail-sheet]')?.open), true,
+        'Income dismissal returns to its visible hero term');
       assert.equal(detailsPage.url(), 'http://budget.test/', 'Evidence interactions stay on the single page');
       await detailsPage.close();
     }
@@ -1239,7 +1237,8 @@ const composite = (fg, bg) => {
         if (!el) return false;
         const box = el.getBoundingClientRect();
         const style = getComputedStyle(el);
-        return box.width > 8 && box.height > 8 && style.visibility !== 'hidden' && style.display !== 'none' && style.position !== 'absolute';
+        return box.width > 8 && box.height > 8 && style.visibility !== 'hidden' && style.display !== 'none'
+          && style.position !== 'absolute' && !el.closest('details:not([open]), [hidden], [inert]');
       };
       const rows = [...section.querySelectorAll('.budget-category-row')]
         .filter(row => row.getAttribute('data-budget-category-open') !== 'other-spending');
@@ -1495,9 +1494,7 @@ const composite = (fg, bg) => {
     if (otherPeriod.billRows === 0 && !/\$0\.00/.test(otherPeriod.billsDom || '')) {
       errors.push('empty bills period dropped the printed zero');
     }
-    if (otherPeriod.incomeShown !== otherPeriod.incomePrinted || /≈estimated|estimated\$|est\./.test(otherPeriod.incomeShown || '')) {
-      errors.push(`other period income ${JSON.stringify(otherPeriod.incomeShown)} printed ${JSON.stringify(otherPeriod.incomePrinted)}`);
-    }
+    assert.equal(otherPeriod.incomeShown, '', 'Next period has no separate Income tile');
     if (currentFigureGap == null || otherPeriod.figureGap == null || Math.abs(otherPeriod.figureGap - currentFigureGap) > 2) {
       errors.push(`next figure gap ${otherPeriod.figureGap} current ${currentFigureGap}`);
     }
@@ -1816,7 +1813,7 @@ const composite = (fg, bg) => {
       const badCentres = (pastFace.centres || []).filter(row => row.ellipsis || row.clipped || row.outside || !row.text || row.lines < 1);
       if (!/Completed pay period/i.test(pastFace.progress) || pastFace.countdown || pastFace.remaining
         || pastFace.billRows < 1 || !pastFace.bills || !pastFace.house || !pastFace.cards
-        || !pastFace.goals || !pastFace.income || !pastFace.payday || pastFace.paydayRing
+        || !pastFace.goals || pastFace.income || !pastFace.payday || pastFace.paydayRing
         || pastFace.paydayMain !== 'Completed · 14 days' || pastFace.paydaySize !== '28px'
         || pastFace.afterLine || pastFace.qualifier
         || !pastFace.hero || consoleErrors.length
@@ -1836,6 +1833,7 @@ const composite = (fg, bg) => {
       const heading = page.getByRole('button', { name: 'Household spending and reserve evidence' });
       await heading.click();
       await page.locator('[data-budget-detail-sheet][open]').waitFor({ state: 'visible' });
+      await assertDialogPlacement(page, label + ': historical Household evidence');
       assert.equal(await originalQualifier.evaluate(node => {
         const box = node.getBoundingClientRect();
         return !!node.closest('dialog[open]') && box.width > 8 && box.height > 8
@@ -1858,6 +1856,27 @@ const composite = (fg, bg) => {
     await assertPast(pastNarrow, '320');
     await capture(pastNarrow, 'budget-blend-320-light-past.png');
     await pastNarrow.close();
+
+    // Jul 31-Aug 13: 2,600 observed payroll minus 105 assigned bill minus
+    // 47.25 groceries and 19.50 fuel = 2,428.25, independently reconciled.
+    const qualifiedHistory = fx.fundingHistorical('full', 'paid');
+    // This synthetic receipt was represented inside a dated opening that
+    // predates the completed period; an amount alone is not settlement.
+    qualifiedHistory.plan.opening.priorAsOf = '2026-07-30';
+    qualifiedHistory.plan.opening.representedEvents.push({ id: 'payroll', date: '2026-07-31' });
+    qualifiedHistory.liveOverlay.currentPeriodActuals.representedActuals.push({
+      id: 'payroll', date: '2026-07-31', actual: 2600 });
+    for (const width of [1440, 390, 320]) {
+      const page = await open(width, 'light', { data: qualifiedHistory });
+      const before = await page.locator('[data-budget-window-range]').innerText();
+      await moveRiver(page, -1);
+      await page.waitForFunction(prev => document.querySelector('[data-budget-window-range]')?.textContent !== prev, before);
+      assert.equal(await page.locator('[data-ph-value]').innerText(), '$2,428.25', 'Qualified historical river at ' + width);
+      assert.equal((await page.locator('[data-blend-term="balanceAfterDeductions"]').textContent()).trim(), '$2,428.25', 'Qualified historical hero at ' + width);
+      assert.equal(await page.locator('[data-bad-historical-withheld]').count(), 0);
+      await capture(page, `budget-blend-${width}-light-past-qualified.png`);
+      await page.close();
+    }
 
     const termsPage = await open(1440, 'light');
     const repaintTerms = async () => {
@@ -2110,7 +2129,7 @@ const composite = (fg, bg) => {
     focusWalks.push({ viewport: 1440, theme: 'light', steps: walk });
     const focusTargets = [
       ['[data-budget-granularity="month"]', 'budget-blend-focus-granularity.png'],
-      ['.blend-income', 'budget-blend-focus-income.png'],
+      ['[data-operating-question="02"] .budget-step-summary', 'budget-blend-focus-income.png'],
       ['[data-operating-question="07"] > details > summary', 'budget-blend-focus-result.png'],
       ['.blend-ring[data-blend-cat="groceries"]', 'budget-blend-focus-household.png'],
       ['[data-budget-goal-open]', 'budget-blend-focus-goal.png'],
@@ -2308,12 +2327,14 @@ const composite = (fg, bg) => {
         });
       }));
     }));
-    const probeLabels = ['Unavailable', 'Unavailable', 'Unavailable', 'Unavailable', '-$1,020.09', '-$10.00', '$0.00'];
+    const probeLabels = ['$3,700.00', '-$420.00', '$731.83', 'Unavailable', '−$1,020.09', '-$10.00', '$0.00'];
     if (riverProbe.mode !== 'printed' || riverProbe.state !== 'neutral' || !riverProbe.focusable
       || !riverProbe.orbHidden || !riverProbe.beamHidden || !riverProbe.chooserVisible
       || riverProbe.rows !== 7 || riverProbe.labels.join('|') !== probeLabels.join('|')
       || riverProbe.value !== 'Unavailable'
-      || riverProbe.tones.slice(0, 4).some(tone => !/is-muted/.test(tone) || /is-income|is-short/.test(tone))
+      || !/is-income/.test(riverProbe.tones[0])
+      || !/is-short/.test(riverProbe.tones[1]) || !/is-income/.test(riverProbe.tones[2])
+      || !/is-muted/.test(riverProbe.tones[3])
       || !/is-short/.test(riverProbe.tones[4]) || /is-income/.test(riverProbe.tones[4])
       || !/is-income/.test(riverProbe.tones[5]) || /is-short/.test(riverProbe.tones[5])
       || !/is-income/.test(riverProbe.tones[6])
@@ -2329,8 +2350,8 @@ const composite = (fg, bg) => {
     await probe.keyboard.press('Escape');
     assert.equal(await probe.locator('[data-blend-figures-open]').evaluate(el => el === document.activeElement), true,
       'Unavailable selected river value retains keyboard access to Period figures');
-    // Force the selected publication to a numerically populated past row.
-    // Even precise Household coverage cannot promote it to whole-BAD history.
+    // The adapter preserves an already-qualified native historical publication.
+    // Qualification is tested at the native producer, never inferred here.
     await probe.evaluate(() => {
       const selected = document.querySelector('ol[data-bad-timeline] > [data-bad-timeline-period="now"]');
       selected.setAttribute('data-bad-timeline-role', 'past');
@@ -2341,10 +2362,10 @@ const composite = (fg, bg) => {
       document.querySelector('[data-budget-bento]').removeAttribute('data-blend-ready');
       document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
     });
-    await probe.waitForFunction(() => document.querySelector('[data-ph-value]')?.textContent.trim() === 'Unavailable');
-    assert.equal(await probe.locator('.playhead-orb').isVisible(), false, 'Selected historical value has no plotted orb');
-    assert.equal(await probe.locator('.playhead-beam').isVisible(), false, 'Selected historical value has no amount marker');
-    assert.equal(await probe.locator('[data-ph-value]').innerText(), 'Unavailable');
+    await probe.waitForFunction(() => document.querySelector('[data-ph-value]')?.textContent.trim() === '$987.65');
+    assert.equal(await probe.locator('.playhead-orb').isVisible(), true, 'Qualified historical value has its plotted orb');
+    assert.equal(await probe.locator('.playhead-beam').isVisible(), true, 'Qualified historical value has its amount marker');
+    assert.equal(await probe.locator('[data-ph-value]').innerText(), '$987.65');
     await openPeriodFigures(probe, true);
     await probe.keyboard.press('Escape');
     assert.equal(await probe.locator('[data-blend-figures-open]').evaluate(el => el === document.activeElement), true,
@@ -2352,20 +2373,32 @@ const composite = (fg, bg) => {
     await probe.close();
 
     const householdPacket = householdAll.packet();
-    for (const [width, file] of [[1440, 'budget-blend-1440-light-household-all.png'], [390, 'budget-blend-390-light-household-all.png']]) {
+    for (const [width, file] of [[1440, 'budget-blend-1440-light-household-all.png'], [390, 'budget-blend-390-light-household-all.png'], [320, 'budget-blend-320-light-household-all.png']]) {
       const page = await open(width, 'light', { data: householdPacket });
       await assertBoardOrder(page, `all categories ${width}`, width);
       const rings = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('[data-budget-browse="spending"] .budget-category-row')];
         const other = rows.filter(row => row.getAttribute('data-budget-category-open') === 'other-spending');
         const names = [...document.querySelectorAll('[data-blend-rings] .blend-ring-l')].map(el => (el.textContent || '').trim());
+        const printedNames = rows.filter(row => !other.includes(row)).map(row => row.querySelector('.budget-category-name')?.textContent.trim());
+        const shownNames = [...document.querySelectorAll('[data-blend-rings] .blend-ring-name')].map(el => el.textContent.trim());
         const wells = [...document.querySelectorAll('[data-blend-rings] .blend-ring-g')].map(el => Math.round(el.getBoundingClientRect().width));
         const tops = [...document.querySelectorAll('[data-blend-rings] .blend-ring')].map(el => Math.round(el.getBoundingClientRect().top));
         const perRow = tops.filter(top => Math.abs(top - tops[0]) < 8).length;
         const more = document.querySelector('.blend-rings-more');
         const otherRow = !!document.querySelector('.blend-other');
-        return { printed: rows.length - other.length, names, wells, perRow, more: !!more, otherRow };
+        const foot = document.querySelector('.blend-other');
+        const footBox = foot?.getBoundingClientRect();
+        const children = [...(foot?.children || [])];
+        const boxes = children.map(el => el.getBoundingClientRect());
+        const otherFits = !!footBox && children.every((el, i) => boxes[i].left >= footBox.left - 1
+          && boxes[i].right <= footBox.right + 1 && el.scrollWidth <= el.clientWidth + 1);
+        const otherOverlap = boxes.some((a, i) => boxes.slice(i + 1).some(b =>
+          a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1));
+        return { printed: rows.length - other.length, names, printedNames, shownNames, wells, perRow, more: !!more, otherRow, otherFits, otherOverlap };
       });
+      assert.deepEqual(rings.shownNames, rings.printedNames, 'Every published Household line is visible in its original order at ' + width);
+      assert.ok(rings.otherFits && !rings.otherOverlap, 'Other Spending name, qualifier and amount fit without overlap at ' + width);
       if (rings.printed < 7 || rings.names.length !== rings.printed || rings.more || !rings.otherRow) {
         errors.push(`household-all ${width} ${JSON.stringify(rings)}`);
       }
@@ -2463,7 +2496,14 @@ print('390 crops', im.size)
       chrome: process.env.CHROME_PATH || null,
       reducedMotion: false,
       screenshots: shots,
-      visualComparison,
+      screenshotSha256: Object.fromEntries(shots.map(file => [file,
+        createHash('sha256').update(fs.readFileSync(path.join(outDir, file))).digest('hex')])),
+      sourceSha256: Object.fromEntries(['public/plan.js', 'public/budget-blend.js', 'public/budget-gface.css',
+        'public/forecast.js', 'data.json', 'test/browser-budget-blend-proof.js'].map(file => [file,
+        createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')])),
+      // Local reference paths can identify the owner. Publish reference
+      // filenames and hashes; retain full paths only for this run's reads.
+      visualComparison: { ...visualComparison, references: references.map(({ path: localPath, ...ref }) => ref) },
       contrasts,
       heroTerms,
       focusWalk: focusWalks[0],

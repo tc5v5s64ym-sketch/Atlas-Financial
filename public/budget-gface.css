@@ -85,7 +85,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
 .budget-bento.atlas-g [data-budget-window-header][hidden] { display: none !important; }
 
 /* Fixed membership, independent heights: Hero/Bills/Cards and
-   Income/Household/Savings. Payday stays in the tree, off the face. */
+   Household/Savings. Payday stays in the tree, off the face. */
 .budget-bento.atlas-g > .blend-board {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
@@ -182,11 +182,14 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
 .budget-bento.atlas-g .blend-hero {
   align-content: start;
   height: auto;
-  min-height: 456px;
+  min-height: 420px;
   row-gap: 22px;
   padding: 26px 32px 24px;
 }
 .budget-bento.atlas-g .blend-hero.is-other-period [data-operating-question="07"] { margin-bottom: 0; }
+/* The closed source disclosure must not create an empty final grid row. Its
+   original evidence moves into the native dialog when Period figures opens. */
+.budget-bento.atlas-g .budget-blend-hero-layout.blend-hero > .blend-hero-panel:not([open]) { position: absolute; }
 .budget-bento.atlas-g .blend-hero.is-other-period .budget-today-cash,
 .budget-bento.atlas-g .blend-hero.is-other-period .blend-hero-foot > [data-bills-closing] { display: none; }
 .budget-bento.atlas-g .blend-hero .budget-today-cash {
@@ -652,6 +655,19 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
 }
 .budget-bento.atlas-g .blend-other-amt,
 .budget-bento.atlas-g .blend-other-state { margin-left: auto; color: var(--blend-ink); font-weight: 640; white-space: nowrap; }
+@media (max-width: 480px) {
+  .budget-bento.atlas-g .blend-other:has(.blend-need-badge) {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    column-gap: 8px;
+    row-gap: 2px;
+    text-align: left;
+  }
+  .budget-bento.atlas-g .blend-other:has(.blend-need-badge) .blend-amber { grid-column: 1; grid-row: 1; }
+  .budget-bento.atlas-g .blend-other:has(.blend-need-badge) .blend-other-name { grid-column: 2; grid-row: 1; }
+  .budget-bento.atlas-g .blend-other:has(.blend-need-badge) .blend-need-badge { grid-column: 2; grid-row: 2; white-space: normal; }
+  .budget-bento.atlas-g .blend-other:has(.blend-need-badge) .blend-other-amt { grid-column: 3; grid-row: 1; margin-left: 0; justify-self: end; }
+}
 .budget-bento.atlas-g .blend-amber {
   width: 8px;
   height: 8px;
@@ -1097,7 +1113,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   .budget-bento.atlas-g .blend-hero { order: 1; min-height: 500px; padding: 32px 36px; row-gap: 24px; }
   #operating-surface .budget-bento.atlas-g .blend-hero-range { font-size: 19px; }
   .budget-bento.atlas-g .blend-hero [data-operating-question="07"] .budget-step-value:not(.is-fail-closed) { font-size: 64px; }
-  .budget-bento.atlas-g .blend-hero .blend-hero-top .budget-today-cash { margin-left: 0; }
+  .budget-bento.atlas-g .blend-hero .blend-hero-top .budget-today-cash { margin-left: auto; }
   .budget-bento.atlas-g .blend-hero :is([data-operating-question="02"], [data-operating-question="04"], [data-operating-question="06"]) .operating-prompt { font-size: 15px; font-weight: 500; }
   .budget-bento.atlas-g [data-budget-browse="bills"] { order: 2; }
   .budget-bento.atlas-g .blend-income { order: 3; }

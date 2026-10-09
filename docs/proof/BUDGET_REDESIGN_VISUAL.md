@@ -1,43 +1,109 @@
-# Budget redesign PR A — visual proof
+# Budget g-blend approved repairs — Draft #548
 
-Fixture browser proof for the pay-period Budget bento. Every shot uses `test/fixtures/budget-surface-data.js` through the existing page scripts, except the two card shots, which use `test/fixtures/card-period-movements-data.js`. Nothing here was read from the live site, and no figure was copied from the design prototype.
+Owner source: the 2026-10-09 instruction to remove the separate Income tile,
+show every Household line, preserve trustworthy historical pay-period figures
+with missing data unavailable, and address the 18 browser findings. Keep Draft;
+no Ready transition or merge. Final owner visual approval and release reviews
+remain outstanding.
 
-## Placement
+## Current-state verification
 
-Pay period / Month, the period arrows, and Choose period stay in a slim row just above the grid, and those controls keep working. The period title, a Now chip, and the Bills account pill are the hero’s top row. Now is shown only when the page marks the selected period as current. The Overview / Spending / Bills / Upcoming chips are not on the face. A Balance After Deductions river sits under the period controls. It reads `ol[data-bad-timeline]` when that list is printed: each node's label is the amount span's text, an unavailable trust or an empty span is a muted dash with no point height, short colour comes only from `data-sign="negative"`, and choosing a node steps the same period arrows using the printed start date. Month labels come from those start dates, or from the range label when a start date is absent. A past row stays on the river only when `data-bad-timeline-coverage` is `precise` or `posted-only`. A past row whose coverage is `unavailable`, missing, or anything else is left off. Current and future rows stay, including when their coverage is `unavailable`. With no list, or with no row left after that gate, the river is a neutral row of dashes and does not navigate.
+Verdict: **PARTIALLY FIXED** before this repair. Remote head was
+`a713b1d5adfaccc82e9122158d75536293f7c3b5`. Its committed browser receipt had
+18 failures, and `plan.js` and the river adapter suppressed every historical BAD
+amount. The Household adapter already iterated every native category; no new
+category renderer was needed. Current main
+`f6ee6b84c96e5c87cb85aa9d7fdf9a9a7d6212fa` was inspected and integrated before
+repairs. New private-history files from main are unchanged by this repair.
 
-Desktop, two columns. The hero is one glass tile on the left, spanning the income tile and the payday tile on the right. Its equation is one row at 1440: Income, Bills, and Household budget, each with the label above the value and a spaced minus sign between the terms. Each value is the printed `[data-bad-term-value]` text for `periodIncome`, `assignedBills`, and `householdBudgetHold`, copied verbatim. The face labels stay Income, Bills, and Household budget. Forecast’s longer labels and the `[data-bad-terms]` note sit in Period figures, not on the face. When `[data-bad-term-amount]` is printed with an amount, that span’s own text is shown, and an est. chip is added only when that row’s trust is estimated. That chip stays on the same baseline as the amount, and wraps only at 480px and below. The ≈ mark in the value is not copied with it. An empty or whitespace-only amount span is treated as absent. When that span is absent, the value string is shown as printed — including “≈ estimated” when that is the printed text — and no chip is added. A block status of unavailable, or a row trust of unavailable, shows the muted word Unavailable before the span is read. The large number is the printed `balanceAfterDeductions` value, set at `clamp(76px, 10.4vw, 150px)` from 481px up. Below that the floor drops so the same printed figure stays inside the tile. Its dollar characters stay full size, and the cents are a smaller superscript split from that same displayed string. When the printed terms face is `after-proposed-funding`, that label gains the printed qualifier “before proposed savings funding”, and the printed Q07 period result is shown under the big number. The line’s visible label is the words After proposed savings. That question’s printed label stays in the line for screen readers. When `[data-budget-result-trust]` and `[data-budget-result-amount]` are present, the line shows that span’s text exactly. Trust `unavailable`, or an empty or whitespace-only span, shows Unavailable. That decision never uses `Number()`, `parseFloat`, or a numeric truthiness check, so an empty span cannot become `$0.00`. An est. chip is added only when that trust is estimated and the span printed a real amount. `$0.00` appears only when the span itself prints `$0.00`. When those hooks are absent, the value stays the printed string, including “≈ estimated”. An amount span inside the terms block is not that value. The same decision rewrites a final-hero `.budget-period-result` whose span is empty. Digits are split into a cents superscript only after a string is already displayed. Other periods show neither the qualifier nor that line. When the result fails closed, the word stays in the same slot at the label size and is not split. The hero foot is one Planned Savings pill and a split bar. The bar’s widths are ratios of the printed Bills, Household, and Balance After Deductions magnitudes. A missing magnitude is a dotted segment, and a bar with no positive total is a dotted track with a muted dash. Balance after bills and the expected Bills balance at period end sit in Period figures, still in the DOM. On a period that is not current, the Now chip, the Bills account pill, and the expected Bills balance are hidden. Bills is the calendar tile under the hero. Household budget is a glass tile of arc rings beside it. A ring with no printed amount is a dotted track and a muted dash. Card movement is a compact vertical list under Bills, one row per card, at every width. Saving for shows the rings, the legend, and a bar only when both Saved and Needed amounts are printed; otherwise the track is dotted and marked with a muted dash. Costs ahead sits inside that tile, and its heading stays a real heading. Worth a look stays in `#budget-attention-bottom` and is visually clipped; its words are copied onto the matching ring or the Bills header as face badges. The page footer, including the privacy paragraph, is centred under the grid. There is no “More on this page” summary. Recorded account balances, Savings accounts & evidence, and the snapshot stay clipped off the face.
+The original ZIP and extracted g-blend files are accessible. The approved
+desktop light, desktop dark and mobile light PNG bytes match the SHA256 hashes
+recorded in `budget-blend-browser-receipt.json`. Those references control the
+visual comparison; prototype figures do not become financial evidence.
 
-On a narrow screen the controls stay above the grid. At 640px and below the three hero terms stack as label over value, the minus signs are hidden, and a term value does not split mid-word. Above that, the hero equation stays a three-column grid. The Bills account pill sits at the right end of the hero’s top row. The order is hero, Bills, then Income beside Payday above 480px. At 480px and below Income and Payday each take a full row, and each deposit caption is its own line so the labels do not overlap. Household, Cards, and Saving for follow. Upcoming costs and the funding proposal stay inside the Savings goals panel, closed until that tile is opened. At 480px and below the three household rings stay on one row. Card rows stay vertical, with no sideways scroller. Body padding at the bottom is at least the fixed nav height plus its lift and the safe-area inset, so the last content can scroll clear of the dock. At 390, after scrolling to the end of the page, the centred footer sits above the dock. Full-page captures set sticky and fixed chrome to static for the shot only, so the header appears once at the top and the dock does not paint over a tile.
+## Repaired face and evidence
 
-Income, Payday, Bills, Household, Cards, and Saving for each open with an inline SVG icon in `currentColor`, hidden from assistive technology. The income tile header is that icon and the words Planned income. The hero term stays Income. Its longer phrase, “Period income, counted in Balance After Deductions”, is screen-reader text in Period figures. When the page prints a received amount, that amount sits at the top right as “$X in”. The income headline is the full-period plan figure already rendered, with an est. pill when that figure is already marked estimated. One dot is drawn per printed deposit: a check when the row is already marked received, a hollow dot when it is expected, and a today tick only when the window already prints today. Under each dot the caption copies the printed amount, name, and date. When a received amount is printed, the actual/planned sentence stays in the DOM and is clipped off the face. When no received amount is printed, that sentence stays on the face. The hero’s Unavailable term slot is not part of that sentence. The payday header is an icon and the word Payday. On the current period the payday number is the digit already printed in “in N days”, centred in an arc ring, and the date sits at the bottom left. A period that is not current shows no countdown and no ring. Its main figure is a printed payday date when the page prints one as a single date, and the muted word Unavailable when it does not. The current period keeps the arc ring, the digit from “in N days”, and the printed date. At a narrow width that date sits under the ring, on one line, and does not cross the ring. The page does not print a weekday, so none is added. The payday sentence stays in the DOM as screen-reader text and is not on the face. The ring stays inside the tile. Planned Savings, Balance after bills, and the period-end Bills line are the figures the page already renders, shown as padded pills. Each goal legend shows the status word. Under it, Saved is copied only when that amount is a printed dollar figure, and Needed is copied the same way. The two lines use one size and one colour. An estimate mark the row already prints keeps the existing estimate colour. When both amounts are printed, Saved is first and Needed is second. A Saved or Needed word of Unavailable is not repeated on the face. The source rows, including Needed and this period, remain in the DOM at zero height. A missing status is left blank rather than renamed Unavailable.
+Desktop has independent Hero / Bills / Cards and Household / Savings columns.
+Mobile DOM and keyboard order is Hero, Bills, Household, Cards, Savings. Income
+stays in the hero equation and opens its original native evidence; the separate
+tile and its producer are removed. Payday stays off the face.
 
-The running-build identity line stays in the HTML before `#operating-surface`. On the Budget bento it is visually a centred footer below the current balance, still 12px muted text, in light and dark.
+Household shows every native category, in native order, with three rings per
+row at 1440, 390 and 320 pixels. The all-lines fixture has seven categories plus
+Other Spending. Amounts, uncertainty, plan labels, category sheets and the
+original Household disclosure remain native publications.
+At narrow widths, the Other Spending qualifier gets its own line so it cannot
+overlap or clip the separately printed amount. The all-lines proof checks this.
 
-The income tile’s actual/planned line is built from the printed income ratio. A chip this skin added on the hero is not part of that copy. When the page prints “of planned”, that phrase and the planned amount stay, with a space between each printed piece, including “≈” and “estimated” when those pieces are printed. A period that is not current shows the payday line the page already prints, such as “Upcoming · 14 days” or “Completed · 14 days”, at the off-period date size. The muted word Unavailable is used only when that line is empty. At 1440 the big figure on those periods keeps the same gap above the pill row that the current period uses. On the current period the hero panel carries a muted line: “Plan status covers the next 13 weeks, not just this pay period.” That note is not on the face while the panel is closed. A status chip is drawn only from `data-plan-status` on `#status-band`. The map is one table: `onPlan` is On plan, and `negative`, `gap`, `unfunded`, `combination`, and `overrideBreach` are Short. `belowBuffer` is in that table and currently draws no chip, so a false Tight from a null-low reading cannot reach the face. Restoring Tight is the one line that replaces that null with the Tight word. `infeasible`, `unavailable`, an unknown id, and a missing attribute draw no chip. The live Oct 8 reading `infeasible` therefore shows no chip. The visible chip is that single word. “Plan status (13-week window)” stays for screen readers. The chip is not shown on any other period, and it does not copy an amount or a date.
+Historical BAD is printed only when Forecast publishes complete, finite,
+trusted actual evidence for income, bills and Household for that exact period,
+and the incumbent BAD terms close with a trusted finite result. This does not
+recompute the figure, establish original historical targets, or replace the
+assigned-deduction basis with an actual-payment sum. The native hero, Q07 and
+hidden timeline share the same qualification. Qualified estimated BAD retains
+its estimate mark. Missing evidence gives Unavailable and an empty amount hook.
+Every valid period date remains selectable; unavailable values have no amount
+geometry and break the river line. An explicit published zero remains zero.
 
-## #546 and #547
+Independent fixture checks include 4,017.25 payroll + 2,000 partner + 50 gift
+minus 200 assigned deductions minus 40 Household = **5,827.25**, and a browser
+case of 2,600 payroll minus 105 assigned bill minus 47.25 groceries minus 19.50
+fuel = **2,428.25**. The receipts and settlement identities are invented test
+evidence. They establish behavior, not a real household historical balance.
 
-Card movement keeps the published heading, aria-label, hooks, and fail-closed words. The glass tile is the wrapper. The strip itself stays transparent with no border. Each row is the name, the net or “Net unavailable”, a short direction mark, and the chevron, separated by a hairline. The mark is not scaled to the net change. The same vertical list is used below 600px. `budget-blend-cards-1440-light.png` and `budget-blend-cards-320-dark.png` are that fixture.
+## Disposition of the original 18 browser findings
 
-#547’s Saving for rows stay under `[data-budget-savings-goals]`, including Saved, Needed, and This period. The legend shows the status word and, when the row prints a dollar amount, Saved and then Needed, with the printed estimate mark in the estimate colour. The source rows stay in the DOM for the existing hooks and are not closed details. The funding section keeps its Today and Payday tabs and the “Currently backed” lines. Those hooks are not clipped.
+| Original findings | Count | Disposition and retained proof |
+|---|---:|---|
+| Geometry requires the clipped Household hold to be visible | 6 | Correct the stale face expectation. Verify the visible hero Income term and read the original hold/progress amount from Household Info. Preserve scroll, native source, geometry and disclosure checks. |
+| Desktop tile slack | 2 | Remove the empty grid row made by the closed hero source disclosure and bound the hero minimum height. Savings measurement excludes clipped source children and measures the last visible content; overflow and padding remain checked. |
+| Mobile Bills header | 4 | The approved flag-filled phone row omits numeric metadata. Verify that deliberate state rather than measuring a display:none element. Unavailable warnings stay visible; native amounts stay in the drawer. |
+| Mobile Bills account pill alignment | 4 | Align the wrapped pill to the right edge of the hero top. Continue checking pill bounds and overlap with Household. |
+| Household count on the face | 1 | Visibility respects closed native details. Open the original Q06 body and verify its count, amounts, qualifiers and returned keyboard focus. Historical disclosure assertions wait for the native dialog entrance to settle. |
+| River adapter expected text | 1 | Compare exact printed currency, including the Unicode minus. Preserve native qualified historical values; do not override them by date role. Continue checking unknown gaps, zero, negative tone and Period figures access. |
 
-The household header is an icon beside “Household budget ›”, the spent-to-date figure, and “$X left” at the right. The “N of M known categories over plan” count sits in Household detail, opened from the keyboard, and is not on the face. Each over-plan ring shows the printed “$X over” in the centre, in the over tone. The pill under it reads Over plan, in the over word and tint, and that printed amount stays inside the pill for screen readers. Ring captions wrap, including “Category · of $plan”, with no ellipsis. Ring centre text wraps inside the ring, on two lines when the printed status needs it, and is not ellipsized at 1440, 390, or 320. Still planned, From today, and the cycle dates sit in Household detail. Income keeps its actual/planned line in the DOM, on the face only when no received amount is printed. The Bills face keeps the to-pay headline (“$X left of $Y”) and a To confirm pill when that count is above zero. A completed past period shows no remaining-amount line at all; that element is absent, and it is not replaced by Unavailable. On that header, Details stays at the right edge. A pill whose count is zero is not shown. The budget bills section does not print an Overdue count, so no Overdue pill is drawn and none is counted from dates. If a printed state says Overdue, that day gets a red ring and the word is available for the pill. When the bills publication is Unavailable, the headline reads Unavailable and the day markers stay neutral. Details is a quiet text button with a chevron at the right end of the header. Paid, not paid, and to-confirm lists stay in the Bills detail panel, in the DOM, and open when Details is used or when a filter inside the panel is focused. Planned Savings is the hero-foot pill. Balance after bills is in Period figures. The latest recorded Bills balance, a cash shortfall or funding-gap notice, and the period-info disclosure sit in Period figures. Per-category rows stay collapsed. A ring opens that category’s sheet from the keyboard, focus returns to that ring when the sheet closes, and an over-plan category shows the existing over-plan word on its ring. A household ring with nothing printed is a dotted track and a muted dash. It does not draw a hatched disc or a liquid level. When Other spending already prints “of planned …”, including “≈estimated”, that phrase is copied onto the visible footer row.
+## Browser proof
 
-## How it was run
+Run the existing fixture-only runner with Playwright and Chromium:
 
-```bash
-CHROME_PATH=/usr/bin/google-chrome node test/browser-budget-blend-proof.js
+```powershell
+$env:CHROME_PATH = '<Chromium executable>'
+$env:PYTHON = '<Python with Pillow>'
+$env:APPROVED_REFERENCE_DIR = '<exact approved reference PNG folder>'
+node test/browser-budget-blend-proof.js
 ```
 
-Playwright served `public/` at `http://budget.test/` and aborted every other origin. Light and dark used `hfd-theme` / `data-theme`. Viewports were 1440, 390, and 320. One fail-closed packet (`unavailablePlan`) was shot in light at 1440 and dark at 390. The next pay period is shot at 1440, 390, and 320 in light and dark (`budget-blend-1440-light-next.png` and the matching dark, 390, and 320 names; no countdown and no ring). The Aug 28 period, which has proposed funding, is also `budget-blend-1440-light-next.png`, `budget-blend-390-light-next.png`, `budget-blend-1440-light-aug28.png`, and `budget-blend-320-light-aug28.png`. The completed period is `budget-blend-*-past.png` at those three widths in light and dark (no remaining-amount line, and neither the pre-funding qualifier nor the Q07 line). Geist and Geist Mono are same-origin woff2 files. The proof route serves them as `font/woff2`. The hero aurora uses the healthy palette only, and the sky blobs show when WebGL is missing or motion is reduced. The shots were taken with motion allowed so the rings and payday arcs paint. The stylesheet still removes tilt and the confirm-dot pulse when `prefers-reduced-motion: reduce` is set. Each payday arc is a circle stroke with a dash gap; that rotation is the layout of the days. In dark mode the pressed Pay period control is the light pill and Month is not.
+The current run uses Microsoft Edge Chromium on Windows. It serves repository
+assets and invented fixture JSON at `http://budget.test/`, aborts other origins,
+and invokes no live site or provider write. Light/dark, 1440/390/320, current,
+future, incomplete history, qualified history, unavailable, cards, all Household
+lines, native Bills filters and nested Back, Month, resize, disclosure focus,
+contrast and reduced-motion behavior remain covered.
 
-## Contrast and focus
+The receipt records results, exact reference hashes, source hashes and screenshot
+hashes. `visualMatchApproved:false` remains an owner decision. Side-by-side images
+are review evidence; differences caused by native unavailable data are retained.
+The approved dark reference ends before lower tiles, so lower dark fidelity
+has no approved reference. Physical touch and signed-in production are untested.
 
-Sampled text against its painted background was at least 4.5:1 for body text and 3:1 for large text, in both themes. The receipt lists each sample.
+Useful captures:
 
-Tab order from the top of the light 1440 page includes the household destinations, the period controls, and the hero. Each of the first 18 stops had a solid outline of at least 2px.
+- [Desktop light](budget-blend-1440-light.png) and [desktop dark](budget-blend-1440-dark.png)
+- [Mobile light](budget-blend-390-light.png) and [mobile dark](budget-blend-390-dark.png)
+- [Every Household line, desktop](budget-blend-1440-light-household-all.png), [390](budget-blend-390-light-household-all.png), [320](budget-blend-320-light-household-all.png)
+- [Qualified history, desktop](budget-blend-1440-light-past-qualified.png), [390](budget-blend-390-light-past-qualified.png), [320](budget-blend-320-light-past-qualified.png)
+- [Incomplete history](budget-blend-390-light-past.png)
+- [Desktop comparison](side-1440-light.png) and [mobile comparison](side-390-light.png)
 
-## Files
+## Numerical and validation boundaries
 
-Screenshots and `budget-blend-browser-receipt.json` in this directory. The proof script is `test/browser-budget-blend-proof.js`. It is not in the `test/test.js` registry.
+Forecast, canonical data and the numerical snapshot script are byte-identical to
+the integrated main. The 578-key numerical snapshot SHA256 remains
+`6c941205cb1719d0e9063a1d8fe7af33663a2be75cd2dc23494512b8724271b5`.
+Historical aggregate availability is an intentional presentation repair and is
+proved separately through the real renderer and browser.
+
+The PR merge card records the full-suite outcome and exact-head hosted checks.
+Windows `test-private-period-history.js` is evaluated separately against unchanged
+main when its filesystem operations fail. No out-of-scope history or Lunch Money
+repair is included. Prior Systems PASS does not certify this repair head.

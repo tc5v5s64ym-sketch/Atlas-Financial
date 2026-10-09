@@ -33,32 +33,6 @@
     return bits.join(' ');
   }
 
-  // The income tile reads the printed ratio, not the hero slot painted into
-  // the same step. "of planned" is included only when that phrase is printed.
-  function printedIncomeSentence(step) {
-    if (!step) return '';
-    const ratio = step.querySelector('[data-budget-ratio="income"]');
-    if (!ratio) return separatedText(step.querySelector('.budget-step-value'));
-    const parts = [];
-    const actual = separatedText(ratio.querySelector('[data-budget-ratio-actual]'));
-    if (actual) parts.push(actual);
-    const ofPlanned = [...ratio.children].find(node => node.classList.contains('budget-cash-sr') && /of planned/i.test(node.textContent || ''));
-    if (ofPlanned) {
-      const slash = [...ratio.children].find(node => node.getAttribute('aria-hidden') === 'true' && /\//.test(node.textContent || ''));
-      if (slash) parts.push(separatedText(slash));
-      parts.push(separatedText(ofPlanned));
-      const plan = separatedText(ratio.querySelector('[data-budget-ratio-plan]'));
-      if (plan) parts.push(plan);
-    } else {
-      [...ratio.children].forEach(node => {
-        if (node.hasAttribute('data-budget-ratio-actual')) return;
-        const bit = separatedText(node);
-        if (bit) parts.push(bit);
-      });
-    }
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
-  }
-
   function printedMagnitude(value) {
     const match = String(value || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
     if (!match) return null;
@@ -134,7 +108,9 @@
     };
     guard('payday', () => paintPayday(progress));
     guard('hero', () => paintHero(hero));
-    guard('income', () => paintIncome(bento));
+    // Income remains in the hero equation and its original native evidence.
+    // The owner removed the separate tile from the approved face.
+    bento.querySelector('.blend-income')?.remove();
     guard('bills', () => paintBills(bento));
     guard('household', () => paintHouse(bento));
     guard('cards', () => paintCards(bento));
@@ -189,7 +165,6 @@
     const right = board.querySelector('.blend-col-side');
     const find = selector => bento.querySelector(selector);
     const hero = find('.budget-blend-hero-layout');
-    const income = find('.blend-income');
     const house = find('[data-budget-browse="spending"]');
     const bills = find('[data-budget-browse="bills"]');
     const cards = find('.budget-blend-card-movements');
@@ -204,10 +179,10 @@
       }
       const phone = window.matchMedia('(max-width: 759px)').matches;
       if (phone) {
-        [hero, bills, income, house, cards, goals].filter(Boolean).forEach(node => board.appendChild(node));
+        [hero, bills, house, cards, goals].filter(Boolean).forEach(node => board.appendChild(node));
       } else {
         [hero, bills, cards].filter(Boolean).forEach(node => left.appendChild(node));
-        [income, house, goals].filter(Boolean).forEach(node => right.appendChild(node));
+        [house, goals].filter(Boolean).forEach(node => right.appendChild(node));
       }
       if (restoreFocus && document.activeElement !== active) active.focus({ preventScroll: true });
     };
@@ -815,64 +790,6 @@
     return panel.querySelector('.blend-hero-panel-body') || panel;
   }
 
-  function depositRows(step) {
-    return [...step.querySelectorAll('[data-period-income], .other-income-tx')];
-  }
-
-  function depositName(row) {
-    if (row.classList.contains('other-income-tx')) {
-      const payee = row.querySelector('.other-income-tx-payee');
-      if (!payee) return 'Unavailable';
-      const clone = payee.cloneNode(true);
-      clone.querySelectorAll('.other-income-tx-received, .other-income-tx-pending').forEach(node => node.remove());
-      return text(clone) || 'Unavailable';
-    }
-    const span = row.querySelector('span');
-    if (!span) return 'Unavailable';
-    const clone = span.cloneNode(true);
-    clone.querySelectorAll('time, [data-income-original-plan]').forEach(node => node.remove());
-    return text(clone).replace(/\s*·\s*[A-Z][a-z]{2}\s+\d{1,2}\s*·\s*(?:arriving|received|already in balance)\s*$/i, '') || 'Unavailable';
-  }
-
-  function depositDate(row) {
-    const time = row.querySelector('time');
-    if (!time) {
-      const published = text(row.querySelector('span')).match(/(?:^|·)\s*([A-Z][a-z]{2}\s+\d{1,2})\s*(?:·|$)/);
-      return published ? published[1] : '';
-    }
-    const raw = (time.getAttribute('datetime') && text(time)) || text(time);
-    const found = raw.match(/[A-Z][a-z]{2}\s+\d{1,2}/);
-    return found ? found[0] : raw.split('·')[0].trim();
-  }
-
-  function depositAmount(row) {
-    const raw = text(row.querySelector('[data-income-line-amount]'));
-    if (!raw || raw === '-' || /unavailable|unknown/i.test(raw)) return raw && raw !== '-' ? raw : 'Unavailable';
-    if (/[+-]\$/.test(raw)) return raw;
-    if (/^\$[\d,]+(?:\.\d{2})?$/.test(raw)) return '+' + raw;
-    return raw;
-  }
-
-  function depositReceived(row) {
-    const status = String(row.getAttribute('data-income-status') || '').toLowerCase();
-    return status === 'received' || status === 'already in balance';
-  }
-
-  function splitFaceCents(node) {
-    if (!node) return;
-    const raw = node.textContent || '';
-    const parts = raw.match(/^(.*?)(-?\$[\d,]+)(\.\d{2})(.*)$/);
-    if (!parts) return;
-    node.replaceChildren();
-    if (parts[1]) node.appendChild(document.createTextNode(parts[1]));
-    node.appendChild(document.createTextNode(parts[2]));
-    const cents = document.createElement('span');
-    cents.className = 'blend-cents';
-    cents.textContent = parts[3];
-    node.appendChild(cents);
-    if (parts[4]) node.appendChild(document.createTextNode(parts[4]));
-  }
-
   function checkGlyph() {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -886,156 +803,6 @@
     path.setAttribute('stroke-linejoin', 'round');
     svg.appendChild(path);
     return svg;
-  }
-
-  function paintIncome(bento) {
-    if (bento.querySelector('.blend-income')) return;
-    const step = bento.querySelector('[data-operating-question="02"]');
-    const plan = step && step.querySelector('[data-budget-ratio="income"] [data-budget-ratio-plan]');
-    const planText = text(plan);
-    const money = moneyToken(planText);
-    const estimated = /estimated|≈/.test(planText);
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'blend-tile blend-income blend-tilt tile t-income';
-    const received = moneyToken(text(step && step.querySelector('[data-budget-ratio="income"] [data-budget-ratio-actual]')));
-    const head = document.createElement('span');
-    head.className = 'blend-tile-head';
-    const title = document.createElement('span');
-    title.className = 'blend-tile-title';
-    title.textContent = 'Income';
-    const meta = document.createElement('span');
-    meta.className = 'blend-income-in';
-    if (received) meta.textContent = received + ' in';
-    head.append(tileIcon('income'), title, meta);
-    const figure = document.createElement('span');
-    figure.className = 'blend-figure';
-    const big = document.createElement('span');
-    big.className = 'blend-big';
-    if (money) big.textContent = money;
-    else if (/unknown|unavailable/i.test(planText)) big.textContent = /unknown/i.test(planText) ? 'Unknown' : 'Unavailable';
-    else big.textContent = planText || 'Unavailable';
-    splitFaceCents(big);
-    figure.appendChild(big);
-    if (money && estimated) {
-      const pill = document.createElement('span');
-      pill.className = 'blend-est';
-      pill.textContent = 'est.';
-      figure.appendChild(pill);
-    }
-    const rows = depositRows(step || bento);
-    const progress = document.querySelector('[data-budget-window-progress]');
-    const start = progress && progress.getAttribute('data-start');
-    const end = progress && progress.getAttribute('data-end');
-    const asOf = progress && progress.getAttribute('data-as-of');
-    const days = [];
-    if (/^\d{4}-\d{2}-\d{2}$/.test(start || '') && /^\d{4}-\d{2}-\d{2}$/.test(end || '')) {
-      const cursor = new Date(start + 'T12:00:00Z');
-      const finish = new Date(end + 'T12:00:00Z');
-      while (cursor <= finish && days.length < 62) {
-        days.push({ iso: cursor.toISOString().slice(0, 10), label: cursor.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) });
-        cursor.setUTCDate(cursor.getUTCDate() + 1);
-      }
-    }
-    const position = index => days.length > 1 ? 3 + index / (days.length - 1) * 94 : 50;
-    const datedRows = rows.map(row => {
-      const iso = row.querySelector('time[datetime]')?.getAttribute('datetime');
-      return days.findIndex(day => iso ? day.iso === iso : day.label === depositDate(row));
-    });
-    const hasTimeline = days.length > 1 && rows.length > 0 && datedRows.every(index => index >= 0);
-    button.classList.toggle('is-undated', !hasTimeline);
-    const muted = document.createElement('span');
-    muted.className = 'blend-muted';
-    const value = step && step.querySelector('.budget-step-value');
-    muted.textContent = printedIncomeSentence(step);
-    button.setAttribute('aria-label', ['Planned income', planText, muted.textContent, ...rows.map(row => text(row))].filter(Boolean).join('. '));
-    if (received && muted.textContent) muted.classList.add('blend-clip');
-    const pulse = document.createElement('span');
-    pulse.className = 'blend-dep-pulse';
-    pulse.setAttribute('aria-hidden', 'true');
-    const track = document.createElement('i');
-    track.className = 'blend-p-track';
-    // Calendar geometry follows the published period/as-of dates, never a
-    // browser-computed money total or an assumed receipt date.
-    const todayIndex = days.findIndex(day => day.iso === asOf);
-    if (hasTimeline && todayIndex >= 0) {
-      const fill = document.createElement('i');
-      fill.className = 'blend-p-fill';
-      fill.style.setProperty('--w', position(todayIndex).toFixed(2) + '%');
-      track.appendChild(fill);
-    } else if (!hasTimeline) {
-      track.classList.add('is-untracked');
-      const mark = document.createElement('b');
-      mark.className = 'blend-untracked-mark';
-      mark.textContent = '—';
-      pulse.appendChild(mark);
-    }
-    pulse.insertBefore(track, pulse.firstChild);
-    if (hasTimeline) days.forEach((day, index) => {
-      const tick = document.createElement('i');
-      tick.className = 'blend-p-tick';
-      tick.style.left = position(index) + '%';
-      pulse.appendChild(tick);
-    });
-    if (hasTimeline && todayIndex >= 0) {
-      const today = document.createElement('i');
-      today.className = 'blend-p-today';
-      today.style.left = position(todayIndex) + '%';
-      pulse.appendChild(today);
-    }
-    const deposits = document.createElement('span');
-    deposits.className = 'blend-deps';
-    deposits.setAttribute('aria-hidden', 'true');
-    rows.forEach((row, index) => {
-      const got = depositReceived(row);
-      const x = hasTimeline ? position(datedRows[index]) : 50;
-      const dep = document.createElement('span');
-      dep.className = 'blend-p-dep' + (got ? ' is-got' : ' is-wait');
-      dep.style.left = x + '%';
-      const dot = document.createElement('i');
-      dot.className = 'blend-p-dot';
-      dot.setAttribute('aria-hidden', 'true');
-      if (got) dot.appendChild(checkGlyph());
-      const caption = document.createElement('span');
-      caption.className = 'blend-p-lbl';
-      caption.style.left = (index / rows.length * 100) + '%';
-      caption.style.width = (100 / rows.length - 2) + '%';
-      if (index === rows.length - 1 && index > 0) caption.classList.add('is-last');
-      const when = depositDate(row);
-      const name = depositName(row);
-      const amount = depositAmount(row);
-      const deposit = document.createElement('span');
-      deposit.className = 'blend-deposit' + (got ? ' is-received' : ' is-expected');
-      const depositDot = document.createElement('i');
-      depositDot.className = 'blend-deposit-dot';
-      const depositWhen = document.createElement('span');
-      depositWhen.textContent = when || 'Date unavailable';
-      const depositValue = document.createElement('b');
-      depositValue.textContent = amount || 'Unavailable';
-      deposit.append(depositDot, depositWhen, depositValue);
-      deposits.appendChild(deposit);
-      if (amount) {
-        const strong = document.createElement('b');
-        strong.textContent = amount;
-        caption.appendChild(strong);
-      }
-      const rest = [name, when && !name.includes(when) ? when : ''].filter(Boolean).join(' · ');
-      if (rest) {
-        const line = document.createElement('span');
-        line.textContent = rest;
-        caption.appendChild(line);
-      }
-      dep.appendChild(dot);
-      pulse.append(dep, caption);
-    });
-    button.append(head, figure, pulse, deposits);
-    if (muted.textContent) button.appendChild(muted);
-    if (step) button.addEventListener('click', () => {
-      const open = () => step.querySelector('summary')?.click();
-      if (window.BudgetSheetMotion?.from) window.BudgetSheetMotion.from(button, open);
-      else open();
-    });
-    bento.appendChild(button);
   }
 
   function billIcon(label) {
@@ -2043,8 +1810,9 @@
   }
 
   // Reads ol[data-bad-timeline] only. The amount is the span text.
-  // Past BAD is withheld; Household coverage never removes period dates.
-  // Current/future trust=unavailable or empty spans have no height.
+  // Native Forecast evidence qualifies historical BAD. Preserve its printed
+  // trust and amount; Household coverage never removes period dates.
+  // Unavailable or empty spans have no height at any date.
   // Absent list: the same neutral dashes, still focusable, and not a navigator.
   function readBadTimeline(doc) {
     const list = doc.querySelector('ol[data-bad-timeline]');
@@ -2054,10 +1822,9 @@
       const trust = li.getAttribute('data-bad-term-trust') || '';
       const span = li.querySelector('[data-bad-term-amount]');
       const amount = span ? String(span.textContent == null ? '' : span.textContent).replace(/\s+/g, ' ').trim() : '';
-      // Household transaction coverage is not whole-period historical BAD
-      // qualification. Keep retained dates, but withhold past amount claims.
-      const past = li.getAttribute('data-bad-timeline-role') === 'past';
-      const closed = past || trust === 'unavailable' || amount.length === 0;
+      // The native producer owns qualification. The adapter cannot promote
+      // missing trust or an empty amount, or suppress a qualified past value.
+      const closed = !['calculated', 'estimated'].includes(trust) || amount.length === 0;
       const negative = !closed && li.getAttribute('data-sign') === 'negative';
       return {
         index: index,
