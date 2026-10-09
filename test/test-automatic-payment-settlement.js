@@ -484,7 +484,10 @@ ok(!(missed.representedEventCandidates || []).some(candidate => candidate.id ===
 
 const agedReport = observeAged(agedPayload(
   [syntheticTx, unrelatedHistoricalTx], SCHEDULED));
-const agedHits = agedReport.representedEventCandidates || [];
+// Schedule-trust occurrences after the Aug 1 opening are owner-trusted from the
+// schedule, not transaction identity; this check is about the aged posting.
+const agedHits = (agedReport.representedEventCandidates || [])
+  .filter(candidate => candidate.identity !== 'schedule-trust-on-due');
 ok(agedHits.length === 1 && agedHits[0].id === SYNTHETIC_ID
     && agedHits[0].date === SCHEDULED
     && agedHits[0].postingDate === POSTED
