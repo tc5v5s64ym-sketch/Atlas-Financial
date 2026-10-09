@@ -12,10 +12,13 @@
   --g-radius: 28px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   align-items: stretch;
   position: relative;
   font-family: "Geist", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-feature-settings: "ss01";
+  letter-spacing: -.006em;
+  -webkit-font-smoothing: antialiased;
 }
 
 :root[data-theme="dark"] .budget-bento.atlas-g { --g-glass: rgba(26, 27, 32, .6); --g-glass-hi: rgba(255, 255, 255, .1); }
@@ -53,7 +56,7 @@ body:has([data-budget-bento]) .wrap,
 body:has([data-budget-bento]) #operating-surface,
 body:has([data-budget-bento]) .budget-surface,
 body:has([data-budget-bento]) .budget-surface-grid,
-body:has([data-budget-bento]) .budget-surface-period {
+body:has([data-budget-bento]) .budget-surface-period:not(dialog) {
   position: relative;
   z-index: 1;
   background: transparent;
@@ -68,11 +71,47 @@ body:has([data-budget-bento]) .budget-bento {
 }
 
 body:has([data-budget-bento]) .wrap { max-width: 1360px; padding: 0 40px; }
-body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
+body:has([data-budget-bento]) .bm-a { fill: #2cdda0; }
+body:has([data-budget-bento]) .bm-b { fill: #b5bdc0; }
+body:has([data-budget-bento]) .bm-c { fill: #8880f0; }
+:root[data-theme="dark"] body:has([data-budget-bento]) .bm-bg { fill: #f4f5f7; }
+:root[data-theme="dark"] body:has([data-budget-bento]) .bm-b { fill: #41484e; }
+body:has(#operating-surface [data-budget-bento]) .site-head-inner {
+  flex-wrap: nowrap;
+  padding: 16px 40px 14px;
+}
 
-/* Two independent stacks. Hero on the left. Income, then Household, on
-   the right — Household may run past the hero. Bills, Cards and Goals
-   join whichever stack is shorter. Payday stays in the tree, off the face. */
+/* The river is the visible period selector. Keep the incumbent alternate
+   period/month controls available to keyboard and assistive-technology users. */
+.budget-bento.atlas-g > .blend-toolbar {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.budget-bento.atlas-g > .blend-toolbar:focus-within,
+.budget-bento.atlas-g > .blend-toolbar.is-open {
+  z-index: 20;
+  top: 42px;
+  left: 0;
+  width: min(100%, 420px);
+  height: auto;
+  min-height: 44px;
+  padding: 12px;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  border-radius: 18px;
+  background: var(--blend-bg);
+  box-shadow: var(--g-shadow);
+}
+
+/* Fixed membership, independent heights: Hero/Bills/Cards and
+   Income/Household/Savings. Payday stays in the tree, off the face. */
 .budget-bento.atlas-g > .blend-board {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
@@ -157,7 +196,9 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 .budget-bento.atlas-g .blend-sky .b2 {
   background: radial-gradient(closest-side, color-mix(in srgb, #0a8fb5 22%, transparent), transparent);
 }
-.budget-bento.atlas-g .blend-hero .blend-aurora { opacity: .55; }
+.budget-bento.atlas-g .blend-hero .blend-aurora { opacity: .8; }
+.budget-bento.atlas-g .blend-aurora[hidden] { display: none; }
+:root[data-theme="dark"] .budget-bento.atlas-g .blend-hero .blend-aurora { opacity: 1; }
 .budget-bento.atlas-g .blend-hero-top,
 .budget-bento.atlas-g .budget-blend-hero-layout > :not(.blend-sky):not(.blend-aurora):not(.budget-surface-today) {
   position: relative;
@@ -167,6 +208,8 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 .budget-bento.atlas-g .blend-hero {
   align-content: start;
   height: auto;
+  min-height: 456px;
+  row-gap: 22px;
   padding: 26px 32px 24px;
 }
 .budget-bento.atlas-g .blend-hero.is-other-period [data-operating-question="07"] { margin-bottom: 0; }
@@ -197,14 +240,26 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   height: 30px;
   border-radius: 10px;
 }
+.budget-bento.atlas-g .blend-hero .blend-est {
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--blend-ink) 15%, transparent);
+  background: transparent;
+  color: var(--g-ink-3);
+  font-weight: 500;
+}
 
 /* Income: ink total, deposit pulse, no green rail, no stray ring. */
 .budget-bento.atlas-g .blend-income {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   box-shadow: var(--g-shadow);
   justify-content: flex-start;
   height: auto;
   padding: 22px 24px;
 }
+.budget-bento.atlas-g .blend-income .blend-figure { margin-top: 12px; }
 .budget-bento.atlas-g .blend-income .blend-big {
   font-size: 40px;
   font-weight: 600;
@@ -218,7 +273,11 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   color: var(--g-ink-3);
   font-weight: 600;
 }
-.budget-bento.atlas-g .blend-deps { display: none; }
+.budget-bento.atlas-g .blend-deps { display: none; grid-template-columns: minmax(0, 1fr); padding: 0; }
+.budget-bento.atlas-g .blend-deposit { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--blend-ink-2); }
+.budget-bento.atlas-g .blend-deposit b { margin-left: auto; color: var(--blend-ink); font-weight: 620; white-space: nowrap; }
+.budget-bento.atlas-g .blend-deposit-dot { width: 12px; height: 12px; flex: none; border-radius: 50%; background: var(--blend-income); }
+.budget-bento.atlas-g .blend-deposit.is-expected .blend-deposit-dot { background: transparent; box-shadow: inset 0 0 0 2px var(--blend-income); }
 .budget-bento.atlas-g .blend-dep-pulse {
   position: relative;
   display: block;
@@ -236,6 +295,15 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 .budget-bento.atlas-g .blend-p-track.is-untracked {
   background: repeating-linear-gradient(90deg, transparent, transparent 3px, color-mix(in srgb, var(--blend-ink) 28%, transparent) 3px, color-mix(in srgb, var(--blend-ink) 28%, transparent) 5px);
 }
+.budget-bento.atlas-g .blend-p-tick {
+  position: absolute;
+  top: 24px;
+  width: 1px;
+  height: 5px;
+  background: color-mix(in oklab, var(--blend-ink) 14%, transparent);
+}
+.budget-bento.atlas-g .blend-income.is-undated .blend-dep-pulse { display: none; }
+.budget-bento.atlas-g .blend-income.is-undated .blend-deps { display: grid; gap: 8px; margin-top: 14px; }
 .budget-bento.atlas-g .blend-p-dep {
   position: absolute;
   top: 0;
@@ -268,13 +336,14 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   left: 0;
   width: max-content;
   max-width: 148px;
-  transform: translateX(-50%);
+  transform: none;
   white-space: normal;
-  text-align: center;
+  text-align: left;
   font-size: 12px;
   line-height: 1.25;
   color: var(--blend-ink-2);
 }
+.budget-bento.atlas-g .blend-p-lbl.is-last { text-align: right; }
 .budget-bento.atlas-g .blend-p-lbl b {
   display: block;
   color: var(--blend-ink);
@@ -342,6 +411,12 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   position: relative;
   z-index: 5;
 }
+.budget-bento.atlas-g .blend-dow {
+  height: 16px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 520;
+}
 .budget-bento.atlas-g .blend-bills-of {
   display: inline-flex;
   align-items: center;
@@ -351,12 +426,14 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   white-space: nowrap;
 }
 .budget-bento.atlas-g .blend-bills-of .blend-est { margin-left: 0; }
+.budget-bento.atlas-g .blend-bills-head .blend-flag:not(.is-overdue) { color: #a45f00; background: #fff0d7; }
+.budget-bento.atlas-g .blend-bills-head .blend-flag:not(.is-overdue)::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #dc8200; vertical-align: 1px; }
 .budget-bento.atlas-g .blend-day,
 .budget-bento.atlas-g .day {
   position: relative;
   display: block;
   min-height: 0;
-  height: 52px;
+  height: 80px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--blend-bills) calc(var(--heat, 0) * 62%), color-mix(in srgb, var(--blend-ink) 4.5%, transparent));
   outline: none;
@@ -391,6 +468,7 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   color: var(--blend-bills);
 }
 .budget-bento.atlas-g .blend-day-hit svg { width: 20px; height: 20px; }
+.budget-bento.atlas-g .blend-day-hit { padding: 0; }
 .budget-bento.atlas-g .day-s,
 .budget-bento.atlas-g .blend-day > .blend-state {
   position: absolute;
@@ -421,10 +499,38 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   background: #d97706;
 }
 
-/* Household: arc rings inside a glass tile. No liquid disc. */
+/* Household: each published category remains visible. The liquid is decorative
+   geometry from the same trusted share as its arc, never another money value. */
+.budget-bento.atlas-g [data-budget-browse="spending"] > header { flex-wrap: nowrap; }
+.budget-bento.atlas-g [data-budget-browse="spending"] > header > div:has(h2) { gap: 9px; }
+.budget-bento.atlas-g [data-budget-browse="spending"] > header h2 { font-size: 16px; }
+.budget-bento.atlas-g .blend-house-open { display: inline-flex; align-items: center; gap: 9px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.budget-bento.atlas-g .blend-house-open:focus-visible { outline: 3px solid var(--blend-focus); outline-offset: 4px; border-radius: 4px; }
+.budget-bento.atlas-g .blend-house-facts { flex: 0 1 auto; margin-left: auto; }
+.budget-bento.atlas-g .blend-house-facts [data-budget-browse-remaining] { font-size: 16px; }
+.budget-bento.atlas-g [data-budget-browse="spending"] .budget-browse-eyebrow,
+.budget-bento.atlas-g [data-budget-browse="spending"] .budget-browse-sub,
+.budget-bento.atlas-g [data-budget-browse="spending"] .budget-pace-key,
+.budget-bento.atlas-g [data-budget-browse="spending"] > .budget-browse-cycle,
+.budget-bento.atlas-g .blend-house-facts > div:first-child,
+.budget-bento.atlas-g .blend-house-facts > div > span,
+.budget-bento.atlas-g .blend-house-facts > div > small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.budget-bento.atlas-g .blend-ring { color: #0898b8; }
+.budget-bento.atlas-g .blend-ring:nth-child(3n+2) { color: #4075d8; }
+.budget-bento.atlas-g .blend-ring:nth-child(3n) { color: #5c4de9; }
+.budget-bento.atlas-g .blend-ring.is-unknown { color: var(--g-ink-3); }
 .budget-bento.atlas-g .blend-ring-g {
   width: 100%;
-  max-width: 128px;
+  max-width: 112px;
   height: auto;
   aspect-ratio: 1;
   border-radius: 0;
@@ -434,27 +540,45 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 .budget-bento.atlas-g .blend-ring { min-width: 0; width: 100%; }
 .budget-bento.atlas-g .blend-ring-l { min-width: 0; overflow-wrap: anywhere; }
 .budget-bento.atlas-g .blend-rings {
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 12px 0 18px;
 }
-.budget-bento.atlas-g .blend-arc-ring { width: 100%; height: 100%; }
-.budget-bento.atlas-g .blend-rings.is-capped:not(.is-open) .blend-ring:nth-child(n + 9) { display: none; }
-.budget-bento.atlas-g .blend-rings-more {
-  display: block;
+.budget-bento.atlas-g .blend-ring-l { display: grid; gap: 3px; font-size: 14px; }
+.budget-bento.atlas-g .blend-ring-name { font-weight: 600; }
+.budget-bento.atlas-g .blend-ring-plan { color: var(--g-ink-3); font-size: 13px; font-weight: 450; }
+.budget-bento.atlas-g .blend-ring-liquid {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  margin: 4px 0 0;
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--blend-ink) 6%, transparent);
-  color: var(--blend-ink-2);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
 }
-.budget-bento.atlas-g .blend-col > [data-budget-browse="bills"],
-.budget-bento.atlas-g .blend-col > [data-budget-browse="spending"],
-.budget-bento.atlas-g .blend-col > [data-budget-savings-goals] {
+.budget-bento.atlas-g .blend-ring-water {
+  transform: translateY(calc((1 - var(--left)) * 76px - 4px));
+}
+.budget-bento.atlas-g .blend-ring-wave {
+  fill: color-mix(in oklab, currentColor 55%, transparent);
+  animation: blend-category-wave 3.6s linear infinite;
+  animation-delay: var(--blend-wave-phase, 0s);
+}
+.budget-bento.atlas-g .blend-ring-wave.w2 {
+  fill: color-mix(in oklab, currentColor 30%, transparent);
+  animation-duration: 5.4s;
+  animation-direction: reverse;
+}
+@keyframes blend-category-wave {
+  from { transform: translateX(0); }
+  to { transform: translateX(-76px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .budget-bento.atlas-g .blend-ring-wave { animation: none; }
+}
+.budget-bento.atlas-g .blend-ring-liquid.is-drained { display: none; }
+.budget-bento.atlas-g .blend-arc-ring { width: 100%; height: 100%; }
+.budget-bento.atlas-g [data-budget-browse="bills"],
+.budget-bento.atlas-g [data-budget-browse="spending"],
+.budget-bento.atlas-g [data-budget-savings-goals] {
   height: auto;
   width: 100%;
   padding: 22px 24px;
@@ -515,12 +639,12 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 60px;
+  min-height: 40px;
   margin: 8px 0 0;
-  padding: 0 14px;
+  padding: 0;
   border: 0;
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--blend-ink) 4%, transparent);
+  border-radius: 0;
+  background: transparent;
   font-size: 14px;
   font-weight: 560;
 }
@@ -554,6 +678,7 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   font-size: 15px;
   font-weight: 560;
 }
+.budget-bento.atlas-g .blend-cc-dash.is-unavailable { font-size: 12px; font-weight: 500; }
 .budget-bento.atlas-g .card-movement-track {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -578,6 +703,8 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 .budget-bento.atlas-g .cc-chip,
 .budget-bento.atlas-g .blend-cc-chip {
   position: relative;
+  top: auto;
+  left: auto;
   grid-area: chip;
   width: 44px;
   height: 29px;
@@ -659,10 +786,30 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
 .budget-bento.atlas-g .blend-cc-untracked::after,
 .budget-bento.atlas-g .cc-spark::after,
 .budget-bento.atlas-g .blend-g-bar.is-untracked::after { content: none; }
+.budget-bento.atlas-g .card-movement-delta {
+  grid-area: chg;
+  justify-self: end;
+  align-self: center;
+}
+.budget-bento.atlas-g .card-movement-trigger:has(.blend-cc-dash.is-unavailable) .blend-cc-untracked { display: none; }
 .budget-bento.atlas-g .card-movement-chevron { display: none; }
 .budget-bento.atlas-g .card-movement-heading > p { display: none; }
 
 /* Savings goals: no ring unless progress is printed. Muted status. */
+.budget-bento.atlas-g [data-budget-savings-goals] > button.blend-tile-head {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.budget-bento.atlas-g [data-budget-savings-goals] > button.blend-tile-head:focus-visible {
+  outline: 3px solid var(--blend-focus);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
 .budget-bento.atlas-g .blend-goals,
 .budget-bento.atlas-g .blend-goals.is-plain {
   display: block;
@@ -753,14 +900,19 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   color: var(--blend-ink-2);
 }
 .budget-bento.atlas-g .blend-hero-top:has(.blend-plan-note) { padding-bottom: 0; }
+.budget-bento.atlas-g .blend-hero-panel:not([open]) { position: absolute; }
+#operating-surface .budget-bento.atlas-g .blend-hero-range { font-size: 22px; }
+.budget-bento.atlas-g .budget-category-row.blend-category-projected { display: none; }
 
 /* River */
 .budget-bento.atlas-g .g-river-wrap { position: relative; z-index: 2; min-width: 0; }
 .budget-bento.atlas-g .t-river {
-  --st: 90, 96, 110;
+  --st: 90 96 110;
   position: relative;
   height: 178px;
   padding: 0;
+  border: 1px solid var(--g-line);
+  border-radius: 28px;
   overflow: hidden;
   color: var(--blend-ink);
   background:
@@ -769,8 +921,9 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
     linear-gradient(180deg, #ffffff 0%, #f3f7fa 100%);
   box-shadow: var(--g-shadow);
 }
-.budget-bento.atlas-g .t-river[data-state="income"] { --st: 10, 168, 112; }
-.budget-bento.atlas-g .t-river[data-state="short"] { --st: 236, 146, 18; }
+.budget-bento.atlas-g .t-river[data-state="income"] { --st: 10 168 112; }
+.budget-bento.atlas-g .t-river::before { content: none; }
+.budget-bento.atlas-g .t-river[data-state="short"] { --st: 236 146 18; }
 :root[data-theme="dark"] .budget-bento.atlas-g .t-river {
   color: #f4f5f7;
   background: #0b0c10;
@@ -852,17 +1005,64 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   font-size: 13px;
   font-weight: 520;
   color: var(--blend-ink-2);
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: inherit;
 }
+.budget-bento.atlas-g .playhead-pill:focus-visible { outline: 3px solid var(--blend-focus); outline-offset: 3px; }
 :root[data-theme="dark"] .budget-bento.atlas-g .playhead-pill {
   background: rgba(22, 24, 30, .78);
   color: rgba(244, 245, 247, .72);
 }
 .budget-bento.atlas-g .playhead-pill b { font-weight: 650; color: var(--blend-ink); }
 .budget-bento.atlas-g .playhead-pill b.is-est { text-decoration: underline dotted; text-underline-offset: 2px; }
-:root[data-theme="dark"] .budget-bento.atlas-g .t-river[data-state="income"] { --st: 92, 242, 176; }
-:root[data-theme="dark"] .budget-bento.atlas-g .t-river[data-state="short"] { --st: 255, 190, 92; }
+:root[data-theme="dark"] .budget-bento.atlas-g .t-river[data-state="income"] { --st: 92 242 176; }
+:root[data-theme="dark"] .budget-bento.atlas-g .t-river[data-state="short"] { --st: 255 190 92; }
 :root[data-theme="dark"] .budget-bento.atlas-g .playhead-pill b.is-short { color: #ffbe5c; }
 .budget-bento.atlas-g .playhead-pill b.is-short { color: #a35a00; }
+
+/* Prototype dimensions, with calendar marks shrinking only when the cell
+   cannot fit their full size plus a four-pixel separation. */
+@media (min-width: 760px) {
+  .budget-bento.atlas-g .blend-income { min-height: 220px; }
+  .budget-bento.atlas-g .blend-income-in { font-size: 15px; font-weight: 500; }
+  .budget-bento.atlas-g .blend-dep-pulse { height: 74px; margin-top: auto; }
+  .budget-bento.atlas-g .blend-p-lbl { top: 40px; font-size: 13px; }
+  .budget-bento.atlas-g .blend-p-lbl { max-width: none; }
+  .budget-bento.atlas-g .blend-p-lbl b,
+  .budget-bento.atlas-g .blend-p-lbl span { display: inline; }
+  .budget-bento.atlas-g .blend-p-lbl b { margin-right: 6px; }
+  .budget-bento.atlas-g .blend-cal { gap: 8px; margin-top: 18px; }
+  .budget-bento.atlas-g .blend-day,
+  .budget-bento.atlas-g .day { border-radius: 16px; }
+  .budget-bento.atlas-g .day-n,
+  .budget-bento.atlas-g .blend-day-n { left: 11px; top: 10px; font-size: 15px; line-height: 1; }
+  .budget-bento.atlas-g .day-g,
+  .budget-bento.atlas-g .blend-day-hit {
+    right: clamp(2px, calc(50% - 24.5px), 11px);
+    bottom: 11px;
+    width: min(28px, calc(60% - 4.8px));
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .budget-bento.atlas-g .blend-day-hit svg { width: 100%; height: 100%; }
+  .budget-bento.atlas-g .day-s,
+  .budget-bento.atlas-g .blend-day > .blend-state {
+    left: clamp(2px, calc(50% - 24.5px), 11px);
+    bottom: 12px;
+    width: min(17px, calc(40% - 3.2px));
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .budget-bento.atlas-g .day-s[data-s="paid"] svg,
+  .budget-bento.atlas-g .blend-state[data-s="paid"] svg { width: 65%; height: 65%; max-width: 11px; max-height: 11px; }
+  .budget-bento.atlas-g .budget-blend-card-movements { padding: 22px 24px 18px; }
+  .budget-bento.atlas-g .card-movement-track { margin: 12px -10px -8px; }
+  .budget-bento.atlas-g .card-movement-trigger { min-height: 54px; padding: 7px 10px; row-gap: 1px; }
+  .budget-bento.atlas-g .card-movement-trigger:has(.blend-cc-dash.is-unavailable) {
+    grid-template-areas: "chip name chg" "chip bal chg";
+  }
+}
 
 @media (max-width: 1100px) {
   .budget-bento.atlas-g > .blend-board {
@@ -870,7 +1070,8 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   }
 }
 @media (max-width: 759px) {
-  body:has([data-budget-bento]) .wrap { padding: 0 16px; }
+  body:has([data-budget-bento]) .wrap { padding: 0 12px; }
+  body:has(#operating-surface [data-budget-bento]) .site-head-inner { padding: 12px 18px 10px; }
   .budget-bento.atlas-g { gap: 18px; }
   .budget-bento.atlas-g > .blend-board {
     display: flex;
@@ -888,11 +1089,23 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
     max-width: none;
     align-self: stretch;
   }
+  .budget-bento.atlas-g .blend-income,
+  .budget-bento.atlas-g [data-budget-browse="bills"],
+  .budget-bento.atlas-g [data-budget-browse="spending"],
+  .budget-bento.atlas-g .budget-blend-card-movements,
+  .budget-bento.atlas-g [data-budget-savings-goals] {
+    --g-radius: 26px;
+    padding: 18px;
+  }
   .budget-bento.atlas-g > .blend-board > .blend-col { display: contents; }
-  .budget-bento.atlas-g .blend-hero { order: 1; padding: 20px 16px 24px; }
-  .budget-bento.atlas-g .blend-income { order: 2; }
-  .budget-bento.atlas-g [data-budget-browse="spending"] { order: 3; }
-  .budget-bento.atlas-g [data-budget-browse="bills"] { order: 4; }
+  .budget-bento.atlas-g .blend-hero { order: 1; min-height: 500px; padding: 32px 36px; row-gap: 24px; }
+  #operating-surface .budget-bento.atlas-g .blend-hero-range { font-size: 19px; }
+  .budget-bento.atlas-g .blend-hero [data-operating-question="07"] .budget-step-value:not(.is-fail-closed) { font-size: 64px; }
+  .budget-bento.atlas-g .blend-hero .blend-hero-top .budget-today-cash { margin-left: 0; }
+  .budget-bento.atlas-g .blend-hero :is([data-operating-question="02"], [data-operating-question="04"], [data-operating-question="06"]) .operating-prompt { font-size: 15px; font-weight: 500; }
+  .budget-bento.atlas-g [data-budget-browse="bills"] { order: 2; }
+  .budget-bento.atlas-g .blend-income { order: 3; }
+  .budget-bento.atlas-g [data-budget-browse="spending"] { order: 4; }
   .budget-bento.atlas-g .budget-blend-card-movements { order: 5; }
   .budget-bento.atlas-g [data-budget-savings-goals] { order: 6; }
   .budget-bento.atlas-g .blend-rings {
@@ -901,12 +1114,12 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
   }
   .budget-bento.atlas-g .blend-ring { padding: 2px; min-width: 0; width: 100%; }
   .budget-bento.atlas-g .blend-ring-g {
-    width: 100%;
-    max-width: 100%;
+    width: min(96px, 100%);
+    max-width: 96px;
     min-width: 0;
     height: auto;
     aspect-ratio: 1;
-    justify-self: stretch;
+    justify-self: center;
     overflow: hidden;
   }
   .budget-bento.atlas-g .blend-arc-ring {
@@ -915,20 +1128,25 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
     width: 100%;
     height: 100%;
   }
+  .budget-bento.atlas-g .blend-cal { gap: 5px; margin-top: 14px; }
+  .budget-bento.atlas-g .day-n,
+  .budget-bento.atlas-g .blend-day-n { left: 6px; top: 5px; font-size: 13px; line-height: 1; }
   .budget-bento.atlas-g .day-g,
   .budget-bento.atlas-g .blend-day-hit {
-    right: 2px;
-    bottom: 3px;
-    width: 16px;
-    height: 16px;
+    right: 3px;
+    bottom: 5px;
+    width: min(17px, calc(60% - 6px));
+    height: auto;
+    aspect-ratio: 1;
   }
-  .budget-bento.atlas-g .blend-day-hit svg { width: 16px; height: 16px; }
+  .budget-bento.atlas-g .blend-day-hit svg { width: 100%; height: 100%; }
   .budget-bento.atlas-g .day-s,
   .budget-bento.atlas-g .blend-day > .blend-state {
-    left: 2px;
-    bottom: 3px;
-    width: 12px;
-    height: 12px;
+    left: 3px;
+    bottom: 6px;
+    width: min(13px, calc(40% - 4px));
+    height: auto;
+    aspect-ratio: 1;
   }
   .budget-bento.atlas-g .day-s[data-s="paid"] svg,
   .budget-bento.atlas-g .blend-state[data-s="paid"] svg { width: 8px; height: 8px; }
@@ -941,16 +1159,22 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
     box-sizing: border-box;
     max-width: none;
   }
+  .budget-bento.atlas-g .blend-income .blend-figure { margin-top: 10px; }
   .budget-bento.atlas-g .blend-income .blend-big { font-size: 26px; }
+  .budget-bento.atlas-g .blend-income .blend-dep-pulse { display: none; }
+  .budget-bento.atlas-g .blend-income .blend-deps { display: grid; gap: 8px; margin-top: 14px; }
   .budget-bento.atlas-g .t-river { height: 162px; }
   .budget-bento.atlas-g .blend-day,
-  .budget-bento.atlas-g .day { height: 58px; }
+  .budget-bento.atlas-g .day { height: 58px; border-radius: 13px; }
   .budget-bento.atlas-g .blend-ring-v { font-size: 19px; }
   .budget-bento.atlas-g .blend-ring-u { font-size: 12px; }
 }
 @media (max-width: 360px) {
-  .budget-bento.atlas-g .blend-ring-g { width: 86px; height: 86px; max-width: none; }
+  .budget-bento.atlas-g .blend-hero [data-operating-question="07"] .budget-step-value:not(.is-fail-closed) { font-size: clamp(34px, 11vw, 42px); }
+  .budget-bento.atlas-g .blend-ring-g { width: 100%; height: auto; max-width: 100%; }
   .budget-bento.atlas-g .blend-ring-v { font-size: 16px; }
+  .budget-bento.atlas-g .blend-hero { padding-right: 24px; padding-left: 24px; }
+  .budget-bento.atlas-g [data-budget-browse="spending"] > header { flex-wrap: wrap; }
 }
 
 /* Planned Savings stays one row. At 390 the bar is full width and the pill sits under it. */
@@ -1067,4 +1291,25 @@ body:has([data-budget-bento]) .site-head-inner { flex-wrap: nowrap; }
     min-width: min-content;
     width: auto;
   }
+}
+
+/* Auto follows the same artwork palette as explicit Dark; the native theme
+   controller deliberately removes data-theme while following the OS. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body:has([data-budget-bento]) .blend-ambient i { opacity: .55; }
+  :root:not([data-theme="light"]) body:has([data-budget-bento]) .bm-bg { fill: #f4f5f7; }
+  :root:not([data-theme="light"]) body:has([data-budget-bento]) .bm-b { fill: #41484e; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .blend-hero { background: #05110d; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .blend-hero .blend-aurora { opacity: 1; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .blend-p-dep.is-wait .blend-p-dot { background: #1b1c21; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .t-river { color: #f4f5f7; background: #0b0c10; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .rv.is-income { color: #5cf2b0; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .rv.is-short { color: #ffbe5c; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .playhead-pill {
+    background: rgba(22, 24, 30, .78);
+    color: rgba(244, 245, 247, .72);
+  }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .t-river[data-state="income"] { --st: 92 242 176; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .t-river[data-state="short"] { --st: 255 190 92; }
+  :root:not([data-theme="light"]) .budget-bento.atlas-g .playhead-pill b.is-short { color: #ffbe5c; }
 }

@@ -1,10 +1,12 @@
 'use strict';
 // Fixture-only browser proof for the Budget bento skin.
 // No live site, no provider, no new money arithmetic.
-// CHROME_PATH=<Chromium> node test/browser-budget-blend-proof.js
+// APPROVED_REFERENCE_DIR=<approved Slack PNGs> PYTHON=<Python> CHROME_PATH=<Chromium> node test/browser-budget-blend-proof.js
 const fs = require('node:fs');
+const assert = require('node:assert/strict');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { createHash } = require('node:crypto');
 const { chromium } = require('playwright');
 const fx = require('./fixtures/budget-surface-data');
 const householdAll = require('./fixtures/budget-household-all');
@@ -83,6 +85,86 @@ const composite = (fg, bg) => {
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       });
       return page;
+    };
+
+    const settle = page => page.evaluate(() => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const assertDialogPlacement = async (page, label) => {
+      const placement = await page.locator('[data-budget-detail-sheet][open]').evaluate(async dialog => {
+        // Inspect settled placement, including any decorative entrance motion.
+        await Promise.all(dialog.getAnimations({ subtree: true })
+          .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+          .map(animation => animation.finished.catch(() => {})));
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const box = dialog.getBoundingClientRect();
+        const style = getComputedStyle(dialog);
+        return {
+          modal: dialog.matches(':modal'), position: style.position, background: style.backgroundColor,
+          left: box.left, top: box.top, right: box.right, bottom: box.bottom,
+          width: box.width, height: box.height, viewportWidth: innerWidth, viewportHeight: innerHeight,
+        };
+      });
+      assert.equal(placement.position, 'fixed', label + ' keeps the native sheet fixed');
+      assert.equal(placement.modal, true, label + ' remains a native modal');
+      assert.ok(placement.width > 8 && placement.height > 8
+        && placement.left >= -1 && placement.top >= -1
+        && placement.right <= placement.viewportWidth + 1 && placement.bottom <= placement.viewportHeight + 1,
+      label + ' keeps all four dialog edges in the viewport: ' + JSON.stringify(placement));
+      const background = parseRgb(placement.background);
+      assert.ok(background && background.a >= 0.99,
+        label + ' preserves an opaque evidence background: ' + placement.background);
+    };
+    const openToolbar = async (page, keyboard = false) => {
+      const pill = page.getByRole('button', { name: /^Choose period or month/ });
+      await pill.waitFor({ state: 'visible' });
+      if (await pill.getAttribute('aria-expanded') === 'true'
+        && !await page.locator('.blend-toolbar').evaluate(el => el.contains(document.activeElement))) await pill.click();
+      if (await pill.getAttribute('aria-expanded') !== 'true') {
+        if (keyboard) {
+          await pill.focus();
+          await page.keyboard.press('Enter');
+        } else await pill.click();
+      }
+      await page.waitForFunction(() => {
+        const pill = document.querySelector('.playhead-pill');
+        const toolbar = document.getElementById(pill?.getAttribute('aria-controls'));
+        const active = document.activeElement;
+        return pill?.getAttribute('aria-expanded') === 'true' && toolbar?.classList.contains('is-open')
+          && toolbar.contains(active) && active.getBoundingClientRect().height > 8;
+      });
+    };
+    const assertBoardOrder = async (page, label, width) => {
+      const result = await page.evaluate(() => {
+        const selectors = [
+          ['Hero', '.budget-blend-hero-layout'], ['Bills', '[data-budget-browse="bills"]'],
+          ['Income', '.blend-income'], ['Household', '[data-budget-browse="spending"]'],
+          ['Cards', '.budget-blend-card-movements'], ['Savings', '[data-budget-savings-goals]'],
+        ];
+        const board = document.querySelector('.blend-board');
+        const tiles = selectors.map(([name, selector]) => ({ name, node: board?.querySelector(selector) }));
+        const nameOf = node => tiles.find(tile => tile.node === node)?.name || null;
+        const order = nodes => [...nodes].map(nameOf).filter(Boolean);
+        const tabTiles = [...(board?.querySelectorAll('button, a[href], input, select, summary, [tabindex]') || [])]
+          .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length
+            && getComputedStyle(node).visibility !== 'hidden')
+          .map(node => tiles.find(tile => tile.node?.contains(node))?.name).filter(Boolean);
+        return {
+          missing: tiles.filter(tile => !tile.node).map(tile => tile.name),
+          direct: order(board?.children || []),
+          main: order(board?.querySelector('.blend-col-main')?.children || []),
+          side: order(board?.querySelector('.blend-col-side')?.children || []),
+          tabTiles: tabTiles.filter((name, i) => name !== tabTiles[i - 1]),
+        };
+      });
+      assert.deepEqual(result.missing, [], label + ': all six target tiles survive');
+      if (width < 760) {
+        const expected = ['Hero', 'Bills', 'Income', 'Household', 'Cards', 'Savings'];
+        assert.deepEqual(result.direct, expected, label + ': real mobile DOM order');
+        assert.deepEqual(result.tabTiles, expected, label + ': focusable DOM order follows the mobile tile order');
+      } else {
+        assert.deepEqual(result.main, ['Hero', 'Bills', 'Cards'], label + ': fixed left column');
+        assert.deepEqual(result.side, ['Income', 'Household', 'Savings'], label + ': fixed right column');
+      }
     };
 
     const sampleContrast = async (page, selector, name) => {
@@ -219,6 +301,7 @@ const composite = (fg, bg) => {
     for (const width of [1440, 390, 320]) {
       for (const theme of ['light', 'dark']) {
         const page = await open(width, theme);
+        await assertBoardOrder(page, `${width}/${theme}`, width);
         const facts = await page.evaluate(() => {
           const text = sel => (document.querySelector(sel)?.innerText || '').replace(/\s+/g, ' ');
           const tracks = [...document.querySelectorAll('[data-calendar-waterfall] .budget-waterfall-track')]
@@ -440,6 +523,7 @@ const composite = (fg, bg) => {
                 afterLine: !!document.querySelector('.blend-after-funding'),
                 qualifier: (document.querySelector('.blend-bad-qualifier')?.textContent || '').trim(),
                 incomeTitle: (document.querySelector('.blend-income .blend-tile-title')?.textContent || '').trim(),
+                incomeAccessible: document.querySelector('.blend-income')?.getAttribute('aria-label') || '',
                 incomeLong: (document.querySelector('.blend-income-long')?.textContent || '').trim(),
                 heroIncomeReceived: /received/i.test((document.querySelector('[data-operating-question="02"] .operating-prompt')?.textContent || '') + ' ' + (document.querySelector('[data-operating-question="02"] .blend-term')?.textContent || '')),
                 payRing: !!document.querySelector('.blend-pay-face'),
@@ -491,7 +575,7 @@ const composite = (fg, bg) => {
         if (face.afterLine || face.qualifier) {
           errors.push(`${width}/${theme} current period showed proposed-funding chrome ${JSON.stringify({ after: face.afterLine, qualifier: face.qualifier })}`);
         }
-        if (face.incomeTitle !== 'Planned income' || face.incomeLong !== 'Period income, counted in Balance After Deductions' || face.heroIncomeReceived || !face.payRing || face.payMain) {
+        if (face.incomeTitle !== 'Income' || !face.incomeAccessible.startsWith('Planned income.') || face.incomeLong !== 'Period income, counted in Balance After Deductions' || face.heroIncomeReceived || !face.payRing || face.payMain) {
           errors.push(`${width}/${theme} income or payday ${JSON.stringify({ title: face.incomeTitle, long: face.incomeLong, received: face.heroIncomeReceived, ring: face.payRing, main: face.payMain })}`);
         }
         const minFont = width >= 1000 ? 20 : width <= 360 ? 13 : 15;
@@ -655,7 +739,7 @@ const composite = (fg, bg) => {
           const pay = box(document.querySelector('.blend-pay'));
           const meta = document.querySelector('.blend-income-in');
           const metaBox = box(meta);
-          const deps = [...document.querySelectorAll('.blend-dep')].map(box);
+          const deps = [...document.querySelectorAll('.blend-income .blend-p-lbl, .blend-income .blend-deposit')].map(box).filter(row => row && row.width > 0 && row.height > 0);
           let depOverlap = false;
           for (let i = 0; i < deps.length; i++) {
             for (let j = i + 1; j < deps.length; j++) if (hits(deps[i], deps[j])) depOverlap = true;
@@ -697,7 +781,7 @@ const composite = (fg, bg) => {
               for (let i = 1; i < kids.length; i++) gaps.push(Math.round(kids[i].top - kids[i - 1].bottom));
               return gaps;
             }),
-            phoneOrder: ['.g-river-wrap', '.blend-hero', '.blend-income', '[data-budget-browse="spending"]', '[data-budget-browse="bills"]', '.budget-blend-card-movements', '[data-budget-savings-goals]'].map(sel => {
+            phoneOrder: ['.g-river-wrap', '.blend-hero', '[data-budget-browse="bills"]', '.blend-income', '[data-budget-browse="spending"]', '.budget-blend-card-movements', '[data-budget-savings-goals]'].map(sel => {
               const el = document.querySelector(sel);
               return el ? Math.round(el.getBoundingClientRect().top) : null;
             }),
@@ -858,6 +942,149 @@ const composite = (fg, bg) => {
       }
     }
 
+
+    // Exercise the real chooser path, including remount focus and Escape.
+    for (const width of [1440, 390]) {
+      const controls = await open(width, 'light');
+      await openToolbar(controls, width === 1440);
+      const range = await controls.locator('[data-budget-window-range]').innerText();
+      const nextControl = controls.locator('[data-budget-window-step="1"]');
+      await nextControl.focus();
+      await controls.keyboard.press('Enter');
+      await controls.waitForFunction(previous => document.querySelector('[data-budget-window-range]')?.textContent !== previous, range);
+      await settle(controls);
+      assert.equal(await controls.locator('[data-budget-window-step="1"]').evaluate(el => el === document.activeElement
+        && !!el.closest('.blend-toolbar.is-open') && el.getBoundingClientRect().height > 8), true,
+      'Period remount preserves visible focus at ' + width);
+      await controls.keyboard.press('Escape');
+      await controls.waitForFunction(() => {
+        const pill = document.querySelector('.playhead-pill');
+        return document.activeElement === pill && pill.getAttribute('aria-expanded') === 'false'
+          && !document.querySelector('.blend-toolbar')?.classList.contains('is-open');
+      });
+      await openToolbar(controls);
+      await controls.locator('[data-budget-granularity="month"]').click();
+      await controls.locator('[data-budget-surface="month"]').waitFor();
+      await settle(controls);
+      // Month uses the incumbent native surface, outside the bento adapter.
+      assert.equal(await controls.locator('[data-budget-granularity="month"]').evaluate(el => el === document.activeElement
+        && el.getAttribute('aria-pressed') === 'true' && el.getBoundingClientRect().height > 8
+        && getComputedStyle(el).visibility !== 'hidden'), true,
+      'Month remount preserves visible native focus at ' + width);
+      assert.equal(controls.url(), 'http://budget.test/', 'Month remains on this page');
+      await controls.close();
+    }
+    const noSelected = await open(390, 'light');
+    await noSelected.evaluate(() => {
+      const rows = [...document.querySelectorAll('ol[data-bad-timeline] > li')];
+      // Omit only the current publication in this adapter fixture; retain
+      // future rows so the timeline exists but has no selected period.
+      rows.filter(row => row.getAttribute('data-bad-timeline-role') === 'current').forEach(row => row.remove());
+      document.querySelector('.g-river-wrap')?.remove();
+      document.querySelector('[data-budget-bento]')?.removeAttribute('data-blend-ready');
+      document.getElementById('operating-surface-body').appendChild(document.createTextNode(''));
+    });
+    await settle(noSelected);
+    assert.equal(await noSelected.locator('.playhead-pill').evaluate(el => {
+      const box = el.getBoundingClientRect();
+      return el.tagName === 'BUTTON' && box.width > 8 && box.height > 8 && box.left >= 0 && box.right <= innerWidth;
+    }), true, 'No selected point retains the visible period chooser');
+    assert.equal(await noSelected.locator('.playhead-beam').isVisible(), false);
+    assert.equal(await noSelected.locator('.playhead-orb').isVisible(), false);
+    await openToolbar(noSelected);
+    await noSelected.keyboard.press('Escape');
+    assert.equal(await noSelected.locator('.playhead-pill').evaluate(el => el === document.activeElement), true);
+    await noSelected.close();
+
+    const responsive = await open(390, 'light');
+    const grocery = '.blend-ring[data-blend-cat="groceries"]';
+    for (const closeWith of ['button', 'Escape']) {
+      await responsive.locator(grocery).focus();
+      await responsive.keyboard.press('Enter');
+      await responsive.locator('[data-budget-detail-sheet][open]').waitFor({ state: 'visible' });
+      for (const width of [1440, 390]) {
+        await responsive.setViewportSize({ width, height: 1000 });
+        await settle(responsive);
+        await assertBoardOrder(responsive, 'dialog resize ' + width, width);
+        assert.equal(await responsive.locator('[data-budget-detail-sheet]').evaluate(el => el.open), true);
+        await assertDialogPlacement(responsive, 'Grocery dialog after resize to ' + width + ' before ' + closeWith);
+      }
+      if (closeWith === 'button') await responsive.getByRole('button', { name: 'Close details', exact: true }).click();
+      else await responsive.keyboard.press('Escape');
+      await responsive.waitForFunction(selector => {
+        const ring = document.querySelector(selector);
+        const box = ring?.getBoundingClientRect();
+        return ring === document.activeElement && ring?.getAttribute('aria-expanded') === 'false'
+          && !document.querySelector('[data-budget-detail-sheet]')?.open
+          && box.width > 8 && box.height > 8 && getComputedStyle(ring).visibility !== 'hidden';
+      }, grocery);
+      await settle(responsive);
+      assert.equal(await responsive.locator(grocery).evaluate(el => el === document.activeElement), true,
+        'Same visible category retains focus after ' + closeWith);
+    }
+    await responsive.close();
+
+    // The Savings disclosure must expose its incumbent funding evidence through
+    // the visible heading, with both native button activation keys.
+    for (const width of [1440, 390]) {
+      const savings = await open(width, 'light');
+      const heading = savings.getByRole('button', { name: 'Savings goals', exact: true });
+      const panel = savings.locator('.blend-goals-panel');
+      const funding = panel.locator('[data-budget-funding-section]');
+      await heading.scrollIntoViewIfNeeded();
+      const target = await heading.evaluate(el => {
+        const box = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          tag: el.tagName, type: el.type, tabIndex: el.tabIndex,
+          controls: el.getAttribute('aria-controls'), expanded: el.getAttribute('aria-expanded'),
+          visible: box.width >= 80 && box.height >= 18 && box.left >= 0 && box.right <= innerWidth
+            && box.top >= 0 && box.bottom <= innerHeight && style.visibility !== 'hidden'
+            && !el.closest('[hidden], [aria-hidden="true"], [inert]'),
+          hit: hit === el || el.contains(hit),
+        };
+      });
+      assert.ok(target.tag === 'BUTTON' && target.type === 'button' && target.tabIndex >= 0
+        && target.visible && target.hit, 'Savings heading is keyboard and pointer reachable at ' + width + ': ' + JSON.stringify(target));
+      assert.equal(target.controls, await panel.getAttribute('id'), 'Savings heading controls its evidence disclosure');
+      assert.ok(target.controls, 'Savings disclosure has a stable accessible target');
+      assert.equal(target.expanded, 'false');
+      assert.equal(await panel.evaluate(el => el.open), false);
+      const publishedEvidence = await funding.textContent();
+      assert.ok(publishedEvidence.trim(), 'Native funding evidence exists before opening');
+      for (const key of ['Enter', 'Space']) {
+        await heading.focus();
+        await savings.keyboard.press(key);
+        await savings.waitForFunction(id => {
+          const disclosure = document.getElementById(id);
+          const button = document.querySelector('button[aria-controls="' + CSS.escape(id) + '"]');
+          return disclosure?.open && button?.getAttribute('aria-expanded') === 'true';
+        }, target.controls);
+        assert.equal(await funding.isVisible(), true, key + ' reveals native Savings evidence at ' + width);
+        assert.equal(await funding.textContent(), publishedEvidence, key + ' preserves published funding evidence');
+        const nativeTab = funding.locator('[data-budget-funding-tab][tabindex="0"]');
+        await nativeTab.focus();
+        assert.equal(await nativeTab.evaluate(el => el === document.activeElement
+          && el.getBoundingClientRect().width > 8 && el.getBoundingClientRect().height > 8
+          && getComputedStyle(el).visibility !== 'hidden'), true, 'Native funding controls remain usable');
+        await savings.keyboard.press('Escape');
+        await savings.waitForFunction(id => {
+          const disclosure = document.getElementById(id);
+          const button = document.querySelector('button[aria-controls="' + CSS.escape(id) + '"]');
+          const box = button?.getBoundingClientRect();
+          return disclosure && !disclosure.open && button?.getAttribute('aria-expanded') === 'false'
+            && document.activeElement === button && box.width >= 80 && box.height >= 18
+            && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
+            && getComputedStyle(button).visibility !== 'hidden';
+        }, target.controls);
+        assert.equal(await funding.isVisible(), false, 'Escape collapses native Savings evidence');
+        assert.equal(await heading.evaluate(el => el === document.activeElement), true,
+          'Escape returns to the visible Savings heading after ' + key + ' at ' + width);
+      }
+      await savings.close();
+    }
+
     const house = await open(1440, 'light');
     const prepared = await house.evaluate(() => {
       const section = document.querySelector('[data-budget-browse="spending"]');
@@ -923,7 +1150,15 @@ const composite = (fg, bg) => {
         countHidden: counts ? counts.getAttribute('aria-hidden') : 'missing',
         clipped: !!(counts && counts.closest('.blend-clip, [aria-hidden="true"]')),
         holdText: (hold?.textContent || '').replace(/\s+/g, ' ').trim(),
-        holdOnFace: visible(hold),
+        holdAccessible: (() => {
+          if (!hold?.isConnected) return false;
+          for (let node = hold; node; node = node.parentElement) {
+            const style = getComputedStyle(node);
+            if (node.hidden || node.inert || node.getAttribute('aria-hidden') === 'true'
+              || style.display === 'none' || style.visibility === 'hidden') return false;
+          }
+          return true;
+        })(),
         overs,
       };
     });
@@ -934,7 +1169,7 @@ const composite = (fg, bg) => {
       || !/known categories over plan/.test(household.countText)
       || household.countOnFace || household.countInHeader || !household.countInPanel
       || household.countVisible || household.countHidden || household.clipped
-      || household.holdText !== prepared.hold || !household.holdOnFace || !/\$/.test(household.holdText)) {
+      || household.holdText !== prepared.hold || !household.holdAccessible || !/\$/.test(household.holdText)) {
       errors.push(`household count ${JSON.stringify({ prepared, household })}`);
     }
     const summary = house.locator('.blend-house-panel > summary');
@@ -958,10 +1193,53 @@ const composite = (fg, bg) => {
       || openedCount.text !== prepared.printed) {
       errors.push(`household detail ${JSON.stringify({ summaryFocus, openedCount, printed: prepared.printed })}`);
     }
+    // The redundant hold stays accessible, and the native evidence action
+    // must be visible and hit-testable on the Household heading.
+    for (const width of [1440, 390]) {
+      await house.setViewportSize({ width, height: 1000 });
+      await settle(house);
+      const householdInfo = house.getByRole('button', { name: 'Household spending and reserve evidence' });
+      await householdInfo.scrollIntoViewIfNeeded();
+      const evidenceTarget = await householdInfo.evaluate(el => {
+        const box = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          heading: !!el.closest('[data-budget-browse="spending"] > header h2'),
+          width: box.width, height: box.height,
+          visible: style.display !== 'none' && style.visibility !== 'hidden'
+            && !el.closest('.blend-clip, [hidden], [aria-hidden="true"], [inert]')
+            && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+          hit: hit === el || el.contains(hit),
+        };
+      });
+      assert.ok(evidenceTarget.heading && evidenceTarget.visible && evidenceTarget.hit
+        && evidenceTarget.width >= 80 && evidenceTarget.height >= 18,
+      'Household heading evidence is a visible hit target at ' + width + ': ' + JSON.stringify(evidenceTarget));
+      await householdInfo.focus();
+      assert.equal(await householdInfo.evaluate(el => el === document.activeElement), true);
+      await house.keyboard.press('Enter');
+      await house.locator('[data-budget-detail-sheet][open]').waitFor({ state: 'visible' });
+      const holdEvidence = await house.locator('[data-budget-detail-sheet] [data-budget-detail-body]').innerText();
+      for (const amount of prepared.hold.match(/-?\$[\d,]+\.\d{2}/g) || []) {
+        assert.ok(holdEvidence.includes(amount), 'Household Info preserves published hold/progress amount ' + amount);
+      }
+      await house.keyboard.press('Escape');
+      await house.waitForFunction(() => {
+        const button = document.querySelector('[data-budget-browse="spending"] > header h2 [data-budget-browse-evidence="06"]');
+        const box = button?.getBoundingClientRect();
+        return button === document.activeElement && !document.querySelector('[data-budget-detail-sheet]')?.open
+          && box.width >= 80 && box.height >= 18 && getComputedStyle(button).visibility !== 'hidden';
+      });
+      await settle(house);
+      assert.equal(await householdInfo.evaluate(el => el === document.activeElement), true,
+        'Household evidence focus remains on its visible heading button at ' + width);
+    }
     await house.close();
 
     const next = await open(1440, 'light');
     const before = await next.locator('[data-budget-window-range]').innerText();
+    await openToolbar(next);
     await next.locator('[data-budget-window-step="1"]').click();
     await next.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
     const paydayFit = await next.evaluate(() => {
@@ -1155,12 +1433,20 @@ const composite = (fg, bg) => {
     });
     if (!opened.open || !opened.name || opened.expanded !== 'true') errors.push(`ring sheet ${JSON.stringify(opened)}`);
     await next.keyboard.press('Escape');
-    const returned = await next.waitForFunction(() => document.activeElement && document.activeElement.classList.contains('blend-ring')).then(() => true).catch(() => false);
+    const returnedCategory = await ring.getAttribute('data-blend-cat');
+    const returned = await next.waitForFunction(category => {
+      const active = document.activeElement;
+      const box = active?.getBoundingClientRect();
+      return active?.matches('.blend-ring') && active.getAttribute('data-blend-cat') === category
+        && active.getAttribute('aria-expanded') === 'false' && box.width > 8 && box.height > 8
+        && getComputedStyle(active).visibility !== 'hidden' && !document.querySelector('[data-budget-detail-sheet]')?.open;
+    }, returnedCategory).then(() => true).catch(() => false);
     if (!returned) errors.push('ring focus did not return to the ring');
     await next.close();
 
     const stepForward = async page => {
       const before = await page.locator('[data-budget-window-range]').innerText();
+      await openToolbar(page);
       await page.locator('[data-budget-window-step="1"]').click();
       await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
     };
@@ -1299,6 +1585,7 @@ const composite = (fg, bg) => {
       const consoleErrors = [];
       page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
       page.on('pageerror', err => consoleErrors.push(err.message));
+      await openToolbar(page);
       await page.locator('[data-budget-window-step="-1"]').click();
       await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
       const pastFace = await page.evaluate(() => {
@@ -1649,14 +1936,18 @@ const composite = (fg, bg) => {
       ['[data-budget-granularity="month"]', 'budget-blend-focus-granularity.png'],
       ['[data-operating-question="02"] > details > summary', 'budget-blend-focus-income.png'],
       ['[data-operating-question="07"] > details > summary', 'budget-blend-focus-result.png'],
-      ['[data-budget-category-open="groceries"]', 'budget-blend-focus-household.png'],
+      ['.blend-ring[data-blend-cat="groceries"]', 'budget-blend-focus-household.png'],
       ['[data-budget-goal-open]', 'budget-blend-focus-goal.png'],
     ];
     for (const [sel, file] of focusTargets) {
+      if (sel === '[data-budget-granularity="month"]') await openToolbar(focusPage);
       const loc = focusPage.locator(sel).first();
       if (await loc.count()) {
         await loc.focus();
         await loc.scrollIntoViewIfNeeded();
+        assert.equal(await loc.evaluate(el => el === document.activeElement
+          && el.getBoundingClientRect().width > 8 && el.getBoundingClientRect().height > 8
+          && getComputedStyle(el).visibility !== 'hidden'), true, 'Visible focus target ' + sel);
         await focusPage.screenshot({ path: path.join(outDir, file), fullPage: false, animations: 'disabled' });
         shots.push(file);
       } else errors.push(`missing focus target ${sel}`);
@@ -1671,22 +1962,21 @@ const composite = (fg, bg) => {
       [320, 'dark', 'budget-blend-cards-320-dark.png'],
     ]) {
       const page = await open(width, theme, { data: cards.served() });
+      await assertBoardOrder(page, `cards ${width}/${theme}`, width);
       const placement = await page.evaluate(() => {
         const strip = document.querySelector('[data-budget-card-movements]');
         const tile = strip && strip.closest('.budget-blend-card-movements');
-        const grid = document.querySelector('.budget-surface-grid');
-        const browse = document.querySelector('.budget-browse-grid');
+        const board = document.querySelector('.blend-board');
         const style = strip ? getComputedStyle(strip) : null;
         return {
           tile: !!tile,
-          after: !!(grid && strip && (grid.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING)),
-          before: !!(browse && strip && (strip.compareDocumentPosition(browse) & Node.DOCUMENT_POSITION_FOLLOWING)),
+          inBoard: !!(tile && board?.contains(tile)),
           border: style && style.borderTopWidth,
           background: style && style.backgroundColor,
           label: strip ? strip.getAttribute('aria-label') : '',
         };
       });
-      if (!placement.tile || !placement.after || !placement.before
+      if (!placement.tile || !placement.inBoard
         || placement.border !== '0px' || placement.background !== 'rgba(0, 0, 0, 0)'
         || placement.label !== 'Card movement in selected pay period') {
         errors.push(`card tile ${file} ${JSON.stringify(placement)}`);
@@ -1768,11 +2058,13 @@ const composite = (fg, bg) => {
     await repaintStatus('onPlan');
     await capture(statusPage, 'budget-blend-1440-light-on-plan.png');
     const beforeStatus = await statusPage.locator('[data-budget-window-range]').innerText();
+    await openToolbar(statusPage);
     await statusPage.locator('[data-budget-window-step="1"]').click();
     await statusPage.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, beforeStatus);
     const offPeriodChip = await readChip();
     if (offPeriodChip.word || offPeriodChip.visible) errors.push(`chip on next period ${JSON.stringify(offPeriodChip)}`);
     const nextStatusRange = await statusPage.locator('[data-budget-window-range]').innerText();
+    await openToolbar(statusPage);
     await statusPage.locator('[data-budget-window-step="-1"]').click();
     await statusPage.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, nextStatusRange);
     for (const id of ['belowBuffer', 'infeasible', 'unavailable', 'not-a-status']) {
@@ -1791,6 +2083,7 @@ const composite = (fg, bg) => {
       const page = await open(width, theme);
       for (let i = 0; i < steps; i += 1) {
         const before = await page.locator('[data-budget-window-range]').innerText();
+        await openToolbar(page);
         await page.locator('[data-budget-window-step="1"]').click();
         await page.waitForFunction(prev => (document.querySelector('[data-budget-window-range]')?.textContent || '') !== prev, before);
       }
@@ -1841,13 +2134,16 @@ const composite = (fg, bg) => {
           tones: nodes.map(el => el.className),
           months,
           value: (document.querySelector('[data-ph-value]')?.textContent || '').trim(),
+          orbHidden: document.querySelector('.playhead-orb')?.hidden === true,
+          beamHidden: document.querySelector('.playhead-beam')?.hidden === true,
+          chooserVisible: !!document.querySelector('.playhead-pill')?.getClientRects().length,
           rows: document.querySelectorAll('ol[data-bad-timeline] > li').length,
         });
       }));
     }));
-    await probe.close();
     const probeLabels = ['—', '−$1,020.09', '-$10.00', '$0.00'];
     if (riverProbe.mode !== 'printed' || riverProbe.state !== 'neutral' || !riverProbe.focusable
+      || !riverProbe.orbHidden || !riverProbe.beamHidden || !riverProbe.chooserVisible
       || riverProbe.rows !== 5 || riverProbe.labels.join('|') !== probeLabels.join('|')
       || riverProbe.value !== '—'
       || !/is-muted/.test(riverProbe.tones[0]) || /is-income/.test(riverProbe.tones[0])
@@ -1862,9 +2158,16 @@ const composite = (fg, bg) => {
       console.log('river adapter ' + riverProbe.labels.join(' | '));
     }
 
+    await openToolbar(probe, true);
+    await probe.keyboard.press('Escape');
+    assert.equal(await probe.locator('.playhead-pill').evaluate(el => el === document.activeElement), true,
+      'Unavailable selected river value retains the keyboard period chooser');
+    await probe.close();
+
     const householdPacket = householdAll.packet();
     for (const [width, file] of [[1440, 'budget-blend-1440-light-household-all.png'], [390, 'budget-blend-390-light-household-all.png']]) {
       const page = await open(width, 'light', { data: householdPacket });
+      await assertBoardOrder(page, `all categories ${width}`, width);
       const rings = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('[data-budget-browse="spending"] .budget-category-row')];
         const other = rows.filter(row => row.getAttribute('data-budget-category-open') === 'other-spending');
@@ -1882,7 +2185,7 @@ const composite = (fg, bg) => {
       if (width >= 1000 && rings.wells.some(size => size < 96)) {
         errors.push(`household-all ring width ${JSON.stringify(rings.wells)}`);
       }
-      if (width >= 1000 && (rings.perRow < 3 || rings.perRow > 4)) {
+      if (width >= 1000 && rings.perRow !== 3) {
         errors.push(`household-all columns ${rings.perRow}`);
       }
       if (width <= 400 && rings.perRow !== 3) errors.push(`household-all phone columns ${rings.perRow}`);
@@ -1910,17 +2213,47 @@ for i in range(0, len(pairs), 3):
     canvas.save(out)
     print(out, a.size, b.size)
 `;
-    const gblend = '/tmp/g-blend/g-blend/shots';
-    const side = spawnSync('python3', ['-c', sideScript,
-      path.join(gblend, 'desktop.png'), path.join(outDir, 'budget-blend-1440-light.png'), path.join(outDir, 'side-1440-light.png'),
-      path.join(gblend, 'desktop-dark.png'), path.join(outDir, 'budget-blend-1440-dark.png'), path.join(outDir, 'side-1440-dark.png'),
-      path.join(gblend, 'mobile.png'), path.join(outDir, 'budget-blend-390-light.png'), path.join(outDir, 'side-390-light.png'),
-      path.join(gblend, 'desktop.png'), path.join(outDir, 'budget-blend-1440-light-household-all.png'), path.join(outDir, 'side-1440-light-household-all.png'),
-      path.join(gblend, 'mobile.png'), path.join(outDir, 'budget-blend-390-light-household-all.png'), path.join(outDir, 'side-390-light-household-all.png'),
+    // Only an explicitly supplied folder of the approved owner references may
+    // serve as the visual comparison target. Prototype ZIP shots are not a fallback.
+    const referenceDir = process.env.APPROVED_REFERENCE_DIR
+      ? path.resolve(process.env.APPROVED_REFERENCE_DIR) : null;
+    const references = [
+      { key: 'desktopLight', file: 'desktop-light.png', sedimentFileId: 'file_00000000abe481f5857186c409c435a2', expectedSha256: 'd2a7bbcf95381b2018960219801592e26a608ab741b33b7ebab9b3827a7bf4f6', dimensions: [2880, 2846] },
+      { key: 'desktopDark', file: 'desktop-dark.png', sedimentFileId: 'file_000000000aa481f5af2b4e6576471c55', expectedSha256: '72170f4bb71d9cae0d7194e4eb85de19437316b12695c5be57932b51c442e39f', dimensions: [2880, 1800] },
+      { key: 'mobileLight', file: 'mobile-light.png', sedimentFileId: 'file_00000000da6c820c8903938c22abe5f5', expectedSha256: '42f01c091b4c4148fb5d75eb1a40fb5eff79fb2e8159a9947caa9c61700d02ac', dimensions: [780, 4238] },
+    ].map(ref => {
+      const file = referenceDir && path.join(referenceDir, ref.file);
+      const available = !!file && fs.existsSync(file);
+      const sha256 = available ? createHash('sha256').update(fs.readFileSync(file)).digest('hex') : null;
+      return { ...ref, path: file, available, sha256, matchesApproved: sha256 === ref.expectedSha256 };
+    });
+    const visualComparison = {
+      authority: 'Owner-approved Slack images',
+      sourceThread: 'C0C6M5Z1LF8/thread1791497896.975019',
+      references,
+      status: 'unavailable',
+      darkCoverage: 'Reference cuts off inside Bills/Household; lower dark details are unproven.',
+      visualMatchApproved: false,
+    };
+    const python = process.env.PYTHON || 'python3';
+    if (!referenceDir || references.some(ref => !ref.available || !ref.matchesApproved)) {
+      errors.push('Visual comparison unavailable: APPROVED_REFERENCE_DIR must contain the exact approved desktop-light.png, desktop-dark.png and mobile-light.png bytes; files are missing or their SHA-256 differs.');
+    } else {
+    const ref = key => references.find(item => item.key === key).path;
+    const side = spawnSync(python, ['-c', sideScript,
+      ref('desktopLight'), path.join(outDir, 'budget-blend-1440-light.png'), path.join(outDir, 'side-1440-light.png'),
+      ref('desktopDark'), path.join(outDir, 'budget-blend-1440-dark.png'), path.join(outDir, 'side-1440-dark.png'),
+      ref('mobileLight'), path.join(outDir, 'budget-blend-390-light.png'), path.join(outDir, 'side-390-light.png'),
+      ref('desktopLight'), path.join(outDir, 'budget-blend-1440-light-household-all.png'), path.join(outDir, 'side-1440-light-household-all.png'),
+      ref('mobileLight'), path.join(outDir, 'budget-blend-390-light-household-all.png'), path.join(outDir, 'side-390-light-household-all.png'),
     ], { encoding: 'utf8' });
-    if (side.status !== 0) errors.push(`side-by-side ${side.stderr || side.stdout}`);
-    else console.log(side.stdout.trim());
-    const crop = spawnSync('python3', ['-c', `
+    if (side.status !== 0) errors.push(`side-by-side ${side.error?.message || side.stderr || side.stdout}`);
+    else {
+      visualComparison.status = 'generated-requires-owner-review';
+      console.log(side.stdout.trim());
+    }
+    }
+    const crop = spawnSync(python, ['-c', `
 from PIL import Image
 im = Image.open(${JSON.stringify(path.join(outDir, 'budget-blend-390-light.png'))})
 mid = im.height // 2
@@ -1928,7 +2261,7 @@ im.crop((0, 0, im.width, mid)).save(${JSON.stringify(path.join(outDir, 'budget-b
 im.crop((0, mid, im.width, im.height)).save(${JSON.stringify(path.join(outDir, 'budget-blend-390-light-bot.png'))})
 print('390 crops', im.size)
 `], { encoding: 'utf8' });
-    if (crop.status !== 0) errors.push(`390 crops ${crop.stderr || crop.stdout}`);
+    if (crop.status !== 0) errors.push(`390 crops ${crop.error?.message || crop.stderr || crop.stdout}`);
     else console.log(crop.stdout.trim());
 
     const failedContrast = contrasts.filter(row => row.pass === false || row.missing);
@@ -1943,6 +2276,7 @@ print('390 crops', im.size)
       chrome: process.env.CHROME_PATH || null,
       reducedMotion: false,
       screenshots: shots,
+      visualComparison,
       contrasts,
       heroTerms,
       focusWalk: focusWalks[0],

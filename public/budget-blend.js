@@ -3,6 +3,8 @@
    Does not read Forecast, total money, or invent a figure. */
 (function blendBudget() {
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let toolbarOpen = false;
+  let categoryFocusReturn = null;
 
   function clip(node) {
     if (node) node.classList.add('blend-clip');
@@ -70,6 +72,21 @@
     return found ? found[0] : '';
   }
 
+  function setToolbarOpen(toolbar, open, focusControl = false) {
+    if (!toolbar) return;
+    toolbarOpen = open;
+    toolbar.classList.toggle('is-open', open);
+    const pill = document.querySelector('.playhead-pill[aria-controls="' + CSS.escape(toolbar.id) + '"]');
+    if (pill) pill.setAttribute('aria-expanded', String(open));
+    if (open && focusControl) {
+      const control = [...toolbar.querySelectorAll('button, select, input, [tabindex]')].find(node =>
+        !node.disabled && node.getAttribute('aria-disabled') !== 'true' && node.tabIndex >= 0 && node.getClientRects().length);
+      control?.focus({ preventScroll: true });
+    } else if (!open) {
+      pill?.focus({ preventScroll: true });
+    }
+  }
+
   function place(bento) {
     const hero = bento.querySelector('.budget-blend-hero-layout');
     if (!hero) return;
@@ -111,6 +128,9 @@
       const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
       globalThis.Aurora.init(hero.querySelector('.blend-aurora'), { reduce: reduce });
       globalThis.Aurora.set('healthy');
+      const theme = document.documentElement.getAttribute('data-theme');
+      const dark = theme === 'dark' || (!theme && matchMedia('(prefers-color-scheme: dark)').matches);
+      globalThis.Aurora.setLight(dark ? 1.15 : 1.5);
     }
     const tight = hero.querySelector('[data-operating-question="07"] [data-sign="negative"]')
       || hero.querySelector('.budget-cash-notice.has-gap');
@@ -124,6 +144,16 @@
     if (header && !header.classList.contains('blend-toolbar')) {
       const active = document.activeElement;
       header.classList.add('blend-toolbar');
+      if (!header.id) header.id = 'budget-period-toolbar';
+      if (header.contains(active)) toolbarOpen = true;
+      header.classList.toggle('is-open', toolbarOpen);
+      header.addEventListener('focusin', () => setToolbarOpen(header, true));
+      header.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setToolbarOpen(header, false);
+      });
       bento.insertBefore(header, bento.firstChild);
       if (active && active !== document.body && header.contains(active) && document.activeElement !== active) {
         active.focus({ preventScroll: true });
@@ -150,9 +180,12 @@
   }
 
   function liftFace(bento) {
+    const active = document.activeElement;
+    const restoreFocus = active && active !== document.body && bento.contains(active);
     const toolbar = bento.querySelector('.blend-toolbar');
     const river = bento.querySelector('.g-river-wrap');
     const quiet = bento.querySelector('.blend-quiet');
+    if (toolbar && toolbar.contains(active)) setToolbarOpen(toolbar, true);
     if (toolbar) bento.appendChild(toolbar);
     if (river) bento.appendChild(river);
     stackBoard(bento);
@@ -163,13 +196,12 @@
     bento.querySelectorAll(':scope > .budget-surface-grid, :scope > .budget-browse-grid').forEach(node => {
       node.classList.add('g-source');
     });
+    if (restoreFocus && active.isConnected && document.activeElement !== active) active.focus({ preventScroll: true });
   }
 
-  // Two independent columns. Hero stays on the left. Income and Household
-  // start the right column, and Household may run past the hero. Bills,
-  // Cards and Savings goals then join whichever column is shorter so a
-  // tall tile does not open a hole under the other column. Payday stays
-  // in the tree, off the face.
+  // Two independent columns with fixed membership. On phones, move the
+  // same tiles into the approved reading order so keyboard order follows
+  // the visible stack. Payday stays in the tree, off the face.
   function stackBoard(bento) {
     let board = bento.querySelector(':scope > .blend-board');
     if (!board) {
@@ -192,33 +224,29 @@
     const cards = find('.budget-blend-card-movements');
     const goals = find('[data-budget-savings-goals]');
     const pay = find('.blend-pay');
-    const stackedHeight = (col, skip) => {
-      const kids = [...col.children].filter(node => node !== skip);
-      const gap = 18;
-      return kids.reduce((sum, node) => sum + node.getBoundingClientRect().height, 0)
-        + Math.max(0, kids.length - 1) * gap;
-    };
-    const placeFillers = () => {
+    const placeTiles = () => {
+      const active = document.activeElement;
+      const restoreFocus = active && board.contains(active);
       if (pay) {
         pay.classList.add('blend-sr');
         bento.appendChild(pay);
       }
-      if (hero) left.appendChild(hero);
-      if (income) right.appendChild(income);
-      if (house) right.appendChild(house);
       const phone = window.matchMedia('(max-width: 759px)').matches;
-      [bills, cards, goals].filter(Boolean).forEach(node => {
-        const dest = phone || stackedHeight(left, node) <= stackedHeight(right, node) ? left : right;
-        dest.appendChild(node);
-      });
+      if (phone) {
+        [hero, bills, income, house, cards, goals].filter(Boolean).forEach(node => board.appendChild(node));
+      } else {
+        [hero, bills, cards].filter(Boolean).forEach(node => left.appendChild(node));
+        [income, house, goals].filter(Boolean).forEach(node => right.appendChild(node));
+      }
+      if (restoreFocus && document.activeElement !== active) active.focus({ preventScroll: true });
     };
-    placeFillers();
+    placeTiles();
     if (!bento.dataset.blendStacked) {
       bento.dataset.blendStacked = '1';
       let frame = 0;
       window.addEventListener('resize', () => {
         cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(placeFillers);
+        frame = requestAnimationFrame(placeTiles);
       });
     }
   }
@@ -845,12 +873,15 @@
     if (!span) return 'Unavailable';
     const clone = span.cloneNode(true);
     clone.querySelectorAll('time, [data-income-original-plan]').forEach(node => node.remove());
-    return text(clone) || 'Unavailable';
+    return text(clone).replace(/\s*·\s*[A-Z][a-z]{2}\s+\d{1,2}\s*·\s*(?:arriving|received|already in balance)\s*$/i, '') || 'Unavailable';
   }
 
   function depositDate(row) {
     const time = row.querySelector('time');
-    if (!time) return '';
+    if (!time) {
+      const published = text(row.querySelector('span')).match(/(?:^|·)\s*([A-Z][a-z]{2}\s+\d{1,2})\s*(?:·|$)/);
+      return published ? published[1] : '';
+    }
     const raw = (time.getAttribute('datetime') && text(time)) || text(time);
     const found = raw.match(/[A-Z][a-z]{2}\s+\d{1,2}/);
     return found ? found[0] : raw.split('·')[0].trim();
@@ -914,7 +945,7 @@
     head.className = 'blend-tile-head';
     const title = document.createElement('span');
     title.className = 'blend-tile-title';
-    title.textContent = 'Planned income';
+    title.textContent = 'Income';
     const meta = document.createElement('span');
     meta.className = 'blend-income-in';
     if (received) meta.textContent = received + ' in';
@@ -935,25 +966,46 @@
       figure.appendChild(pill);
     }
     const rows = depositRows(step || bento);
-    const todayMarked = !!document.querySelector('.budget-window-days .is-today, [data-budget-window-progress] .is-today');
+    const progress = document.querySelector('[data-budget-window-progress]');
+    const start = progress && progress.getAttribute('data-start');
+    const end = progress && progress.getAttribute('data-end');
+    const asOf = progress && progress.getAttribute('data-as-of');
+    const days = [];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(start || '') && /^\d{4}-\d{2}-\d{2}$/.test(end || '')) {
+      const cursor = new Date(start + 'T12:00:00Z');
+      const finish = new Date(end + 'T12:00:00Z');
+      while (cursor <= finish && days.length < 62) {
+        days.push({ iso: cursor.toISOString().slice(0, 10), label: cursor.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) });
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+    }
+    const position = index => days.length > 1 ? 3 + index / (days.length - 1) * 94 : 50;
+    const datedRows = rows.map(row => {
+      const iso = row.querySelector('time[datetime]')?.getAttribute('datetime');
+      return days.findIndex(day => iso ? day.iso === iso : day.label === depositDate(row));
+    });
+    const hasTimeline = days.length > 1 && rows.length > 0 && datedRows.every(index => index >= 0);
+    button.classList.toggle('is-undated', !hasTimeline);
     const muted = document.createElement('span');
     muted.className = 'blend-muted';
     const value = step && step.querySelector('.budget-step-value');
     muted.textContent = printedIncomeSentence(step);
+    button.setAttribute('aria-label', ['Planned income', planText, muted.textContent, ...rows.map(row => text(row))].filter(Boolean).join('. '));
     if (received && muted.textContent) muted.classList.add('blend-clip');
     const pulse = document.createElement('span');
     pulse.className = 'blend-dep-pulse';
     pulse.setAttribute('aria-hidden', 'true');
     const track = document.createElement('i');
     track.className = 'blend-p-track';
-    const receivedN = printedMagnitude(received);
-    const planN = printedMagnitude(money);
-    if (receivedN != null && planN != null && planN > 0) {
+    // Calendar geometry follows the published period/as-of dates, never a
+    // browser-computed money total or an assumed receipt date.
+    const todayIndex = days.findIndex(day => day.iso === asOf);
+    if (hasTimeline && todayIndex >= 0) {
       const fill = document.createElement('i');
       fill.className = 'blend-p-fill';
-      fill.style.setProperty('--w', Math.max(0, Math.min(100, receivedN / planN * 100)).toFixed(2) + '%');
+      fill.style.setProperty('--w', position(todayIndex).toFixed(2) + '%');
       track.appendChild(fill);
-    } else {
+    } else if (!hasTimeline) {
       track.classList.add('is-untracked');
       const mark = document.createElement('b');
       mark.className = 'blend-untracked-mark';
@@ -961,19 +1013,24 @@
       pulse.appendChild(mark);
     }
     pulse.insertBefore(track, pulse.firstChild);
-    let seenWaiting = false;
+    if (hasTimeline) days.forEach((day, index) => {
+      const tick = document.createElement('i');
+      tick.className = 'blend-p-tick';
+      tick.style.left = position(index) + '%';
+      pulse.appendChild(tick);
+    });
+    if (hasTimeline && todayIndex >= 0) {
+      const today = document.createElement('i');
+      today.className = 'blend-p-today';
+      today.style.left = position(todayIndex) + '%';
+      pulse.appendChild(today);
+    }
+    const deposits = document.createElement('span');
+    deposits.className = 'blend-deps';
+    deposits.setAttribute('aria-hidden', 'true');
     rows.forEach((row, index) => {
       const got = depositReceived(row);
-      const x = rows.length <= 1 ? 12 : 8 + (index / (rows.length - 1)) * 84;
-      if (todayMarked && !seenWaiting && !got) {
-        const tick = document.createElement('i');
-        tick.className = 'blend-p-today';
-        tick.setAttribute('aria-hidden', 'true');
-        tick.style.left = x + '%';
-        pulse.appendChild(tick);
-        seenWaiting = true;
-      }
-      if (!got) seenWaiting = true;
+      const x = hasTimeline ? position(datedRows[index]) : 50;
       const dep = document.createElement('span');
       dep.className = 'blend-p-dep' + (got ? ' is-got' : ' is-wait');
       dep.style.left = x + '%';
@@ -983,24 +1040,37 @@
       if (got) dot.appendChild(checkGlyph());
       const caption = document.createElement('span');
       caption.className = 'blend-p-lbl';
+      caption.style.left = (index / rows.length * 100) + '%';
+      caption.style.width = (100 / rows.length - 2) + '%';
+      if (index === rows.length - 1 && index > 0) caption.classList.add('is-last');
       const when = depositDate(row);
       const name = depositName(row);
       const amount = depositAmount(row);
+      const deposit = document.createElement('span');
+      deposit.className = 'blend-deposit' + (got ? ' is-received' : ' is-expected');
+      const depositDot = document.createElement('i');
+      depositDot.className = 'blend-deposit-dot';
+      const depositWhen = document.createElement('span');
+      depositWhen.textContent = when || 'Date unavailable';
+      const depositValue = document.createElement('b');
+      depositValue.textContent = amount || 'Unavailable';
+      deposit.append(depositDot, depositWhen, depositValue);
+      deposits.appendChild(deposit);
       if (amount) {
         const strong = document.createElement('b');
         strong.textContent = amount;
         caption.appendChild(strong);
       }
-      const rest = [name, when].filter(Boolean).join(' · ');
+      const rest = [name, when && !name.includes(when) ? when : ''].filter(Boolean).join(' · ');
       if (rest) {
         const line = document.createElement('span');
         line.textContent = rest;
         caption.appendChild(line);
       }
-      dep.append(dot, caption);
-      pulse.appendChild(dep);
+      dep.appendChild(dot);
+      pulse.append(dep, caption);
     });
-    button.append(head, figure, pulse);
+    button.append(head, figure, pulse, deposits);
     if (muted.textContent) button.appendChild(muted);
     if (step) button.addEventListener('click', () => step.querySelector('summary')?.click());
     bento.appendChild(button);
@@ -1238,28 +1308,66 @@
 
   function markSheet(button, row) {
     const sheet = document.querySelector('[data-budget-detail-sheet]');
+    const categoryId = button.getAttribute('data-blend-cat');
+    const kind = button.classList.contains('blend-other') ? '.blend-other' : '.blend-ring';
     if (sheet && !sheet.id) sheet.id = 'budget-detail-sheet';
     button.setAttribute('aria-haspopup', 'dialog');
     if (sheet) button.setAttribute('aria-controls', sheet.id);
     button.setAttribute('aria-expanded', 'false');
+    if (sheet?.open && categoryId && categoryFocusReturn?.id === categoryId
+      && sheet.querySelector('[data-budget-category="' + CSS.escape(categoryId) + '"]')) {
+      categoryFocusReturn.node = button;
+      button.setAttribute('aria-expanded', 'true');
+      button.setAttribute('data-blend-opened', '1');
+    }
     button.addEventListener('click', () => {
       button.setAttribute('aria-expanded', 'true');
       button.setAttribute('data-blend-opened', '1');
+      categoryFocusReturn = { node: button, id: categoryId, kind };
       row.click();
-      if (!sheet || !sheet.open) button.removeAttribute('data-blend-opened');
+      if (!sheet || !sheet.open) {
+        button.removeAttribute('data-blend-opened');
+        button.setAttribute('aria-expanded', 'false');
+        if (categoryFocusReturn?.node === button) categoryFocusReturn = null;
+      }
     });
     if (sheet && sheet.dataset.blendRingClose !== '1') {
       sheet.dataset.blendRingClose = '1';
       sheet.addEventListener('close', () => {
+        // A remount may already have restored this native dialog. Keep its
+        // return identity until that dialog actually closes.
+        if (document.querySelector('[data-budget-detail-sheet]')?.open) return;
         const opened = document.querySelector('[data-blend-opened="1"]');
+        const returnTo = categoryFocusReturn || (opened ? {
+          node: opened, id: opened.getAttribute('data-blend-cat'),
+          kind: opened.classList.contains('blend-other') ? '.blend-other' : '.blend-ring',
+        } : null);
         document.querySelectorAll('.blend-ring[aria-expanded="true"], .blend-other[aria-expanded="true"]').forEach(node => {
           node.setAttribute('aria-expanded', 'false');
         });
-        if (opened) {
-          opened.removeAttribute('data-blend-opened');
-          queueMicrotask(() => {
-            if (opened.isConnected) opened.focus({ preventScroll: true });
-          });
+        document.querySelectorAll('[data-blend-opened="1"]').forEach(node => node.removeAttribute('data-blend-opened'));
+        if (returnTo) {
+          categoryFocusReturn = returnTo;
+          const restore = attempt => {
+            if (categoryFocusReturn !== returnTo || document.querySelector('[data-budget-detail-sheet]')?.open) return;
+            const visible = node => node?.isConnected && node.getClientRects().length
+              && getComputedStyle(node).visibility !== 'hidden';
+            const target = visible(returnTo.node) ? returnTo.node : returnTo.id
+              ? [...document.querySelectorAll(returnTo.kind + '[data-blend-cat="' + CSS.escape(returnTo.id) + '"]')].find(visible) : null;
+            if (target) {
+              target.focus({ preventScroll: true });
+              if (document.activeElement === target) {
+                target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                categoryFocusReturn = null;
+                return;
+              }
+            }
+            if (attempt === 0) requestAnimationFrame(() => restore(1));
+            else categoryFocusReturn = null;
+          };
+          // Wait for native modal teardown and responsive DOM placement;
+          // the incumbent close path may first try its hidden source row.
+          requestAnimationFrame(() => restore(0));
           return;
         }
         queueMicrotask(() => {
@@ -1303,14 +1411,14 @@
 
   function categoryArc(share) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 112 112');
+    svg.setAttribute('viewBox', '0 0 100 100');
     svg.setAttribute('class', 'blend-arc-ring');
     svg.setAttribute('aria-hidden', 'true');
     const ns = 'http://www.w3.org/2000/svg';
     const circle = (cls, extra) => {
       const node = document.createElementNS(ns, 'circle');
-      node.setAttribute('cx', '56');
-      node.setAttribute('cy', '56');
+      node.setAttribute('cx', '50');
+      node.setAttribute('cy', '50');
       node.setAttribute('r', '44');
       node.setAttribute('fill', 'none');
       node.setAttribute('class', cls);
@@ -1319,25 +1427,61 @@
       return node;
     };
     const track = circle(share == null ? 'rg-track is-dotted' : 'rg-track');
-    if (share != null) {
+    if (share > 0) {
       const circ = 2 * Math.PI * 44;
       const drawn = Math.max(0, Math.min(1, share)) * circ;
       circle('rg-arc', {
         stroke: 'currentColor',
         'stroke-width': '7',
         'stroke-linecap': 'round',
-        transform: 'rotate(-90 56 56)',
+        transform: 'rotate(-90 50 50)',
         'stroke-dasharray': drawn.toFixed(2) + ' ' + circ.toFixed(2),
       });
     }
     const glass = document.createElementNS(ns, 'circle');
-    glass.setAttribute('cx', '56');
-    glass.setAttribute('cy', '56');
-    glass.setAttribute('r', '36');
+    glass.setAttribute('cx', '50');
+    glass.setAttribute('cy', '50');
+    glass.setAttribute('r', '38');
     glass.setAttribute('class', 'rg-glass');
     svg.appendChild(glass);
     track.setAttribute('stroke-width', '7');
     return svg;
+  }
+
+  // Decorative liquid requires the same known spent/plan geometry as the
+  // arc. Its level is existing --left; no financial state is derived.
+  let categoryLiquidSequence = 0;
+  function categoryLiquid(share) {
+    if (typeof share !== 'number' || !Number.isFinite(share) || share < 0 || share > 1) return null;
+    const ns = 'http://www.w3.org/2000/svg';
+    const liquid = document.createElementNS(ns, 'svg');
+    liquid.setAttribute('class', 'blend-ring-liquid' + (share === 1 ? ' is-drained' : ''));
+    liquid.setAttribute('viewBox', '0 0 100 100');
+    liquid.setAttribute('aria-hidden', 'true');
+    // Keep decorative waves in phase when native publication remounts a tile.
+    liquid.style.setProperty('--blend-wave-phase', (-performance.now() / 1000).toFixed(3) + 's');
+    const defs = document.createElementNS(ns, 'defs');
+    const clip = document.createElementNS(ns, 'clipPath');
+    const clipId = 'blend-liquid-' + (++categoryLiquidSequence);
+    clip.id = clipId;
+    const glass = document.createElementNS(ns, 'circle');
+    glass.setAttribute('cx', '50'); glass.setAttribute('cy', '50'); glass.setAttribute('r', '38');
+    clip.appendChild(glass); defs.appendChild(clip);
+    const masked = document.createElementNS(ns, 'g');
+    masked.setAttribute('clip-path', 'url(#' + clipId + ')');
+    const water = document.createElementNS(ns, 'g');
+    water.setAttribute('class', 'blend-ring-water');
+    // Reuse the prototype's decorative wave path, never its financial ringState.
+    let wavePath = 'M0 12';
+    for (let x = 0; x < 200; x += 19) wavePath += ' Q' + (x + 9.5) + ' ' + (x / 19 % 2 ? 15.5 : 8.5) + ' ' + (x + 19) + ' 12';
+    wavePath += ' V110 H0 Z';
+    ['blend-ring-wave w2', 'blend-ring-wave'].forEach(className => {
+      const wave = document.createElementNS(ns, 'path');
+      wave.setAttribute('class', className); wave.setAttribute('d', wavePath);
+      water.appendChild(wave);
+    });
+    masked.appendChild(water); liquid.append(defs, masked);
+    return liquid;
   }
 
   function ringCentre(status) {
@@ -1371,7 +1515,7 @@
   }
 
   // Geometry for the ring arc. The bar width is preferred. When that width
-  // is missing or zero, a printed spent amount and a printed plan amount
+  // is missing, a printed spent amount and a printed plan amount
   // are the same kind of share the split bar already uses. Nothing here is
   // written back as a figure.
   function printedSpentPlanShare(row) {
@@ -1395,6 +1539,8 @@
     const rows = [...section.querySelectorAll('.budget-category-row')];
     const other = rows.filter(row => row.getAttribute('data-budget-category-open') === 'other-spending');
     const main = rows.filter(row => !other.includes(row));
+    const bridges = [];
+    rows.forEach(row => row.classList.remove('blend-category-projected'));
     const spentPrinted = row => {
       const meta = row.querySelector('.budget-category-meta');
       if (!meta) return false;
@@ -1414,31 +1560,53 @@
       const scale = bar && bar.getAttribute('data-budget-category-scale');
       const fill = row.querySelector('.budget-category-fill');
       const width = fill && fill.style.width ? parseFloat(fill.style.width) : NaN;
-      const known = scale === 'numeric' && Number.isFinite(width) && width > 0;
+      const known = scale === 'numeric' && Number.isFinite(width) && width >= 0;
       let share = known ? Math.max(0, Math.min(1, width / 100)) : null;
-      if (!(share > 0)) {
+      if (share == null) {
         const printed = printedSpentPlanShare(row);
-        if (printed > 0) share = printed;
+        if (printed != null) share = printed;
       }
       const hasSpend = spentPrinted(row);
       if (!hasSpend) share = null;
-      if (share > 0) {
-        button.classList.add('is-known', 'has-arc');
-        button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - share))));
-        button.style.setProperty('--pct', share.toFixed(4));
-      } else button.classList.add('is-unknown');
       const status = text(row.querySelector('.budget-category-status')) || 'Unavailable';
+      // Numeric spent/plan geometry cannot qualify remaining. Only mirror
+      // the incumbent's explicit remaining/over/used publication.
+      const amountStatus = /^(?:≈\s*)?(?:estimated\s+)?-?\$[\d,]+(?:\.\d{2})?\s+(left|over|remaining)$/i.exec(status);
+      const remainingPublished = amountStatus
+        ? row.classList.contains(amountStatus[1].toLowerCase() === 'left' ? 'is-left' : 'is-over')
+        : row.classList.contains('is-used') && /^All used$/i.test(status);
+      const remainingGeometry = remainingPublished ? share : null;
+      if (remainingGeometry != null) {
+        button.classList.add('is-known');
+        if (remainingGeometry < 1) button.classList.add('has-arc');
+        button.style.setProperty('--left', String(Math.max(0, Math.min(1, 1 - remainingGeometry))));
+        button.style.setProperty('--pct', remainingGeometry.toFixed(4));
+      } else button.classList.add('is-unknown');
       const meta = text(row.querySelector('.budget-category-meta'));
       const planned = (meta.match(/of planned\s+(.+)$/i) || [])[1];
       const name = text(row.querySelector('.budget-category-name')) || 'Category';
       const nothingPrinted = !hasSpend || (!(share > 0) && !/\$[\d,]/.test(status) && /not observed|unavailable|unknown|^$/i.test(status));
       const well = document.createElement('span');
       well.className = 'blend-ring-g' + (nothingPrinted ? ' is-empty' : '');
-      const value = nothingPrinted ? ringCentre('—') : ringCentre(status || '—');
-      well.append(categoryArc(share > 0 ? share : null), value);
+      const value = ringCentre(status);
+      // The arc and liquid show the same remaining fraction. The selected
+      // share is spent / plan geometry; all monetary labels stay copied.
+      well.appendChild(categoryArc(remainingGeometry != null ? 1 - remainingGeometry : null));
+      const liquid = categoryLiquid(remainingGeometry);
+      if (liquid) well.appendChild(liquid);
+      well.appendChild(value);
       const label = document.createElement('span');
       label.className = 'blend-ring-l';
-      label.textContent = planned ? name + ' · of ' + planned.trim() : name;
+      const categoryName = document.createElement('span');
+      categoryName.className = 'blend-ring-name';
+      categoryName.textContent = name;
+      label.appendChild(categoryName);
+      if (planned) {
+        const categoryPlan = document.createElement('span');
+        categoryPlan.className = 'blend-ring-plan';
+        categoryPlan.textContent = 'of ' + planned.trim();
+        label.append(document.createTextNode(' '), categoryPlan);
+      }
       button.append(well, label);
       if (row.classList.contains('is-over')) {
         button.classList.add('is-over');
@@ -1454,21 +1622,8 @@
       }
       markSheet(button, row);
       rings.appendChild(button);
+      bridges.push([row, button]);
     });
-    let moreRings = null;
-    if (main.length > 8) {
-      rings.classList.add('is-capped');
-      moreRings = document.createElement('button');
-      moreRings.type = 'button';
-      moreRings.className = 'blend-rings-more';
-      moreRings.textContent = 'Show the rest';
-      moreRings.setAttribute('aria-expanded', 'false');
-      moreRings.addEventListener('click', () => {
-        const open = rings.classList.toggle('is-open');
-        moreRings.textContent = open ? 'Show fewer' : 'Show the rest';
-        moreRings.setAttribute('aria-expanded', open ? 'true' : 'false');
-      });
-    }
     if (!main.length) {
       const missing = document.createElement('p');
       missing.className = 'blend-missing';
@@ -1477,7 +1632,6 @@
     }
     const header = section.querySelector('header');
     header?.after(rings);
-    if (moreRings) rings.after(moreRings);
     const facts = section.querySelector('.budget-browse-stats');
     const counts = section.querySelector('.budget-browse-counts');
     const titleWrap = header && (header.querySelector('h2')?.parentElement || header);
@@ -1535,7 +1689,8 @@
         foot.appendChild(word);
       }
       markSheet(foot, other[0]);
-      (moreRings || rings).after(foot);
+      rings.after(foot);
+      bridges.push([other[0], foot]);
     }
     const more = document.createElement('details');
     more.className = 'blend-house-panel';
@@ -1551,9 +1706,38 @@
       .forEach(node => { if (node) body.appendChild(node); });
     more.appendChild(body);
     (section.querySelector('.blend-other') || rings).after(more);
-    section.querySelectorAll('.budget-category-list, .budget-pace-key').forEach(node => {
+    // Only a complete, connected bridge may replace its source row on the
+    // face. Keep the full printed status and amounts in its accessible name.
+    // Unrepresented rows (including extra Other rows) remain visible.
+    const sourceRoot = bento.closest('[data-budget-surface]') || bento;
+    const sheet = sourceRoot.querySelector('[data-budget-detail-sheet]');
+    bridges.forEach(([row, button]) => {
+      const label = separatedText(row);
+      if (label) button.setAttribute('aria-label', label);
+      const id = row.getAttribute('data-budget-category-open');
+      const source = id && sourceRoot.querySelector('[data-budget-category="' + CSS.escape(id) + '"]');
+      if (label && source && button.isConnected && typeof sheet?.budgetSheet?.open === 'function') {
+        row.classList.add('blend-category-projected');
+      }
+    });
+    section.querySelectorAll('.budget-category-list').forEach(node => node.classList.remove('blend-in-panel'));
+    section.querySelectorAll('.budget-pace-key').forEach(node => {
       node.classList.add('blend-in-panel');
     });
+    // Reuse the native evidence action on the visible title. Its delegated
+    // handler and publication remain unchanged; keyboard users need not find
+    // a control clipped inside the source footer.
+    const evidence = section.querySelector('footer [data-budget-browse-evidence]');
+    const heading = section.querySelector('header h2');
+    if (evidence && heading) {
+      const headingText = text(heading);
+      const chevron = section.querySelector('.blend-house-chev');
+      evidence.classList.add('blend-house-open');
+      evidence.textContent = headingText;
+      if (chevron) evidence.appendChild(chevron);
+      heading.setAttribute('aria-label', headingText);
+      heading.replaceChildren(evidence);
+    }
     clip(section.querySelector('footer'));
     section.querySelectorAll('.budget-browse-eyebrow, .budget-browse-sub').forEach(clip);
   }
@@ -1578,7 +1762,6 @@
       note.classList.add('blend-card-posted', 'blend-card-aside');
       if (panels[0]) panels[0].prepend(note);
     }
-    let anyMoney = false;
     bento.querySelectorAll('.card-movement-trigger').forEach(button => {
       const name = text(button.querySelector('.card-movement-title')) || text(button);
       if (!button.querySelector('.blend-cc-chip')) {
@@ -1601,17 +1784,12 @@
       }
       const delta = button.querySelector('.card-movement-delta');
       const money = moneyToken(text(delta));
-      if (money) anyMoney = true;
-      else if (delta && !button.querySelector('.blend-cc-dash')) {
+      if (!money && delta && !button.querySelector('.blend-cc-dash')) {
         const dash = document.createElement('span');
-        dash.className = 'blend-cc-dash cc-chg';
-        dash.textContent = '—';
+        dash.className = 'blend-cc-dash cc-chg is-unavailable';
+        dash.textContent = 'Unavailable';
         delta.classList.add('blend-clip');
         delta.after(dash);
-        const bal = document.createElement('span');
-        bal.className = 'cc-bal';
-        bal.textContent = '—';
-        dash.after(bal);
         const line = document.createElement('i');
         line.className = 'blend-cc-untracked cc-spark';
         line.setAttribute('aria-hidden', 'true');
@@ -1621,7 +1799,8 @@
     if (!heading.querySelector('.blend-cc-net')) {
       const meta = document.createElement('span');
       meta.className = 'blend-cc-net';
-      meta.textContent = anyMoney ? '' : 'Net —';
+      // Individual card movements do not publish an aggregate strip total.
+      meta.textContent = 'Net Unavailable';
       heading.appendChild(meta);
     }
   }
@@ -1750,7 +1929,8 @@
     if (progressed && svg.childNodes.length) face.appendChild(svg);
     else face.classList.add('is-plain');
     face.appendChild(list);
-    const title = document.createElement('span');
+    const title = document.createElement('button');
+    title.type = 'button';
     title.className = 'blend-tile-head';
     const name = document.createElement('span');
     name.className = 'blend-tile-title';
@@ -1771,15 +1951,28 @@
     if (!panel) {
       panel = document.createElement('details');
       panel.className = 'blend-goals-panel';
+      panel.id = 'blend-savings-detail';
       const summary = document.createElement('summary');
       summary.className = 'blend-clip';
       summary.textContent = 'Savings detail';
       panel.appendChild(summary);
       card.appendChild(panel);
       const head = card.querySelector('.blend-tile-head');
+      head?.setAttribute('aria-controls', panel.id);
+      head?.setAttribute('aria-expanded', 'false');
       head?.addEventListener('click', event => {
         event.preventDefault();
         panel.open = !panel.open;
+        head.setAttribute('aria-expanded', String(panel.open));
+      });
+      panel.addEventListener('toggle', () => head?.setAttribute('aria-expanded', String(panel.open)));
+      panel.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !panel.open) return;
+        event.preventDefault();
+        event.stopPropagation();
+        panel.open = false;
+        head?.setAttribute('aria-expanded', 'false');
+        head?.focus();
       });
     }
     section.classList.add('blend-goals-costs');
@@ -1839,11 +2032,11 @@
 
   // Geometry only. Empty text is not zero. Number('') must never become a height.
   function timelineGeometry(displayed) {
-    const raw = String(displayed == null ? '' : displayed).replace(/[−–]/g, '-').replace(/,/g, '').trim();
-    if (!raw) return null;
-    const match = raw.match(/-?\d+(?:\.\d+)?/);
-    if (!match) return null;
-    const number = Number(match[0]);
+    const raw = String(displayed == null ? '' : displayed).replace(/\u2212/g, '-').trim();
+    // The publisher uses money2: a signed currency string with two cents.
+    // Keep the sign before '$'; never extract a number from other prose.
+    if (!/^-?\$(?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2}$/.test(raw)) return null;
+    const number = Number(raw.replace(/[,$]/g, ''));
     return Number.isFinite(number) ? number : null;
   }
 
@@ -1879,7 +2072,8 @@
   function readBadTimeline(doc) {
     const list = doc.querySelector('ol[data-bad-timeline]');
     if (!list) return { present: false, nodes: [] };
-    const nodes = [...list.children].filter(node => node.tagName === 'LI' && keepPastTimelineNode(node)).map((li, index) => {
+    const rows = [...list.children].filter(node => node.tagName === 'LI');
+    const nodes = rows.filter(node => keepPastTimelineNode(node)).map((li, index) => {
       const trust = li.getAttribute('data-bad-term-trust') || '';
       const span = li.querySelector('[data-bad-term-amount]');
       const amount = span ? String(span.textContent == null ? '' : span.textContent).replace(/\s+/g, ' ').trim() : '';
@@ -1887,6 +2081,7 @@
       const negative = !closed && li.getAttribute('data-sign') === 'negative';
       return {
         index: index,
+        sourceIndex: rows.indexOf(li),
         start: li.getAttribute('data-bad-timeline-start') || '',
         end: li.getAttribute('data-bad-timeline-end') || '',
         role: li.getAttribute('data-bad-timeline-role') || '',
@@ -1903,6 +2098,22 @@
       };
     });
     return { present: true, nodes: nodes };
+  }
+
+  // A line may join only adjacent published, known amounts. Retain breaks
+  // for missing amounts and for source rows removed from the visible strip.
+  function knownTimelineRuns(nodes) {
+    const runs = [];
+    nodes.forEach((node, index) => {
+      if (!Number.isFinite(node.magnitude)) return;
+      const previous = index > 0 ? nodes[index - 1] : null;
+      const adjacent = previous && Number.isFinite(previous.magnitude)
+        && Number.isInteger(previous.sourceIndex) && Number.isInteger(node.sourceIndex)
+        && node.sourceIndex === previous.sourceIndex + 1;
+      if (!adjacent) runs.push([]);
+      runs[runs.length - 1].push(index);
+    });
+    return runs;
   }
 
   function displayedTimelineIndex(nodes) {
@@ -1933,8 +2144,13 @@
     if (!target || !target.start) return;
     const current = displayedTimelineIndex(model.nodes);
     if (current < 0 || current === index) return;
-    const dir = index > current ? '1' : '-1';
-    const steps = Math.abs(index - current);
+    // Native Previous/Next follows the unfiltered printed period order.
+    // Visible-strip indices can skip past rows and must not count its steps.
+    const from = model.nodes[current].sourceIndex;
+    const to = target.sourceIndex;
+    if (!Number.isInteger(from) || !Number.isInteger(to)) return;
+    const dir = to > from ? '1' : '-1';
+    const steps = Math.abs(to - from);
     for (let i = 0; i < steps; i++) {
       const button = document.querySelector('[data-budget-window-step="' + dir + '"]');
       if (!button || button.getAttribute('aria-disabled') === 'true') return;
@@ -1942,7 +2158,16 @@
     }
   }
 
+  let activeRiver = null;
+
+  function cleanupDetachedRiver() {
+    if (!activeRiver || activeRiver.wrap.isConnected) return;
+    activeRiver.dispose();
+    activeRiver = null;
+  }
+
   function paintRiver(bento) {
+    cleanupDetachedRiver();
     if (bento.querySelector('.g-river-wrap')) return;
     const model = readBadTimeline(document);
     const absent = !model.present || !model.nodes.length;
@@ -1956,6 +2181,7 @@
     if (!nodes.length) return;
     const selected = absent ? Math.floor((nodes.length - 1) / 2) : displayedTimelineIndex(nodes);
     const selectedNode = selected >= 0 ? nodes[selected] : null;
+    const selectedKnown = !!selectedNode && Number.isFinite(selectedNode.magnitude);
     const wrap = document.createElement('div');
     wrap.className = 'g-river-wrap';
     const nav = document.createElement('nav');
@@ -1984,10 +2210,14 @@
     slide.append(vals, months);
     const play = document.createElement('div');
     play.className = 'playhead';
-    play.setAttribute('aria-hidden', 'true');
-    if (selected < 0) play.hidden = true;
-    const pill = document.createElement('div');
+    const pill = document.createElement('button');
+    pill.type = 'button';
     pill.className = 'playhead-pill';
+    if (selected < 0) {
+      // Keep the period chooser reachable without implying a selected timeline point.
+      play.style.transform = 'translate3d(8px,0,0)';
+      pill.style.transform = 'none';
+    }
     const rangeEl = document.createElement('span');
     rangeEl.setAttribute('data-ph-range', '');
     rangeEl.textContent = (selectedNode && selectedNode.range)
@@ -1999,10 +2229,16 @@
     valueEl.setAttribute('data-ph-value', '');
     valueEl.textContent = selectedNode ? selectedNode.label : '—';
     pill.append(rangeEl, valueEl);
+    pill.setAttribute('aria-label', 'Choose period or month. ' + rangeEl.textContent + ', ' + valueEl.textContent
+      + (selectedNode && selectedNode.estimated ? ', estimated' : ''));
     const beam = document.createElement('span');
     beam.className = 'playhead-beam';
+    beam.setAttribute('aria-hidden', 'true');
+    beam.hidden = !selectedKnown;
     const orb = document.createElement('span');
     orb.className = 'playhead-orb';
+    orb.setAttribute('aria-hidden', 'true');
+    orb.hidden = !selectedKnown;
     play.append(pill, beam, orb);
     if (!absent) {
       const marks = nodes.map(riverMonth);
@@ -2050,10 +2286,27 @@
     nav.appendChild(river);
     wrap.appendChild(nav);
     const toolbar = bento.querySelector('.blend-toolbar');
-    if (toolbar) toolbar.after(wrap);
-    else bento.prepend(wrap);
+    if (toolbar) {
+      pill.setAttribute('aria-controls', toolbar.id);
+      pill.setAttribute('aria-expanded', String(toolbarOpen));
+      pill.addEventListener('click', event => {
+        event.stopPropagation();
+        setToolbarOpen(toolbar, !toolbarOpen, true);
+      });
+      pill.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setToolbarOpen(toolbar, false);
+      });
+      toolbar.after(wrap);
+    } else {
+      pill.disabled = true;
+      bento.prepend(wrap);
+    }
     const layout = { off: 0, xs: [] };
     river.addEventListener('keydown', event => {
+      if (event.target.closest('.playhead-pill')) return;
       if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
       event.preventDefault();
       if (absent) return;
@@ -2076,6 +2329,7 @@
       chooseBadTimeline(best, model);
     });
     const draw = () => {
+      if (!wrap.isConnected) { cleanupDetachedRiver(); return; }
       const rect = river.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height || 178;
@@ -2137,9 +2391,10 @@
       ctx.lineTo(xs[n - 1] + 18, y0 + 0.5);
       ctx.stroke();
       ctx.setLineDash([]);
-      if (knownIdx.length >= 2) {
-        const kxs = knownIdx.map(i => xs[i]);
-        const kys = knownIdx.map(i => ys[i]);
+      knownTimelineRuns(nodes).forEach(run => {
+        if (run.length < 2) return;
+        const kxs = run.map(i => xs[i]);
+        const kys = run.map(i => ys[i]);
         const slopes = monotoneSlopes(kxs, kys);
         const path = new Path2D();
         path.moveTo(kxs[0], kys[0]);
@@ -2156,8 +2411,8 @@
         area.lineTo(kxs[0], botSafe + 6);
         area.closePath();
         const grad = ctx.createLinearGradient(kxs[0], 0, kxs[kxs.length - 1], 0);
-        knownIdx.forEach((idx, i) => {
-          const t = i / (knownIdx.length - 1);
+        run.forEach((idx, i) => {
+          const t = i / (run.length - 1);
           grad.addColorStop(t, rgba(nodes[idx].negative ? amber : income, 1));
         });
         ctx.save();
@@ -2201,7 +2456,7 @@
         ctx.clip();
         pass(1);
         ctx.restore();
-      }
+      });
       ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
       knownIdx.forEach(i => {
         const node = nodes[i];
@@ -2270,17 +2525,20 @@
       });
       if (sel >= 0) {
         const screenX = xs[sel] - off;
-        const orbY = ys[sel] == null ? y0 : ys[sel];
         play.hidden = false;
         play.style.transform = 'translate3d(' + screenX.toFixed(1) + 'px,0,0)';
-        play.style.setProperty('--orb-y', orbY.toFixed(1) + 'px');
+        if (ys[sel] != null) play.style.setProperty('--orb-y', ys[sel].toFixed(1) + 'px');
         const pw = pill.offsetWidth || 160;
         const shift = Math.max(-screenX + 8, Math.min(width - screenX - pw - 8, -pw / 2));
         pill.style.transform = 'translate3d(' + shift.toFixed(1) + 'px,0,0)';
       }
     };
-    requestAnimationFrame(draw);
+    let frame = requestAnimationFrame(() => { frame = null; draw(); });
     window.addEventListener('resize', draw);
+    activeRiver = { wrap: wrap, dispose: () => {
+      window.removeEventListener('resize', draw);
+      if (frame != null) cancelAnimationFrame(frame);
+    } };
   }
 
   function paintQuiet() {
@@ -2291,6 +2549,14 @@
     quiet.className = 'blend-quiet';
     footer.before(quiet);
     quiet.appendChild(footer);
+    // The Budget is one surface; keep the provenance wording without a
+    // page-navigation affordance. Native evidence controls are untouched.
+    footer.querySelectorAll('a[href="/records.html"]').forEach(link => link.replaceWith(document.createTextNode(link.textContent)));
+    const brand = document.querySelector('.site-head .blend-brand[href="/"]');
+    if (brand) {
+      brand.removeAttribute('href');
+      brand.removeAttribute('aria-label');
+    }
   }
 
   function paint(root) {
@@ -2331,7 +2597,11 @@
   function boot() {
     const mount = document.getElementById('operating-surface-body');
     if (!mount) return;
-    const run = () => paint(mount);
+    const run = () => {
+      cleanupDetachedRiver();
+      if (!mount.querySelector('[data-budget-bento]')) globalThis.Aurora?.destroy?.();
+      paint(mount);
+    };
     run();
     if (typeof MutationObserver === 'function') {
       new MutationObserver(run).observe(mount, { childList: true });
@@ -2343,6 +2613,9 @@
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.keepPastTimelineNode = keepPastTimelineNode;
+    module.exports.readBadTimeline = readBadTimeline;
+    module.exports.knownTimelineRuns = knownTimelineRuns;
+    module.exports.chooseBadTimeline = chooseBadTimeline;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

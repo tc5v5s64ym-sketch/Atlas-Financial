@@ -85,7 +85,9 @@ body:has([data-budget-bento]) .wrap {
   max-width: 1360px;
 }
 body:has([data-budget-bento]) #operating-surface {
+  width: 100%;
   max-width: 1360px;
+  padding-top: 0;
 }
 
 body:has([data-budget-bento]) .running-build {
@@ -121,12 +123,13 @@ body:has([data-budget-bento]) .sitenav {
   gap: 8px;
   flex: none;
   color: inherit;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -.03em;
   text-decoration: none;
 }
 
-.blend-mark { width: 28px; height: 28px; display: block; }
+.blend-mark { width: 32px; height: 32px; display: block; }
 .bm-bg { fill: #0b0c10; }
 .bm-a { fill: #0c9a6a; }
 .bm-b { fill: #5650e0; }
@@ -134,12 +137,12 @@ body:has([data-budget-bento]) .sitenav {
 
 .blend-theme {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   margin-left: auto;
-  border: 1px solid var(--blend-line);
+  border: 0;
   border-radius: 999px;
-  background: var(--blend-glass);
+  background: transparent;
   color: var(--blend-ink);
   cursor: pointer;
 }

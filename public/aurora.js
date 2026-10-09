@@ -1,6 +1,6 @@
 /* Aurora glow for the hero tile (shader from Direction A "Cinematic").
- * Rendered small and upscaled; colour and energy follow the period's health:
- * calm green, warm amber, deep red. Outputs light with alpha, so the same
+ * Rendered small and upscaled in a fixed decorative palette. It does not
+ * classify financial health. Outputs light with alpha, so the same
  * frame sits on the light or the dark tile. Falls back to CSS blobs. */
 (function (root) {
   const PAL = {
@@ -46,68 +46,146 @@ void main(){
   gl_FragColor=vec4(c*min(1.,L),a);
 }`;
   const lerp = (a, b, t) => a + (b - a) * t;
+  const noop = () => {};
   const Aurora = {
     ok: false,
+    destroy() {
+      const dispose = this._dispose;
+      this._dispose = null;
+      if (dispose) dispose();
+      this.ok = false;
+      this.pointer = this.kick = this.resize = this.setLight = noop;
+      document.documentElement.classList.remove('has-aurora');
+    },
     init(canvas, opts = {}) {
-      const reduce = !!opts.reduce;
-      if (this._frame) cancelAnimationFrame(this._frame);
-      if (reduce) {
-        document.documentElement.classList.add('reduce');
+      this.destroy();
+      if (!canvas) return;
+      const media = typeof root.matchMedia === 'function'
+        ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
+      const reduce = !!opts.reduce || !!media?.matches;
+      const html = document.documentElement;
+      html.classList.toggle('reduce', reduce);
+      html.classList.remove('has-aurora', 'no-webgl');
+      canvas.hidden = reduce;
+      // This state is decorative only. Preserve its phase when the native
+      // surface remounts; a period change must not restart the curtain.
+      const state = this._motion || (this._motion = {
+        time: 9.4, kick: 0, mx: .5, my: .5, tmx: .5, tmy: .5, light: 1,
+      });
+      this.target = PAL.healthy;
+      this.setLight = value => { if (Number.isFinite(value)) state.light = value; };
+      let disposed = false, gl = null, program = null, buffer = null;
+      let observer = null, size = noop;
+      const shaders = [];
+      const releaseGraphics = () => {
+        if (!gl) return;
+        gl.useProgram(null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        if (buffer) gl.deleteBuffer(buffer);
+        if (program) gl.deleteProgram(program);
+        shaders.splice(0).forEach(shader => gl.deleteShader(shader));
+        buffer = program = null;
+      };
+      const onMotion = event => {
+        if (disposed) return;
+        if (!canvas.isConnected) { this.destroy(); return; }
+        this.init(canvas, { ...opts, reduce: event.matches });
+      };
+      if (media?.addEventListener) media.addEventListener('change', onMotion);
+      else if (media?.addListener) media.addListener(onMotion);
+      this._dispose = () => {
+        disposed = true;
+        if (this._frame) cancelAnimationFrame(this._frame);
+        this._frame = 0;
+        root.removeEventListener('resize', size);
+        observer?.disconnect();
+        if (media?.removeEventListener) media.removeEventListener('change', onMotion);
+        else if (media?.removeListener) media.removeListener(onMotion);
+        releaseGraphics();
+        canvas.hidden = true;
+      };
+      // No WebGL work or animation loop while reduced motion is requested.
+      // Keep the preference listener so changing it can resume this same canvas.
+      if (reduce) return;
+      try { gl = canvas.getContext('webgl', { antialias: false, premultipliedAlpha: true, preserveDrawingBuffer: true, alpha: true }); } catch (e) { gl = null; }
+      if (!gl) { html.classList.add('no-webgl'); return; }
+      const shader = (type, source) => {
+        const result = gl.createShader(type);
+        shaders.push(result);
+        gl.shaderSource(result, source);
+        gl.compileShader(result);
+        if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(result));
+        return result;
+      };
+      const U = {};
+      try {
+        program = gl.createProgram();
+        gl.attachShader(program, shader(gl.VERTEX_SHADER, VS));
+        gl.attachShader(program, shader(gl.FRAGMENT_SHADER, FS));
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+        gl.useProgram(program);
+        buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(program, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        ['R', 'T', 'A', 'B', 'C', 'E', 'K', 'M', 'L'].forEach(key => { U[key] = gl.getUniformLocation(program, key); });
+      } catch (e) {
+        releaseGraphics();
+        html.classList.add('no-webgl');
         return;
       }
-      let gl = null;
-      try { gl = canvas.getContext('webgl', { antialias: false, premultipliedAlpha: true, preserveDrawingBuffer: true, alpha: true }); } catch (e) { gl = null; }
-      if (!gl) { document.documentElement.classList.add('no-webgl'); return; }
-      const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
-      let U = {};
-      try {
-        const pr = gl.createProgram();
-        gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr); gl.useProgram(pr);
-        const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-        const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-        ['R', 'T', 'A', 'B', 'C', 'E', 'K', 'M', 'L'].forEach(k => { U[k] = gl.getUniformLocation(pr, k); });
-      } catch (e) { document.documentElement.classList.add('no-webgl'); return; }
       this.ok = true;
-      document.documentElement.classList.add('has-aurora');
-      const cur = { a: PAL.healthy.a.slice(), b: PAL.healthy.b.slice(), c: PAL.healthy.c.slice(), e: PAL.healthy.e };
-      this.target = PAL.healthy;
-      let time = 9.4, kick = 0, mx = .5, my = .5, tmx = .5, tmy = .5, dirty = true, last = 0, visible = true, light = 1;
+      html.classList.add('has-aurora');
+      let last = 0, visible = true;
       const scale = opts.scale || 0.45;
-      const size = () => {
-        const r = canvas.getBoundingClientRect();
-        const w = Math.max(64, Math.round(r.width * scale)), hgt = Math.max(64, Math.round(r.height * scale));
-        if (canvas.width !== w || canvas.height !== hgt) { canvas.width = w; canvas.height = hgt; gl.viewport(0, 0, w, hgt); dirty = true; }
+      size = () => {
+        if (disposed || !canvas.isConnected) return;
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(64, Math.round(rect.width * scale));
+        const height = Math.max(64, Math.round(rect.height * scale));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width; canvas.height = height;
+          gl.viewport(0, 0, width, height);
+        }
       };
-      size(); addEventListener('resize', size);
-      if ('IntersectionObserver' in root) new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(canvas);
-      this.setLight = v => { light = v; dirty = true; };
-      const self = this;
+      size();
+      root.addEventListener('resize', size);
+      if ('IntersectionObserver' in root) {
+        observer = new root.IntersectionObserver(([entry]) => { if (!disposed && entry) visible = entry.isIntersecting; });
+        observer.observe(canvas);
+      }
       const frame = ts => {
-        self._frame = requestAnimationFrame(frame);
-        const dt = last ? Math.min(.05, Math.max(.001, (ts - last) / 1000)) : .016; last = ts;
-        if (!visible || document.hidden || document.body.classList.contains('is-open')) return; // paused under the panel so the morph stays smooth
-        const tg = this.target, s = reduce ? 1 : 1 - Math.exp(-dt * 2.6);
-        let moved = false;
-        ['a', 'b', 'c'].forEach(k => { for (let i = 0; i < 3; i++) { const nv = lerp(cur[k][i], tg[k][i], s); if (Math.abs(nv - cur[k][i]) > 1e-4) moved = true; cur[k][i] = nv; } });
-        cur.e = lerp(cur.e, tg.e, s);
-        if (reduce) { if (!moved && !dirty) return; dirty = false; }
-        else { time += dt * (0.28 + cur.e * 0.8 + kick * 1.6); kick *= Math.exp(-dt * 2.2); mx = lerp(mx, tmx, 1 - Math.exp(-dt * 3)); my = lerp(my, tmy, 1 - Math.exp(-dt * 3)); }
+        if (disposed) return;
+        this._frame = 0;
+        if (!canvas.isConnected) { this.destroy(); return; }
+        this._frame = requestAnimationFrame(frame);
+        const dt = last ? Math.min(.05, Math.max(.001, (ts - last) / 1000)) : .016;
+        last = ts;
+        const body = document.body;
+        if (!visible || document.hidden || body.classList.contains('is-open')
+          || body.classList.contains('budget-detail-open')) return;
+        // Fixed healthy palette is artwork, not a health classification.
+        const palette = PAL.healthy;
+        state.time += dt * (0.28 + palette.e * 0.8 + state.kick * 1.6);
+        state.kick *= Math.exp(-dt * 2.2);
+        state.mx = lerp(state.mx, state.tmx, 1 - Math.exp(-dt * 3));
+        state.my = lerp(state.my, state.tmy, 1 - Math.exp(-dt * 3));
         gl.uniform2f(U.R, canvas.width, canvas.height);
-        gl.uniform1f(U.T, time);
-        gl.uniform3fv(U.A, cur.a); gl.uniform3fv(U.B, cur.b); gl.uniform3fv(U.C, cur.c);
-        gl.uniform1f(U.E, cur.e); gl.uniform1f(U.K, reduce ? 0 : kick); gl.uniform1f(U.L, light);
-        gl.uniform2f(U.M, mx, my);
+        gl.uniform1f(U.T, state.time);
+        gl.uniform3fv(U.A, palette.a); gl.uniform3fv(U.B, palette.b); gl.uniform3fv(U.C, palette.c);
+        gl.uniform1f(U.E, palette.e); gl.uniform1f(U.K, state.kick); gl.uniform1f(U.L, state.light);
+        gl.uniform2f(U.M, state.mx, state.my);
         gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       };
       this._frame = requestAnimationFrame(frame);
-      this.pointer = (x, y) => { if (!reduce) { tmx = x; tmy = 1 - y; } };
-      this.kick = (v = 1) => { if (!reduce) kick = Math.min(1.6, kick + v); };
+      this.pointer = (x, y) => { state.tmx = x; state.tmy = 1 - y; };
+      this.kick = (value = 1) => { state.kick = Math.min(1.6, state.kick + value); };
       this.resize = size;
     },
     set() { if (this.ok) this.target = PAL.healthy; },
-    pointer() {}, kick() {}, resize() {}, setLight() {},
+    pointer: noop, kick: noop, resize: noop, setLight: noop,
   };
   root.Aurora = Aurora;
 })(globalThis);

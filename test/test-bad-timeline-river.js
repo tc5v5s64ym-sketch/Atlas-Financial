@@ -40,7 +40,7 @@ global.document = {
   documentElement: { getAttribute() { return null; }, setAttribute() {}, removeAttribute() {} },
 };
 global.matchMedia = () => ({ matches: false });
-const { keepPastTimelineNode } = require('../public/budget-blend.js');
+const { keepPastTimelineNode, readBadTimeline, knownTimelineRuns, chooseBadTimeline } = require('../public/budget-blend.js');
 
 function period(role, start, end, claim, extra) {
   const row = {
@@ -73,8 +73,14 @@ function items(html) {
     const attrs = {};
     for (const attr of match[1].matchAll(/([^\s=]+)="([^"]*)"/g)) attrs[attr[1]] = attr[2];
     return {
+      tagName: 'LI',
       attrs,
       body: match[2],
+      querySelector(selector) {
+        if (selector !== '[data-bad-term-amount]') return null;
+        const amount = this.body.match(/<span data-bad-term-amount>([\s\S]*?)<\/span>/);
+        return amount ? { textContent: amount[1] } : null;
+      },
       getAttribute(name) {
         return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
       },
@@ -190,4 +196,77 @@ assert.deepEqual(
   ['2026-07-03', '2026-07-17', '2026-07-31'],
 );
 
-console.log('bad timeline river: past precise and posted-only stay; unavailable, missing, and other past coverage is off the strip; Oct 8 keeps Aug 14, Aug 28, Sep 11, current, and 26 future nodes');
+// Independent display contract: missing publications break a line, even
+// when an omitted past row makes the two known labels visually adjacent.
+const gapRows = [
+  period('past', '2026-05-08', '2026-05-21', 'precise', { amount: 100 }),
+  period('past', '2026-05-22', '2026-06-04', 'unavailable', { amount: 900 }),
+  period('past', '2026-06-05', '2026-06-18', 'posted-only', { amount: 50 }),
+  period('current', '2026-06-19', '2026-07-02', 'unavailable', { amount: 9000, trust: 'unavailable' }),
+  period('future', '2026-07-03', '2026-07-16', undefined, { amount: 0, trust: 'calculated' }),
+  period('future', '2026-07-17', '2026-07-30', undefined, { amount: -20 }),
+  period('future', '2026-07-31', '2026-08-13', undefined, { amount: 55 }),
+  period('future', '2026-08-14', '2026-08-27', undefined, { amount: 40 }),
+];
+const gapItems = items(printed(gapRows));
+gapItems[6].body = '<span data-bad-term-amount> </span>';
+const gapModel = readBadTimeline({ querySelector() { return { children: gapItems }; } });
+assert.deepEqual(gapModel.nodes.map(node => node.sourceIndex), [0, 2, 3, 4, 5, 6, 7],
+  'adapter retains original publication positions after filtering');
+assert.deepEqual(gapModel.nodes.map(node => node.magnitude), [100, 50, null, 0, -20, null, 40],
+  'unavailable and empty spans have no geometry; printed zero is known');
+assert.deepEqual(knownTimelineRuns(gapModel.nodes), [[0], [1], [3, 4], [6]],
+  'only the adjacent published zero and negative value can share a line');
+assert.deepEqual(knownTimelineRuns([
+  { sourceIndex: 0, magnitude: null }, { sourceIndex: 1, magnitude: NaN },
+  { sourceIndex: 2, magnitude: Infinity },
+]), [], 'an entirely unknown timeline has no line');
+for (const [label, magnitude] of [
+  ['$20.00', 20], ['-$20.00', -20], ['\u2212$20.00', -20], ['$1,020.09', 1020.09],
+  ['', null], [' ', null], ['Unavailable', null], ['estimated $20.00', null],
+  ['$1,00.00', null], ['20.00', null], ['$20', null], ['$20.00 extra', null],
+]) {
+  const item = { ...gapItems[4], body: '<span data-bad-term-amount>' + label + '</span>' };
+  const model = readBadTimeline({ querySelector() { return { children: [item] }; } });
+  assert.equal(model.nodes[0].magnitude, magnitude, 'strict displayed currency geometry for ' + JSON.stringify(label));
+}
+
+// Native movement uses every published period, including a past row hidden
+// from this strip. Navigate through the real native selection function and
+// require the clicked start, not the adjacent visible label, to be selected.
+const savedQuery = global.document.querySelector;
+let currentStart = '2026-07-03';
+let stepCount = 0;
+let monthMode = false;
+context.gapRows = gapRows;
+global.document.querySelector = selector => {
+  if (selector === '[data-budget-window-progress]') return { getAttribute() { return currentStart; } };
+  if (selector === '.budget-window-eyebrow') return { textContent: monthMode ? 'Calendar month' : 'Pay period' };
+  const step = /^\[data-budget-window-step="(-?1)"\]$/.exec(selector);
+  if (!step) return null;
+  return {
+    getAttribute() { return 'false'; },
+    click() {
+      context.requestedStart = currentStart;
+      context.requestedStep = Number(step[1]);
+      currentStart = vm.runInContext('payPeriodMoveSelection({payPeriodViews:gapRows}, requestedStart, requestedStep).period.start', context);
+      stepCount++;
+    },
+  };
+};
+try {
+  chooseBadTimeline(0, gapModel);
+  assert.equal(currentStart, '2026-05-08', 'backward click reaches the exact target across a filtered past gap');
+  assert.equal(stepCount, 4, 'native navigation still traverses all four source periods');
+  stepCount = 0;
+  chooseBadTimeline(6, gapModel);
+  assert.equal(currentStart, '2026-08-14', 'forward click reaches the exact target across filtered and unavailable rows');
+  assert.equal(stepCount, 7);
+  monthMode = true;
+  chooseBadTimeline(0, gapModel);
+  assert.equal(stepCount, 7, 'river does not change native selection in month mode');
+} finally {
+  global.document.querySelector = savedQuery;
+}
+
+console.log('bad timeline river: existing past coverage gate preserved; missing publications and filtered source gaps break geometry; printed zero stays known; navigation reaches the exact native target across gaps');
