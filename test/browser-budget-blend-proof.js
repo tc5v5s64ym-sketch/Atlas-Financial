@@ -2189,9 +2189,8 @@ const composite = (fg, bg) => {
       };
     });
     console.log('fixture plan status ' + JSON.stringify(fixtureBand));
-    if (fixtureBand.attr || fixtureBand.chip) errors.push(`fixture chip without a hook ${JSON.stringify(fixtureBand)}`);
-    if (fixtureBand.note !== 'Plan status covers the next 13 weeks, not just this pay period.' || !fixtureBand.noteInPanel || fixtureBand.noteOnFace || fixtureBand.noteVisible) {
-      errors.push(`plan note ${JSON.stringify(fixtureBand)}`);
+    if (!fixtureBand.attr || fixtureBand.chip || fixtureBand.note) {
+      errors.push(`native whole-window identity must survive without hero additions ${JSON.stringify(fixtureBand)}`);
     }
     const repaintStatus = async statusId => {
       await statusPage.evaluate(id => {
@@ -2217,19 +2216,11 @@ const composite = (fg, bg) => {
         dollars: chip ? /\$/.test(chip.textContent || '') : false,
       };
     });
-    const expectChip = {
-      onPlan: ['On plan', 'is-good'],
-      negative: ['Short', 'is-crit'],
-      gap: ['Short', 'is-crit'],
-      unfunded: ['Short', 'is-crit'],
-      combination: ['Short', 'is-crit'],
-      overrideBreach: ['Short', 'is-crit'],
-    };
-    for (const [id, [word, tone]] of Object.entries(expectChip)) {
+    for (const id of ['onPlan', 'negative', 'gap', 'unfunded', 'combination', 'overrideBreach']) {
       await repaintStatus(id);
       const got = await readChip();
-      if (got.word !== word || got.tone !== tone || got.sr !== 'Plan status (13-week window)' || !got.visible || got.dollars) {
-        errors.push(`plan status ${id} ${JSON.stringify(got)}`);
+      if (got.word || got.visible) {
+        errors.push(`whole-window plan status ${id} drew selected-period confidence ${JSON.stringify(got)}`);
       }
     }
     await repaintStatus('onPlan');
