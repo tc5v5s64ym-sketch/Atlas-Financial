@@ -266,10 +266,12 @@ function append({ destination, enabled = false, candidate }) {
     const identicalCapture = samePeriod.find(row => row.captureId === candidate.captureId);
     if (identicalCapture) return { status: 'duplicate', ...metadata(identicalCapture) };
     const kind = candidate.content.kind;
+    // A regenerated capture has a new wall-clock ID. Match any retained
+    // semantic revision before allowing old evidence to become the newest head.
+    const semanticMatch = samePeriod.find(row => row.content.kind === kind && row.contentKey === key);
+    if (semanticMatch) return { status: 'duplicate', ...metadata(semanticMatch) };
     const baseline = samePeriod.find(row => BASELINES.includes(row.content.kind));
     const singleton = BASELINES.includes(kind) ? baseline : kind === 'closing' ? samePeriod.find(row => row.content.kind === 'closing') : null;
-    const prior = singleton || samePeriod.at(-1);
-    if (prior?.content.kind === kind && prior.contentKey === key) return { status: 'duplicate', ...metadata(prior) };
     if (singleton) fail('history-original-or-closing-conflict');
     if (kind === 'plan-amendment' && !baseline) fail('history-baseline-required');
     if (kind === 'actual-correction' && !samePeriod.some(row => row.content.kind === 'closing')) fail('history-closing-required');

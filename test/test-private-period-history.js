@@ -108,6 +108,72 @@ try {
   const notesOnly = clone(correction); notesOnly.capturedAt = '2030-02-16T19:01:00Z';
   notesOnly.payload.fetchedAt = '2030-02-16T19:00:00Z'; notesOnly.payload.transactions[0].notes = 'invented changed evidence';
   assert.equal(append(archive, capture(notesOnly)).status, 'appended', 'source changes remain revisions even when amounts agree');
+
+  // Regenerate saved inputs through capture after newer revisions, rather than
+  // redelivering the exact candidate. The runtime clock changes captureId.
+  const retryResults = [], retryExpected = [];
+  for (const kind of ['plan-amendment', 'actual-correction']) {
+    const destination = directory('regenerated-' + kind);
+    append(destination, capture(input()));
+    const earlierAmendment = input('2030-02-02', 'plan-amendment');
+    Object.assign(earlierAmendment, { declaredAt: '2030-02-02T17:00:00Z', effectiveFrom: START, reason: 'invented first amendment' });
+    earlierAmendment.data.plan.budget.categories[0].plannedPayday = 55;
+    const amendmentReceipt = append(destination, capture(earlierAmendment));
+    const laterAmendment = input('2030-02-03', 'plan-amendment');
+    Object.assign(laterAmendment, { declaredAt: '2030-02-03T17:00:00Z', effectiveFrom: START, reason: 'invented second amendment' });
+    laterAmendment.data.plan.budget.categories[0].plannedPayday = 65;
+    append(destination, capture(laterAmendment));
+    const observedClose = input('2030-02-15', 'closing');
+    observedClose.data.plan.budget.categories[0].plannedPayday = 65;
+    append(destination, capture(observedClose));
+    const earlierCorrection = input('2030-02-16', 'actual-correction');
+    earlierCorrection.data.plan.budget.categories[0].plannedPayday = 65;
+    earlierCorrection.payload.transactions[0].amount = '18.50';
+    const correctionReceipt = append(destination, capture(earlierCorrection));
+    const laterCorrection = input('2030-02-17', 'actual-correction');
+    laterCorrection.data.plan.budget.categories[0].plannedPayday = 65;
+    laterCorrection.payload.transactions[0].amount = '21.00';
+    const newest = append(destination, capture(laterCorrection));
+    const saved = kind === 'plan-amendment' ? earlierAmendment : earlierCorrection;
+    const existing = kind === 'plan-amendment' ? amendmentReceipt : correctionReceipt;
+    const regenerated = capture({ ...saved, capturedAt: '2030-02-18T18:01:00Z' });
+    assert.notEqual(regenerated.captureId, existing.captureId, 'later capture is actually regenerated');
+    const result = append(destination, regenerated), rows = History.read({ destination });
+    const tip = History.read({ destination, revisionId: rows.at(-1).revisionId });
+    retryResults.push({ kind, status: result.status, receipt: result.revisionId, count: rows.length,
+      head: tip.revisionId, spent: tip.content.publication.householdBudget.find(row => row.id === 'groceries').spent });
+    retryExpected.push({ kind, status: 'duplicate', receipt: existing.revisionId, count: 6, head: newest.revisionId, spent: 21 });
+
+    if (kind === 'actual-correction') {
+      for (const [index, change] of ['source', 'configuration', 'reason', 'engine'].entries()) {
+        const distinct = change === 'source' ? input('2030-02-19', 'actual-correction') : clone(earlierCorrection);
+        distinct.capturedAt = '2030-02-' + (19 + index) + 'T18:01:00Z';
+        if (change === 'source') {
+          distinct.data.plan.budget.categories[0].plannedPayday = 65;
+          distinct.payload.transactions[0].amount = '18.50';
+        }
+        if (change === 'configuration') distinct.data.plan.budget.categories[0].plannedPayday = 75;
+        if (change === 'reason') distinct.reason = 'invented separately justified correction';
+        const next = capture(distinct);
+        if (change === 'engine') {
+          // An invented alternate engine version; reseal this synthetic envelope
+          // with JSON's sorted-property serializer, without History internals.
+          next.content.engine.commit = 'b'.repeat(40);
+          const body = { schema: next.schema, capturedAt: next.capturedAt, content: next.content }, keys = new Set();
+          const collect = value => { if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) { keys.add(key); collect(child); } };
+          collect(body);
+          next.captureId = crypto.createHash('sha256').update(JSON.stringify(body, [...keys].sort())).digest('hex');
+        }
+        const receipt = append(destination, next);
+        assert.equal(receipt.status, 'appended', 'distinct ' + change + ' evidence remains appendable');
+        if (change === 'source') assert.equal(History.read({ destination, revisionId: receipt.revisionId })
+          .content.publication.householdBudget.find(row => row.id === 'groceries').spent, 18.5,
+        'genuinely newer source can correct back to an earlier amount without being mistaken for its old delivery');
+      }
+    }
+  }
+  assert.deepEqual(retryResults, retryExpected, 'regenerated amendment/correction retries preserve the existing receipt, count, newest head and actual publication');
+
   const unsupported = directory('unsupported');
   rejects(() => append(unsupported, capture(input('2030-02-15', 'actual-correction'))), 'history-closing-required');
   const reconstructed = capture(input('2030-02-15', 'reconstructed'));
