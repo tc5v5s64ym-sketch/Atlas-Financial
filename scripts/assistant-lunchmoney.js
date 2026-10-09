@@ -576,14 +576,18 @@ function createService(options = {}) {
         if (id != null) { const c = await request('GET', '/categories/' + id); if (c.id !== id || c.archived || c.is_group) throw new Error('category-not-editable'); }
       }
       const beforeSend = async ({ credentialDigest }) => {
+        executionCredentialDigest = credentialDigest;
         if (preview.expires <= now()) throw new Error('preview-expired');
-        if (!standingMode && Object.keys(preview.metadataContext).length) {
-          const gate = async candidate => { if (candidate.credentialDigest !== credentialDigest) throw new Error('provider-credential-changed'); };
-          const liveContext = await metadataContext(preview.body, auth.principal, preview.transfer, gate);
+        if (!standingMode) {
+          const liveContext = await metadataContext(preview.body, auth.principal, preview.transfer, executionGate);
           if (fingerprint(liveContext) !== fingerprint(preview.metadataContext)) throw new Error('metadata-catalog-changed');
+          // Catalog checks may await multiple provider reads. Recheck AFTER
+          // them so an external note added in that gap cannot be overwritten.
+          const finalCurrent = await request('GET', '/transactions/' + preview.targetId, undefined, executionGate);
+          if (fingerprint(finalCurrent) !== preview.fingerprint) throw new Error('transaction-changed-before-dispatch');
+          editable(finalCurrent);
         }
         if (standingMode) {
-          executionCredentialDigest = credentialDigest;
           if (preview.expires <= now()) throw new Error('preview-expired');
           const boundary = await Standing.authorize(standing, {
             ...preview.authorization, auth, credentialDigest, tx: current, body: preview.body,
@@ -636,7 +640,7 @@ function createService(options = {}) {
       await request(preview.splits ? 'POST' : 'PUT', preview.splits
         ? '/transactions/split/' + preview.targetId : '/transactions/' + preview.targetId + '?update_balance=false', preview.body, beforeSend);
       providerRequestReturned = true;
-      const after = await request('GET', '/transactions/' + preview.targetId, undefined, standingMode ? executionGate : undefined);
+      const after = await request('GET', '/transactions/' + preview.targetId, undefined, executionGate);
       if (standingMode) afterRead = project(after, auth.principal, auditCatalog.categories, auditCatalog.accounts);
       let verified = after.id === preview.targetId;
       if (preview.splits) {
@@ -670,7 +674,7 @@ function createService(options = {}) {
         }
       }
       if (!verified) return await audit({ status: 'write-unverified', reason: 'readback-did-not-match-do-not-retry', providerWriteMayHaveOccurred: true });
-      const cat = await catalogData(auth.principal, false, standingMode ? executionGate : undefined);
+      const cat = await catalogData(auth.principal, false, executionGate);
       afterRead = project(after, auth.principal, cat.categories, cat.accounts);
       return await audit({ status: 'applied', verifiedByReadback: true, writesAtlasState: false,
         transaction: project(after, auth.principal, cat.categories, cat.accounts),

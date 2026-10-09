@@ -108,6 +108,13 @@ title cannot manufacture confirmation or a standing grant. Transaction and
 catalog changes invalidate the preview. An ambiguous response/readback consumes
 the preview and must not be retried.
 
+After the catalog rechecks, a final transaction GET under the exact execution
+credential must still match the preview fingerprint immediately before PUT.
+This prevents overwriting notes added during those asynchronous catalog reads.
+The same credential is pinned for readback and result-catalog reads. An external
+client can still race the final GET/PUT because the provider offers no documented
+compare-and-swap; that remaining limitation is not presented as solved.
+
 ## Provider contract and access hold
 
 Read-only check on 2026-10-09 of the official

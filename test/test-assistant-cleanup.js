@@ -13,7 +13,7 @@ function fixture() {
     is_pending: false, status: 'reviewed', custom_metadata: { bank: 'synthetic-preserved' },
     plaid_metadata: { transaction_id: 'synthetic-bank-identity' } };
   const state = { clock: Date.parse('2026-10-09T00:00:00Z'), tx, calls: [], writes: [],
-    afterWrite: null, ambiguous: false, token: 'synthetic-cleanup-token',
+    afterWrite: null, afterTagRead: null, ambiguous: false, token: 'synthetic-cleanup-token',
     categories: [{ id: 3, name: 'Groceries' }, { id: 8, name: 'Household' }],
     tags: [{ id: 22, name: 'Keep tag' }, { id: 24, name: 'Receipt matched' }],
     accounts: [{ id: 4, name: 'Bills' }, { id: 5, name: 'Weekly' }] };
@@ -39,7 +39,7 @@ function fixture() {
         state.afterWrite?.(tx); data = tx;
       } else if (p === '/categories') data = { categories: state.categories };
       else if (p.startsWith('/categories/')) data = state.categories.find(c => c.id === Number(p.split('/').pop()));
-      else if (p === '/tags') data = { tags: state.tags };
+      else if (p === '/tags') { data = { tags: state.tags }; state.afterTagRead?.(); }
       else if (p === '/plaid_accounts') data = { plaid_accounts: state.accounts };
       else if (p === '/manual_accounts') data = { manual_accounts: [] };
       else if (p === '/transactions') data = { transactions: [tx], has_more: false };
@@ -139,6 +139,17 @@ async function withMcp(f, work) {
   const uncertain = fixture(); const unverified = await uncertain.preview({ payee: 'Readable Shop' });
   uncertain.state.ambiguous = true; assert.equal((await uncertain.apply(unverified)).status, 'write-unverified');
   await uncertain.apply(unverified); assert.equal(uncertain.state.writes.length, 1);
+  const raced = fixture(), racedLookup = await raced.lookup();
+  const racedPreview = await raced.service.invoke('prepare', { transactionRef: racedLookup.transactionRef,
+    changes: { notesAppend: 'Receipt checked.', tagRefsAdd: [racedLookup.catalog.tags[1].tagRef] } }, raced.auth);
+  raced.state.afterTagRead = () => { raced.state.tx.notes += '\nExternal note during catalog check.'; };
+  assert.equal((await raced.apply(racedPreview)).status, 'unavailable');
+  assert.equal(raced.state.writes.length, 0);
+  assert.equal(raced.state.tx.notes, '  Existing note\nKeep this exactly. \nExternal note during catalog check.');
+  const rotated = fixture(), rotatedPreview = await rotated.preview({ payee: 'Readable Shop' });
+  rotated.state.afterWrite = () => { rotated.state.token = 'synthetic-rotated-credential'; };
+  assert.equal((await rotated.apply(rotatedPreview)).status, 'write-unverified');
+  await rotated.apply(rotatedPreview); assert.equal(rotated.state.writes.length, 1);
 
   // A clear directional display label, without changing category or moving funds.
   const transfer = fixture(), transferBefore = clone(transfer.state.tx), transferFound = await transfer.lookup();
