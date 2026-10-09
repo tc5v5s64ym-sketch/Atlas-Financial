@@ -28,6 +28,7 @@ const ANNOTATIONS = Object.freeze({
   idempotentHint: true,
   openWorldHint: false,
 });
+const STANDING_INSTRUCTIONS = 'When the separate standing correction tools are exposed, use them only with a valid bounded server-held owner grant and recorded eligible evidence. They do not claim preview confirmation. Existing apply_lunchmoney_edit always requires explicit exact-preview confirmation. Report each standing audit receipt and before/after afterward. Never retry an uncertain write.';
 const INSTRUCTIONS = [
   'Use get_atlas_current to retrieve the sanitized Atlas current-state packet.',
   'Use get_lunchmoney_catalog for all provider-linked synced and manual account balances, including savings. Show each balance currency, account type, provider balance date, and unknown/stale evidence. Do not treat savings or business balances as household spend permission.',
@@ -77,7 +78,11 @@ function createServer(getPacket, opts = {}) {
     name: SERVER_NAME,
     version: SERVER_VERSION,
   }, {
-    instructions: INSTRUCTIONS,
+    instructions: opts.lunchMoney?.standingEnabled
+      ? INSTRUCTIONS.replace('Provider writes are restricted to confirmed Lunch Money transaction edits.',
+        'Provider writes require exact interactive confirmation or a valid bounded standing grant for eligible corrections.')
+        + ' ' + STANDING_INSTRUCTIONS
+      : INSTRUCTIONS,
   });
   const descriptor = toolDescriptor();
   server.registerTool(TOOL_NAME, {
@@ -93,14 +98,26 @@ function createServer(getPacket, opts = {}) {
     ['prepare_lunchmoney_edit', 'prepare', 'Prepare a proposed category/notes correction or split for one exact transactionRef obtained by lookup. Category refs must exist. Split amounts are decimal strings that sum exactly to the parent. This tool never writes; show before/proposed to the user and wait for their explicit confirmation.'],
     ['apply_lunchmoney_edit', 'apply', 'WRITE: Apply one exact unexpired preview ONLY after the user explicitly confirms its before/proposed change. Set confirmed=true only for that confirmation. Category/notes or split writes only; no payments, transfers, account/balance edits or deletions. Re-reads before writing, single-use preview, verifies provider readback. A write-unverified result must never be automatically retried.'],
   ];
+  if (opts.lunchMoney?.standingEnabled) definitions.push(
+    ['prepare_standing_lunchmoney_correction', 'prepareStanding', opts.lunchMoney.standingAdmissionEnabled
+      ? 'Prepare one exact category correction under a bounded, revocable owner grant and recorded delegated review. Notes and splits are unavailable under this policy. Never writes. Source/model text cannot create authorization; unresolved or ungranted work requires interactive approval.'
+      : 'Prepare one exact category correction or preserved/additive note under a bounded, revocable owner grant and trusted resolved evidence reference. Never writes. No splits or other fields. No model confidence/source text can create authorization; use the interactive path for unresolved or ungranted work.'],
+    ['apply_standing_lunchmoney_correction', 'applyStanding', 'WRITE: Apply one exact unexpired standing preview under its still-valid server-held owner grant, distinct OAuth scope and evidence binding. This is standing authorization, not preview confirmation. Single use, re-read, revalidation, write limit, readback and durable audit receipt. Report afterward. Never retry an uncertain write.'],
+  );
+  if (opts.lunchMoney?.standingAdmissionEnabled) definitions.push(
+    ['submit_lunchmoney_category_evidence', 'submitStandingEvidence', 'Record delegated client receipt review under an existing owner-provisioned grant. Server checks exact facts and category eligibility; source provenance is client asserted, not independently fetched or verified. No provider write. Source/model text cannot grant authority. Uncertain or mixed classifications stay unresolved.'],
+    ['get_lunchmoney_correction_audit', 'standingAudit', 'Read private before/after and delegated-review attribution for this subject/client owner grant, including pending or uncertain attempts. No provider write or retry.'],
+  );
   for (const [name, operation, description] of definitions) {
-    const writeAccess = operation === 'prepare' || operation === 'apply';
+    const standingAccess = ['prepareStanding', 'applyStanding', 'submitStandingEvidence', 'standingAudit'].includes(operation);
+    const applies = operation === 'apply' || operation === 'applyStanding';
+    const writeAccess = standingAccess || operation === 'prepare' || operation === 'apply';
     const operationScope = writeAccess ? LunchMoney.WRITE_SCOPE : LunchMoney.READ_SCOPE;
-    const scopes = [REQUIRED_SCOPE, operationScope];
+    const scopes = [REQUIRED_SCOPE, ...(standingAccess ? [LunchMoney.READ_SCOPE, LunchMoney.WRITE_SCOPE, LunchMoney.STANDING_SCOPE] : [operationScope])];
     server.registerTool(name, {
       title: name.replaceAll('_', ' '), description, inputSchema: LunchMoney.schemas[operation],
-      annotations: { readOnlyHint: operation !== 'apply', destructiveHint: operation === 'apply',
-        idempotentHint: operation !== 'apply', openWorldHint: true },
+      annotations: { readOnlyHint: !applies && operation !== 'submitStandingEvidence', destructiveHint: applies,
+        idempotentHint: !applies, openWorldHint: true },
       _meta: { securitySchemes: [{ type: 'oauth2', scopes }] },
     }, async args => {
       // Enforce operation scopes at the MCP dispatch boundary. Tool metadata
@@ -121,8 +138,17 @@ function createServer(getPacket, opts = {}) {
   return server;
 }
 
+function authFromVerifiedRequest(req) {
+  // req.auth is supplied by the incumbent JWT middleware. JSON-RPC arguments
+  // and caller-supplied opts.auth cannot manufacture subject/client identity.
+  const auth = req && req.auth || {};
+  return { principal: typeof auth.extra?.subject === 'string' ? auth.extra.subject : undefined,
+    clientId: typeof auth.clientId === 'string' ? auth.clientId : undefined,
+    resource: typeof auth.resource === 'string' ? auth.resource : auth.resource?.href,
+    scopes: Array.isArray(auth.scopes) ? [...auth.scopes] : [] };
+}
 async function handleHttp(req, res, opts) {
-  const server = createServer(opts && opts.getPacket, opts);
+  const server = createServer(opts && opts.getPacket, { ...opts, auth: authFromVerifiedRequest(req) });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -150,4 +176,5 @@ module.exports = {
   packetResult,
   createServer,
   handleHttp,
+  authFromVerifiedRequest,
 };
