@@ -85,7 +85,7 @@ transaction/classification; labelling model confidence trusted is unacceptable.
 ## Trusted adapter and audit contract
 
 The adapter is a server dependency, never an MCP argument. It requires context,
-grant, evidence, noteEffects, reserve and finish methods and durable=true.
+grant, evidence, noteEffects, reserve, finish and suspend methods and durable=true.
 The flag describes a reviewed backend contract; it does not prove persistence.
 Only a separately reviewed implementation can earn that claim.
 
@@ -97,11 +97,16 @@ refuse standing corrections. This code does not change provider rule settings.
 reserve is the final durable atomic gate. It must recheck the authenticated
 subject/client, provider binding, grant revision/expiry/revocation, exact
 preview/evidence binding and remaining attempts across all service instances.
-It persists the sanitized before/proposed record and charges an attempt before
+It persists the sanitized before/proposed record, exact target/fingerprints privately, and charges an attempt before
 the single PUT. A charge is never refunded after a possibly sent write.
 Pending/unverified attempts must prevent later writes for that grant until
 read-only reconciliation. Restart must not reset limits, replay markers or
 unresolved attempts. No general transaction ledger is added.
+
+suspend must durably block the grant after any uncertain provider result or
+failed/malformed audit receipt. The service also refuses further use of that
+grant in this process. If suspension persistence fails, the pending reservation
+must keep every instance blocked; recovery is read-only and owner operated.
 
 finish must durably attach the terminal outcome, readback and opaque actor
 attribution to that reservation. A failed or uncertain provider result is

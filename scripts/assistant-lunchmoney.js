@@ -145,6 +145,7 @@ function createService(options = {}) {
   // No environment flag or grant store is wired in production. Activation is
   // a separate owner-approved installation of this trusted dependency.
   const standing = options.standingCorrections || {};
+  const blockedStandingGrants = new Set();
   const now = options.now || Date.now;
   const refs = new Map();
   const previews = new Map();
@@ -357,6 +358,7 @@ function createService(options = {}) {
     if (!preview || preview.principal !== auth.principal || preview.used) return fail('preview-expired-or-already-used');
     if (!!preview.authorization !== standingMode) return fail('preview-authorization-mode-mismatch');
     if (standingMode && !Standing.available(standing)) return fail('standing-corrections-disabled');
+    if (standingMode && blockedStandingGrants.has(preview.authorization.grantRef)) return fail('standing-grant-needs-read-only-reconciliation');
     if (locks.has(preview.targetId)) return fail('transaction-edit-in-progress');
     // Consume before the first await: concurrent calls and ambiguous write failures cannot retry.
     preview.used = true;
@@ -369,18 +371,25 @@ function createService(options = {}) {
     const startedAt = now();
     async function audit(result) {
       if (!standingMode || !reservation) return result;
+      if (result.status === 'write-unverified') blockedStandingGrants.add(preview.authorization.grantRef);
       try {
+        if (result.status === 'write-unverified') await standing.adapter.suspend({
+          ...preview.authorization, attemptRef: reservation.attemptRef, reason: result.reason });
         const receipt = await standing.adapter.finish({ reservation,
           outcome: result.status, reason: result.reason || null, verifiedByReadback: result.verifiedByReadback === true,
           finishedAt: now(), after: afterRead });
-        if (!receipt || !/^receipt-[a-f0-9]{24}$/.test(receipt.receiptRef) || receipt.durable !== true) throw new Error('audit-unavailable');
+        if (!receipt || !/^receipt-[a-f0-9]{24}$/.test(receipt.receiptRef)
+            || !/^actor-[a-f0-9]{24}$/.test(receipt.actorRef) || receipt.durable !== true) throw new Error('audit-unavailable');
         return { ...result, auditReceipt: { receiptRef: receipt.receiptRef, authorization: 'standing-grant',
           grantRef: preview.authorization.grantRef, grantRevision: preview.authorization.grantRevision,
           evidenceRef: preview.authorization.evidenceRef, startedAt: new Date(startedAt).toISOString(),
           finishedAt: new Date(now()).toISOString(), outcome: result.status,
           before: auditAttempt.before, proposed: auditAttempt.proposed, after: afterRead,
-          actorRef: /^actor-[a-f0-9]{24}$/.test(receipt.actorRef) ? receipt.actorRef : null } };
+          actorRef: receipt.actorRef } };
       } catch (_) {
+        blockedStandingGrants.add(preview.authorization.grantRef);
+        try { await standing.adapter.suspend({ ...preview.authorization, attemptRef: reservation.attemptRef,
+          reason: 'audit-outcome-unavailable' }); } catch (_) {}
         return { status: 'write-unverified', reason: 'audit-outcome-unavailable-do-not-retry',
           providerWriteMayHaveOccurred: writeAttempted };
       }
@@ -392,7 +401,7 @@ function createService(options = {}) {
       for (const id of preview.splits ? preview.body.child_transactions.map(c => c.category_id) : [preview.body.category_id]) {
         if (id != null) { const c = await request('GET', '/categories/' + id); if (c.id !== id || c.archived || c.is_group) throw new Error('category-not-editable'); }
       }
-            const beforeSend = async ({ credentialDigest }) => {
+      const beforeSend = async ({ credentialDigest }) => {
         if (standingMode) {
           if (preview.expires <= now()) throw new Error('preview-expired');
           const boundary = await Standing.authorize(standing, {
@@ -403,6 +412,7 @@ function createService(options = {}) {
           const cat = await catalogData(auth.principal);
           auditCatalog = cat;
           const attempt = { ...boundary, previewId: input.previewId, principal: auth.principal, clientId: auth.clientId,
+            transactionId: preview.targetId, beforeFingerprint: preview.fingerprint, proposedFingerprint: fingerprint(preview.body),
             expiresAt: preview.expires, requestedAt: now(),
             before: project(current, auth.principal, cat.categories, cat.accounts),
             proposed: { ...(preview.body.category_id === undefined ? {} : { categoryRef: alias('cat', preview.body.category_id, auth.principal) }),
@@ -458,6 +468,7 @@ function createService(options = {}) {
   }
   async function prepareStanding(input, auth) {
     if (!Standing.available(standing)) return fail('standing-corrections-disabled');
+    if (blockedStandingGrants.has(input.grantRef)) return fail('standing-grant-needs-read-only-reconciliation');
     return prepare({ transactionRef: input.transactionRef, changes: input.changes }, auth,
       { grantRef: input.grantRef, evidenceRef: input.evidenceRef });
   }

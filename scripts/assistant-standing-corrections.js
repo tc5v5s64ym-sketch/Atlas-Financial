@@ -3,7 +3,7 @@
 // The adapter is a trusted server dependency, never an MCP argument.
 const SCOPE = 'atlas.transactions.correct-with-grant';
 const MAX_GRANT_MS = 30 * 86400000;
-const adapterMethods = ['context', 'grant', 'evidence', 'noteEffects', 'reserve', 'finish'];
+const adapterMethods = ['context', 'grant', 'evidence', 'noteEffects', 'reserve', 'finish', 'suspend'];
 function deny(reason) { throw new Error(reason); }
 function record(value) { return value && typeof value === 'object' && !Array.isArray(value); }
 function keys(value, allowed) {

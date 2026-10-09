@@ -24,7 +24,7 @@ function fixture(enabled = true) {
     maxAttempts: 2, attempts: 0 };
   const state = { context, grant, tx, categories, writes: [], receipts: [], pending: false,
     evidence: null, hook: null, ambiguous: false, mismatch: false, mutateOther: false,
-    auditFailure: false, credentialChange: false, reserveFailure: false };
+    auditFailure: false, missingActor: false, credentialChange: false, reserveFailure: false };
   const adapter = { durable: true,
     context: async () => structuredClone(context),
     grant: async ref => ref === grant.grantRef ? structuredClone(grant) : null,
@@ -54,12 +54,13 @@ function fixture(enabled = true) {
       state.receipts.push({ ...structuredClone(attempt), reservation, outcome: 'pending' });
       return reservation;
     },
+    suspend: async () => { grant.suspended = true; },
     finish: async outcome => {
       if (state.auditFailure) throw new Error('synthetic-audit-failure');
       state.pending = false;
       if (outcome.outcome === 'write-unverified') grant.suspended = true;
       Object.assign(state.receipts.at(-1), structuredClone(outcome));
-      return { receiptRef: opaque('receipt', grant.attempts), actorRef: opaque('actor', 1), durable: true };
+      return { receiptRef: opaque('receipt', grant.attempts), actorRef: state.missingActor ? null : opaque('actor', 1), durable: true };
     },
   };
   const service = LM.createService({ now: () => clock, env: {}, standingCorrections: { enabled, adapter },
@@ -191,7 +192,7 @@ module.exports = (async () => {
     assert.equal((await x.service.invoke('prepareStanding', { ...a, ...malformed }, x.auth)).status, 'unavailable');
     assert.equal(x.state.writes.length, 0);
   }
-  for (const field of ['ambiguous', 'mismatch', 'mutateOther', 'auditFailure']) {
+  for (const field of ['ambiguous', 'mismatch', 'mutateOther', 'auditFailure', 'missingActor']) {
     const x = fixture(); const a = await x.proposal(); const p = await x.service.invoke('prepareStanding', a, x.auth);
     x.state[field] = true;
     const r = await x.service.invoke('applyStanding', { previewId: p.previewId }, x.auth);
@@ -200,6 +201,7 @@ module.exports = (async () => {
     assert.equal(x.state.writes.length, 1);
     assert.equal(x.grant.attempts, 1, 'uncertain attempt is charged');
     assert.equal(x.grant.suspended || x.state.pending, true, 'unknown outcome blocks later standing writes');
+    assert.equal((await x.service.invoke('prepareStanding', a, x.auth)).status, 'unavailable');
   }
   const race = fixture(); const ra = await race.proposal();
   const rp = await race.service.invoke('prepareStanding', ra, race.auth);
