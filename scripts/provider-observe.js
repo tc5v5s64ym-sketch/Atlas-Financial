@@ -1936,8 +1936,15 @@ function scheduleTrustCandidates(input) {
   const cycleStart = cycle && cycle.start ? parseIsoDate(cycle.start) : null;
   const openingAsOf = input.plan.opening && input.plan.opening.asOf
     ? parseIsoDate(input.plan.opening.asOf) : null;
-  const from = cycleStart
-    || (openingAsOf ? Forecast.addDays(openingAsOf, 1) : null)
+  // A schedule-trust occurrence stays settled after its pay period rolls.
+  // Forecast carries an unrepresented joint-cash outflow from the canonical
+  // opening (priorAsOf) onward, so the window reaches back to that opening,
+  // not just the current cycle start; otherwise a trusted bill prints
+  // unverified in the prior period and is reserved again.
+  const afterOpening = openingAsOf ? Forecast.addDays(openingAsOf, 1) : null;
+  const from = (cycleStart && afterOpening
+    ? (afterOpening < cycleStart ? afterOpening : cycleStart)
+    : (cycleStart || afterOpening))
     || Forecast.addDays(asOf, -COVER_DUE_LOOKBACK_DAYS);
   if (!from || from > asOf) return [];
   const hits = [];
