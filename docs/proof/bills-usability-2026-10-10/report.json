@@ -1,8 +1,8 @@
 {
   "sourceBound": true,
   "sourceBinding": {
-    "head": "0e1419c66db38a8fdeb3703a17a0247142345345",
-    "tree": "a136af2c0c22dc498d5f079107f507a0f7c17c68",
+    "head": "05cd2c98e31884b10b0e113a40f2aac22b000cbf",
+    "tree": "dee4e0141afc8db5975228fad57b666b629b49aa",
     "files": {
       "public/index.html": {
         "sha256": "f3a3bb1b3e749310bec43dc7cc482355c5ee1049828ff726264aee60fc8242fa",
@@ -154,8 +154,143 @@
         "bytes": 7918,
         "blob": "34f952c427e9cf67881a14ff3f784b1c4944d7d8"
       }
+    },
+    "dependencies": {
+      "package-lock.json": {
+        "sha256": "487e54bc3bcb73c900c7f7e57300fcc3b3c80fd54e5ae049534e84e00f2b5182",
+        "bytes": 75508,
+        "blob": "d7bb88a360f7717cd7fb31539eef36f3ed52bab4"
+      },
+      "package.json": {
+        "sha256": "5148da74edb53e34ae0c398251d7d771310ac89c7d35142843e82c37be06fe67",
+        "bytes": 572,
+        "blob": "9aee47b1ef37a9a2f32d62b9dc08e552bc3df5fb"
+      },
+      "public/forecast-card-period.js": {
+        "sha256": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
+        "bytes": 12263,
+        "blob": "d54e3415eae6c209c3c3a253502c962bd41e809e"
+      },
+      "public/forecast.js": {
+        "sha256": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
+        "bytes": 1066781,
+        "blob": "f6ce66e94781c1a8bf59752e8b08cb78f100e27e"
+      },
+      "scripts/canonical-refresh.js": {
+        "sha256": "74aa9ba212178bafe9c1b744ebc1d6caa57639ededa783d9e442fa85450f2e7f",
+        "bytes": 143399,
+        "blob": "96aa5b15fecc816afd9129d74f0dc41ca9ea11b8"
+      },
+      "scripts/card-minimum-category.js": {
+        "sha256": "62a5cbbbfe0d61c5787ae5dbaf2795cbfe941a7c090a897acde39fb209b4faec",
+        "bytes": 8322,
+        "blob": "ea213c8a1c3b04c4844fe9e907bb77a2921aa2af"
+      },
+      "scripts/live-plan.js": {
+        "sha256": "8ac1729e7b17ba94bb2e93032339e60623698dec783d263d7be63e6305afcece",
+        "bytes": 63991,
+        "blob": "3da2f2a01e1bc49c6df7d09de7c2c297b9d80210"
+      },
+      "scripts/local-credentials.js": {
+        "sha256": "6b802c88673fcb1ba528fc1ba63e1b5381577f38d86367764f878e5827501237",
+        "bytes": 13776,
+        "blob": "fdeff86aaa9c16f970d0232098f6d73f25bc90b6"
+      },
+      "scripts/opening-household-rows.js": {
+        "sha256": "e0ef955367ecbc1648a11060aa76e4546e375f599d55d46e0fc99a04ee60fd87",
+        "bytes": 10430,
+        "blob": "894d8a13cccc95475afbfc9d8748c087cdcd8c5b"
+      },
+      "scripts/operating-answer.js": {
+        "sha256": "e93d7f81e614034371c4f2aa59ad97fc741a6e82908297cf953e8b59beca459c",
+        "bytes": 12733,
+        "blob": "7d72e586dfa362e98ca8531e62d05f205bf64b0c"
+      },
+      "scripts/positions-summary.js": {
+        "sha256": "165d6345bbc916fe83851ee991553da074cdd619922e3dfada9a6b4f0acdaf53",
+        "bytes": 13507,
+        "blob": "19ed17f8c79609aa780c449f1eb32d86672fe1d9"
+      },
+      "scripts/provider-observe.js": {
+        "sha256": "8c81980207b6e027dbc1224838257d7efe2b153784be8654053ea9c06706f615",
+        "bytes": 190876,
+        "blob": "bc48c44fe4e0388e6ec96dea3b887aa984de88d1"
+      },
+      "scripts/reconcile.js": {
+        "sha256": "6386ce0ec5716db3048dbc4d4c7d1502449d47968a4926a3b95da5079e8859ee",
+        "bytes": 76563,
+        "blob": "24286860e1a8efcdbe04d1629fd461899c3fb865"
+      },
+      "scripts/refresh-trust.js": {
+        "sha256": "170a0c57908febd51baa886ebe34730710e799b04c98247ed91b4b770c9fb876",
+        "bytes": 15471,
+        "blob": "759f157847a22ae0bb96e57e6a2bf601d7421830"
+      },
+      "scripts/salary-match-diagnostic.js": {
+        "sha256": "359a3673cfa14d96e74b98f3efd59ce5823a9bebc4cebca834b2bacf950de922",
+        "bytes": 8732,
+        "blob": "759805e510ecddf758f592e1dff136bf0295bcbe"
+      },
+      "scripts/snapshot-balances.js": {
+        "sha256": "1c07c152efdf306389082aa9b21f95ae72b63b2c46160c63828c82fc04740f9a",
+        "bytes": 14525,
+        "blob": "630dcb420486b960683bda40abe1b7d915d250e1"
+      },
+      "test/browser-bills-usability.js": {
+        "sha256": "55b17984c3598fb1c9248f0593ee0e9db9874fc632d5daefbbf624f0d893f0d0",
+        "bytes": 26115,
+        "blob": "a8bed38d7f2cee9b035c2c5ee7897f44858b4ee2"
+      },
+      "test/fixtures/budget-surface-data.js": {
+        "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
+        "bytes": 14528,
+        "blob": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
+      },
+      "test/fixtures/card-coverage-opening.js": {
+        "sha256": "70fed5621e6c62caf551f7136fb107b70c31d843a6473179a7253065092fa5d7",
+        "bytes": 597,
+        "blob": "89f3ba93e3e9f2f828b48e6d36c7050c1bd27e91"
+      }
     }
   },
+  "runtime": {
+    "node": "v24.18.0",
+    "platform": "win32",
+    "playwright": "1.62.1",
+    "chromium": "154.0.4258.62"
+  },
+  "inputs": [
+    {
+      "width": 1440,
+      "theme": "light",
+      "sha256": "8a983480b72deb350be353c2765317e35c74e45ea693bc140051ce22b6c57058"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "sha256": "8a983480b72deb350be353c2765317e35c74e45ea693bc140051ce22b6c57058"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "sha256": "8a983480b72deb350be353c2765317e35c74e45ea693bc140051ce22b6c57058"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "sha256": "8a983480b72deb350be353c2765317e35c74e45ea693bc140051ce22b6c57058"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "sha256": "8a983480b72deb350be353c2765317e35c74e45ea693bc140051ce22b6c57058"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "sha256": "8a983480b72deb350be353c2765317e35c74e45ea693bc140051ce22b6c57058"
+    }
+  ],
   "measurements": [
     {
       "width": 1440,
@@ -488,20 +623,600 @@
       "pageOverflow": false
     }
   ],
+  "focusedFlows": [
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "reduce",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "true",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "hero rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "false",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "rapid detail/Back",
+      "frames": 2,
+      "active": 2,
+      "backFrames": 1,
+      "focus": true
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "resize cancels decoration, retains native list",
+      "before": 2,
+      "after": 0,
+      "open": true
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "remount cancels detached animation, restores native day"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "reduce",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "true",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "hero rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "false",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "rapid detail/Back",
+      "frames": 2,
+      "active": 2,
+      "backFrames": 1,
+      "focus": true
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "resize cancels decoration, retains native list",
+      "before": 2,
+      "after": 0,
+      "open": true
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "remount cancels detached animation, restores native day"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "reduce",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "true",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "hero rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "false",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "rapid detail/Back",
+      "frames": 2,
+      "active": 2,
+      "backFrames": 1,
+      "focus": true
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "resize cancels decoration, retains native list",
+      "before": 2,
+      "after": 0,
+      "open": true
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "remount cancels detached animation, restores native day"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "reduce",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "true",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "hero rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "false",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "rapid detail/Back",
+      "frames": 2,
+      "active": 2,
+      "backFrames": 1,
+      "focus": true
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "resize cancels decoration, retains native list",
+      "before": 2,
+      "after": 0,
+      "open": true
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "remount cancels detached animation, restores native day"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "reduce",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "true",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "hero rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "false",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "rapid detail/Back",
+      "frames": 2,
+      "active": 2,
+      "backFrames": 1,
+      "focus": true
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "resize cancels decoration, retains native list",
+      "before": 2,
+      "after": 0,
+      "open": true
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "remount cancels detached animation, restores native day"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "reduce",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "true",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "hero rapid open/Close/reopen/Escape",
+      "open": true,
+      "frames": 1,
+      "active": 2,
+      "closed": true,
+      "focus": true,
+      "expandedAtNativeClose": "false",
+      "shells": 0,
+      "expandedAfterCloseEvent": "false"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "rapid detail/Back",
+      "frames": 2,
+      "active": 2,
+      "backFrames": 1,
+      "focus": true
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "resize cancels decoration, retains native list",
+      "before": 2,
+      "after": 0,
+      "open": true
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "remount cancels detached animation, restores native day"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "Period figures → Why → Back → Why → Close",
+      "originalSource": true,
+      "filterRetained": "paid",
+      "backFocus": "Why",
+      "closeFocus": "hero"
+    }
+  ],
   "shots": [
     "1440-light-four-bill-day.png",
     "1440-light-compact-hero-bills.png",
+    "1440-light-period-figures-back.png",
+    "1440-light-normal-motion-compact-hero-bills.png",
+    "1440-light-native-income-reference.png",
     "1440-dark-four-bill-day.png",
     "1440-dark-compact-hero-bills.png",
+    "1440-dark-period-figures-back.png",
+    "1440-dark-normal-motion-compact-hero-bills.png",
+    "1440-dark-native-income-reference.png",
     "390-light-four-bill-day.png",
     "390-light-compact-hero-bills.png",
+    "390-light-period-figures-back.png",
+    "390-light-normal-motion-compact-hero-bills.png",
+    "390-light-native-income-reference.png",
     "390-dark-four-bill-day.png",
     "390-dark-compact-hero-bills.png",
+    "390-dark-period-figures-back.png",
+    "390-dark-normal-motion-compact-hero-bills.png",
+    "390-dark-native-income-reference.png",
     "320-light-four-bill-day.png",
     "320-light-compact-hero-bills.png",
+    "320-light-period-figures-back.png",
+    "320-light-normal-motion-compact-hero-bills.png",
+    "320-light-native-income-reference.png",
     "320-dark-four-bill-day.png",
-    "320-dark-compact-hero-bills.png"
+    "320-dark-compact-hero-bills.png",
+    "320-dark-period-figures-back.png",
+    "320-dark-normal-motion-compact-hero-bills.png",
+    "320-dark-native-income-reference.png"
   ],
+  "screenshotHashes": {
+    "1440-light-four-bill-day.png": {
+      "sha256": "1a457d3aaad13f165704c554277602cd592f5c198a73f922df8c7dc955c61814",
+      "bytes": 251713
+    },
+    "1440-light-compact-hero-bills.png": {
+      "sha256": "aa08564d7b5fd660dfb6df76afde698f43ef04bdc2890e31fb1287d6556abcd4",
+      "bytes": 316910
+    },
+    "1440-light-period-figures-back.png": {
+      "sha256": "844cab0a8e1a6ba0fe4a1d96e18f2afdd00020365a4ed4eea2992bf2ed816dc9",
+      "bytes": 271296
+    },
+    "1440-light-normal-motion-compact-hero-bills.png": {
+      "sha256": "7b18c5a32836a6aa15da55368730a71cf39ea38eab00c9603c7c7aad4fe941ef",
+      "bytes": 456379
+    },
+    "1440-light-native-income-reference.png": {
+      "sha256": "cd626e2240332669d311a973d004d2a8b14dac74186b413ee592fb504577ea0e",
+      "bytes": 397763
+    },
+    "1440-dark-four-bill-day.png": {
+      "sha256": "1d7b6ad69baaaf431cc7c02fa754d10973950484e6034e706f0932aeaa087b2e",
+      "bytes": 182505
+    },
+    "1440-dark-compact-hero-bills.png": {
+      "sha256": "acce72d1280f26d543d1b44b8ea04b5fa685c167366b03f6baebfc9631a9289a",
+      "bytes": 247327
+    },
+    "1440-dark-period-figures-back.png": {
+      "sha256": "15cc3cc2a196b22fc1ebe19196eba048153b61589160d220ec7879ebd97330d5",
+      "bytes": 199972
+    },
+    "1440-dark-normal-motion-compact-hero-bills.png": {
+      "sha256": "1584ff3868c2c84c11db5c7e221a4b1281cc61dc4a0679760a898a1265a7190c",
+      "bytes": 346756
+    },
+    "1440-dark-native-income-reference.png": {
+      "sha256": "1b61276096c3ac9a80664b056f7d1031831bed5c5f94967a164d6bcd976d443a",
+      "bytes": 291018
+    },
+    "390-light-four-bill-day.png": {
+      "sha256": "215942cdecee20a5a073a080edf8ef93b216a7dfd3c0500b12dfbce2cedd0a1b",
+      "bytes": 50516
+    },
+    "390-light-compact-hero-bills.png": {
+      "sha256": "acfa0b937ef6a33321c9d7ddcdfbf61b212941a90e37ba0407e3a5af7602ac19",
+      "bytes": 100293
+    },
+    "390-light-period-figures-back.png": {
+      "sha256": "27a5efde003d8734fd7b915ea209e39f53cf90ce024c6f6ef8d0e4a7f32a81aa",
+      "bytes": 64017
+    },
+    "390-light-normal-motion-compact-hero-bills.png": {
+      "sha256": "ef99d916f4353cdaabb063b1a50110c2e15a03e769e5045e948223122ad9cfef",
+      "bytes": 99068
+    },
+    "390-light-native-income-reference.png": {
+      "sha256": "87d595b1d7556dac715e9df1c7998361a52177f4b3057e361ff4b7448473b4a6",
+      "bytes": 60880
+    },
+    "390-dark-four-bill-day.png": {
+      "sha256": "3dfdbb796030b9f794c59d1cb7e1f03616bb436ddea4b429ec7a168b1b2cc0c2",
+      "bytes": 46918
+    },
+    "390-dark-compact-hero-bills.png": {
+      "sha256": "b480c827c240c8d970f411a09e295f25052323c68440287dab1b0a1c10a78d5b",
+      "bytes": 96491
+    },
+    "390-dark-period-figures-back.png": {
+      "sha256": "b9f3208719250ff737d63b1701ce4f963e48da62eed5ed130e04a70f01cd6f16",
+      "bytes": 59044
+    },
+    "390-dark-normal-motion-compact-hero-bills.png": {
+      "sha256": "bb272a0bb3e9b5affafdf0a19dd488fe0ac4571b935c8230b7ba1f52719058fd",
+      "bytes": 94788
+    },
+    "390-dark-native-income-reference.png": {
+      "sha256": "1d01e96bb4d83f567bc3b3965c0827f1353b7c0b317fc9c5c89411564408e66a",
+      "bytes": 58120
+    },
+    "320-light-four-bill-day.png": {
+      "sha256": "2ef7ba456b42a0c9fe60fd0de8323ce6969c018f1dbcc5cd98c8c5b6854b9977",
+      "bytes": 47486
+    },
+    "320-light-compact-hero-bills.png": {
+      "sha256": "edce5c9b0f2818c90cb7802bf6ca0d7dfd44e2f43278fa1a20a35ea063cdd371",
+      "bytes": 93478
+    },
+    "320-light-period-figures-back.png": {
+      "sha256": "79720cc30c801f7ac35c30440e4781db9d240541633dc95efc5650e360274ff5",
+      "bytes": 62999
+    },
+    "320-light-normal-motion-compact-hero-bills.png": {
+      "sha256": "168124287596fe0ae2ee11c8890c863ec37075b28418e7d00cf4c9eceaedfb96",
+      "bytes": 92437
+    },
+    "320-light-native-income-reference.png": {
+      "sha256": "dc3fea5c23d8a4e7814e08868984df0c0fcebf29c0d78d967e61f268b4a07ade",
+      "bytes": 56577
+    },
+    "320-dark-four-bill-day.png": {
+      "sha256": "4ecf61584d9119f66db80ca959c662683949f4c09cadc740b1ba9be5dee0a502",
+      "bytes": 44190
+    },
+    "320-dark-compact-hero-bills.png": {
+      "sha256": "01b891242d2e6c51edda440fe61f0478f3a6865920ad79b2fca73d9ae9c8e77b",
+      "bytes": 90558
+    },
+    "320-dark-period-figures-back.png": {
+      "sha256": "c676ae64f7d02eaff08d4e3c75ade51093fb4ece1b76ab85368b2bb33865e2c4",
+      "bytes": 58546
+    },
+    "320-dark-normal-motion-compact-hero-bills.png": {
+      "sha256": "7ce923c9d9795afcb4743d669e7ac895b2dc6c958cb9b4a75bf283b2f04a8d5a",
+      "bytes": 89020
+    },
+    "320-dark-native-income-reference.png": {
+      "sha256": "bd3c508bdc77eeb81561e8637d05abf94ee7fd237fd865b882c1b5d1afa8e80e",
+      "bytes": 54250
+    }
+  },
   "errors": [],
   "writes": []
 }
