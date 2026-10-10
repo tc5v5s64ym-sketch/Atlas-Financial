@@ -514,13 +514,17 @@ console.log('\n=== 5c. live plan keeps the bill load and moves only the paid dis
   // This future row crosses the approved October 9 Fuel boundary. Enumerate
   // the unchanged non-Fuel targets and both effective owner inputs directly.
   const oct9Hold = 900 + 200 + 150 + 150 + 555 + 450;
-  const hand = roundCent(6652.30 - 3145.07 - oct9Hold);
-  ok(oct9Hold === 2405 && hand === 1102.23,
-    'hand Next BAD is 6652.30 - 3145.07 - (1400 + 555 Fuel + 450 Other) = 1102.23', String(hand));
+  // October 9-22 owns only these two new forward funding occurrences:
+  // Paramount 13.43 on the 12th and STACKTV 16.79 on the 22nd. Ad-free
+  // starts on the 25th; Crave starts November 9. No aggregate transfer.
+  const handBillLoad = roundCent(3145.07 + 13.43 + 16.79);
+  const hand = roundCent(6652.30 - handBillLoad - oct9Hold);
+  ok(oct9Hold === 2405 && hand === 1072.01,
+    'hand Next BAD is 6652.30 - (3145.07 + 13.43 + 16.79) - (1400 + 555 Fuel + 450 Other) = 1072.01', String(hand));
   ok(next && next.id === 'next-pay-period' && next.start === '2026-10-09' && next.end === '2026-10-22'
       && next === rowByRole(shifted, 'next'),
     'at Sep 25, Oct 9–22 is Budget Next Pay Period');
-  ok(next && near(next.incomeTotal, 6652.30) && near(next.periodBillLoad, 3145.07)
+  ok(next && near(next.incomeTotal, 6652.30) && near(next.periodBillLoad, handBillLoad)
       && near(next.budgetHold, oct9Hold) && near(next.balanceAfterDeductions, hand),
     'that Next row keeps income - bill load - household budget, including dated 555 Fuel and 450 Other once',
     next && [next.incomeTotal, next.periodBillLoad, next.budgetHold, next.balanceAfterDeductions].join(' / '));
