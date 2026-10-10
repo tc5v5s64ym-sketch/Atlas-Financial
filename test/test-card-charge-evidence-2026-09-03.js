@@ -42,6 +42,25 @@ function routesPhoenix(row) {
   return !!bill && bill.id === 'phoenix-digital-health';
 }
 
+function routesPrimeAdFree(row) {
+  if (!row || row.disposition !== 'CONSUMED'
+      || row.source !== 'docs/source_intake/STREAMING_BILLS_2026-10-10.md'
+      || !row.routed_to || row.routed_to.path !== 'data.json') return false;
+  const pointer = row.routed_to.json_pointer;
+  if (typeof pointer !== 'string' || !/^\/plan\/bills\/\d+$/.test(pointer)) return false;
+  const bill = pointer.slice(1).split('/').reduce((cur, part) => (
+    cur == null || !Object.prototype.hasOwnProperty.call(cur, part) ? null : cur[part]
+  ), data);
+  return !!bill && bill.id === 'prime-video-ad-free';
+}
+
+function isOwnerApprovedAdFree(bill, route) {
+  return !!bill && bill.id === 'prime-video-ad-free'
+    && /^Owner 2026-10-10/.test(bill.note || '')
+    && bill.subscription === true && bill.payingAccount === 'wise'
+    && routesPrimeAdFree(route);
+}
+
 console.log('=== coverage caveat is recorded, not 18–24 months ===');
 {
   ok(/2026-02-02/.test(intake) && /2026-09-03/.test(intake),
@@ -136,8 +155,23 @@ console.log('\n=== plan.bills was not extended from this discovery ===');
       && primeRows[0].payingAccount === 'travelvisa'
       && primeRows[0].jointCash === false,
     'owner 2026-09-22 promoted only the $11.19 Travel Visa Prime membership');
-  ok(!bills.some(b => b && b.id !== 'amazon-prime' && /prime/i.test(`${b.id} ${b.label}`)),
+  // The later streaming approval has its own receipt intake and routing. It
+  // must not weaken this pack's shopping/$24.63 exclusion or CARD-011 identity.
+  const adFreeRoute = registerRow('STREAMING-003');
+  ok(!bills.some(b => b && b.id !== 'amazon-prime' && /prime/i.test(`${b.id} ${b.label}`)
+      && !isOwnerApprovedAdFree(b, adFreeRoute)),
     'no second Prime row was added from shopping or the $24.63 charge');
+  const adFree = bills.find(b => b.id === 'prime-video-ad-free');
+  ok(isOwnerApprovedAdFree(adFree, adFreeRoute),
+    'the separate ad-free bill traces to the later owner-approved STREAMING-003 source');
+  ok(!isOwnerApprovedAdFree({ ...adFree, id: 'prime-shopping' }, adFreeRoute)
+      && !isOwnerApprovedAdFree({ ...adFree, note: 'Repeated shopping discovery' }, adFreeRoute)
+      && !isOwnerApprovedAdFree({ ...adFree, payingAccount: 'travelvisa' }, adFreeRoute),
+    'the exception rejects shopping identity, discovery-only evidence and inferred Travel Visa');
+  ok(!routesPrimeAdFree({ ...adFreeRoute, disposition: 'EXCLUDED' })
+      && !routesPrimeAdFree({ ...adFreeRoute, source: 'docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md' })
+      && !routesPrimeAdFree({ ...adFreeRoute, routed_to: registerRow('CARD-011').routed_to }),
+    'ad-free routing rejects an excluded row, old discovery source and Prime membership pointer');
   ok(!bills.some(b => /mailchimp/i.test(b.id + ' ' + b.label)),
     'Mailchimp is not a plan.bills row');
   ok(/Canva, Mailchimp, Guitar Tabs monthly, and GitHub annual have no forward recurrence/.test(data.plan.billsNote),

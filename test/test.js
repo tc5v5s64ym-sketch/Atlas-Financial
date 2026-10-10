@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['owner-approved streaming bills on the incumbent held-elsewhere Wise path', 'test-owner-streaming-bills.js'],
   ['selector locale formatter equivalence', 'test-selector-formatters.js'],
   ['private pay-period retention, immutable revisions and privacy boundaries', 'test-private-period-history.js'],
   ['one chronological savings publication and independent allocation oracle', 'test-chronological-savings-publication.js'],
@@ -64,6 +65,7 @@ const suites = [
   ['Budget detail sheet preserves original nodes, nested focus and remount identity', 'test-budget-detail-sheet-controller.js'],
   ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
   ['dated owner Other payday target and once-only reserve', 'test-other-period-target.js'],
+  ['effective-dated Fuel payday budget and historical boundary', 'test-fuel-effective-target.js'],
   ['purpose-reserve funding seed and independent payment conservation', 'test-reserve-aware-funding.js'],
   ['purpose-reserve authenticated funding and both page consumers', 'test-reserve-aware-funding-integration.js'],
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
