@@ -9,7 +9,8 @@
 const fs = require('fs');
 const path = require('path');
 const F = require('../public/forecast.js');
-const data = require('./fixtures/retired-other-policy')(require('../data.json'));
+const data = require('./fixtures/retired-fuel-policy')(
+  require('./fixtures/retired-other-policy')(require('../data.json')));
 const periods = require('../public/periods.json');
 
 let failures = 0;

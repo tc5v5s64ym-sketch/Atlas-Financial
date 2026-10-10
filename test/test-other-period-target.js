@@ -100,7 +100,11 @@ const now=published.find(p=>p.timelineRole==='current');assert.equal(now.start,f
 assert.equal(now.budgetProgress.household.planned.amount,2275,'900 + 325 + 200 + 150 + 150 + 100 ON-cycle dog food + 450 = 2275');
 assert.equal(now.householdBudget.filter(r=>r.id==='other-spending').length,1);
 const later=published.find(p=>p.timelineRole==='next');
-assert.equal(later.budgetProgress.household.planned.amount,2175,'next dog-food OFF cycle is 100 lower; do not blindly repeat 2275');
+const laterFuel=canonical.plan.budget.categories.find(row=>row.id==='fuel');
+const datedFuel=laterFuel.targetEffectiveFrom && later.start<laterFuel.targetEffectiveFrom
+ ? laterFuel.targetHistory.find(row=>later.start<=row.effectiveThrough).plannedPayday : laterFuel.plannedPayday;
+assert.equal(later.budgetProgress.household.planned.amount,900+datedFuel+200+150+150+450,
+ 'next dog-food OFF cycle omits 100; later owner fuel restatements select that period\'s dated input');
 const {execFileSync}=require('node:child_process'),fs=require('node:fs'),path=require('node:path');
 const vm=require('node:vm'),ctx={module:{exports:{}},console};
 const forecastSource=fs.readFileSync(path.join(__dirname,'../public/forecast.js'),'utf8');

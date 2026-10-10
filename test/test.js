@@ -65,6 +65,7 @@ const suites = [
   ['Budget detail sheet preserves original nodes, nested focus and remount identity', 'test-budget-detail-sheet-controller.js'],
   ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
   ['dated owner Other payday target and once-only reserve', 'test-other-period-target.js'],
+  ['effective-dated Fuel payday budget and historical boundary', 'test-fuel-effective-target.js'],
   ['purpose-reserve funding seed and independent payment conservation', 'test-reserve-aware-funding.js'],
   ['purpose-reserve authenticated funding and both page consumers', 'test-reserve-aware-funding-integration.js'],
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],

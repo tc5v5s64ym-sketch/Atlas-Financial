@@ -19,7 +19,7 @@ const F = require('../public/forecast.js');
 // Preserve these retired-policy regression assertions against the explicitly
 // dated historical policy. The active 450 policy has its own independent suite.
 const canonical = require('../data.json');
-const live = JSON.parse(JSON.stringify(canonical));
+const live = require('./fixtures/retired-fuel-policy')(canonical);
 const retiredOther = live.plan.budget.categories.find(row => row.id === 'other-spend');
 const historicalOther = retiredOther.targetHistory?.find(row => row.effectiveThrough === '2026-09-24');
 if (!historicalOther) throw new Error('missing dated retired Other policy');
@@ -509,8 +509,8 @@ console.log('\n=== 9. Budget breakdown shows the target-only Other spend row ===
       .filter(Boolean)
       .sort();
     const latestOwner = ownerDates[ownerDates.length - 1] || '';
-    ok(latestOwner === '2026-10-04',
-      'independent latest owner-stated date is the 2026-10-04 Other instruction',
+    ok(latestOwner >= '2026-10-04',
+      'independent latest owner-stated date includes the Other instruction and later approved targets',
       latestOwner);
     ok(String(csvRow('Essential spending estimate')[19] || '') >= latestOwner,
       'positions.csv essential-spending as_of is not earlier than the owner target',

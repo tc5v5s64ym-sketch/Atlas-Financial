@@ -511,14 +511,18 @@ console.log('\n=== 5c. live plan keeps the bill load and moves only the paid dis
     targetBuffer: data.plan.defaults && data.plan.defaults.targetBuffer,
   });
   const next = (shifted.defaultView.calendarPeriods || [])[1];
-  const hand = roundCent(6652.30 - 3145.07 - 1725 - 450);
-  ok(hand === 1332.23, 'hand Next BAD is 6652.30 - 3145.07 - 1725 - 450 = 1332.23', String(hand));
+  // This future row crosses the approved October 9 Fuel boundary. Enumerate
+  // the unchanged non-Fuel targets and both effective owner inputs directly.
+  const oct9Hold = 900 + 200 + 150 + 150 + 555 + 450;
+  const hand = roundCent(6652.30 - 3145.07 - oct9Hold);
+  ok(oct9Hold === 2405 && hand === 1102.23,
+    'hand Next BAD is 6652.30 - 3145.07 - (1400 + 555 Fuel + 450 Other) = 1102.23', String(hand));
   ok(next && next.id === 'next-pay-period' && next.start === '2026-10-09' && next.end === '2026-10-22'
       && next === rowByRole(shifted, 'next'),
     'at Sep 25, Oct 9–22 is Budget Next Pay Period');
   ok(next && near(next.incomeTotal, 6652.30) && near(next.periodBillLoad, 3145.07)
-      && near(next.budgetHold, roundCent(1725 + 450)) && near(next.balanceAfterDeductions, hand),
-    'that Next row keeps income - bill load - household budget, including the dated $450 Other target once',
+      && near(next.budgetHold, oct9Hold) && near(next.balanceAfterDeductions, hand),
+    'that Next row keeps income - bill load - household budget, including dated 555 Fuel and 450 Other once',
     next && [next.incomeTotal, next.periodBillLoad, next.budgetHold, next.balanceAfterDeductions].join(' / '));
   ok(next && near(roundCent(next.paidBills + next.remainingBills), next.totalBillsThisPeriod)
       && near(next.periodBillLoad, next.totalBillsThisPeriod),
