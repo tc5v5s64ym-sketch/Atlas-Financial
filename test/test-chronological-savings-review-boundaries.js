@@ -8,6 +8,71 @@ const Inventory = require(path.join(root, 'public/savings-inventory'));
 const fx = require('./fixtures/chronological-savings-data');
 const transfer = require('./fixtures/savings-daily-allocation-contract').transfer;
 const clone = value => JSON.parse(JSON.stringify(value));
+// Independent planning-date regression: invented stock 30 + 89 = 119.
+// Dating the existing 37 travel estimate between 60 and 50 gives 60/37/22.
+function planningTargetFixture(dated) {
+  const input = fx.ledger();
+  input.plan.savingsEarmarks.pools.forEach(pool => { pool.goalRefs = []; });
+  input.plan.commitments = [
+    { id: 'early', label: 'Invented earlier cost', date: '2026-10-09', amount: 60,
+      confidence: 'confirmed', sinkingFund: true },
+    { id: 'weekend-trip', label: 'Invented tournament travel', amount: 37,
+      when: 'timing TBD', confidence: 'estimated', sinkingFund: true },
+    { id: 'later', label: 'Invented later cost', date: '2027-03-01', amount: 50,
+      confidence: 'confirmed', sinkingFund: true },
+  ];
+  if (dated) input.plan.commitments[1].date = '2027-02-12';
+  return input;
+}
+function targetPacket(input) {
+  const before = JSON.stringify(input);
+  const packet = F.recommend(input.plan, input.asOf, { ...input.opts, weeklyVariable: 0, debts: [] }).savingsFunding;
+  assert.equal(JSON.stringify(input), before, 'a target cannot mutate money, policy or settlement');
+  return packet;
+}
+test('dating an existing travel estimate admits it once to combined chronological backing', () => {
+  const undated = targetPacket(planningTargetFixture(false));
+  assert.equal(undated.stock.amount, 119);
+  assert.equal(undated.backing.status, 'unavailable');
+  assert.equal(undated.unresolved.find(row => row.id === 'weekend-trip').needed, 37);
+  assert.ok(undated.backing.items.every(row => row.saved === null));
+  const input = planningTargetFixture(true), packet = targetPacket(input);
+  assert.equal(packet.backing.status, 'ready');
+  assert.deepEqual(packet.backing.items.map(row => [row.id, row.date, row.needed, row.saved]), [
+    ['early', '2026-10-09', 60, 60], ['weekend-trip', '2027-02-12', 37, 37], ['later', '2027-03-01', 50, 22],
+  ]);
+  assert.equal(packet.backing.unallocated, 0);
+  assert.equal(6000 + 3700 + 2200, 11900, 'independent cents conserve the one observed pot');
+  assert.equal(packet.backing.items.find(row => row.id === 'weekend-trip').trust, 'estimated');
+  assert.deepEqual(F.expandEvents(input.plan, input.asOf, '2027-03-01', input.opts)
+    .filter(row => row.id === 'weekend-trip').map(row => [row.date, row.amount]), [['2027-02-12', -37]]);
+  assert.equal(packet.period.actualSaved, null);
+  assert.equal(packet.backing.actualTransferred, null);
+  assert.equal(packet.moneyMovementPermission, 'not-granted');
+});
+for (const gate of ['card-coverage', 'external-row']) test('dating a target retains the independent ' + gate + ' proposal gate', () => {
+  const input = planningTargetFixture(true);
+  if (gate === 'card-coverage') input.opts.currentPeriodActuals.cardCoverageRequired = true;
+  else input.opts.currentPeriodActuals.transactions.push({ id: 'invented-external', date: input.asOf,
+    amount: 1, pending: false, currency: 'CAD', atlasAccountId: 'invented-external', accountRole: 'business-excluded' });
+  const packet = targetPacket(input);
+  assert.equal(packet.stock.amount, 119);
+  assert.equal(packet.backing.status, 'ready');
+  assert.deepEqual(packet.backing.items.map(row => row.saved), [60, 37, 22]);
+  assert.equal(packet.status, 'unavailable');
+  assert.equal(packet.period.proposal, null);
+  assert.equal(packet.timeline.status, 'unavailable');
+  assert.match(packet.reason, gate === 'card-coverage' ? /Confirm the card-coverage opening/ : /unavailable date, currency, amount or account identity/);
+});
+test('a usable planning target does not resolve pending savings evidence', () => {
+  const input = planningTargetFixture(true);
+  input.plan.savingsPoolObservation.accounts[0].pendingState = 'unresolved';
+  const packet = targetPacket(input);
+  assert.equal(packet.stock.amount, 119);
+  assert.equal(packet.backing.status, 'unavailable');
+  assert.ok(packet.backing.items.every(row => row.saved === null));
+  assert.equal(packet.period.proposal, null);
+});
 const page = vm.createContext({ Forecast: F, App: { register() {}, boot() {} },
   money2: n => '$' + n.toFixed(2), fmtDateFull: d => d });
 vm.runInContext(fs.readFileSync(path.join(root, 'public/plan-spend.js'), 'utf8'), page);

@@ -263,7 +263,7 @@ console.log('\n=== D. protected commitments are not double-counted; settled stay
     'nextPaymentOut is that same reserved day total, not a second copy');
 }
 
-console.log('\n=== E. funded/settled money redirects; encumbered principal stays claimed ===');
+console.log('\n=== E. settled money redirects; remaining dated costs stay claimed ===');
 {
   const liveAsOf = live.meta.asOf;
   const before = F.recommend(live.plan, liveAsOf, recOpts());
@@ -282,11 +282,11 @@ console.log('\n=== E. funded/settled money redirects; encumbered principal stays
   ok((after.fundingSequence || [])[0] && after.fundingSequence[0].id === second.id,
     'capacity redirects to the next sequenced item',
     after.fundingSequence[0] && after.fundingSequence[0].id);
-  const empty = clone(live.plan);
-  empty.commitments = [];
-  const none = F.recommend(empty, liveAsOf, recOpts());
-  ok(after.weekly < none.weekly || (after.knowledge.encumbered > 0),
-    'settling one item does not treat remaining encumbered principal as free spend');
+  const remaining = F.expandEvents(afterPlan, liveAsOf, '2027-02-12', {})
+    .filter(event => event.id === 'provincials');
+  ok(after.knowledge.encumbered === 0 && remaining.length === 1
+      && remaining[0].date === '2027-02-12' && near(remaining[0].amount, -1500),
+    'settling another item retains the dated Provincials cash event without undated encumbrance');
   const html = composeLive(afterPlan).html;
   ok(!/saved|already funded/i.test(html),
     'redirected capacity is not presented as already saved or funded');
