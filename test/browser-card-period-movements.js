@@ -1,40 +1,95 @@
 'use strict';
-// Actual App.boot and selected-period controls. Invented data; all network
-// intercepted. No credentials, live accounts, writes or DOM financial stubs.
+// Actual App.boot renders of the card-movement strip and the native Budget
+// detail sheet, driven through visible controls wherever the shipped face
+// offers one: real trigger clicks, the visible river slider's keyboard
+// contract (ArrowRight/ArrowLeft step exactly one period), the visible
+// "Today" button, and the period-figures sheet that re-homes the
+// granularity toggle. Two qualifications, kept explicit:
+//  - Switching period WHILE the modal sheet is open cannot be pointer- or
+//    keyboard-driven: showModal makes the background inert by design. That
+//    one transition is delivered through the app's own window-step control
+//    (the same handler the arrows and the river invoke) and every
+//    assertion is on the rendered result — sheet identity, content,
+//    focus — never on the dispatch itself.
+//  - The manual-statement qualifier's "· Dated …" suffix is not visible
+//    text on the blend face, so it is not asserted. The visible dated
+//    evidence is the trigger's Balance line ("as of <date> · Manual
+//    statement") and the open panel's dated observation line; both are
+//    asserted from rendered text.
+// The plan-unavailable pass is the actual-render regression for the
+// plan-unavailable sheet host: on that branch the card/HELOC triggers used
+// to render without any detail-sheet host, so clicks silently returned.
+// Invented data; all network intercepted. No credentials, live accounts,
+// writes or DOM financial stubs.
 const assert = require('node:assert/strict');
-const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process'), crypto = require('node:crypto');
+const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright');
 const fx = require('./fixtures/card-period-movements-data');
 const root = path.join(__dirname, '..');
 const out = process.env.ATLAS_BUDGET_SCREENSHOTS_DIR || path.join(require('node:os').tmpdir(), 'card-period-movements');
 fs.mkdirSync(out, { recursive: true });
-const executionHead = cp.execFileSync('git', ['-c', 'safe.directory=' + root.replace(/\\/g, '/'), 'rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+// Source binding: a git blob SHA is a content address — sha1 of
+// "blob <bytes>\0" + bytes — so every exercised source below resolves by
+// content in the pushed head on GitHub, independent of commit identity.
+const blobSha = file => {
+  const bytes = fs.readFileSync(file);
+  return crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+};
+const exercisedSources = [
+  'public/index.html', 'public/app.js', 'public/plan.js', 'public/forecast.js',
+  'public/budget-surface.js', 'public/budget-card-movements.js', 'public/budget-blend.js',
+  'public/budget-river.js', 'public/budget-blend.css', 'public/budget-surface.css',
+  'public/budget-gface.css', 'public/budget-sheet-motion.css',
+  'test/browser-card-period-movements.js',
+  'test/fixtures/card-period-movements-data.js', 'test/fixtures/budget-surface-data.js',
+];
+const sourceBlobs = {};
+for (const rel of exercisedSources) sourceBlobs[rel] = blobSha(path.join(root, rel));
+const sha256File = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const screenshots = [];
 const states = [], errors = [], writes = [], external = [];
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
+  const runtime = { node: process.version, chromium: await browser.version(), platform: process.platform };
+  const boot = async (data, width, theme = 'light') => {
+    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce', colorScheme: theme });
+    page.setDefaultTimeout(10000);
+    page.on('pageerror', e => errors.push(e.message));
+    await page.route('**/*', route => {
+      const u = new URL(route.request().url());
+      if (u.origin !== 'http://cards.test') { external.push(u.origin); return route.abort(); }
+      if (route.request().method() !== 'GET') writes.push(route.request().method());
+      if (u.pathname === '/data.json') return route.fulfill({ json: data });
+      if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(u.pathname)) return route.fulfill({ json: null });
+      const file = path.join(root, 'public', u.pathname === '/' ? 'index.html' : u.pathname.slice(1));
+      return fs.existsSync(file) ? route.fulfill({ body: fs.readFileSync(file), contentType: file.endsWith('.js') ? 'application/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }) : route.fulfill({ status: 404, body: '' });
+    });
+    await page.goto('http://cards.test/');
+    return page;
+  };
+  const capture = async (locator, name, meta) => {
+    const file = path.join(out, name);
+    await locator.page().evaluate(async () => { await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); });
+    await locator.screenshot({ path: file, animations: 'disabled' });
+    screenshots.push({ file: name, ...meta });
+  };
+  const waitStart = (page, start) => page.waitForFunction(
+    s => document.querySelector('[data-budget-card-movements]')?.getAttribute('data-card-period-start') === s,
+    start, { timeout: 8000 });
+  const only = (process.env.ATLAS_PROOF_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
+  const wanted = state => !only.length || only.includes(state);
   try {
-    for (const width of [1440, 390, 320]) for (const state of ['complete', 'opening-missing', 'truncated', 'pending-unknown', 'credit-ambiguous']) {
+    for (const width of [1440, 390, 320]) for (const state of ['complete', 'opening-missing', 'truncated', 'pending-unknown', 'credit-ambiguous'].filter(wanted)) {
       const data = fx.served();
       if (state === 'opening-missing') delete data.liveOverlay.cardPeriodBalanceEvidence.cards[0].opening;
       if (state === 'truncated') data.liveOverlay.currentPeriodActuals.transactionCoverage = 'truncated';
       if (state === 'pending-unknown') data.liveOverlay.currentPeriodActuals.pendingCoverage = 'unknown';
       if (state === 'credit-ambiguous') delete data.liveOverlay.currentPeriodActuals.transactions.find(tx => tx.id === 'payment-a').kindHint;
-      const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce', colorScheme: 'light' });
-      page.setDefaultTimeout(10000);
-      page.on('pageerror', e => errors.push(e.message));
-      await page.route('**/*', route => {
-        const u = new URL(route.request().url());
-        if (u.origin !== 'http://cards.test') { external.push(u.origin); return route.abort(); }
-        if (route.request().method() !== 'GET') writes.push(route.request().method());
-        if (u.pathname === '/data.json') return route.fulfill({ json: data });
-        if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(u.pathname)) return route.fulfill({ json: null });
-        const file = path.join(root, 'public', u.pathname === '/' ? 'index.html' : u.pathname.slice(1));
-        return fs.existsSync(file) ? route.fulfill({ body: fs.readFileSync(file), contentType: file.endsWith('.js') ? 'application/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }) : route.fulfill({ status: 404, body: '' });
-      });
-      await page.goto('http://cards.test/');
+      const page = await boot(data, width);
       const strip = page.locator('[data-budget-card-movements]');
       await strip.waitFor();
       const travel = page.locator('[data-budget-card-toggle="travelvisa"]');
+      const amazon = page.locator('[data-budget-card-toggle="mbna"]');
       assert.equal(await strip.getAttribute('data-card-period-start'), fx.START);
       assert.equal(await strip.getAttribute('data-card-period-end'), fx.END);
       assert.deepEqual(await strip.locator('[data-budget-card-toggle]').evaluateAll(rows => rows.map(row => row.getAttribute('data-budget-card-toggle'))), ['travelvisa', 'cashback', 'tdcc', 'triangle', 'mbna']);
@@ -45,8 +100,9 @@ const states = [], errors = [], writes = [], external = [];
         assert.match(await page.locator('[data-budget-card-toggle="cashback"]').innerText(), /↓ \$135\.80/);
         assert.match(await page.locator('[data-budget-card-toggle="tdcc"]').innerText(), /\$0\.00/);
       }
-      assert.match(await page.locator('[data-budget-card-toggle="mbna"]').innerText(), /Amazon Mastercard[\s\S]*Net unavailable/);
-      assert.match(await page.locator('[data-budget-card-toggle="mbna"]').innerText(), /Dated Aug 8/);
+      assert.match(await amazon.innerText(), /Amazon Mastercard[\s\S]*Net unavailable/);
+      assert.match(await amazon.innerText(), /Balance \$760\.00 · as of Aug 8 · Manual statement/,
+        'the manual-statement dated evidence is visible on the trigger Balance line');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
       if (width < 600) {
         const list = await strip.locator('.card-movement-track').evaluate(el => {
@@ -74,13 +130,22 @@ const states = [], errors = [], writes = [], external = [];
       assert.equal(layout.after, true); assert.equal(layout.before, true); assert.equal(layout.border, '0px');
       assert.equal(layout.billsClosingBefore, true, 'Bills-only primary metric retains its place above the card strip');
       assert.equal(layout.background, 'rgba(0, 0, 0, 0)', 'no large container background');
+      await capture(strip, `${state}-strip-${width}-light.png`, { state, width, theme: 'light', subject: 'card strip, closed' });
       await travel.focus(); await page.keyboard.press('Enter');
       const panel = page.locator('[data-budget-card-panel="travelvisa"]');
       await panel.waitFor();
-      assert.equal(await strip.locator('[data-budget-card-panel]:not([hidden])').count(), 1);
+      const sheet = page.locator('[data-budget-detail-sheet]');
+      assert.equal(await sheet.evaluate(el => el.open), true, 'card click opens the native detail sheet');
+      assert.equal(await travel.getAttribute('aria-haspopup'), 'dialog');
+      assert.equal(await travel.getAttribute('aria-controls'), await sheet.getAttribute('id'),
+        'trigger controls the actual dialog');
+      assert.equal(await panel.evaluate(el => el.closest('[data-budget-detail-sheet]') !== null), true,
+        'panel moves into the native sheet');
+      assert.equal(await strip.locator('[data-budget-card-panel="travelvisa"]').count(), 0, 'the opened panel leaves the strip for the sheet');
       assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 6);
       assert.match(await panel.innerText(), /Pending authorization[\s\S]*28\.60/);
-      assert.match(await panel.innerText(), /purchase backfills do not automatically settle scheduled minimums/);
+      assert.match(await panel.innerText(), /Purpose unconfirmed: payments do not automatically settle scheduled minimums; lender confirmation remains separate/);
+      assert.doesNotMatch(await panel.innerText(), /purchases remain in their spending categories once/);
       assert.equal(await panel.locator('[data-card-movement-transaction="cash-leg-a"]').count(), 0, 'paired cash leg not double-counted');
       assert.match(await panel.locator('[data-card-movement-transaction="payment-a"]').innerText(), state === 'credit-ambiguous' ? /Credit · type unconfirmed/ : /household purpose unconfirmed/);
       if (state === 'complete') {
@@ -126,49 +191,171 @@ const states = [], errors = [], writes = [], external = [];
           assert.ok(contrast.every(ratio => ratio >= 4.5), `${theme} red/green text contrast: ${contrast}`);
           contrastChecks.push({ theme, ratios: contrast });
         }
+        await capture(sheet, `complete-open-${width}-dark.png`, { state, width, theme: 'dark', subject: 'card sheet open' });
         await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
         await page.evaluate(() => App.rerender());
         assert.equal(await panel.isVisible(), true, 'rerender retains open identity with fresh publication');
-        assert.equal(await travel.evaluate(el => el === document.activeElement), true, 'exact card trigger restored after rerender');
+        assert.equal(await panel.evaluate(el => el.closest('[data-budget-detail-sheet]') !== null), true,
+          'rerender restores the same card panel into the fresh sheet');
+        assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]')?.contains(document.activeElement)), true,
+          'native sheet lifecycle owns focus after rerender restore');
         await page.setViewportSize({ width: width === 1440 ? 390 : 1440, height: 1000 });
         assert.equal(await panel.isVisible(), true); assert.match(await travel.innerText(), /107\.40/);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         await page.setViewportSize({ width, height: 1000 });
       }
+      await capture(sheet, `${state}-open-${width}-light.png`, { state, width, theme: 'light', subject: 'card sheet open' });
       await page.keyboard.press('Escape');
       assert.equal(await panel.isVisible(), false); assert.equal(await travel.evaluate(el => el === document.activeElement), true);
-      const amazon = page.locator('[data-budget-card-toggle="mbna"]');
       await amazon.click();
       const amazonPanel = page.locator('[data-budget-card-panel="mbna"]');
       assert.match(await amazonPanel.innerText(), /Aug 8[\s\S]*Manual statement observation/);
+      assert.match(await amazon.innerText(), /Balance \$760\.00 · as of Aug 8 · Manual statement/,
+        'trigger shows the qualified reported balance with its as-of date and manual source');
+      await page.keyboard.press('Escape');
+      assert.equal(await amazonPanel.isVisible(), false);
       await travel.click();
-      assert.equal(await amazonPanel.isVisible(), false); assert.equal(await strip.locator('[data-budget-card-panel]:not([hidden])').count(), 1);
-      await panel.locator('[data-budget-card-close]').click();
+      assert.equal(await panel.isVisible(), true);
+      assert.equal(await amazonPanel.isVisible(), false);
+      await page.locator('[data-budget-detail-close]').click();
       assert.equal(await panel.isVisible(), false); assert.equal(await travel.evaluate(el => el === document.activeElement), true);
       if (state === 'complete') {
-        await page.locator('[data-budget-window-step="1"]').click();
-        assert.equal(await strip.getAttribute('data-card-period-start'), '2026-08-28');
+        // Switching period WHILE the sheet is open. The modal dialog makes
+        // the background inert, so the transition is delivered through the
+        // app's own window-step control (the handler the visible arrows and
+        // river invoke); the assertions below are all on rendered state.
+        await travel.click();
+        assert.equal(await panel.isVisible(), true);
+        assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 6);
+        await page.evaluate(() => document.querySelector('[data-budget-window-step="1"]').click());
+        await waitStart(page, '2026-08-28');
+        assert.equal(await sheet.evaluate(el => el.open), true, 'sheet stays open across the period switch');
+        assert.equal(await panel.isVisible(), true, 'the same card panel is restored in the new period');
+        assert.equal(await panel.evaluate(el => el.closest('[data-budget-detail-sheet]') !== null), true);
+        assert.match(await panel.innerText(), /Future period not observed/,
+          'the restored panel shows the new period qualification, not the old ledger');
+        assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 0,
+          'the future period never borrows the current ledger');
+        assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]')?.contains(document.activeElement)), true,
+          'focus stays inside the sheet across the switch');
+        await page.evaluate(() => document.querySelector('[data-budget-window-step="-1"]').click());
+        await waitStart(page, fx.START);
+        assert.equal(await panel.isVisible(), true, 'stepping back while open restores the current panel');
+        assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 6,
+          'the current ledger is restored with the period');
+        await page.keyboard.press('Escape');
+        assert.equal(await panel.isVisible(), false);
+        assert.equal(await travel.evaluate(el => el === document.activeElement), true,
+          'focus returns to the card trigger after the while-open round trip');
+        // Visible navigation: the river slider's own keyboard contract.
+        const river = page.locator('.river[role="slider"]');
+        await river.focus();
+        assert.equal(await river.evaluate(el => el === document.activeElement), true, 'the river slider takes focus');
+        await page.keyboard.press('ArrowRight');
+        await waitStart(page, '2026-08-28');
         assert.match(await travel.innerText(), /Net unavailable/);
-        await travel.click(); assert.match(await panel.innerText(), /Future period not observed/);
+        await travel.click();
+        assert.match(await panel.innerText(), /Future period not observed/);
         assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 0, 'future never borrows current ledger');
-        await page.locator('[data-budget-window-step="-1"]').click();
-        assert.equal(await strip.getAttribute('data-card-period-start'), fx.START);
-        assert.equal(await strip.locator('[data-budget-card-panel]:not([hidden])').count(), 0, 'range change closes previous detail');
-        await page.locator('[aria-label="Budget planning granularity"] [data-budget-granularity="month"]').click();
+        await page.keyboard.press('Escape');
+        assert.equal(await panel.isVisible(), false);
+        const today = page.locator('[data-blend-river-today]');
+        assert.equal(await today.isVisible(), true, 'the river Today button is the visible way back');
+        await today.click();
+        await waitStart(page, fx.START);
+        assert.equal(await page.locator('[data-budget-card-panel]:not([hidden])').count(), 0, 'range change leaves no previous detail open');
+        assert.match(await travel.innerText(), /107\.40/);
+        // Granularity through visible controls: the period-figures sheet
+        // re-homes the granularity toggle; month view is left through its
+        // own visible "See the pay periods" drill button and drilldown exit.
+        const figures = page.locator('[data-operating-question="07"] .budget-step-summary');
+        await figures.click();
+        const monthButton = page.locator('[data-budget-detail-sheet] [data-budget-granularity="month"]');
+        await monthButton.waitFor();
+        assert.equal(await monthButton.isVisible(), true, 'the granularity toggle is visible inside the figures sheet');
+        await monthButton.click();
+        await page.waitForFunction(() => document.querySelector('[data-budget-surface]')?.getAttribute('data-budget-surface') === 'month');
         assert.equal(await strip.count(), 0, 'no manufactured calendar-month net');
-        await page.locator('[aria-label="Budget planning granularity"] [data-budget-granularity="pay-period"]').click();
-        if (await page.locator('[data-budget-drilldown-exit]').count()) await page.locator('[data-budget-drilldown-exit]').click();
+        const drill = page.locator('[data-budget-surface-section="month"] [data-budget-granularity="pay-period"]');
+        assert.equal(await drill.isVisible(), true, 'the month view offers its own visible pay-period drill');
+        await drill.click();
+        const exit = page.locator('[data-budget-drilldown-exit]');
+        await exit.waitFor();
+        await exit.click();
+        await strip.waitFor();
         assert.match(await travel.innerText(), /107\.40/);
       }
       await page.evaluate(async () => { await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); });
-      await strip.screenshot({ path: path.join(out, `${state}-${width}.png`), animations: 'disabled' });
-      await travel.click();
-      await strip.screenshot({ path: path.join(out, `${state}-open-${width}.png`), animations: 'disabled' });
       states.push({ width, state, layout, contrastChecks, synthetic: true });
       await page.close(); console.log(`PASS ${width}px ${state}: native App.boot, exact period, all five cards, qualification and keyboard behavior`);
     }
+    // Plan-unavailable branch: the sheet host must exist here too, or the
+    // card/HELOC triggers render with a controller that has no dialog and
+    // every click silently returns. Same served evidence; only the
+    // operating plan is withheld.
+    for (const width of wanted('plan-unavailable') ? [1440, 390, 320] : []) {
+      const data = fx.helocServed();
+      data.liveOverlay.operatingPlan = 'unavailable';
+      const page = await boot(data, width);
+      const strip = page.locator('[data-budget-card-movements]');
+      await strip.waitFor();
+      assert.equal(await page.evaluate(() => document.querySelector('[data-budget-surface]')?.getAttribute('data-budget-surface')),
+        'unavailable', 'the plan-unavailable branch is the one under test');
+      assert.equal(await page.locator('[data-budget-surface-section="unavailable"]').count(), 1,
+        'the unavailable presentation itself is unchanged');
+      assert.deepEqual(await strip.locator('[data-budget-card-toggle]').evaluateAll(rows => rows.map(row => row.getAttribute('data-budget-card-toggle'))),
+        ['travelvisa', 'cashback', 'tdcc', 'triangle', 'mbna', 'heloc']);
+      const sheet = page.locator('[data-budget-detail-sheet]');
+      assert.equal(await sheet.count(), 1, 'the unavailable branch renders the native sheet host');
+      const travel = page.locator('[data-budget-card-toggle="travelvisa"]');
+      assert.equal(await travel.getAttribute('aria-haspopup'), 'dialog');
+      assert.equal(await travel.getAttribute('aria-controls'), await sheet.getAttribute('id'),
+        'unavailable-branch trigger controls the actual dialog');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
+      await capture(strip, `plan-unavailable-strip-${width}-light.png`, { state: 'plan-unavailable', width, theme: 'light', subject: 'card strip on the plan-unavailable branch' });
+      await travel.click();
+      const panel = page.locator('[data-budget-card-panel="travelvisa"]');
+      assert.equal(await sheet.evaluate(el => el.open), true, 'card click opens the sheet on the unavailable branch');
+      assert.equal(await panel.isVisible(), true);
+      assert.equal(await panel.evaluate(el => el.closest('[data-budget-detail-sheet]') !== null), true,
+        'panel moves into the native sheet on the unavailable branch');
+      assert.match(await panel.innerText(), /\$820\.00[\s\S]*\$927\.40/,
+        'balances stay accessible while the plan is unavailable');
+      assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 6,
+        'the ledger stays accessible while the plan is unavailable');
+      await capture(sheet, `plan-unavailable-card-open-${width}-light.png`, { state: 'plan-unavailable', width, theme: 'light', subject: 'card sheet open on the plan-unavailable branch' });
+      await page.locator('[data-budget-detail-close]').click();
+      assert.equal(await panel.isVisible(), false);
+      assert.equal(await travel.evaluate(el => el === document.activeElement), true,
+        'Close returns focus to the card trigger on the unavailable branch');
+      const heloc = page.locator('[data-budget-card-toggle="heloc"]');
+      await heloc.click();
+      const helocPanel = page.locator('[data-budget-card-panel="heloc"]');
+      assert.equal(await helocPanel.isVisible(), true, 'HELOC opens on the unavailable branch');
+      assert.match(await helocPanel.innerText(), /Payments reduce the HELOC balance/);
+      await page.evaluate(() => App.rerender());
+      assert.equal(await helocPanel.isVisible(), true, 'rerender restores the HELOC panel on the unavailable branch');
+      assert.equal(await helocPanel.evaluate(el => el.closest('[data-budget-detail-sheet]') !== null), true);
+      assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]')?.contains(document.activeElement)), true,
+        'focus stays in the sheet after the unavailable-branch restore');
+      if (width === 320) {
+        await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+        await page.waitForTimeout(300);
+        await capture(sheet, 'plan-unavailable-heloc-open-320-dark.png', { state: 'plan-unavailable', width, theme: 'dark', subject: 'HELOC sheet open on the plan-unavailable branch' });
+        await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+      }
+      await page.keyboard.press('Escape');
+      assert.equal(await helocPanel.isVisible(), false);
+      assert.equal(await heloc.evaluate(el => el === document.activeElement), true,
+        'Escape returns focus to the HELOC trigger on the unavailable branch');
+      states.push({ width, state: 'plan-unavailable', synthetic: true });
+      await page.close(); console.log(`PASS ${width}px plan-unavailable: sheet host present, card + HELOC open/close/Escape/focus and remount restore`);
+    }
     assert.deepEqual(errors, []); assert.deepEqual(writes, []); assert.deepEqual(external, []);
-    fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true, executionHead,
-      browserSha256: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'), states, errors, writes, external }, null, 2) + '\n');
+    for (const shot of screenshots) shot.sha256 = sha256File(path.join(out, shot.file));
+    fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ synthetic: true,
+      generatedBy: 'test/browser-card-period-movements.js', runtime, sourceBlobs,
+      basedOn: process.env.ATLAS_PROOF_BASE || null,
+      screenshots, states, errors, writes, external }, null, 2) + '\n');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
