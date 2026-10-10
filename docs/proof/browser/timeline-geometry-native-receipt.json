@@ -7,7 +7,7 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "d422b7a299ed0bd8ecf69f216c8246d3716f0645",
+    "sourceCommit": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
     "sourceTree": "7b024643ed7da61ad597e431571c4d89b287490f",
     "baseCommit": null,
     "cleanAtStart": true,
@@ -74,7 +74,9 @@
         "bytes": 3363
       }
     },
-    "unchangedAfterRun": true
+    "unchangedAfterRun": true,
+    "exercisedLocalCommit": "d422b7a299ed0bd8ecf69f216c8246d3716f0645",
+    "bindingNote": "The API push flow creates its own commit SHAs; the exercised local commit and the pushed commit have the identical tree (7b024643ed7da61ad597e431571c4d89b287490f), and every bound blob was verified against the pushed tree (remoteVerification)."
   },
   "results": {
     "nativeLiveDrag": [
@@ -459,5 +461,13 @@
     ]
   },
   "pageErrors": [],
-  "failures": []
+  "failures": [],
+  "remoteVerification": {
+    "method": "GitHub API GET /git/trees/7b024643ed7da61ad597e431571c4d89b287490f?recursive=1; each bound file's gitBlob compared to the pushed head tree",
+    "pushedHead": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
+    "headTree": "7b024643ed7da61ad597e431571c4d89b287490f",
+    "filesChecked": 12,
+    "allBlobsMatch": true,
+    "verifiedAt": "2026-10-10T19:22:41Z"
+  }
 }

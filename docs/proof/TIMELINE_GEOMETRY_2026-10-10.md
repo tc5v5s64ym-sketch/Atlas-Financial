@@ -107,10 +107,11 @@ was never changed to match the prose.
    (404). The harness now records its own structured results
    (`timeline-geometry-native-receipt.json`, above), and both receipts'
    bindings were finalized against the PUSHED head: the exercised code
-   commit below is a GitHub commit, its tree is the local exercised tree
-   byte-for-byte, and every bound file's Git blob was compared against
-   that head's tree fetched from GitHub (see `remoteVerification` in
-   each receipt).
+   commit is `cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4` on GitHub, its
+   tree `7b024643ed7da61ad597e431571c4d89b287490f` is the local exercised
+   tree byte-for-byte, and every bound file's Git blob was compared
+   against that head's tree fetched from GitHub (see
+   `remoteVerification` in each receipt).
 2. **Standalone fixture defects** (`test/browser-river-geometry-proof.js`).
    The gap fixture's second known run was written `[5, 11]`, which the
    controller reads as the index set {5, 11} — indices 6–10 silently had
