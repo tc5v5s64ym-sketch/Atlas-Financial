@@ -2005,7 +2005,7 @@
     if (!activeRiver) {
       const wrap = document.createElement('div'); wrap.className = 'g-river-wrap';
       // Original index.html river subtree; no prototype data or page generator.
-      wrap.innerHTML = '<nav class="tile t-river" aria-label="Pay periods"><div class="river" role="slider" tabindex="0" aria-label="Pay period"><canvas class="river-canvas" aria-hidden="true"></canvas><div class="river-slide" aria-hidden="true"><div class="river-vals"></div><div class="months"></div></div><div class="playhead" aria-hidden="true"><div class="playhead-pill"><span data-ph-range></span><b class="num" data-ph-value></b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      wrap.innerHTML = '<nav class="tile t-river" aria-label="Pay periods"><div class="river" role="slider" tabindex="0" aria-label="Pay period"><canvas class="river-canvas" aria-hidden="true"></canvas><div class="river-slide" aria-hidden="true"><div class="river-vals"></div><div class="months"></div></div><div class="playhead" aria-hidden="true"><div class="playhead-pill" aria-hidden="true"><span data-ph-range></span><b class="num" data-ph-value></b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
       activeRiver = { wrap, key, model, restoreFocus: false };
     }
     const record = activeRiver, wrap = record.wrap, nav = wrap.querySelector('nav'), river = wrap.querySelector('.river');
