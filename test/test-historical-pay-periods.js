@@ -77,6 +77,7 @@ function loadComposer() {
     grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
     grab(planSrc, /^function calendarFromTodayEvidenceHtml\([\s\S]*?\n\}$/m, 'calendarFromTodayEvidenceHtml'),
     grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function badTimelineHtml\([\s\S]*?\n\}$/m, 'badTimelineHtml'),
     grab(planSrc, /^function paydayCarryoverHtml\([\s\S]*?\n\}$/m, 'paydayCarryoverHtml'),
     grab(planSrc, /^function historicalPeriodHtml\([\s\S]*?\n\}$/m, 'historicalPeriodHtml'),
     grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
@@ -117,7 +118,7 @@ function loadComposer() {
       grab(planSrc, new RegExp('^function ' + name + '\\([\\s\\S]*?\\n\\}', 'm'), name)),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, selectedPlanView, historicalPeriodHtml, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, selectedPlanView, historicalPeriodHtml, badTimelineHtml, money2 });`,
     { Forecast: F, state: { scenario: null, targetBuffer: 500, extraDebtMonthly: 0, incomeOverrides: {}, disabled: [], debts: null, extraDebtTarget: null, extraFacilities: null } }
   );
 }
@@ -679,11 +680,36 @@ console.log('\n=== 10. finalized historical facts close every publication alias 
     planView: advice.defaultView });
   ok(html.includes('data-selected-pay-period="past:2026-08-14"'),
     'default this-period timeline selects completed Aug 14 window');
-  for (const amount of [6067.25, 200, 5867.25, 5827.25, 220, 93.40, 126.60]) {
+  for (const amount of [6067.25, 200, 5867.25, 220, 93.40, 126.60]) {
     ok(html.includes(composer.money2(amount)), 'default timeline prints finalized ' + amount);
   }
+  ok(!html.includes(composer.money2(5827.25))
+    && /data-bad-term="balanceAfterDeductions" data-bad-term-trust="unavailable"/.test(html)
+    && /data-budget-result-trust="unavailable"/.test(html)
+    && /data-bad-historical-withheld/.test(html),
+    'historical arithmetic alone cannot qualify whole-period BAD or the result; original source evidence stays separate');
   ok(/Paid bills this period<\/span><span>\$220\.00/.test(html),
     'paid disclosure on default timeline matches settled rows');
+  const qualified = fixture();
+  qualified.packet.representedActuals.push({ id: 'amandaSalary15', date: '2026-08-15', actual: 2000 });
+  qualified.plan.opening.representedEvents.push({ id: 'amandaSalary15', date: '2026-08-15' });
+  const qualifiedAdvice = run(qualified);
+  const qualifiedPeriod = past(qualifiedAdvice);
+  const components = ['income', 'bills', 'household'].map(key => qualifiedPeriod.budgetProgress[key].actual);
+  ok(components.every(part => part.completeness === 'complete'),
+    'Forecast qualifies all three historical components independently');
+  const qualifiedHtml = composer.operatingSurfaceHtml({ advice: qualifiedAdvice,
+    weekly: qualifiedAdvice.weekly, recommended: qualifiedAdvice.weekly, planLook: 'this-period',
+    planPayPeriodId: 'past:2026-08-14', planView: qualifiedAdvice.defaultView });
+  // 4,017.25 observed payroll + 2,000 observed partner + 50 observed gift
+  // minus 200 assigned deductions minus 40 observed Household = 5,827.25.
+  ok(qualifiedHtml.includes(composer.money2(5827.25))
+    && !/data-bad-historical-withheld/.test(qualifiedHtml),
+    'qualified historical BAD survives the real Forecast to native renderer path');
+  const qualifiedTimeline = composer.badTimelineHtml(qualifiedAdvice, true, null)
+    .match(/data-bad-timeline-period="past:2026-08-14"[^>]*>([\s\S]*?)<\/li>/);
+  ok(qualifiedTimeline && qualifiedTimeline[1].includes(composer.money2(5827.25)),
+    'the river source preserves the same independently reconciled historical figure');
   const second = run(f);
   ok(JSON.stringify(f) === before && JSON.stringify(p) === JSON.stringify(past(second)),
     'repeated publication mutates neither plan nor packet and is deterministic');

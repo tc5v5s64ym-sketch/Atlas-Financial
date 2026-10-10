@@ -56,15 +56,17 @@ if (screenshots) fs.mkdirSync(screenshots, { recursive: true });
         const placement = await page.evaluate(() => {
           const section = document.querySelector('[data-budget-browse="attention"]');
           const bottom = document.getElementById('budget-attention-bottom');
-          const before = node => !!(node.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING);
+          const footer = document.querySelector('.blend-quiet > footer');
+          const before = node => !!(node && node.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING);
           return { bottom: section.parentNode === bottom,
             afterSurface: before(document.getElementById('operating-surface')),
             afterSavings: before(document.querySelector('.budget-savings-accounts')),
             afterBalances: before(document.getElementById('recorded-balances')),
-            beforeFooter: !!(section.compareDocumentPosition(document.querySelector('.wrap > footer')) & Node.DOCUMENT_POSITION_FOLLOWING) };
+            beforeFooter: !!(footer && (section.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING)),
+            attentionVisible: !section.closest('details:not([open])') };
         });
         assert.deepEqual(placement, { bottom: true, afterSurface: true, afterSavings: true,
-          afterBalances: true, beforeFooter: true }, `attention after every Budget block: browser errors ${JSON.stringify(errors)}`);
+          afterBalances: true, beforeFooter: true, attentionVisible: true }, `attention after every Budget block: browser errors ${JSON.stringify(errors)}`);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         assert.match(await page.locator('[data-budget-period-result]').innerText(), /1,632\.01/);
       };

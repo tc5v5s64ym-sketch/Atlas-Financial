@@ -72,7 +72,10 @@ fs.mkdirSync(screenshots, { recursive: true });
       await page.goto(base);
       await page.locator('.budget-step-summary').first().waitFor();
       assert.equal(await page.evaluate(() => App.data.meta.title), 'Synthetic Budget review');
-      assert.equal(await page.locator('.budget-step-details').count(), 6);
+      const stepDetails = await page.locator('.budget-step-details').evaluateAll(rows => rows.map(el =>
+        el.closest('[data-operating-question]')?.getAttribute('data-operating-question')
+        || (el.closest('[data-from-today-proposal]') ? 'today' : 'other')).sort());
+      assert.deepEqual(stepDetails, ['02', '04', '05', '06', '07', 'savings', 'today']);
       assert.equal(await page.locator('.atlas-budget-section').count(), 0);
       const balance = await page.locator('[data-live-current-balance]').boundingBox();
       assert.ok(balance.y < 250 && balance.height < 250, JSON.stringify(balance));

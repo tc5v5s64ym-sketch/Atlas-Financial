@@ -50,7 +50,7 @@
         <h4 class="card-movement-ledger-heading">Posted activity · ${card.postedCoverage === 'complete-provider-response' ? 'complete provider response' : 'coverage incomplete'}</h4>
         ${card.posted.map(transaction).join('') || `<p class="card-movement-note">${card.postedCoverage === 'complete-provider-response' && pub.role !== 'future' ? 'No posted movements returned in this period.' : 'No qualified posted activity available.'}</p>`}
         <div class="card-movement-pending"><h4 class="card-movement-ledger-heading">Pending · separate from net change</h4>${card.pending.map(transaction).join('') || `<p class="card-movement-note">${card.pendingCoverage === 'complete-provider-response' ? 'No pending authorizations returned.' : card.pendingCoverage === 'not-observed' ? 'Pending activity not observed for this selected period.' : 'Pending coverage unavailable.'}</p>`}</div>
-        <p class="card-movement-note">Payments reduce the card balance. Their household purpose is unconfirmed here: purchase backfills do not automatically settle scheduled minimums. Lender confirmation remains separate.</p>
+        <p class="card-movement-note">Payments reduce the ${card.id === 'heloc' ? 'HELOC' : 'card'} balance. Their household purpose is unconfirmed here: purchase backfills do not automatically settle scheduled minimums. Lender confirmation remains separate.</p>
         <p class="card-movement-note">${pub.observationAsOf ? 'Provider observation · ' + day(pub.observationAsOf) + '. ' : ''}Posted activity is balance movement; purchases remain in their spending categories once.</p>
       </section>`).join('')}</section>`;
   }

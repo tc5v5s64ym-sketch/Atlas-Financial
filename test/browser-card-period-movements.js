@@ -48,7 +48,18 @@ const states = [], errors = [], writes = [], external = [];
       assert.match(await page.locator('[data-budget-card-toggle="mbna"]').innerText(), /Amazon Mastercard[\s\S]*Net unavailable/);
       assert.match(await page.locator('[data-budget-card-toggle="mbna"]').innerText(), /Dated Aug 8/);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
-      if (width < 600) assert.equal(await strip.locator('.card-movement-track').evaluate(el => el.scrollWidth > el.clientWidth), true, 'five cards scroll within the track');
+      if (width < 600) {
+        const list = await strip.locator('.card-movement-track').evaluate(el => {
+          const style = getComputedStyle(el);
+          const rows = [...el.querySelectorAll('.card-movement-trigger')];
+          return {
+            column: style.flexDirection === 'column',
+            fits: el.scrollWidth <= el.clientWidth + 1 && rows.every(row => row.scrollWidth <= row.clientWidth + 1),
+          };
+        });
+        assert.equal(list.column, true, 'narrow cards stay a vertical list');
+        assert.equal(list.fits, true, 'narrow cards do not clip or scroll sideways');
+      }
       const layout = await page.evaluate(() => {
         const strip = document.querySelector('[data-budget-card-movements]');
         const period = document.querySelector('.budget-surface-grid');
@@ -78,16 +89,37 @@ const states = [], errors = [], writes = [], external = [];
           await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
           await strip.locator('.card-movement-trigger').evaluateAll(rows => Promise.all(rows.flatMap(row => row.getAnimations()).map(animation => animation.finished.catch(() => {}))));
           const contrast = await strip.locator('.card-movement-trigger .card-movement-delta:is(.is-up,.is-down)').evaluateAll(rows => {
-            const luminance = color => {
+            const parse = color => {
+              const values = (color || '').match(/[\d.]+/g);
+              if (!values) return null;
               const scale = color.startsWith('color(srgb') ? 1 : 255;
-              const values = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => {
-                const channel = value / scale; return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+              const rgb = values.slice(0, 3).map(Number).map(value => value / scale * 255);
+              const alpha = values[3] == null ? 1 : Number(values[3]);
+              return { rgb, alpha };
+            };
+            const composite = (fg, bg) => fg.rgb.map((channel, index) => Math.round(channel * fg.alpha + bg[index] * (1 - fg.alpha)));
+            const luminance = rgb => {
+              const lin = rgb.map(value => {
+                const channel = value / 255; return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
               });
-              return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+              return lin[0] * 0.2126 + lin[1] * 0.7152 + lin[2] * 0.0722;
+            };
+            const painted = node => {
+              const layers = [];
+              let current = node;
+              while (current) {
+                const parsed = parse(getComputedStyle(current).backgroundColor);
+                if (parsed && parsed.alpha > 0) layers.push(parsed);
+                current = current.parentElement;
+              }
+              const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+              let bg = dark ? [5, 5, 7] : [236, 238, 242];
+              for (const layer of layers.reverse()) bg = layer.alpha >= 0.99 ? layer.rgb : composite(layer, bg);
+              return bg;
             };
             return rows.map(row => {
-              const foreground = luminance(getComputedStyle(row).color);
-              const background = luminance(getComputedStyle(row.closest('button')).backgroundColor);
+              const foreground = luminance(parse(getComputedStyle(row).color).rgb);
+              const background = luminance(painted(row));
               return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
             });
           });

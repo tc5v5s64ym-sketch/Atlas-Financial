@@ -68,4 +68,52 @@ function served() {
   if (observed) observed.value = 865;
   return data;
 }
-module.exports = { AS_OF, START, END, fixture, served, copy };
+function withHeloc(x) {
+  x.debts.push({ id: 'heloc', label: 'Example HELOC', structure: 'Interest-only revolving — never amortises',
+    secured: true, balance: 42025.35, evidenceDate: AS_OF, limit: 60000, pending: 0, rate: 4.9 });
+  x.packet.transactions.push(...[
+    cardTx('heloc-advance', 'heloc', '2026-08-16', 500, 'Example advance', 'transfer'),
+    cardTx('heloc-payment', 'heloc', '2026-08-18', -600, 'Example payment', 'payment'),
+    cardTx('heloc-interest', 'heloc', '2026-08-19', 125.35, 'Example interest', 'interest'),
+    { ...cardTx('heloc-pending', 'heloc', AS_OF, 900, 'Example pending'), pending: true }]
+    .map(tx => ({ ...tx, accountRole: 'heloc' })));
+  x.balanceEvidence.cards.push({ id: 'heloc', opening: { confirmed: true, currency: 'CAD', date: START,
+    amount: 42000, temporalClaim: 'before-period-posted-movements', evidenceRef: 'invented-heloc-open' },
+  closing: { confirmed: true, currency: 'CAD', date: AS_OF, amount: 42025.35,
+    temporalClaim: 'through-published-posted-coverage', evidenceRef: 'invented-heloc-close' } });
+  return x;
+}
+function helocFixture() { return withHeloc(fixture()); }
+function helocServed() {
+  const data = served(), x = helocFixture();
+  data.debts = copy(x.debts);
+  data.liveOverlay.currentPeriodActuals.transactions.push(...copy(x.packet.transactions.filter(tx => tx.account === 'heloc')));
+  data.liveOverlay.cardPeriodBalanceEvidence = copy(x.balanceEvidence);
+  return data;
+}
+function helocObserved(mode = 'complete') {
+  const data = base.canonical(), accountMap = copy(base.map), payload = base.payload();
+  data.debts.push(copy(helocFixture().debts.find(row => row.id === 'heloc')));
+  accountMap.mappings.push({ providerAccountId: '2002', canonical: { collection: 'debts', id: 'heloc' }, atlasRole: 'heloc' });
+  payload.accounts.push({ id: 2002, type: 'credit', balance: 42025.35, currency: 'cad', updated_at: AS_OF + 'T17:55:00.000Z' });
+  payload.transactions.push(...[
+    { id: 93001, date: '2026-08-16', amount: 500, payee: 'Example advance', kind: 'transfer' },
+    { id: 93002, date: '2026-08-18', amount: -600, payee: 'Example payment', kind: 'payment' },
+    { id: 93003, date: '2026-08-19', amount: 125.35, payee: 'Example interest', kind: 'interest' },
+    { id: 93004, date: AS_OF, amount: 900, payee: 'Example pending', is_pending: true },
+  ].map(tx => ({ account_id: 2002, currency: 'cad', is_pending: false, status: 'cleared', ...tx })));
+  const row = payload.transactions.find(tx => tx.id === 93001);
+  if (mode === 'undated') row.date = null;
+  if (mode === 'amount-missing') row.amount = null;
+  if (mode === 'foreign-currency') row.currency = 'usd';
+  if (mode === 'empty' || mode === 'malformed-only') {
+    payload.transactions = payload.transactions.filter(tx => tx.account_id !== 2002);
+    if (mode === 'malformed-only') payload.transactions.push({ ...row, date: null });
+  }
+  const next = require('../../scripts/live-plan').fromObservation({ data, payload, accountMap, identity: base.identity }).data;
+  const points = copy(helocFixture().balanceEvidence);
+  if (mode === 'empty' || mode === 'malformed-only') points.cards.find(row => row.id === 'heloc').closing.amount = 42000;
+  next.liveOverlay.cardPeriodBalanceEvidence = points;
+  return next;
+}
+module.exports = { AS_OF, START, END, fixture, served, copy, helocFixture, helocServed, helocObserved };
