@@ -1,0 +1,1159 @@
+{
+  "cases": [
+    {
+      "scenario": "positive",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1246.902099609375,
+      "elH": 122.10904693603516,
+      "top": 38,
+      "bot": 71.10904693603516,
+      "band": 33.109046936035156,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 71.10904693603516,
+      "yOfMinBad": 66.37918308803013,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 66.37918308803013,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 247.81185913085938,
+        "cy": 51.80947494506836,
+        "w": 19.855133056640625,
+        "h": 19.855125427246094
+      },
+      "pill": {
+        "top": 6.9492950439453125,
+        "bottom": 30.775447845458984
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1249.84423828125,
+      "elH": 122.39718627929688,
+      "top": 38,
+      "bot": 71.39718627929688,
+      "band": 33.397186279296875,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 71.39718627929688,
+      "yOfMinBad": 66.62615966796875,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 66.62615966796875,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 248.9240083694458,
+        "cy": 52.040568351745605,
+        "w": 19.9019775390625,
+        "h": 19.901981353759766
+      },
+      "pill": {
+        "top": 6.965691566467285,
+        "bottom": 30.848069190979004
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 359.3255615234375,
+      "elH": 111.92108154296875,
+      "top": 36,
+      "bot": 62.92108154296875,
+      "band": 26.92108154296875,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.92108154296875,
+      "yOfMinBad": 59.07521275111607,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 59.07521275111607,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 113.05846977233887,
+        "cy": 47.13869285583496,
+        "w": 19.834815979003906,
+        "h": 19.834823608398438
+      },
+      "pill": {
+        "top": 6.94218635559082,
+        "bottom": 30.74397087097168
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 359.3248291015625,
+      "elH": 111.92086029052734,
+      "top": 36,
+      "bot": 62.920860290527344,
+      "band": 26.920860290527344,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.920860290527344,
+      "yOfMinBad": 59.07502310616629,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 59.07502310616629,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 111.92085266113281,
+        "cy": 46.66436767578125,
+        "w": 19.635238647460938,
+        "h": 19.635234832763672
+      },
+      "pill": {
+        "top": 6.872333526611328,
+        "bottom": 30.43461799621582
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 289.8551025390625,
+      "elH": 111.63339233398438,
+      "top": 36,
+      "bot": 62.633392333984375,
+      "band": 26.633392333984375,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.633392333984375,
+      "yOfMinBad": 58.828622000558035,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 58.828622000558035,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 111.633376121521,
+        "cy": 46.42210388183594,
+        "w": 19.584800720214844,
+        "h": 19.584800720214844
+      },
+      "pill": {
+        "top": 6.854682922363281,
+        "bottom": 30.3564453125
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 292.3681640625,
+      "elH": 112.60124969482422,
+      "top": 36,
+      "bot": 63.60124969482422,
+      "band": 27.60124969482422,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 63.60124969482422,
+      "yOfMinBad": 59.65821402413504,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 59.65821402413504,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 112.60125160217285,
+        "cy": 47.241289138793945,
+        "w": 19.754600524902344,
+        "h": 19.75460433959961
+      },
+      "pill": {
+        "top": 6.914112091064453,
+        "bottom": 30.619640350341797
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1242.499267578125,
+      "elH": 121.6778793334961,
+      "top": 38,
+      "bot": 70.6778793334961,
+      "band": 32.677879333496094,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 58.638660631681745,
+      "yOfMinBad": 70.6778793334961,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 70.6778793334961,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 246.14545249938965,
+        "cy": 53.74415397644043,
+        "w": 19.7850341796875,
+        "h": 19.785022735595703
+      },
+      "pill": {
+        "top": 6.9247589111328125,
+        "bottom": 30.66678237915039
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1222.513427734375,
+      "elH": 119.72067260742188,
+      "top": 38,
+      "bot": 68.72067260742188,
+      "band": 30.720672607421875,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 57.4025300678454,
+      "yOfMinBad": 68.72067260742188,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 68.72067260742188,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 238.6431999206543,
+        "cy": 51.93674659729004,
+        "w": 19.466796875,
+        "h": 19.466773986816406
+      },
+      "pill": {
+        "top": 6.813371658325195,
+        "bottom": 30.17350196838379
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 362.55194091796875,
+      "elH": 112.92601776123047,
+      "top": 36,
+      "bot": 63.92601776123047,
+      "band": 27.92601776123047,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 53.63748490182977,
+      "yOfMinBad": 63.92601776123047,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 63.92601776123047,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 112.92601013183594,
+        "cy": 49.48251724243164,
+        "w": 19.81159210205078,
+        "h": 19.81157684326172
+      },
+      "pill": {
+        "top": 6.934053421020508,
+        "bottom": 30.707950592041016
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 360.1488037109375,
+      "elH": 112.1775131225586,
+      "top": 36,
+      "bot": 63.177513122558594,
+      "band": 27.177513122558594,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 53.164745130037005,
+      "yOfMinBad": 63.177513122558594,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 63.177513122558594,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 112.17750358581543,
+        "cy": 48.78553009033203,
+        "w": 19.680267333984375,
+        "h": 19.680267333984375
+      },
+      "pill": {
+        "top": 6.888092041015625,
+        "bottom": 30.504409790039062
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 291.2669677734375,
+      "elH": 112.1771469116211,
+      "top": 36,
+      "bot": 63.177146911621094,
+      "band": 27.177146911621094,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 53.16451383891859,
+      "yOfMinBad": 63.177146911621094,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 63.177146911621094,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 112.17714500427246,
+        "cy": 48.78537368774414,
+        "w": 19.680198669433594,
+        "h": 19.680198669433594
+      },
+      "pill": {
+        "top": 6.888071060180664,
+        "bottom": 30.504310607910156
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 289.8538818359375,
+      "elH": 111.6329116821289,
+      "top": 36,
+      "bot": 62.632911682128906,
+      "band": 26.632911682128906,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 52.8207863255551,
+      "yOfMinBad": 62.632911682128906,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 62.632911682128906,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 111.63290405273438,
+        "cy": 48.28857421875,
+        "w": 19.58472442626953,
+        "h": 19.584716796875
+      },
+      "pill": {
+        "top": 6.854652404785156,
+        "bottom": 30.35631561279297
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1222.52685546875,
+      "elH": 119.72198486328125,
+      "top": 38,
+      "bot": 68.72198486328125,
+      "band": 30.72198486328125,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 68.72198486328125,
+      "yOfMinBad": 56.153900146484375,
+      "panMode": false,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 38,
+      "maxY": 56.153900146484375,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": -28.736543655395508,
+        "cy": -29.629364013671875,
+        "w": 0,
+        "h": 0
+      },
+      "pill": {
+        "top": 6.813446044921875,
+        "bottom": 30.173831939697266
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 58.09090909090909,
+      "panMode": false,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 38,
+      "maxY": 58.09090909090909,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": -12,
+        "cy": -12,
+        "w": 0,
+        "h": 0
+      },
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 359.32879638671875,
+      "elH": 111.92210388183594,
+      "top": 36,
+      "bot": 62.92210388183594,
+      "band": 26.922103881835938,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.92210388183594,
+      "yOfMinBad": 51.90851593017578,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 51.90851593017578,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": -15.335592269897461,
+        "cy": -23.975330352783203,
+        "w": 0,
+        "h": 0
+      },
+      "pill": {
+        "top": 6.872407913208008,
+        "bottom": 30.434951782226562
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 359.3270263671875,
+      "elH": 111.92153930664062,
+      "top": 36,
+      "bot": 62.921539306640625,
+      "band": 26.921539306640625,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.921539306640625,
+      "yOfMinBad": 51.90818231756037,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 51.90818231756037,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": -14.927526473999023,
+        "cy": -22.51031494140625,
+        "w": 0,
+        "h": 0
+      },
+      "pill": {
+        "top": 6.888019561767578,
+        "bottom": 30.50408172607422
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 289.85723876953125,
+      "elH": 111.63420104980469,
+      "top": 36,
+      "bot": 62.63420104980469,
+      "band": 26.634201049804688,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.63420104980469,
+      "yOfMinBad": 51.73839152943004,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 51.73839152943004,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": -15.071394920349121,
+        "cy": -25.634502410888672,
+        "w": 0,
+        "h": 0
+      },
+      "pill": {
+        "top": 6.854732513427734,
+        "bottom": 30.356666564941406
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 289.8580322265625,
+      "elH": 111.63450622558594,
+      "top": 36,
+      "bot": 62.63450622558594,
+      "band": 26.634506225585938,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.63450622558594,
+      "yOfMinBad": 51.73857186057351,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 51.73857186057351,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": -15.070989608764648,
+        "cy": -25.63271713256836,
+        "w": 0,
+        "h": 0
+      },
+      "pill": {
+        "top": 6.854747772216797,
+        "bottom": 30.35675048828125
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 67.75,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 67.75,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 251.27001190185547,
+        "cy": 64.546875,
+        "w": 20.000015258789062,
+        "h": 20
+      },
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1226.4013671875,
+      "elH": 120.10139465332031,
+      "top": 38,
+      "bot": 69.10139465332031,
+      "band": 31.101394653320312,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 69.10139465332031,
+      "yOfMinBad": 65.21372032165527,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 65.21372032165527,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 241.9574432373047,
+        "cy": 61.30055618286133,
+        "w": 19.680130004882812,
+        "h": 19.680130004882812
+      },
+      "pill": {
+        "top": 6.888050079345703,
+        "bottom": 30.504215240478516
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 364.61529541015625,
+      "elH": 113.5687026977539,
+      "top": 36,
+      "bot": 64.5687026977539,
+      "band": 28.568702697753906,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 64.5687026977539,
+      "yOfMinBad": 60.99761486053467,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 60.99761486053467,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 113.56869888305664,
+        "cy": 58.09188652038574,
+        "w": 19.924339294433594,
+        "h": 19.924335479736328
+      },
+      "pill": {
+        "top": 6.973516464233398,
+        "bottom": 30.88271713256836
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 357.38079833984375,
+      "elH": 111.31532287597656,
+      "top": 36,
+      "bot": 62.31532287597656,
+      "band": 26.315322875976562,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 62.31532287597656,
+      "yOfMinBad": 59.02590751647949,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 59.02590751647949,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 111.3153305053711,
+        "cy": 55.215213775634766,
+        "w": 19.529006958007812,
+        "h": 19.529006958007812
+      },
+      "pill": {
+        "top": 6.835151672363281,
+        "bottom": 30.26995849609375
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 292.36517333984375,
+      "elH": 112.60009765625,
+      "top": 36,
+      "bot": 63.60009765625,
+      "band": 27.60009765625,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 63.60009765625,
+      "yOfMinBad": 60.15008544921875,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 60.15008544921875,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 112.60009002685547,
+        "cy": 56.840206146240234,
+        "w": 19.75439453125,
+        "h": 19.754409790039062
+      },
+      "pill": {
+        "top": 6.914043426513672,
+        "bottom": 30.61932373046875
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 292.36724853515625,
+      "elH": 112.60090637207031,
+      "top": 36,
+      "bot": 63.60090637207031,
+      "band": 27.600906372070312,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 63.60090637207031,
+      "yOfMinBad": 60.15079307556152,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 60.15079307556152,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 112.60090255737305,
+        "cy": 56.84061241149902,
+        "w": 19.754547119140625,
+        "h": 19.754547119140625
+      },
+      "pill": {
+        "top": 6.914091110229492,
+        "bottom": 30.619543075561523
+      }
+    }
+  ],
+  "extremes": [
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 540.3527297973633,
+        "cy": 36.86031150817871,
+        "w": 19.400146484375,
+        "h": 19.400165557861328
+      },
+      "pill": {
+        "top": 6.7900543212890625,
+        "bottom": 30.07025146484375
+      },
+      "bandTop": 38,
+      "bandBot": 68.31099700927734,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 558.2474136352539,
+        "cy": 37.467594146728516,
+        "w": 19.71978759765625,
+        "h": 19.71978759765625
+      },
+      "pill": {
+        "top": 6.901926040649414,
+        "bottom": 30.565670013427734
+      },
+      "bandTop": 38,
+      "bandBot": 70.27668762207031,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 176.3848114013672,
+        "cy": 35.34372329711914,
+        "w": 19.635391235351562,
+        "h": 19.63540267944336
+      },
+      "pill": {
+        "top": 6.8723907470703125,
+        "bottom": 30.43486976623535
+      },
+      "bandTop": 36,
+      "bandBot": 62.921783447265625,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 141.2173843383789,
+        "cy": 70.16107559204102,
+        "w": 19.8116455078125,
+        "h": 19.8116455078125
+      },
+      "pill": {
+        "top": 6.934074401855469,
+        "bottom": 30.708045959472656
+      },
+      "bandTop": 38,
+      "bandBot": 70.84159851074219,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 136.00424194335938,
+        "cy": 66.24822807312012,
+        "w": 19.400070190429688,
+        "h": 19.400070190429688
+      },
+      "pill": {
+        "top": 6.790029525756836,
+        "bottom": 30.070119857788086
+      },
+      "bandTop": 38,
+      "bandBot": 68.31047058105469,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 68.13547706604004,
+        "cy": 60.30293655395508,
+        "w": 19.46727752685547,
+        "h": 19.46728515625
+      },
+      "pill": {
+        "top": 6.813549041748047,
+        "bottom": 30.17428207397461
+      },
+      "bandTop": 36,
+      "bandBot": 61.96348571777344,
+      "tileHeight": 114
+    }
+  ],
+  "heldDrag": [
+    {
+      "width": 1280,
+      "dragging": true,
+      "orbTransform": "matrix(1.3, 0, 0, 1.3, 0, 0)",
+      "changes": [
+        {
+          "i": 3,
+          "how": "scrub"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "dragging": true,
+      "orbTransform": "matrix(1.3, 0, 0, 1.3, 0, 0)",
+      "changes": [
+        {
+          "i": 1,
+          "how": "scrub"
+        }
+      ]
+    }
+  ],
+  "divergence": [
+    {
+      "case": "viewport-700-full-width",
+      "tileHeight": 114,
+      "elW": 660.0777587890625,
+      "elH": 111.31489562988281,
+      "top": 38,
+      "bot": 60.31489562988281,
+      "band": 22.314895629882812,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 60.31489562988281,
+      "yOfMinBad": 57.12705339704241,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 57.12705339704241,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 139.5537109375,
+        "cy": 46.42697525024414,
+        "w": 19.5289306640625,
+        "h": 19.5289306640625
+      },
+      "pill": {
+        "top": 6.835124969482422,
+        "bottom": 30.26983642578125
+      }
+    },
+    {
+      "case": "viewport-800-tile-500",
+      "tileHeight": 123,
+      "elW": 490.8779296875,
+      "elH": 120.75597381591797,
+      "top": 36,
+      "bot": 71.75597381591797,
+      "band": 35.75597381591797,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 71.75597381591797,
+      "yOfMinBad": 66.64797755650112,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 66.64797755650112,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 111.92016792297363,
+        "cy": 50.3763427734375,
+        "w": 19.63512420654297,
+        "h": 19.635116577148438
+      },
+      "pill": {
+        "top": 6.872289657592773,
+        "bottom": 30.434429168701172
+      }
+    }
+  ],
+  "transitions": [
+    {
+      "width": 1280,
+      "tileHeight": 123,
+      "top": 38,
+      "bot": 70.67698669433594,
+      "index": 3
+    },
+    {
+      "width": 700,
+      "tileHeight": 114,
+      "top": 38,
+      "bot": 62.87113952636719,
+      "index": 3
+    },
+    {
+      "width": 664,
+      "tileHeight": 114,
+      "top": 36,
+      "bot": 64.99463653564453,
+      "index": 3
+    },
+    {
+      "width": 663,
+      "tileHeight": 114,
+      "top": 36,
+      "bot": 65,
+      "index": 3
+    },
+    {
+      "width": 390,
+      "tileHeight": 114,
+      "top": 36,
+      "bot": 65,
+      "index": 3
+    },
+    {
+      "width": 760,
+      "tileHeight": 123,
+      "top": 38,
+      "bot": 72,
+      "index": 3
+    },
+    {
+      "width": 1280,
+      "tileHeight": 123,
+      "top": 38,
+      "bot": 72,
+      "index": 3
+    }
+  ]
+}

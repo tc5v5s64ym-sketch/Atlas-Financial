@@ -136,7 +136,13 @@
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const mobile = this.W < 640;
       this.padL = mobile ? 26 : 36; this.padR = this.padL;
-      this.top = 52; this.bot = this.H - (mobile ? 50 : 52);
+      // Owner-approved shorter tile (~25% less height): the plotting band
+      // stays centred between the playhead pill (bottom edge 31px) and the
+      // value labels (top edge 44px from the bottom) with equal clearances
+      // — 7px desktop, 5px mobile. The value domain is unchanged, so the
+      // zero line keeps its data-derived position inside the band.
+      this.top = mobile ? 36 : 38; this.bot = this.H - (mobile ? 49 : 51);
+      this.beamTop = 30; // 1px above the pill's bottom edge, as before
       const fit = this.N < 2 ? 0 : (this.W - this.padL - this.padR) / (this.N - 1), minSp = mobile ? 44 : 52;
       this.pan = this.N > 1 && fit < minSp;
       this.sp = this.pan ? minSp : fit;
@@ -198,6 +204,8 @@
       this.monthsEl.innerHTML = mh;
       this.valsEl.innerHTML = vh;
       this.valEls = Array.from(this.valsEl.children);
+      this._stepEl = null; // rebuilt label nodes carry no step-aside transform
+      this._yielded = new Set(); // ... and no yielded (faded-out) state
       this.valEls.forEach((el, i) => { el.title = this.periods[i].fullLabel || ''; el.classList.toggle('is-est', !!this.periods[i].estimated);
         if (this.periods[i].label != null) el.dataset.riverNativeValue = this.periods[i].label;
       });
@@ -302,8 +310,48 @@
       const known = y != null;
       this.playhead.querySelector('.playhead-orb').hidden = this.playhead.querySelector('.playhead-beam').hidden = !known;
       if (known) this.playhead.style.setProperty('--orb-y', `${y.toFixed(2)}px`);
-      this.playhead.style.setProperty('--beam-top', `${this.top - 12}px`);
+      this.playhead.style.setProperty('--beam-top', `${this.beamTop ?? this.top - 12}px`);
       this.slide.style.transform = `translate3d(${(-this.off).toFixed(2)}px,0,0)`;
+      // Selected-extreme legibility: a point at the band's bottom edge parks
+      // the 20px orb one radius above the value-label row, so the disc covers
+      // the selected label's own text. Step that label sideways just clear of
+      // the disc (toward the side with more room, clamped inside the tile);
+      // any neighbouring label the disc or the stepped label would cover
+      // yields (fades out) instead of meshing, and returns when clear.
+      // Placement only — selection, domain, and gesture behaviour unchanged.
+      const selEl = this.valEls && this.index >= 0 ? this.valEls[this.index] : null;
+      if (this._stepEl && this._stepEl !== selEl) { this._stepEl.style.transform = ''; this._stepEl = null; }
+      let stepDx = 0, selW = 0, selC = 0;
+      if (selEl) {
+        if (known && y + 10 > this.H - 44) {
+          selW = selEl.offsetWidth; selC = this.xs[this.index] - this.off;
+          const need = 12 + selW / 2 - Math.abs(selC - x);
+          if (need > 0) {
+            const dir = this.W - (selC + selW / 2) >= selC - selW / 2 ? 1 : -1;
+            stepDx = clamp(selC + dir * need, selW / 2 + 2, this.W - selW / 2 - 2) - selC;
+            if (Math.abs(selC + stepDx - x) < 12 + selW / 2) stepDx = 0; // no room either side: leave centred
+          }
+        }
+        const t = stepDx ? `translateX(-50%) translateX(${stepDx.toFixed(1)}px)` : '';
+        if (selEl.style.transform !== t) selEl.style.transform = t;
+        this._stepEl = stepDx ? selEl : null;
+      }
+      if (this.valEls) {
+        if (!this._yielded) this._yielded = new Set();
+        const inBand = known && y + 10 > this.H - 44;
+        const selL = selC + stepDx - selW / 2, selR = selC + stepDx + selW / 2;
+        this.valEls.forEach((el, k) => {
+          if (k === this.index) return;
+          let cover = false;
+          if (inBand) {
+            const ck = this.xs[k] - this.off, wk = el.offsetWidth;
+            cover = (ck + wk / 2 > x - 10 && ck - wk / 2 < x + 10)
+              || (selW > 0 && ck + wk / 2 > selL && ck - wk / 2 < selR);
+          }
+          if (cover && !this._yielded.has(el)) { el.style.opacity = '0'; this._yielded.add(el); }
+          else if (!cover && this._yielded.has(el)) { el.style.opacity = ''; this._yielded.delete(el); }
+        });
+      }
       if (this.index < 0) {
         this.playhead.style.transform = 'translate3d(8px,0,0)'; this.pill.style.transform = 'none';
         this.playhead.querySelector('.playhead-orb').hidden = this.playhead.querySelector('.playhead-beam').hidden = true;

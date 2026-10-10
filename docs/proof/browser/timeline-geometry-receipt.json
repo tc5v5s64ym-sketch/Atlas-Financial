@@ -1,0 +1,254 @@
+{
+  "proof": "timeline-geometry",
+  "syntheticOnly": true,
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "152.0.7977.82"
+  },
+  "sourceBinding": {
+    "sourceCommit": "a01f34b314f79b3a5baaf99cb2221f3c507b957d",
+    "sourceTree": "80c22499ec632fa9d342e3c1805c263fc455069b",
+    "baseCommit": null,
+    "cleanAtStart": true,
+    "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
+    "files": {
+      "public/budget-blend.css": {
+        "gitBlob": "ea9a489b2ae6d90effd4018c7dfb919e15c27d46",
+        "sha256": "71ddb968b72dca60e8e08667d1646e5b7681d23d035f3b6eea5bdb0fb639a1b0",
+        "bytes": 69546
+      },
+      "public/budget-gface.css": {
+        "gitBlob": "3fc4deaf6a1efae04b7e69431833b298ff00db85",
+        "sha256": "2a2b7b7ddc9a131368d6b2eac2b38a1a784d46b41db7e757fade71f7612dd8fd",
+        "bytes": 56070
+      },
+      "public/budget-river.js": {
+        "gitBlob": "fc8e679469718bbab02ab1d11072ca3c8f2c3534",
+        "sha256": "53f762041ff9afd3070c481aa08120217118543410445c726fd2c69c0c93fed5",
+        "bytes": 25616
+      },
+      "public/fonts.css": {
+        "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
+        "sha256": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+        "bytes": 403
+      },
+      "public/styles.css": {
+        "gitBlob": "c25d723d02cfc40c56e88b38f0e80d9624f68af7",
+        "sha256": "77dca1a796719370425fd225e2ff5f6a9d732a38d75a250f7296e8d4ef41aef5",
+        "bytes": 143239
+      },
+      "test/browser-river-geometry-proof.js": {
+        "gitBlob": "b5283647608111f38043beba2d8b969f75e6be2e",
+        "sha256": "fbf9bab38c78574ab3adef77d93ea861a83dcb40cc05d45780c916d79918cfad",
+        "bytes": 23031
+      },
+      "test/proof-source-binding.js": {
+        "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",
+        "sha256": "059fdba52361debe5daad8e98b748773552eef9325056e07bab51ec12b37c1ad",
+        "bytes": 3363
+      }
+    },
+    "unchangedAfterProof": true
+  },
+  "geometrySpec": {
+    "desktop": {
+      "height": 123,
+      "top": 38,
+      "bottomInset": 51
+    },
+    "mobile": {
+      "height": 114,
+      "top": 36,
+      "bottomInset": 49
+    },
+    "pillBottomEdge": 31,
+    "valsTopEdgeFromBottom": 44,
+    "beamTop": 30,
+    "beamBottomInset": 51
+  },
+  "caseCount": 24,
+  "behavior": {
+    "dragScrub": {
+      "changes": [
+        {
+          "i": 3,
+          "how": "scrub"
+        }
+      ],
+      "index": 3,
+      "dragging": true
+    },
+    "keyboard": {
+      "beforeKeys": 3,
+      "index": 5,
+      "aria": "0",
+      "changes": [
+        {
+          "i": 4,
+          "how": "commit"
+        },
+        {
+          "i": 5,
+          "how": "commit"
+        },
+        {
+          "i": 6,
+          "how": "commit"
+        },
+        {
+          "i": 5,
+          "how": "commit"
+        }
+      ]
+    },
+    "remount": {
+      "before": {
+        "H": 120.10205841064453,
+        "top": 38,
+        "bot": 69.10205841064453,
+        "index": 5
+      },
+      "after": {
+        "H": 123,
+        "top": 38,
+        "bot": 72,
+        "index": 5
+      }
+    },
+    "reducedMotion": {
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 54.31578947368421,
+      "yOfMinBad": 65,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 65,
+      "index": 4,
+      "reduced": true,
+      "settled": true,
+      "ariaNow": "0",
+      "orb": {
+        "cx": 183,
+        "cy": 38.03125,
+        "w": 20,
+        "h": 20
+      },
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    }
+  },
+  "screenshotSha256": {
+    "after-positive-1280-dark.png": "397fbb6dabdb24be2d34e5750eb18566bc08eaac10dafd0caa6841be0f7477a5",
+    "after-positive-1280-light.png": "e4309d10f99fcb4499b961ebc50e21a19fde8842826f9b494218bf0f4eee2bb3",
+    "after-positive-390-dark.png": "ec555d9708c6941f7ad6ae9ac7bea2d71c4dd8d3a092edc1ca0b0ffbb37433ec",
+    "after-positive-390-light.png": "45712d7a616dd8e694cb8dd2d7489298efdb9b4510ff681e5fbfb977feab0c7c",
+    "after-positive-320-dark.png": "3fee5871ac378b0f3f07b574ef782df84504b58b05a7a9683b296c71388a5703",
+    "after-positive-320-light.png": "815cb74d47bda7883fde27f31a3c141c26f1bcc2bc211159d2f073eea2409111",
+    "after-negative-1280-dark.png": "c5dd67eb0d42fbd454aa378195b8df314ec85ecb4c4d81e4da6fe86e907f5b86",
+    "after-negative-1280-light.png": "c6a2b6355720853c42de94e73d89a5c45ac050199678bad0b15edb97187f5b11",
+    "after-negative-390-dark.png": "e2373d48989d103f5e7848e11a512f847555bbb8dd38672a6f4d6ecf5d832f44",
+    "after-negative-390-light.png": "375cd542050baa0318edc2c3f210e705975d024d9ed92e6943c5c43bb2d8e79a",
+    "after-negative-320-dark.png": "f0499dee9d8af29da8749cce9787d659287a36f6f069fe3ef0bed805f1292863",
+    "after-negative-320-light.png": "33ded2e34744cee9b2dccc97544191e49598fd51ffc9f01e9b634a8aa8be9ee5",
+    "after-gap-1280-dark.png": "956596ec508785cf3bc7d980e8726e6d6f19fe1f329ee50a70b2877d57af53c7",
+    "after-gap-1280-light.png": "c2cab82b189340cc7c2b923d3fb84ae1d485b36b03b5f72b82b03e71ea9538a2",
+    "after-gap-390-dark.png": "dd74ed268ca7d589f68633080a85be4e2b60894e9211fde30757448bb3dce3a3",
+    "after-gap-390-light.png": "f4e428d9bc7357e6e283e28021faf42d950170a40c02de09ba5c5a89a7d2b266",
+    "after-gap-320-dark.png": "5d176e65174aba76276000f9b05b3299de52cb4d16a43b3c1c225fd9389cf614",
+    "after-gap-320-light.png": "289d436e45529d9cdca5357af5af4ac51ed852550008a0805ee0885965ee19c5",
+    "after-pan-1280-dark.png": "3cd35264de1faed1bc124623cd5f878add5e8ca8ec1f96b7efca54ee9830edb3",
+    "after-pan-1280-light.png": "915732dff222669967c77b775584609c9a3bc84a24999efff1ab5f03382f1b7d",
+    "after-pan-390-dark.png": "1e0aed360ec4949087b5274a51e7f7671604dc03ef22273eb88509a183b49f32",
+    "after-pan-390-light.png": "36be89414719463d8b3f4932a6b948bf714c4acd6c2ce9857102b5f52ffcfa43",
+    "after-pan-320-dark.png": "169945a3fd1de3487703b7b64478c6430527ec768ee9138b6a61c32a807211fa",
+    "after-pan-320-light.png": "7e82e27663a679b5f80756d9af944df9a51d394378632a788aae4fc2b045355b",
+    "after-selected-max-1280-dark.png": "93b23dd974d913864d8c01e8b5546df890df145b553f7068cbc3b323fcb96d73",
+    "after-selected-max-1280-light.png": "d47c6da073b5c6724427cd75049723a6be11dddfe4b6a43ee1d1b46a4d23e0ea",
+    "after-selected-max-390-dark.png": "dde334add8ebf9cb4b904fec456df53a7275c972b748255a07e5e9e967b08bec",
+    "after-selected-min-1280-dark.png": "8330948c4e9eaaf6020a9d7c2160f6589e77d27a7049f6531b8a3774c5ca25c4",
+    "after-selected-min-1280-light.png": "86c883b08e1ae5eaec54c1a88e61e7238d9c03a19be00e50c727a246b2bce991",
+    "after-selected-min-390-dark.png": "53b40790a9fda79068dd479ca7bd42d86eb6400f209d0131030f8c3390b9a992",
+    "after-held-drag-1280-dark.png": "240daeb765bb119e78c6275746ab16c7d0635a96246e698e0841e5852f5fc0e5",
+    "after-held-drag-390-dark.png": "49ca64dc6c2c8bad92c13183a959cefa8f170ee2dff24c0235b07281df5373ac",
+    "after-breakpoint-700-dark.png": "29e39692a0708cf0fa352c99b4f36fb4ed6ba175025ec8547e9ba0fbb8315d36",
+    "after-breakpoint-narrow800-dark.png": "d05861523d08558f8f69ddb77f96a18d2ab3bab0136a7493b58b56f0340a1b87",
+    "after-reduced-motion-390-dark.png": "113261769f7648aee280e515e3902c7bcfdbb5355abc2263ed1bcf96faa7f521"
+  },
+  "failures": [
+    "positive/1280/dark: band bottom 71.10904693603516 != 72",
+    "positive/1280/dark: clearances not balanced (7 vs 7.890953063964844)",
+    "positive/1280/light: band bottom 71.39718627929688 != 72",
+    "positive/1280/light: clearances not balanced (7 vs 7.602813720703125)",
+    "positive/390/dark: band bottom 62.92108154296875 != 65",
+    "positive/390/dark: clearances not balanced (5 vs 7.07891845703125)",
+    "positive/390/light: band bottom 62.920860290527344 != 65",
+    "positive/390/light: clearances not balanced (5 vs 7.079139709472656)",
+    "positive/320/dark: band bottom 62.633392333984375 != 65",
+    "positive/320/dark: clearances not balanced (5 vs 7.366607666015625)",
+    "positive/320/light: band bottom 63.60124969482422 != 65",
+    "positive/320/light: clearances not balanced (5 vs 6.398750305175781)",
+    "negative/1280/dark: band bottom 70.6778793334961 != 72",
+    "negative/1280/dark: clearances not balanced (7 vs 8.322120666503906)",
+    "negative/1280/light: band bottom 68.72067260742188 != 72",
+    "negative/1280/light: clearances not balanced (7 vs 10.279327392578125)",
+    "negative/390/dark: band bottom 63.92601776123047 != 65",
+    "negative/390/dark: clearances not balanced (5 vs 6.073982238769531)",
+    "negative/390/light: band bottom 63.177513122558594 != 65",
+    "negative/390/light: clearances not balanced (5 vs 6.822486877441406)",
+    "negative/320/dark: band bottom 63.177146911621094 != 65",
+    "negative/320/dark: clearances not balanced (5 vs 6.822853088378906)",
+    "negative/320/light: band bottom 62.632911682128906 != 65",
+    "negative/320/light: clearances not balanced (5 vs 7.367088317871094)",
+    "gap/1280/dark: band bottom 68.72198486328125 != 72",
+    "gap/1280/dark: clearances not balanced (7 vs 10.27801513671875)",
+    "gap/390/dark: band bottom 62.92210388183594 != 65",
+    "gap/390/dark: clearances not balanced (5 vs 7.0778961181640625)",
+    "gap/390/light: band bottom 62.921539306640625 != 65",
+    "gap/390/light: clearances not balanced (5 vs 7.078460693359375)",
+    "gap/320/dark: band bottom 62.63420104980469 != 65",
+    "gap/320/dark: clearances not balanced (5 vs 7.3657989501953125)",
+    "gap/320/light: band bottom 62.63450622558594 != 65",
+    "gap/320/light: clearances not balanced (5 vs 7.3654937744140625)",
+    "pan/1280/light: band bottom 69.10139465332031 != 72",
+    "pan/1280/light: clearances not balanced (7 vs 9.898605346679688)",
+    "pan/390/dark: band bottom 64.5687026977539 != 65",
+    "pan/390/dark: clearances not balanced (5 vs 5.431297302246094)",
+    "pan/390/light: band bottom 62.31532287597656 != 65",
+    "pan/390/light: clearances not balanced (5 vs 7.6846771240234375)",
+    "pan/320/dark: band bottom 63.60009765625 != 65",
+    "pan/320/dark: clearances not balanced (5 vs 6.39990234375)",
+    "pan/320/light: band bottom 63.60090637207031 != 65",
+    "pan/320/light: clearances not balanced (5 vs 6.3990936279296875)",
+    "selected-max/positive/1280/dark: orb centre 36.86031150817871 not on the band max edge",
+    "selected-max/positive/1280/dark: orb size 19.400146484375x19.400165557861328",
+    "selected-max/positive/1280/light: orb size 19.71978759765625x19.71978759765625",
+    "selected-max/positive/390/dark: orb centre 35.34372329711914 not on the band max edge",
+    "selected-max/positive/390/dark: orb size 19.635391235351562x19.63540267944336",
+    "selected-min/negative/1280/dark: orb centre 70.16107559204102 not on the band min edge",
+    "selected-min/negative/1280/dark: orb size 19.8116455078125x19.8116455078125",
+    "selected-min/negative/1280/light: orb centre 66.24822807312012 not on the band min edge",
+    "selected-min/negative/1280/light: orb size 19.400070190429688x19.400070190429688",
+    "selected-min/negative/390/dark: orb centre 60.30293655395508 not on the band min edge",
+    "selected-min/negative/390/dark: orb size 19.46727752685547x19.46728515625",
+    "divergence/viewport700: H=114 top=38 bot=60.31489562988281",
+    "divergence/viewport700: clearances not balanced",
+    "divergence/viewport800-narrow: H=123 top=36 bot=71.75597381591797",
+    "divergence/viewport800-narrow: clearances not balanced",
+    "transition/to-1280: H=123 top=38 bot=70.67698669433594 index=3",
+    "transition/to-700: H=114 top=38 bot=62.87113952636719 index=3",
+    "transition/to-664: H=114 top=36 bot=64.99463653564453 index=3",
+    "behaviour: remount continuity {\"before\":{\"H\":120.10205841064453,\"top\":38,\"bot\":69.10205841064453,\"index\":5},\"after\":{\"H\":123,\"top\":38,\"bot\":72,\"index\":5}}"
+  ]
+}
