@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['owner-approved streaming bills on the incumbent held-elsewhere Wise path', 'test-owner-streaming-bills.js'],
   ['selector locale formatter equivalence', 'test-selector-formatters.js'],
   ['private pay-period retention, immutable revisions and privacy boundaries', 'test-private-period-history.js'],
   ['one chronological savings publication and independent allocation oracle', 'test-chronological-savings-publication.js'],
