@@ -210,6 +210,8 @@ function commitmentKey(row) {
   if (OWNER_DATED_COMMITMENT_IDS.has(copy.id)) {
     delete copy.date;
     delete copy.note;
+    // Provincials' owner-approved funding-ready description changed with its date.
+    if (copy.id === 'provincials') delete copy.when;
   }
   if (OWNER_2026_09_23_AMOUNT.has(copy.id)) {
     delete copy.amount;
@@ -233,6 +235,7 @@ const OWNER_DATED_COMMITMENT_IDS = new Set([
   'burrards-team-fees',
   'seattle-nov',
   'seattle-dec',
+  'provincials',
   'christmas-2026',
   'indio-tournament',
 ]);
