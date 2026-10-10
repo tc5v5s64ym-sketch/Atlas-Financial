@@ -21,7 +21,8 @@ const op = (type, n) => type + '-' + n.toString(16).padStart(24, '0');
 function household() {
   const f = require('./fixtures/household-path-data').fixture('resolved');
   for (const tx of f.payload.transactions) Object.assign(tx, { plaid_account_id: tx.account_id, manual_account_id: null,
-    amount: String(tx.amount), original_name: tx.payee, notes: 'Existing note', tag_ids: [22], status: 'reviewed' });
+    amount: String(tx.amount), original_name: tx.payee, notes: 'Existing note', tag_ids: [22], status: 'reviewed',
+    plaid_metadata: null, custom_metadata: null });
   for (const cat of f.payload.categories) Object.assign(cat, { is_income: cat.is_income === true,
     exclude_from_budget: cat.exclude_from_budget === true, exclude_from_totals: cat.exclude_from_totals === true });
   f.payload.tags = [{ id: 22, name: 'Receipt' }, { id: 33, name: 'Checked' }, { id: 44, name: 'Amanda' }];
@@ -30,6 +31,7 @@ function household() {
 }
 const instruction = { schema: 'atlas-lunchmoney-cleanup-instruction/v1', name: 'Researched cafe cleanup',
   changes: { payee: 'Synthetic Cafe', notesAppend: 'Receipt checked.', tagNamesAdd: ['Checked'] } };
+const nameOnly = { ...instruction, name: 'Researched name only', changes: { payee: 'Synthetic Cafe' } };
 async function fixture(real = false, recipe = instruction) {
   const inputs = household(), tx = inputs.payload.transactions.find(t => t.id === 91004);
   const clock = Date.parse(inputs.payload.fetchedAt), token = 'synthetic-routine-token';
@@ -94,7 +96,8 @@ async function fixture(real = false, recipe = instruction) {
         actorRef: op('actor', 1), attemptRef: r.reservation.attemptRef, durable: true, recordFingerprint: S.digest(r) }; },
       acknowledgeVerified: async () => ({ acknowledged: true }), audit: async () => [] };
   }
-  const state = { inputs, tx, context, grant, auth, adapter, writes: [], root, dir, publicKey, afterWrite: null, beforeEffects: null };
+  const state = { inputs, tx, context, grant, auth, adapter, writes: [], root, dir, publicKey,
+    files: [], afterWrite: null, beforeEffects: null };
   adapter.cleanupEffects = async input => { if (state.beforeEffects) await state.beforeEffects();
     return E.evaluate({ inputs, ...input, parserRevision: context.parserRevision }); };
   state.service = LM.createService({ env: {}, now: () => clock, resolveToken: async () => token,
@@ -113,7 +116,9 @@ async function fixture(real = false, recipe = instruction) {
       else if (endpoint === '/plaid_accounts') data = { plaid_accounts: [{ id: 1001, name: 'Synthetic Bills' }, { id: 1002, name: 'Synthetic Weekly' }] };
       else if (endpoint === '/manual_accounts') data = { manual_accounts: [] };
       else if (endpoint === '/transactions') data = { transactions: [tx], has_more: false };
-      else data = tx;
+      // Bulk include_metadata reads omit files by default. The by-ID endpoint
+      // includes them and need not serialize shared fields in the same order.
+      else data = Object.fromEntries(Object.entries({ ...tx, files: state.files }).reverse());
       return { ok: true, json: async () => clone(data) };
     } });
   state.review = () => ({ schema: C.POLICY, status: 'resolved', sources: [{ system: 'user-provided',
@@ -146,6 +151,29 @@ async function main() {
   const call = { method: 'tools/call', params: { name: 'submit_lunchmoney_cleanup_evidence' } };
   assert.equal(require('../scripts/assistant-oauth').classifyToolCalls(call, true), 'standing');
   assert.equal(require('../scripts/assistant-oauth').classifyToolCalls(call, false), 'other');
+  const wire = household(), bulk = wire.payload.transactions.find(t => t.id === 91004);
+  const byId = Object.fromEntries(Object.entries({ ...clone(bulk), files: [] }).reverse());
+  assert.equal(E.evaluate({ inputs: wire, tx: byId, body: { payee: 'Synthetic Cafe' }, parserRevision: 'synthetic' }).metadataNeutral, true,
+    'documented by-ID expansion and JSON field order do not change the observed transaction');
+  for (const changed of [{ amount: '31' }, { notes: 'External note' }, { original_name: 'Other bank description' },
+    { category_id: 13 }, { tag_ids: [] }, { status: 'unreviewed' }, { plaid_metadata: { changed: true } },
+    { custom_metadata: { changed: true } }, { unexpected_provider_field: true }]) {
+    assert.throws(() => E.evaluate({ inputs: wire, tx: { ...byId, ...changed }, body: {}, parserRevision: 'synthetic' }),
+      /cleanup-financial-proof-unavailable/, 'only omitted attachment expansion is compatible; other field differences remain stale');
+  }
+  bulk.files = [];
+  assert.throws(() => E.evaluate({ inputs: wire, tx: { ...byId, files: [{ name: 'Changed attachment' }] }, body: {}, parserRevision: 'synthetic' }),
+    /cleanup-financial-proof-unavailable/, 'attachments are compared when both responses supply them');
+  for (const recipe of [nameOnly, { ...instruction, name: 'Note only', changes: { notesAppend: 'Receipt checked.' } }]) {
+    const named = await fixture(false, recipe), preview = await named.prepare();
+    assert.equal(preview.status, 'preview', JSON.stringify(preview));
+    const applied = await named.service.invoke('applyStanding', { previewId: preview.previewId }, named.auth);
+    assert.equal(applied.status, 'applied', JSON.stringify(applied));
+    for (const position of ['before', 'proposed', 'after']) {
+      assert.deepEqual(applied.auditReceipt[position].tags.map(t => t.name), ['Receipt'],
+        'history snapshots known existing tag names without a prior includeTags catalog or a tag addition');
+    }
+  }
   const f = await fixture(); independentFigures(f.inputs);
   const before = clone(f.tx), p = await f.prepare(); assert.equal(p.status, 'preview', JSON.stringify(p));
   assert.equal(p.automaticEdits, true); assert.equal(f.writes.length, 0);
@@ -192,6 +220,20 @@ async function main() {
   const changed = await fixture(), stale = await changed.prepare(); changed.tx.notes += '\nExternal note';
   assert.equal((await changed.service.invoke('applyStanding', { previewId: stale.previewId }, changed.auth)).status, 'unavailable');
   assert.equal(changed.writes.length, 0); assert.equal(changed.tx.notes, 'Existing note\nExternal note');
+  const attachment = await fixture(), attachedPreview = await attachment.prepare();
+  attachment.files.push({ name: 'Added attachment' });
+  assert.equal((await attachment.service.invoke('applyStanding', { previewId: attachedPreview.previewId }, attachment.auth)).status, 'unavailable');
+  assert.equal(attachment.writes.length, 0, 'the full by-ID fingerprint still rejects changed attachments before dispatch');
+  const changedFiles = await fixture(), filesPreview = await changedFiles.prepare();
+  changedFiles.afterWrite = () => changedFiles.files.push({ name: 'Unexpected attachment' });
+  assert.equal((await changedFiles.service.invoke('applyStanding', { previewId: filesPreview.previewId }, changedFiles.auth)).status, 'write-unverified');
+  assert.equal(changedFiles.writes.length, 1, 'an unexpected attachment readback is not silently accepted or retried');
+  const lostTags = await fixture(false, nameOnly), lostTagsPreview = await lostTags.prepare();
+  lostTags.afterWrite = () => { lostTags.inputs.payload.tags = []; };
+  const lostTagsResult = await lostTags.service.invoke('applyStanding', { previewId: lostTagsPreview.previewId }, lostTags.auth);
+  assert.equal(lostTagsResult.status, 'write-unverified', 'missing fresh tag labels cannot fall back to a hydrated cache as success');
+  assert.deepEqual(lostTagsResult.auditReceipt.before.tags.map(t => t.name), ['Receipt']);
+  assert.equal(lostTagsResult.auditReceipt.after, null, 'unavailable after evidence remains unknown');
   const badReadback = await fixture(), badPreview = await badReadback.prepare();
   badReadback.afterWrite = row => { row.amount = '31'; };
   const unverified = await badReadback.service.invoke('applyStanding', { previewId: badPreview.previewId }, badReadback.auth);
@@ -230,7 +272,10 @@ async function main() {
     rationale: 'Every receipt item is a gift.', issues: [] } });
   const cp = await category.prepare(); assert.equal(cp.status, 'preview', JSON.stringify(cp));
   assert.equal(cp.financialEffects.categoryEffect, 'authorized-category-reclassification');
-  assert.equal((await category.service.invoke('applyStanding', { previewId: cp.previewId }, category.auth)).status, 'applied');
+  const categoryResult = await category.service.invoke('applyStanding', { previewId: cp.previewId }, category.auth);
+  assert.equal(categoryResult.status, 'applied');
+  assert.deepEqual(categoryResult.auditReceipt.before.tags.map(t => t.name), ['Receipt']);
+  assert.deepEqual(categoryResult.auditReceipt.after.tags.map(t => t.name), ['Receipt']);
   assert.equal(category.tx.category_id, 13); assert.equal(category.tx.amount, '30');
   for (const name of ['Transfer', 'Payment']) {
     const danger = household(); danger.payload.categories.push({ id: 16, name, is_income: false,
@@ -283,25 +328,32 @@ async function main() {
     assert.equal(applied.structuredContent.status, 'applied', JSON.stringify(applied));
   } finally { await client.close(); await server.close(); }
   if (process.platform !== 'win32') {
-    const actual = await fixture(true);
-    try {
-      const p = await actual.prepare(); assert.equal(p.status, 'preview', JSON.stringify(p));
-      actual.beforeEffects = async () => { actual.inputs.payload.fetchedAt = new Date(Date.parse(actual.inputs.payload.fetchedAt) + 1000).toISOString(); };
-      const applied = await actual.service.invoke('applyStanding', { previewId: p.previewId }, actual.auth);
-      assert.equal(applied.status, 'applied', JSON.stringify(applied));
-      const restarted = S.createAuthority({ root: actual.root, publicKey: actual.publicKey, resource: actual.auth.resource,
-        now: () => Date.parse(actual.inputs.payload.fetchedAt) });
-      const audit = await restarted.audit({ grantRef: actual.grant.grantRef, auth: actual.auth });
-      assert.equal(audit.length, 1); const row = audit[0].historyRow;
-      assert.equal(row.outcome, 'applied'); assert.equal(row.before.notes, 'Existing note');
-      assert.equal(row.after.notes, 'Existing note\nReceipt checked.'); assert.equal(row.after.originalBankDescription, actual.tx.original_name);
-      assert.equal(row.actor.clientId, actual.auth.clientId); assert.equal(row.sheetStatus, 'export-ready-not-synced');
-      assert.equal(row.financialEffects.metadataNeutral, true); assert.equal(row.rowKey, audit[0].reservation.attemptRef);
-      assert.deepEqual(row.financialEffects, applied.auditReceipt.financialEffects, 'final proof survives restart');
-      assert.notEqual(row.financialEffects.comparisons[0].before, p.financialEffects.comparisons[0].before,
-        'history retains the last live proof, not the earlier preview observation');
-      await assert.rejects(restarted.audit({ grantRef: actual.grant.grantRef, auth: { ...actual.auth, principal: 'other' } }));
-    } finally { fs.rmSync(actual.dir, { recursive: true, force: true }); }
+    for (const recipe of [instruction, nameOnly]) {
+      const actual = await fixture(true, recipe);
+      try {
+        const p = await actual.prepare(); assert.equal(p.status, 'preview', JSON.stringify(p));
+        actual.beforeEffects = async () => { actual.inputs.payload.fetchedAt = new Date(Date.parse(actual.inputs.payload.fetchedAt) + 1000).toISOString(); };
+        const applied = await actual.service.invoke('applyStanding', { previewId: p.previewId }, actual.auth);
+        assert.equal(applied.status, 'applied', JSON.stringify(applied));
+        const restarted = S.createAuthority({ root: actual.root, publicKey: actual.publicKey, resource: actual.auth.resource,
+          now: () => Date.parse(actual.inputs.payload.fetchedAt) });
+        const audit = await restarted.audit({ grantRef: actual.grant.grantRef, auth: actual.auth });
+        assert.equal(audit.length, 1); const row = audit[0].historyRow;
+        assert.equal(row.outcome, 'applied'); assert.equal(row.before.notes, 'Existing note');
+        assert.equal(row.after.notes, recipe.changes.notesAppend ? 'Existing note\nReceipt checked.' : 'Existing note');
+        assert.equal(row.after.originalBankDescription, actual.tx.original_name);
+        assert.deepEqual(row.before.tags.map(t => t.name), ['Receipt']);
+        assert.deepEqual(row.proposed.tags.map(t => t.name), recipe.changes.tagNamesAdd ? ['Receipt', 'Checked'] : ['Receipt']);
+        assert.deepEqual(row.after.tags.map(t => t.name).sort(), recipe.changes.tagNamesAdd ? ['Checked', 'Receipt'] : ['Receipt'],
+          'fresh names persist through a private authority restart without the service reference cache');
+        assert.equal(row.actor.clientId, actual.auth.clientId); assert.equal(row.sheetStatus, 'export-ready-not-synced');
+        assert.equal(row.financialEffects.metadataNeutral, true); assert.equal(row.rowKey, audit[0].reservation.attemptRef);
+        assert.deepEqual(row.financialEffects, applied.auditReceipt.financialEffects, 'final proof survives restart');
+        assert.notEqual(row.financialEffects.comparisons[0].before, p.financialEffects.comparisons[0].before,
+          'history retains the last live proof, not the earlier preview observation');
+        await assert.rejects(restarted.audit({ grantRef: actual.grant.grantRef, auth: { ...actual.auth, principal: 'other' } }));
+      } finally { fs.rmSync(actual.dir, { recursive: true, force: true }); }
+    }
   } else console.log('Actual durable routine authority proof requires POSIX; exercised by Linux CI.');
   console.log('Routine cleanup: real observer/overlay/Forecast, independent arithmetic, MCP standing apply without confirmation, preservation and sheet-ready history PASS');
 }

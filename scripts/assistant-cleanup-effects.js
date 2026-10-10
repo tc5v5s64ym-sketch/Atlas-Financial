@@ -91,7 +91,15 @@ function evaluate({ inputs, tx, body, parserRevision, metadataContext }) {
     && payload?.transactionWindow?.complete === true && payload?.pendingCoverage?.complete === true
     && payload.transactionWindow.startDate <= tx.date && payload.transactionWindow.endDate >= tx.date);
   const rows = payload.transactions.filter(row => row.id === tx.id);
-  check(rows.length === 1 && Store.digest(rows[0]) === Store.digest(tx));
+  check(rows.length === 1);
+  // GET /transactions/{id} always expands files; the observer's bulk read
+  // requests metadata but not files. Compare every shared field canonically,
+  // including provider metadata. If bulk supplies files, compare those too.
+  // The executor still fingerprints the FULL by-ID row before dispatch and
+  // verifies every untargeted by-ID field, including files, after the write.
+  const observedTarget = { ...tx };
+  if (!Object.hasOwn(rows[0], 'files')) delete observedTarget.files;
+  check(hash(rows[0]) === hash(observedTarget));
   exactCents(tx.amount); // The real financial path cannot establish fractional/unsafe cents.
   // Missing parser inputs are unknown, not empty notes/tags or uncategorized.
   check(Object.hasOwn(tx, 'notes') && (tx.notes === null || typeof tx.notes === 'string')

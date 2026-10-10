@@ -110,6 +110,13 @@ The selected transaction must also have explicit known notes, category and
 tag IDs, with unique current category/tag semantics. Omitted fields or missing
 catalog labels are unknown; they cannot be treated as empty or neutral.
 
+The bulk observation and by-ID response are compared with canonical field
+ordering. Only the by-ID attachment expansion may be omitted when the bulk
+response did not request files; all shared financial and provider metadata
+fields remain exact. When both responses include files, those must match too.
+The executor's full by-ID target fingerprint and untargeted-field readback
+continue to protect attachments and every other field before and after PUT.
+
 The signed context pins the data/map/identity/periods digest and a hash of all
 deployed public/scripts JavaScript. Changed policy, map, actuals basis or parser
 requires a new approved context. The comparison removes only source/display
@@ -156,6 +163,11 @@ existing operation audit, not a new transaction ledger.
 Sheet rows include complete name/category/notes/tags/original-description
 before and after, unchanged amount/date/account evidence, source provenance,
 the signed instruction, financial-effect digests, timestamps and outcome.
+Every routine attempt snapshots fresh catalog names for existing tags before
+reservation and at readback, including name/category/note-only instructions.
+These names persist in private history without an earlier optional tag-catalog
+call or the service's temporary reference cache. Missing fresh tag labels refuse
+success rather than reusing stale cached names.
 Missing after on an uncertain request stays unknown. finish must durably record
 the outcome before acknowledgeVerified can release quarantine. Audit failure
 cannot turn a possibly sent edit into a success.

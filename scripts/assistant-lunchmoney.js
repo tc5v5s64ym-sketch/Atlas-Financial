@@ -239,7 +239,7 @@ function createService(options = {}) {
     refs.get(key).principal = principal;
     return key;
   }
-  function project(tx, principal, categories, accounts) {
+  function project(tx, principal, categories, accounts, tags) {
     if (!tx || !date.safeParse(tx.date).success || typeof tx.currency !== 'string' || !/^[a-z]{3}$/.test(tx.currency) || typeof tx.amount !== 'string') throw new Error('malformed-transaction');
     if (!providerMoney.safeParse(tx.amount).success) throw new Error('invalid-provider-amount');
     const account = accountKey(tx);
@@ -249,8 +249,10 @@ function createService(options = {}) {
       originalBankDescription: safeText(tx.original_name),
       originalBankDescriptionStatus: typeof tx.original_name === 'string' ? 'provider-reported' : 'unavailable',
       tags: Array.isArray(tx.tag_ids) ? tx.tag_ids.map(id => {
-        const tagRef = alias('tag', id, principal);
-        return { tagRef, name: refs.get(tagRef).label || null };
+        const tag = tags?.find(row => row.providerId === id);
+        if (tags && !tag) throw new Error('tag-evidence-unavailable');
+        const tagRef = alias('tag', id, principal, tag ? { label: tag.name } : {});
+        return { tagRef, name: tag ? tag.name : refs.get(tagRef).label || null };
       }) : null,
       categoryRef: tx.category_id == null ? null : alias('cat', tx.category_id, principal),
       category: categories.find(c => c.id === tx.category_id)?.name || null,
@@ -665,6 +667,10 @@ function createService(options = {}) {
           });
           if (JSON.stringify(stableAuthorization(boundary)) !== JSON.stringify(stableAuthorization(preview.authorization))) throw new Error('standing-grant-changed');
           const cat = await catalogData(auth.principal, false, executionGate);
+          // Durable routine history carries fresh names for ALL existing tags,
+          // even when the instruction adds none. Never depend on alias-cache
+          // hydration by an earlier optional catalog call.
+          if (candidate) cat.tags = await tagsData(auth.principal, executionGate);
           auditCatalog = cat;
           const expected = { ...current, ...preview.body };
           if (preview.body.additional_tag_ids) { delete expected.additional_tag_ids;
@@ -677,8 +683,8 @@ function createService(options = {}) {
             ...(candidate ? { metadataContext: candidate.metadataContext, financialEffects: publicEffects(boundary.financialEffects) } : {}),
             beforeFingerprint: preview.fingerprint, proposedFingerprint: fingerprint(preview.body),
             expiresAt: preview.expires, requestedAt: now(),
-            before: project(current, auth.principal, cat.categories, cat.accounts),
-            proposed: { ...project(expected, auth.principal, cat.categories, cat.accounts),
+            before: project(current, auth.principal, cat.categories, cat.accounts, cat.tags),
+            proposed: { ...project(expected, auth.principal, cat.categories, cat.accounts, cat.tags),
               ...(preview.body.category_id === undefined ? {} : { categoryRef: alias('cat', preview.body.category_id, auth.principal) }) } };
           // Atomic durable reserve rechecks live revocation, expiry, revision,
           // budget and attempt limits; a pending/unverified attempt suspends the
@@ -732,7 +738,8 @@ function createService(options = {}) {
         ? '/transactions/split/' + preview.targetId : '/transactions/' + preview.targetId + '?update_balance=false', preview.body, beforeSend);
       providerRequestReturned = true;
       const after = await request('GET', '/transactions/' + preview.targetId, undefined, executionGate);
-      if (standingMode) afterRead = project(after, auth.principal, auditCatalog.categories, auditCatalog.accounts);
+      const afterTags = standingMode && preview.cleanupInstruction ? await tagsData(auth.principal, executionGate) : undefined;
+      if (standingMode) afterRead = project(after, auth.principal, auditCatalog.categories, auditCatalog.accounts, afterTags);
       let verified = after.id === preview.targetId;
       if (preview.splits) {
         const expected = preview.body.child_transactions.map(c => [cents(c.amount), c.category_id, c.notes ?? current.notes ?? '', current.date, current.currency]);
@@ -771,9 +778,9 @@ function createService(options = {}) {
       }
       if (!verified) return await audit({ status: 'write-unverified', reason: 'readback-did-not-match-do-not-retry', providerWriteMayHaveOccurred: true });
       const cat = await catalogData(auth.principal, false, executionGate);
-      afterRead = project(after, auth.principal, cat.categories, cat.accounts);
+      afterRead = project(after, auth.principal, cat.categories, cat.accounts, afterTags);
       return await audit({ status: 'applied', verifiedByReadback: true, writesAtlasState: false,
-        transaction: project(after, auth.principal, cat.categories, cat.accounts),
+        transaction: project(after, auth.principal, cat.categories, cat.accounts, afterTags),
         ...(preview.splits ? { children: after.children.map(c => project(c, auth.principal, cat.categories, cat.accounts)) } : {}),
         instruction: standingMode
           ? 'Readback verified the bounded correction. Report before/after, evidence and audit receipt to the owner. Re-query for refreshed state.'
