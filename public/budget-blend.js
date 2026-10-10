@@ -524,6 +524,8 @@
     slot.setAttribute('data-blend-term', name);
     slot.textContent = display.text;
     slot.classList.toggle('is-unavailable', !!display.unavailable);
+    slot.classList.toggle('is-estimated', !!display.chip);
+    if (display.chip) slot.title = 'Estimated — see Period figures for the source and qualification';
     parent.appendChild(slot);
     if (display.chip) {
       const pill = document.createElement('span');
@@ -1500,7 +1502,8 @@
     if (h2 && !heading.querySelector('.blend-tile-title')) {
       const title = document.createElement('span');
       title.className = 'blend-tile-title';
-      title.textContent = 'Cards this pay period';
+      title.textContent = bento.querySelector('[data-budget-card-toggle="heloc"]')
+        ? 'Cards & HELOC this pay period' : 'Cards this pay period';
       h2.classList.add('blend-clip');
       h2.after(title);
     }

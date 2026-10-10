@@ -214,4 +214,33 @@ const adviceBefore = F.recommend(x.plan, x.asOf, { debts: x.debts, currentPeriod
 publish(x);
 eq(F.cardMinimumState(x.plan, x.asOf), minimumBefore, 'ambiguous provider credit does not settle household minimum');
 eq(F.recommend(x.plan, x.asOf, { debts: x.debts, currentPeriodActuals: x.packet }), adviceBefore, 'all incumbent cash/spending/obligation/funding publications unchanged');
+// Owner requested the existing secured revolving facility in the same list.
+// Independent invented ledger and institution-style endpoints, in cents:
+// 50000 - 60000 + 12535 = 2535; 4202535 - 4200000 = 2535.
+const helocInput = require('./fixtures/card-period-movements-data').helocFixture();
+const helocBefore = JSON.stringify(helocInput), helocPub = publish(helocInput);
+const heloc = helocPub.cards.find(row => row.id === 'heloc');
+eq(50000 - 60000 + 12535, 2535, 'independent HELOC posted ledger');
+eq(4202535 - 4200000, 2535, 'independent HELOC endpoint difference');
+eq(helocPub.cards.map(row => row.id), ['travelvisa', 'cashback', 'tdcc', 'triangle', 'mbna', 'heloc'], 'native HELOC appended once');
+eq(heloc.netChange.amount, 25.35, 'HELOC does not include the pending 900 or current stock');
+eq(heloc.posted.map(tx => tx.id), ['heloc-advance', 'heloc-payment', 'heloc-interest'], 'posted native facility identities');
+eq(heloc.posted.map(tx => tx.kind), ['movement-unconfirmed', 'payment', 'interest'], 'advance is not guessed to be household spending');
+eq(heloc.pending.length, 1, 'HELOC pending is separate');
+eq(heloc.manualStatement, false, 'HELOC does not adopt manual card freshness');
+eq(JSON.stringify(helocInput), helocBefore, 'HELOC publication does not write inputs');
+for (const [name, change, reason] of [
+  ['missing opening', y => { delete y.balanceEvidence.cards.find(row => row.id === 'heloc').opening; }, 'opening-unavailable'],
+  ['incomplete ledger', y => { y.packet.transactionCoverage = 'truncated'; }, 'posted-coverage-incomplete'],
+  ['endpoint discrepancy', y => { y.balanceEvidence.cards.find(row => row.id === 'heloc').closing.amount = 42026; }, 'balance-ledger-discrepancy'],
+  ['future', y => { y.window = { start: '2026-08-28', end: '2026-09-10' }; }, 'future-not-observed'],
+  ['conflicting identity', y => { y.packet.transactions.find(tx => tx.id === 'heloc-advance').account = 'travelvisa'; }, 'unmapped-card-identity'],
+]) {
+  const y = copy(helocInput); change(y); const row = publish(y).cards.find(row => row.id === 'heloc');
+  eq(row.netChange.amount, null, 'HELOC ' + name + ' stays unavailable');
+  eq(row.reasons.includes(reason), true, 'HELOC ' + name + ' retains reason');
+}
+const helocHtml = View.html(helocPub, { money: value => '$' + value.toFixed(2), date: value => value });
+eq(helocHtml.includes('data-budget-card-toggle="heloc"'), true, 'native renderer supplies the HELOC trigger');
+eq(helocHtml.includes('data-budget-card-panel="heloc"'), true, 'native renderer supplies the HELOC panel');
 console.log(`PASS card period movements: ${checks} independent assertions`);

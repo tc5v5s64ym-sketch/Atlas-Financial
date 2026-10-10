@@ -6649,6 +6649,7 @@ function budgetSpendingSectionHtml(period, ctx) {
     && funding.currentThrough === period.end && budgetBrowseKnown(funding.remainingHousehold);
   const historical = budgetBrowseHistorical(period);
   const progress = budgetProgressFor(period, ctx.asOf)?.household;
+  const spendingUnavailable = !budgetProgressAmountKnown(progress?.actual) ? progress?.actual?.reason : null;
   const historicalPlanUnknown = historical && !budgetProgressAmountKnown(progress?.planned);
   const historyEvidence = historical ? budgetHistoricalSpendingEvidence(period) : (period.projected ? 'projected' : 'current');
   const observedHold = !historical || historyEvidence === 'observed';
@@ -6678,6 +6679,7 @@ function budgetSpendingSectionHtml(period, ctx) {
     ${householdBudgetCycleText(period) ? `<p class="budget-browse-cycle">${budgetBrowseEscape(householdBudgetCycleText(period))}</p>` : ''}
     <div class="budget-browse-stats"><div><strong data-budget-browse-hold>${budgetProgressValueHtml(progress, 'household')}</strong></div>
       ${period.timelineRole === 'current' ? `<div><span>Still planned</span><strong data-budget-browse-remaining>${budgetBrowseMoney(remainingKnown ? funding.remainingHousehold : null, remainingKnown ? funding.trust : null)}</strong><small>From today</small></div>` : ''}</div>
+    ${spendingUnavailable ? `<p class="budget-browse-note blend-house-unavailable" data-budget-spending-unavailable>${budgetBrowseEscape(spendingUnavailable)}</p>` : ''}
     <div class="budget-browse-counts">${count}</div><div class="budget-category-list">${cards || '<p class="budget-browse-note">Category data unavailable.</p>'}</div>
     <footer>${historical ? `<p>${observedHold ? 'Completed periods show observed spending, not a spending reserve.' : 'Missing or incomplete history is not treated as observed spending. Missing amounts are unavailable, not zero; open Info for the published evidence.'}</p>` : ''}<button type="button" data-budget-browse-evidence="06" aria-label="Household spending and reserve evidence">Info</button></footer>
   </section>`;

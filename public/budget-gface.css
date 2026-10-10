@@ -103,6 +103,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   min-width: 0;
   align-items: stretch;
 }
+.budget-bento.atlas-g .blend-col-main { container: budget-main / inline-size; }
 .budget-bento.atlas-g .blend-pay.blend-sr {
   position: absolute;
   left: 0;
@@ -224,6 +225,12 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   background: transparent;
   color: var(--g-ink-3);
   font-weight: 500;
+}
+.budget-bento.atlas-g .blend-house-unavailable {
+  margin: 18px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--blend-muted);
 }
 
 /* Income: ink total, deposit pulse, no green rail, no stray ring. */
@@ -1280,4 +1287,38 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
   :root:not([data-theme="light"]) .budget-bento.atlas-g .blend-hero .blend-aurora { opacity: 1; }
   :root:not([data-theme="light"]) .budget-bento.atlas-g .blend-p-dep.is-wait .blend-p-dot { background: #1b1c21; }
 
+}
+
+/* A narrow column needs the same compact equation as the phone, even when
+   the viewport still has two columns. Keep full native amounts in the tile. */
+@container budget-main (max-width: 560px) {
+  .budget-bento.atlas-g .budget-blend-hero-layout { grid-template-columns:18px minmax(0,1fr); }
+  .budget-bento.atlas-g .blend-hero [data-operating-question="02"] { grid-column:1 / -1; grid-row:2; }
+  .budget-bento.atlas-g .blend-hero .blend-minus.is-bills { grid-column:1; grid-row:3; }
+  .budget-bento.atlas-g .blend-hero [data-operating-question="04"] { grid-column:2; grid-row:3; }
+  .budget-bento.atlas-g .blend-hero .blend-minus.is-house { grid-column:1; grid-row:4; }
+  .budget-bento.atlas-g .blend-hero [data-operating-question="06"] { grid-column:2; grid-row:4; }
+  .budget-bento.atlas-g .blend-hero [data-operating-question="07"] { grid-column:1 / -1; grid-row:5; }
+  .budget-bento.atlas-g .blend-hero .blend-hero-foot { grid-column:1 / -1; grid-row:6; flex-wrap:wrap; }
+  .budget-bento.atlas-g .blend-hero .blend-minus { height:auto; margin:0; font-size:20px; align-self:center; }
+  .budget-surface .budget-bento.atlas-g .blend-hero :is([data-operating-question="02"],[data-operating-question="04"],[data-operating-question="06"]) .budget-step-summary {
+    flex-direction:row; justify-content:space-between; align-items:center; width:100%; gap:8px;
+  }
+  .budget-bento.atlas-g .blend-hero :is([data-operating-question="02"],[data-operating-question="04"],[data-operating-question="06"]) .budget-step-value {
+    flex:0 0 auto; width:auto; font-size:20px; justify-content:flex-end;
+  }
+  .budget-bento.atlas-g .blend-hero :is([data-operating-question="02"],[data-operating-question="04"],[data-operating-question="06"]) .operating-prompt { white-space:normal; }
+  .budget-bento.atlas-g .blend-hero [data-operating-question="07"] .budget-step-value:not(.is-fail-closed) { font-size:clamp(44px,12cqw,76px); }
+}
+
+/* Owner removed the repeated abbreviations. Keep each existing qualification
+   available to assistive technology and in the original native figure details. */
+.budget-bento.atlas-g .blend-hero [data-blend-term].is-estimated {
+  text-decoration: underline dotted color-mix(in srgb, var(--blend-ink) 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: .15em;
+}
+.budget-bento.atlas-g .blend-hero .blend-est {
+  position:absolute !important; width:1px !important; height:1px !important; padding:0 !important;
+  margin:0 !important; overflow:hidden; clip:rect(0,0,0,0); clip-path:inset(50%); white-space:nowrap; border:0;
 }

@@ -10,13 +10,14 @@ const { createHash } = require('node:crypto');
 const { chromium } = require('playwright');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
 const { proveRiverPort, riverHarnessHtml } = require('./browser-budget-river-port');
+const { provePanelRepairs } = require('./browser-budget-panel-repairs');
 
 const root = path.join(__dirname, '..');
 const outDir = path.join(root, 'docs/proof');
 fs.mkdirSync(outDir, { recursive: true });
 const listedSources = spawnSync('git', ['ls-files', '-z', '--', 'public', 'scripts/*.js', 'test/fixtures',
   'test/proof-source-binding.js', 'test/test-proof-source-binding.js', 'test/test.js',
-  'test/browser-budget-blend-proof.js', 'test/browser-budget-river-port.js', 'data.json', 'package.json', 'package-lock.json'],
+  'test/browser-budget-blend-proof.js', 'test/browser-budget-river-port.js', 'test/browser-budget-panel-repairs.js', 'data.json', 'package.json', 'package-lock.json'],
 { cwd: root, encoding: 'utf8' });
 assert.equal(listedSources.status, 0, 'Tracked proof source scope must be readable.');
 const sourceBinding = captureSourceBinding(root, listedSources.stdout.split('\0').filter(Boolean), process.env.PROOF_BASE_SHA || null);
@@ -233,6 +234,7 @@ const composite = (fg, bg) => {
       shots.push(file);
     };
     const riverPort = await proveRiverPort({ open, capture });
+    const panelRepairs = await provePanelRepairs({ open, capture });
 
     const readFunding = page => page.evaluate(() => {
       const block = document.querySelector('[data-bad-terms]');
@@ -368,8 +370,8 @@ const composite = (fg, bg) => {
                   hook: painted?.getAttribute('data-blend-term') || '',
                   font: style ? parseFloat(style.fontSize) : 0,
                   ink: style ? style.color : '',
-                  clipped: !pb || pb.top < hb.top - 1 || pb.bottom > hb.bottom + 1 || prompt.scrollHeight > prompt.clientHeight + 2,
-                  valueClipped: !vb || vb.top < hb.top - 1 || painted.scrollWidth > painted.clientWidth + 2,
+                  clipped: !pb || pb.left < hb.left - 1 || pb.right > hb.right + 1 || pb.top < hb.top - 1 || pb.bottom > hb.bottom + 1 || prompt.scrollHeight > prompt.clientHeight + 2,
+                  valueClipped: !vb || vb.left < hb.left - 1 || vb.right > hb.right + 1 || vb.top < hb.top - 1 || vb.bottom > hb.bottom + 1 || painted.scrollWidth > painted.clientWidth + 2,
                   wrap: style ? style.overflowWrap : '',
                   break: style ? style.wordBreak : '',
                   rects: painted ? painted.getClientRects().length : 0,
@@ -525,6 +527,7 @@ const composite = (fg, bg) => {
                 dateOneLine: !!(payDate && payDate.scrollWidth <= payDate.clientWidth + 1),
                 estOverlapsIncome: overlaps(box(incomeBig), box(incomeEst)),
                 oneLine,
+                compactEquation: getComputedStyle(hero).gridTemplateColumns.split(' ').length === 2,
                 incomeShown,
                 incomePrinted,
                 figureGap,
@@ -598,7 +601,7 @@ const composite = (fg, bg) => {
             errors.push(`${width}/${theme} equation ${JSON.stringify(term)}`);
           }
         });
-        if (width >= 1000 && !face.between) errors.push(`${width}/${theme} minus signs are not between the terms`);
+        if (!face.compactEquation && !face.between) errors.push(`${width}/${theme} minus signs are not between the terms`);
         if (face.pillOverlapsHouse) errors.push(`${width}/${theme} Bills account pill overlaps Household budget`);
         if (face.strayLine || !/^=\s*Balance After Deductions/.test(face.resultLine || '')) {
           errors.push(`${width}/${theme} result label ${JSON.stringify(face.resultLine)} stray ${face.strayLine}`);
@@ -676,7 +679,7 @@ const composite = (fg, bg) => {
         if ((face.terms || []).find(term => term.id === '06')?.label !== 'Household budget') {
           errors.push(`${width}/${theme} household label ${JSON.stringify(face.terms)}`);
         }
-        if (width >= 1000 && !face.oneLine) errors.push(`${width}/${theme} equation is not one line`);
+        if (!face.compactEquation && !face.oneLine) errors.push(`${width}/${theme} equation is not one line`);
         if (face.foot?.[0] !== 'savings' || !/blend-split/.test(String(face.foot?.[1] || ''))) {
           errors.push(`${width}/${theme} pill order ${JSON.stringify(face.foot)}`);
         }
@@ -2532,6 +2535,7 @@ print('390 crops', im.size)
       emptyContrastProbes: contrasts.filter(row => row.sampleType === 'no-visible-text').length,
       heroTerms,
       riverPort,
+      panelRepairs,
       focusWalk: focusWalks[0],
       externalRequests: external,
       errors,
