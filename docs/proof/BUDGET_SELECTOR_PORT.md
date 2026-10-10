@@ -12,7 +12,7 @@ No Ready transition, merge, deployment, provider write or separate Lunch Money w
 | index.html river subtree | budget-blend.js paintRiver | Original canvas/slide/values/months/playhead/pill/beam/orb; native ARIA and publications. |
 | river.js Spring, monotone, layout, drawing | public/budget-river.js | Original 190/27 spring, .008 integration steps, Hermite curve, original 52/44 spacing, 164/152 heights, 28/24 radii, 40 seeded particles, bead pulse, 20px orb, 90px lens and 1.6 second reveal. |
 | river.js bind/go/place/hover | budget-river.js | Original fit versus pan direction, .75/.25 velocity, 80ms freshness, .6 threshold, 140 projection, maximum four-position fling, keyboard and hover. Stable native capture survives tile remounts; cancellation drops queued selection. |
-| app.js queueSelect/select | budget-blend.js native adapter | One native publication per animation frame while held; commit cancels stale queued scrub. Reuses the same river element/controller after every native remount. |
+| app.js queueSelect/select | budget-blend.js native adapter | One native publication per animation frame while held; commit cancels stale queued scrub. Reuses the same river element/controller after every native remount; the original is-in class prevents the entrance replaying while held. |
 | app.js Today and T | native header and controller | Return to actual published current period when available. No generated dates or page navigation. |
 | blend.css river section and tile-in | budget-gface.css | Scoped original dimensions, compact labels, original dark colours/compositing/gradients/glow and entrance. Light palette follows the later owner instruction; reduced motion remains visible. |
 
@@ -50,7 +50,7 @@ Test inputs are fixed invented publications, separate from the household preview
 
 ## Independent browser evidence
 
-Source commit: `0ff11074b2ff636a10d05ad78581fec00d09c942`.
+Source commit: `f49e4fa79bf6c1509dedfa56275119eedb185532`.
 Integrated main: `6a9f37da6009408e90013c39070f4b6be0a8ca3c`.
 All actual source bytes equal Git blobs before and after the complete proof.
 The [receipt](budget-blend-browser-receipt.json) records source/served/screenshot
@@ -59,7 +59,7 @@ hashes and the riverPort test results. Full proof: 49 screenshots,
 
 - Native mouse drag begins on an amount label at 1440, 390 and 320 in light/dark.
   Native progress, hero period and visible range change before release. The same
-  held gesture publishes a second period through a second remount; one river remains.
+  held gesture publishes a second period through a second remount; one river remains fully opaque throughout both remounts.
 - Cancellation keeps the last actual native publication. Arrow navigation, Today,
   T, the three-state theme button and automatic OS colour changes are exercised.
 - Emulated touch at 390 in both themes updates native selection before release;

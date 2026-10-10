@@ -6,8 +6,8 @@
   "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "reducedMotion": false,
   "sourceBinding": {
-    "sourceCommit": "0ff11074b2ff636a10d05ad78581fec00d09c942",
-    "sourceTree": "4486fb4ea54bb436308c4f33d79910099c5eaf74",
+    "sourceCommit": "f49e4fa79bf6c1509dedfa56275119eedb185532",
+    "sourceTree": "d3f06de7b663bcbbec884ba3c9db8fc1922274f6",
     "baseCommit": "6a9f37da6009408e90013c39070f4b6be0a8ca3c",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -68,9 +68,9 @@
         "bytes": 69215
       },
       "public/budget-blend.js": {
-        "gitBlob": "28982d58eb8d9521cd7857a17220c7fd03921b82",
-        "sha256": "2d45c95ac6f84038d65869a3addeef981ecf7003816fe2a11a10005b76d88021",
-        "bytes": 105920
+        "gitBlob": "1ff8caadf600f948edf0de838063166cbcdee251",
+        "sha256": "58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7",
+        "bytes": 106130
       },
       "public/budget-card-movements.js": {
         "gitBlob": "7bd9e5dc8e40fc4e3fd30d6c8bf7ffb15bad3d82",
@@ -78,9 +78,9 @@
         "bytes": 8937
       },
       "public/budget-gface.css": {
-        "gitBlob": "b205fbdcc1b54a96ea162b9751e566ac12b20b71",
-        "sha256": "a0bafea44d4f18e0ab743da31f1cbab953a1152bb9e12cdc776cfceabc648d99",
-        "bytes": 53194
+        "gitBlob": "0b8e67df4b7be2196cc2e93257667294189a435d",
+        "sha256": "39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997",
+        "bytes": 53267
       },
       "public/budget-polish.css": {
         "gitBlob": "58305d757ab6eb1d7969413f9c7f5cfa7f66970f",
@@ -718,9 +718,9 @@
         "bytes": 165994
       },
       "test/browser-budget-river-port.js": {
-        "gitBlob": "2511ba56874b9060a445a9e566aa16ecfb6113e4",
-        "sha256": "88745847dfcd4012ab48f2ba1af8e6cc9fb697b13be3b0299b270923fabfcde6",
-        "bytes": 19728
+        "gitBlob": "c94410b98a8cd72e1eb42a5fb496413b7caa5507",
+        "sha256": "fd168a22352d674050f6ca88cf329422b2e5b4aba76e0be403e5cb4e05def99c",
+        "bytes": 20045
       },
       "test/fixtures/bills-header-payments-data.js": {
         "gitBlob": "caf104f6f427390a81d3bf02b86719f5199492f1",
@@ -952,7 +952,7 @@
     "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
     "public/budget-surface.css": "6883e2e496495b446def0342d4d4066a90f4ae7067b621b988ea694a489d6162",
     "public/budget-blend.css": "8f3cd39e7cc381f0dc095ac17cf312bd384ffed467417eeb8e7533f6bd55ad6c",
-    "public/budget-gface.css": "a0bafea44d4f18e0ab743da31f1cbab953a1152bb9e12cdc776cfceabc648d99",
+    "public/budget-gface.css": "39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997",
     "public/budget-sheet-motion.css": "4924d183ec9a07b874745859d972ec1a94ef4e2d783aec8ca4055749839043ea",
     "public/app.js": "ce5874b1aeba562ed55f432fc31946c38c52eec8526bbe5f30439255f4e2039a",
     "public/forecast-card-period.js": "8b0cfa3ea0dfdfa9f6750fad9309b63e1b386b315465baa9e8ef00619cd83179",
@@ -969,7 +969,7 @@
     "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
     "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
     "public/budget-river.js": "ab74152cbd40a5ebfdad05dcfc65a67d7fdac15a6d006e2990c1d249630be853",
-    "public/budget-blend.js": "2d45c95ac6f84038d65869a3addeef981ecf7003816fe2a11a10005b76d88021",
+    "public/budget-blend.js": "58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7",
     "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
   },
   "screenshots": [
@@ -1024,60 +1024,60 @@
     "budget-blend-320-light-household-all.png"
   ],
   "screenshotSha256": {
-    "budget-river-port-1440-light.png": "15690cbff8de0294084dfe9d2701efde82dcbd3bd8fd9d1a1a2b3e0b61df5026",
-    "budget-river-port-1440-dark.png": "1789bba793d4b9f8a98af8d7fce3566e9b32f215e055b229fdfb0c15a97f985b",
-    "budget-river-port-390-light.png": "eacf16a6102f8c2d697e0ebf9450492df3eaefc3a9f340c559f5615c4c93a93d",
-    "budget-river-port-390-dark.png": "9bbb513c053a1caf1233daa9d17d2bfdbf848cd6165e4aaf4a3c76c0bb1a358e",
-    "budget-river-port-320-light.png": "f4a8b55dd562c1263b34b0db11789c541886f0b467a670614f32f343837af0e1",
-    "budget-river-port-320-dark.png": "9c684c12d0893fda3394e741d704dcb972f7239f5578ada48568865694da8773",
-    "budget-river-pair-1440-light.png": "7ddcd23813b340100caafb8b487170a63c2bab4fab7ed8b74ae1653b8a6a5d54",
-    "budget-river-pair-1440-dark.png": "d70909bb111c68488a7b5e40e8f3bce21ac824f527aece740db69f7db0afbda7",
+    "budget-river-port-1440-light.png": "f3361a6a89fa5239f3c76cdbfa5357f4a626740118756c292dfa09f0b6be7a0b",
+    "budget-river-port-1440-dark.png": "a722d911a724ba8320aa58a12d31d06c5c161243bd47cf4a32d3fc1952c4b0ce",
+    "budget-river-port-390-light.png": "90a5dd4d236c0a11fd96f6d96d9752266b9b1ef2e1ff93b59dcb089ce98d6679",
+    "budget-river-port-390-dark.png": "a4c0ae2a6a33eb35cc74202dc5d4afda3995cb734a7b2db0f9c53d64f6ddc40c",
+    "budget-river-port-320-light.png": "d500f9e7e267477f6c161729adeca0ea4663406b4a854ee911599536cc1e7aaa",
+    "budget-river-port-320-dark.png": "af0c3bf4a05ed1f4fca0f66db407b8dbcdda4850de8c4d55177864432f22a8b4",
+    "budget-river-pair-1440-light.png": "43d4a74eb2a58c3fece1e07b7a662ab255910bf94d99fbefaaf903deea0d7371",
+    "budget-river-pair-1440-dark.png": "0adff6ce6ef5be847169adb01f5660a72898a791865beb19629982687a858a23",
     "budget-river-pair-390-light.png": "f3dc38e50a6302e579f1331640006818c75c6cc6b1d206ba1ebb831969862e9e",
     "budget-river-pair-390-dark.png": "29e2fbf292b4347dd375f546b89f0b1a37bc24f62a901652621e44932fe4046d",
     "budget-river-pair-320-light.png": "9d5939ce0404110b9f3c77a7ebec93613d524ba0301f161818f20904458fb812",
     "budget-river-pair-320-dark.png": "b6bcf5b8597718b06a8d10c2928ab80e7f859781a4cf711069fe1d21b5680b04",
-    "budget-blend-1440-light.png": "a30f707f447b99a50cf2e6dee6111ad9d13400da7d8cf99bd5f29275a1646446",
-    "budget-blend-1440-dark.png": "ae68041fc3929e9ec6613134ca240a04c25fef1a0f505dcd155ab95061011841",
-    "budget-blend-390-light.png": "cc8296b93b8e0af6947511250a1cb4663d8e91edd9f15bbf1fb0ea1dcb90c1fd",
-    "budget-blend-390-dark.png": "7654ea7a2bdb282c77edb589c92e7f87d2d84a4ac05e8567da2aa79fe3cb1eee",
-    "budget-blend-320-light.png": "8d0e1fcded71f541dde278e2760e891a345eed1bdbd7b1993dbc65495406adce",
-    "budget-blend-320-dark.png": "8eb748b310d6b9dffe9844c8a8c94b79cdb55d4d6b03eea4eeeb25c6bb92782b",
-    "budget-blend-1440-light-next.png": "f7c10b1b87a280a62842771d2069db6916cd7206e4b2a98e950d8183b9bec005",
-    "budget-blend-1440-light-aug28.png": "db664dc1b8a9ac3f959eb5b314fb3c9fd035de16a76be3424b33c383c8276e96",
-    "budget-blend-320-light-aug28.png": "f0f48b00b7dc7868dfbeb4b34f542c3c09da7a0e12e56a77477eda20d19d7f33",
-    "budget-blend-390-light-next.png": "06a9e0b6cb54063d7e2f9efe35c27add40bc0912d9563abc69fb72be84b8ad87",
-    "budget-blend-1440-light-past.png": "ad44bb594fe01a5bff6c2414c51ced1536ee4739b6067c3ad373654a35b9d4a7",
-    "budget-blend-390-light-past.png": "cfe3bd9be8eb49edaf2c18c2d5fdfe392432a2665edee9ad1a0e0e15b484b183",
-    "budget-blend-320-light-past.png": "9f28a71eff30bd94e65ea28c597c6ba4cf7ef293b60bd1a99d5eea93f8938782",
-    "budget-blend-1440-light-past-qualified.png": "3920a8e2bcce3f9f82252556eb445b0be308a97cbc3d379e3eb6914cdbb599cf",
-    "budget-blend-390-light-past-qualified.png": "7ca42ee19bd7cc9e61806acec9c194c792a4ab2f5a403b7c9769f7fe36cc0c4b",
-    "budget-blend-320-light-past-qualified.png": "be892171b5212f4408fe2412429bc912a5534e604776b068c7556b86aa7f978a",
+    "budget-blend-1440-light.png": "9beba321a3fdbc4a8cf565cd2533c4790cd631df1dab47b74a56a400409822cb",
+    "budget-blend-1440-dark.png": "2c88bff84e8763bd1ed85aa1f948ba82af170e0c1e7182fcb867ba564b2260b4",
+    "budget-blend-390-light.png": "6b3b0b188fbbe676382f7582c1f5f0228cbf4d7aa290721d5ef723b3d98532d8",
+    "budget-blend-390-dark.png": "4c7d22416fea047bfd9249fa75afb370cafb4a5250d31066b422a1629dad57ad",
+    "budget-blend-320-light.png": "7ca5e428278564f0ad6b765c501b90261716f4b100e3ae26de5b313dba7f1a1f",
+    "budget-blend-320-dark.png": "d2213fedd54ee0040cbb208b3e4032886449f43379330d6e22cd49fa45039e33",
+    "budget-blend-1440-light-next.png": "cfe6e1fa7ba0742fceb80da09644353ebf3b9105b12e455fa13f9c50f0037b09",
+    "budget-blend-1440-light-aug28.png": "9e38ef459ab8cacb8cf79d2893dead91e6cb9d895640b92cd31e36323f9fd826",
+    "budget-blend-320-light-aug28.png": "60451cb5ce8a9a9a6cd8d233d34b548922afebee2c8a0b39a0b427bfe05a0d0a",
+    "budget-blend-390-light-next.png": "4fd1ba464e7d5346ba78c30864bd33ba5142dcdacd1a36c860775b82adc23377",
+    "budget-blend-1440-light-past.png": "7c081e90bc493d6cfa2e9cc10f374db25559662b35d4b56733cd5205c42daaf4",
+    "budget-blend-390-light-past.png": "ad8925dc0915c5bffbb2c70f7ceb01d4cf097c0fce78c3e0f688a2daef6505d4",
+    "budget-blend-320-light-past.png": "5c59d83c6b21ded1bc9c0fc94f89ff2d3df7217b7a0f4fd74aab96ab3f17fa54",
+    "budget-blend-1440-light-past-qualified.png": "f5df145931eccab42aa09ad84536e5c883cf57e634f41be459f1f7d237600b9d",
+    "budget-blend-390-light-past-qualified.png": "494d3a6d2c5ba0e2e4077a1418f93c09b06f656c02adca4b41f04060ef0e8167",
+    "budget-blend-320-light-past-qualified.png": "dc86c1ad1456181cecaa02e854a8810b33299f2fa1e8da4774d9c7c8cdcbd896",
     "budget-blend-1440-light-unavailable.png": "37517f55be419ba0a7c33c78ad508e2fec921bb6a5d0c9bc3531110c31141340",
     "budget-blend-390-dark-unavailable.png": "1e3f6f397780ff6b1e6bfcc420e1c7f343fe2a5011aa4eddba551a80c8ae05a2",
-    "budget-blend-focus-granularity.png": "8877ee816ffa5ba74eb18e885479a1cf3e229b4add4d804c7e6c7ac77d332697",
-    "budget-blend-focus-income.png": "2dea5e42fe8fa7b9412d99299a106216be627c9e2ae365f7ff79103d6fbe2cd9",
-    "budget-blend-focus-result.png": "0fd6ad5a43deaad7678671bc391777c47ccd71fc8887966a27fce5e3f0808c83",
-    "budget-blend-focus-household.png": "8afffa00fc9cd8f73513ba62ee9026b0d5b1a85a5944a48656e6dc00a0bc5df7",
-    "budget-blend-focus-goal.png": "a0db3a268fb07cb0956a8abf18f4aec7292a6412fb8d6c5406fae715b02a08de",
-    "budget-blend-cards-1440-light.png": "de07b69a0a31ad460054b322a8865e978d46635c36ae2acfb0d58e0f8cdbaa92",
-    "budget-blend-cards-320-dark.png": "48bedefe33b761bfc15331bbd6fd7710de4e661ec3e1e7c7815914c67666fa18",
-    "budget-blend-1440-light-on-plan.png": "4d38417575bf169cf1e8c7c64d020485a6c505863068df9778d80824728e832f",
-    "budget-blend-1440-light-infeasible.png": "4ed87017b28d53b095f17440c7ae18a7ffd59d15ec6410a94e315ea498f3dbcc",
-    "budget-blend-1440-dark-next.png": "7646a26e093a381f8af3cf6f97116ea4113c06418a9377aab40fb855a9b51bd1",
-    "budget-blend-390-dark-next.png": "8028cb8c82d42265327ce24f8c08634db367296661d9a1ef790641b17ebfb87b",
-    "budget-blend-320-light-next.png": "f71642e45a207cb3486fe7c853d2c3c765b704d72acf141b68d3df8d1d5b95e1",
-    "budget-blend-320-dark-next.png": "926700e73a6207130d0cb7339b749c2b9a8bccdea0e002380050ef0d44b2fbfc",
-    "budget-blend-1440-dark-past.png": "f39c8b400e16566e3d9f2114ba7c882a4963bf87031f6e442ea31a5649335996",
-    "budget-blend-390-dark-past.png": "08b661f6e1375cda6080528f090fac4261b5274c387f5fdcd3705f3ff1342ec9",
-    "budget-blend-320-dark-past.png": "fdfa2972536f6f1f6f06675973306cceb750e684f76e460e22b5a2f1dc1d8e60",
-    "budget-blend-1440-light-household-all.png": "7a68b0447f508f52a9674db01447e2e32508b6755f5c30915175118de0687cc7",
-    "budget-blend-390-light-household-all.png": "7933523bd7f1536a0428b17af15406161452eb2244a33df2652a904c756ce6c6",
-    "budget-blend-320-light-household-all.png": "8999238e059d06c6aed841d7b98d6cb26b0e3bae2f15ce1afc4f210687a51ee6"
+    "budget-blend-focus-granularity.png": "4b44fd2783c2ea9a13bde9a5d5347f0b1fc20efb9feaa8dc02edcd6bd2c58fe2",
+    "budget-blend-focus-income.png": "f49050d98558746b68e3aa22e6962b6f4964530b3fbd87d7f2d167b9abff1d36",
+    "budget-blend-focus-result.png": "69f653f571620e2f6524539fc9a46957b54880d709eac87b04147929bac9d1e7",
+    "budget-blend-focus-household.png": "2c3a0783fa72c0308b8aea4e88aa2d28dc28f5756aafb0fead7091606c76ae21",
+    "budget-blend-focus-goal.png": "8cbff43b4c6a9abdd2c25275d6cc5c75439bb5952ca56d642f90d978aa99e367",
+    "budget-blend-cards-1440-light.png": "a4318f9b494f9bde19d0b4485be5aa0336fdef4170e455a19254a90d2388632f",
+    "budget-blend-cards-320-dark.png": "b0d441cc4fb8ddf3a9013a859ac24db97c84a2207ae7c65cbe4280ee8c5db331",
+    "budget-blend-1440-light-on-plan.png": "ffa054452b270969c02197af2c86ad9bc5333e0bcba381be3deca3c7d787deb5",
+    "budget-blend-1440-light-infeasible.png": "719688bf91536c4e9130bf6888cface89205ede5de9c97b18a36e46c03cb368b",
+    "budget-blend-1440-dark-next.png": "2551e67058f895b0876cb6ffbf1db2897853e17a09d3150157ced7f79d11a45a",
+    "budget-blend-390-dark-next.png": "e51f26618ad83c4d521d94321c531ef46af2eec5a8f8418e5eae8f61c08846ab",
+    "budget-blend-320-light-next.png": "b2119307de9bdd353a0393be03a72d3f69862934b3715151e282ce90268063bf",
+    "budget-blend-320-dark-next.png": "2cc3e0844416794a4f2020b730ff41660fe5b85e891b17e48ce3560c852c6931",
+    "budget-blend-1440-dark-past.png": "49247f1988e0e3b518aed3ec1d9b956097f2ad011acee62cf1b6c2b10782b9ba",
+    "budget-blend-390-dark-past.png": "88e1ea2c063bd16e02c569fa6aff8552e0161ffbb3ab2fb3adb4dc40d5952afc",
+    "budget-blend-320-dark-past.png": "d37f2a4f5c4c0f31917dcb90d22477b2799ac315c1e3a3e1d59a2251d6fcceb3",
+    "budget-blend-1440-light-household-all.png": "1ef798b785537b3ebb95abd737145988d6ed4278da21549f96252e4f080ea5ff",
+    "budget-blend-390-light-household-all.png": "90bcf0c7406be1d88a7026886d1caa23c9935f5c3eb904a76a835ebfbf626733",
+    "budget-blend-320-light-household-all.png": "4324ee634ff440981246971cb5dd54ddb95cb89c41a3ea2f3a27de66d629a3e3"
   },
   "sourceSha256": {
     "public/plan.js": "f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769",
-    "public/budget-blend.js": "2d45c95ac6f84038d65869a3addeef981ecf7003816fe2a11a10005b76d88021",
-    "public/budget-gface.css": "a0bafea44d4f18e0ab743da31f1cbab953a1152bb9e12cdc776cfceabc648d99",
+    "public/budget-blend.js": "58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7",
+    "public/budget-gface.css": "39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997",
     "public/forecast.js": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
     "data.json": "beb06046112d6c888d6ff9e4cdd2cd7338eae450961ab2f57d67cc761e0b3700",
     "test/browser-budget-blend-proof.js": "0631756e15d626db0245c4d84a9918a04be09b9a07fc32503eae8e7221fc3f61"
@@ -1424,6 +1424,7 @@
           "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
+          "opacity": 1,
           "nativeAmount": "$1,870.00"
         },
         "secondHeldPublication": {
@@ -1444,6 +1445,7 @@
           "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
+          "opacity": 1,
           "nativeAmount": "$1,870.00"
         },
         "secondHeldPublication": {
@@ -1464,6 +1466,7 @@
           "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
+          "opacity": 1,
           "nativeAmount": "$1,870.00"
         },
         "secondHeldPublication": {
@@ -1487,6 +1490,7 @@
           "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
+          "opacity": 1,
           "nativeAmount": "$1,870.00"
         },
         "secondHeldPublication": {
@@ -1510,6 +1514,7 @@
           "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
+          "opacity": 1,
           "nativeAmount": "$1,870.00"
         },
         "secondHeldPublication": {
@@ -1530,6 +1535,7 @@
           "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
+          "opacity": 1,
           "nativeAmount": "$1,870.00"
         },
         "secondHeldPublication": {
@@ -1741,8 +1747,8 @@
         "outlineWidth": "2px",
         "outlineColor": "rgba(10, 168, 112, 0.6)",
         "box": [
-          1280,
-          164
+          1242,
+          159
         ],
         "visiblyUsable": true,
         "outlineCheckPassed": true

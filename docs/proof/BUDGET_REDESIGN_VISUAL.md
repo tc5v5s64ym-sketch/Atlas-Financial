@@ -93,8 +93,8 @@ from Git blobs, and its index stat metadata was refreshed with no staged content
 change. The clean-start and raw-byte checks then passed. No source hash or
 screenshot expectation was manually substituted to make the proof pass.
 
-Exercised code commit: `0ff11074b2ff636a10d05ad78581fec00d09c942`.
-Source tree: `4486fb4ea54bb436308c4f33d79910099c5eaf74`.
+Exercised code commit: `f49e4fa79bf6c1509dedfa56275119eedb185532`.
+Source tree: `d3f06de7b663bcbbec884ba3c9db8fc1922274f6`.
 The receipt binds **185 tracked sources** with Git blob IDs, raw SHA256 and
 byte counts. Each repository asset served to the browser is checked against that
 binding; every scoped source is checked again after execution. Only docs/proof/
@@ -107,11 +107,11 @@ All committed/exercised bytes and screenshot hashes were independently verified.
 | Source | SHA256 of committed and exercised bytes |
 |---|---|
 | `public/plan.js` | `f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769` |
-| `public/budget-blend.js` | `2d45c95ac6f84038d65869a3addeef981ecf7003816fe2a11a10005b76d88021` |
+| `public/budget-blend.js` | `58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7` |
 | `public/budget-river.js` | `ab74152cbd40a5ebfdad05dcfc65a67d7fdac15a6d006e2990c1d249630be853` |
-| `public/budget-gface.css` | `a0bafea44d4f18e0ab743da31f1cbab953a1152bb9e12cdc776cfceabc648d99` |
+| `public/budget-gface.css` | `39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997` |
 | `test/browser-budget-blend-proof.js` | `0631756e15d626db0245c4d84a9918a04be09b9a07fc32503eae8e7221fc3f61` |
-| `test/browser-budget-river-port.js` | `88745847dfcd4012ab48f2ba1af8e6cc9fb697b13be3b0299b270923fabfcde6` |
+| `test/browser-budget-river-port.js` | `fd168a22352d674050f6ca88cf329422b2e5b4aba76e0be403e5cb4e05def99c` |
 
 The receipt records results, exact reference hashes, source and served-asset
 hashes, and screenshot hashes. `visualMatchApproved:false` remains an owner
