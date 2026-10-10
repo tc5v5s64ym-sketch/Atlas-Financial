@@ -2053,6 +2053,9 @@
         const selected = displayedTimelineIndex(readBadTimeline(document).nodes); updateLabel(selected); return selected;
       },
     };
+    // Original app.js leaves its river in place. Native remounts must not
+    // replay the CSS entrance while the retained gesture/controller continues.
+    if (record.controller) nav.classList.add('is-in');
     bento.prepend(wrap);
     if (record.controller) record.controller.adopt(options);
     else record.controller = globalThis.BudgetRiver.create(options);

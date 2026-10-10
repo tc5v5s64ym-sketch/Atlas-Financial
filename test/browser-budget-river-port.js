@@ -40,6 +40,7 @@ async function proveRiverPort({ open, capture }) {
       range: document.querySelector('.blend-hero-range').textContent.replace(/\s+/g, ' ').trim(),
       dragging: document.querySelector('.river').classList.contains('is-dragging'),
       sameElement: document.querySelector('.river') === window.__heldRiverElement,
+      opacity: Number(getComputedStyle(document.querySelector('.t-river')).opacity),
       nativeAmount: document.querySelector('.blend-hero [data-bad-term="balanceAfterDeductions"] [data-bad-term-amount]').textContent,
     }));
     assert.equal(held.start, before.start, 'native date changes before release');
@@ -47,6 +48,7 @@ async function proveRiverPort({ open, capture }) {
     assert.equal(held.range.replace(/\s/g, ''), before.range.replace(/\s/g, ''), 'visible tile date agrees before release');
     assert.equal(held.dragging, true, 'gesture remains held across native remount');
     assert.equal(held.sameElement, true, 'original controller survives native remount');
+    assert.equal(held.opacity, 1, 'native remount does not replay the entrance while held');
     // Keep the same gesture held through a second native tile replacement.
     const second = await page.evaluate(i => {
       const row = document.querySelector('ol[data-bad-timeline]').children[i];
@@ -55,6 +57,7 @@ async function proveRiverPort({ open, capture }) {
     await page.mouse.move(before.x + (before.pan ? -2 : 2) * before.spacing, before.y, { steps: 8 });
     await page.waitForFunction(start => document.querySelector('[data-budget-window-progress]')?.dataset.start === start, second.start);
     assert.equal(await page.evaluate(() => document.querySelector('.river') === window.__heldRiverElement && document.querySelectorAll('.g-river-wrap').length === 1), true);
+    assert.equal(await page.locator('.t-river').evaluate(el=>Number(getComputedStyle(el).opacity)),1,'second held remount stays visible');
     // Cancellation aligns with the last actual native publication, without fling.
     await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
     await page.mouse.up();

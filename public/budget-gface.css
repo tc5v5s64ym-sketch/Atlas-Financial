@@ -931,6 +931,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
 }
 .budget-bento.atlas-g .tile.t-river[data-state="tight"] { --st: 255 190 92; }
 .budget-bento.atlas-g .tile.t-river[data-state="short"] { --st: 255 86 102; }
+.budget-bento.atlas-g .tile.t-river.is-in { animation:none; opacity:1; }
 .budget-bento.atlas-g .tile.t-river::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
 .budget-bento.atlas-g .river { position: absolute; inset: 0; cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; outline: none; }
 .budget-bento.atlas-g .river.is-dragging { cursor: grabbing; }
