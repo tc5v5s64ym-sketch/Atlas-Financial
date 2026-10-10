@@ -1672,8 +1672,8 @@ console.log('\n=== live opening: Q19, buffer, cards, undated rows ===');
     'live opening remains a feasible normal recommendation',
     `${advice.mode} holds=${advice.holds}`);
   ok(advice.buffer === 500, 'the $500 model buffer is unchanged', String(advice.buffer));
-  ok(advice.knowledge.encumbered > 0,
-    'live undated protected principal is encumbered on the master walk',
+  ok(advice.knowledge.encumbered === 0,
+    'owner-dated live commitments leave no undated protected principal on the master walk',
     String(advice.knowledge.encumbered));
   ok(near(advice.knowledge.freeCash,
     advice.knowledge.ending - advice.buffer - advice.knowledge.encumbered),
