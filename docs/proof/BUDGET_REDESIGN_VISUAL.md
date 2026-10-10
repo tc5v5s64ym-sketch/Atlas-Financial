@@ -8,30 +8,23 @@ remain outstanding.
 
 ## Current-state verification
 
-The latest source is the owner's instruction to pick up the
-[bounded review findings](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6090295139),
-verify current main and regenerate proof from a clean checkout. Verdict before
-this continuation: **STILL BROKEN** for release evidence. The review accepted
-the approved repairs at `db9b9778eb4cf5a1812a39d37d277296d688c14d` in its
-bounded source assessment, but found four source hashes did not reproduce from
-committed bytes and the full-suite certificate used an older main. It did not
-establish a new production defect or grant formal Systems PASS.
+The owner instructed this existing builder to implement the focused original-code
+selector port, after the review-only pass. Source reuse instructions are
+[6090989561](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6090989561);
+the later [light/dark decision](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6091424187)
+supersedes the original dark river in both themes. Before editing: **STILL BROKEN**,
+code required, final owner visual acceptance remains pending. Main
+`6a9f37da6009408e90013c39070f4b6be0a8ca3c` was freshly fetched and is integrated.
 
-Current main `6a9f37da6009408e90013c39070f4b6be0a8ca3c` is integrated in
-merge `3da15f0ab3f15e1d5833bf9e90e3193bdcdd2b0d`. Every file under `public/`
-remains byte-identical to the approved `db9b977` tree. This continuation changes
-only proof/test sources and generated evidence. Released main changes are
-inherited without authoring a Lunch Money, private-history or backend repair.
+The port changes only the selector module, its native adapter/CSS/header wiring,
+and browser proof sources. `public/plan.js`, `public/forecast.js`, canonical data
+and all backend/provider sources are unchanged from previous head `48e9d25`.
+Separate Draft #560 and the original owner checkout are untouched. Keep #548 Draft.
+The earlier no-Income/no-Payday face, all Household lines, gapless column stacks,
+native panels and historical qualification remain intact.
 
-The earlier approved repair removed the separate Income tile, restored qualified
-historical BAD and addressed the original 18 findings recorded below. Every
-Household category was already iterated; the repair strengthened the visibility,
-order and overlap proof rather than creating another category renderer.
-
-The original ZIP and extracted g-blend files are accessible. The approved
-desktop light, desktop dark and mobile light PNG bytes match the SHA256 hashes
-recorded in `budget-blend-browser-receipt.json`. Those references control the
-visual comparison; prototype figures do not become financial evidence.
+The original ZIP, extracted HTML/CSS/JS, demo.mp4 and approved PNGs are accessible.
+See [the selector source and behavior report](BUDGET_SELECTOR_PORT.md).
 
 ## Repaired face and evidence
 
@@ -72,7 +65,7 @@ evidence. They establish behavior, not a real household historical balance.
 | Mobile Bills header | 4 | The approved flag-filled phone row omits numeric metadata. Verify that deliberate state rather than measuring a display:none element. Unavailable warnings stay visible; native amounts stay in the drawer. |
 | Mobile Bills account pill alignment | 4 | Align the wrapped pill to the right edge of the hero top. Continue checking pill bounds and overlap with Household. |
 | Household count on the face | 1 | Visibility respects closed native details. Open the original Q06 body and verify its count, amounts, qualifiers and returned keyboard focus. Historical disclosure assertions wait for the native dialog entrance to settle. |
-| River adapter expected text | 1 | Compare exact printed currency, including the Unicode minus. Preserve native qualified historical values; do not override them by date role. Continue checking unknown gaps, zero, negative tone and Period figures access. |
+| River adapter expected text | 1 | Full native currency and trust remain in the pill, slider value text and amount-label metadata. Compact labels use the original fmtK formatting. Check Unicode minus, unavailable gaps, known zero, native sign tone and Period figures access. |
 
 ## Browser proof
 
@@ -100,36 +93,37 @@ from Git blobs, and its index stat metadata was refreshed with no staged content
 change. The clean-start and raw-byte checks then passed. No source hash or
 screenshot expectation was manually substituted to make the proof pass.
 
-Exercised code commit: `586fd3e9334e3133c08eda01ea8e5edaa04f4799`.
-Source tree: `27abdbd4f2ebc1e368249d18e24bf7f99fff50f7`.
-The receipt binds 181 tracked sources with Git blob IDs, SHA256 and byte counts.
-Each repository asset served to the browser is checked against that binding,
-and every scoped source is checked again after execution. The published evidence
-commit may follow this code commit only with `docs/proof/` changes; scoped source
-blobs and exercised bytes must still match. The runner was committed before
-execution and was not edited afterward.
+Exercised code commit: `0ff11074b2ff636a10d05ad78581fec00d09c942`.
+Source tree: `4486fb4ea54bb436308c4f33d79910099c5eaf74`.
+The receipt binds **185 tracked sources** with Git blob IDs, raw SHA256 and
+byte counts. Each repository asset served to the browser is checked against that
+binding; every scoped source is checked again after execution. Only docs/proof/
+changes may follow this code commit. No source hashes are normalized or substituted.
 
-The fresh run passed: **37 screenshots**, **181 bound sources**, **29 served
-repository assets**, `errors:[]` and `externalRequests:[]`. All 37 screenshot
-hashes, every bound source and every served-asset hash were independently
-verified after execution. The three approved repaired production hashes now
-match the bounded review's committed-byte hashes exactly:
+The fresh run passed: **49 screenshots**, **185 bound
+sources**, **30 served repository assets**, `errors:[]`, `externalRequests:[]`.
+All committed/exercised bytes and screenshot hashes were independently verified.
 
 | Source | SHA256 of committed and exercised bytes |
 |---|---|
 | `public/plan.js` | `f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769` |
-| `public/budget-blend.js` | `9e0d9de512d30fdf2d35c488579304caac4cb06144ba75485e3c36b6c2845995` |
-| `public/budget-gface.css` | `29ccf6f753a7daf27e8b7739c39524e01b9c089244c68bcbee0276705297274d` |
-| `test/browser-budget-blend-proof.js` | `3d525e2e99af313de0202860c170c94078dfe2394abddfbf9de0e8feb2942b05` |
+| `public/budget-blend.js` | `2d45c95ac6f84038d65869a3addeef981ecf7003816fe2a11a10005b76d88021` |
+| `public/budget-river.js` | `ab74152cbd40a5ebfdad05dcfc65a67d7fdac15a6d006e2990c1d249630be853` |
+| `public/budget-gface.css` | `a0bafea44d4f18e0ab743da31f1cbab953a1152bb9e12cdc776cfceabc648d99` |
+| `test/browser-budget-blend-proof.js` | `0631756e15d626db0245c4d84a9918a04be09b9a07fc32503eae8e7221fc3f61` |
+| `test/browser-budget-river-port.js` | `88745847dfcd4012ab48f2ba1af8e6cc9fb697b13be3b0299b270923fabfcde6` |
 
 The receipt records results, exact reference hashes, source and served-asset
 hashes, and screenshot hashes. `visualMatchApproved:false` remains an owner
 decision. Side-by-side images
 are review evidence; differences caused by native unavailable data are retained.
 The approved dark reference ends before lower tiles, so lower dark fidelity
-has no approved reference. Physical touch and signed-in production are untested.
+has no approved reference. Chromium emulated touch is tested before release and through cancellation. Physical-device touch and signed-in production remain untested.
 
 Useful captures:
+
+- [Working selector light](budget-river-port-1440-light.png) and [dark](budget-river-port-1440-dark.png)
+- [Original versus port light](budget-river-pair-1440-light.png) and [dark](budget-river-pair-1440-dark.png)
 
 - [Desktop light](budget-blend-1440-light.png) and [desktop dark](budget-blend-1440-dark.png)
 - [Mobile light](budget-blend-390-light.png) and [mobile dark](budget-blend-390-dark.png)
@@ -155,10 +149,4 @@ limitations remain historical results and are not relabeled as a new local full
 PASS. No out-of-scope history or Lunch Money repair is included. Prior Systems
 PASS does not certify this head.
 
-The keyboard walk records **18 outlined stops and 13 targets meeting its size
-and visibility predicate**; its first 18 stops are not comprehensive
-accessibility clearance. **16 visible-text contrast samples** passed; **two
-empty-text probes** are unevaluated. These limitations from the bounded review
-do not authorize changing
-the approved design. Design, Engine, Money, current-head Systems and Dale's final
-visual approval remain pending. Keep Draft.
+The keyboard walk records **18 outlined stops** and **13 targets meeting its size and visibility predicate**. Its first 18 stops are not comprehensive accessibility clearance. **16 visible-text contrast samples** passed; **2 empty-text probes** are unevaluated. Design, Engine, Money, current-head Systems and Dale's final visual approval remain pending. Keep Draft.
