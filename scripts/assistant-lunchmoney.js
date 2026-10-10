@@ -82,6 +82,7 @@ function providerCents(value) {
   return Number(negative ? -magnitude : magnitude);
 }
 function fingerprint(tx) { return crypto.createHash('sha256').update(JSON.stringify(tx)).digest('hex'); }
+function stableAuthorization({ financialEffects, ...binding }) { return binding; }
 function fail(reason) { return { status: 'unavailable', reason, writesAtlasState: false }; }
 class ProviderRequestError extends Error {
   constructor(code, stage, upstreamStatus) {
@@ -620,7 +621,8 @@ function createService(options = {}) {
           evidenceRef: preview.authorization.evidenceRef, startedAt: new Date(startedAt).toISOString(),
           finishedAt: new Date(now()).toISOString(), outcome: result.status,
           before: auditAttempt.before, proposed: auditAttempt.proposed, after: afterRead,
-          actorRef: receipt.actorRef, evidenceProvenance: preview.authorization.evidenceProvenance || null } };
+          actorRef: receipt.actorRef, financialEffects: auditAttempt.financialEffects || null,
+          evidenceProvenance: preview.authorization.evidenceProvenance || null } };
       } catch (_) {
         blockedStandingGrants.add(preview.authorization.grantRef);
         try { await standing.adapter.suspend({ ...preview.authorization, attemptRef: reservation.attemptRef,
@@ -661,7 +663,7 @@ function createService(options = {}) {
               : await categoryContextFor(current, preview.body.category_id, executionGate),
             fingerprint: fingerprint(current), now: now(),
           });
-          if (JSON.stringify(boundary) !== JSON.stringify(preview.authorization)) throw new Error('standing-grant-changed');
+          if (JSON.stringify(stableAuthorization(boundary)) !== JSON.stringify(stableAuthorization(preview.authorization))) throw new Error('standing-grant-changed');
           const cat = await catalogData(auth.principal, false, executionGate);
           auditCatalog = cat;
           const expected = { ...current, ...preview.body };
@@ -708,7 +710,11 @@ function createService(options = {}) {
                 || fingerprint(lockedCandidate.metadataContext) !== fingerprint(candidate.metadataContext)
                 || fingerprint(lockedCandidate.categoryContext) !== fingerprint(candidate.categoryContext)) throw new Error('cleanup-evidence-changed');
             const effects = await standing.adapter.cleanupEffects(lockedCandidate);
-            if (fingerprint(effects) !== fingerprint(boundary.financialEffects)) throw new Error('cleanup-financial-context-changed');
+            Standing.validateCleanupEffects(effects, await standing.adapter.context(), boundary.financialEffects.transferProof);
+            // Observation time and unrelated financial evidence may advance.
+            // Permission/target bindings stay exact; every fresh effect proof
+            // must independently pass, and the final one is durably recorded.
+            attempt.financialEffects = publicEffects(effects);
           }
           const lease = await standing.adapter.verifyReservation({ ...attempt, reservation, checkedAt: now(),
             categoryContext: candidate ? candidate.categoryContext : preview.body.category_id == null ? null : await categoryContextFor(lockedCurrent, preview.body.category_id, credentialGate) });

@@ -159,6 +159,15 @@ async function main() {
   const noOp = await f.service.invoke('submitCleanupEvidence', { transactionRef: await f.ref(), grantRef: f.grant.grantRef,
     cleanupInstruction: instruction, review: f.review() }, f.auth);
   assert.equal(noOp.status, 'no-changes'); assert.equal(f.writes.length, 1);
+  const advancing = await fixture(), livePreview = await advancing.prepare();
+  advancing.beforeEffects = async () => { advancing.inputs.payload.fetchedAt =
+    new Date(Date.parse(advancing.inputs.payload.fetchedAt) + 1000).toISOString(); };
+  assert.equal((await advancing.service.invoke('applyStanding', { previewId: livePreview.previewId }, advancing.auth)).status,
+    'applied', 'fresh GET timestamps must not invalidate an unchanged authorized target');
+  const lateEffect = await fixture(), latePreview = await lateEffect.prepare(); let proofs = 0;
+  lateEffect.beforeEffects = async () => { if (++proofs === 2) lateEffect.inputs.payload.tags.find(t=>t.id===33).name = 'Dale'; };
+  assert.equal((await lateEffect.service.invoke('applyStanding', { previewId: latePreview.previewId }, lateEffect.auth)).status, 'unavailable');
+  assert.equal(lateEffect.writes.length, 0, 'a newly disruptive final proof still refuses before dispatch');
   for (const mutate of [r => r.status = 'uncertain', r => r.issues.push('Ambiguous purchase'),
     r => r.facts.amount = '29', r => r.supportedChanges.payee = 'Other Cafe']) {
     const bad = await fixture(), review = bad.review(); mutate(review);
@@ -277,7 +286,9 @@ async function main() {
     const actual = await fixture(true);
     try {
       const p = await actual.prepare(); assert.equal(p.status, 'preview', JSON.stringify(p));
-      assert.equal((await actual.service.invoke('applyStanding', { previewId: p.previewId }, actual.auth)).status, 'applied');
+      actual.beforeEffects = async () => { actual.inputs.payload.fetchedAt = new Date(Date.parse(actual.inputs.payload.fetchedAt) + 1000).toISOString(); };
+      const applied = await actual.service.invoke('applyStanding', { previewId: p.previewId }, actual.auth);
+      assert.equal(applied.status, 'applied', JSON.stringify(applied));
       const restarted = S.createAuthority({ root: actual.root, publicKey: actual.publicKey, resource: actual.auth.resource,
         now: () => Date.parse(actual.inputs.payload.fetchedAt) });
       const audit = await restarted.audit({ grantRef: actual.grant.grantRef, auth: actual.auth });
@@ -286,6 +297,9 @@ async function main() {
       assert.equal(row.after.notes, 'Existing note\nReceipt checked.'); assert.equal(row.after.originalBankDescription, actual.tx.original_name);
       assert.equal(row.actor.clientId, actual.auth.clientId); assert.equal(row.sheetStatus, 'export-ready-not-synced');
       assert.equal(row.financialEffects.metadataNeutral, true); assert.equal(row.rowKey, audit[0].reservation.attemptRef);
+      assert.deepEqual(row.financialEffects, applied.auditReceipt.financialEffects, 'final proof survives restart');
+      assert.notEqual(row.financialEffects.comparisons[0].before, p.financialEffects.comparisons[0].before,
+        'history retains the last live proof, not the earlier preview observation');
       await assert.rejects(restarted.audit({ grantRef: actual.grant.grantRef, auth: { ...actual.auth, principal: 'other' } }));
     } finally { fs.rmSync(actual.dir, { recursive: true, force: true }); }
   } else console.log('Actual durable routine authority proof requires POSIX; exercised by Linux CI.');

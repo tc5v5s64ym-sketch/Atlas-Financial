@@ -137,6 +137,12 @@ quarantined; they cannot be reported as successful or retried. No provider
 compare-and-swap is documented, so an unrelated client can still race GET/PUT.
 Readback is detection, not a claim that all external races are prevented.
 
+Fresh observation timestamps and unrelated financial evidence may advance while
+the exact authorized target stays unchanged. They do not widen permission or
+invalidate a neutral edit. Each latest proof must independently pass against the
+same approved policy/map/parser context; the final proof is durably committed
+with dispatch arming and retained in the history and returned receipt.
+
 ## Private history sheet
 
 Every dispatched attempt is durably reserved before PUT, with full projected

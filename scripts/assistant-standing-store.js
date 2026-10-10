@@ -207,7 +207,11 @@ function createAuthority({ root, publicKey, resource, now = Date.now, fault = ()
       const saved = state.attempts[attempt.reservation.attemptRef];
       check(saved && !saved.acknowledged && state.targets[saved.target] === attempt.reservation.attemptRef
         && saved.beforeFingerprint === attempt.beforeFingerprint, 'reservation-lease-lost');
-      eligibility(state, { ...saved, categoryContext: attempt.categoryContext, reservation: attempt.reservation }, true);
+      const live = eligibility(state, { ...saved, categoryContext: attempt.categoryContext, reservation: attempt.reservation }, true);
+      if (live.grant.evidencePolicy === CleanupPolicy.POLICY) {
+        Policy.validateCleanupEffects(attempt.financialEffects, live.ctx, live.evidence.transferProof);
+        saved.financialEffects = clone(attempt.financialEffects);
+      }
       saved.providerDispatchArmed = true; // durable before the executor may send
       return { valid: true, attemptRef: attempt.reservation.attemptRef };
     });

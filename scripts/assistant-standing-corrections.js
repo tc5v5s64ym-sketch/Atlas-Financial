@@ -146,11 +146,7 @@ async function authorize(options, input) {
   if (grant.evidencePolicy === CleanupPolicy.POLICY) {
     if (options.cleanupEnabled !== true || typeof adapter.cleanupEffects !== 'function') deny('standing-cleanup-disabled');
     financialEffects = await adapter.cleanupEffects({ tx: input.tx, body: input.body, metadataContext: input.metadataContext });
-    if (financialEffects?.schema !== 'atlas-cleanup-financial-effects/v1'
-        || financialEffects.parserRevision !== context.parserRevision
-        || financialEffects.financialContextDigest !== context.financialContextDigest
-        || financialEffects.metadataNeutral !== true || financialEffects.categoryEvidenceNeutral !== true) deny('cleanup-financial-effect-changed');
-    if (evidence.transferProof && !same(evidence.transferProof, financialEffects.transferProof)) deny('cleanup-transfer-proof-changed');
+    validateCleanupEffects(financialEffects, context, evidence.transferProof);
   } else if (input.body.notes !== undefined) {
     if (options.notesEnabled !== true) deny('standing-notes-disabled');
     // Check note-only effects under BOTH the original and resulting category.
@@ -169,6 +165,13 @@ async function authorize(options, input) {
     ...(grant.resource ? { resource: grant.resource } : {}),
     ...(evidence.provenance ? { evidenceProvenance: evidence.provenance } : {}),
     ...(financialEffects ? { financialEffects } : {}) };
+}
+function validateCleanupEffects(effects, context, transferProof) {
+  if (effects?.schema !== 'atlas-cleanup-financial-effects/v1'
+      || effects.parserRevision !== context.parserRevision
+      || effects.financialContextDigest !== context.financialContextDigest
+      || effects.metadataNeutral !== true || effects.categoryEvidenceNeutral !== true) deny('cleanup-financial-effect-changed');
+  if (transferProof && !same(transferProof, effects.transferProof)) deny('cleanup-transfer-proof-changed');
 }
 function unchangedOtherFields(before, after, body) {
   const ignored = new Set(['updated_at', ...Object.keys(body)]);
@@ -247,4 +250,4 @@ function validateDelegatedReview({ grant, context, auth, tx, body, review, categ
         principal: auth.principal, clientId: auth.clientId, resource: auth.resource, reviewDigest: '0'.repeat(64) } } });
 }
 
-module.exports = { DELEGATED_POLICY, categorySignature, validateGrantShape, validateDelegatedReview, SCOPE, MAX_GRANT_MS, available, appendNotes, validate, authorize, unchangedOtherFields };
+module.exports = { DELEGATED_POLICY, categorySignature, validateGrantShape, validateDelegatedReview, validateCleanupEffects, SCOPE, MAX_GRANT_MS, available, appendNotes, validate, authorize, unchangedOtherFields };
