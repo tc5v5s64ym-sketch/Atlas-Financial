@@ -19030,11 +19030,16 @@
           || savingsCents(tx.amount, true) == null || typeof tx.currency !== 'string' || tx.currency.toUpperCase() !== 'CAD'
           || !['household-cash', 'household-reserve', 'revolving-credit', 'household-external'].includes(tx.accountRole)) return unknown('A transaction has unavailable date, currency, amount or account identity.');
       const id = String(tx.id), prior = unique.get(id);
+      const aliases = [tx.atlasAccountId, tx.accountId, tx.account];
       const identity = tx.atlasAccountId || tx.accountId || tx.account;
-      if (!identity || [tx.atlasAccountId, tx.accountId, tx.account].some(account => account != null
+      // The observer emits household-external rows with null aliases. Only that
+      // explicit role may omit identity; it stays external and gains none.
+      const externalWithoutAlias = tx.accountRole === 'household-external'
+        && aliases.every(account => account == null || account === '');
+      if (!identity && !externalWithoutAlias || aliases.some(account => account != null
           && account !== '' && String(account) !== String(identity))) return unknown('Transaction account aliases are missing or contradictory.');
-      const operating = HOUSEHOLD_CHEQUING_IDS.includes(String(identity));
-      const reserve = derived.pools.some(pool => pool.accountId === String(identity));
+      const operating = !externalWithoutAlias && HOUSEHOLD_CHEQUING_IDS.includes(String(identity));
+      const reserve = !externalWithoutAlias && derived.pools.some(pool => pool.accountId === String(identity));
       if (operating && tx.accountRole !== 'household-cash'
           || reserve && !['household-cash', 'household-reserve'].includes(tx.accountRole)
           || ['household-cash', 'household-reserve'].includes(tx.accountRole) && !operating && !reserve) {

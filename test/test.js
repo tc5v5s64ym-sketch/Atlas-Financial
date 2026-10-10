@@ -51,6 +51,7 @@ const suites = [
   ['Triangle owner-confirmed paid without duplicate cash or principal', 'test-triangle-owner-confirmed-paid.js'],
   ['hypothetical savings timeline and independent pool conservation', 'test-savings-funding-timeline.js'],
   ['daily savings backing and transfer-neutral capacity', 'test-savings-daily-allocation-contract.js'],
+  ['daily savings external null-alias contract and preserved gates', 'test-savings-daily-external-alias-contract.js'],
   ['daily savings incumbent financial probes', 'probe-savings-daily-allocation-incumbent.js'],
   ['active daily Budget Savings consumer contracts', 'test-savings-daily-consumer.js'],
   ['v2 observed savings semantic date and independent Budget stock', 'test-provider-v2-savings-stock.js'],
