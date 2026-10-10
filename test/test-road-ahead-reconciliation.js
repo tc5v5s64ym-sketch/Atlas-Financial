@@ -534,10 +534,11 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
   eq(t.normalSpending.status, 'unavailable', 'repository has no recent transaction packet');
   eq(t.weeklyVariable.source, 'budgetBreakdown.planned', 'dated household uses disclosed fallback');
   // Reconcile this committed Aug 19 opening against its explicitly bounded
-  // retired policy, rather than annualizing the Oct 4 restatement backwards.
+  // retired policies, rather than annualizing the October restatements backwards.
   // Forecast still receives the actual canonical plan above. The oracle's
   // integer arithmetic and every dated ledger assertion stay unchanged.
-  const oraclePlan = require('./fixtures/retired-other-policy')(data).plan;
+  const oraclePlan = require('./fixtures/retired-fuel-policy')(
+    require('./fixtures/retired-other-policy')(data)).plan;
   const monthlyCents = oraclePlan.budget.categories.filter(c => c.class !== 'reserve').map(c => {
     if (c.plannedWeekly != null) return Math.round(c.plannedWeekly * 100 * 1461 / 336);
     if (c.plannedMonthly != null) return cents(c.plannedMonthly);

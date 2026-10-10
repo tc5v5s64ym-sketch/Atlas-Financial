@@ -212,10 +212,14 @@ function isolateGroceries(plan) {
       if (cat.id === 'groceries') {
         return Object.assign({}, cat, {
           plannedPayday: 900, plannedWeekly: null, plannedMonthly: null,
+          targetEffectiveFrom: null, targetHistory: [],
         });
       }
+      // This synthetic fixture replaces each owner target with zero. Retained
+      // historical owner rows must not restore a real budget into this oracle.
       return Object.assign({}, cat, {
         plannedPayday: 0, plannedWeekly: null, plannedMonthly: null,
+        targetEffectiveFrom: null, targetHistory: [],
       });
     }),
   });

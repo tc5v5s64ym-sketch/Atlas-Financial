@@ -6366,18 +6366,24 @@
   // each calendar month, so a later payday week does not hold another
   // $100 obligation. every-other-seaspan counts only ON period starts.
   function paydayHoldForSpan(cat, plan, days, start, end) {
+    if (start && end) {
+      const dates = seaspanPaydaysInSpan(plan, start, end);
+      // A span can cross a restatement. Each payday owns its dated target;
+      // multiplying the span-start amount would rewrite later periods.
+      const holds = dates.map(date => {
+        const target = ownerTargetCategoryAt(cat, date);
+        if (!target || target.plannedPayday == null) return null;
+        if (isFirstSeaspanOfMonthCadence(target)
+            && !isFirstSeaspanPaydayOfCalendarMonth(plan, date)) return null;
+        if (isEveryOtherSeaspanCadence(target)
+            && !isEveryOtherSeaspanOnPayday(plan, date, target)) return null;
+        return roundCent(Number(target.plannedPayday) || 0);
+      }).filter(amount => amount != null);
+      return holds.length ? roundCent(holds.reduce((sum, amount) => sum + amount, 0)) : null;
+    }
     cat = ownerTargetCategoryAt(cat, start);
     if (!cat || cat.plannedPayday == null) return null;
     const payday = roundCent(Number(cat.plannedPayday) || 0);
-    if (start && end) {
-      const dates = seaspanPaydaysInSpan(plan, start, end);
-      const n = isFirstSeaspanOfMonthCadence(cat)
-        ? dates.filter(d => isFirstSeaspanPaydayOfCalendarMonth(plan, d)).length
-        : isEveryOtherSeaspanCadence(cat)
-          ? dates.filter(d => isEveryOtherSeaspanOnPayday(plan, d, cat)).length
-          : dates.length;
-      return n > 0 ? roundCent(payday * n) : null;
-    }
     const d = Math.max(0, Number(days) || 0);
     if (isFirstSeaspanOfMonthCadence(cat) || isEveryOtherSeaspanCadence(cat)) return null;
     return d === 14 ? payday : null;
@@ -8384,7 +8390,7 @@
   // and select it before reading any cadence/monthly/payday target. Without
   // a valid date the new target cannot be asserted.
   function ownerTargetCategoryAt(cat, date) {
-    if (!cat || cat.id !== OTHER_SPEND_ID || !cat.targetEffectiveFrom) return cat;
+    if (!cat || !cat.targetEffectiveFrom) return cat;
     if (!financialDate(cat.targetEffectiveFrom)) return Object.assign({}, cat,
       { plannedWeekly: null, plannedPayday: null, plannedMonthly: null });
     const day = financialDate(date);
@@ -8765,7 +8771,7 @@
     }
     const items = [];
     for (const id of CALENDAR_PERIOD_BUDGET_IDS) {
-      const cat = byId.get(id);
+      const cat = ownerTargetCategoryAt(byId.get(id), windowStart);
       if (!cat) continue;
       const planned = paydayCyclePlanned(cat, windowStart, plan);
       if (planned == null) continue;

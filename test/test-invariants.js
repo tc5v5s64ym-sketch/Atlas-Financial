@@ -348,8 +348,8 @@ ok(/historical actuals through 2026-08-24/.test(csvNote('Essential spending esti
     .filter(Boolean)
     .sort();
   const latestOwnerTarget = ownerTargetDates[ownerTargetDates.length - 1] || '';
-  ok(latestOwnerTarget === '2026-10-04',
-    'independent latest owner-stated budget target is the 2026-10-04 dated Other instruction',
+  ok(latestOwnerTarget >= '2026-10-04',
+    'independent latest owner-stated date includes the Other instruction and later approved targets',
     latestOwnerTarget);
   ok(csvAsOf('Essential spending estimate') >= latestOwnerTarget,
     'essential-spending as-of is not earlier than the latest owner budget target',
