@@ -3,6 +3,7 @@
 // The adapter is a trusted server dependency, never an MCP argument.
 const SCOPE = 'atlas.transactions.correct-with-grant';
 const DELEGATED_POLICY = 'atlas-delegated-category-review/v1';
+const CleanupPolicy = require('./assistant-cleanup-policy');
 const MAX_GRANT_MS = 30 * 86400000;
 const adapterMethods = ['context', 'grant', 'evidence', 'reserve', 'finish', 'suspend', 'acknowledgeVerified', 'verifyReservation'];
 function deny(reason) { throw new Error(reason); }
@@ -33,12 +34,13 @@ function appendNotes(before, addition) {
   if (result.length > 1000) deny('notes-capacity');
   return result;
 }
-function validate({ grant, evidence, auth, context, tx, body, fingerprint, now, categoryContext }) {
+function validate({ grant, evidence, auth, context, tx, body, fingerprint, now, categoryContext, metadataContext }) {
+  const cleanup = grant?.evidencePolicy === CleanupPolicy.POLICY;
   if (!keys(grant, ['schema', 'grantRef', 'revision', 'principal', 'clientId', 'budgetRef',
     'resource', 'credentialVersion', 'contextVersion', 'parserRevision', 'approvalRef', 'approvedByOwner', 'createdAt', 'expiresAt',
     'revokedAt', 'suspended', 'accounts', 'startDate', 'endDate', 'categoryTransitions',
-    'allowNotes', 'evidencePolicy', 'maxAttempts', 'attempts'])) deny('invalid-standing-grant');
-  if (grant.schema !== 'atlas-standing-correction-grant/v1'
+    'allowNotes', 'evidencePolicy', 'maxAttempts', 'attempts', ...(cleanup ? ['cleanupInstructions'] : [])])) deny('invalid-standing-grant');
+  if (grant.schema !== (cleanup ? CleanupPolicy.SCHEMA : 'atlas-standing-correction-grant/v1')
       || !/^grant-[a-f0-9]{24}$/.test(grant.grantRef)
       || !Number.isSafeInteger(grant.revision) || grant.revision < 1
       || grant.approvedByOwner !== true || !/^approval-[a-f0-9]{24}$/.test(grant.approvalRef)
@@ -79,7 +81,7 @@ function validate({ grant, evidence, auth, context, tx, body, fingerprint, now, 
       || tx.is_pending !== false || tx.is_split_parent || tx.split_parent_id != null
       || tx.is_group_parent || tx.group_parent_id != null || tx.is_parent || tx.is_group
       || ['delete_pending', 'deleted_pending'].includes(tx.status)) deny('standing-transaction-outside-grant');
-  if (!keys(body, ['category_id', 'notes']) || !Object.keys(body).length)
+  if (!keys(body, cleanup ? ['category_id', 'notes', 'payee', 'additional_tag_ids'] : ['category_id', 'notes']) || !Object.keys(body).length)
     deny('standing-operation-not-allowed');
   if (typeof grant.allowNotes !== 'boolean' || !Array.isArray(grant.categoryTransitions)
       || grant.categoryTransitions.length > 1000
@@ -95,8 +97,13 @@ function validate({ grant, evidence, auth, context, tx, body, fingerprint, now, 
       || body.notes.length > 1000 || body.notes === (tx.notes ?? '')
       || !body.notes.startsWith((tx.notes || '') + (tx.notes ? '\n' : ''))
       || !body.notes.slice((tx.notes || '').length).trim())) deny('standing-notes-not-additive');
-  const delegated = grant.evidencePolicy === DELEGATED_POLICY;
-  if (delegated) {
+  const delegated = grant.evidencePolicy === DELEGATED_POLICY || cleanup;
+  if (cleanup) {
+    CleanupPolicy.grantShape(grant, context, now);
+    CleanupPolicy.boundary({ grant, evidence, context, tx, body, categoryContext, metadataContext });
+    if (grant.resource !== context.resource || auth.resource !== grant.resource
+        || !instant(context.providerProof?.expiresAt) || context.providerProof.expiresAt <= now) deny('cleanup-binding-or-proof-unavailable');
+  } else if (delegated) {
     // Provider settings may auto-mark edited rows reviewed. This initial
     // category-only policy cannot authorize an incidental status change.
     if (tx.status !== 'reviewed') deny('delegated-reviewed-transaction-required');
@@ -108,7 +115,7 @@ function validate({ grant, evidence, auth, context, tx, body, fingerprint, now, 
         || transition.fromSignature !== categoryContext.from || transition.toSignature !== categoryContext.to
         || !same(evidence?.categoryContext, categoryContext)) deny('delegated-category-boundary-mismatch');
   }
-  if (!record(evidence) || evidence.schema !== (delegated ? 'atlas-delegated-category-evidence/v1' : 'atlas-standing-correction-evidence/v1')
+  if (!record(evidence) || evidence.schema !== (cleanup ? 'atlas-delegated-cleanup-evidence/v1' : delegated ? 'atlas-delegated-category-evidence/v1' : 'atlas-standing-correction-evidence/v1')
       || !/^evidence-[a-f0-9]{24}$/.test(evidence.evidenceRef)
       || evidence.grantRef !== grant.grantRef || evidence.grantRevision !== grant.revision
       || typeof grant.evidencePolicy !== 'string' || !grant.evidencePolicy
@@ -135,7 +142,12 @@ async function authorize(options, input) {
   if (grant?.grantRef !== input.grantRef || evidence?.evidenceRef !== input.evidenceRef)
     deny('standing-reference-binding-mismatch');
   const boundary = validate({ ...input, context, grant, evidence });
-  if (input.body.notes !== undefined) {
+  let financialEffects;
+  if (grant.evidencePolicy === CleanupPolicy.POLICY) {
+    if (options.cleanupEnabled !== true || typeof adapter.cleanupEffects !== 'function') deny('standing-cleanup-disabled');
+    financialEffects = await adapter.cleanupEffects({ tx: input.tx, body: input.body, metadataContext: input.metadataContext });
+    validateCleanupEffects(financialEffects, context, evidence.transferProof);
+  } else if (input.body.notes !== undefined) {
     if (options.notesEnabled !== true) deny('standing-notes-disabled');
     // Check note-only effects under BOTH the original and resulting category.
     // The production adapter normalizes labels from the real current catalog.
@@ -151,7 +163,15 @@ async function authorize(options, input) {
   return { ...boundary, budgetRef: context.budgetRef, credentialVersion: context.credentialVersion,
     contextVersion: context.contextVersion, parserRevision: context.parserRevision, evidenceExpiresAt: evidence.expiresAt,
     ...(grant.resource ? { resource: grant.resource } : {}),
-    ...(evidence.provenance ? { evidenceProvenance: evidence.provenance } : {}) };
+    ...(evidence.provenance ? { evidenceProvenance: evidence.provenance } : {}),
+    ...(financialEffects ? { financialEffects } : {}) };
+}
+function validateCleanupEffects(effects, context, transferProof) {
+  if (effects?.schema !== 'atlas-cleanup-financial-effects/v1'
+      || effects.parserRevision !== context.parserRevision
+      || effects.financialContextDigest !== context.financialContextDigest
+      || effects.metadataNeutral !== true || effects.categoryEvidenceNeutral !== true) deny('cleanup-financial-effect-changed');
+  if (transferProof && !same(transferProof, effects.transferProof)) deny('cleanup-transfer-proof-changed');
 }
 function unchangedOtherFields(before, after, body) {
   const ignored = new Set(['updated_at', ...Object.keys(body)]);
@@ -166,6 +186,7 @@ function categorySignature(row) {
       .map(k => [k, row[k] ?? null]))).digest('hex');
 }
 function validateGrantShape(grant, context, now) {
+  if (grant.evidencePolicy === CleanupPolicy.POLICY) return CleanupPolicy.grantShape(grant, context, now);
   if (typeof grant.principal !== 'string' || !grant.principal || grant.principal.length > 200
       || typeof grant.clientId !== 'string' || !grant.clientId || grant.clientId.length > 200
       || grant.evidencePolicy !== DELEGATED_POLICY || grant.allowNotes !== false
@@ -229,4 +250,4 @@ function validateDelegatedReview({ grant, context, auth, tx, body, review, categ
         principal: auth.principal, clientId: auth.clientId, resource: auth.resource, reviewDigest: '0'.repeat(64) } } });
 }
 
-module.exports = { DELEGATED_POLICY, categorySignature, validateGrantShape, validateDelegatedReview, SCOPE, MAX_GRANT_MS, available, appendNotes, validate, authorize, unchangedOtherFields };
+module.exports = { DELEGATED_POLICY, categorySignature, validateGrantShape, validateDelegatedReview, validateCleanupEffects, SCOPE, MAX_GRANT_MS, available, appendNotes, validate, authorize, unchangedOtherFields };

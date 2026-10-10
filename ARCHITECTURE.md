@@ -1632,6 +1632,23 @@ of secret it governs, which is why the distinction now comes first.
 
 ### Owner addendum — direct Lunch Money ChatGPT access (2026-10-02)
 
+**Owner continuation 2026-10-09 — inactive routine-cleanup implementation.**
+Dale explicitly dispatched #560 to extend the bounded standing authorization
+to supported names, existing categories, additive notes/tags and evidence-backed
+transfer labels: make eligible corrections under an exact signed reusable
+instruction, then report them, without per-transaction approval. Preserve bank
+descriptions and existing notes/tags, prove no unintended effect through the
+incumbent observer/Forecast, and durably log before/after for a private history
+sheet. Keep uncertain cases unresolved. No amount, split, deletion or money
+movement on this path. The implementation is separately versioned; existing
+category grants gain no permission. Lunch Money remains transaction authority
+and Forecast remains planner/classifier. This authorizes construction and
+synthetic tests only: everything stays off until tests, independent Systems
+Review and final access/provider-contract/private installation/sheet setup are
+complete and approved. No production write, access grant or deployment is
+authorized here. [The bounded connection contract](docs/LUNCHMONEY_CLEANUP_CONNECTION.md)
+records the live consumer, proof and exact activation prerequisites.
+
 The owner explicitly requested transaction discussion and edit capabilities in
 Atlas Financial's existing ChatGPT plugin. This extends the earlier packet-only
 OAuth grant solely for on-demand ledger catalog/lookup and confirmed single
