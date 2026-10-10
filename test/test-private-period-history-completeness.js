@@ -68,6 +68,15 @@ function capture(data) {
   const clean = clone(data), time = clean.capturedAt; delete clean.capturedAt;
   return History.capture(clean, { now: () => new Date(time) });
 }
+// Reseal a synthetic envelope with JSON's sorted-property serializer, without
+// History internals (same technique as test-private-period-history.js).
+function reseal(next) {
+  const body = { schema: next.schema, capturedAt: next.capturedAt, content: next.content }, keys = new Set();
+  const collect = value => { if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) { keys.add(key); collect(child); } };
+  collect(body);
+  next.captureId = crypto.createHash('sha256').update(JSON.stringify(body, [...keys].sort())).digest('hex');
+  return next;
+}
 function append(destination, candidate) { return History.append({ destination, enabled: true, candidate }); }
 const reasonsOf = candidate => candidate.content.sourceCompleteness.reasons;
 const transport = candidate => reasonsOf(candidate).filter(code => code.startsWith('transport:'));
@@ -132,8 +141,17 @@ try {
     assert.deepEqual(History.completeness(record), { status: 'unknown', reasons: [], closingState: 'unknown', cutoff: null });
     assert.ok(!['sourceCompleteness', 'closingState', 'cutoff'].some(key => Object.hasOwn(record.content, key)), 'v1 is never upgraded in place');
     assert.equal(record.content.provenance.reconciliationReceipt, null, 'legacy null receipt stays as recorded');
-    // A regenerated v2 retry of the same original content is the v1 revision.
-    const retry = append(archive, capture(input(ANCHOR, 'original')));
+    // contentKey includes the engine version (commit + file fingerprints), so
+    // a regeneration under a different engine commit is distinct evidence and
+    // the baseline singleton guard must refuse it rather than dedupe it.
+    const regenerated = capture(input(ANCHOR, 'original'));
+    if (regenerated.content.engine.commit !== record.content.engine.commit) {
+      rejects(() => append(archive, regenerated), 'history-original-or-closing-conflict');
+    }
+    // Same content under the legacy record's engine version: the v2 retry is
+    // the v1 revision (v1 contentKey unchanged; derived labels excluded).
+    regenerated.content.engine = clone(record.content.engine);
+    const retry = append(archive, reseal(regenerated));
     assert.deepEqual([retry.status, retry.revisionId, retry.schema], ['duplicate', V1[0].revisionId, 'atlas-private-period-history/v1']);
     // A genuine v2 revision chains after the legacy head without rewriting it.
     const correction = input('2030-02-16', 'actual-correction');
