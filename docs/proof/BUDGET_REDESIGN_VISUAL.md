@@ -79,8 +79,8 @@ from Git blobs, and its index stat metadata was refreshed with no staged content
 change. The clean-start and raw-byte checks then passed. No source hash or
 screenshot expectation was manually substituted to make the proof pass.
 
-Exercised code commit: `e26f6a7469dd5d0f33dfa2db4524e788114b1cfc`.
-Source tree: `1f756d74964964aad03ffd4b297eb6e2e50cb088`.
+Exercised code commit: `fc846dc1575543a3c07ba662ee4ed211ea51ebd6`.
+Source tree: `d87fa298d64241903608f817e19affc7de1de7e6`.
 The receipt binds **189 tracked sources** with Git blob IDs, raw SHA256 and
 byte counts. Each repository asset served to the browser is checked against that
 binding; every scoped source is checked again after execution. Only docs/proof/
@@ -111,6 +111,9 @@ Useful captures:
 - [Current 935-pixel panel light](budget-panels-935-light.png) and [dark](budget-panels-935-dark.png)
 - [Native unavailable panel light](budget-panels-935-light-unavailable.png) and [dark](budget-panels-935-dark-unavailable.png)
 
+- [Current 935-pixel panel light](budget-panels-935-light.png) and [dark](budget-panels-935-dark.png)
+- [Native unavailable panel light](budget-panels-935-light-unavailable.png) and [dark](budget-panels-935-dark-unavailable.png)
+
 - [Working selector light](budget-river-port-1440-light.png) and [dark](budget-river-port-1440-dark.png)
 - [Original versus port light](budget-river-pair-1440-light.png) and [dark](budget-river-pair-1440-dark.png)
 
@@ -128,7 +131,7 @@ integrated main `657339f46862f187ba2ab81c066e5cd474318b2b`. That revision's
 own script and inputs were extracted from its exact Git blobs and executed
 independently of the candidate checkout. Both 582-key numerical snapshots have
 SHA256 `60b0328bc9174270ef23c1bba6e2d61f52cc674204ad6cd07728ad6eeabc8ac6`.
-The Forecast-owned movement module now includes the recorded HELOC under the existing native evidence guards; it is separately reconciled in the panel proof. Historical aggregate availability is an intentional presentation repair and is
+The Forecast-owned movement module now includes the recorded HELOC under the existing native evidence guards; it is separately reconciled in the panel proof. The Forecast-owned movement module now includes the recorded HELOC under the existing native evidence guards; it is separately reconciled in the panel proof. Historical aggregate availability is an intentional presentation repair and is
 proved separately through the real renderer and browser.
 
 The PR merge card records the full-suite outcome and actual hosted checkout

@@ -49,7 +49,7 @@ Test inputs are fixed invented publications, separate from the household preview
 
 ## Independent browser evidence
 
-Source commit: `e26f6a7469dd5d0f33dfa2db4524e788114b1cfc`.
+Source commit: `fc846dc1575543a3c07ba662ee4ed211ea51ebd6`.
 Integrated main: `657339f46862f187ba2ab81c066e5cd474318b2b`.
 All actual source bytes equal Git blobs before and after the complete proof.
 The [receipt](budget-blend-browser-receipt.json) records source/served/screenshot

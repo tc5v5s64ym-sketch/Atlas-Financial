@@ -6,8 +6,8 @@
   "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "reducedMotion": false,
   "sourceBinding": {
-    "sourceCommit": "e26f6a7469dd5d0f33dfa2db4524e788114b1cfc",
-    "sourceTree": "1f756d74964964aad03ffd4b297eb6e2e50cb088",
+    "sourceCommit": "fc846dc1575543a3c07ba662ee4ed211ea51ebd6",
+    "sourceTree": "d87fa298d64241903608f817e19affc7de1de7e6",
     "baseCommit": "657339f46862f187ba2ab81c066e5cd474318b2b",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -583,9 +583,9 @@
         "bytes": 2506
       },
       "scripts/provider-observe.js": {
-        "gitBlob": "b96ed2ec4f530f34ff82db91e07bec2c40fadaa8",
-        "sha256": "614265cb432ff7aee713bd9916082ad491830ec91a5b115afb1d9451eb45d22f",
-        "bytes": 190540
+        "gitBlob": "b6e2fffbd22ac2ad695abe6d7357e46bdf03a361",
+        "sha256": "973348f278938d6804a07299a6bf337174719db76c3dd1bf15d70022e9392ca0",
+        "bytes": 190589
       },
       "scripts/reconcile.js": {
         "gitBlob": "24286860e1a8efcdbe04d1629fd461899c3fb865",
@@ -733,9 +733,9 @@
         "bytes": 166597
       },
       "test/browser-budget-panel-repairs.js": {
-        "gitBlob": "35f49a6a2d5225d2cbeba50225156f2bc979ebba",
-        "sha256": "ebb9934d2d5a8bd3a1ffc39b7705ec0e274cccacd988b9532613a7afe2cfa64b",
-        "bytes": 8964
+        "gitBlob": "92b38eb4e7cbf39a7084e6cb91af8a86a656f618",
+        "sha256": "cf80e3b90fa77bdfbbb338f78390c7b9ee149637a438ef0c6f500f4865c0b466",
+        "bytes": 9512
       },
       "test/browser-budget-river-port.js": {
         "gitBlob": "c94410b98a8cd72e1eb42a5fb496413b7caa5507",
@@ -798,9 +798,9 @@
         "bytes": 2384
       },
       "test/fixtures/card-period-movements-data.js": {
-        "gitBlob": "5384487915f2d7f40382adec9a6e87498e53693b",
-        "sha256": "ac4ecd1ef1b092ead5acc8629460d2755b7cf895378c46350cf26445e764c527",
-        "bytes": 6298
+        "gitBlob": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
+        "sha256": "ba2b039d95f9ed777d3e81ef4dd39c1c38b59d6b0f035875586dfe60aaa0daf0",
+        "bytes": 8121
       },
       "test/fixtures/card-purchase-coverage-data.js": {
         "gitBlob": "d78f56e981ac9254b536dbed06c60fcc36032ad0",
@@ -1048,12 +1048,12 @@
     "budget-blend-320-light-household-all.png"
   ],
   "screenshotSha256": {
-    "budget-river-port-1440-light.png": "78f6f0af03571b0471e4247b5861143c41303f011a4a52bbb1d73e71b233db20",
-    "budget-river-port-1440-dark.png": "83ed45180fcbc1cda73239c680ffbe2faef53b906c5d62c31149a5b79d2be057",
-    "budget-river-port-390-light.png": "d8830d369651fc51793bf4645c13f7c5d61d21344e8c4f5afe1ad5908e8a6081",
-    "budget-river-port-390-dark.png": "9a8c47de807c60a4f52d51d8ca4787476864180ffdac3debac584bf267e849ee",
-    "budget-river-port-320-light.png": "000eeac18c6680930b26a9b30f84ec881c4e21841f4e738ee80813f30459131f",
-    "budget-river-port-320-dark.png": "e224d2cb5125d271d3bd4fe1f77ed5b8ee2c3fd95d80babf9de301bd48574211",
+    "budget-river-port-1440-light.png": "d8b5819f2c821981b1e5275af36d3e418c5ed656e907fa43de99c717e66c0bc8",
+    "budget-river-port-1440-dark.png": "a344d1f9a85855182ce3ee5985c4ecd2aaefb6129880fad6a80d0bb4e759ce32",
+    "budget-river-port-390-light.png": "92697146efb6c010fe1311b1539bb319c6b105126e2d32416193599d0dfd9d16",
+    "budget-river-port-390-dark.png": "5e7f3aa6b7a3b8eeda4dbd45eb00b82a47a1fbb9d0737112fc5e2b833fd8bc92",
+    "budget-river-port-320-light.png": "981829b6e65696c68b68f99d3625dee8a8c0ccd5d0a28807f3676950b98d1d12",
+    "budget-river-port-320-dark.png": "5559938779c24237f86f5f68684884b1cc602aa5b44b45976c44340c217930b0",
     "budget-river-pair-1440-light.png": "43d4a74eb2a58c3fece1e07b7a662ab255910bf94d99fbefaaf903deea0d7371",
     "budget-river-pair-1440-dark.png": "0adff6ce6ef5be847169adb01f5660a72898a791865beb19629982687a858a23",
     "budget-river-pair-390-light.png": "f3dc38e50a6302e579f1331640006818c75c6cc6b1d206ba1ebb831969862e9e",
@@ -1063,44 +1063,44 @@
     "budget-panels-935-light.png": "8de8e86c0b4f82ee854566c2b8fe7807ebadb302cdce7530c1f1ee34d1a32b2d",
     "budget-panels-935-dark.png": "52212be054285e17b0d0d67aef84e61781e37f5b8bc10230819421e4b03cc244",
     "budget-panels-935-light-unavailable.png": "2d922314fb0c2ed77d4b0c7706e77df409bcfb3441b435c2abb11af6c3136982",
-    "budget-panels-935-dark-unavailable.png": "57a801178b9f8cc66c42cda9f554b3e962c07abee37ebb45bafc3a2238ecc2ec",
-    "budget-blend-1440-light.png": "9fb70deed28ed0636f3e937fcf2ac2d011c437ac4bee8b6776097ff896a47f59",
-    "budget-blend-1440-dark.png": "21707e5a49a4d3ad9e93fdd9b5fb9d2ef75ad7fa90cf000f89d3461ba58d7c58",
-    "budget-blend-390-light.png": "c152a922a229e672dbf173322c59bf2193af0e1284cab7bdb15946e55f6df004",
-    "budget-blend-390-dark.png": "63babbbbd00a7f7695e81f62b141b81f7fcb3c3fe42917e08171dce53e427baa",
-    "budget-blend-320-light.png": "28baa55652f7958fcb62deeeb39922c9db1440c38d0566e5b945f0d452fb7a0d",
-    "budget-blend-320-dark.png": "7ebaae18cd7f29c4d45df41633fa65ed3ca1043421dbe3ab6e3aef7d14d79a54",
-    "budget-blend-1440-light-next.png": "207294b5d91965f5b38d1aa8f630ad49bce29dae5dba7f2838636c12ef196993",
-    "budget-blend-1440-light-aug28.png": "9d7d454df467199d733714323a6033edf14162084586ce079b8b3a58ff0a6f04",
-    "budget-blend-320-light-aug28.png": "e5d60930f65c43b39026fcc2dac92ab1c35e56f02b5abdb645ea808ab5da48f7",
-    "budget-blend-390-light-next.png": "a2a00efed955764dbeeaf533dca382d66f88da346064be45146dfe2e6b2959c5",
-    "budget-blend-1440-light-past.png": "7cf5e2d695cecabc83b6cbe6e708f1d1abcb5f534937869c3ba4187f72fe2c52",
-    "budget-blend-390-light-past.png": "6a99607ec9fb6ae9efb8e52906b3bda30cc69e8e7da86da610b281e6db0e967a",
-    "budget-blend-320-light-past.png": "825bfd1bea0071f2d1f3e22e7a3aa56f2028883b02c891b887780f7f889b05fa",
-    "budget-blend-1440-light-past-qualified.png": "c71a481f14a76f06a7aa8652d53560e7c62d21f13b90b3db1e035558210d39d2",
-    "budget-blend-390-light-past-qualified.png": "fd03f846b024243d5f0307926fbbcf47686846a58b7c136660e4bfeb01ddfab4",
-    "budget-blend-320-light-past-qualified.png": "d6952280ebff7ba2dc1f52ab190fcda8aa17d2795d07a1ea35388321ee994dc7",
+    "budget-panels-935-dark-unavailable.png": "c6caa22ed5b7229b2227cc8e2344a94b113cab9548b62382e9b6dfc0e96f47e0",
+    "budget-blend-1440-light.png": "c8bc7f9d939fa1ee6aff57dcf59695e9d9fa0b07b62eba802c1ac4f91f636c1e",
+    "budget-blend-1440-dark.png": "5fa0f8596376811f5bcaca62d11914d9501080194cab7cddf4e67b1d8532969e",
+    "budget-blend-390-light.png": "7b37029497e8c19c088be30aa7b8b1620f87f8462d187d8472444f43d80d35b5",
+    "budget-blend-390-dark.png": "2947930738a9c4887706ff5d1a56824017797fbe13dcc8de0195afec75ae225f",
+    "budget-blend-320-light.png": "0c3d3dc2e021cdc8c1a87babcbdb2076cc5c6bf8631a017400e0db1374106f66",
+    "budget-blend-320-dark.png": "d510237267ee839d8ff6f995bc1e13eb8fc84d22cbb3a4f1844023e8f199275f",
+    "budget-blend-1440-light-next.png": "cbfcb373bf9df56b9771838ffcb5e3c0bf4b399a83e122149902c24a4c28090d",
+    "budget-blend-1440-light-aug28.png": "b556e44e11a9114d50a0daf2d4f585d7787841d99757ddbdedd93c6f2a64bfb0",
+    "budget-blend-320-light-aug28.png": "cdbea5671aec55dc8975e4d287188eebca62b7ec4ed812f1948f5d4c1bdf7170",
+    "budget-blend-390-light-next.png": "48dbb799b10809efa29955d50039f6966744fe35e25cf693ea49c1940fb5e8b0",
+    "budget-blend-1440-light-past.png": "17c7cc8fb4622b9e1e6b29cafb858c7844818775cb569768cae3156273515355",
+    "budget-blend-390-light-past.png": "ea84089af24205531b1bb7bbe12c78e00174927bf9be0286f146000ee2ba92dc",
+    "budget-blend-320-light-past.png": "aa201a415b2bcc73fffdcac5aaff72a5d18e1dbe83b8547f56c1312d3f2981fc",
+    "budget-blend-1440-light-past-qualified.png": "3913e1cd33c189482fb4e61ca668eed508574a4ca45967676185f28c13bc0040",
+    "budget-blend-390-light-past-qualified.png": "b4a18f65f87f2b82ab6b1899a9382c8ef2a5103f01bf651b098c65a74ef3b798",
+    "budget-blend-320-light-past-qualified.png": "46ea4c678e8e091a212c5d66711e68ecbfb0d837d0a92418127a68f13e75673c",
     "budget-blend-1440-light-unavailable.png": "37517f55be419ba0a7c33c78ad508e2fec921bb6a5d0c9bc3531110c31141340",
     "budget-blend-390-dark-unavailable.png": "1e3f6f397780ff6b1e6bfcc420e1c7f343fe2a5011aa4eddba551a80c8ae05a2",
-    "budget-blend-focus-granularity.png": "23c2833f69d74ed8bc135e599ff5a681799f277d23d0f6f87364c9c4b24e8b61",
-    "budget-blend-focus-income.png": "4f12914c9fcb7a0fefa478ba973101ba6672a99242f564e974ca1b8a64f36a36",
-    "budget-blend-focus-result.png": "a244591da52239a791878a7d91958d28f34077b1ebd2cdb789be643a22ba0a06",
-    "budget-blend-focus-household.png": "d6f1478b82210de0af9aa55493f9bde1b0caa563677c4fc6a58f512ac21614bc",
-    "budget-blend-focus-goal.png": "455287a287ad425a35197d835b4905a3ca5a3c7a4d7da4f0687f104fa614028a",
-    "budget-blend-cards-1440-light.png": "1902a1d2af7119135a11f5dc3eb127503dc98182400ad0b4387f64fe695c36b6",
-    "budget-blend-cards-320-dark.png": "02e741a5869dd181a66b3fd0e9e3aeaca588260c6e0f91ce1faba7de40eec0d7",
-    "budget-blend-1440-light-on-plan.png": "c6a76e815350fd480b194421ce1f757f21f56ad020d2faa8e9af12545390cd62",
-    "budget-blend-1440-light-infeasible.png": "7863b14416409c44559ee5e1786b42507be841423f8d9ddc977415e43a29b2f7",
-    "budget-blend-1440-dark-next.png": "cc06fb443503bffc91638feed3f4344e5b9b7ece49f29b65c8e7718daf8f95c9",
-    "budget-blend-390-dark-next.png": "2f440d7ed93e0b8457d82cef911956a1f837604932ee47cb6e906913c54956bb",
-    "budget-blend-320-light-next.png": "8604e08f20c3efa1474d8916a21d8ef1f7d1090343a826a71036ba8f3d9f45dc",
-    "budget-blend-320-dark-next.png": "330c646c2b72d0be8fd89d63ca8c5ec194d0ac0b0ecdc5187db874c5f13647e5",
-    "budget-blend-1440-dark-past.png": "c242e5701ab5e5610de8b3a19fd833d120cda7f0cd570bcb2828e9cf2d5741db",
-    "budget-blend-390-dark-past.png": "b7390f4edd8c8f991dc762e96d123c6a5ddd45391a344b48442a9ebed14ffce5",
-    "budget-blend-320-dark-past.png": "3a22e5f3595bb4ef3cd324aac00ac2f68c57771268f167a547459a6eb0c19a55",
-    "budget-blend-1440-light-household-all.png": "67ada2d2a3aa3baa18ad6ebcd5d374a1766ad29a776c7a48e7add530ece26ec1",
-    "budget-blend-390-light-household-all.png": "1d300a1f92c9e6316af11a68b7d5cd9a1587d9a637317d6b53f4219758be9f28",
-    "budget-blend-320-light-household-all.png": "5859493f25af003c6d8d00755cbc1466f1f44c3dfe6cbdcad89a443b803c5dba"
+    "budget-blend-focus-granularity.png": "c4f409c4436ae7d837466b5ad66bfa1aeec2cbd5af5536fa1222e5bdd82f0050",
+    "budget-blend-focus-income.png": "9bd458b8e388dc99e39ef426e4fc9cfabf9058ae73bb6af2325884470d012a38",
+    "budget-blend-focus-result.png": "8bfbec1781fef1dc684a10e5ed449e6e03d1204e64e41336a71adaf9f4ef1eed",
+    "budget-blend-focus-household.png": "d4e23436fc910b40b1097c099ca2fee65ffe21ee2829bbafda2c84ded725ebc1",
+    "budget-blend-focus-goal.png": "ad720d547791af6c927acc34b4f3a841129196ca887a14142d91fa64f9ddf58b",
+    "budget-blend-cards-1440-light.png": "fea79a73a5d5e683374806f59d234383798c2e2f50f4e0583849a4fb320291b5",
+    "budget-blend-cards-320-dark.png": "04f99768cc733d32dc933ffb3fd99cbf8fa401523305f9188417aa82796268fa",
+    "budget-blend-1440-light-on-plan.png": "918c549782f217a8bf85702fdc34a2ad255e8b9871ef7cb6ca4235dd8ad73f87",
+    "budget-blend-1440-light-infeasible.png": "12b4b532670c7694339bcf34db86a35d9b46da94087080b155341609e5aa36ff",
+    "budget-blend-1440-dark-next.png": "b20fa89faf19f8239a4c50458570323b5be14f8aa8acf0fc5a957d720a441dfd",
+    "budget-blend-390-dark-next.png": "3c8f79ef6b388aceb4e25ac2070f425521688e1ad42b6a162c1089942b6066c6",
+    "budget-blend-320-light-next.png": "11107bd1e51ebf981877c821e596d2e8cac2e3767f4ac2c907422de36eaaeef5",
+    "budget-blend-320-dark-next.png": "a4a77d72391601567ca0f4e8eabcc4375596018c015860084fc20c6a6113248f",
+    "budget-blend-1440-dark-past.png": "7f2be598ca3be57b7eb62a55773b7a6ff48374bc725d56406faa8402f65047fe",
+    "budget-blend-390-dark-past.png": "3ca903d747efebf145a49cf679042f4b5e25c4b803fa9c5b9ec44a10b647a0d8",
+    "budget-blend-320-dark-past.png": "0f5bcf34e1ce815a8e08860a7a6d6af7a1fe466743e77fc62c5072df0b2b8623",
+    "budget-blend-1440-light-household-all.png": "1bfe1c54c24c8272a82d6c54b627364193c61c67de93a169d95aa65819def6c2",
+    "budget-blend-390-light-household-all.png": "41273b7e5d5814ba277c66285a3158f91617dea1d680f8a88702e4dcc298a089",
+    "budget-blend-320-light-household-all.png": "dc253d23433772c38477545f55508832180604fac0282f7e87246644dfbe4988"
   },
   "sourceSha256": {
     "public/plan.js": "9c9106ab02d84877ec74f75f815b2e6f1d6c7ab9e31d0805e5f2c368a1b58f00",
@@ -1599,7 +1599,7 @@
           ]
         },
         "staticPixelDifferences": 228824,
-        "movingPixelDifferences": 229615,
+        "movingPixelDifferences": 229512,
         "springIdentical": true,
         "resize": true,
         "reducedMotion": true
@@ -5471,6 +5471,12 @@
         "unavailable": true,
         "householdReasonVisible": true,
         "helocUnavailable": true
+      },
+      {
+        "width": 935,
+        "theme": "light",
+        "realObservation": true,
+        "malformedRecordNotZero": true
       }
     ],
     "inventedDataOnly": true,
