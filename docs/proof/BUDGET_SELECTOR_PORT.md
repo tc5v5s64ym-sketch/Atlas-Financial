@@ -1,5 +1,7 @@
 # Original g-blend selector port — Draft #548
 
+Current source binding and approval scope are recorded in [the final main integration report](BUDGET_FINAL_MAIN_INTEGRATION.md). The repair-specific record below is retained as history; the current receipt exercises 5fdadcd916c78e484c8a45504aedf2c0b7af2b04 with main fc3e6cfd97b09478559f5bec05556ecd365624a6.
+
 Implemented in the existing builder task and PR, before any other widget port.
 Owner source: [original-code instruction](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6090989561)
 and [light/dark clarification](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6091424187).

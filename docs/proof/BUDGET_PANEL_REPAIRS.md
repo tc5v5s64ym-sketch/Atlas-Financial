@@ -1,5 +1,7 @@
 # Budget panel repairs — Draft #548
 
+Current source binding and approval scope are recorded in [the final main integration report](BUDGET_FINAL_MAIN_INTEGRATION.md). The repair-specific record below is retained as history; the current receipt exercises 5fdadcd916c78e484c8a45504aedf2c0b7af2b04 with main fc3e6cfd97b09478559f5bec05556ecd365624a6.
+
 Source: Dale's latest browser comments in this existing builder task: full numbers must fit; make the hero fit and remove repeated est. badges; complete Household; add HELOC. Before editing the isolated continuation, the 935-pixel hero overflow and missing HELOC row were reproduced. Verdict: STILL BROKEN, code required. Final visual acceptance remains pending; keep Draft.
 
 Current main 657339f46862f187ba2ab81c066e5cd474318b2b is integrated. The separate #560 changes were merged upstream by their builder during verification and are included unchanged. This repair edits no Lunch Money implementation, private map, credential, provider state or canonical financial data. The original owner checkout remains untouched.

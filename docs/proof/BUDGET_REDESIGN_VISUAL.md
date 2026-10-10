@@ -1,5 +1,7 @@
 # Budget g-blend approved repairs — Draft #548
 
+Current source binding and approval scope are recorded in [the final main integration report](BUDGET_FINAL_MAIN_INTEGRATION.md). The repair-specific record below is retained as history; the current receipt exercises 5fdadcd916c78e484c8a45504aedf2c0b7af2b04 with main fc3e6cfd97b09478559f5bec05556ecd365624a6.
+
 Owner source: the 2026-10-09 instruction to remove the separate Income tile,
 show every Household line, preserve trustworthy historical pay-period figures
 with missing data unavailable, and address the 18 browser findings. Keep Draft;
