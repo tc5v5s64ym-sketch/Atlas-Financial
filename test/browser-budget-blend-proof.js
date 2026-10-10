@@ -9,13 +9,14 @@ const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { chromium } = require('playwright');
 const { captureSourceBinding, verifySourceBinding } = require('./proof-source-binding');
+const { proveRiverPort, riverHarnessHtml } = require('./browser-budget-river-port');
 
 const root = path.join(__dirname, '..');
 const outDir = path.join(root, 'docs/proof');
 fs.mkdirSync(outDir, { recursive: true });
 const listedSources = spawnSync('git', ['ls-files', '-z', '--', 'public', 'scripts/*.js', 'test/fixtures',
   'test/proof-source-binding.js', 'test/test-proof-source-binding.js', 'test/test.js',
-  'test/browser-budget-blend-proof.js', 'data.json', 'package.json', 'package-lock.json'],
+  'test/browser-budget-blend-proof.js', 'test/browser-budget-river-port.js', 'data.json', 'package.json', 'package-lock.json'],
 { cwd: root, encoding: 'utf8' });
 assert.equal(listedSources.status, 0, 'Tracked proof source scope must be readable.');
 const sourceBinding = captureSourceBinding(root, listedSources.stdout.split('\0').filter(Boolean), process.env.PROOF_BASE_SHA || null);
@@ -73,6 +74,7 @@ const composite = (fg, bg) => {
           external.push(u.origin);
           return route.abort();
         }
+        if (u.pathname === '/' && options?.riverHarness) return route.fulfill({body:riverHarnessHtml(theme),contentType:'text/html'});
         if (u.pathname === '/data.json') return route.fulfill({ json: data });
         if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(u.pathname)) {
           return route.fulfill({ json: null });
@@ -92,7 +94,7 @@ const composite = (fg, bg) => {
         return route.fulfill({ body: bytes, contentType: type });
       });
       await page.goto('http://budget.test/');
-      await page.locator('[data-budget-surface]').waitFor();
+      if(!options?.riverHarness)await page.locator('[data-budget-surface]').waitFor();
       await page.evaluate(async () => {
         await document.fonts.ready;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -230,6 +232,7 @@ const composite = (fg, bg) => {
       await page.evaluate(() => document.getElementById('blend-capture-chrome')?.remove());
       shots.push(file);
     };
+    const riverPort = await proveRiverPort({ open, capture });
 
     const readFunding = page => page.evaluate(() => {
       const block = document.querySelector('[data-bad-terms]');
@@ -627,7 +630,7 @@ const composite = (fg, bg) => {
             const section = document.querySelector('[data-budget-funding-section]');
             const box = section ? section.getBoundingClientRect() : null;
             const nav = document.querySelector('[data-bad-river]');
-            const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => (el.textContent || '').trim());
+            const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => el.dataset.riverNativeValue || (el.textContent || '').trim());
             return {
               family,
               fundingInPanel: !!(section && section.closest('.blend-goals-panel')),
@@ -642,7 +645,7 @@ const composite = (fg, bg) => {
           const riverContract = await page.evaluate(() => {
             const list = document.querySelector('ol[data-bad-timeline]');
             const nav = document.querySelector('[data-bad-river]');
-            const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => (el.textContent || '').trim());
+            const labels = [...document.querySelectorAll('.g-river-wrap .rv')].map(el => el.dataset.riverNativeValue || (el.textContent || '').trim());
             const items = list ? [...list.querySelectorAll(':scope > li')] : [];
             const kept = items.filter(li => li.getAttribute('data-bad-timeline-start') && li.getAttribute('data-bad-timeline-end'));
             const expected = kept.map(li => {
@@ -2337,8 +2340,9 @@ const composite = (fg, bg) => {
           mode: nav ? nav.getAttribute('data-bad-river') : '',
           state: nav ? nav.getAttribute('data-state') : '',
           focusable: document.querySelector('.g-river-wrap .river')?.tabIndex === 0,
-          labels: nodes.map(el => (el.textContent || '').trim()),
-          tones: nodes.map(el => el.className),
+          labels: nodes.map(el => el.dataset.riverNativeValue),
+          compactLabels: nodes.map(el => el.textContent.trim()),
+          tones: nodes.map(el => el.dataset.state),
           months,
           value: (document.querySelector('[data-ph-value]')?.textContent || '').trim(),
           orbHidden: document.querySelector('.playhead-orb')?.hidden === true,
@@ -2349,17 +2353,12 @@ const composite = (fg, bg) => {
       }));
     }));
     const probeLabels = ['$3,700.00', '-$420.00', '$731.83', 'Unavailable', '−$1,020.09', '-$10.00', '$0.00'];
-    if (riverProbe.mode !== 'printed' || riverProbe.state !== 'neutral' || !riverProbe.focusable
+    if (riverProbe.mode !== 'printed' || riverProbe.state !== 'unknown' || !riverProbe.focusable
       || !riverProbe.orbHidden || !riverProbe.beamHidden || !riverProbe.chooserVisible
       || riverProbe.rows !== 7 || riverProbe.labels.join('|') !== probeLabels.join('|')
       || riverProbe.value !== 'Unavailable'
-      || !/is-income/.test(riverProbe.tones[0])
-      || !/is-short/.test(riverProbe.tones[1]) || !/is-income/.test(riverProbe.tones[2])
-      || !/is-muted/.test(riverProbe.tones[3])
-      || !/is-short/.test(riverProbe.tones[4]) || /is-income/.test(riverProbe.tones[4])
-      || !/is-income/.test(riverProbe.tones[5]) || /is-short/.test(riverProbe.tones[5])
-      || !/is-income/.test(riverProbe.tones[6])
-      || riverProbe.labels.some(label => label === '$0' || label === '0')
+      || riverProbe.tones.join('|') !== 'healthy|short|healthy|unknown|short|healthy|healthy'
+      || riverProbe.compactLabels.join('|') !== '$3.7k|−$420|$732|—|−$1k|−$10|$0'
       || !riverProbe.months.some(label => label.startsWith('Aug'))
       || !riverProbe.months.some(label => /Jan/.test(label) && /2027/.test(label))) {
       errors.push(`river adapter ${JSON.stringify(riverProbe)}`);
@@ -2532,6 +2531,7 @@ print('390 crops', im.size)
       textContrastSamples: contrasts.filter(row => row.sampleType === 'visible-text').length,
       emptyContrastProbes: contrasts.filter(row => row.sampleType === 'no-visible-text').length,
       heroTerms,
+      riverPort,
       focusWalk: focusWalks[0],
       externalRequests: external,
       errors,

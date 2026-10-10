@@ -1946,579 +1946,124 @@
   }
 
   let activeRiver = null;
-  let riverMotionSession = null;
+  let pendingRiverSelection = null;
+  let riverSelectionFrame = null;
 
   function cleanupDetachedRiver() {
-    if (!activeRiver || activeRiver.wrap.isConnected) return;
-    activeRiver.dispose();
-    activeRiver = null;
+    // Native selection replaces the bento, not its stable operating mount.
+    // Keep the original river element/controller alive across those remounts.
+    if (!activeRiver || activeRiver.wrap.isConnected || document.querySelector('[data-budget-bento]')) return;
+    activeRiver.controller.dispose(); activeRiver = null;
+    if (riverSelectionFrame != null) cancelAnimationFrame(riverSelectionFrame);
+    riverSelectionFrame = pendingRiverSelection = null;
+  }
+
+  function compactRiverAmount(value) {
+    if (!Number.isFinite(value)) return '—';
+    // Original fmtK: display formatting of one published amount, never a total.
+    const a = Math.abs(value), sign = value < 0 ? '−' : '';
+    return a >= 999.5 ? sign + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : sign + '$' + Math.round(a);
+  }
+
+  function nativeRiverRange(node) {
+    if (!node || !/^\d{4}-\d{2}-\d{2}$/.test(node.start) || !/^\d{4}-\d{2}-\d{2}$/.test(node.end)) return node?.range || 'Pay period';
+    const startMonth = RIVER_MONTHS[Number(node.start.slice(5, 7)) - 1];
+    const endMonth = RIVER_MONTHS[Number(node.end.slice(5, 7)) - 1];
+    if (!startMonth || !endMonth) return node.range;
+    const sameMonth = node.start.slice(0, 7) === node.end.slice(0, 7);
+    const crossYear = node.start.slice(0, 4) !== node.end.slice(0, 4);
+    return startMonth + ' ' + Number(node.start.slice(8)) + (crossYear ? ', ' + node.start.slice(0, 4) : '')
+      + ' – ' + (sameMonth ? '' : endMonth + ' ') + Number(node.end.slice(8))
+      + (crossYear ? ', ' + node.end.slice(0, 4) : '');
+  }
+
+  function publishRiverSelection(start, focus) {
+    const model = readBadTimeline(document);
+    const index = model.nodes.findIndex(node => node.start === start);
+    if (index < 0) return;
+    chooseBadTimeline(index, model);
+    const nativeFocus = document.activeElement;
+    if (nativeFocus?.closest('[data-budget-wheel="period"], [data-budget-window-step]')) nativeFocus.blur();
+    if (activeRiver) activeRiver.restoreFocus = focus;
   }
 
   function paintRiver(bento) {
     cleanupDetachedRiver();
-    if (bento.querySelector('.g-river-wrap')) return;
-    const model = readBadTimeline(document);
-    const absent = !model.present || !model.nodes.length;
-    const nodes = absent
-      ? Array.from({ length: 12 }, (_, index) => ({
-        index: index, start: '', end: '', role: '', range: '', trust: '', face: '',
-        amount: '', label: '—', unavailable: true, estimated: false, negative: false,
-        tone: 'muted', magnitude: null,
-      }))
-      : model.nodes;
-    if (!nodes.length) return;
-    const selected = absent ? Math.floor((nodes.length - 1) / 2) : displayedTimelineIndex(nodes);
-    const selectedNode = selected >= 0 ? nodes[selected] : null;
-    const selectedKnown = !!selectedNode && Number.isFinite(selectedNode.magnitude);
-    const canNavigate = !absent && selected >= 0 && !/^Calendar month/.test(text(document.querySelector('.budget-window-eyebrow')));
-    const sessionKey = absent ? '' : nodes.map(node => node.sourceIndex + ':' + node.start).join('|');
-    const remembered = sessionKey && riverMotionSession?.key === sessionKey ? riverMotionSession : null;
-    const clampPosition = value => Math.max(0, Math.min(nodes.length - 1, value));
-    const head = new RiverSpring(remembered ? clampPosition(remembered.x) : Math.max(0, selected));
-    head.v = remembered && Number.isFinite(remembered.v) ? remembered.v : 0;
-    head.target = Math.max(0, selected);
-    let previewIndex = selected;
-    let restoreFocus = !!remembered?.focus;
-    let reveal = absent || remembered || reduceMotion() ? 1 : 0;
-    let frame = null;
-    let lastFrame = 0;
-    let disposed = false;
-    let visible = true;
-    let drag = null;
-    let suppressClickUntil = 0;
-    const listeners = [];
-    const listen = (target, type, handler, options) => {
-      target.addEventListener(type, handler, options);
-      listeners.push(() => target.removeEventListener(type, handler, options));
-    };
-    const rememberMotion = focus => {
-      if (sessionKey) riverMotionSession = { key: sessionKey, x: head.x, v: head.v,
-        focus: focus == null ? !!(riverMotionSession?.key === sessionKey && riverMotionSession.focus) : !!focus };
-    };
-    const wrap = document.createElement('div');
-    wrap.className = 'g-river-wrap';
-    const nav = document.createElement('nav');
-    nav.className = 'tile t-river';
-    nav.setAttribute('data-bad-river', absent ? 'absent' : 'printed');
-    const riverState = !selectedNode || selectedNode.tone === 'muted' ? 'neutral' : selectedNode.tone;
-    nav.setAttribute('data-state', riverState);
-    nav.setAttribute('aria-label', 'Pay periods');
-    const river = document.createElement('div');
-    river.className = 'river';
-    river.tabIndex = 0;
-    river.setAttribute('role', 'group');
-    river.setAttribute('aria-label', absent
-      ? 'Pay periods. Balance After Deductions timeline unavailable.'
-      : 'Pay periods. Balance After Deductions.');
-    if (selected >= 0 && !absent) river.setAttribute('aria-activedescendant', 'bad-river-' + selected);
-    const canvas = document.createElement('canvas');
-    canvas.className = 'river-canvas';
-    canvas.setAttribute('aria-hidden', 'true');
-    const slide = document.createElement('div');
-    slide.className = 'river-slide';
-    const vals = document.createElement('div');
-    vals.className = 'river-vals';
-    const months = document.createElement('div');
-    months.className = 'months';
-    slide.append(vals, months);
-    const play = document.createElement('div');
-    play.className = 'playhead';
-    const pill = document.createElement('div');
-    pill.className = 'playhead-pill';
-    pill.setAttribute('aria-hidden', 'true');
-    if (selected < 0) {
-      // Show the native range without implying a selected timeline point.
-      play.style.transform = 'translate3d(8px,0,0)';
-      pill.style.transform = 'none';
+    if (!globalThis.BudgetRiver) return;
+    const model = readBadTimeline(document), absent = !model.present || !model.nodes.length;
+    const nodes = absent ? Array.from({ length: 12 }, (_, index) => ({ index, start: '', end: '', role: '', label: '—', unavailable: true, magnitude: null })) : model.nodes;
+    const index = absent ? -1 : displayedTimelineIndex(nodes);
+    const enabled = !absent && index >= 0 && !/^Calendar month/.test(text(document.querySelector('.budget-window-eyebrow')));
+    const key = nodes.map(node => node.start + ':' + node.end).join('|');
+    const periods = nodes.map(node => ({ ...node, bad: node.magnitude,
+      state: node.unavailable ? 'unknown' : node.negative ? 'short' : 'healthy',
+      fullLabel: node.label + (node.estimated ? ', estimated' : '') + ', ' + (node.range || 'Pay period') }));
+    const cur = nodes.findIndex(node => node.role === 'current');
+    const dark = document.documentElement.dataset.theme === 'dark'
+      || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    if (activeRiver && activeRiver.key !== key) { activeRiver.controller.dispose(); activeRiver.wrap.remove(); activeRiver = null; }
+    if (!activeRiver) {
+      const wrap = document.createElement('div'); wrap.className = 'g-river-wrap';
+      // Original index.html river subtree; no prototype data or page generator.
+      wrap.innerHTML = '<nav class="tile t-river" aria-label="Pay periods"><div class="river" role="slider" tabindex="0" aria-label="Pay period"><canvas class="river-canvas" aria-hidden="true"></canvas><div class="river-slide" aria-hidden="true"><div class="river-vals"></div><div class="months"></div></div><div class="playhead" aria-hidden="true"><div class="playhead-pill"><span data-ph-range></span><b class="num" data-ph-value></b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      activeRiver = { wrap, key, model, restoreFocus: false };
     }
-    const rangeEl = document.createElement('span');
-    rangeEl.setAttribute('data-ph-range', '');
-    rangeEl.textContent = (selectedNode && selectedNode.range)
-      || text(document.querySelector('[data-budget-window-range]'))
-      || 'Pay period';
-    const valueEl = document.createElement('b');
-    valueEl.className = 'num' + (selectedNode && selectedNode.tone === 'short' ? ' is-short' : '')
-      + (selectedNode && selectedNode.estimated ? ' is-est' : '');
-    valueEl.setAttribute('data-ph-value', '');
-    valueEl.textContent = selectedNode ? selectedNode.label : '—';
-    pill.append(rangeEl, valueEl);
-    const beam = document.createElement('span');
-    beam.className = 'playhead-beam';
-    beam.setAttribute('aria-hidden', 'true');
-    beam.hidden = !selectedKnown;
-    const orb = document.createElement('span');
-    orb.className = 'playhead-orb';
-    orb.setAttribute('aria-hidden', 'true');
-    orb.hidden = !selectedKnown;
-    play.append(pill, beam, orb);
-    if (!absent) {
-      const marks = nodes.map(riverMonth);
-      let yearShown = false;
-      marks.forEach((mark, i) => {
-        if (!mark) return;
-        const prev = i ? marks[i - 1] : null;
-        const boundary = !prev || prev.key !== mark.key;
-        if (!boundary) return;
-        const label = document.createElement('span');
-        label.dataset.i = String(i);
-        label.appendChild(document.createTextNode(mark.name));
-        if (mark.year && (mark.name === 'Jan' || !yearShown)) {
-          const year = document.createElement('b');
-          year.textContent = ' ' + mark.year;
-          label.appendChild(year);
-          yearShown = true;
-        }
-        months.appendChild(label);
-      });
-    }
-    nodes.forEach(node => {
-      if (absent) {
-        const mark = document.createElement('span');
-        mark.className = 'rv is-muted';
-        mark.setAttribute('aria-hidden', 'true');
-        mark.textContent = '—';
-        vals.appendChild(mark);
-        return;
-      }
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.tabIndex = -1;
-      button.id = 'bad-river-' + node.index;
-      button.className = 'rv is-' + node.tone
-        + (node.estimated ? ' is-est' : '')
-        + (node.role === 'past' ? ' is-past' : '')
-        + (node.index === selected ? ' is-sel' : '');
-      button.textContent = node.label;
-      button.setAttribute('aria-label', (node.unavailable ? 'Unavailable' : node.label)
-        + (node.estimated ? ', estimated' : '') + ', ' + (node.range || ('pay period ' + (node.index + 1))));
-      button.addEventListener('click', event => {
-        event.stopPropagation();
-        if (drag || performance.now() < suppressClickUntil) return;
-        commitSelection(node.index, river.contains(document.activeElement));
-      });
-      vals.appendChild(button);
-    });
-    river.append(canvas, slide, play);
-    nav.appendChild(river);
-    wrap.appendChild(nav);
-    bento.prepend(wrap);
-    const layout = { off: 0, xs: [], spacing: 1, pan: false, width: 0 };
-    const markPreview = index => {
-      previewIndex = index;
-      const node = nodes[index];
-      if (!node) return;
-      [...vals.children].forEach((value, i) => value.classList.toggle('is-sel', i === index));
-      rangeEl.textContent = node.range || text(document.querySelector('[data-budget-window-range]')) || 'Pay period';
-      valueEl.textContent = node.label;
-      valueEl.classList.toggle('is-short', node.tone === 'short');
-      valueEl.classList.toggle('is-est', node.estimated);
-      nav.setAttribute('data-state', node.tone === 'muted' ? 'neutral' : node.tone);
-      if (!absent) river.setAttribute('aria-activedescendant', 'bad-river-' + index);
-      river.toggleAttribute('data-river-preview', index !== selected);
+    const record = activeRiver, wrap = record.wrap, nav = wrap.querySelector('nav'), river = wrap.querySelector('.river');
+    record.model = model;
+    nav.dataset.badRiver = absent ? 'absent' : 'printed';
+    const updateLabel = selected => {
+      const node = record.model.nodes[selected];
+      wrap.querySelector('[data-ph-range]').textContent = node ? nativeRiverRange(node)
+        : text(document.querySelector('[data-budget-window-range]')) || 'Pay period';
+      const value = wrap.querySelector('[data-ph-value]');
+      value.textContent = node?.label || '—'; value.classList.toggle('is-est', !!node?.estimated);
+      nav.dataset.state = !node || node.unavailable ? 'unknown' : node.negative ? 'short' : 'healthy';
+      river.setAttribute('role', enabled ? 'slider' : 'group');
+      river.setAttribute('aria-label', absent ? 'Pay periods. Balance After Deductions timeline unavailable.' : 'Pay period');
+      if (enabled && node) {
+        river.setAttribute('aria-valuemin', '1'); river.setAttribute('aria-valuemax', String(nodes.length));
+        river.setAttribute('aria-valuenow', String(selected + 1)); river.setAttribute('aria-valuetext', periods[selected].fullLabel);
+      } else for (const attr of ['aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext']) river.removeAttribute(attr);
+      river.toggleAttribute('data-river-preview', selected !== displayedTimelineIndex(record.model.nodes));
     };
-    const requestDraw = () => {
-      if (frame != null || disposed || document.hidden || !visible) return;
-      frame = requestAnimationFrame(now => { frame = null; draw(now); });
-    };
-    const commitSelection = (index, focus) => {
-      if (!canNavigate || !Number.isInteger(index) || !nodes[index]) return;
-      const current = displayedTimelineIndex(model.nodes);
-      head.target = index;
-      markPreview(index);
-      if (reduceMotion()) head.set(index);
-      rememberMotion(false);
-      requestDraw();
-      if (index === current) return;
-      chooseBadTimeline(index, model);
-      // The internal native wheel must not retain focus in its hidden source.
-      const nativeFocus = document.activeElement;
-      if (nativeFocus?.closest('[data-budget-wheel="period"], [data-budget-window-step]')) nativeFocus.blur();
-      const remounted = !bento.isConnected;
-      rememberMotion(remounted && focus);
-      if (!remounted) {
-        head.target = current;
-        markPreview(current);
-        if (reduceMotion()) head.set(current);
-      }
-    };
-    const positionAt = clientX => {
-      const rect = river.getBoundingClientRect();
-      return clampPosition((clientX - rect.left + layout.off - (layout.xs[0] || 0)) / layout.spacing);
-    };
-    listen(river, 'keydown', event => {
-      if (!canNavigate || drag || event.altKey || event.ctrlKey || event.metaKey) return;
-      const next = riverKeyTarget(event.key, displayedTimelineIndex(model.nodes), nodes.length);
-      if (next == null) return;
-      event.preventDefault();
-      event.stopPropagation();
-      commitSelection(next, true);
-    });
-    listen(river, 'click', event => {
-      if (!canNavigate || drag || event.target.closest('.rv') || performance.now() < suppressClickUntil) return;
-      commitSelection(Math.round(positionAt(event.clientX)), river.contains(document.activeElement));
-    });
-    listen(river, 'pointerdown', event => {
-      if (!canNavigate || drag || event.isPrimary === false || event.button !== 0
-        || event.target.closest('button, a, input, select, textarea')) return;
-      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, head: head.x,
-        lastX: event.clientX, lastT: performance.now(), velocity: 0, moved: false };
-    });
-    listen(river, 'pointermove', event => {
-      if (!drag || drag.cancelled || event.pointerId !== drag.id) return;
-      const dx = event.clientX - drag.x;
-      const dy = event.clientY - drag.y;
-      if (!drag.moved) {
-        if (Math.abs(dy) > 5 && Math.abs(dy) > Math.abs(dx)) {
-          drag.cancelled = true;
-          return;
-        }
-        if (Math.abs(dx) <= 5) return;
-        drag.moved = true;
-        river.classList.add('is-dragging');
-        try { river.setPointerCapture(event.pointerId); } catch (error) { /* detached pointer */ }
-      }
-      if (event.cancelable) event.preventDefault();
-      const now = performance.now();
-      drag.velocity = 0.75 * drag.velocity + 0.25 * (event.clientX - drag.lastX) / Math.max(1, now - drag.lastT);
-      drag.lastX = event.clientX;
-      drag.lastT = now;
-      head.target = layout.pan ? clampPosition(drag.head - dx / layout.spacing) : positionAt(event.clientX);
-      markPreview(Math.round(head.target));
-      if (reduceMotion()) head.set(head.target);
-      requestDraw();
-    });
-    const finishPointer = (event, cancelled) => {
-      if (!drag || event.pointerId !== drag.id) return;
-      const ended = drag;
-      drag = null;
-      river.classList.remove('is-dragging');
-      if (river.hasPointerCapture?.(ended.id)) river.releasePointerCapture(ended.id);
-      if (ended.cancelled) { suppressClickUntil = performance.now() + 400; return; }
-      if (!ended.moved) return;
-      suppressClickUntil = performance.now() + 400;
-      if (cancelled) {
-        head.target = Math.max(0, selected);
-        markPreview(selected);
-        if (reduceMotion()) head.set(head.target);
-        requestDraw();
-        return;
-      }
-      const fresh = performance.now() - ended.lastT < 80 && Math.abs(ended.velocity) > 0.6;
-      const index = riverFlingTarget(head.target, fresh ? ended.velocity : 0,
-        layout.spacing, nodes.length, layout.pan, reduceMotion());
-      commitSelection(index, river.contains(document.activeElement));
-    };
-    listen(window, 'pointerup', event => finishPointer(event, false));
-    listen(window, 'pointercancel', event => finishPointer(event, true));
-    listen(river, 'lostpointercapture', event => finishPointer(event, true));
-    let wheelDelta = 0;
-    let wheelTime = 0;
-    listen(river, 'wheel', event => {
-      if (!canNavigate || event.ctrlKey || event.metaKey || event.altKey || drag) return;
-      const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey;
-      if (!horizontal && document.activeElement !== river) return;
-      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? layout.width : 1;
-      const delta = (horizontal && event.deltaX ? event.deltaX : event.deltaY) * unit;
-      const current = displayedTimelineIndex(model.nodes);
-      if (!delta || current < 0 || (current === 0 && delta < 0) || (current === nodes.length - 1 && delta > 0)) return;
-      event.preventDefault();
-      const now = performance.now();
-      if (now - wheelTime > 400) wheelDelta = 0;
-      wheelTime = now;
-      wheelDelta += delta;
-      if (Math.abs(wheelDelta) > 60) {
-        const next = Math.max(0, Math.min(nodes.length - 1, current + Math.sign(wheelDelta)));
-        wheelDelta = 0;
-        commitSelection(next, document.activeElement === river);
-      }
-    }, { passive: false });
-    listen(river, 'pointermove', event => {
-      if (drag || event.pointerType === 'touch' || absent) return;
-      const hovered = Math.round(positionAt(event.clientX));
-      [...vals.children].forEach((value, i) => value.classList.toggle('is-hover', i === hovered));
-    });
-    listen(river, 'pointerleave', () => [...vals.children].forEach(value => value.classList.remove('is-hover')));
-    const draw = now => {
-      if (!wrap.isConnected) { cleanupDetachedRiver(); return; }
-      if (disposed || document.hidden || !visible) return;
-      const dt = lastFrame ? Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000)) : 0.016;
-      lastFrame = now;
-      if (reduceMotion()) { head.set(head.target); reveal = 1; }
-      else { head.step(dt); reveal = Math.min(1, reveal + dt / 1.6); }
-      const rect = river.getBoundingClientRect();
-      const width = rect.width;
-      const height = rect.height || 178;
-      if (!width) return;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      if (canvas.width !== Math.round(width * dpr)) canvas.width = Math.round(width * dpr);
-      if (canvas.height !== Math.round(height * dpr)) canvas.height = Math.round(height * dpr);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-      const n = nodes.length;
-      const mobile = width < 640;
-      const pad = mobile ? 26 : 36;
-      const minSp = mobile ? 56 : 88;
-      const fit = n <= 1 ? 0 : (width - pad * 2) / Math.max(1, n - 1);
-      const sp = n <= 1 ? 0 : Math.max(fit, minSp);
-      const contentW = n <= 1 ? width : pad * 2 + sp * (n - 1);
-      const xs = nodes.map((_, i) => n === 1 ? width / 2 : pad + i * sp);
-      const known = nodes.map(node => node.magnitude).filter(value => value != null && Number.isFinite(value));
-      const flat = !known.length;
-      let ymin = 0;
-      let ymax = 1;
-      if (!flat) {
-        ymin = Math.min.apply(null, known.concat([0]));
-        ymax = Math.max.apply(null, known.concat([0]));
-        if (ymax === ymin) ymax = ymin + 1;
-      }
-      const yOfValue = value => botSafe - (value - ymin) / (ymax - ymin) * (botSafe - top);
-      const top = 52;
-      const botSafe = height - (mobile ? 62 : 66);
-      const y0 = flat ? (top + botSafe) / 2 : yOfValue(0);
-      const ys = nodes.map(node => node.magnitude == null || !Number.isFinite(node.magnitude) ? null : yOfValue(node.magnitude));
-      const sel = previewIndex < 0 ? -1 : Math.max(0, Math.min(n - 1, previewIndex));
-      let off = 0;
-      if (contentW > width + 1 && sel >= 0) {
-        off = Math.max(0, Math.min(contentW - width, pad + head.x * sp - width / 2));
-      }
-      layout.off = off;
-      layout.xs = xs;
-      layout.spacing = sp || 1;
-      layout.pan = contentW > width + 1;
-      layout.width = width;
-      slide.style.right = 'auto';
-      slide.style.width = contentW + 'px';
-      slide.style.transform = 'translate3d(' + (-off).toFixed(1) + 'px,0,0)';
-      const dark = document.documentElement.getAttribute('data-theme') === 'dark'
-        || (!document.documentElement.getAttribute('data-theme') && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      const income = dark ? [92, 242, 176] : [10, 168, 112];
-      const amber = dark ? [255, 190, 92] : [236, 146, 18];
-      const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
-      const ink = dark ? '255,255,255' : '16,18,27';
-      const knownIdx = [];
-      ys.forEach((y, i) => { if (y != null) knownIdx.push(i); });
-      ctx.save();
-      ctx.translate(-off, 0);
-      // Prototype reveal is a viewport clip, not a change to any amount.
-      ctx.beginPath();
-      ctx.rect(off - 20, 0, (width + 40) * (1 - Math.pow(1 - reveal, 3)), height);
-      ctx.clip();
-      ctx.setLineDash([2, 6]);
-      ctx.strokeStyle = 'rgba(' + ink + ',' + (dark ? 0.22 : 0.2) + ')';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(xs[0] - 18, y0 + 0.5);
-      ctx.lineTo(xs[n - 1] + 18, y0 + 0.5);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      knownTimelineRuns(nodes).forEach(run => {
-        if (run.length < 2) return;
-        const kxs = run.map(i => xs[i]);
-        const kys = run.map(i => ys[i]);
-        const slopes = monotoneSlopes(kxs, kys);
-        const path = new Path2D();
-        path.moveTo(kxs[0], kys[0]);
-        for (let i = 0; i < kxs.length - 1; i++) {
-          const h = kxs[i + 1] - kxs[i];
-          path.bezierCurveTo(
-            kxs[i] + h / 3, kys[i] + slopes[i] * h / 3,
-            kxs[i + 1] - h / 3, kys[i + 1] - slopes[i + 1] * h / 3,
-            kxs[i + 1], kys[i + 1]
-          );
-        }
-        const area = new Path2D(path);
-        area.lineTo(kxs[kxs.length - 1], botSafe + 6);
-        area.lineTo(kxs[0], botSafe + 6);
-        area.closePath();
-        const grad = ctx.createLinearGradient(kxs[0], 0, kxs[kxs.length - 1], 0);
-        run.forEach((idx, i) => {
-          const t = i / (run.length - 1);
-          grad.addColorStop(t, rgba(nodes[idx].negative ? amber : income, 1));
-        });
-        ctx.save();
-        ctx.globalAlpha = dark ? 0.22 : 0.16;
-        ctx.fillStyle = grad;
-        ctx.fill(area);
-        ctx.globalCompositeOperation = 'destination-out';
-        const fade = ctx.createLinearGradient(0, top, 0, botSafe + 6);
-        fade.addColorStop(0, 'rgba(0,0,0,0)');
-        fade.addColorStop(1, 'rgba(0,0,0,1)');
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = fade;
-        ctx.fillRect(kxs[0] - 24, top - 40, (kxs[kxs.length - 1] - kxs[0]) + 48, botSafe - top + 56);
-        ctx.restore();
-        const cur = Math.max(0, nodes.findIndex(node => node.role !== 'past'));
-        const xCur = cur <= 0 ? kxs[0] - 30 : (xs[Math.max(0, cur - 1)] + xs[cur]) / 2;
-        const pass = alpha => {
-          ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
-          ctx.strokeStyle = grad;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.globalAlpha = (dark ? 0.07 : 0.08) * alpha;
-          ctx.lineWidth = dark ? 16 : 14;
-          ctx.stroke(path);
-          ctx.globalAlpha = 0.16 * alpha;
-          ctx.lineWidth = dark ? 7 : 6;
-          ctx.stroke(path);
-          ctx.globalAlpha = 0.95 * alpha;
-          ctx.lineWidth = dark ? 2 : 2.4;
-          ctx.stroke(path);
-        };
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(off - 20, 0, xCur - off + 20, height);
-        ctx.clip();
-        pass(0.42);
-        ctx.restore();
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(xCur, 0, contentW - xCur + 20, height);
-        ctx.clip();
-        pass(1);
-        ctx.restore();
-      });
-      ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
-      knownIdx.forEach(i => {
-        const node = nodes[i];
-        const col = node.negative ? amber : income;
-        const past = node.role === 'past';
-        const alpha = past ? (dark ? 0.5 : 0.55) : 1;
-        const x = xs[i];
-        const y = ys[i];
-        if (node.negative) {
-          const radius = 10;
-          const halo = ctx.createRadialGradient(x, y, 0, x, y, radius);
-          halo.addColorStop(0, rgba(col, (dark ? 0.6 : 0.42) * alpha));
-          halo.addColorStop(1, rgba(col, 0));
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = halo;
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalAlpha = alpha;
-        if (!dark) {
-          const radius = node.negative ? 4.4 : 3;
-          ctx.fillStyle = '#fff';
-          ctx.beginPath();
-          ctx.arc(x, y, radius + 1.6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = rgba(col, 1);
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
+    const options = { el: river, canvas: wrap.querySelector('canvas'), playhead: wrap.querySelector('.playhead'),
+      pill: wrap.querySelector('.playhead-pill'), slide: wrap.querySelector('.river-slide'),
+      monthsEl: wrap.querySelector('.months'), valsEl: wrap.querySelector('.river-vals'),
+      captureTarget: document.getElementById('operating-surface'), periods, knownRuns: knownTimelineRuns(nodes),
+      index, cur, enabled, dark, reduce: reduceMotion(), fmt: compactRiverAmount,
+      onChange: (selected, how) => {
+        updateLabel(selected);
+        const start = record.model.nodes[selected]?.start; if (!start) return;
+        const focus = river === document.activeElement || !!record.restoreFocus;
+        if (how === 'scrub') {
+          // Original app.js queueSelect: one native publication per animation frame.
+          pendingRiverSelection = { start, focus };
+          if (riverSelectionFrame == null) riverSelectionFrame = requestAnimationFrame(() => {
+            riverSelectionFrame = null; const pending = pendingRiverSelection; pendingRiverSelection = null;
+            if (pending) publishRiverSelection(pending.start, pending.focus);
+          });
         } else {
-          ctx.fillStyle = rgba(col.map(v => Math.round(v + (255 - v) * 0.4)), 1);
-          ctx.beginPath();
-          ctx.arc(x, y, node.negative ? 3.6 : 2.4, 0, Math.PI * 2);
-          ctx.fill();
+          if (riverSelectionFrame != null) cancelAnimationFrame(riverSelectionFrame);
+          riverSelectionFrame = pendingRiverSelection = null; publishRiverSelection(start, focus);
         }
-      });
-      // The diamond denotes an explicitly published current period. Never
-      // promote the first future row, or an unknown amount, into "today".
-      const current = nodes.findIndex(node => node.role === 'current');
-      if (current >= 0 && ys[current] != null) {
-        const x = xs[current];
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 0.85;
-        ctx.fillStyle = 'rgb(' + ink + ')';
-        ctx.beginPath();
-        ctx.moveTo(x, y0 - 5); ctx.lineTo(x + 5, y0); ctx.lineTo(x, y0 + 5); ctx.lineTo(x - 5, y0);
-        ctx.closePath(); ctx.fill();
-      }
-      // A stationary lens may highlight a known publication. No yAt or
-      // fractional-height interpolation is used while the head is moving.
-      const markerKnown = sel >= 0 && ys[sel] != null && !drag && head.settled && head.x === sel;
-      if (markerKnown) {
-        const lens = ctx.createRadialGradient(xs[sel], ys[sel], 0, xs[sel], ys[sel], 90);
-        lens.addColorStop(0, dark ? 'rgba(255,255,255,.10)' : 'rgba(10,168,112,.08)');
-        lens.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = lens;
-        ctx.fillRect(xs[sel] - 90, 0, 180, height);
-      }
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.restore();
-      const valueEls = [...vals.children];
-      valueEls.forEach((el, i) => {
-        el.style.left = xs[i].toFixed(1) + 'px';
-        el.style.visibility = 'visible';
-      });
-      const widths = valueEls.map(el => el.offsetWidth || 0);
-      const shown = [];
-      const overlaps = (a, b) => {
-        const gap = 8;
-        return xs[a] - widths[a] / 2 < xs[b] + widths[b] / 2 + gap
-          && xs[b] - widths[b] / 2 < xs[a] + widths[a] / 2 + gap;
-      };
-      const order = valueEls.map((_, i) => i).sort((a, b) => (a === sel ? -1 : b === sel ? 1 : xs[a] - xs[b]));
-      order.forEach(i => {
-        if (!widths[i]) return;
-        if (shown.some(j => overlaps(i, j))) {
-          valueEls[i].style.visibility = 'hidden';
-          return;
-        }
-        shown.push(i);
-      });
-      const monthLabels = [...months.children];
-      monthLabels.forEach((el, index) => {
-        const i = Number(el.dataset.i);
-        let x = Math.max(0, xs[i] - (i ? sp / 2 : 0)) + 6;
-        const next = monthLabels[index + 1];
-        if (next) {
-          const nextIndex = Number(next.dataset.i);
-          const nextX = Math.max(0, xs[nextIndex] - sp / 2) + 6;
-          if (x + el.offsetWidth + 8 > nextX) x = Math.max(6, nextX - el.offsetWidth - 8);
-        }
-        el.style.left = x.toFixed(1) + 'px';
-      });
-      if (sel >= 0) {
-        const screenX = (n === 1 ? width / 2 : pad + head.x * sp) - off;
-        play.hidden = false;
-        play.style.transform = 'translate3d(' + screenX.toFixed(1) + 'px,0,0)';
-        beam.hidden = orb.hidden = !markerKnown;
-        if (markerKnown) play.style.setProperty('--orb-y', ys[sel].toFixed(1) + 'px');
-        const pw = pill.offsetWidth || 160;
-        const shift = Math.max(-screenX + 8, Math.min(width - screenX - pw - 8, -pw / 2));
-        pill.style.transform = 'translate3d(' + shift.toFixed(1) + 'px,0,0)';
-      }
-      river.setAttribute('data-river-motion', !head.settled || reveal < 1 ? 'moving' : 'settled');
-      if (restoreFocus) { restoreFocus = false; river.focus({ preventScroll: true }); rememberMotion(false); }
-      else rememberMotion();
-      if (!head.settled || reveal < 1) requestDraw();
+      },
+      onCancel: () => {
+        if (riverSelectionFrame != null) cancelAnimationFrame(riverSelectionFrame);
+        riverSelectionFrame = pendingRiverSelection = null;
+        const selected = displayedTimelineIndex(readBadTimeline(document).nodes); updateLabel(selected); return selected;
+      },
     };
-    listen(window, 'resize', requestDraw);
-    listen(document, 'visibilitychange', () => {
-      lastFrame = 0;
-      if (document.hidden && frame != null) { cancelAnimationFrame(frame); frame = null; }
-      else requestDraw();
-    });
-    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    if (motionQuery?.addEventListener) listen(motionQuery, 'change', () => {
-      if (motionQuery.matches) { head.set(head.target); reveal = 1; }
-      requestDraw();
-    });
-    const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
-      visible = !!entries[0]?.isIntersecting;
-      lastFrame = 0;
-      if (!visible && frame != null) { cancelAnimationFrame(frame); frame = null; }
-      else requestDraw();
-    }) : null;
-    observer?.observe(river);
-    activeRiver = { wrap: wrap, dispose: () => {
-      disposed = true;
-      rememberMotion();
-      listeners.forEach(remove => remove());
-      observer?.disconnect();
-      if (frame != null) cancelAnimationFrame(frame);
-      if (drag && river.hasPointerCapture?.(drag.id)) river.releasePointerCapture(drag.id);
-      drag = null;
-    } };
-    requestDraw();
+    bento.prepend(wrap);
+    if (record.controller) record.controller.adopt(options);
+    else record.controller = globalThis.BudgetRiver.create(options);
+    updateLabel(index);
+    const today = document.querySelector('[data-blend-river-today]');
+    if (today) {
+      const away = enabled && cur >= 0 && index !== cur;
+      today.classList.toggle('on', away); today.setAttribute('aria-hidden', String(!away)); today.tabIndex = away ? 0 : -1;
+      today.onclick = () => record.controller.go(cur);
+    }
+    if (record.restoreFocus) { record.restoreFocus = false; river.focus({ preventScroll: true }); }
   }
 
   let provenanceFooter = null;
