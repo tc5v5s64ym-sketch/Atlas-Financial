@@ -1,0 +1,85 @@
+{
+  "base": "08d9b8c89425279054cf9770646c71c403856f14",
+  "candidateForecastSha256": "c283a4426efdbd50e68aa5327036358c6bc804d1e1ae5752c5baee23861a5709",
+  "financialAsOf": "2026-08-19",
+  "nature": "canonical-Forecast-not-live-October",
+  "currency": "CAD",
+  "unchangedCurrent": {
+    "start": "2026-08-14",
+    "end": "2026-08-27",
+    "role": "current",
+    "income": 6652.3,
+    "bills": 299.87,
+    "totalBills": 2176.7,
+    "remainingBills": 299.87,
+    "householdBudget": 1725,
+    "afterBills": 6352.43,
+    "balanceAfterDeductions": 4627.43,
+    "insuranceRows": []
+  },
+  "changed": [
+    {
+      "id": "future:2027-01-29",
+      "before": {
+        "start": "2027-01-29",
+        "end": "2027-02-11",
+        "role": "future",
+        "income": 6237.39,
+        "bills": 5972.59,
+        "totalBills": 5972.59,
+        "remainingBills": 5972.59,
+        "householdBudget": 2405,
+        "afterBills": 264.8,
+        "balanceAfterDeductions": -2140.2,
+        "insuranceRows": [
+          {
+            "id": "square-one",
+            "date": "2027-02-10",
+            "amount": 3131.76,
+            "trust": "estimated"
+          }
+        ]
+      },
+      "after": {
+        "start": "2027-01-29",
+        "end": "2027-02-11",
+        "role": "future",
+        "income": 6237.39,
+        "bills": 2840.83,
+        "totalBills": 2840.83,
+        "remainingBills": 2840.83,
+        "householdBudget": 2405,
+        "afterBills": 3396.56,
+        "balanceAfterDeductions": 991.56,
+        "insuranceRows": []
+      }
+    }
+  ],
+  "expense": [
+    {
+      "date": "2027-02-10",
+      "amount": -3131.76,
+      "kind": "bill",
+      "label": "Square One home insurance",
+      "id": "square-one",
+      "confidence": "estimated",
+      "householdObligation": true,
+      "payingAccount": null,
+      "jointCash": false,
+      "cardPaid": true
+    }
+  ],
+  "unchanged": [
+    "all period income",
+    "all period Household Budget",
+    "expanded expenses",
+    "365-day simulation",
+    "Road Ahead baseline trajectory"
+  ],
+  "savings": {
+    "status": "unavailable",
+    "reason": "Savings observations are unavailable.",
+    "timelineStatus": "unavailable",
+    "timelineReason": "Savings observations are unavailable."
+  }
+}
