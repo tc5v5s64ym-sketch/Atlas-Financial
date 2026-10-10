@@ -559,8 +559,9 @@ for (const start of ['2025-01-30', '2025-01-31', '2025-02-01', '2025-02-12', '20
   const heldElsewhere = (p.startingCash.heldElsewhere || []).map(r => r.id);
   const debtIds = data.debts.map(r => r.id);
   for (const r of p.bills) {
-    if (r.householdObligation === false || r.needsDate || r.jointCash === false
-      || heldElsewhere.includes(r.payingAccount) || debtIds.includes(r.payingAccount)) continue;
+    const funded = r.fundingAccount === 'chequing-a';
+    if (r.householdObligation === false || r.needsDate || !funded && (r.jointCash === false
+      || heldElsewhere.includes(r.payingAccount) || debtIds.includes(r.payingAccount))) continue;
     for (const date of dates(r, start, t.horizon.end)) {
       if (prepaid(r.id, date)) continue;
       // An explicitly confirmed no-pay occurrence has no cash ledger leg.

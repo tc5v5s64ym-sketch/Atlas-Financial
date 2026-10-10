@@ -143,13 +143,15 @@ function independentLedger(days) {
   for (const row of plan.bills || []) {
     if (row.householdObligation === false) continue;
     scope(!row.needsDate, `${row.id}: undated bill needs independent evidence handling`);
-    // Held-elsewhere bills do not withdraw joint cash. A known card payer
+    // Held-elsewhere bills without Bills funding do not withdraw joint cash. A known card payer
     // reserves the service cost without creating another chequing payment.
     const held = heldIds.has(row.payingAccount);
+    const funded = row.fundingAccount === 'chequing-a';
+    if (funded) scope(held && cashIds.has(row.fundingAccount), `${row.id}: supported cash funding source`);
     const card = !held && (debtIds.has(row.payingAccount) || row.jointCash === false);
     scope(!row.payingAccount || cashIds.has(row.payingAccount) || held || card,
       `${row.id}: unknown paying-account attribution`);
-    const kind = held ? 'external' : card ? 'reserved' : 'bill';
+    const kind = funded ? 'bill' : held ? 'external' : card ? 'reserved' : 'bill';
     const dates = datesFor(row, days, !row.nonCash);
     const rawCredit = row.utilityAccountCredit;
     const credit = typeof rawCredit === 'number' ? rawCredit

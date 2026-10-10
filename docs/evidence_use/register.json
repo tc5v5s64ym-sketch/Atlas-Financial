@@ -968,7 +968,7 @@
       "source": "docs/source_intake/STREAMING_BILLS_2026-10-10.md",
       "disposition": "EXCLUDED",
       "exclusion_reason": "Owner-confirmed CAD 47 Bills-to-Wise funding/backfill, now receipt-confirmed as recipient-available, is preserved in source intake only. It is neither expense nor income and does not prove a bill charge, a current Wise balance, Lunch Money posting, a provider mapping, or settlement. No opening/history/coverage write is authorized by this input change.",
-      "no_review_reason": "No canonical transaction or new funding policy is introduced; existing history stays intact. Separate from guilt-free funding."
+      "no_review_reason": "This excluded actual funding item authorizes no canonical transaction, posting, balance or settlement write. Future individual bill funding intent is separately subject to required Systems review. Existing history and guilt-free funding stay intact."
     }
   ]
 }
