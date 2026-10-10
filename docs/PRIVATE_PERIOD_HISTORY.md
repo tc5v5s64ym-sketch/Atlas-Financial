@@ -71,7 +71,7 @@ as part of this PR; this is not a production-history completion claim.
 
 ## Versioned publication/evidence contract
 
-`atlas-private-period-history/v1` records the Forecast cycle start/end inclusive
+`atlas-private-period-history/v1` (legacy) and `/v2` (new captures, below) record the Forecast cycle start/end inclusive
 and household timezone; capture time separately from financial as-of and source
 fetch time; engine commit/file fingerprints; source, policy, map and identity
 fingerprints; source completeness/pending/observation receipts; native publication;
@@ -101,6 +101,84 @@ returns the existing revision. Identical financial/source content at a later
 fetch/capture clock is a no-op; changed private evidence remains a revision even
 when the published amounts agree. Prior periods without captured originals keep
 that gap. No retention pruning or automatic deletion is implemented.
+
+## Declared completeness, closing state and cutoff (v2, History H1)
+
+New captures are written as `atlas-private-period-history/v2` and carry three
+capture-time labels inside `content`. They are reprinted from fields the observer
+and Forecast already publish. They compute no figure, change no publication and
+are not a planner input.
+
+- `cutoff: { rule: 'household-day', end, tz }`. `end` is the Forecast cycle's
+  inclusive last household day and `tz` is `America/Vancouver`. The period
+  includes every transaction dated through that household day. Source fetch
+  time and capture time are recorded separately and are never the cutoff.
+- `closingState: 'provisional' | 'complete-at-capture'`. This is the
+  next-household-day gate. The state is `complete-at-capture` only when both
+  the source fetch and the capture fall on a Vancouver household day after
+  `end`. The household day is the DST-aware `Forecast.financialDate`. So 23:59
+  on the end day is still provisional, and the next local midnight opens the
+  gate (08:00Z in PST, 07:00Z in PDT). A fetch at 23:59 that is captured at
+  00:00 stays provisional. **Complete-at-capture means complete against the
+  declared scope at the time of capture.** The period had closed, and the
+  declared windows are what they were. It does not mean every bank posting is
+  final or that the evidence is complete. The existing `closing`-kind gate
+  (capture after the period end, as-of reaching the end) is unchanged.
+- `sourceCompleteness: { status, reasons[] }`. This is declared evidence
+  coverage at capture, not final household truth. `status` is `complete` only
+  when `reasons` is empty. Otherwise it is `incomplete`. Reasons use a fixed,
+  published order (`REASONS` in the module), so the same evidence always gives
+  the same list. Each code is prefixed by its layer. Transport completeness is
+  not publication suitability, so the combined status is incomplete whenever
+  any layer has a reason:
+  - `transport:`: posted coverage is complete only when the posted-window bounds
+    cover the whole period, `complete=true`, `hasMore=false` and nothing is
+    truncated. Each failing condition is retained as its own reason: an absent
+    window, a contradictory declaration (complete while has-more/truncated,
+    inverted bounds, or a window ending after its own fetch day), missing the
+    start, missing the end, not complete, has-more (true or unknown) and
+    truncated. Pending coverage is complete only with the unbounded
+    `is_pending-unbounded` basis, `complete=true` and `hasMore=false`. A
+    date-bounded pending query is `pending-coverage-bounded-window`. Any
+    other gap is `pending-coverage-unproven`. A source fetched on or before
+    the cutoff day is `source-fetched-before-cutoff`.
+  - `evidence:` keeps these and never drops them: missing expected mapped
+    accounts, unobserved required cash, undated balances, and transactions on
+    unmapped accounts. It also keeps a missing or unresolved obligation
+    reconciliation receipt (untrusted, fail-closed reasons, ambiguous or
+    unverified occurrences, or one-to-one violations), and a missing
+    current-period actuals packet. It keeps `cardCoverageUnconfirmed`,
+    `currencyUnconfirmed`, and any non-CAD or currency-less actuals row.
+  - `publication:` covers what Forecast itself marked unavailable:
+    `operatingPlanUnavailable`, card purchase coverage unavailable, absent
+    budget progress, a non-CAD/absent progress currency, an actuals coverage
+    claim other than `precise`, and native income/bills/household actuals that
+    are unavailable (non-finite) or partial. It also covers any household
+    category whose native `spent` is unavailable. A native `0` is a true zero
+    and is never treated as unavailable. A native `null` is never turned into
+    zero.
+
+`completeness(record)` and `metadata()` return `{ status: 'unknown' }` and
+`closingState: 'unknown'` for any record without this metadata. A record
+without it is never presumed complete.
+
+**Legacy v1 records are unchanged.** They are never upgraded or rewritten in
+place. Their bytes, `captureId`, `revisionId` and `contentKey` still verify. A v1
+record may not carry the v2 labels, and a v2 record must carry all three with a
+canonical reason order. A v2 revision may chain after a v1 head. `contentKey`
+excludes the three derived labels, as well as fetch time and receipts. So
+retrying the same content gives the same key, and the existing revision is
+returned instead of a duplicate. That holds across v1 and v2 too. A retry that
+only crosses the closing gate is the same evidence. It returns the earlier
+revision, and a real closing observation remains its own `closing` kind.
+
+The provenance `reconciliationReceipt` field now retains the observer's
+`report.obligationReconciliationReceipt`. Before H1 it read a non-existent
+`report.reconciliationReceipt` and was always `null`. Legacy records keep their
+recorded `null`.
+
+Out of scope here: H2–H6, including the H4 view module, the scheduler, Drive,
+the Sheet, real captures and activation.
 
 ## Atomicity, recovery and activation boundary
 

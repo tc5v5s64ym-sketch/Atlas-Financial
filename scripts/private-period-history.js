@@ -10,7 +10,55 @@ const Live = require('./live-plan');
 const Observer = require('./provider-observe');
 const Operating = require('./operating-answer');
 
-const SCHEMA = 'atlas-private-period-history/v1';
+// New captures write v2. Legacy v1 records stay readable byte-for-byte; they
+// carry no completeness metadata, so their completeness reads as 'unknown'.
+const SCHEMA = 'atlas-private-period-history/v2';
+const LEGACY_SCHEMA = 'atlas-private-period-history/v1';
+const SCHEMAS = [LEGACY_SCHEMA, SCHEMA];
+const H1_KEYS = ['sourceCompleteness', 'closingState', 'cutoff'];
+const CLOSING_STATES = ['provisional', 'complete-at-capture'];
+const PENDING_BASIS = 'is_pending-unbounded';
+// Deterministic reason order. Codes are prefixed by layer: transport
+// (provider window/pending declarations), evidence (observer receipts and
+// actuals packet) and publication (what Forecast itself marked unavailable).
+// Transport completeness is not publication suitability; the combined status
+// is 'complete' only when every layer is free of reasons.
+const REASONS = Object.freeze([
+  'transport:posted-window-absent',
+  'transport:posted-window-contradictory',
+  'transport:posted-window-misses-start',
+  'transport:posted-window-misses-end',
+  'transport:posted-window-not-complete',
+  'transport:posted-window-has-more',
+  'transport:posted-window-has-more-unknown',
+  'transport:posted-window-truncated',
+  'transport:pending-coverage-bounded-window',
+  'transport:pending-coverage-unproven',
+  'transport:source-fetched-before-cutoff',
+  'evidence:observation-receipt-unavailable',
+  'evidence:mapped-account-missing',
+  'evidence:required-cash-unobserved',
+  'evidence:balance-unproven',
+  'evidence:unmapped-transaction-account',
+  'evidence:reconciliation-receipt-unavailable',
+  'evidence:reconciliation-unresolved',
+  'evidence:current-period-actuals-unavailable',
+  'evidence:card-coverage-unconfirmed',
+  'evidence:currency-unconfirmed',
+  'evidence:non-cad-transaction',
+  'publication:operating-plan-unavailable',
+  'publication:card-coverage-unavailable',
+  'publication:budget-progress-unavailable',
+  'publication:currency-unavailable',
+  'publication:actuals-coverage-not-precise',
+  'publication:income-actual-unavailable',
+  'publication:income-actual-partial',
+  'publication:bills-actual-unavailable',
+  'publication:bills-actual-partial',
+  'publication:household-actual-unavailable',
+  'publication:household-actual-partial',
+  'publication:household-category-actual-unavailable',
+]);
 const ROOT = path.resolve(__dirname, '..');
 const KINDS = ['original', 'first-observed', 'reconstructed', 'plan-amendment', 'closing', 'actual-correction'];
 const BASELINES = KINDS.slice(0, 3);
@@ -89,6 +137,110 @@ function selectedPublication(advice, period) {
   return safeJson(row);
 }
 
+function cutoffFor(period) {
+  // The period includes every household day through `end` in `tz`. The closing
+  // gate opens at the next household midnight; fetch/capture clocks never
+  // become the cutoff.
+  return { rule: 'household-day', end: period.end, tz: Forecast.HOUSEHOLD_TIMEZONE };
+}
+function closingStateFor(period, fetchedAt, capturedAt) {
+  // Next-household-day gate: both the source fetch and the capture must fall
+  // on a household day after the period end (DST-aware via financialDate).
+  return Forecast.financialDate(fetchedAt) > period.end && Forecast.financialDate(capturedAt) > period.end
+    ? 'complete-at-capture' : 'provisional';
+}
+function isDate(value) {
+  try { date(value); return true; } catch (_) { return false; }
+}
+function finite(value) { return typeof value === 'number' && Number.isFinite(value); }
+// Declared evidence coverage at capture, never final household truth. Reads
+// only already-published observer/Forecast fields; computes no figure.
+function sourceCompletenessFor({ period, fetchedAt, transactionWindow, pendingCoverage, report, publication }) {
+  const reasons = new Set();
+  const add = code => { if (!REASONS.includes(code)) fail('history-reason-invalid'); reasons.add(code); };
+  const w = transactionWindow || {};
+  const bounded = w.startDate != null && w.endDate != null;
+  if (!bounded) add('transport:posted-window-absent');
+  const fetchedDay = Forecast.financialDate(fetchedAt);
+  if (bounded && (!isDate(w.startDate) || !isDate(w.endDate) || w.startDate > w.endDate || w.endDate > fetchedDay)) {
+    add('transport:posted-window-contradictory');
+  }
+  if (w.complete === true && (w.hasMore === true || w.truncated === true)) add('transport:posted-window-contradictory');
+  if (bounded && isDate(w.startDate) && w.startDate > period.start) add('transport:posted-window-misses-start');
+  if (bounded && isDate(w.endDate) && w.endDate < period.end) add('transport:posted-window-misses-end');
+  if (w.complete !== true) add('transport:posted-window-not-complete');
+  if (w.hasMore === true) add('transport:posted-window-has-more');
+  else if (w.hasMore !== false) add('transport:posted-window-has-more-unknown');
+  if (w.truncated === true) add('transport:posted-window-truncated');
+  const p = pendingCoverage || {};
+  if (!(p.complete === true && p.status === 'complete' && p.basis === PENDING_BASIS)) {
+    add(p.status === 'bounded-window' ? 'transport:pending-coverage-bounded-window' : 'transport:pending-coverage-unproven');
+  }
+  if (fetchedDay <= period.end) add('transport:source-fetched-before-cutoff');
+
+  const observation = report && report.observationReceipt;
+  if (!observation || typeof observation !== 'object') add('evidence:observation-receipt-unavailable');
+  else {
+    const failed = Array.isArray(observation.failClosedReasons) ? observation.failClosedReasons : [];
+    const missing = observation.accountCoverage?.missingExpectedIdentities;
+    if (failed.includes('expected-mapped-identity-missing') || (Array.isArray(missing) && missing.length)) add('evidence:mapped-account-missing');
+    if (failed.includes('required-cash-unobserved')) add('evidence:required-cash-unobserved');
+    const undated = observation.balanceCoverage?.requiredCashMissingDatedBalance;
+    if (failed.includes('required-cash-balance-unproven') || (Array.isArray(undated) && undated.length)) add('evidence:balance-unproven');
+  }
+  const packet = report && report.currentPeriodActuals;
+  if (!packet || typeof packet !== 'object') add('evidence:current-period-actuals-unavailable');
+  else if (Array.isArray(packet.transactions) && packet.transactions.some(tx => tx && tx.accountRole === 'unmapped')) {
+    add('evidence:unmapped-transaction-account');
+  }
+  const recon = report && report.obligationReconciliationReceipt;
+  if (!recon || typeof recon !== 'object') add('evidence:reconciliation-receipt-unavailable');
+  else if (recon.trusted !== true || (Array.isArray(recon.failClosedReasons) && recon.failClosedReasons.length)
+      || recon.oneOccurrenceOneTransaction !== true || recon.noTransactionConsumedTwice !== true
+      || ['unverified', 'ambiguous'].some(key => !finite(recon.counts?.[key]) || recon.counts[key] > 0)) {
+    add('evidence:reconciliation-unresolved');
+  }
+  if (packet && typeof packet === 'object') {
+    if (!Array.isArray(packet.cardCoverageUnconfirmed) || packet.cardCoverageUnconfirmed.length) add('evidence:card-coverage-unconfirmed');
+    if (!Array.isArray(packet.currencyUnconfirmed) || packet.currencyUnconfirmed.length) add('evidence:currency-unconfirmed');
+    // Retained as declared: a non-CAD or currency-less actuals row is a gap
+    // in CAD evidence even when the native publication still counts it.
+    if (!Array.isArray(packet.transactions) || packet.transactions.some(tx => tx
+        && (typeof tx.currency !== 'string' || tx.currency.trim().toLowerCase() !== 'cad'))) add('evidence:non-cad-transaction');
+  }
+
+  const pub = publication || {};
+  if (pub.operatingPlanUnavailable === true) add('publication:operating-plan-unavailable');
+  if (pub.cardCoverageUnavailable === true || pub.cardPurchaseCoverage?.status === 'unavailable') add('publication:card-coverage-unavailable');
+  const progress = pub.budgetProgress;
+  if (!progress || typeof progress !== 'object') add('publication:budget-progress-unavailable');
+  else {
+    if (progress.currency !== 'CAD') add('publication:currency-unavailable');
+    if (progress.coverage?.remainingClaim !== 'precise') add('publication:actuals-coverage-not-precise');
+    for (const section of ['income', 'bills', 'household']) {
+      const actual = progress[section]?.actual;
+      // A native 0 is a true zero; only a missing/non-finite amount is unavailable.
+      if (!actual || !finite(actual.amount)) add('publication:' + section + '-actual-unavailable');
+      else if (actual.completeness !== 'complete') add('publication:' + section + '-actual-partial');
+    }
+  }
+  if (!Array.isArray(pub.householdBudget)
+      || pub.householdBudget.some(row => row && !row.informational && !finite(row.spent))) {
+    add('publication:household-category-actual-unavailable');
+  }
+  const ordered = REASONS.filter(code => reasons.has(code));
+  return { status: ordered.length ? 'incomplete' : 'complete', reasons: ordered };
+}
+// Absent metadata (legacy v1, or any record without it) is 'unknown', never complete.
+function completeness(row) {
+  const c = row && row.content;
+  if (!c || !H1_KEYS.every(key => Object.hasOwn(c, key))) {
+    return { status: 'unknown', reasons: [], closingState: 'unknown', cutoff: null };
+  }
+  return { status: c.sourceCompleteness.status, reasons: c.sourceCompleteness.reasons.slice(),
+    closingState: c.closingState, cutoff: { ...c.cutoff } };
+}
+
 function capture(input, { now = () => new Date() } = {}) {
   // Caller supplies already-read evidence; never accept a credential/environment.
   const clean = safeJson(input);
@@ -149,8 +301,14 @@ function capture(input, { now = () => new Date() } = {}) {
       accountMapFingerprint: digest(clean.accountMap), identityFingerprint: digest(clean.identity),
       transactionWindow: normalized.transactionWindow, pendingCoverage: normalized.pendingCoverage,
       observationReceipt: refreshed.report.observationReceipt || null,
-      reconciliationReceipt: refreshed.report.reconciliationReceipt || null,
+      // The observer publishes this receipt as obligationReconciliationReceipt.
+      reconciliationReceipt: refreshed.report.obligationReconciliationReceipt || null,
     },
+    sourceCompleteness: sourceCompletenessFor({ period, fetchedAt,
+      transactionWindow: normalized.transactionWindow, pendingCoverage: normalized.pendingCoverage,
+      report: refreshed.report, publication }),
+    closingState: closingStateFor(period, fetchedAt, capturedAt),
+    cutoff: cutoffFor(period),
     publication,
     evidence: { input: evidenceInput, refreshedData: refreshed.data, forecastOptions },
   });
@@ -212,11 +370,15 @@ function contentKey(candidate) {
   delete copy.provenance.fetchedAt;
   delete copy.provenance.observationReceipt;
   delete copy.provenance.reconciliationReceipt;
+  // Derived capture-time labels: completeness follows from keyed content and
+  // receipts; closingState depends on the capture clock. Excluding them keeps
+  // retries idempotent and leaves every legacy v1 contentKey unchanged.
+  for (const key of H1_KEYS) delete copy[key];
   delete copy.evidence;
   return digest(copy);
 }
 function validateCandidate(candidate) {
-  if (candidate?.schema !== SCHEMA || !KINDS.includes(candidate.content?.kind)) fail('history-schema-invalid');
+  if (!SCHEMAS.includes(candidate?.schema) || !KINDS.includes(candidate.content?.kind)) fail('history-schema-invalid');
   instant(candidate.capturedAt);
   const c = candidate.content;
   date(c.period?.start); date(c.period?.end); date(c.asOf);
@@ -224,8 +386,19 @@ function validateCandidate(candidate) {
       || c.publication?.start !== c.period.start || c.publication?.end !== c.period.end
       || !c.evidence?.input || !c.evidence?.refreshedData || !c.evidence?.forecastOptions
       || !/^[a-f0-9]{40}$/.test(c.engine?.commit || '')) fail('history-schema-invalid');
+  if (candidate.schema === LEGACY_SCHEMA ? H1_KEYS.some(key => Object.hasOwn(c, key)) : !validH1(c)) fail('history-schema-invalid');
   safeJson(candidate);
   if (digest({ schema: candidate.schema, capturedAt: candidate.capturedAt, content: c }) !== candidate.captureId) fail('history-capture-integrity-failed');
+}
+function validH1(c) {
+  const s = c.sourceCompleteness, cut = c.cutoff;
+  return !!(s && ['complete', 'incomplete'].includes(s.status) && Array.isArray(s.reasons)
+    && s.reasons.every(code => REASONS.includes(code))
+    && s.reasons.join('\n') === REASONS.filter(code => s.reasons.includes(code)).join('\n')
+    && (s.status === 'complete') === (s.reasons.length === 0)
+    && CLOSING_STATES.includes(c.closingState)
+    && cut && Object.keys(cut).sort().join(',') === 'end,rule,tz'
+    && cut.rule === 'household-day' && cut.end === c.period.end && cut.tz === Forecast.HOUSEHOLD_TIMEZONE);
 }
 function load(root) {
   const names = fs.readdirSync(root).filter(name => name !== '.capture.lock' && !STAGE.test(name)).sort();
@@ -249,7 +422,10 @@ function metadata(row) {
     captureId: row.captureId,
     period: row.content.period, kind: row.content.kind, planBasis: row.content.planBasis,
     capturedAt: row.capturedAt, asOf: row.content.asOf, previousRevision: row.previousRevision || null,
-    baselineRevision: row.baselineRevision || null, engineCommit: row.content.engine.commit };
+    baselineRevision: row.baselineRevision || null, engineCommit: row.content.engine.commit,
+    // Status labels only; reason codes are fixed strings, never source data.
+    sourceCompleteness: (({ status, reasons }) => ({ status, reasons }))(completeness(row)),
+    closingState: completeness(row).closingState };
 }
 function append({ destination, enabled = false, candidate }) {
   if (enabled !== true) fail('history-capture-disabled');
@@ -330,4 +506,5 @@ function replayPublication(row) {
   if (digest(actual) !== digest(c.publication)) fail('history-replay-mismatch');
   return actual;
 }
-module.exports = { SCHEMA, capture, append, read, metadata, replayPublication };
+module.exports = { SCHEMA, LEGACY_SCHEMA, REASONS, capture, append, read, metadata, completeness,
+  sourceCompletenessFor, replayPublication };
