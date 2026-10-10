@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['selector locale formatter equivalence', 'test-selector-formatters.js'],
   ['private pay-period retention, immutable revisions and privacy boundaries', 'test-private-period-history.js'],
   ['one chronological savings publication and independent allocation oracle', 'test-chronological-savings-publication.js'],
   ['combined savings location conservation and publication gates', 'test-chronological-savings-conservation.js'],
@@ -58,6 +59,9 @@ const suites = [
   ['paid actual display trust remains separate from estimated schedules', 'test-paid-actual-display-trust.js'],
   ['one household actual/planned total and Other remaining display', 'test-budget-household-total-display.js'],
   ['print-only Balance After Deductions terms close to the cent or print Unavailable', 'test-bad-terms-print.js'],
+  ['Budget river withholds historical BAD and preserves native selection', 'test-bad-timeline-river.js'],
+  ['clean browser proof source binding and immutable publication', 'test-proof-source-binding.js'],
+  ['Budget detail sheet preserves original nodes, nested focus and remount identity', 'test-budget-detail-sheet-controller.js'],
   ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
   ['dated owner Other payday target and once-only reserve', 'test-other-period-target.js'],
   ['purpose-reserve funding seed and independent payment conservation', 'test-reserve-aware-funding.js'],
@@ -65,6 +69,7 @@ const suites = [
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
   ['Lunch Money transaction delta read (change feed, never a ledger or audit stream)', 'test-provider-transaction-delta.js'],
   ['MCP provider account balances and truthful freshness', 'test-assistant-account-balances.js'],
+  ['Lunch Money monthly balance history read (monthly only, unavailable never zero)', 'test-assistant-balance-history.js'],
   ['Lunch Money MCP reads and confirmed bounded edits', 'test-assistant-lunchmoney.js'],
   ['Lunch Money preserving metadata and reusable cleanup previews', 'test-assistant-cleanup.js'],
   ['Bounded automatic routine cleanup, real financial effects and private history', 'test-assistant-routine-cleanup.js'],
@@ -139,6 +144,7 @@ const suites = [
   ['Salary matcher diagnostic existing authenticated readback', 'test-salary-diagnostic-auth.js'],
   ['active Budget surface: one renderer, Forecast figures, drilldown and withheld states', 'test-budget-surface.js'],
   ['Budget owner-voice presentation', 'test-budget-owner-voice.js'],
+  ['Budget hero cannot borrow whole-window confidence', 'test-budget-plan-status-scope.js'],
   ['Plan homepage decision desk', 'test-plan-decision-desk.js'],
   ['cash-waterfall household homepage', 'test-cash-waterfall-view.js'],
   ['chequing availability headline', 'test-chequing-availability.js'],

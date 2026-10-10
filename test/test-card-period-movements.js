@@ -214,4 +214,119 @@ const adviceBefore = F.recommend(x.plan, x.asOf, { debts: x.debts, currentPeriod
 publish(x);
 eq(F.cardMinimumState(x.plan, x.asOf), minimumBefore, 'ambiguous provider credit does not settle household minimum');
 eq(F.recommend(x.plan, x.asOf, { debts: x.debts, currentPeriodActuals: x.packet }), adviceBefore, 'all incumbent cash/spending/obligation/funding publications unchanged');
+// Owner requested the existing secured revolving facility in the same list.
+// Independent invented ledger and institution-style endpoints, in cents:
+// 50000 - 60000 + 12535 = 2535; 4202535 - 4200000 = 2535.
+const helocInput = require('./fixtures/card-period-movements-data').helocFixture();
+const helocBefore = JSON.stringify(helocInput), helocPub = publish(helocInput);
+const heloc = helocPub.cards.find(row => row.id === 'heloc');
+eq(50000 - 60000 + 12535, 2535, 'independent HELOC posted ledger');
+eq(4202535 - 4200000, 2535, 'independent HELOC endpoint difference');
+eq(helocPub.cards.map(row => row.id), ['travelvisa', 'cashback', 'tdcc', 'triangle', 'mbna', 'heloc'], 'native HELOC appended once');
+eq(heloc.netChange.amount, 25.35, 'HELOC does not include the pending 900 or current stock');
+eq(heloc.posted.map(tx => tx.id), ['heloc-advance', 'heloc-payment', 'heloc-interest'], 'posted native facility identities');
+eq(heloc.posted.map(tx => tx.kind), ['movement-unconfirmed', 'payment', 'interest'], 'advance is not guessed to be household spending');
+eq(heloc.pending.length, 1, 'HELOC pending is separate');
+eq(heloc.manualStatement, false, 'HELOC does not adopt manual card freshness');
+eq(JSON.stringify(helocInput), helocBefore, 'HELOC publication does not write inputs');
+for (const [name, change, reason] of [
+  ['missing opening', y => { delete y.balanceEvidence.cards.find(row => row.id === 'heloc').opening; }, 'opening-unavailable'],
+  ['incomplete ledger', y => { y.packet.transactionCoverage = 'truncated'; }, 'posted-coverage-incomplete'],
+  ['endpoint discrepancy', y => { y.balanceEvidence.cards.find(row => row.id === 'heloc').closing.amount = 42026; }, 'balance-ledger-discrepancy'],
+  ['future', y => { y.window = { start: '2026-08-28', end: '2026-09-10' }; }, 'future-not-observed'],
+  ['conflicting identity', y => { y.packet.transactions.find(tx => tx.id === 'heloc-advance').account = 'travelvisa'; }, 'unmapped-card-identity'],
+]) {
+  const y = copy(helocInput); change(y); const row = publish(y).cards.find(row => row.id === 'heloc');
+  eq(row.netChange.amount, null, 'HELOC ' + name + ' stays unavailable');
+  eq(row.reasons.includes(reason), true, 'HELOC ' + name + ' retains reason');
+}
+const helocHtml = View.html(helocPub, { money: value => '$' + value.toFixed(2), date: value => value });
+eq(helocHtml.includes('data-budget-card-toggle="heloc"'), true, 'native renderer supplies the HELOC trigger');
+eq(helocHtml.includes('data-budget-card-panel="heloc"'), true, 'native renderer supplies the HELOC panel');
+// Exercise the real observation -> sanitized overlay -> Forecast -> renderer.
+// An omitted malformed record must not turn a ledger into a complete zero.
+for (const mode of ['complete', 'empty', 'undated', 'amount-missing', 'foreign-currency', 'malformed-only']) {
+  const served = require('./fixtures/card-period-movements-data').helocObserved(mode);
+  const observedPub = F.cardPeriodMovements(served.plan, served.debts, x.asOf, x.window,
+    { currentPeriodActuals: served.liveOverlay.currentPeriodActuals,
+      cardPeriodBalanceEvidence: served.liveOverlay.cardPeriodBalanceEvidence });
+  const observedHeloc = observedPub.cards.find(row => row.id === 'heloc');
+  const qualified = mode === 'complete' || mode === 'empty';
+  eq(observedHeloc.netChange.amount, mode === 'complete' ? 25.35 : mode === 'empty' ? 0 : null, 'native HELOC ' + mode + ' independent net');
+  eq(observedHeloc.status, qualified ? 'ready' : 'unavailable', 'native HELOC ' + mode + ' completeness');
+  eq(observedHeloc.reasons.includes('transaction-evidence-unconfirmed'), !qualified, 'native HELOC ' + mode + ' preserves lost-record marker');
+  const rendered = View.html(observedPub, { money: value => '$' + value.toFixed(2), date: value => value });
+  eq(rendered.includes('data-budget-card-toggle="heloc"'), true, 'native HELOC ' + mode + ' renderer identity');
+  if (!qualified) eq(/data-budget-card-toggle="heloc"[\s\S]*?card-movement-delta[^>]*>Net unavailable/.test(rendered), true,
+    'native HELOC ' + mode + ' renderer never claims zero');
+}
+// Provider amount types must earn qualification before numeric conversion.
+// Equal independently specified endpoints do not prove a missing amount.
+// Exercise observation -> sanitized overlay -> Forecast -> native renderer,
+// retaining a separate invented pending authorization throughout.
+const observedBase = require('./fixtures/budget-surface-data');
+const LivePlan = require('../scripts/live-plan');
+for (const [name, rawAmount, expectedCents, qualified] of [
+  ['numeric zero', 0, 0, true],
+  ['decimal zero', '0.00', 0, true],
+  ['signed decimal zero', '-0.0000', 0, true],
+  ['numeric debit', 500, 50000, true],
+  ['decimal debit', '500.00', 50000, true],
+  ['four-place decimal', '12.5000', 1250, true],
+  ['trimmed signed decimal', ' +12.50 ', 1250, true],
+  ['numeric credit', -500, -50000, true],
+  ['decimal credit', '-500.00', -50000, true],
+  ['empty string', '', 0, false],
+  ['whitespace string', ' ', 0, false],
+  ['blank control whitespace', '\t\r\n', 0, false],
+  ['boolean false', false, 0, false],
+  ['boolean true', true, 100, false],
+  ['empty array', [], 0, false],
+  ['numeric array', [500], 50000, false],
+  ['decimal array', ['500.00'], 50000, false],
+  ['object', {}, 0, false],
+  ['missing null', null, 0, false],
+  ['hexadecimal string', '0x1', 100, false],
+  ['binary string', '0b1', 100, false],
+  ['octal string', '0o1', 100, false],
+]) {
+  const data = observedBase.canonical(), accountMap = copy(observedBase.map), payload = observedBase.payload();
+  data.debts.push(copy(helocInput.debts.find(row => row.id === 'heloc')));
+  accountMap.mappings.push({ providerAccountId: '2002', canonical: { collection: 'debts', id: 'heloc' }, atlasRole: 'heloc' });
+  // Independent opening 4200000 cents; the posted delta is specified in the
+  // table, never calculated by the function under test or raw input coercion.
+  const closing = (4200000 + expectedCents) / 100;
+  payload.accounts.push({ id: 2002, type: 'credit', balance: closing, currency: 'cad', updated_at: x.asOf + 'T17:55:00.000Z' });
+  payload.transactions.push(
+    { id: 93011, account_id: 2002, currency: 'cad', is_pending: false, status: 'cleared',
+      date: '2026-08-16', amount: rawAmount, payee: 'Invented movement' },
+    { id: 93012, account_id: 2002, currency: 'cad', is_pending: true, status: 'cleared',
+      date: x.asOf, amount: '900.0000', payee: 'Invented pending authorization' }
+  );
+  const canonicalBefore = JSON.stringify(data), payloadBefore = JSON.stringify(payload), mapBefore = JSON.stringify(accountMap);
+  const next = LivePlan.fromObservation({ data, payload, accountMap, identity: observedBase.identity }).data;
+  const balanceEvidence = copy(helocInput.balanceEvidence);
+  balanceEvidence.cards.find(row => row.id === 'heloc').closing.amount = closing;
+  const packet = next.liveOverlay.currentPeriodActuals;
+  const publication = F.cardPeriodMovements(next.plan, next.debts, x.asOf, x.window,
+    { currentPeriodActuals: packet, cardPeriodBalanceEvidence: balanceEvidence, liveOverlay: next.liveOverlay });
+  const row = publication.cards.find(card => card.id === 'heloc');
+  eq(row.netChange.amount, qualified ? expectedCents / 100 : null, name + ' native qualified delta');
+  eq(row.status, qualified ? 'ready' : 'unavailable', name + ' native qualification');
+  eq(row.netChange.trust, qualified ? 'calculated' : 'unavailable', name + ' native trust');
+  eq(row.netChange.completeness, qualified ? 'complete' : 'unavailable', name + ' native completeness');
+  eq(packet.cardCoverageUnconfirmed.length > 0, !qualified, name + ' missing amount marker survives overlay');
+  eq(row.reasons.includes('transaction-evidence-unconfirmed'), !qualified, name + ' native reason');
+  eq(packet.transactions.filter(tx => tx.account === 'heloc' && !tx.pending).map(tx => tx.amount === 0 ? 0 : tx.amount),
+    qualified ? [expectedCents / 100] : [], name + ' no invented posted amount');
+  eq(row.pending.map(tx => tx.amount), [900], name + ' pending remains separate');
+  eq(row.posted.length, qualified ? 1 : 0, name + ' posted identity retained only for qualified evidence');
+  const rendered = View.html(publication, { money: value => '$' + value.toFixed(2), date: value => value });
+  eq(rendered.includes('data-budget-card-toggle="heloc"'), true, name + ' native renderer identity');
+  if (!qualified) eq(/data-budget-card-toggle="heloc"[\s\S]*?card-movement-delta[^>]*>Net unavailable/.test(rendered),
+    true, name + ' renderer withholds false zero or one');
+  eq(JSON.stringify(data), canonicalBefore, name + ' no canonical mutation');
+  eq(JSON.stringify(payload), payloadBefore, name + ' no provider input mutation');
+  eq(JSON.stringify(accountMap), mapBefore, name + ' no map mutation');
+}
 console.log(`PASS card period movements: ${checks} independent assertions`);

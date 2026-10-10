@@ -1,0 +1,41 @@
+.original-reference .river-wrap { position: relative; z-index: 2; max-width: 1360px; margin: 0 auto; padding: 4px 40px 16px; }
+.original-reference .tile.t-river {
+  --st: 92 242 176; position: relative; height: 164px; padding: 0; border-radius: var(--r-tile); overflow: hidden; color: #f4f5f7;
+  background: radial-gradient(120% 140% at 50% 120%, rgb(var(--st) / .14), transparent 60%), var(--river-bg);
+  box-shadow: var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, .06);
+  opacity: 0; animation: tile-in .9s var(--ease-out) forwards .05s; transition: background .8s var(--ease);
+}
+.original-reference .tile.t-river[data-state="tight"] { --st: 255 190 92; }
+.original-reference .tile.t-river[data-state="short"] { --st: 255 86 102; }
+.original-reference .tile.t-river::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
+.original-reference .river { position: absolute; inset: 0; cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; outline: none; }
+.original-reference .river.is-dragging { cursor: grabbing; }
+.original-reference .river:focus-visible { outline: 2px solid rgb(var(--st) / .6); outline-offset: -4px; border-radius: var(--r-tile); }
+.original-reference .river-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.original-reference .river-slide { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; pointer-events: none; will-change: transform; }
+.original-reference .river-vals { position: absolute; left: 0; right: 0; bottom: 30px; height: 16px; }
+.original-reference .rv { position: absolute; top: 0; transform: translateX(-50%); font-size: 12px; line-height: 16px; font-weight: 520; color: rgba(244, 245, 247, .5); white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; transition: color .3s, opacity .3s; }
+.original-reference .rv.is-past { opacity: .6; }
+.original-reference .rv[data-state="tight"] { color: #ffc56e; }
+.original-reference .rv[data-state="short"] { color: #ff7d8b; }
+.original-reference .rv.is-hover { color: #fff; opacity: 1; }
+.original-reference .rv.is-sel { color: #fff; font-weight: 700; opacity: 1; }
+.original-reference .rv.is-sel[data-state="tight"] { color: #ffd28c; }
+.original-reference .rv.is-sel[data-state="short"] { color: #ff97a3; }
+.original-reference .months { position: absolute; left: 0; right: 0; bottom: 9px; height: 18px; }
+.original-reference .months span { position: absolute; top: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: rgba(244, 245, 247, .78); white-space: nowrap; letter-spacing: .01em; }
+.original-reference .months b { font-weight: 450; color: rgba(244, 245, 247, .45); }
+.original-reference .playhead { position: absolute; top: 0; left: 0; height: 100%; width: 0; pointer-events: none; will-change: transform; z-index: 2; }
+.original-reference .playhead-beam { position: absolute; left: -1px; top: var(--beam-top, 40px); bottom: 52px; width: 2px; border-radius: 2px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, .85) 30%, rgb(var(--st) / .4) 85%, transparent); box-shadow: 0 0 16px 2px rgb(var(--st) / .45); transition: box-shadow .6s; }
+.original-reference .playhead-orb { position: absolute; left: -10px; top: calc(var(--orb-y, 80px) - 10px); width: 20px; height: 20px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 5px rgb(var(--st) / .28), 0 0 26px 6px rgb(var(--st) / .75); transition: transform .4s var(--ease-spring), box-shadow .6s; }
+.original-reference .is-dragging .playhead-orb { transform: scale(1.3); }
+.original-reference .river:focus-visible .playhead-orb { box-shadow: 0 0 0 3px #fff, 0 0 0 7px rgb(var(--st) / .5), 0 0 30px 6px rgb(var(--st)); }
+.original-reference .playhead-pill { position: absolute; top: 9px; left: 0; display: inline-flex; align-items: center; gap: 10px; height: 32px; padding: 0 13px; border-radius: 999px; white-space: nowrap;
+  background: rgba(22, 24, 30, .78); border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .1);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 13px; font-weight: 520; color: rgba(244, 245, 247, .72); }
+.original-reference .playhead-pill b { font-weight: 650; color: #fff; font-variant-numeric: tabular-nums; }
+.original-reference .t-river[data-state="tight"] .playhead-pill b { color: #ffc56e; }
+.original-reference .t-river[data-state="short"] .playhead-pill b { color: #ff8b98; }
+

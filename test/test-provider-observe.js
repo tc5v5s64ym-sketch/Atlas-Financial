@@ -482,6 +482,34 @@ console.log('=== N. Lunch Money normalize extracts Plaid transaction identity ==
     'Plaid ids are not redefined as Lunch Money ids');
 }
 
+console.log('=== O. amount qualification precedes scalar numeric conversion ===');
+for (const [name, rawAmount, expected] of [
+  ['numeric zero', 0, 0], ['decimal zero', '0.00', 0], ['signed zero', '-0.0000', 0],
+  ['numeric debit', 500, 500], ['decimal debit', '500.00', 500],
+  ['numeric credit', -500, -500], ['decimal credit', '-500.00', -500],
+  ['provider four-place precision', '12.3456', 12.3456],
+  ['trimmed signed decimal', ' +12.50 ', 12.5], ['fractional decimal', '.50', 0.5],
+  ['trailing decimal point', '12.', 12],
+  ['empty string', '', null], ['whitespace string', ' ', null],
+  ['blank control whitespace', '\t\r\n', null], ['blank nonbreaking whitespace', '\u00a0', null],
+  ['boolean false', false, null], ['boolean true', true, null],
+  ['empty array', [], null], ['numeric array', [500], null],
+  ['decimal array', ['500.00'], null], ['object', {}, null],
+  ['null', null, null], ['undefined', undefined, null],
+  ['nonfinite number', Infinity, null], ['not-a-number', NaN, null],
+  ['hexadecimal string', '0x1', null], ['binary string', '0b1', null],
+  ['octal string', '0o1', null], ['infinity string', 'Infinity', null],
+  ['nonnumeric string', 'unavailable', null],
+]) {
+  ok(O.lunchMoneyDebitAmount(rawAmount) === expected, name + ' preserves only a qualified scalar amount');
+  const row = O.normalizeLunchMoneyTransaction({ id: 93011, account_id: 2002,
+    date: '2026-08-16', currency: 'cad', amount: rawAmount, is_pending: false });
+  ok(row.amount === expected, name + ' normalization does not lose the qualification');
+  ok(row.providerTransactionId === '93011' && row.providerAccountId === '2002'
+    && row.date === '2026-08-16' && row.currency === 'cad' && row.pending === false,
+    name + ' preserves native identity/date/currency/pending fields');
+}
+
 if (failures) {
   console.log(`\n${failures} check(s) failed`);
   process.exit(1);

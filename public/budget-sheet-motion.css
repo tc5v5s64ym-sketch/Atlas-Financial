@@ -1,0 +1,230 @@
+/* Motion decoration never owns the native dialog's placement or visibility. */
+.budget-sheet-motion-shell {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout style paint;
+}
+.budget-detail-body > [hidden] { display: none !important; }
+.budget-detail-body > [data-blend-bills-panel]:not([hidden]) {
+  max-height: none;
+  margin: 0;
+  overflow: visible;
+}
+.budget-detail-sheet > header { gap: 12px; }
+.budget-detail-sheet > header [data-budget-detail-title] { flex: 1; min-width: 0; }
+.budget-detail-sheet [data-budget-detail-back] {
+  border: 0;
+  background: var(--surface-2);
+  color: inherit;
+  border-radius: 99px;
+  padding: 8px 14px;
+  min-height: 38px;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.budget-detail-sheet [data-budget-detail-close] { order: 2; }
+.budget-detail-sheet [data-budget-detail-back]:focus-visible,
+.budget-detail-sheet [data-budget-detail-close]:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .budget-sheet-motion-shell { display: none; }
+}
+
+.budget-detail-sheet [data-budget-detail-back][hidden] { display: none !important; }
+
+/* Original g-blend panel proportions, applied to the incumbent evidence nodes.
+   All labels, warnings, dates and figures still come from their native sources. */
+.blend-detail-sheet {
+  --sheet-surface: #fff;
+  --sheet-surface-2: #f4f5f7;
+  --sheet-surface-3: #eceef1;
+  --sheet-edge: rgba(12,14,22,.055);
+  --sheet-acc: var(--blend-ink);
+  color: var(--blend-ink);
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.35;
+  letter-spacing: -.006em;
+}
+:root[data-theme="dark"] .blend-detail-sheet {
+  --sheet-surface: #121216; --sheet-surface-2: #1a1a1f;
+  --sheet-surface-3: #232329; --sheet-edge: rgba(255,255,255,.07);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .blend-detail-sheet {
+    --sheet-surface: #121216; --sheet-surface-2: #1a1a1f;
+    --sheet-surface-3: #232329; --sheet-edge: rgba(255,255,255,.07);
+  }
+}
+dialog.blend-detail-sheet[open] {
+  display: flex; flex-direction: column;
+  inset: 16px 16px 16px auto; margin: 0;
+  width: min(500px, calc(100vw - 32px)); height: auto; max-height: none;
+  border: 0; border-radius: 30px; overflow: hidden;
+  background: var(--sheet-surface); color: var(--blend-ink);
+  box-shadow: 0 0 0 1px var(--sheet-edge), 0 40px 100px -30px rgba(10,12,20,.45);
+}
+.blend-detail-sheet:has([data-blend-bills-panel], [data-bill-detail]) { --sheet-acc: var(--blend-bills); }
+.blend-detail-sheet:has([data-calendar-income]) { --sheet-acc: var(--blend-income); }
+.blend-detail-sheet:has(.household-budget, .blend-house-body, [data-budget-category]) { --sheet-acc: var(--blend-house); }
+.blend-detail-sheet::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 240px; pointer-events: none;
+  background: radial-gradient(120% 100% at 20% 0%, color-mix(in oklab, var(--sheet-acc) 16%, transparent), transparent 70%);
+}
+.blend-detail-sheet::backdrop { background: rgba(8,9,14,.28); backdrop-filter: none; }
+:root[data-theme="dark"] .blend-detail-sheet::backdrop { background: rgba(0,0,0,.55); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .blend-detail-sheet::backdrop { background: rgba(0,0,0,.55); }
+}
+.blend-detail-sheet > header {
+  position: relative; z-index: 2; flex: none;
+  display: grid; grid-template-columns: 44px minmax(0,1fr) 44px;
+  align-items: center; gap: 6px; padding: 14px 14px 6px; border: 0;
+}
+.blend-sheet-titles { grid-column: 2; grid-row: 1; min-width: 0; text-align: center; }
+.blend-sheet-kicker { display: block; font-size: 13px; font-weight: 520; color: var(--blend-ink-3); }
+.blend-detail-sheet:has(.budget-detail-body > [data-bill-detail]) .blend-sheet-kicker::after { content: ' · Bills'; }
+.blend-detail-sheet > header h2 { margin: 1px 0 0; font-size: 17px; line-height: 1.35; font-weight: 640; letter-spacing: -.02em; }
+.blend-detail-sheet > header :is([data-budget-detail-back],[data-budget-detail-close]) {
+  grid-row: 1; width: 44px; height: 44px; min-height: 44px;
+  border: 0; padding: 0; border-radius: 50%; margin: 0;
+  background: var(--sheet-surface-2); color: var(--blend-ink);
+  font-size: 26px; line-height: 1; text-align: center;
+}
+.blend-detail-sheet > header [data-budget-detail-back] { grid-column: 1; font-size: 0; }
+.blend-detail-sheet > header [data-budget-detail-back]::before { content: '\2039'; font-size: 30px; }
+.blend-detail-sheet > header [data-budget-detail-close] { grid-column: 3; }
+.blend-detail-sheet > header button:hover { background: var(--sheet-surface-3); }
+.blend-detail-sheet > .budget-detail-body {
+  position: relative; z-index: 1; flex: 1; min-height: 0;
+  padding: 8px 24px 40px; max-height: none;
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  font-size: 15px; line-height: 1.35;
+}
+.blend-detail-sheet .budget-detail-body :is(h3,h4) {
+  margin: 22px 0 10px; font-size: 13px; font-weight: 640;
+  color: var(--blend-ink-3); letter-spacing: .04em; text-transform: uppercase;
+}
+.blend-detail-sheet .budget-detail-body :is(p,.operating-note,.household-budget-context) {
+  margin: 6px 0; font-size: 13px; line-height: 1.45; color: var(--blend-ink-2);
+}
+.blend-detail-sheet .budget-detail-body :is(.operating-lines,.bill-detail-body dl,.blend-house-body) {
+  background: var(--sheet-surface-2); border-radius: 20px; overflow: hidden;
+}
+.blend-detail-sheet .budget-detail-body .operating-line,
+.blend-detail-sheet .bill-detail-body dl > div {
+  min-height: 48px; padding: 8px 16px; gap: 16px;
+  font-size: 15px; line-height: 1.35; border-color: var(--blend-line);
+}
+.blend-detail-sheet .bill-detail-body dl { margin: 0; }
+.blend-detail-sheet .bill-detail-body dt { color: var(--blend-ink-2); }
+.blend-detail-sheet .bill-detail-body dd { color: var(--blend-ink); font-weight: 580; }
+.blend-detail-sheet .blend-house-body { margin-top: 22px; padding: 16px; }
+.blend-detail-sheet .blend-house-body > :is(span,small) { display: block; }
+.blend-detail-sheet [data-blend-bills-panel] > header { padding: 12px 0 20px; border: 0; }
+.blend-detail-sheet [data-blend-bills-panel] > header h2 { margin: 0; font-size: 46px; font-weight: 620; line-height: 1.05; letter-spacing: -.045em; }
+.blend-detail-sheet [data-blend-bills-panel] .budget-browse-eyebrow {
+  margin: 0 0 6px; font-size: 13px; color: var(--blend-ink-3);
+}
+.blend-detail-sheet [data-blend-bills-panel] [data-budget-ratio="bills"] { display: flex; flex-direction: column; gap: 6px; }
+.blend-detail-sheet [data-blend-bills-panel] [data-budget-ratio-plan] { order: -1; }
+.blend-detail-sheet [data-blend-bills-panel] [data-budget-ratio-actual] {
+  font-size: 15px; font-weight: 520; line-height: 1.35; letter-spacing: normal; color: var(--blend-ink-2);
+}
+.blend-detail-sheet [data-blend-bills-panel] [data-budget-ratio-actual]::before { content: 'Recorded: '; }
+.blend-detail-sheet [data-budget-ratio-actual] > .budget-cash-sr,
+.blend-detail-sheet .budget-bill-state > .budget-cash-sr {
+  position: static; width: auto; height: auto; margin: 0; overflow: visible;
+  clip: auto; clip-path: none; white-space: normal;
+}
+.blend-detail-sheet [data-blend-bills-panel] [data-budget-ratio="bills"] > [aria-hidden="true"] { display: none; }
+.blend-detail-sheet [data-blend-bills-panel] > header .budget-browse-sub { margin: 6px 0 0; font-size: 15px; }
+.blend-detail-sheet .budget-bills-figures { margin: 12px 0; color: var(--blend-ink-2); font-size: 13px; }
+.blend-detail-sheet .budget-bill-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 6px; }
+.blend-detail-sheet .budget-bill-filters button {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 0 15px; border: 0; border-radius: 99px;
+  background: var(--sheet-surface-2); color: var(--blend-ink-2);
+  font-size: 14px; font-weight: 580;
+}
+.blend-detail-sheet .budget-bill-filters button[aria-pressed="true"] { background: var(--blend-ink); color: var(--sheet-surface); }
+.blend-detail-sheet .budget-bill-filters button span { opacity: .6; }
+.blend-detail-sheet .budget-bill-group h3 { display: flex; justify-content: space-between; }
+.blend-detail-sheet .budget-bill-group { margin-top: 22px; }
+.blend-detail-sheet .budget-bill-row {
+  display: grid; grid-template-columns: 40px minmax(0,1fr) auto 8px;
+  min-height: 60px; padding: 10px 14px 10px 16px; gap: 14px;
+  background: var(--sheet-surface-2); border-radius: 0;
+}
+.blend-detail-sheet .budget-bill-row:nth-of-type(1) { border-radius: 20px 20px 0 0; }
+.blend-detail-sheet .budget-bill-row:last-of-type { border-radius: 0 0 20px 20px; }
+.blend-detail-sheet .budget-bill-row:only-of-type { border-radius: 20px; }
+.blend-detail-sheet .budget-bill-row + .budget-bill-row { border-top: 1px solid var(--blend-line); }
+.blend-detail-sheet .budget-bill-row:hover { background: var(--sheet-surface-3); }
+.blend-detail-sheet .budget-bill-date { display: none; }
+.blend-bill-symbol { display: none; }
+.blend-detail-sheet .blend-bill-symbol {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px;
+  background: hsl(var(--bill-hue,230) 70% 50% / .13); color: hsl(var(--bill-hue,230) 62% 42%);
+}
+:root[data-theme="dark"] .blend-detail-sheet .blend-bill-symbol { color: hsl(var(--bill-hue,230) 80% 72%); background: hsl(var(--bill-hue,230) 70% 60% / .16); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .blend-detail-sheet .blend-bill-symbol { color: hsl(var(--bill-hue,230) 80% 72%); background: hsl(var(--bill-hue,230) 70% 60% / .16); }
+}
+.blend-detail-sheet .blend-bill-symbol svg { width: 21px; height: 21px; }
+.blend-detail-sheet .budget-bill-label > strong { font-size: 15px; font-weight: 580; }
+.blend-detail-sheet .budget-bill-label { min-width: 0; }
+.blend-detail-sheet .budget-bill-when { display: block; margin-top: 2px; font-size: 13px; color: var(--blend-ink-3); }
+.blend-detail-sheet .budget-bill-value { display: grid; justify-items: end; gap: 2px; }
+.blend-detail-sheet .budget-bill-state { font-size: 11px; margin-top: 0; white-space: normal; max-width: 140px; text-align: right; }
+.blend-detail-sheet .budget-bill-row.is-check .budget-bill-state { color: #d97706; }
+.blend-detail-sheet .budget-bill-row.is-check .budget-bill-state i { background: currentColor; }
+.blend-detail-sheet .budget-bill-row.is-upcoming-due .budget-bill-state { color: var(--blend-ink-2); }
+.blend-detail-sheet .budget-bill-row.is-upcoming-due .budget-bill-state i { background: currentColor; }
+.blend-detail-sheet .budget-bill-amount { font-size: 15px; font-weight: 620; }
+.blend-detail-sheet .budget-bill-chevron { color: var(--blend-ink-3); font-size: 21px; }
+.blend-detail-sheet .budget-bill-period-evidence { margin-top: 22px; font-size: 13px; }
+.blend-detail-sheet .budget-bill-period-evidence > summary { cursor: pointer; color: var(--blend-ink-2); }
+.blend-detail-sheet [data-blend-bills-panel] > footer { margin-top: 22px; padding: 16px; border-radius: 20px; background: var(--sheet-surface-2); }
+.blend-detail-sheet [data-budget-browse-evidence] { border: 0; padding: 8px 0; background: none; color: var(--sheet-acc); font: inherit; font-size: 14px; cursor: pointer; }
+.blend-detail-sheet [data-budget-browse-evidence]:focus-visible { outline: 2px solid var(--sheet-acc); outline-offset: 3px; }
+.blend-detail-sheet [data-bill-detail] { border: 0; background: none; }
+.blend-detail-sheet .budget-detail-body [data-bill-detail] > summary {
+  display: grid; grid-template-columns: 56px minmax(0,1fr); align-items: center;
+  padding: 10px 0 20px; gap: 4px 16px; border: 0; background: none;
+}
+.blend-detail-sheet [data-bill-detail] > summary::after { display: none; }
+.blend-detail-sheet [data-bill-detail] > summary .blend-bill-symbol { grid-column: 1; grid-row: 1 / 4; width: 56px; height: 56px; border-radius: 18px; }
+.blend-detail-sheet [data-bill-detail] > summary .blend-bill-symbol svg { width: 28px; height: 28px; }
+.blend-detail-sheet [data-bill-detail] > summary > .blend-bill-summary-amount { grid-column: 2; grid-row: 1; justify-self: stretch; text-align: left; font-size: 40px; line-height: 1.05; font-weight: 620; letter-spacing: -.045em; }
+.blend-detail-sheet .blend-bill-summary-label { grid-column: 2; grid-row: 2; font-size: 13px; color: var(--blend-ink-2); }
+.blend-detail-sheet [data-atlas-bill-state] { grid-column: 2; grid-row: 3; justify-self: start; }
+.blend-detail-sheet .blend-payment-evidence { min-height: 183px; padding: 16px; border-radius: 20px; background: var(--sheet-surface-2); }
+.blend-detail-sheet .blend-payment-evidence > h4 { margin: 0 0 6px; font-size: 12px; text-transform: none; letter-spacing: normal; }
+.blend-detail-sheet .blend-history-unavailable { display: grid; place-items: center; min-height: 170px; border-radius: 20px; background: var(--sheet-surface-2); color: var(--blend-ink-3); font-size: 15px; }
+.blend-detail-sheet .blend-bill-published { margin-top: 22px; }
+.blend-detail-sheet .blend-bill-published > summary { cursor: pointer; font-size: 13px; color: var(--blend-ink-2); }
+.blend-detail-sheet .budget-granularity { display: flex; gap: 8px; margin: 8px 0 20px; }
+.blend-detail-sheet .budget-granularity-btn { min-height: 44px; padding: 0 15px; border: 0; border-radius: 99px; background: var(--sheet-surface-2); color: var(--blend-ink-2); font: inherit; font-size: 14px; }
+.blend-detail-sheet .budget-granularity-btn[aria-pressed="true"] { background: var(--blend-ink); color: var(--sheet-surface); }
+.blend-detail-sheet .pay-period-navigator { margin: 12px 0 0; }
+.blend-detail-sheet .budget-wheel { border-radius: 20px; background: var(--sheet-surface-2); border-color: var(--blend-line); }
+.blend-detail-sheet .budget-wheel-item { font-family: inherit; }
+@media (max-width: 759px) {
+  dialog.blend-detail-sheet[open] { inset: max(44px, env(safe-area-inset-top)) 0 0; width: auto; max-height: none; border-radius: 28px 28px 0 0; }
+  .blend-detail-sheet::after { content: ''; position: absolute; z-index: 3; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: color-mix(in srgb, var(--blend-ink) 14%, transparent); pointer-events: none; }
+  .blend-detail-sheet > header { padding: 18px 12px 4px; }
+  .blend-detail-sheet > .budget-detail-body { padding: 6px 16px calc(40px + env(safe-area-inset-bottom)); }
+  .blend-detail-sheet [data-blend-bills-panel] > header h2 { font-size: 40px; }
+  :root:not([data-theme="dark"]) .blend-detail-sheet::backdrop { background: rgba(8,9,14,.4); }
+}
+@media (max-width: 759px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .blend-detail-sheet::backdrop { background: rgba(0,0,0,.55); }
+}

@@ -36,7 +36,9 @@ async function browserProof(base, expected, suffix) {
       assert.equal(await label.innerText(), expected);
       const box = await label.boundingBox();
       const balance = await page.locator('[data-live-current-balance]').boundingBox();
-      assert.ok(box.y >= 0 && box.y + box.height < balance.y && box.height < 40, JSON.stringify(box));
+      const align = await label.evaluate(el => getComputedStyle(el).textAlign);
+      assert.ok(box && balance && box.height > 0 && box.height < 40 && box.y >= balance.y + balance.height - 1, JSON.stringify({ box, balance }));
+      assert.equal(align, 'center');
       assert.equal(await label.evaluate(el => getComputedStyle(el).fontSize), '12px');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       const dir = process.env.ATLAS_BUILD_SCREENSHOTS_DIR;
@@ -48,7 +50,7 @@ async function browserProof(base, expected, suffix) {
     }
     assert.deepEqual(errors, []);
     assert.deepEqual(external, [], 'no external requests or GitHub dependency');
-    console.log(`PASS full routed Budget build label ${suffix}: desktop 1440 / phone 390 / narrow 320, App.boot, synthetic financial JSON, visible above Current Balance, no overflow/errors/external requests`);
+    console.log(`PASS full routed Budget build label ${suffix}: desktop 1440 / phone 390 / narrow 320, App.boot, synthetic financial JSON, centred below Current Balance, no overflow/errors/external requests`);
   } finally { await browser.close(); }
 }
 
