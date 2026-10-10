@@ -46,7 +46,15 @@ const cleanupReview = z.object({ schema: z.literal(CleanupPolicy.POLICY), status
     amount: providerMoney, currency: z.string().regex(/^[a-z]{3}$/) }).strict(),
   supportedChanges: Cleanup.createSchema.shape.changes, categoryReceipt: delegatedReview.optional(),
 }).strict();
+const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+function monthSpan(startMonth, endMonth) {
+  const [sy, sm] = startMonth.split('-').map(Number);
+  const [ey, em] = endMonth.split('-').map(Number);
+  return (ey - sy) * 12 + (em - sm);
+}
 const schemas = {
+  balanceHistory: z.object({ startMonth: month, endMonth: month }).strict()
+    .refine(v => monthSpan(v.startMonth, v.endMonth) >= 0 && monthSpan(v.startMonth, v.endMonth) <= 119),
   cleanupInstruction: Cleanup.createSchema,
   submitStandingEvidence: z.object({ transactionRef: ref, grantRef, categoryRef: ref, review: delegatedReview }).strict(),
   standingAudit: z.object({ grantRef }).strict(),
@@ -99,7 +107,7 @@ const READ_ERROR_CODES = new Set([
   'reference-expired-or-unavailable', 'category-evidence-unavailable',
   'account-evidence-unavailable', 'catalog-unavailable', 'coverage-unavailable',
   'duplicate-provider-identity',
-  'tag-evidence-unavailable',
+  'tag-evidence-unavailable', 'balance-history-unavailable',
 ]);
 function readFailure(operation, error) {
   // Never expose error text, request URLs/headers, provider bodies or IDs.
@@ -115,7 +123,7 @@ function readFailure(operation, error) {
 function requiredScope(operation) {
   if (['prepareStanding', 'applyStanding', 'submitStandingEvidence', 'submitCleanupEvidence', 'standingAudit'].includes(operation)) return Standing.SCOPE;
   if (operation === 'prepare' || operation === 'apply') return WRITE_SCOPE;
-  if (operation === 'catalog' || operation === 'query' || operation === 'cleanupInstruction') return READ_SCOPE;
+  if (operation === 'catalog' || operation === 'query' || operation === 'balanceHistory' || operation === 'cleanupInstruction') return READ_SCOPE;
   return null;
 }
 function scopeDenial(operation, auth = {}) {
@@ -201,9 +209,10 @@ function createService(options = {}) {
   }
   async function request(method, path, body, beforeSend) {
     const stage = path.startsWith('/transactions') ? 'transactions-request'
-      : path.startsWith('/categories') ? 'categories-request'
-        : path.startsWith('/tags') ? 'tags-request'
-          : path.startsWith('/plaid_accounts') ? 'synced-accounts-request' : 'manual-accounts-request';
+      : path.startsWith('/balance_history') ? 'balance-history-request'
+        : path.startsWith('/categories') ? 'categories-request'
+          : path.startsWith('/tags') ? 'tags-request'
+            : path.startsWith('/plaid_accounts') ? 'synced-accounts-request' : 'manual-accounts-request';
     let token;
     try { token = await resolveToken(); }
     catch (_) { throw new ProviderRequestError('credential-unavailable', stage); }
@@ -335,6 +344,90 @@ function createService(options = {}) {
         excludedFromBudget: c.exclude_from_budget === true, excludedFromTotals: c.exclude_from_totals === true })),
       accounts: accounts.map(a => ({ accountRef: a.ref, name: a.label, type: a.type, ...a.evidence })),
       ...(tags ? { tags: tags.map(({ providerId, ...row }) => row) } : {}) };
+  }
+  // Read-only monthly balance history (GET /balance_history, v2.11.1).
+  // Monthly provider evidence only: it is not an Atlas stored opening, not a
+  // pay-period snapshot and not a plan. Missing values stay unavailable.
+  const BALANCE_HISTORY_SOURCE_IDS = { plaid: 'plaid_account_id', manual: 'manual_account_id',
+    crypto_manual: 'crypto_manual_id', crypto_synced: 'crypto_synced_id', deleted: 'deleted_account_id' };
+  function balanceHistoryEntry(row) {
+    if (!row || typeof row !== 'object' || !month.safeParse(row.month).success
+        || !['historical', 'current'].includes(row.type)) throw new Error('balance-history-unavailable');
+    // The provider entry id is validated for historical rows but NEVER
+    // returned: raw provider IDs may not cross the OAuth boundary
+    // (ARCHITECTURE.md). Only the entry kind (historical/current) is kept.
+    if (row.type === 'historical') {
+      if (!Number.isSafeInteger(row.id) || row.id < 1) throw new Error('invalid-provider-identity');
+    }
+    const amount = typeof row.balance === 'string' && row.balance.length <= 64
+      && /^-?\d+(\.\d{1,4})?$/.test(row.balance) ? row.balance : null;
+    const currency = typeof row.currency === 'string' && /^[a-z]{3}$/.test(row.currency) ? row.currency : null;
+    const status = amount !== null && currency !== null ? 'reported' : 'unavailable';
+    return { month: row.month, entryType: row.type,
+      balance: { status, amount: status === 'reported' ? amount : null, currency,
+        trust: 'unknown', source: 'Lunch Money v2',
+        ...(status === 'unavailable' ? { reason: amount === null
+          ? 'balance-missing-or-invalid' : 'currency-missing-or-invalid' } : {}) } };
+  }
+  async function balanceHistory(input, auth) {
+    const { accounts } = await catalogData(auth.principal);
+    const params = new URLSearchParams({ start_month: input.startMonth, end_month: input.endMonth });
+    const data = await request('GET', '/balance_history?' + params);
+    if (!data || !Array.isArray(data.balance_history)) throw new Error('balance-history-unavailable');
+    const seenSources = new Set();
+    const rows = [];
+    for (const block of data.balance_history) {
+      const source = block && typeof block === 'object' ? block.source : null;
+      const idField = source && BALANCE_HISTORY_SOURCE_IDS[source.type];
+      if (!idField || !Number.isSafeInteger(source[idField]) || source[idField] < 1
+          || !Array.isArray(block.balances)) throw new Error('balance-history-unavailable');
+      let sourceKey = source.type + ':' + source[idField];
+      if (source.type === 'crypto_synced') {
+        // Official v2.11.1 stream identity for a synced-crypto source is
+        // crypto_synced_id PLUS symbol: distinct symbols under one
+        // connection are distinct streams, not duplicates. The documented
+        // symbol contract is a required string of 1-25 characters with no
+        // pattern or normalization, so the exact provider symbol is
+        // preserved in the identity. A missing, non-string, empty or
+        // over-length symbol fails closed rather than collapsing streams.
+        if (typeof source.symbol !== 'string' || source.symbol.length < 1 || source.symbol.length > 25)
+          throw new Error('balance-history-unavailable');
+        sourceKey += ':' + source.symbol;
+      }
+      if (seenSources.has(sourceKey)) throw new Error('duplicate-provider-identity');
+      seenSources.add(sourceKey);
+      // Only plaid/manual sources exist in the Atlas catalog. Crypto and
+      // deleted-account sources are reported with an explicitly unavailable
+      // mapping — never given an invented reference and never dropped.
+      const account = (source.type === 'plaid' || source.type === 'manual')
+        ? accounts.find(a => a.type === source.type && a.providerId === source[idField]) : null;
+      const seenMonths = new Set();
+      const entries = [];
+      for (const raw of block.balances) {
+        const entry = balanceHistoryEntry(raw);
+        if (entry.month < input.startMonth || entry.month > input.endMonth) continue;
+        if (seenMonths.has(entry.month)) throw new Error('duplicate-provider-identity');
+        seenMonths.add(entry.month);
+        entries.push(entry);
+      }
+      entries.sort((a, b) => a.month < b.month ? -1 : a.month > b.month ? 1 : 0);
+      rows.push({ sortKey: sourceKey, accountRef: account?.ref || null, account: account?.label || null,
+        sourceType: source.type,
+        accountMapping: account ? 'catalog' : 'unavailable',
+        ...(account ? {} : { accountMappingReason: source.type === 'plaid' || source.type === 'manual'
+          ? 'account-not-in-current-catalog' : 'account-source-not-in-atlas-catalog' }),
+        entries });
+    }
+    rows.sort((a, b) => a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0);
+    return { status: 'ok', source: 'Lunch Money v2', observedAt: new Date(now()).toISOString(),
+      window: { startMonth: input.startMonth, endMonth: input.endMonth },
+      coverage: 'complete-provider-response', writesAtlasState: false, providerWrite: false,
+      granularity: 'monthly', isPayPeriodSnapshot: false,
+      note: 'Monthly provider balance history: each historical entry is the stored balance at or around that month end, and a current entry is an ephemeral snapshot that may change between requests. This is not an Atlas stored opening, not a pay-period snapshot and not the original plan for a period; Atlas preserves original plans and closing snapshots separately, with dated revisions for late postings. Balances are provider-reported, not independently verified; trust remains unknown. Exact provider decimal strings and currencies are preserved per account and never combined across accounts or currencies. Missing or invalid balances stay unavailable and are never shown as zero. Provider base-currency conversions are omitted so no second converted figure competes. Forecast remains the planner.',
+      referenceExpiresInSeconds: TTL / 1000,
+      accounts: rows.map(({ sortKey, ...row }) => row),
+      accountCount: rows.length,
+      entryCount: rows.reduce((total, row) => total + row.entries.length, 0) };
   }
   async function query(input, auth) {
     const { categories, accounts } = await catalogData(auth.principal);
@@ -803,10 +896,10 @@ function createService(options = {}) {
     if (denied) return denied;
     const parsed = schemas[operation]?.safeParse(args);
     if (!parsed?.success) return fail('invalid-arguments');
-    try { return await ({ catalog, query, prepare, apply, cleanupInstruction: Cleanup.create,
+    try { return await ({ catalog, query, balanceHistory, prepare, apply, cleanupInstruction: Cleanup.create,
       prepareStanding, applyStanding, submitStandingEvidence, submitCleanupEvidence, standingAudit })[operation](parsed.data, auth); }
     catch (error) {
-      return operation === 'catalog' || operation === 'query'
+      return operation === 'catalog' || operation === 'query' || operation === 'balanceHistory'
         ? readFailure(operation, error) : fail('lunchmoney-operation-unavailable');
     }
   }
