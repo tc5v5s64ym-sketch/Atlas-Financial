@@ -75,9 +75,11 @@ const { createService, READ_SCOPE, WRITE_SCOPE } = require('../scripts/assistant
   assert.equal(chequing.entries[0].balance.amount, '41000.0000');
   assert.equal(chequing.entries[1].balance.amount, '41211.8000');
   assert.equal(chequing.entries[0].entryType, 'historical');
-  assert.equal(chequing.entries[0].entryId, 101);
   assert.equal(chequing.entries[2].entryType, 'current');
-  assert.equal(chequing.entries[2].entryId, null);
+  // No raw provider entry ID ever escapes (ARCHITECTURE.md OAuth boundary):
+  // entries carry no entryId field at any position, in service or MCP output.
+  assert(result.accounts.every(a => a.entries.every(e => !('entryId' in e))));
+  assert(!JSON.stringify(result).includes('entryId'));
   assert(chequing.entries.every(e => e.balance.trust === 'unknown' && e.balance.currency === 'cad'));
 
   const cash = byLabel['Synthetic Cash'];
@@ -123,6 +125,35 @@ const { createService, READ_SCOPE, WRITE_SCOPE } = require('../scripts/assistant
     { source: { type: 'plaid', plaid_account_id: 4 }, balances: [] },
     { source: { type: 'plaid', plaid_account_id: 4 }, balances: [] }];
   assert.equal((await service.invoke('balanceHistory', input, auth)).status, 'unavailable');
+
+  // Synced-crypto stream identity is crypto_synced_id PLUS symbol (v2.11.1):
+  // BTC and ETH streams under one connection are distinct sources, each
+  // reported with the unavailable catalog mapping — not duplicates.
+  history = [
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'BTC' }, balances: [
+      { type: 'historical', id: 501, month: '2026-01', balance: '1.5000', currency: 'cad', to_base: 1.5, crypto_balance: '0.1' } ] },
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'ETH' }, balances: [
+      { type: 'historical', id: 502, month: '2026-01', balance: '2.5000', currency: 'cad', to_base: 2.5, crypto_balance: '1.0' } ] }];
+  const cryptoOk = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoOk.status, 'ok');
+  assert.equal(cryptoOk.accountCount, 2);
+  assert(cryptoOk.accounts.every(a => a.sourceType === 'crypto_synced'
+    && a.accountRef === null && a.accountMapping === 'unavailable'
+    && a.accountMappingReason === 'account-source-not-in-atlas-catalog'));
+  assert.deepEqual(cryptoOk.accounts.map(a => a.entries[0].balance.amount).sort(), ['1.5000', '2.5000']);
+  assert(cryptoOk.accounts.every(a => a.entries.every(e => !('entryId' in e))));
+  // Same connection id AND same symbol is a true duplicate and fails closed.
+  history = [
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'BTC' }, balances: [] },
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'BTC' }, balances: [] }];
+  const cryptoDup = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoDup.status, 'unavailable');
+  assert.equal(cryptoDup.diagnostic.code, 'duplicate-provider-identity');
+  // A synced-crypto source with a missing symbol fails closed.
+  history = [{ source: { type: 'crypto_synced', crypto_synced_id: 55 }, balances: [] }];
+  const cryptoNoSymbol = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoNoSymbol.status, 'unavailable');
+  assert.equal(cryptoNoSymbol.diagnostic.code, 'balance-history-unavailable');
 
   // Malformed payloads and malformed entries fail closed with a safe stage.
   history = { not: 'an array' };
@@ -189,7 +220,10 @@ const { createService, READ_SCOPE, WRITE_SCOPE } = require('../scripts/assistant
     assert.equal(viaMcp.isError, false);
     assert.equal(viaMcp.structuredContent.status, 'ok');
     assert.equal(viaMcp.structuredContent.accounts[0].entries[0].balance.amount, '7.2500');
+    // MCP output carries no raw provider entry ID either.
+    assert(viaMcp.structuredContent.accounts.every(a => a.entries.every(e => !('entryId' in e))));
+    assert(!JSON.stringify(viaMcp.structuredContent).includes('entryId'));
   } finally { await client.close().catch(() => {}); await server.close().catch(() => {}); }
 
-  console.log('Lunch Money balance history: monthly-only, exact decimals/currencies, catalog mapping, unavailable-not-zero, duplicate/malformed fail-closed, GET-only and read-scope guards PASS');
+  console.log('Lunch Money balance history: monthly-only, exact decimals/currencies, catalog mapping, unavailable-not-zero, duplicate/malformed fail-closed, no raw entry IDs in service or MCP output, synced-crypto symbol identity, GET-only and read-scope guards PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });

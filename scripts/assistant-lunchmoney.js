@@ -353,16 +353,17 @@ function createService(options = {}) {
   function balanceHistoryEntry(row) {
     if (!row || typeof row !== 'object' || !month.safeParse(row.month).success
         || !['historical', 'current'].includes(row.type)) throw new Error('balance-history-unavailable');
-    let entryId = null;
+    // The provider entry id is validated for historical rows but NEVER
+    // returned: raw provider IDs may not cross the OAuth boundary
+    // (ARCHITECTURE.md). Only the entry kind (historical/current) is kept.
     if (row.type === 'historical') {
       if (!Number.isSafeInteger(row.id) || row.id < 1) throw new Error('invalid-provider-identity');
-      entryId = row.id;
     }
     const amount = typeof row.balance === 'string' && row.balance.length <= 64
       && /^-?\d+(\.\d{1,4})?$/.test(row.balance) ? row.balance : null;
     const currency = typeof row.currency === 'string' && /^[a-z]{3}$/.test(row.currency) ? row.currency : null;
     const status = amount !== null && currency !== null ? 'reported' : 'unavailable';
-    return { month: row.month, entryType: row.type, entryId,
+    return { month: row.month, entryType: row.type,
       balance: { status, amount: status === 'reported' ? amount : null, currency,
         trust: 'unknown', source: 'Lunch Money v2',
         ...(status === 'unavailable' ? { reason: amount === null
@@ -380,7 +381,16 @@ function createService(options = {}) {
       const idField = source && BALANCE_HISTORY_SOURCE_IDS[source.type];
       if (!idField || !Number.isSafeInteger(source[idField]) || source[idField] < 1
           || !Array.isArray(block.balances)) throw new Error('balance-history-unavailable');
-      const sourceKey = source.type + ':' + source[idField];
+      let sourceKey = source.type + ':' + source[idField];
+      if (source.type === 'crypto_synced') {
+        // Official v2.11.1 stream identity for a synced-crypto source is
+        // crypto_synced_id PLUS symbol: distinct symbols under one
+        // connection are distinct streams, not duplicates. A missing or
+        // malformed symbol fails closed rather than collapsing streams.
+        if (typeof source.symbol !== 'string' || !/^[A-Za-z0-9]{2,10}$/.test(source.symbol))
+          throw new Error('balance-history-unavailable');
+        sourceKey += ':' + source.symbol.toUpperCase();
+      }
       if (seenSources.has(sourceKey)) throw new Error('duplicate-provider-identity');
       seenSources.add(sourceKey);
       // Only plaid/manual sources exist in the Atlas catalog. Crypto and

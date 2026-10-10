@@ -69,11 +69,18 @@ Verified against the v2.11.1 OpenAPI path list (37 paths) on 2026-10-09:
   accounts that share a provider id still get distinct references. Crypto and
   deleted-account sources are returned with `accountMapping: 'unavailable'`
   and a reason — never an invented reference, never silently dropped.
-- Each entry keeps its kind: `historical` (stored month-end balance, with its
-  provider entry id) or `current` (ephemeral snapshot, no entry id, may
-  change between requests). Exact provider decimal strings, signs and
+- Each entry keeps its kind: `historical` (stored month-end balance) or
+  `current` (ephemeral snapshot, may change between requests). Provider
+  entry ids are validated internally for historical rows but are never
+  returned — no raw provider ID crosses this boundary, per the
+  ARCHITECTURE.md OAuth boundary. Exact provider decimal strings, signs and
   currencies are preserved per account; provider base-currency conversions
   are omitted; no total across accounts or currencies is produced.
+- Synced-crypto source identity is `crypto_synced_id` plus the validated
+  `symbol` (the official v2.11.1 stream identity): distinct symbols under
+  one connection are distinct streams, a repeated id+symbol pair fails
+  closed as a duplicate, and a missing or malformed symbol fails closed.
+  Crypto sources still get the unavailable catalog mapping above.
 - A missing or invalid balance or currency is returned as
   `status: 'unavailable'` with `amount: null` and a reason — never zero.
   Duplicate account blocks, duplicate months for one account, malformed
