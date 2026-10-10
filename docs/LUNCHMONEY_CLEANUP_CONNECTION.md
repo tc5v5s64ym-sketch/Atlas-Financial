@@ -206,6 +206,15 @@ readback. On POSIX it also exercises real Ed25519 signed grants, the actual
 private store, restart and private history access. Windows prints that durable
 proof was not run; Linux CI must certify it.
 
+The runtime companion uses invented files, an explicit synthetic credential
+and a GET-only loopback provider to exercise runtimeEffects itself, including
+its credential resolution, deployed-code/context pinning, actual provider
+pagination, metadata expansion and unbounded pending query. The signed POSIX
+case calls the configured runtime adapter, advances time on each observation,
+verifies one acknowledged PUT and the final durable proof, and refuses a newly
+unsafe under-lease result with zero writes and recoverable unresolved history.
+Credential/parser changes and incomplete pending evidence remain refused.
+
 The incumbent category-only, crash/quarantine/reconciliation/multiprocess,
 interactive cleanup, HTTP/JWT, provider amount and balance tests remain
 applicable. The new proof is registered in npm test and the focused standing

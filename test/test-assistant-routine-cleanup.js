@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const http = require('node:http');
 const LM = require('../scripts/assistant-lunchmoney');
 const MCP = require('../scripts/assistant-mcp');
 const P = require('../scripts/assistant-standing-corrections');
@@ -22,7 +23,7 @@ function household() {
   const f = require('./fixtures/household-path-data').fixture('resolved');
   for (const tx of f.payload.transactions) Object.assign(tx, { plaid_account_id: tx.account_id, manual_account_id: null,
     amount: String(tx.amount), original_name: tx.payee, notes: 'Existing note', tag_ids: [22], status: 'reviewed',
-    plaid_metadata: null, custom_metadata: null });
+    plaid_metadata: tx.plaid_metadata ?? null, custom_metadata: tx.custom_metadata ?? null });
   for (const cat of f.payload.categories) Object.assign(cat, { is_income: cat.is_income === true,
     exclude_from_budget: cat.exclude_from_budget === true, exclude_from_totals: cat.exclude_from_totals === true });
   f.payload.tags = [{ id: 22, name: 'Receipt' }, { id: 33, name: 'Checked' }, { id: 44, name: 'Amanda' }];
@@ -32,14 +33,16 @@ function household() {
 const instruction = { schema: 'atlas-lunchmoney-cleanup-instruction/v1', name: 'Researched cafe cleanup',
   changes: { payee: 'Synthetic Cafe', notesAppend: 'Receipt checked.', tagNamesAdd: ['Checked'] } };
 const nameOnly = { ...instruction, name: 'Researched name only', changes: { payee: 'Synthetic Cafe' } };
-async function fixture(real = false, recipe = instruction) {
+async function fixture(real = false, recipe = instruction, runtime = false) {
   const inputs = household(), tx = inputs.payload.transactions.find(t => t.id === 91004);
+  if (runtime) inputs.accountMap.scope = 'synthetic-loopback-runtime-test';
   const clock = Date.parse(inputs.payload.fetchedAt), token = 'synthetic-routine-token';
+  const now = () => Date.parse(inputs.payload.fetchedAt);
   const resource = 'https://atlas.example/assistant/mcp';
   const auth = { principal: 'synthetic-owner', clientId: 'synthetic-client', resource,
     scopes: [MCP.REQUIRED_SCOPE, LM.READ_SCOPE, LM.WRITE_SCOPE, P.SCOPE] };
   const context = { resource, budgetRef: 'synthetic-budget', credentialVersion: 'v1', credentialDigest: S.digest(token),
-    contextVersion: 'v2', parserRevision: real ? E.revision() : 'synthetic-real-parser', ruleEffects: 'none-verified', notesEnabled: false,
+    contextVersion: 'v2', parserRevision: real || runtime ? E.revision() : 'synthetic-real-parser', ruleEffects: 'none-verified', notesEnabled: false,
     cleanupEnabled: true, financialContextDigest: E.contextDigest(inputs),
     providerProof: { kind: 'synthetic-test', reference: 'synthetic-contract', digest: S.ownerDigest('synthetic'), expiresAt: clock + 86400000,
       cleanupFields: ['category_id', 'payee', 'notes', 'additional_tag_ids'], updateBalanceFalse: true } };
@@ -56,19 +59,19 @@ async function fixture(real = false, recipe = instruction) {
     const keys = crypto.generateKeyPairSync('ed25519'); publicKey = keys.publicKey.export({ format: 'pem', type: 'spki' });
     const publicKeyPath = path.join(dir, 'owner-public.pem'); fs.writeFileSync(publicKeyPath, publicKey, { mode: 0o600 });
     S.initialize({ root, publicKey, contextEnvelope: S.sign({ kind: 'context', context }, keys.privateKey) });
-    adapter = S.createAuthority({ root, publicKey, resource, now: () => clock });
+    adapter = S.createAuthority({ root, publicKey, resource, now });
     await adapter.ownerUpdate(S.sign({ kind: 'grant', grant }, keys.privateKey));
     await assert.rejects(adapter.ownerUpdate({ payload: { kind: 'grant', grant }, signature: '' }), /signature/);
     const invalid = { ...grant, grantRef: op('grant', 101), cleanupInstructions: [{ ...instruction, changes: { amount: '1' } }] };
     await assert.rejects(adapter.ownerUpdate(S.sign({ kind: 'grant', grant: invalid }, keys.privateKey)), /invalid-cleanup/);
     const Runtime = require('../scripts/assistant-standing-runtime');
     const configured = Runtime.fromEnv({ env: { ATLAS_STANDING_CORRECTIONS_ENABLED: 'true', ATLAS_STANDING_STORE_PATH: root,
-      ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: publicKeyPath }, resource, now: () => clock, testOnly: true });
+      ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: publicKeyPath }, resource, now, testOnly: true });
     assert.equal(configured.enabled, true); assert.equal(configured.cleanupEnabled, true);
     assert.equal(typeof configured.adapter.cleanupEffects, 'function', 'real production effect consumer is wired');
     assert.equal(Runtime.fromEnv({ env: {}, resource }).enabled, false);
     assert.equal(Runtime.fromEnv({ env: { ATLAS_STANDING_CORRECTIONS_ENABLED: 'true', ATLAS_STANDING_STORE_PATH: root,
-      ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: publicKeyPath }, resource, now: () => clock }).enabled, false,
+      ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: publicKeyPath }, resource, now }).enabled, false,
       'synthetic provider proof cannot activate production');
     adapter = configured.adapter;
   } else {
@@ -77,11 +80,11 @@ async function fixture(real = false, recipe = instruction) {
     adapter = { durable: true, context: async () => clone(context), grant: async () => clone(grant),
       evidence: async ref => clone(memory.evidence[ref] || null),
       admit: async input => {
-        C.review({ ...input, context, grant, now: clock });
+        C.review({ ...input, context, grant, now: now() });
         const evidenceRef = op('evidence', Object.keys(memory.evidence).length + 1);
         const e = { schema: 'atlas-delegated-cleanup-evidence/v1', evidenceRef, grantRef: grant.grantRef, grantRevision: 1,
           policy: C.POLICY, contextVersion: 'v2', parserRevision: context.parserRevision, resolution: 'resolved',
-          attestedBy: 'delegated-client-review', expiresAt: clock + 600000, transactionId: input.tx.id,
+          attestedBy: 'delegated-client-review', expiresAt: now() + 600000, transactionId: input.tx.id,
           beforeFingerprint: S.digest(input.tx), body: input.body, cleanupInstruction: input.cleanupInstruction,
           metadataContext: input.metadataContext, categoryContext: input.categoryContext,
           ...(input.transferProof ? { transferProof: input.transferProof } : {}),
@@ -100,7 +103,7 @@ async function fixture(real = false, recipe = instruction) {
     files: [], afterWrite: null, beforeEffects: null };
   adapter.cleanupEffects = async input => { if (state.beforeEffects) await state.beforeEffects();
     return E.evaluate({ inputs, ...input, parserRevision: context.parserRevision }); };
-  state.service = LM.createService({ env: {}, now: () => clock, resolveToken: async () => token,
+  state.service = LM.createService({ env: {}, now, resolveToken: async () => token,
     standingCorrections: { enabled: true, cleanupEnabled: true, notesEnabled: false, adapter },
     fetch: async (url, options) => {
       const u = new URL(url), endpoint = u.pathname.replace('/v2', ''); let data;
@@ -133,6 +136,69 @@ async function fixture(real = false, recipe = instruction) {
     assert.equal(admission.status, 'evidence-recorded', JSON.stringify(admission));
     return state.service.invoke('prepareStanding', { transactionRef, grantRef: grant.grantRef,
       evidenceRef: admission.evidenceRef, cleanupInstruction: recipe }, auth);
+  };
+  return state;
+}
+async function runtimeFixture(real = false, recipe = instruction) {
+  const state = await fixture(real, recipe, true);
+  const dir = state.dir || fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-runtime-synthetic-'));
+  const projectRoot = path.join(dir, 'synthetic-project');
+  // Only deployed code and invented inputs are copied; never household data,
+  // credentials or the workspace's data.json. The real runtime reads these files.
+  for (const folder of ['scripts', 'public']) {
+    fs.mkdirSync(path.join(projectRoot, folder), { recursive: true });
+    for (const name of fs.readdirSync(path.resolve(__dirname, '..', folder))) if (name.endsWith('.js')) {
+      fs.copyFileSync(path.resolve(__dirname, '..', folder, name), path.join(projectRoot, folder, name));
+    }
+  }
+  fs.mkdirSync(path.join(projectRoot, 'docs/connectivity'), { recursive: true });
+  for (const [name, value] of [['data.json', state.inputs.data], ['public/periods.json', state.inputs.periods],
+    ['docs/connectivity/transaction-identity.json', state.inputs.identity]]) fs.writeFileSync(path.join(projectRoot, name), JSON.stringify(value));
+  const requests = [], proofs = [];
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1'), endpoint = url.pathname.replace('/v2', '');
+    requests.push({ method: req.method, endpoint, query: Object.fromEntries(url.searchParams) });
+    if (req.method !== 'GET' || req.headers.authorization !== 'Bearer synthetic-routine-token') {
+      res.writeHead(403); res.end('{}'); return;
+    }
+    let data;
+    if (endpoint === '/me') data = {};
+    else if (endpoint === '/plaid_accounts') data = { plaid_accounts: state.inputs.payload.accounts };
+    else if (endpoint === '/manual_accounts') data = { manual_accounts: [] };
+    else if (endpoint === '/categories') data = { categories: state.inputs.payload.categories };
+    else if (endpoint === '/tags') data = { tags: state.inputs.payload.tags };
+    else if (endpoint === '/transactions') data = { transactions: state.incompletePending && url.searchParams.get('is_pending') === 'true' ? []
+      : state.inputs.payload.transactions.filter(tx =>
+      url.searchParams.get('is_pending') === 'true' ? tx.is_pending === true
+        : tx.date >= url.searchParams.get('start_date') && tx.date <= url.searchParams.get('end_date')),
+      has_more: state.incompletePending && url.searchParams.get('is_pending') === 'true' || false };
+    else { res.writeHead(404); res.end('{}'); return; }
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const env = { LUNCHMONEY_ACCESS_TOKEN: 'synthetic-routine-token',
+    ATLAS_LUNCHMONEY_API_BASE: 'http://127.0.0.1:' + server.address().port + '/v2',
+    ATLAS_PROVIDER_ACCOUNT_MAP_JSON: JSON.stringify(state.inputs.accountMap) };
+  const now = () => Date.parse(state.inputs.payload.fetchedAt);
+  state.runtime = { env, projectRoot, requests, proofs };
+  state.close = async () => {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(dir, { recursive: true, force: true });
+  };
+  let actual;
+  try {
+    if (real) {
+      const configured = require('../scripts/assistant-standing-runtime').fromEnv({ env: { ...env,
+        ATLAS_STANDING_CORRECTIONS_ENABLED: 'true', ATLAS_STANDING_STORE_PATH: state.root,
+        ATLAS_STANDING_OWNER_PUBLIC_KEY_PATH: path.join(dir, 'owner-public.pem') }, resource: state.auth.resource,
+        projectRoot, now, testOnly: true });
+      assert.equal(configured.cleanupEnabled, true, 'actual configured runtime uses the synthetic file installation');
+      actual = configured.adapter.cleanupEffects;
+    } else actual = async input => E.runtimeEffects({ ...input, env, projectRoot, context: await state.adapter.context(), now });
+  } catch (error) { await state.close(); throw error; }
+  state.adapter.cleanupEffects = async input => {
+    if (state.beforeEffects) await state.beforeEffects();
+    const proof = await actual(input); proofs.push(clone(proof)); return proof;
   };
   return state;
 }
@@ -173,6 +239,37 @@ async function main() {
       assert.deepEqual(applied.auditReceipt[position].tags.map(t => t.name), ['Receipt'],
         'history snapshots known existing tag names without a prior includeTags catalog or a tag addition');
     }
+  }
+  const runtime = await runtimeFixture();
+  try {
+    runtime.beforeEffects = async () => { runtime.inputs.payload.fetchedAt = new Date(Date.parse(runtime.inputs.payload.fetchedAt) + 1000).toISOString(); };
+    const preview = await runtime.prepare(); assert.equal(preview.status, 'preview', JSON.stringify(preview));
+    const applied = await runtime.service.invoke('applyStanding', { previewId: preview.previewId }, runtime.auth);
+    assert.equal(applied.status, 'applied', JSON.stringify(applied)); assert.equal(runtime.writes.length, 1);
+    assert.equal(runtime.runtime.proofs.length, 4, 'admission, preview, authorization and under-lease proof all use runtimeEffects');
+    assert.notEqual(runtime.runtime.proofs[1].categoryBefore, runtime.runtime.proofs.at(-1).categoryBefore,
+      'actual runtime samples advancing observation time instead of freezing it');
+    assert.equal(applied.auditReceipt.financialEffects.categoryBefore, runtime.runtime.proofs.at(-1).categoryBefore);
+    assert.equal((await runtime.adapter.grant({ grantRef: runtime.grant.grantRef })).suspended, false);
+    assert(runtime.runtime.requests.every(r => r.method === 'GET'));
+    assert(runtime.runtime.requests.filter(r => r.endpoint === '/transactions').every(r => r.query.include_metadata === 'true' && r.query.include_files === undefined));
+    assert(runtime.runtime.requests.some(r => r.query.is_pending === 'true' && !r.query.start_date && !r.query.end_date));
+  } finally { await runtime.close(); }
+  for (const fault of ['credential', 'parser', 'pending', 'unsafe-final-tag']) {
+    const bad = await runtimeFixture();
+    try {
+      const preview = await bad.prepare(); assert.equal(preview.status, 'preview', JSON.stringify(preview));
+      let proofs = 0;
+      bad.beforeEffects = async () => {
+        bad.inputs.payload.fetchedAt = new Date(Date.parse(bad.inputs.payload.fetchedAt) + 1000).toISOString();
+        if (fault === 'credential') bad.runtime.env.LUNCHMONEY_ACCESS_TOKEN = op('synthetic-token', 2);
+        if (fault === 'parser') fs.appendFileSync(path.join(bad.runtime.projectRoot, 'scripts/assistant-cleanup-effects.js'), '\n// Changed deployed parser\n');
+        if (fault === 'pending') bad.incompletePending = true;
+        if (fault === 'unsafe-final-tag' && ++proofs === 2) bad.inputs.payload.tags.find(t => t.id === 33).name = 'Dale';
+      };
+      assert.equal((await bad.service.invoke('applyStanding', { previewId: preview.previewId }, bad.auth)).status, 'unavailable', fault);
+      assert.equal(bad.writes.length, 0, 'real runtime must refuse ' + fault + ' before PUT');
+    } finally { await bad.close(); }
   }
   const f = await fixture(); independentFigures(f.inputs);
   const before = clone(f.tx), p = await f.prepare(); assert.equal(p.status, 'preview', JSON.stringify(p));
@@ -329,7 +426,7 @@ async function main() {
   } finally { await client.close(); await server.close(); }
   if (process.platform !== 'win32') {
     for (const recipe of [instruction, nameOnly]) {
-      const actual = await fixture(true, recipe);
+      const actual = await runtimeFixture(true, recipe);
       try {
         const p = await actual.prepare(); assert.equal(p.status, 'preview', JSON.stringify(p));
         actual.beforeEffects = async () => { actual.inputs.payload.fetchedAt = new Date(Date.parse(actual.inputs.payload.fetchedAt) + 1000).toISOString(); };
@@ -349,11 +446,32 @@ async function main() {
         assert.equal(row.actor.clientId, actual.auth.clientId); assert.equal(row.sheetStatus, 'export-ready-not-synced');
         assert.equal(row.financialEffects.metadataNeutral, true); assert.equal(row.rowKey, audit[0].reservation.attemptRef);
         assert.deepEqual(row.financialEffects, applied.auditReceipt.financialEffects, 'final proof survives restart');
+        assert.equal(row.financialEffects.categoryBefore, actual.runtime.proofs.at(-1).categoryBefore,
+          'actual runtime final proof is committed with dispatch arming');
+        assert.equal((await restarted.grant({ grantRef: actual.grant.grantRef })).suspended, false,
+          'advancing runtime observations do not spuriously quarantine an acknowledged write');
         assert.notEqual(row.financialEffects.comparisons[0].before, p.financialEffects.comparisons[0].before,
           'history retains the last live proof, not the earlier preview observation');
         await assert.rejects(restarted.audit({ grantRef: actual.grant.grantRef, auth: { ...actual.auth, principal: 'other' } }));
-      } finally { fs.rmSync(actual.dir, { recursive: true, force: true }); }
+      } finally { await actual.close(); }
     }
+    const unsafe = await runtimeFixture(true);
+    try {
+      const preview = await unsafe.prepare(); assert.equal(preview.status, 'preview'); let proofs = 0;
+      unsafe.beforeEffects = async () => {
+        unsafe.inputs.payload.fetchedAt = new Date(Date.parse(unsafe.inputs.payload.fetchedAt) + 1000).toISOString();
+        if (++proofs === 2) unsafe.inputs.payload.tags.find(t => t.id === 33).name = 'Dale';
+      };
+      const result = await unsafe.service.invoke('applyStanding', { previewId: preview.previewId }, unsafe.auth);
+      assert.equal(result.status, 'unavailable'); assert.equal(unsafe.writes.length, 0);
+      const restarted = S.createAuthority({ root: unsafe.root, publicKey: unsafe.publicKey, resource: unsafe.auth.resource,
+        now: () => Date.parse(unsafe.inputs.payload.fetchedAt) });
+      const rows = await restarted.audit({ grantRef: unsafe.grant.grantRef, auth: unsafe.auth });
+      assert.equal(rows.length, 1); assert.equal(rows[0].historyRow.outcome, 'unavailable');
+      assert.equal(rows[0].historyRow.after, null); assert.equal(rows[0].terminal.providerWriteMayHaveOccurred, false);
+      assert.equal((await restarted.grant({ grantRef: unsafe.grant.grantRef })).suspended, true,
+        'materially unsafe evidence under the lease stays durably unresolved instead of being retried');
+    } finally { await unsafe.close(); }
   } else console.log('Actual durable routine authority proof requires POSIX; exercised by Linux CI.');
   console.log('Routine cleanup: real observer/overlay/Forecast, independent arithmetic, MCP standing apply without confirmation, preservation and sheet-ready history PASS');
 }
