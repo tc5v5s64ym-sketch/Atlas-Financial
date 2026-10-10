@@ -42,11 +42,24 @@
  * for reconciliation by design (see the verify-first states below).
  *
  * UNCERTAIN-SAVE PROTOCOL (owner-specified):
- * - If apply() throws, the write's fate is unknown. The form locks, the
- *   preview can never be applied again, and a pending-verification note is
- *   recorded in a registry that OUTLIVES the form instance (closing the
- *   form does not clear it):
- *     { txnId, previewId, baseVersion, intendedChanges: [{field, from, to}] }
+ * - Applying RESERVES the operation in the shared registry BEFORE the
+ *   adapter call is dispatched: { txnId, previewId, baseVersion,
+ *   intendedChanges: [{field, from, to}], state: 'in-flight' }. The
+ *   reservation is synchronous, so closing the form — or opening another
+ *   one — during a still-pending apply can never open a second write
+ *   opportunity: any form that finds a reservation (in-flight or
+ *   uncertain) for its transaction is locked verify-first, and an
+ *   already-open form re-checks the registry at its prepare/apply entry
+ *   points and locks too.
+ * - If apply() throws, the write's fate is unknown. The reservation for
+ *   that same operation transitions to state: 'uncertain'; the form
+ *   locks, the preview can never be applied again, and the note lives
+ *   in a registry that OUTLIVES the form instance (closing the form does
+ *   not clear it).
+ * - Settlement is operation-specific: a settling apply updates or clears
+ *   ONLY the registry entry whose previewId matches its own operation.
+ *   A late settlement never erases or overwrites a newer pending
+ *   operation for the same transaction.
  * - Any later form for the same transaction opens in a verify-first state,
  *   locked, until the adapter attests a definitive outcome:
  *     outcome = 'applied'    -> note cleared, NO resubmission; the form
@@ -93,12 +106,16 @@
     : 'Unavailable';
   const clone = value => JSON.parse(JSON.stringify(value));
 
-  /* ---------------- pending-verification registry ----------------
-   * Outlives any form instance. Module-level by default; the host may
-   * replace it (setPendingStore) with its own durable store implementing
-   * get(txnId) / set(txnId, note) / clear(txnId). A note is removed ONLY by
-   * a definitive adapter attestation during verification — never by
-   * closing a form, and never by comparing displayed values. */
+  /* ---------------- pending-operation registry ----------------
+   * One entry per transaction, written BEFORE an apply is dispatched
+   * (state: 'in-flight') and transitioned by that same operation's
+   * settlement (cleared on a definitive outcome, state: 'uncertain' on
+   * an unknown one). Outlives any form instance. Module-level by
+   * default; the host may replace it (setPendingStore) with its own
+   * durable store implementing get(txnId) / set(txnId, note) /
+   * clear(txnId). An uncertain note is removed ONLY by a definitive
+   * adapter attestation during verification — never by closing a form,
+   * and never by comparing displayed values. */
   function memoryStore() {
     const map = new Map();
     return {
@@ -182,8 +199,61 @@
       return changed;
     }
     function canPreview() {
-      return state === 'editing' && !closed && changedFields().length > 0
+      return state === 'editing' && !closed && !foreignNote()
+        && changedFields().length > 0
         && Object.keys(validationErrors()).length === 0;
+    }
+
+    /* ---------------- shared-registry enforcement ----------------
+     * The registry holds at most one pending operation per transaction.
+     * In the states where this form itself owns that operation
+     * (applying / uncertain / verify-first / locked) the entry is
+     * already this form's concern; in every other state an entry can
+     * only belong to another instance's operation — reserved before its
+     * apply was dispatched, possibly by a form that has since closed —
+     * and it locks this form exactly as it locks a newly opened one. */
+    function sharedNote() { return txnId ? store.get(txnId) : null; }
+    function foreignNote() {
+      if (state === 'applying' || state === 'uncertain'
+        || state === 'verify-first' || state === 'locked') return null;
+      return sharedNote();
+    }
+    function adoptSharedNote(found) {
+      note = found;
+      preview = null;
+      stillUnknown = false;
+      state = 'verify-first';
+      render();
+    }
+    function reserveOperation(p) {
+      note = {
+        txnId,
+        previewId: p.id,
+        baseVersion: p.baseVersion,
+        intendedChanges: p.changes.map(c => ({ field: c.field, from: c.from, to: c.to })),
+        state: 'in-flight',
+      };
+      store.set(txnId, note);
+    }
+    /* Settlement touches ONLY this operation's own entry: a late result
+     * for an older operation must never erase or overwrite a newer
+     * pending operation for the same transaction. */
+    function releaseOwnEntry(p) {
+      const current = sharedNote();
+      if (current && current.previewId === p.id) store.clear(txnId);
+      if (note && note.previewId === p.id) note = null;
+    }
+    function markOwnUncertain(p) {
+      const mine = {
+        txnId,
+        previewId: p.id,
+        baseVersion: p.baseVersion,
+        intendedChanges: p.changes.map(c => ({ field: c.field, from: c.from, to: c.to })),
+        state: 'uncertain',
+      };
+      const current = sharedNote();
+      if (!current || current.previewId === p.id) store.set(txnId, mine);
+      note = mine;
     }
 
     /* ---------------------------- rendering ---------------------------- */
@@ -353,6 +423,10 @@
     function settle(result) { if (onSettled) onSettled(result); }
 
     async function previewChanges() {
+      // Entry-point recheck: a peer operation may have been reserved
+      // after this form was opened — lock onto it instead of preparing.
+      const found = foreignNote();
+      if (found) { adoptSharedNote(found); return null; }
       if (!canPreview()) { render(); return null; }
       const changes = {};
       if (trimmedName() !== baseline.displayName) changes.displayName = trimmedName();
@@ -389,15 +463,25 @@
       // duplicate click (or a second programmatic call) can never reach
       // adapter.apply for the same preview.
       if (state !== 'preview' || !preview || applyInFlight || closed) return null;
+      // Cross-instance single-flight: a peer's operation may have been
+      // reserved after this preview was prepared — lock onto it and
+      // never dispatch this preview.
+      const found = foreignNote();
+      if (found) { adoptSharedNote(found); return null; }
       applyInFlight = true;
       state = 'applying'; render();
       const thisPreview = preview;
+      // Reserve this operation in the shared registry BEFORE dispatch,
+      // synchronously: from here until settlement, every other instance
+      // for this transaction is locked — even if this form is closed
+      // while the adapter call is still pending.
+      reserveOperation(thisPreview);
       let result;
       try {
         result = await adapter.apply(thisPreview.id);
       } catch (error) {
         applyInFlight = false;
-        recordUncertainFrom(thisPreview);
+        markOwnUncertain(thisPreview);
         if (!closed) { state = 'uncertain'; stillUnknown = false; preview = null; render(); }
         settle({ outcome: 'uncertain', txnId, previewId: thisPreview.id });
         return { outcome: 'uncertain' };
@@ -405,12 +489,13 @@
       applyInFlight = false;
       if (!result || typeof result.outcome !== 'string') {
         // A resolved-but-meaningless answer is still an unknown outcome.
-        recordUncertainFrom(thisPreview);
+        markOwnUncertain(thisPreview);
         if (!closed) { state = 'uncertain'; stillUnknown = false; preview = null; render(); }
         settle({ outcome: 'uncertain', txnId, previewId: thisPreview.id });
         return { outcome: 'uncertain' };
       }
       if (result.outcome === 'applied') {
+        releaseOwnEntry(thisPreview);
         for (const change of thisPreview.changes) baseline[change.field] = change.to;
         if (Number.isInteger(result.version)) baseline.version = result.version;
         draft = { displayName: baseline.displayName, categoryId: baseline.categoryId };
@@ -420,12 +505,14 @@
         return result;
       }
       if (result.outcome === 'stale') {
+        releaseOwnEntry(thisPreview);
         preview = null;
         if (!closed) { state = 'stale'; render(); }
         settle({ outcome: 'stale', txnId });
         return result;
       }
       if (result.outcome === 'rejected') {
+        releaseOwnEntry(thisPreview);
         preview = null;
         rejectReason = text(result.reason);
         if (!closed) { state = 'rejected'; render(); }
@@ -433,19 +520,10 @@
         return result;
       }
       // Unknown outcome vocabulary from the adapter: fail closed.
-      recordUncertainFrom(thisPreview);
+      markOwnUncertain(thisPreview);
       if (!closed) { state = 'uncertain'; stillUnknown = false; preview = null; render(); }
       settle({ outcome: 'uncertain', txnId, previewId: thisPreview.id });
       return { outcome: 'uncertain' };
-    }
-    function recordUncertainFrom(p) {
-      note = {
-        txnId,
-        previewId: p.id,
-        baseVersion: p.baseVersion,
-        intendedChanges: p.changes.map(c => ({ field: c.field, from: c.from, to: c.to })),
-      };
-      store.set(txnId, note);
     }
 
     /* Shared attestation check for the uncertain state (recheck) and the
@@ -455,6 +533,7 @@
     async function resolveNote() {
       const current = store.get(txnId) || note;
       if (!current || verifyBusy || closed) return state;
+      if (store.get(txnId)) note = current;
       verifyBusy = true; render();
       let attested = null;
       try {
@@ -468,6 +547,16 @@
       verifyBusy = false;
       if (closed) return state;
       if ((attested === 'applied' || attested === 'not-applied') && validSnapshot(snap, txnId)) {
+        const governing = store.get(txnId);
+        if (governing && governing.previewId !== current.previewId) {
+          // A newer operation took over the registry while this check
+          // ran: it governs now, and this check must not clear it.
+          note = governing;
+          stillUnknown = true;
+          state = 'locked';
+          render();
+          return state;
+        }
         store.clear(txnId);
         note = null;
         lastStatus = clone(snap);

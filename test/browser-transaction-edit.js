@@ -34,6 +34,10 @@ const TRANSACTIONS = [
     originalDescription: 'FERRY PASS TOPUP 0091 SYNTHETIC',
     amount: 95, date: '2026-09-09', account: 'Synthetic Savings',
     categoryId: 'cat-transport', version: 7 },
+  { id: 'syn-pending', displayName: 'Pending Grocery',
+    originalDescription: 'PENDING GROCERY 2210 SYNTHETIC',
+    amount: 27.4, date: '2026-09-12', account: 'Synthetic Chequing',
+    categoryId: 'cat-groceries', version: 1 },
 ];
 
 function hostPage() {
@@ -113,7 +117,22 @@ function fixtureScript() {
     makeBlock(FIXTURE.transactions[0]);
     makeBlock(FIXTURE.transactions[1]);
     makeBlock(FIXTURE.transactions[2]);
-    window.__txe = { blocks, TransactionEdit };`;
+    makeBlock(FIXTURE.transactions[3]);
+    window.__txe = { blocks, TransactionEdit };
+    // Deferred-apply gate for the reopen-during-pending proof: this
+    // block's adapter promise stays unresolved until the test releases
+    // it, so the panel can be closed and reopened mid-flight.
+    const pendingBlock = blocks['syn-pending'];
+    const innerApply = pendingBlock.adapter.apply;
+    let releaseApply;
+    const gate = new Promise(resolve => { releaseApply = resolve; });
+    pendingBlock.applyCalls = 0;
+    pendingBlock.adapter.apply = async id => {
+      pendingBlock.applyCalls += 1;
+      await gate;
+      return innerApply(id);
+    };
+    pendingBlock.releaseApply = () => releaseApply();`;
 }
 
 async function main() {
@@ -305,9 +324,60 @@ async function main() {
       await context.close();
     }
 
+    /* ---- reopen during a still-pending apply: the pending interval
+            itself is locked; settlement + explicit check clears it ---- */
+    {
+      const { context, page } = await openPage(390, 'light');
+      const panel = page.locator('#panel-syn-pending');
+      await panel.locator('[data-field="displayName"]').waitFor();
+      await panel.locator('[data-field="displayName"]').fill('Pending Grocery Run');
+      await panel.locator('[data-action="preview"]').click();
+      await panel.locator('[data-action="apply"]').click();
+      await panel.getByText('Saving…').waitFor();
+      assert.equal(await page.evaluate(() =>
+        window.__txe.TransactionEdit.pendingNotes.get('syn-pending').state), 'in-flight',
+        'the operation is reserved in the shared registry before dispatch settles');
+      // Host closes and reopens the panel while the first apply is
+      // still unresolved: the reopened form is locked verify-first.
+      await panel.locator('.host-close').click();
+      await panel.locator('.host-reopen').click();
+      await panel.getByText('An earlier save couldn’t be confirmed').waitFor();
+      assert.equal(await panel.locator('[data-field="displayName"]').isDisabled(), true,
+        'a reopen during a pending apply is locked');
+      assert.equal(await panel.locator('[data-action="apply"], [data-action="preview"]').count(), 0,
+        'no submission path exists while the first apply is pending');
+      assert.equal(await page.evaluate(() =>
+        window.__txe.blocks['syn-pending'].applyCalls), 1,
+        'exactly one apply attempt reached the adapter boundary while pending');
+      assert.equal(await page.evaluate(() =>
+        window.__txe.blocks['syn-pending'].adapter.calls.apply), 0,
+        'the gated adapter promise has not executed yet — the write is still in flight');
+      // An explicit check cannot clear an in-flight reservation.
+      await panel.locator('[data-action="verify"]').click();
+      await panel.getByText('locked for reconciliation').waitFor();
+      // Release the first apply: its settlement releases its own
+      // reservation, and the reopened form's next explicit check
+      // unlocks it on the saved values.
+      await page.evaluate(() => window.__txe.blocks['syn-pending'].releaseApply());
+      await page.waitForFunction(() =>
+        window.__txe.TransactionEdit.pendingNotes.get('syn-pending') === null);
+      await panel.locator('[data-action="verify"]').click();
+      await panel.getByText('Your earlier change did save').waitFor();
+      assert.equal(await panel.locator('[data-field="displayName"]').inputValue(), 'Pending Grocery Run',
+        'the reopened form opens on the saved values as its baseline');
+      assert.equal(await panel.locator('[data-field="displayName"]').isEnabled(), true);
+      assert.equal(await page.evaluate(() =>
+        window.__txe.blocks['syn-pending'].applyCalls), 1,
+        'the pending apply was never duplicated at the adapter boundary');
+      assert.equal(await page.evaluate(() =>
+        window.__txe.blocks['syn-pending'].adapter.calls.apply), 1,
+        'the pending apply executed exactly once after release — never retried');
+      await context.close();
+    }
+
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
-    console.log('PASS transaction edit browser: panel-content proof (section fragment, no fixed/dialog/modal), 390/320/1440 widths, edit → exact-change preview → applied, stale refusal, uncertain screenshot in dark, reopen verify-first → attested saved clears with saved baseline, value-match-without-attestation stays locked for reconciliation');
+    console.log('PASS transaction edit browser: panel-content proof (section fragment, no fixed/dialog/modal), 390/320/1440 widths, edit → exact-change preview → applied, stale refusal, uncertain screenshot in dark, reopen verify-first → attested saved clears with saved baseline, value-match-without-attestation stays locked for reconciliation, reopen during a still-pending apply opens locked (in-flight reservation) and clears only after settlement + explicit check');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

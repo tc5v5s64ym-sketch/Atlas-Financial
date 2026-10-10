@@ -136,7 +136,8 @@ async function applyThrowUncertain() {
   assert.deepEqual(note, {
     txnId: seed.id, previewId: preview.id, baseVersion: 3,
     intendedChanges: [{ field: 'displayName', from: 'Corner Grocery', to: 'Uncertain Name' }],
-  }, 'the pending-verification note is recorded exactly');
+    state: 'uncertain',
+  }, 'the pending-verification note is recorded exactly (reserved in-flight at dispatch, transitioned to uncertain by the unknown settlement)');
   assert.equal(adapter.snapshot(seed.id).displayName, 'Corner Grocery', 'throw-before-mutate wrote nothing');
   // In-form re-check: the adapter attests not-applied, so the form unlocks
   // on the verified snapshot — still without any further apply call.
@@ -486,6 +487,227 @@ async function mockOutcomeAttestations() {
   assert.equal(await adapter.outcome(p1.id), 'unknown', 'outcome-unavailable attests unknown');
 }
 
+/* ---------------- deferred-promise cross-instance tests ----------------
+ * The repair for the close/reopen-while-pending finding: the operation
+ * is reserved in the shared registry BEFORE adapter.apply is
+ * dispatched, so the pending interval itself is locked across
+ * instances. This stub adapter hands each apply a deferred promise the
+ * test settles explicitly, and attests fates independently of promise
+ * settlement (an adapter can know a write landed — or never landed —
+ * before the caller's slow/lost response settles). */
+function deferredStubAdapter(seed) {
+  const current = JSON.parse(JSON.stringify(seed));
+  const previews = new Map();
+  const pending = new Map(); // previewId -> { resolve, reject }
+  const fates = new Map();   // previewId -> 'applied' | 'not-applied'
+  const calls = { prepare: 0, apply: 0, status: 0, outcome: 0 };
+  let seq = 0;
+  const LABELS = { displayName: 'Name', categoryId: 'Category' };
+  return {
+    calls, current, pending, fates,
+    async prepare(txnId, changes) {
+      calls.prepare += 1;
+      const diff = [];
+      for (const field of ['displayName', 'categoryId']) {
+        if (changes && Object.prototype.hasOwnProperty.call(changes, field)
+          && changes[field] !== current[field]) {
+          diff.push({ field, label: LABELS[field], from: current[field], to: changes[field] });
+        }
+      }
+      const record = { id: 'stub-preview-' + (++seq), txnId, baseVersion: current.version, changes: diff };
+      previews.set(record.id, record);
+      return JSON.parse(JSON.stringify(record));
+    },
+    apply(previewId) {
+      calls.apply += 1;
+      return new Promise((resolve, reject) => pending.set(previewId, { resolve, reject }));
+    },
+    settleApplied(previewId) {
+      const record = previews.get(previewId);
+      for (const change of record.changes) current[change.field] = change.to;
+      current.version += 1;
+      fates.set(previewId, 'applied');
+      pending.get(previewId).resolve({ outcome: 'applied', version: current.version });
+    },
+    settleThrow(previewId) {
+      fates.set(previewId, 'not-applied');
+      pending.get(previewId).reject(new Error('Synthetic deferred transport failure'));
+    },
+    async status() { calls.status += 1; return JSON.parse(JSON.stringify(current)); },
+    async outcome(previewId) { calls.outcome += 1; return fates.get(previewId) || 'unknown'; },
+  };
+}
+
+async function reopenDuringPendingThenSucceeds() {
+  const seed = txn({ id: 'syn-tx-26' });
+  const adapter = deferredStubAdapter(seed);
+  const a = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  a.setName('Pending Then Saved');
+  const p1 = await a.preview();
+  const inFlight = a.apply(); // dispatched, deliberately NOT settled
+  const reserved = TE.pendingNotes.get(seed.id);
+  assert.equal(reserved.previewId, p1.id, 'the operation is reserved before dispatch settles');
+  assert.equal(reserved.state, 'in-flight');
+  assert.deepEqual(reserved.intendedChanges,
+    [{ field: 'displayName', from: 'Corner Grocery', to: 'Pending Then Saved' }]);
+  a.close();
+  // Reopen BEFORE P1 settles: locked verify-first, no write path at all.
+  const b = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  assert.equal(b.state(), 'verify-first', 'a reopen during a pending apply opens locked');
+  assert.equal(await b.preview(), null);
+  assert.equal(await b.apply(), null);
+  assert.equal(adapter.calls.prepare, 1, 'zero prepare calls from the reopened form while pending');
+  assert.equal(adapter.calls.apply, 1, 'zero apply calls from the reopened form while pending');
+  // An explicit check while the operation is still in-flight cannot
+  // clear it — the outcome is not yet attestable.
+  assert.equal(await b.verify(), 'locked');
+  assert.equal(TE.pendingNotes.get(seed.id).state, 'in-flight');
+  // P1 lands. Its own settlement releases its own reservation.
+  adapter.settleApplied(p1.id);
+  assert.deepEqual(await inFlight, { outcome: 'applied', version: 4 });
+  assert.equal(TE.pendingNotes.get(seed.id), null, 'the settled operation cleared its own entry');
+  // B's explicit check now attests and unlocks on the fresh snapshot.
+  assert.equal(await b.verify(), 'editing');
+  assert.equal(b.baseline().displayName, 'Pending Then Saved');
+  assert.equal(b.baseline().version, 4);
+  b.setName('B Can Edit Now');
+  assert.equal(b.canPreview(), true, 'the reopened form can edit from the fresh snapshot');
+  assert.equal(adapter.calls.apply, 1, 'still no second apply was ever dispatched');
+}
+
+async function reopenDuringPendingThenThrows() {
+  const seed = txn({ id: 'syn-tx-27' });
+  const adapter = deferredStubAdapter(seed);
+  const settled = [];
+  const a = TE.createForm({ transaction: seed, categories: CATS, adapter,
+    onSettled: r => settled.push(r) });
+  a.setName('Pending Then Lost');
+  const p1 = await a.preview();
+  const inFlight = a.apply();
+  assert.equal(TE.pendingNotes.get(seed.id).state, 'in-flight');
+  a.close();
+  const b = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  assert.equal(b.state(), 'verify-first');
+  adapter.settleThrow(p1.id);
+  assert.deepEqual(await inFlight, { outcome: 'uncertain' });
+  assert.deepEqual(settled, [{ outcome: 'uncertain', txnId: seed.id, previewId: p1.id }]);
+  const entry = TE.pendingNotes.get(seed.id);
+  assert.equal(entry.previewId, p1.id, 'the same reservation survives settlement');
+  assert.equal(entry.state, 'uncertain', 'the reservation transitioned to uncertain');
+  // B stays locked; it never held P1 and can never resend it.
+  assert.equal(await b.preview(), null);
+  assert.equal(await b.apply(), null);
+  assert.equal(b.state(), 'verify-first');
+  assert.match(b.html(), /<fieldset class="txe-fields" disabled>/);
+  assert.equal(adapter.calls.prepare, 1, 'zero prepare calls from B');
+  assert.equal(adapter.calls.apply, 1, 'zero apply calls from B — the old preview is unresendable');
+  TE.pendingNotes.clear(seed.id);
+}
+
+async function alreadyOpenInstanceLocksOnPeerApply() {
+  const seed = txn({ id: 'syn-tx-28' });
+  const adapter = deferredStubAdapter(seed);
+  // B opens FIRST and prepares its own preview; C opens as a bare editor.
+  const b = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  b.setName('B Name');
+  await b.preview();
+  assert.equal(b.state(), 'preview');
+  const c = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  c.setName('C Name');
+  assert.equal(c.canPreview(), true);
+  // A opens, prepares and starts an apply that stays pending.
+  const a = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  a.setName('A Name');
+  const p1 = await a.preview();
+  const inFlight = a.apply();
+  assert.equal(TE.pendingNotes.get(seed.id).previewId, p1.id);
+  // C's prepare attempt is refused and C locks onto the shared note.
+  assert.equal(c.canPreview(), false, 'the shared reservation closes C\u2019s preview path');
+  assert.equal(await c.preview(), null);
+  assert.equal(c.state(), 'verify-first', 'an already-open editor locks at its prepare entry point');
+  // B cannot apply its own already-prepared preview while A is pending.
+  assert.equal(await b.apply(), null, 'B\u2019s own preview can never dispatch over a peer reservation');
+  assert.equal(b.state(), 'verify-first', 'an already-open previewer locks at its apply entry point');
+  assert.equal(adapter.calls.apply, 1, 'only A\u2019s apply ever reached the adapter');
+  assert.equal(adapter.calls.prepare, 2, 'only B\u2019s and A\u2019s prepares reached the adapter — C\u2019s refused attempt added none');
+  // Settlement + explicit check: B unlocks on the verified snapshot,
+  // whose baseline is A's saved values — B's stale preview is gone.
+  adapter.settleApplied(p1.id);
+  assert.deepEqual(await inFlight, { outcome: 'applied', version: 4 });
+  assert.equal(await b.verify(), 'editing');
+  assert.equal(b.baseline().displayName, 'A Name');
+  assert.equal(await b.apply(), null, 'B holds no preview after locking — nothing stale to apply');
+  assert.equal(adapter.calls.apply, 1);
+}
+
+async function outOfOrderLateSuccessKeepsNewerEntry() {
+  const seed = txn({ id: 'syn-tx-29' });
+  const adapter = deferredStubAdapter(seed);
+  const a = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  a.setName('First Op');
+  const p1 = await a.preview();
+  const inFlight1 = a.apply();
+  a.close();
+  // The adapter attests op1 landed (and status shows it) before op1's
+  // own slow promise settles — attestation clears the reservation.
+  adapter.fates.set(p1.id, 'applied');
+  adapter.current.displayName = 'First Op';
+  adapter.current.version = 4;
+  const b = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  assert.equal(b.state(), 'verify-first');
+  assert.equal(await b.verify(), 'editing');
+  assert.equal(TE.pendingNotes.get(seed.id), null);
+  // B starts op2, which becomes the governing reservation.
+  b.setName('Second Op');
+  const p2 = await b.preview();
+  const inFlight2 = b.apply();
+  assert.equal(TE.pendingNotes.get(seed.id).previewId, p2.id);
+  assert.equal(TE.pendingNotes.get(seed.id).state, 'in-flight');
+  // NOW op1 settles late, successfully. It must not clear op2's entry.
+  adapter.pending.get(p1.id).resolve({ outcome: 'applied', version: 4 });
+  assert.deepEqual(await inFlight1, { outcome: 'applied', version: 4 });
+  const governing = TE.pendingNotes.get(seed.id);
+  assert.equal(governing.previewId, p2.id, 'the late success did not erase the newer operation');
+  assert.equal(governing.state, 'in-flight');
+  // Op2's own lifecycle proceeds independently to completion.
+  adapter.settleApplied(p2.id);
+  assert.deepEqual(await inFlight2, { outcome: 'applied', version: 5 });
+  assert.equal(TE.pendingNotes.get(seed.id), null, 'op2 cleared its own entry when it settled');
+  assert.equal(b.state(), 'applied');
+  assert.equal(b.baseline().displayName, 'Second Op');
+}
+
+async function outOfOrderLateThrowKeepsNewerEntry() {
+  const seed = txn({ id: 'syn-tx-30' });
+  const adapter = deferredStubAdapter(seed);
+  const a = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  a.setName('First Op');
+  const p1 = await a.preview();
+  const inFlight1 = a.apply();
+  a.close();
+  // The adapter attests op1 never landed, so verification clears the
+  // reservation even though op1's promise has not settled yet.
+  adapter.fates.set(p1.id, 'not-applied');
+  const b = TE.createForm({ transaction: seed, categories: CATS, adapter });
+  assert.equal(await b.verify(), 'editing');
+  assert.equal(TE.pendingNotes.get(seed.id), null);
+  b.setName('Second Op');
+  const p2 = await b.preview();
+  const inFlight2 = b.apply();
+  assert.equal(TE.pendingNotes.get(seed.id).previewId, p2.id);
+  // Op1's promise now rejects late. It must not overwrite op2's entry
+  // with its own uncertain note.
+  adapter.pending.get(p1.id).reject(new Error('Late transport failure'));
+  assert.deepEqual(await inFlight1, { outcome: 'uncertain' });
+  const governing = TE.pendingNotes.get(seed.id);
+  assert.equal(governing.previewId, p2.id, 'the late throw did not overwrite the newer operation');
+  assert.equal(governing.state, 'in-flight');
+  adapter.settleApplied(p2.id);
+  assert.deepEqual(await inFlight2, { outcome: 'applied', version: 4 });
+  assert.equal(TE.pendingNotes.get(seed.id), null);
+  assert.equal(b.state(), 'applied');
+}
+
 function sourceSeams() {
   const source = fs.readFileSync(path.join(__dirname, '..', 'public/transaction-edit.js'), 'utf8');
   assert.doesNotMatch(source, /\b(?:fetch|XMLHttpRequest|localStorage|sessionStorage)\s*[.(]/,
@@ -521,8 +743,13 @@ async function run() {
   await reopenCheckFailureStaysLocked();
   await noteIsPerTransaction();
   await mockOutcomeAttestations();
+  await reopenDuringPendingThenSucceeds();
+  await reopenDuringPendingThenThrows();
+  await alreadyOpenInstanceLocksOnPeerApply();
+  await outOfOrderLateSuccessKeepsNewerEntry();
+  await outOfOrderLateThrowKeepsNewerEntry();
   sourceSeams();
-  console.log('PASS transaction edit form: exact-diff preview without mutation, validation gates, stale, single-flight apply, uncertain lock + note, close/reopen safety, attestation-only reopen clearance (applied / applied-then-changed / not-applied fresh preview), unknown + full-match + partial + conflicting + check-failure all stay locked with zero post-reopen apply/prepare calls, per-transaction notes, mock outcome attestations, escaping, read-only facts, no network/storage/timer seams');
+  console.log('PASS transaction edit form: exact-diff preview without mutation, validation gates, stale, single-flight apply, uncertain lock + note, close/reopen safety, attestation-only reopen clearance (applied / applied-then-changed / not-applied fresh preview), unknown + full-match + partial + conflicting + check-failure all stay locked with zero post-reopen apply/prepare calls, per-transaction notes, mock outcome attestations, escaping, read-only facts, no network/storage/timer seams, pre-dispatch reservation locks the pending interval across instances (reopen-during-pending success + throw), already-open instances lock at prepare/apply entry points, out-of-order late settlement (success + throw) never clears or overwrites a newer operation');
 }
 module.exports = { txn, CATS };
 if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
