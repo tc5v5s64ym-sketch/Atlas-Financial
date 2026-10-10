@@ -34,14 +34,35 @@ function shift(iso, minutes) { return new Date(Date.parse(iso) + minutes * 60000
 
 // Byte-for-byte the invented shape of test-private-period-history.js by default, parameterized by
 // cycle start and source/capture clocks (needed for DST and 23:59 gates).
-function input(day, kind, { start = ANCHOR, fetchedAt = day + 'T18:00:00Z', capturedAt } = {}) {
+function input(day, kind, { start = ANCHOR, fetchedAt = day + 'T18:00:00Z', capturedAt, settleIncome = false } = {}) {
   const ids = ['chequing-a', 'chequing-b', 'savings'];
   const stamp = shift(fetchedAt, -1);
   const cash = ids.map((id, i) => ({ id, label: 'Invented cash ' + i, value: [1000, 500, 100][i], evidenceDate: day, confidence: 'confirmed' }));
+  // Settled income is an additive complete-path fixture only: priorAsOf +
+  // representedEvents + payroll credit + identity rule. Default CLOSE stays
+  // incomplete (missing actual income) so gap regressions stay honest.
+  const categories = [{ id: 'invented-category', name: 'Groceries' }];
+  const transactions = [{ id: 'invented-transaction', account_id: 'invented-account-1', date: start, amount: '12.34', currency: 'cad',
+    category_id: 'invented-category', payee: 'Invented Market', original_name: 'INVENTED MARKET SOURCE',
+    notes: 'invented evidence', tags: ['invented-tag'], is_pending: false, updated_at: shift(fetchedAt, -2) }];
+  const identityRules = [];
+  const representedEvents = [];
+  let priorAsOf = null;
+  if (settleIncome) {
+    categories.push({ id: 'invented-income-category', name: 'Income', is_income: true });
+    transactions.unshift({ id: 'invented-payroll', account_id: 'invented-account-0', date: start, amount: '-200.00', currency: 'cad',
+      category_id: 'invented-income-category', payee: 'Invented Payroll', original_name: 'INVENTED PAYROLL',
+      notes: 'invented payroll', tags: [], is_pending: false, updated_at: shift(fetchedAt, -2) });
+    identityRules.push({ eventId: 'payroll', payeePattern: 'Invented Payroll', atlasAccountId: 'chequing-a', direction: 'credit' });
+    representedEvents.push({ id: 'payroll', date: start });
+    priorAsOf = Forecast.addDays(start, -1);
+  }
+  const opening = { asOf: day, representedEvents };
+  if (priorAsOf) opening.priorAsOf = priorAsOf;
   return {
     kind, capturedAt: capturedAt || shift(fetchedAt, 1), periodStart: start, periods: [],
     data: { meta: { asOf: day }, accounts: [], debts: [], revolvingExtra: [], plan: {
-      opening: { asOf: day, representedEvents: [] }, startingCash: { breakdown: cash },
+      opening, startingCash: { breakdown: cash },
       defaults: { targetBuffer: 0, extraDebtMonthly: 0 },
       income: [{ id: 'payroll', label: 'Invented income', frequency: 'biweekly', anchor: ANCHOR, amount: 200, confidence: 'confirmed' }],
       bills: [], commitments: [], obligations: [], groups: [], funding: { options: [] },
@@ -51,14 +72,14 @@ function input(day, kind, { start = ANCHOR, fetchedAt = day + 'T18:00:00Z', capt
     } },
     accountMap: { provider: 'lunchmoney', schema: 'atlas-provider-account-map/v1', scope: 'owner-observed', mappings: ids.map((id, i) =>
       ({ providerAccountId: 'invented-account-' + i, atlasRole: 'household-cash', canonical: { id, collection: 'cash' } })) },
-    identity: { rules: [], billPaymentPayees: [] },
+    identity: settleIncome
+      ? { schema: 'atlas-provider-transaction-identity/v1', rules: identityRules, billPaymentPayees: [] }
+      : { rules: [], billPaymentPayees: [] },
     payload: { provider: 'lunchmoney', fetchedAt,
       accounts: cash.map((row, i) => ({ id: 'invented-account-' + i, name: 'Invented provider cash ' + i,
         currency: 'cad', balance: row.value, balance_as_of: stamp, updated_at: stamp })),
-      categories: [{ id: 'invented-category', name: 'Groceries' }], tags: [{ id: 'invented-tag', name: 'invented household note' }],
-      transactions: [{ id: 'invented-transaction', account_id: 'invented-account-1', date: start, amount: '12.34', currency: 'cad',
-        category_id: 'invented-category', payee: 'Invented Market', original_name: 'INVENTED MARKET SOURCE',
-        notes: 'invented evidence', tags: ['invented-tag'], is_pending: false, updated_at: shift(fetchedAt, -2) }],
+      categories, tags: [{ id: 'invented-tag', name: 'invented household note' }],
+      transactions,
       transactionWindow: { startDate: start, endDate: day, complete: true, hasMore: false, truncated: false },
       pendingCoverage: { complete: true, basis: 'is_pending-unbounded', hasMore: false },
     },
@@ -94,6 +115,9 @@ function check(name, fn) { fn(); results.push(name); }
 
 try {
   const CLOSE = input('2030-02-15', 'closing');
+  // Genuinely complete positive fixture: settled payroll via priorAsOf +
+  // representedEvents + income credit + identity. Does not weaken any gate.
+  const COMPLETE = input('2030-02-15', 'closing', { settleIncome: true });
 
   check('receipt path reads report.obligationReconciliationReceipt (fails on base: always null)', () => {
     const candidate = capture(CLOSE);
@@ -107,7 +131,6 @@ try {
     const candidate = capture(CLOSE);
     assert.equal(candidate.schema, 'atlas-private-period-history/v2');
     assert.deepEqual(candidate.content.cutoff, { rule: 'household-day', end: '2030-02-14', tz: 'America/Vancouver' });
-    assert.equal(candidate.content.closingState, 'complete-at-capture');
     const refreshed = Live.fromObservation(clone(CLOSE)), options = Operating.recommendOpts(refreshed.data, {});
     options.periods = [];
     const native = Forecast.recommend(refreshed.data.plan, '2030-02-15', options).payPeriodViews.find(p => p.start === ANCHOR);
@@ -116,12 +139,58 @@ try {
     // The invented income occurrence is unsettled natively; that gap is retained, not dropped.
     assert.deepEqual(reasonsOf(candidate), ['publication:income-actual-unavailable']);
     assert.equal(candidate.content.sourceCompleteness.status, 'incomplete');
+    // Incomplete declared scope stays provisional even after the date passes.
+    assert.equal(candidate.content.closingState, 'provisional');
   });
 
   check('complete only when every layer is free of reasons', () => {
     const f = facts(CLOSE);
     f.publication.budgetProgress.income.actual = { ...f.publication.budgetProgress.income.actual, amount: 200, completeness: 'complete', trust: 'calculated' };
     assert.deepEqual(classify(f), { status: 'complete', reasons: [] });
+  });
+
+  check('paired closingState: missing income stays provisional after cutoff', () => {
+    const candidate = capture(CLOSE);
+    assert.equal(candidate.content.sourceCompleteness.status, 'incomplete');
+    assert.deepEqual(reasonsOf(candidate), ['publication:income-actual-unavailable']);
+    assert.equal(candidate.content.closingState, 'provisional');
+    assert.ok(Forecast.financialDate(candidate.content.provenance.fetchedAt) > candidate.content.period.end);
+    assert.ok(Forecast.financialDate(candidate.capturedAt) > candidate.content.period.end);
+  });
+
+  check('paired closingState: truncated coverage stays provisional after cutoff', () => {
+    const truncated = clone(CLOSE);
+    Object.assign(truncated.payload.transactionWindow, { complete: false, truncated: true });
+    const candidate = capture(truncated);
+    assert.ok(reasonsOf(candidate).includes('transport:posted-window-truncated'));
+    assert.equal(candidate.content.sourceCompleteness.status, 'incomplete');
+    assert.equal(candidate.content.closingState, 'provisional');
+    assert.ok(Forecast.financialDate(candidate.content.provenance.fetchedAt) > candidate.content.period.end);
+  });
+
+  check('genuinely complete positive fixture: complete-at-capture only with complete scope', () => {
+    const candidate = capture(COMPLETE);
+    assert.deepEqual(candidate.content.sourceCompleteness, { status: 'complete', reasons: [] });
+    assert.equal(candidate.content.closingState, 'complete-at-capture');
+    assert.deepEqual(transport(candidate), []);
+    assert.equal(candidate.content.publication.budgetProgress.income.actual.completeness, 'complete');
+    assert.equal(candidate.content.publication.budgetProgress.income.actual.amount, 200);
+    // Date gate alone is not enough: same clocks with incomplete income stay provisional.
+    assert.equal(capture(CLOSE).content.closingState, 'provisional');
+    // closingStateFor keeps the date half even when scope is handed in complete
+    // (capture cannot be complete before cutoff because sourceCompleteness itself
+    // retains transport:source-fetched-before-cutoff).
+    const period = candidate.content.period;
+    const complete = { status: 'complete', reasons: [] };
+    const incomplete = { status: 'incomplete', reasons: ['publication:income-actual-unavailable'] };
+    assert.equal(History.closingStateFor(period, '2030-02-15T08:00:00Z', '2030-02-15T08:01:00Z', complete), 'complete-at-capture');
+    assert.equal(History.closingStateFor(period, '2030-02-15T07:59:00Z', '2030-02-15T08:00:00Z', complete), 'provisional');
+    assert.equal(History.closingStateFor(period, '2030-02-15T08:00:00Z', '2030-02-15T08:01:00Z', incomplete), 'provisional');
+    assert.equal(History.closingStateFor(period, '2030-02-15T08:00:00Z', '2030-02-15T08:01:00Z', null), 'provisional');
+    // Dishonest complete-at-capture with incomplete reasons is refused.
+    const forged = capture(CLOSE);
+    forged.content.closingState = 'complete-at-capture';
+    rejects(() => append(directory('forged-closing'), forged), 'history-schema-invalid');
   });
 
   check('legacy v1: exact bytes, hashes and IDs preserved; completeness unknown', () => {
@@ -282,9 +351,18 @@ try {
     assert.equal(straddle.content.closingState, 'provisional');
     assert.deepEqual(transport(straddle), ['transport:source-fetched-before-cutoff']);
     assert.deepEqual(straddle.content.cutoff, { rule: 'household-day', end: '2030-02-14', tz: 'America/Vancouver' });
-    const midnight = capture(input('2030-02-15', 'closing', { fetchedAt: '2030-02-15T08:00:00Z', capturedAt: '2030-02-15T08:01:00Z' }));
-    assert.equal(midnight.content.closingState, 'complete-at-capture');
-    assert.deepEqual(transport(midnight), []);
+    // Date gate open but missing income: still provisional.
+    const midnightGap = capture(input('2030-02-15', 'closing', { fetchedAt: '2030-02-15T08:00:00Z', capturedAt: '2030-02-15T08:01:00Z' }));
+    assert.equal(midnightGap.content.sourceCompleteness.status, 'incomplete');
+    assert.equal(midnightGap.content.closingState, 'provisional');
+    assert.deepEqual(transport(midnightGap), []);
+    // Same midnight clocks with complete declared scope: complete-at-capture.
+    const midnightComplete = capture(input('2030-02-15', 'closing', {
+      settleIncome: true, fetchedAt: '2030-02-15T08:00:00Z', capturedAt: '2030-02-15T08:01:00Z',
+    }));
+    assert.deepEqual(midnightComplete.content.sourceCompleteness, { status: 'complete', reasons: [] });
+    assert.equal(midnightComplete.content.closingState, 'complete-at-capture');
+    assert.deepEqual(transport(midnightComplete), []);
     // 07:30Z is still Feb 14 in PST, although a fixed UTC-7 rule would say Feb 15.
     assert.equal(capture(input('2030-02-14', 'first-observed', { fetchedAt: '2030-02-15T07:30:00Z' })).content.closingState, 'provisional');
   });
@@ -294,9 +372,19 @@ try {
     assert.equal(Forecast.spendingCycle(input('2030-03-14', 'first-observed', { start: START }).data.plan, START).end, '2030-03-14');
     const before = capture(input('2030-03-14', 'first-observed', { start: START, fetchedAt: '2030-03-15T06:59:00Z' }));
     assert.deepEqual([before.content.period.end, before.content.closingState], ['2030-03-14', 'provisional']);
-    const after = capture(input('2030-03-15', 'closing', { start: START, fetchedAt: '2030-03-15T07:00:00Z' }));
-    assert.deepEqual([after.content.closingState, after.content.cutoff.end], ['complete-at-capture', '2030-03-14']);
-    assert.deepEqual(transport(after), []);
+    // Date gate open, income unsettled: provisional.
+    const afterGap = capture(input('2030-03-15', 'closing', { start: START, fetchedAt: '2030-03-15T07:00:00Z' }));
+    assert.equal(afterGap.content.sourceCompleteness.status, 'incomplete');
+    assert.deepEqual([afterGap.content.closingState, afterGap.content.cutoff.end], ['provisional', '2030-03-14']);
+    assert.deepEqual(transport(afterGap), []);
+    // Same PDT midnight with complete declared scope: complete-at-capture.
+    const afterComplete = capture(input('2030-03-15', 'closing', {
+      start: START, settleIncome: true, fetchedAt: '2030-03-15T07:00:00Z',
+    }));
+    assert.deepEqual(afterComplete.content.sourceCompleteness, { status: 'complete', reasons: [] });
+    assert.deepEqual([afterComplete.content.closingState, afterComplete.content.cutoff.end],
+      ['complete-at-capture', '2030-03-14']);
+    assert.deepEqual(transport(afterComplete), []);
   });
 
   check('idempotent retries and deterministic reasons', () => {
@@ -313,7 +401,9 @@ try {
     assert.equal(History.read({ destination: archive }).length, 1, 'no duplicate revision');
     const listed = History.read({ destination: archive })[0];
     assert.deepEqual(listed.sourceCompleteness, capture(CLOSE).content.sourceCompleteness);
-    assert.equal(listed.closingState, 'complete-at-capture');
+    // Incomplete CLOSE stays provisional; complete fixture is complete-at-capture.
+    assert.equal(listed.closingState, 'provisional');
+    assert.equal(capture(COMPLETE).content.closingState, 'complete-at-capture');
     assert.ok(!JSON.stringify(listed).includes('invented-transaction'), 'metadata exports fixed codes only');
     const messy = clone(CLOSE); delete messy.payload.transactionWindow; delete messy.payload.pendingCoverage;
     const a = reasonsOf(capture(messy)), b = reasonsOf(capture(messy));

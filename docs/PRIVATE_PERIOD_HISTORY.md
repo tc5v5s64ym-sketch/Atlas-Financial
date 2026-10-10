@@ -113,17 +113,19 @@ are not a planner input.
   inclusive last household day and `tz` is `America/Vancouver`. The period
   includes every transaction dated through that household day. Source fetch
   time and capture time are recorded separately and are never the cutoff.
-- `closingState: 'provisional' | 'complete-at-capture'`. This is the
-  next-household-day gate. The state is `complete-at-capture` only when both
+- `closingState: 'provisional' | 'complete-at-capture'`. The state is
+  `complete-at-capture` only when **both** of these hold: (1) declared
+  `sourceCompleteness` is `complete` with an empty `reasons` list, and (2) both
   the source fetch and the capture fall on a Vancouver household day after
-  `end`. The household day is the DST-aware `Forecast.financialDate`. So 23:59
-  on the end day is still provisional, and the next local midnight opens the
-  gate (08:00Z in PST, 07:00Z in PDT). A fetch at 23:59 that is captured at
-  00:00 stays provisional. **Complete-at-capture means complete against the
-  declared scope at the time of capture.** The period had closed, and the
-  declared windows are what they were. It does not mean every bank posting is
-  final or that the evidence is complete. The existing `closing`-kind gate
-  (capture after the period end, as-of reaching the end) is unchanged.
+  `end` (the next-household-day gate; DST-aware via `Forecast.financialDate`).
+  So 23:59 on the end day is still provisional, and the next local midnight
+  opens the date half of the gate (08:00Z in PST, 07:00Z in PDT). A fetch at
+  23:59 that is captured at 00:00 stays provisional. Every evidence, coverage
+  or publication gap stays `provisional` even after the date passes.
+  **Complete-at-capture means complete against the declared scope at the time
+  of capture, after the period closed.** It does not mean every bank posting
+  is final. The existing `closing`-kind gate (capture after the period end,
+  as-of reaching the end) is unchanged and separate from this label.
 - `sourceCompleteness: { status, reasons[] }`. This is declared evidence
   coverage at capture, not final household truth. `status` is `complete` only
   when `reasons` is empty. Otherwise it is `incomplete`. Reasons use a fixed,

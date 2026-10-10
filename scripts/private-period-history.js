@@ -143,11 +143,18 @@ function cutoffFor(period) {
   // become the cutoff.
   return { rule: 'household-day', end: period.end, tz: Forecast.HOUSEHOLD_TIMEZONE };
 }
-function closingStateFor(period, fetchedAt, capturedAt) {
-  // Next-household-day gate: both the source fetch and the capture must fall
-  // on a household day after the period end (DST-aware via financialDate).
-  return Forecast.financialDate(fetchedAt) > period.end && Forecast.financialDate(capturedAt) > period.end
-    ? 'complete-at-capture' : 'provisional';
+function closingStateFor(period, fetchedAt, capturedAt, sourceCompleteness) {
+  // complete-at-capture requires declared source scope complete with no
+  // reasons, plus both next-household-day conditions. Every evidence,
+  // coverage or publication gap stays provisional even after the date passes.
+  // The existing closing-kind date gate is unchanged and separate.
+  const scopeComplete = sourceCompleteness
+    && sourceCompleteness.status === 'complete'
+    && Array.isArray(sourceCompleteness.reasons)
+    && sourceCompleteness.reasons.length === 0;
+  const afterCutoff = Forecast.financialDate(fetchedAt) > period.end
+    && Forecast.financialDate(capturedAt) > period.end;
+  return scopeComplete && afterCutoff ? 'complete-at-capture' : 'provisional';
 }
 function isDate(value) {
   try { date(value); return true; } catch (_) { return false; }
@@ -288,6 +295,9 @@ function capture(input, { now = () => new Date() } = {}) {
   if (['plan-amendment', 'actual-correction'].includes(kind)
       && (typeof clean.reason !== 'string' || !clean.reason.trim())) fail('history-revision-reason-required');
   const stablePayload = { ...payload }; delete stablePayload.fetchedAt;
+  const sourceCompleteness = sourceCompletenessFor({ period, fetchedAt,
+    transactionWindow: normalized.transactionWindow, pendingCoverage: normalized.pendingCoverage,
+    report: refreshed.report, publication });
   const content = safeJson({
     period, kind, asOf, declaredAt, effectiveFrom,
     reason: clean.reason || null,
@@ -304,10 +314,8 @@ function capture(input, { now = () => new Date() } = {}) {
       // The observer publishes this receipt as obligationReconciliationReceipt.
       reconciliationReceipt: refreshed.report.obligationReconciliationReceipt || null,
     },
-    sourceCompleteness: sourceCompletenessFor({ period, fetchedAt,
-      transactionWindow: normalized.transactionWindow, pendingCoverage: normalized.pendingCoverage,
-      report: refreshed.report, publication }),
-    closingState: closingStateFor(period, fetchedAt, capturedAt),
+    sourceCompleteness,
+    closingState: closingStateFor(period, fetchedAt, capturedAt, sourceCompleteness),
     cutoff: cutoffFor(period),
     publication,
     evidence: { input: evidenceInput, refreshedData: refreshed.data, forecastOptions },
@@ -397,6 +405,7 @@ function validH1(c) {
     && s.reasons.join('\n') === REASONS.filter(code => s.reasons.includes(code)).join('\n')
     && (s.status === 'complete') === (s.reasons.length === 0)
     && CLOSING_STATES.includes(c.closingState)
+    && (c.closingState !== 'complete-at-capture' || s.status === 'complete')
     && cut && Object.keys(cut).sort().join(',') === 'end,rule,tz'
     && cut.rule === 'household-day' && cut.end === c.period.end && cut.tz === Forecast.HOUSEHOLD_TIMEZONE);
 }
@@ -507,4 +516,4 @@ function replayPublication(row) {
   return actual;
 }
 module.exports = { SCHEMA, LEGACY_SCHEMA, REASONS, capture, append, read, metadata, completeness,
-  sourceCompletenessFor, replayPublication };
+  sourceCompletenessFor, closingStateFor, replayPublication };
