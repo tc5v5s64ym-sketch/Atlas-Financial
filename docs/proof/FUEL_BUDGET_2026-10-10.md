@@ -18,7 +18,7 @@ Actual spending fulfills the existing hold once: `max(planned, actual)`. The $23
 
 ## All changed October 10 scenario snapshot figures
 
-Each revision runs its own `scripts/figures-snapshot.js` exported `buildFiguresSnapshot`, with only the in-memory `meta.asOf` evaluation date set to `2026-10-10`; canonical files stay unchanged.
+Each revision runs its own `scripts/figures-snapshot.js` exported `buildFiguresSnapshot` in a fresh Node process, with only the in-memory `meta.asOf` evaluation date set to `2026-10-10`; canonical files stay unchanged. Calculation-source head: `b503e5493b864312f389cd461eacf5a259eca4b0`; exact base: `5faac95f70415e90c442c2d0339d466c94cd108f`. The proof-only repair leaves every financial source identical to that calculation-source head; the merge card records the repaired PR head. Every table key, amount and delta is checked against those revision-local outputs.
 
 | Published figure | Base | Candidate | Change |
 |---|---:|---:|---:|
@@ -36,15 +36,17 @@ Each revision runs its own `scripts/figures-snapshot.js` exported `buildFiguresS
 | planning.trajectory.2026-11.cash.amount | 527.04 | -327.24 | -854.28 |
 | planning.trajectory.2026-12.cash.amount | -3,598.79 | -4,962.36 | -1,363.57 |
 | planning.trajectory.2027-01.cash.amount | -2,820.11 | -4,692.96 | -1,872.85 |
-| planning.trajectory.2027-02.cash.amount | 10,782.52 | 8,449.67 | -2,332.85 |
-| planning.trajectory.2027-03.cash.amount | 12,504.24 | 9,662.09 | -2,842.15 |
-| planning.trajectory.2027-04.cash.amount | 14,966.59 | 11,631.59 | -3,335.00 |
-| planning.trajectory.2027-05.cash.amount | 17,600.46 | 13,756.18 | -3,844.28 |
-| planning.trajectory.2027-06.cash.amount | 20,381.00 | 16,043.85 | -4,337.15 |
-| planning.trajectory.2027-07.cash.amount | 19,925.06 | 15,078.63 | -4,846.43 |
-| planning.trajectory.2027-08.cash.amount | 22,642.80 | 17,287.08 | -5,355.72 |
-| planning.trajectory.2027-09.cash.amount | 25,423.33 | 19,574.76 | -5,848.57 |
-| planning.trajectory.2027-10.cash.amount | 25,654.31 | 19,657.88 | -5,996.43 |
+| planning.trajectory.2027-02.cash.amount | 9,282.52 | 6,949.67 | -2,332.85 |
+| planning.trajectory.2027-03.cash.amount | 11,004.24 | 8,162.09 | -2,842.15 |
+| planning.trajectory.2027-04.cash.amount | 13,466.59 | 10,131.59 | -3,335.00 |
+| planning.trajectory.2027-05.cash.amount | 16,100.46 | 12,256.18 | -3,844.28 |
+| planning.trajectory.2027-06.cash.amount | 18,881.00 | 14,543.85 | -4,337.15 |
+| planning.trajectory.2027-07.cash.amount | 18,425.06 | 13,578.63 | -4,846.43 |
+| planning.trajectory.2027-08.cash.amount | 21,142.80 | 15,787.08 | -5,355.72 |
+| planning.trajectory.2027-09.cash.amount | 23,923.33 | 18,074.76 | -5,848.57 |
+| planning.trajectory.2027-10.cash.amount | 24,154.31 | 18,157.88 | -5,996.43 |
+
+Proof correction after independent review: the earlier rebase recomputed correct JSON but failed to replace a CRLF Markdown table. February–October 2027 absolute cash figures were $1,500 too high on both sides because the old table omitted the inherited dated Provincials cost. Both columns are now regenerated from the exact revisions; all 23 fuel-change deltas are preserved. No financial code or input changed to fit the proof.
 
 The projected November month-end cash changes from positive $527.04 to negative $327.24. This consequence is disclosed; no budget, income, debt or savings input is adjusted to conceal it. The future trajectory retains its incumbent daily monthly-equivalent cash-walk behavior.
 
