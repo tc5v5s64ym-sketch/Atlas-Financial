@@ -10,22 +10,15 @@ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).
 const $ = id => document.getElementById(id);
 
 const money = n => (n < 0 ? '−$' : '$') + Math.round(Math.abs(n)).toLocaleString('en-CA');
-const centsFormat = new Intl.NumberFormat('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const money2 = n => (n < 0 ? '−$' : '$') + centsFormat.format(Math.abs(Number(n)));
+const money2 = (formatter => n => (n < 0 ? '−$' : '$') + formatter.format(Math.abs(Number(n))))(new Intl.NumberFormat('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const pct = n => n.toFixed(2) + '%';
 // Reuse locale formatters during live scrubbing. These format the same input;
 // they retain no date, money, publication or trust result between renders.
-const dateFormat = new Intl.DateTimeFormat('en-CA', { day: 'numeric', month: 'short' });
-const longDateFormat = new Intl.DateTimeFormat('en-CA', { day: 'numeric', month: 'long' });
-const fullDateFormat = new Intl.DateTimeFormat('en-CA', { day: 'numeric', month: 'long', year: 'numeric' });
-const formatLocalDate = (iso, formatter) => {
-  const date = new Date(iso + 'T00:00:00');
-  return Number.isNaN(date.getTime()) ? 'Invalid Date' : formatter.format(date);
-};
-const fmtDate = iso => formatLocalDate(iso, dateFormat);
-const fmtDateLong = iso => formatLocalDate(iso, longDateFormat);
+// Each helper is self-contained for the incumbent standalone renderers too.
+const fmtDate = (formatter => iso => { const date = new Date(iso + 'T00:00:00'); return Number.isNaN(date.getTime()) ? 'Invalid Date' : formatter.format(date); })(new Intl.DateTimeFormat('en-CA', { day: 'numeric', month: 'short' }));
+const fmtDateLong = (formatter => iso => { const date = new Date(iso + 'T00:00:00'); return Number.isNaN(date.getTime()) ? 'Invalid Date' : formatter.format(date); })(new Intl.DateTimeFormat('en-CA', { day: 'numeric', month: 'long' }));
 // With the year: for a due date or horizon that may sit in the next calendar year.
-const fmtDateFull = iso => formatLocalDate(iso, fullDateFormat);
+const fmtDateFull = (formatter => iso => { const date = new Date(iso + 'T00:00:00'); return Number.isNaN(date.getTime()) ? 'Invalid Date' : formatter.format(date); })(new Intl.DateTimeFormat('en-CA', { day: 'numeric', month: 'long', year: 'numeric' }));
 
 // Household YYYY-MM-DD only. A UTC timestamp prefix is not a household date
 // (ACCOUNT_FACTS / Forecast.financialDate). Never invent one from fetch time.
