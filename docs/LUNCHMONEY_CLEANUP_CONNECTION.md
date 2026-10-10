@@ -89,6 +89,8 @@ Both must be posted/reviewed, same-date, same-currency, exactly opposite nonzero
 amounts, on the two exact distinct instruction accounts. Missing, third,
 conflicting, pending or ambiguous legs are refused. Amount/date coincidence
 without the directed bank reference supplies no proof.
+The reserved Transfer: display format is refused in generic standing payee
+instructions; it must use transferLabel and cannot bypass the paired-bank proof.
 
 The result is a payee such as Transfer: Synthetic Bills → Synthetic Weekly.
 No amount, account, category or provider linkage changes because a label is
