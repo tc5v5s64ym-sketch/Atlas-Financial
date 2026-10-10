@@ -5420,6 +5420,7 @@ function budgetDetailSheetController(mount) {
   const open = (source, trigger, label, focusSelector, options = {}) => {
     pendingRestore = null;
     if (!source || !trigger || !source.parentNode) return false;
+    if (held?.source === source && held.trigger === trigger) return true;
     motion('cancel', dialog);
     // Only Bills -> bill evidence adds a Back level. Other incumbent open()
     // callers retain replacement behavior and cannot accidentally form a stack.
@@ -5508,6 +5509,7 @@ function budgetDetailSheetController(mount) {
     openerSelector: item.openerSelector, label: item.label, focusSelector: item.focusSelector,
     scrollTop: Number.isFinite(item.scrollTop) && item.scrollTop >= 0 ? item.scrollTop : 0,
     billsFilter: ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(item.billsFilter) ? item.billsFilter : null,
+    billsDay: typeof item.billsDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.billsDay) ? item.billsDay : null,
   });
   const copyState = state => {
     const frames = (state?.frames || (state ? [state] : [])).map(descriptor);
@@ -5517,7 +5519,8 @@ function budgetDetailSheetController(mount) {
     if (pendingRestore) return copyState(pendingRestore);
     if (!held) return null;
     const frames = [...parents, { ...held, scrollTop: body.scrollTop }].map(item => ({ ...item,
-      billsFilter: item.source.hasAttribute('data-blend-bills-panel') ? readBillsFilter(item.source) : null }));
+      billsFilter: item.source.hasAttribute('data-blend-bills-panel') ? readBillsFilter(item.source) : null,
+      billsDay: item.source.hasAttribute('data-blend-bills-panel') ? item.source.getAttribute('data-budget-bill-day') : null }));
     return frames.every(item => item.sourceSelector && item.triggerSelector)
       ? copyState({ frames }) : null;
   };
@@ -5540,7 +5543,9 @@ function budgetDetailSheetController(mount) {
         sourceCount: sources.length, triggerCount: triggers.length };
     });
     const isBillsFrame = item => item.sourceSelector === '[data-blend-bills-panel]'
-      && item.triggerSelector === '[data-blend-bills-open]';
+      && (item.triggerSelector === '[data-blend-bills-open]'
+        || item.triggerSelector === `[data-operating-question="${CSS.escape('04')}"] .budget-step-summary`
+        || item.billsDay && item.triggerSelector === `[data-blend-bill="${CSS.escape('day:' + item.billsDay)}"]`);
     const incomplete = frames.some(item => item.sourceCount !== 1 || item.triggerCount !== 1);
     if (incomplete && deferBlend) {
       const bento = mount.querySelector('[data-budget-bento]');
@@ -5562,7 +5567,11 @@ function budgetDetailSheetController(mount) {
     for (const item of frames) {
       open(item.source, item.trigger, item.label, item.focusSelector, { instant: true,
         opener: unique(item.openerSelector), openerSelector: item.openerSelector });
-      if (item.source.hasAttribute('data-blend-bills-panel')) restoreBillsFilter(item.source, item.billsFilter);
+      if (item.source.hasAttribute('data-blend-bills-panel')) {
+        if (item.billsDay) item.source.setAttribute('data-budget-bill-day', item.billsDay);
+        else item.source.removeAttribute('data-budget-bill-day');
+        restoreBillsFilter(item.source, item.billsFilter);
+      }
       body.scrollTop = item.scrollTop;
     }
     if (parents.length !== frames.length - 1) { close(false); return false; }
@@ -5691,11 +5700,17 @@ function budgetApplyBillFilter(section, choice) {
   controls.forEach(control => control.setAttribute('aria-pressed',
     String(control.getAttribute('data-budget-bill-filter') === selected)));
   const buckets = [...section.querySelectorAll('[data-budget-bill-bucket]')];
-  buckets.forEach(bucket => { bucket.hidden = selected !== 'all' && bucket.getAttribute('data-budget-bill-bucket') !== selected; });
+  const day = section.getAttribute('data-budget-bill-day');
+  buckets.forEach(bucket => {
+    const rows = [...bucket.querySelectorAll('[data-budget-bill-open]')];
+    rows.forEach(row => { row.hidden = !!day && row.getAttribute('data-budget-bill-date') !== day; });
+    bucket.hidden = selected !== 'all' && bucket.getAttribute('data-budget-bill-bucket') !== selected
+      || !!day && !rows.some(row => !row.hidden);
+  });
   const empty = section.querySelector('[data-budget-bill-filter-empty]');
   if (empty) empty.hidden = selected === 'all' || buckets.some(bucket => !bucket.hidden);
   const status = section.querySelector('[data-budget-bill-filter-status]');
-  if (status) status.textContent = ({ all: 'Showing all bills.',
+  if (status) status.textContent = day ? `Showing bills on ${day}.` : ({ all: 'Showing all bills.',
     check: 'Showing bills to confirm. They may already be paid; check the evidence before paying again.',
     due: 'Showing bills published as due.', paid: 'Showing paid bills: money sent or settlement confirmed.',
     pending: 'Showing pending bills. Settlement is not confirmed.',
