@@ -1,8 +1,8 @@
 {
   "sourceBound": true,
   "sourceBinding": {
-    "head": "05cd2c98e31884b10b0e113a40f2aac22b000cbf",
-    "tree": "dee4e0141afc8db5975228fad57b666b629b49aa",
+    "head": "58023f8845e32de63f71f401482aefb829cd9863",
+    "tree": "748d2e2c513dc01920cf93024b88f54e76c9e36e",
     "files": {
       "public/index.html": {
         "sha256": "f3a3bb1b3e749310bec43dc7cc482355c5ee1049828ff726264aee60fc8242fa",
@@ -145,9 +145,9 @@
         "blob": "ef0980127b9e86c4f11da2107fa0e896fde4aae8"
       },
       "public/budget-blend.js": {
-        "sha256": "b5b37e1dcb0914a17e93bf6aa3f6776cd39ed8267d27ae016ee64dfa23d8ba1d",
-        "bytes": 110395,
-        "blob": "5082ace0a850ab305a50ec9060d415f9c556db20"
+        "sha256": "7f7ac82ce8a990d0470e034129f14f11df4dea28f1752357bf62904b470cefb8",
+        "bytes": 110894,
+        "blob": "1f17d3f389ba355325b70f10133ca9f122fe9e2b"
       },
       "public/nav-glass.css": {
         "sha256": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
@@ -237,9 +237,9 @@
         "blob": "630dcb420486b960683bda40abe1b7d915d250e1"
       },
       "test/browser-bills-usability.js": {
-        "sha256": "55b17984c3598fb1c9248f0593ee0e9db9874fc632d5daefbbf624f0d893f0d0",
-        "bytes": 26115,
-        "blob": "a8bed38d7f2cee9b035c2c5ee7897f44858b4ee2"
+        "sha256": "06263d23cba14f2b963e96031c34917fa9632e18ea654424a43300a481f08961",
+        "bytes": 29980,
+        "blob": "4706ab901d93650b9c5b21b4da02dcd80396330a"
       },
       "test/fixtures/budget-surface-data.js": {
         "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
@@ -345,6 +345,106 @@
         15,
         15
       ],
+      "amounts": [
+        {
+          "id": "hydro",
+          "text": "≈estimated  $120.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "card-minimum",
+          "text": "$60.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "internet",
+          "text": "$85.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-0",
+          "text": "$20.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-1",
+          "text": "≈estimated  $21.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-2",
+          "text": "$22.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-0",
+          "text": "$10.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-1",
+          "text": "$11.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-2",
+          "text": "$12.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-3",
+          "text": "$13.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-4",
+          "text": "$14.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-5",
+          "text": "$15.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-6",
+          "text": "$16.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "mortgage",
+          "text": "$1,400.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        }
+      ],
       "pageOverflow": false
     },
     {
@@ -400,6 +500,106 @@
         15,
         15
       ],
+      "amounts": [
+        {
+          "id": "hydro",
+          "text": "≈estimated  $120.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "card-minimum",
+          "text": "$60.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "internet",
+          "text": "$85.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-0",
+          "text": "$20.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-1",
+          "text": "≈estimated  $21.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-2",
+          "text": "$22.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-0",
+          "text": "$10.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-1",
+          "text": "$11.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-2",
+          "text": "$12.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-3",
+          "text": "$13.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-4",
+          "text": "$14.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-5",
+          "text": "$15.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-6",
+          "text": "$16.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "mortgage",
+          "text": "$1,400.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        }
+      ],
       "pageOverflow": false
     },
     {
@@ -454,6 +654,106 @@
         15,
         15,
         15
+      ],
+      "amounts": [
+        {
+          "id": "hydro",
+          "text": "≈estimated  $120.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "card-minimum",
+          "text": "$60.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "internet",
+          "text": "$85.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-0",
+          "text": "$20.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-1",
+          "text": "≈estimated  $21.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-2",
+          "text": "$22.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-0",
+          "text": "$10.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-1",
+          "text": "$11.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-2",
+          "text": "$12.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-3",
+          "text": "$13.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-4",
+          "text": "$14.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-5",
+          "text": "$15.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-6",
+          "text": "$16.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "mortgage",
+          "text": "$1,400.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        }
       ],
       "pageOverflow": false
     },
@@ -510,6 +810,106 @@
         15,
         15
       ],
+      "amounts": [
+        {
+          "id": "hydro",
+          "text": "≈estimated  $120.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "card-minimum",
+          "text": "$60.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "internet",
+          "text": "$85.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-0",
+          "text": "$20.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-1",
+          "text": "≈estimated  $21.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-2",
+          "text": "$22.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-0",
+          "text": "$10.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-1",
+          "text": "$11.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-2",
+          "text": "$12.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-3",
+          "text": "$13.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-4",
+          "text": "$14.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-5",
+          "text": "$15.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-6",
+          "text": "$16.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "mortgage",
+          "text": "$1,400.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        }
+      ],
       "pageOverflow": false
     },
     {
@@ -565,6 +965,106 @@
         15,
         15
       ],
+      "amounts": [
+        {
+          "id": "hydro",
+          "text": "≈estimated  $120.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "card-minimum",
+          "text": "$60.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "internet",
+          "text": "$85.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-0",
+          "text": "$20.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-1",
+          "text": "≈estimated  $21.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-2",
+          "text": "$22.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-0",
+          "text": "$10.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-1",
+          "text": "$11.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-2",
+          "text": "$12.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-3",
+          "text": "$13.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-4",
+          "text": "$14.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-5",
+          "text": "$15.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-6",
+          "text": "$16.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "mortgage",
+          "text": "$1,400.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        }
+      ],
       "pageOverflow": false
     },
     {
@@ -619,6 +1119,106 @@
         15,
         15,
         15
+      ],
+      "amounts": [
+        {
+          "id": "hydro",
+          "text": "≈estimated  $120.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "card-minimum",
+          "text": "$60.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "internet",
+          "text": "$85.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-0",
+          "text": "$20.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-1",
+          "text": "≈estimated  $21.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-extra-2",
+          "text": "$22.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-0",
+          "text": "$10.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-1",
+          "text": "$11.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-2",
+          "text": "$12.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-3",
+          "text": "$13.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-4",
+          "text": "$14.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-5",
+          "text": "$15.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "synthetic-roster-6",
+          "text": "$16.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        },
+        {
+          "id": "mortgage",
+          "text": "$1,400.00",
+          "lines": 1,
+          "rightWithinRow": true,
+          "scrollOverflow": false
+        }
       ],
       "pageOverflow": false
     }
@@ -627,12 +1227,66 @@
     {
       "width": 1440,
       "theme": "light",
+      "flow": "keyboard focus outlines whole day square",
+      "square": {
+        "x": 402.484375,
+        "y": 740.421875,
+        "width": 91.171875,
+        "height": 80
+      },
+      "button": {
+        "x": 402.484375,
+        "y": 740.421875,
+        "width": 91.171875,
+        "height": 80
+      },
+      "icon": {
+        "x": 454.65625,
+        "y": 781.421875,
+        "width": 28,
+        "height": 28
+      },
+      "visible": true,
+      "outlineWidth": 3,
+      "outlineStyle": "solid"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "reduce",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
       "motion": "reduce",
       "flow": "Period figures → Why → Back → Why → Close",
       "originalSource": true,
       "filterRetained": "paid",
       "backFocus": "Why",
       "closeFocus": "hero"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day Close/heading open/Escape",
+      "focus": "heading"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day Close/hero open/Escape",
+      "focus": "hero"
     },
     {
       "width": 1440,
@@ -700,12 +1354,66 @@
     {
       "width": 1440,
       "theme": "dark",
+      "flow": "keyboard focus outlines whole day square",
+      "square": {
+        "x": 402.484375,
+        "y": 740.421875,
+        "width": 91.171875,
+        "height": 80
+      },
+      "button": {
+        "x": 402.484375,
+        "y": 740.421875,
+        "width": 91.171875,
+        "height": 80
+      },
+      "icon": {
+        "x": 454.65625,
+        "y": 781.421875,
+        "width": 28,
+        "height": 28
+      },
+      "visible": true,
+      "outlineWidth": 3,
+      "outlineStyle": "solid"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "reduce",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
       "motion": "reduce",
       "flow": "Period figures → Why → Back → Why → Close",
       "originalSource": true,
       "filterRetained": "paid",
       "backFocus": "Why",
       "closeFocus": "hero"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day Close/heading open/Escape",
+      "focus": "heading"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day Close/hero open/Escape",
+      "focus": "hero"
     },
     {
       "width": 1440,
@@ -773,12 +1481,66 @@
     {
       "width": 390,
       "theme": "light",
+      "flow": "keyboard focus outlines whole day square",
+      "square": {
+        "x": 173.703125,
+        "y": 421,
+        "width": 42.578125,
+        "height": 58
+      },
+      "button": {
+        "x": 173.703125,
+        "y": 421,
+        "width": 42.578125,
+        "height": 58
+      },
+      "icon": {
+        "x": 196.28125,
+        "y": 457,
+        "width": 17,
+        "height": 17
+      },
+      "visible": true,
+      "outlineWidth": 3,
+      "outlineStyle": "solid"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "reduce",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 390,
+      "theme": "light",
       "motion": "reduce",
       "flow": "Period figures → Why → Back → Why → Close",
       "originalSource": true,
       "filterRetained": "paid",
       "backFocus": "Why",
       "closeFocus": "hero"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day Close/heading open/Escape",
+      "focus": "heading"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day Close/hero open/Escape",
+      "focus": "hero"
     },
     {
       "width": 390,
@@ -846,12 +1608,66 @@
     {
       "width": 390,
       "theme": "dark",
+      "flow": "keyboard focus outlines whole day square",
+      "square": {
+        "x": 173.703125,
+        "y": 421,
+        "width": 42.578125,
+        "height": 58
+      },
+      "button": {
+        "x": 173.703125,
+        "y": 421,
+        "width": 42.578125,
+        "height": 58
+      },
+      "icon": {
+        "x": 196.28125,
+        "y": 457,
+        "width": 17,
+        "height": 17
+      },
+      "visible": true,
+      "outlineWidth": 3,
+      "outlineStyle": "solid"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "reduce",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
       "motion": "reduce",
       "flow": "Period figures → Why → Back → Why → Close",
       "originalSource": true,
       "filterRetained": "paid",
       "backFocus": "Why",
       "closeFocus": "hero"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day Close/heading open/Escape",
+      "focus": "heading"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day Close/hero open/Escape",
+      "focus": "hero"
     },
     {
       "width": 390,
@@ -919,12 +1735,66 @@
     {
       "width": 320,
       "theme": "light",
+      "flow": "keyboard focus outlines whole day square",
+      "square": {
+        "x": 143.703125,
+        "y": 421,
+        "width": 32.578125,
+        "height": 58
+      },
+      "button": {
+        "x": 143.703125,
+        "y": 421,
+        "width": 32.578125,
+        "height": 58
+      },
+      "icon": {
+        "x": 159.734375,
+        "y": 460.453125,
+        "width": 13.546875,
+        "height": 13.546875
+      },
+      "visible": true,
+      "outlineWidth": 3,
+      "outlineStyle": "solid"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "reduce",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 320,
+      "theme": "light",
       "motion": "reduce",
       "flow": "Period figures → Why → Back → Why → Close",
       "originalSource": true,
       "filterRetained": "paid",
       "backFocus": "Why",
       "closeFocus": "hero"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day Close/heading open/Escape",
+      "focus": "heading"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "motion": "no-preference",
+      "flow": "day Close/hero open/Escape",
+      "focus": "hero"
     },
     {
       "width": 320,
@@ -992,12 +1862,66 @@
     {
       "width": 320,
       "theme": "dark",
+      "flow": "keyboard focus outlines whole day square",
+      "square": {
+        "x": 143.703125,
+        "y": 421,
+        "width": 32.578125,
+        "height": 58
+      },
+      "button": {
+        "x": 143.703125,
+        "y": 421,
+        "width": 32.578125,
+        "height": 58
+      },
+      "icon": {
+        "x": 159.734375,
+        "y": 460.453125,
+        "width": 13.546875,
+        "height": 13.546875
+      },
+      "visible": true,
+      "outlineWidth": 3,
+      "outlineStyle": "solid"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "reduce",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
       "motion": "reduce",
       "flow": "Period figures → Why → Back → Why → Close",
       "originalSource": true,
       "filterRetained": "paid",
       "backFocus": "Why",
       "closeFocus": "hero"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "calendar heading Enter/Escape",
+      "focus": "calendar heading"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day Close/heading open/Escape",
+      "focus": "heading"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "motion": "no-preference",
+      "flow": "day Close/hero open/Escape",
+      "focus": "hero"
     },
     {
       "width": 320,
@@ -1064,31 +1988,37 @@
     }
   ],
   "shots": [
+    "1440-light-calendar-keyboard-focus.png",
     "1440-light-four-bill-day.png",
     "1440-light-compact-hero-bills.png",
     "1440-light-period-figures-back.png",
     "1440-light-normal-motion-compact-hero-bills.png",
     "1440-light-native-income-reference.png",
+    "1440-dark-calendar-keyboard-focus.png",
     "1440-dark-four-bill-day.png",
     "1440-dark-compact-hero-bills.png",
     "1440-dark-period-figures-back.png",
     "1440-dark-normal-motion-compact-hero-bills.png",
     "1440-dark-native-income-reference.png",
+    "390-light-calendar-keyboard-focus.png",
     "390-light-four-bill-day.png",
     "390-light-compact-hero-bills.png",
     "390-light-period-figures-back.png",
     "390-light-normal-motion-compact-hero-bills.png",
     "390-light-native-income-reference.png",
+    "390-dark-calendar-keyboard-focus.png",
     "390-dark-four-bill-day.png",
     "390-dark-compact-hero-bills.png",
     "390-dark-period-figures-back.png",
     "390-dark-normal-motion-compact-hero-bills.png",
     "390-dark-native-income-reference.png",
+    "320-light-calendar-keyboard-focus.png",
     "320-light-four-bill-day.png",
     "320-light-compact-hero-bills.png",
     "320-light-period-figures-back.png",
     "320-light-normal-motion-compact-hero-bills.png",
     "320-light-native-income-reference.png",
+    "320-dark-calendar-keyboard-focus.png",
     "320-dark-four-bill-day.png",
     "320-dark-compact-hero-bills.png",
     "320-dark-period-figures-back.png",
@@ -1096,25 +2026,33 @@
     "320-dark-native-income-reference.png"
   ],
   "screenshotHashes": {
+    "1440-light-calendar-keyboard-focus.png": {
+      "sha256": "1177b0433c01e3d10d81fe61c9d2937fd04789dca29ff99760e073530255b90e",
+      "bytes": 285215
+    },
     "1440-light-four-bill-day.png": {
       "sha256": "1a457d3aaad13f165704c554277602cd592f5c198a73f922df8c7dc955c61814",
       "bytes": 251713
     },
     "1440-light-compact-hero-bills.png": {
-      "sha256": "aa08564d7b5fd660dfb6df76afde698f43ef04bdc2890e31fb1287d6556abcd4",
-      "bytes": 316910
+      "sha256": "c9548e1dfc629485eb13fc4a74cec6c3224d41526fc30ae4906c36d5aaa446ec",
+      "bytes": 316905
     },
     "1440-light-period-figures-back.png": {
-      "sha256": "844cab0a8e1a6ba0fe4a1d96e18f2afdd00020365a4ed4eea2992bf2ed816dc9",
-      "bytes": 271296
+      "sha256": "a58a6c0c8d89508690d3366f4efb50d30142c79f115e6f930a7b565416b59284",
+      "bytes": 271237
     },
     "1440-light-normal-motion-compact-hero-bills.png": {
-      "sha256": "7b18c5a32836a6aa15da55368730a71cf39ea38eab00c9603c7c7aad4fe941ef",
-      "bytes": 456379
+      "sha256": "a06ef732bd2f6aa13b2c8e90b7a43bd7c474bf9b2df63cd1627d1d4340dbff8d",
+      "bytes": 457857
     },
     "1440-light-native-income-reference.png": {
-      "sha256": "cd626e2240332669d311a973d004d2a8b14dac74186b413ee592fb504577ea0e",
-      "bytes": 397763
+      "sha256": "bf7bf838bb728f32b8cc08d4b176bc1db137d917690b430db70f120cab9d541f",
+      "bytes": 398248
+    },
+    "1440-dark-calendar-keyboard-focus.png": {
+      "sha256": "0d3d70fb161dadef6404141768ea1ab4eeed123c696d70fdb8dd5a9a3402f3fc",
+      "bytes": 245828
     },
     "1440-dark-four-bill-day.png": {
       "sha256": "1d7b6ad69baaaf431cc7c02fa754d10973950484e6034e706f0932aeaa087b2e",
@@ -1125,16 +2063,20 @@
       "bytes": 247327
     },
     "1440-dark-period-figures-back.png": {
-      "sha256": "15cc3cc2a196b22fc1ebe19196eba048153b61589160d220ec7879ebd97330d5",
-      "bytes": 199972
+      "sha256": "d785af1fdd79b31175414bfa39e94dada17ee2966558acc3331438a1162b877e",
+      "bytes": 199984
     },
     "1440-dark-normal-motion-compact-hero-bills.png": {
-      "sha256": "1584ff3868c2c84c11db5c7e221a4b1281cc61dc4a0679760a898a1265a7190c",
-      "bytes": 346756
+      "sha256": "5fa90a917556211087476acec2cea57d9cf7531e3a734133b98e95c1bcb44417",
+      "bytes": 347545
     },
     "1440-dark-native-income-reference.png": {
-      "sha256": "1b61276096c3ac9a80664b056f7d1031831bed5c5f94967a164d6bcd976d443a",
-      "bytes": 291018
+      "sha256": "facbe93960dac4c6f0cee7ea63ed3d3fe2a8c09d54b30ba742fadad7887a7c07",
+      "bytes": 291056
+    },
+    "390-light-calendar-keyboard-focus.png": {
+      "sha256": "66534690e5d7453b798a3d738aeab6a95fdb90bbf7cd92873b945c13a6ef725e",
+      "bytes": 95347
     },
     "390-light-four-bill-day.png": {
       "sha256": "215942cdecee20a5a073a080edf8ef93b216a7dfd3c0500b12dfbce2cedd0a1b",
@@ -1149,12 +2091,16 @@
       "bytes": 64017
     },
     "390-light-normal-motion-compact-hero-bills.png": {
-      "sha256": "ef99d916f4353cdaabb063b1a50110c2e15a03e769e5045e948223122ad9cfef",
-      "bytes": 99068
+      "sha256": "1feee2bb253c1897061f7006e0a9f0baad7048cb91e207c1c6659e3162feab21",
+      "bytes": 99160
     },
     "390-light-native-income-reference.png": {
-      "sha256": "87d595b1d7556dac715e9df1c7998361a52177f4b3057e361ff4b7448473b4a6",
-      "bytes": 60880
+      "sha256": "b5a89e0695e62a85bf4e8e8bdabb10a848e2d92d377da7b91a9b425736821066",
+      "bytes": 60875
+    },
+    "390-dark-calendar-keyboard-focus.png": {
+      "sha256": "2bbba5ce567c147891c92a74d83acd4bee7bc539681617c67a6851d295937fe7",
+      "bytes": 88339
     },
     "390-dark-four-bill-day.png": {
       "sha256": "3dfdbb796030b9f794c59d1cb7e1f03616bb436ddea4b429ec7a168b1b2cc0c2",
@@ -1169,12 +2115,16 @@
       "bytes": 59044
     },
     "390-dark-normal-motion-compact-hero-bills.png": {
-      "sha256": "bb272a0bb3e9b5affafdf0a19dd488fe0ac4571b935c8230b7ba1f52719058fd",
-      "bytes": 94788
+      "sha256": "acca2c6f92d73305989355962796e300f91d8f4a3e3890a3e3bcbc6fb505d7b2",
+      "bytes": 94689
     },
     "390-dark-native-income-reference.png": {
-      "sha256": "1d01e96bb4d83f567bc3b3965c0827f1353b7c0b317fc9c5c89411564408e66a",
-      "bytes": 58120
+      "sha256": "2980e987c563c908a379beb920c2ab810b93e3194a4c7eb799a0b1725b8ba92d",
+      "bytes": 58193
+    },
+    "320-light-calendar-keyboard-focus.png": {
+      "sha256": "1eca4ecb5b1105cb63a39a634d1780656c9b79bca19b43efaf3a12219314fcd4",
+      "bytes": 83882
     },
     "320-light-four-bill-day.png": {
       "sha256": "2ef7ba456b42a0c9fe60fd0de8323ce6969c018f1dbcc5cd98c8c5b6854b9977",
@@ -1189,12 +2139,16 @@
       "bytes": 62999
     },
     "320-light-normal-motion-compact-hero-bills.png": {
-      "sha256": "168124287596fe0ae2ee11c8890c863ec37075b28418e7d00cf4c9eceaedfb96",
-      "bytes": 92437
+      "sha256": "909af99f4207e11a48c82b54e51a1cf2b1bf3cfb190bcf8765bf0b9677c30511",
+      "bytes": 92391
     },
     "320-light-native-income-reference.png": {
-      "sha256": "dc3fea5c23d8a4e7814e08868984df0c0fcebf29c0d78d967e61f268b4a07ade",
-      "bytes": 56577
+      "sha256": "9fc9e31520ff7259ec76ea747697282faf32b506c4270ade30cdface3465e2ea",
+      "bytes": 56580
+    },
+    "320-dark-calendar-keyboard-focus.png": {
+      "sha256": "dbd7699b4ffb8996c6e67d78c73b7f2ddcdfb784d8406ef390ebc4ad49605558",
+      "bytes": 77258
     },
     "320-dark-four-bill-day.png": {
       "sha256": "4ecf61584d9119f66db80ca959c662683949f4c09cadc740b1ba9be5dee0a502",
@@ -1209,12 +2163,12 @@
       "bytes": 58546
     },
     "320-dark-normal-motion-compact-hero-bills.png": {
-      "sha256": "7ce923c9d9795afcb4743d669e7ac895b2dc6c958cb9b4a75bf283b2f04a8d5a",
-      "bytes": 89020
+      "sha256": "4c302aaa18c23ebef5ae3a2e735cb7558870489b484d31c6233c7a552e78cc68",
+      "bytes": 88999
     },
     "320-dark-native-income-reference.png": {
-      "sha256": "bd3c508bdc77eeb81561e8637d05abf94ee7fd237fd865b882c1b5d1afa8e80e",
-      "bytes": 54250
+      "sha256": "cc583abd49be543ed26f9bc1460147f190a9ad9838c7e4d982804b13fcdfcf74",
+      "bytes": 54132
     }
   },
   "errors": [],

@@ -1,37 +1,46 @@
 # Bills usability proof
 
-All images use invented fixture bills through the native App → Forecast → Budget path. No household screenshots, data, credentials, or provider calls are included.
+Every public image uses invented fixture bills through the native App → Forecast → Budget path. No household references, data, credentials or provider calls are included.
 
 Original reproduction base: `4c98234cc7e10d97c8301edcb667d805c80e6964`.
 Integrated released main: `5dceb7c6d4f673e4b464c34021b2266f6beb2313` (#562).
-Latest clean-source proof: `05cd2c98e31884b10b0e113a40f2aac22b000cbf`.
-The Bills implementation is unchanged from reviewed head `1436e0de23ea75825427b4f53e799860233a8b17`; this follow-up adds browser coverage and provenance, plus the released-main integration. The subsequent proof-only commit leaves every exercised implementation, dependency, fixture and test blob unchanged. #563 remains pending and needs integration before final release approval.
+Latest clean-source proof: `58023f8845e32de63f71f401482aefb829cd9863`.
+The subsequent proof-only commit leaves every exercised implementation, dependency, fixture and test blob unchanged. #563 still needs integration after its separately owned release, before final approval.
 
-## Current-main reproduction
+## Exact-main reproduction and tester triage
 
-[Baseline report](baseline-reproduction.json) records the exact committed asset hashes. Clicking the square background did nothing; clicking a four-bill day opened only its first bill. The hero Bills sheet used 40px detail amounts and approximately 122px summaries.
+The [original baseline report](baseline-reproduction.json) binds its committed assets. Background activation did nothing, a four-bill day opened only the first detail, and the hero sheet repeated approximately 122px summaries with 40px amounts.
 
+The [fresh exact-main probe](main-5d-triage.json) repeats those results at 5dceb7c. Its background click actually targets the day span; it opens no dialog. The icon opens one detail and zero roster rows. The focus outline surrounds the 28px icon inside a roughly 91×80px desktop square. The report binds every served file and fixture dependency to Git/SHA-256, plus input, probe and screenshot hashes. [Probe source](main-5d-probe.cjs) accepts BILLS_MAIN_SOURCE (a clean 5d checkout), BILLS_MAIN_PROOF_DIR and CHROME_PATH, with Playwright on NODE_PATH.
+
+![Icon-only keyboard focus on exact main](main-5d-calendar-keyboard-focus.png)
 ![Four-bill day opens only one detail on main](baseline-four-bill-first-only.png)
-![Hero Bills repeats large detail summaries on main](baseline-hero-giant-bills.png)
+![Hero Bills repeats large summaries on main](baseline-hero-giant-bills.png)
 
-## Repaired native lists
+Regular calendar heading → Escape restored the heading in the exact-main fixture. The reported production-target failure is not claimed reproduced; the tester's exact live URL/day remains unresolved. The source-bound offline target is http://bills.test, not production.
 
-[Source-bound report](report.json) records the clean tested head/tree and SHA-256/Git-blob identity of every served asset and the 19-file CommonJS test/fixture dependency closure, including lazily loaded preprocessing modules and package manifests. It also records Node/Playwright/Chromium versions, fixture input hashes and SHA-256/byte lengths for all 30 screenshots. Each of the six viewport/theme cases uses the same invented input hash.
+A new rapid cross-origin regression did reproduce a concrete defect on c92e1e5: day Close → immediately open the Bills heading → Escape restored the previous day. The old skin close-event fallback survived the new native opener. The bounded fix releases that stale projected opener before heading/hero open; the native sheet then retains the correct current origin. No financial behavior changed.
 
-The screenshots cover 1440px, 390px and 320px in light and dark themes at 900px height. Normal-motion Bills/Income pixel pairs were inspected for every viewport/theme, plus desktop and mobile Period figures/Back views. Their compact text, right-aligned amounts, tight divided rows, native sheet controls and readable mobile wrapping match the existing Income treatment. The original reduced-motion day/list views were inspected in the initial proof.
+## Repaired native lists and pixels
 
-The four-bill day exposes its four original roster rows once. Each keeps its native id/date detail handler. One native dialog owns the roster, details and Back. The hero opens the same compact native roster: 15px names/amounts, at least 56px desktop rows and 64px mobile rows. Twelve of fourteen rows fit in the desktop viewport. Scrolling reaches the final bill.
+The [source-bound report](report.json) records the clean tested head/tree and Git-blob/SHA-256 identity of every served asset and the 19-file CommonJS test/fixture dependency closure, including lazy preprocessing and package manifests. It includes runtime versions, the identical invented input hash for all six cases, and SHA-256/byte lengths for all 36 screenshots.
 
-![Four-bill day](1440-light-four-bill-day.png)
+Views cover 1440px, 390px and 320px in light/dark at 900px height. Fresh normal-motion Bills/Income pixel pairs and keyboard-focus views were inspected across every width/theme, plus desktop/mobile Period figures/Back. Compact names and amounts are 15px, with at least 56px desktop and 64px mobile rows. Twelve of fourteen rows fit on desktop; scrolling reaches the final bill. Fixture amounts, including the four-digit mortgage and original estimate cues, fit on one line without overflow at all six widths/themes. No claim is made about the tester's unspecified live wrapped amount.
+
+![Whole-square keyboard focus](1440-light-calendar-keyboard-focus.png)
+![Mobile whole-square keyboard focus](390-dark-calendar-keyboard-focus.png)
+![Four native bill occurrences](1440-light-four-bill-day.png)
 ![Compact hero Bills list](1440-dark-compact-hero-bills.png)
 ![Mobile day list](320-light-four-bill-day.png)
-![Mobile compact list](390-dark-compact-hero-bills.png)
-
-![Native fixture Income for comparison](390-dark-native-income-reference.png)
-![Normal-motion compact Bills](390-dark-normal-motion-compact-hero-bills.png)
+![Mobile compact Bills](390-dark-normal-motion-compact-hero-bills.png)
+![Native Income comparison](390-dark-native-income-reference.png)
 ![Period figures after Why and Back](390-dark-period-figures-back.png)
 
-## Deterministic checks
+Every day occurrence opens its original id/date evidence. One native dialog owns list/detail/Back. Empty days remain inert and have no tab stop. Both heading and hero are actionable; no unrelated summary or timeline tab stops were changed. Native roster/detail status wording and original paid/uncertain/estimate semantics are retained. Exact-main pixels already show Internet as Due in the roster and Not paid in its detail (whose data-bill-status is still due), with the original missing-evidence qualifier. That existing wording difference is preserved rather than reinterpreted.
+
+## Checks
+
+All eight focused suites were rerun after the focus fix and passed:
 
 ```text
 node test/test-budget-surface.js
@@ -44,30 +53,26 @@ node test/test-bill-detail.js
 node test/test-paid-actual-display-trust.js
 ```
 
-All eight focused suites passed. The optional browser proof passed with Playwright available through NODE_PATH, CHROME_PATH pointing to installed Chromium, BILLS_PROOF_DIR outside Git, and BILLS_SOURCE_BOUND=1:
+With installed Playwright/Chromium, NODE_PATH, CHROME_PATH, BILLS_PROOF_DIR outside Git, and BILLS_SOURCE_BOUND=1:
 
 ```text
 node test/browser-bills-usability.js
 ```
 
-It covers square background, logo and count activation; four, single and empty days; Enter/Space; repeated day/hero/detail activation; every day occurrence's native evidence identity; Back/Close/Escape focus; same-period list/detail remounts; native filters; period switches; original paid/uncertain states; unchanged App.data; mobile scrolling; and one modal. No browser errors or write requests occurred.
+The browser proof passed with 72 focused flow records and no browser errors/write requests. It covers square background/logo/count, full-square keyboard focus, four/single/empty days, every occurrence's native detail, Enter/Space, repeated day/hero/detail activation, one modal, Back/Close/Escape focus, same-period remounts, native filters, period switches, mobile scrolling and immutable App.data.
 
-The follow-up adds 42 focused flow records across all six viewport/theme combinations:
+Normal WAAPI entry/detail motion is active during DOM click bursts. Repeated open/Close, Close/reopen, detail/Back, resize cancellation and remount cancellation retain the correct native stack and remove decorative shells. Explicit heading Enter/Escape and rapid day Close/new heading or hero/Escape now restore the exact origin in every width/theme. Projected day ARIA clears on asynchronous native close; transient and settled values are separately recorded.
 
-- Normal WAAPI motion is active during native DOM click bursts, bypassing Playwright's animation/stability waits. Repeated day/hero open and Close, Close/reopen reversal, and repeated detail/Back retain one native sheet and the correct frame count.
-- Escape dismisses and restores focus. Resize cancels decoration while retaining the native day list. A real App remount cancels the detached animation and restores the native day. Departure shells disappear or are cancelled by reversal/repeated Close.
-- Period figures → Why moves the original deduction source into the existing dialog. Back returns to Why with the disclosure expanded and the Paid filter retained; reopening Why then Close restores the hero opener. The selected pay period and App.data remain unchanged.
-
-Projected day ARIA state is cleared by the native asynchronous close event. The report distinguishes its transient value at native close from its verified false value after that event; modal closure and focus restoration happen immediately. No implementation change was needed to pass these flows. The native-sheet unit suite was rerun and passed.
+Period figures → Why moves the original deduction source into the same sheet. Back restores Why focus, the expanded disclosure and Paid filter. Why → Close restores the hero. Selected pay period remains unchanged.
 
 ```text
 npm test
 ```
 
-The full Windows run is in progress at publication. Its private-history suite fails with `history-io-failed`; the identical failure was reproduced on an untouched base worktree with `node test/test-private-period-history.js`. No full-suite PASS is claimed. Hosted Linux checks remain pending.
+The fresh final-source Windows full run is in progress at publication. The earlier full run was stopped when the focus fix made that head obsolete. It had a private-history `history-io-failed` failure reproduced identically on unchanged base; no full-suite PASS is claimed. Hosted Linux checks remain pending. The draft is published before long CI completes.
 
 ## Reference and scope limits
 
-Private owner Bills and Income pixels were inspected before implementation and retained outside Git. Supported Library prepare_materialize succeeded, but its resolved-reference helper failed on Windows with `AttributeError: module 'os' has no attribute 'setxattr'`; compliant original-file materialization could not complete. A browser inspection of those resolved references supplied the pixel comparison.
+Private owner Bills/Income pixels were inspected before implementation and retained outside Git. Supported Library prepare_materialize succeeded, but its resolved-reference helper failed on Windows with `AttributeError: module 'os' has no attribute 'setxattr'`; compliant original-file materialization remains blocked. Inspection used the resolved browser references.
 
-This change filters already-published native rows and changes hit targets/list density. Forecast amounts, calculations, settlement labels, trust, data mappings, provider actions and individual detail renderers remain unchanged. Systems review is PENDING; this proof is not a review PASS.
+This change filters already-published native rows and changes hit targets, list density and opener focus. Forecast amounts, calculations, settlement labels, trust, mappings, provider actions and individual detail renderers remain unchanged. Systems review is PENDING. No merge or self-issued Systems PASS.
