@@ -176,6 +176,10 @@ async function proveOriginal({ open, capture }) {
     await page.emulateMedia({reducedMotion:'reduce'});
     await page.waitForFunction(()=>__riverPair.port.reduce);
     assert.equal(await page.evaluate(()=>__riverPair.port.head.settled&&__riverPair.port.reveal===1),true);
+    assert.equal(await page.locator('.budget-bento .t-river').evaluate(el=>Number(getComputedStyle(el).opacity)),1,'reduced-motion selector stays visible');
+    // Resize resets a canvas. Repaint both at the same fixed camera/time for
+    // the paired capture; the original itself does not invalidate a settled reduced frame.
+    await page.evaluate(()=>{for(const r of [__riverPair.original,__riverPair.port]){r.layout();r.head.set(3);r.index=3;r.mark(3);r.place(3);r.reveal=1;r.draw(12,3);r.pill.querySelector('b').textContent='$700.00'}});
     results.push({width,theme,geometryIdentical:true,originalLiveInput:originalHeld,portLiveInput:portHeld,staticPixelDifferences:staticPixels,movingPixelDifferences:pixels.differences,springIdentical:true,resize:true,reducedMotion:true});
     if(capture)await capture(page,'budget-river-pair-'+width+'-'+theme+'.png');
     await page.close();

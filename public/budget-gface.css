@@ -920,7 +920,7 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
 .blend-river-today svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
 .blend-river-today:active { transform:scale(.94); }
 .blend-river-today + .blend-theme { margin-left:0; }
-@media (prefers-reduced-motion:reduce) { .blend-river-today, .budget-bento.atlas-g .tile.t-river { animation:none !important; transition:none; opacity:1; } }
+@media (prefers-reduced-motion:reduce) { .blend-river-today, .budget-bento.atlas-g .tile.t-river { animation:none !important; transition:none !important; opacity:1 !important; } }
 @keyframes river-tile-in { from { opacity:0; transform:translateY(18px) scale(.97); } to { opacity:1; transform:rotateX(0deg) rotateY(0deg); } }
 .budget-bento.atlas-g .g-river-wrap { --r-tile: 28px; --ease: cubic-bezier(.2,.8,.2,1); --ease-out: cubic-bezier(.16,1,.3,1); --ease-spring: cubic-bezier(.34,1.4,.64,1); --river-bg: #0b0c10; --shadow: var(--g-shadow); position: relative; z-index: 2; min-width: 0; width: 100%; }
 .budget-bento.atlas-g .tile.t-river {
