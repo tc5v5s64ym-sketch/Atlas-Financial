@@ -16,7 +16,8 @@ function grantShape(grant, context, now) {
     && grant.cleanupInstructions.every(i => Cleanup.schema.safeParse(i).success)
     && new Set(grant.cleanupInstructions.map(i => i.name)).size === grant.cleanupInstructions.length
     && grant.allowNotes === grant.cleanupInstructions.some(i => i.changes.notesAppend !== undefined), 'invalid-cleanup-owner-grant');
-  check(grant.cleanupInstructions.every(i => !i.changes.payee || !/^transfer\s*:/i.test(i.changes.payee)),
+  check(grant.cleanupInstructions.every(i => !i.changes.payee
+    || !/^transfer\s*:/i.test(i.changes.payee.replace(/\p{Cf}/gu, '').normalize('NFKC').trimStart())),
     'transfer-label-requires-structured-evidence');
   // Reuse all v1 structural/binding/time/account/attempt checks. No v1 grant is
   // mutated or upgraded. A metadata-only grant needs no category transition.

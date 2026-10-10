@@ -193,10 +193,13 @@ async function main() {
   const unsupported = await fixture(), unsupportedInstruction = { ...instruction, changes: { payee: 'Different permitted-looking name' } };
   assert.throws(() => C.grantShape(unsupported.grant, { ...unsupported.context, providerProof: { ...unsupported.context.providerProof, cleanupFields: undefined } },
     Date.parse(unsupported.inputs.payload.fetchedAt)), /provider-contract/);
-  const misleading = { ...unsupported.grant, allowNotes: false,
-    cleanupInstructions: [{ ...instruction, changes: { payee: 'Transfer: Synthetic Bills → Synthetic Weekly' } }] };
-  assert.throws(() => C.grantShape(misleading, unsupported.context, Date.parse(unsupported.inputs.payload.fetchedAt)),
-    /transfer-label-requires-structured-evidence/, 'a generic name must not bypass the structured transfer proof');
+  for (const payee of ['Transfer: Synthetic Bills → Synthetic Weekly', ' transfer : Bills → Weekly',
+    'Ｔｒａｎｓｆｅｒ： Bills → Weekly', 'Transfer\u200b: Bills → Weekly']) {
+    const misleading = { ...unsupported.grant, allowNotes: false,
+      cleanupInstructions: [{ ...instruction, changes: { payee } }] };
+    assert.throws(() => C.grantShape(misleading, unsupported.context, Date.parse(unsupported.inputs.payload.fetchedAt)),
+      /transfer-label-requires-structured-evidence/, 'a generic name must not bypass the structured transfer proof');
+  }
   const unsupportedReview = { ...unsupported.review(), supportedChanges: unsupportedInstruction.changes };
   assert.equal((await unsupported.service.invoke('submitCleanupEvidence', { transactionRef: await unsupported.ref(),
     grantRef: unsupported.grant.grantRef, cleanupInstruction: unsupportedInstruction, review: unsupportedReview }, unsupported.auth)).status, 'unavailable');
