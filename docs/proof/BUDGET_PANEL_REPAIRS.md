@@ -1,5 +1,7 @@
 # Budget panel repairs — Draft #548
 
+The current observation-qualification repair and source binding are recorded in [the amount repair report](BUDGET_AMOUNT_QUALIFICATION_REPAIR.md). This earlier repair/integration record is historical; the current receipt exercises 0465f65817a719ae4f5198313a5a125e80c8acf6. The reproduced Engine blocker supersedes prior release-clearance claims pending independent repair verification.
+
 Current source binding and approval scope are recorded in [the final main integration report](BUDGET_FINAL_MAIN_INTEGRATION.md). The repair-specific record below is retained as history; the current receipt exercises 5fdadcd916c78e484c8a45504aedf2c0b7af2b04 with main fc3e6cfd97b09478559f5bec05556ecd365624a6.
 
 Source: Dale's latest browser comments in this existing builder task: full numbers must fit; make the hero fit and remove repeated est. badges; complete Household; add HELOC. Before editing the isolated continuation, the 935-pixel hero overflow and missing HELOC row were reproduced. Verdict: STILL BROKEN, code required. Final visual acceptance remains pending; keep Draft.

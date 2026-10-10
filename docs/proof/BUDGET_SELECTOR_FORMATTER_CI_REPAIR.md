@@ -1,5 +1,7 @@
 # Date-formatter CI repair — Draft #548
 
+The current observation-qualification repair and source binding are recorded in [the amount repair report](BUDGET_AMOUNT_QUALIFICATION_REPAIR.md). This earlier repair/integration record is historical; the current receipt exercises 0465f65817a719ae4f5198313a5a125e80c8acf6. The reproduced Engine blocker supersedes prior release-clearance claims pending independent repair verification.
+
 Current source binding and approval scope are recorded in [the final main integration report](BUDGET_FINAL_MAIN_INTEGRATION.md). The repair-specific record below is retained as history; the current receipt exercises 5fdadcd916c78e484c8a45504aedf2c0b7af2b04 with main fc3e6cfd97b09478559f5bec05556ecd365624a6.
 
 Source: Dale's instruction to the existing builder to fix the four failures in [the latest bounded CI comment](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6094496012). Current-state verdict before editing: STILL BROKEN; code required. Both Linux jobs at publication 48651fac22895b9ae77476b3f714f4d762d4981f failed four of 350 suites with periodDateFormat undefined. Current main 657339f46862f187ba2ab81c066e5cd474318b2b was verified unchanged and integrated. The existing isolated branch continues the same Draft PR. No second builder, branch or financial/provider repair is introduced.

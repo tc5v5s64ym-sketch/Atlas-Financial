@@ -1,5 +1,7 @@
 # Selector smoothness — Draft #548
 
+The current observation-qualification repair and source binding are recorded in [the amount repair report](BUDGET_AMOUNT_QUALIFICATION_REPAIR.md). This earlier repair/integration record is historical; the current receipt exercises 0465f65817a719ae4f5198313a5a125e80c8acf6. The reproduced Engine blocker supersedes prior release-clearance claims pending independent repair verification.
+
 Current source binding and approval scope are recorded in [the final main integration report](BUDGET_FINAL_MAIN_INTEGRATION.md). The repair-specific record below is retained as history; the current receipt exercises 5fdadcd916c78e484c8a45504aedf2c0b7af2b04 with main fc3e6cfd97b09478559f5bec05556ecd365624a6.
 
 Source: Dale's latest instruction in the existing builder task: the date selector is clunky; make it smooth like the original g-blend mockup. Current-state verdict before editing: STILL BROKEN, code required. The isolated branch and Draft PR head db7e888 were checked; current main 657339f46862f187ba2ab81c066e5cd474318b2b was integrated and remained current. Main retains the incumbent native Budget selector; this repair continues the owner-approved #548 port. No owner decision is needed to build this repair. Final visual/release acceptance remains pending; keep Draft.

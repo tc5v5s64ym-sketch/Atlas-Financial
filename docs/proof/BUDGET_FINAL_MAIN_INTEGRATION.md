@@ -1,5 +1,7 @@
 # Final main integration - PR #548
 
+The current observation-qualification repair and source binding are recorded in [the amount repair report](BUDGET_AMOUNT_QUALIFICATION_REPAIR.md). This earlier repair/integration record is historical; the current receipt exercises 0465f65817a719ae4f5198313a5a125e80c8acf6. The reproduced Engine blocker supersedes prior release-clearance claims pending independent repair verification.
+
 Dale directed one clean integration of the held current main into the existing PR. Main was verified as fc3e6cfd97b09478559f5bec05556ecd365624a6 before merging; the published starting head was 280c9b87a407cd627f2494cd537661c0756127c0. The prior builder confirmed read-only status. The owner checkout and its Git metadata were not changed. No merge or deployment is authorized here.
 
 ## Exact source boundary
