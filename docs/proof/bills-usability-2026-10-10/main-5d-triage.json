@@ -1,0 +1,376 @@
+{
+  "surface": "offline http://bills.test; not live production",
+  "head": "5dceb7c6d4f673e4b464c34021b2266f6beb2313",
+  "probeSha256": "281a5b3102c9bcd3bda52a097299bef7a4ad51c53a9b2bc267e4e3c4421b7ee9",
+  "runtime": {
+    "node": "v24.18.0",
+    "platform": "win32",
+    "playwright": "1.62.1",
+    "chromium": "154.0.4258.62"
+  },
+  "fixture": "8a983480b72deb350be353c2765317e35c74e45ea693bc140051ce22b6c57058",
+  "files": {
+    "public/index.html": {
+      "sha256": "f3a3bb1b3e749310bec43dc7cc482355c5ee1049828ff726264aee60fc8242fa",
+      "bytes": 12662,
+      "blob": "ca13c1404c18780d26d8a8992394600f32b8ca15"
+    },
+    "public/fonts/Geist.woff2": {
+      "sha256": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
+      "bytes": 25820,
+      "blob": "d99d90af25861255c31732154a68fe8c16ab7a94"
+    },
+    "public/fonts.css": {
+      "sha256": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+      "bytes": 403,
+      "blob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a"
+    },
+    "public/styles.css": {
+      "sha256": "77dca1a796719370425fd225e2ff5f6a9d732a38d75a250f7296e8d4ef41aef5",
+      "bytes": 143239,
+      "blob": "c25d723d02cfc40c56e88b38f0e80d9624f68af7"
+    },
+    "public/household-view.css": {
+      "sha256": "e5cb08cfe7d5663fab76da2eb51f68d4890b1c4b550cf80eb1f61930a749620e",
+      "bytes": 5148,
+      "blob": "0322e266247f9595f9ed9289585d9b20a7118378"
+    },
+    "public/budget-polish.css": {
+      "sha256": "29be9b313c3c7b4d402ff730abe76dfd09e07f38df4dfd04a26a12fa479d16fe",
+      "bytes": 22616,
+      "blob": "58305d757ab6eb1d7969413f9c7f5cfa7f66970f"
+    },
+    "public/bill-detail.css": {
+      "sha256": "df5e707892d09bded4516822edd1c8a056b472e092c353062a645d7a79ef69c0",
+      "bytes": 1938,
+      "blob": "a9dc66e49d30e8c1992e7bb0cfc37985f3bfa307"
+    },
+    "public/savings-inventory.css": {
+      "sha256": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58",
+      "bytes": 1456,
+      "blob": "75f0d408c35ad33fe983711efedb5c67d934bb1a"
+    },
+    "public/running-build.css": {
+      "sha256": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
+      "bytes": 220,
+      "blob": "9bea95d13ca7b75cba3f90092145a1fb3abac272"
+    },
+    "public/budget-surface.css": {
+      "sha256": "6883e2e496495b446def0342d4d4066a90f4ae7067b621b988ea694a489d6162",
+      "bytes": 57414,
+      "blob": "88f07cce7be39074dc7a63b3c39c5c3214e077d8"
+    },
+    "public/budget-blend.css": {
+      "sha256": "8f3cd39e7cc381f0dc095ac17cf312bd384ffed467417eeb8e7533f6bd55ad6c",
+      "bytes": 69215,
+      "blob": "beed82f562dcbf094702fd4ae620c1d5e5712f10"
+    },
+    "public/budget-gface.css": {
+      "sha256": "5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e",
+      "bytes": 56055,
+      "blob": "8500695cb746a3c7a88e6e7f377259120fba36c2"
+    },
+    "public/budget-sheet-motion.css": {
+      "sha256": "4924d183ec9a07b874745859d972ec1a94ef4e2d783aec8ca4055749839043ea",
+      "bytes": 14804,
+      "blob": "bde06d9c6bcf5033c4e14d2a1d605a022c1f9ce3"
+    },
+    "public/app.js": {
+      "sha256": "c43a8e662fcb66520b93e1c24394aad674a368bb687f5a39b0471ddedf3569ec",
+      "bytes": 21890,
+      "blob": "74909f85f9857f9f2543e92fdc9afec6c936c515"
+    },
+    "public/forecast-card-period.js": {
+      "sha256": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
+      "bytes": 12263,
+      "blob": "d54e3415eae6c209c3c3a253502c962bd41e809e"
+    },
+    "public/forecast.js": {
+      "sha256": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
+      "bytes": 1066781,
+      "blob": "f6ce66e94781c1a8bf59752e8b08cb78f100e27e"
+    },
+    "public/forecast-chequing.js": {
+      "sha256": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
+      "bytes": 4420,
+      "blob": "0e8971f32b00b667e0b2305b644c5027ad112b89"
+    },
+    "public/balance-history.js": {
+      "sha256": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
+      "bytes": 12489,
+      "blob": "85496092c51dde7127b29f597a8168777849baf6"
+    },
+    "public/bill-detail.js": {
+      "sha256": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
+      "bytes": 14578,
+      "blob": "5c0b65d4f7623878489970d406e88eef4c6daf31"
+    },
+    "public/savings-inventory.js": {
+      "sha256": "bc3f0f2213fa93b611442cd25d22025fd379a74cf389df00a5b36d0df83b375d",
+      "bytes": 6882,
+      "blob": "5ed70b047d0bb94cdee5bbf0bb7f4ad5e440007c"
+    },
+    "public/budget-surface.js": {
+      "sha256": "0259779a5f68b1f127d0ab40daf054022529865c5d1c72d505ae4d0bd2ad19ab",
+      "bytes": 4071,
+      "blob": "2f3cb84d34834b27ab768fa952d26e5bd80ec0c0"
+    },
+    "public/budget-card-movements.js": {
+      "sha256": "8ab3a885776c9b8b1e0653bf3003b69ee08eaf9d18b0e6cbfc5528c43aca24a2",
+      "bytes": 8974,
+      "blob": "fa1f2876a6c94fcee136cec5ea25e771289a3b74"
+    },
+    "public/budget-sheet-motion.js": {
+      "sha256": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
+      "bytes": 7921,
+      "blob": "d9fe27b2980f4ba3da71edd7fd4fd1220337d65c"
+    },
+    "public/plan.js": {
+      "sha256": "aa43b1a82aa748cdd49f680fc3e149b903cb8158c0ea2f9aabf8e7df55d2536f",
+      "bytes": 512833,
+      "blob": "d4c4dd522b600127419e20c4880afa902b780dab"
+    },
+    "public/household-view.js": {
+      "sha256": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
+      "bytes": 12172,
+      "blob": "504314430c9a4378194edb4ddcff42af51777ef3"
+    },
+    "public/budget-polish.js": {
+      "sha256": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
+      "bytes": 11378,
+      "blob": "c2f6f645a11e0f0bd1d8be9c8726c2461a5db10e"
+    },
+    "public/aurora.js": {
+      "sha256": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
+      "bytes": 9183,
+      "blob": "ddf5f5d5887ec87b79d1696ee0546d31df3839ba"
+    },
+    "public/budget-river.js": {
+      "sha256": "e6e90e515006bcf37d7ffec9b0728791af97e8e6164317d596c684bac2ffb8c9",
+      "bytes": 25143,
+      "blob": "ef0980127b9e86c4f11da2107fa0e896fde4aae8"
+    },
+    "public/budget-blend.js": {
+      "sha256": "27eef404171da6fb6eba8d18f913d5847ec9294d3f53723cee5036766adc6f32",
+      "bytes": 107954,
+      "blob": "10e6009090c2f962bc95ab1a9e95025a5b84ba00"
+    },
+    "public/nav-glass.css": {
+      "sha256": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010",
+      "bytes": 7918,
+      "blob": "34f952c427e9cf67881a14ff3f784b1c4944d7d8"
+    }
+  },
+  "dependencies": {
+    "test/fixtures/budget-surface-data.js": {
+      "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
+      "bytes": 14528,
+      "blob": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
+    },
+    "scripts/live-plan.js": {
+      "sha256": "8ac1729e7b17ba94bb2e93032339e60623698dec783d263d7be63e6305afcece",
+      "bytes": 63991,
+      "blob": "3da2f2a01e1bc49c6df7d09de7c2c297b9d80210"
+    },
+    "scripts/provider-observe.js": {
+      "sha256": "8c81980207b6e027dbc1224838257d7efe2b153784be8654053ea9c06706f615",
+      "bytes": 190876,
+      "blob": "bc48c44fe4e0388e6ec96dea3b887aa984de88d1"
+    },
+    "scripts/reconcile.js": {
+      "sha256": "6386ce0ec5716db3048dbc4d4c7d1502449d47968a4926a3b95da5079e8859ee",
+      "bytes": 76563,
+      "blob": "24286860e1a8efcdbe04d1629fd461899c3fb865"
+    },
+    "public/forecast.js": {
+      "sha256": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
+      "bytes": 1066781,
+      "blob": "f6ce66e94781c1a8bf59752e8b08cb78f100e27e"
+    },
+    "public/forecast-card-period.js": {
+      "sha256": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
+      "bytes": 12263,
+      "blob": "d54e3415eae6c209c3c3a253502c962bd41e809e"
+    },
+    "scripts/local-credentials.js": {
+      "sha256": "6b802c88673fcb1ba528fc1ba63e1b5381577f38d86367764f878e5827501237",
+      "bytes": 13776,
+      "blob": "fdeff86aaa9c16f970d0232098f6d73f25bc90b6"
+    },
+    "scripts/salary-match-diagnostic.js": {
+      "sha256": "359a3673cfa14d96e74b98f3efd59ce5823a9bebc4cebca834b2bacf950de922",
+      "bytes": 8732,
+      "blob": "759805e510ecddf758f592e1dff136bf0295bcbe"
+    },
+    "scripts/card-minimum-category.js": {
+      "sha256": "62a5cbbbfe0d61c5787ae5dbaf2795cbfe941a7c090a897acde39fb209b4faec",
+      "bytes": 8322,
+      "blob": "ea213c8a1c3b04c4844fe9e907bb77a2921aa2af"
+    },
+    "scripts/canonical-refresh.js": {
+      "sha256": "74aa9ba212178bafe9c1b744ebc1d6caa57639ededa783d9e442fa85450f2e7f",
+      "bytes": 143399,
+      "blob": "96aa5b15fecc816afd9129d74f0dc41ca9ea11b8"
+    },
+    "scripts/operating-answer.js": {
+      "sha256": "e93d7f81e614034371c4f2aa59ad97fc741a6e82908297cf953e8b59beca459c",
+      "bytes": 12733,
+      "blob": "7d72e586dfa362e98ca8531e62d05f205bf64b0c"
+    },
+    "scripts/snapshot-balances.js": {
+      "sha256": "1c07c152efdf306389082aa9b21f95ae72b63b2c46160c63828c82fc04740f9a",
+      "bytes": 14525,
+      "blob": "630dcb420486b960683bda40abe1b7d915d250e1"
+    },
+    "scripts/positions-summary.js": {
+      "sha256": "165d6345bbc916fe83851ee991553da074cdd619922e3dfada9a6b4f0acdaf53",
+      "bytes": 13507,
+      "blob": "19ed17f8c79609aa780c449f1eb32d86672fe1d9"
+    },
+    "scripts/opening-household-rows.js": {
+      "sha256": "e0ef955367ecbc1648a11060aa76e4546e375f599d55d46e0fc99a04ee60fd87",
+      "bytes": 10430,
+      "blob": "894d8a13cccc95475afbfc9d8748c087cdcd8c5b"
+    },
+    "scripts/refresh-trust.js": {
+      "sha256": "170a0c57908febd51baa886ebe34730710e799b04c98247ed91b4b770c9fb876",
+      "bytes": 15471,
+      "blob": "759f157847a22ae0bb96e57e6a2bf601d7421830"
+    },
+    "test/fixtures/card-coverage-opening.js": {
+      "sha256": "70fed5621e6c62caf551f7136fb107b70c31d843a6473179a7253065092fa5d7",
+      "bytes": 597,
+      "blob": "89f3ba93e3e9f2f828b48e6d36c7050c1bd27e91"
+    }
+  },
+  "focus": {
+    "square": {
+      "x": 402.484375,
+      "y": 395.421875,
+      "width": 91.171875,
+      "height": 80
+    },
+    "button": {
+      "x": 454.65625,
+      "y": 436.421875,
+      "width": 28,
+      "height": 28
+    },
+    "icon": {
+      "x": 454.65625,
+      "y": 436.421875,
+      "width": 28,
+      "height": 28
+    },
+    "visible": true,
+    "outline": "rgb(86, 80, 224) solid 3px",
+    "offset": "3px"
+  },
+  "target": {
+    "tag": "SPAN",
+    "classes": "blend-day day has",
+    "day": "24"
+  },
+  "backgroundActivates": false,
+  "dayDetails": 1,
+  "dayRows": 0,
+  "headingEscape": {
+    "heading": true,
+    "hero": false,
+    "active": "<button type=\"button\" class=\"blend-bills-open\" data-blend-bills-open=\"\" aria-expanded=\"false\" aria-label=\"Bills detail\" aria-controls=\"blend-bills-more\" aria-haspopup=\"dialog\"><span class=\"blend-tile-ico\"><svg viewBox=\"0"
+  },
+  "heroMetrics": {
+    "rows": 14,
+    "height": 121.546875,
+    "amountSize": "40px"
+  },
+  "statuses": [
+    {
+      "id": "hydro",
+      "text": "To confirm",
+      "amount": "≈estimated  $120.00"
+    },
+    {
+      "id": "card-minimum",
+      "text": "Due",
+      "amount": "$60.00"
+    },
+    {
+      "id": "internet",
+      "text": "Due",
+      "amount": "$85.00"
+    },
+    {
+      "id": "synthetic-extra-0",
+      "text": "Due",
+      "amount": "$20.00"
+    },
+    {
+      "id": "synthetic-extra-1",
+      "text": "Due",
+      "amount": "≈estimated  $21.00"
+    },
+    {
+      "id": "synthetic-extra-2",
+      "text": "Due",
+      "amount": "$22.00"
+    },
+    {
+      "id": "synthetic-roster-0",
+      "text": "Due",
+      "amount": "$10.00"
+    },
+    {
+      "id": "synthetic-roster-1",
+      "text": "Due",
+      "amount": "$11.00"
+    },
+    {
+      "id": "synthetic-roster-2",
+      "text": "Due",
+      "amount": "$12.00"
+    },
+    {
+      "id": "synthetic-roster-3",
+      "text": "Due",
+      "amount": "$13.00"
+    },
+    {
+      "id": "synthetic-roster-4",
+      "text": "Due",
+      "amount": "$14.00"
+    },
+    {
+      "id": "synthetic-roster-5",
+      "text": "Due",
+      "amount": "$15.00"
+    },
+    {
+      "id": "synthetic-roster-6",
+      "text": "Due",
+      "amount": "$16.00"
+    },
+    {
+      "id": "mortgage",
+      "text": "Paid",
+      "amount": "$1,400.00"
+    }
+  ],
+  "detailStatus": "still due",
+  "screenshots": {
+    "calendar-keyboard-focus.png": {
+      "sha256": "3825b1b12caa988fd631989c1e0835bcd1e69f2362405b01ac07ed77bc4c39e3",
+      "bytes": 210662
+    },
+    "four-bill-first-only.png": {
+      "sha256": "26ac54daf4a550353e4c94e165c1b19e5af9e44bbe6163e9264fef833582aaa5",
+      "bytes": 253526
+    },
+    "hero-giant-bills.png": {
+      "sha256": "88351ced588b0110f44f61b90ec3be78265416c324be6ee896f453a59cdce4c0",
+      "bytes": 305402
+    }
+  },
+  "errors": [],
+  "writes": []
+}

@@ -461,4 +461,42 @@ for (const choice of ['paid', 'check', 'all']) {
     'a no-longer-published filter falls back to the complete current evidence');
   fresh.sheet.close(false);
 }
-console.log('PASS native Budget drawer: original-node ownership, Back/focus, immutable evidence, deferred remount chain, cancellation, unique identities, held-source lookup and retained Bills filters');
+{
+  const first = filterFixture();
+  first.heading.setAttribute('data-blend-bill', 'day:2026-10-09');
+  first.panel.setAttribute('data-budget-bill-day', '2026-10-09');
+  first.paidRow.setAttribute('data-budget-bill-date', '2026-10-10');
+  openBills(first); openBill(first);
+  const initial = first.sheet.snapshot();
+  assert.equal(initial.frames[0].billsDay, '2026-10-09');
+  first.sheet.open(first.detail, first.row, 'Hydro');
+  first.sheet.open(first.detail, first.row, 'Hydro');
+  assert.equal(first.sheet.snapshot().frames.length, 2, 'duplicate activation keeps one list/detail stack');
+  assert.equal(first.dialog.showCount, 1, 'duplicate activation never replaces the modal');
+  first.sheet.close(false);
+  const fresh = filterFixture();
+  fresh.heading.setAttribute('data-blend-bill', 'day:2026-10-09');
+  fresh.paidRow.setAttribute('data-budget-bill-date', '2026-10-10');
+  const paint = removeBlendBills(fresh);
+  assert.equal(fresh.sheet.restore(initial, { deferBlend: true }), 'pending');
+  assert.equal(fresh.sheet.snapshot().frames[0].billsDay, '2026-10-09');
+  paint(); assert.equal(fresh.sheet.completeDeferredRestore(), true);
+  fresh.sheet.back();
+  assert.equal(fresh.panel.getAttribute('data-budget-bill-day'), '2026-10-09');
+  assert.equal(fresh.row.hidden, false);
+  assert.equal(fresh.paidRow.hidden, true, 'a different occurrence date stays outside the day list');
+  assert.equal(fresh.paidBucket.hidden, true);
+  assert.equal(fresh.document.activeElement, fresh.row);
+  assert.equal(fresh.filterStatus.textContent, 'Showing bills on 2026-10-09.');
+  assert.equal(fresh.evidence.textContent, 'Fixture publication: $120.00; unconfirmed');
+  fresh.sheet.close();
+  assert.equal(fresh.document.activeElement, fresh.heading);
+  fresh.panel.removeAttribute('data-budget-bill-day');
+  openBills(fresh);
+  const complete = fresh.sheet.snapshot(); fresh.sheet.close(false);
+  assert.equal(fresh.sheet.restore(complete), true);
+  assert.equal(fresh.paidRow.hidden, false, 'the full roster restores rows hidden by a day choice');
+  assert.equal(fresh.notPaidBucket.hidden, false); assert.equal(fresh.paidBucket.hidden, false);
+  fresh.sheet.close(false);
+}
+console.log('PASS native Budget drawer: original-node ownership, Back/focus, immutable evidence, deferred remount chain, cancellation, unique identities, held-source lookup, Bills filters/day and duplicate activation');
