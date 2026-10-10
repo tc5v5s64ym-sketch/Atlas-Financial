@@ -385,11 +385,14 @@ function createService(options = {}) {
       if (source.type === 'crypto_synced') {
         // Official v2.11.1 stream identity for a synced-crypto source is
         // crypto_synced_id PLUS symbol: distinct symbols under one
-        // connection are distinct streams, not duplicates. A missing or
-        // malformed symbol fails closed rather than collapsing streams.
-        if (typeof source.symbol !== 'string' || !/^[A-Za-z0-9]{2,10}$/.test(source.symbol))
+        // connection are distinct streams, not duplicates. The documented
+        // symbol contract is a required string of 1-25 characters with no
+        // pattern or normalization, so the exact provider symbol is
+        // preserved in the identity. A missing, non-string, empty or
+        // over-length symbol fails closed rather than collapsing streams.
+        if (typeof source.symbol !== 'string' || source.symbol.length < 1 || source.symbol.length > 25)
           throw new Error('balance-history-unavailable');
-        sourceKey += ':' + source.symbol.toUpperCase();
+        sourceKey += ':' + source.symbol;
       }
       if (seenSources.has(sourceKey)) throw new Error('duplicate-provider-identity');
       seenSources.add(sourceKey);

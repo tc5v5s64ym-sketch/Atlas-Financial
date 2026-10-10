@@ -154,6 +154,40 @@ const { createService, READ_SCOPE, WRITE_SCOPE } = require('../scripts/assistant
   const cryptoNoSymbol = await service.invoke('balanceHistory', input, auth);
   assert.equal(cryptoNoSymbol.status, 'unavailable');
   assert.equal(cryptoNoSymbol.diagnostic.code, 'balance-history-unavailable');
+  // Documented symbol contract (v2.11.1): a required string of 1-25 chars,
+  // no pattern or normalization — the exact provider symbol is preserved.
+  // 1-char and 25-char boundaries succeed as distinct streams.
+  history = [
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'X' }, balances: [
+      { type: 'historical', id: 503, month: '2026-01', balance: '3.5000', currency: 'cad', to_base: 3.5, crypto_balance: '1.0' } ] },
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'ABCDEFGHIJKLMNOPQRSTUVWXY' }, balances: [
+      { type: 'historical', id: 504, month: '2026-01', balance: '4.5000', currency: 'cad', to_base: 4.5, crypto_balance: '1.0' } ] }];
+  const cryptoBounds = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoBounds.status, 'ok');
+  assert.equal(cryptoBounds.accountCount, 2);
+  // Exact preservation: symbols differing only by case are distinct streams
+  // (no uppercasing/normalization is applied to the identity).
+  history = [
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'btc' }, balances: [] },
+    { source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'BTC' }, balances: [] }];
+  const cryptoCase = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoCase.status, 'ok');
+  assert.equal(cryptoCase.accountCount, 2);
+  // >25 chars fails closed.
+  history = [{ source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }, balances: [] }];
+  const cryptoTooLong = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoTooLong.status, 'unavailable');
+  assert.equal(cryptoTooLong.diagnostic.code, 'balance-history-unavailable');
+  // Non-string symbol fails closed.
+  history = [{ source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: 123 }, balances: [] }];
+  const cryptoNonString = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoNonString.status, 'unavailable');
+  assert.equal(cryptoNonString.diagnostic.code, 'balance-history-unavailable');
+  // Empty string (below the 1-char minimum) fails closed.
+  history = [{ source: { type: 'crypto_synced', crypto_synced_id: 55, symbol: '' }, balances: [] }];
+  const cryptoEmpty = await service.invoke('balanceHistory', input, auth);
+  assert.equal(cryptoEmpty.status, 'unavailable');
+  assert.equal(cryptoEmpty.diagnostic.code, 'balance-history-unavailable');
 
   // Malformed payloads and malformed entries fail closed with a safe stage.
   history = { not: 'an array' };
