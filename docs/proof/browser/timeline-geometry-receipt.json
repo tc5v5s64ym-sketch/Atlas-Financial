@@ -6,7 +6,7 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "c5fc8cdbffb932e0d10e7b8e245e7746a599e86c",
+    "sourceCommit": "85c0fd3af1ca8f22b614188d33850121ad45d913",
     "sourceTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
     "baseCommit": null,
     "cleanAtStart": true,
@@ -196,7 +196,7 @@
         "right": 191.7265625,
         "top": 79,
         "bottom": 95,
-        "text": "−$420"
+        "text": "\u2212$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -231,7 +231,7 @@
         "right": 191.7265625,
         "top": 79,
         "bottom": 95,
-        "text": "−$420"
+        "text": "\u2212$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -266,7 +266,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "−$420"
+        "text": "\u2212$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -301,7 +301,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "−$420"
+        "text": "\u2212$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -336,7 +336,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "−$420"
+        "text": "\u2212$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -371,7 +371,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "−$420"
+        "text": "\u2212$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -535,5 +535,13 @@
     "after-breakpoint-narrow800-dark.png": "fc993f40b8dfd00bd56143d6886d3837f3c20a0db3038deedd6545566e4d095e",
     "after-reduced-motion-390-dark.png": "113261769f7648aee280e515e3902c7bcfdbb5355abc2263ed1bcf96faa7f521"
   },
-  "failures": []
+  "failures": [],
+  "remoteVerification": {
+    "method": "GitHub API GET /git/trees/a7e915d1da5d97d5becfa95234ef5e55b79f9e77?recursive=1; each bound file's gitBlob compared to the pushed head tree",
+    "pushedHead": "85c0fd3af1ca8f22b614188d33850121ad45d913",
+    "headTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
+    "filesChecked": 7,
+    "allBlobsMatch": true,
+    "verifiedAt": "2026-10-10T20:50:45Z"
+  }
 }
