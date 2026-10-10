@@ -5069,14 +5069,98 @@ function budgetDailySavingsRows(packet, inventory, roster = []) {
     .map(row => ({ key: row.key, label: row.label, saved: null, needed: null, thisPeriod: null }));
 }
 
+// Presentation join only. A grouped row's members are already published by
+// Forecast (backing.items, plus unresolved for withheld members) and its
+// this-period components already published in period.cycleAllocations —
+// the same entries Forecast itself sums into the row's thisPeriod. Nothing
+// here computes a figure: a member prints only when its key matches exactly
+// one published item, and a member allocation prints only when exactly one
+// published allocation names it; otherwise the figure stays unavailable and
+// the group-level published value stands. Settled members are absent from
+// the publication and are never reconstructed here.
+//
+// The allocation identity follows the period kind Forecast publishes:
+// current packets name allocations by occurrence key (item.key), projected
+// packets by bare requirement id (item.id) — the same split Forecast's own
+// row sums use. Only the applicable form is consulted (never a dual-alias
+// fallback), and it must be unique across the published items and the
+// allocations alike; an ambiguous identity fails closed. Historical packets
+// withhold the group's figures (rows publish needed=null /
+// neededTrust=unknown while backing items retain current requirement
+// metadata), so member figures withhold identically: names and dates are
+// the published roster, never today's numbers under a historical group.
+function budgetSavingsRowMembers(packet, row) {
+  const keys = Array.isArray(row?.members) ? row.members : [];
+  if (keys.length < 2) return null;
+  const published = [...(packet?.backing?.items || []), ...(packet?.unresolved || [])];
+  const byKey = new Map();
+  for (const item of published) {
+    if (!item?.key) continue;
+    byKey.set(item.key, byKey.has(item.key) ? null : item);
+  }
+  const projected = packet?.period?.kind === 'projected';
+  const identityOf = item => projected ? item?.id : item?.key;
+  const identityCounts = new Map();
+  for (const item of published) {
+    const identity = identityOf(item);
+    if (typeof identity === 'string' && identity)
+      identityCounts.set(identity, (identityCounts.get(identity) || 0) + 1);
+  }
+  const allocations = new Map();
+  for (const part of packet?.period?.cycleAllocations || []) {
+    if (typeof part?.id !== 'string') continue;
+    allocations.set(part.id, allocations.has(part.id) ? null : part);
+  }
+  const seen = new Set(), members = [];
+  for (const key of keys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const item = byKey.get(key) || null;
+    const identity = item ? identityOf(item) : null;
+    const allocation = typeof identity === 'string' && identityCounts.get(identity) === 1
+      ? allocations.get(identity) : undefined;
+    members.push({ key, item, thisPeriod: allocation ? allocation.amount : null });
+  }
+  const found = members.filter(member => member.item);
+  const groupLabels = [...new Set(found.map(member => member.item.groupLabel).filter(Boolean))];
+  const groups = [...new Set(found.map(member => member.item.group).filter(Boolean))];
+  const title = groupLabels.length === 1 ? groupLabels[0]
+    : groups.length === 1 && groups[0] === 'burrards-team-fees' ? 'Burrards team fees' : row.label;
+  return { title, members, historical: packet?.period?.kind === 'historical' };
+}
+
+function budgetSavingsMemberFigures(member, thisPeriodTrust, historical = false) {
+  const item = member.item;
+  const withheld = budgetV3Money(null, 'unknown');
+  return {
+    name: item ? item.label : 'Member name unavailable',
+    date: item?.date || null,
+    saved: historical ? withheld
+      : item ? budgetV3Money(item.saved, item.saved == null ? 'unknown' : item.trust) : withheld,
+    needed: historical ? withheld
+      : item ? budgetDailyNeededHtml(item) : withheld,
+    proposed: historical ? withheld
+      : budgetV3Money(member.thisPeriod, member.thisPeriod == null ? 'unknown' : thisPeriodTrust),
+  };
+}
+
 function budgetDailySavingsHtml(packet, retainedEvidence = '', inventory = null, context = {}) {
   const value = (amount, trust) => budgetV3Money(amount, trust);
   const rows = budgetDailySavingsRows(packet, inventory).map(row => {
     const needed = budgetDailyNeededHtml(row);
+    const group = budgetSavingsRowMembers(packet, row);
+    const members = group ? `<ul class="budget-savings-members">${group.members.map(member => {
+      const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical);
+      return `<li data-budget-savings-member="${budgetV3Escape(member.key)}">
+      <span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span>
+      <span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span>
+      <span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span>
+    </li>`;
+    }).join('')}</ul>` : '';
     return `<li data-budget-savings-total-goal="${budgetV3Escape(row.key)}">
-      <span>${budgetV3Escape(row.label)}</span>
+      <span>${budgetV3Escape(group ? group.title : row.label)}</span>
       <span><span data-budget-savings-total-saved>${value(row.saved, row.savedTrust)}</span> / <span data-budget-savings-total-needed>${needed}</span><small>Saved / needed</small></span>
-      <span><span data-budget-savings-proposed>${value(row.thisPeriod, row.thisPeriodTrust)}</span><small>This period</small></span>
+      <span><span data-budget-savings-proposed>${value(row.thisPeriod, row.thisPeriodTrust)}</span><small>This period</small></span>${members}
     </li>`;
   }).join('');
   const period = packet.period;
@@ -6837,11 +6921,18 @@ function budgetSavingsGoalsHtml(ctx, period, schedule) {
       || ctx.advice?.savingsFunding != null) {
     const daily = budgetDailySavingsFor(ctx, period.id);
     const roster = [...(period.plannedCostFunding?.items || []), ...(period.plannedCostFunding?.unscheduled || [])];
-    const named = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster).map(row => `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
-      <div class="budget-goal-heading"><strong>${budgetV3Escape(row.label)}</strong></div>
+    const named = budgetDailySavingsRows(daily, ctx.advice?.savingsInventory, roster).map(row => {
+      const group = budgetSavingsRowMembers(daily, row);
+      const members = group ? `<div class="budget-goal-members">${group.members.map(member => {
+        const figures = budgetSavingsMemberFigures(member, row.thisPeriodTrust, group.historical);
+        return `<div class="budget-goal-member" data-budget-savings-member="${budgetV3Escape(member.key)}"><span>${budgetV3Escape(figures.name)}${figures.date ? ` <small>${budgetV3Escape(fmtDate(figures.date))}</small>` : ''}</span><span><span data-budget-savings-member-saved>${figures.saved}</span> / <span data-budget-savings-member-needed>${figures.needed}</span><small>Saved / needed</small></span><span><span data-budget-savings-member-proposed>${figures.proposed}</span><small>This period</small></span></div>`;
+      }).join('')}</div>` : '';
+      return `<li data-budget-savings-goal="${budgetV3Escape(row.key)}"><button type="button" class="budget-goal-row" data-budget-goal-open="${budgetV3Escape(row.key)}" aria-haspopup="dialog">
+      <div class="budget-goal-heading"><strong>${budgetV3Escape(group ? group.title : row.label)}</strong></div>
       <div class="budget-goal-amounts"><span><span class="budget-goal-amount">${budgetV3Money(row.saved, row.savedTrust)}</span><small>Saved</small></span><span aria-hidden="true">/</span><span><span class="budget-goal-amount">${budgetDailyNeededHtml(row)}</span><small>Needed</small></span></div>
-      <p class="budget-goal-context">${daily.period?.kind === 'projected' ? 'Projected top-up: ' : ''}${budgetV3Money(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>
-    </button></li>`).join('');
+      <p class="budget-goal-context">${daily.period?.kind === 'projected' ? 'Projected top-up: ' : ''}${budgetV3Money(row.thisPeriod, row.thisPeriodTrust)} this period<span class="budget-goal-evidence">Info <span aria-hidden="true">></span></span></p>${members}
+    </button></li>`;
+    }).join('');
     return `<div class="budget-surface-card budget-savings-goals" data-budget-savings-goals><p class="budget-surface-eyebrow">${budgetV3Escape(payPeriodRangeLabel(period))}</p><h3>Saving for</h3><ul>${named || '<li>Named savings unavailable.</li>'}</ul>
       <button type="button" class="budget-surface-link" data-budget-funding-inventory aria-haspopup="dialog">Accounts &amp; evidence</button>
       <div data-budget-funding-savings hidden>${daily ? budgetDailySavingsHtml(daily, '', ctx.advice?.savingsInventory, { asOf: ctx.asOf || ctx.advice?.defaultView?.asOf, period }) : 'Daily savings unavailable.'}</div></div>`;

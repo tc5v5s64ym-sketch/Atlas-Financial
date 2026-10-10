@@ -1,0 +1,825 @@
+{
+ "generatedAt": "2026-10-10T18:03:05.222Z",
+ "captureOnly": false,
+ "gitHead": "688101bd688001d3734e0883a36ae71662030dd1",
+ "sourceHashes": {
+  "public/plan.js": "82b14dcbf143b47be1cad9ed8cea354e273fc236191770977421152c07ecddb9",
+  "public/savings-inventory.js": "6e42b5a553d90ed8472bee9d63d5c71a0de042fd71589a097cce86ace4728e81",
+  "public/budget-surface.css": "34f593f9b4464c6f587ddb075c4de2cbb30cd921366a76806eaba4692f2626a0",
+  "public/savings-inventory.css": "39591b0f8fbb0c8109f5f2fe71dd707067dbaf54e85d467989ed96342e4e1a58"
+ },
+ "cases": [
+  {
+   "surface": "tile",
+   "width": 1280,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00Saved / neededUnavailableThis period",
+     "width": 442.5,
+     "height": 48,
+     "left": 772.5,
+     "right": 1215,
+     "scrollWidth": 443,
+     "clientWidth": 443
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00Saved / needed calculated $80.00This period",
+     "width": 442.5,
+     "height": 48,
+     "left": 772.5,
+     "right": 1215,
+     "scrollWidth": 443,
+     "clientWidth": 443
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00Saved / neededUnavailableThis period",
+     "width": 442.5,
+     "height": 48,
+     "left": 772.5,
+     "right": 1215,
+     "scrollWidth": 443,
+     "clientWidth": 443
+    }
+   ],
+   "container": {
+    "width": 492.5,
+    "height": 266.4,
+    "scrollWidth": 491,
+    "clientWidth": 491,
+    "firstMemberTopRel": 327.9
+   }
+  },
+  {
+   "surface": "sheet",
+   "width": 1280,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00 Saved / needed Unavailable This period",
+     "width": 440,
+     "height": 43.1,
+     "left": 800,
+     "right": 1240,
+     "scrollWidth": 440,
+     "clientWidth": 440
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00 Saved / needed calculated $80.00 This period",
+     "width": 440,
+     "height": 43.1,
+     "left": 800,
+     "right": 1240,
+     "scrollWidth": 440,
+     "clientWidth": 440
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00 Saved / needed Unavailable This period",
+     "width": 440,
+     "height": 43.1,
+     "left": 800,
+     "right": 1240,
+     "scrollWidth": 440,
+     "clientWidth": 440
+    }
+   ],
+   "layout": {
+    "ulWidth": 452,
+    "goalWidth": 452,
+    "ulLeft": 788,
+    "goalLeft": 788,
+    "gridColumnStart": "1",
+    "gridColumnEnd": "-1"
+   }
+  },
+  {
+   "surface": "inventory",
+   "width": 1280,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost 2026-10-21 Currently backed $60.00 calculated Needed $60.00 calculated Projected this period Unknown unknown",
+     "width": 378,
+     "height": 153.6,
+     "left": 845,
+     "right": 1223,
+     "scrollWidth": 378,
+     "clientWidth": 378
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost 2026-10-28 Currently backed $35.00 calculated Needed $170.00 calculated Projected this period $80.00 calculated",
+     "width": 378,
+     "height": 153.6,
+     "left": 845,
+     "right": 1223,
+     "scrollWidth": 378,
+     "clientWidth": 378
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost 2026-11-04 Currently backed $0.00 calculated Needed $90.00 calculated Projected this period Unknown unknown",
+     "width": 378,
+     "height": 153.6,
+     "left": 845,
+     "right": 1223,
+     "scrollWidth": 378,
+     "clientWidth": 378
+    }
+   ]
+  },
+  {
+   "surface": "document",
+   "width": 1280,
+   "theme": "light",
+   "overflowPx": 0
+  },
+  {
+   "surface": "tile",
+   "width": 1280,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00Saved / neededUnavailableThis period",
+     "width": 442.5,
+     "height": 48,
+     "left": 772.5,
+     "right": 1215,
+     "scrollWidth": 443,
+     "clientWidth": 443
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00Saved / needed calculated $80.00This period",
+     "width": 442.5,
+     "height": 48,
+     "left": 772.5,
+     "right": 1215,
+     "scrollWidth": 443,
+     "clientWidth": 443
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00Saved / neededUnavailableThis period",
+     "width": 442.5,
+     "height": 48,
+     "left": 772.5,
+     "right": 1215,
+     "scrollWidth": 443,
+     "clientWidth": 443
+    }
+   ],
+   "container": {
+    "width": 492.5,
+    "height": 266.4,
+    "scrollWidth": 491,
+    "clientWidth": 491,
+    "firstMemberTopRel": 327.9
+   }
+  },
+  {
+   "surface": "sheet",
+   "width": 1280,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00 Saved / needed Unavailable This period",
+     "width": 440,
+     "height": 43.1,
+     "left": 800,
+     "right": 1240,
+     "scrollWidth": 440,
+     "clientWidth": 440
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00 Saved / needed calculated $80.00 This period",
+     "width": 440,
+     "height": 43.1,
+     "left": 800,
+     "right": 1240,
+     "scrollWidth": 440,
+     "clientWidth": 440
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00 Saved / needed Unavailable This period",
+     "width": 440,
+     "height": 43.1,
+     "left": 800,
+     "right": 1240,
+     "scrollWidth": 440,
+     "clientWidth": 440
+    }
+   ],
+   "layout": {
+    "ulWidth": 452,
+    "goalWidth": 452,
+    "ulLeft": 788,
+    "goalLeft": 788,
+    "gridColumnStart": "1",
+    "gridColumnEnd": "-1"
+   }
+  },
+  {
+   "surface": "inventory",
+   "width": 1280,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost 2026-10-21 Currently backed $60.00 calculated Needed $60.00 calculated Projected this period Unknown unknown",
+     "width": 378,
+     "height": 153.6,
+     "left": 845,
+     "right": 1223,
+     "scrollWidth": 378,
+     "clientWidth": 378
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost 2026-10-28 Currently backed $35.00 calculated Needed $170.00 calculated Projected this period $80.00 calculated",
+     "width": 378,
+     "height": 153.6,
+     "left": 845,
+     "right": 1223,
+     "scrollWidth": 378,
+     "clientWidth": 378
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost 2026-11-04 Currently backed $0.00 calculated Needed $90.00 calculated Projected this period Unknown unknown",
+     "width": 378,
+     "height": 153.6,
+     "left": 845,
+     "right": 1223,
+     "scrollWidth": 378,
+     "clientWidth": 378
+    }
+   ]
+  },
+  {
+   "surface": "document",
+   "width": 1280,
+   "theme": "dark",
+   "overflowPx": 0
+  },
+  {
+   "surface": "tile",
+   "width": 390,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00Saved / neededUnavailableThis period",
+     "width": 328,
+     "height": 48,
+     "left": 31,
+     "right": 359,
+     "scrollWidth": 328,
+     "clientWidth": 328
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00Saved / needed calculated $80.00This period",
+     "width": 328,
+     "height": 48,
+     "left": 31,
+     "right": 359,
+     "scrollWidth": 328,
+     "clientWidth": 328
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00Saved / neededUnavailableThis period",
+     "width": 328,
+     "height": 48,
+     "left": 31,
+     "right": 359,
+     "scrollWidth": 328,
+     "clientWidth": 328
+    }
+   ],
+   "container": {
+    "width": 366,
+    "height": 301,
+    "scrollWidth": 364,
+    "clientWidth": 364,
+    "firstMemberTopRel": 366.5
+   }
+  },
+  {
+   "surface": "sheet",
+   "width": 390,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00 Saved / needed Unavailable This period",
+     "width": 346,
+     "height": 84.2,
+     "left": 28,
+     "right": 374,
+     "scrollWidth": 346,
+     "clientWidth": 346
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00 Saved / needed calculated $80.00 This period",
+     "width": 346,
+     "height": 84.2,
+     "left": 28,
+     "right": 374,
+     "scrollWidth": 346,
+     "clientWidth": 346
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00 Saved / needed Unavailable This period",
+     "width": 346,
+     "height": 84.2,
+     "left": 28,
+     "right": 374,
+     "scrollWidth": 346,
+     "clientWidth": 346
+    }
+   ],
+   "layout": {
+    "ulWidth": 358,
+    "goalWidth": 358,
+    "ulLeft": 16,
+    "goalLeft": 16,
+    "gridColumnStart": "1",
+    "gridColumnEnd": "-1"
+   }
+  },
+  {
+   "surface": "inventory",
+   "width": 390,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost 2026-10-21 Currently backed $60.00 calculated Needed $60.00 calculated Projected this period Unknown unknown",
+     "width": 293.6,
+     "height": 153.6,
+     "left": 68.2,
+     "right": 361.8,
+     "scrollWidth": 294,
+     "clientWidth": 294
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost 2026-10-28 Currently backed $35.00 calculated Needed $170.00 calculated Projected this period $80.00 calculated",
+     "width": 293.6,
+     "height": 153.6,
+     "left": 68.2,
+     "right": 361.8,
+     "scrollWidth": 294,
+     "clientWidth": 294
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost 2026-11-04 Currently backed $0.00 calculated Needed $90.00 calculated Projected this period Unknown unknown",
+     "width": 293.6,
+     "height": 153.6,
+     "left": 68.2,
+     "right": 361.8,
+     "scrollWidth": 294,
+     "clientWidth": 294
+    }
+   ]
+  },
+  {
+   "surface": "document",
+   "width": 390,
+   "theme": "light",
+   "overflowPx": 0
+  },
+  {
+   "surface": "tile",
+   "width": 390,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00Saved / neededUnavailableThis period",
+     "width": 328,
+     "height": 48,
+     "left": 31,
+     "right": 359,
+     "scrollWidth": 328,
+     "clientWidth": 328
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00Saved / needed calculated $80.00This period",
+     "width": 328,
+     "height": 48,
+     "left": 31,
+     "right": 359,
+     "scrollWidth": 328,
+     "clientWidth": 328
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00Saved / neededUnavailableThis period",
+     "width": 328,
+     "height": 48,
+     "left": 31,
+     "right": 359,
+     "scrollWidth": 328,
+     "clientWidth": 328
+    }
+   ],
+   "container": {
+    "width": 366,
+    "height": 301,
+    "scrollWidth": 364,
+    "clientWidth": 364,
+    "firstMemberTopRel": 366.5
+   }
+  },
+  {
+   "surface": "sheet",
+   "width": 390,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00 Saved / needed Unavailable This period",
+     "width": 346,
+     "height": 84.2,
+     "left": 28,
+     "right": 374,
+     "scrollWidth": 346,
+     "clientWidth": 346
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00 Saved / needed calculated $80.00 This period",
+     "width": 346,
+     "height": 84.2,
+     "left": 28,
+     "right": 374,
+     "scrollWidth": 346,
+     "clientWidth": 346
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00 Saved / needed Unavailable This period",
+     "width": 346,
+     "height": 84.2,
+     "left": 28,
+     "right": 374,
+     "scrollWidth": 346,
+     "clientWidth": 346
+    }
+   ],
+   "layout": {
+    "ulWidth": 358,
+    "goalWidth": 358,
+    "ulLeft": 16,
+    "goalLeft": 16,
+    "gridColumnStart": "1",
+    "gridColumnEnd": "-1"
+   }
+  },
+  {
+   "surface": "inventory",
+   "width": 390,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost 2026-10-21 Currently backed $60.00 calculated Needed $60.00 calculated Projected this period Unknown unknown",
+     "width": 293.6,
+     "height": 153.6,
+     "left": 68.2,
+     "right": 361.8,
+     "scrollWidth": 294,
+     "clientWidth": 294
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost 2026-10-28 Currently backed $35.00 calculated Needed $170.00 calculated Projected this period $80.00 calculated",
+     "width": 293.6,
+     "height": 153.6,
+     "left": 68.2,
+     "right": 361.8,
+     "scrollWidth": 294,
+     "clientWidth": 294
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost 2026-11-04 Currently backed $0.00 calculated Needed $90.00 calculated Projected this period Unknown unknown",
+     "width": 293.6,
+     "height": 153.6,
+     "left": 68.2,
+     "right": 361.8,
+     "scrollWidth": 294,
+     "clientWidth": 294
+    }
+   ]
+  },
+  {
+   "surface": "document",
+   "width": 390,
+   "theme": "dark",
+   "overflowPx": 0
+  },
+  {
+   "surface": "tile",
+   "width": 320,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00Saved / neededUnavailableThis period",
+     "width": 258,
+     "height": 72,
+     "left": 31,
+     "right": 289,
+     "scrollWidth": 258,
+     "clientWidth": 258
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00Saved / needed calculated $80.00This period",
+     "width": 258,
+     "height": 72,
+     "left": 31,
+     "right": 289,
+     "scrollWidth": 258,
+     "clientWidth": 258
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00Saved / neededUnavailableThis period",
+     "width": 258,
+     "height": 72,
+     "left": 31,
+     "right": 289,
+     "scrollWidth": 258,
+     "clientWidth": 258
+    }
+   ],
+   "container": {
+    "width": 296,
+    "height": 343,
+    "scrollWidth": 294,
+    "clientWidth": 294,
+    "firstMemberTopRel": 408.5
+   }
+  },
+  {
+   "surface": "sheet",
+   "width": 320,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00 Saved / needed Unavailable This period",
+     "width": 276,
+     "height": 84.2,
+     "left": 28,
+     "right": 304,
+     "scrollWidth": 276,
+     "clientWidth": 276
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00 Saved / needed calculated $80.00 This period",
+     "width": 276,
+     "height": 84.2,
+     "left": 28,
+     "right": 304,
+     "scrollWidth": 276,
+     "clientWidth": 276
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00 Saved / needed Unavailable This period",
+     "width": 276,
+     "height": 84.2,
+     "left": 28,
+     "right": 304,
+     "scrollWidth": 276,
+     "clientWidth": 276
+    }
+   ],
+   "layout": {
+    "ulWidth": 288,
+    "goalWidth": 288,
+    "ulLeft": 16,
+    "goalLeft": 16,
+    "gridColumnStart": "1",
+    "gridColumnEnd": "-1"
+   }
+  },
+  {
+   "surface": "inventory",
+   "width": 320,
+   "theme": "light",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost 2026-10-21 Currently backed $60.00 calculated Needed $60.00 calculated Projected this period Unknown unknown",
+     "width": 223.6,
+     "height": 173.8,
+     "left": 68.2,
+     "right": 291.8,
+     "scrollWidth": 224,
+     "clientWidth": 224
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost 2026-10-28 Currently backed $35.00 calculated Needed $170.00 calculated Projected this period $80.00 calculated",
+     "width": 223.6,
+     "height": 173.8,
+     "left": 68.2,
+     "right": 291.8,
+     "scrollWidth": 224,
+     "clientWidth": 224
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost 2026-11-04 Currently backed $0.00 calculated Needed $90.00 calculated Projected this period Unknown unknown",
+     "width": 223.6,
+     "height": 173.8,
+     "left": 68.2,
+     "right": 291.8,
+     "scrollWidth": 224,
+     "clientWidth": 224
+    }
+   ]
+  },
+  {
+   "surface": "document",
+   "width": 320,
+   "theme": "light",
+   "overflowPx": 0
+  },
+  {
+   "surface": "tile",
+   "width": 320,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00Saved / neededUnavailableThis period",
+     "width": 258,
+     "height": 72,
+     "left": 31,
+     "right": 289,
+     "scrollWidth": 258,
+     "clientWidth": 258
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00Saved / needed calculated $80.00This period",
+     "width": 258,
+     "height": 72,
+     "left": 31,
+     "right": 289,
+     "scrollWidth": 258,
+     "clientWidth": 258
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00Saved / neededUnavailableThis period",
+     "width": 258,
+     "height": 72,
+     "left": 31,
+     "right": 289,
+     "scrollWidth": 258,
+     "clientWidth": 258
+    }
+   ],
+   "container": {
+    "width": 296,
+    "height": 343,
+    "scrollWidth": 294,
+    "clientWidth": 294,
+    "firstMemberTopRel": 408.5
+   }
+  },
+  {
+   "surface": "sheet",
+   "width": 320,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost Oct 21 calculated $60.00 / calculated $60.00 Saved / needed Unavailable This period",
+     "width": 276,
+     "height": 84.2,
+     "left": 28,
+     "right": 304,
+     "scrollWidth": 276,
+     "clientWidth": 276
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost Oct 28 calculated $35.00 / calculated $170.00 Saved / needed calculated $80.00 This period",
+     "width": 276,
+     "height": 84.2,
+     "left": 28,
+     "right": 304,
+     "scrollWidth": 276,
+     "clientWidth": 276
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost Nov 4 calculated $0.00 / calculated $90.00 Saved / needed Unavailable This period",
+     "width": 276,
+     "height": 84.2,
+     "left": 28,
+     "right": 304,
+     "scrollWidth": 276,
+     "clientWidth": 276
+    }
+   ],
+   "layout": {
+    "ulWidth": 288,
+    "goalWidth": 288,
+    "ulLeft": 16,
+    "goalLeft": 16,
+    "gridColumnStart": "1",
+    "gridColumnEnd": "-1"
+   }
+  },
+  {
+   "surface": "inventory",
+   "width": 320,
+   "theme": "dark",
+   "members": [
+    {
+     "key": "near@2026-10-21",
+     "text": "Invented first club cost 2026-10-21 Currently backed $60.00 calculated Needed $60.00 calculated Projected this period Unknown unknown",
+     "width": 223.6,
+     "height": 173.8,
+     "left": 68.2,
+     "right": 291.8,
+     "scrollWidth": 224,
+     "clientWidth": 224
+    },
+    {
+     "key": "far@2026-10-28",
+     "text": "Invented second club cost 2026-10-28 Currently backed $35.00 calculated Needed $170.00 calculated Projected this period $80.00 calculated",
+     "width": 223.6,
+     "height": 173.8,
+     "left": 68.2,
+     "right": 291.8,
+     "scrollWidth": 224,
+     "clientWidth": 224
+    },
+    {
+     "key": "third@2026-11-04",
+     "text": "Invented third club cost 2026-11-04 Currently backed $0.00 calculated Needed $90.00 calculated Projected this period Unknown unknown",
+     "width": 223.6,
+     "height": 173.8,
+     "left": 68.2,
+     "right": 291.8,
+     "scrollWidth": 224,
+     "clientWidth": 224
+    }
+   ]
+  },
+  {
+   "surface": "document",
+   "width": 320,
+   "theme": "dark",
+   "overflowPx": 0
+  }
+ ],
+ "screenshots": {
+  "members-inventory-1280-dark.png": "36f60b08e4f68d532f7dd89bda4eb9ce0a68099c12a915243086d107ece7f8eb",
+  "members-inventory-1280-light.png": "7e2e34137a1c03eee9270a7a00585889700a8f6be6dc400cc02a97b581eda491",
+  "members-inventory-320-dark.png": "a9d9c494e9db0ff1d2c775df3b9671dfcb88e1d31c0f86bd2cb66cc42beaa308",
+  "members-inventory-320-light.png": "09fafd2201fb088a348e952d8062238aeb6065bb16eaee01843ddbbfaddf6b98",
+  "members-inventory-390-dark.png": "36b413ae5b1bd3b020642c31880aabbb39673bafc6c122f9a6644cd64f6ebef6",
+  "members-inventory-390-light.png": "feea48bf0aa9c6a4f9e677bd206060ceb509b44321b5929e4bfaa6d5498dda23",
+  "members-sheet-1280-dark.png": "526cf26f60402308a40fc64b186bbc41389ffcb990dfb810025ccd4274170abf",
+  "members-sheet-1280-light.png": "6ae8eb95949eed429da05f93b26fa95bd0e25074578ad79580dae4663ed2d08c",
+  "members-sheet-320-dark.png": "2a0c55852fa4829700a18f2271f81a2e403998b6bea4b3bcb67f2ab161ff39b5",
+  "members-sheet-320-light.png": "f0c916078137049584966ba96f0c06294cce769bd482db30f9a23005ab815dca",
+  "members-sheet-390-dark.png": "434628d0f2359d3ad26df0f241b8e0ed2d675b8a0de03e1f82ef2debdd96b7c9",
+  "members-sheet-390-light.png": "8df93b8aacee22f2a8a77f4490af6e6fa05d746e2ca797c4e2a997722ea6ed85",
+  "members-tile-1280-dark.png": "8a92330a15cc3df1f3956b39a297c66f5742750f668a35b24aedcf146a4da1a9",
+  "members-tile-1280-light.png": "7a5f5058bfb0fefe2b233cf65a627595ccc504049c9f513dd79b04798d95b598",
+  "members-tile-320-dark.png": "3afe9218934bf68fa9788d3180a59f7231987ca511edcfd12b6b486d2c8f0ce6",
+  "members-tile-320-light.png": "3cd19a99fdc306acb729d8b589312d48c6261d4acf7da7b4640543cca6b7e6ca",
+  "members-tile-390-dark.png": "bc369f9d642e53fd0cf72d5f78a0ffe223f2fa8ba1e62906ea4c1a8b4dbbd163",
+  "members-tile-390-light.png": "a84c80a16e8ab0593b831dc54699d1d6c0b40d3c3085c897176eab16e48f29fe"
+ }
+}

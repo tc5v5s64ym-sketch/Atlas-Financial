@@ -308,7 +308,10 @@ console.log('\n=== dated subtraction uses yearly amount/12, not $50/month ===');
     asOf,
   });
   const subs = budget.categories.find(c => c.id === 'subscriptions');
-  const independentDated = 26.87 + 26.87 + 3.13 + 13 + 17 + 28 + 24.99 + (50 / 12);
+  // The separately approved Wise services now have individual Bills funding
+  // requirements; membership remains card-paid and outside this fixture.
+  const independentDated = 26.87 + 26.87 + 3.13 + 13 + 17 + 28 + 24.99 + (50 / 12)
+    + 13.43 + 16.79 + 3.35 + 13.43;
   ok(subs && near(subs.dated, independentDated),
     'subscriptions dated total is the owner bills, yearly as amount/12',
     String(subs && subs.dated));
