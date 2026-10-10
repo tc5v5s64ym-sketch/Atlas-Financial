@@ -78,6 +78,7 @@ const suites = [
   ['immediate evidence-qualified card purchase coverage', 'test-card-purchase-coverage.js'],
   ['card purchase markers retain expense and whole-ledger trust', 'test-card-purchase-tracker.js'],
   ['read-only bill payment evidence and exact sanitized links', 'test-bill-detail.js'],
+  ['transaction edit form (isolated, mock adapter)', 'test-transaction-edit.js'],
   ['Budget bill payment evidence integration and hooks', 'test-bill-detail-budget-integration.js'],
   ['from-today Budget savings arithmetic and evidence', 'test-from-today-funding.js'],
   ['from-today observation to Budget integration', 'test-from-today-integration.js'],
