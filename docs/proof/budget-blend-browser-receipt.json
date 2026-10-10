@@ -6,9 +6,9 @@
   "chrome": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "reducedMotion": false,
   "sourceBinding": {
-    "sourceCommit": "f49e4fa79bf6c1509dedfa56275119eedb185532",
-    "sourceTree": "d3f06de7b663bcbbec884ba3c9db8fc1922274f6",
-    "baseCommit": "6a9f37da6009408e90013c39070f4b6be0a8ca3c",
+    "sourceCommit": "e26f6a7469dd5d0f33dfa2db4524e788114b1cfc",
+    "sourceTree": "1f756d74964964aad03ffd4b297eb6e2e50cb088",
+    "baseCommit": "657339f46862f187ba2ab81c066e5cd474318b2b",
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
     "files": {
@@ -68,19 +68,19 @@
         "bytes": 69215
       },
       "public/budget-blend.js": {
-        "gitBlob": "1ff8caadf600f948edf0de838063166cbcdee251",
-        "sha256": "58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7",
-        "bytes": 106130
+        "gitBlob": "b7bad94505a1d850c667a7d52700513a8af21f3c",
+        "sha256": "fe0844bd5bad1305b739c7006df8a5e1dd25a190cb3b92c2fcba1cf00648ac99",
+        "bytes": 106394
       },
       "public/budget-card-movements.js": {
-        "gitBlob": "7bd9e5dc8e40fc4e3fd30d6c8bf7ffb15bad3d82",
-        "sha256": "f94abce1b02cf6e28846e22683094fbd2c38d822a51583fdd80ac02cc2908b98",
-        "bytes": 8937
+        "gitBlob": "fa1f2876a6c94fcee136cec5ea25e771289a3b74",
+        "sha256": "8ab3a885776c9b8b1e0653bf3003b69ee08eaf9d18b0e6cbfc5528c43aca24a2",
+        "bytes": 8974
       },
       "public/budget-gface.css": {
-        "gitBlob": "0b8e67df4b7be2196cc2e93257667294189a435d",
-        "sha256": "39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997",
-        "bytes": 53267
+        "gitBlob": "8500695cb746a3c7a88e6e7f377259120fba36c2",
+        "sha256": "5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e",
+        "bytes": 56055
       },
       "public/budget-polish.css": {
         "gitBlob": "58305d757ab6eb1d7969413f9c7f5cfa7f66970f",
@@ -173,9 +173,9 @@
         "bytes": 14076
       },
       "public/forecast-card-period.js": {
-        "gitBlob": "063bbd8e2aabfb69451a666d271816d9cf206f84",
-        "sha256": "8b0cfa3ea0dfdfa9f6750fad9309b63e1b386b315465baa9e8ef00619cd83179",
-        "bytes": 11756
+        "gitBlob": "d54e3415eae6c209c3c3a253502c962bd41e809e",
+        "sha256": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
+        "bytes": 12263
       },
       "public/forecast-chequing.js": {
         "gitBlob": "0e8971f32b00b667e0b2305b644c5027ad112b89",
@@ -233,9 +233,9 @@
         "bytes": 14093
       },
       "public/plan.js": {
-        "gitBlob": "a924d960569fd5c1954686ad35d660c4ac26da15",
-        "sha256": "f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769",
-        "bytes": 511272
+        "gitBlob": "2097a097be9b192e8307a61717e52536391ff726",
+        "sha256": "9c9106ab02d84877ec74f75f815b2e6f1d6c7ab9e31d0805e5f2c368a1b58f00",
+        "bytes": 511552
       },
       "public/planning.html": {
         "gitBlob": "1d662950cf4e831b3636f075d8f596240dc7284b",
@@ -307,20 +307,35 @@
         "sha256": "76860810d93441fe6654593e37d7adfdc5362640067fb3b7fc29b4400e4f6763",
         "bytes": 15634
       },
+      "scripts/assistant-cleanup-effects.js": {
+        "gitBlob": "6f3047e806e52068be5da6b5dfe15ac417d1eb69",
+        "sha256": "f831af957402a76f3bf635418a1eb6d2f6d0e0a5fe11801d2939c30d72b046cd",
+        "bytes": 11156
+      },
+      "scripts/assistant-cleanup-instructions.js": {
+        "gitBlob": "f50a9d3ea67f7ab4c939a3e6a551401b156e7e0a",
+        "sha256": "738fbb99e7b87406e382dc00eb38ee2ff51fe2035407788745177d502036e34b",
+        "bytes": 2907
+      },
+      "scripts/assistant-cleanup-policy.js": {
+        "gitBlob": "362037bfa5ccf459fa8512f31c80de95dc4269e3",
+        "sha256": "0c15964c15f8ac74a1187547e9789aac75ac684c7be18218ddef6d7e475f216c",
+        "bytes": 8693
+      },
       "scripts/assistant-lunchmoney.js": {
-        "gitBlob": "6cb94ca005556bcb9c33e946fe613f39d4bab0e1",
-        "sha256": "7707a0f96ef992c6f6b0bcd35f0480c3cde80975244fd489f1e5ef4d9d21e702",
-        "bytes": 41570
+        "gitBlob": "58a224fd4f287def684740b3813b5441ef49bc1e",
+        "sha256": "79d82accbbd7c9ad183f4fd10b5ab1893fb9f0929cf0d40d42476a3aec7883bc",
+        "bytes": 59585
       },
       "scripts/assistant-mcp.js": {
-        "gitBlob": "384b20037eb42182febb9d7b6c2bdc721ae6c06e",
-        "sha256": "d93c3c6e65d3484a24f8fc2fbf35a7f5abcc3210eff31eed08dfb14b14d35f86",
-        "bytes": 11067
+        "gitBlob": "f89d7d268dff01925587b751f9f83bd9d8f6f317",
+        "sha256": "d67bea34679244712bdeeff21e8fa432d7915e677cbe2c34fa8c69d8f68e7361",
+        "bytes": 14443
       },
       "scripts/assistant-oauth.js": {
-        "gitBlob": "513feb517ad0ba42f27d76e74f67c703b2200841",
-        "sha256": "799184131cc440d78acad132a09847d56e041f59ad8b3043e29b817b0b97e74a",
-        "bytes": 10924
+        "gitBlob": "f883e0f243f41cb90eea2575c29f372a4c89d104",
+        "sha256": "7be3ac20c1647b21c9d4d0acd3addde34585dc7a3a68264d3e011eea83dff5e3",
+        "bytes": 10962
       },
       "scripts/assistant-packet.js": {
         "gitBlob": "1b7e2cd4f34a4678b75fd71a93b5348717b843db",
@@ -328,9 +343,9 @@
         "bytes": 37774
       },
       "scripts/assistant-standing-corrections.js": {
-        "gitBlob": "f9fdcb53cbf95e2d0638663dcec83cd8e181b64e",
-        "sha256": "d8468f5abb1c785937a9919529605f93c5b4744ec52bb551e5226e97d7bf1bb4",
-        "bytes": 16718
+        "gitBlob": "3f77594d80f17b42dfe7f87ab22ede445cf75c11",
+        "sha256": "f24af043f27abcf6dffe7989914b2d03363779e22b42a64eef8fa559dce75f3e",
+        "bytes": 18578
       },
       "scripts/assistant-standing-owner.js": {
         "gitBlob": "f0746d80e3c65d095a9e7f0c655694c10daddb99",
@@ -338,14 +353,14 @@
         "bytes": 3278
       },
       "scripts/assistant-standing-runtime.js": {
-        "gitBlob": "a741b5920b8190cb17c9cf539c2e85850f6ac51f",
-        "sha256": "a8c93d63eae70be94775fc84bcee21024c91b883f913f26348f2bd4eed0b3f65",
-        "bytes": 3836
+        "gitBlob": "0f2b66a521832c83a786877d477ffc0b9a156891",
+        "sha256": "fa3285fdb33567fef78df06ede67811d3c1b7bf847e6f14118a5d5fbf57e642b",
+        "bytes": 4606
       },
       "scripts/assistant-standing-store.js": {
-        "gitBlob": "f4cbe0777cc06582e5c7c6b0b589246d88090810",
-        "sha256": "94026c21ca21280fbf5be661d350a583098959b9de6507abb738d901b7494c71",
-        "bytes": 20658
+        "gitBlob": "69b3217104921c0ccad3eae1432147aec9499d40",
+        "sha256": "eedd0f669b6772f6256fdf6e24864e0c61c3386278a59a93a4d4688eac9b67a0",
+        "bytes": 22993
       },
       "scripts/atlas-api-rereview.js": {
         "gitBlob": "fdb4b4b79534ab8ede2d57f8bd11c991c755551e",
@@ -713,9 +728,14 @@
         "bytes": 4747
       },
       "test/browser-budget-blend-proof.js": {
-        "gitBlob": "d4f7b09db53e78b036709b1d7598d39062b681b7",
-        "sha256": "0631756e15d626db0245c4d84a9918a04be09b9a07fc32503eae8e7221fc3f61",
-        "bytes": 165994
+        "gitBlob": "e7d3ee26973a4dac9a1d6ea742c82e2e4344ecbd",
+        "sha256": "e4bda99eeaa51aa03f3f522f1a4f5f4b6fc26749bc9ed64dbec2de36adf23c75",
+        "bytes": 166597
+      },
+      "test/browser-budget-panel-repairs.js": {
+        "gitBlob": "35f49a6a2d5225d2cbeba50225156f2bc979ebba",
+        "sha256": "ebb9934d2d5a8bd3a1ffc39b7705ec0e274cccacd988b9532613a7afe2cfa64b",
+        "bytes": 8964
       },
       "test/browser-budget-river-port.js": {
         "gitBlob": "c94410b98a8cd72e1eb42a5fb496413b7caa5507",
@@ -778,9 +798,9 @@
         "bytes": 2384
       },
       "test/fixtures/card-period-movements-data.js": {
-        "gitBlob": "052bd45a05a5a4d0b1d357e128bbde963cd3ce81",
-        "sha256": "f950c7c87ae9fd8cf5d9b80484be45255b4050f44abfef76a734ea1278c42d9a",
-        "bytes": 4816
+        "gitBlob": "5384487915f2d7f40382adec9a6e87498e53693b",
+        "sha256": "ac4ecd1ef1b092ead5acc8629460d2755b7cf895378c46350cf26445e764c527",
+        "bytes": 6298
       },
       "test/fixtures/card-purchase-coverage-data.js": {
         "gitBlob": "d78f56e981ac9254b536dbed06c60fcc36032ad0",
@@ -933,9 +953,9 @@
         "bytes": 3688
       },
       "test/test.js": {
-        "gitBlob": "51965412f6e44d46c24f472d6246fcc82ade45a4",
-        "sha256": "7cf700db8bef3a01f8801c85d524ffb8a615c16041c24205c20d07cea809d08c",
-        "bytes": 32243
+        "gitBlob": "1f7ddf2f8c5ec10a9de9cc31054250c281f61b3f",
+        "sha256": "e6c7d6358bfc542f40f83d4f589524c824546bbfd2eecae929c27a8efc5fbbb5",
+        "bytes": 32463
       }
     },
     "unchangedAfterProof": true
@@ -952,24 +972,24 @@
     "public/running-build.css": "1121433390812139a1c0fc810a882a7b97903e17a6d42f19dcc93fa05a5327d5",
     "public/budget-surface.css": "6883e2e496495b446def0342d4d4066a90f4ae7067b621b988ea694a489d6162",
     "public/budget-blend.css": "8f3cd39e7cc381f0dc095ac17cf312bd384ffed467417eeb8e7533f6bd55ad6c",
-    "public/budget-gface.css": "39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997",
+    "public/budget-gface.css": "5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e",
     "public/budget-sheet-motion.css": "4924d183ec9a07b874745859d972ec1a94ef4e2d783aec8ca4055749839043ea",
     "public/app.js": "ce5874b1aeba562ed55f432fc31946c38c52eec8526bbe5f30439255f4e2039a",
-    "public/forecast-card-period.js": "8b0cfa3ea0dfdfa9f6750fad9309b63e1b386b315465baa9e8ef00619cd83179",
+    "public/forecast-card-period.js": "a0e1c461354da0a6e8c73ee55a2ba76510d6a9c8e840e4f729df3b627df9fb3b",
     "public/forecast.js": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
     "public/forecast-chequing.js": "487c2251b09b3b20ee66065f7d780e7d16cde23bb38ef6ea40010fb233c0ad7c",
     "public/balance-history.js": "71c4e83244427bf68e178391bb65220ffa9d2bb3b35605d1049b4a6c05f750af",
     "public/bill-detail.js": "ac3ee6a88454fdee8a16df8744cdb3d12255b1dc3e67c1165c6cf81542001c62",
     "public/savings-inventory.js": "bc3f0f2213fa93b611442cd25d22025fd379a74cf389df00a5b36d0df83b375d",
     "public/budget-surface.js": "0259779a5f68b1f127d0ab40daf054022529865c5d1c72d505ae4d0bd2ad19ab",
-    "public/budget-card-movements.js": "f94abce1b02cf6e28846e22683094fbd2c38d822a51583fdd80ac02cc2908b98",
+    "public/budget-card-movements.js": "8ab3a885776c9b8b1e0653bf3003b69ee08eaf9d18b0e6cbfc5528c43aca24a2",
     "public/budget-sheet-motion.js": "c6867eb29ccbd8cc315c43b9408ec19ed9cba51999e055a1fe99bac1a349e620",
-    "public/plan.js": "f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769",
+    "public/plan.js": "9c9106ab02d84877ec74f75f815b2e6f1d6c7ab9e31d0805e5f2c368a1b58f00",
     "public/household-view.js": "b7ac364577c32bf56360fc535b2ba480f63748e3d03b5565e544bd696ba71780",
     "public/budget-polish.js": "e0cf517ccbf2fca1588cac62b78346142ed500773e07ab52d7dc35d9fde83814",
     "public/aurora.js": "92c985c4a6da2a22f30b45e3f449bf79648f8f32984f65357ce83c56c81d963d",
     "public/budget-river.js": "ab74152cbd40a5ebfdad05dcfc65a67d7fdac15a6d006e2990c1d249630be853",
-    "public/budget-blend.js": "58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7",
+    "public/budget-blend.js": "fe0844bd5bad1305b739c7006df8a5e1dd25a190cb3b92c2fcba1cf00648ac99",
     "public/nav-glass.css": "55512b577c076777dcca7c2851e0a5e6bf85d1cb12387c26167dc869ebdc7010"
   },
   "screenshots": [
@@ -985,6 +1005,10 @@
     "budget-river-pair-390-dark.png",
     "budget-river-pair-320-light.png",
     "budget-river-pair-320-dark.png",
+    "budget-panels-935-light.png",
+    "budget-panels-935-dark.png",
+    "budget-panels-935-light-unavailable.png",
+    "budget-panels-935-dark-unavailable.png",
     "budget-blend-1440-light.png",
     "budget-blend-1440-dark.png",
     "budget-blend-390-light.png",
@@ -1024,63 +1048,67 @@
     "budget-blend-320-light-household-all.png"
   ],
   "screenshotSha256": {
-    "budget-river-port-1440-light.png": "f3361a6a89fa5239f3c76cdbfa5357f4a626740118756c292dfa09f0b6be7a0b",
-    "budget-river-port-1440-dark.png": "a722d911a724ba8320aa58a12d31d06c5c161243bd47cf4a32d3fc1952c4b0ce",
-    "budget-river-port-390-light.png": "90a5dd4d236c0a11fd96f6d96d9752266b9b1ef2e1ff93b59dcb089ce98d6679",
-    "budget-river-port-390-dark.png": "a4c0ae2a6a33eb35cc74202dc5d4afda3995cb734a7b2db0f9c53d64f6ddc40c",
-    "budget-river-port-320-light.png": "d500f9e7e267477f6c161729adeca0ea4663406b4a854ee911599536cc1e7aaa",
-    "budget-river-port-320-dark.png": "af0c3bf4a05ed1f4fca0f66db407b8dbcdda4850de8c4d55177864432f22a8b4",
+    "budget-river-port-1440-light.png": "78f6f0af03571b0471e4247b5861143c41303f011a4a52bbb1d73e71b233db20",
+    "budget-river-port-1440-dark.png": "83ed45180fcbc1cda73239c680ffbe2faef53b906c5d62c31149a5b79d2be057",
+    "budget-river-port-390-light.png": "d8830d369651fc51793bf4645c13f7c5d61d21344e8c4f5afe1ad5908e8a6081",
+    "budget-river-port-390-dark.png": "9a8c47de807c60a4f52d51d8ca4787476864180ffdac3debac584bf267e849ee",
+    "budget-river-port-320-light.png": "000eeac18c6680930b26a9b30f84ec881c4e21841f4e738ee80813f30459131f",
+    "budget-river-port-320-dark.png": "e224d2cb5125d271d3bd4fe1f77ed5b8ee2c3fd95d80babf9de301bd48574211",
     "budget-river-pair-1440-light.png": "43d4a74eb2a58c3fece1e07b7a662ab255910bf94d99fbefaaf903deea0d7371",
     "budget-river-pair-1440-dark.png": "0adff6ce6ef5be847169adb01f5660a72898a791865beb19629982687a858a23",
     "budget-river-pair-390-light.png": "f3dc38e50a6302e579f1331640006818c75c6cc6b1d206ba1ebb831969862e9e",
     "budget-river-pair-390-dark.png": "29e2fbf292b4347dd375f546b89f0b1a37bc24f62a901652621e44932fe4046d",
     "budget-river-pair-320-light.png": "9d5939ce0404110b9f3c77a7ebec93613d524ba0301f161818f20904458fb812",
     "budget-river-pair-320-dark.png": "b6bcf5b8597718b06a8d10c2928ab80e7f859781a4cf711069fe1d21b5680b04",
-    "budget-blend-1440-light.png": "9beba321a3fdbc4a8cf565cd2533c4790cd631df1dab47b74a56a400409822cb",
-    "budget-blend-1440-dark.png": "2c88bff84e8763bd1ed85aa1f948ba82af170e0c1e7182fcb867ba564b2260b4",
-    "budget-blend-390-light.png": "6b3b0b188fbbe676382f7582c1f5f0228cbf4d7aa290721d5ef723b3d98532d8",
-    "budget-blend-390-dark.png": "4c7d22416fea047bfd9249fa75afb370cafb4a5250d31066b422a1629dad57ad",
-    "budget-blend-320-light.png": "7ca5e428278564f0ad6b765c501b90261716f4b100e3ae26de5b313dba7f1a1f",
-    "budget-blend-320-dark.png": "d2213fedd54ee0040cbb208b3e4032886449f43379330d6e22cd49fa45039e33",
-    "budget-blend-1440-light-next.png": "cfe6e1fa7ba0742fceb80da09644353ebf3b9105b12e455fa13f9c50f0037b09",
-    "budget-blend-1440-light-aug28.png": "9e38ef459ab8cacb8cf79d2893dead91e6cb9d895640b92cd31e36323f9fd826",
-    "budget-blend-320-light-aug28.png": "60451cb5ce8a9a9a6cd8d233d34b548922afebee2c8a0b39a0b427bfe05a0d0a",
-    "budget-blend-390-light-next.png": "4fd1ba464e7d5346ba78c30864bd33ba5142dcdacd1a36c860775b82adc23377",
-    "budget-blend-1440-light-past.png": "7c081e90bc493d6cfa2e9cc10f374db25559662b35d4b56733cd5205c42daaf4",
-    "budget-blend-390-light-past.png": "ad8925dc0915c5bffbb2c70f7ceb01d4cf097c0fce78c3e0f688a2daef6505d4",
-    "budget-blend-320-light-past.png": "5c59d83c6b21ded1bc9c0fc94f89ff2d3df7217b7a0f4fd74aab96ab3f17fa54",
-    "budget-blend-1440-light-past-qualified.png": "f5df145931eccab42aa09ad84536e5c883cf57e634f41be459f1f7d237600b9d",
-    "budget-blend-390-light-past-qualified.png": "494d3a6d2c5ba0e2e4077a1418f93c09b06f656c02adca4b41f04060ef0e8167",
-    "budget-blend-320-light-past-qualified.png": "dc86c1ad1456181cecaa02e854a8810b33299f2fa1e8da4774d9c7c8cdcbd896",
+    "budget-panels-935-light.png": "8de8e86c0b4f82ee854566c2b8fe7807ebadb302cdce7530c1f1ee34d1a32b2d",
+    "budget-panels-935-dark.png": "52212be054285e17b0d0d67aef84e61781e37f5b8bc10230819421e4b03cc244",
+    "budget-panels-935-light-unavailable.png": "2d922314fb0c2ed77d4b0c7706e77df409bcfb3441b435c2abb11af6c3136982",
+    "budget-panels-935-dark-unavailable.png": "57a801178b9f8cc66c42cda9f554b3e962c07abee37ebb45bafc3a2238ecc2ec",
+    "budget-blend-1440-light.png": "9fb70deed28ed0636f3e937fcf2ac2d011c437ac4bee8b6776097ff896a47f59",
+    "budget-blend-1440-dark.png": "21707e5a49a4d3ad9e93fdd9b5fb9d2ef75ad7fa90cf000f89d3461ba58d7c58",
+    "budget-blend-390-light.png": "c152a922a229e672dbf173322c59bf2193af0e1284cab7bdb15946e55f6df004",
+    "budget-blend-390-dark.png": "63babbbbd00a7f7695e81f62b141b81f7fcb3c3fe42917e08171dce53e427baa",
+    "budget-blend-320-light.png": "28baa55652f7958fcb62deeeb39922c9db1440c38d0566e5b945f0d452fb7a0d",
+    "budget-blend-320-dark.png": "7ebaae18cd7f29c4d45df41633fa65ed3ca1043421dbe3ab6e3aef7d14d79a54",
+    "budget-blend-1440-light-next.png": "207294b5d91965f5b38d1aa8f630ad49bce29dae5dba7f2838636c12ef196993",
+    "budget-blend-1440-light-aug28.png": "9d7d454df467199d733714323a6033edf14162084586ce079b8b3a58ff0a6f04",
+    "budget-blend-320-light-aug28.png": "e5d60930f65c43b39026fcc2dac92ab1c35e56f02b5abdb645ea808ab5da48f7",
+    "budget-blend-390-light-next.png": "a2a00efed955764dbeeaf533dca382d66f88da346064be45146dfe2e6b2959c5",
+    "budget-blend-1440-light-past.png": "7cf5e2d695cecabc83b6cbe6e708f1d1abcb5f534937869c3ba4187f72fe2c52",
+    "budget-blend-390-light-past.png": "6a99607ec9fb6ae9efb8e52906b3bda30cc69e8e7da86da610b281e6db0e967a",
+    "budget-blend-320-light-past.png": "825bfd1bea0071f2d1f3e22e7a3aa56f2028883b02c891b887780f7f889b05fa",
+    "budget-blend-1440-light-past-qualified.png": "c71a481f14a76f06a7aa8652d53560e7c62d21f13b90b3db1e035558210d39d2",
+    "budget-blend-390-light-past-qualified.png": "fd03f846b024243d5f0307926fbbcf47686846a58b7c136660e4bfeb01ddfab4",
+    "budget-blend-320-light-past-qualified.png": "d6952280ebff7ba2dc1f52ab190fcda8aa17d2795d07a1ea35388321ee994dc7",
     "budget-blend-1440-light-unavailable.png": "37517f55be419ba0a7c33c78ad508e2fec921bb6a5d0c9bc3531110c31141340",
     "budget-blend-390-dark-unavailable.png": "1e3f6f397780ff6b1e6bfcc420e1c7f343fe2a5011aa4eddba551a80c8ae05a2",
-    "budget-blend-focus-granularity.png": "4b44fd2783c2ea9a13bde9a5d5347f0b1fc20efb9feaa8dc02edcd6bd2c58fe2",
-    "budget-blend-focus-income.png": "f49050d98558746b68e3aa22e6962b6f4964530b3fbd87d7f2d167b9abff1d36",
-    "budget-blend-focus-result.png": "69f653f571620e2f6524539fc9a46957b54880d709eac87b04147929bac9d1e7",
-    "budget-blend-focus-household.png": "2c3a0783fa72c0308b8aea4e88aa2d28dc28f5756aafb0fead7091606c76ae21",
-    "budget-blend-focus-goal.png": "8cbff43b4c6a9abdd2c25275d6cc5c75439bb5952ca56d642f90d978aa99e367",
-    "budget-blend-cards-1440-light.png": "a4318f9b494f9bde19d0b4485be5aa0336fdef4170e455a19254a90d2388632f",
-    "budget-blend-cards-320-dark.png": "b0d441cc4fb8ddf3a9013a859ac24db97c84a2207ae7c65cbe4280ee8c5db331",
-    "budget-blend-1440-light-on-plan.png": "ffa054452b270969c02197af2c86ad9bc5333e0bcba381be3deca3c7d787deb5",
-    "budget-blend-1440-light-infeasible.png": "719688bf91536c4e9130bf6888cface89205ede5de9c97b18a36e46c03cb368b",
-    "budget-blend-1440-dark-next.png": "2551e67058f895b0876cb6ffbf1db2897853e17a09d3150157ced7f79d11a45a",
-    "budget-blend-390-dark-next.png": "e51f26618ad83c4d521d94321c531ef46af2eec5a8f8418e5eae8f61c08846ab",
-    "budget-blend-320-light-next.png": "b2119307de9bdd353a0393be03a72d3f69862934b3715151e282ce90268063bf",
-    "budget-blend-320-dark-next.png": "2cc3e0844416794a4f2020b730ff41660fe5b85e891b17e48ce3560c852c6931",
-    "budget-blend-1440-dark-past.png": "49247f1988e0e3b518aed3ec1d9b956097f2ad011acee62cf1b6c2b10782b9ba",
-    "budget-blend-390-dark-past.png": "88e1ea2c063bd16e02c569fa6aff8552e0161ffbb3ab2fb3adb4dc40d5952afc",
-    "budget-blend-320-dark-past.png": "d37f2a4f5c4c0f31917dcb90d22477b2799ac315c1e3a3e1d59a2251d6fcceb3",
-    "budget-blend-1440-light-household-all.png": "1ef798b785537b3ebb95abd737145988d6ed4278da21549f96252e4f080ea5ff",
-    "budget-blend-390-light-household-all.png": "90bcf0c7406be1d88a7026886d1caa23c9935f5c3eb904a76a835ebfbf626733",
-    "budget-blend-320-light-household-all.png": "4324ee634ff440981246971cb5dd54ddb95cb89c41a3ea2f3a27de66d629a3e3"
+    "budget-blend-focus-granularity.png": "23c2833f69d74ed8bc135e599ff5a681799f277d23d0f6f87364c9c4b24e8b61",
+    "budget-blend-focus-income.png": "4f12914c9fcb7a0fefa478ba973101ba6672a99242f564e974ca1b8a64f36a36",
+    "budget-blend-focus-result.png": "a244591da52239a791878a7d91958d28f34077b1ebd2cdb789be643a22ba0a06",
+    "budget-blend-focus-household.png": "d6f1478b82210de0af9aa55493f9bde1b0caa563677c4fc6a58f512ac21614bc",
+    "budget-blend-focus-goal.png": "455287a287ad425a35197d835b4905a3ca5a3c7a4d7da4f0687f104fa614028a",
+    "budget-blend-cards-1440-light.png": "1902a1d2af7119135a11f5dc3eb127503dc98182400ad0b4387f64fe695c36b6",
+    "budget-blend-cards-320-dark.png": "02e741a5869dd181a66b3fd0e9e3aeaca588260c6e0f91ce1faba7de40eec0d7",
+    "budget-blend-1440-light-on-plan.png": "c6a76e815350fd480b194421ce1f757f21f56ad020d2faa8e9af12545390cd62",
+    "budget-blend-1440-light-infeasible.png": "7863b14416409c44559ee5e1786b42507be841423f8d9ddc977415e43a29b2f7",
+    "budget-blend-1440-dark-next.png": "cc06fb443503bffc91638feed3f4344e5b9b7ece49f29b65c8e7718daf8f95c9",
+    "budget-blend-390-dark-next.png": "2f440d7ed93e0b8457d82cef911956a1f837604932ee47cb6e906913c54956bb",
+    "budget-blend-320-light-next.png": "8604e08f20c3efa1474d8916a21d8ef1f7d1090343a826a71036ba8f3d9f45dc",
+    "budget-blend-320-dark-next.png": "330c646c2b72d0be8fd89d63ca8c5ec194d0ac0b0ecdc5187db874c5f13647e5",
+    "budget-blend-1440-dark-past.png": "c242e5701ab5e5610de8b3a19fd833d120cda7f0cd570bcb2828e9cf2d5741db",
+    "budget-blend-390-dark-past.png": "b7390f4edd8c8f991dc762e96d123c6a5ddd45391a344b48442a9ebed14ffce5",
+    "budget-blend-320-dark-past.png": "3a22e5f3595bb4ef3cd324aac00ac2f68c57771268f167a547459a6eb0c19a55",
+    "budget-blend-1440-light-household-all.png": "67ada2d2a3aa3baa18ad6ebcd5d374a1766ad29a776c7a48e7add530ece26ec1",
+    "budget-blend-390-light-household-all.png": "1d300a1f92c9e6316af11a68b7d5cd9a1587d9a637317d6b53f4219758be9f28",
+    "budget-blend-320-light-household-all.png": "5859493f25af003c6d8d00755cbc1466f1f44c3dfe6cbdcad89a443b803c5dba"
   },
   "sourceSha256": {
-    "public/plan.js": "f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769",
-    "public/budget-blend.js": "58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7",
-    "public/budget-gface.css": "39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997",
+    "public/plan.js": "9c9106ab02d84877ec74f75f815b2e6f1d6c7ab9e31d0805e5f2c368a1b58f00",
+    "public/budget-blend.js": "fe0844bd5bad1305b739c7006df8a5e1dd25a190cb3b92c2fcba1cf00648ac99",
+    "public/budget-gface.css": "5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e",
     "public/forecast.js": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
     "data.json": "beb06046112d6c888d6ff9e4cdd2cd7338eae450961ab2f57d67cc761e0b3700",
-    "test/browser-budget-blend-proof.js": "0631756e15d626db0245c4d84a9918a04be09b9a07fc32503eae8e7221fc3f61"
+    "test/browser-budget-blend-proof.js": "e4bda99eeaa51aa03f3f522f1a4f5f4b6fc26749bc9ed64dbec2de36adf23c75"
   },
   "visualComparison": {
     "authority": "Owner-approved Slack images",
@@ -1571,7 +1599,7 @@
           ]
         },
         "staticPixelDifferences": 228824,
-        "movingPixelDifferences": 229512,
+        "movingPixelDifferences": 229615,
         "springIdentical": true,
         "resize": true,
         "reducedMotion": true
@@ -1627,7 +1655,7 @@
           ]
         },
         "staticPixelDifferences": 94011,
-        "movingPixelDifferences": 94430,
+        "movingPixelDifferences": 94433,
         "springIdentical": true,
         "resize": true,
         "reducedMotion": true
@@ -1683,7 +1711,7 @@
           ]
         },
         "staticPixelDifferences": 87933,
-        "movingPixelDifferences": 88300,
+        "movingPixelDifferences": 88310,
         "springIdentical": true,
         "resize": true,
         "reducedMotion": true
@@ -1717,6 +1745,3736 @@
         "reducedMotion": true
       }
     ]
+  },
+  "panelRepairs": {
+    "cases": [
+      {
+        "width": 320,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 194,
+                "right": 283,
+                "top": 367.890625,
+                "bottom": 387.4375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                89,
+                89,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 204.203125,
+                "right": 283,
+                "top": 412.140625,
+                "bottom": 431.6875
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 204.203125,
+                "right": 283,
+                "top": 456.390625,
+                "bottom": 475.9375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 37,
+                "right": 164.984375,
+                "top": 536.640625,
+                "bottom": 569.015625
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                128,
+                128,
+                38,
+                32
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 108.734375,
+              "right": 283,
+              "top": 303.890625,
+              "bottom": 343.890625,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 37,
+              "right": 283,
+              "top": 593.015625,
+              "bottom": 663.015625,
+              "scroll": [
+                246,
+                246,
+                70,
+                70
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 194,
+                "right": 283,
+                "top": 367.890625,
+                "bottom": 387.4375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                89,
+                89,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 204.203125,
+                "right": 283,
+                "top": 412.140625,
+                "bottom": 431.6875
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 204.203125,
+                "right": 283,
+                "top": 456.390625,
+                "bottom": 475.9375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 37,
+                "right": 164.984375,
+                "top": 536.640625,
+                "bottom": 569.015625
+              },
+              "boundary": {
+                "left": 12,
+                "right": 308,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                128,
+                128,
+                38,
+                32
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 108.734375,
+              "right": 283,
+              "top": 303.890625,
+              "bottom": 343.890625,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 37,
+              "right": 283,
+              "top": 593.015625,
+              "bottom": 663.015625,
+              "scroll": [
+                246,
+                246,
+                70,
+                70
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 252,
+                "right": 341,
+                "top": 367.890625,
+                "bottom": 387.4375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                89,
+                89,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 262.203125,
+                "right": 341,
+                "top": 412.140625,
+                "bottom": 431.6875
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 262.203125,
+                "right": 341,
+                "top": 456.390625,
+                "bottom": 475.9375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 49,
+                "right": 281.6875,
+                "top": 536.640625,
+                "bottom": 595.515625
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                233,
+                233,
+                70,
+                59
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 166.734375,
+              "right": 341,
+              "top": 303.890625,
+              "bottom": 343.890625,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 49,
+              "right": 341,
+              "top": 619.515625,
+              "bottom": 689.515625,
+              "scroll": [
+                292,
+                292,
+                70,
+                70
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 252,
+                "right": 341,
+                "top": 367.890625,
+                "bottom": 387.4375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                89,
+                89,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 262.203125,
+                "right": 341,
+                "top": 412.140625,
+                "bottom": 431.6875
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 262.203125,
+                "right": 341,
+                "top": 456.390625,
+                "bottom": 475.9375
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                79,
+                79,
+                20,
+                20
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 49,
+                "right": 281.6875,
+                "top": 536.640625,
+                "bottom": 595.515625
+              },
+              "boundary": {
+                "left": 12,
+                "right": 378,
+                "top": 236,
+                "bottom": 736
+              },
+              "scroll": [
+                233,
+                233,
+                70,
+                59
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 166.734375,
+              "right": 341,
+              "top": 303.890625,
+              "bottom": 343.890625,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 49,
+              "right": 341,
+              "top": 619.515625,
+              "bottom": 689.515625,
+              "scroll": [
+                292,
+                292,
+                70,
+                70
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 760,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 233.296875,
+                "right": 338,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 245.296875,
+                "right": 338,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 245.296875,
+                "right": 338,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 232.96875,
+                "top": 558.1875,
+                "bottom": 598.65625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                160,
+                160,
+                48,
+                40
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 163.734375,
+              "right": 338,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 338,
+              "top": 620.65625,
+              "bottom": 694.65625,
+              "scroll": [
+                265,
+                265,
+                74,
+                74
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 760,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 233.296875,
+                "right": 338,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 245.296875,
+                "right": 338,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 245.296875,
+                "right": 338,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 232.96875,
+                "top": 558.1875,
+                "bottom": 598.65625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 371,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                160,
+                160,
+                48,
+                40
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 163.734375,
+              "right": 338,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 338,
+              "top": 620.65625,
+              "bottom": 694.65625,
+              "scroll": [
+                265,
+                265,
+                74,
+                74
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 800,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 253.296875,
+                "right": 358,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 265.296875,
+                "right": 358,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 265.296875,
+                "right": 358,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 232.96875,
+                "top": 558.1875,
+                "bottom": 598.65625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                160,
+                160,
+                48,
+                40
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 183.734375,
+              "right": 358,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 358,
+              "top": 620.65625,
+              "bottom": 694.65625,
+              "scroll": [
+                285,
+                285,
+                74,
+                74
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 800,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 253.296875,
+                "right": 358,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 265.296875,
+                "right": 358,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 265.296875,
+                "right": 358,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 232.96875,
+                "top": 558.1875,
+                "bottom": 598.65625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 391,
+                "top": 256,
+                "bottom": 719.65625
+              },
+              "scroll": [
+                160,
+                160,
+                48,
+                40
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 183.734375,
+              "right": 358,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 358,
+              "top": 620.65625,
+              "bottom": 694.65625,
+              "scroll": [
+                285,
+                285,
+                74,
+                74
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 900,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 303.296875,
+                "right": 408,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 315.296875,
+                "right": 408,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 315.296875,
+                "right": 408,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 247.953125,
+                "top": 558.1875,
+                "bottom": 602.453125
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                175,
+                175,
+                53,
+                44
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 233.734375,
+              "right": 408,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 408,
+              "top": 624.453125,
+              "bottom": 672.453125,
+              "scroll": [
+                335,
+                335,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 900,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 303.296875,
+                "right": 408,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 315.296875,
+                "right": 408,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 315.296875,
+                "right": 408,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 247.953125,
+                "top": 558.1875,
+                "bottom": 602.453125
+              },
+              "boundary": {
+                "left": 40,
+                "right": 441,
+                "top": 256,
+                "bottom": 697.453125
+              },
+              "scroll": [
+                175,
+                175,
+                53,
+                44
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 233.734375,
+              "right": 408,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 408,
+              "top": 624.453125,
+              "bottom": 672.453125,
+              "scroll": [
+                335,
+                335,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 935,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 320.796875,
+                "right": 425.5,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 332.796875,
+                "right": 425.5,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 332.796875,
+                "right": 425.5,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 255.578125,
+                "top": 558.1875,
+                "bottom": 604.375
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                183,
+                183,
+                55,
+                46
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 251.234375,
+              "right": 425.5,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 425.5,
+              "top": 626.375,
+              "bottom": 674.375,
+              "scroll": [
+                353,
+                353,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 935,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 320.796875,
+                "right": 425.5,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 332.796875,
+                "right": 425.5,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 332.796875,
+                "right": 425.5,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 255.578125,
+                "top": 558.1875,
+                "bottom": 604.375
+              },
+              "boundary": {
+                "left": 40,
+                "right": 458.5,
+                "top": 256,
+                "bottom": 699.375
+              },
+              "scroll": [
+                183,
+                183,
+                55,
+                46
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 251.234375,
+              "right": 425.5,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 425.5,
+              "top": 626.375,
+              "bottom": 674.375,
+              "scroll": [
+                353,
+                353,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1000,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 353.296875,
+                "right": 458,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 365.296875,
+                "right": 458,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 365.296875,
+                "right": 458,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 269.765625,
+                "top": 558.1875,
+                "bottom": 607.96875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                197,
+                197,
+                59,
+                50
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 283.734375,
+              "right": 458,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 458,
+              "top": 629.96875,
+              "bottom": 677.96875,
+              "scroll": [
+                385,
+                385,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1000,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 353.296875,
+                "right": 458,
+                "top": 387.1875,
+                "bottom": 410.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 365.296875,
+                "right": 458,
+                "top": 432.1875,
+                "bottom": 455.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 365.296875,
+                "right": 458,
+                "top": 477.1875,
+                "bottom": 500.1875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 269.765625,
+                "top": 558.1875,
+                "bottom": 607.96875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 491,
+                "top": 256,
+                "bottom": 702.96875
+              },
+              "scroll": [
+                197,
+                197,
+                59,
+                50
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 283.734375,
+              "right": 458,
+              "top": 325.1875,
+              "bottom": 365.1875,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 458,
+              "top": 629.96875,
+              "bottom": 677.96875,
+              "scroll": [
+                385,
+                385,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1100,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 403.296875,
+                "right": 508,
+                "top": 345,
+                "bottom": 368
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 415.296875,
+                "right": 508,
+                "top": 390,
+                "bottom": 413
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 415.296875,
+                "right": 508,
+                "top": 435,
+                "bottom": 458
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 291.578125,
+                "top": 516,
+                "bottom": 571.3125
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                219,
+                219,
+                66,
+                55
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 333.734375,
+              "right": 508,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 508,
+              "top": 593.3125,
+              "bottom": 641.3125,
+              "scroll": [
+                435,
+                435,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1100,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 403.296875,
+                "right": 508,
+                "top": 345,
+                "bottom": 368
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                105,
+                105,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 415.296875,
+                "right": 508,
+                "top": 390,
+                "bottom": 413
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 415.296875,
+                "right": 508,
+                "top": 435,
+                "bottom": 458
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                93,
+                93,
+                24,
+                23
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 291.578125,
+                "top": 516,
+                "bottom": 571.3125
+              },
+              "boundary": {
+                "left": 40,
+                "right": 541,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                219,
+                219,
+                66,
+                55
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 333.734375,
+              "right": 508,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 508,
+              "top": 593.3125,
+              "bottom": 641.3125,
+              "scroll": [
+                435,
+                435,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1101,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 203.875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                131,
+                131,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 231.40625,
+                "right": 347.28125,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 374.8125,
+                "right": 490.6875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 489.265625,
+                "top": 452.640625,
+                "bottom": 557.96875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                416,
+                416,
+                127,
+                105
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 324.453125,
+              "right": 498.71875,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 498.71875,
+              "top": 579.96875,
+              "bottom": 627.96875,
+              "scroll": [
+                426,
+                426,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1101,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 203.875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                131,
+                131,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 231.40625,
+                "right": 347.28125,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 374.8125,
+                "right": 490.6875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 489.265625,
+                "top": 452.640625,
+                "bottom": 557.96875
+              },
+              "boundary": {
+                "left": 40,
+                "right": 625.078125,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                416,
+                416,
+                127,
+                105
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 324.453125,
+              "right": 498.71875,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 498.71875,
+              "top": 579.96875,
+              "bottom": 627.96875,
+              "scroll": [
+                426,
+                426,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1280,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 203.875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                131,
+                131,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 254.6875,
+                "right": 370.5625,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 421.40625,
+                "right": 537.28125,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 556.96875,
+                "top": 452.640625,
+                "bottom": 575.109375
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                484,
+                484,
+                147,
+                122
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 382.703125,
+              "right": 556.96875,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 556.96875,
+              "top": 597.109375,
+              "bottom": 645.109375,
+              "scroll": [
+                484,
+                484,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1280,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 203.875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                131,
+                131,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 254.6875,
+                "right": 370.5625,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 421.40625,
+                "right": 537.28125,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 73,
+                "right": 556.96875,
+                "top": 452.640625,
+                "bottom": 575.109375
+              },
+              "boundary": {
+                "left": 40,
+                "right": 729.5,
+                "top": 256,
+                "bottom": 676
+              },
+              "scroll": [
+                484,
+                484,
+                147,
+                122
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 382.703125,
+              "right": 556.96875,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 73,
+              "right": 556.96875,
+              "top": 597.109375,
+              "bottom": 645.109375,
+              "scroll": [
+                484,
+                484,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1440,
+        "theme": "light",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 113,
+                "right": 243.875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                131,
+                131,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 318.875,
+                "right": 434.75,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 509.75,
+                "right": 625.625,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 113,
+                "right": 657.40625,
+                "top": 452.640625,
+                "bottom": 590.421875
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                544,
+                544,
+                165,
+                138
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 483.140625,
+              "right": 657.40625,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 113,
+              "right": 657.40625,
+              "top": 612.421875,
+              "bottom": 660.421875,
+              "scroll": [
+                544,
+                544,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 1440,
+        "theme": "dark",
+        "fit": {
+          "terms": [
+            {
+              "key": "periodIncome",
+              "shown": "$12,476.54",
+              "expected": "$12,476.54",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 113,
+                "right": 243.875,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                131,
+                131,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "assignedBills",
+              "shown": "$1,665.00",
+              "expected": "$1,665.00",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 318.875,
+                "right": 434.75,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "householdBudgetHold",
+              "shown": "$2,517.14",
+              "expected": "$2,517.14",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "calculated",
+              "estimatedCue": false,
+              "title": "",
+              "box": {
+                "left": 509.75,
+                "right": 625.625,
+                "top": 365.890625,
+                "bottom": 394.640625
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                116,
+                116,
+                30,
+                29
+              ]
+            },
+            {
+              "key": "balanceAfterDeductions",
+              "shown": "$8,294.40",
+              "expected": "$8,294.40",
+              "fits": true,
+              "labelFits": true,
+              "labelOverlapsAmount": false,
+              "nativeTrust": "estimated",
+              "estimatedCue": true,
+              "title": "Estimated — see Period figures for the source and qualification",
+              "box": {
+                "left": 113,
+                "right": 657.40625,
+                "top": 452.640625,
+                "bottom": 590.421875
+              },
+              "boundary": {
+                "left": 80,
+                "right": 816.15625,
+                "top": 256,
+                "bottom": 685.421875
+              },
+              "scroll": [
+                544,
+                544,
+                165,
+                138
+              ]
+            }
+          ],
+          "pillFits": true,
+          "footerFits": true,
+          "escapedGlyphs": [],
+          "chrome": [
+            {
+              "selector": ".budget-today-cash",
+              "left": 483.140625,
+              "right": 657.40625,
+              "top": 283,
+              "bottom": 323,
+              "scroll": [
+                174,
+                174,
+                40,
+                40
+              ]
+            },
+            {
+              "selector": ".blend-hero-foot",
+              "left": 113,
+              "right": 657.40625,
+              "top": 612.421875,
+              "bottom": 660.421875,
+              "scroll": [
+                544,
+                544,
+                48,
+                48
+              ]
+            }
+          ],
+          "badgesHidden": true,
+          "boardOverflow": false
+        },
+        "householdLabels": [
+          "Groceries",
+          "Fuel",
+          "Household",
+          "Dog food",
+          "Eating out",
+          "Dale guilt-free spending",
+          "Amanda guilt-free spending"
+        ],
+        "helocNet": 25.35,
+        "panelAndFocus": true
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "unavailable": true,
+        "householdReasonVisible": true,
+        "helocUnavailable": true
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "unavailable": true,
+        "householdReasonVisible": true,
+        "helocUnavailable": true
+      },
+      {
+        "width": 935,
+        "theme": "light",
+        "unavailable": true,
+        "householdReasonVisible": true,
+        "helocUnavailable": true
+      },
+      {
+        "width": 935,
+        "theme": "dark",
+        "unavailable": true,
+        "householdReasonVisible": true,
+        "helocUnavailable": true
+      }
+    ],
+    "inventedDataOnly": true,
+    "providerWrites": 0
   },
   "focusWalk": {
     "viewport": 1440,
@@ -1789,8 +5547,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          178,
-          51
+          143,
+          50
         ],
         "visiblyUsable": true,
         "outlineCheckPassed": true
@@ -1803,8 +5561,8 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          178,
-          51
+          143,
+          50
         ],
         "visiblyUsable": true,
         "outlineCheckPassed": true
@@ -1817,7 +5575,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          142,
+          151,
           50
         ],
         "visiblyUsable": true,
@@ -1831,7 +5589,7 @@
         "outlineWidth": "3px",
         "outlineColor": "rgb(86, 80, 224)",
         "box": [
-          589,
+          544,
           164
         ],
         "visiblyUsable": true,

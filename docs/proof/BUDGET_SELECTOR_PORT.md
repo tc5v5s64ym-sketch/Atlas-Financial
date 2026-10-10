@@ -41,8 +41,7 @@ requested light and dark. Wheel gestures preserve ordinary page scrolling unless
 horizontal or the selector is focused. Vertical touch can scroll the page. Reduced
 motion stops particles/spring/fling and keeps the selector visible. Animation
 work stops when detached, hidden or disposed; the native dialog pauses drawing.
-The brand remains the existing non-navigation label. Other widgets and native
-evidence panels retain the approved implementation and await separate future work.
+The brand remains the existing non-navigation label. Dale's subsequent browser comments authorized the focused hero, Household and HELOC repairs. See [the current panel report](BUDGET_PANEL_REPAIRS.md); other original interactions remain preserved.
 
 No data.js, prototype sample finances, financial calculation/classification,
 confirmation, recategorization or prototype panel money is used by production.
@@ -50,12 +49,12 @@ Test inputs are fixed invented publications, separate from the household preview
 
 ## Independent browser evidence
 
-Source commit: `f49e4fa79bf6c1509dedfa56275119eedb185532`.
-Integrated main: `6a9f37da6009408e90013c39070f4b6be0a8ca3c`.
+Source commit: `e26f6a7469dd5d0f33dfa2db4524e788114b1cfc`.
+Integrated main: `657339f46862f187ba2ab81c066e5cd474318b2b`.
 All actual source bytes equal Git blobs before and after the complete proof.
 The [receipt](budget-blend-browser-receipt.json) records source/served/screenshot
-hashes and the riverPort test results. Full proof: 49 screenshots,
-185 bound files, 30 served assets, zero page errors or external requests.
+hashes and the riverPort test results. Full proof: 53 screenshots,
+189 bound files, 30 served assets, zero page errors or external requests.
 
 - Native mouse drag begins on an amount label at 1440, 390 and 320 in light/dark.
   Native progress, hero period and visible range change before release. The same

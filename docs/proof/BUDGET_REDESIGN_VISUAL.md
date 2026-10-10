@@ -8,23 +8,9 @@ remain outstanding.
 
 ## Current-state verification
 
-The owner instructed this existing builder to implement the focused original-code
-selector port, after the review-only pass. Source reuse instructions are
-[6090989561](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6090989561);
-the later [light/dark decision](https://github.com/tc5v5s64ym-sketch/Atlas-Financial/pull/548#issuecomment-6091424187)
-supersedes the original dark river in both themes. Before editing: **STILL BROKEN**,
-code required, final owner visual acceptance remains pending. Main
-`6a9f37da6009408e90013c39070f4b6be0a8ca3c` was freshly fetched and is integrated.
+The original selector port remains implemented. Dale's latest browser comments authorize the focused hero/Household/HELOC repair described in [the panel report](BUDGET_PANEL_REPAIRS.md). Before this repair: STILL BROKEN at 935 pixels and HELOC absent; code required. Current main 657339f46862f187ba2ab81c066e5cd474318b2b is integrated, including upstream #560 unchanged. Keep Draft; final owner visual and release approvals remain pending.
 
-The port changes only the selector module, its native adapter/CSS/header wiring,
-and browser proof sources. `public/plan.js`, `public/forecast.js`, canonical data
-and all backend/provider sources are unchanged from previous head `48e9d25`.
-Separate Draft #560 and the original owner checkout are untouched. Keep #548 Draft.
-The earlier no-Income/no-Payday face, all Household lines, gapless column stacks,
-native panels and historical qualification remain intact.
-
-The original ZIP, extracted HTML/CSS/JS, demo.mp4 and approved PNGs are accessible.
-See [the selector source and behavior report](BUDGET_SELECTOR_PORT.md).
+The original ZIP, extracted HTML/CSS/JS, demo.mp4 and approved PNGs remain accessible. No sample finances or calculations enter production. The original owner checkout and private map are untouched.
 
 ## Repaired face and evidence
 
@@ -75,7 +61,7 @@ Run the existing fixture-only runner with Playwright and Chromium:
 $env:CHROME_PATH = '<Chromium executable>'
 $env:PYTHON = '<Python with Pillow>'
 $env:APPROVED_REFERENCE_DIR = '<exact approved reference PNG folder>'
-$env:PROOF_BASE_SHA = '6a9f37da6009408e90013c39070f4b6be0a8ca3c'
+$env:PROOF_BASE_SHA = '657339f46862f187ba2ab81c066e5cd474318b2b'
 node test/browser-budget-blend-proof.js
 ```
 
@@ -93,24 +79,24 @@ from Git blobs, and its index stat metadata was refreshed with no staged content
 change. The clean-start and raw-byte checks then passed. No source hash or
 screenshot expectation was manually substituted to make the proof pass.
 
-Exercised code commit: `f49e4fa79bf6c1509dedfa56275119eedb185532`.
-Source tree: `d3f06de7b663bcbbec884ba3c9db8fc1922274f6`.
-The receipt binds **185 tracked sources** with Git blob IDs, raw SHA256 and
+Exercised code commit: `e26f6a7469dd5d0f33dfa2db4524e788114b1cfc`.
+Source tree: `1f756d74964964aad03ffd4b297eb6e2e50cb088`.
+The receipt binds **189 tracked sources** with Git blob IDs, raw SHA256 and
 byte counts. Each repository asset served to the browser is checked against that
 binding; every scoped source is checked again after execution. Only docs/proof/
 changes may follow this code commit. No source hashes are normalized or substituted.
 
-The fresh run passed: **49 screenshots**, **185 bound
+The fresh run passed: **53 screenshots**, **189 bound
 sources**, **30 served repository assets**, `errors:[]`, `externalRequests:[]`.
 All committed/exercised bytes and screenshot hashes were independently verified.
 
 | Source | SHA256 of committed and exercised bytes |
 |---|---|
-| `public/plan.js` | `f88968d6b73ec9267f7eb2c64f978d133f9b0f9383088e56b6256e4c2966b769` |
-| `public/budget-blend.js` | `58751d1a763f16e93d93c61f6de68e831bcb52b1d34d806c50bf018a1b9f33f7` |
+| `public/plan.js` | `9c9106ab02d84877ec74f75f815b2e6f1d6c7ab9e31d0805e5f2c368a1b58f00` |
+| `public/budget-blend.js` | `fe0844bd5bad1305b739c7006df8a5e1dd25a190cb3b92c2fcba1cf00648ac99` |
 | `public/budget-river.js` | `ab74152cbd40a5ebfdad05dcfc65a67d7fdac15a6d006e2990c1d249630be853` |
-| `public/budget-gface.css` | `39aecf81b6ae98855b7785e1239193da70e39d826d01d7dcc915944989c4a997` |
-| `test/browser-budget-blend-proof.js` | `0631756e15d626db0245c4d84a9918a04be09b9a07fc32503eae8e7221fc3f61` |
+| `public/budget-gface.css` | `5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e` |
+| `test/browser-budget-blend-proof.js` | `e4bda99eeaa51aa03f3f522f1a4f5f4b6fc26749bc9ed64dbec2de36adf23c75` |
 | `test/browser-budget-river-port.js` | `fd168a22352d674050f6ca88cf329422b2e5b4aba76e0be403e5cb4e05def99c` |
 
 The receipt records results, exact reference hashes, source and served-asset
@@ -121,6 +107,9 @@ The approved dark reference ends before lower tiles, so lower dark fidelity
 has no approved reference. Chromium emulated touch is tested before release and through cancellation. Physical-device touch and signed-in production remain untested.
 
 Useful captures:
+
+- [Current 935-pixel panel light](budget-panels-935-light.png) and [dark](budget-panels-935-dark.png)
+- [Native unavailable panel light](budget-panels-935-light-unavailable.png) and [dark](budget-panels-935-dark-unavailable.png)
 
 - [Working selector light](budget-river-port-1440-light.png) and [dark](budget-river-port-1440-dark.png)
 - [Original versus port light](budget-river-pair-1440-light.png) and [dark](budget-river-pair-1440-dark.png)
@@ -134,12 +123,12 @@ Useful captures:
 
 ## Numerical and validation boundaries
 
-Forecast, canonical data and the numerical snapshot script are byte-identical to
-integrated main `6a9f37da6009408e90013c39070f4b6be0a8ca3c`. That revision's
+public/forecast.js, canonical data and the numerical snapshot script are byte-identical to
+integrated main `657339f46862f187ba2ab81c066e5cd474318b2b`. That revision's
 own script and inputs were extracted from its exact Git blobs and executed
 independently of the candidate checkout. Both 582-key numerical snapshots have
 SHA256 `60b0328bc9174270ef23c1bba6e2d61f52cc674204ad6cd07728ad6eeabc8ac6`.
-Historical aggregate availability is an intentional presentation repair and is
+The Forecast-owned movement module now includes the recorded HELOC under the existing native evidence guards; it is separately reconciled in the panel proof. Historical aggregate availability is an intentional presentation repair and is
 proved separately through the real renderer and browser.
 
 The PR merge card records the full-suite outcome and actual hosted checkout
