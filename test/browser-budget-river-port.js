@@ -87,9 +87,17 @@ async function proveRiverPort({ open, capture }) {
     await page.waitForFunction(() => document.querySelector('.river')?.dataset.riverMotion === 'settled');
     await page.evaluate(()=>window.scrollTo(0,0));
     if (capture) await capture(page, 'budget-river-port-' + width + '-' + theme + '.png');
-    await page.locator('[data-blend-theme]').click();
+    for(let cycle=0;cycle<3;cycle++) {
+      await page.locator('[data-blend-theme]').click();
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      if(await page.locator('.t-river').getAttribute('data-river-theme')!==theme)break;
+    }
     await page.waitForFunction(theme=>document.querySelector('.t-river')?.dataset.riverTheme!==theme,theme);
-    await page.locator('[data-blend-theme]').click();
+    for(let cycle=0;cycle<3;cycle++) {
+      await page.locator('[data-blend-theme]').click();
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      if(await page.locator('.t-river').getAttribute('data-river-theme')===theme)break;
+    }
     await page.waitForFunction(theme=>document.querySelector('.t-river')?.dataset.riverTheme===theme,theme);
     await page.evaluate(()=>document.documentElement.removeAttribute('data-theme'));
     await page.emulateMedia({colorScheme:theme==='dark'?'light':'dark'});
