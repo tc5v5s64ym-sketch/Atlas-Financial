@@ -79,8 +79,8 @@ from Git blobs, and its index stat metadata was refreshed with no staged content
 change. The clean-start and raw-byte checks then passed. No source hash or
 screenshot expectation was manually substituted to make the proof pass.
 
-Exercised code commit: `b76ac0f0398c8183b9a61591ba2c7819b27af8fa`.
-Source tree: `fc7ab93f66027db4c278897c732c088b77099652`.
+Exercised code commit: `7929a5ba2456c6f84c17a405e3f5b45b859d4ced`.
+Source tree: `37d4fe03f0a94f06e0ea7cc495a8fa45e0945132`.
 The receipt binds **191 tracked sources** with Git blob IDs, raw SHA256 and
 byte counts. Each repository asset served to the browser is checked against that
 binding; every scoped source is checked again after execution. Only docs/proof/
@@ -92,7 +92,7 @@ All committed/exercised bytes and screenshot hashes were independently verified.
 
 | Source | SHA256 of committed and exercised bytes |
 |---|---|
-| `public/plan.js` | `7eb00e9705f5e962ffef66904bb743378dca09e097f99db20d4d893c6879cbfb` |
+| `public/plan.js` | `aa43b1a82aa748cdd49f680fc3e149b903cb8158c0ea2f9aabf8e7df55d2536f` |
 | `public/budget-blend.js` | `27eef404171da6fb6eba8d18f913d5847ec9294d3f53723cee5036766adc6f32` |
 | `public/budget-river.js` | `e6e90e515006bcf37d7ffec9b0728791af97e8e6164317d596c684bac2ffb8c9` |
 | `public/budget-gface.css` | `5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e` |
@@ -142,3 +142,5 @@ PASS. No out-of-scope history or Lunch Money repair is included. Prior Systems
 PASS does not certify this head.
 
 The keyboard walk records **18 outlined stops** and **13 targets meeting its size and visibility predicate**. Its first 18 stops are not comprehensive accessibility clearance. **16 visible-text contrast samples** passed; **2 empty-text probes** are unevaluated. Design, Engine, Money, current-head Systems and Dale's final visual approval remain pending. Keep Draft.
+
+The latest date-formatter dependency repair and its validation are recorded in [the CI repair report](BUDGET_SELECTOR_FORMATTER_CI_REPAIR.md). Source binding above is refreshed by the complete clean-start proof after that repair.

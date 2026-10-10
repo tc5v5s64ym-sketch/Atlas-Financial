@@ -14,7 +14,7 @@ The original 190/27 spring, .008 integration, fit/pan direction, spacing, height
 
 ## Independent evidence
 
-Exercised source: b76ac0f0398c8183b9a61591ba2c7819b27af8fa. Source tree: fc7ab93f66027db4c278897c732c088b77099652. Integrated main: 657339f46862f187ba2ab81c066e5cd474318b2b.
+Exercised source: 7929a5ba2456c6f84c17a405e3f5b45b859d4ced. Source tree: 37d4fe03f0a94f06e0ea7cc495a8fa45e0945132. Integrated main: 657339f46862f187ba2ab81c066e5cd474318b2b.
 
 Clean-start complete browser PASS: 55 screenshots, 191 tracked Git/raw-byte bindings and 30 served assets. Every source byte matched Git before and after execution. Receipt errors:[]; externalRequests:[]. Evidence-only publication must retain these exact source bytes.
 
@@ -24,8 +24,10 @@ All 582 revision-owned numerical snapshot values match current main, SHA256 60b0
 
 ## Observed performance and limits
 
-Local Edge profiling of the same dated native preview at 935/390 pixels found repeated ~187-243 ms tasks before repair, including shader reinitialization, canvas/label rebuilds and hidden focus/layout work. After repair, the sampled river positioning median was ~0.1 ms instead of ~2.4-2.6 ms; retained adoption was ~0.1-0.2 ms instead of ~32-40 ms. Final sampled native update tasks were ~53-105 ms, and maximum frame gaps were ~100 ms at 935 and ~67 ms at 390 versus ~233 ms before repair. These instrumented local observations are separate from the raw-byte browser certificate. Native financial panels still have rendering cost; this is an improvement, not a universal 60-fps certificate.
+The preceding smoothness repair (source b76ac0f) used local Edge profiling of the same dated native preview at 935/390 pixels found repeated ~187-243 ms tasks before repair, including shader reinitialization, canvas/label rebuilds and hidden focus/layout work. After repair, the sampled river positioning median was ~0.1 ms instead of ~2.4-2.6 ms; retained adoption was ~0.1-0.2 ms instead of ~32-40 ms. Final sampled native update tasks were ~53-105 ms, and maximum frame gaps were ~100 ms at 935 and ~67 ms at 390 versus ~233 ms before repair. These instrumented local observations are separate from the raw-byte browser certificate. Native financial panels still have rendering cost; this is an improvement, not a universal 60-fps certificate.
 
 Physical-device touch and signed-in deployment remain untested. Private working videos/captures use the dated native packet and are kept outside Git. Its existing unavailable observation is preserved; no private mapping guard is bypassed to manufacture spending. Full-suite/CI status is recorded in the PR merge card; this proof is neither formal Systems PASS nor final owner visual acceptance. No Ready, merge or deployment.
 
 [935 light larger fixture](budget-river-port-935-light.png) · [935 dark larger fixture](budget-river-port-935-dark.png) · [complete receipt](budget-blend-browser-receipt.json).
+
+The latest date-formatter dependency repair and its validation are recorded in [the CI repair report](BUDGET_SELECTOR_FORMATTER_CI_REPAIR.md). Source binding above is refreshed by the complete clean-start proof after that repair.

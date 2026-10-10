@@ -17,7 +17,7 @@ An incumbent GET-only native refresh attempt stopped at account-map validation w
 
 ## Independent proof
 
-Exercised source: b76ac0f0398c8183b9a61591ba2c7819b27af8fa. Source tree: fc7ab93f66027db4c278897c732c088b77099652. Integrated main: 657339f46862f187ba2ab81c066e5cd474318b2b.
+Exercised source: 7929a5ba2456c6f84c17a405e3f5b45b859d4ced. Source tree: 37d4fe03f0a94f06e0ea7cc495a8fa45e0945132. Integrated main: 657339f46862f187ba2ab81c066e5cd474318b2b.
 Clean-start full browser PASS: 55 screenshots, 191 Git/raw-byte source bindings, 30 served assets, errors:[], externalRequests:[]. The panel helper adds 27 cases: 22 width/theme cases, four missing-observation cases and one malformed-record browser case. It exercises real App.boot, Forecast, Budget and native panels; no financial DOM stub or provider write.
 
 The independent HELOC fixture ledger is 50,000 - 60,000 + 12,535 = 2,535 cents. Independent endpoint difference is 4,202,535 - 4,200,000 = 2,535 cents. A separate pending 90,000 cents is excluded. The 235 movement assertions include missing endpoints, incomplete coverage, discrepancy, future periods, conflicting identities and input immutability. These amounts are invented, not household finances.
@@ -34,3 +34,5 @@ The original selector remains covered by six independent original/port compariso
 The receipt binds every screenshot/source/served hash. Subsequent publication changes only docs/proof; source bytes must still match. 16 visible-text contrast samples and the keyboard outline checks pass; empty probes are unevaluated. This is not comprehensive accessibility, physical-device touch or signed-in production clearance. Current-head full CI and formal Design/Engine/Money/Systems/Dale acceptance are tracked in the PR merge card; this builder report is not a formal Systems PASS. Keep Draft; no Ready, merge or deployment.
 
 The subsequent selector-only continuation retains these repairs and regenerates this proof from the current source. See [selector smoothness](BUDGET_SELECTOR_SMOOTHNESS.md).
+
+The latest date-formatter dependency repair and its validation are recorded in [the CI repair report](BUDGET_SELECTOR_FORMATTER_CI_REPAIR.md). Source binding above is refreshed by the complete clean-start proof after that repair.

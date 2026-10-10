@@ -51,7 +51,7 @@ The latest owner report of a clunky selector is repaired in [the focused smoothn
 
 ## Independent browser evidence
 
-Source commit: `b76ac0f0398c8183b9a61591ba2c7819b27af8fa`.
+Source commit: `7929a5ba2456c6f84c17a405e3f5b45b859d4ced`.
 Integrated main: `657339f46862f187ba2ab81c066e5cd474318b2b`.
 All actual source bytes equal Git blobs before and after the complete proof.
 The [receipt](budget-blend-browser-receipt.json) records source/served/screenshot
@@ -88,3 +88,5 @@ Numerical snapshot against current main: all 582 keys unchanged, SHA256
 `60b0328bc9174270ef23c1bba6e2d61f52cc674204ad6cd07728ad6eeabc8ac6`.
 Physical-device touch and signed-in production remain untested. Builder proof
 does not provide formal Systems PASS or final visual approval. Keep Draft.
+
+The latest date-formatter dependency repair and its validation are recorded in [the CI repair report](BUDGET_SELECTOR_FORMATTER_CI_REPAIR.md). Source binding above is refreshed by the complete clean-start proof after that repair.
