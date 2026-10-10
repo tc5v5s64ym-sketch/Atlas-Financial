@@ -108,6 +108,29 @@ async function proveRiverPort({ open, capture }) {
     await page.waitForFunction(() => document.querySelector('.river')?.dataset.riverMotion === 'settled');
     await page.evaluate(()=>window.scrollTo(0,0));
     if (capture) await capture(page, 'budget-river-port-' + width + '-' + theme + '.png');
+    if (width === 935) {
+      const beforeRefresh = await page.evaluate(() => {
+        const labels = [...document.querySelectorAll('.river .rv')];
+        window.__beforeRefreshLabels = labels;
+        window.__beforeRefreshCanvas = document.querySelector('.river canvas');
+        const old = labels.map(node => node.dataset.riverNativeValue).join('|');
+        // Invented fixture change, passed through the real App -> Forecast ->
+        // native printer path. Same dates must not make retained labels stale.
+        App.data.plan.income[0].amount += 111.11;
+        App.rerender(); return old;
+      });
+      await page.waitForFunction(old => [...document.querySelectorAll('.river .rv')].map(node => node.dataset.riverNativeValue).join('|') !== old, beforeRefresh);
+      const refreshed = await page.evaluate(() => {
+        const labels = [...document.querySelectorAll('.river .rv')];
+        const rows = [...document.querySelector('ol[data-bad-timeline]').children];
+        return { sameCanvas: document.querySelector('.river canvas') === window.__beforeRefreshCanvas,
+          rebuiltLabels: labels.some((node,i) => node !== window.__beforeRefreshLabels[i]),
+          faithful: labels.every((node,i) => (['calculated','estimated'].includes(rows[i]?.dataset.badTermTrust)
+            ? rows[i].querySelector('[data-bad-term-amount]')?.textContent.replace(/\s+/g,' ').trim() : 'Unavailable') === node.dataset.riverNativeValue) };
+      });
+      assert.deepEqual(refreshed, { sameCanvas:true, rebuiltLabels:true, faithful:true }, 'new same-date native publication replaces stale labels without discarding the canvas');
+      cases.at(-1).publicationRefresh = refreshed;
+    }
     for(let cycle=0;cycle<3;cycle++) {
       await page.locator('[data-blend-theme]').click();
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
