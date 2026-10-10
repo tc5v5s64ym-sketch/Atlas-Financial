@@ -121,6 +121,12 @@ async function provePanelRepairs({ open, capture }) {
     cases.push({ width, theme, unavailable: true, householdReasonVisible: true, helocUnavailable: true });
     await page.close();
   }
+  const malformed = await open(935, 'light', { data: cards.helocObserved('malformed-only'), reducedMotion: 'reduce' });
+  assert.match(await malformed.locator('[data-budget-card-toggle="heloc"]').innerText(), /Unavailable/);
+  await malformed.locator('[data-budget-card-toggle="heloc"]').click();
+  assert.match(await malformed.locator('[data-budget-card-panel="heloc"]').innerText(), /Transaction evidence unconfirmed/);
+  cases.push({ width: 935, theme: 'light', realObservation: true, malformedRecordNotZero: true });
+  await malformed.close();
   return { cases, inventedDataOnly: true, providerWrites: 0 };
 }
 module.exports = { provePanelRepairs };

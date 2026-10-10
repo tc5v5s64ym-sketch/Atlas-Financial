@@ -4243,9 +4243,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   const txs = [];
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
-  // Collapse omits undated rows; keep their mapped-card evidence unknown.
+  const movementEvidenceRole = mapping => ['revolving-credit', 'heloc'].includes(atlasAccountRole(mapping));
+  // Collapse omits undated rows; keep card and HELOC evidence unknown.
   for (const tx of report && report.transactions || []) {
-    if (tx && !tx.date && atlasAccountRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null) === 'revolving-credit') {
+    if (tx && !tx.date && movementEvidenceRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null)) {
       cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: null,
         reason: 'transaction-amount-or-date-unconfirmed' });
     }
@@ -4255,7 +4256,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
     const amount = lunchMoneyDebitAmount(tx.amount);
     if (!tx.date || amount == null) {
-      if (atlasAccountRole(mapping) === 'revolving-credit'
+      if (movementEvidenceRole(mapping)
         || (atlasAccountRole(mapping) === 'household-cash'
           && (kindHintFromTransaction(tx) === 'card-payment' || isMbnaCardPayment(tx)))) {
         cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx),
@@ -4302,7 +4303,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
-    const coverageRelevant = atlasAccountRole(mapping) === 'revolving-credit'
+    const coverageRelevant = movementEvidenceRole(mapping)
       || (atlasAccountRole(mapping) === 'household-cash'
         && (kindHint === 'card-payment' || flags.cardPaymentIdentity === true));
     if (coverageRelevant && (tx.currency !== 'cad' || tx.coverageCurrencyConflict === true)) {

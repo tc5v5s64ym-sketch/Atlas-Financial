@@ -243,4 +243,21 @@ for (const [name, change, reason] of [
 const helocHtml = View.html(helocPub, { money: value => '$' + value.toFixed(2), date: value => value });
 eq(helocHtml.includes('data-budget-card-toggle="heloc"'), true, 'native renderer supplies the HELOC trigger');
 eq(helocHtml.includes('data-budget-card-panel="heloc"'), true, 'native renderer supplies the HELOC panel');
+// Exercise the real observation -> sanitized overlay -> Forecast -> renderer.
+// An omitted malformed record must not turn a ledger into a complete zero.
+for (const mode of ['complete', 'empty', 'undated', 'amount-missing', 'foreign-currency', 'malformed-only']) {
+  const served = require('./fixtures/card-period-movements-data').helocObserved(mode);
+  const observedPub = F.cardPeriodMovements(served.plan, served.debts, x.asOf, x.window,
+    { currentPeriodActuals: served.liveOverlay.currentPeriodActuals,
+      cardPeriodBalanceEvidence: served.liveOverlay.cardPeriodBalanceEvidence });
+  const observedHeloc = observedPub.cards.find(row => row.id === 'heloc');
+  const qualified = mode === 'complete' || mode === 'empty';
+  eq(observedHeloc.netChange.amount, mode === 'complete' ? 25.35 : mode === 'empty' ? 0 : null, 'native HELOC ' + mode + ' independent net');
+  eq(observedHeloc.status, qualified ? 'ready' : 'unavailable', 'native HELOC ' + mode + ' completeness');
+  eq(observedHeloc.reasons.includes('transaction-evidence-unconfirmed'), !qualified, 'native HELOC ' + mode + ' preserves lost-record marker');
+  const rendered = View.html(observedPub, { money: value => '$' + value.toFixed(2), date: value => value });
+  eq(rendered.includes('data-budget-card-toggle="heloc"'), true, 'native HELOC ' + mode + ' renderer identity');
+  if (!qualified) eq(/data-budget-card-toggle="heloc"[\s\S]*?card-movement-delta[^>]*>Net unavailable/.test(rendered), true,
+    'native HELOC ' + mode + ' renderer never claims zero');
+}
 console.log(`PASS card period movements: ${checks} independent assertions`);
