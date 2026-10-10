@@ -64,6 +64,7 @@
       return `<div class="payday-operating-sheet budget-surface" data-payday-sheet data-budget-surface="unavailable">
         ${card('unavailable', parts.unavailableHtml(ctx), { eyebrow: 'Budget', label: 'Current plan unavailable' })}
         ${parts.granularity() === 'pay-period' ? movementsSection(ctx, parts) : ''}
+        ${parts.detailSheetHtml ? parts.detailSheetHtml() : ''}
       </div>`;
     }
     const view = parts.granularity() === 'month' ? 'month'

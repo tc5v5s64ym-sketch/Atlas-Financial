@@ -1901,6 +1901,36 @@ body:has([data-budget-bento]) .sitenav {
   margin: 0;
 }
 
+/* The trigger's published reported balance (Balance · as of), printed from
+   the sealed card publication only; never a net or payday figure. */
+.card-movement-balance {
+  display: block;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.budget-blend-card-movements .card-movement-balance {
+  grid-column: 1;
+  grid-row: 3;
+  min-width: 0;
+}
+
+/* Advisory fix (Systems Review 5480743096): in the gface bento face the
+   trigger grid's tracks are 44px / minmax(0,1fr) / auto with named areas
+   "chip name chg" / "chip bal chg" / "spark spark spark". The blend
+   placement above (column 1, row 3) squeezes the balance line into that
+   face's 44px chip column, where it wrapped 5-8 lines even at 1440px.
+   In the gface face the balance line takes the face's existing balance
+   area instead — the bal area the .cc-bal lines already use — with that
+   area's presentation. Placement only; the printed content is unchanged. */
+.budget-bento.atlas-g .budget-blend-card-movements .card-movement-balance {
+  grid-area: bal;
+  color: var(--g-ink-3);
+  font-size: 13px;
+  font-weight: 520;
+}
+
 .budget-blend-card-movements .card-movement-strip {
   min-width: 0;
   margin: 0;
