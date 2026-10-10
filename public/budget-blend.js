@@ -1038,12 +1038,22 @@
     toggle.setAttribute('aria-controls', panel.id);
     const sheet = document.querySelector('[data-budget-detail-sheet]');
     const native = typeof sheet?.budgetSheet?.open === 'function';
+    const releasePreviousOpener = () => {
+      // A previous day Close event can arrive after the roster has reopened.
+      // Its skin fallback must not override the new native heading/hero origin.
+      categoryFocusReturn = null;
+      document.querySelectorAll('[data-blend-opened="1"]').forEach(node => {
+        node.setAttribute('aria-expanded', 'false');
+        node.removeAttribute('data-blend-opened');
+      });
+    };
     if (native) {
       panel.hidden = true;
       toggle.setAttribute('aria-haspopup', 'dialog');
     }
     toggle.addEventListener('click', () => {
       if (native) {
+        releasePreviousOpener();
         panel.removeAttribute('data-budget-bill-day');
         budgetApplyBillFilter(panel, 'all');
         sheet.budgetSheet.open(panel, toggle, 'Bills');
@@ -1068,6 +1078,7 @@
       heroBills?.addEventListener('click', event => {
         event.preventDefault();
         event.stopImmediatePropagation();
+        releasePreviousOpener();
         panel.removeAttribute('data-budget-bill-day');
         budgetApplyBillFilter(panel, 'all');
         sheet.budgetSheet.open(panel, heroBills, 'Bills');

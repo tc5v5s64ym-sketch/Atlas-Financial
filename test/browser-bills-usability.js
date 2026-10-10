@@ -102,9 +102,24 @@ function fixture() {
       const four = day('2026-08-24');
       assert.equal(await four.locator('..').locator('.blend-day-more').innerText(), '+3');
       assert.ok((await four.boundingBox()).height >= 44, 'full-square hit target');
+      await page.keyboard.press('Tab'); await four.focus(); await four.scrollIntoViewIfNeeded();
+      const keyboardFocus = await four.evaluate(el => {
+        const rect = node => { const b = node.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; };
+        const style = getComputedStyle(el);
+        return { square: rect(el.parentElement), button: rect(el), icon: rect(el.querySelector('svg')),
+          visible: el.matches(':focus-visible'), outlineWidth: parseFloat(style.outlineWidth), outlineStyle: style.outlineStyle };
+      });
+      assert.equal(keyboardFocus.visible, true); assert.equal(keyboardFocus.outlineStyle, 'solid');
+      assert.ok(keyboardFocus.outlineWidth >= 2);
+      assert.ok(Math.abs(keyboardFocus.square.width - keyboardFocus.button.width) <= 2);
+      assert.ok(Math.abs(keyboardFocus.square.height - keyboardFocus.button.height) <= 2);
+      assert.ok(keyboardFocus.button.width > keyboardFocus.icon.width);
+      await takeShot('calendar-keyboard-focus');
+      focusedFlows.push({ width, theme, flow: 'keyboard focus outlines whole day square', ...keyboardFocus });
       // Empty days remain inert; no invented bill or second dialog.
       const empty = page.locator('.blend-day').filter({ has: page.locator('.blend-day-n', { hasText: /^20$/ }) });
       await empty.click(); assert.equal(await sheet().count(), 0); assert.equal(await empty.locator('button').count(), 0);
+      assert.equal(await empty.getAttribute('tabindex'), null, 'empty calendar squares are not nonactionable tab stops');
       // Every square area invokes one native day list, with each occurrence once.
       for (const area of ['background', 'logo', 'count']) {
         await four.scrollIntoViewIfNeeded();
@@ -168,6 +183,17 @@ function fixture() {
       }
       // The hero opens the same compact roster; details remain one tap away.
       const hero = page.locator('[data-operating-question="04"] .budget-step-summary');
+      const heading = page.locator('[data-blend-bills-open]');
+      const headingEscape = async motion => {
+        await heading.focus(); await page.keyboard.press('Enter'); await waitMotion();
+        assert.equal(await visibleRows().count(), 14);
+        await page.keyboard.press('Escape'); await settle(); await waitMotion();
+        assert.equal(await heading.evaluate(el => document.activeElement === el), true, 'Escape restores exact calendar heading origin');
+        assert.equal(await heading.getAttribute('aria-expanded'), 'false');
+        assert.equal(await period(), originalPeriod);
+        focusedFlows.push({ width, theme, motion, flow: 'calendar heading Enter/Escape', focus: 'calendar heading' });
+      };
+      await headingEscape('reduce');
       await hero.focus(); await page.keyboard.press('Enter'); assert.equal(await visibleRows().count(), 14);
       await hero.evaluate(el => { el.click(); el.click(); });
       assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]').budgetSheet.snapshot().frames.length), 1);
@@ -178,10 +204,20 @@ function fixture() {
         heights: rows.map(r => r.getBoundingClientRect().height),
         amountSizes: rows.map(r => parseFloat(getComputedStyle(r.querySelector('.budget-bill-amount')).fontSize)),
         nameSizes: rows.map(r => parseFloat(getComputedStyle(r.querySelector('strong')).fontSize)),
+        amounts: rows.map(r => {
+          const el = r.querySelector('.budget-bill-amount'), range = document.createRange();
+          range.selectNodeContents(el);
+          const rects = [...range.getClientRects()].filter(b => b.width > 2 && b.height > 2);
+          const bounds = el.getBoundingClientRect(), row = r.getBoundingClientRect();
+          return { id: r.dataset.budgetBillOpen, text: el.textContent.trim(),
+            lines: new Set(rects.map(b => Math.round(b.top))).size,
+            rightWithinRow: bounds.right <= row.right, scrollOverflow: el.scrollWidth > el.clientWidth };
+        }),
         pageOverflow: document.documentElement.scrollWidth > innerWidth }));
       assert.ok(metrics.heights.every(h => h >= 44));
       assert.ok(metrics.nameSizes.every(size => size >= 15)); assert.ok(metrics.amountSizes.every(size => size <= 16));
       assert.equal(metrics.pageOverflow, false);
+      assert.ok(metrics.amounts.every(a => a.lines === 1 && a.rightWithinRow && !a.scrollOverflow), 'compact fixture amounts fit on one line');
       if (width === 1440) assert.ok(metrics.visibleWithinViewport >= 10, JSON.stringify(metrics));
       measurements.push({ width, theme, ...metrics }); await takeShot('compact-hero-bills');
       await sheet().locator('[data-budget-bill-open="internet"]').click();
@@ -243,6 +279,20 @@ function fixture() {
       // Playwright's animation/stability waits to exercise actions in flight.
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), false);
+      await headingEscape('no-preference');
+      // A queued native close event must not let the previous calendar day
+      // steal focus from the new heading or hero opener after reversal.
+      for (const [name, opener] of [['heading', heading], ['hero', hero]]) {
+        await four.evaluate((el, selector) => {
+          el.click(); document.querySelector('[data-budget-detail-close]').click();
+          document.querySelector(selector).click();
+        }, name === 'heading' ? '[data-blend-bills-open]' : '[data-operating-question="04"] .budget-step-summary');
+        assert.equal(await visibleRows().count(), 14); await waitMotion();
+        await page.keyboard.press('Escape'); await settle(); await waitMotion();
+        assert.equal(await opener.evaluate(el => document.activeElement === el), true, 'rapid day Close/new opener Escape restores exact new origin');
+        assert.equal(await four.getAttribute('aria-expanded'), 'false');
+        focusedFlows.push({ width, theme, motion: 'no-preference', flow: 'day Close/' + name + ' open/Escape', focus: name });
+      }
       for (const [name, opener, expected] of [['day', four, 4], ['hero', hero, 14]]) {
         await opener.scrollIntoViewIfNeeded();
         const burst = await opener.evaluate(el => {
