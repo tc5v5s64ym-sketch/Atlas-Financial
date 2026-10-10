@@ -7,8 +7,12 @@ retained exactly; no edge auto-pan; no direction or selection changes).
 
 First head `1ebe5404` carried the source change and a standalone proof.
 Systems Review `5479984271` verified the source change and BLOCKED the release
-on the proof harness only. This note and the committed proof below are the
-replacement head's record, answering that review's six requirements.
+on the proof harness only. Replacement head `93598acb` answered that review's
+six requirements; Systems Review `5480338180` resolved the harness re-pin, the
+prose correction, the breakpoint/extreme captures and the blob bindings, and
+kept the release BLOCKED on three proof/legibility items plus a main
+integration refresh. This note and the committed proof below are the current
+head's record, answering both reviews.
 
 ## Change (production scope: two files)
 
@@ -18,13 +22,17 @@ replacement head's record, answering that review's six requirements.
   top 9px → 7px and height 32px → 24px; `.playhead-beam` top fallback 40px →
   30px, bottom 52px → 51px. Pill and value-label font sizes unchanged; all
   labels remain inside the tile.
-- `public/budget-river.js` — `layout()` insets only: band top 52 → **38**
-  (desktop) / **36** (mobile); bottom inset 52/50 → **51/49**; plus the
+- `public/budget-river.js` — `layout()` insets: band top 52 → **38**
+  (desktop) / **36** (mobile); bottom inset 52/50 → **51/49**; the
   `--beam-top` value pinned to a constant 30px (1px above the pill's bottom
-  edge, as before). The value domain (`vmin = min(0, …)`, span), the per-run
-  path construction, drag/fling, keyboard, selection publication, adoption and
-  reduced-motion code are byte-unchanged (checkable from the PR diff: the JS
-  diff is confined to `layout()` and the `--beam-top` line in `place()`).
+  edge, as before); plus, in `place()`, the selected-extreme legibility
+  placement described under Round 2 below (selected label steps aside from
+  the orb at the band's bottom edge; covered neighbouring labels yield).
+  The value domain (`vmin = min(0, …)`, span), the per-run path construction,
+  drag/fling, keyboard, selection publication, adoption and reduced-motion
+  code are unchanged (checkable from the PR diff: the JS diff is confined to
+  `layout()`, the `--beam-top` line and the legibility block in `place()`,
+  and the label-state resets in `labels()`).
 
 ## Resulting geometry (asserted by the executable proof)
 
@@ -63,9 +71,14 @@ was never changed to match the prose.
   domain, different insets). Cross-canvas pixel equality was dropped (the
   canvases legitimately differ in height); pixel proof is now the port's own
   deterministic static frame. All held-drag, live-selection, cancellation,
-  spring, resize and reduced-motion assertions are preserved. Run natively
-  against this head: PASS (native live drag across viewport/theme cases;
-  amount-label starts and retained controller across native remounts).
+  spring, resize and reduced-motion assertions are preserved. Its run
+  against this head is recorded, with per-case results, in
+  `docs/proof/browser/timeline-geometry-native-receipt.json` (run with
+  `CHROME_PATH=<chromium> RIVER_RESULT_JSON=<path> node
+  test/browser-budget-river-port.js`): 8 native live-drag viewport/theme
+  cases and 6 prototype-comparison results against the actual app sources,
+  bound to the pushed head's Git blobs (see the receipt's
+  `remoteVerification`).
 - Selected-extreme visual proof (item 4): `after-selected-max-*` /
   `after-selected-min-*` captures place the 20px orb on the band's top/bottom
   edge (selected series maximum / minimum); the receipt records orb and pill
@@ -86,14 +99,54 @@ was never changed to match the prose.
   at the mobile geometry; over the unavailable gap the value series has two
   known runs with null positions between them, and the orb/beam are hidden.
 
+## Round 2 (Systems Review 5480338180)
+
+1. **Source-bound native-harness results.** The native harness's PASS was
+   previously prose in the packet, and the geometry receipt's recorded
+   source commit was a local commit the API push flow never created
+   (404). The harness now records its own structured results
+   (`timeline-geometry-native-receipt.json`, above), and both receipts'
+   bindings were finalized against the PUSHED head: the exercised code
+   commit below is a GitHub commit, its tree is the local exercised tree
+   byte-for-byte, and every bound file's Git blob was compared against
+   that head's tree fetched from GitHub (see `remoteVerification` in
+   each receipt).
+2. **Standalone fixture defects** (`test/browser-river-geometry-proof.js`).
+   The gap fixture's second known run was written `[5, 11]`, which the
+   controller reads as the index set {5, 11} — indices 6–10 silently had
+   no run. It is now `[5, 6, 7, 8, 9, 10, 11]`, and the proof asserts the
+   exact run-id assignment. The fixture formatter also rendered a null
+   (unknown) value as `$0`; it now mirrors the shipped formatter
+   (`budget-blend.js` `compactRiverAmount`): a non-finite value renders
+   as `—`, never a number. The gap captures now show a true break with
+   `—` labels and the second run drawn through all its points.
+3. **Selected-minimum legibility.** In `after-selected-min-390-dark.png`
+   the 20px orb sat on the selected `−$420` label. Narrow presentation
+   correction in `place()` (`public/budget-river.js`): when the orb's
+   disc would cover the selected value label — only possible for points
+   at the band's bottom edge — the label steps sideways just clear of
+   the disc (toward the side with more room, clamped inside the tile),
+   and any neighbouring label the disc or the stepped label would cover
+   fades out until clear. Selection, domain, gestures, fonts and the
+   band geometry are unchanged. The selected-min captures were retaken
+   at 1280/390/320 in both themes, and the geometry receipt's
+   `extremes` entries record the orb and selected-label rectangles for
+   every extreme case: disjoint in all of them, with no visible
+   neighbouring-label overlap.
+4. **Integration refresh.** This head integrates current main
+   `a1b6fa0b8b86abfe35100e4c12f1b3e8f16d931d` (seven commits past the
+   previous merge base `29063eec`). None of those commits touches this
+   PR's files; the production/harness diff against the new main is
+   byte-identical to the diff against `29063eec` (diff-verified), and
+   both proofs were re-run against the integrated head.
+
 ## Before state
 
 `before-*.png` and `timeline-geometry-before-report.json` were captured
 against the pre-change geometry (base `d9960dfe`) during the first head's
-build and are retained as the change's before record. The replacement head
-integrates current main `29063eec`; the source diff against that main is
-identical in content to the first head's diff (main did not touch these
-regions beyond an unrelated selector rename in the same stylesheet).
+build and are retained as the change's before record.
 
-Legibility: the agreed targets were met with fonts unchanged, so Atlas's
-escape hatch was not triggered and no deviating variant is proposed.
+Legibility: fonts are unchanged. The one legibility defect found in
+review (item 3 above) was corrected by label placement within the
+agreed geometry, not by deviating from it, so Atlas's escape hatch was
+not triggered and no deviating variant is proposed.

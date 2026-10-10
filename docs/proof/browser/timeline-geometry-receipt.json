@@ -6,8 +6,8 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "a01f34b314f79b3a5baaf99cb2221f3c507b957d",
-    "sourceTree": "80c22499ec632fa9d342e3c1805c263fc455069b",
+    "sourceCommit": "d422b7a299ed0bd8ecf69f216c8246d3716f0645",
+    "sourceTree": "7b024643ed7da61ad597e431571c4d89b287490f",
     "baseCommit": null,
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -23,9 +23,9 @@
         "bytes": 56070
       },
       "public/budget-river.js": {
-        "gitBlob": "fc8e679469718bbab02ab1d11072ca3c8f2c3534",
-        "sha256": "53f762041ff9afd3070c481aa08120217118543410445c726fd2c69c0c93fed5",
-        "bytes": 25616
+        "gitBlob": "76512c4d3eb29678f453aad705d7085b007e24a8",
+        "sha256": "280c76fc051b25ac4c7a74452d9c2e1b9fa071142bc391d9ede93fc12598c70f",
+        "bytes": 28072
       },
       "public/fonts.css": {
         "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
@@ -38,9 +38,9 @@
         "bytes": 143239
       },
       "test/browser-river-geometry-proof.js": {
-        "gitBlob": "b5283647608111f38043beba2d8b969f75e6be2e",
-        "sha256": "fbf9bab38c78574ab3adef77d93ea861a83dcb40cc05d45780c916d79918cfad",
-        "bytes": 23031
+        "gitBlob": "a5b9330d2daed7dae0fc60f18027c979902cf0ce",
+        "sha256": "b47b6abc935ed4260c55592827e9c253492d84ae7e14b2305c25e71a35767fd1",
+        "bytes": 26309
       },
       "test/proof-source-binding.js": {
         "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",
@@ -67,6 +67,323 @@
     "beamBottomInset": 51
   },
   "caseCount": 24,
+  "extremes": [
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 574.1799926757812,
+        "cy": 38,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 564.1799926757812,
+        "right": 584.1799926757812,
+        "top": 28,
+        "bottom": 48
+      },
+      "label": {
+        "left": 557.8359375,
+        "right": 590.5390625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 574.1799926757812,
+        "cy": 38,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 564.1799926757812,
+        "right": 584.1799926757812,
+        "top": 28,
+        "bottom": 48
+      },
+      "label": {
+        "left": 557.8359375,
+        "right": 590.5390625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 183,
+        "cy": 36,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 173,
+        "right": 193,
+        "top": 26,
+        "bottom": 46
+      },
+      "label": {
+        "left": 166.6484375,
+        "right": 199.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 143.63999938964844,
+        "cy": 72,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 133.63999938964844,
+        "right": 153.63999938964844,
+        "top": 62,
+        "bottom": 82
+      },
+      "label": {
+        "left": 155.4609375,
+        "right": 191.7265625,
+        "top": 79,
+        "bottom": 95,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 143.63999938964844,
+        "cy": 72,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 133.63999938964844,
+        "right": 153.63999938964844,
+        "top": 62,
+        "bottom": 82
+      },
+      "label": {
+        "left": 155.4609375,
+        "right": 191.7265625,
+        "top": 79,
+        "bottom": 95,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 390,
+      "theme": "light",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 320,
+      "theme": "dark",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 320,
+      "theme": "light",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    }
+  ],
   "behavior": {
     "dragScrub": {
       "changes": [
@@ -79,14 +396,10 @@
       "dragging": true
     },
     "keyboard": {
-      "beforeKeys": 3,
-      "index": 5,
+      "beforeKeys": 4,
+      "index": 6,
       "aria": "0",
       "changes": [
-        {
-          "i": 4,
-          "how": "commit"
-        },
         {
           "i": 5,
           "how": "commit"
@@ -96,23 +409,27 @@
           "how": "commit"
         },
         {
-          "i": 5,
+          "i": 7,
+          "how": "commit"
+        },
+        {
+          "i": 6,
           "how": "commit"
         }
       ]
     },
     "remount": {
       "before": {
-        "H": 120.10205841064453,
+        "H": 123,
         "top": 38,
-        "bot": 69.10205841064453,
-        "index": 5
+        "bot": 72,
+        "index": 6
       },
       "after": {
         "H": 123,
         "top": 38,
         "bot": 72,
-        "index": 5
+        "index": 6
       }
     },
     "reducedMotion": {
@@ -137,12 +454,41 @@
       "reduced": true,
       "settled": true,
       "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
       "orb": {
         "cx": 183,
         "cy": 38.03125,
         "w": 20,
         "h": 20
       },
+      "orbRect": {
+        "left": 173,
+        "right": 193,
+        "top": 28.03125,
+        "bottom": 48.03125
+      },
+      "label": {
+        "left": 168.0078125,
+        "right": 197.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$640"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
       "pill": {
         "top": 7,
         "bottom": 31
@@ -150,105 +496,44 @@
     }
   },
   "screenshotSha256": {
-    "after-positive-1280-dark.png": "397fbb6dabdb24be2d34e5750eb18566bc08eaac10dafd0caa6841be0f7477a5",
-    "after-positive-1280-light.png": "e4309d10f99fcb4499b961ebc50e21a19fde8842826f9b494218bf0f4eee2bb3",
-    "after-positive-390-dark.png": "ec555d9708c6941f7ad6ae9ac7bea2d71c4dd8d3a092edc1ca0b0ffbb37433ec",
-    "after-positive-390-light.png": "45712d7a616dd8e694cb8dd2d7489298efdb9b4510ff681e5fbfb977feab0c7c",
-    "after-positive-320-dark.png": "3fee5871ac378b0f3f07b574ef782df84504b58b05a7a9683b296c71388a5703",
-    "after-positive-320-light.png": "815cb74d47bda7883fde27f31a3c141c26f1bcc2bc211159d2f073eea2409111",
-    "after-negative-1280-dark.png": "c5dd67eb0d42fbd454aa378195b8df314ec85ecb4c4d81e4da6fe86e907f5b86",
-    "after-negative-1280-light.png": "c6a2b6355720853c42de94e73d89a5c45ac050199678bad0b15edb97187f5b11",
-    "after-negative-390-dark.png": "e2373d48989d103f5e7848e11a512f847555bbb8dd38672a6f4d6ecf5d832f44",
-    "after-negative-390-light.png": "375cd542050baa0318edc2c3f210e705975d024d9ed92e6943c5c43bb2d8e79a",
-    "after-negative-320-dark.png": "f0499dee9d8af29da8749cce9787d659287a36f6f069fe3ef0bed805f1292863",
-    "after-negative-320-light.png": "33ded2e34744cee9b2dccc97544191e49598fd51ffc9f01e9b634a8aa8be9ee5",
-    "after-gap-1280-dark.png": "956596ec508785cf3bc7d980e8726e6d6f19fe1f329ee50a70b2877d57af53c7",
-    "after-gap-1280-light.png": "c2cab82b189340cc7c2b923d3fb84ae1d485b36b03b5f72b82b03e71ea9538a2",
-    "after-gap-390-dark.png": "dd74ed268ca7d589f68633080a85be4e2b60894e9211fde30757448bb3dce3a3",
-    "after-gap-390-light.png": "f4e428d9bc7357e6e283e28021faf42d950170a40c02de09ba5c5a89a7d2b266",
-    "after-gap-320-dark.png": "5d176e65174aba76276000f9b05b3299de52cb4d16a43b3c1c225fd9389cf614",
-    "after-gap-320-light.png": "289d436e45529d9cdca5357af5af4ac51ed852550008a0805ee0885965ee19c5",
-    "after-pan-1280-dark.png": "3cd35264de1faed1bc124623cd5f878add5e8ca8ec1f96b7efca54ee9830edb3",
-    "after-pan-1280-light.png": "915732dff222669967c77b775584609c9a3bc84a24999efff1ab5f03382f1b7d",
-    "after-pan-390-dark.png": "1e0aed360ec4949087b5274a51e7f7671604dc03ef22273eb88509a183b49f32",
-    "after-pan-390-light.png": "36be89414719463d8b3f4932a6b948bf714c4acd6c2ce9857102b5f52ffcfa43",
-    "after-pan-320-dark.png": "169945a3fd1de3487703b7b64478c6430527ec768ee9138b6a61c32a807211fa",
-    "after-pan-320-light.png": "7e82e27663a679b5f80756d9af944df9a51d394378632a788aae4fc2b045355b",
-    "after-selected-max-1280-dark.png": "93b23dd974d913864d8c01e8b5546df890df145b553f7068cbc3b323fcb96d73",
-    "after-selected-max-1280-light.png": "d47c6da073b5c6724427cd75049723a6be11dddfe4b6a43ee1d1b46a4d23e0ea",
-    "after-selected-max-390-dark.png": "dde334add8ebf9cb4b904fec456df53a7275c972b748255a07e5e9e967b08bec",
-    "after-selected-min-1280-dark.png": "8330948c4e9eaaf6020a9d7c2160f6589e77d27a7049f6531b8a3774c5ca25c4",
-    "after-selected-min-1280-light.png": "86c883b08e1ae5eaec54c1a88e61e7238d9c03a19be00e50c727a246b2bce991",
-    "after-selected-min-390-dark.png": "53b40790a9fda79068dd479ca7bd42d86eb6400f209d0131030f8c3390b9a992",
-    "after-held-drag-1280-dark.png": "240daeb765bb119e78c6275746ab16c7d0635a96246e698e0841e5852f5fc0e5",
-    "after-held-drag-390-dark.png": "49ca64dc6c2c8bad92c13183a959cefa8f170ee2dff24c0235b07281df5373ac",
-    "after-breakpoint-700-dark.png": "29e39692a0708cf0fa352c99b4f36fb4ed6ba175025ec8547e9ba0fbb8315d36",
-    "after-breakpoint-narrow800-dark.png": "d05861523d08558f8f69ddb77f96a18d2ab3bab0136a7493b58b56f0340a1b87",
+    "after-positive-1280-dark.png": "ff837bc0edd193743103dec428b1a87ae9a42e409d27dc89d4d171e074307564",
+    "after-positive-1280-light.png": "ad255c7ef03e194a29692857b0ca3c36ecdb918651302d350f05e77bce8677cb",
+    "after-positive-390-dark.png": "869f67990d52247303d9c96751fc7291c7a7e0be47712983739471d050bb2ae2",
+    "after-positive-390-light.png": "13096f82860b7a963c6e5d53ac5d1b12bb0aef41ee77a1c4094e84d07499b2e7",
+    "after-positive-320-dark.png": "43b2a979f346bacac3d0ff560a142e93e9536ec78048fc6749686ec15dfa0f84",
+    "after-positive-320-light.png": "290b3b084b228b58dca4418643e124eb791ad773804ab2e2dea773ba64948b8f",
+    "after-negative-1280-dark.png": "3b939e7ef40a99510c40db46068db73a478b533de03335fcf4128b4981912cf4",
+    "after-negative-1280-light.png": "c70379295220a0317f0cef10f7d05e3a2627485f7152729354148aee8857dc18",
+    "after-negative-390-dark.png": "14505071949097d36da0629328f237d485d1e6507858986bc450f3b7bed8db77",
+    "after-negative-390-light.png": "c0abc3787137dbf072de86a6096178ad392b3979be1038d78388e6776a02de67",
+    "after-negative-320-dark.png": "6b96517cd6bb1eaabe9c9314d7fb9bf027daed87c4f28734cd8941a66412dfaf",
+    "after-negative-320-light.png": "b9e63349f7bcf1ee05638893bd489507985e399e4699cdfda4719c16c78265b0",
+    "after-gap-1280-dark.png": "b66727882cfc6ddf90a527787c66a30f9bb43a6a0433983a8bdf8609c89ef6b9",
+    "after-gap-1280-light.png": "e7032699430070ed746c135c960b5f6ccdacd5cb98cfaf30b7f0dadb10aa48dc",
+    "after-gap-390-dark.png": "9c12e80250199cbd4e6585dfd61faa19f5375e4b6387d67622460ec72f2b82e7",
+    "after-gap-390-light.png": "da23baf655572fa915b37e89bd5b79b31b8056559edf7cb2701ead8ebdaf8702",
+    "after-gap-320-dark.png": "da4a0a80364949d4afe015d865bced51b2457f6b5ab4ddd27e9971432fc294bb",
+    "after-gap-320-light.png": "d042253d356558289ceec1a3252fee66ce2cc8cffad71b9e4405679d8fb96e06",
+    "after-pan-1280-dark.png": "7171be14ec09b74cdc1949fa73bb883d7000ae37a2d7c3a1b05cb7555ab27b9c",
+    "after-pan-1280-light.png": "96b6924d7a55de4f1ce803f1a6ed3f1a68898f9487effa36c66c95b05ef01b0f",
+    "after-pan-390-dark.png": "7bd077fe052b07366b900411ae9c70d58c933b99268b532ece7d424554272b4c",
+    "after-pan-390-light.png": "f2e2ff5dfe35ae1998ca9ac9542932b96a4383fdf3038899d46bb3cf164c3d3e",
+    "after-pan-320-dark.png": "dd32956c5b4cfb5ebdeedaec451f2891ff7d4c360d7dcc1da5607cd0ba4761a7",
+    "after-pan-320-light.png": "112cf5f387736e3fe321c6ee6a3eb7b913c2ea089909df7ca054e8907dab7d71",
+    "after-selected-max-1280-dark.png": "a2bc9846a9ded305eb48fd39da77b64e4b536f04943b8718bfb32cf0ee0d6bbc",
+    "after-selected-max-1280-light.png": "a324ddc7e852f88e64d8a94bbac7c28d16f8eae4268b8888ce0c4dad1b56d3ca",
+    "after-selected-max-390-dark.png": "41938492fe68f6f49a8de1098405f12263f12f0e59e10e4e6919218a75ce5a5d",
+    "after-selected-min-1280-dark.png": "92e6483b5ed5934410d9198cf031f65f6a2068aec7724aadf1fa7d79e80bad85",
+    "after-selected-min-1280-light.png": "86544b2cbadc78471c30e817ee3079c7187043bc3fa9415855446d41d0f54e40",
+    "after-selected-min-390-dark.png": "77bef9e2b088b5df0227c62b853d74642223667017823a8883399a3047471b53",
+    "after-selected-min-390-light.png": "0523b2f9e52b1650dc77585a03a7e115dfc0489f360c29b342fe28b03f144096",
+    "after-selected-min-320-dark.png": "ae0792a95dba748fb39dd2c29d2a40868d94daa0ea02349e634dff01f60a7358",
+    "after-selected-min-320-light.png": "eff86d03a7a813bb8805d176aaf5914e6f8bd61f4ba11a2cfb030fb0fa5eb717",
+    "after-held-drag-1280-dark.png": "5a469d9616ff54d1dfdf62f4fdcca0b92bd2735f25a9eed1c98cc710b8482ba1",
+    "after-held-drag-390-dark.png": "1a8977128d452a8d9a2e2deccf127689bf613e9fe7a6b49cae19e367dc190846",
+    "after-breakpoint-700-dark.png": "13d1a789deb66405e3d129553e18e9fb38d8f6640dd6466165b4f1ca2b13f93e",
+    "after-breakpoint-narrow800-dark.png": "0ecf9e36adfbf5e225e2f4d3de6e8b384f29b44d7d838337c5f295c92faba025",
     "after-reduced-motion-390-dark.png": "113261769f7648aee280e515e3902c7bcfdbb5355abc2263ed1bcf96faa7f521"
   },
-  "failures": [
-    "positive/1280/dark: band bottom 71.10904693603516 != 72",
-    "positive/1280/dark: clearances not balanced (7 vs 7.890953063964844)",
-    "positive/1280/light: band bottom 71.39718627929688 != 72",
-    "positive/1280/light: clearances not balanced (7 vs 7.602813720703125)",
-    "positive/390/dark: band bottom 62.92108154296875 != 65",
-    "positive/390/dark: clearances not balanced (5 vs 7.07891845703125)",
-    "positive/390/light: band bottom 62.920860290527344 != 65",
-    "positive/390/light: clearances not balanced (5 vs 7.079139709472656)",
-    "positive/320/dark: band bottom 62.633392333984375 != 65",
-    "positive/320/dark: clearances not balanced (5 vs 7.366607666015625)",
-    "positive/320/light: band bottom 63.60124969482422 != 65",
-    "positive/320/light: clearances not balanced (5 vs 6.398750305175781)",
-    "negative/1280/dark: band bottom 70.6778793334961 != 72",
-    "negative/1280/dark: clearances not balanced (7 vs 8.322120666503906)",
-    "negative/1280/light: band bottom 68.72067260742188 != 72",
-    "negative/1280/light: clearances not balanced (7 vs 10.279327392578125)",
-    "negative/390/dark: band bottom 63.92601776123047 != 65",
-    "negative/390/dark: clearances not balanced (5 vs 6.073982238769531)",
-    "negative/390/light: band bottom 63.177513122558594 != 65",
-    "negative/390/light: clearances not balanced (5 vs 6.822486877441406)",
-    "negative/320/dark: band bottom 63.177146911621094 != 65",
-    "negative/320/dark: clearances not balanced (5 vs 6.822853088378906)",
-    "negative/320/light: band bottom 62.632911682128906 != 65",
-    "negative/320/light: clearances not balanced (5 vs 7.367088317871094)",
-    "gap/1280/dark: band bottom 68.72198486328125 != 72",
-    "gap/1280/dark: clearances not balanced (7 vs 10.27801513671875)",
-    "gap/390/dark: band bottom 62.92210388183594 != 65",
-    "gap/390/dark: clearances not balanced (5 vs 7.0778961181640625)",
-    "gap/390/light: band bottom 62.921539306640625 != 65",
-    "gap/390/light: clearances not balanced (5 vs 7.078460693359375)",
-    "gap/320/dark: band bottom 62.63420104980469 != 65",
-    "gap/320/dark: clearances not balanced (5 vs 7.3657989501953125)",
-    "gap/320/light: band bottom 62.63450622558594 != 65",
-    "gap/320/light: clearances not balanced (5 vs 7.3654937744140625)",
-    "pan/1280/light: band bottom 69.10139465332031 != 72",
-    "pan/1280/light: clearances not balanced (7 vs 9.898605346679688)",
-    "pan/390/dark: band bottom 64.5687026977539 != 65",
-    "pan/390/dark: clearances not balanced (5 vs 5.431297302246094)",
-    "pan/390/light: band bottom 62.31532287597656 != 65",
-    "pan/390/light: clearances not balanced (5 vs 7.6846771240234375)",
-    "pan/320/dark: band bottom 63.60009765625 != 65",
-    "pan/320/dark: clearances not balanced (5 vs 6.39990234375)",
-    "pan/320/light: band bottom 63.60090637207031 != 65",
-    "pan/320/light: clearances not balanced (5 vs 6.3990936279296875)",
-    "selected-max/positive/1280/dark: orb centre 36.86031150817871 not on the band max edge",
-    "selected-max/positive/1280/dark: orb size 19.400146484375x19.400165557861328",
-    "selected-max/positive/1280/light: orb size 19.71978759765625x19.71978759765625",
-    "selected-max/positive/390/dark: orb centre 35.34372329711914 not on the band max edge",
-    "selected-max/positive/390/dark: orb size 19.635391235351562x19.63540267944336",
-    "selected-min/negative/1280/dark: orb centre 70.16107559204102 not on the band min edge",
-    "selected-min/negative/1280/dark: orb size 19.8116455078125x19.8116455078125",
-    "selected-min/negative/1280/light: orb centre 66.24822807312012 not on the band min edge",
-    "selected-min/negative/1280/light: orb size 19.400070190429688x19.400070190429688",
-    "selected-min/negative/390/dark: orb centre 60.30293655395508 not on the band min edge",
-    "selected-min/negative/390/dark: orb size 19.46727752685547x19.46728515625",
-    "divergence/viewport700: H=114 top=38 bot=60.31489562988281",
-    "divergence/viewport700: clearances not balanced",
-    "divergence/viewport800-narrow: H=123 top=36 bot=71.75597381591797",
-    "divergence/viewport800-narrow: clearances not balanced",
-    "transition/to-1280: H=123 top=38 bot=70.67698669433594 index=3",
-    "transition/to-700: H=114 top=38 bot=62.87113952636719 index=3",
-    "transition/to-664: H=114 top=36 bot=64.99463653564453 index=3",
-    "behaviour: remount continuity {\"before\":{\"H\":120.10205841064453,\"top\":38,\"bot\":69.10205841064453,\"index\":5},\"after\":{\"H\":123,\"top\":38,\"bot\":72,\"index\":5}}"
-  ]
+  "failures": []
 }
