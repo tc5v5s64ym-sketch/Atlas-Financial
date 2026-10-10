@@ -243,6 +243,61 @@ for (const [name, change, reason] of [
 const helocHtml = View.html(helocPub, { money: value => '$' + value.toFixed(2), date: value => value });
 eq(helocHtml.includes('data-budget-card-toggle="heloc"'), true, 'native renderer supplies the HELOC trigger');
 eq(helocHtml.includes('data-budget-card-panel="heloc"'), true, 'native renderer supplies the HELOC panel');
+// Sheet routing contract + Grok Scope A trigger balance (renderer level):
+// triggers name the native dialog, panels render hidden as sheet sources,
+// and no inline expansion state or private close control remains.
+const fmt = { money: value => '$' + value.toFixed(2), date: value => value };
+const sheetHtml = View.html(pub, fmt);
+eq(sheetHtml.includes('aria-haspopup="dialog"'), true, 'card triggers name the native dialog lifecycle');
+eq(sheetHtml.includes('aria-expanded'), false, 'no competing inline expansion state remains');
+eq(sheetHtml.includes('data-budget-card-close'), false, 'panel carries no private close control; the sheet owns dismissal');
+eq(/data-budget-card-panel="travelvisa"[^>]* hidden>/.test(sheetHtml), true, 'panels render hidden as native sheet sources');
+// mbna is the publication's manual-statement card: its trigger balance is
+// labelled Balance with the preserved as-of date and the explicit source.
+eq(/data-budget-card-toggle="mbna"[\s\S]*?card-movement-balance">Balance \$760\.00 · as of 2026-08-08 · Manual statement/.test(sheetHtml), true,
+  'manual trigger balance shows Balance, as-of date and manual source');
+// travelvisa has no evidence date and no manual flag: the balance prints
+// with no invented date and no invented synced source.
+eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">Balance \$927\.40 · date unavailable<\/span>/.test(sheetHtml), true,
+  'undated non-manual trigger balance invents neither date nor source');
+eq(sheetHtml.toLowerCase().includes('payday balance'), false, 'reported balance is never called a payday balance');
+const zeroDebt = copy(x); zeroDebt.debts[2].balance = 0;
+eq(/data-budget-card-toggle="tdcc"[\s\S]*?card-movement-balance">Balance \$0\.00/.test(View.html(publish(zeroDebt), fmt)), true,
+  'genuine zero reported balance renders as zero');
+eq(View.html(publish(historical), fmt).includes('class="card-movement-balance"'), false,
+  'historical period trigger never borrows the current reported balance');
+const badBalance = copy(pub); badBalance.cards[0].reportedBalance = { amount: '927.40', date: '2026-08-20', status: 'dated' };
+eq(View.html(badBalance, fmt).includes('Balance $927.40'), false, 'non-numeric reported balance amount is rejected, not rendered');
+// Condensed panel copy: the payments qualifier keeps its meaning, the
+// generic provider-observation boilerplate sentence is gone.
+eq(sheetHtml.includes('Purpose unconfirmed: payments do not automatically settle scheduled minimums; lender confirmation remains separate.'), true,
+  'payments qualifier condensed with its meaning kept');
+eq(sheetHtml.includes('purchases remain in their spending categories once'), false, 'generic provider boilerplate removed');
+eq(sheetHtml.includes('This dated observation does not establish both period endpoints.'), true,
+  'dated-observation endpoint warning retained');
+// wire(): a trigger click opens its own panel through the supplied native
+// sheet and names the actual dialog; nothing opens inline.
+{
+  const listeners = {};
+  const panel = { attrs: { 'data-budget-card-panel': 'travelvisa', 'aria-label': 'Travel activity' },
+    getAttribute(key) { return this.attrs[key] ?? null; } };
+  const trigger = { attrs: { 'data-budget-card-toggle': 'travelvisa' },
+    getAttribute(key) { return this.attrs[key] ?? null; },
+    setAttribute(key, value) { this.attrs[key] = value; },
+    addEventListener(type, fn) { listeners[type] = fn; } };
+  const strip = { querySelectorAll(sel) { return sel.includes('toggle') ? [trigger] : [panel]; } };
+  const mount = { querySelector(sel) {
+    return sel.includes('card-movements') ? strip : sel.includes('detail-sheet') ? { id: 'budget-detail-sheet' } : null; } };
+  const opened = [];
+  View.wire(mount, { open: (...args) => opened.push(args) });
+  eq(trigger.attrs['aria-haspopup'], 'dialog', 'wire names the native dialog lifecycle');
+  eq(trigger.attrs['aria-controls'], 'budget-detail-sheet', 'wire controls the actual dialog');
+  listeners.click();
+  eq(opened.length, 1, 'trigger click opens through the sheet exactly once');
+  eq(opened[0][0], panel, 'sheet receives the card panel node');
+  eq(opened[0][1], trigger, 'sheet receives the trigger for focus return');
+  eq(opened[0][2], 'Travel activity', 'sheet receives the panel label as its title');
+}
 // Exercise the real observation -> sanitized overlay -> Forecast -> renderer.
 // An omitted malformed record must not turn a ledger into a complete zero.
 for (const mode of ['complete', 'empty', 'undated', 'amount-missing', 'foreign-currency', 'malformed-only']) {

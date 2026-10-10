@@ -499,4 +499,43 @@ for (const choice of ['paid', 'check', 'all']) {
   assert.equal(fresh.notPaidBucket.hidden, false); assert.equal(fresh.paidBucket.hidden, false);
   fresh.sheet.close(false);
 }
+{
+  // Card movement panels are native sheet sources: the controller records
+  // their stable card identity at open() and restores the sheet across a
+  // remount onto the fresh mount's own panel node.
+  const addCard = f => {
+    const strip = f.document.createElement('section');
+    strip.setAttribute('data-budget-card-movements', '');
+    const trigger = f.document.createElement('button');
+    trigger.setAttribute('data-budget-card-toggle', 'travelvisa');
+    trigger.setAttribute('aria-haspopup', 'dialog');
+    const panel = f.document.createElement('section');
+    panel.setAttribute('data-budget-card-panel', 'travelvisa');
+    panel.setAttribute('aria-label', 'Travel activity');
+    panel.hidden = true;
+    strip.appendChild(trigger); strip.appendChild(panel); f.mount.appendChild(strip);
+    return { strip, trigger, panel };
+  };
+  const first = fixture(); const card = addCard(first);
+  first.sheet.open(card.panel, card.trigger, 'Travel activity');
+  assert.equal(card.panel.parentNode, first.body, 'card panel moves into the sheet body');
+  assert.equal(card.panel.hidden, false);
+  assert.equal(first.title.textContent, 'Travel activity');
+  const state = first.sheet.snapshot();
+  assert.equal(state.sourceSelector, '[data-budget-card-panel="travelvisa"]', 'snapshot records the card panel identity');
+  assert.equal(state.triggerSelector, '[data-budget-card-toggle="travelvisa"]', 'snapshot records the card trigger identity');
+  first.motion.leave = () => {
+    assert.equal(first.document.activeElement, card.trigger, 'close returns focus to the card trigger');
+  };
+  first.sheet.close();
+  assert.equal(card.panel.parentNode, card.strip, 'close returns the original panel node to the strip');
+  assert.equal(card.panel.hidden, true);
+  const fresh = fixture(); const freshCard = addCard(fresh);
+  assert.equal(fresh.sheet.restore(state), true, 'card sheet restores across a remount');
+  assert.equal(freshCard.panel.parentNode, fresh.body);
+  assert.equal(freshCard.panel.hidden, false);
+  fresh.sheet.close(false);
+  assert.equal(freshCard.panel.parentNode, freshCard.strip);
+  assert.equal(freshCard.panel.hidden, true);
+}
 console.log('PASS native Budget drawer: original-node ownership, Back/focus, immutable evidence, deferred remount chain, cancellation, unique identities, held-source lookup, Bills filters/day and duplicate activation');

@@ -1901,6 +1901,21 @@ body:has([data-budget-bento]) .sitenav {
   margin: 0;
 }
 
+/* The trigger's published reported balance (Balance · as of), printed from
+   the sealed card publication only; never a net or payday figure. */
+.card-movement-balance {
+  display: block;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.budget-blend-card-movements .card-movement-balance {
+  grid-column: 1;
+  grid-row: 3;
+  min-width: 0;
+}
+
 .budget-blend-card-movements .card-movement-strip {
   min-width: 0;
   margin: 0;

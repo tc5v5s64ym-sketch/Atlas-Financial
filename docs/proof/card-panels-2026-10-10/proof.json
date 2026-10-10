@@ -1,0 +1,261 @@
+{
+  "synthetic": true,
+  "generatedBy": "test/browser-card-period-movements.js",
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "140.0.7339.186",
+    "platform": "linux"
+  },
+  "sourceBlobs": {
+    "public/index.html": "ca13c1404c18780d26d8a8992394600f32b8ca15",
+    "public/app.js": "74909f85f9857f9f2543e92fdc9afec6c936c515",
+    "public/plan.js": "c82dc2e3a4238d1d6b823bb6d48a933ac4816fa1",
+    "public/forecast.js": "dc9a63f62064156f9d4d3b4d4c2e897a01b47c85",
+    "public/budget-surface.js": "da8a27f58eb83575ba2a275aae4829d9527ea0bf",
+    "public/budget-card-movements.js": "7f917ed4b211be6ecf030721ddad1e0cdb03aec0",
+    "public/budget-blend.js": "1f17d3f389ba355325b70f10133ca9f122fe9e2b",
+    "public/budget-river.js": "ef0980127b9e86c4f11da2107fa0e896fde4aae8",
+    "public/budget-blend.css": "3dc7ecfaa102ea06c2fc99fec0dc300c26292a28",
+    "public/budget-surface.css": "88f07cce7be39074dc7a63b3c39c5c3214e077d8",
+    "public/budget-gface.css": "a13890163ddc2cc37831646b3e65cde52541df72",
+    "public/budget-sheet-motion.css": "0505a8438fdb4a1dac1ef9254c49289fe7a734fa",
+    "test/browser-card-period-movements.js": "eae3ed794b4bb1da88216babd450b1be89071cee",
+    "test/fixtures/card-period-movements-data.js": "bee1a5dd4f71816b76872d741cdd385b72c7b210",
+    "test/fixtures/budget-surface-data.js": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc"
+  },
+  "basedOn": "738fee98cdab56a94403ea9cdc8d60049c88973a",
+  "screenshots": [
+    {
+      "file": "complete-strip-1440-light.png",
+      "state": "complete",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "134cab08c2cd424d8921f4584c7a22cc06123ae571b53ee90f8d58f068d2a02b"
+    },
+    {
+      "file": "complete-open-1440-dark.png",
+      "state": "complete",
+      "width": 1440,
+      "theme": "dark",
+      "subject": "card sheet open",
+      "sha256": "3c369487c890f23579a4460f596cd47dadfee1bd5c23e5bd11785a94f559bccc"
+    },
+    {
+      "file": "complete-open-1440-light.png",
+      "state": "complete",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "9092909645384186867745a4d66d6f2ca59a69eb6701a9b2f44a2cc9477289e9"
+    },
+    {
+      "file": "complete-strip-390-light.png",
+      "state": "complete",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "467f05d31538158f814138b945ea895496fe0daf73ab303e710fe41fba2f47c3"
+    },
+    {
+      "file": "complete-open-390-dark.png",
+      "state": "complete",
+      "width": 390,
+      "theme": "dark",
+      "subject": "card sheet open",
+      "sha256": "3839722ccab46175887da2bb15645e79c20bfc75270734af86b1cf9cbda6f195"
+    },
+    {
+      "file": "complete-open-390-light.png",
+      "state": "complete",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "dd05f969e632ea1243225652f5759f5bf15a0d791f18d1d9b8f2060028dc5b4d"
+    },
+    {
+      "file": "complete-strip-320-light.png",
+      "state": "complete",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip, closed",
+      "sha256": "de9d9de1ab28c6f96436b66420cf1c7e8852b0a24d7add5e48078de13d29dc68"
+    },
+    {
+      "file": "complete-open-320-dark.png",
+      "state": "complete",
+      "width": 320,
+      "theme": "dark",
+      "subject": "card sheet open",
+      "sha256": "15400cfc6fba10b3fa8327c69f4ed6d96f92434ca6b87df1da39887e42c7de78"
+    },
+    {
+      "file": "complete-open-320-light.png",
+      "state": "complete",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open",
+      "sha256": "002dc7dd676c858e3740a483cc406b9c836128e2bbd7588c72ce9db1a37ae520"
+    },
+    {
+      "file": "plan-unavailable-strip-1440-light.png",
+      "state": "plan-unavailable",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card strip on the plan-unavailable branch",
+      "sha256": "bc2eca0a656d5533f6be7547de3a8697bf98e7710f285644be7408df441c0371"
+    },
+    {
+      "file": "plan-unavailable-card-open-1440-light.png",
+      "state": "plan-unavailable",
+      "width": 1440,
+      "theme": "light",
+      "subject": "card sheet open on the plan-unavailable branch",
+      "sha256": "f5a43d1825272a70c605099a5d9adb9f312c7736b0c82ec8f584616b359a05da"
+    },
+    {
+      "file": "plan-unavailable-strip-390-light.png",
+      "state": "plan-unavailable",
+      "width": 390,
+      "theme": "light",
+      "subject": "card strip on the plan-unavailable branch",
+      "sha256": "36820dcd7abe950bd47bb22a283a8b435bc9cfbf654fc5ec5d0a9f24c0f0f65b"
+    },
+    {
+      "file": "plan-unavailable-card-open-390-light.png",
+      "state": "plan-unavailable",
+      "width": 390,
+      "theme": "light",
+      "subject": "card sheet open on the plan-unavailable branch",
+      "sha256": "e85f4bc09ed8d04568884939636c600aa8f60b9b39f37f3df544b73bf0caa968"
+    },
+    {
+      "file": "plan-unavailable-strip-320-light.png",
+      "state": "plan-unavailable",
+      "width": 320,
+      "theme": "light",
+      "subject": "card strip on the plan-unavailable branch",
+      "sha256": "8f1ab9f716848667346af0b5d926a356e5a13a1895724add48928565d473a452"
+    },
+    {
+      "file": "plan-unavailable-card-open-320-light.png",
+      "state": "plan-unavailable",
+      "width": 320,
+      "theme": "light",
+      "subject": "card sheet open on the plan-unavailable branch",
+      "sha256": "6467f5f8f5d8d697a477b70445308e6069a2a2d52c18a74b137039b0d92635d8"
+    },
+    {
+      "file": "plan-unavailable-heloc-open-320-dark.png",
+      "state": "plan-unavailable",
+      "width": 320,
+      "theme": "dark",
+      "subject": "HELOC sheet open on the plan-unavailable branch",
+      "sha256": "5a59db8e0b483bb3e219817754158795c4da6e23366ad859614ded5a39be1656"
+    }
+  ],
+  "states": [
+    {
+      "width": 1440,
+      "state": "complete",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [
+        {
+          "theme": "light",
+          "ratios": [
+            6.757038955876727,
+            6.105866734391325
+          ]
+        },
+        {
+          "theme": "dark",
+          "ratios": [
+            8.030282516645022,
+            9.314950716485438
+          ]
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "complete",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [
+        {
+          "theme": "light",
+          "ratios": [
+            6.757038955876727,
+            6.105866734391325
+          ]
+        },
+        {
+          "theme": "dark",
+          "ratios": [
+            8.030282516645022,
+            9.314950716485438
+          ]
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "complete",
+      "layout": {
+        "after": true,
+        "before": true,
+        "billsClosingBefore": true,
+        "border": "0px",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "contrastChecks": [
+        {
+          "theme": "light",
+          "ratios": [
+            6.757038955876727,
+            6.105866734391325
+          ]
+        },
+        {
+          "theme": "dark",
+          "ratios": [
+            8.030282516645022,
+            9.314950716485438
+          ]
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "width": 1440,
+      "state": "plan-unavailable",
+      "synthetic": true
+    },
+    {
+      "width": 390,
+      "state": "plan-unavailable",
+      "synthetic": true
+    },
+    {
+      "width": 320,
+      "state": "plan-unavailable",
+      "synthetic": true
+    }
+  ],
+  "errors": [],
+  "writes": [],
+  "external": []
+}
