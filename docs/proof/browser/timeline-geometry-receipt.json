@@ -6,8 +6,8 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
-    "sourceTree": "7b024643ed7da61ad597e431571c4d89b287490f",
+    "sourceCommit": "c5fc8cdbffb932e0d10e7b8e245e7746a599e86c",
+    "sourceTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
     "baseCommit": null,
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -23,9 +23,9 @@
         "bytes": 56070
       },
       "public/budget-river.js": {
-        "gitBlob": "76512c4d3eb29678f453aad705d7085b007e24a8",
-        "sha256": "280c76fc051b25ac4c7a74452d9c2e1b9fa071142bc391d9ede93fc12598c70f",
-        "bytes": 28072
+        "gitBlob": "56c94e18c264f412d0c960b43bea5160c4940268",
+        "sha256": "5d512a9671b0015a4e4ad069c5727cb446445091683d810f431248923cb8f973",
+        "bytes": 28477
       },
       "public/fonts.css": {
         "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
@@ -48,9 +48,7 @@
         "bytes": 3363
       }
     },
-    "unchangedAfterProof": true,
-    "exercisedLocalCommit": "d422b7a299ed0bd8ecf69f216c8246d3716f0645",
-    "bindingNote": "The API push flow creates its own commit SHAs; the exercised local commit and the pushed commit have the identical tree (7b024643ed7da61ad597e431571c4d89b287490f), and every bound blob was verified against the pushed tree (remoteVerification)."
+    "unchangedAfterProof": true
   },
   "geometrySpec": {
     "desktop": {
@@ -398,10 +396,14 @@
       "dragging": true
     },
     "keyboard": {
-      "beforeKeys": 4,
-      "index": 6,
+      "beforeKeys": 3,
+      "index": 5,
       "aria": "0",
       "changes": [
+        {
+          "i": 4,
+          "how": "commit"
+        },
         {
           "i": 5,
           "how": "commit"
@@ -411,11 +413,7 @@
           "how": "commit"
         },
         {
-          "i": 7,
-          "how": "commit"
-        },
-        {
-          "i": 6,
+          "i": 5,
           "how": "commit"
         }
       ]
@@ -425,13 +423,13 @@
         "H": 123,
         "top": 38,
         "bot": 72,
-        "index": 6
+        "index": 5
       },
       "after": {
         "H": 123,
         "top": 38,
         "bot": 72,
-        "index": 6
+        "index": 5
       }
     },
     "reducedMotion": {
@@ -498,52 +496,44 @@
     }
   },
   "screenshotSha256": {
-    "after-positive-1280-dark.png": "ff837bc0edd193743103dec428b1a87ae9a42e409d27dc89d4d171e074307564",
-    "after-positive-1280-light.png": "ad255c7ef03e194a29692857b0ca3c36ecdb918651302d350f05e77bce8677cb",
-    "after-positive-390-dark.png": "869f67990d52247303d9c96751fc7291c7a7e0be47712983739471d050bb2ae2",
-    "after-positive-390-light.png": "13096f82860b7a963c6e5d53ac5d1b12bb0aef41ee77a1c4094e84d07499b2e7",
-    "after-positive-320-dark.png": "43b2a979f346bacac3d0ff560a142e93e9536ec78048fc6749686ec15dfa0f84",
-    "after-positive-320-light.png": "290b3b084b228b58dca4418643e124eb791ad773804ab2e2dea773ba64948b8f",
-    "after-negative-1280-dark.png": "3b939e7ef40a99510c40db46068db73a478b533de03335fcf4128b4981912cf4",
-    "after-negative-1280-light.png": "c70379295220a0317f0cef10f7d05e3a2627485f7152729354148aee8857dc18",
-    "after-negative-390-dark.png": "14505071949097d36da0629328f237d485d1e6507858986bc450f3b7bed8db77",
-    "after-negative-390-light.png": "c0abc3787137dbf072de86a6096178ad392b3979be1038d78388e6776a02de67",
-    "after-negative-320-dark.png": "6b96517cd6bb1eaabe9c9314d7fb9bf027daed87c4f28734cd8941a66412dfaf",
-    "after-negative-320-light.png": "b9e63349f7bcf1ee05638893bd489507985e399e4699cdfda4719c16c78265b0",
-    "after-gap-1280-dark.png": "b66727882cfc6ddf90a527787c66a30f9bb43a6a0433983a8bdf8609c89ef6b9",
-    "after-gap-1280-light.png": "e7032699430070ed746c135c960b5f6ccdacd5cb98cfaf30b7f0dadb10aa48dc",
-    "after-gap-390-dark.png": "9c12e80250199cbd4e6585dfd61faa19f5375e4b6387d67622460ec72f2b82e7",
-    "after-gap-390-light.png": "da23baf655572fa915b37e89bd5b79b31b8056559edf7cb2701ead8ebdaf8702",
-    "after-gap-320-dark.png": "da4a0a80364949d4afe015d865bced51b2457f6b5ab4ddd27e9971432fc294bb",
-    "after-gap-320-light.png": "d042253d356558289ceec1a3252fee66ce2cc8cffad71b9e4405679d8fb96e06",
-    "after-pan-1280-dark.png": "7171be14ec09b74cdc1949fa73bb883d7000ae37a2d7c3a1b05cb7555ab27b9c",
-    "after-pan-1280-light.png": "96b6924d7a55de4f1ce803f1a6ed3f1a68898f9487effa36c66c95b05ef01b0f",
-    "after-pan-390-dark.png": "7bd077fe052b07366b900411ae9c70d58c933b99268b532ece7d424554272b4c",
-    "after-pan-390-light.png": "f2e2ff5dfe35ae1998ca9ac9542932b96a4383fdf3038899d46bb3cf164c3d3e",
-    "after-pan-320-dark.png": "dd32956c5b4cfb5ebdeedaec451f2891ff7d4c360d7dcc1da5607cd0ba4761a7",
-    "after-pan-320-light.png": "112cf5f387736e3fe321c6ee6a3eb7b913c2ea089909df7ca054e8907dab7d71",
-    "after-selected-max-1280-dark.png": "a2bc9846a9ded305eb48fd39da77b64e4b536f04943b8718bfb32cf0ee0d6bbc",
-    "after-selected-max-1280-light.png": "a324ddc7e852f88e64d8a94bbac7c28d16f8eae4268b8888ce0c4dad1b56d3ca",
-    "after-selected-max-390-dark.png": "41938492fe68f6f49a8de1098405f12263f12f0e59e10e4e6919218a75ce5a5d",
-    "after-selected-min-1280-dark.png": "92e6483b5ed5934410d9198cf031f65f6a2068aec7724aadf1fa7d79e80bad85",
-    "after-selected-min-1280-light.png": "86544b2cbadc78471c30e817ee3079c7187043bc3fa9415855446d41d0f54e40",
-    "after-selected-min-390-dark.png": "77bef9e2b088b5df0227c62b853d74642223667017823a8883399a3047471b53",
-    "after-selected-min-390-light.png": "0523b2f9e52b1650dc77585a03a7e115dfc0489f360c29b342fe28b03f144096",
-    "after-selected-min-320-dark.png": "ae0792a95dba748fb39dd2c29d2a40868d94daa0ea02349e634dff01f60a7358",
-    "after-selected-min-320-light.png": "eff86d03a7a813bb8805d176aaf5914e6f8bd61f4ba11a2cfb030fb0fa5eb717",
-    "after-held-drag-1280-dark.png": "5a469d9616ff54d1dfdf62f4fdcca0b92bd2735f25a9eed1c98cc710b8482ba1",
-    "after-held-drag-390-dark.png": "1a8977128d452a8d9a2e2deccf127689bf613e9fe7a6b49cae19e367dc190846",
-    "after-breakpoint-700-dark.png": "13d1a789deb66405e3d129553e18e9fb38d8f6640dd6466165b4f1ca2b13f93e",
-    "after-breakpoint-narrow800-dark.png": "0ecf9e36adfbf5e225e2f4d3de6e8b384f29b44d7d838337c5f295c92faba025",
+    "after-positive-1280-dark.png": "50150ecff02b09046ff5055e41bdbc16729263e11fdde18bca3198e9af7d89f2",
+    "after-positive-1280-light.png": "2810b5267fe45bc23ac9e13488e5f70d442f68600fdbad2ec5eb6ab8dcd5ca80",
+    "after-positive-390-dark.png": "7da82338a8cb87edbf445d6b7e6b23253104bb1349e433bd331ffeddba05dbbc",
+    "after-positive-390-light.png": "f0f1116d5f19d9874181fe9ec066797543dd0343486e86276af6e4ddcfe78b25",
+    "after-positive-320-dark.png": "b4cf03ab405b2e2201f3a5d3511b54483b6bbbbca17719a459b971d650d94149",
+    "after-positive-320-light.png": "5cd950041a8385ada30e1e754ce9c1a7151cde100d473e36b3988b55dcb2ec09",
+    "after-negative-1280-dark.png": "1f3c9ccf7ddf98bf4c4326c55251048e4b0bd0eea03faeb51f1b5bbcdd06cd0a",
+    "after-negative-1280-light.png": "2babbc2343a90207000c9f110c0492bd79ccd2020da0cc5aff7988a6fc41d26b",
+    "after-negative-390-dark.png": "5b5a341a852e496be84798f8c2a92e849601a1a139464bfc37be2f526e34c0f8",
+    "after-negative-390-light.png": "0e2caaac3131b32ca436e8a8660e038a5466764f17dfd119d94416b0cae48d24",
+    "after-negative-320-dark.png": "ca83779fdd2d1056718866ee5d0a6b8339109a67cde54928e6a6a39d4610546f",
+    "after-negative-320-light.png": "bcfe92727f6b4bee0f89ebbcbb95ed7381fa3b3e93b802d6987d984af17689c4",
+    "after-gap-1280-dark.png": "28f2221f1e7052fa3d05a45d21661f5063bc0a2f71a99326b78b1a98049b17e8",
+    "after-gap-1280-light.png": "bf874cf83986936bf91a28f0373a4359be687bae4e44617df6e436cc6d18630b",
+    "after-gap-390-dark.png": "c497732eed305f71f45266f3a571c6c7e426e3a29d5ba4fa8fbccef42c6fc493",
+    "after-gap-390-light.png": "cf0b0f96f7a4fb5d760251fe9a79c14bfb67e9d9992da9f8466e98a53a4bf6dc",
+    "after-gap-320-dark.png": "d0a863a9ab05b125eb8f562e59f54a6e377da8f772084de125aa24941b23ef05",
+    "after-gap-320-light.png": "a0719271a05c71724857ef46e5e018a545786c3a159cb6ef24c7f7438ef7a7b2",
+    "after-pan-1280-dark.png": "7214e613dff1317b2aa0738431e2bbb5c2d0390fe58afb92840fd8aeefeb767a",
+    "after-pan-1280-light.png": "47d07cb8e8042994278a662891ba6bffcc18124e2a4600b872de920180c9431d",
+    "after-pan-390-dark.png": "ffcadc93e14c270bbe0f96cc74ce573ae30de78e7f27d5f430b768d5f2fbe936",
+    "after-pan-390-light.png": "430f31d04fac7496b866e3ac2a1d86fcae684e86f2b4745785716c5ad06c77bd",
+    "after-pan-320-dark.png": "a978643573ad686bc5b29ae74b1b33db94763873de6476ac282f9b66d8b00bec",
+    "after-pan-320-light.png": "ab4fafb320663dce2ced20e51de8794d0e94ee8b64d47c31c8fc28449d4ea29b",
+    "after-selected-max-1280-dark.png": "d906e6d3fff70e47b880f60db04dc9fac676f28602827f073e33999f47c25027",
+    "after-selected-max-1280-light.png": "a031b56444999bce52c7b0ba5cf2de2b5fe13692e21be3aee2a2eaf9a14efd62",
+    "after-selected-max-390-dark.png": "c6d715289e900951686e5b6e5a6f7a7bc135056e854beb9d1be1d3e249c93373",
+    "after-selected-min-1280-dark.png": "a2eae7028fe9ba8da18aa03cc5f956fa1dc595545c2c334b6be9d0bd9394dc8d",
+    "after-selected-min-1280-light.png": "e3c191eda5055c27b173907038837d7ff797ac2632a6a80c0a243f71c40ddf5d",
+    "after-selected-min-390-dark.png": "b2dfa22e081e0f4b608f9aed4d125651e06108ccacaf2c51dff090d98e9b2bab",
+    "after-selected-min-390-light.png": "fb696d1cd2896d0fe3093b71825e7537b61357ba5dbd75c818030a755162180a",
+    "after-selected-min-320-dark.png": "04d3cd00f00f3f50664060f622a3534455b7fed5096b059ef310f308be7c8e1d",
+    "after-selected-min-320-light.png": "3744b0c974772435d51b8171ba385d9d0c6ad657d988415b6e4131c884799d80",
+    "after-held-drag-1280-dark.png": "28851746cf70b21f2073f5d250315d3f233542dbacc92a07e13bb07d92d1a387",
+    "after-held-drag-390-dark.png": "ebf5e40d3821da9df9720997cbb6a76f1907fd2b3707363e83a4ce4979a50bff",
+    "after-breakpoint-700-dark.png": "c3e9b3c0c3d80ad22103ba83a9db20b4bb19d58836f2a565cc97987497106f8e",
+    "after-breakpoint-narrow800-dark.png": "fc993f40b8dfd00bd56143d6886d3837f3c20a0db3038deedd6545566e4d095e",
     "after-reduced-motion-390-dark.png": "113261769f7648aee280e515e3902c7bcfdbb5355abc2263ed1bcf96faa7f521"
   },
-  "failures": [],
-  "remoteVerification": {
-    "method": "GitHub API GET /git/trees/7b024643ed7da61ad597e431571c4d89b287490f?recursive=1; each bound file's gitBlob compared to the pushed head tree",
-    "pushedHead": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
-    "headTree": "7b024643ed7da61ad597e431571c4d89b287490f",
-    "filesChecked": 7,
-    "allBlobsMatch": true,
-    "verifiedAt": "2026-10-10T19:22:41Z"
-  }
+  "failures": []
 }

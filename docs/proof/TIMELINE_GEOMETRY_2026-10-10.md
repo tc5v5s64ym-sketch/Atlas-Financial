@@ -141,6 +141,38 @@ was never changed to match the prose.
    byte-identical to the diff against `29063eec` (diff-verified), and
    both proofs were re-run against the integrated head.
 
+## Round 3 (Systems Review 5480635465)
+
+1. **Yielded selected label stayed invisible.** The round-2 legibility
+   correction's yield loop in `place()` (`public/budget-river.js`) skipped
+   the selected label before clearing yielded opacity: select the minimum
+   (−$420), which yields the adjacent $150 label to opacity 0, then select
+   that $150 label — `mark`/`adopt` retain its node, the skip left its
+   inline opacity at 0, and the selected label rendered invisible
+   (rectangle checks pass on invisible text, which is why the round-2
+   proof missed it). Fix, in `place()`'s selected-label path only: if the
+   selected element is in the yielded set, restore its opacity and remove
+   it from the set before the skip. No gesture, domain, selection, or
+   geometry change.
+2. **Computed-opacity regression** (`test/browser-budget-river-port.js`,
+   recorded in the native receipt as `yieldedNeighbourReselect`). The
+   minimum → hidden-neighbour → select-the-neighbour sequence now asserts
+   COMPUTED opacity (the neighbour computes `0` while yielded and `1`
+   once selected, its inline opacity cleared and its membership in the
+   yielded set removed), at 390/320 in both themes, via pointer clicks
+   and via keyboard arrows, under reduced motion (390 dark), and across
+   a retained-node `adopt()` remount with node identity asserted. On the
+   pre-fix code the sequence fails with exactly the review's defect:
+   "the newly selected label must compute opacity 1 after being yielded;
+   got 0". Both receipts were re-issued against this head (the geometry
+   proof's exercised sources changed with `place()`), bound to the
+   pushed code commit — see `remoteVerification` in each receipt.
+3. **Integration refresh.** This head integrates current main
+   `d6fd6b8f2d3b7629bad46be617ff7e07f7c62c8f` (PR #574 fuel CAD 555 and
+   PR #573 Wise streaming bills; 26 files, none of them this PR's files).
+   The production/harness diff against the new main remains confined to
+   this PR's original files.
+
 ## Before state
 
 `before-*.png` and `timeline-geometry-before-report.json` were captured

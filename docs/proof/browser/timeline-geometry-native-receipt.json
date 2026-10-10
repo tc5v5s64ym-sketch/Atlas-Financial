@@ -7,8 +7,8 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
-    "sourceTree": "7b024643ed7da61ad597e431571c4d89b287490f",
+    "sourceCommit": "c5fc8cdbffb932e0d10e7b8e245e7746a599e86c",
+    "sourceTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
     "baseCommit": null,
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -29,9 +29,9 @@
         "bytes": 56070
       },
       "public/budget-river.js": {
-        "gitBlob": "76512c4d3eb29678f453aad705d7085b007e24a8",
-        "sha256": "280c76fc051b25ac4c7a74452d9c2e1b9fa071142bc391d9ede93fc12598c70f",
-        "bytes": 28072
+        "gitBlob": "56c94e18c264f412d0c960b43bea5160c4940268",
+        "sha256": "5d512a9671b0015a4e4ad069c5727cb446445091683d810f431248923cb8f973",
+        "bytes": 28477
       },
       "public/fonts.css": {
         "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
@@ -39,9 +39,9 @@
         "bytes": 403
       },
       "public/forecast.js": {
-        "gitBlob": "f6ce66e94781c1a8bf59752e8b08cb78f100e27e",
-        "sha256": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
-        "bytes": 1066781
+        "gitBlob": "e2ee77a74a8c81b09bc93118cb19a37760602a00",
+        "sha256": "4047243fde5af9f3a9f2ac18df1e0dedeb780d4157843b37e4dc585a9f4e187c",
+        "bytes": 1070838
       },
       "public/index.html": {
         "gitBlob": "ca13c1404c18780d26d8a8992394600f32b8ca15",
@@ -59,9 +59,9 @@
         "bytes": 143239
       },
       "test/browser-budget-river-port.js": {
-        "gitBlob": "5fd574ddb2b6bf48c6bf5f8ff35a93bdee7007e3",
-        "sha256": "0a1d65273a7852b6eb700f168b6d213f775153d4f4b04ee6abf0517d9ca0bc94",
-        "bytes": 27406
+        "gitBlob": "af28ff3ae3132e739b0168d1192e4577d4f9013d",
+        "sha256": "597f925ff0cbea146c16abe138b20bee8a00cd284be14fef711684005cd342eb",
+        "bytes": 35777
       },
       "test/fixtures/budget-surface-data.js": {
         "gitBlob": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc",
@@ -74,9 +74,7 @@
         "bytes": 3363
       }
     },
-    "unchangedAfterRun": true,
-    "exercisedLocalCommit": "d422b7a299ed0bd8ecf69f216c8246d3716f0645",
-    "bindingNote": "The API push flow creates its own commit SHAs; the exercised local commit and the pushed commit have the identical tree (7b024643ed7da61ad597e431571c4d89b287490f), and every bound blob was verified against the pushed tree (remoteVerification)."
+    "unchangedAfterRun": true
   },
   "results": {
     "nativeLiveDrag": [
@@ -458,16 +456,104 @@
         "resize": true,
         "reducedMotion": true
       }
+    ],
+    "yieldedNeighbourReselect": [
+      {
+        "width": 390,
+        "theme": "dark",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "pointer": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        },
+        "keyboard": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1"
+        },
+        "remount": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true,
+          "nodesRetainedAcrossAdopt": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "reducedMotion": {
+          "afterMinSelectNeighbourComputed": "0",
+          "afterReselectNeighbourComputed": "1",
+          "inlineCleared": true,
+          "removedFromYielded": true
+        }
+      }
     ]
   },
   "pageErrors": [],
-  "failures": [],
-  "remoteVerification": {
-    "method": "GitHub API GET /git/trees/7b024643ed7da61ad597e431571c4d89b287490f?recursive=1; each bound file's gitBlob compared to the pushed head tree",
-    "pushedHead": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
-    "headTree": "7b024643ed7da61ad597e431571c4d89b287490f",
-    "filesChecked": 12,
-    "allBlobsMatch": true,
-    "verifiedAt": "2026-10-10T19:22:41Z"
-  }
+  "failures": []
 }
