@@ -1,0 +1,473 @@
+{
+  "proof": "timeline-geometry-native-harness",
+  "harness": "test/browser-budget-river-port.js",
+  "syntheticOnly": true,
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "152.0.7977.82"
+  },
+  "sourceBinding": {
+    "sourceCommit": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
+    "sourceTree": "7b024643ed7da61ad597e431571c4d89b287490f",
+    "baseCommit": null,
+    "cleanAtStart": true,
+    "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
+    "files": {
+      "public/budget-blend.css": {
+        "gitBlob": "ea9a489b2ae6d90effd4018c7dfb919e15c27d46",
+        "sha256": "71ddb968b72dca60e8e08667d1646e5b7681d23d035f3b6eea5bdb0fb639a1b0",
+        "bytes": 69546
+      },
+      "public/budget-blend.js": {
+        "gitBlob": "1f17d3f389ba355325b70f10133ca9f122fe9e2b",
+        "sha256": "7f7ac82ce8a990d0470e034129f14f11df4dea28f1752357bf62904b470cefb8",
+        "bytes": 110894
+      },
+      "public/budget-gface.css": {
+        "gitBlob": "3fc4deaf6a1efae04b7e69431833b298ff00db85",
+        "sha256": "2a2b7b7ddc9a131368d6b2eac2b38a1a784d46b41db7e757fade71f7612dd8fd",
+        "bytes": 56070
+      },
+      "public/budget-river.js": {
+        "gitBlob": "76512c4d3eb29678f453aad705d7085b007e24a8",
+        "sha256": "280c76fc051b25ac4c7a74452d9c2e1b9fa071142bc391d9ede93fc12598c70f",
+        "bytes": 28072
+      },
+      "public/fonts.css": {
+        "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
+        "sha256": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+        "bytes": 403
+      },
+      "public/forecast.js": {
+        "gitBlob": "f6ce66e94781c1a8bf59752e8b08cb78f100e27e",
+        "sha256": "883bee2ce9a3a47162575c32e9147bac8ad0503c5b2a509b19201681587cddd9",
+        "bytes": 1066781
+      },
+      "public/index.html": {
+        "gitBlob": "ca13c1404c18780d26d8a8992394600f32b8ca15",
+        "sha256": "f3a3bb1b3e749310bec43dc7cc482355c5ee1049828ff726264aee60fc8242fa",
+        "bytes": 12662
+      },
+      "public/plan.js": {
+        "gitBlob": "93996d0e4f09d93ab25c24c538f41b03c1c2a39c",
+        "sha256": "4f1905c3ed2d77bbb1760aa9e04b7747e80a9469fceef0db8363e46337628998",
+        "bytes": 513875
+      },
+      "public/styles.css": {
+        "gitBlob": "c25d723d02cfc40c56e88b38f0e80d9624f68af7",
+        "sha256": "77dca1a796719370425fd225e2ff5f6a9d732a38d75a250f7296e8d4ef41aef5",
+        "bytes": 143239
+      },
+      "test/browser-budget-river-port.js": {
+        "gitBlob": "5fd574ddb2b6bf48c6bf5f8ff35a93bdee7007e3",
+        "sha256": "0a1d65273a7852b6eb700f168b6d213f775153d4f4b04ee6abf0517d9ca0bc94",
+        "bytes": 27406
+      },
+      "test/fixtures/budget-surface-data.js": {
+        "gitBlob": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc",
+        "sha256": "f6a3c46fb037c41f7371aaaef08ffaab5256bda97cb9bc5f994e4ee54e5fac0b",
+        "bytes": 14528
+      },
+      "test/proof-source-binding.js": {
+        "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",
+        "sha256": "059fdba52361debe5daad8e98b748773552eef9325056e07bab51ec12b37c1ad",
+        "bytes": 3363
+      }
+    },
+    "unchangedAfterRun": true,
+    "exercisedLocalCommit": "d422b7a299ed0bd8ecf69f216c8246d3716f0645",
+    "bindingNote": "The API push flow creates its own commit SHAs; the exercised local commit and the pushed commit have the identical tree (7b024643ed7da61ad597e431571c4d89b287490f), and every bound blob was verified against the pushed tree (remoteVerification)."
+  },
+  "results": {
+    "nativeLiveDrag": [
+      {
+        "width": 1440,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      },
+      {
+        "width": 1440,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      },
+      {
+        "width": 935,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,705.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null,
+        "publicationRefresh": {
+          "sameCanvas": true,
+          "rebuiltLabels": true,
+          "faithful": true
+        }
+      },
+      {
+        "width": 935,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,705.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null,
+        "publicationRefresh": {
+          "sameCanvas": true,
+          "rebuiltLabels": true,
+          "faithful": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": {
+          "nativeBeforeRelease": true,
+          "cancelPreservesNative": true
+        }
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": {
+          "nativeBeforeRelease": true,
+          "cancelPreservesNative": true
+        }
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "dragFromAmount": true,
+        "beforeRelease": {
+          "start": "2026-08-28",
+          "period": "next-pay-period",
+          "range": "Aug 28 – Sep 10",
+          "dragging": true,
+          "sameElement": true,
+          "sameLabels": true,
+          "sameAurora": true,
+          "hiddenWheelFocus": 0,
+          "opacity": 1,
+          "nativeAmount": "$1,870.00"
+        },
+        "secondHeldPublication": {
+          "start": "2026-09-11",
+          "period": "future:2026-09-11"
+        },
+        "cancelPreservesNative": true,
+        "returnCurrent": true,
+        "touch": null
+      }
+    ],
+    "originalComparison": [
+      {
+        "width": 1440,
+        "theme": "light",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 154795,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 1440,
+        "theme": "dark",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 153530,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 91017,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 67142,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 93156,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "geometryComparison": "horizontal identical; vertical affine remap onto approved insets",
+        "originalLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "portLiveInput": {
+          "dragging": true,
+          "events": [
+            {
+              "i": 3,
+              "how": "scrub"
+            }
+          ]
+        },
+        "staticPixelDifferences": 0,
+        "movingPixelDifferences": 69346,
+        "springIdentical": true,
+        "resize": true,
+        "reducedMotion": true
+      }
+    ]
+  },
+  "pageErrors": [],
+  "failures": [],
+  "remoteVerification": {
+    "method": "GitHub API GET /git/trees/7b024643ed7da61ad597e431571c4d89b287490f?recursive=1; each bound file's gitBlob compared to the pushed head tree",
+    "pushedHead": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
+    "headTree": "7b024643ed7da61ad597e431571c4d89b287490f",
+    "filesChecked": 12,
+    "allBlobsMatch": true,
+    "verifiedAt": "2026-10-10T19:22:41Z"
+  }
+}

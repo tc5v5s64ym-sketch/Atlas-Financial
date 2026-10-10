@@ -1,0 +1,549 @@
+{
+  "proof": "timeline-geometry",
+  "syntheticOnly": true,
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "152.0.7977.82"
+  },
+  "sourceBinding": {
+    "sourceCommit": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
+    "sourceTree": "7b024643ed7da61ad597e431571c4d89b287490f",
+    "baseCommit": null,
+    "cleanAtStart": true,
+    "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
+    "files": {
+      "public/budget-blend.css": {
+        "gitBlob": "ea9a489b2ae6d90effd4018c7dfb919e15c27d46",
+        "sha256": "71ddb968b72dca60e8e08667d1646e5b7681d23d035f3b6eea5bdb0fb639a1b0",
+        "bytes": 69546
+      },
+      "public/budget-gface.css": {
+        "gitBlob": "3fc4deaf6a1efae04b7e69431833b298ff00db85",
+        "sha256": "2a2b7b7ddc9a131368d6b2eac2b38a1a784d46b41db7e757fade71f7612dd8fd",
+        "bytes": 56070
+      },
+      "public/budget-river.js": {
+        "gitBlob": "76512c4d3eb29678f453aad705d7085b007e24a8",
+        "sha256": "280c76fc051b25ac4c7a74452d9c2e1b9fa071142bc391d9ede93fc12598c70f",
+        "bytes": 28072
+      },
+      "public/fonts.css": {
+        "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
+        "sha256": "a74ab755df6ea08a17e3114b270b38870b3d6b84e1b821c9d4a1fd0988562368",
+        "bytes": 403
+      },
+      "public/styles.css": {
+        "gitBlob": "c25d723d02cfc40c56e88b38f0e80d9624f68af7",
+        "sha256": "77dca1a796719370425fd225e2ff5f6a9d732a38d75a250f7296e8d4ef41aef5",
+        "bytes": 143239
+      },
+      "test/browser-river-geometry-proof.js": {
+        "gitBlob": "a5b9330d2daed7dae0fc60f18027c979902cf0ce",
+        "sha256": "b47b6abc935ed4260c55592827e9c253492d84ae7e14b2305c25e71a35767fd1",
+        "bytes": 26309
+      },
+      "test/proof-source-binding.js": {
+        "gitBlob": "0ef3063b8281592e93e7808ca706e5d0c585a0f4",
+        "sha256": "059fdba52361debe5daad8e98b748773552eef9325056e07bab51ec12b37c1ad",
+        "bytes": 3363
+      }
+    },
+    "unchangedAfterProof": true,
+    "exercisedLocalCommit": "d422b7a299ed0bd8ecf69f216c8246d3716f0645",
+    "bindingNote": "The API push flow creates its own commit SHAs; the exercised local commit and the pushed commit have the identical tree (7b024643ed7da61ad597e431571c4d89b287490f), and every bound blob was verified against the pushed tree (remoteVerification)."
+  },
+  "geometrySpec": {
+    "desktop": {
+      "height": 123,
+      "top": 38,
+      "bottomInset": 51
+    },
+    "mobile": {
+      "height": 114,
+      "top": 36,
+      "bottomInset": 49
+    },
+    "pillBottomEdge": 31,
+    "valsTopEdgeFromBottom": 44,
+    "beamTop": 30,
+    "beamBottomInset": 51
+  },
+  "caseCount": 24,
+  "extremes": [
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 574.1799926757812,
+        "cy": 38,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 564.1799926757812,
+        "right": 584.1799926757812,
+        "top": 28,
+        "bottom": 48
+      },
+      "label": {
+        "left": 557.8359375,
+        "right": 590.5390625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 574.1799926757812,
+        "cy": 38,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 564.1799926757812,
+        "right": 584.1799926757812,
+        "top": 28,
+        "bottom": 48
+      },
+      "label": {
+        "left": 557.8359375,
+        "right": 590.5390625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 183,
+        "cy": 36,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 173,
+        "right": 193,
+        "top": 26,
+        "bottom": 46
+      },
+      "label": {
+        "left": 166.6484375,
+        "right": 199.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 143.63999938964844,
+        "cy": 72,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 133.63999938964844,
+        "right": 153.63999938964844,
+        "top": 62,
+        "bottom": 82
+      },
+      "label": {
+        "left": 155.4609375,
+        "right": 191.7265625,
+        "top": 79,
+        "bottom": 95,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 143.63999938964844,
+        "cy": 72,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 133.63999938964844,
+        "right": 153.63999938964844,
+        "top": 62,
+        "bottom": 82
+      },
+      "label": {
+        "left": 155.4609375,
+        "right": 191.7265625,
+        "top": 79,
+        "bottom": 95,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 390,
+      "theme": "light",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 320,
+      "theme": "dark",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 320,
+      "theme": "light",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    }
+  ],
+  "behavior": {
+    "dragScrub": {
+      "changes": [
+        {
+          "i": 3,
+          "how": "scrub"
+        }
+      ],
+      "index": 3,
+      "dragging": true
+    },
+    "keyboard": {
+      "beforeKeys": 4,
+      "index": 6,
+      "aria": "0",
+      "changes": [
+        {
+          "i": 5,
+          "how": "commit"
+        },
+        {
+          "i": 6,
+          "how": "commit"
+        },
+        {
+          "i": 7,
+          "how": "commit"
+        },
+        {
+          "i": 6,
+          "how": "commit"
+        }
+      ]
+    },
+    "remount": {
+      "before": {
+        "H": 123,
+        "top": 38,
+        "bot": 72,
+        "index": 6
+      },
+      "after": {
+        "H": 123,
+        "top": 38,
+        "bot": 72,
+        "index": 6
+      }
+    },
+    "reducedMotion": {
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 54.31578947368421,
+      "yOfMinBad": 65,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 65,
+      "index": 4,
+      "reduced": true,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 183,
+        "cy": 38.03125,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 173,
+        "right": 193,
+        "top": 28.03125,
+        "bottom": 48.03125
+      },
+      "label": {
+        "left": 168.0078125,
+        "right": 197.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$640"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    }
+  },
+  "screenshotSha256": {
+    "after-positive-1280-dark.png": "ff837bc0edd193743103dec428b1a87ae9a42e409d27dc89d4d171e074307564",
+    "after-positive-1280-light.png": "ad255c7ef03e194a29692857b0ca3c36ecdb918651302d350f05e77bce8677cb",
+    "after-positive-390-dark.png": "869f67990d52247303d9c96751fc7291c7a7e0be47712983739471d050bb2ae2",
+    "after-positive-390-light.png": "13096f82860b7a963c6e5d53ac5d1b12bb0aef41ee77a1c4094e84d07499b2e7",
+    "after-positive-320-dark.png": "43b2a979f346bacac3d0ff560a142e93e9536ec78048fc6749686ec15dfa0f84",
+    "after-positive-320-light.png": "290b3b084b228b58dca4418643e124eb791ad773804ab2e2dea773ba64948b8f",
+    "after-negative-1280-dark.png": "3b939e7ef40a99510c40db46068db73a478b533de03335fcf4128b4981912cf4",
+    "after-negative-1280-light.png": "c70379295220a0317f0cef10f7d05e3a2627485f7152729354148aee8857dc18",
+    "after-negative-390-dark.png": "14505071949097d36da0629328f237d485d1e6507858986bc450f3b7bed8db77",
+    "after-negative-390-light.png": "c0abc3787137dbf072de86a6096178ad392b3979be1038d78388e6776a02de67",
+    "after-negative-320-dark.png": "6b96517cd6bb1eaabe9c9314d7fb9bf027daed87c4f28734cd8941a66412dfaf",
+    "after-negative-320-light.png": "b9e63349f7bcf1ee05638893bd489507985e399e4699cdfda4719c16c78265b0",
+    "after-gap-1280-dark.png": "b66727882cfc6ddf90a527787c66a30f9bb43a6a0433983a8bdf8609c89ef6b9",
+    "after-gap-1280-light.png": "e7032699430070ed746c135c960b5f6ccdacd5cb98cfaf30b7f0dadb10aa48dc",
+    "after-gap-390-dark.png": "9c12e80250199cbd4e6585dfd61faa19f5375e4b6387d67622460ec72f2b82e7",
+    "after-gap-390-light.png": "da23baf655572fa915b37e89bd5b79b31b8056559edf7cb2701ead8ebdaf8702",
+    "after-gap-320-dark.png": "da4a0a80364949d4afe015d865bced51b2457f6b5ab4ddd27e9971432fc294bb",
+    "after-gap-320-light.png": "d042253d356558289ceec1a3252fee66ce2cc8cffad71b9e4405679d8fb96e06",
+    "after-pan-1280-dark.png": "7171be14ec09b74cdc1949fa73bb883d7000ae37a2d7c3a1b05cb7555ab27b9c",
+    "after-pan-1280-light.png": "96b6924d7a55de4f1ce803f1a6ed3f1a68898f9487effa36c66c95b05ef01b0f",
+    "after-pan-390-dark.png": "7bd077fe052b07366b900411ae9c70d58c933b99268b532ece7d424554272b4c",
+    "after-pan-390-light.png": "f2e2ff5dfe35ae1998ca9ac9542932b96a4383fdf3038899d46bb3cf164c3d3e",
+    "after-pan-320-dark.png": "dd32956c5b4cfb5ebdeedaec451f2891ff7d4c360d7dcc1da5607cd0ba4761a7",
+    "after-pan-320-light.png": "112cf5f387736e3fe321c6ee6a3eb7b913c2ea089909df7ca054e8907dab7d71",
+    "after-selected-max-1280-dark.png": "a2bc9846a9ded305eb48fd39da77b64e4b536f04943b8718bfb32cf0ee0d6bbc",
+    "after-selected-max-1280-light.png": "a324ddc7e852f88e64d8a94bbac7c28d16f8eae4268b8888ce0c4dad1b56d3ca",
+    "after-selected-max-390-dark.png": "41938492fe68f6f49a8de1098405f12263f12f0e59e10e4e6919218a75ce5a5d",
+    "after-selected-min-1280-dark.png": "92e6483b5ed5934410d9198cf031f65f6a2068aec7724aadf1fa7d79e80bad85",
+    "after-selected-min-1280-light.png": "86544b2cbadc78471c30e817ee3079c7187043bc3fa9415855446d41d0f54e40",
+    "after-selected-min-390-dark.png": "77bef9e2b088b5df0227c62b853d74642223667017823a8883399a3047471b53",
+    "after-selected-min-390-light.png": "0523b2f9e52b1650dc77585a03a7e115dfc0489f360c29b342fe28b03f144096",
+    "after-selected-min-320-dark.png": "ae0792a95dba748fb39dd2c29d2a40868d94daa0ea02349e634dff01f60a7358",
+    "after-selected-min-320-light.png": "eff86d03a7a813bb8805d176aaf5914e6f8bd61f4ba11a2cfb030fb0fa5eb717",
+    "after-held-drag-1280-dark.png": "5a469d9616ff54d1dfdf62f4fdcca0b92bd2735f25a9eed1c98cc710b8482ba1",
+    "after-held-drag-390-dark.png": "1a8977128d452a8d9a2e2deccf127689bf613e9fe7a6b49cae19e367dc190846",
+    "after-breakpoint-700-dark.png": "13d1a789deb66405e3d129553e18e9fb38d8f6640dd6466165b4f1ca2b13f93e",
+    "after-breakpoint-narrow800-dark.png": "0ecf9e36adfbf5e225e2f4d3de6e8b384f29b44d7d838337c5f295c92faba025",
+    "after-reduced-motion-390-dark.png": "113261769f7648aee280e515e3902c7bcfdbb5355abc2263ed1bcf96faa7f521"
+  },
+  "failures": [],
+  "remoteVerification": {
+    "method": "GitHub API GET /git/trees/7b024643ed7da61ad597e431571c4d89b287490f?recursive=1; each bound file's gitBlob compared to the pushed head tree",
+    "pushedHead": "cc75a5ebe91b67fa0be7b258288a21e8c6fc03a4",
+    "headTree": "7b024643ed7da61ad597e431571c4d89b287490f",
+    "filesChecked": 7,
+    "allBlobsMatch": true,
+    "verifiedAt": "2026-10-10T19:22:41Z"
+  }
+}

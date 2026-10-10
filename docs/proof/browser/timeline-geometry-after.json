@@ -1,0 +1,2078 @@
+{
+  "cases": [
+    {
+      "scenario": "positive",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 67.14285714285714,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 67.14285714285714,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 251.27001190185547,
+        "cy": 52.5625,
+        "w": 20.000015258789062,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 241.27000427246094,
+        "right": 261.27001953125,
+        "top": 42.5625,
+        "bottom": 62.5625
+      },
+      "label": {
+        "left": 234.9453125,
+        "right": 267.6484375,
+        "top": 79,
+        "bottom": 95,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 67.14285714285714,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 67.14285714285714,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 251.27001190185547,
+        "cy": 52.5625,
+        "w": 20.000015258789062,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 241.27000427246094,
+        "right": 261.27001953125,
+        "top": 42.5625,
+        "bottom": 62.5625
+      },
+      "label": {
+        "left": 234.9453125,
+        "right": 267.6484375,
+        "top": 79,
+        "bottom": 95,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 60.85714285714286,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 60.85714285714286,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 48.421875,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 38.421875,
+        "bottom": 58.421875
+      },
+      "label": {
+        "left": 97.6484375,
+        "right": 130.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 60.85714285714286,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 60.85714285714286,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 48.421875,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 38.421875,
+        "bottom": 58.421875
+      },
+      "label": {
+        "left": 97.6484375,
+        "right": 130.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 60.85714285714286,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 60.85714285714286,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 48.421875,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 38.421875,
+        "bottom": 58.421875
+      },
+      "label": {
+        "left": 97.6484375,
+        "right": 130.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "positive",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 60.85714285714286,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 60.85714285714286,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 48.421875,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 38.421875,
+        "bottom": 58.421875
+      },
+      "label": {
+        "left": 97.6484375,
+        "right": 130.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 59.473684210526315,
+      "yOfMinBad": 72,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 72,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 251.27001190185547,
+        "cy": 55,
+        "w": 20.000015258789062,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 241.27000427246094,
+        "right": 261.27001953125,
+        "top": 45,
+        "bottom": 65
+      },
+      "label": {
+        "left": 236.3046875,
+        "right": 266.2890625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$150"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 59.473684210526315,
+      "yOfMinBad": 72,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 72,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 251.27001190185547,
+        "cy": 55,
+        "w": 20.000015258789062,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 241.27000427246094,
+        "right": 261.27001953125,
+        "top": 45,
+        "bottom": 65
+      },
+      "label": {
+        "left": 236.3046875,
+        "right": 266.2890625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$150"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 54.31578947368421,
+      "yOfMinBad": 65,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 65,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 50.5,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 40.5,
+        "bottom": 60.5
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$150"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 54.31578947368421,
+      "yOfMinBad": 65,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 65,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 50.5,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 40.5,
+        "bottom": 60.5
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$150"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 54.31578947368421,
+      "yOfMinBad": 65,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 65,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 50.5,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 40.5,
+        "bottom": 60.5
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$150"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "negative",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 54.31578947368421,
+      "yOfMinBad": 65,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 65,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 50.5,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 40.5,
+        "bottom": 60.5
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$150"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 58.09090909090909,
+      "panMode": false,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 38,
+      "maxY": 58.09090909090909,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "orb": {
+        "cx": -12,
+        "cy": -12,
+        "w": 0,
+        "h": 0
+      },
+      "orbRect": null,
+      "label": {
+        "left": 245.9453125,
+        "right": 256.6484375,
+        "top": 79,
+        "bottom": 95,
+        "text": "—"
+      },
+      "labelOrbDisjoint": null,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 58.09090909090909,
+      "panMode": false,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 38,
+      "maxY": 58.09090909090909,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "orb": {
+        "cx": -12,
+        "cy": -12,
+        "w": 0,
+        "h": 0
+      },
+      "orbRect": null,
+      "label": {
+        "left": 245.9453125,
+        "right": 256.6484375,
+        "top": 79,
+        "bottom": 95,
+        "text": "—"
+      },
+      "labelOrbDisjoint": null,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 53.13636363636363,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 53.13636363636363,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "orb": {
+        "cx": -12,
+        "cy": -12,
+        "w": 0,
+        "h": 0
+      },
+      "orbRect": null,
+      "label": {
+        "left": 108.6484375,
+        "right": 119.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "—"
+      },
+      "labelOrbDisjoint": null,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 53.13636363636363,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 53.13636363636363,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "orb": {
+        "cx": -12,
+        "cy": -12,
+        "w": 0,
+        "h": 0
+      },
+      "orbRect": null,
+      "label": {
+        "left": 108.6484375,
+        "right": 119.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "—"
+      },
+      "labelOrbDisjoint": null,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 53.13636363636363,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 53.13636363636363,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "orb": {
+        "cx": -12,
+        "cy": -12,
+        "w": 0,
+        "h": 0
+      },
+      "orbRect": null,
+      "label": {
+        "left": 108.6484375,
+        "right": 119.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "—"
+      },
+      "labelOrbDisjoint": null,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "gap",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 53.13636363636363,
+      "panMode": true,
+      "nullYs": [
+        2,
+        3,
+        4
+      ],
+      "runCount": 2,
+      "minY": 36,
+      "maxY": 53.13636363636363,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        null,
+        null,
+        null,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "orb": {
+        "cx": -12,
+        "cy": -12,
+        "w": 0,
+        "h": 0
+      },
+      "orbRect": null,
+      "label": {
+        "left": 108.6484375,
+        "right": 119.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "—"
+      },
+      "labelOrbDisjoint": null,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 1280,
+      "theme": "dark",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 67.75,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 67.75,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 251.27001190185547,
+        "cy": 64.546875,
+        "w": 20.000015258789062,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 241.27000427246094,
+        "right": 261.27001953125,
+        "top": 54.546875,
+        "bottom": 74.546875
+      },
+      "label": {
+        "left": 236.3046875,
+        "right": 266.2890625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$350"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 1280,
+      "theme": "light",
+      "tileHeight": 123,
+      "elW": 1256,
+      "elH": 123,
+      "top": 38,
+      "bot": 72,
+      "band": 34,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 72,
+      "yOfMinBad": 67.75,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 67.75,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 251.27001190185547,
+        "cy": 64.546875,
+        "w": 20.000015258789062,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 241.27000427246094,
+        "right": 261.27001953125,
+        "top": 54.546875,
+        "bottom": 74.546875
+      },
+      "label": {
+        "left": 236.3046875,
+        "right": 266.2890625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$350"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 390,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 61.375,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 61.375,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 58.65625,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 48.65625,
+        "bottom": 68.65625
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$350"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 390,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 366,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 61.375,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 61.375,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 58.65625,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 48.65625,
+        "bottom": 68.65625
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$350"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 320,
+      "theme": "dark",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 61.375,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 61.375,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 58.65625,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 48.65625,
+        "bottom": 68.65625
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$350"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "scenario": "pan",
+      "width": 320,
+      "theme": "light",
+      "tileHeight": 114,
+      "elW": 296,
+      "elH": 114,
+      "top": 36,
+      "bot": 65,
+      "band": 29,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 65,
+      "yOfMinBad": 61.375,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 61.375,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 58.65625,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 48.65625,
+        "bottom": 68.65625
+      },
+      "label": {
+        "left": 99.0078125,
+        "right": 128.9921875,
+        "top": 70,
+        "bottom": 86,
+        "text": "$350"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    }
+  ],
+  "extremes": [
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 574.1799926757812,
+        "cy": 38,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 564.1799926757812,
+        "right": 584.1799926757812,
+        "top": 28,
+        "bottom": 48
+      },
+      "label": {
+        "left": 557.8359375,
+        "right": 590.5390625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 574.1799926757812,
+        "cy": 38,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 564.1799926757812,
+        "right": 584.1799926757812,
+        "top": 28,
+        "bottom": 48
+      },
+      "label": {
+        "left": 557.8359375,
+        "right": 590.5390625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "max",
+      "scenario": "positive",
+      "index": 5,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 183,
+        "cy": 36,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 173,
+        "right": 193,
+        "top": 26,
+        "bottom": 46
+      },
+      "label": {
+        "left": 166.6484375,
+        "right": 199.3515625,
+        "top": 70,
+        "bottom": 86,
+        "text": "$2.1k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "dark",
+      "orb": {
+        "cx": 143.63999938964844,
+        "cy": 72,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 133.63999938964844,
+        "right": 153.63999938964844,
+        "top": 62,
+        "bottom": 82
+      },
+      "label": {
+        "left": 155.4609375,
+        "right": 191.7265625,
+        "top": 79,
+        "bottom": 95,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 1280,
+      "theme": "light",
+      "orb": {
+        "cx": 143.63999938964844,
+        "cy": 72,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 133.63999938964844,
+        "right": 153.63999938964844,
+        "top": 62,
+        "bottom": 82
+      },
+      "label": {
+        "left": 155.4609375,
+        "right": 191.7265625,
+        "top": 79,
+        "bottom": 95,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 38,
+      "bandBot": 72,
+      "tileHeight": 123
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 390,
+      "theme": "dark",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 390,
+      "theme": "light",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 320,
+      "theme": "dark",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    },
+    {
+      "kind": "min",
+      "scenario": "negative",
+      "index": 1,
+      "width": 320,
+      "theme": "light",
+      "orb": {
+        "cx": 70,
+        "cy": 65,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 60,
+        "right": 80,
+        "top": 55,
+        "bottom": 75
+      },
+      "label": {
+        "left": 81.8671875,
+        "right": 118.1328125,
+        "top": 70,
+        "bottom": 86,
+        "text": "−$420"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      },
+      "bandTop": 36,
+      "bandBot": 65,
+      "tileHeight": 114
+    }
+  ],
+  "heldDrag": [
+    {
+      "width": 1280,
+      "dragging": true,
+      "orbTransform": "matrix(1.30051, 0, 0, 1.30051, 0, 0)",
+      "changes": [
+        {
+          "i": 3,
+          "how": "scrub"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "dragging": true,
+      "orbTransform": "matrix(1.30392, 0, 0, 1.30392, 0, 0)",
+      "changes": [
+        {
+          "i": 1,
+          "how": "scrub"
+        }
+      ]
+    }
+  ],
+  "divergence": [
+    {
+      "case": "viewport-700-full-width",
+      "tileHeight": 114,
+      "elW": 676,
+      "elH": 114,
+      "top": 38,
+      "bot": 63,
+      "band": 25,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 63,
+      "yOfMinBad": 59.42857142857143,
+      "panMode": false,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 38,
+      "maxY": 59.42857142857143,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 145.82000732421875,
+        "cy": 48.703125,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 135.82000732421875,
+        "right": 155.82000732421875,
+        "top": 38.703125,
+        "bottom": 58.703125
+      },
+      "label": {
+        "left": 129.4453125,
+        "right": 162.1484375,
+        "top": 70,
+        "bottom": 86,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    },
+    {
+      "case": "viewport-800-tile-500",
+      "tileHeight": 123,
+      "elW": 500,
+      "elH": 123,
+      "top": 36,
+      "bot": 74,
+      "band": 38,
+      "beamTopVar": "30px",
+      "beamTopCss": "30px",
+      "beamBottomCss": "51px",
+      "particles": 40,
+      "zeroY": 74,
+      "yOfMinBad": 68.57142857142857,
+      "panMode": true,
+      "nullYs": [],
+      "runCount": 1,
+      "minY": 36,
+      "maxY": 68.57142857142857,
+      "index": 2,
+      "reduced": false,
+      "settled": true,
+      "ariaNow": "0",
+      "runIds": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "orb": {
+        "cx": 114,
+        "cy": 52.28125,
+        "w": 20,
+        "h": 20
+      },
+      "orbRect": {
+        "left": 104,
+        "right": 124,
+        "top": 42.28125,
+        "bottom": 62.28125
+      },
+      "label": {
+        "left": 97.6484375,
+        "right": 130.3515625,
+        "top": 79,
+        "bottom": 95,
+        "text": "$1.2k"
+      },
+      "labelOrbDisjoint": true,
+      "neighborOverlap": false,
+      "pill": {
+        "top": 7,
+        "bottom": 31
+      }
+    }
+  ],
+  "transitions": [
+    {
+      "width": 1280,
+      "tileHeight": 123,
+      "top": 38,
+      "bot": 72,
+      "index": 3
+    },
+    {
+      "width": 700,
+      "tileHeight": 114,
+      "top": 38,
+      "bot": 63,
+      "index": 3
+    },
+    {
+      "width": 664,
+      "tileHeight": 114,
+      "top": 38,
+      "bot": 63,
+      "index": 3
+    },
+    {
+      "width": 663,
+      "tileHeight": 114,
+      "top": 36,
+      "bot": 65,
+      "index": 3
+    },
+    {
+      "width": 390,
+      "tileHeight": 114,
+      "top": 36,
+      "bot": 65,
+      "index": 3
+    },
+    {
+      "width": 760,
+      "tileHeight": 123,
+      "top": 38,
+      "bot": 72,
+      "index": 3
+    },
+    {
+      "width": 1280,
+      "tileHeight": 123,
+      "top": 38,
+      "bot": 72,
+      "index": 3
+    }
+  ]
+}
