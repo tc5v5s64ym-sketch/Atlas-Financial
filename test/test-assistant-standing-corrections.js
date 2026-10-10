@@ -363,8 +363,8 @@ module.exports = (async () => {
   assert.equal(status, 403); assert.match(challenge, /correct-with-grant/); assert.equal(next, 0);
   await withMcp(off.service, off.auth, async client => {
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 5);
-    assert.equal(listed.tools.some(x => /standing/.test(x.name)), false, 'default tool contract is unchanged');
+    assert.equal(listed.tools.length, 6);
+    assert.equal(listed.tools.some(x => /standing/.test(x.name)), false, 'default tool contract exposes no standing authority');
     const interactiveApply = listed.tools.find(x => x.name === 'apply_lunchmoney_edit');
     assert.equal(interactiveApply.inputSchema.required.includes('confirmed'), true);
   });
@@ -386,7 +386,7 @@ module.exports = (async () => {
   assert.equal(invoked, 0, 'MCP scope gate refuses before service/provider dispatch');
   const wired = fixture(); const wa = await wired.proposal();
   await withMcp(wired.service, wired.auth, async client => {
-    const listed = await client.listTools(); assert.equal(listed.tools.length, 7);
+    const listed = await client.listTools(); assert.equal(listed.tools.length, 8);
     const descriptor = listed.tools.find(x => x.name === 'apply_standing_lunchmoney_correction');
     assert.deepEqual(descriptor._meta.securitySchemes[0].scopes,
       [MCP.REQUIRED_SCOPE, LM.READ_SCOPE, LM.WRITE_SCOPE, Standing.SCOPE]);

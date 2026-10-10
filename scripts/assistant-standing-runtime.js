@@ -45,7 +45,16 @@ function fromEnv({ env = process.env, resource, projectRoot = path.resolve(__dir
       if (!Store.validProofExpiry(current.providerProof, now())) current.ruleEffects = 'unknown';
       return current;
     };
-    return { enabled: true, notesEnabled: false, adapter };
+    const cleanupEnabled = context.cleanupEnabled === true;
+    if (cleanupEnabled) {
+      const Effects = require('./assistant-cleanup-effects');
+      if (context.parserRevision !== Effects.revision(projectRoot) || !/^[a-f0-9]{64}$/.test(context.financialContextDigest))
+        throw new Error('cleanup-parser-context-unapproved');
+      if (Store.ownerDigest(context.providerProof.cleanupFields || []) !== Store.ownerDigest(['category_id', 'payee', 'notes', 'additional_tag_ids'])
+          || context.providerProof.updateBalanceFalse !== true) throw new Error('cleanup-provider-contract-unapproved');
+      adapter.cleanupEffects = async input => Effects.runtimeEffects({ ...input, env, projectRoot, context: await adapter.context(), now });
+    }
+    return { enabled: true, notesEnabled: false, cleanupEnabled, adapter };
   } catch (_) {
     return { enabled: false, notesEnabled: false, reason: 'standing-activation-prerequisite-unavailable' };
   }

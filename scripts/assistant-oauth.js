@@ -35,7 +35,7 @@ const WRITE_TOOL_NAMES = Object.freeze([
   'apply_lunchmoney_edit',
 ]);
 const STANDING_TOOL_NAMES = Object.freeze(['prepare_standing_lunchmoney_correction', 'apply_standing_lunchmoney_correction',
-  'submit_lunchmoney_category_evidence', 'get_lunchmoney_correction_audit']);
+  'submit_lunchmoney_category_evidence', 'submit_lunchmoney_cleanup_evidence', 'get_lunchmoney_correction_audit']);
 const WRITE_STEP_UP_SCOPES = Object.freeze([
   AssistantMcp.REQUIRED_SCOPE,
   READ_SCOPE,
