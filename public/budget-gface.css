@@ -1058,6 +1058,10 @@ body:has(#operating-surface [data-budget-bento]) .site-head-inner {
     flex-direction: column;
     align-items: stretch;
     gap: 18px;
+    /* Stacked tiles read separately: the page background shows through
+       the gaps and corner cutouts instead of the board's flat rect.
+       Desktop keeps the flat gutter colour (base rule above). */
+    background: transparent;
   }
   .budget-bento.atlas-g .blend-hero,
   .budget-bento.atlas-g .blend-income,
