@@ -68,6 +68,7 @@ const suites = [
   ['purpose-reserve authenticated funding and both page consumers', 'test-reserve-aware-funding-integration.js'],
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
   ['MCP provider account balances and truthful freshness', 'test-assistant-account-balances.js'],
+  ['Lunch Money monthly balance history read (monthly only, unavailable never zero)', 'test-assistant-balance-history.js'],
   ['Lunch Money MCP reads and confirmed bounded edits', 'test-assistant-lunchmoney.js'],
   ['Lunch Money preserving metadata and reusable cleanup previews', 'test-assistant-cleanup.js'],
   ['Bounded automatic routine cleanup, real financial effects and private history', 'test-assistant-routine-cleanup.js'],
