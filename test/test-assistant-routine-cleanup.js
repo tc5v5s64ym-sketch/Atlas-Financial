@@ -250,7 +250,7 @@ async function main() {
     assert.notEqual(runtime.runtime.proofs[1].categoryBefore, runtime.runtime.proofs.at(-1).categoryBefore,
       'actual runtime samples advancing observation time instead of freezing it');
     assert.equal(applied.auditReceipt.financialEffects.categoryBefore, runtime.runtime.proofs.at(-1).categoryBefore);
-    assert.equal((await runtime.adapter.grant({ grantRef: runtime.grant.grantRef })).suspended, false);
+    assert.equal((await runtime.adapter.grant(runtime.grant.grantRef)).suspended, false);
     assert(runtime.runtime.requests.every(r => r.method === 'GET'));
     assert(runtime.runtime.requests.filter(r => r.endpoint === '/transactions').every(r => r.query.include_metadata === 'true' && r.query.include_files === undefined));
     assert(runtime.runtime.requests.some(r => r.query.is_pending === 'true' && !r.query.start_date && !r.query.end_date));
@@ -448,7 +448,7 @@ async function main() {
         assert.deepEqual(row.financialEffects, applied.auditReceipt.financialEffects, 'final proof survives restart');
         assert.equal(row.financialEffects.categoryBefore, actual.runtime.proofs.at(-1).categoryBefore,
           'actual runtime final proof is committed with dispatch arming');
-        assert.equal((await restarted.grant({ grantRef: actual.grant.grantRef })).suspended, false,
+        assert.equal((await restarted.grant(actual.grant.grantRef)).suspended, false,
           'advancing runtime observations do not spuriously quarantine an acknowledged write');
         assert.notEqual(row.financialEffects.comparisons[0].before, p.financialEffects.comparisons[0].before,
           'history retains the last live proof, not the earlier preview observation');
@@ -469,7 +469,7 @@ async function main() {
       const rows = await restarted.audit({ grantRef: unsafe.grant.grantRef, auth: unsafe.auth });
       assert.equal(rows.length, 1); assert.equal(rows[0].historyRow.outcome, 'unavailable');
       assert.equal(rows[0].historyRow.after, null); assert.equal(rows[0].terminal.providerWriteMayHaveOccurred, false);
-      assert.equal((await restarted.grant({ grantRef: unsafe.grant.grantRef })).suspended, true,
+      assert.equal((await restarted.grant(unsafe.grant.grantRef)).suspended, true,
         'materially unsafe evidence under the lease stays durably unresolved instead of being retried');
     } finally { await unsafe.close(); }
   } else console.log('Actual durable routine authority proof requires POSIX; exercised by Linux CI.');
