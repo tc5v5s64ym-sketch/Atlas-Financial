@@ -17,8 +17,17 @@ const sourceBound = process.env.BILLS_SOURCE_BOUND === '1';
 const git = args => execFileSync('git', args, { cwd: root, maxBuffer: 16 * 1024 * 1024 });
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const sourceBinding = { head: git(['rev-parse', 'HEAD']).toString().trim(),
-  tree: git(['rev-parse', 'HEAD^{tree}']).toString().trim(), files: {} };
+  tree: git(['rev-parse', 'HEAD^{tree}']).toString().trim(), files: {}, dependencies: {} };
 if (sourceBound) assert.equal(git(['status', '--porcelain']).toString().trim(), '', 'Source-bound proof starts clean');
+function bindFile(file, bytes = fs.readFileSync(file)) {
+  const relative = path.relative(root, file).split(path.sep).join('/');
+  const bound = { sha256: sha(bytes), bytes: bytes.length };
+  if (sourceBound) {
+    bound.blob = git(['rev-parse', 'HEAD:' + relative]).toString().trim();
+    assert.equal(sha(git(['cat-file', 'blob', bound.blob])), bound.sha256, relative + ' is exact Git bytes');
+  }
+  return bound;
+}
 function fixture() {
   const data = fx.served();
   for (let i = 0; i < 3; i++) data.plan.bills.push({ id: `synthetic-extra-${i}`, label: `Synthetic service ${i + 1}`,
@@ -28,14 +37,26 @@ function fixture() {
   return data;
 }
 (async () => {
+  // Bind the actual CommonJS fixture/preprocessing dependency closure, including
+  // dependencies loaded lazily by served(), rather than only browser assets.
+  fixture();
+  const dependencies = Object.keys(require.cache).filter(file => {
+    const relative = path.relative(root, file);
+    return !relative.startsWith('..') && !path.isAbsolute(relative) && !relative.startsWith('node_modules' + path.sep);
+  }).concat([path.join(root, 'package.json'), path.join(root, 'package-lock.json')]);
+  for (const file of [...new Set(dependencies)].sort())
+    sourceBinding.dependencies[path.relative(root, file).split(path.sep).join('/')] = bindFile(file);
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true });
-  const errors = [], writes = [], measurements = [], shots = [];
+  const runtime = { node: process.version, platform: process.platform,
+    playwright: require('playwright/package.json').version, chromium: browser.version() };
+  const errors = [], writes = [], measurements = [], shots = [], screenshotHashes = {}, inputs = [], focusedFlows = [];
   try {
     for (const width of [1440, 390, 320]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: theme,
         reducedMotion: 'reduce', hasTouch: width < 400, isMobile: width < 400 });
       await context.addInitScript(chosen => localStorage.setItem('hfd-theme', chosen), theme);
       const data = fixture();
+      inputs.push({ width, theme, sha256: sha(Buffer.from(JSON.stringify(data))) });
       await context.route('**/*', route => {
         if (route.request().method() !== 'GET') writes.push(route.request().method());
         const url = new URL(route.request().url());
@@ -45,11 +66,7 @@ function fixture() {
         const file = path.join(root, 'public', url.pathname === '/' ? 'index.html' : url.pathname.slice(1));
         if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
         const bytes = fs.readFileSync(file), relative = path.relative(root, file).split(path.sep).join('/');
-        const bound = { sha256: sha(bytes), bytes: bytes.length };
-        if (sourceBound) {
-          bound.blob = git(['rev-parse', 'HEAD:' + relative]).toString().trim();
-          assert.equal(sha(git(['cat-file', 'blob', bound.blob])), bound.sha256, relative + ' is exact Git bytes');
-        }
+        const bound = bindFile(file, bytes);
         assert.ok(!sourceBinding.files[relative] || sourceBinding.files[relative].sha256 === bound.sha256);
         sourceBinding.files[relative] = bound;
         return route.fulfill({ body: bytes, contentType: file.endsWith('.js') ? 'application/javascript'
@@ -58,18 +75,25 @@ function fixture() {
       const page = await context.newPage();
       page.on('pageerror', error => errors.push(`${width}/${theme}: ${error.message}`));
       const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const waitMotion = () => page.waitForFunction(() => {
+        const dialog = document.querySelector('[data-budget-detail-sheet]');
+        return !document.querySelector('.budget-sheet-motion-shell') && !dialog?.getAnimations({ subtree: true })
+          .some(a => !('animationName' in a) && !('transitionProperty' in a) && a.playState === 'running');
+      }, undefined, { timeout: 3000 });
       const sheet = () => page.locator('[data-budget-detail-sheet][open]');
-      const close = async opener => {
+      const close = async (opener, expanded = true) => {
         await page.locator('[data-budget-detail-close]').click(); await settle();
         assert.equal(await sheet().count(), 0);
         assert.equal(await opener.evaluate(el => document.activeElement === el), true, 'Close restores the visible opener');
-        assert.equal(await opener.getAttribute('aria-expanded'), 'false');
+        if (expanded) assert.equal(await opener.getAttribute('aria-expanded'), 'false');
       };
       const day = date => page.locator(`[data-blend-bill="day:${date}"]`);
       const visibleRows = () => sheet().locator('.budget-bill-row:visible');
       const takeShot = async name => {
         await settle(); const file = `${width}-${theme}-${name}.png`;
         await page.screenshot({ path: path.join(output, file) }); shots.push(file);
+        const bytes = fs.readFileSync(path.join(output, file));
+        screenshotHashes[file] = { sha256: sha(bytes), bytes: bytes.length };
       };
       await page.goto('http://bills.test'); await page.locator('[data-blend-cal]').waitFor(); await settle();
       const originalData = await page.evaluate(() => JSON.stringify(App.data));
@@ -183,16 +207,127 @@ function fixture() {
       await close(hero); await river.focus(); await page.keyboard.press('ArrowLeft'); await settle();
       assert.equal(await period(), originalPeriod);
       await four.click(); assert.equal(await visibleRows().count(), 4); await close(four);
+
+      const periodWhy = async motion => {
+        await hero.click(); await waitMotion();
+        await sheet().locator('[data-budget-bill-filter="paid"]').click();
+        const controls = sheet().locator('.blend-bill-list-context');
+        if (!await controls.evaluate(el => el.open)) await controls.locator(':scope > summary').click();
+        const why = controls.locator('[data-budget-browse-evidence="04"]');
+        const original = await page.locator('[data-operating-question="04"] .budget-step-body').elementHandle();
+        await why.focus(); await why.click(); await waitMotion();
+        assert.equal(await page.locator('dialog[open]').count(), 1);
+        assert.equal(await page.locator('[data-budget-detail-title]').innerText(), 'Bills deduction evidence');
+        assert.equal(await sheet().locator('[data-budget-detail-body] > .budget-step-body').evaluate((el, node) => el === node, original), true,
+          'Why moves the original deduction evidence into the existing sheet');
+        assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]').budgetSheet.snapshot().frames.length), 2);
+        await page.locator('[data-budget-detail-back]').click(); await waitMotion();
+        assert.equal(await why.evaluate(el => document.activeElement === el), true, 'Back restores the Why button');
+        assert.equal(await controls.evaluate(el => el.open), true, 'Period figures remains expanded after Back');
+        assert.equal(await sheet().locator('[data-budget-bill-filter="paid"]').getAttribute('aria-pressed'), 'true');
+        assert.equal(await visibleRows().count(), 1);
+        assert.equal(await visibleRows().first().getAttribute('data-budget-bill-open'), 'mortgage');
+        assert.equal(await page.locator('[data-operating-question="04"] .budget-step-body').evaluate((el, node) => el === node, original), true);
+        if (motion === 'reduce') await takeShot('period-figures-back');
+        await why.click(); await waitMotion(); await close(hero); await waitMotion();
+        assert.equal(await page.locator('[data-operating-question="04"] .budget-step-body').evaluate((el, node) => el === node, original), true,
+          'Close releases the original evidence and restores the hero opener');
+        assert.equal(await period(), originalPeriod);
+        focusedFlows.push({ width, theme, motion, flow: 'Period figures → Why → Back → Why → Close',
+          originalSource: true, filterRetained: 'paid', backFocus: 'Why', closeFocus: 'hero' });
+        await original.dispose();
+      };
+      await periodWhy('reduce');
+
+      // Use normal WAAPI motion. DOM click bursts deliberately bypass
+      // Playwright's animation/stability waits to exercise actions in flight.
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), false);
+      for (const [name, opener, expected] of [['day', four, 4], ['hero', hero, 14]]) {
+        await opener.scrollIntoViewIfNeeded();
+        const burst = await opener.evaluate(el => {
+          el.focus(); el.click(); el.click(); el.click();
+          const dialog = document.querySelector('[data-budget-detail-sheet]');
+          const before = { open: dialog.open, frames: dialog.budgetSheet.snapshot().frames.length,
+            active: dialog.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length };
+          const close = dialog.querySelector('[data-budget-detail-close]'); close.click(); close.click();
+          return { ...before, closed: !dialog.open, focus: document.activeElement === el,
+            expandedAtNativeClose: el.getAttribute('aria-expanded'), shells: document.querySelectorAll('.budget-sheet-motion-shell').length };
+        });
+        assert.ok(burst.open && burst.active > 0, 'normal entry motion was active during the burst');
+        assert.equal(burst.frames, 1); assert.ok(burst.closed && burst.focus);
+        assert.equal(burst.shells, 0, 'second Close cancels decorative departure');
+        // Native dialog close dispatch is asynchronous; the skin clears its
+        // projected opener state when that event arrives.
+        await settle(); await waitMotion();
+        const expandedAfterCloseEvent = await opener.getAttribute('aria-expanded');
+        assert.equal(expandedAfterCloseEvent, 'false');
+
+        const reversal = await opener.evaluate(el => {
+          el.click(); document.querySelector('[data-budget-detail-close]').click(); el.click(); el.click();
+          const dialog = document.querySelector('[data-budget-detail-sheet]');
+          return { frames: dialog.budgetSheet.snapshot().frames.length,
+            shells: document.querySelectorAll('.budget-sheet-motion-shell').length };
+        });
+        assert.equal(reversal.frames, 1); assert.equal(reversal.shells, 0, 'reopening cancels the old departure shell');
+        assert.equal(await visibleRows().count(), expected);
+        await page.keyboard.press('Escape'); await waitMotion();
+        assert.equal(await sheet().count(), 0); assert.equal(await opener.evaluate(el => document.activeElement === el), true);
+        assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]').budgetSheet.snapshot()), null);
+        focusedFlows.push({ width, theme, motion: 'no-preference', flow: name + ' rapid open/Close/reopen/Escape', ...burst, expandedAfterCloseEvent });
+      }
+
+      const drill = await four.evaluate(el => {
+        el.click(); el.click();
+        const dialog = document.querySelector('[data-budget-detail-sheet]');
+        const row = dialog.querySelector('[data-budget-bill-open="internet"]'); row.click(); row.click(); row.click();
+        const frames = dialog.budgetSheet.snapshot().frames.length;
+        const active = dialog.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length;
+        dialog.querySelector('[data-budget-detail-back]').click(); dialog.querySelector('[data-budget-detail-back]').click();
+        return { frames, active, backFrames: dialog.budgetSheet.snapshot().frames.length, focus: document.activeElement === row };
+      });
+      assert.equal(drill.frames, 2); assert.ok(drill.active > 0); assert.equal(drill.backFrames, 1); assert.ok(drill.focus);
+      assert.equal(await visibleRows().count(), 4); await close(four); await waitMotion();
+      focusedFlows.push({ width, theme, motion: 'no-preference', flow: 'rapid detail/Back', ...drill });
+
+      const resize = await four.evaluate(el => {
+        el.click(); const dialog = document.querySelector('[data-budget-detail-sheet]');
+        const before = dialog.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length;
+        window.dispatchEvent(new Event('resize'));
+        return { before, after: dialog.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length, open: dialog.open };
+      });
+      assert.ok(resize.before > 0); assert.equal(resize.after, 0); assert.ok(resize.open);
+      assert.equal(await visibleRows().count(), 4); await close(four); await waitMotion();
+      focusedFlows.push({ width, theme, motion: 'no-preference', flow: 'resize cancels decoration, retains native list', ...resize });
+
+      await four.evaluate(el => el.click());
+      const detached = await sheet().elementHandle();
+      assert.ok(await detached.evaluate(el => el.getAnimations({ subtree: true }).some(a => a.playState === 'running')));
+      await page.evaluate(() => App.rerender()); await settle(); await sheet().waitFor(); await waitMotion();
+      assert.equal(await detached.evaluate(el => el.isConnected), false);
+      assert.equal(await detached.evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length), 0);
+      assert.equal(await visibleRows().count(), 4); await close(four); await waitMotion(); await detached.dispose();
+      focusedFlows.push({ width, theme, motion: 'no-preference', flow: 'remount cancels detached animation, restores native day' });
+      await periodWhy('no-preference');
+      await hero.click(); await waitMotion(); await takeShot('normal-motion-compact-hero-bills'); await close(hero); await waitMotion();
+
+      // Compare the compact Bills treatment to the existing native Income
+      // popup using the same invented fixture and current source/theme.
+      const income = page.locator('[data-operating-question="02"] .budget-step-summary');
+      await income.click(); await waitMotion(); await takeShot('native-income-reference'); await close(income, false); await waitMotion();
       assert.equal(await page.evaluate(() => JSON.stringify(App.data)), originalData, 'interaction never mutates source or settlement');
       await context.close();
     }
     assert.deepEqual(errors, []); assert.deepEqual(writes, []);
     if (sourceBound) {
       assert.equal(git(['rev-parse', 'HEAD']).toString().trim(), sourceBinding.head);
-      for (const [file, bound] of Object.entries(sourceBinding.files)) assert.equal(sha(fs.readFileSync(path.join(root, file))), bound.sha256);
+      for (const [file, bound] of Object.entries({ ...sourceBinding.files, ...sourceBinding.dependencies }))
+        assert.equal(sha(fs.readFileSync(path.join(root, file))), bound.sha256);
+      assert.equal(git(['status', '--porcelain']).toString().trim(), '', 'Source-bound proof ends clean');
     }
-    fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify({ sourceBound, sourceBinding, measurements, shots, errors, writes }, null, 2));
-    console.log('PASS Bills native square/day/compact roster: 1440/390/320, light/dark, every occurrence, keyboard, Back/Close focus, duplicate clicks, remounts and periods');
+    fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify({ sourceBound, sourceBinding, runtime, inputs,
+      measurements, focusedFlows, shots, screenshotHashes, errors, writes }, null, 2));
+    console.log('PASS Bills native square/day/compact roster and normal-motion bursts/cancellation; Period figures/Why Back/Close focus; 1440/390/320 light/dark');
     console.log(JSON.stringify({ sourceBound, head: sourceBinding.head, output, desktop: measurements.filter(m => m.width === 1440) }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
