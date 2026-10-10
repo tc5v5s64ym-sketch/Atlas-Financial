@@ -47,14 +47,16 @@ No data.js, prototype sample finances, financial calculation/classification,
 confirmation, recategorization or prototype panel money is used by production.
 Test inputs are fixed invented publications, separate from the household preview.
 
+The latest owner report of a clunky selector is repaired in [the focused smoothness proof](BUDGET_SELECTOR_SMOOTHNESS.md). The approved design and original motion constants remain unchanged.
+
 ## Independent browser evidence
 
-Source commit: `fc846dc1575543a3c07ba662ee4ed211ea51ebd6`.
+Source commit: `b76ac0f0398c8183b9a61591ba2c7819b27af8fa`.
 Integrated main: `657339f46862f187ba2ab81c066e5cd474318b2b`.
 All actual source bytes equal Git blobs before and after the complete proof.
 The [receipt](budget-blend-browser-receipt.json) records source/served/screenshot
-hashes and the riverPort test results. Full proof: 53 screenshots,
-189 bound files, 30 served assets, zero page errors or external requests.
+hashes and the riverPort test results. Full proof: 55 screenshots,
+191 bound files, 30 served assets, zero page errors or external requests.
 
 - Native mouse drag begins on an amount label at 1440, 390 and 320 in light/dark.
   Native progress, hero period and visible range change before release. The same

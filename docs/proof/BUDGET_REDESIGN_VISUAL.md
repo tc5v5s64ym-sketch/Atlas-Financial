@@ -79,25 +79,25 @@ from Git blobs, and its index stat metadata was refreshed with no staged content
 change. The clean-start and raw-byte checks then passed. No source hash or
 screenshot expectation was manually substituted to make the proof pass.
 
-Exercised code commit: `fc846dc1575543a3c07ba662ee4ed211ea51ebd6`.
-Source tree: `d87fa298d64241903608f817e19affc7de1de7e6`.
-The receipt binds **189 tracked sources** with Git blob IDs, raw SHA256 and
+Exercised code commit: `b76ac0f0398c8183b9a61591ba2c7819b27af8fa`.
+Source tree: `fc7ab93f66027db4c278897c732c088b77099652`.
+The receipt binds **191 tracked sources** with Git blob IDs, raw SHA256 and
 byte counts. Each repository asset served to the browser is checked against that
 binding; every scoped source is checked again after execution. Only docs/proof/
 changes may follow this code commit. No source hashes are normalized or substituted.
 
-The fresh run passed: **53 screenshots**, **189 bound
+The fresh run passed: **55 screenshots**, **191 bound
 sources**, **30 served repository assets**, `errors:[]`, `externalRequests:[]`.
 All committed/exercised bytes and screenshot hashes were independently verified.
 
 | Source | SHA256 of committed and exercised bytes |
 |---|---|
-| `public/plan.js` | `9c9106ab02d84877ec74f75f815b2e6f1d6c7ab9e31d0805e5f2c368a1b58f00` |
-| `public/budget-blend.js` | `fe0844bd5bad1305b739c7006df8a5e1dd25a190cb3b92c2fcba1cf00648ac99` |
-| `public/budget-river.js` | `ab74152cbd40a5ebfdad05dcfc65a67d7fdac15a6d006e2990c1d249630be853` |
+| `public/plan.js` | `7eb00e9705f5e962ffef66904bb743378dca09e097f99db20d4d893c6879cbfb` |
+| `public/budget-blend.js` | `27eef404171da6fb6eba8d18f913d5847ec9294d3f53723cee5036766adc6f32` |
+| `public/budget-river.js` | `e6e90e515006bcf37d7ffec9b0728791af97e8e6164317d596c684bac2ffb8c9` |
 | `public/budget-gface.css` | `5e1ad89bdc773f70ce1c5bc4f550a43a91f50ea7b0a1e110cb08835cf7be2b7e` |
-| `test/browser-budget-blend-proof.js` | `e4bda99eeaa51aa03f3f522f1a4f5f4b6fc26749bc9ed64dbec2de36adf23c75` |
-| `test/browser-budget-river-port.js` | `fd168a22352d674050f6ca88cf329422b2e5b4aba76e0be403e5cb4e05def99c` |
+| `test/browser-budget-blend-proof.js` | `121eca0ce8d3a5604c173becc746d0fca9ef7c2b1677a2b65e52555925177427` |
+| `test/browser-budget-river-port.js` | `d27632f278bea950544dff167689bb3071d20da1186104e5251644cdb4d3343e` |
 
 The receipt records results, exact reference hashes, source and served-asset
 hashes, and screenshot hashes. `visualMatchApproved:false` remains an owner
