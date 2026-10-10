@@ -773,6 +773,7 @@ const composite = (fg, bg) => {
               const a = amount.getBoundingClientRect();
               const b = chip.getBoundingClientRect();
               return {
+                hidden: b.width <= 2 && b.height <= 2 && getComputedStyle(chip).overflow === 'hidden',
                 beside: b.left >= a.right - 2 && b.top < a.bottom - 1,
                 below: b.top >= a.bottom - 1,
               };
@@ -828,9 +829,9 @@ const composite = (fg, bg) => {
             })(),
           };
         });
-        if (layout.estChip && !layout.estBeside) errors.push(`${width}/${theme} est chip is not beside the cents`);
-        if (width > 480 && (layout.termChips || []).some(row => !row.beside || row.below)) {
-          errors.push(`${width}/${theme} term est chip wrapped ${JSON.stringify(layout.termChips)}`);
+        if (layout.estChip) errors.push(`${width}/${theme} repeated est badge remains visible`);
+        if ((layout.termChips || []).some(row => !row.hidden)) {
+          errors.push(`${width}/${theme} term est badge remains visible ${JSON.stringify(layout.termChips)}`);
         }
         if (!layout.pillRight) errors.push(`${width}/${theme} Bills account pill is not at the right of the hero top`);
         if (!layout.incomeInside) errors.push(`${width}/${theme} received amount leaves the Income tile`);
@@ -1956,12 +1957,13 @@ const composite = (fg, bg) => {
       const chip = document.querySelector('[data-operating-question="07"] .budget-step-value > .blend-est');
       if (!cents || !chip || chip.closest('.blend-clip')) return { missing: true };
       const a = cents.getBoundingClientRect(), b = chip.getBoundingClientRect();
-      return { gap: b.left - a.right, tops: Math.abs(b.top - a.top), text: (chip.textContent || '').trim() };
+      return { hidden: b.width <= 2 && b.height <= 2 && getComputedStyle(chip).overflow === 'hidden',
+        title: chip.previousElementSibling?.title || '', text: (chip.textContent || '').trim() };
     });
     if (amountPath.periodIncome.shown !== '$9.00' || amountPath.periodIncome.chip !== 'est.'
       || amountPath.balanceAfterDeductions.shown !== '$1,632.01' || amountPath.balanceAfterDeductions.chip !== 'est.'
       || /estimated|≈/.test(amountPath.periodIncome.shown + amountPath.balanceAfterDeductions.shown)
-      || beside.missing || beside.text !== 'est.' || beside.gap < -2 || beside.gap > 40 || beside.tops > 28) {
+      || beside.missing || beside.text !== 'est.' || !beside.hidden || !/^Estimated/.test(beside.title)) {
       errors.push(`amount est path ${JSON.stringify({ amountPath, beside })}`);
     }
     await termsPage.evaluate(() => {
