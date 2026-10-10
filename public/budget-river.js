@@ -341,7 +341,14 @@
         const inBand = known && y + 10 > this.H - 44;
         const selL = selC + stepDx - selW / 2, selR = selC + stepDx + selW / 2;
         this.valEls.forEach((el, k) => {
-          if (k === this.index) return;
+          if (k === this.index) {
+            // The selected label must never stay yielded: a label faded out
+            // as a neighbour keeps its node across selections (mark/adopt
+            // retain the nodes), so restore it before the skip — this loop is
+            // the only place its opacity is managed.
+            if (this._yielded.has(el)) { el.style.opacity = ''; this._yielded.delete(el); }
+            return;
+          }
           let cover = false;
           if (inBand) {
             const ck = this.xs[k] - this.off, wk = el.offsetWidth;

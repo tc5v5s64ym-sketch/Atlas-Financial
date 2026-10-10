@@ -151,7 +151,128 @@ async function proveRiverPort({ open, capture }) {
     await page.close();
   }
   const paired = await proveOriginal({ open, capture });
-  return { nativeLiveDrag: cases, originalComparison: paired };
+  const yielded = await proveYieldedNeighbourReselect({ open });
+  return { nativeLiveDrag: cases, originalComparison: paired, yieldedNeighbourReselect: yielded };
+}
+
+// Regression (Systems Review 5480635465): place() skipped the selected label
+// before clearing yielded opacity. Selecting the minimum faded the adjacent
+// $150 label to opacity 0; selecting that label next retained its node
+// (mark/adopt keep the label nodes) but left it invisible — rectangle checks
+// pass on invisible text, so this regression asserts COMPUTED opacity
+// through the whole sequence: pointer, keyboard, reduced motion, and a
+// retained-node adopt() remount.
+async function proveYieldedNeighbourReselect({ open }) {
+  // Same invented publication as the geometry proof's negative scenario:
+  // index 1 is the minimum (-420, on the band's bottom edge) and index 2 is
+  // its $150 neighbour, which the selected minimum's stepped label covers.
+  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const MIN = 1, NEIGHBOUR = 2;
+  const cases = [];
+  const setup = async (width, theme, options = {}) => {
+    const page = await open(width, theme, { riverHarness: true, ...options });
+    await page.waitForFunction(() => typeof window.BudgetRiver !== 'undefined');
+    await page.evaluate(bads => {
+      document.body.innerHTML = '<main id="river-yield" style="padding:12px"></main>';
+      const host = document.querySelector('main');
+      const tree = '<nav class="tile t-river"><div class="river" tabindex="0"><canvas class="river-canvas"></canvas><div class="river-slide"><div class="river-vals"></div><div class="months"></div></div><div class="playhead"><div class="playhead-pill"><span>Test publication</span><b>$0.00</b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      const section = document.createElement('section');
+      section.className = 'budget-bento atlas-g';
+      section.innerHTML = '<div class="g-river-wrap">' + tree + '</div>';
+      host.appendChild(section);
+      const fmt = v => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return a >= 999.5 ? s + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : s + '$' + Math.round(a); };
+      const periods = bads.map((bad, i) => ({
+        start: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '15' : '01'),
+        end: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '28' : '14'),
+        bad, state: bad < 0 ? 'short' : 'healthy', role: i < 4 ? 'past' : i === 4 ? 'current' : 'future',
+      }));
+      const el = section.querySelector('.river');
+      const opts = {
+        el, canvas: section.querySelector('canvas'), playhead: section.querySelector('.playhead'),
+        pill: section.querySelector('.playhead-pill'), slide: section.querySelector('.river-slide'),
+        monthsEl: section.querySelector('.months'), valsEl: section.querySelector('.river-vals'),
+        periods, index: 4, cur: 4, enabled: true, dark: document.documentElement.dataset.theme === 'dark',
+        reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, noIntro: true, fmt,
+        knownRuns: [periods.map((_, i) => i)], onChange: () => {},
+      };
+      window.__yieldOpts = opts;
+      window.__yieldRiver = BudgetRiver.create(opts);
+      window.__yieldRiver.place(4);
+    }, bads);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.t-river')).opacity === '1');
+    await page.waitForFunction(() => window.__yieldRiver.head.settled && window.__yieldRiver.index === 4);
+    return page;
+  };
+  const settledAt = (page, k) => page.waitForFunction(k => {
+    const r = window.__yieldRiver; return r.index === k && r.head.settled;
+  }, k, { timeout: 5000 });
+  // Computed opacity is the assertion surface. Poll for the wanted value; on
+  // timeout return the actual value so the failure message names it.
+  const computedOpacity = async (page, k, want) => {
+    await page.waitForFunction(([k, want]) => getComputedStyle(window.__yieldRiver.valEls[k]).opacity === want,
+      [k, want], { timeout: 4000 }).catch(() => {});
+    return page.evaluate(k => getComputedStyle(window.__yieldRiver.valEls[k]).opacity, k);
+  };
+  const clickLabel = async (page, k) => {
+    const point = await page.evaluate(k => {
+      const b = window.__yieldRiver.valEls[k].getBoundingClientRect();
+      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    }, k);
+    await page.mouse.click(point.x, point.y);
+    await settledAt(page, k);
+  };
+  const runSequence = async (page, select, label) => {
+    await select(MIN);
+    const hiddenNeighbour = await computedOpacity(page, NEIGHBOUR, '0');
+    assert.equal(hiddenNeighbour, '0', label + ': selecting the minimum must yield (hide) the adjacent $150 label; computed opacity ' + hiddenNeighbour);
+    const minSelected = await computedOpacity(page, MIN, '1');
+    assert.equal(minSelected, '1', label + ': the selected minimum label itself must be visible; computed opacity ' + minSelected);
+    await select(NEIGHBOUR);
+    const reselected = await computedOpacity(page, NEIGHBOUR, '1');
+    assert.equal(reselected, '1', label + ': the newly selected label must compute opacity 1 after being yielded; got ' + reselected);
+    const state = await page.evaluate(k => ({
+      inline: window.__yieldRiver.valEls[k].style.opacity,
+      yielded: window.__yieldRiver._yielded ? window.__yieldRiver._yielded.has(window.__yieldRiver.valEls[k]) : null,
+    }), NEIGHBOUR);
+    assert.equal(state.inline, '', label + ': the selected label inline opacity must be cleared');
+    assert.equal(state.yielded, false, label + ': the selected label must be removed from the yielded set');
+    return { afterMinSelectNeighbourComputed: hiddenNeighbour, afterReselectNeighbourComputed: reselected, inlineCleared: true, removedFromYielded: true };
+  };
+  for (const width of [390, 320]) for (const theme of ['dark', 'light']) {
+    const page = await setup(width, theme);
+    const pointer = await runSequence(page, k => clickLabel(page, k), 'yield/pointer/' + width + '/' + theme);
+    // Keyboard: arrows step one period per press through the same go() path.
+    await page.locator('.river').focus();
+    await page.keyboard.press('ArrowLeft'); await settledAt(page, MIN);
+    const kbHidden = await computedOpacity(page, NEIGHBOUR, '0');
+    assert.equal(kbHidden, '0', 'yield/keyboard/' + width + '/' + theme + ': the minimum must re-yield the neighbour; computed opacity ' + kbHidden);
+    await page.keyboard.press('ArrowRight'); await settledAt(page, NEIGHBOUR);
+    const kbShown = await computedOpacity(page, NEIGHBOUR, '1');
+    assert.equal(kbShown, '1', 'yield/keyboard/' + width + '/' + theme + ': the newly selected label must compute opacity 1; got ' + kbShown);
+    const keyboard = { afterMinSelectNeighbourComputed: kbHidden, afterReselectNeighbourComputed: kbShown };
+    // Retained-node remount: adopt() on the unchanged publication keeps the
+    // canvas and every label node; the sequence must still restore opacity.
+    await page.evaluate(() => { window.__yieldNodes = [...window.__yieldRiver.valEls]; });
+    await page.evaluate(() => {
+      const r = window.__yieldRiver;
+      r.adopt({ ...window.__yieldOpts, index: r.index, cur: r.index });
+    });
+    await page.waitForFunction(() => window.__yieldRiver.head.settled);
+    const remountSeq = await runSequence(page, k => clickLabel(page, k), 'yield/remount/' + width + '/' + theme);
+    const retained = await page.evaluate(() => window.__yieldRiver.valEls.every((el, i) => el === window.__yieldNodes[i]));
+    assert.equal(retained, true, 'yield/remount/' + width + '/' + theme + ': adopt() must retain the original label nodes');
+    cases.push({ width, theme, pointer, keyboard, remount: { ...remountSeq, nodesRetainedAcrossAdopt: retained } });
+    await page.close();
+  }
+  // Reduced motion: same sequence with an instant head (go() sets, no spring).
+  {
+    const page = await setup(390, 'dark', { reducedMotion: 'reduce' });
+    assert.equal(await page.evaluate(() => window.__yieldRiver.reduce), true, 'yield/reduced-motion: controller must be in reduced-motion mode');
+    const reducedMotion = await runSequence(page, k => clickLabel(page, k), 'yield/reduced-motion/390/dark');
+    cases.push({ width: 390, theme: 'dark', reducedMotion });
+    await page.close();
+  }
+  return cases;
 }
 
 async function proveOriginal({ open, capture }) {
