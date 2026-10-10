@@ -101,15 +101,13 @@ function simOpts(extra = {}) {
 
 const addDays = (iso, n) => Forecast.addDays(iso, n);
 const monthFormat = new Intl.DateTimeFormat('en-CA', { month: 'long' });
-const shortMonthFormat = new Intl.DateTimeFormat('en-CA', { month: 'short' });
 const monthYearFormat = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numeric' });
 const periodDateFormat = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
-const formatMonthDate = (date, formatter) => Number.isNaN(date.getTime()) ? 'Invalid Date' : formatter.format(date);
-const fmtMonth = iso => formatMonthDate(new Date(iso + 'T00:00:00'), monthFormat);
+const fmtMonth = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { month: 'long' });
 const est = s => `<span class="est">≈ ${s}</span>`;
 const fmtRange = (a, b) => {
   const s = new Date(a + 'T00:00:00'), e = new Date(b + 'T00:00:00');
-  const sm = formatMonthDate(s, shortMonthFormat), em = formatMonthDate(e, shortMonthFormat);
+  const sm = s.toLocaleDateString('en-CA', { month: 'short' }), em = e.toLocaleDateString('en-CA', { month: 'short' });
   return sm === em ? `${s.getDate()}–${e.getDate()} ${em}` : `${s.getDate()} ${sm} – ${e.getDate()} ${em}`;
 };
 
