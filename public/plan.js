@@ -100,9 +100,6 @@ function simOpts(extra = {}) {
 }
 
 const addDays = (iso, n) => Forecast.addDays(iso, n);
-const monthFormat = new Intl.DateTimeFormat('en-CA', { month: 'long' });
-const monthYearFormat = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numeric' });
-const periodDateFormat = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
 const fmtMonth = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { month: 'long' });
 const est = s => `<span class="est">≈ ${s}</span>`;
 const fmtRange = (a, b) => {
@@ -4922,6 +4919,10 @@ function payPeriodDragPixels(dx, index, count, slotPx) {
 
 function payPeriodNavigatorHtml(selection) {
   if (!selection.period) return '';
+  // Reuse only a locale formatter object. Keep the renderer self-contained
+  // for the incumbent standalone composers; no dates or figures are cached.
+  const periodDateFormat = payPeriodNavigatorHtml.dateFormatter
+    || (payPeriodNavigatorHtml.dateFormatter = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }));
   const fullDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
     ? periodDateFormat.format(new Date(`${value}T12:00:00`)) : null;
   const startDate = fullDate(selection.period.start);
@@ -4959,6 +4960,10 @@ function payPeriodCloseMonth(period) {
 }
 
 function payPeriodMonths(selection) {
+  const monthFormat = payPeriodMonths.monthFormatter
+    || (payPeriodMonths.monthFormatter = new Intl.DateTimeFormat('en-CA', { month: 'long' }));
+  const monthYearFormat = payPeriodMonths.monthYearFormatter
+    || (payPeriodMonths.monthYearFormatter = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numeric' }));
   const months = [];
   for (const row of selection.rows) {
     const key = payPeriodCloseMonth(row);

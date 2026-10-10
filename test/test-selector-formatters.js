@@ -24,3 +24,43 @@ for (const [a,b] of [['2026-08-14','2026-08-27'],['2026-08-28','2026-09-10'],['2
   assert.equal(p.fmtRange(a,b),sm===em?`${s.getDate()}–${e.getDate()} ${em}`:`${s.getDate()} ${sm} – ${e.getDate()} ${em}`);
 }
 console.log('PASS selector locale formatting: exact legacy cents, signs, unknowns, local dates, year boundaries and invalid dates');
+
+// Exercise the same standalone extraction that failed in the four composers.
+// No plan.js globals are supplied; the two renderers must carry their own
+// formatter dependencies, and reuse objects rather than cache date strings.
+const extract = name => {
+  const match = plan.match(new RegExp('^function '+name+'\\([\\s\\S]*?\\n\\}', 'm'));
+  assert.ok(match, 'real renderer is available: '+name); return match[0];
+};
+let constructed = 0;
+const renderer = vm.runInNewContext([
+  extract('payPeriodCloseMonth'), extract('payPeriodMonths'), extract('payPeriodNavigatorHtml'),
+  '({payPeriodMonths,payPeriodNavigatorHtml})',
+].join('\n'), {
+  Intl: { DateTimeFormat: function(...args) { constructed++; return new Intl.DateTimeFormat(...args); } },
+  payPeriodRangeLabel: row => `${row.start} – ${row.end}`,
+  payPeriodStatusLabel: row => row.timelineRole,
+});
+const rows = [
+  {id:'aug',start:'2026-08-14',end:'2026-08-27',timelineRole:'current'},
+  {id:'sep-first',start:'2026-08-28',end:'2026-09-10',timelineRole:'future'},
+  {id:'sep-second',start:'2026-09-11',end:'2026-09-24',timelineRole:'future'},
+  {id:'jan',start:'2026-12-25',end:'2027-01-07',timelineRole:'future'},
+];
+assert.equal(renderer.payPeriodNavigatorHtml({period:null,rows:[],index:-1}), '');
+assert.equal(constructed, 0, 'an absent native period does not format an invented date');
+const expectedMonths = [rows[0],rows[1],rows[3]].map(row => ({
+  key:row.end.slice(0,7),id:row.id,
+  label:new Date(row.end+'T12:00:00').toLocaleDateString('en-CA',{month:'long'}),
+  name:new Date(row.end+'T12:00:00').toLocaleDateString('en-CA',{month:'long',year:'numeric'}),
+}));
+for (let i=0;i<rows.length;i++) {
+  const selection={rows,period:rows[i],index:i};
+  assert.deepEqual(JSON.parse(JSON.stringify(renderer.payPeriodMonths(selection))),expectedMonths);
+  const full = value => new Date(value+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
+  assert.ok(renderer.payPeriodNavigatorHtml(selection).includes(`${full(rows[i].start)} – ${full(rows[i].end)}`));
+}
+const next={id:'later-year',start:'2027-12-24',end:'2028-01-06',timelineRole:'future'};
+assert.equal(renderer.payPeriodMonths({rows:[next]})[0].name,'January 2028');
+assert.equal(constructed,3,'date, month and month/year objects are reused across selections and changed date inputs');
+console.log('PASS standalone selector renderers: isolated date/month dependencies, exact locale output and three reused formatter objects');
