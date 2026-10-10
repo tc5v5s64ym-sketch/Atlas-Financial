@@ -17,6 +17,7 @@ const outDir = path.join(root, 'docs/proof');
 fs.mkdirSync(outDir, { recursive: true });
 const listedSources = spawnSync('git', ['ls-files', '-z', '--', 'public', 'scripts/*.js', 'test/fixtures',
   'test/proof-source-binding.js', 'test/test-proof-source-binding.js', 'test/test.js',
+  'test/test-selector-formatters.js', 'test/test-budget-synchronized-wheels.js',
   'test/browser-budget-blend-proof.js', 'test/browser-budget-river-port.js', 'test/browser-budget-panel-repairs.js', 'data.json', 'package.json', 'package-lock.json'],
 { cwd: root, encoding: 'utf8' });
 assert.equal(listedSources.status, 0, 'Tracked proof source scope must be readable.');

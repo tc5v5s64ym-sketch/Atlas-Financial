@@ -47,6 +47,8 @@
     return m;
   }
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const publicationKey = periods => JSON.stringify(periods.map(p =>
+    [p.start, p.end, p.bad, p.state, p.role, p.label, p.fullLabel, p.estimated]));
 
   const River = {
     init(o) {
@@ -59,6 +61,15 @@
       this.reveal = this.reduce || o.noIntro ? 1 : 0;
       this.removers = []; this.visible = true; this.disposed = false; this.raf = null;
       this.layout(); this.bind();
+      this.periodKey = publicationKey(this.periods);
+      this.sizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+        for (const entry of entries) {
+          if (entry.target === this.pill) this.pillWidth = entry.borderBoxSize?.[0]?.inlineSize || this.pill.offsetWidth;
+          else this.layout();
+        }
+        this.request();
+      }) : null;
+      this.sizeObserver?.observe(this.el); this.sizeObserver?.observe(this.pill);
       this.listen(root, 'resize', () => { this.layout(); this.request(); });
       this.listen(document, 'visibilitychange', () => { this.last = 0; this.request(); });
       this.media = matchMedia('(prefers-reduced-motion: reduce)');
@@ -95,14 +106,21 @@
       });
     },
     adopt(o) {
+      const key = publicationKey(o.periods), changed = key !== this.periodKey || o.dark !== this.dark;
       Object.assign(this, o); this.N = this.periods.length;
+      this.periodKey = key;
       if (!this.dragging) this.head.target = Math.max(0, this.index);
       if (this.reduce) this.head.set(this.head.target);
-      this.layout(); this.request();
+      // A native period selection changes the selected row, not the printed
+      // year. Keep the canvas, curve and label nodes through those remounts.
+      // ResizeObserver handles geometry; new publications rebuild the curve.
+      if (changed) this.update();
+      this.mark(this.index); this.request();
     },
     dispose() {
       this.disposed = true; this.dragging = false;
       this.removers.forEach(remove => remove()); this.observer?.disconnect(); this.themeObserver?.disconnect();
+      this.sizeObserver?.disconnect();
       if (this.raf != null) cancelAnimationFrame(this.raf);
       if (this.pointerId != null && this.captureTarget?.hasPointerCapture?.(this.pointerId)) this.captureTarget.releasePointerCapture(this.pointerId);
     },
@@ -110,6 +128,8 @@
       const r = this.el.getBoundingClientRect();
       if (r.width) this.lastRect = r;
       const dpr = Math.min(2, devicePixelRatio || 1);
+      if (this.W === r.width && this.H === r.height && this.dpr === dpr) return;
+      this.dpr = dpr;
       this.W = r.width; this.H = r.height;
       if (!this.W) return;
       this.canvas.width = Math.round(this.W * dpr); this.canvas.height = Math.round(this.H * dpr);
@@ -289,7 +309,7 @@
         this.playhead.querySelector('.playhead-orb').hidden = this.playhead.querySelector('.playhead-beam').hidden = true;
         return;
       }
-      const pw = this.pill.offsetWidth || 160;
+      const pw = this.pillWidth || (this.pillWidth = this.pill.offsetWidth || 160);
       const shift = clamp(-pw / 2, -x + 8, this.W - x - pw - 8);
       this.pill.style.transform = `translate3d(${shift.toFixed(2)}px,0,0)`;
     },

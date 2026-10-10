@@ -100,11 +100,16 @@ function simOpts(extra = {}) {
 }
 
 const addDays = (iso, n) => Forecast.addDays(iso, n);
-const fmtMonth = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { month: 'long' });
+const monthFormat = new Intl.DateTimeFormat('en-CA', { month: 'long' });
+const shortMonthFormat = new Intl.DateTimeFormat('en-CA', { month: 'short' });
+const monthYearFormat = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numeric' });
+const periodDateFormat = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+const formatMonthDate = (date, formatter) => Number.isNaN(date.getTime()) ? 'Invalid Date' : formatter.format(date);
+const fmtMonth = iso => formatMonthDate(new Date(iso + 'T00:00:00'), monthFormat);
 const est = s => `<span class="est">≈ ${s}</span>`;
 const fmtRange = (a, b) => {
   const s = new Date(a + 'T00:00:00'), e = new Date(b + 'T00:00:00');
-  const sm = s.toLocaleDateString('en-CA', { month: 'short' }), em = e.toLocaleDateString('en-CA', { month: 'short' });
+  const sm = formatMonthDate(s, shortMonthFormat), em = formatMonthDate(e, shortMonthFormat);
   return sm === em ? `${s.getDate()}–${e.getDate()} ${em}` : `${s.getDate()} ${sm} – ${e.getDate()} ${em}`;
 };
 
@@ -4920,7 +4925,7 @@ function payPeriodDragPixels(dx, index, count, slotPx) {
 function payPeriodNavigatorHtml(selection) {
   if (!selection.period) return '';
   const fullDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
-    ? new Date(`${value}T12:00:00`).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+    ? periodDateFormat.format(new Date(`${value}T12:00:00`)) : null;
   const startDate = fullDate(selection.period.start);
   const endDate = fullDate(selection.period.end);
   const fullRange = startDate && endDate ? `${startDate} – ${endDate}` : payPeriodRangeLabel(selection.period);
@@ -4964,8 +4969,8 @@ function payPeriodMonths(selection) {
     months.push({
       key,
       id: String(row.id || row.start || ''),
-      label: date.toLocaleDateString('en-CA', { month: 'long' }),
-      name: date.toLocaleDateString('en-CA', { month: 'long', year: 'numeric' }),
+      label: monthFormat.format(date),
+      name: monthYearFormat.format(date),
     });
   }
   return months;
@@ -5587,6 +5592,9 @@ function budgetRemount(mount, ctx) {
     ? sheet?.focusIdentity(focused) : null;
   sheet?.close(false);
   attentionBottom?.replaceChildren();
+  // Presentation controllers may retain their connected gesture/animation
+  // nodes. The new financial HTML is still rebuilt from the current context.
+  if (typeof mount.dispatchEvent === 'function') mount.dispatchEvent(new Event('budget-before-remount'));
   mount.innerHTML = budgetSurfaceHtml(ctx);
   mount.budgetSheetRestore = restore;
   mount.budgetFocusRestore = focusRestore;
@@ -5958,6 +5966,13 @@ function wirePlanLookPicker(mount, ctx) {
       const choose = (targetIndex, focus) => selectPeriod(
         payPeriodWheelSelection(ctx.advice, planPayPeriodId, kind, targetIndex), kind, focus
       );
+      // The visible river uses this same native selection path. Retain its
+      // focus rather than focusing the hidden wheel on every held movement.
+      wheel.addEventListener('budget-period-select', event => {
+        const targetIndex = event.detail?.index;
+        if (kind !== 'period' || !Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= selection.rows.length) return;
+        event.preventDefault(); choose(targetIndex, false);
+      });
       let suppressClick = false;
       wheel.addEventListener('click', event => {
         // A pointer-generated click after a drag must not select a second item.

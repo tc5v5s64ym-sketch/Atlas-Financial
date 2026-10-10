@@ -8,8 +8,11 @@ const riverHarnessHtml = theme => '<!doctype html><html data-theme="' + theme + 
 
 async function proveRiverPort({ open, capture }) {
   const cases = [];
-  for (const width of [1440, 390, 320]) for (const theme of ['light', 'dark']) {
-    const page = await open(width, theme);
+  for (const width of [1440, 935, 390, 320]) for (const theme of ['light', 'dark']) {
+    const data = width === 935 ? require('./fixtures/budget-surface-data').served() : null;
+    if (data) for (let i = 0; i < 24; i++) data.plan.bills.push({id:'stress-bill-'+i,label:'Synthetic recurring bill '+i,
+      frequency:'monthly',day:i+1,amount:12+i,confidence:'confirmed',payingAccount:'chequing-a'});
+    const page = await open(width, theme, data ? { data } : {});
     await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('.t-river')).opacity) === 1);
     const before = await page.evaluate(width => {
       const river = document.querySelector('.river');
@@ -17,6 +20,12 @@ async function proveRiverPort({ open, capture }) {
       const rows = [...document.querySelector('ol[data-bad-timeline]').children];
       const target = rows[selected + 1];
       window.__heldRiverElement = river;
+      window.__heldRiverLabels = [...river.querySelectorAll('.rv')];
+      window.__heldAurora = document.querySelector('.blend-aurora');
+      window.__heldFocusEvents = [];
+      document.addEventListener('focusin', e => {
+        if (e.target.closest('[data-budget-wheel]')) window.__heldFocusEvents.push(e.target.className);
+      });
       const label = river.querySelector('.rv.is-sel').getBoundingClientRect();
       const rect = river.getBoundingClientRect(), mobile = rect.width < 640;
       const fit = (rect.width - (mobile ? 52 : 72)) / (rows.length - 1);
@@ -40,6 +49,9 @@ async function proveRiverPort({ open, capture }) {
       range: document.querySelector('.blend-hero-range').textContent.replace(/\s+/g, ' ').trim(),
       dragging: document.querySelector('.river').classList.contains('is-dragging'),
       sameElement: document.querySelector('.river') === window.__heldRiverElement,
+      sameLabels: [...document.querySelectorAll('.river .rv')].every((node, i) => node === window.__heldRiverLabels[i]),
+      sameAurora: document.querySelector('.blend-aurora') === window.__heldAurora,
+      hiddenWheelFocus: window.__heldFocusEvents.length,
       opacity: Number(getComputedStyle(document.querySelector('.t-river')).opacity),
       nativeAmount: document.querySelector('.blend-hero [data-bad-term="balanceAfterDeductions"] [data-bad-term-amount]').textContent,
     }));
@@ -48,6 +60,9 @@ async function proveRiverPort({ open, capture }) {
     assert.equal(held.range.replace(/\s/g, ''), before.range.replace(/\s/g, ''), 'visible tile date agrees before release');
     assert.equal(held.dragging, true, 'gesture remains held across native remount');
     assert.equal(held.sameElement, true, 'original controller survives native remount');
+    assert.equal(held.sameLabels, true, 'held selection retains the original label nodes without rebuilding the year');
+    assert.equal(held.sameAurora, true, 'held selection retains the original WebGL canvas');
+    assert.equal(held.hiddenWheelFocus, 0, 'held selection never focuses the hidden native chooser');
     assert.equal(held.opacity, 1, 'native remount does not replay the entrance while held');
     // Keep the same gesture held through a second native tile replacement.
     const second = await page.evaluate(i => {
@@ -58,11 +73,14 @@ async function proveRiverPort({ open, capture }) {
     await page.waitForFunction(start => document.querySelector('[data-budget-window-progress]')?.dataset.start === start, second.start);
     assert.equal(await page.evaluate(() => document.querySelector('.river') === window.__heldRiverElement && document.querySelectorAll('.g-river-wrap').length === 1), true);
     assert.equal(await page.locator('.t-river').evaluate(el=>Number(getComputedStyle(el).opacity)),1,'second held remount stays visible');
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.river .rv')].every((node, i) => node === window.__heldRiverLabels[i])
+      && document.querySelector('.blend-aurora') === window.__heldAurora && window.__heldFocusEvents.length === 0), true, 'second held update retains artwork and label nodes without hidden focus');
     // Cancellation aligns with the last actual native publication, without fling.
     await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
     await page.mouse.up();
     await page.waitForFunction(() => !document.querySelector('.river').classList.contains('is-dragging'));
     assert.equal(await page.locator('[data-budget-window-progress]').getAttribute('data-start'), second.start);
+    assert.equal(await page.evaluate(() => document.querySelector('.river') === document.activeElement), true, 'cancelled gesture keeps visible selector focus');
     await page.locator('.river').focus(); await page.keyboard.press('t');
     await page.waitForFunction(() => document.querySelector('ol[data-bad-timeline] > [data-bad-timeline-role="current"]')?.dataset.badTimelineStart === document.querySelector('[data-budget-window-progress]')?.dataset.start);
     await page.keyboard.press('ArrowRight');
@@ -207,7 +225,7 @@ if (require.main === module) {
           const url = new URL(route.request().url());
           if (url.origin !== 'http://budget.test') return route.abort();
           if (url.pathname === '/' && options.riverHarness) return route.fulfill({ body:riverHarnessHtml(theme),contentType:'text/html' });
-          if (url.pathname === '/data.json') return route.fulfill({ json: fx.served(options) });
+          if (url.pathname === '/data.json') return route.fulfill({ json: options.data || fx.served(options) });
           if (['/periods.json', '/balance-history.json', '/running-build.json'].includes(url.pathname)) return route.fulfill({ json: null });
           const file = path.join(root, 'public', url.pathname === '/' ? 'index.html' : url.pathname.slice(1));
           if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });

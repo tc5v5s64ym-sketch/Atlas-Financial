@@ -4,6 +4,12 @@
 (function blendBudget() {
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   let categoryFocusReturn = null;
+  let retainedAurora = null;
+  let stackPlaceTiles = null;
+  function moveWidget(parent, node, before = null) {
+    if (parent.moveBefore && parent.isConnected && node.isConnected) parent.moveBefore(node, before);
+    else parent.insertBefore(node, before);
+  }
 
   function clip(node) {
     if (node) node.classList.add('blend-clip');
@@ -72,6 +78,10 @@
       sky.innerHTML = '<i class="b1"></i><i class="b2"></i><i class="b3"></i>';
       hero.prepend(sky);
     }
+    if (!hero.querySelector('.blend-aurora') && retainedAurora) {
+      moveWidget(hero, retainedAurora, hero.firstChild);
+      hero.dataset.auroraOn = '1';
+    }
     if (!hero.querySelector('.blend-aurora')) {
       const canvas = document.createElement('canvas');
       canvas.className = 'blend-aurora';
@@ -84,10 +94,14 @@
       const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
       globalThis.Aurora.init(hero.querySelector('.blend-aurora'), { reduce: reduce });
       globalThis.Aurora.set('healthy');
-      const theme = document.documentElement.getAttribute('data-theme');
-      const dark = theme === 'dark' || (!theme && matchMedia('(prefers-color-scheme: dark)').matches);
-      globalThis.Aurora.setLight(dark ? 1.15 : 1.5);
     }
+    const theme = document.documentElement.getAttribute('data-theme');
+    const dark = theme === 'dark' || (!theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    globalThis.Aurora?.setLight?.(dark ? 1.15 : 1.5);
+    retainedAurora = hero.querySelector('.blend-aurora');
+    // Keep the original WebGL context and curtain phase through tile updates.
+    // Measure after the complete board is laid out, rather than between writes.
+    requestAnimationFrame(() => { if (hero.isConnected) globalThis.Aurora?.resize?.(); });
     const tight = hero.querySelector('[data-operating-question="07"] [data-sign="negative"]')
       || hero.querySelector('.budget-cash-notice.has-gap');
     hero.classList.toggle('is-tight', !!tight);
@@ -120,6 +134,11 @@
     guard('quiet', () => paintQuiet(bento));
     guard('river', () => paintRiver(bento));
     guard('lift', () => liftFace(bento));
+    if (activeRiver?.restoreFocus) {
+      activeRiver.restoreFocus = false;
+      const river = activeRiver.controller.el;
+      if (document.activeElement !== river) river.focus({ preventScroll: true });
+    }
     // Native Month/drilldown remounts focus the Pay period toggle before
     // this adapter moves it into the disclosure. Restore a visible opener.
     if (granularityFocus) hero.querySelector('[data-blend-figures-open]')?.focus({ preventScroll: true });
@@ -134,7 +153,7 @@
     const river = bento.querySelector('.g-river-wrap');
     const quiet = bento.querySelector('.blend-quiet');
     if (header) bento.appendChild(header);
-    if (river) bento.appendChild(river);
+    if (river) moveWidget(bento, river);
     stackBoard(bento);
     if (quiet) bento.appendChild(quiet);
     const cards = bento.querySelector('.budget-blend-card-movements');
@@ -187,14 +206,7 @@
       if (restoreFocus && document.activeElement !== active) active.focus({ preventScroll: true });
     };
     placeTiles();
-    if (!bento.dataset.blendStacked) {
-      bento.dataset.blendStacked = '1';
-      let frame = 0;
-      window.addEventListener('resize', () => {
-        cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(placeTiles);
-      });
-    }
+    stackPlaceTiles = () => { if (bento.isConnected) placeTiles(); };
   }
 
   function tileGlyph(kind) {
@@ -1936,6 +1948,9 @@
     // Prefer one native selection; retain steps for minimal/older mounts.
     const nativeChoice = document.querySelector('[data-budget-wheel="period"] [data-wheel-index="' + to + '"]');
     if (nativeChoice && !nativeChoice.disabled && nativeChoice.getAttribute('aria-disabled') !== 'true') {
+      const wheel = nativeChoice.closest?.('[data-budget-wheel]');
+      if (typeof CustomEvent === 'function' && wheel?.dispatchEvent && !wheel.dispatchEvent(
+        new CustomEvent('budget-period-select', { cancelable: true, detail: { index: to } }))) return;
       nativeChoice.click();
       return;
     }
@@ -1955,8 +1970,8 @@
   function cleanupDetachedRiver() {
     // Native selection replaces the bento, not its stable operating mount.
     // Keep the original river element/controller alive across those remounts.
-    if (!activeRiver || activeRiver.wrap.isConnected || document.querySelector('[data-budget-bento]')) return;
-    activeRiver.controller.dispose(); activeRiver = null;
+    if (!activeRiver || document.querySelector('#operating-surface-body [data-budget-bento]')) return;
+    activeRiver.controller.dispose(); activeRiver.wrap.remove(); activeRiver = null;
     if (riverSelectionFrame != null) cancelAnimationFrame(riverSelectionFrame);
     riverSelectionFrame = pendingRiverSelection = null;
   }
@@ -2059,7 +2074,7 @@
     // Original app.js leaves its river in place. Native remounts must not
     // replay the CSS entrance while the retained gesture/controller continues.
     if (record.controller) nav.classList.add('is-in');
-    bento.prepend(wrap);
+    moveWidget(bento, wrap, bento.firstChild);
     if (record.controller) record.controller.adopt(options);
     else record.controller = globalThis.BudgetRiver.create(options);
     updateLabel(index);
@@ -2069,7 +2084,6 @@
       today.classList.toggle('on', away); today.setAttribute('aria-hidden', String(!away)); today.tabIndex = away ? 0 : -1;
       today.onclick = () => record.controller.go(cur);
     }
-    if (record.restoreFocus) { record.restoreFocus = false; river.focus({ preventScroll: true }); }
   }
 
   let provenanceFooter = null;
@@ -2203,12 +2217,25 @@
   function boot() {
     const mount = document.getElementById('operating-surface-body');
     if (!mount) return;
+    mount.addEventListener('budget-before-remount', () => {
+      const stable = document.getElementById('operating-surface');
+      if (!stable) return;
+      if (activeRiver?.wrap.isConnected) moveWidget(stable, activeRiver.wrap);
+      if (retainedAurora?.isConnected) moveWidget(stable, retainedAurora);
+    });
     const run = () => {
       cleanupDetachedRiver();
-      if (!mount.querySelector('[data-budget-bento]')) globalThis.Aurora?.destroy?.();
+      if (!mount.querySelector('[data-budget-bento]')) {
+        globalThis.Aurora?.destroy?.(); retainedAurora?.remove(); retainedAurora = null; stackPlaceTiles = null;
+      }
       paint(mount);
     };
     run();
+    let stackFrame = 0;
+    window.addEventListener('resize', () => {
+      cancelAnimationFrame(stackFrame);
+      stackFrame = requestAnimationFrame(() => stackPlaceTiles?.());
+    });
     if (typeof MutationObserver === 'function') {
       new MutationObserver(run).observe(mount, { childList: true });
     }
