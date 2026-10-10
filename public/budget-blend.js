@@ -984,14 +984,17 @@
           day.classList.add('has');
           const mark = document.createElement('button');
           mark.type = 'button';
-          mark.className = 'blend-day-hit day-g';
+          mark.className = 'blend-day-hit';
           mark.setAttribute('aria-label', hits.map(row => separatedText(row)).join('; '));
           mark.setAttribute('aria-haspopup', 'dialog');
           const state = remain && remain.textContent === 'Unavailable' ? 'unknown' : billState(hits[0]);
           if (state === 'overdue') day.classList.add('is-overdue');
           mark.dataset.s = state;
           const printedLabel = text(hits[0].querySelector('.budget-bill-label strong'));
-          mark.appendChild(billIcon(printedLabel));
+          const symbol = document.createElement('span');
+          symbol.className = 'blend-day-symbol day-g';
+          symbol.appendChild(billIcon(printedLabel));
+          mark.appendChild(symbol);
           // Count only. One bill is ~20% of --bills (0.32 × 62%). Extra
           // bills step up and stay under the hot threshold. Amounts are not read.
           const heat = hits.length <= 1 ? 0.32 : hits.length === 2 ? 0.42 : 0.50;
@@ -1004,8 +1007,15 @@
             if (state === 'paid') badge.appendChild(checkGlyph());
             day.appendChild(badge);
           }
-          mark.setAttribute('data-blend-bill', (hits[0].getAttribute('data-budget-bill-open') || '') + ':' + iso);
-          markSheet(mark, hits[0]);
+          mark.setAttribute('data-blend-bill', hits.length > 1 ? 'day:' + iso
+            : (hits[0].getAttribute('data-budget-bill-open') || '') + ':' + iso);
+          markSheet(mark, hits[0], hits.length > 1 ? () => {
+            // The incumbent roster owns every occurrence and its native detail
+            // handler. Restrict its printed rows by date; never clone evidence.
+            panel.setAttribute('data-budget-bill-day', iso);
+            budgetApplyBillFilter(panel, 'all');
+            sheet?.budgetSheet?.open(panel, mark, 'Bills · ' + date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+          } : undefined);
           day.appendChild(mark);
           if (hits.length > 1) {
             const more = document.createElement('span');
@@ -1024,6 +1034,7 @@
     panel.className = 'blend-face-off';
     panel.id = 'blend-bills-more';
     panel.setAttribute('data-blend-bills-panel', '');
+    panel.setAttribute('data-budget-bill-roster', '');
     toggle.setAttribute('aria-controls', panel.id);
     const sheet = document.querySelector('[data-budget-detail-sheet]');
     const native = typeof sheet?.budgetSheet?.open === 'function';
@@ -1033,6 +1044,8 @@
     }
     toggle.addEventListener('click', () => {
       if (native) {
+        panel.removeAttribute('data-budget-bill-day');
+        budgetApplyBillFilter(panel, 'all');
         sheet.budgetSheet.open(panel, toggle, 'Bills');
         return;
       }
@@ -1043,6 +1056,35 @@
     [...section.children].forEach(node => {
       if (node !== head && node !== cal && node !== panel) panel.appendChild(node);
     });
+    if (native) {
+      // Match Income's compact list entry point. Keep the native Bills
+      // deduction body available behind the roster's existing Why control.
+      const heroBills = bento.querySelector('[data-operating-question="04"] .budget-step-summary');
+      if (heroBills) {
+        heroBills.setAttribute('aria-haspopup', 'dialog');
+        heroBills.setAttribute('aria-controls', sheet.id);
+        heroBills.setAttribute('aria-expanded', 'false');
+      }
+      heroBills?.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        panel.removeAttribute('data-budget-bill-day');
+        budgetApplyBillFilter(panel, 'all');
+        sheet.budgetSheet.open(panel, heroBills, 'Bills');
+      }, true);
+      // Period totals stay available without crowding the default roster.
+      // Keep the original filters visible and preserve every control handler.
+      const context = document.createElement('details');
+      context.className = 'blend-bill-list-context';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Period figures';
+      context.appendChild(summary);
+      [...panel.children].filter(node => !node.hasAttribute('data-budget-bill-bucket')
+        && !node.classList.contains('budget-bill-filters') && !node.hasAttribute('data-budget-bill-filter-status')
+        && !node.hasAttribute('data-budget-bill-filter-empty'))
+        .forEach(node => context.appendChild(node));
+      panel.appendChild(context);
+    }
   }
 
   function plannedPhrase(row) {
@@ -1055,7 +1097,7 @@
     return wrap;
   }
 
-  function markSheet(button, row) {
+  function markSheet(button, row, activate = () => row.click()) {
     const sheet = document.querySelector('[data-budget-detail-sheet]');
     const categoryId = button.getAttribute('data-blend-cat');
     const attribute = categoryId ? 'data-blend-cat' : 'data-blend-bill';
@@ -1073,11 +1115,12 @@
       button.setAttribute('data-blend-opened', '1');
     }
     button.addEventListener('click', () => {
+      if (sheet?.open && button.getAttribute('aria-expanded') === 'true') return;
       button.setAttribute('aria-expanded', 'true');
       button.setAttribute('data-blend-opened', '1');
       categoryFocusReturn = { node: button, id, kind, attribute };
-      if (window.BudgetSheetMotion?.from) window.BudgetSheetMotion.from(button, () => row.click());
-      else row.click();
+      if (window.BudgetSheetMotion?.from) window.BudgetSheetMotion.from(button, activate);
+      else activate();
       if (!sheet || !sheet.open) {
         button.removeAttribute('data-blend-opened');
         button.setAttribute('aria-expanded', 'false');
