@@ -13148,7 +13148,8 @@
                 ...(reserves ? { reserveParts: c.reserveParts } : {}),
                 contribution: row.allocations.find(a => a.id === c.id)?.amount || 0,
                 cumulativeProposed: (cumulative.get(c.id) || 0) / 100,
-                remainingGap: roundCent(c.baseRequirement - (c.actualSaved || 0) - (cumulative.get(c.id) || 0) / 100),
+                // Combined-policy backing is protection, not actual saving.
+                remainingGap: roundCent(c.baseRequirement - (c.protectedNow ?? c.actualSaved ?? 0) - (cumulative.get(c.id) || 0) / 100),
                 projectedFullyFunded: c.projectedFullyFunded,
               })) });
             });
@@ -13204,7 +13205,7 @@
             cost: cost.baseRequirement, ceiling: cost.ceiling, confidence: cost.confidence || 'estimated',
             contribution: part ? part.amount : 0, cumulativeProposed: proposed,
             minimumRequiredContribution: row.required === row.contribution ? part ? part.amount : 0 : null,
-            remainingGap: roundCent(cost.baseRequirement - (cost.actualSaved || 0) - proposed), actualSaved: cost.actualSaved ?? null,
+            remainingGap: roundCent(cost.baseRequirement - (cost.protectedNow ?? cost.actualSaved ?? 0) - proposed), actualSaved: cost.actualSaved ?? null,
             ...(reserves ? { reserveParts: cost.reserveParts } : {}),
             projectedFullyFunded: cost.projectedFullyFunded };
         });
