@@ -24,14 +24,20 @@
     </section>`;
   }
 
+  function movementsSection(ctx, parts) {
+    const html = parts.cardMovementsHtml ? parts.cardMovementsHtml(ctx) : '';
+    return html ? `<div class="budget-blend-tile budget-blend-card-movements">${html}</div>` : '';
+  }
+
   function payPeriodView(ctx, parts) {
     const today = parts.todayHtml(ctx);
     const period = parts.periodHtml(ctx);
-    return `<div class="budget-surface-grid">
-      ${card('period', `${parts.headerHtml ? parts.headerHtml(ctx) : ''}
-        <div class="budget-surface-today" data-budget-surface-section="today">${today}</div><!--budget-current-position-end-->${period}`,
+    return `<div class="budget-bento" data-budget-bento>
+    <div class="budget-surface-grid">
+      ${card('period', `<div class="budget-blend-hero-layout">${parts.headerHtml ? parts.headerHtml(ctx) : ''}
+        <div class="budget-surface-today" data-budget-surface-section="today">${today}</div><!--budget-current-position-end-->${period}</div>`,
         { label: 'Selected pay period and current Bills position' })}
-    </div>${parts.cardMovementsHtml ? parts.cardMovementsHtml(ctx) : ''}${parts.browseHtml ? parts.browseHtml(ctx) : ''}${parts.fundingHtml ? parts.fundingHtml(ctx) : ''}`;
+    </div>${movementsSection(ctx, parts)}${parts.browseHtml ? parts.browseHtml(ctx) : ''}${parts.fundingHtml ? parts.fundingHtml(ctx) : ''}</div>`;
   }
 
   function monthView(ctx, parts) {
@@ -57,7 +63,7 @@
     if (parts.planUnavailable(ctx)) {
       return `<div class="payday-operating-sheet budget-surface" data-payday-sheet data-budget-surface="unavailable">
         ${card('unavailable', parts.unavailableHtml(ctx), { eyebrow: 'Budget', label: 'Current plan unavailable' })}
-        ${parts.granularity() === 'pay-period' && parts.cardMovementsHtml ? parts.cardMovementsHtml(ctx) : ''}
+        ${parts.granularity() === 'pay-period' ? movementsSection(ctx, parts) : ''}
       </div>`;
     }
     const view = parts.granularity() === 'month' ? 'month'

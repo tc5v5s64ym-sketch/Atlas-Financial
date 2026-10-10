@@ -4292,7 +4292,19 @@ function badTimelineHtml(advice, compactOverview, savingsContext) {
     const value = badTermsKnown ? badTerms.balanceAfterDeductions : null;
     const trust = period.balanceAfterDeductionsTrust;
     const stamp = trust == null ? 'calculated' : trust;
-    const known = numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
+    const history = period.budgetProgress;
+    const historical = period.timelineRole === 'past' || period.lookback === true;
+    // Forecast owns the completeness of each historical component. A closing
+    // equation or Household-only coverage cannot qualify the whole period.
+    const historicalBadWithheld = historical && !(badTermsKnown && numeric(value)
+      && ['calculated', 'estimated'].includes(stamp)
+      && history?.source === 'Forecast.budgetPeriodProgress'
+      && history.start === period.start && history.end === period.end
+      && [history.income?.actual, history.bills?.actual, history.household?.actual].every(part =>
+        part?.completeness === 'complete' && numeric(part.amount)
+        && ['calculated', 'estimated'].includes(part.trust)));
+    const known = !historicalBadWithheld && numeric(value)
+      && (stamp === 'calculated' || stamp === 'estimated');
     const mark = known && stamp === 'estimated' ? compactOverview
       ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : '';
     // Terms block face: dailySavings and fundedBalanceKnown, as calendarWaterfallHtml derives them.
@@ -4305,7 +4317,7 @@ function badTimelineHtml(advice, compactOverview, savingsContext) {
       && funding.start === period.start && funding.end === period.end
       && numeric(funding.contribution) && funding.contribution >= 0 && numeric(funding.afterProposedFunding)
       && (funding.trust === 'calculated' || funding.trust === 'estimated');
-    const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
+    const fundedBalanceKnown = !historicalBadWithheld && fundingKnown && numeric(funding.afterProposedFunding);
     const face = !dailySavings && fundedBalanceKnown ? 'after-proposed-funding' : 'balance-after-deductions';
     const role = period.timelineRole === 'past' || period.timelineRole === 'current' ? period.timelineRole : 'future';
     // Print-only. Forecast already published this; no coverage math here.
@@ -4581,10 +4593,25 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     ${numeric(funding.proposedFundingForBillPayments) && funding.proposedFundingForBillPayments > 0 ? `<p class="operating-note">${fundMoney(funding.proposedFundingForBillPayments)} of this period's bill deduction is paid from earlier proposed funding. Forecast adds that protection back once in the final proposed balance, so the payment and contribution are not deducted twice.</p>` : ''}
     <p class="operating-note">DEFICIT PLANNING is for Fusion and related sports; SAVINGS-DONT TOUCH is for property tax and home insurance. Account funding and silver draws are not assigned by this projection.</p>`
     : `<p class="operating-note">${escape(funding && funding.reason || 'Forecast has not published a funding schedule for this period.')} ${confirmedSavings ? 'See the savings inventory for confirmed assignments and observed backing.' : 'Actual saved balances and the original payday plan remain unavailable.'}</p>${itemDetails}`;
-  const fundedBalanceKnown = fundingKnown && numeric(funding.afterProposedFunding);
-  const finalAmount = dailySavings ? period.afterHouseholdBudget : fundedBalanceKnown ? funding.afterProposedFunding
+  // A closing arithmetic identity does not qualify historical income, bill
+  // settlement and Household evidence as a whole-period BAD publication.
+  // Withhold only the aggregate presentation; keep each published source term.
+  const history = period.budgetProgress;
+  const historical = period.timelineRole === 'past' || period.lookback === true;
+  const historicalBadWithheld = historical && !(period.predictedEndingBalanceTerms?.identity === 'balance-after-deductions'
+    && period.predictedEndingBalanceTerms.closes === true
+    && numeric(period.predictedEndingBalanceTerms.balanceAfterDeductions)
+    && ['calculated', 'estimated'].includes(period.balanceAfterDeductionsTrust ?? 'calculated')
+    && history?.source === 'Forecast.budgetPeriodProgress'
+    && history.start === period.start && history.end === period.end
+    && [history.income?.actual, history.bills?.actual, history.household?.actual].every(part =>
+      part?.completeness === 'complete' && numeric(part.amount)
+      && ['calculated', 'estimated'].includes(part.trust)));
+  const historicalBadNote = 'Historical Balance After Deductions is unavailable. Whole-period income, bill settlement and Household evidence have not been qualified together. Household transaction coverage alone does not qualify this balance.';
+  const fundedBalanceKnown = !historicalBadWithheld && fundingKnown && numeric(funding.afterProposedFunding);
+  const finalAmount = historicalBadWithheld ? null : dailySavings ? period.afterHouseholdBudget : fundedBalanceKnown ? funding.afterProposedFunding
     : (period.predictedEndingBalance != null ? period.predictedEndingBalance : period.afterHouseholdBudget);
-  const finalTrust = dailySavings ? period.balanceAfterDeductionsTrust : fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
+  const finalTrust = historicalBadWithheld ? 'unavailable' : dailySavings ? period.balanceAfterDeductionsTrust : fundedBalanceKnown ? funding.trust : period.balanceAfterDeductionsTrust;
   // Forecast's optional household/final trust stamp is null for calculated
   // values; explicit unavailable/unknown/untrusted stamps still fail closed.
   const finalKnown = numeric(finalAmount) && (finalTrust == null || ['calculated', 'estimated'].includes(finalTrust));
@@ -4596,7 +4623,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
     <h2>Balance After Deductions</h2>
     <p class="budget-period-result-value"${finalKnown && finalAmount < 0 ? ' data-sign="negative"' : ''}>${finalKnown
       ? `${finalTrust === 'estimated' ? compactOverview ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : ''}<span data-budget-result-amount>${money2(finalAmount)}</span>` : 'Unavailable<span data-budget-result-amount></span>'}</p>
-    <p class="budget-period-result-caption">${compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
+    <p class="budget-period-result-caption">${historicalBadWithheld ? historicalBadNote : compactOverview ? fundedBalanceKnown ? 'Depends on staying on budget.' : 'Before savings · funding unavailable' : finalCaption}</p>
   </div>` : '';
   // Print-only: Forecast's published Balance After Deductions terms for this
   // pay period (advice.payPeriodViews[i].predictedEndingBalanceTerms). Every
@@ -4612,7 +4639,8 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   const badTermRow = (key, label, trust, nullIsCalculated) => {
     const value = badTermsKnown ? badTerms[key] : null;
     const stamp = trust == null && nullIsCalculated ? 'calculated' : trust;
-    const known = numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
+    const known = !(historicalBadWithheld && key === 'balanceAfterDeductions')
+      && numeric(value) && (stamp === 'calculated' || stamp === 'estimated');
     const mark = known && stamp === 'estimated' ? compactOverview
       ? '<span class="est">≈<span class="budget-cash-sr"> estimated</span></span> ' : '<span class="est">≈ estimated</span> ' : '';
     return `<div class="operating-line" data-bad-term="${key}" data-bad-term-trust="${known ? stamp : 'unavailable'}"><span data-bad-term-label>${label}</span><span data-bad-term-value>${known ? mark : 'Unavailable'}<span data-bad-term-amount>${known ? money2(value) : ''}</span></span></div>`;
@@ -4621,6 +4649,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
   // published term is before savings funding, so the two are not one figure.
   const badTermsFace = !dailySavings && fundedBalanceKnown ? 'after-proposed-funding' : 'balance-after-deductions';
   const badTermsHtml = `<div class="operating-lines budget-bad-terms" data-bad-terms data-bad-terms-period="${escape(period.id || period.start || '')}" data-bad-terms-status="${badTermsKnown ? 'published' : 'unavailable'}" data-bad-terms-face="${badTermsFace}">
+    ${historicalBadWithheld ? `<p class="operating-note" data-bad-historical-withheld>${historicalBadNote} The source terms below retain their individual published qualifications.</p>` : ''}
     <p class="operating-note">Forecast's published terms for this period. Balance After Deductions is period income less assigned bills and the household amount.${badTermsFace === 'after-proposed-funding' ? ' These terms are before proposed savings funding; the period result above is after it.' : ''}</p>
     ${badTermRow('periodIncome', 'Period income', period.incomeTrust, false)}
     ${badTermRow('assignedBills', 'Assigned bills (incl. required debt minimums)', period.periodBillLoadTrust, false)}
@@ -4660,10 +4689,10 @@ function calendarWaterfallHtml(period, liveOverlay, alloc, plan, compactOverview
         { amount: funding.proposedFundingForBillPayments, trust: funding.trust, trustRequired: true, barStart: 0,
           note: 'Planning only — bill payment offset, not new income' }) : ''}
     ${q('07', 'Balance After Deductions', planUnavailable ? unavailable : (compactOverview
-      ? `<p class="operating-note">Full-period projection: ${finalCaption}. Current Bills cash is context and is not added to period income.</p>`
+      ? `<p class="operating-note">${historicalBadWithheld ? historicalBadNote : `Full-period projection: ${finalCaption}. Current Bills cash is context and is not added to period income.`}</p>`
       : runningLeftoverHtml(finalAmount, finalTrust))
       + '<p class="operating-note">A positive period balance may be needed for a later short period. It is not permission to spend.</p>', 'balance',
-      { amount: finalAmount, trust: finalTrust, barStart: 0, appendix: badTermsHtml, note: fundedBalanceKnown
+      { amount: finalAmount, trust: finalTrust, discloseUnknown: true, barStart: 0, appendix: badTermsHtml, note: historicalBadWithheld ? historicalBadNote : fundedBalanceKnown
         ? 'After bills, household and proposed funding — retain any future carry'
         : 'Before savings — the funding deduction is unavailable' })}
     ${compactOverview ? savingsRow() : ''}
@@ -4890,8 +4919,12 @@ function payPeriodDragPixels(dx, index, count, slotPx) {
 
 function payPeriodNavigatorHtml(selection) {
   if (!selection.period) return '';
+  // Reuse only a locale formatter object. Keep the renderer self-contained
+  // for the incumbent standalone composers; no dates or figures are cached.
+  const periodDateFormat = payPeriodNavigatorHtml.dateFormatter
+    || (payPeriodNavigatorHtml.dateFormatter = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }));
   const fullDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
-    ? new Date(`${value}T12:00:00`).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+    ? periodDateFormat.format(new Date(`${value}T12:00:00`)) : null;
   const startDate = fullDate(selection.period.start);
   const endDate = fullDate(selection.period.end);
   const fullRange = startDate && endDate ? `${startDate} – ${endDate}` : payPeriodRangeLabel(selection.period);
@@ -4927,6 +4960,10 @@ function payPeriodCloseMonth(period) {
 }
 
 function payPeriodMonths(selection) {
+  const monthFormat = payPeriodMonths.monthFormatter
+    || (payPeriodMonths.monthFormatter = new Intl.DateTimeFormat('en-CA', { month: 'long' }));
+  const monthYearFormat = payPeriodMonths.monthYearFormatter
+    || (payPeriodMonths.monthYearFormatter = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numeric' }));
   const months = [];
   for (const row of selection.rows) {
     const key = payPeriodCloseMonth(row);
@@ -4935,8 +4972,8 @@ function payPeriodMonths(selection) {
     months.push({
       key,
       id: String(row.id || row.start || ''),
-      label: date.toLocaleDateString('en-CA', { month: 'long' }),
-      name: date.toLocaleDateString('en-CA', { month: 'long', year: 'numeric' }),
+      label: monthFormat.format(date),
+      name: monthYearFormat.format(date),
     });
   }
   return months;
@@ -5289,11 +5326,26 @@ function budgetDetailSheetController(mount) {
   const dialog = mount.querySelector('[data-budget-detail-sheet]');
   if (!dialog || typeof dialog.showModal !== 'function') return null;
   if (dialog.budgetSheet) return dialog.budgetSheet;
+  if (!dialog.id) dialog.id = 'budget-detail-sheet';
   const body = dialog.querySelector('[data-budget-detail-body]');
   const title = dialog.querySelector('[data-budget-detail-title]');
   const closeButton = dialog.querySelector('[data-budget-detail-close]');
+  const backButton = document.createElement('button');
+  backButton.type = 'button';
+  backButton.setAttribute('data-budget-detail-back', '');
+  backButton.setAttribute('aria-label', 'Go back');
+  backButton.textContent = '< Back';
+  backButton.hidden = true;
+  closeButton.textContent = '\u00d7';
+  closeButton.before(backButton);
+  const parents = [];
   let held = null;
+  let pendingRestore = null;
   const identity = (node, source) => {
+    if (!source && node.matches('.blend-income')) return '.blend-income';
+    for (const key of source ? [] : ['data-blend-cat', 'data-blend-bill']) {
+      if (node.hasAttribute(key)) return '[' + key + '="' + CSS.escape(node.getAttribute(key)) + '"]';
+    }
     if (source && node.matches('[data-bill-detail]')) {
       const summary = node.querySelector('[data-period-bill]');
       if (!summary) return null;
@@ -5304,55 +5356,131 @@ function budgetDetailSheetController(mount) {
       return `[${key}="${CSS.escape(node.getAttribute(key))}"][data-budget-browse-origin="${CSS.escape(node.getAttribute('data-budget-browse-origin') || '')}"]${node.hasAttribute('data-budget-bill-date') ? `[data-budget-bill-date="${CSS.escape(node.getAttribute('data-budget-bill-date'))}"]` : ''}`;
     }
     if (source && node.hasAttribute('data-budget-category')) return `[data-budget-category="${CSS.escape(node.getAttribute('data-budget-category'))}"]`;
-    for (const key of source ? ['data-budget-goal-fulfillment-evidence', 'data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-budget-daily-funding-evidence', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
-      : ['data-budget-card-toggle', 'data-budget-card-close', 'data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-month-section', 'data-budget-month-section-heading', 'data-budget-granularity', 'data-budget-window-step']) {
+    for (const key of source ? ['data-blend-bills-panel', 'data-budget-goal-fulfillment-evidence', 'data-budget-month-funding-evidence', 'data-budget-funding-savings', 'data-budget-daily-funding-evidence', 'data-from-today-proposal', 'data-budget-today-evidence', 'data-budget-window-picker', 'data-budget-period-info-body', 'data-payday-breakdown']
+      : ['data-blend-bills-open', 'data-budget-card-toggle', 'data-budget-card-close', 'data-budget-month-funding-open', 'data-budget-funding-evidence', 'data-budget-funding-how', 'data-budget-funding-inventory', 'data-budget-goal-open', 'data-budget-cash-how', 'data-budget-cash-next', 'data-budget-window-choose', 'data-budget-section', 'data-budget-browse-evidence', 'data-budget-bill-filter', 'data-budget-funding-tab', 'data-budget-month-picker', 'data-budget-month-section', 'data-budget-month-section-heading', 'data-budget-granularity', 'data-budget-window-step']) {
       if (node.hasAttribute(key)) return `[${key}${node.getAttribute(key) ? `="${CSS.escape(node.getAttribute(key))}"` : ''}]`;
     }
     if (!source && node.matches('.budget-period-info > summary')) return '.budget-period-info > summary';
     const question = node.closest('[data-operating-question]');
     return question ? `[data-operating-question="${CSS.escape(question.getAttribute('data-operating-question'))}"] ${source ? '.budget-step-body' : '.budget-step-summary'}` : null;
   };
-  const close = (restoreFocus = true) => {
-    if (!held) return;
-    const item = held;
-    held = null;
+  const motion = (method, ...args) => {
+    try { return typeof BudgetSheetMotion !== 'undefined' ? BudgetSheetMotion[method]?.(...args) : null; }
+    catch (_) { return null; } // Decoration must never prevent evidence or dismissal.
+  };
+  const openerFor = item => {
+    const replacement = item.openerSelector && item.openerSelector !== item.triggerSelector
+      ? mount.querySelector(item.openerSelector) : null;
+    return replacement || (item.opener?.isConnected ? item.opener : null);
+  };
+  const release = item => {
     item.parent.insertBefore(item.source, item.next?.parentNode === item.parent ? item.next : null);
     item.source.hidden = item.hidden;
-    if (item.expanded != null) item.trigger.setAttribute('aria-expanded', item.expanded);
+    item.source.inert = item.inert;
+    if (item.expanded != null || item.trigger.hasAttribute('aria-expanded'))
+      item.trigger.setAttribute('aria-expanded', item.expanded ?? 'false');
+    const opener = openerFor(item);
+    if (opener && opener !== item.trigger) opener.setAttribute('aria-expanded', 'false');
+  };
+  const focus = node => {
+    if (!node?.isConnected || !node.getClientRects().length) return false;
+    node.focus({ preventScroll: true });
+    if (document.activeElement !== node) return false;
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return true;
+  };
+  const present = item => {
+    title.textContent = item.label;
+    dialog.classList.toggle('budget-surface-today', item.today);
+    dialog.classList.toggle('budget-surface-period', !item.today);
+    item.source.hidden = false;
+    item.source.inert = item.inert;
+    backButton.hidden = parents.length === 0;
+  };
+  const close = (restoreFocus = true) => {
+    pendingRestore = null;
+    if (!held) { motion('cancel', dialog); return; }
+    const root = parents[0] || held;
+    const departure = restoreFocus ? motion('departure', dialog) : null;
+    motion('cancel', dialog);
+    const items = [...parents, held];
+    held = null;
+    parents.length = 0;
+    items.reverse().forEach(release);
+    backButton.hidden = true;
     dialog.close();
     document.body.classList.remove('budget-detail-open');
-    if (restoreFocus && item.trigger.isConnected) {
-      item.trigger.focus({ preventScroll: true });
-      item.trigger.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const returnTo = openerFor(root) || root.trigger;
+    if (restoreFocus && !focus(returnTo) && !focus(root.trigger)) {
+      mount.tabIndex = -1;
+      mount.focus({ preventScroll: true });
     }
+    if (restoreFocus) motion('leave', departure, motion('origin', returnTo) || root.origin);
   };
-  const open = (source, trigger, label, focusSelector) => {
-    if (!source || !trigger) return;
-    close(false);
-    held = { source, trigger, sourceSelector: identity(source, true), triggerSelector: identity(trigger, false), label, focusSelector,
-      parent: source.parentNode, next: source.nextSibling,
-      hidden: source.hidden, expanded: trigger.getAttribute('aria-expanded') };
-    title.textContent = label;
-    dialog.classList.toggle('budget-surface-today', !!source.closest('.budget-surface-today'));
-    dialog.classList.toggle('budget-surface-period', !source.closest('.budget-surface-today'));
+  const open = (source, trigger, label, focusSelector, options = {}) => {
+    pendingRestore = null;
+    if (!source || !trigger || !source.parentNode) return false;
+    motion('cancel', dialog);
+    // Only Bills -> bill evidence adds a Back level. Other incumbent open()
+    // callers retain replacement behavior and cannot accidentally form a stack.
+    const visibleOpener = options.opener || motion('opener') || trigger;
+    const nested = held && held.source.hasAttribute('data-blend-bills-panel')
+      && held.source.contains(trigger) && source !== held.source && !source.contains(held.source);
+    const replacing = !!held && !nested;
+    if (nested) {
+      held.scrollTop = body.scrollTop;
+      held.source.hidden = true;
+      held.source.inert = true;
+      parents.push(held);
+    } else {
+      close(false);
+    }
+    held = { source, trigger, sourceSelector: identity(source, true), triggerSelector: identity(trigger, false),
+      opener: visibleOpener, openerSelector: options.openerSelector || identity(visibleOpener, false),
+      label, focusSelector, parent: source.parentNode, next: source.nextSibling,
+      hidden: source.hidden, inert: source.inert, expanded: trigger.getAttribute('aria-expanded'),
+      today: !!source.closest('.budget-surface-today'), scrollTop: 0,
+      origin: nested ? parents[0].origin : motion('origin', visibleOpener) };
     body.appendChild(source);
-    source.hidden = false;
+    present(held);
     if (source.matches('[data-bill-detail]')) source.open = true;
     if (source.hasAttribute('data-budget-category')) {
       const spending = source.querySelector('[data-budget-spent]');
       if (spending) spending.open = true;
     }
     if (held.expanded != null) trigger.setAttribute('aria-expanded', 'true');
+    if (visibleOpener !== trigger) {
+      visibleOpener.setAttribute('aria-haspopup', 'dialog');
+      visibleOpener.setAttribute('aria-controls', dialog.id);
+      visibleOpener.setAttribute('aria-expanded', 'true');
+    }
     document.body.classList.add('budget-detail-open');
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
     const first = focusSelector ? source.querySelector(focusSelector) : null;
     body.scrollTop = 0;
     (first || closeButton).focus({ preventScroll: true });
     if (first) first.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (!options.instant) {
+      if (nested || replacing) motion('detail', dialog, nested ? 1 : 0);
+      else motion('enter', dialog, held.origin);
+    }
+    return true;
+  };
+  const back = () => {
+    if (!held || !parents.length) return;
+    motion('cancel', dialog);
+    const child = held;
+    release(child);
+    held = parents.pop();
+    present(held);
+    body.scrollTop = held.scrollTop;
+    if (!focus(openerFor(child) || child.trigger)) closeButton.focus({ preventScroll: true });
+    motion('detail', dialog, -1);
   };
   closeButton.addEventListener('click', () => close());
+  backButton.addEventListener('click', back);
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
-  dialog.addEventListener('close', () => { if (!dialog.open) close(); });
+  dialog.addEventListener('close', () => { if (!dialog.open && held) close(); });
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();
@@ -5362,15 +5490,99 @@ function budgetDetailSheetController(mount) {
   dialog.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
     const nodes = [...dialog.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]')]
-      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && !node.closest('[inert]'));
     const first = nodes[0], last = nodes[nodes.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
-  const snapshot = () => held && held.sourceSelector && held.triggerSelector
-    ? { sourceSelector: held.sourceSelector, triggerSelector: held.triggerSelector,
-      label: held.label, focusSelector: held.focusSelector } : null;
-  dialog.budgetSheet = { open, close, snapshot, focusIdentity: node => identity(node, false) };
+  const readBillsFilter = source => {
+    const selected = [...source.querySelectorAll('[data-budget-bill-filter][aria-pressed="true"]')];
+    const choice = selected.length === 1 ? selected[0].getAttribute('data-budget-bill-filter') : null;
+    return ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(choice) ? choice : null;
+  };
+  const restoreBillsFilter = (source, choice) => {
+    budgetApplyBillFilter(source, choice);
+  };
+  const descriptor = item => ({
+    sourceSelector: item.sourceSelector, triggerSelector: item.triggerSelector,
+    openerSelector: item.openerSelector, label: item.label, focusSelector: item.focusSelector,
+    scrollTop: Number.isFinite(item.scrollTop) && item.scrollTop >= 0 ? item.scrollTop : 0,
+    billsFilter: ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(item.billsFilter) ? item.billsFilter : null,
+  });
+  const copyState = state => {
+    const frames = (state?.frames || (state ? [state] : [])).map(descriptor);
+    return frames.length ? { ...frames[frames.length - 1], frames } : null;
+  };
+  const snapshot = () => {
+    if (pendingRestore) return copyState(pendingRestore);
+    if (!held) return null;
+    const frames = [...parents, { ...held, scrollTop: body.scrollTop }].map(item => ({ ...item,
+      billsFilter: item.source.hasAttribute('data-blend-bills-panel') ? readBillsFilter(item.source) : null }));
+    return frames.every(item => item.sourceSelector && item.triggerSelector)
+      ? copyState({ frames }) : null;
+  };
+  const matches = selector => typeof selector === 'string' && selector
+    ? [...mount.querySelectorAll(selector)] : [];
+  const unique = selector => {
+    const nodes = matches(selector);
+    return nodes.length === 1 ? nodes[0] : null;
+  };
+  const sourceForIdentity = selector => {
+    const owned = [...parents, held].find(item => item?.sourceSelector === selector);
+    return owned?.source.isConnected ? owned.source : unique(selector);
+  };
+  const restore = (state, { deferBlend = false } = {}) => {
+    close(false);
+    const saved = copyState(state);
+    const frames = (saved?.frames || []).map(item => {
+      const sources = matches(item.sourceSelector), triggers = matches(item.triggerSelector);
+      return { ...item, source: sources[0], trigger: triggers[0],
+        sourceCount: sources.length, triggerCount: triggers.length };
+    });
+    const isBillsFrame = item => item.sourceSelector === '[data-blend-bills-panel]'
+      && item.triggerSelector === '[data-blend-bills-open]';
+    const incomplete = frames.some(item => item.sourceCount !== 1 || item.triggerCount !== 1);
+    if (incomplete && deferBlend) {
+      const bento = mount.querySelector('[data-budget-bento]');
+      const canWait = frames.length > 0 && frames.some(isBillsFrame)
+        && bento && bento.getAttribute('data-blend-ready') !== '1'
+        && mount.querySelector('[data-budget-browse="bills"]')
+        && frames.every(item => item.sourceCount === 1 && item.triggerCount === 1
+          || isBillsFrame(item) && item.sourceCount <= 1 && item.triggerCount <= 1);
+      // Only known skin-created Bills identities may wait. Every native child
+      // must already resolve uniquely; no missing publication is manufactured.
+      if (canWait) { pendingRestore = saved; return 'pending'; }
+    }
+    if (!frames.length || incomplete
+      || new Set(frames.map(item => item.source)).size !== frames.length) return false;
+    if (frames.some((item, index) => index > 0
+      && (!frames[index - 1].source.hasAttribute('data-blend-bills-panel')
+        || !frames[index - 1].source.contains(item.trigger)
+        || item.source.contains(frames[index - 1].source)))) return false;
+    for (const item of frames) {
+      open(item.source, item.trigger, item.label, item.focusSelector, { instant: true,
+        opener: unique(item.openerSelector), openerSelector: item.openerSelector });
+      if (item.source.hasAttribute('data-blend-bills-panel')) restoreBillsFilter(item.source, item.billsFilter);
+      body.scrollTop = item.scrollTop;
+    }
+    if (parents.length !== frames.length - 1) { close(false); return false; }
+    return true;
+  };
+  const completeDeferredRestore = () => {
+    const state = pendingRestore;
+    pendingRestore = null; // One attempt; subsequent paints must not replay it.
+    if (!state || !dialog.isConnected
+      || mount.querySelector('[data-budget-detail-sheet]') !== dialog) return false;
+    if (restore(state)) return true;
+    const root = state.frames[0];
+    if (!focus(unique(root.openerSelector)) && !focus(unique(root.triggerSelector))) {
+      mount.tabIndex = -1;
+      mount.focus({ preventScroll: true });
+    }
+    return false;
+  };
+  dialog.budgetSheet = { open, close, back, snapshot, restore, completeDeferredRestore, sourceForIdentity,
+    focusIdentity: node => identity(node, false) };
   return dialog.budgetSheet;
 }
 
@@ -5383,6 +5595,9 @@ function budgetRemount(mount, ctx) {
     ? sheet?.focusIdentity(focused) : null;
   sheet?.close(false);
   attentionBottom?.replaceChildren();
+  // Presentation controllers may retain their connected gesture/animation
+  // nodes. The new financial HTML is still rebuilt from the current context.
+  if (typeof mount.dispatchEvent === 'function') mount.dispatchEvent(new Event('budget-before-remount'));
   mount.innerHTML = budgetSurfaceHtml(ctx);
   mount.budgetSheetRestore = restore;
   mount.budgetFocusRestore = focusRestore;
@@ -5466,20 +5681,34 @@ function wireBudgetWindow(mount, ctx, sheet) {
   });
 }
 
+// Display-only filtering of the Forecast states already printed on each
+// bucket. Pending and unknown stay distinct; no settlement is inferred.
+function budgetApplyBillFilter(section, choice) {
+  const controls = [...section.querySelectorAll('[data-budget-bill-filter]')];
+  const selected = ['all', 'check', 'due', 'paid', 'pending', 'unknown'].includes(choice)
+    && controls.filter(control => control.getAttribute('data-budget-bill-filter') === choice).length === 1
+    ? choice : 'all';
+  controls.forEach(control => control.setAttribute('aria-pressed',
+    String(control.getAttribute('data-budget-bill-filter') === selected)));
+  const buckets = [...section.querySelectorAll('[data-budget-bill-bucket]')];
+  buckets.forEach(bucket => { bucket.hidden = selected !== 'all' && bucket.getAttribute('data-budget-bill-bucket') !== selected; });
+  const empty = section.querySelector('[data-budget-bill-filter-empty]');
+  if (empty) empty.hidden = selected === 'all' || buckets.some(bucket => !bucket.hidden);
+  const status = section.querySelector('[data-budget-bill-filter-status]');
+  if (status) status.textContent = ({ all: 'Showing all bills.',
+    check: 'Showing bills to confirm. They may already be paid; check the evidence before paying again.',
+    due: 'Showing bills published as due.', paid: 'Showing paid bills: money sent or settlement confirmed.',
+    pending: 'Showing pending bills. Settlement is not confirmed.',
+    unknown: 'Showing bills with unavailable status.' })[selected];
+}
+
 function wireBudgetBrowse(mount, ctx, sheet) {
   if (!sheet) return;
   mount.querySelectorAll('[data-budget-bill-filter]').forEach(button => button.addEventListener('click', () => {
-    const section = button.closest('[data-budget-browse="bills"]');
+    const section = button.closest('[data-blend-bills-panel], [data-budget-browse="bills"]');
+    if (!section) return;
     const choice = button.getAttribute('data-budget-bill-filter');
-    const selected = button.getAttribute('aria-pressed') !== 'true' ? choice : null;
-    section.querySelectorAll('[data-budget-bill-filter]').forEach(control =>
-      control.setAttribute('aria-pressed', String(control.getAttribute('data-budget-bill-filter') === selected)));
-    section.querySelectorAll('[data-budget-bill-bucket]').forEach(bucket => {
-      bucket.hidden = !!selected && bucket.getAttribute('data-budget-bill-bucket') !== selected;
-    });
-    section.querySelector('[data-budget-bill-filter-status]').textContent = selected === 'paid'
-      ? 'Showing paid bills: money sent or settlement confirmed.' : selected === 'not-paid'
-        ? 'Showing bills not confirmed paid, including pending and unconfirmed entries.' : 'Showing all bills.';
+    budgetApplyBillFilter(section, choice);
   }));
   mount.querySelectorAll('[data-budget-category-open]').forEach(button => button.addEventListener('click', () => {
     const source = mount.querySelector(`[data-budget-category="${CSS.escape(button.getAttribute('data-budget-category-open'))}"]`);
@@ -5740,6 +5969,13 @@ function wirePlanLookPicker(mount, ctx) {
       const choose = (targetIndex, focus) => selectPeriod(
         payPeriodWheelSelection(ctx.advice, planPayPeriodId, kind, targetIndex), kind, focus
       );
+      // The visible river uses this same native selection path. Retain its
+      // focus rather than focusing the hidden wheel on every held movement.
+      wheel.addEventListener('budget-period-select', event => {
+        const targetIndex = event.detail?.index;
+        if (kind !== 'period' || !Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= selection.rows.length) return;
+        event.preventDefault(); choose(targetIndex, false);
+      });
       let suppressClick = false;
       wheel.addEventListener('click', event => {
         // A pointer-generated click after a drag must not select a second item.
@@ -5854,11 +6090,13 @@ function wirePlanLookPicker(mount, ctx) {
   const focusRestore = mount.budgetFocusRestore;
   mount.budgetFocusRestore = null;
   if (restore) {
-    const source = mount.querySelector(restore.sourceSelector);
-    const trigger = mount.querySelector(restore.triggerSelector);
-    if (source && trigger && sheet) sheet.open(source, trigger, restore.label, restore.focusSelector);
-    else if (trigger) trigger.focus({ preventScroll: true });
-    else if (typeof mount.focus === 'function') { mount.tabIndex = -1; mount.focus({ preventScroll: true }); }
+    const result = sheet?.restore(restore, { deferBlend: true });
+    if (result !== true && result !== 'pending') {
+      const root = restore.frames?.[0] || restore;
+      const outerTrigger = mount.querySelector(root.openerSelector || root.triggerSelector);
+      if (outerTrigger?.getClientRects().length) outerTrigger.focus({ preventScroll: true });
+      else if (typeof mount.focus === 'function') { mount.tabIndex = -1; mount.focus({ preventScroll: true }); }
+    }
   } else if (focusRestore) {
     const trigger = mount.querySelector(focusRestore);
     if (trigger) {
@@ -6429,6 +6667,7 @@ function budgetSpendingSectionHtml(period, ctx) {
     && funding.currentThrough === period.end && budgetBrowseKnown(funding.remainingHousehold);
   const historical = budgetBrowseHistorical(period);
   const progress = budgetProgressFor(period, ctx.asOf)?.household;
+  const spendingUnavailable = !budgetProgressAmountKnown(progress?.actual) ? progress?.actual?.reason : null;
   const historicalPlanUnknown = historical && !budgetProgressAmountKnown(progress?.planned);
   const historyEvidence = historical ? budgetHistoricalSpendingEvidence(period) : (period.projected ? 'projected' : 'current');
   const observedHold = !historical || historyEvidence === 'observed';
@@ -6458,6 +6697,7 @@ function budgetSpendingSectionHtml(period, ctx) {
     ${householdBudgetCycleText(period) ? `<p class="budget-browse-cycle">${budgetBrowseEscape(householdBudgetCycleText(period))}</p>` : ''}
     <div class="budget-browse-stats"><div><strong data-budget-browse-hold>${budgetProgressValueHtml(progress, 'household')}</strong></div>
       ${period.timelineRole === 'current' ? `<div><span>Still planned</span><strong data-budget-browse-remaining>${budgetBrowseMoney(remainingKnown ? funding.remainingHousehold : null, remainingKnown ? funding.trust : null)}</strong><small>From today</small></div>` : ''}</div>
+    ${spendingUnavailable ? `<p class="budget-browse-note blend-house-unavailable" data-budget-spending-unavailable>${budgetBrowseEscape(spendingUnavailable)}</p>` : ''}
     <div class="budget-browse-counts">${count}</div><div class="budget-category-list">${cards || '<p class="budget-browse-note">Category data unavailable.</p>'}</div>
     <footer>${historical ? `<p>${observedHold ? 'Completed periods show observed spending, not a spending reserve.' : 'Missing or incomplete history is not treated as observed spending. Missing amounts are unavailable, not zero; open Info for the published evidence.'}</p>` : ''}<button type="button" data-budget-browse-evidence="06" aria-label="Household spending and reserve evidence">Info</button></footer>
   </section>`;
@@ -6471,16 +6711,22 @@ function budgetBillPresentation(row) {
   }
   const settled = row.status === 'PAID' || row.settlement === 'represented';
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'unconfirmed') {
-    return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'Not confirmed', qualifier: 'Payment allocation unconfirmed' };
+    return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'To confirm', qualifier: 'Payment allocation unconfirmed' };
   }
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'paid') return { kind: 'paid', label: 'Paid', qualifier: 'Money sent' };
   if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'partial') return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'Not paid', qualifier: 'Partial payment sent' };
-  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'sent') return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'Not confirmed', qualifier: 'Money sent; minimum amount unconfirmed' };
-  if (row.settlement === 'unverified') return { kind: 'check', label: 'Not confirmed' };
+  if (row.cashPaymentStatus === 'sent' && row.householdPaymentStatus === 'sent') return { kind: settled ? 'paid' : 'check', label: settled ? 'Paid' : 'To confirm', qualifier: 'Money sent; minimum amount unconfirmed' };
+  if (row.settlement === 'unverified') return { kind: 'check', label: 'To confirm' };
   if (row.settlement === 'unknown' || row.status === 'unknown') return { kind: 'unknown', label: 'Status unavailable' };
   if (row.status === 'PAID' || row.settlement === 'represented') return { kind: 'paid', label: 'Paid' };
   if (row.needsDate || row.status === 'needs-date') return { kind: 'check', label: 'Needs a date' };
-  if (row.settlement === 'upcoming') return { kind: 'due', label: 'Not paid' };
+  if (row.settlement === 'upcoming') {
+    // Forecast's upcoming settlement already qualifies the dated occurrence.
+    // Keep explicit payment qualifiers and contradictory statuses distinct.
+    const scheduled = isValidIsoCalendarDate(row.date) && ['still due', 'planned'].includes(row.status)
+      && !row.cashPaymentStatus && !row.householdPaymentStatus;
+    return { kind: 'due', label: scheduled ? 'Due' : 'Not paid' };
+  }
   return { kind: 'unknown', label: 'Status unavailable' };
 }
 
@@ -6501,10 +6747,10 @@ function budgetBillBrowseRowHtml(row) {
   const amount = budgetBrowseKnown(row.movement) ? Math.abs(row.movement) : null;
   const month = knownDate ? new Date(row.date + 'T12:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : '?';
   const dateEstimated = row.dateConfidence === 'estimated';
-  return `<button type="button" class="budget-bill-row is-${state.kind}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
+  return `<button type="button" class="budget-bill-row is-${state.kind}${state.label === 'Due' ? ' is-upcoming-due' : ''}" data-budget-bill-open="${budgetBrowseEscape(row.id)}" data-budget-bill-date="${budgetBrowseEscape(knownDate ? row.date : '')}" data-budget-browse-origin="bills" aria-haspopup="dialog">
     <span class="budget-bill-date${dateEstimated ? ' est' : ''}" aria-hidden="true"><small>${budgetBrowseEscape(month)}</small><b>${knownDate ? Number(row.date.slice(8)) : '—'}</b></span>
-    <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}${knownDate ? `<span class="budget-cash-sr"> · ${budgetBrowseEscape(fmtDateLong(row.date))}${dateEstimated ? ' · estimated' : ''}</span>` : ''}</span></span>
-    <span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span>
+    <span class="budget-bill-label"><strong>${budgetBrowseEscape(budgetBillDisplayLabel(row))}</strong><span class="budget-bill-when">${knownDate ? budgetBrowseEscape(fmtDateLong(row.date)) + (dateEstimated ? ' · estimated' : '') : 'Date unavailable'}</span></span>
+    <span class="budget-bill-value"><span class="budget-bill-amount">${budgetBrowseMoney(amount, amountTrust)}</span><span class="budget-bill-state"><i aria-hidden="true"></i>${state.label}${state.qualifier ? ` · ${budgetBrowseEscape(state.qualifier)}` : ''}</span></span><span class="budget-bill-chevron" aria-hidden="true">›</span>
   </button>`;
 }
 
@@ -6514,7 +6760,7 @@ function budgetBillsSectionHtml(period, ctx) {
   const feeAllowanceRetained = rows.some(row => row.scheduledFeeAllowance?.remainingAllowance > 0);
   const groups = { due: [], pending: [], check: [], paid: [], unknown: [] };
   rows.forEach(row => groups[budgetBillPresentation(row).kind].push(row));
-  const section = (title, list, note = '') => list.length ? `<div class="budget-bill-group"><h3>${title}</h3>${note ? `<p>${note}</p>` : ''}${list.map(budgetBillBrowseRowHtml).join('')}</div>` : '';
+  const section = (key, title, list, note = '') => list.length ? `<div id="budget-bill-bucket-${key}" class="budget-bill-group${key === 'paid' ? ' budget-browse-paid' : ''}" data-budget-bill-bucket="${key}"><h3>${title} <span aria-label="Group total unavailable">Unavailable</span></h3>${list.map(budgetBillBrowseRowHtml).join('')}${note ? `<p>${note}</p>` : ''}</div>` : '';
   const historical = budgetBrowseHistorical(period);
   const withholdActionableRemaining = historical
     && (groups.check.length > 0 || groups.unknown.length > 0);
@@ -6525,18 +6771,14 @@ function budgetBillsSectionHtml(period, ctx) {
     <header><div><p class="budget-browse-eyebrow">Bills this period${period.projected ? ' · projected' : historical ? ' · completed' : ''}</p><h2 id="budget-bills-heading" tabindex="-1">${budgetProgressValueHtml(progress, 'bills')}</h2><p class="budget-browse-sub">${remainingHeading}</p>${historical ? `<p class="budget-browse-sub">${withholdActionableRemaining ? 'Settlement not fully confirmed. ' : ''}Historical settlement evidence, not an amount due now. Unconfirmed entries may already be paid.</p>` : ''}</div></header>
     ${feeAllowanceRetained ? '<p class="budget-browse-sub" data-scheduled-fee-reserve>The unspent scheduled fee allowance stays reserved. The recorded fee is already settled; this is not another payment due.</p>' : ''}
     <div class="budget-browse-counts budget-bill-filters" role="group" aria-label="Filter bills by recorded household payment">
-      ${[['paid', 'PAID', groups.paid.length], ['not-paid', 'NOT PAID', rows.length - groups.paid.length]].map(([key, label, count]) => `<button type="button" class="budget-browse-pill is-${key}" data-budget-bill-filter="${key}" aria-pressed="false" aria-controls="budget-bill-bucket-${key}" aria-label="${label === 'PAID' ? 'Paid' : 'Not confirmed paid'} bills: ${count}. Click again to show all bills.">${label}<span>${count}</span></button>`).join('')}
+      ${[['all', 'All', rows.length], ['check', 'To confirm', groups.check.length], ['due', 'Due', groups.due.length], ['paid', 'Paid', groups.paid.length], ...groups.pending.length ? [['pending', 'Pending', groups.pending.length]] : [], ...groups.unknown.length ? [['unknown', 'Unknown', groups.unknown.length]] : []].map(([key, label, count]) => `<button type="button" class="budget-browse-pill is-${key}" data-budget-bill-filter="${key}" aria-pressed="${key === 'all'}"${key !== 'all' && count ? ` aria-controls="budget-bill-bucket-${key}"` : ''} aria-label="${label} bills: ${count}">${label}<span>${count}</span></button>`).join('')}
     </div><p class="budget-cash-sr" data-budget-bill-filter-status role="status">Showing all bills.</p>
-    <div class="budget-bills-progress-wrapper">${budgetProgressBarHtml(progress, 'bills')}</div>
-    <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} confirmed settled or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div>
-    <div id="budget-bill-bucket-not-paid" data-budget-bill-bucket="not-paid">
-      ${section('Not paid', groups.due)}${section('Pending', groups.pending)}
-      ${section('To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
-      ${section('Status unavailable', groups.unknown)}
-      ${rows.length === groups.paid.length ? '<p class="budget-browse-note">No bills awaiting a recorded household payment.</p>' : ''}
-    </div><div id="budget-bill-bucket-paid" class="budget-browse-paid" data-budget-bill-bucket="paid">
-      ${section('Paid', groups.paid)}${!groups.paid.length ? '<p class="budget-browse-note">No confirmed paid bills in this period.</p>' : ''}
-    </div>
+    ${section('check', 'To confirm', groups.check, 'The bill may already be paid. Check its evidence before paying again.')}
+    ${section('due', 'Due', groups.due)}${section('pending', 'Pending', groups.pending)}
+    ${section('paid', 'Paid', groups.paid)}${section('unknown', 'Status unavailable', groups.unknown)}
+    <p class="budget-browse-note" data-budget-bill-filter-empty hidden>No published bills in this filter.</p>
+    <details class="budget-bill-period-evidence"><summary>Period evidence</summary><div class="budget-bills-progress-wrapper">${budgetProgressBarHtml(progress, 'bills')}</div>
+      <div class="budget-bills-figures"><span>${budgetBrowseMoney(period.paidBills)} confirmed settled or included in opening</span><span>${budgetBrowseMoney(period.totalBillsThisPeriod)} this period</span></div></details>
     ${!rows.length ? '<p class="budget-browse-note">No bill occurrences published for this period.</p>' : ''}
     <footer><p>The plan deducts ${budgetBrowseMoney(period.periodBillLoad, period.periodBillLoadTrust)} — assigned amounts, excluding bills settled in the opening. Payment evidence remains available for each bill.</p><button type="button" data-budget-browse-evidence="04">Why</button></footer>
   </section>`;

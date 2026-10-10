@@ -166,16 +166,18 @@ ok(categoryFill && Math.abs(Number(categoryFill[1]) - 308.55 / 450 * 100) < 1e-9
 ok(/data-budget-browse-hold[\s\S]*?444\.49[\s\S]*?730\.00/.test(html)
   && /data-budget-browse-remaining[\s\S]*?308\.50/.test(html),
   'spent 444.49 / original plan 730 includes Other once; dated remaining stays separate');
-ok(/budget-bill-group[\s\S]*?Not paid[\s\S]*?data-budget-bill-open="card-minimum"/.test(html)
+ok(/data-budget-bill-bucket="due"[\s\S]*?data-budget-bill-open="card-minimum"/.test(html)
   && /To confirm[\s\S]*?data-budget-bill-open="hydro"/.test(html),
   'upcoming and unverified bill occurrences remain separate without inferring unpaid status');
 ok(/budget-browse-paid[\s\S]*?data-budget-bill-open="mortgage"/.test(html)
   && /data-budget-browse-bills-remaining[\s\S]*?265\.00/.test(html),
   'paid occurrence stays in its bucket while the header reprints Forecast remaining bills 265');
-ok((html.match(/data-budget-bill-filter=/g) || []).length === 2
-  && /data-budget-bill-filter="paid"[\s\S]*?PAID<span>1<\/span>/.test(html)
-  && /data-budget-bill-filter="not-paid"[\s\S]*?NOT PAID<span>3<\/span>/.test(html),
-  'two filters count the same four published occurrences: one confirmed paid and three not confirmed paid');
+ok((html.match(/data-budget-bill-filter=/g) || []).length === 4
+  && /data-budget-bill-filter="all"[\s\S]*?All<span>4<\/span>/.test(html)
+  && /data-budget-bill-filter="check"[\s\S]*?To confirm<span>1<\/span>/.test(html)
+  && /data-budget-bill-filter="due"[\s\S]*?Due<span>2<\/span>/.test(html)
+  && /data-budget-bill-filter="paid"[\s\S]*?Paid<span>1<\/span>/.test(html),
+  'filters count all four original occurrences and preserve their distinct published states');
 const noSpent = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRole==='current').householdBudget[0].spent = null");
 {
   const bp = page(); bp.render(fx.served());
@@ -189,16 +191,47 @@ const noSpent = p.rerender("__ctx.advice.payPeriodViews.find(row=>row.timelineRo
   ]);
   const out = vm.runInContext(`globalThis.__filterRows = ${source}; globalThis.__beforeRows = JSON.stringify(__filterRows);
     budgetBillsSectionHtml({bills: __filterRows}, __ctx)`, bp.context);
-  ok(/PAID<span>1<\/span>/.test(out) && /NOT PAID<span>5<\/span>/.test(out),
+  ok(/All<span>6<\/span>/.test(out) && /Paid<span>1<\/span>/.test(out)
+    && /To confirm<span>2<\/span>/.test(out) && /Due<span>1<\/span>/.test(out)
+    && /Pending<span>1<\/span>/.test(out) && /Unknown<span>1<\/span>/.test(out),
     'filter counts use the exact published roster; pending, unknown and contradictory confirmation never become paid');
-  const notPaid = out.split('data-budget-bill-bucket="not-paid"')[1]?.split('id="budget-bill-bucket-paid"')[0] || '';
-  ok(['synthetic-due', 'synthetic-pending', 'synthetic-unverified', 'synthetic-unknown', 'synthetic-contradiction'].every(id => notPaid.includes(`data-budget-bill-open="${id}"`))
-    && /Payment pending/.test(notPaid) && /Not confirmed/.test(notPaid) && /Status unavailable/.test(notPaid),
-    'NOT PAID groups all not-confirmed-paid occurrences while retaining their distinct row statuses and dates');
+  const bucket = key => out.split(`data-budget-bill-bucket="${key}"`)[1]?.split('</div>')[0] || '';
+  ok(bucket('due').includes('data-budget-bill-open="synthetic-due"')
+    && bucket('pending').includes('data-budget-bill-open="synthetic-pending"')
+    && bucket('check').includes('data-budget-bill-open="synthetic-unverified"')
+    && bucket('check').includes('data-budget-bill-open="synthetic-contradiction"')
+    && bucket('unknown').includes('data-budget-bill-open="synthetic-unknown"')
+    && !bucket('due').includes('synthetic-pending') && !bucket('due').includes('synthetic-unknown')
+    && /Payment pending/.test(out) && /To confirm/.test(out) && /Status unavailable/.test(out),
+    'every published state keeps its own bucket; pending and unknown never become Due');
   ok(vm.runInContext('JSON.stringify(__filterRows) === __beforeRows', bp.context), 'filter presentation never rewrites settlement evidence');
+  const statusCases = [
+    [{status:'still due',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Due', ''],
+    [{status:'planned',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Due', ''],
+    [{status:'still due',settlement:'unverified',date:'2026-08-18'}, 'check', 'To confirm', ''],
+    [{status:'overdue',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Not paid', ''],
+    [{status:'not-paid',settlement:'upcoming',date:'2026-08-21'}, 'due', 'Not paid', ''],
+    [{status:'still due',settlement:'upcoming',date:'2026-02-30'}, 'due', 'Not paid', ''],
+    [{status:'still due',settlement:'upcoming'}, 'due', 'Not paid', ''],
+    [{status:'unknown',settlement:'upcoming',date:'2026-08-21'}, 'unknown', 'Status unavailable', ''],
+    [{status:'pending',settlement:'upcoming',date:'2026-08-21'}, 'pending', 'Payment pending', ''],
+    [{status:'needs-date',settlement:'upcoming',date:'2026-08-21'}, 'check', 'Needs a date', ''],
+    [{status:'still due',settlement:'upcoming',date:'2026-08-21',cashPaymentStatus:'sent',householdPaymentStatus:'partial'}, 'check', 'Not paid', 'Partial payment sent'],
+    [{status:'planned',settlement:'upcoming',date:'2026-08-21',cashPaymentStatus:'sent',householdPaymentStatus:'paid'}, 'due', 'Planned', 'Money sent'],
+    [{status:'still due',settlement:'unverified',date:'2026-08-18',cashPaymentStatus:'sent',householdPaymentStatus:'unconfirmed'}, 'check', 'To confirm', 'Payment allocation unconfirmed'],
+    [{status:'still due',settlement:'upcoming',date:'2026-08-21',cashPaymentStatus:'sent'}, 'due', 'Not paid', ''],
+  ];
+  for (const [row, kind, label, qualifier] of statusCases) {
+    const actual = vm.runInContext(`budgetBillPresentation(${JSON.stringify(row)})`, bp.context);
+    const rendered = vm.runInContext(`budgetBillBrowseRowHtml(${JSON.stringify(row)})`, bp.context);
+    ok(actual.kind === kind && actual.label === label && (actual.qualifier || '') === qualifier
+      && rendered.includes('is-upcoming-due') === (label === 'Due'),
+      `published ${row.status}/${row.settlement}: ${label} retains ${qualifier || 'its distinct state'}; only qualified scheduled rows get neutral Due styling`);
+  }
   const empty = vm.runInContext('budgetBillsSectionHtml({bills: []}, __ctx)', bp.context);
-  ok(/PAID<span>0<\/span>/.test(empty) && /NOT PAID<span>0<\/span>/.test(empty)
-    && /No confirmed paid bills/.test(empty) && /No bill occurrences published/.test(empty), 'both empty filters remain usable and disclose their empty roster');
+  ok(/All<span>0<\/span>/.test(empty) && /Paid<span>0<\/span>/.test(empty)
+    && /To confirm<span>0<\/span>/.test(empty) && /Due<span>0<\/span>/.test(empty)
+    && /No published bills in this filter/.test(empty) && /No bill occurrences published/.test(empty), 'empty filters disclose their roster without inventing financial zeros');
 }
 ok(/Spending unavailable/.test(categoryBrowse(noSpent, 'groceries'))
   && !/141\.45 left|budget-category-fill/.test(categoryBrowse(noSpent, 'groceries')),
@@ -301,8 +334,8 @@ ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(hydroBills)
   && /Settlement not fully confirmed/.test(hydroBills)
   && !/left to pay or confirm/.test(hydroBills)
   && !/\$0\.00/.test(/id="budget-bills-heading"[\s\S]*?<\/h2>/.exec(hydroBills)?.[0] || '')
-  && /NOT PAID<span>1<\/span>/.test(hydroBills)
-  && /To confirm[\s\S]*?data-budget-bill-open="hydro"[\s\S]*?Not confirmed[\s\S]*?120\.00/.test(hydroBills)
+  && /To confirm<span>1<\/span>/.test(hydroBills)
+  && /data-budget-bill-bucket="check"[\s\S]*?data-budget-bill-open="hydro"[\s\S]*?120\.00[\s\S]*?To confirm/.test(hydroBills)
   && /data-period-bill="hydro"[\s\S]*?Missing evidence does not mean unpaid/.test(hydroLookback),
   'unverified historical Hydro withholds the actionable $0 heading and keeps original evidence');
 const paidHistory = hydroPage.rerender(`
@@ -314,7 +347,7 @@ ok(/data-budget-bills-remaining-scope="historical-settlement"/.test(paidBills)
   && !/data-budget-browse-bills-remaining|left to pay or confirm/.test(paidBills)
   && /\$120\.00 confirmed settled or included in opening/.test(paidBills)
   && /budget-browse-paid[\s\S]*?data-budget-bill-open="hydro"/.test(paidBills)
-  && !/To confirm[\s\S]*?data-budget-bill-open="hydro"/.test(paidBills),
+  && !/data-budget-bill-bucket="check"/.test(paidBills),
   'paid historical Hydro keeps its published paid amount and no false confirm group; its header stays historical');
 const unknownHistory = hydroPage.rerender(`
   Object.assign(__ctx.advice.payPeriodViews.find(item => item.start === '2026-07-31').bills.find(item => item.id === 'hydro'), {status:null,settlement:null,remaining:120});
@@ -324,7 +357,7 @@ ok(/data-budget-bills-remaining-scope="historical-unconfirmed"/.test(unknownBill
   && /Settlement not fully confirmed/.test(unknownBills)
   && !/left to pay or confirm/.test(unknownBills)
   && /Status unavailable[\s\S]*?data-budget-bill-open="hydro"/.test(unknownBills)
-  && /NOT PAID<span>1<\/span>/.test(unknownBills),
+  && /Unknown<span>1<\/span>/.test(unknownBills),
   'unknown historical settlement withholds the $0 all-clear and does not infer unpaid');
 const restoredCurrent = hydroPage.rerender(`
   planPayPeriodId = null; __ctx.planPayPeriodId = null`);

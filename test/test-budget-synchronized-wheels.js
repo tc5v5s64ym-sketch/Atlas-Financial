@@ -201,6 +201,18 @@ check('period tap and swipe select the same exact row and body; keyboard focus f
   assert.match(mount.focused, /period/);
   assert.match(mount.html, /data-proof-row="nov-first"/);
 });
+check('the river uses native selection without focusing the hidden wheel', () => {
+  load('current'); mount.focused = null;
+  const event = mount.wheels[1].fire('budget-period-select', { detail: { index: 2 } });
+  assert.equal(event.prevented, true); assert.equal(selected(), 'next');
+  assert.equal(mount.focused, null);
+  for (const index of [-1, 99, 1.5, '2']) {
+    assert.equal(mount.wheels[1].fire('budget-period-select', { detail: { index } }).prevented, undefined);
+    assert.equal(selected(), 'next');
+  }
+  assert.equal(mount.wheels[0].fire('budget-period-select', { detail: { index: 1 } }).prevented, undefined);
+  assert.equal(selected(), 'next');
+});
 check('month tap and swipe select the first November row and synchronize the period center', () => {
   load('next'); swipe('month', -100); const html = mount.html;
   load('next'); tap('month', 2); assert.equal(mount.html, html);

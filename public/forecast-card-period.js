@@ -7,11 +7,15 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ForecastCardPeriod = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function buildApi() {
-  const identities = [['travelvisa', 'Travel'], ['cashback', 'Cash Back'], ['tdcc', 'Emerald'],
+  const cardIdentities = [['travelvisa', 'Travel'], ['cashback', 'Cash Back'], ['tdcc', 'Emerald'],
     ['triangle', 'Triangle'], ['mbna', 'Amazon Mastercard']];
   function publish(input, primitives) {
     const { date, cents, skipParent, classify } = primitives;
     const { plan, debts, asOf, window, packet, balanceEvidence, overlay } = input;
+    // HELOC is the owner's existing revolving facility. Use the same native
+    // movement and endpoint evidence; its recorded balance is never a net.
+    const identities = (debts || []).some(row => row?.id === 'heloc')
+      ? cardIdentities.concat([['heloc', 'HELOC']]) : cardIdentities;
     const start = window?.start, end = window?.end;
     const role = date(start) && date(end) && date(asOf)
       ? start > asOf ? 'future' : end < asOf ? 'past' : 'current' : 'unknown';
@@ -24,6 +28,7 @@
       && date(packet.coverageStart) && date(packet.coverageThrough)
       && packet.coverageStart <= start && packet.coverageThrough >= through;
     const known = new Set(identities.map(([id]) => id));
+    const movementRole = tx => tx?.accountRole === 'revolving-credit' || tx?.accountRole === 'heloc';
     const duplicateCards = new Set();
     const aliasCards = new Set();
     const owners = new Map();
@@ -41,7 +46,7 @@
     // identities before amount/date slicing so a malformed, pre-window or
     // post-through counterpart still withholds the affected cards.
     for (const tx of rows) {
-      if (!tx || tx.accountRole !== 'revolving-credit') continue;
+      if (!tx || !movementRole(tx)) continue;
       const aliases = [];
       if (tx.atlasAccountId != null && String(tx.atlasAccountId) !== '') aliases.push(String(tx.atlasAccountId));
       if (tx.account != null && String(tx.account) !== '' && String(tx.account) !== aliases[0])
@@ -53,7 +58,8 @@
     }
     // Unknown identity can conceal a card movement; mapped rows remain useful.
     const unmapped = rows.some(tx => tx && (tx.accountRole === 'unmapped'
-      || tx.accountRole === 'revolving-credit' && !identities.some(([id]) => id === (tx.atlasAccountId || tx.account))));
+      || movementRole(tx) && (!known.has(tx.atlasAccountId || tx.account)
+        || (tx.accountRole === 'heloc') !== ((tx.atlasAccountId || tx.account) === 'heloc'))));
     const balancePacket = balanceEvidence?.schema === 'atlas-card-period-balance-evidence/v1'
       && balanceEvidence.currency === 'CAD' && balanceEvidence.start === start
       && balanceEvidence.through === through && balanceEvidence.asOf === asOf ? balanceEvidence : null;
@@ -95,7 +101,8 @@
       const seen = new Set();
       let total = 0;
       for (const tx of rows) {
-        if (!tx || (tx.atlasAccountId || tx.account) !== id || tx.accountRole !== 'revolving-credit') continue;
+        if (!tx || (tx.atlasAccountId || tx.account) !== id
+          || tx.accountRole !== (id === 'heloc' ? 'heloc' : 'revolving-credit')) continue;
         if (!date(tx.date)) { issues.push('transaction-date-unqualified'); continue; }
         if (tx.date < start || tx.date > through) continue;
         if (tx.pendingPostedAmbiguous === true || tx.pendingPostedDuplicate === true || tx.contradictoryEvidence === true)
@@ -113,7 +120,7 @@
         const hint = typeof tx.kindHint === 'string' ? tx.kindHint.trim().toLowerCase() : '';
         const kind = ['payment', 'card-payment', 'bill-payment'].includes(hint) || tx.cardPaymentIdentity === true ? 'payment'
           : hint === 'refund' ? 'refund'
-          : classification?.kind === 'interest' ? 'interest'
+          : id === 'heloc' && hint === 'interest' || classification?.kind === 'interest' ? 'interest'
           : value != null && value < 0 ? 'credit-unconfirmed'
           : classification?.kind === 'spend' || classification?.kind === 'bill' ? 'charge' : 'movement-unconfirmed';
         const published = { id: tx.id == null ? null : String(tx.id), date: tx.date,

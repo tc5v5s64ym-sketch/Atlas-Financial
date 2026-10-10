@@ -411,7 +411,7 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     providerTransactionId: String(raw.id),
     providerAccountId: accountId != null ? String(accountId) : null,
     date: raw.date || null,
-    amount: raw.amount != null ? Number(raw.amount) : null,
+    amount: lunchMoneyDebitAmount(raw.amount),
     currency: typeof raw.currency === 'string' ? raw.currency.trim().toLowerCase() : null,
     payee: raw.payee || null,
     originalName: raw.original_name || raw.originalName || null,
@@ -791,8 +791,14 @@ function calendarDaysBetween(from, to) {
 // Lunch Money v2: positive amount = debit, negative amount = credit.
 // That sign is fixed and does not follow the user's display preference.
 function lunchMoneyDebitAmount(amount) {
-  if (amount == null || amount === '' || !isFinite(Number(amount))) return null;
-  return Number(amount);
+  // Qualify the provider's scalar decimal before conversion. JavaScript's
+  // Number coercion would invent zero/one from blanks, booleans or arrays.
+  if (typeof amount === 'string') {
+    const decimal = amount.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(decimal)) return null;
+    amount = Number(decimal);
+  }
+  return typeof amount === 'number' && Number.isFinite(amount) ? amount : null;
 }
 
 function billPaymentPayees(plan, extra) {
@@ -4243,9 +4249,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   const txs = [];
   const currencyUnconfirmed = [];
   const cardCoverageUnconfirmed = [];
-  // Collapse omits undated rows; keep their mapped-card evidence unknown.
+  const movementEvidenceRole = mapping => ['revolving-credit', 'heloc'].includes(atlasAccountRole(mapping));
+  // Collapse omits undated rows; keep card and HELOC evidence unknown.
   for (const tx of report && report.transactions || []) {
-    if (tx && !tx.date && atlasAccountRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null) === 'revolving-credit') {
+    if (tx && !tx.date && movementEvidenceRole(mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null)) {
       cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx), date: null,
         reason: 'transaction-amount-or-date-unconfirmed' });
     }
@@ -4255,7 +4262,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
     const amount = lunchMoneyDebitAmount(tx.amount);
     if (!tx.date || amount == null) {
-      if (atlasAccountRole(mapping) === 'revolving-credit'
+      if (movementEvidenceRole(mapping)
         || (atlasAccountRole(mapping) === 'household-cash'
           && (kindHintFromTransaction(tx) === 'card-payment' || isMbnaCardPayment(tx)))) {
         cardCoverageUnconfirmed.push({ ref: cardCoverageReference(tx),
@@ -4302,7 +4309,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
-    const coverageRelevant = atlasAccountRole(mapping) === 'revolving-credit'
+    const coverageRelevant = movementEvidenceRole(mapping)
       || (atlasAccountRole(mapping) === 'household-cash'
         && (kindHint === 'card-payment' || flags.cardPaymentIdentity === true));
     if (coverageRelevant && (tx.currency !== 'cad' || tx.coverageCurrencyConflict === true)) {

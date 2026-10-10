@@ -180,4 +180,51 @@ for(const id of ['absent','empty','nil']){
  assert.equal(covAttr(id),null,id+' omits data-bad-timeline-coverage');
  assert.ok(!covHtml.split(`data-bad-timeline-period="${id}"`)[1].split('>')[0].includes('data-bad-timeline-coverage='));
 }
+// Closing arithmetic and Household coverage do not qualify historical BAD.
+for (const coverage of ['precise', 'posted-only', 'unavailable', undefined]) {
+ const past={...cur,timelineRole:'past',lookback:true,
+   budgetProgress:{...cur.budgetProgress,coverage:{remainingClaim:coverage}}};
+ const sealed=JSON.stringify(past);
+ for(const compact of [true,false]) {
+  const html=render(past,f.plan,compact), t=terms(block(html,past.id));
+  assert.deepEqual(t.slice(0,3),terms(block(render(cur,f.plan,compact),cur.id)).slice(0,3),
+    'historical source terms retain their individual qualifications');
+  assert.deepEqual(t[3],{trust:'unavailable',text:'Unavailable',amount:''});
+  assert.match(html,/data-budget-result-trust="unavailable"/);
+  assert.match(html,/data-bad-historical-withheld/);
+  assert.match(html,/Whole-period income, bill settlement and Household evidence have not been qualified together/);
+  assert.doesNotMatch(html,/data-budget-result-amount>\$|data-budget-result-amount>-\$/);
+ }
+ assert.equal(JSON.stringify(past),sealed,'presentation never mutates historical Forecast publication');
+}
+const lookbackOnly={...cur,lookback:true};
+assert.equal(terms(block(render(lookbackOnly,f.plan,true),lookbackOnly.id))[3].trust,'unavailable',
+ 'the native lookback marker also fails closed without a timeline role');
+// A native, complete Forecast publication earns historical display. A single
+// missing or partial component cannot be filled by the other two components.
+const completePart = amount => ({amount, trust:'calculated', completeness:'complete'});
+const qualifiedPast = {...cur,timelineRole:'past',lookback:true,
+ budgetProgress:{source:'Forecast.budgetPeriodProgress',start:cur.start,end:cur.end,
+  income:{actual:completePart(4050)},bills:{actual:completePart(1665)},household:{actual:completePart(752.99)}}};
+for (const compact of [true,false]) {
+ const html=render(qualifiedPast,f.plan,compact);
+ assert.deepEqual(terms(block(html,cur.id)),terms(block(render(cur,f.plan,compact),cur.id)));
+ assert.doesNotMatch(html,/data-bad-historical-withheld/);
+ const published=timeline({payPeriodViews:[qualifiedPast]},compact,cur.id)[0];
+ const native=badRow(block(html,cur.id));
+ assert.deepEqual([published.trust,published.text,published.amount],[native.trust,native.text,native.amount],
+  'qualified historical timeline and native term share the same publication');
+}
+for (const key of ['income','bills','household']) {
+ for (const patch of [{completeness:'partial'},{amount:null},{amount:NaN},{trust:'unavailable'}]) {
+  const past={...qualifiedPast,budgetProgress:{...qualifiedPast.budgetProgress,
+   [key]:{actual:{...qualifiedPast.budgetProgress[key].actual,...patch}}}};
+  assert.equal(terms(block(render(past,f.plan,true),past.id))[3].trust,'unavailable',key+' '+JSON.stringify(patch));
+ }
+}
+for (const patch of [{source:'Other'},{start:'1900-01-01'},{end:null}]) {
+ const past={...qualifiedPast,budgetProgress:{...qualifiedPast.budgetProgress,...patch}};
+ assert.equal(terms(block(render(past,f.plan,true),past.id))[3].trust,'unavailable','wrong historical publication identity');
+}
+console.log('PASS historical BAD: hero, Q07 and aggregate term withheld for every Household coverage; original source terms and publication immutable');
 console.log('bad terms print: 4 periods × 2 layouts close to the cent; null/non-closing/untrusted terms print Unavailable; amount hook plain (Oct 8 BAD 731.83/1,380.30/1,839.29/1,673.39); Q07 + hero result hooks (funded $1,675.00 est, unavailable empty); hidden all-period timeline matches the terms block per row; coverage attribute reprints remainingClaim (precise, posted-only, unavailable) and is omitted when missing');

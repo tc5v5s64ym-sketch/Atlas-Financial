@@ -66,7 +66,8 @@ const dates=['2026-08-20','2026-08-17','2026-08-16','2026-08-21',null,'2026-02-3
       assert.equal(await paidFilter.evaluate(node=>node===document.activeElement),true);
       await bills.screenshot({path:path.join(output,'bill-filters-'+theme+'-'+width+'.png'),animations:'disabled',style:'.sitenav-household { visibility:hidden !important; }'});
       const savings=page.locator('[data-budget-savings-goals]');
-      assert.match(await savings.innerText(),/School trip[\s\S]*Not confirmed[\s\S]*Winter tires/);
+      // This fixture's current savings rows print Unavailable amounts. They do not print "Not confirmed".
+      assert.match(await savings.innerText(),/School trip[\s\S]*Unavailable[\s\S]*Winter tires/);
       const goal=savings.locator('[data-budget-goal-open="school-trip"]');
       await goal.focus();await page.keyboard.press('Enter');
       assert.equal(await page.locator('[data-budget-detail-title]').innerText(),'School trip');

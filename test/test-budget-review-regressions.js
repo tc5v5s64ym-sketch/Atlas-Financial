@@ -6,7 +6,7 @@ const fx=require('./fixtures/budget-surface-data');
 const source=fs.readFileSync(path.join(__dirname,'../public/plan.js'),'utf8');
 const grab=name=>{const m=new RegExp('^function '+name+'\\([\\s\\S]*?\\n\\}','m').exec(source);assert.ok(m,name);return m[0];};
 const known=/^const budgetBrowseKnown = .*$/m.exec(source)[0];
-const functions=vm.runInNewContext(known+'\n'+['budgetBrowseMoney','budgetCategoryPresentation','budgetCategoryBarHtml','budgetBillPresentation'].map(grab).join('\n')+
+const functions=vm.runInNewContext(known+'\n'+['isValidIsoCalendarDate','budgetBrowseMoney','budgetCategoryPresentation','budgetCategoryBarHtml','budgetBillPresentation'].map(grab).join('\n')+
   '\n({budgetCategoryPresentation,budgetCategoryBarHtml,budgetBillPresentation})',{money2:n=>'$'+n.toFixed(2)});
 for(const planned of [0,40,null,undefined,NaN,Infinity,-1,'0']){
   const row={id:'invented-category',planned,spent:25,overspend:25,remaining:-25,trust:'calculated'};
@@ -35,7 +35,8 @@ const future=a.payPeriodViews.find(p=>p.start==='2026-09-11');
 const row=future.bills.find(r=>r.status==='planned'&&r.settlement==='upcoming');
 assert.ok(row,'incumbent Forecast actually publishes planned/upcoming');
 const before=JSON.stringify(row);
-assert.equal(functions.budgetBillPresentation(row).label,'Not paid');
+assert.equal(functions.budgetBillPresentation(row).label,'Due','Budget names this published upcoming dated occurrence without asserting unpaid settlement');
+assert.equal(functions.budgetBillPresentation(row).kind,'due');
 for(const date of ['2026-08-20','2026-08-21',null,'2026-02-30']){
   const native=UI.planningBillChrome(row.status,date,d.meta.asOf,row.settlement);
   assert.equal(native.label,'Not paid');assert.equal(native.kind,'to-pay');assert.equal(native.planning,false);
@@ -45,4 +46,4 @@ for(const settlement of [null,'unknown','unverified','pending']){
   const expected=settlement==='unverified'?'check':settlement==='pending'?'pending':'unknown';
   assert.equal(UI.billStatePresentation('planned',settlement).kind,expected);
 }
-console.log('PASS #493 review regressions: actual future planned/upcoming matches native/browse; trusted zero-plan overspend is marked without division; missing plan/spend/trust stays unmarked');
+console.log('PASS #493 review regressions: actual future planned/upcoming keeps its settlement under Budget Due and native Not paid labels; trusted zero-plan overspend is marked without division; missing plan/spend/trust stays unmarked');
