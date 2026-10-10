@@ -135,6 +135,7 @@ const suites = [
   ['spending classification reconciliation', 'test-classification.js'],
   ['Lunch Money historical actuals authority (AF-OPERATE-01)', 'test-periods-lunchmoney.js'],
   ['read-only recurring card-charge audit', 'test-recurring-audit.js'],
+  ['Lunch Money recurring items read (provider evidence, never Forecast bills or proof of payment)', 'test-provider-recurring-items.js'],
   ['decision-first payday operating surface (AF-OPERATE-02)', 'test-operating-surface.js'],
   ['plain-language household homepage', 'test-household-view.js'],
   ['approved Budget UI presentation', 'test-budget-ui-polish.js'],
