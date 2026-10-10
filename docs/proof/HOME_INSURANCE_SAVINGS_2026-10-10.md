@@ -65,7 +65,7 @@ receipt cannot fund it backward. Unknown stock/price/date retains the named
 requirement and withholds precise funding. Monthly card bills and annual
 joint-cash bills retain their existing deductions. The six-test regression
 was red on base and passes with this repair; a seventh test protects the
-unfunded/unknown annual cost from new debt or purchase allocation. Both released-protection mutations fail this regression.
+unfunded/unknown annual cost from new debt or purchase allocation. Both released-protection mutations fail this regression. An eighth case explicitly observes zero savings: 80 operating - 60 club - 200 premium = -180 at the deadline; the later 77 leaves -103 without backdating funding.
 
 `test/test-budget-period-funding.js` independently proves 250 earlier top-up
 + 350 later top-up = one 600 payment, with zero duplicate Bills offset.
@@ -103,9 +103,34 @@ Two distinct barriers remain:
    labels that saved amount unavailable. This is a missing projected-stock
    consumer contract, not evidence that actual savings is zero.
 
+Before adding projected stock, the supplied independent main review
+(`task-11/atlas-review-report.md`, reviewed db12bc9) identifies a separate
+financial prerequisite: future Savings uses the cap-based knowledge walk,
+not the selected Budget spending and finalized-payroll basis. Its invented
+80-target case publishes Budget contribution 80 and gap 55 alongside ready
+Savings contribution 135. Raising the target to 180 leaves negative Budget
+BAD (base -44; after this annual-classification repair -20), unavailable
+Budget funding, yet the same ready 135 Savings proposal. January knowledge
+receipts are 4,264 versus finalized Budget 3,849.40 per cheque. The review
+also proves remainingGap 90 instead of 170 - 35 current backing - 80 proposed
+= 55, and future detail wording Unsent top-up today. These are separate
+findings, reproduced without live balances; this repair does not fix them.
+The supplied report is not an exact-head Systems Review of this candidate.
+
+Dependency order for a separate repair: carry calculated protectedNow into
+projected remaining-gap arithmetic while leaving actualSaved unknown; unify
+all future Savings quantities with one Budget-matched dated walk using
+finalized receipts, household holds, operating floors, protected costs and
+one serial allocator. Preserve legitimate uncommitted carry rather than
+transferring every positive BAD or draining committed savings. Prove target
+variation, January payroll transition, an earlier deadline, later deficit,
+source equality and whole-cent conservation. Then publish and render
+projected stock/requirements and the correct projected-period detail label.
+No arithmetic moves into the page.
+
 Bounded next outcome: evolve this same shared Forecast publication to expose
 **Projected** selected-period closing stock and due-date-first remaining
-requirements, reusing its one native period-residual schedule and matched
+requirements, using the repaired Budget-matched native period-residual schedule and matched
 draws. Keep observed/actual stock and contribution fields separate and unknown
 where unproven. Give the conditional projection its own prerequisite result
 (trusted current opening, clear observed savings, known expense roster,
@@ -122,7 +147,7 @@ clipping, whole-cent conservation and UI Projected wording in that separate PR.
 One runtime owner changed: Forecast's payday Bills classification for its
 existing annual card-paid planned-expense class, including the undated case.
 No canonical amount/date/account edit, UI refactor, merge or deployment.
-PRs #571, #572, #570 and #575 were checked open before work. #570 shares the
+PRs #571, #572, #570 and #575 were checked open before work; #571 is now in the final base. #570 shares the
 Forecast file for a separate streaming funding outcome; this patch touches
 `calendarBillSections` and its `calendarPeriodWaterfalls` consumer and requires integration revalidation after
 concurrent merges. Systems Review remains **PENDING**, required before merge.

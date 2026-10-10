@@ -144,3 +144,27 @@ test('routine remainder cannot release an unfunded or unknown annual premium int
   i.plan.bills[0].amount = 200; i.plan.bills[0].needsDate = true;
   assert.equal(period(run(i), '2026-10-23').extraDebt.allocated, null, 'unknown timing grants no new debt instruction');
 });
+
+
+test('known zero savings leaves the full annual expense and its dated shortfall intact', () => {
+  const i = fixture(200);
+  for (const account of i.plan.savingsPoolObservation.accounts) {
+    account.value = 0;
+    for (const row of [...i.plan.startingCash.breakdown, ...i.plan.startingCash.heldElsewhere]) {
+      if (row.id === account.accountId) row.value = 0;
+    }
+  }
+  const a = run(i), s = a.savingsFunding;
+  assert.equal(s.stock.status, 'ready');
+  assert.equal(s.stock.amount, 0, 'two evidenced zero balances, not missing observations');
+  assert.equal(s.backing.items.find(row => row.id === 'annual').saved, 0);
+  const expense = F.expandEvents(i.plan, i.asOf, '2026-11-05').find(e => e.id === 'annual');
+  assert.equal(expense.amount, -200);
+  assert.ok(!expense.reserveFunding || expense.reserveFunding.amount === 0);
+  const sim = F.simulate(i.plan, i.asOf, { ...i.opts, weeklyVariable: 0 });
+  assert.equal(sim.daily.find(row => row.date === '2026-10-21').balance, 20, '80 less 60 club cost');
+  assert.equal(sim.daily.find(row => row.date === '2026-10-25').balance, -180, '20 less full 200 premium');
+  assert.equal(sim.daily.find(row => row.date === '2026-11-02').balance, -103, 'later 77 cannot repair the earlier deadline');
+  assert.equal(s.schedule.status, 'funding-gap');
+  assert.equal(s.moneyMovementPermission, 'not-granted');
+});
