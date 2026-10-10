@@ -64,14 +64,13 @@ const OWNER_EXPLICIT_DATES = {
   'seattle-dec': '2026-12-09',
   'linden-birthday': '2026-12-09',
   'christmas-2026': '2026-12-25',
+  'provincials': '2027-02-12',
 };
 const OWNER_DAY15_DATES = {
   'seattle-nov': '2026-11-15',
   'san-diego': '2027-01-15',
 };
-const STILL_UNDATED = [
-  'provincials',
-];
+const STILL_UNDATED = [];
 const RANGES = {};
 const FLEXIBLE = [];
 const PREEXISTING = ['burrard1', 'burrard2', 'fusioncamp', 'tryouts', 'warriors'];
@@ -180,6 +179,9 @@ ok(seq.some(c => c.id === 'warriors' && c.date === '2026-09-23' && near(c.need, 
     && c.amountMin == null),
   'Warriors stays a $895 point in fundingSequence on the 19 Aug opening');
 const later = F.expandEvents(plan, asOf, '2027-12-31', {});
+ok(later.filter(e => e.id === 'provincials').length === 1
+    && later.some(e => e.id === 'provincials' && e.date === '2027-02-12' && near(e.amount, -1500)),
+  'Provincials emits one existing $1,500 planning cash event on the owner funding-ready target');
 ok(!later.some(e => STILL_UNDATED.includes(e.id)),
   'a longer expander walk still invents no day for unclear-month rows');
 ok(later.some(e => e.id === 'seattle-dec' && e.date === '2026-12-09'
@@ -200,15 +202,15 @@ ok(later.filter(e => e.id === 'san-diego').length === 1
     && later.some(e => e.id === 'san-diego' && e.date === '2027-01-15' && near(e.amount, -3000)),
   'san-diego emits exactly once, on 2027-01-15, at −3000');
 
-console.log('\n=== undated rows encumber the master walk without becoming cash ===');
+console.log('\n=== the approved target replaces the last undated principal hold ===');
 const recOpts = {
   scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
   targetBuffer: plan.defaults.targetBuffer,
 };
 const withNew = F.recommend(plan, asOf, recOpts);
 const withoutNew = F.recommend(plan, asOf, Object.assign({}, recOpts, { disabled: NEW_IDS }));
-ok(withNew.knowledge.encumbered > withoutNew.knowledge.encumbered,
-  'the absorbed undated rows encumber principal on the master walk',
+ok(withNew.knowledge.encumbered === 0 && withoutNew.knowledge.encumbered === 0,
+  'all current point costs are dated; no undated principal hold remains',
   `$${withNew.knowledge.encumbered} vs $${withoutNew.knowledge.encumbered}`);
 ok(withNew.weekly <= withoutNew.weekly,
   'encumbering those rows cannot raise today\'s cap',
@@ -218,8 +220,12 @@ const budget = F.budgetBreakdown(plan, require('../public/periods.json'), {
   asOf,
 });
 ok(!(budget.sinkingItems || []).some(s =>
-  /Downstairs couch|Exterior painting|Provincials|Home insurance|Vehicle maintenance/.test(s.label)),
-  'unclear-month absorbed rows are not smeared into 91-day sinkingMonthly');
+  /Downstairs couch|Exterior painting|Home insurance|Vehicle maintenance/.test(s.label)),
+  'retired or separately housed costs are not smeared into sinkingMonthly');
+const provincialsSinking = (budget.sinkingItems || []).filter(s => s.label === 'Provincials');
+ok(provincialsSinking.length === 1
+    && near(provincialsSinking[0].amount, 1500 / ((plan.windowDays || 91) / (365.25 / 12))),
+  'the existing sinking breakdown includes the newly dated $1,500 planning input once');
 const fusionSinking = (budget.sinkingItems || []).filter(s => /Fusion season — household/.test(s.label));
 ok(fusionSinking.length >= 3,
   'dated Fusion household rows within the window may appear in sinkingMonthly',
