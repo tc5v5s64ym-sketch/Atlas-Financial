@@ -411,7 +411,7 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     providerTransactionId: String(raw.id),
     providerAccountId: accountId != null ? String(accountId) : null,
     date: raw.date || null,
-    amount: raw.amount != null ? Number(raw.amount) : null,
+    amount: lunchMoneyDebitAmount(raw.amount),
     currency: typeof raw.currency === 'string' ? raw.currency.trim().toLowerCase() : null,
     payee: raw.payee || null,
     originalName: raw.original_name || raw.originalName || null,
@@ -791,8 +791,14 @@ function calendarDaysBetween(from, to) {
 // Lunch Money v2: positive amount = debit, negative amount = credit.
 // That sign is fixed and does not follow the user's display preference.
 function lunchMoneyDebitAmount(amount) {
-  if (amount == null || amount === '' || !isFinite(Number(amount))) return null;
-  return Number(amount);
+  // Qualify the provider's scalar decimal before conversion. JavaScript's
+  // Number coercion would invent zero/one from blanks, booleans or arrays.
+  if (typeof amount === 'string') {
+    const decimal = amount.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(decimal)) return null;
+    amount = Number(decimal);
+  }
+  return typeof amount === 'number' && Number.isFinite(amount) ? amount : null;
 }
 
 function billPaymentPayees(plan, extra) {
