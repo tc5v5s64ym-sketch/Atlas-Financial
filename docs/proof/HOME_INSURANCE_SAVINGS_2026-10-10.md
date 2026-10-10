@@ -39,11 +39,11 @@ remain unavailable. A higher paycheck remainder does not establish that the
 premium is funded or create extra-debt permission.
 
 The same native annual cost's **unfunded** portion remains protected in the
-internal operating carry and the future extra-debt projection. Known reserve
+internal operating carry, future extra-debt projection and major-purchase capacity. Known reserve
 backing offsets only that exact occurrence. Unknown annual amount/timing
-withholds that debt projection. This prevents a naive Bills-only deletion
+withholds both debt and purchase allocations. This prevents a naive Bills-only deletion
 from turning the corrected 991.56 remainder into 491.56 of debt allocation
-before the premium is backed. The final canonical extra allocation stays 0.
+before the premium is backed. The final canonical extra-debt and purchase allocations both stay 0.
 
 The existing selected-period allocator formerly added back a bill payment
 already deducted in Bills. With the annual cost excluded before those totals,
@@ -65,13 +65,13 @@ receipt cannot fund it backward. Unknown stock/price/date retains the named
 requirement and withholds precise funding. Monthly card bills and annual
 joint-cash bills retain their existing deductions. The six-test regression
 was red on base and passes with this repair; a seventh test protects the
-unfunded/unknown annual cost from new extra-debt allocation.
+unfunded/unknown annual cost from new debt or purchase allocation. Both released-protection mutations fail this regression.
 
 `test/test-budget-period-funding.js` independently proves 250 earlier top-up
 + 350 later top-up = one 600 payment, with zero duplicate Bills offset.
 `test/test-square-one-annual-bill.js` proves the real future window, date,
 estimate, one native event, one Plan Spend row and one Road Ahead Stage 2
-expense. Ordinary Forecast and authority checks run with the full suite.
+expense. The older payday-reset oracle now independently expects 200 - 40 - 80 = 80 of routine entitlement and 55 of remaining goal need. The absent/empty-earmark historical comparison excludes annual card-paid rows, whose intentionally changed classification has the independent regression above; every remaining incumbent field and negative control stays checked. Ordinary Forecast and authority checks run with the full suite.
 
 ## Separate future projected-Savings follow-up
 

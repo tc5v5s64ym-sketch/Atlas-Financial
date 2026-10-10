@@ -343,6 +343,9 @@ console.log('\n=== Budget Jan 29-Feb 11 keeps Square One in planned savings, not
     'the annual expense is not a second income/Bills/Household Budget/BAD term');
   ok(affected && near(affected.extraDebt.allocated, 0),
     'unproven savings funding cannot release the premium into extra-debt allocation');
+  ok(affected && near(affected.bigPurchases.reduce((sum, row) => sum + row.allocation, 0), 0)
+    && near(affected.afterBigPurchases, affected.balanceAfterDeductions),
+    'unproven savings funding cannot release the premium into major purchases either');
   const native = F.expandEvents(plan, '2027-01-29', '2027-02-11').filter(e => e.id === 'square-one');
   ok(native.length === 1 && native[0].date === NEXT_DUE && near(-native[0].amount, PREMIUM)
     && native[0].confidence === 'estimated', 'one dated estimated obligation remains in the native walk');

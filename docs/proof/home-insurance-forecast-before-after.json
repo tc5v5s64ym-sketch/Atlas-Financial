@@ -1,6 +1,6 @@
 {
   "base": "08d9b8c89425279054cf9770646c71c403856f14",
-  "candidateForecastSha256": "c283a4426efdbd50e68aa5327036358c6bc804d1e1ae5752c5baee23861a5709",
+  "candidateForecastSha256": "d272ca5eaccca3398b6cf59521d28faa212e033fecbc27b1d2444d7bfa95917e",
   "financialAsOf": "2026-08-19",
   "nature": "canonical-Forecast-not-live-October",
   "currency": "CAD",
@@ -15,6 +15,10 @@
     "householdBudget": 1725,
     "afterBills": 6352.43,
     "balanceAfterDeductions": 4627.43,
+    "extraDebtAllocation": 4127.43,
+    "purchaseAllocation": 0,
+    "afterDebtRepayment": 500,
+    "afterBigPurchases": 500,
     "insuranceRows": []
   },
   "changed": [
@@ -31,6 +35,10 @@
         "householdBudget": 2405,
         "afterBills": 264.8,
         "balanceAfterDeductions": -2140.2,
+        "extraDebtAllocation": 0,
+        "purchaseAllocation": 0,
+        "afterDebtRepayment": -2140.2,
+        "afterBigPurchases": -2140.2,
         "insuranceRows": [
           {
             "id": "square-one",
@@ -51,6 +59,10 @@
         "householdBudget": 2405,
         "afterBills": 3396.56,
         "balanceAfterDeductions": 991.56,
+        "extraDebtAllocation": 0,
+        "purchaseAllocation": 0,
+        "afterDebtRepayment": 991.56,
+        "afterBigPurchases": 991.56,
         "insuranceRows": []
       }
     }

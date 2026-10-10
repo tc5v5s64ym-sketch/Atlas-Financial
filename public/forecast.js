@@ -9961,7 +9961,7 @@
     const cardCoverage = cardCoverageState(plan, asOf, opts);
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     // Removing a planned savings cost from paycheck Bills cannot release its
-    // unfunded cash into the internal carry or the extra-debt projection.
+    // unfunded cash into internal carry, extra debt or major purchases.
     // Read the same native expenses from today's opening so only earned
     // reserve backing offsets them; keepRepresented is deliberately absent.
     const annualSavingsBills = (plan.bills || []).filter(b => isYearlyCardPaidBill(b, plan));
@@ -10192,7 +10192,7 @@
       const afterDebtRepayment = afterHouseholdBudget != null && extraDebt.allocated != null
         ? roundCent(afterHouseholdBudget - extraAllocated) : null;
       const purchaseRoom = !lookback && afterDebtRepayment != null
-        ? roundCent(Math.max(0, afterDebtRepayment - buffer)) : 0;
+        ? roundCent(Math.max(0, afterDebtRepayment - buffer - annualSavingsNeed)) : 0;
       const purchases = calendarPeriodPurchases(plans, purchaseRoom, role);
       const afterBigPurchases = afterDebtRepayment != null
         ? roundCent(afterDebtRepayment - purchases.taken) : null;

@@ -349,10 +349,11 @@ test('new payday resets transfer quota by cycle identity; old savings stock carr
   input.opts.currentPeriodActuals.transactions.push({ id: 'income-2', date: input.asOf, amount: -200,
     pending: false, isIncome: true, currency: 'CAD', incomeId: 'payroll',
     atlasAccountId: 'chequing-a', accountRole: 'household-cash', displayedPayee: 'Invented next payroll' });
-  // This cycle also includes the 24 annual bill: 200 - 40 - 24 - 80 = 56.
-  const out = run(input); period(out, 56, 0, 56, 56, 55);
+  // The 24 annual cost draws its separately backed home stock once.
+  // Routine entitlement is 200 - 40 - 80 = 80; only 55 of goal need remains.
+  const out = run(input); period(out, 80, 0, 80, 80, 55);
   assert.equal(out.period.start, '2026-10-16');
-  assert.equal(cents(out.stock.amount), 19900); assert.equal(cents(out.period.unassigned), 100);
+  assert.equal(cents(out.stock.amount), 19900); assert.equal(cents(out.period.unassigned), 2500);
 });
 test('spending saved money on household costs after a full transfer cannot reset entitlement', () => {
   const input = transfer(fixture(), 80);

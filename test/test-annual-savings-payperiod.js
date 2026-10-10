@@ -122,14 +122,20 @@ test('undated annual cost remains an unknown savings requirement without a payda
   assert.ok(!F.expandEvents(i.plan, i.asOf, '2026-11-05').some(row => row.id === 'annual'));
 });
 
-test('routine remainder cannot release an unfunded or unknown annual premium into extra debt', () => {
+test('routine remainder cannot release an unfunded or unknown annual premium into debt or purchases', () => {
   const i = fixture(200);
   i.plan.nextDollar = { policy: 'true-surplus-highest-interest', provenance: 'owner-stated' };
   i.debts = [{ id: 'card', label: 'Invented card', structure: 'Revolving credit', balance: 500,
     rate: 20, pending: 0, limit: 1000, secured: false, confidence: 'verified' }];
+  i.plan.commitments.push({ id: 'purchase', label: 'Invented later purchase', amount: 100,
+    date: '2026-12-01', confidence: 'estimated', adjustable: false });
   const next = period(run(i), '2026-10-23');
   assert.equal(next.balanceAfterDeductions, 77, 'routine income less Bills and Household Budget stays 77');
   assert.equal(next.extraDebt.allocated, 0, '141 unbacked premium is protected before the 20 floor');
+  assert.ok(next.bigPurchases.length > 0, 'purchase allocation path is exercised');
+  assert.equal(next.bigPurchases.reduce((sum, row) => sum + row.allocation, 0), 0,
+    'unfunded premium cannot become purchase capacity after debt protection');
+  assert.equal(next.afterBigPurchases, 77);
   const before = period(run(i), '2026-11-06');
   assert.ok(before.opening == null || before.opening < 80,
     'internal carry cannot restore the 141 unfunded expense');
