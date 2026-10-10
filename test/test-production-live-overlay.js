@@ -30,6 +30,8 @@ const OBSERVED = '2026-08-21T17:55:00.000Z';
 const GROCERY_POSTED = 40;
 const GROCERY_PENDING = 15;
 const FUEL_POSTED = 22.1;
+const FUEL_PERIOD_START = '2026-08-14';
+const FUEL_PERIOD_END = '2026-08-27';
 const MONTH = 365.25 / 12;
 
 let failures = 0;
@@ -752,10 +754,19 @@ function independentGroceryRemaining(plan, asOf) {
     const fuel = (action.categories || []).find(row => row.id === 'fuel');
     const fuelCat = ((data.plan.budget && data.plan.budget.categories) || [])
       .find(row => row && row.id === 'fuel');
-    const fuelNeedDays = Forecast.diffDays(action.periodStart, action.periodEnd) + 1;
-    const fuelPlanned = fuelCat && fuelCat.plannedPayday != null
-      ? round2(Number(fuelCat.plannedPayday))
-      : round2(Number(fuelCat && fuelCat.plannedMonthly) * fuelNeedDays / MONTH);
+    ok(asOf === LIVE_AS_OF && action.periodStart === FUEL_PERIOD_START
+        && action.periodEnd === FUEL_PERIOD_END,
+      'fuel remaining oracle is bounded to the literal August 14-27 cycle');
+    // Select the declared owner row by this fixture's literal period boundary;
+    // reading the October restatement directly would backdate 555 to August.
+    const fuelPolicy = fuelCat && fuelCat.targetEffectiveFrom
+      && FUEL_PERIOD_START < fuelCat.targetEffectiveFrom
+      ? (fuelCat.targetHistory || []).find(row => FUEL_PERIOD_START <= row.effectiveThrough)
+      : fuelCat;
+    const fuelNeedDays = 14;
+    const fuelPlanned = fuelPolicy && fuelPolicy.plannedPayday != null
+      ? round2(Number(fuelPolicy.plannedPayday))
+      : round2(Number(fuelPolicy && fuelPolicy.plannedMonthly) * fuelNeedDays / MONTH);
     ok(fuel && near(fuel.committed, FUEL_POSTED),
       'fuel committed is the fixture $22.10');
     ok(fuel && near(fuel.remaining, round2(fuelPlanned - FUEL_POSTED)),

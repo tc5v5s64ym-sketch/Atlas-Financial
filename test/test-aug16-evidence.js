@@ -8,7 +8,8 @@
 const fs = require('fs');
 const path = require('path');
 const F = require('../public/forecast.js');
-const data = require('./fixtures/retired-other-policy')(require('../data.json'));
+const data = require('./fixtures/retired-fuel-policy')(
+  require('./fixtures/retired-other-policy')(require('../data.json')));
 // The September minimum was confirmed after this historical evidence window.
 // Isolate only that later override in the cloned fixture; retain all August assertions.
 const historicalMbna = data.plan.obligations.find(row => row.id === 'mbna');
