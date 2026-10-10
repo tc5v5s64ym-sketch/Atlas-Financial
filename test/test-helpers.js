@@ -148,7 +148,7 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
     if (b.payingAccount) {
       const elsewhere = ((plan.startingCash || {}).heldElsewhere || [])
         .some(r => r.id === b.payingAccount);
-      if (elsewhere) continue;
+      if (elsewhere && b.fundingAccount !== 'chequing-a') continue;
     }
     if (!outflowHitsDate(b, date, occurrences, start)) continue;
     n -= independentlyBillOccurrenceAmount(b, date);
@@ -219,7 +219,7 @@ function streamTotal(items, asOf, end, occurrences, opts) {
     if (opts && opts.plan && item.payingAccount) {
       const elsewhere = ((opts.plan.startingCash || {}).heldElsewhere || [])
         .some(r => r.id === item.payingAccount);
-      if (elsewhere) return s;
+      if (elsewhere && item.fundingAccount !== 'chequing-a') return s;
     }
     const dates = onceOutflowsBind && item.frequency === 'once'
       ? independentlyOnceOutflowDates(item, asOf, end)

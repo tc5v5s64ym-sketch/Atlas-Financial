@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['owner-approved streaming bills on the incumbent held-elsewhere Wise path', 'test-owner-streaming-bills.js'],
   ['selector locale formatter equivalence', 'test-selector-formatters.js'],
   ['private pay-period retention, immutable revisions and privacy boundaries', 'test-private-period-history.js'],
   ['one chronological savings publication and independent allocation oracle', 'test-chronological-savings-publication.js'],
@@ -51,6 +52,7 @@ const suites = [
   ['Triangle owner-confirmed paid without duplicate cash or principal', 'test-triangle-owner-confirmed-paid.js'],
   ['hypothetical savings timeline and independent pool conservation', 'test-savings-funding-timeline.js'],
   ['daily savings backing and transfer-neutral capacity', 'test-savings-daily-allocation-contract.js'],
+  ['daily savings external null-alias contract and preserved gates', 'test-savings-daily-external-alias-contract.js'],
   ['daily savings incumbent financial probes', 'probe-savings-daily-allocation-incumbent.js'],
   ['active daily Budget Savings consumer contracts', 'test-savings-daily-consumer.js'],
   ['grouped savings rows expose published member rows on both surfaces', 'test-savings-group-members.js'],
@@ -65,6 +67,7 @@ const suites = [
   ['Budget detail sheet preserves original nodes, nested focus and remount identity', 'test-budget-detail-sheet-controller.js'],
   ['positions reporting evaluates the disclosed owner-target date', 'test-positions-owner-target-date.js'],
   ['dated owner Other payday target and once-only reserve', 'test-other-period-target.js'],
+  ['effective-dated Fuel payday budget and historical boundary', 'test-fuel-effective-target.js'],
   ['purpose-reserve funding seed and independent payment conservation', 'test-reserve-aware-funding.js'],
   ['purpose-reserve authenticated funding and both page consumers', 'test-reserve-aware-funding-integration.js'],
   ['Lunch Money provider amount precision and sanitized read failures', 'test-assistant-provider-amounts.js'],
@@ -135,6 +138,7 @@ const suites = [
   ['spending classification reconciliation', 'test-classification.js'],
   ['Lunch Money historical actuals authority (AF-OPERATE-01)', 'test-periods-lunchmoney.js'],
   ['read-only recurring card-charge audit', 'test-recurring-audit.js'],
+  ['Lunch Money recurring items read (provider evidence, never Forecast bills or proof of payment)', 'test-provider-recurring-items.js'],
   ['decision-first payday operating surface (AF-OPERATE-02)', 'test-operating-surface.js'],
   ['plain-language household homepage', 'test-household-view.js'],
   ['approved Budget UI presentation', 'test-budget-ui-polish.js'],

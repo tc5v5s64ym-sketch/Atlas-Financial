@@ -2107,6 +2107,30 @@
     return !!(bill && bill.householdObligation !== false);
   }
 
+  // Optional, owner-authorized Bills funding for a held-elsewhere payment
+  // route. The bill remains the only amount/date authority. This declares a
+  // planned cash requirement, not a transfer instruction or paid occurrence.
+  // Absent-field behavior is unchanged; contradictory contracts fail loudly.
+  function billFundingAccount(bill, plan) {
+    if (!bill || !Object.prototype.hasOwnProperty.call(bill, 'fundingAccount')) return null;
+    const cash = plan && plan.startingCash || {};
+    const source = (cash.breakdown || []).filter(r => r && r.id === bill.fundingAccount);
+    const held = (cash.heldElsewhere || []).filter(r => r && r.id === bill.payingAccount);
+    if (bill.fundingAccount !== BILLS_ACCOUNT_ID || source.length !== 1
+        || (cash.heldElsewhere || []).some(r => r && r.id === bill.fundingAccount)
+        || held.length !== 1 || !bill.payingAccount
+        || (cash.breakdown || []).some(r => r && r.id === bill.payingAccount)
+        || billPaysFromKnownDebt(bill, plan) || !billIsHouseholdObligation(bill)
+        || bill.jointCash !== false || bill.cardPaid === true || bill.nonCash === true) {
+      throw new Error('Invalid bill fundingAccount contract: ' + (bill.id || 'unnamed bill'));
+    }
+    return bill.fundingAccount;
+  }
+
+  function billCashPayingAccount(bill, plan) {
+    return billFundingAccount(bill, plan) || bill && bill.payingAccount || null;
+  }
+
   // Joint-cash deduction is a separate fact from household obligation.
   // Held-elsewhere payers sit outside the joint pool. A card-paid dated
   // bill — payingAccount is a known obligation debtId, or explicit
@@ -2124,12 +2148,14 @@
     return ((plan && plan.obligations) || []).some(o => o && o.debtId === bill.payingAccount);
   }
   function isCardPaidBill(bill, plan) {
+    if (billFundingAccount(bill, plan)) return false;
     if (!bill || !billIsHouseholdObligation(bill)) return false;
     if (billIsHeldElsewhere(bill, plan)) return false;
     if (bill.jointCash === false) return true;
     return billPaysFromKnownDebt(bill, plan);
   }
   function billAffectsJointCash(bill, plan) {
+    if (billFundingAccount(bill, plan)) return true;
     if (!billIsHouseholdObligation(bill)) return false;
     if (isCardPaidBill(bill, plan)) return false;
     if (!bill.payingAccount) return true;
@@ -2388,6 +2414,7 @@
       // explicit householdObligation: false drops the bill from the schedule.
       // A bill that still needs a date is printed by calendarBillSections;
       // it is not given a fabricated day here.
+      const fundingAccount = billFundingAccount(b, plan);
       if (!billIsHouseholdObligation(b)) continue;
       if (b.needsDate) continue;
       for (const date of outflowDates(b, start, end)) {
@@ -2399,7 +2426,9 @@
           date, amount: -cash, kind: 'bill', label: b.label, id: b.id,
           confidence: b.confidence,
           householdObligation: true,
-          payingAccount: b.payingAccount || null,
+          payingAccount: billCashPayingAccount(b, plan),
+          ...(fundingAccount ? { fundingAccount, merchantPayingAccount: b.payingAccount,
+            payerLabel: plannedPayerLabel(fundingAccount, b.payingAccount, plan) } : {}),
           jointCash,
           cardPaid,
         });
@@ -5795,6 +5824,9 @@
         remaining,
         settlement,
         evidenceDate: paid ? observedPostedOn(observed, e.id, e.date, e.date) : null,
+        ...(e.fundingAccount ? { fundingAccount: e.fundingAccount,
+          payingAccount: e.payingAccount, merchantPayingAccount: e.merchantPayingAccount,
+          payerLabel: e.payerLabel } : {}),
         ...(e.occurrenceKey ? { occurrenceKey: e.occurrenceKey, scheduledDate: e.scheduledDate } : {}),
         ...(sent ? { ...sent, date: e.date, actual: null,
           remaining: sent.issuerMinimumStatus === 'satisfied' ? 0 : null,
@@ -5978,6 +6010,9 @@
         remaining,
         actual: bill && bill.actual != null ? bill.actual : null,
         settlement: (bill && bill.settlement) || item.settlement,
+        ...(item.fundingAccount ? { fundingAccount: item.fundingAccount,
+          payingAccount: item.payingAccount, merchantPayingAccount: item.merchantPayingAccount,
+          payerLabel: item.payerLabel } : {}),
         ...occurrenceTrustFields({
           confidence: item.confidence || (bill && bill.confidence) || null,
           dateConfidence: item.dateConfidence || (bill && bill.dateConfidence)
@@ -6366,18 +6401,24 @@
   // each calendar month, so a later payday week does not hold another
   // $100 obligation. every-other-seaspan counts only ON period starts.
   function paydayHoldForSpan(cat, plan, days, start, end) {
+    if (start && end) {
+      const dates = seaspanPaydaysInSpan(plan, start, end);
+      // A span can cross a restatement. Each payday owns its dated target;
+      // multiplying the span-start amount would rewrite later periods.
+      const holds = dates.map(date => {
+        const target = ownerTargetCategoryAt(cat, date);
+        if (!target || target.plannedPayday == null) return null;
+        if (isFirstSeaspanOfMonthCadence(target)
+            && !isFirstSeaspanPaydayOfCalendarMonth(plan, date)) return null;
+        if (isEveryOtherSeaspanCadence(target)
+            && !isEveryOtherSeaspanOnPayday(plan, date, target)) return null;
+        return roundCent(Number(target.plannedPayday) || 0);
+      }).filter(amount => amount != null);
+      return holds.length ? roundCent(holds.reduce((sum, amount) => sum + amount, 0)) : null;
+    }
     cat = ownerTargetCategoryAt(cat, start);
     if (!cat || cat.plannedPayday == null) return null;
     const payday = roundCent(Number(cat.plannedPayday) || 0);
-    if (start && end) {
-      const dates = seaspanPaydaysInSpan(plan, start, end);
-      const n = isFirstSeaspanOfMonthCadence(cat)
-        ? dates.filter(d => isFirstSeaspanPaydayOfCalendarMonth(plan, d)).length
-        : isEveryOtherSeaspanCadence(cat)
-          ? dates.filter(d => isEveryOtherSeaspanOnPayday(plan, d, cat)).length
-          : dates.length;
-      return n > 0 ? roundCent(payday * n) : null;
-    }
     const d = Math.max(0, Number(days) || 0);
     if (isFirstSeaspanOfMonthCadence(cat) || isEveryOtherSeaspanCadence(cat)) return null;
     return d === 14 ? payday : null;
@@ -6561,8 +6602,15 @@
   const BILLS_ACCOUNT_ID = 'chequing-a';
   const BILLS_ACCOUNT_LABEL = 'BILLS ACCOUNT (Chequing A)';
 
-  function plannedPayerLabel(payingAccount) {
-    if (payingAccount === BILLS_ACCOUNT_ID) return BILLS_ACCOUNT_LABEL;
+  function plannedPayerLabel(payingAccount, merchantPayingAccount, plan) {
+    if (payingAccount === BILLS_ACCOUNT_ID) {
+      if (merchantPayingAccount) {
+        const held = ((plan && plan.startingCash && plan.startingCash.heldElsewhere) || [])
+          .find(row => row && row.id === merchantPayingAccount);
+        return BILLS_ACCOUNT_LABEL + ' funding; merchant payment via ' + (held && held.label || merchantPayingAccount);
+      }
+      return BILLS_ACCOUNT_LABEL;
+    }
     return null;
   }
 
@@ -7372,7 +7420,9 @@
       glanceKind: status === 'PAID' ? 'paid' : 'still-due',
       movement: householdMovement(display, 'out'),
       payingAccount,
-      payerLabel: plannedPayerLabel(payingAccount),
+      payerLabel: plannedPayerLabel(payingAccount, event.merchantPayingAccount, plan),
+      ...(event.fundingAccount ? { fundingAccount: event.fundingAccount,
+        merchantPayingAccount: event.merchantPayingAccount } : {}),
       needsDate: false,
       cardPaid: event.cardPaid === true,
       cashMinimum: event.cashMinimum === true,
@@ -7640,7 +7690,8 @@
     for (const bill of (plan && plan.bills) || []) {
       if (!bill || !bill.needsDate) continue;
       if (!billIsHouseholdObligation(bill)) continue;
-      const payingAccount = bill.payingAccount || null;
+      const fundingAccount = billFundingAccount(bill, plan);
+      const payingAccount = billCashPayingAccount(bill, plan);
       undatedBills.push({
         id: bill.id,
         label: bill.label,
@@ -7656,7 +7707,8 @@
         movement: householdMovement(Number(bill.amount) || 0, 'out'),
         confidence: bill.confidence || 'estimated',
         payingAccount,
-        payerLabel: plannedPayerLabel(payingAccount),
+        payerLabel: plannedPayerLabel(payingAccount, fundingAccount && bill.payingAccount, plan),
+        ...(fundingAccount ? { fundingAccount, merchantPayingAccount: bill.payingAccount } : {}),
         needsDate: true,
         dateNote: 'needs confirmation',
       });
@@ -8384,7 +8436,7 @@
   // and select it before reading any cadence/monthly/payday target. Without
   // a valid date the new target cannot be asserted.
   function ownerTargetCategoryAt(cat, date) {
-    if (!cat || cat.id !== OTHER_SPEND_ID || !cat.targetEffectiveFrom) return cat;
+    if (!cat || !cat.targetEffectiveFrom) return cat;
     if (!financialDate(cat.targetEffectiveFrom)) return Object.assign({}, cat,
       { plannedWeekly: null, plannedPayday: null, plannedMonthly: null });
     const day = financialDate(date);
@@ -8765,7 +8817,7 @@
     }
     const items = [];
     for (const id of CALENDAR_PERIOD_BUDGET_IDS) {
-      const cat = byId.get(id);
+      const cat = ownerTargetCategoryAt(byId.get(id), windowStart);
       if (!cat) continue;
       const planned = paydayCyclePlanned(cat, windowStart, plan);
       if (planned == null) continue;
@@ -9277,6 +9329,9 @@
     };
     // The calendar owns joint household costs, not an account's stock.
     // An explicit other cash payer does not imply a new Bills transfer.
+    // A bill's validated fundingAccount is the exception: native validation,
+    // expanded events and calendar rows attribute its one cash requirement
+    // to Bills, retaining the merchant route separately.
     // Unassigned household costs retain the owner's Bills funding anchor;
     // unknown explicit account ids cannot establish Bills cash attribution.
     const cashAccounts = new Set([...rows, ...(plan?.startingCash?.heldElsewhere || [])].map(row => row?.id));
@@ -9300,7 +9355,8 @@
         for (const date of outflowDates(bill, cycle.start, cycle.end)) {
           if (settled(bill.id, date) || bill.noPaymentRequiredOn?.includes(date)) continue;
           if (finite(bill.amount) && billOccurrenceCashAmount(bill, date) === 0) continue;
-          if (!billsCashScope({ ...bill, cardPaid: isCardPaidBill(bill, plan) })) continue;
+          if (!billsCashScope({ ...bill, payingAccount: billCashPayingAccount(bill, plan),
+            cardPaid: isCardPaidBill(bill, plan) })) continue;
           if (!finite(bill.amount) || bill.amount < 0) issue('remaining-cash-unknown', 'A remaining bill amount is unknown.');
         }
       }
@@ -9385,7 +9441,9 @@
         weeklyFunding, directFunding, cardFunding, requiredCashFloor, fundingEventCount,
         basis: 'active-budget-hold-less-observed-bills-funding', trust: 'estimated',
         assumption: 'Current-period household funding fulfills the aggregate period target; category allocation is not established.' },
-      accountAssumption: 'Unassigned household outflows follow the owner\'s Bills funding anchor. Explicit other cash payers do not imply a Bills transfer.',
+      accountAssumption: 'Unassigned household outflows follow the owner\'s Bills funding anchor. Explicit other cash payers do not imply a Bills transfer.'
+        + ((plan.bills || []).some(b => billFundingAccount(b, plan))
+          ? ' Explicit bill fundingAccount attributes the individual planned funding requirement to Bills; merchant payment remains held elsewhere.' : ''),
       issues, reason: issues.length ? issues[0].message : null, evidence,
       provenance: ['Forecast.postedBillsAccountCash', 'Forecast.postedAccountMovements', 'Forecast.householdInternalMovements',
         'Forecast.calendarHouseholdBudget', 'Forecast.reconcileCardPurchases', 'Forecast.cardMinimumState', 'Forecast.expandEvents'],
@@ -11610,6 +11668,9 @@
         ...(e.reserveFunding ? { fullRequirement: -e.amount, reserveFunded: reserveFundedAmount(e) } : {}),
         ...occurrenceTrustFields(e),
         cardPaid: e.cardPaid === true,
+        ...(e.fundingAccount ? { fundingAccount: e.fundingAccount,
+          payingAccount: e.payingAccount, merchantPayingAccount: e.merchantPayingAccount,
+          payerLabel: e.payerLabel } : {}),
         // Settlement is expandEvents / representedEvents: a represented
         // occurrence is omitted above, not labelled unpaid. A past scheduled
         // date without that evidence is unverified, not confirmed unpaid.
@@ -19024,11 +19085,16 @@
           || savingsCents(tx.amount, true) == null || typeof tx.currency !== 'string' || tx.currency.toUpperCase() !== 'CAD'
           || !['household-cash', 'household-reserve', 'revolving-credit', 'household-external'].includes(tx.accountRole)) return unknown('A transaction has unavailable date, currency, amount or account identity.');
       const id = String(tx.id), prior = unique.get(id);
+      const aliases = [tx.atlasAccountId, tx.accountId, tx.account];
       const identity = tx.atlasAccountId || tx.accountId || tx.account;
-      if (!identity || [tx.atlasAccountId, tx.accountId, tx.account].some(account => account != null
+      // The observer emits household-external rows with null aliases. Only that
+      // explicit role may omit identity; it stays external and gains none.
+      const externalWithoutAlias = tx.accountRole === 'household-external'
+        && aliases.every(account => account == null || account === '');
+      if (!identity && !externalWithoutAlias || aliases.some(account => account != null
           && account !== '' && String(account) !== String(identity))) return unknown('Transaction account aliases are missing or contradictory.');
-      const operating = HOUSEHOLD_CHEQUING_IDS.includes(String(identity));
-      const reserve = derived.pools.some(pool => pool.accountId === String(identity));
+      const operating = !externalWithoutAlias && HOUSEHOLD_CHEQUING_IDS.includes(String(identity));
+      const reserve = !externalWithoutAlias && derived.pools.some(pool => pool.accountId === String(identity));
       if (operating && tx.accountRole !== 'household-cash'
           || reserve && !['household-cash', 'household-reserve'].includes(tx.accountRole)
           || ['household-cash', 'household-reserve'].includes(tx.accountRole) && !operating && !reserve) {
