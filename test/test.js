@@ -269,6 +269,7 @@ const suites = [
   ['Planned Savings compact status and evidence', 'test-planned-savings-clarity.js'],
   ['combined observed savings stock and unchanged deductions', 'test-savings-observed-stock.js'],
   ['Budget selected-period proposed cost funding', 'test-budget-period-funding.js'],
+  ['Budget backing-aware remaining gaps and unknown/actual conservation', 'test-budget-funding-backing-gaps.js'],
   ['Budget estimated payroll trust label', 'test-budget-estimated-payroll-label.js'],
   ['Budget Plan Spend earmark on pay periods', 'test-budget-plan-spend-earmark.js'],
   ['Plan Spend mixed-source current-payday reconciliation', 'test-plan-spend-mixed-reconciliation.js'],
