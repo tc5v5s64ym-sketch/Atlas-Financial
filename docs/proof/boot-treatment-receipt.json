@@ -1,13 +1,14 @@
 {
   "proof": "browser-boot-treatment",
   "baseMainSha": "d1d85a0b96dba3d077eeadecca0df2390eb3ae1e",
-  "claim": "visible for the whole genuine-load interval, removed on arrival, no measurable added delay under identical controlled delay",
+  "claim": "visible during the genuine-load interval with no gaps observed at ~100ms sampling after first visibility, removed on arrival, no new blocking assets; timing comparison inconclusive — median paired delta and difference of medians recorded as measurements, not a no-delay conclusion",
   "scenarios": {
     "lightLong": {
       "delayMs": 5000,
-      "treatmentFirstVisibleMs": 872,
-      "contentRenderedMs": 8507,
-      "samples": 49,
+      "treatmentFirstVisibleMs": 619,
+      "contentRenderedMs": 6616,
+      "samples": 51,
+      "visibilityGapsObserved": 0,
       "servedSha": {
         "public/index.html": "52444db8cc29f3bef684a1a86716fe612477679fe957d7602e472572467526a9",
         "public/fonts/Geist.woff2": "128029d9e728df45126de37ca05de2a174b9b76baf307090783b324935521a47",
@@ -45,7 +46,7 @@
     "dark": {
       "delayMs": 1500,
       "treatmentVisibleObserved": true,
-      "screenshotAtMs": 1791732365678
+      "screenshotAtMs": 1791738334180
     },
     "reducedMotion": {
       "delayMs": 2500,
@@ -81,41 +82,48 @@
   },
   "baseComparison": {
     "delay5000": {
-      "baseContentRenderedMs": 7093,
+      "baseContentRenderedMs": 5819,
       "baseTreatmentsSeen": 0,
-      "branchContentRenderedMs": 8507,
-      "addedDelayMs": 1414
+      "branchContentRenderedMs": 6616,
+      "addedDelayMs": 797
     },
     "delay1500": {
-      "baseContentRenderedMs": 3376,
+      "baseContentRenderedMs": 2734,
       "baseTreatmentsSeen": 0
     }
   },
   "screenshots": {
-    "boot-treatment-light.png": "c2a6309eac9866c73de9e8014bd929449b2e85a272c02e5671b522847e238d28",
-    "boot-treatment-after.png": "cf3a545e817955ec31b355444f5b8ee4cab9c8cfccb18d2cc747dd53f93b796b",
-    "boot-treatment-dark.png": "e4714d0165a00603b6fd0b02059a3b6a89b33de449d94c88f00b6a5644d36f8f",
+    "boot-treatment-light.png": "0d82f166519e82359e677d91879f3cd552d80417b69d533c5d354c98f313973b",
+    "boot-treatment-after.png": "85dfba99e23d07b1962b9f32692135f013118792e8abb7c235f078bb39123e24",
+    "boot-treatment-dark.png": "03bac5e50fe0be254d3853d32f4b36d1fa688300dbb474262fe194e183be28a2",
     "boot-treatment-reduced-motion.png": "3ba8c9cad2e945028ea4467384b13de6b045abf4b51c54f4cf1effe9bdf391e7",
-    "boot-treatment-bills.png": "5279ed5412c55feafba55960320c0a6704decd216691ca275d59efd8a488bc46",
+    "boot-treatment-bills.png": "89f097db8b7708a8bbae51da2e855644e18dd511a3e7470958418a0c66fea44b",
     "boot-treatment-crit.png": "9e722092557c4f45f8caf49fd27e1ca65666c1cddce95e74359c37b6bf0d44ac",
     "boot-treatment-retry.png": "46545c252a80cd2459650b6d451b2607cde1ba061cd2db47543481ca47ae1c57",
     "boot-treatment-static.png": "0153abcfd48a36c51f8da86cfd22b0c16e6c6cdfea2c948a457960936c7f9477"
   },
   "repeatedTimingMeasures": {
-    "method": "same nav->content measurement as the proof harness, fixed 5000ms /data.json delay, 3 alternating rounds per tree, headless Chromium on this machine",
+    "method": "same nav->content measurement as the base comparison, fixed 5000ms /data.json delay, 3 alternating rounds per tree, headless Chromium on this machine",
     "branchMs": [
-      8749,
-      6890,
-      6419
+      5948,
+      6299,
+      6240
     ],
     "baseMs": [
-      7113,
-      6818,
-      6012
+      6212,
+      6059,
+      6676
     ],
-    "branchMedianMs": 6890,
-    "baseMedianMs": 6818,
-    "medianDeltaMs": 72,
-    "note": "Per-round deltas (+1636/+72/+407) vary more than the median delta itself; the fixture post-arrival render dominates and fluctuates by ~1s between identical runs. The treatment adds no delay measurable above that noise. Single-run deltas in baseComparison sit inside the same noise band."
+    "pairedDeltasMs": [
+      -264,
+      240,
+      -436
+    ],
+    "branchMedianMs": 6240,
+    "baseMedianMs": 6212,
+    "medianPairedDeltaMs": -264,
+    "differenceOfMediansMs": 28,
+    "conclusion": "inconclusive",
+    "note": "Per-round paired deltas vary more than either aggregate; the fixture post-arrival render dominates and fluctuates by ~1s between identical runs. These aggregates are measurements only and do not establish that the treatment adds no delay. The supported claim is narrower: the treatment adds no new blocking assets."
   }
 }
