@@ -2612,6 +2612,79 @@ console.log('\n=== 16. Issuer revolving finance charges are debt/interest cost o
     JSON.stringify({ monthlyInterest: snap.monthlyInterest }));
 }
 
+console.log('\n=== 16b. Exact plural issuer INTEREST CHARGES keeps the revolving-account gate ===');
+{
+  // Invented cents only. No category or kindHint supplies the identity.
+  const plan = syntheticPlan();
+  const plural = cashbackPurchaseInterestTx({
+    id: 'tx-plural-interest', amount: 17,
+    categoryLabel: null, kindHint: null,
+    displayedPayee: 'INTEREST CHARGES', originalMerchant: 'INTEREST CHARGES',
+  });
+  for (const account of ['cashback', 'tdcc', 'mbna', 'travelvisa', 'triangle']) {
+    const tx = { ...plural, accountRole: null, atlasAccountId: account, account };
+    const cls = F.classifyCurrentPeriodTransaction(tx, plan);
+    ok(cls.kind === 'interest' && cls.householdSpending === false
+        && F.classifyCurrentPeriodTransaction.derivedFlags(tx).cardFinanceChargeIdentity === true,
+      `exact plural without category/hint is finance cost on canonical ${account}`);
+  }
+  const normalized = {
+    ...plural, account: null, atlasAccountId: null,
+    originalMerchant: null, displayedPayee: '  interest   charges  ',
+  };
+  ok(F.classifyCurrentPeriodTransaction(normalized, plan).kind === 'interest',
+    'revolving-credit role and normalized displayed-payee fallback recognize exact plural');
+  for (const account of ['chequing-a', 'heloc', 'mortgage', 'unknown-account', null]) {
+    const tx = { ...plural, accountRole: null, atlasAccountId: account, account };
+    ok(F.classifyCurrentPeriodTransaction(tx, plan).kind !== 'interest'
+        && F.classifyCurrentPeriodTransaction.derivedFlags(tx).cardFinanceChargeIdentity === false,
+      `exact plural does not create revolving identity for ${account || 'missing account'}`);
+  }
+  for (const merchant of ['INTEREST CHARGES BOOKSHOP', 'LOCAL INTEREST CHARGES', 'Interest Free Furniture']) {
+    const tx = { ...plural, displayedPayee: merchant, originalMerchant: merchant };
+    const cls = F.classifyCurrentPeriodTransaction(tx, plan);
+    ok(cls.kind !== 'interest' && cls.householdSpending === true,
+      `ordinary merchant stays household spending: ${merchant}`);
+  }
+  const annualFee = {
+    ...plural, displayedPayee: 'ANNUAL FEE', originalMerchant: 'ANNUAL FEE', representedBill: true,
+  };
+  ok(F.classifyCurrentPeriodTransaction(annualFee, plan).kind === 'bill',
+    'represented planned annual fee remains a bill');
+  for (const merchant of ['OVERDRAFT INTEREST', 'OVERLIMIT FEE']) {
+    const tx = {
+      ...plural, accountRole: 'household-cash', atlasAccountId: 'chequing-a', account: 'chequing-a',
+      categoryLabel: 'Household', displayedPayee: merchant, originalMerchant: merchant,
+    };
+    const cls = F.classifyCurrentPeriodTransaction(tx, plan);
+    ok(cls.kind === 'spend' && cls.categoryId === 'household',
+      `${merchant} remains Household`);
+  }
+  const purchase = walmartTx({ date: '2026-09-08' });
+  const without = actualsPacket([purchase, otherTx()], {
+    observationAsOf: '2026-09-08', coverageThrough: '2026-09-08',
+  });
+  const withPlural = { ...without, transactions: [...without.transactions, plural] };
+  const advice = packet => F.recommend(plan, '2026-09-08', {
+    debts, targetBuffer: 500, currentPeriodActuals: packet,
+  });
+  const before = advice(without);
+  const after = advice(withPlural);
+  const active = period(after.defaultView, 'this-pay-period');
+  const action = F.currentPeriodAction(plan, '2026-09-08', { debts, currentPeriodActuals: withPlural });
+  // Independent reconciliation: only $41.17 grocery + $7.50 gift = $48.67
+  // is consumption; the invented $17 issuer charge is debt cost, not $65.67 spend.
+  ok(near(householdSpent(active), 48.67) && near(otherRow(active).spent, 7.50)
+      && !reconIds(active).includes(plural.id) && near(action.excluded.interest, 17),
+    'plural issuer $17 is excluded once; published Household spent is $48.67 and Other is $7.50',
+    JSON.stringify({ householdSpent: householdSpent(active), otherSpent: otherRow(active).spent,
+      excludedInterest: action.excluded.interest }));
+  ok(near(after.defaultView.liveCurrentBalance, 8000)
+      && near(after.defaultView.liveCurrentBalance, before.defaultView.liveCurrentBalance)
+      && near(active.afterHouseholdBudget, period(before.defaultView, 'this-pay-period').afterHouseholdBudget),
+    'plural issuer charge neither replays posted cash nor consumes the Household waterfall');
+}
+
 console.log('\n=== 17. Overlay stamps revolving finance-charge identity before merchant strip ===');
 {
   const plan = syntheticPlan();
@@ -2644,6 +2717,11 @@ console.log('\n=== 17. Overlay stamps revolving finance-charge identity before m
         providerAccountId: '3005', providerTransactionId: 'cb-interest-1',
       },
       {
+        date: '2026-09-08', amount: 17, pending: false,
+        payee: 'INTEREST CHARGES', originalName: 'INTEREST CHARGES',
+        providerAccountId: '3005', providerTransactionId: 'cb-plural-interest-1',
+      },
+      {
         date: '2026-09-08', amount: WALMART_AMT, pending: false,
         categoryLabel: 'Groceries',
         payee: 'Walmart', originalName: 'Walmart',
@@ -2654,6 +2732,11 @@ console.log('\n=== 17. Overlay stamps revolving finance-charge identity before m
   }, { asOf: '2026-09-08', plan, accountMap: map });
   const interestPub = (overlay.transactions || []).find(tx => tx && near(tx.amount, CASHBACK_PURCHASE_INTEREST_AMT));
   const groceryPub = (overlay.transactions || []).find(tx => tx && near(tx.amount, WALMART_AMT));
+  const pluralPub = (overlay.transactions || []).find(tx => tx && near(tx.amount, 17));
+  ok(pluralPub && pluralPub.cardFinanceChargeIdentity === true
+      && !pluralPub.displayedPayee && !pluralPub.originalMerchant
+      && F.classifyCurrentPeriodTransaction(pluralPub, plan).kind === 'interest',
+    'uncategorized exact plural survives sanitization as finance-charge identity');
   ok(interestPub && interestPub.cardFinanceChargeIdentity === true
       && !interestPub.displayedPayee && !interestPub.originalMerchant,
     'overlay stamps cardFinanceChargeIdentity and strips issuer interest merchant text',

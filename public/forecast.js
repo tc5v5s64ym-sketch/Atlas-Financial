@@ -4871,6 +4871,7 @@
     if (REVOLVING_FINANCE_CHARGE_LABELS.has(label)) return true;
     const key = normalizeMerchantKey(txMerchantExact(tx));
     if (!key) return false;
+    if (key === 'INTEREST CHARGES') return true;
     if (key === 'INTEREST CHARGE' || key.startsWith('INTEREST CHARGE ')) return true;
     if (key === 'RETAIL INTEREST' || key.startsWith('RETAIL INTEREST ')) return true;
     if (key === 'CASH INTEREST' || key.startsWith('CASH INTEREST ')) return true;
