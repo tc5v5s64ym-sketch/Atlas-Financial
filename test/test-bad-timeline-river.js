@@ -41,7 +41,7 @@ global.document = {
 };
 global.matchMedia = () => ({ matches: false });
 const { keepPastTimelineNode, readBadTimeline, knownTimelineRuns, chooseBadTimeline,
-  RiverSpring, riverKeyTarget, riverFlingTarget } = require('../public/budget-blend.js');
+  RiverSpring, riverKeyTarget, riverFlingTarget, badTermNegative } = require('../public/budget-blend.js');
 
 function period(role, start, end, claim, extra) {
   const row = {
@@ -318,5 +318,47 @@ assert.equal(spring.settled, true, 'animation reaches a stopped state rather tha
 spring.target = 2;
 spring.set(spring.target);
 assert.deepEqual([spring.x, spring.v, spring.target], [2, 0, 2], 'instant/reduced-motion positioning leaves no velocity');
+
+// The hero BAD face's negative mark consumes exactly one typed carrier:
+// the selected period's own timeline row data-sign. The printer stamps it
+// only for a known term < 0, so zero, positive and unavailable rows — and
+// any other period's row — must never mark the face. A decoy signed
+// element elsewhere in the document (the Q07 step value keys its sign
+// off the after-funding figure, a different number) is never consulted:
+// the lookup asks for the timeline list and nothing else.
+const carrierSource = blend.match(/function badTermNegative\(block\) \{[\s\S]*?\n  \}/)[0];
+assert.match(carrierSource, /data-bad-terms-period/);
+assert.match(carrierSource, /data-bad-timeline-period/);
+assert.match(carrierSource, /data-sign/);
+assert.doesNotMatch(carrierSource, /budget-step-value|data-budget-result|textContent|parseFloat|Number\(/);
+const carrierRows = items(printed([
+  period('current', '2026-08-01', '2026-08-14', 'full', { amount: -50 }),
+  period('future', '2026-08-15', '2026-08-28', 'full', { amount: 0 }),
+  period('future', '2026-08-29', '2026-09-11', 'full', { amount: 25 }),
+  period('past', '2026-07-18', '2026-07-31', 'unavailable', { amount: -1020.09, trust: 'unavailable' }),
+]));
+const blockFor = id => ({ getAttribute: name => (name === 'data-bad-terms-period' ? id : null) });
+const savedCarrierQuery = global.document.querySelector;
+try {
+  const asked = [];
+  global.document.querySelector = selector => {
+    asked.push(selector);
+    if (selector === 'ol[data-bad-timeline]') return { children: carrierRows };
+    return { tagName: 'SPAN', getAttribute: name => (name === 'data-sign' ? 'negative' : null) };
+  };
+  assert.equal(badTermNegative(blockFor('2026-08-01')), true, 'known negative term marks the face');
+  assert.equal(badTermNegative(blockFor('2026-08-15')), false, 'a trusted zero carries no sign and never marks');
+  assert.equal(badTermNegative(blockFor('2026-08-29')), false, 'a positive term never marks');
+  assert.equal(badTermNegative(blockFor('2026-07-18')), false, 'an unavailable term carries no sign and never marks');
+  assert.equal(badTermNegative(blockFor('2026-12-25')), false, 'no matching period row: fail closed');
+  assert.equal(badTermNegative(blockFor(null)), false, 'no period on the block: fail closed');
+  assert.equal(badTermNegative(null), false, 'no block: fail closed');
+  assert.ok(asked.length > 0 && asked.every(selector => selector === 'ol[data-bad-timeline]'),
+    'the carrier lookup consults the timeline list only, never the Q07/result sign');
+  global.document.querySelector = () => null;
+  assert.equal(badTermNegative(blockFor('2026-08-01')), false, 'no timeline list: fail closed');
+} finally {
+  global.document.querySelector = savedCarrierQuery;
+}
 
 console.log('bad timeline river: past dates retain no unqualified BAD; missing/source gaps break geometry; signed currency and zero stay faithful; exact native navigation, bounded spring/fling and keyboard controls pass');

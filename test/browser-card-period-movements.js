@@ -14,8 +14,9 @@
 //  - The manual-statement qualifier's "· Dated …" suffix is not visible
 //    text on the blend face, so it is not asserted. The visible dated
 //    evidence is the trigger's Balance line ("as of <date> · Manual
-//    statement") and the open panel's dated observation line; both are
-//    asserted from rendered text.
+//    statement") — which prints its as-of date only on the Triangle and
+//    Amazon faces — and the open panel's dated observation line, which
+//    every card keeps; both are asserted from rendered text.
 // The plan-unavailable pass is the actual-render regression for the
 // plan-unavailable sheet host: on that branch the card/HELOC triggers used
 // to render without any detail-sheet host, so clicks silently returned.
@@ -76,6 +77,62 @@ const states = [], errors = [], writes = [], external = [];
   const waitStart = (page, start) => page.waitForFunction(
     s => document.querySelector('[data-budget-card-movements]')?.getAttribute('data-card-period-start') === s,
     start, { timeout: 8000 });
+  // Face measurement for the reported-balance emphasis swap: computed
+  // style and geometry only — grid area, size, weight, DOM order — never
+  // DOM presence alone.
+  const measureFace = page => page.locator('[data-budget-card-movements] .card-movement-trigger').evaluateAll(rows => rows.map(btn => {
+    const q = sel => btn.querySelector(sel);
+    const bal = q('.card-movement-balance'), delta = q('.card-movement-delta'), dash = q('.blend-cc-dash');
+    const kids = [...btn.children];
+    const rect = el => el.getBoundingClientRect();
+    return { id: btn.getAttribute('data-budget-card-toggle'),
+      title: (q('.card-movement-title')?.textContent || '').replace('⌄', '').trim(),
+      balText: bal ? bal.textContent : null,
+      balArea: bal ? getComputedStyle(bal).gridArea : null,
+      balSize: bal ? getComputedStyle(bal).fontSize : null,
+      balWeight: bal ? getComputedStyle(bal).fontWeight : null,
+      balW: bal ? rect(bal).width : null, trigW: rect(btn).width,
+      deltaArea: delta ? getComputedStyle(delta).gridArea : null,
+      deltaWeight: delta ? getComputedStyle(delta).fontWeight : null,
+      dashArea: dash ? getComputedStyle(dash).gridArea : null,
+      order: bal && delta ? kids.indexOf(bal) < kids.indexOf(delta) : null };
+  }));
+  const checkFace = (face, width, label) => {
+    const byId = Object.fromEntries(face.map(r => [r.id, r]));
+    // Exact face strings per card case: dates print on the face only for
+    // Triangle and the Amazon card; the Amazon face name is exactly
+    // 'Amazon'; every other name is the publication label, unchanged.
+    assert.equal(byId.travelvisa.balText, 'Balance $927.40', `${label}: Travel face omits the as-of date`);
+    assert.equal(byId.cashback.balText, 'Balance $2,264.20', `${label}: Cash Back face omits the as-of date`);
+    assert.equal(byId.tdcc.balText, 'Balance $1,100.00', `${label}: Emerald face omits the as-of date`);
+    assert.equal(byId.triangle.balText, 'Balance $1,980.00 · as of Aug 17 · Manual statement', `${label}: Triangle face keeps its as-of date`);
+    assert.equal(byId.mbna.balText, 'Balance $760.00 · as of Aug 8 · Manual statement', `${label}: Amazon face keeps its as-of date`);
+    assert.equal(byId.mbna.title, 'Amazon', `${label}: Amazon face name is exactly Amazon`);
+    assert.equal(byId.travelvisa.title, 'Travel', `${label}: Travel name unchanged`);
+    assert.equal(byId.cashback.title, 'Cash Back', `${label}: Cash Back name unchanged`);
+    assert.equal(byId.tdcc.title, 'Emerald', `${label}: Emerald name unchanged`);
+    assert.equal(byId.triangle.title, 'Triangle', `${label}: Triangle name unchanged`);
+    for (const r of face) {
+      assert.equal(r.order, true, `${label}: ${r.id} balance precedes the delta in reading order`);
+      assert.equal(r.balSize, '16px', `${label}: ${r.id} balance takes the primary size`);
+      assert.equal(r.balWeight, '650', `${label}: ${r.id} balance takes the primary weight`);
+      assert.equal(r.deltaWeight, '520', `${label}: ${r.id} net change is demoted in weight`);
+      if (width > 1100) {
+        assert.equal(r.balArea, 'chg', `${label}: ${r.id} balance occupies the primary slot`);
+        assert.equal(r.deltaArea, 'bal', `${label}: ${r.id} delta demotes to the secondary slot`);
+        if (r.dashArea !== null) assert.equal(r.dashArea, 'bal', `${label}: ${r.id} dash follows the delta to the secondary slot`);
+      } else {
+        assert.equal(r.balArea, 'bal', `${label}: ${r.id} balance takes the full-width primary row`);
+        assert.ok(r.balW >= r.trigW - 40, `${label}: ${r.id} balance row spans the trigger width`);
+        assert.equal(r.deltaArea, 'chg', `${label}: ${r.id} delta stays top-right, demoted`);
+        if (r.dashArea !== null) assert.equal(r.dashArea, 'chg', `${label}: ${r.id} dash follows the delta, demoted`);
+      }
+    }
+    // The standing dash cases: mbna and triangle have an unavailable net
+    // alongside a published balance in every served state.
+    assert.notEqual(byId.mbna.dashArea, null, `${label}: Amazon dash present beside its balance`);
+    assert.notEqual(byId.triangle.dashArea, null, `${label}: Triangle dash present beside its balance`);
+  };
   const only = (process.env.ATLAS_PROOF_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   const wanted = state => !only.length || only.includes(state);
   try {
@@ -100,9 +157,51 @@ const states = [], errors = [], writes = [], external = [];
         assert.match(await page.locator('[data-budget-card-toggle="cashback"]').innerText(), /↓ \$135\.80/);
         assert.match(await page.locator('[data-budget-card-toggle="tdcc"]').innerText(), /\$0\.00/);
       }
-      assert.match(await amazon.innerText(), /Amazon Mastercard[\s\S]*Net unavailable/);
+      assert.equal(await amazon.locator('.card-movement-title').innerText(), 'Amazon',
+        'the Amazon face name is exactly Amazon');
+      assert.match(await amazon.innerText(), /Net unavailable/);
       assert.match(await amazon.innerText(), /Balance \$760\.00 · as of Aug 8 · Manual statement/,
         'the manual-statement dated evidence is visible on the trigger Balance line');
+      checkFace(await measureFace(page), width, `${state} ${width}px light`);
+      if (state === 'complete') {
+        await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+        checkFace(await measureFace(page), width, `${state} ${width}px dark`);
+        await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+        // The blend (non-gface) face restates the same swap in its own
+        // columns: balance in the delta's column at primary size, delta
+        // and dash in the balance's former row. Measured on clones of the
+        // real triggers in a plain blend container at desktop width.
+        const blendFace = await page.evaluate(() => {
+          const strip = document.querySelector('[data-budget-card-movements]');
+          const host = document.createElement('div');
+          host.className = 'budget-blend-card-movements';
+          host.style.cssText = 'position:absolute;left:0;top:0;width:900px;visibility:hidden';
+          for (const id of ['travelvisa', 'mbna']) host.appendChild(strip.querySelector(`[data-budget-card-toggle="${id}"]`).cloneNode(true));
+          document.body.appendChild(host);
+          const out = [...host.querySelectorAll('.card-movement-trigger')].map(btn => {
+            const bal = btn.querySelector('.card-movement-balance'), delta = btn.querySelector('.card-movement-delta'), dash = btn.querySelector('.blend-cc-dash');
+            return { id: btn.getAttribute('data-budget-card-toggle'),
+              balCol: getComputedStyle(bal).gridColumnStart, balRow: getComputedStyle(bal).gridRowStart,
+              balSize: getComputedStyle(bal).fontSize, balWeight: getComputedStyle(bal).fontWeight,
+              deltaCol: getComputedStyle(delta).gridColumnStart, deltaRow: getComputedStyle(delta).gridRowStart,
+              dashCol: dash ? getComputedStyle(dash).gridColumnStart : null, dashRow: dash ? getComputedStyle(dash).gridRowStart : null };
+          });
+          host.remove();
+          return out;
+        });
+        for (const r of blendFace) {
+          assert.equal(r.balCol, '2', `blend face: ${r.id} balance takes the primary column`);
+          assert.equal(r.balRow, '1', `blend face: ${r.id} balance takes the primary rows`);
+          assert.equal(r.balSize, '16px', `blend face: ${r.id} balance takes the primary size`);
+          assert.equal(r.balWeight, '650', `blend face: ${r.id} balance takes the primary weight`);
+          assert.equal(r.deltaCol, '1', `blend face: ${r.id} delta demotes to the balance's former column`);
+          assert.equal(r.deltaRow, '3', `blend face: ${r.id} delta demotes to the balance's former row`);
+          if (r.dashCol !== null) {
+            assert.equal(r.dashCol, '1', `blend face: ${r.id} dash follows the delta`);
+            assert.equal(r.dashRow, '3', `blend face: ${r.id} dash follows the delta's row`);
+          }
+        }
+      }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no viewport overflow');
       if (width < 600) {
         const list = await strip.locator('.card-movement-track').evaluate(el => {
@@ -214,6 +313,21 @@ const states = [], errors = [], writes = [], external = [];
         'trigger shows the qualified reported balance with its as-of date and manual source');
       await page.keyboard.press('Escape');
       assert.equal(await amazonPanel.isVisible(), false);
+      if (state === 'complete') {
+        // The panels keep the dated evidence the non-named faces omit.
+        await travel.click();
+        assert.match(await panel.innerText(), /Reported balance \$927\.40 · Aug 20/,
+          'Travel panel keeps the dated evidence its face omits');
+        await page.keyboard.press('Escape');
+        assert.equal(await panel.isVisible(), false);
+        const cashback = page.locator('[data-budget-card-toggle="cashback"]');
+        await cashback.click();
+        const cashPanel = page.locator('[data-budget-card-panel="cashback"]');
+        assert.match(await cashPanel.innerText(), /Reported balance \$2,264\.20 · Aug 20/,
+          'Cash Back panel keeps the dated evidence its face omits');
+        await page.keyboard.press('Escape');
+        assert.equal(await cashPanel.isVisible(), false);
+      }
       await travel.click();
       assert.equal(await panel.isVisible(), true);
       assert.equal(await amazonPanel.isVisible(), false);
@@ -236,6 +350,11 @@ const states = [], errors = [], writes = [], external = [];
           'the restored panel shows the new period qualification, not the old ledger');
         assert.equal(await panel.locator('[data-card-movement-transaction]').count(), 0,
           'the future period never borrows the current ledger');
+        const futureFace = await measureFace(page);
+        assert.ok(futureFace.every(r => r.balText === null),
+          'the future period prints no reported balance on any face — nothing is promoted or invented');
+        assert.ok(futureFace.every(r => r.dashArea === 'chg' && r.deltaWeight === '620'),
+          'with no balance the dash keeps the primary slot and the delta its original weight, exactly as before the swap');
         assert.equal(await page.evaluate(() => document.querySelector('[data-budget-detail-sheet]')?.contains(document.activeElement)), true,
           'focus stays inside the sheet across the switch');
         await page.evaluate(() => document.querySelector('[data-budget-window-step="-1"]').click());
@@ -264,6 +383,19 @@ const states = [], errors = [], writes = [], external = [];
         await today.click();
         await waitStart(page, fx.START);
         assert.equal(await page.locator('[data-budget-card-panel]:not([hidden])').count(), 0, 'range change leaves no previous detail open');
+        assert.match(await travel.innerText(), /107\.40/);
+        // A past period publishes no reported balance: the swap stays off
+        // and every trigger keeps today's layout exactly.
+        await page.evaluate(() => document.querySelector('[data-budget-window-step="-1"]').click());
+        await page.waitForFunction(s => document.querySelector('[data-budget-card-movements]')?.getAttribute('data-card-period-start') !== s,
+          fx.START, { timeout: 8000 });
+        const pastFace = await measureFace(page);
+        assert.ok(pastFace.every(r => r.balText === null),
+          'the past period never borrows the current reported balance');
+        assert.ok(pastFace.every(r => r.dashArea === 'chg' && r.deltaWeight === '620'),
+          'past-period triggers keep the pre-swap layout exactly');
+        await page.evaluate(() => document.querySelector('[data-budget-window-step="1"]').click());
+        await waitStart(page, fx.START);
         assert.match(await travel.innerText(), /107\.40/);
         // Granularity through visible controls: the period-figures sheet
         // re-homes the granularity toggle; month view is left through its

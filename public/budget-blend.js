@@ -537,6 +537,7 @@
     slot.textContent = display.text;
     slot.classList.toggle('is-unavailable', !!display.unavailable);
     slot.classList.toggle('is-estimated', !!display.chip);
+    slot.classList.toggle('is-negative', !!display.negative && !display.unavailable);
     if (display.chip) slot.title = 'Estimated — see Period figures for the source and qualification';
     parent.appendChild(slot);
     if (display.chip) {
@@ -546,6 +547,23 @@
       slot.after(pill);
     }
     return slot;
+  }
+
+  // The BAD face's sign comes only from Forecast's typed publication:
+  // plan.js stamps data-sign="negative" on a period's [data-bad-timeline]
+  // row iff that period's published Balance After Deductions term is
+  // known and < 0 (a trusted zero and an unavailable term carry no sign).
+  // The printed amount text is never parsed, and the Q07 step value's own
+  // data-sign is never read here — it keys off the after-funding figure,
+  // a different number. No matching row or no sign: fail closed, no mark.
+  function badTermNegative(block) {
+    const period = block ? (block.getAttribute('data-bad-terms-period') || '') : '';
+    if (!period) return false;
+    const list = document.querySelector('ol[data-bad-timeline]');
+    if (!list) return false;
+    const row = [...list.children].find(node => node.tagName === 'LI'
+      && (node.getAttribute('data-bad-timeline-period') || '') === period);
+    return !!row && row.getAttribute('data-sign') === 'negative';
   }
 
   function paintTermSlots(hero) {
@@ -565,7 +583,9 @@
         result.appendChild(hidden);
       }
       const row = block && block.querySelector('[data-bad-term="balanceAfterDeductions"]');
-      paintTermFace(result, 'balanceAfterDeductions', termDisplay(row, status), 'blend-bad');
+      const display = termDisplay(row, status);
+      display.negative = badTermNegative(block);
+      paintTermFace(result, 'balanceAfterDeductions', display, 'blend-bad');
     }
   }
 
@@ -2501,6 +2521,7 @@
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.keepPastTimelineNode = keepPastTimelineNode;
     module.exports.readBadTimeline = readBadTimeline;
+    module.exports.badTermNegative = badTermNegative;
     module.exports.knownTimelineRuns = knownTimelineRuns;
     module.exports.chooseBadTimeline = chooseBadTimeline;
     module.exports.RiverSpring = RiverSpring;

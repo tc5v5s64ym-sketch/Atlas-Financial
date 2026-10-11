@@ -149,12 +149,15 @@ body:has([data-budget-bento]) .sitenav {
 
 .blend-theme svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 :root[data-theme="dark"] .blend-theme .i-moon,
-:root:not([data-theme="light"]) .i-moon { display: none; }
+:root:not([data-theme="light"]) .blend-theme .i-moon { display: none; }
 :root[data-theme="light"] .blend-theme .i-sun,
 :root:not([data-theme]) .blend-theme .i-sun { display: none; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .blend-theme .i-moon { display: none; }
   :root:not([data-theme]) .blend-theme .i-sun { display: block; }
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .blend-theme .i-moon { display: block; }
 }
 
 .budget-bento {
@@ -699,6 +702,14 @@ body:has([data-budget-bento]) .sitenav {
   white-space: nowrap;
   word-break: normal;
   overflow-wrap: normal;
+}
+/* A published negative Balance After Deductions term (typed data-sign
+   carrier, never the printed text) renders in the established critical
+   red in both themes — the same token budget-surface.css applies to
+   [data-sign="negative"]. Declared before is-unavailable so the muted
+   unavailable treatment would win if the two ever co-occurred. */
+.blend-bad.is-negative {
+  color: var(--critical);
 }
 .blend-term.is-unavailable,
 .blend-bad.is-unavailable {
@@ -1943,6 +1954,37 @@ body:has([data-budget-bento]) .sitenav {
   color: var(--g-ink-3);
   font-size: 13px;
   font-weight: 520;
+}
+
+/* Reported-balance emphasis swap (Atlas UI task 2 follow-on): when the
+   trigger prints the publication's reported balance, the balance is the
+   primary figure and the net change demotes. In this blend face the
+   balance takes the delta's slot (column 2, rows 1-2) at primary size;
+   the delta — and the blend unavailable dash that stands in for it —
+   move to the balance's former slot (column 1, row 3). Triggers with no
+   balance line match none of these rules and keep today's layout
+   exactly: nothing is promoted and no figure is invented. The gface
+   face restates the swap in budget-gface.css for its named areas. */
+.budget-blend-card-movements .card-movement-trigger:has(.card-movement-balance) .card-movement-balance {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  text-align: right;
+  max-width: 44vw;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--blend-ink);
+}
+.budget-blend-card-movements .card-movement-trigger:has(.card-movement-balance) .card-movement-delta {
+  grid-column: 1;
+  grid-row: 3;
+  justify-self: start;
+  font-weight: 520;
+}
+.budget-blend-card-movements .card-movement-trigger:has(.card-movement-balance) .blend-cc-dash {
+  grid-column: 1;
+  grid-row: 3;
+  justify-self: start;
 }
 
 .budget-blend-card-movements .card-movement-strip {

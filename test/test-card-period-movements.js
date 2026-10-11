@@ -256,10 +256,37 @@ eq(/data-budget-card-panel="travelvisa"[^>]* hidden>/.test(sheetHtml), true, 'pa
 // labelled Balance with the preserved as-of date and the explicit source.
 eq(/data-budget-card-toggle="mbna"[\s\S]*?card-movement-balance">Balance \$760\.00 · as of 2026-08-08 · Manual statement/.test(sheetHtml), true,
   'manual trigger balance shows Balance, as-of date and manual source');
-// travelvisa has no evidence date and no manual flag: the balance prints
-// with no invented date and no invented synced source.
-eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">Balance \$927\.40 · date unavailable<\/span>/.test(sheetHtml), true,
+// travelvisa has no evidence date and no manual flag: its face balance
+// omits the date segment entirely (face dates print only for Triangle and
+// the Amazon card), so no date and no synced source is invented; the
+// panel keeps the full evidence, stated as date unavailable.
+eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">Balance \$927\.40<\/span>/.test(sheetHtml), true,
   'undated non-manual trigger balance invents neither date nor source');
+eq(/data-budget-card-panel="travelvisa"[\s\S]*?Reported balance \$927\.40 · Date unavailable/.test(sheetHtml), true,
+  'panel keeps the undated reported-balance evidence');
+// Face as-of dates print only for Triangle and the Amazon card, keyed on
+// the canonical card id: Cash Back's face omits its date while its panel
+// keeps the dated evidence; Triangle keeps its face date and suffix.
+eq(/data-budget-card-toggle="cashback"[\s\S]*?card-movement-balance">Balance \$2264\.20<\/span>/.test(sheetHtml), true,
+  'Cash Back face omits the as-of date');
+eq(/data-budget-card-panel="cashback"[\s\S]*?Reported balance \$2264\.20/.test(sheetHtml), true,
+  'Cash Back panel keeps the reported-balance evidence line');
+eq(/data-budget-card-toggle="triangle"[\s\S]*?card-movement-balance">Balance \$1980\.00 · as of 2026-08-17 · Manual statement/.test(sheetHtml), true,
+  'Triangle face keeps the as-of date');
+// The Amazon face name is exactly 'Amazon', keyed on the canonical id;
+// the publication label itself is unchanged and still names the panel.
+eq(/data-budget-card-toggle="mbna"[\s\S]*?card-movement-title">Amazon<span/.test(sheetHtml), true,
+  'Amazon face name is exactly Amazon');
+eq(sheetHtml.includes('data-budget-card-panel="mbna" aria-label="Amazon Mastercard activity"'), true,
+  'Amazon panel keeps the full publication label');
+// A display label that merely contains 'Amazon' is not the Amazon card:
+// the face rules key on canonical identity, never the label substring.
+const decoy = copy(pub); decoy.cards[0].label = 'Amazon Unlimited';
+const decoyHtml = View.html(decoy, fmt);
+eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-title">Amazon Unlimited<span/.test(decoyHtml), true,
+  'a label containing Amazon is not relabelled');
+eq(/data-budget-card-toggle="travelvisa"[\s\S]*?card-movement-balance">Balance \$927\.40<\/span>/.test(decoyHtml), true,
+  'a label containing Amazon does not gain a face date');
 eq(sheetHtml.toLowerCase().includes('payday balance'), false, 'reported balance is never called a payday balance');
 const zeroDebt = copy(x); zeroDebt.debts[2].balance = 0;
 eq(/data-budget-card-toggle="tdcc"[\s\S]*?card-movement-balance">Balance \$0\.00/.test(View.html(publish(zeroDebt), fmt)), true,
