@@ -171,8 +171,8 @@ const notPassEval = block.evaluateTrustedReview(reviewRequest({
 ok(notPassEval.ok && notPassEval.outcome === 'NOT PASS' && notPassEval.skipCursor === false,
   'trusted exact-head NOT PASS is eligible', notPassEval.code);
 ok(notPassEval.fields['Review outcome'] === 'NOT PASS', 'NOT PASS fields record that outcome');
-ok(notPassEval.fields['Findings and fix verification'].includes('Named blocker'),
-  'NOT PASS findings summarize the submitted review');
+ok(notPassEval.fields['Findings and fix verification'] === 'See the submitted exact-head Atlas Contract / Systems Review.',
+  'NOT PASS records the authoritative review reference without republishing free text');
 const notPassPatched = block.patchReviewBlock(sampleBody(), notPassEval.fields);
 ok(notPassPatched.ok && fieldValues(notPassPatched.body).values['Review outcome'] === 'NOT PASS',
   'patched block records NOT PASS');
@@ -342,112 +342,19 @@ const dispatch = sourceText(fs.readFileSync(DISPATCH, 'utf8'));
 const repair = sourceText(fs.readFileSync(REPAIR, 'utf8'));
 const mergeCard = sourceText(fs.readFileSync(MERGE_CARD, 'utf8'));
 
-console.log('\n=== 13. PASS does not invoke Cursor repair ===');
-ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — PASS'\)/.test(dispatch),
-  'dispatch records trusted Atlas PASS so the card can sync');
-ok(/skipCursor|card_outcome|PASS does not start/.test(repair)
-  || /card_outcome=PASS/.test(repair)
-  || /Trusted Atlas PASS/.test(repair),
-  'trusted workflow has an explicit PASS path that skips Cursor');
-ok(/needs\.gate\.outputs\.eligible == 'true'/.test(repair),
-  'Cursor repair job still requires gate eligible=true');
-ok((repair.match(/cursor-agent --print/g) || []).length === 1,
-  'one cursor-agent invocation remains, on the eligible repair path');
-
-console.log('\n=== 14. NOT PASS/BLOCKING still use the existing Cursor repair path ===');
-ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — NOT PASS'\)/.test(dispatch)
-  && /startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — BLOCKING'\)/.test(dispatch),
-  'dispatch still accepts exact-prefix NOT PASS and BLOCKING');
-ok(/atlas-cursor-repair-gate\.js evaluate/.test(repair)
-  && /cursor-agent --print/.test(repair),
-  'trusted workflow still evaluates the existing gate and runs Cursor');
-ok(/chatgpt-codex-connector\[bot\]/.test(dispatch),
-  'Codex dispatcher identities are unchanged');
-
-console.log('\n=== 15. dispatcher remains secret-free and read-only ===');
-ok(!/\$\{\{\s*secrets\./.test(dispatch), 'dispatch workflow references no secrets');
-ok(!/CURSOR_API_KEY|ATLAS_AUTOMATION_TOKEN/.test(dispatch),
-  'dispatch names neither automation secret');
-ok(/permissions:\n  contents: read\n  pull-requests: read\n/.test(dispatch),
-  'dispatch GITHUB_TOKEN is contents:read and pull-requests:read');
-ok(!/contents:\s*write|pull-requests:\s*write|issues:\s*write/.test(dispatch),
-  'dispatch is granted no write permissions');
-ok(!/pulls\/\$\{|pulls\/\$\{\{/.test(dispatch) && !/--method PATCH/.test(dispatch),
-  'dispatch does not mutate a pull request body');
-
-console.log('\n=== 16. PR-body mutation occurs only in trusted default-branch workflow ===');
-ok(/workflow_run:/.test(repair) && !/^\s+pull_request_review:/m.test(repair),
-  'secret-bearing workflow is still not PR-review triggered');
-ok(/github\.event\.repository\.default_branch/.test(repair),
-  'trusted scripts still come from the default branch');
-ok(/atlas-review-block\.js/.test(repair),
-  'trusted workflow calls the review-block helper');
-ok(/pull-requests:\s*write/.test(repair),
-  'trusted workflow has pull-requests:write so it can edit the PR body');
-ok(!/contents:\s*write/.test(repair), 'GITHUB_TOKEN is still not granted contents:write');
-ok(/atlas-review-block\.js/.test(repair.split(/^  push:\n/m)[0] || repair),
-  'card sync from a trusted review runs in the default-branch gate path');
-
-const gateJob = (repair.split(/^  gate:\n/m)[1] || '').split(/^  repair:\n/m)[0];
-const repairJob = (repair.split(/^  repair:\n/m)[1] || '').split(/^  test:\n/m)[0];
-const pushJob = repair.split(/^  push:\n/m)[1] || '';
-
-console.log('\n=== 17. trusted PASS card-sync dispatches Merge Card check ===');
-ok(/workflow_dispatch:/.test(mergeCard),
-  'merge-card-check accepts workflow_dispatch');
-ok(/pr_number:/.test(mergeCard) && /expected_head_sha:/.test(mergeCard),
-  'merge-card-check dispatch inputs are PR number and expected head SHA');
-ok(/name: Merge card mechanical fields/.test(mergeCard),
-  'required check identity Merge card mechanical fields is unchanged');
-ok(/types:\s*\[opened, edited, synchronize, reopened\]/.test(mergeCard),
-  'merge-card-check still listens for human pull_request edited');
-ok(/pull_request:/.test(mergeCard), 'merge-card-check remains a pull_request workflow');
-
-const passStart = gateJob.search(/card_outcome\}" == "PASS"/);
-const passExit = gateJob.indexOf('exit 0', passStart);
-const passPath = passStart >= 0 && passExit > passStart
-  ? gateJob.slice(passStart, passExit)
-  : '';
-ok(/gh workflow run merge-card-check\.yml/.test(passPath),
-  'trusted PASS starts the existing Merge Card workflow via workflow_dispatch');
-ok(/atlas-merge-card-dispatch-ref\.js select/.test(passPath),
-  'PASS dispatch selects the workflow ref from the live head copy');
-ok(/contents\/\.github\/workflows\/merge-card-check\.yml/.test(passPath)
-  && /ref=\$\{live_after_head\}/.test(passPath),
-  'PASS dispatch reads merge-card-check.yml at the live PR head SHA');
-ok(/--ref "\$\{dispatch_ref\}"/.test(passPath),
-  'the dispatched Merge Card run uses the selected workflow ref');
-ok(/DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/.test(repair),
-  'PASS dispatch can fall back to the repository default branch');
-ok(/--field "pr_number=\$\{pr_number\}"/.test(passPath)
-  && /--field "expected_head_sha=\$\{live_after_head\}"/.test(passPath),
-  'dispatch passes explicit PR number and expected head SHA');
-ok(/Fail closed without dispatching Merge Card check/.test(passPath),
-  'dispatch is refused if the live PR/head moved after PASS card-sync');
-ok(/Could not read merge-card-check\.yml at live head/.test(passPath),
-  'dispatch is refused if the live head workflow file cannot be read');
-ok(/checks:\s*write/.test(mergeCard),
-  'merge-card-check may record the required check on a predating PR head');
-ok(/REQUIRED_CHECK_NAME = 'Merge card mechanical fields'/.test(mergeCard)
-  && /github\.rest\.checks\.create/.test(mergeCard),
-  'default-branch dispatch records Merge card mechanical fields on the expected head');
-ok(!/cursor-agent/.test(passPath),
-  'the PASS dispatch path still does not invoke Cursor');
-ok(!/gh api --method PATCH[\s\S]{0,80}title/.test(passPath)
-  && !/--method PATCH[\s\S]{0,200}"title"/.test(repair),
-  'PASS path does not use a synthetic title edit to retrigger checks');
-ok(!/gh run rerun/.test(passPath) && !/gh run rerun/.test(repair),
-  'PASS path does not manually rerun an existing Merge Card check');
-ok((mergeCard.match(/^\s+script:\s*\|\s*$/m) || []).length === 1
-  && /github\.rest\.pulls\.get/.test(mergeCard),
-  'Merge Card validation stays one live-PR script; dispatch does not duplicate it');
-ok(/actions:\s*write/.test(repair),
-  'trusted workflow may dispatch Merge Card check');
-ok(!/actions:\s*write/.test(dispatch),
-  'PR-controlled dispatcher is not granted actions:write');
-ok(!/gh workflow run merge-card-check\.yml/.test(repairJob)
-  && !/gh workflow run merge-card-check\.yml/.test(pushJob),
-  'Merge Card dispatch is not on the Cursor repair or push path');
+console.log('\n=== trusted review workflow privacy contract ===');
+const privacySource = fs.readFileSync(path.join(__dirname, '..', 'scripts/ci-repair-privacy.js'), 'utf8');
+ok(/workflow_run:/.test(repair) && /workflow_dispatch:/.test(repair), 'trusted default-branch event sources retained');
+ok(/github.event.repository.default_branch/.test(repair) && /persist-credentials: false/.test(repair), 'review code comes only from trusted main');
+ok(!/upload-artifact|download-artifact|cursor-agent|git push|ATLAS_AUTOMATION_TOKEN|CURSOR_API_KEY/.test(repair), 'no unsafe artifact export, model or automatic push');
+ok(/pull-requests: write/.test(repair) && /actions: write/.test(repair) && !/contents: write/.test(repair), 'existing review/body and card-dispatch permissions unchanged');
+ok(!/\$\{\{\s*secrets\./.test(dispatch) && /pull-requests: read/.test(dispatch), 'review dispatcher remains read-only and secret-free');
+ok(/Review.evaluateTrustedReview\(/.test(privacySource) && /Review.patchReviewBlock\(/.test(privacySource), 'trusted review helpers remain the authority');
+ok(/Review.selectCardReview\(/.test(privacySource) && /Gate.selectEligibleReview\(/.test(privacySource), 'trusted card and genuine Codex selection stay separate');
+ok(/Dispatch.selectDispatchRef\(/.test(privacySource) && /expected_head_sha=/.test(privacySource), 'genuine PASS retains exact-head Merge Card dispatch');
+ok(/workflow_dispatch:/.test(mergeCard) && /REQUIRED_CHECK_NAME = 'Merge card mechanical fields'/.test(mergeCard), 'required mechanical check identity and dispatcher remain');
+ok(/github.rest.checks.create/.test(mergeCard) && /github.rest.pulls.get/.test(mergeCard), 'default-branch fallback still validates the live PR and records its check');
+ok(!/evaluateRepairPending\(/.test(privacySource), 'without a repair push, no automatic new-head PENDING is manufactured');
 
 console.log('\n=== 18. predating PR heads select the default-branch workflow version ===');
 const withTrigger = 'on:\n  pull_request:\n  workflow_dispatch:\n    inputs:\n';
@@ -494,27 +401,7 @@ ok(selectMissing.status === 1,
   'select CLI fails closed when the live-head workflow file cannot be read');
 try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
-console.log('\n=== repair-path contracts for card sync and PENDING ===');
-ok(/evaluate-review/.test(gateJob) && /atlas-review-block\.js patch/.test(gateJob),
-  'gate job evaluates a trusted review and patches only through the helper');
-ok(/select-card-review/.test(gateJob),
-  'gate job selects trusted Atlas PASS/NOT PASS/BLOCKING reviews for the card');
-ok(!/evaluate-review/.test(repairJob) && !/atlas-review-block\.js patch/.test(repairJob),
-  'Cursor repair job does not patch the PR body');
-ok(/evaluate-pending/.test(pushJob) && /atlas-review-block\.js"? patch/.test(pushJob),
-  'push job moves a confirmed new head to PENDING through the helper');
-const confirmCallAt = pushJob.search(/atlas-github-pr-head-sync\.js"?\s+confirm/);
-ok(/git push/.test(pushJob) && pushJob.indexOf('git push') < confirmCallAt
-  && confirmCallAt < pushJob.indexOf('evaluate-pending'),
-  'PENDING evaluation happens only after live PR-head confirmation');
-ok(/atlas-github-pr-head-sync\.js/.test(pushJob) && /live_head=/.test(pushJob),
-  'push job still validates the confirmed live PR head before PENDING');
-ok(/auto-merge|enablePullRequestAutoMerge|merge_method/.test(repair) === false,
-  'no auto-merge machinery');
-ok(!/git rebase|git merge|git push --force|git push -f/.test(pushJob),
-  'push path still has no rebase, merge, or force-push');
-ok(/atlas-trusted-scripts\/atlas-review-block\.js/.test(pushJob),
-  'push job preserves the trusted review-block helper outside the PR worktree');
+ok(!/git push|git apply|upload-artifact|download-artifact/.test(repair), 'privacy hold cannot push or expose an unreviewed patch');
 
 const skipNotRequired = block.evaluateRepairPending({
   newHeadSha: NEXT,

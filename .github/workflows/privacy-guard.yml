@@ -95,7 +95,7 @@ jobs:
           fi
           # Never execute incoming JS. The engine that judges the write is the
           # trusted default-branch copy; incoming files are read as data.
-          node trusted/scripts/privacy-guard.js --root incoming --changed-from "${BASE_SHA}"
+          node trusted/scripts/ci-output.js --identity privacy-guard -- node trusted/scripts/privacy-guard.js --root incoming --changed-from "${BASE_SHA}"
 
       - name: Publish exact-head status
         if: always()

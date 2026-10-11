@@ -32,7 +32,7 @@ jobs:
       # express is the production server runtime. The production-boundary
       # suite starts server.js locally with synthetic secrets.
       - name: Install runtime dependencies
-        run: npm ci --omit=dev
+        run: node scripts/ci-output.js --identity install-runtime -- npm ci --omit=dev
 
       - name: Run the correctness suite
         run: npm test

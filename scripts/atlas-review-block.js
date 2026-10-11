@@ -139,11 +139,9 @@ function sanitizeFieldValue(value) {
 }
 
 function summarizeReviewFindings(body, marker) {
-  const rest = String(body || '').slice(String(marker || '').length);
-  const collapsed = sanitizeFieldValue(rest);
-  if (!collapsed) return 'See the submitted Atlas Contract / Systems Review.';
-  if (collapsed.length <= MAX_FINDINGS_CHARS) return collapsed;
-  return `${collapsed.slice(0, MAX_FINDINGS_CHARS - 3)}...`;
+  // Validation reads the authoritative review; automatic publication keeps
+  // its reference rather than repeating arbitrary financial finding text.
+  return 'See the submitted exact-head Atlas Contract / Systems Review.';
 }
 
 function assertPatchFields(fields) {

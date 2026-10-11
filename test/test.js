@@ -21,10 +21,29 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+if (process.env.GITHUB_ACTIONS === 'true' || process.env.ATLAS_PUBLIC_CI === '1') {
+  const failRunner = error => {
+    try {
+      const root = process.env.ATLAS_CI_DIAGNOSTICS_DIR || process.env.RUNNER_TEMP || os.tmpdir();
+      fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+      const dir = fs.mkdtempSync(path.join(root, 'atlas-ci-runner-private-'));
+      fs.chmodSync(dir, 0o700);
+      fs.writeFileSync(path.join(dir, 'error.log'), String(error && error.stack || error), { mode: 0o600 });
+    } catch { /* Reporting failure must not expose the original error. */ }
+    fs.writeSync(2, JSON.stringify({ type: 'ci-runner-error', identity: 'test.js',
+      status: 'fail', category: 'runner-failed', exitCode: 1 }) + '\n');
+    process.exit(1);
+  };
+  process.on('uncaughtException', failRunner);
+  process.on('unhandledRejection', failRunner);
+}
+const CiOutput = require('../scripts/ci-output');
 
 const ROOT = path.join(__dirname, '..');
 
 const suites = [
+  ['public CI output and synthetic privacy canaries', 'test-ci-output.js'],
   ['annual savings expense excluded from payday Bills with one conserved draw', 'test-annual-savings-payperiod.js'],
   ['owner-approved streaming bills on the incumbent held-elsewhere Wise path', 'test-owner-streaming-bills.js'],
   ['selector locale formatter equivalence', 'test-selector-formatters.js'],
@@ -322,6 +341,7 @@ const suites = [
   ['merge-card check behaviour', 'test-mergecard.js'],
   ['figures comment Plan/Credit/Planning scope (B82/B100)', 'test-figures-comment.js'],
   ['figures snapshot Credit and Planning coverage (B100)', 'test-figures-snapshot-credit-planning.js'],
+  ['Trusted repair privacy gate and private artifact hold', 'test-ci-repair-privacy.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
   ['Atlas review-block card sync', 'test-atlas-review-block.js'],
   ['Atlas bounded re-review handoff', 'test-atlas-api-rereview.js'],
@@ -390,10 +410,33 @@ const suites = [
 ];
 
 let failed = [];
+const publicCI = CiOutput.publicMode();
+let suiteOrdinal = 0;
 for (const [name, file] of suites) {
+  const identity = CiOutput.suiteIdentity(file, ++suiteOrdinal);
+  if (publicCI && identity.startsWith('suite-')) {
+    CiOutput.publish({ identity, status: 'fail', category: 'invalid-configuration',
+      exitCode: 1, signal: null, executed: false });
+    failed.push(identity);
+    continue;
+  }
   if (!fs.existsSync(path.join(__dirname, file))) {
+    if (publicCI) {
+      CiOutput.publish({ identity, status: 'fail', category: 'missing-suite',
+        exitCode: 1, signal: null, executed: false });
+      failed.push(file);
+      continue;
+    }
     console.log(`\n\x1b[31m✗\x1b[0m ${name} — ${file} is missing`);
     failed.push(name);
+    continue;
+  }
+  if (publicCI) {
+    CiOutput.startSuite(identity);
+    const result = CiOutput.runCaptured(process.execPath, [path.join(__dirname, file)],
+      { cwd: ROOT, identity: file });
+    CiOutput.publish(result);
+    if (result.status !== 'pass') failed.push(file);
     continue;
   }
   console.log(`\n\x1b[1m──────── ${name} ────────\x1b[0m`);
@@ -404,6 +447,12 @@ for (const [name, file] of suites) {
   }
 }
 
+if (publicCI) {
+  console.log(JSON.stringify({ type: 'ci-suite-summary', total: suites.length,
+    passed: suites.length - failed.length, failed: failed.length,
+    failedSuites: failed, exitCode: failed.length ? 1 : 0 }));
+  process.exit(failed.length ? 1 : 0);
+}
 console.log('\n' + '═'.repeat(60));
 if (failed.length) {
   console.log(`\x1b[31mFAILED\x1b[0m — ${failed.length} of ${suites.length} suites: ${failed.join(', ')}`);
