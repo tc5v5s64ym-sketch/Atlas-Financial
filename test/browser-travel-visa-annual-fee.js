@@ -74,8 +74,30 @@ const proposalText = published.period.proposal.toFixed(2);
           assert.equal(await bucket.count(), 1, 'bills: upcoming bucket exists');
           assert.equal(await bucket.isVisible(), true, 'bills: upcoming bucket is visible under All');
           const bucketText = await bucket.innerText();
-          assert.match(await bucket.evaluate(el => el.querySelector('h3').textContent), /Upcoming annual bills/,
-            'bills: the bucket heading labels it (the sheet skin does not paint group headings as innerText)');
+          // Systems Review 5484047605: the heading must be RENDERED, not
+          // only present in the DOM — the roster skin hides native group
+          // headings, so textContent alone proved nothing. Require a
+          // visible heading with rendered innerText in both themes.
+          const heading = bucket.locator('> h3');
+          assert.equal(await heading.isVisible(), true, 'bills: upcoming heading is visible under All');
+          assert.match(await heading.innerText(), /Upcoming annual bills/i,
+            'bills: the bucket heading renders as visible text');
+          for (const theme of ['dark', 'light']) {
+            await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+            assert.equal(await heading.isVisible(), true, `bills: upcoming heading is visible in the ${theme} theme`);
+            assert.match(await heading.innerText(), /Upcoming annual bills/i,
+              `bills: the bucket heading renders as visible text in the ${theme} theme`);
+          }
+          await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+          // Regression (5484047605): the exception is scoped to the upcoming
+          // bucket only — native roster group headings keep the sheet skin's
+          // hidden behaviour.
+          const nativeHeadings = sheetBody.locator('[data-budget-bill-bucket]:not([data-budget-bill-bucket="upcoming"]) > h3');
+          assert.ok(await nativeHeadings.count() > 0, 'bills: native roster groups still print their headings in the DOM');
+          for (let i = 0; i < await nativeHeadings.count(); i++) {
+            assert.equal(await nativeHeadings.nth(i).isVisible(), false,
+              'bills: native group headings stay hidden under the sheet skin');
+          }
           assert.match(bucketText, /Travel Visa annual fee/);
           assert.match(bucketText, /149\.00/);
           assert.match(bucketText, /October 6, 2027/);
@@ -161,7 +183,7 @@ const proposalText = published.period.proposal.toFixed(2);
     fs.writeFileSync(path.join(out, 'browser-proof.json'), JSON.stringify({ head, synthetic: true,
       sourceHashEncoding: 'UTF-8 LF (git blob)',
       sources: { 'public/plan.js': hash('public/plan.js'), 'public/savings-inventory.js': hash('public/savings-inventory.js'),
-        'public/budget-surface.css': hash('public/budget-surface.css'), 'public/forecast.js': hash('public/forecast.js'),
+        'public/budget-surface.css': hash('public/budget-surface.css'), 'public/budget-sheet-motion.css': hash('public/budget-sheet-motion.css'), 'public/forecast.js': hash('public/forecast.js'),
         'test/browser-travel-visa-annual-fee.js': hash('test/browser-travel-visa-annual-fee.js') },
       publishedFeeRow: { key: feeRow.key, needed: feeRow.needed, date: feeItem.date, trust: feeItem.trust },
       states }, null, 2) + '\n');
