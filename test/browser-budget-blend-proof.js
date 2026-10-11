@@ -920,6 +920,7 @@ const composite = (fg, bg) => {
             return {
               bad: bad.slice(0, 6),
               centre: (ring?.querySelector('.blend-ring-v')?.textContent || '').replace(/\s+/g, ' ').trim(),
+              centreName: (() => { const id = ring?.getAttribute('data-blend-cat'); const src = id && document.querySelector('[data-budget-category-open="' + CSS.escape(id) + '"]'); return (src?.querySelector('.budget-category-name')?.textContent || '').replace(/\s+/g, ' ').trim(); })(),
               word: (word?.textContent || '').replace(/\s+/g, ' ').trim(),
               sr: (sr?.textContent || '').replace(/\s+/g, ' ').trim(),
               srReachable: !!(sr && getComputedStyle(sr).display !== 'none' && !sr.closest('[aria-hidden="true"]')),
@@ -927,7 +928,7 @@ const composite = (fg, bg) => {
               otherOverlap: hits(state && state.getBoundingClientRect(), plan && plan.getBoundingClientRect()),
             };
           });
-          if (narrow.bad.length || narrow.centre !== '$295.14 over' || narrow.word !== 'Over plan'
+          if (narrow.bad.length || !narrow.centreName || narrow.centre !== narrow.centreName || narrow.word !== 'Over plan'
             || narrow.sr !== '$295.14 over' || !narrow.srReachable
             || narrow.pillEllipsis === 'ellipsis' || narrow.otherOverlap) {
             errors.push(`${width}/${theme} narrow overflow ${JSON.stringify(narrow)}`);
@@ -1274,6 +1275,7 @@ const composite = (fg, bg) => {
         return {
           status: (row.querySelector('.budget-category-status')?.textContent || '').trim(),
           over: row.classList.contains('is-over'),
+          name: (row.querySelector('.budget-category-name')?.textContent || '').trim(),
           centre: (ring?.querySelector('.blend-ring-v')?.textContent || '').trim(),
           word: word ? (word.textContent || '').trim() : '',
           sr: sr ? (sr.textContent || '').trim() : '',
@@ -1305,7 +1307,7 @@ const composite = (fg, bg) => {
     });
     const overOk = prepared.marked.length >= 1
       && household.overs.length === prepared.marked.length
-      && prepared.marked.every(status => household.overs.some(row => row.status === status && row.centre === status && row.word === 'Over plan' && row.sr === status && row.srReachable && row.onFace));
+      && prepared.marked.every(status => household.overs.some(row => row.status === status && row.name !== '' && row.centre === row.name && row.word === 'Over plan' && row.sr === status && row.srReachable && row.onFace));
     if (!overOk || household.countText !== prepared.printed
       || !/known categories over plan/.test(household.countText)
       || household.extraDisclosure || household.countOnFace || household.countInHeader || !household.countInNativeBody
@@ -1338,28 +1340,28 @@ const composite = (fg, bg) => {
       'Household heading evidence is a visible hit target at ' + width + ': ' + JSON.stringify(evidenceTarget));
       await householdInfo.focus();
       assert.equal(await householdInfo.evaluate(el => el === document.activeElement), true);
-      const remainingFace = await house.locator('[data-budget-browse="spending"] .blend-house-remain').evaluate(node => {
+      // The Still planned / From today cell is evidence now, not a tile
+      // header sentence: it lives in the Household evidence body with its
+      // label, amount and timing together, and the header is free of it.
+      const remainingFace = await house.locator('[data-operating-question="06"] .blend-house-body .blend-house-remain').evaluate(node => {
         const label = node.querySelector(':scope > span');
         const amount = node.querySelector('[data-budget-browse-remaining]');
         const timing = node.querySelector(':scope > small');
-        const visible = el => {
-          if (!el) return false;
-          const box = el.getBoundingClientRect();
-          const style = getComputedStyle(el);
-          return box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
-            && !el.closest('dialog, .blend-clip, [hidden], [aria-hidden="true"], [inert]');
-        };
         return {
           label: label?.textContent.trim(), amount: amount?.textContent.trim(), timing: timing?.textContent.trim(),
           sameParent: [label, amount, timing].every(el => el?.parentElement === node),
-          visible: [label, amount, timing].every(visible), text: node.textContent,
+          inBody: !!node.closest('.blend-house-body'), text: node.textContent,
         };
       });
       assert.equal(remainingFace.label, 'Still planned');
       assert.equal(remainingFace.timing, 'From today');
-      assert.ok(remainingFace.amount && remainingFace.sameParent && remainingFace.visible,
-        'Still planned, its published amount and From today remain visible together on the face at ' + width);
+      assert.ok(remainingFace.amount && remainingFace.sameParent && remainingFace.inBody,
+        'Still planned, its published amount and From today stay together in the Household evidence body at ' + width);
       assert.doesNotMatch(remainingFace.text, /\bleft\b/i, 'Remaining amount keeps its original qualifiers without a left suffix');
+      const headerSentence = await house.locator('[data-budget-browse="spending"] > header').evaluate(node =>
+        node.textContent.replace(/\s+/g, ' '));
+      assert.doesNotMatch(headerSentence, /Still planned|From today/,
+        'the From-today sentence is gone from the tile header at ' + width + ': ' + headerSentence);
       const originalHouseBody = await house.locator('[data-operating-question="06"] .budget-step-body').elementHandle();
       const originalCount = await house.locator('[data-operating-question="06"] .blend-house-body .budget-browse-counts').elementHandle();
       const qualifierTexts = await originalHouseBody.evaluate(node => [...node.querySelectorAll('.blend-house-body')]
@@ -1380,7 +1382,12 @@ const composite = (fg, bg) => {
       assert.equal(await house.locator('.blend-house-body .budget-browse-counts').count(), 1, 'No duplicated Household count after repaint');
       const holdEvidence = await house.locator('[data-budget-detail-sheet] [data-budget-detail-body]').innerText();
       for (const qualifier of qualifierTexts) {
-        assert.ok(holdEvidence.replace(/\s+/g, ' ').includes(qualifier), 'Relocated Household qualification stays readable: ' + qualifier);
+        // Content, not spacing: textContent glues inline tokens the sheet's
+        // rendered innerText separates (and vice versa), so the inclusion
+        // check compares with all whitespace removed on both sides. Every
+        // character of the qualification must still be present.
+        assert.ok(holdEvidence.replace(/\s+/g, '').includes(qualifier.replace(/\s+/g, '')),
+          'Relocated Household qualification stays readable: ' + qualifier);
       }
       for (const amount of prepared.hold.match(/-?\$[\d,]+\.\d{2}/g) || []) {
         assert.ok(holdEvidence.includes(amount), 'Household Info preserves published hold/progress amount ' + amount);
@@ -1574,6 +1581,7 @@ const composite = (fg, bg) => {
       const sheet = document.querySelector('[data-budget-detail-sheet]');
       return {
         centre: ring ? (ring.querySelector('.blend-ring-v')?.textContent || '') : '',
+        centreName: (() => { const id = ring?.getAttribute('data-blend-cat'); const src = id && document.querySelector('[data-budget-category-open="' + CSS.escape(id) + '"]'); return (src?.querySelector('.budget-category-name')?.textContent || '').trim(); })(),
         word: word ? word.textContent : '',
         sr: sr ? sr.textContent : '',
         srReachable: !!(sr && getComputedStyle(sr).display !== 'none' && !sr.closest('[aria-hidden="true"]')),
@@ -1584,7 +1592,7 @@ const composite = (fg, bg) => {
         expanded: ring && ring.getAttribute('aria-expanded'),
       };
     });
-    if (marked.centre !== '$80.00 over' || marked.word !== 'Over plan' || marked.sr !== '$80.00 over' || !marked.srReachable || !marked.visible || marked.popup !== 'dialog'
+    if (!marked.centreName || marked.centre !== marked.centreName || marked.word !== 'Over plan' || marked.sr !== '$80.00 over' || !marked.srReachable || !marked.visible || marked.popup !== 'dialog'
       || marked.controls !== 'budget-detail-sheet' || marked.sheetLabel !== 'budget-detail-title') {
       errors.push(`over ring ${JSON.stringify(marked)}`);
     }
@@ -2015,11 +2023,10 @@ const composite = (fg, bg) => {
         const bento = document.querySelector('[data-budget-bento]');
         bento.removeAttribute('data-blend-ready');
         bento.querySelector('[data-blend-rings]')?.remove();
-        bento.querySelector('.blend-other')?.remove();
         mount.appendChild(document.createTextNode(''));
       }, html);
-      await otherPlan.locator('.blend-other-amt').waitFor();
-      return (await otherPlan.locator('.blend-other').innerText()).replace(/\s+/g, ' ').trim();
+      await otherPlan.locator('.blend-ring[data-blend-cat="other-spending"]').waitFor();
+      return (await otherPlan.locator('.blend-ring[data-blend-cat="other-spending"]').innerText()).replace(/\s+/g, ' ').trim();
     };
     const plainPlan = await readPlan('<span class="budget-cash-sr">Spent </span>$22.99<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span>$450.00');
     const estimatedPlan = await readPlan('<span class="budget-cash-sr">Spent </span>$22.99<span aria-hidden="true"> / </span><span class="budget-cash-sr"> of planned </span><span class="est"><span aria-hidden="true">≈</span><span class="budget-cash-sr">estimated </span></span>$450.00');
@@ -2406,14 +2413,23 @@ const composite = (fg, bg) => {
         const rows = [...document.querySelectorAll('[data-budget-browse="spending"] .budget-category-row')];
         const other = rows.filter(row => row.getAttribute('data-budget-category-open') === 'other-spending');
         const names = [...document.querySelectorAll('[data-blend-rings] .blend-ring-l')].map(el => (el.textContent || '').trim());
-        const printedNames = rows.filter(row => !other.includes(row)).map(row => row.querySelector('.budget-category-name')?.textContent.trim());
-        const shownNames = [...document.querySelectorAll('[data-blend-rings] .blend-ring-name')].map(el => el.textContent.trim());
+        const printedNames = rows.filter(row => !other.includes(row)).map(row => {
+          // The centre carries the published name, except the two
+          // personal rings whose VISUAL centre is exactly the
+          // approved short label (Systems Review 5482743628).
+          const id = row.getAttribute('data-budget-category-open');
+          if (id === 'dale-guilt-free') return 'Dale';
+          if (id === 'amanda-guilt-free') return 'Amanda';
+          return row.querySelector('.budget-category-name')?.textContent.trim();
+        });
+        const shownNames = [...document.querySelectorAll('[data-blend-rings] .blend-ring-v')].map(el => el.textContent.trim());
         const wells = [...document.querySelectorAll('[data-blend-rings] .blend-ring-g')].map(el => Math.round(el.getBoundingClientRect().width));
         const tops = [...document.querySelectorAll('[data-blend-rings] .blend-ring')].map(el => Math.round(el.getBoundingClientRect().top));
         const perRow = tops.filter(top => Math.abs(top - tops[0]) < 8).length;
         const more = document.querySelector('.blend-rings-more');
-        const otherRow = !!document.querySelector('.blend-other');
-        const foot = document.querySelector('.blend-other');
+        const otherRing = document.querySelector('.blend-ring[data-blend-cat="other-spending"]');
+        const otherNames = other.map(row => row.querySelector('.budget-category-name')?.textContent.trim());
+        const foot = otherRing;
         const footBox = foot?.getBoundingClientRect();
         const children = [...(foot?.children || [])];
         const boxes = children.map(el => el.getBoundingClientRect());
@@ -2421,11 +2437,11 @@ const composite = (fg, bg) => {
           && boxes[i].right <= footBox.right + 1 && el.scrollWidth <= el.clientWidth + 1);
         const otherOverlap = boxes.some((a, i) => boxes.slice(i + 1).some(b =>
           a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1));
-        return { printed: rows.length - other.length, names, printedNames, shownNames, wells, perRow, more: !!more, otherRow, otherFits, otherOverlap };
+        return { printed: rows.length - other.length, names, printedNames, shownNames, otherNames, wells, perRow, more: !!more, otherRow: !!otherRing, otherFits, otherOverlap };
       });
-      assert.deepEqual(rings.shownNames, rings.printedNames, 'Every published Household line is visible in its original order at ' + width);
-      assert.ok(rings.otherFits && !rings.otherOverlap, 'Other Spending name, qualifier and amount fit without overlap at ' + width);
-      if (rings.printed < 7 || rings.names.length !== rings.printed || rings.more || !rings.otherRow) {
+      assert.deepEqual(rings.shownNames, [...rings.printedNames, ...rings.otherNames], 'Every published Household line is visible in its original order at ' + width);
+      assert.ok(rings.otherFits && !rings.otherOverlap, 'Other Spending ring content fits without overlap at ' + width);
+      if (rings.printed < 7 || rings.names.length !== rings.printed + rings.otherNames.length || rings.more || !rings.otherRow) {
         errors.push(`household-all ${width} ${JSON.stringify(rings)}`);
       }
       if (width >= 1000 && rings.wells.some(size => size < 96)) {
