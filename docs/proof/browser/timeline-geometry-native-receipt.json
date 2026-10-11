@@ -7,8 +7,8 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "85c0fd3af1ca8f22b614188d33850121ad45d913",
-    "sourceTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
+    "sourceCommit": "e53cd84cf5a070b7273890282affa02263d482cb",
+    "sourceTree": "eed95f558345343a845f97ff392308f34f07f30c",
     "baseCommit": null,
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -24,14 +24,14 @@
         "bytes": 110894
       },
       "public/budget-gface.css": {
-        "gitBlob": "3fc4deaf6a1efae04b7e69431833b298ff00db85",
-        "sha256": "2a2b7b7ddc9a131368d6b2eac2b38a1a784d46b41db7e757fade71f7612dd8fd",
-        "bytes": 56070
+        "gitBlob": "37f1f47226e3de0c144325194af24054f0b8ffbc",
+        "sha256": "d8edc024b1a7ccf10234cdafabd2ec96c2d05f046e7010aedca6d17487965f48",
+        "bytes": 56306
       },
       "public/budget-river.js": {
-        "gitBlob": "56c94e18c264f412d0c960b43bea5160c4940268",
-        "sha256": "5d512a9671b0015a4e4ad069c5727cb446445091683d810f431248923cb8f973",
-        "bytes": 28477
+        "gitBlob": "fec2653206cc17cde0922a1fc56b33a926dffbc9",
+        "sha256": "1c63bc27ba89fbc2664078b8e1b2e8b493fc3456a5215eb7bc78b84dc0485b73",
+        "bytes": 30389
       },
       "public/fonts.css": {
         "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
@@ -39,9 +39,9 @@
         "bytes": 403
       },
       "public/forecast.js": {
-        "gitBlob": "e2ee77a74a8c81b09bc93118cb19a37760602a00",
-        "sha256": "4047243fde5af9f3a9f2ac18df1e0dedeb780d4157843b37e4dc585a9f4e187c",
-        "bytes": 1070838
+        "gitBlob": "67da7bb9697050b8d19722d3a473387df07a8d34",
+        "sha256": "079bb21070864a28a5bf49d5224417ea8700a7a840837213ec8605fbb28576b6",
+        "bytes": 1071248
       },
       "public/index.html": {
         "gitBlob": "ca13c1404c18780d26d8a8992394600f32b8ca15",
@@ -49,9 +49,9 @@
         "bytes": 12662
       },
       "public/plan.js": {
-        "gitBlob": "93996d0e4f09d93ab25c24c538f41b03c1c2a39c",
-        "sha256": "4f1905c3ed2d77bbb1760aa9e04b7747e80a9469fceef0db8363e46337628998",
-        "bytes": 513875
+        "gitBlob": "d01569acb584f0927f0d3641b2a845f0bc86a947",
+        "sha256": "82b14dcbf143b47be1cad9ed8cea354e273fc236191770977421152c07ecddb9",
+        "bytes": 519454
       },
       "public/styles.css": {
         "gitBlob": "c25d723d02cfc40c56e88b38f0e80d9624f68af7",
@@ -59,9 +59,9 @@
         "bytes": 143239
       },
       "test/browser-budget-river-port.js": {
-        "gitBlob": "af28ff3ae3132e739b0168d1192e4577d4f9013d",
-        "sha256": "597f925ff0cbea146c16abe138b20bee8a00cd284be14fef711684005cd342eb",
-        "bytes": 35777
+        "gitBlob": "557ab429f67d01c31eaa7c8aa6aa0153b6bd1127",
+        "sha256": "a5f8de2a315794b83ca457bce988ce489589541244053c56559e3c1e3789e28a",
+        "bytes": 46354
       },
       "test/fixtures/budget-surface-data.js": {
         "gitBlob": "bcc6c6f551fd9d9639214ee3644396dff3b5b3fc",
@@ -85,7 +85,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -109,7 +109,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -133,7 +133,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -162,7 +162,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -191,7 +191,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -218,7 +218,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -245,7 +245,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -269,7 +269,7 @@
         "beforeRelease": {
           "start": "2026-08-28",
           "period": "next-pay-period",
-          "range": "Aug 28 \u2013 Sep 10",
+          "range": "Aug 28 – Sep 10",
           "dragging": true,
           "sameElement": true,
           "sameLabels": true,
@@ -552,16 +552,90 @@
           "removedFromYielded": true
         }
       }
+    ],
+    "displacedLabelHitTargeting": [
+      {
+        "width": 390,
+        "theme": "dark",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 390,
+        "theme": "light",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 320,
+        "theme": "dark",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "input": "mouse",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true,
+        "hoverResolvedToOwnPeriod": true,
+        "neighbourSelectableAtOwnCentre": true,
+        "keyboard": {
+          "left": 1,
+          "right": 2
+        }
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "input": "touch",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true
+      },
+      {
+        "width": 320,
+        "theme": "light",
+        "input": "touch",
+        "displacementPx": 30,
+        "spacingPx": 44,
+        "tapKeptSelection": true
+      },
+      {
+        "width": 390,
+        "theme": "dark",
+        "reducedMotion": {
+          "displacementPx": 30,
+          "tapKeptSelection": true
+        }
+      }
     ]
   },
   "pageErrors": [],
-  "failures": [],
-  "remoteVerification": {
-    "method": "GitHub API GET /git/trees/a7e915d1da5d97d5becfa95234ef5e55b79f9e77?recursive=1; each bound file's gitBlob compared to the pushed head tree",
-    "pushedHead": "85c0fd3af1ca8f22b614188d33850121ad45d913",
-    "headTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
-    "filesChecked": 12,
-    "allBlobsMatch": true,
-    "verifiedAt": "2026-10-10T20:50:45Z"
-  }
+  "failures": []
 }

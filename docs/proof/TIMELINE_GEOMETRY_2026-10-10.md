@@ -173,6 +173,63 @@ was never changed to match the prose.
    The production/harness diff against the new main remains confined to
    this PR's original files.
 
+## Round 4 (Systems Review 5481562226)
+
+1. **Displaced selected label mis-targeted taps and hover.** The
+   integrated head `165008c189` (the round-3 head integrated onto main
+   `d57b95f2`) received PASS `5481490438`; Codex
+   discussion_r4239927349 (P2, on the `place()` step transform) was then
+   reproduced by independent release verification — at 320/390px in both
+   themes, tapping or hovering the selected minimum's stepped-aside
+   label targeted the adjacent period — and review `5481562226` BLOCKED
+   the release on it, superseding the PASS. Root cause: discrete pointer
+   resolution mapped the raw coordinate through `fOfScreen`, but the
+   round-2 legibility step moves the selected bottom-edge label ~30px
+   sideways while periods sit 44px apart, so the label's visible centre
+   rounds to the neighbour. Fix, in `public/budget-river.js`, confined
+   to hit resolution: `place()` records the stepped label's visible box
+   (`_stepBox`), and a new `hitIndex()` serves the discrete resolutions
+   (tap in `end()`, pan and non-pan; hover). The raw mapping resolves to
+   the nearest data centre; while a label is stepped, its period's
+   marker is the label's visible centre, and the pointer resolves to
+   the nearer marker (ties keep the visible label). The neighbouring
+   period's own centre therefore still selects that period — measured
+   at 390px: stepped box [82, 118], visible centre 100 (tap/hover
+   resolve to the minimum), neighbour centre 114 (resolves to the
+   neighbour) — so the round-3 yield interaction below is preserved
+   with its harness unchanged. The review's alternative (avoid moving
+   the label into another period's hit region) is geometrically
+   unavailable here: at 44px spacing with a ~36px label, any step that
+   clears the 20px orb crosses a neighbour's centre, and capping the
+   step leaves the label under the orb — the round-2 legibility defect.
+   Placement, band geometry, domain, drag/scrub/fling, wheel and
+   keyboard behaviour are unchanged; the continuous drag mappings are
+   deliberately not routed through `hitIndex()`.
+2. **Regression** (`test/browser-budget-river-port.js`, recorded in the
+   native receipt as `displacedLabelHitTargeting`). Same invented
+   publication as the round-3 regression (index 1 = −$420 minimum,
+   index 2 = $150 neighbour). From the label's RENDERED box: the
+   displacement is measured (30px against 44px spacing in every case)
+   and asserted to exceed half the spacing — the mis-target
+   precondition; a mouse tap on the displaced centre keeps the minimum
+   selected and publishes no other period; hover over it resolves to
+   the minimum with the hover mark on the displaced label only; the
+   neighbour remains selectable at its own centre; keyboard arrows step
+   one period each way. Touch taps at 390 dark / 320 light and a
+   reduced-motion case at 390 dark complete 7 cases, at 390/320 in both
+   themes where applicable. On the pre-fix head tree the harness fails
+   the first case with the review's exact defect: "tapping the
+   displaced selected label must keep its own period selected; got
+   index 2". The round-3 `yieldedNeighbourReselect` regression passes
+   unchanged (5 cases), as do the native harness's 8 live-drag cases
+   and 6 prototype comparisons and the geometry proof's 24 cases; both
+   receipts were re-issued against this head (see `remoteVerification`
+   in each).
+3. **Integration.** This head builds directly on the integrated head
+   `165008c189` (base main `d57b95f2`); no new main integration was
+   needed, and the diff against that base remains confined to this PR's
+   files plus the two production/harness files above.
+
 ## Before state
 
 `before-*.png` and `timeline-geometry-before-report.json` were captured

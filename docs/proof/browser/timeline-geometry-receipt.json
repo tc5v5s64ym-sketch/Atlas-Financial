@@ -6,8 +6,8 @@
     "chromium": "152.0.7977.82"
   },
   "sourceBinding": {
-    "sourceCommit": "85c0fd3af1ca8f22b614188d33850121ad45d913",
-    "sourceTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
+    "sourceCommit": "e53cd84cf5a070b7273890282affa02263d482cb",
+    "sourceTree": "eed95f558345343a845f97ff392308f34f07f30c",
     "baseCommit": null,
     "cleanAtStart": true,
     "method": "exact checkout bytes equal Git blob bytes; no hash normalization",
@@ -18,14 +18,14 @@
         "bytes": 69546
       },
       "public/budget-gface.css": {
-        "gitBlob": "3fc4deaf6a1efae04b7e69431833b298ff00db85",
-        "sha256": "2a2b7b7ddc9a131368d6b2eac2b38a1a784d46b41db7e757fade71f7612dd8fd",
-        "bytes": 56070
+        "gitBlob": "37f1f47226e3de0c144325194af24054f0b8ffbc",
+        "sha256": "d8edc024b1a7ccf10234cdafabd2ec96c2d05f046e7010aedca6d17487965f48",
+        "bytes": 56306
       },
       "public/budget-river.js": {
-        "gitBlob": "56c94e18c264f412d0c960b43bea5160c4940268",
-        "sha256": "5d512a9671b0015a4e4ad069c5727cb446445091683d810f431248923cb8f973",
-        "bytes": 28477
+        "gitBlob": "fec2653206cc17cde0922a1fc56b33a926dffbc9",
+        "sha256": "1c63bc27ba89fbc2664078b8e1b2e8b493fc3456a5215eb7bc78b84dc0485b73",
+        "bytes": 30389
       },
       "public/fonts.css": {
         "gitBlob": "9a66cfaee2545afbb8169f7ef7009b4f0da6211a",
@@ -196,7 +196,7 @@
         "right": 191.7265625,
         "top": 79,
         "bottom": 95,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -231,7 +231,7 @@
         "right": 191.7265625,
         "top": 79,
         "bottom": 95,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -266,7 +266,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -301,7 +301,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -336,7 +336,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -371,7 +371,7 @@
         "right": 118.1328125,
         "top": 70,
         "bottom": 86,
-        "text": "\u2212$420"
+        "text": "−$420"
       },
       "labelOrbDisjoint": true,
       "neighborOverlap": false,
@@ -396,14 +396,10 @@
       "dragging": true
     },
     "keyboard": {
-      "beforeKeys": 3,
-      "index": 5,
+      "beforeKeys": 4,
+      "index": 6,
       "aria": "0",
       "changes": [
-        {
-          "i": 4,
-          "how": "commit"
-        },
         {
           "i": 5,
           "how": "commit"
@@ -413,7 +409,11 @@
           "how": "commit"
         },
         {
-          "i": 5,
+          "i": 7,
+          "how": "commit"
+        },
+        {
+          "i": 6,
           "how": "commit"
         }
       ]
@@ -423,13 +423,13 @@
         "H": 123,
         "top": 38,
         "bot": 72,
-        "index": 5
+        "index": 6
       },
       "after": {
         "H": 123,
         "top": 38,
         "bot": 72,
-        "index": 5
+        "index": 6
       }
     },
     "reducedMotion": {
@@ -496,52 +496,44 @@
     }
   },
   "screenshotSha256": {
-    "after-positive-1280-dark.png": "50150ecff02b09046ff5055e41bdbc16729263e11fdde18bca3198e9af7d89f2",
-    "after-positive-1280-light.png": "2810b5267fe45bc23ac9e13488e5f70d442f68600fdbad2ec5eb6ab8dcd5ca80",
-    "after-positive-390-dark.png": "7da82338a8cb87edbf445d6b7e6b23253104bb1349e433bd331ffeddba05dbbc",
-    "after-positive-390-light.png": "f0f1116d5f19d9874181fe9ec066797543dd0343486e86276af6e4ddcfe78b25",
-    "after-positive-320-dark.png": "b4cf03ab405b2e2201f3a5d3511b54483b6bbbbca17719a459b971d650d94149",
-    "after-positive-320-light.png": "5cd950041a8385ada30e1e754ce9c1a7151cde100d473e36b3988b55dcb2ec09",
-    "after-negative-1280-dark.png": "1f3c9ccf7ddf98bf4c4326c55251048e4b0bd0eea03faeb51f1b5bbcdd06cd0a",
-    "after-negative-1280-light.png": "2babbc2343a90207000c9f110c0492bd79ccd2020da0cc5aff7988a6fc41d26b",
-    "after-negative-390-dark.png": "5b5a341a852e496be84798f8c2a92e849601a1a139464bfc37be2f526e34c0f8",
-    "after-negative-390-light.png": "0e2caaac3131b32ca436e8a8660e038a5466764f17dfd119d94416b0cae48d24",
-    "after-negative-320-dark.png": "ca83779fdd2d1056718866ee5d0a6b8339109a67cde54928e6a6a39d4610546f",
-    "after-negative-320-light.png": "bcfe92727f6b4bee0f89ebbcbb95ed7381fa3b3e93b802d6987d984af17689c4",
-    "after-gap-1280-dark.png": "28f2221f1e7052fa3d05a45d21661f5063bc0a2f71a99326b78b1a98049b17e8",
-    "after-gap-1280-light.png": "bf874cf83986936bf91a28f0373a4359be687bae4e44617df6e436cc6d18630b",
-    "after-gap-390-dark.png": "c497732eed305f71f45266f3a571c6c7e426e3a29d5ba4fa8fbccef42c6fc493",
-    "after-gap-390-light.png": "cf0b0f96f7a4fb5d760251fe9a79c14bfb67e9d9992da9f8466e98a53a4bf6dc",
-    "after-gap-320-dark.png": "d0a863a9ab05b125eb8f562e59f54a6e377da8f772084de125aa24941b23ef05",
-    "after-gap-320-light.png": "a0719271a05c71724857ef46e5e018a545786c3a159cb6ef24c7f7438ef7a7b2",
-    "after-pan-1280-dark.png": "7214e613dff1317b2aa0738431e2bbb5c2d0390fe58afb92840fd8aeefeb767a",
-    "after-pan-1280-light.png": "47d07cb8e8042994278a662891ba6bffcc18124e2a4600b872de920180c9431d",
-    "after-pan-390-dark.png": "ffcadc93e14c270bbe0f96cc74ce573ae30de78e7f27d5f430b768d5f2fbe936",
-    "after-pan-390-light.png": "430f31d04fac7496b866e3ac2a1d86fcae684e86f2b4745785716c5ad06c77bd",
-    "after-pan-320-dark.png": "a978643573ad686bc5b29ae74b1b33db94763873de6476ac282f9b66d8b00bec",
-    "after-pan-320-light.png": "ab4fafb320663dce2ced20e51de8794d0e94ee8b64d47c31c8fc28449d4ea29b",
-    "after-selected-max-1280-dark.png": "d906e6d3fff70e47b880f60db04dc9fac676f28602827f073e33999f47c25027",
-    "after-selected-max-1280-light.png": "a031b56444999bce52c7b0ba5cf2de2b5fe13692e21be3aee2a2eaf9a14efd62",
-    "after-selected-max-390-dark.png": "c6d715289e900951686e5b6e5a6f7a7bc135056e854beb9d1be1d3e249c93373",
-    "after-selected-min-1280-dark.png": "a2eae7028fe9ba8da18aa03cc5f956fa1dc595545c2c334b6be9d0bd9394dc8d",
-    "after-selected-min-1280-light.png": "e3c191eda5055c27b173907038837d7ff797ac2632a6a80c0a243f71c40ddf5d",
-    "after-selected-min-390-dark.png": "b2dfa22e081e0f4b608f9aed4d125651e06108ccacaf2c51dff090d98e9b2bab",
-    "after-selected-min-390-light.png": "fb696d1cd2896d0fe3093b71825e7537b61357ba5dbd75c818030a755162180a",
-    "after-selected-min-320-dark.png": "04d3cd00f00f3f50664060f622a3534455b7fed5096b059ef310f308be7c8e1d",
-    "after-selected-min-320-light.png": "3744b0c974772435d51b8171ba385d9d0c6ad657d988415b6e4131c884799d80",
-    "after-held-drag-1280-dark.png": "28851746cf70b21f2073f5d250315d3f233542dbacc92a07e13bb07d92d1a387",
-    "after-held-drag-390-dark.png": "ebf5e40d3821da9df9720997cbb6a76f1907fd2b3707363e83a4ce4979a50bff",
-    "after-breakpoint-700-dark.png": "c3e9b3c0c3d80ad22103ba83a9db20b4bb19d58836f2a565cc97987497106f8e",
-    "after-breakpoint-narrow800-dark.png": "fc993f40b8dfd00bd56143d6886d3837f3c20a0db3038deedd6545566e4d095e",
+    "after-positive-1280-dark.png": "30ab3b35cfefd92635982ea9ab2d4f560373b1fc3c06aa263c88762fc3aa4f1c",
+    "after-positive-1280-light.png": "2b7fb19e9ab06caa8ce6d49d4de90339bf8ba9ca03aa68495a10de5994d070c8",
+    "after-positive-390-dark.png": "12cc48f6ee4f5b7d1b5c5f468db1c083679082b6f4bf0e19d6e275b99490f7c9",
+    "after-positive-390-light.png": "98b07d1a941eccdc811e4c06212d391fa914ca572ba1716a9b973bd0abe25fe2",
+    "after-positive-320-dark.png": "8cfd3e298c66de497ff60eb71c26cfd66496b60c18e8fbe2a81fbe51c0b0364d",
+    "after-positive-320-light.png": "119711043ece3301ea92143e721ee2474fc6b3d9ebdbb1bbf718aabbdb65298d",
+    "after-negative-1280-dark.png": "6a6e73a3eab36bb5b4f5808616ae16fcf6e34eb458750321536a7be315b8e1ce",
+    "after-negative-1280-light.png": "7498099e9cf08c2d1333bf7dd57d73849cf7b315af89c1cfd87af9cdb080cfeb",
+    "after-negative-390-dark.png": "a87becaae6d33632ff0389f720bc25d343f4b16a2898f48a546044ab91088c1a",
+    "after-negative-390-light.png": "fcb92e53f86cde7a0d19284a5a3fa4d5cf2a18b06db88b51b9db109673589e3d",
+    "after-negative-320-dark.png": "7d9436a6c6e28a8f91ba6d5792248b640fee3ec6a11687cf09053aafb6b99ab4",
+    "after-negative-320-light.png": "67b7186215ea78157fa76ef59b97f5ca1a7ed8dcc41da605323ffb64693d369f",
+    "after-gap-1280-dark.png": "21e9cc2c0534d70b0cbd0b4ad7732031d42ba131b5d961eb2551abd299c55f35",
+    "after-gap-1280-light.png": "c611e5d0bb9de50cc3e77d53182aaded9c385cd35edde3b3476a45449168e024",
+    "after-gap-390-dark.png": "3c6966e0958f17fe0fdcf02b7a8bcd256e186531449619ccc62a098d277239aa",
+    "after-gap-390-light.png": "eb3630da971f8d586c51cbd46ebfe91a8a46f9076a3a0d6eeaf7157678802ce7",
+    "after-gap-320-dark.png": "cb79bb2dd615fadec9a1008f99c0e21aecb42d57f6f0b5a48d6f487e57c8a760",
+    "after-gap-320-light.png": "3b3c51bbb10e3c36313f3deef44b8f1fa9f307fb869e4384528ea7651d451c23",
+    "after-pan-1280-dark.png": "4719ecb0bb86389f2e7bc3ee9ea32677b60f1b986505580d4b393620a5309c7f",
+    "after-pan-1280-light.png": "027971b85282ee9df7e5ecfa5cf747f9e92ea3f2af9e64c04cdd3b1ecb517a4d",
+    "after-pan-390-dark.png": "1a13e450d6ab4ad08248be1b2495a647d617895644f2273722c0ad6e02f68346",
+    "after-pan-390-light.png": "28e5fb8fb6adba5073566973a8bdd006c69ed3175cdf9ebdc78d9c39d22b498a",
+    "after-pan-320-dark.png": "aa43cdb6af79ef4f8510257e08744c5eaaf42ae7638f65ebee7fdd125973a657",
+    "after-pan-320-light.png": "25840e7ace45a91a8c382233cc858a43dd97a4dffd0560fe4b308fbb18510fe7",
+    "after-selected-max-1280-dark.png": "0f81ab9dd58a003069577a4b6a9c5f4037fc12572d3e95fd9b9d3738ef115e1c",
+    "after-selected-max-1280-light.png": "542433e3ce5400510a283ba0ceec5fdeb5f4c112be0ea44bcb97725daa0ac1a6",
+    "after-selected-max-390-dark.png": "4ee1be936993cdeaf17faac472df9a5d4cc72f3ce78d81869c054d0b913cf1d0",
+    "after-selected-min-1280-dark.png": "9bba275e780266f5b858247b048ac9603a9746ad91d183c2845a7b925c96fe80",
+    "after-selected-min-1280-light.png": "4bb934fb92060968da77a4de2e8a2f5c008bb2934b6b54c1fc64943c6557761c",
+    "after-selected-min-390-dark.png": "7184d3fac7d9e4399cb3d340809c1cbf4efc410fff3df2994fa04616db501f55",
+    "after-selected-min-390-light.png": "eb4ade4034af6299048833c63ddaac71aca40c372b0ae416ee50ddd4ab04f96d",
+    "after-selected-min-320-dark.png": "0896c5a2f8e461cafeb2ec341e5d0cbce028a17b5a4fa5443460a16c4b88f36d",
+    "after-selected-min-320-light.png": "d4a7b1dbe329915df63d8cfec27ac8a8f27f2250f50243c1f0294f297c016480",
+    "after-held-drag-1280-dark.png": "1a3d70ecb994d98255feb7a93b0506ef7bb3b674a350444fb107e63988a0305b",
+    "after-held-drag-390-dark.png": "0e93df95de5ea3ab5c30a76b1a30665693cd4eb85979a63c2d6a2d992e6103f0",
+    "after-breakpoint-700-dark.png": "94a62ea455db3c4a67aefb090fba9683288cd72edcbf0599a3a9636f8713b997",
+    "after-breakpoint-narrow800-dark.png": "43cf1b21f88bfbf17fa41095164bfaefd4a77518d5e751a52c79503ed6a58cce",
     "after-reduced-motion-390-dark.png": "113261769f7648aee280e515e3902c7bcfdbb5355abc2263ed1bcf96faa7f521"
   },
-  "failures": [],
-  "remoteVerification": {
-    "method": "GitHub API GET /git/trees/a7e915d1da5d97d5becfa95234ef5e55b79f9e77?recursive=1; each bound file's gitBlob compared to the pushed head tree",
-    "pushedHead": "85c0fd3af1ca8f22b614188d33850121ad45d913",
-    "headTree": "a7e915d1da5d97d5becfa95234ef5e55b79f9e77",
-    "filesChecked": 7,
-    "allBlobsMatch": true,
-    "verifiedAt": "2026-10-10T20:50:45Z"
-  }
+  "failures": []
 }
