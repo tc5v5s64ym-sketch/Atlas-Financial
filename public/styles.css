@@ -388,20 +388,34 @@ svg { display:block; width:100%; height:auto; overflow:visible; }
 
 /* ------------------------------------------------------- boot treatment
    Shown only while data is genuinely loading; indeterminate by design —
-   a pulse, never a percentage or a progress claim. Two layers, one visual
-   language. .boot-static is index.html markup for the pre-script interval
-   and is removed by App.boot the moment scripts run. .boot-treatment is
-   built by app.js inside the boot notice on every load attempt and leaves
-   with it: removed on success, wiped when the crit text replaces the
-   loading text. Both layers are purely decorative — aria-hidden in the
-   markup, no focusable content, pointer-events none — and the boot notice
-   remains the single role="status" announcer. The pulse bars reuse the
-   brand mark's three colours; surfaces and text use the theme tokens. */
-.boot-static { display:flex; align-items:center; gap:12px; margin:16px 0 0;
-  padding:12px 14px; background:var(--surface-1); border:1px solid var(--border);
-  border-radius:var(--radius-md); box-shadow:var(--shadow-1);
-  color:var(--text-secondary); font-size:.9rem; pointer-events:none; }
-.boot-static-mark { width:30px; height:30px; flex:none; }
+   never a percentage or a progress claim. The whole page IS the loading
+   screen: two layers, one composition — a large brand mark over the
+   ATLAS wordmark over the status line, on --plane with a restrained
+   radial brand glow (CSS only, no assets). .boot-static is index.html
+   markup for the pre-script interval and is removed by App.boot the
+   moment scripts run. The live layer is the boot notice itself: app.js
+   stamps it [data-boot-notice] at creation (an attribute, because
+   load() rewrites its className on every attempt) and builds the
+   .boot-treatment mark inside it on every attempt; the treatment
+   leaves with the notice — removed on success, wiped when the crit
+   text replaces the loading text. .note-box is shared with in-content
+   plan.js boxes, so every overlay rule below is scoped to .boot-static
+   or [data-boot-notice] and can never reach them. Both layers are
+   purely decorative — aria-hidden, no focusable content in the
+   treatment, pointer-events none on the static layer — and the boot
+   notice remains the single role="status" announcer. While the notice
+   is up, app.js also inerts the shell behind it. Motion: the mark's
+   four blocks gently separate, bump against each other, settle, and
+   hold — transform-only, one phased keyframe loop driven by per-block
+   offset variables, staggered like the pulse it replaces. It runs
+   only in the loading state; the crit surface is fully static, and
+   reduced motion is fully static in both layers. */
+.boot-static { position:fixed; inset:0; z-index:100; display:flex;
+  flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; padding:24px; text-align:center; pointer-events:none;
+  color:var(--text-secondary); font-size:.95rem;
+  background:radial-gradient(340px 340px at 50% 42%, rgba(86,80,224,.16), rgba(86,80,224,0) 70%), var(--plane); }
+.boot-static-mark { width:96px; height:96px; flex:none; }
 .boot-mark-bg { fill:#0b0c10; }
 .boot-mark-a { fill:#0c9a6a; }
 .boot-mark-b { fill:#5650e0; }
@@ -410,20 +424,40 @@ svg { display:block; width:100%; height:auto; overflow:visible; }
   :root:where(:not([data-theme="light"])) .boot-mark-bg { fill:#f4f5f7; }
 }
 :root[data-theme="dark"] .boot-mark-bg { fill:#f4f5f7; }
+.boot-wordmark { font-size:1.05rem; font-weight:700; letter-spacing:.42em;
+  padding-left:.42em; color:var(--text-primary); }
 .boot-static-text { font-weight:600; color:var(--text-primary); letter-spacing:-.01em; }
-.note-box.is-loading { display:flex; flex-wrap:wrap; align-items:center; column-gap:10px; }
-.boot-treatment { order:-1; pointer-events:none; }
-.boot-pulse { display:inline-flex; align-items:flex-end; gap:3px; height:14px; flex:none; }
-.boot-pulse > span { width:5px; height:14px; border-radius:2px; background:#0c9a6a;
-  transform-origin:bottom; animation:boot-pulse 1.4s ease-in-out infinite; }
-.boot-pulse > span:nth-child(2) { background:#5650e0; animation-delay:.18s; }
-.boot-pulse > span:nth-child(3) { background:#d23f8a; animation-delay:.36s; }
-@keyframes boot-pulse { 0%,100% { transform:scaleY(.4); opacity:.45; }
-                        50% { transform:scaleY(1); opacity:1; } }
-@media (prefers-reduced-motion: reduce) {
-  .boot-pulse > span { animation:none; transform:none; opacity:1; }
+[data-boot-notice] { position:fixed; inset:0; z-index:100; margin:0;
+  border-left:none; padding:24px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:14px; text-align:center;
+  font-size:.95rem; color:var(--text-secondary);
+  background:radial-gradient(340px 340px at 50% 42%, rgba(86,80,224,.16), rgba(86,80,224,0) 70%), var(--plane); }
+.boot-treatment { order:-1; pointer-events:none; display:flex;
+  flex-direction:column; align-items:center; gap:14px; }
+.boot-treatment-mark { width:96px; height:96px; flex:none; }
+.boot-blocks-mark rect.boot-mark-a { --sx:-.8px; --sy:-.55px; --nx:.42px; --ny:.3px; --ad:0s; }
+.boot-blocks-mark rect:nth-of-type(3) { --sx:.8px; --sy:-.65px; --nx:-.42px; --ny:.34px; --ad:.12s; }
+.boot-blocks-mark rect:nth-of-type(4) { --sx:-.8px; --sy:.65px; --nx:.42px; --ny:-.34px; --ad:.24s; }
+.boot-blocks-mark rect.boot-mark-c { --sx:.8px; --sy:.55px; --nx:-.42px; --ny:-.3px; --ad:.36s; }
+.boot-static .boot-blocks-mark rect:not(.boot-mark-bg),
+[data-boot-notice].is-loading .boot-blocks-mark rect:not(.boot-mark-bg) {
+  animation:boot-blocks 3.6s ease-in-out var(--ad, 0s) infinite; }
+@keyframes boot-blocks {
+  0% { transform:translate(0, 0); }
+  20% { transform:translate(var(--sx, 0), var(--sy, 0)); }
+  27% { transform:translate(var(--nx, 0), var(--ny, 0)); }
+  35% { transform:translate(calc(var(--sx, 0) * .55), calc(var(--sy, 0) * .55)); }
+  48%, 100% { transform:translate(0, 0); }
 }
-@media (max-width:480px) { .boot-static { padding:10px 12px; gap:10px; } }
+[data-boot-notice].crit, [data-boot-notice].crit * { animation:none; }
+@media (prefers-reduced-motion: reduce) {
+  .boot-static .boot-blocks-mark rect:not(.boot-mark-bg),
+  [data-boot-notice].is-loading .boot-blocks-mark rect:not(.boot-mark-bg) { animation:none; transform:none; }
+}
+@media (max-width:480px) {
+  .boot-static, [data-boot-notice] { padding:20px 16px; }
+  .boot-static-mark, .boot-treatment-mark { width:76px; height:76px; }
+}
 
 /* ---------------------------------------------------------------- modeller */
 .model { display:grid; grid-template-columns:1fr 1fr; gap:24px; }

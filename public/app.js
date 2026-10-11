@@ -374,7 +374,48 @@ const App = (() => {
     const notice = document.createElement('div');
     notice.className = 'note-box';
     notice.setAttribute('role', 'status');
+    // The stylesheet's hook for the full-screen boot overlay. An
+    // attribute, not a class: load() rewrites className on every
+    // attempt, and .note-box is shared with in-content plan.js boxes
+    // that must never become overlays.
+    notice.setAttribute('data-boot-notice', '');
     if (wrap) wrap.prepend(notice);
+    // While the boot overlay owns the page, the shell behind it is
+    // inert and aria-hidden, so keyboard and assistive interaction
+    // cannot reach the covered controls; the notice itself — Cancel
+    // while loading, Retry on the crit surface — is never in the list
+    // and stays operable. Each element's prior inert / aria-hidden
+    // state is captured here and restored exactly by restoreShell(),
+    // which runs on the successful resolution (the notice's only
+    // removal path). Failure and cancel keep the overlay, and with it
+    // the inert shell, until a retry succeeds or the page navigates
+    // away (the 401 path). Applied once here; load() never re-applies.
+    const shellState = [];
+    let restoreShell = () => {};
+    {
+      const shell = [];
+      const head = document.querySelector('.site-head');
+      if (head) shell.push(head);
+      if (wrap) for (const el of wrap.children) if (el !== notice) shell.push(el);
+      const priorFocus = document.activeElement;
+      for (const el of shell) {
+        shellState.push({ el, inert: !!el.inert, ariaHidden: el.getAttribute('aria-hidden') });
+        el.inert = true;
+        el.setAttribute('aria-hidden', 'true');
+      }
+      restoreShell = () => {
+        for (const s of shellState) {
+          s.el.inert = s.inert;
+          if (s.ariaHidden === null) s.el.removeAttribute('aria-hidden');
+          else s.el.setAttribute('aria-hidden', s.ariaHidden);
+        }
+        shellState.length = 0;
+        if (priorFocus && priorFocus !== document.body && priorFocus.isConnected
+          && typeof priorFocus.focus === 'function') {
+          try { priorFocus.focus({ preventScroll: true }); } catch { /* focus target gone */ }
+        }
+      };
+    }
     let loading = false;
     function load() {
       if (loading) return;
@@ -389,19 +430,31 @@ const App = (() => {
       cancel.textContent = 'Cancel';
       cancel.addEventListener('click', () => { cancelled = true; controller.abort(); });
       notice.append(cancel);
-      // Branded boot treatment: a text-free CSS pulse (styles.css
-      // .boot-treatment), purely decorative — aria-hidden, no text of its
-      // own, pointer-events disabled — so this notice stays the single
-      // role="status" announcer and the text contract above is untouched.
-      // It is rebuilt here on every attempt because the textContent reset
-      // above wipes the notice's children; the failure path wipes it again
-      // when it prints the crit text, and success removes it with the
-      // notice. It therefore shows only while a load is genuinely pending.
+      // Branded boot treatment: the brand mark — the same four-block
+      // SVG as index.html's static layer, filled by the shared
+      // .boot-mark-* classes in styles.css and animated there — over
+      // the ATLAS wordmark. Purely decorative: the whole span is
+      // aria-hidden and pointer-events disabled, so this notice stays
+      // the single role="status" announcer and the text contract above
+      // is untouched. It is rebuilt here on every attempt because the
+      // textContent reset above wipes the notice's children; the
+      // failure path wipes it again when it prints the crit text, and
+      // success removes it with the notice. It therefore shows only
+      // while a load is genuinely pending. The markup is one innerHTML
+      // string because SVG elements cannot be built with createElement
+      // in an HTML document; the string mirrors the static layer's
+      // markup in index.html.
       const treatment = document.createElement('span');
-      treatment.className = 'boot-treatment boot-pulse';
+      treatment.className = 'boot-treatment';
       treatment.setAttribute('aria-hidden', 'true');
       treatment.setAttribute('data-boot-treatment', '');
-      for (let i = 0; i < 3; i++) treatment.append(document.createElement('span'));
+      treatment.innerHTML = '<svg class="boot-blocks-mark boot-treatment-mark" viewBox="0 0 32 32" aria-hidden="true">'
+        + '<rect width="32" height="32" rx="10" class="boot-mark-bg"/>'
+        + '<rect x="7" y="7" width="8" height="11" rx="2.6" class="boot-mark-a"/>'
+        + '<rect x="17" y="7" width="8" height="6" rx="2.6" class="boot-mark-b"/>'
+        + '<rect x="7" y="20" width="8" height="5" rx="2.5" class="boot-mark-b"/>'
+        + '<rect x="17" y="15" width="8" height="10" rx="2.6" class="boot-mark-c"/></svg>'
+        + '<span class="boot-wordmark">ATLAS</span>';
       notice.append(treatment);
       const wants = [fetch('/data.json', { credentials: 'same-origin', signal: controller.signal })
         .then(r => {
@@ -428,6 +481,7 @@ const App = (() => {
         }
         for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
         rerender();
+        restoreShell();
         notice.remove();
       }).catch(err => {
         if (err.message === 'auth') return;

@@ -31,7 +31,7 @@ function browser(initial){
 (async()=>{
  const pending=browser('pending');eq(pending.context.app.data,null,'pending refresh publishes no data');eq(pending.counts(),{rendered:0,wired:0},'pending refresh runs no financial hooks');
  const notice=pending.wrap.children[0];assert.ok(notice.textContent.startsWith('Loading current data...'));checks++;eq(notice.children[0].textContent,'Cancel','loading offers cancellation');
- assert.ok(treatmentOf(notice),'boot treatment present during pending load');checks++;eq(treatmentOf(notice).children.length,3,'boot treatment is the three-bar pulse');
+ assert.ok(treatmentOf(notice),'boot treatment present during pending load');checks++;eq((treatmentOf(notice).innerHTML.match(/<rect/g)||[]).length,5,'boot treatment is the four-block brand mark (tile + four blocks)');
  const deadline=[...pending.timers.values()].find(timer=>timer.ms===180000);assert.ok(deadline);checks++;
  pending.advance(118000);await flush();eq(pending.context.app.data,null,'previously observed118second workload remains pending');eq(pending.counts(),{rendered:0,wired:0},'long pending load makes no financial claim');
  pending.advance(62000);await flush();await flush();
