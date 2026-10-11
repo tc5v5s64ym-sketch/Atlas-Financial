@@ -58,6 +58,7 @@ const suites = [
   ['daily savings incumbent financial probes', 'probe-savings-daily-allocation-incumbent.js'],
   ['active daily Budget Savings consumer contracts', 'test-savings-daily-consumer.js'],
   ['grouped savings rows expose published member rows on both surfaces', 'test-savings-group-members.js'],
+  ['Travel Visa annual fee excluded from Savings and shown under Bills', 'test-travel-visa-annual-fee.js'],
   ['v2 observed savings semantic date and independent Budget stock', 'test-provider-v2-savings-stock.js'],
   ['v2 semantic credit dates, qualified live stock and active Credit renderer', 'test-provider-v2-credit-date.js'],
   ['native utility settlement units and independent holds', 'test-utility-settlement-currency.js'],

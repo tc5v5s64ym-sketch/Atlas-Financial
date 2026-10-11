@@ -537,6 +537,8 @@
 .budget-bill-group { margin-top:24px; }
 .budget-bill-group h3 { font-size:13px; margin:0 0 6px; font-weight:650; }
 .budget-bill-group > p { margin:0 0 10px; font-size:12px; line-height:1.5; color:var(--text-secondary); }
+.budget-annual-bill-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:12px 4px; min-width:0; }
+.budget-savings-bill-note { margin:10px 0 0; font-size:12px; line-height:1.5; color:var(--text-secondary); }
 .budget-bill-row { display:grid; grid-template-columns:44px minmax(0,1fr) auto; align-items:center; gap:10px; padding:12px 4px; min-width:0; width:100%; text-align:left; background:none; color:var(--text-primary); font:inherit; border:0; cursor:pointer; }
 .budget-bill-date { display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:10px; padding:6px 0; background:var(--surface-2); }
 .budget-bill-date small { color:var(--text-secondary); font-size:9px; font-weight:650; text-transform:uppercase; }
