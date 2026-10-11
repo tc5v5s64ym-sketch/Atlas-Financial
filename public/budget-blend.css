@@ -149,12 +149,15 @@ body:has([data-budget-bento]) .sitenav {
 
 .blend-theme svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 :root[data-theme="dark"] .blend-theme .i-moon,
-:root:not([data-theme="light"]) .i-moon { display: none; }
+:root:not([data-theme="light"]) .blend-theme .i-moon { display: none; }
 :root[data-theme="light"] .blend-theme .i-sun,
 :root:not([data-theme]) .blend-theme .i-sun { display: none; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .blend-theme .i-moon { display: none; }
   :root:not([data-theme]) .blend-theme .i-sun { display: block; }
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .blend-theme .i-moon { display: block; }
 }
 
 .budget-bento {
