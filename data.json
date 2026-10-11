@@ -1012,11 +1012,11 @@
                 "label": "San Diego",
                 "amount": 3000,
                 "when": "Jan 2027",
-                "tripWindow": "Jan 8–9, 2027",
+                "tripWindow": "Jan 9–10, 2027",
                 "budgetCategory": "travel",
                 "confidence": "confirmed",
                 "sinkingFund": true,
-                "note": "Owner 2026-09-23: San Diego, California trip / tournament. Trip dates January 8–9, 2027. Owner-confirmed planning amount $3,000. Supersedes the retired Indio tournament (the prior January range and its January 15 planning row). Named planned commitment, separate from normal household spending. Trip dates are not a payment due date. Forecast admits one cash-application date per commitment so Month and Seaspan Pay Period Road Ahead can count this amount once. Incumbent rule: a clear month with no separate payment day is the 15th of that month. January 2027 is that clear month, so the cash date is 2027-01-15. The trip window is not parsed into a day, and January 8, January 9, and a midpoint are not cash dates. Not a second $3,000."
+                "note": "Owner 2026-10-10 17:17 Pacific, message Sentinel_8310f386bfa881918efa63cda8e1beb9: confirmed San Diego, California trip January 9–10, 2027, superseding earlier trip-window values. Owner 2026-10-11, message 01a12858-2163-7b32-ace3-3f249bf6cb93: flights on points; hotel checkout/payment January 10, 2027. Owner 2026-09-23 confirmed the $3,000 planning envelope and replaced the retired Indio tournament. Named planned commitment, separate from normal household spending. The hotel amount and remaining all-in trip costs/payment deadlines remain unconfirmed. The hotel checkout/payment date does not establish an all-in payment deadline for the full envelope. Forecast admits one cash-application date per commitment and retains the existing modeled date 2027-01-15 for the full envelope under the incumbent clear-month rule, pending separate all-in payment evidence. January 15 salary cannot establish January 10 checkout funding; cash available by checkout remains unproven. Trip-window endpoints and a midpoint do not redate the envelope. No saving, payment or settlement is asserted. Not a second $3,000."
             }
         ],
         "groups": [

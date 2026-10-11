@@ -309,7 +309,7 @@ policy only. The true-surplus debt ordering is no longer open.
 amount. It must not be double-counted.
 **What the answer changes:** Historical sports norms only, after evidence.
 
-### Q22. What Provincials location and travel details remain unknown?
+### Q22. What Provincials travel details and San Diego payment/funding gaps remain unknown?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know (2026-08-16, estimates absorbed onto `plan.commitments` by
 `B95`; Square One restated 2026-09-18 onto `plan.bills`; owner 2026-09-23
@@ -326,18 +326,26 @@ dated yearly card-paid `plan.bills` row `square-one` (10 February,
 Owner 2026-09-23 removed these from active future planning. They are not
 hidden rows and they do not encumber Forecast: `downstairs-couch`,
 `exterior-painting`, `vehicle-maintenance`. `indio-tournament` is retired
-and replaced by `san-diego` (San Diego, California; trip window January
-8–9, 2027). The cash date on that row follows the incumbent clear-month
-15th rule and is documented on the row. Do not restore Indio beside it.
+and replaced by `san-diego` (San Diego, California). Its confirmed trip
+window, points-covered flights and hotel checkout/payment date are recorded
+on that canonical row; do not ask for those confirmed facts again. Its
+existing modeled cash date follows the incumbent clear-month 15th rule
+and stays pending separate all-in payment evidence. January 15 salary
+cannot establish January 10 hotel checkout funding. Do not restore Indio
+beside it.
 
 There are no other specifically known tournaments. Tacoma is not on the
 current known list.
 
-Still unanswered, and only this:
+Still unanswered:
 - Provincials location and travel details. The owner-approved funding-ready
   planning target is recorded on the existing `provincials` row, alongside
   its planning amount and provenance. It does not establish an issuer
   payment deadline, registration invoice, payment or actual saving.
+- San Diego hotel amount, remaining all-in trip costs and other payment
+  deadlines, and demonstrated cash available by the confirmed checkout.
+  The hotel checkout/payment date alone does not establish one payment
+  deadline for the full planning envelope or prove checkout funding.
 
 Closed by the 2026-09-23 instruction:
 - exact due dates for downstairs couch, exterior painting, and vehicle
