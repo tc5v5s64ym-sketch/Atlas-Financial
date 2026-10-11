@@ -84,7 +84,144 @@ async function mergeCardCanary(stage) {
   assert.ok(!JSON.stringify({ annotations, checkBodies }).includes(CANARY));
   assert.ok(writes.some(row => String(row[1]).includes(CANARY)), 'API failure is private and retained');
 }
+// Exercise the shipped action bodies, including github-script@v7's public
+// unhandled-error sink. Only remote I/O and the filesystem are stubbed.
+function workflowScripts(source) {
+  return [...source.matchAll(/          script: \|\r?\n((?:            .*\r?\n|\r?\n)*)/g)]
+    .map(row => row[1].split(/\r?\n/).map(line => line.replace(/^            /, '')).join('\n'));
+}
+async function workflowApiCanary(file, index, stage, source) {
+  source = source || fs.readFileSync(path.join(ROOT, '.github/workflows', file), 'utf8');
+  const messages = [], writes = [], calls = [];
+  let failed = false, escaped = false;
+  const manifest = '- name: "' + CANARY + '"\n  color: abcdef\n  description: Synthetic fixture.\n';
+  const failure = status => Object.assign(new Error(CANARY), { status });
+  const github = { rest: { repos: { createCommitStatus: async params => {
+    calls.push({ method: 'status', params });
+    if (stage === 'api' || stage === 'private-write') throw failure(503);
+  } }, issues: {
+    updateLabel: async params => {
+      calls.push({ method: 'update', params });
+      if (stage === 'update') throw failure(503);
+      if (stage === 'create' || stage === 'create-success') throw failure(404);
+    }, createLabel: async params => {
+      calls.push({ method: 'create', params });
+      if (stage === 'create') throw failure(503);
+    },
+  } } };
+  const ctx = {
+    require: name => {
+      assert.strictEqual(name, 'fs');
+      return { readFileSync: () => {
+        if (stage === 'read') throw failure();
+        return stage === 'empty' ? '' : manifest;
+      }, writeFileSync: (...args) => {
+        if (stage === 'private-write') throw failure();
+        writes.push(args);
+      } };
+    }, process: { env: { RUNNER_TEMP: 'private' } }, github,
+    context: { repo: { owner: 'synthetic', repo: 'fixture' },
+      payload: { pull_request: { head: { sha: HEAD } } }, serverUrl: 'https://example.test', runId: 42 },
+    core: { setFailed: value => { failed = true; messages.push(value); }, info: value => messages.push(value),
+      summary: { addRaw: value => messages.push(value), write: async () => {
+        if (stage === 'summary') throw failure();
+      } } },
+  };
+  const script = workflowScripts(source)[index]
+    .replace('${{ steps.scan.outcome }}', stage === 'scan-failure' ? 'failure' : 'success');
+  try { await vm.runInNewContext('(async () => {' + script + '\n})()', ctx); }
+  catch (error) {
+    // v7 logs the escaped error and annotates its message; do not let a stub
+    // hide that real action behavior when testing the publication boundary.
+    escaped = true; failed = true;
+    messages.push(String(error.stack || error), 'Unhandled error: ' + String(error));
+  }
+  return { failed, escaped, publicLeak: messages.some(value => String(value).includes(CANARY)),
+    retained: writes.some(row => String(row[1]).includes(CANARY)), calls, writes };
+}
+function riskShellCanary(source) {
+  source = source || fs.readFileSync(path.join(ROOT, '.github/workflows/risk-label-gate.yml'), 'utf8');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'risk-api-canary-'));
+  const bin = path.join(dir, 'bin'); fs.mkdirSync(bin);
+  const gh = path.join(bin, 'gh');
+  fs.writeFileSync(gh, '#!/bin/sh\nprintf "called\\n" >> "$STUB_CALLS"\n'
+    + 'printf "%s\\n" "' + CANARY + '"\nprintf "%s\\n" "' + CANARY + '" >&2\nexit 7\n', { mode: 0o700 });
+  const shell = source.split('        run: |')[1].split(/\r?\n/)
+    .map(line => line.replace(/^          /, '')).join('\n');
+  const env = { ...process.env, STUB_BIN: bin.replace(/\\/g, '/'),
+    STUB_CALLS: path.join(dir, 'calls').replace(/\\/g, '/'), RUNNER_TEMP: dir,
+    ATLAS_CI_DIAGNOSTICS_DIR: dir, EVENT_NUMBER: '42', EVENT_HEAD: HEAD,
+    GITHUB_REPOSITORY: 'synthetic/fixture', GITHUB_SERVER_URL: 'https://example.test', GITHUB_RUN_ID: '42' };
+  delete env.GH_TOKEN; delete env.GITHUB_TOKEN;
+  const prelude = process.platform === 'win32' ? 'stub="$(cygpath -u "$STUB_BIN")"\n'
+    : 'stub="$STUB_BIN"\n';
+  const child = spawnSync(process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash',
+    ['-c', prelude + 'export PATH="$stub:$PATH"\n'
+      + '[ "$(command -v gh)" = "$stub/gh" ] || exit 125\n' + shell],
+    { cwd: ROOT, env, encoding: 'utf8', windowsHide: true });
+  const logs = fs.readdirSync(dir).filter(name => name.startsWith('atlas-ci-private-'))
+    .flatMap(name => fs.readdirSync(path.join(dir, name)).filter(file => file.endsWith('.log'))
+      .map(file => fs.readFileSync(path.join(dir, name, file), 'utf8')));
+  return { exitCode: child.status, spawnError: !!child.error,
+    publicLeak: String(child.stdout).includes(CANARY) || String(child.stderr).includes(CANARY),
+    retained: logs.some(log => log.includes(CANARY)),
+    calls: fs.existsSync(path.join(dir, 'calls')) ? fs.readFileSync(path.join(dir, 'calls'), 'utf8').trim().split('\n').length : 0,
+    record: child.stdout && child.stdout.trim().startsWith('{') ? JSON.parse(child.stdout) : null };
+}
+async function checkWorkflowApiPrivacy() {
+  for (const [file, index] of [['privacy-guard.yml', 0], ['privacy-guard.yml', 1], ['risk-label-gate.yml', 0]]) {
+    const api = await workflowApiCanary(file, index, 'api');
+    assert.ok(api.failed && !api.escaped && !api.publicLeak && api.retained, file + ' API error remains private and fails');
+    assert.strictEqual(api.calls.length, 1);
+    assert.strictEqual(api.calls[0].params.sha, HEAD, 'status remains attached to the event head');
+    assert.strictEqual(api.calls[0].params.state, file === 'privacy-guard.yml' && index === 1 ? 'success' : 'pending');
+    assert.strictEqual(api.writes[0][2].mode, 0o600);
+    const pass = await workflowApiCanary(file, index, 'success');
+    assert.ok(!pass.failed && !pass.escaped && !pass.publicLeak);
+    assert.strictEqual(pass.calls.length, 1, 'successful API operation still runs once');
+    const storageFailure = await workflowApiCanary(file, index, 'private-write');
+    assert.ok(storageFailure.failed && !storageFailure.escaped && !storageFailure.publicLeak,
+      'private diagnostic storage failure cannot disclose the API exception');
+  }
+  const rejected = await workflowApiCanary('privacy-guard.yml', 1, 'scan-failure');
+  assert.ok(rejected.failed && !rejected.escaped && !rejected.publicLeak);
+  assert.strictEqual(rejected.calls[0].params.state, 'failure', 'a rejected scan remains rejected');
+  for (const stage of ['update', 'create', 'read', 'summary']) {
+    const result = await workflowApiCanary('labels.yml', 0, stage);
+    assert.ok(result.failed && !result.escaped && !result.publicLeak && result.retained,
+      'label ' + stage + ' error remains private and fails');
+    assert.strictEqual(result.writes[0][2].mode, 0o600);
+    assert.strictEqual(result.calls.length, stage === 'read' ? 0 : stage === 'create' ? 2 : 1);
+  }
+  for (const stage of ['success', 'create-success']) {
+    const result = await workflowApiCanary('labels.yml', 0, stage);
+    assert.ok(!result.failed && !result.escaped && !result.publicLeak);
+    assert.deepStrictEqual(result.calls.map(row => row.method), stage === 'success' ? ['update'] : ['update', 'create']);
+    for (const row of result.calls) {
+      assert.strictEqual(row.params.name, CANARY, 'the manifest remains the label authority');
+      assert.strictEqual(row.params.color, 'abcdef');
+      assert.strictEqual(row.params.description, 'Synthetic fixture.');
+    }
+  }
+  const empty = await workflowApiCanary('labels.yml', 0, 'empty');
+  assert.ok(empty.failed && !empty.escaped && !empty.publicLeak);
+  assert.strictEqual(empty.calls.length, 0);
+  const shell = riskShellCanary();
+  assert.strictEqual(shell.exitCode, 7, 'shell API failure preserves the exact exit');
+  assert.strictEqual(shell.spawnError, false);
+  assert.strictEqual(shell.calls, 1, 'only the local executable API stub runs');
+  assert.ok(!shell.publicLeak && shell.retained, 'actual shell stdout and stderr stay private');
+  assert.strictEqual(shell.record.identity, 'risk-label-gate');
+  assert.strictEqual(shell.record.category, 'process-failed');
+  const authority = fs.readFileSync(path.join(ROOT, 'CLAUDE.md'), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(authority.includes('exit 78 (`private-artifact-blocked`)'));
+  assert.ok(authority.includes('Repair requires a local fix, the normal tests, and\ngenuine review'));
+  assert.ok(authority.includes('separately reviewed implementation of private patch transport'));
+  assert.ok(!authority.includes('checks start one automatic Cursor'));
+}
+
 (async () => {
+  await checkWorkflowApiPrivacy();
   const pass = fixture();
   assert.deepStrictEqual(pass.run(), { code: 'trusted-pass-recorded', exitCode: 0 });
   assert.deepStrictEqual(pass.dispatches, [['agent/synthetic', 42, HEAD]]);

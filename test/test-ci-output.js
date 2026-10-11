@@ -154,7 +154,7 @@ async function posting(body, apiError, sourceBase, sourceHead, existing = false)
     assert.ok(!/upload-artifact|download-artifact|cursor-agent|git push/.test(workflow),
       'arbitrary repair artifacts are withheld before model execution');
   }
-  for (const identity of ['install-runtime', 'privacy-guard', 'codex-review-gate', 'atlas-test-repair-gate',
+  for (const identity of ['install-runtime', 'privacy-guard', 'risk-label-gate', 'codex-review-gate', 'atlas-test-repair-gate',
     'figures-head-snapshot', 'figures-base-snapshot', 'figures-base-checkout', 'cursor-models', 'cursor-repair']) {
     outcome(run(streams + channelCode, official, identity), 0, identity);
     outcome(run(streams + channelCode + 'process.exit(7);', official, identity), 7, identity);

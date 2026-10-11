@@ -285,9 +285,19 @@ still merge on green.
 Do not invent a generic owner-approval ceremony, and do not treat the retired
 paid OpenAI reviewer as this review.
 
-Failed `tests` or merge-card completeness checks start one automatic Cursor
-repair. The patch is tested before it is pushed. Two failed attempts stop
-and comment; they do not loop. A repair must not weaken a financial test.
+Automatic repair is suspended because confidential cross-job patch transport
+is unavailable. Eligible failed-test or blocking-review repair paths stop with
+exit 78 (`private-artifact-blocked`) before fetching failed logs, generating
+prompts or patches, running a model, committing, pushing, or repair bookkeeping.
+Failures remain failures. Repair requires a local fix, the normal tests, and
+genuine review under the existing review rules. A repair must not weaken a
+financial test.
+
+Re-enabling these workflows restores the trusted eligibility gate, genuine
+exact-head review recording, and head-aware PASS card dispatch. It does not
+restore automated edits or pushes. Restoring automatic repair requires a
+separately reviewed implementation of private patch transport; re-enabling,
+retrying, or configuring an existing secret does not lift this suspension.
 
 ## Merge policy
 
