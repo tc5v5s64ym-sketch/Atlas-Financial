@@ -24,7 +24,7 @@
 //   THEME_ROOT=<pristine base checkout> — serve that tree instead
 //     (bite: the Auto + OS-light assertion fails there).
 //   THEME_BASE_ROOT=<pristine base checkout> — also measure the base
-//     tree's Auto + OS-light state and record it, unaudited, in the
+//     tree's Auto + OS-light state and record it, unasserted, in the
 //     receipt as before-state evidence, with its header screenshot.
 const fs = require('node:fs');
 const assert = require('node:assert/strict');

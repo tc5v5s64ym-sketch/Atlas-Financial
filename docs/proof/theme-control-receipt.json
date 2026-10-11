@@ -12,7 +12,7 @@
     "public/budget-blend.js": "e03b04d8784f84c332be37f3e21da8dc4c5c433c",
     "public/app.js": "74909f85f9857f9f2543e92fdc9afec6c936c515",
     "public/bills.html": "26c4b2aed77e4031b9a21f06590e4e3e6e269c85",
-    "test/browser-theme-control.js": "5a7c08083369a3db2c0b581cee152941c43e8635"
+    "test/browser-theme-control.js": "7f92bb0c8c664e60fb7a167a5b59f5569e4ed94c"
   },
   "states": [
     {
@@ -440,7 +440,7 @@
     },
     {
       "file": "docs/proof/theme-control-header-auto-light-390-before.png",
-      "sha256": "8bc4e506117230899acd700a7b05cce71f708b9cb42ce5e2f1487ebb242d8f6f",
+      "sha256": "a12e7bcc14128ab8e074edf6f17a80e3adbc0ff40e2bedc66d800e270262fe32",
       "state": "before (pristine base), auto + OS light, 390px header"
     }
   ]
