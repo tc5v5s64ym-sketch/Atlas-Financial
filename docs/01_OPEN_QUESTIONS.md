@@ -309,7 +309,7 @@ policy only. The true-surplus debt ordering is no longer open.
 amount. It must not be double-counted.
 **What the answer changes:** Historical sports norms only, after evidence.
 
-### Q22. What are the remaining unknown tournament costs, and what are Provincials date/location/cost?
+### Q22. What Provincials location and travel details remain unknown?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know (2026-08-16, estimates absorbed onto `plan.commitments` by
 `B95`; Square One restated 2026-09-18 onto `plan.bills`; owner 2026-09-23
@@ -334,8 +334,10 @@ There are no other specifically known tournaments. Tacoma is not on the
 current known list.
 
 Still unanswered, and only this:
-- Provincials location and date (`provincials` timing is TBD; the
-  owner-confirmed planning amount lives on that row; no date is invented)
+- Provincials location and travel details. The owner-approved funding-ready
+  planning target is recorded on the existing `provincials` row, alongside
+  its planning amount and provenance. It does not establish an issuer
+  payment deadline, registration invoice, payment or actual saving.
 
 Closed by the 2026-09-23 instruction:
 - exact due dates for downstairs couch, exterior painting, and vehicle

@@ -239,9 +239,11 @@ for (const cost of schedule.costs) {
   ok(cost.contributions.every(part => part.payday <= cost.date),
     'nothing is funded after its authoritative cash date');
 }
-ok(!schedule.costs.some(cost => cost.id === 'provincials')
-  && schedule.unscheduled.some(cost => cost.id === 'provincials'),
-  'undated Provincials has no invented funding payday');
+ok(schedule.costs.filter(cost => cost.id === 'provincials').length === 1
+  && schedule.costs.some(cost => cost.id === 'provincials' && cost.date === '2027-02-12'
+    && cent(cost.baseRequirement) === 150000)
+  && !schedule.unscheduled.some(cost => cost.id === 'provincials'),
+  'Provincials joins the schedule once at the approved funding-ready target');
 ok(!sim.events.some(event => event.amount === 9500 || /silver/i.test(event.label || '')),
   'silver proceeds are absent from the canonical cash walk');
 const roadAhead = F.baselineTrajectory(data.plan, data.debts, asOf, { periods });
@@ -313,7 +315,10 @@ ok(/Projected from the [^<]*2026 opening/.test(page.lede),
 ok(page.list.includes('data-plan-spend-id="fusion-household"')
   && !page.list.includes('data-plan-spend-id="fusion-household-oct"'),
   'Fusion is one card while instalments remain separate events');
-ok(page.list.includes('Funding schedule unavailable — cash date not established'),
+const undatedPlan = fixture(100, 37, false);
+delete undatedPlan.commitments[0].date;
+const undatedPage = context.planSpendPageHtml(F.recommend(undatedPlan, '2026-01-01', { weeklyVariable: 0 }), null);
+ok(/Funding schedule unavailable.*cash date not established/.test(undatedPage.list),
   'undated card fails closed in household language');
 
 if (process.argv.includes('--review')) {

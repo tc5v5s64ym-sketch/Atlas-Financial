@@ -47,14 +47,13 @@ const OWNER_EXPLICIT = {
   'seattle-dec': { date: '2026-12-09', amount: 1500, when: 'Dec 2026' },
   'linden-birthday': { date: '2026-12-09', amount: 500, when: 'Dec 2026' },
   'christmas-2026': { date: '2026-12-25', amount: 3500, when: 'by Christmas 2026' },
+  'provincials': { date: '2027-02-12', amount: 1500, when: 'February 12, 2027 funding-ready planning target' },
 };
 const OWNER_DAY15 = {
   'seattle-nov': { date: '2026-11-15', amount: 1500, when: 'Nov 2026' },
   'san-diego': { date: '2027-01-15', amount: 3000, when: 'Jan 2027' },
 };
-const LEFT_UNDATED = {
-  'provincials': 'timing TBD',
-};
+const LEFT_UNDATED = {};
 const RETIRED = ['downstairs-couch', 'exterior-painting', 'vehicle-maintenance', 'indio-tournament', 'burrards-team-fees'];
 const HAND_DEC_CASH = [
   { id: 'seattle-dec', date: '2026-12-09', amount: -1500 },
@@ -105,8 +104,10 @@ for (const id of RETIRED) {
 ok(byId['san-diego'] && byId['san-diego'].tripWindow === 'Jan 8–9, 2027'
     && byId['san-diego'].amountMin == null,
   'san-diego keeps the owner trip window and is a point amount');
-ok(byId.provincials && near(byId.provincials.amount, 1500) && byId.provincials.date == null,
-  'provincials is the owner-confirmed $1,500 with timing still TBD');
+ok(byId.provincials && near(byId.provincials.amount, 1500) && byId.provincials.date === '2027-02-12'
+    && byId.provincials.confidence === 'confirmed' && byId.provincials.settledOn == null
+    && byId.provincials.paid !== true && /planning target, not an issuer payment deadline/.test(byId.provincials.note),
+  'Provincials keeps the owner planning amount and unpaid status on the approved funding-ready target');
 const lindenTeam = byId['burrards-linden-team-fee'];
 ok(lindenTeam && lindenTeam.date === '2026-10-20' && near(lindenTeam.amount, 340)
     && lindenTeam.confidence === 'estimated' && lindenTeam.paid !== true

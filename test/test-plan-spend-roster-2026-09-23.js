@@ -151,10 +151,10 @@ ok(byId['seattle-dec'] && byId['linden-birthday']
 ok(!priorById['linden-birthday'],
   'linden-birthday is new versus the frozen 2026-09-23 prior main');
 ok(byId.provincials && byId.provincials.amount === 1500
-    && byId.provincials.when === 'timing TBD'
-    && (byId.provincials.date == null || byId.provincials.date === '')
+    && byId.provincials.when === 'February 12, 2027 funding-ready planning target'
+    && byId.provincials.date === '2027-02-12'
     && byId.provincials.amountMin == null && byId.provincials.amountMax == null,
-  'Provincials is $1,500 with timing TBD and no stored date');
+  'Provincials keeps $1,500 on the approved funding-ready planning target');
 ok(independentMonth15('timing TBD') == null, 'timing TBD is not a cash date');
 ok(byId['san-diego'] && byId['san-diego'].amount === 3000
     && byId['san-diego'].date === '2027-01-15'
@@ -217,7 +217,7 @@ ok(!nowEvents.some(e => e.id === 'burrards-team-fees'),
   'the replaced aggregate emits no cash event; owner-dated Linden appears once');
 ok(!nowEvents.some(e => e.id === 'san-diego' && (e.date === '2027-01-08' || e.date === '2027-01-09')),
   'San Diego does not also emit on January 8 or January 9');
-ok(!nowEvents.some(e => e.id === 'provincials'), 'Provincials emits no Forecast cash date');
+oneCash('provincials', '2027-02-12', -1500);
 for (const hand of FUSION_REMAINING) {
   oneCash(hand.id, hand.date, -hand.amount);
 }
@@ -247,12 +247,13 @@ const expectedDeltas = [
   'burrards-logan-team-fee-oct@2026-10-16|null->-202.88',
   'burrards-team-fees@2026-09-15|-700->null',
   'linden-birthday@2026-12-09|null->-500',
+  'provincials@2027-02-12|null->-1500',
   'san-diego@2027-01-15|null->-3000',
   'seattle-dec@2026-12-09|-1200->-1500',
   'seattle-nov@2026-11-15|-1200->-1500',
 ];
 ok(JSON.stringify(cashDeltas) === JSON.stringify(expectedDeltas),
-  'commitment cash events change only for the approved team-fee replacement, Seattle, San Diego and Linden birthday',
+  'commitment cash events change only for approved input updates, including the Provincials planning target',
   cashDeltas.join(' ; ') || 'none');
 
 console.log('\n=== funding sequence and sinking no longer carry the retired rows ===');
@@ -263,8 +264,8 @@ const seq = sequenceIds(data.plan, OPENING);
 const seqAfter = sequenceIds(data.plan, AFTER_FUSION_PAID);
 for (const id of RETIRED) ok(!seq.has(id) && !seqAfter.has(id), `${id} is not in the funding sequence`);
 ok(seq.has('san-diego') && seqAfter.has('san-diego'), 'San Diego stays in the funding sequence');
-ok(seq.has('provincials') && F.fundingSequence(data.plan, OPENING, {}).find(r => r.id === 'provincials').date == null,
-  'Provincials stays in the sequence with no invented date');
+ok(seq.has('provincials') && F.fundingSequence(data.plan, OPENING, {}).find(r => r.id === 'provincials').date === '2027-02-12',
+  'Provincials stays in the sequence on the owner-approved planning target');
 ok(!seqAfter.has(FUSION_PAID.id) && FUSION_REMAINING.every(h => seqAfter.has(h.id)),
   'after settlement the sequence keeps the three remaining Fusion rows and drops the paid row');
 
@@ -293,9 +294,9 @@ ok(near(sinkNow.get('Seattle November 2026'), 1500 / monthsInWindow)
 const sinkingDelta = (sinking.sinkingMonthly || 0) - (priorSinking.sinkingMonthly || 0);
 // Only dated commitments smear into this window's sinking line. The owner
 // supplied October 20 for the existing estimated $340 Linden requirement.
-// Invoice due date remains unknown; all other unclear-date holds stay undated.
+// Provincials now has the separately approved February 12 funding-ready target.
 const authorizedSinking = (1500 - 1200) + (1500 - 1200) + 3000 + 500
-  + (202.88 + 202.87 - 700) + 340;
+  + (202.88 + 202.87 - 700) + 340 + 1500;
 ok(near(sinkingDelta, authorizedSinking / monthsInWindow),
   'sinking monthly delta includes only the approved dated costs, with no undated hold smear',
   String(sinkingDelta));
@@ -368,8 +369,8 @@ ok(seattleDecCards.length === 1 && seattleDecCards[0].need === 1500
     && seattleDecCards[0].date === '2026-12-09',
   'Plan Spend still has one seattle-dec card of $1,500 on 2026-12-09');
 const prov = settledPlans.find(p => p.id === 'provincials');
-ok(prov && prov.need === 1500 && prov.date == null && prov.when === 'timing TBD',
-  'Provincials published need is $1,500 with timing still unresolved');
+ok(prov && prov.need === 1500 && prov.date === '2027-02-12',
+  'Provincials published need is $1,500 on the approved funding-ready target');
 ok(!settledPlans.some(p => RETIRED.includes(p.id)), 'majorPlans omits every retired id');
 const squareCards = F.planSpendCards(settledPlans).filter(c => c.id === 'square-one');
 ok(squareCards.length === 1 && squareCards[0].kind === 'row'
@@ -458,10 +459,8 @@ ok((settledHtml.match(/data-plan-spend-id="seattle-dec"/g) || []).length === 1
     && seattleDecHtml.includes(money2(1500)) && seattleDecHtml.includes(longDate('2026-12-09')),
   'seattle-dec still renders once at $1,500.00 on 9 December 2026');
 const provHtml = article(settledHtml, 'provincials');
-ok(provHtml.includes(money2(1500)) && /timing TBD/.test(provHtml) && !/Due \d/.test(provHtml),
-  'Provincials renders $1,500 with timing TBD');
-ok(!/\d{4}-\d{2}-\d{2}|January|February|March|April|May|June|July|August|September|October|November|December/.test(provHtml),
-  'Provincials renders no invented calendar date');
+ok(provHtml.includes(money2(1500)) && provHtml.includes(longDate('2027-02-12')),
+  'Provincials renders its unchanged $1,500 on the approved planning target');
 for (const id of RETIRED) ok(!settledHtml.includes(`data-plan-spend-id="${id}"`), `${id} has no Plan Spend card`);
 ok(!/Indio|5260|5460|5,260|5,460/.test(settledHtml), 'rendered Plan Spend has no Indio amount');
 const src = read('public/plan-spend.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -602,10 +601,11 @@ const expectedLineDeltas = [
   '2026-12|linden-birthday|2026-12-09|null->500',
   '2026-12|seattle-dec|2026-12-09|1200->1500',
   '2027-01|san-diego|2027-01-15|null->3000',
+  '2027-02|provincials|2027-02-12|null->1500',
   '2027-07|propertytax|2027-07-01|null->6000',
 ];
 ok(JSON.stringify(lineDeltas) === JSON.stringify(expectedLineDeltas),
-  'month Road Ahead commitment lines change only for the approved team fees, Seattle, San Diego, Linden birthday and property-tax reserve',
+  'month Road Ahead commitment lines change only for the approved costs, including Provincials and property tax',
   lineDeltas.join(' ; ') || 'none');
 
 console.log('\n=== compact card rules apply on the Plan Spend list ===');
