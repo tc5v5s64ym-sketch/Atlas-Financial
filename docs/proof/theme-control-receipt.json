@@ -1,0 +1,447 @@
+{
+  "proof": "browser-theme-control",
+  "claim": "the Budget header theme button renders exactly one visible glyph in every theme state at 390px, 320px and desktop widths — moon in Auto on a light-scheme OS (previously both glyphs were display:none there), sun in Auto on a dark scheme, sun for explicit dark, moon for explicit light — and tapping it cycles and persists the theme via the existing hfd-theme storage; the labelled #theme-btn on the other pages is unchanged",
+  "runtime": {
+    "node": "v24.20.0",
+    "chromium": "152.0.7977.82",
+    "platform": "linux"
+  },
+  "servedSources": {
+    "public/budget-blend.css": "36c05416820155d2837a16b4b048a9c8584604f1",
+    "public/index.html": "ca13c1404c18780d26d8a8992394600f32b8ca15",
+    "public/budget-blend.js": "e03b04d8784f84c332be37f3e21da8dc4c5c433c",
+    "public/app.js": "74909f85f9857f9f2543e92fdc9afec6c936c515",
+    "public/bills.html": "26c4b2aed77e4031b9a21f06590e4e3e6e269c85",
+    "test/browser-theme-control.js": "5a7c08083369a3db2c0b581cee152941c43e8635"
+  },
+  "states": [
+    {
+      "state": "auto + OS light",
+      "width": "390",
+      "dataTheme": null,
+      "stored": null,
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "errors": []
+    },
+    {
+      "state": "auto + OS dark",
+      "width": "390",
+      "dataTheme": null,
+      "stored": null,
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "sun": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "errors": []
+    },
+    {
+      "state": "stored dark",
+      "width": "390",
+      "dataTheme": "dark",
+      "stored": "dark",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "sun": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "errors": []
+    },
+    {
+      "state": "stored light",
+      "width": "390",
+      "dataTheme": "light",
+      "stored": "light",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "errors": []
+    },
+    {
+      "state": "auto + OS light",
+      "width": "320",
+      "dataTheme": null,
+      "stored": null,
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "errors": []
+    },
+    {
+      "state": "auto + OS dark",
+      "width": "320",
+      "dataTheme": null,
+      "stored": null,
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "sun": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "errors": []
+    },
+    {
+      "state": "stored dark",
+      "width": "320",
+      "dataTheme": "dark",
+      "stored": "dark",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "sun": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "errors": []
+    },
+    {
+      "state": "stored light",
+      "width": "320",
+      "dataTheme": "light",
+      "stored": "light",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "errors": []
+    },
+    {
+      "state": "auto + OS light",
+      "width": "desktop",
+      "dataTheme": null,
+      "stored": null,
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "errors": []
+    },
+    {
+      "state": "auto + OS dark",
+      "width": "desktop",
+      "dataTheme": null,
+      "stored": null,
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "sun": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "errors": []
+    },
+    {
+      "state": "stored dark",
+      "width": "desktop",
+      "dataTheme": "dark",
+      "stored": "dark",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "sun": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "errors": []
+    },
+    {
+      "state": "stored light",
+      "width": "desktop",
+      "dataTheme": "light",
+      "stored": "light",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "errors": []
+    },
+    {
+      "state": "stored dark + OS dark",
+      "width": "390",
+      "dataTheme": "dark",
+      "stored": "dark",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "sun": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "errors": []
+    },
+    {
+      "state": "stored light + OS dark",
+      "width": "390",
+      "dataTheme": "light",
+      "stored": "light",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      },
+      "errors": []
+    }
+  ],
+  "tap": {
+    "sequence": "auto -> dark -> light -> reload",
+    "persistedVia": "hfd-theme",
+    "finalState": {
+      "dataTheme": "light",
+      "stored": "light",
+      "button": {
+        "width": 32,
+        "height": 32
+      },
+      "moon": {
+        "present": true,
+        "display": "block",
+        "width": 18,
+        "height": 18,
+        "visible": true
+      },
+      "sun": {
+        "present": true,
+        "display": "none",
+        "width": 0,
+        "height": 0,
+        "visible": false
+      }
+    }
+  },
+  "billsControl": {
+    "before": {
+      "text": "Theme: Auto",
+      "width": 104.640625,
+      "height": 34,
+      "visible": true,
+      "dataTheme": null
+    },
+    "after": {
+      "text": "Theme: Dark",
+      "width": 104.828125,
+      "height": 34,
+      "visible": true,
+      "dataTheme": "dark"
+    }
+  },
+  "beforeState": {
+    "root": "THEME_BASE_ROOT (pristine base)",
+    "dataTheme": null,
+    "stored": null,
+    "button": {
+      "width": 32,
+      "height": 32
+    },
+    "moon": {
+      "present": true,
+      "display": "none",
+      "width": 0,
+      "height": 0,
+      "visible": false
+    },
+    "sun": {
+      "present": true,
+      "display": "none",
+      "width": 0,
+      "height": 0,
+      "visible": false
+    },
+    "errors": []
+  },
+  "screenshots": [
+    {
+      "file": "docs/proof/theme-control-header-auto-light-390.png",
+      "sha256": "640ca294b8fd0bdf393e8a57a81aa420f9fa432c3b7d4e38a0a757bfc89896c8",
+      "state": "after (this tree), auto + OS light, 390px header"
+    },
+    {
+      "file": "docs/proof/theme-control-header-auto-light-390-before.png",
+      "sha256": "8bc4e506117230899acd700a7b05cce71f708b9cb42ce5e2f1487ebb242d8f6f",
+      "state": "before (pristine base), auto + OS light, 390px header"
+    }
+  ]
+}
