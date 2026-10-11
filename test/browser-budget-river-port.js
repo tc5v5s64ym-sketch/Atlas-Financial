@@ -153,7 +153,8 @@ async function proveRiverPort({ open, capture }) {
   const paired = await proveOriginal({ open, capture });
   const yielded = await proveYieldedNeighbourReselect({ open });
   const displaced = await proveDisplacedLabelHitTargeting({ open });
-  return { nativeLiveDrag: cases, originalComparison: paired, yieldedNeighbourReselect: yielded, displacedLabelHitTargeting: displaced };
+  const heldPress = await proveHeldPressNonPanTargeting({ open });
+  return { nativeLiveDrag: cases, originalComparison: paired, yieldedNeighbourReselect: yielded, displacedLabelHitTargeting: displaced, heldPressNonPanTargeting: heldPress };
 }
 
 // Regression (Systems Review 5480635465): place() skipped the selected label
@@ -421,6 +422,177 @@ async function proveDisplacedLabelHitTargeting({ open }) {
     await settledAt(page, MIN);
     const tap = await tapKeepsMin(page, s => page.mouse.click(s.cx, s.cy), label);
     cases.push({ width: 390, theme: 'dark', reducedMotion: { displacementPx: tap.displacementPx, tapKeptSelection: true } });
+    await page.close();
+  }
+  return cases;
+}
+
+// Regression (Systems Review 5481846544): round 4 fixed the IMMEDIATE tap
+// on a displaced selected label, but a STATIONARY HELD PRESS in non-pan
+// (fit) layouts still selected the neighbour. Mechanism: in a non-pan
+// layout pointerdown aims the spring at the RAW fractional position
+// (fOfScreen of the press point — 1.546 at the displaced centre here);
+// the spring/place motion during the hold travels to that fraction, the
+// selected label un-steps as the playhead leaves the band's bottom edge,
+// and place() clears the stepped label's hit box; pointerup then
+// re-resolved the release coordinate against the changed geometry and
+// committed the neighbouring period. The round-4 regression runs on the
+// panning layout (pan=true), where pointerdown never moves the spring,
+// so it cannot see this path. This regression uses the same invented
+// 12-point publication at 700px — element width 676, fit spacing ~54.9px
+// >= the 52px desktop minimum, so the layout is non-pan (fit mode). It
+// asserts the mis-target precondition from the RENDERED box (displaced
+// centre's raw fraction rounds to the neighbour), holds the press for
+// over a second while asserting the spring really travelled to the raw
+// fraction and the hit box really cleared (the defect's mechanism, true
+// before and after the fix), then asserts the release still commits the
+// pressed label's own period — for mouse and touch, both themes. A
+// held-press-then-drag case proves the continuous drag still takes over
+// once movement begins: the release must commit the DRAG's resting
+// period, not the press-time target. On the pre-fix code the held press
+// commits index 2 and this regression fails on its first case.
+async function proveHeldPressNonPanTargeting({ open }) {
+  const bads = [300, -420, 150, -80, 640, -260, 90, 480, -150, 720, 210, -40];
+  const MIN = 1, NEIGHBOUR = 2;
+  const HOLD_MS = 1100;
+  const cases = [];
+  const setup = async (width, theme, options = {}) => {
+    const page = await open(width, theme, { riverHarness: true, ...options });
+    await page.waitForFunction(() => typeof window.BudgetRiver !== 'undefined');
+    await page.evaluate(bads => {
+      document.body.innerHTML = '<main id="river-held" style="padding:12px"></main>';
+      const host = document.querySelector('main');
+      const tree = '<nav class="tile t-river"><div class="river" tabindex="0"><canvas class="river-canvas"></canvas><div class="river-slide"><div class="river-vals"></div><div class="months"></div></div><div class="playhead"><div class="playhead-pill"><span>Test publication</span><b>$0.00</b></div><span class="playhead-beam"></span><span class="playhead-orb"></span></div></div></nav>';
+      const section = document.createElement('section');
+      section.className = 'budget-bento atlas-g';
+      section.innerHTML = '<div class="g-river-wrap">' + tree + '</div>';
+      host.appendChild(section);
+      const fmt = v => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return a >= 999.5 ? s + '$' + (a / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : s + '$' + Math.round(a); };
+      const periods = bads.map((bad, i) => ({
+        start: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '15' : '01'),
+        end: '2026-' + String(1 + Math.floor(i / 2)).padStart(2, '0') + '-' + (i % 2 ? '28' : '14'),
+        bad, state: bad < 0 ? 'short' : 'healthy', role: i < 4 ? 'past' : i === 4 ? 'current' : 'future',
+      }));
+      const el = section.querySelector('.river');
+      window.__heldChanges = [];
+      window.__heldRiver = BudgetRiver.create({
+        el, canvas: section.querySelector('canvas'), playhead: section.querySelector('.playhead'),
+        pill: section.querySelector('.playhead-pill'), slide: section.querySelector('.river-slide'),
+        monthsEl: section.querySelector('.months'), valsEl: section.querySelector('.river-vals'),
+        periods, index: 4, cur: 4, enabled: true, dark: document.documentElement.dataset.theme === 'dark',
+        reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, noIntro: true, fmt,
+        knownRuns: [periods.map((_, i) => i)], onChange: (i, how) => window.__heldChanges.push({ i, how }),
+      });
+      window.__heldRiver.place(4);
+    }, bads);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.t-river')).opacity === '1');
+    await page.waitForFunction(() => window.__heldRiver.head.settled && window.__heldRiver.index === 4);
+    return page;
+  };
+  const settledAt = (page, k) => page.waitForFunction(k => {
+    const r = window.__heldRiver; return r.index === k && r.head.settled;
+  }, k, { timeout: 5000 }).catch(() => {});
+  const labelCentre = (page, k) => page.evaluate(k => {
+    const b = window.__heldRiver.valEls[k].getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  }, k);
+  // Select the minimum, then measure its displaced label from the rendered
+  // box and assert the fit-mode mis-target precondition.
+  const displacedFit = async (page, label) => {
+    const natural = await labelCentre(page, MIN);
+    await page.mouse.click(natural.x, natural.y);
+    await settledAt(page, MIN);
+    const st = await page.evaluate(k => {
+      const r = window.__heldRiver, elB = r.el.getBoundingClientRect(), b = r.valEls[k].getBoundingClientRect();
+      const cxEl = (b.left + b.width / 2) - elB.left;
+      return { index: r.index, pan: r.pan, sp: r.sp, cx: b.left + b.width / 2, cy: b.top + b.height / 2,
+        dx: (b.left + b.width / 2) - (elB.left + r.xs[k] - r.off), rawF: r.fOfScreen(cxEl) };
+    }, MIN);
+    assert.equal(st.index, MIN, label + ': the minimum must be selected before its label can displace');
+    assert.equal(st.pan, false, label + ': the 700px/12-point fixture must be a non-pan (fit) layout');
+    assert.ok(st.dx > st.sp / 2, label + ': the selected label must be displaced into the neighbouring hit region (dx ' + st.dx.toFixed(1) + 'px vs half-spacing ' + (st.sp / 2).toFixed(1) + 'px)');
+    assert.equal(Math.round(st.rawF), NEIGHBOUR, label + ': the displaced centre raw fraction must round to the neighbouring period (rawF ' + st.rawF.toFixed(3) + ')');
+    return st;
+  };
+  const duringHold = async (page, label) => {
+    const during = await page.evaluate(() => { const r = window.__heldRiver;
+      return { index: r.index, dragging: r.dragging, headTarget: r.head.target, headX: r.head.x, stepBox: r._stepBox }; });
+    assert.equal(during.dragging, true, label + ': the press must still be held');
+    assert.equal(during.index, MIN, label + ': nothing may commit during a stationary hold; got index ' + during.index);
+    assert.ok(during.headTarget > 1.5, label + ': the non-pan press must have aimed the spring at the raw fractional position (target ' + during.headTarget.toFixed(3) + ')');
+    assert.ok(Math.abs(during.headX - during.headTarget) < 0.01, label + ': the spring must have travelled to the raw fraction during the hold (head ' + during.headX.toFixed(3) + ' vs target ' + during.headTarget.toFixed(3) + ')');
+    assert.equal(during.stepBox, null, label + ': spring/place motion during the hold must have cleared the stepped hit box (the mechanism under repair)');
+    return during;
+  };
+  const releasedKeepsMin = async (page, label) => {
+    await settledAt(page, MIN);
+    const after = await page.evaluate(() => ({ index: window.__heldRiver.index, changes: window.__heldChanges.slice() }));
+    assert.equal(after.index, MIN, label + ': a stationary held press on the displaced selected label must keep its own period selected; got index ' + after.index);
+    assert.ok(after.changes.every(c => c.i === MIN), label + ': the held press must not publish another period ' + JSON.stringify(after.changes));
+    return after;
+  };
+  // Mouse held presses, both themes.
+  for (const theme of ['dark', 'light']) {
+    const page = await setup(700, theme);
+    const label = 'held/mouse/700/' + theme;
+    const st = await displacedFit(page, label);
+    await page.evaluate(() => { window.__heldChanges = []; });
+    await page.mouse.move(st.cx, st.cy);
+    await page.mouse.down();
+    await page.waitForTimeout(HOLD_MS);
+    const during = await duringHold(page, label);
+    await page.mouse.up();
+    await releasedKeepsMin(page, label);
+    cases.push({ width: 700, theme, input: 'mouse', layout: 'fit (non-pan)', holdMs: HOLD_MS,
+      displacementPx: Number(st.dx.toFixed(1)), spacingPx: Number(st.sp.toFixed(1)), rawFractionAtCentre: Number(st.rawF.toFixed(3)),
+      springTargetDuringHold: Number(during.headTarget.toFixed(3)), hitBoxClearedDuringHold: true, heldPressKeptSelection: true });
+    await page.close();
+  }
+  // Touch held presses, both themes (CDP touch, the native input path).
+  for (const theme of ['dark', 'light']) {
+    const page = await setup(700, theme, { hasTouch: true });
+    const label = 'held/touch/700/' + theme;
+    const st = await displacedFit(page, label);
+    await page.evaluate(() => { window.__heldChanges = []; });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: st.cx, y: st.cy }] });
+    await page.waitForTimeout(HOLD_MS);
+    const during = await duringHold(page, label);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await releasedKeepsMin(page, label);
+    await cdp.detach();
+    cases.push({ width: 700, theme, input: 'touch', layout: 'fit (non-pan)', holdMs: HOLD_MS,
+      displacementPx: Number(st.dx.toFixed(1)), spacingPx: Number(st.sp.toFixed(1)), rawFractionAtCentre: Number(st.rawF.toFixed(3)),
+      springTargetDuringHold: Number(during.headTarget.toFixed(3)), hitBoxClearedDuringHold: true, heldPressKeptSelection: true });
+    await page.close();
+  }
+  // Held press, THEN drag: once movement begins the continuous drag must
+  // take over — the release commits the drag's resting period, not the
+  // press-time target.
+  for (const theme of ['dark', 'light']) {
+    const page = await setup(700, theme);
+    const label = 'held-then-drag/mouse/700/' + theme;
+    const st = await displacedFit(page, label);
+    await page.evaluate(() => { window.__heldChanges = []; });
+    await page.mouse.move(st.cx, st.cy);
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    const during = await duringHold(page, label);
+    await page.mouse.move(st.cx + 2 * st.sp, st.cy, { steps: 10 });
+    await page.waitForTimeout(300); // outlast the fling freshness window while still held
+    const drag = await page.evaluate(() => { const r = window.__heldRiver;
+      return { index: r.index, headTarget: r.head.target, changes: window.__heldChanges.slice() }; });
+    assert.equal(drag.index, 4, label + ': the drag must scrub to the period under the pointer; got index ' + drag.index + ' (target ' + drag.headTarget.toFixed(3) + ')');
+    assert.ok(drag.changes.some(c => c.how === 'scrub'), label + ': the drag must publish live scrub selections ' + JSON.stringify(drag.changes));
+    await page.mouse.up();
+    await settledAt(page, 4);
+    const after = await page.evaluate(() => ({ index: window.__heldRiver.index, changes: window.__heldChanges.slice() }));
+    assert.equal(after.index, 4, label + ': the release after a drag must commit the drag resting period, not the press-time target; got index ' + after.index);
+    assert.equal(after.changes.at(-1).i, 4, label + ': the final commit must be the drag resting period ' + JSON.stringify(after.changes));
+    cases.push({ width: 700, theme, input: 'mouse', layout: 'fit (non-pan)', holdMs: 700,
+      displacementPx: Number(st.dx.toFixed(1)), spacingPx: Number(st.sp.toFixed(1)),
+      springTargetDuringHold: Number(during.headTarget.toFixed(3)), dragTookOver: true, releaseCommittedDragPeriod: 4 });
     await page.close();
   }
   return cases;

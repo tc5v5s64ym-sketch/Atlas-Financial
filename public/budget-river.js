@@ -249,7 +249,7 @@
     },
     bind() {
       const el = this.el, capture = this.captureTarget || el;
-      let lastX = 0, lastT = 0, vel = 0, downX = 0, downY = 0, downF = 0, moved = false, pid = null;
+      let lastX = 0, lastT = 0, vel = 0, downX = 0, downY = 0, downF = 0, moved = false, pid = null, downHit = null;
       this.listen(el, 'pointerdown', e => {
         if (!this.enabled || document.querySelector('dialog[open]')) return;
         if (e.isPrimary === false) return;
@@ -257,7 +257,15 @@
         pid = this.pointerId = e.pointerId; el.focus({ preventScroll: true }); this.dragging = true; moved = false; downX = e.clientX; downY = e.clientY; downF = this.head.x;
         lastX = e.clientX; lastT = performance.now(); vel = 0;
         el.classList.add('is-dragging'); this.request();
-        if (!this.pan) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.head.target = this.fOfScreen(e.clientX - r.left); }
+        const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect;
+        // Resolve this press's discrete target now, against the geometry
+        // the user sees as they press: a stationary release commits this
+        // index (see end()), because in a non-pan layout the press also
+        // aims the spring at the raw fractional position and the ensuing
+        // spring/place motion can clear the stepped label's hit box
+        // before pointerup (Systems Review 5481846544).
+        downHit = this.hitIndex(e.clientX - r.left);
+        if (!this.pan) { this.head.target = this.fOfScreen(e.clientX - r.left); }
       });
       this.listen(root, 'pointermove', e => {
         if (!this.dragging || e.pointerId !== pid) return;
@@ -276,10 +284,21 @@
       const end = (e, cancelled = false) => {
         if (!this.dragging || e.pointerId !== pid) return;
         this.dragging = false; el.classList.remove('is-dragging');
+        const hit = downHit; downHit = null;
         if (capture.hasPointerCapture?.(pid)) capture.releasePointerCapture(pid);
         if (cancelled) { const native = this.onCancel?.(); if (Number.isInteger(native)) this.index = native; this.head.set(Math.max(0, this.index)); this.mark(this.index); this.request(); return; }
-        if (this.pan && !moved) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(this.hitIndex(e.clientX - r.left)); return; }
-        if (!moved) { const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(this.hitIndex(e.clientX - r.left)); return; }
+        if (!moved) {
+          // Stationary press: commit the target resolved at pointerdown.
+          // Re-resolving the release coordinate here would measure it
+          // against geometry the hold itself changed — in a non-pan
+          // layout the spring travels to the raw fractional aim during
+          // the hold, the displaced label un-steps, and its hit box
+          // clears, so the release would commit the neighbouring period
+          // (Systems Review 5481846544). Once movement begins the press
+          // is a drag and takes the continuous path below, unchanged.
+          if (hit != null) { this.go(hit); return; }
+          const r = el.isConnected ? el.getBoundingClientRect() : this.lastRect; this.go(this.hitIndex(e.clientX - r.left)); return;
+        }
         const fresh = !this.reduce && performance.now() - lastT < 80 && Math.abs(vel) > 0.6;
         const fling = moved && fresh ? clamp((this.pan ? -vel : vel) * 140 / this.sp, -4, 4) : 0;
         this.go(Math.round(clamp(this.head.target + fling, 0, this.N - 1)));
